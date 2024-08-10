@@ -1,0 +1,1 @@
+"%cd%/python368/python.exe" "%cd%/gui.py"

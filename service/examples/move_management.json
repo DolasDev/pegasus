@@ -1,0 +1,42 @@
+{
+    "command": "unitOfWork",
+    "singleTransaction": "true",
+    "commandList": [
+        {
+            "command": "setVariable",
+            "sourceField": "ASSIGNMENT_ID",
+            "sourceTable": "SERVICE_ORDER",
+            "targetVariable": "SERVICE_ORDER!ASSIGNMENT_ID",
+            "whereClause": "[ID]=@SERVICE_ORDER_ID",
+            "whereParams": [
+                {
+                    "name": "@SERVICE_ORDER_ID",
+                    "value": "{{service_order_id}}"
+                }
+            ]
+        },
+        {
+            "command": "UPSERT",
+            "targetTable": "MOVE_MANAGEMENT",
+            "targetVariable": "MOVE_MANAGEMENT!ID",
+            "targetProperty": "MOVE_MANAGEMENT!ID",
+            "whereClause": "[SERVICE_ORDER_ID]=@SERVICE_ORDER_ID",
+            "whereParams": [
+                {
+                    "name": "@SERVICE_ORDER_ID",
+                    "value": "8917"
+                }
+            ],
+            "values": [
+                                {
+                    "name": "ASSIGNMENT_ID",
+                    "value": "~SERVICE_ORDER!ASSIGNMENT_ID"
+                },
+                {
+                    "name": "DEPARTURE_ADDRESS_LINE_1",
+                    "value": "123 Main Street"
+                }
+            ]
+        }
+    ]
+}

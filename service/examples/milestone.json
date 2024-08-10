@@ -1,0 +1,862 @@
+{
+    "command": "unitOfWork",
+    "commandList": [
+      {
+        "command": "UPDATE",
+        "targetTable": "SERVICE_ORDER",
+        "targetVariable": "SERVICE_ORDER!ID",
+        "targetProperty": "SERVICE_ORDER!ID",
+        "whereClause": "[ID]=@SERVICE_ORDER_ID",
+        "whereParams": [
+          {
+            "name": "@SERVICE_ORDER_ID",
+            "value": "257"
+          }
+        ],
+        "values": [
+          {
+            "name": "VENDOR_STATUS",
+            "value": "Accepted"
+          },
+          {
+            "name": "SOURCE_SYSTEM_TEXT_KEY",
+            "value": "Move 12345"
+          },
+          {
+            "name": "SOURCE_SYSTEM",
+            "value": "ABC Moving Vendor, Inc."
+          }
+        ]
+      },
+      {
+        "command": "unitOfWork",
+        "commandList": [
+          {
+            "command": "UPDATE",
+            "targetTable": "SERVICE_ORDER",
+              "whereClause": "[ID]=@SERVICE_ORDER_ID",
+            "whereParams": [
+              {
+                "name": "@SERVICE_ORDER_ID",
+                "value": "257"
+              }
+            ],
+            "values": [
+              {
+                "name": "VENDOR_CONTACT_ID",
+                "value": "~VC_ID"
+              }
+            ]
+          }
+        ]
+      },	
+      {
+        "command": "UPSERT",
+        "targetTable": "MOVE_MANAGEMENT",
+        "targetVariable": "MOVE_MANAGEMENT!ID",
+        "targetProperty": "MOVE_MANAGEMENT!ID",
+        "whereClause": "[SERVICE_ORDER_ID]=@SERVICE_ORDER_ID AND [SOURCE_SYSTEM]=@SOURCE_SYSTEM AND [SOURCE_SYSTEM_TEXT_KEY]=@SOURCE_SYSTEM_TEXT_KEY",
+        "whereParams": [
+          {
+            "name": "@SERVICE_ORDER_ID",
+            "value": "257"
+          },
+          {
+            "name": "@SOURCE_SYSTEM",
+            "value": "ABC Moving Vendor, Inc."
+          },			
+          {
+            "name": "@SOURCE_SYSTEM_TEXT_KEY",
+            "value": "Service 1"
+          }
+        ],
+        "values": [
+          {
+            "name": "ASSIGNMENT_ID",
+            "value": "~SERVICE_ORDER!ASSIGNMENT_ID"
+          },
+          {
+            "name": "SERVICE_ORDER_ID",
+            "value": "257"
+          },
+          {
+            "name": "SOURCE_SYSTEM_TEXT_KEY",
+            "value": "Service 1"
+          },		
+          {
+            "name": "SOURCE_SYSTEM",
+            "value": "ABC Moving Vendor, Inc."
+          },
+          {
+            "name": "REFERENCE_NUMBER",
+            "value": "Service 1"
+          },		
+          {
+            "name": "HHG_AUTHORIZED",
+            "valueLookup": "Yes"
+          },
+          {
+            "name": "VEHICLES_AUTHORIZED",
+            "valueLookup": "Yes"
+          },
+          {
+            "name": "PETS_AUTHORIZED",
+            "valueLookup": "Yes"
+          },
+          {
+            "name": "PRIMARY_SHIPMENT",
+            "valueLookup": "No"
+          },
+          {
+            "name": "DEPARTURE_ADDRESS_LINE_1",
+            "value": "123 Main Street"
+          },
+          {
+            "name": "DEPARTURE_ADDRESS_LINE_2",
+            "value": "3rd Floor"
+          },
+          {
+            "name": "DEPARTURE_ADDRESS_LINE_3",
+            "value": "Suite 300"
+          },
+          {
+            "name": "DEPARTURE_CITY",
+            "value": "Denver"
+          },
+          {
+            "name": "DEPARTURE_COUNTRY_CODE",
+            "value": "USA"
+          },
+          {
+            "name": "DEPARTURE_STATE_PROVINCE_CODE",
+            "valueLookup": "Colorado",
+            "paramOverrides": [
+              {
+                "name": "@stateProvinceCountryCode",
+                "value": "USA"
+              }
+            ]
+          },
+          {
+            "name": "DEPARTURE_POSTAL_CODE",
+            "value": "80202"
+          },
+          {
+            "name": "DESTINATION_ADDRESS_LINE_1",
+            "value": "345 1st Street"
+          },
+          {
+            "name": "DESTINATION_ADDRESS_LINE_2",
+            "value": "Floor 7"
+          },
+          {
+            "name": "DESTINATION_ADDRESS_LINE_3",
+            "value": "Unit 700"
+          },
+          {
+            "name": "DESTINATION_CITY",
+            "value": "Denver"
+          },
+          {
+            "name": "DESTINATION_COUNTRY_CODE",
+            "value": "USA"
+          },
+          {
+            "name": "DESTINATION_STATE_PROVINCE_CODE",
+            "valueLookup": "Colorado",
+            "paramOverrides": [
+              {
+                "name": "@stateProvinceCountryCode",
+                "value": "USA"
+              }
+            ]
+          },
+          {
+            "name": "DESTINATION_POSTAL_CODE",
+            "value": "80202"
+          }
+        ]
+      },
+      {
+        "command": "UPSERT",
+        "targetTable": "MOVE_MANAGEMENT_HOUSEHOLD_GOOD",
+        "targetVariable": "MOVE_MANAGEMENT_HOUSEHOLD_GOOD!ID",
+        "targetProperty": "MOVE_MANAGEMENT_HOUSEHOLD_GOOD!ID",
+        "whereClause": "[MOVE_MANAGEMENT_ID]=@MOVE_MANAGEMENT_ID",
+        "whereParams": [
+          {
+            "name": "@MOVE_MANAGEMENT_ID",
+            "value": "~MOVE_MANAGEMENT!ID"
+          }
+        ],
+        "values": [
+         {
+            "name": "MOVE_MANAGEMENT_ID",
+            "value": "~MOVE_MANAGEMENT!ID"
+          },
+          {
+            "name": "SHIPMENT_TYPE",
+            "valueLookup": "Air Shipment"
+          },
+          {
+            "name": "CONTAINER_SIZE_DESCRIPTION",
+            "value": "40"
+          },
+          {
+            "name": "CONTAINER_SIZE_MEASUREMENT",
+            "valuelookup": "Cubic Yards",
+            "paramOverrides": [
+              {
+                "name": "@SUB_GROUP_CODE",
+                "value": "EQWVOL"
+              }
+            ]
+          },
+          {
+            "name": "ADDITIONAL_INFORMATION",
+            "value": "The quick brown fox jumped over the lazy dog"
+          },
+          {
+            "name": "COST_ESTIMATE",
+            "value": "10000"
+          },
+          {
+            "name": "COST_ESTIMATE_CURRENCY",
+            "value": "USD"
+          },
+          {
+            "name": "ACTUAL_COST",
+            "value": "10000"
+          },
+          {
+            "name": "ACTUAL_COST_CURRENCY",
+            "value": "USD"
+          },
+          {
+            "name": "WEIGHT_ESTIMATE",
+            "value": "1000"
+          },
+          {
+            "name": "WEIGHT_ESTIMATE_UNIT",
+            "valueLookup": "Pounds"
+          },
+          {
+            "name": "ACTUAL_WEIGHT",
+            "value": "1000"
+          },
+          {
+            "name": "ACTUAL_WEIGHT_UNIT",
+            "valueLookup": "Pounds"
+          },
+          {
+            "name": "DISTANCE_ESTIMATE",
+            "value": "1000"
+          },
+          {
+            "name": "DISTANCE_ESTIMATE_UNIT",
+            "valueLookup": "Miles"
+          },
+          {
+            "name": "ACTUAL_DISTANCE",
+            "value": "1100"
+          },
+          {
+            "name": "ACTUAL_DISTANCE_UNIT",
+            "valueLookup": "Miles"
+          },
+          {
+            "name": "REQUESTED_SURVEY_DATE",
+            "value": "2017-01-21T00:00:00"
+          },
+          {
+            "name": "SCHEDULED_SURVEY_DATE",
+            "value": "2017-01-21T00:00:00"
+          },
+          {
+            "name": "ACTUAL_SURVEY_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "REQUESTED_PACK_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "SCHEDULED_PACK_START_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "SCHEDULED_PACK_END_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "ACTUAL_PACK_START_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "ACTUAL_PACK_END_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "REQUESTED_LOAD_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "SCHEDULED_LOAD_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "SCHEDULED_LOAD_END_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "ACTUAL_LOAD_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "ACTUAL_LOAD_END_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "REQUESTED_DELIVERY_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "SCHEDULED_DELIVERY_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "SCHEDULED_DELIVERY_END_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "ACTUAL_DELIVERY_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "ACTUAL_DELIVERY_END_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "SCHEDULED_CUSTOMS_CLEARANCE_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "ACTUAL_CUSTOMS_CLEARANCE_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "ESTIMATED_STORAGE",
+            "valueLookup": "Perm"
+          },
+          {
+            "name": "BEGIN_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "END_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "STORAGE_LOCATION",
+            "valueLookup": "Origin"
+          },
+          {
+            "name": "STORAGE_COST_ESTIMATE",
+            "value": "1500"
+          },
+          {
+            "name": "STORAGE_COST_ESTIMATE_CURRENCY",
+            "value": "USD"
+          },
+          {
+            "name": "ACTUAL_STORAGE_COST",
+            "value": "1600"
+          },
+          {
+            "name": "ACTUAL_STORAGE_COST_CURRENCY",
+            "value": "USD"
+          },
+          {
+            "name": "ASSIGNEE_CONTACTED_DATE",
+            "value": "2017-01-21T00:00:00"
+          },
+          {
+            "name": "ASSIGNEE_BRIEFING_DATE",
+            "value": "2017-01-21T00:00:00"
+          },
+          {
+            "name": "SCHEDULED_STORAGE_BEGIN_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "SCHEDULED_STORAGE_END_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "EMPLOYEE_SPECIAL_INSTRUCTIONS",
+            "value": "Special Instructions from the provider"
+          },
+          {
+            "name": "SCHEDULED_DEPARTURE_FROM_ORIGIN_PORT_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "SCHEDULED_ARRIVAL_AT_DESTINATION_PORT_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "ACTUAL_DEPARTURE_FROM_ORIGIN_PORT_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "ACTUAL_ARRIVAL_AT_DESTINATION_PORT_DATE",
+            "value": "2017-01-29T00:00:00"
+          }
+        ]
+      },
+      {
+        "command": "UPSERT",
+        "targetTable": "MOVE_MANAGEMENT_VEHICLE",
+        "targetVariable": "MOVE_MANAGEMENT_VEHICLE!ID",
+        "targetProperty": "MOVE_MANAGEMENT_VEHICLE!ID",
+        "whereClause": "[MOVE_MANAGEMENT_ID]=@MOVE_MANAGEMENT_ID AND [SOURCE_SYSTEM_TEXT_KEY]=@SOURCE_SYSTEM_TEXT_KEY",
+        "whereParams": [
+          {
+            "name": "@MOVE_MANAGEMENT_ID",
+            "value": "~MOVE_MANAGEMENT!ID"
+          },
+          {
+            "name": "@SOURCE_SYSTEM_TEXT_KEY",
+            "value": "Service 2"
+          }
+        ],
+        "values": [
+          {
+            "name": "MOVE_MANAGEMENT_ID",
+            "value": "~MOVE_MANAGEMENT!ID"
+          },
+          {
+            "name": "SOURCE_SYSTEM_TEXT_KEY",
+            "value": "Service 2"
+          },
+          {
+            "name": "SOURCE_SYSTEM",
+            "value": "ABC Moving Vendor, Inc."
+          },		
+          {
+            "name": "ACTUAL_COST",
+            "value": "4500.00"
+          },
+          {
+            "name": "ACTUAL_COST_CURRENCY",
+            "value": "EUR"
+          },
+          {
+            "name": "ACTUAL_CUSTOMS_CLEARANCE_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "ACTUAL_DELIVERY_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "ACTUAL_LOAD_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "BEGIN_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "COST_ESTIMATE",
+            "value": "5000.00"
+          },
+          {
+            "name": "COST_ESTIMATE_CURRENCY",
+            "value": "EUR"
+          },
+          {
+            "name": "END_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "ESTIMATED_STORAGE",
+            "valuelookup": "SIT"
+          },
+          {
+            "name": "MAKE",
+            "value": "Pontiac"
+          },
+          {
+            "name": "MODEL",
+            "value": "Vibe"
+          },
+          {
+            "name": "SCHEDULED_CUSTOMS_CLEARANCE_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "SCHEDULED_DELIVERY_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "SCHEDULED_DELIVERY_DATE_TO",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "SCHEDULED_LOAD_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "STORAGE_LOCATION",
+            "valuelookup": "Destination"
+          },
+          {
+            "name": "VEHICLE_TYPE",
+            "valuelookup": "Car"
+          },
+          {
+            "name": "YEAR",
+            "value": "2006"
+          }
+        ]
+      },
+      {
+        "command": "UPSERT",
+        "targetTable": "MOVE_MANAGEMENT_SHIPPING",
+        "targetVariable": "MOVE_MANAGEMENT_SHIPPING!ID",
+        "targetProperty": "MOVE_MANAGEMENT_SHIPPING!ID",
+        "whereClause": "[SOURCE_SYSTEM_TEXT_KEY]=@SOURCE_SYSTEM_TEXT_KEY AND [SOURCE_SYSTEM]=@SOURCE_SYSTEM",
+        "whereParams": [
+          {
+              "name": "@SOURCE_SYSTEM",
+              "value": "ABC Moving Vendor, Inc."
+          },
+          {
+              "name": "@SOURCE_SYSTEM_TEXT_KEY",
+              "value": "Service 4"
+          }
+        ],
+        "values": [
+          {
+            "name": "MOVE_MANAGEMENT_ID",
+            "value": "~MOVE_MANAGEMENT!ID"
+          },
+           {
+            "name": "SOURCE_SYSTEM",
+            "value": "ABC Moving Vendor, Inc."
+          },
+          {
+            "name": "SOURCE_SYSTEM_TEXT_KEY",
+            "value": "Service 4"
+          },
+          {
+            "name": "SCHEDULED_PICKUP_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "SCHEDULED_DELIVERY_DATE",
+            "value": "2017-02-20T00:00:00"
+          },
+          {
+            "name": "ACTUAL_PICKUP_DATE",
+            "value": "2017-01-29T00:00:00"
+          },
+          {
+            "name": "ACTUAL_DELIVERY_DATE",
+            "value": "2017-02-20T00:00:00"
+          },
+          {
+            "name": "QUARANTINE_REQUIRED",
+            "valueLookup": "Yes"
+          },
+          {
+            "name": "QUARANTINE_START_DATE",
+            "value": "2017-02-20T00:00:00"
+          },
+          {
+            "name": "QUARANTINE_END_DATE",
+            "value": "2017-02-20T00:00:00"
+          },
+          {
+            "name": "BOARDING_START_DATE",
+            "value": "2017-02-20T00:00:00"
+          },
+          {
+            "name": "BOARDING_END_DATE",
+            "value": "2017-02-20T00:00:00"
+          },
+          {
+            "name": "COST_ESTIMATE",
+            "value": "250"
+          },
+          {
+            "name": "COST_ESTIMATE_CURRENCY",
+            "value": "GBP"
+          },
+          {
+            "name": "ACTUAL_COST",
+            "value": "250"
+          },
+          {
+            "name": "ACTUAL_COST_CURRENCY",
+            "value": "GBP"
+          }
+        ]
+      },
+      {
+        "command": "UPSERT",
+        "targetTable": "ASSIGNMENT_PET",
+        "targetVariable": "ASSIGNMENT_PET!ID",
+        "targetProperty": "ASSIGNMENT_PET!ID",
+        "whereClause": "[ASSIGNMENT_ID]=@ASSIGNMENT_ID AND [TYPE]=(SELECT [CODE] FROM CLASSIFICATION WHERE [DISPLAY_VALUE]=@TYPE AND [GROUP_CODE]='EQMPTP') AND [SUBTYPE]=@SUBTYPE AND [QUANTITY]=@QUANTITY",
+        "whereParams": [
+          {
+            "name": "@ASSIGNMENT_ID",
+            "value": "~SERVICE_ORDER!ASSIGNMENT_ID"
+          },
+          {
+            "name": "@TYPE",
+            "value": "Cat"
+          },
+          {
+            "name": "@SUBTYPE",
+            "value": "DSH"
+          },
+          {
+            "name": "@QUANTITY",
+            "value": 1
+          }
+        ],
+        "values": [
+          {
+            "name": "ASSIGNMENT_ID",
+            "value": "~SERVICE_ORDER!ASSIGNMENT_ID"
+          },
+          {
+            "name": "TYPE",
+            "valueLookup": "Cat"
+          },
+          {
+            "name": "SUBTYPE",
+            "value": "DSH"
+          },
+          {
+            "name": "QUANTITY",
+            "value": 1
+          },
+          {
+            "name": "WEIGHT",
+            "value": "13"
+          },
+          {
+            "name": "WEIGHT_UNIT",
+            "valuelookup": "Pounds"
+          }		
+        ]
+      },
+      {
+        "command": "UPSERT",
+        "targetTable": "MOVE_MANAGEMENT_SHIPPING_ASSIGNMENT_PET",
+        "targetVariable": "MOVE_MANAGEMENT_SHIPPING_ASSIGNMENT_PET!ID",
+        "targetProperty": "MOVE_MANAGEMENT_SHIPPING_ASSIGNMENT_PET!ID",
+        "whereClause": "[MOVE_MANAGEMENT_SHIPPING_ID]=@MOVE_MANAGEMENT_SHIPPING_ID AND [ASSIGNMENT_PET_ID]=@ASSIGNMENT_PET_ID",
+        "whereParams": [
+          {
+            "name": "@MOVE_MANAGEMENT_SHIPPING_ID",
+            "value": "~MOVE_MANAGEMENT_SHIPPING!ID"
+          },
+          {
+            "name": "@ASSIGNMENT_PET_ID",
+            "value": "~ASSIGNMENT_PET!ID"
+          }
+        ],
+        "values": [
+          {
+            "name": "ASSIGNMENT_PET_ID",
+            "value": "~ASSIGNMENT_PET!ID"
+          },
+          {
+            "name": "MOVE_MANAGEMENT_SHIPPING_ID",
+            "value": "~MOVE_MANAGEMENT_SHIPPING!ID"
+          }
+        ]
+      },
+      {
+        "command": "UPSERT",
+        "targetTable": "MOVE_MANAGEMENT_INSURANCE",
+        "targetVariable": "MOVE_MANAGEMENT_INSURANCE!ID",
+        "targetProperty": "MOVE_MANAGEMENT_INSURANCE!ID",
+        "whereClause": "[MOVE_MANAGEMENT_ID]=@MOVE_MANAGEMENT_ID",
+        "whereParams": [
+          {
+            "name": "@MOVE_MANAGEMENT_ID",
+            "value": "~MOVE_MANAGEMENT!ID"
+          }
+        ],
+        "values": [
+          {
+            "name": "MOVE_MANAGEMENT_ID",
+            "value": "~MOVE_MANAGEMENT!ID"
+          },
+          {
+            "name": "TYPE",
+            "valuelookup": "Moving Company"
+          },
+          {
+            "name": "COVERAGE_AMOUNT",
+            "value": "3500.00"
+          },
+          {
+            "name": "COVERAGE_CURRENCY",
+            "value": "EUR"
+          },
+          {
+            "name": "ADDITIONAL_COVERAGE_CHARGED_TO",
+            "valuelookup": "Employee"
+          },
+          {
+            "name": "COVERAGE_DESCRIPTION",
+            "value": "Everything and the kitchen sink"
+          }
+        ]
+      },
+      {
+        "command": "UPSERT",
+        "targetTable": "MOVE_MANAGEMENT_INSURANCE_CLAIM",
+        "targetVariable": "MOVE_MANAGEMENT_INSURANCE_CLAIM!ID",
+        "targetProperty": "MOVE_MANAGEMENT_INSURANCE_CLAIM!ID",
+        "whereClause": "[MOVE_MANAGEMENT_INSURANCE_ID]=@MOVE_MANAGEMENT_INSURANCE_ID AND [SOURCE_SYSTEM_TEXT_KEY]=@SOURCE_SYSTEM_TEXT_KEY",
+        "whereParams": [
+          {
+            "name": "@MOVE_MANAGEMENT_INSURANCE_ID",
+            "value": "~MOVE_MANAGEMENT_INSURANCE!ID"
+          },
+          {
+            "name": "@SOURCE_SYSTEM_TEXT_KEY",
+            "value": "Service 5"
+          }
+        ],
+        "values": [
+          {
+            "name": "MOVE_MANAGEMENT_INSURANCE_ID",
+            "value": "~MOVE_MANAGEMENT_INSURANCE!ID"
+          },
+          {
+            "name": "SOURCE_SYSTEM_TEXT_KEY",
+            "value": "Service 5"
+          },
+          {
+            "name": "SOURCE_SYSTEM",
+            "value": "ABC Moving Vendor, Inc."
+          },		
+          {
+            "name": "DAMAGE_SUMMARY",
+            "value": "Broken lamp"
+          },
+          {
+            "name": "CLAIM_AMOUNT",
+            "value": "1000"
+          },
+          {
+            "name": "CLAIM_CURRENCY",
+            "value": "USD"
+          },
+          {
+            "name": "CLAIM_DATE",
+            "value": "2017-02-20T00:00:00"
+          },
+          {
+            "name": "SETTLEMENT_AMOUNT",
+            "value": "1000"
+          },
+          {
+            "name": "SETTLEMENT_CURRENCY",
+            "value": "USD"
+          },
+          {
+            "name": "SETTLEMENT_DATE",
+            "value": "2017-02-20T00:00:00"
+          }
+        ]
+      },
+      {
+        "command": "setVariable",
+        "sourceField": "ID",
+        "sourceTable": "PAGE",
+        "targetVariable": "DOCUMENT!PAGE_ID",
+        "whereClause": "[NAME]=@PAGE_NAME",
+        "whereParams": [
+          {
+            "name": "@PAGE_NAME",
+            "value": "Move Management Details"
+          }
+        ]
+      },
+      {
+        "command": "INSERT",
+        "targetTable": "DOCUMENT",
+        "targetProperty": "DOCUMENT!ID",
+        "targetVariable": "DOCUMENT!ID",
+        "values": [
+          {
+            "name": "CONTENT_LENGTH",
+            "value": "32"
+          },
+          {
+            "name": "CONTENT_TYPE",
+            "value": "text/plain"
+          },
+          {
+            "name": "DOCUMENT",
+            "encoding": "Hex",
+            "value": "54686973206973207465737420646174612E2020446F206E6F7420726561642E"
+          },
+          {
+            "name": "DOCUMENT_TYPE_ID",
+            "valueLookup": "Moving Cost Estimate",
+            "paramOverrides": [
+              {
+                "name": "@documentTypePageId",
+                "value": "~DOCUMENT!PAGE_ID"
+              },
+              {
+                "name": "@documentTypeUserId",
+                "value": "~USER!ID"
+              }
+            ]
+          },
+          {
+            "name": "FILE_NAME",
+            "value": "test data.txt"
+          },
+          {
+            "name": "DESCRIPTION",
+            "value": "Description of the document"
+          },
+          {
+            "name": "NAME",
+            "value": "test attachment123"
+          },
+          {
+            "name": "PAGE_ID",
+            "value": "~DOCUMENT!PAGE_ID"
+          }
+        ]
+      },
+      {
+        "command": "INSERT",
+        "targetTable": "DOCUMENT_MOVE_MANAGEMENT",
+        "values": [
+          {
+            "name": "DOCUMENT_ID",
+            "value": "~DOCUMENT!ID"
+          },
+          {
+            "name": "ATTACHED_RECORD_ID",
+            "value": "~MOVE_MANAGEMENT!ID"
+          }
+        ]
+      }
+    ]
+  }

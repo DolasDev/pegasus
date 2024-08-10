@@ -1,0 +1,30 @@
+{
+  "name": "pegasus-events-services-controller",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "start": "cross-env NODE_ENV=development electron .",
+    "dist": "cross-env NODE_ENV=production build"
+  },
+  "build": {
+    "win": {
+      "requestedExecutionLevel": "highestAvailable",
+      "target": "portable",
+      "extraResources": [
+        "nssm.exe",
+        "api-python"
+      ]
+    }
+  },
+  "author": "GitHub",
+  "license": "CC0-1.0",
+  "devDependencies": {
+    "cross-env": "^5.2.1",
+    "electron": "^4.0.1",
+    "electron-builder": "^20.38.4"
+  },
+  "dependencies": {
+    "electron-log": "^2.2.17"
+  }
+}
