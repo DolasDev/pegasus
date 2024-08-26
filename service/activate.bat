@@ -1,1 +1,1 @@
-"%cd%/venv/Scripts/activate.bat"
+"%~dp0venv/Scripts/activate.bat"
