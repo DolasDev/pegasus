@@ -1,6 +1,13 @@
 __pycache__/
-venv/
+
 python368/
+
+venv/
+service/venv/
+service/app.build/
+service/app.dist/
+service/app.onefile-build/
+*.exe
 *.pyc
 qlab
 data.json
@@ -14,14 +21,3 @@ node_modules
 .vagrant
 
 msodbcsql.msi
-qlab-python/nssm.exe
-Pegasus_API_Receiver-cache/cacheIndex.txt
-Pegasus_API_Receiver-cache/part1/disk1.cab
-Pegasus_API_Receiver-cache/part1/output-info.ini
-Pegasus_API_Receiver-cache/part2/output-info.ini
-Pegasus_API_Receiver-cache/part2/disk1.cab
-Pegasus_API_Sender-cache/cacheIndex.txt
-Pegasus_API_Sender-cache/part1/disk1.cab
-Pegasus_API_Sender-cache/part1/output-info.ini
-Pegasus_API_Sender-cache/part2/output-info.ini
-Pegasus_API_Sender-cache/part2/disk1.cab
