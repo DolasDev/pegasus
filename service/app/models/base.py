@@ -25,10 +25,10 @@ params_string = """
 params = urllib.parse.quote_plus(params_string)
 
 if config.production_db is True:
-    logger.debug('Using Production DB')
+    logger.info('Using Production DB')
     engine = create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
 else:
-    logger.debug('Using In Memory Test DB')
+    logger.info('Using In Memory Test DB')
     #engine = create_engine("sqlite:///:memory:")
     engine = create_engine('sqlite:///test.db', echo=True)
     
@@ -90,7 +90,7 @@ class CommitError(Base):
         return (self.Id)
 
 def addCommitError(RecordType=None, RecordId=None, StackTrace=None):
-    logger.debug('Running addCommitError()')
+    logger.info('Running addCommitError()')
     logger.error('''Error on database commit. Review Error in database.
     Record_Type={RecordType} RecordId={RecordId} '''.format(RecordType=RecordType, RecordId=RecordId))
     commit_error = {
@@ -121,7 +121,7 @@ def getTableFields(table_name):
     return field_names
 
 def getTablesWithPrefix(prefix):
-    logger.debug('Running getTablesWithPrefix()')
+    logger.info('Running getTablesWithPrefix()')
     metadata.reflect(bind=engine,views=True)
     view_prefix = 'v_' + prefix
     view_names = []
@@ -131,7 +131,7 @@ def getTablesWithPrefix(prefix):
     return(view_names)
 
 def getDataRows(table, event_pk):
-    logger.debug('Running getDataRows()')
+    logger.info(f'Running getDataRows({table},{event_pk})')
     session_manager = SessionManager()
     table_name = table
     params = {'value': event_pk}

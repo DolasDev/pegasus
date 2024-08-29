@@ -108,7 +108,7 @@ def runPegasusEventsSenderDebug():
         from app import ControlFlow
         ControlFlow.runEventsSender()
     except Exception:
-        logger.exception()
+        logger.exception('Failed to execute runEventsSender')
     input("Press Enter to quit...")
 
 

@@ -7,7 +7,7 @@ from app.loggers import logger
 
 class ProcessedResponse():
     def __init__(self, raw_json, response_dict, Id):
-        logger.debug('Instantiating ProcessedResponse')
+        logger.info('Instantiating ProcessedResponse')
         self.raw_dict = raw_json
         #self.response_dict = fixDataTypes(response_dict) #SD - Not needed since all strings
         self.response_dict = response_dict
@@ -17,7 +17,7 @@ class ProcessedResponse():
 
 
 def fixDataTypes(response_dict):
-    logger.debug('Running fixDataTypes()')
+    logger.info('Running fixDataTypes()')
     working_dict = response_dict
     for key, value in working_dict.items():
         if isinstance(value, dict):
@@ -52,7 +52,7 @@ def fixDataTypes(response_dict):
 def cleanNamedNumberValues(string_to_clean):
     try:
         if ('number' in string_to_clean.lower()):
-            logger.debug('Cleaning Numeric Value')
+            logger.info('Cleaning Numeric Value')
             cleaned_string = re.sub('[^0-9]', '', string_to_clean)
             return(cleaned_string)
         else:
@@ -70,19 +70,19 @@ def removeNonAscii(string_to_clean):
 
 
 def getProcessedResponse(response_object, Id=None):
-    logger.debug('Running getProcessedResponse()')
+    logger.info('Running getProcessedResponse()')
     raw_json = response_object.json()
     try:
         response_dict = json.loads(response_object.text,object_hook=explicitDecode)
     except Exception:  # This is for handling the test files
         logger.exception('Failed to load response into JSON')
-        logger.debug('response_object.text is of type ' + str(type(response_object.text)))
+        logger.info('response_object.text is of type ' + str(type(response_object.text)))
 
     processed_response = ProcessedResponse(raw_json, response_dict, Id)
     return(processed_response)
 
 def parseEqussMilestoneResponse(response_object):
-    logger.debug('Running parseEqussMilestoneResponse()')
+    logger.info('Running parseEqussMilestoneResponse()')
     raw_json = response_object.json()
     try:
         response_dict = json.loads(response_object.text)
@@ -106,7 +106,7 @@ def parseEqussMilestoneResponse(response_object):
         return(response_dict)
     except Exception:  # This is for handling the test files
         logger.exception('Failed to load response into JSON')
-        logger.debug('response_object.text is of type ' + str(type(response_object.text)))
+        logger.info('response_object.text is of type ' + str(type(response_object.text)))
     return(raw_json)
 
 def explicitDecode(loaded_dict):
@@ -132,23 +132,23 @@ def explicitDecode(loaded_dict):
                     except TypeError:
                         pass
                     except Exception as e:
-                        logger.debug('Conversion of {key} to datetime failed'.format(key=key))
-                        logger.debug(e)
+                        logger.info('Conversion of {key} to datetime failed'.format(key=key))
+                        logger.info(e)
                         working_dict[key] = None
                 elif datatype == 'int':
                     try:
                         working_dict[key] = int(value)
                     except Exception as e:
-                        logger.debug('Conversion of {key} to int failed'.format(key=key))
-                        logger.debug(e)
+                        logger.info('Conversion of {key} to int failed'.format(key=key))
+                        logger.info(e)
                 elif datatype == 'float':
                     try:
                         working_dict[key] = float(value)
                     except Exception as e:
-                        logger.debug('Conversion of {key} to float failed'.format(key=key))
-                        logger.debug(e)
+                        logger.info('Conversion of {key} to float failed'.format(key=key))
+                        logger.info(e)
             except Exception as e:
-                logger.debug('lookup for {key} in DATA_TYPE_LOOKUP failed. Datatype not explicitly defined'.format(key=key))
+                logger.info('lookup for {key} in DATA_TYPE_LOOKUP failed. Datatype not explicitly defined'.format(key=key))
             
     return(working_dict)
 

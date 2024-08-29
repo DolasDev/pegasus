@@ -14,7 +14,7 @@ from app.loggers import logger
 # {Parent} leave as none. This is used recursively in the function to pass the top level entity
 def lookUpInstance(natural_key_value, model, mapped_class):
     session_manager = base.SessionManager()
-    logger.debug('Running lookUpInstance()')
+    logger.info('Running lookUpInstance()')
     WorkingMappedClass = eval(model + '.' + mapped_class)
     entity = session_manager.current_session.query(WorkingMappedClass).filter_by(event_id=natural_key_value).first()
     session_manager.closeSession()
@@ -23,14 +23,14 @@ def lookUpInstance(natural_key_value, model, mapped_class):
 
 def lookUpEvents(model, mapped_class, _session_manager):
     session_manager = _session_manager
-    logger.debug('Running lookUpEvents()')
+    logger.info('Running lookUpEvents()')
     WorkingMappedClass = eval(model + '.' + mapped_class)
     events = session_manager.current_session.query(WorkingMappedClass).filter_by(Processed_Status='New').all()
     return(events)
 
 
 def dropUnmappedAttributes(dictionary, mapped_class_instance):
-    logger.debug('Running dropUnmappedAttributes')
+    logger.info('Running dropUnmappedAttributes')
     working_dict = copy.deepcopy(dictionary)
     for key, value in dictionary.items():
         try:
@@ -40,7 +40,7 @@ def dropUnmappedAttributes(dictionary, mapped_class_instance):
     return(working_dict)
 
 def parseDynamoDB(dictionary):
-    logger.debug('Running parseDynamoDB')
+    logger.info('Running parseDynamoDB')
     working_dict = copy.deepcopy(dictionary)
     for key, value in dictionary.items():
         if isinstance(value, dict):
@@ -53,7 +53,7 @@ def parseDynamoDB(dictionary):
 
 
 def getMappedClassInstance(model, mapped_class, dictionary, Id=None, parent=None):
-    logger.debug('Running getMappedClassInstance()')
+    logger.info('Running getMappedClassInstance()')
     WorkingMappedClass = eval(model + '.' + mapped_class)
     working_mapped_instance = WorkingMappedClass()
     cleaned_dict = dropUnmappedAttributes(dictionary, working_mapped_instance)
@@ -99,7 +99,7 @@ def getMappedClassInstance(model, mapped_class, dictionary, Id=None, parent=None
 
 
 def getEventInstance(event, Id=None):
-    logger.debug('Running getEventInstance()')
+    logger.info('Running getEventInstance()')
     api_event = Events.Event()
     api_event.event_id = event['event_id']['S']
     api_event.event_type = event['event_type']['S']
@@ -120,13 +120,13 @@ def getEventInstance(event, Id=None):
 
 
 def mapToLead(data, table, property):
-    logger.debug('Running mapToLead()')
+    logger.info('Running mapToLead()')
     tableEntry = next((item for item in data if item["name"] == table), None)
     if (tableEntry):
         return tableEntry['values'].get(property)
 
 def convertEventPayloadTableInserts(table_name, valid_columns, data):
-    logger.debug('Running convertEventPayloadTableInserts()')
+    logger.info('Running convertEventPayloadTableInserts()')
     valid_data = {key: data[key] for key in data if key in valid_columns}
     columns = ', '.join(valid_data.keys())
     placeholders = ', '.join([f':{key}' for key in valid_data.keys()])
@@ -134,7 +134,7 @@ def convertEventPayloadTableInserts(table_name, valid_columns, data):
     return(sql)
 
 def getOutboundEvents():
-    logger.debug('Running getOutboundEvents()')
+    logger.info('Running getOutboundEvents()')
     session_manager = base.SessionManager()    
     events = session_manager.current_session.query(Events.BoadcastEvent).filter_by(event_status='NEW',event_group='equus')
     return(events.all())

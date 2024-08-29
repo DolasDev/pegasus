@@ -6,7 +6,7 @@ from app.loggers import logger
 import time
 
 def sendEquusMilestone(assignment_id, event_data_rows):
-    logger.debug('Running sendEquusMilestone()')
+    logger.info('Running sendEquusMilestone()')
     service_order_id = lookupEquusServiceOrderId(assignment_id)
     if service_order_id:
         try:
@@ -26,12 +26,12 @@ def sendEquusMilestone(assignment_id, event_data_rows):
         logger.error(f'No service order id was found in initiations or sales for equus event with assignment_id: {assignment_id}')
 
 def handleEquusMilestoneResponse(assignment_id, response):
-    logger.debug('Running handleEquusMilestoneResponse()')
+    logger.info('Running handleEquusMilestoneResponse()')
     parsed_response = response_handlers.parseEqussMilestoneResponse(response)
     CatchRawJson.logToJson(parsed_response, assignment_id, type='EQUUS-Milestone-Response')
 
 def lookupEquusServiceOrderId(service_order_id):
-    logger.debug('Running lookupEquusServiceOrderId()')
+    logger.info('Running lookupEquusServiceOrderId()')
     peg_db = config.db_pegasus_db_name
     session_manager = base.SessionManager()
     primary_lookup = f'SELECT service_order_id from equus_service_order where assignment_id = {service_order_id}'
@@ -48,7 +48,7 @@ def lookupEquusServiceOrderId(service_order_id):
 
 
 def buildUnitOfWorkFactory(service_order_id, event_data_rows):
-    logger.debug('Running buildUnitOfWorkFactory()')
+    logger.info('Running buildUnitOfWorkFactory()')
     commandList = [
          {
                 "command": "setVariable",
@@ -64,6 +64,7 @@ def buildUnitOfWorkFactory(service_order_id, event_data_rows):
                 ]
             },
     ]
+    logger.info(f"event_data_rows: {event_data_rows}")
     for tabledata in event_data_rows:
         #upsert = buildIndividualUpsertFactory(tabledata, service_order_id)
         upserts = buildUpsertsByPropertyFactory(tabledata, service_order_id)
@@ -76,8 +77,22 @@ def buildUnitOfWorkFactory(service_order_id, event_data_rows):
     return unit_of_work
 
 def buildIndividualUpsertFactory(event_data, service_order_id):
-    logger.debug('Running buildIndividualUpsertFactory()')
-    upserts = []
+    logger.info('Running buildIndividualUpsertFactory()')
+    upserts = [
+        {
+            "command": "setVariable",
+            "sourceField": "ID",
+            "sourceTable": event_data['table_name'],
+            "targetVariable": f"{event_data['table_name']}!ID",
+            "whereClause": "[SERVICE_ORDER_ID]=@SERVICE_ORDER_ID",
+            "whereParams": [
+                {
+                    "name": "@SERVICE_ORDER_ID",
+                    "value": service_order_id
+                }
+            ]
+        }, 
+    ]
     for row in event_data['rows']:
         upsert = {
             'command': 'UPSERT',
@@ -98,7 +113,7 @@ def buildIndividualUpsertFactory(event_data, service_order_id):
     return upserts
 
 def buildUpsertsByPropertyFactory(event_data, service_order_id):
-    logger.debug('Running buildUpsertsByPropertyFactory()')
+    logger.info('Running buildUpsertsByPropertyFactory()')
     units_of_work=[]
     upserts = []
     for row in event_data['rows']:
@@ -130,7 +145,7 @@ def buildUpsertsByPropertyFactory(event_data, service_order_id):
     return units_of_work
 
 def createEvent(event):
-    logger.debug('Running createEvent()')
+    logger.info('Running createEvent()')
     session_manager = base.SessionManager()
     event_instance = entity_handlers.getEventInstance(event)
     if event_instance.id:
@@ -143,7 +158,7 @@ def createEvent(event):
 
 def insertIntoDB(event, new_event_id, table_prefix=None):
     session_manager = base.SessionManager()
-    logger.debug('Running insertIntoDB()')
+    logger.info('Running insertIntoDB()')
     event_data = event['event_data']['S']['data']
     event_type = event['event_type']['S']
     event_api_id = event['event_id']['S']
@@ -160,7 +175,7 @@ def insertIntoDB(event, new_event_id, table_prefix=None):
     session_manager.current_session_commit(RecordType=event_type, RecordId=event['event_id'])
 
 def renameIdKeys(data, prefix):
-    logger.debug('Running renameIdKeys()')
+    logger.info('Running renameIdKeys()')
     renamed_data = {}
     for key in data.keys():
         if (key=='ID'):
@@ -174,7 +189,7 @@ def renameIdKeys(data, prefix):
     return(renamed_data)
 
 def getBroadcastEventData(event, event_group): 
-    logger.debug('Running getBroadcastEventData()')
+    logger.info('Running getBroadcastEventData()')
     event_pk = event.event_pk
     tables = base.getTablesWithPrefix(event_group)
     tables_rows = []
@@ -192,7 +207,7 @@ def getBroadcastEventData(event, event_group):
 
 
 def deleteFromQueue(event_id, token):
-    logger.debug('Running deleteFromQueue()')
+    logger.info('Running deleteFromQueue()')
     try:
         return APICalls.deleteEvent(
             config.client_id,
@@ -204,7 +219,7 @@ def deleteFromQueue(event_id, token):
 
 
 def getEventsLists(token):
-    logger.debug('Running getEventsLists')
+    logger.info('Running getEventsLists')
 
     # Get New Events
     new_events = APICalls.getNewEvents(
@@ -221,11 +236,11 @@ def getEventsLists(token):
         except Exception:
             logger.exception('Control Flow Failed to process response')
     else:
-        logger.debug('New events call failed on timeout')
+        logger.info('New events call failed on timeout')
 
 
 def runEventsReceiver():
-    logger.debug('Running runEventsReceiver()')
+    logger.info('Running runEventsReceiver()')
 
     # Step 1: API Authentication
     try:
@@ -267,7 +282,7 @@ def runEventsReceiver():
             logger.error(traceback.format_exc())
 
 def runEventsSender():
-    logger.debug('Running runEventsSender()')
+    logger.info('Running runEventsSender()')
     
     # Step 1: Test Database Connection
     try:
@@ -286,12 +301,13 @@ def runEventsSender():
 
     # Step 2: Retrieve BroadcastEvents from PegII process
     event_groups = {
-            'equus-events-receiver' : 'equus',
+            'equus-events-receiver':'equus',
             'equus-events-sender':'equus',
             'qlab-events-receiver':'qlab'
         }
 
     event_group = event_groups[config.service_type]
+    logger.info(f'event group: {event_groups[config.service_type]}')
     events = entity_handlers.getOutboundEvents()
     if len(events) > 0:
         for event in events:
@@ -299,7 +315,7 @@ def runEventsSender():
                 EventsBroker.processBroadcastEvent(event, event_group)
             except Exception as e:
                 logger.error(f"Error processing Broadcast event {event.id}: {e}")
-                logger.error(traceback.format_exc())
+                logger.exception(traceback.format_exc())
     else:
         logger.info('no broadcast events found')
 

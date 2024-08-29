@@ -283,7 +283,13 @@ function logCurrentErrors(subProcess) {
 
 function runApp() {
     showMsg('Starting service...')
-    const nssm = '"'+path.join(__dirname, REL_PATH, '../../service/nssm.exe')+'"'; 
+    let nssm = ''
+    if (process.env.NODE_ENV === 'development'){
+        nssm = '"'+path.join(__dirname, REL_PATH, '../nssm.exe')+'"'; 
+    }
+    else{
+        nssm = '"'+path.join(__dirname, REL_PATH, '../resources/nssm.exe')+'"'; 
+    }
     const service_name = `"DOLAS-${serviceName}"`
     logSubProcess(spawn(nssm, ['start', service_name],{detached: false, shell: true}));
 
@@ -291,7 +297,13 @@ function runApp() {
 
 function stopApp() {
     showMsg('Stopping service...')
-    const nssm = '"'+path.join(__dirname, REL_PATH, '../../service/nssm.exe')+'"'; 
+    let nssm = ''
+    if (process.env.NODE_ENV === 'development'){
+        nssm = '"'+path.join(__dirname, REL_PATH, '../nssm.exe')+'"'; 
+    }
+    else{
+        nssm = '"'+path.join(__dirname, REL_PATH, '../resources/nssm.exe')+'"'; 
+    }
     const service_name = `"DOLAS-${serviceName}"`
     logSubProcess(spawn(nssm, ['stop', service_name],{detached: false, shell: true}));
 }
@@ -312,24 +324,43 @@ function checkIfAppIsRunning() {
 function setupDB() {
     showMsg('Setting up database')
     log.info('starting setupDB');
-    const python_exe = '"'+path.join(__dirname, REL_PATH, '../../service/python368/python.exe')+'"';
+    let python_exe=''
+    let args=[]
     const app_path = '"'+path.join(__dirname, REL_PATH, '../../service/app.py')+'"';
-    const args = ['-setup_db' , '"'+CONFIG_PATH+'"'] ;
-    logSubProcess(spawn(python_exe, [app_path, ...args],{detached: true, shell: true}));
+
+    if (process.env.NODE_ENV === 'development'){
+        python_exe = '"'+path.join(__dirname, REL_PATH, '../../service/python368/python.exe')+'"';
+        args = [app_path,'-setup_db' , '"'+CONFIG_PATH+'"'] ;
+    }
+    else{
+        python_exe = '"'+path.join(__dirname, REL_PATH, '../resources/pegII-service.exe')+'"';
+        args = ['-setup_db' , '"'+CONFIG_PATH+'"'] ;
+    }
+
+    logSubProcess(spawn(python_exe, [...args],{detached: true, shell: true}));
 }
 
 
 function setupService() {
     log.info('starting setupService');
-    const python_exe = '"'+path.join(__dirname, REL_PATH, '../../service/python368/python.exe')+'"';
-    //const python_exe = path.join(__dirname, REL_PATH, '../../service/python368/python.exe');
-    //const app_path = '"' + path.join(__dirname, REL_PATH, '../../service/app.py') + '"';
-    const app_path = '"\\"' + path.join(__dirname, REL_PATH, '../../service/app.py') + '\\""';
-
-    const nssm = '"'+path.join(__dirname, REL_PATH, '../../service/nssm.exe')+'"'; 
-    const args = ['-run', '"\\"'+CONFIG_PATH+'\\""'];
-
+    let python_exe=''
+    let args=[]
+    let nssm=''
+    const app_path = '"\\"' + path.join(__dirname, REL_PATH, '../../service/app.py') + '\\""'; 
     const service_name = `"DOLAS-${serviceName}"`
+
+    if (process.env.NODE_ENV === 'development'){
+        nssm = '"'+path.join(__dirname, REL_PATH, '../nssm.exe')+'"';
+        python_exe = '"'+path.join(__dirname, REL_PATH, '../../service/python368/python.exe')+'"';
+        args = ['install', service_name, python_exe, app_path,'\\"-run\\"', '"\\"'+CONFIG_PATH+'\\""'];
+    }
+    else{
+        nssm = '"'+path.join(__dirname, REL_PATH, '../resources/nssm.exe')+'"';
+        python_exe = '"'+path.join(__dirname, REL_PATH, '../resources/pegII-service.exe')+'"';
+        args = ['install', service_name, python_exe,'\\"-run\\"', '"\\"'+CONFIG_PATH+'\\""'];
+
+    }
+    
 
     console.log(nssm)
     console.log(python_exe)
@@ -345,8 +376,7 @@ function setupService() {
             logSubProcess(spawn(nssm, ['remove', service_name, 'confirm'],{detached: false, shell: true})).then(function(){
                 log.info('Installing service');
                 showMsg('Installing service');
-                //logSubProcess(spawn(nssm, ['install', service_name, python_exe, app_path, ...args],{detached: true, shell: true})).then(function(){
-                logSubProcess(spawn(nssm, ['install', service_name, python_exe, app_path,'\\"-run\\"','"\\"'+CONFIG_PATH+'\\""'],{detached: true, shell: true})).then(function(){
+                logSubProcess(spawn(nssm, [...args],{detached: true, shell: true})).then(function(){
                     log.info('Set delayed start');
                     showMsg('Set delayed start');       
                     logSubProcess(spawn(nssm, ['set', service_name, 'Start', 'SERVICE_DELAYED_AUTO_START'],{detached: false, shell: true})).then(function(){
@@ -362,7 +392,6 @@ function setupService() {
 
 function tailLogs(){
     log.info('tailing logs');
-    const baretail_exe = '"'+path.join(__dirname, REL_PATH, '../../service/baretail.exe')+'"';
     const debug_log = '"' + path.join(SYSTEM_APPDATA, `./${serviceName}/LOGS/debug.log`) + '"';
     console.log(debug_log)
     spawn("powershell", ['Get-Content','-Path',debug_log,'-Tail','100','-Wait'],{detached: true, shell: true})
@@ -373,10 +402,18 @@ var testAPI = function(){
     return new Promise(function(resolve,reject){
         showMsg('Testing API Config')
         log.info('Testing API Config');
-        const python_exe = '"'+path.join(__dirname, REL_PATH, '../../service/python368/python.exe')+'"';
+        let python_exe=''
+        let args=[]
         const app_path = '"'+path.join(__dirname, REL_PATH, '../../service/app.py')+'"';
-        const args = ['-test_api','"'+CONFIG_PATH+'"']
-        logSubProcess(spawn(python_exe, [app_path, ...args],{detached: true, shell: true})).then(function(){
+        if (process.env.NODE_ENV === 'development'){
+            python_exe = '"'+path.join(__dirname, REL_PATH, '../../service/python368/python.exe')+'"';
+            args = [app_path, '-test_api','"'+CONFIG_PATH+'"']
+        }
+        else{
+            python_exe = '"'+path.join(__dirname, REL_PATH, '../resources/pegII-service.exe')+'"';
+            args = ['-test_api','"'+CONFIG_PATH+'"']
+        }
+        logSubProcess(spawn(python_exe, [...args],{detached: true, shell: true})).then(function(){
             resolve('Promise Resolved')
         });
         
@@ -385,26 +422,40 @@ var testAPI = function(){
 
 function runDebug() {
     log.info('running in debug mode');
-    const python_exe = '"'+path.join(__dirname, REL_PATH, '../../service/python368/python.exe')+'"';
+    let python_exe=''
+    let more_args=[]
     const app_path = '"'+path.join(__dirname, REL_PATH, '../../service/app.py')+'"';
-    const more_args = ['-run_debug', '"'+CONFIG_PATH+'"'];
-    logSubProcess(spawn(python_exe,[app_path,...more_args],{detached: true, shell: true}));
 
+    if (process.env.NODE_ENV === 'development'){
+        python_exe = '"'+path.join(__dirname, REL_PATH, '../../service/python368/python.exe')+'"';
+        more_args = [app_path, '-run_debug', '"'+CONFIG_PATH+'"'];
+    }
+    else{
+        python_exe = '"'+path.join(__dirname, REL_PATH, '../resources/pegII-service.exe')+'"';
+        more_args = ['-run_debug', '"'+CONFIG_PATH+'"'];
+    }
 
-    //const python_path = path.join(__dirname, REL_PATH, '../../service');
-    //const app_path = path.join(__dirname, REL_PATH, '../../service/run-debug.bat');
-    //logSubProcess(spawn('cmd.exe', ['/c',app_path],{cwd: python_path, detached: true}));
-
+    logSubProcess(spawn(python_exe,[...more_args],{detached: true, shell: true}));
     showMsg('running in debug mode...', timedClear=false)
 }
 
 
 function testSMTP(){
-    log.info('testing SMTP');
-    const python_exe = path.join(__dirname, REL_PATH, '../../service/python368/python.exe');
-    const app_path = path.join(__dirname, REL_PATH, '../../service/app.py');
-    const more_args = ['-test_smtp', '"'+CONFIG_PATH+'"'];
-    spawn(python_exe, [app_path, ...more_args]);
+    log.info('testing SMTP')
+    let python_exe=''
+    let more_args=[]
+    const app_path = '"'+path.join(__dirname, REL_PATH, '../../service/app.py')+'"';
+    if (process.env.NODE_ENV === 'development'){
+        python_exe = '"'+path.join(__dirname, REL_PATH, '../../service/python368/python.exe')+'"';
+
+        more_args = [app_path, '-run_debug', '"'+CONFIG_PATH+'"'];
+    }
+    else{
+        python_exe = '"'+path.join(__dirname, REL_PATH, '../resources/pegII-service.exe')+'"';
+        more_args = ['-test_smtp', '"'+CONFIG_PATH+'"'];  
+    }
+
+    logSubProcess(spawn(python_exe,[...more_args],{detached: true, shell: true}));
     showMsg('Testing SMTP... Check email for success confirmation', timedClear=true)
 }
 
