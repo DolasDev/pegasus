@@ -1,5 +1,5 @@
 // Modules to control application life and create native browser window
-const {app, BrowserWindow} = require('electron')
+const {app, BrowserWindow, ipcMain} = require('electron')
 const log = require('electron-log');
 const path = require('path');
 const devMode = (process.argv || []).indexOf('--dev') !== -1
@@ -17,14 +17,20 @@ let mainWindow
 
 function createWindow () {
   // Create the browser window.
-  mainWindow = new BrowserWindow({width: 700, height: 610, icon: path.join(__dirname, "/Icon/gui.ico")})
+  mainWindow = new BrowserWindow({
+    width: 700, 
+    height: 610, 
+    icon: path.join(__dirname, "/Icon/controller.ico"),
+    nodeIntegration: true, // Enable Node.js integration for IPC
+    contextIsolation: false // Disable context isolation for IPC in Electron 4
+    })
   //mainWindow.setMenu(null);
 
   // and load the index.html of the app.
   mainWindow.loadFile(`src\\index.html`)
 
   // Open the DevTools.
-  // mainWindow.webContents.openDevTools()
+  mainWindow.webContents.openDevTools()
 
   // Emitted when the window is closed.
   mainWindow.on('closed', function () {
@@ -33,6 +39,11 @@ function createWindow () {
     // when you should delete the corresponding element.
     mainWindow = null
   })
+
+  ipcMain.on('get-process-dir', (event) => {
+    // Send the __dirname to the renderer
+    event.sender.send('process-dir', __dirname);
+  });
 }
 
 // This method will be called when Electron has finished

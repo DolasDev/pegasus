@@ -13,7 +13,7 @@
     "start": "cross-env NODE_ENV=development electron .",
     "build-service": "cd ..\\service && activate.bat && python -m nuitka --mingw64 --onefile --output-filename=pegII-service app.py && deactivate && cd ..\\controller",
     "build-controller": "electron-builder --config ./electron-builder-config.js --publish never",
-    "build": "npm run build-service && npm run build-controller",
+    "build": "cross-env NODE_ENV=production npm run build-service && npm run build-controller",
     "dist": "cross-env NODE_ENV=production build"
   },
   "license": "CC0-1.0",
