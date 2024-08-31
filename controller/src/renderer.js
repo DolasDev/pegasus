@@ -3,16 +3,28 @@
 // All of the Node.js APIs are available in this process.
 const fs = require('fs')
 const path = require('path')
-const { dialog } = require('electron').remote;
 const { spawn } = require('child_process');
 const log = require('electron-log');
-
 const fieldNames = require('./gui-config');
+const { dialog } = require('electron').remote;
+const { ipcRenderer } = require('electron');
 console.log('env', process.env.NODE_ENV);
 const REL_PATH = process.env.NODE_ENV === 'development' ? '.' : '..';
 const CONFIG_FOLDER = path.join(process.env.ProgramData, './DOLAS/PEGASUS-SERVICES/CONFIG');
 const SYSTEM_APPDATA = 'C:\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\DOLAS\\PEGASUS-SERVICES';
 let CONFIG_PATH=''
+let processDir=''
+
+// Request the process directory from the main process
+ipcRenderer.send('get-process-dir');
+
+// Listen for the response from the main process
+ipcRenderer.on('process-dir', (event, exeDir) => {
+  console.log('Process Directory:', exeDir);
+  processDir=exeDir
+  console.log(path.join(processDir, REL_PATH, '/pegII-service.exe'))
+  // You can now use `processDir` as needed in your renderer process
+});
 
 
 function loadSelectors(){
@@ -288,7 +300,7 @@ function runApp() {
         nssm = '"'+path.join(__dirname, REL_PATH, '../nssm.exe')+'"'; 
     }
     else{
-        nssm = '"'+path.join(__dirname, REL_PATH, '../resources/nssm.exe')+'"'; 
+        nssm = '"'+path.join(processDir, REL_PATH, '/nssm.exe')+'"'; 
     }
     const service_name = `"DOLAS-${serviceName}"`
     logSubProcess(spawn(nssm, ['start', service_name],{detached: false, shell: true}));
@@ -302,7 +314,7 @@ function stopApp() {
         nssm = '"'+path.join(__dirname, REL_PATH, '../nssm.exe')+'"'; 
     }
     else{
-        nssm = '"'+path.join(__dirname, REL_PATH, '../resources/nssm.exe')+'"'; 
+        nssm = '"'+path.join(processDir, REL_PATH, '/nssm.exe')+'"'; 
     }
     const service_name = `"DOLAS-${serviceName}"`
     logSubProcess(spawn(nssm, ['stop', service_name],{detached: false, shell: true}));
@@ -333,7 +345,7 @@ function setupDB() {
         args = [app_path,'-setup_db' , '"'+CONFIG_PATH+'"'] ;
     }
     else{
-        python_exe = '"'+path.join(__dirname, REL_PATH, '../resources/pegII-service.exe')+'"';
+        python_exe = '"'+path.join(processDir, REL_PATH, '/pegII-service.exe')+'"';
         args = ['-setup_db' , '"'+CONFIG_PATH+'"'] ;
     }
 
@@ -355,8 +367,8 @@ function setupService() {
         args = ['install', service_name, python_exe, app_path,'\\"-run\\"', '"\\"'+CONFIG_PATH+'\\""'];
     }
     else{
-        nssm = '"'+path.join(__dirname, REL_PATH, '../resources/nssm.exe')+'"';
-        python_exe = '"'+path.join(__dirname, REL_PATH, '../resources/pegII-service.exe')+'"';
+        nssm = '"'+path.join(processDir, REL_PATH, '/nssm.exe')+'"';
+        python_exe = '"'+path.join(processDir, REL_PATH, '/pegII-service.exe')+'"';
         args = ['install', service_name, python_exe,'\\"-run\\"', '"\\"'+CONFIG_PATH+'\\""'];
 
     }
@@ -410,7 +422,7 @@ var testAPI = function(){
             args = [app_path, '-test_api','"'+CONFIG_PATH+'"']
         }
         else{
-            python_exe = '"'+path.join(__dirname, REL_PATH, '../resources/pegII-service.exe')+'"';
+            python_exe = '"'+path.join(processDir, REL_PATH, '/pegII-service.exe')+'"';
             args = ['-test_api','"'+CONFIG_PATH+'"']
         }
         logSubProcess(spawn(python_exe, [...args],{detached: true, shell: true})).then(function(){
@@ -431,7 +443,8 @@ function runDebug() {
         more_args = [app_path, '-run_debug', '"'+CONFIG_PATH+'"'];
     }
     else{
-        python_exe = '"'+path.join(__dirname, REL_PATH, '../resources/pegII-service.exe')+'"';
+        console.log(path.join(processDir, REL_PATH, '/pegII-service.exe'))
+        python_exe = '"'+path.join(processDir, REL_PATH, '/pegII-service.exe')+'"';
         more_args = ['-run_debug', '"'+CONFIG_PATH+'"'];
     }
 
@@ -451,7 +464,7 @@ function testSMTP(){
         more_args = [app_path, '-run_debug', '"'+CONFIG_PATH+'"'];
     }
     else{
-        python_exe = '"'+path.join(__dirname, REL_PATH, '../resources/pegII-service.exe')+'"';
+        python_exe = '"'+path.join(processDir, REL_PATH, '/pegII-service.exe')+'"';
         more_args = ['-test_smtp', '"'+CONFIG_PATH+'"'];  
     }
 
