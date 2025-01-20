@@ -1,18 +1,18 @@
 module.exports = [
     {
+        'label': 'Service Name',
+        'name': 'service_name',
+        'defaultVal': ''
+    },
+    {
         'label': 'Service Type',
         'name': 'service_type',
-        'defaultVal': {'label':'Pegasus Events Receiver', 'value':'pegasus-events-receiver'},
+        'defaultVal': {'label':'Select One', 'value':''},
         'type': 'select',
         'options':[
             {'label':'Pegasus Events Receiver', 'value':'pegasus-events-receiver'},
             {'label':'Equus Events Sender', 'value':'equus-events-sender'}
         ]
-    },
-    {
-        'label': 'Service Name',
-        'name': 'service_name',
-        'defaultVal': ''
     },
     {
         'label': 'API base URL',
@@ -30,28 +30,34 @@ module.exports = [
         'defaultVal': 5
     },
     {
-        'label': 'Client Id*',
+        'label': 'API Event Type',
+        'name': 'event_type',
+        'defaultVal': ''
+        
+    },
+    {
+        'label': 'API Client Id*',
         'name': 'client_id',
         'defaultVal': ''
     },
     {
-        'label': 'Client Secret*',
+        'label': 'API Client Secret*',
         'name': 'client_secret',
         'defaultVal': ''
     },
     {
-        'label': 'Server Admin Username',
+        'label': 'DB Admin Username',
         'name': 'setup_db_username',
         'defaultVal': ''
     },
     {
-        'label': 'Server Admin Password',
+        'label': 'DB Admin Password',
         'name': 'setup_db_password',
         'type': 'password',
         'defaultVal': ''
     },
     {
-        'label': 'Pegasus DB Host*',
+        'label': 'DB Host*',
         'name': 'db_host',
         'defaultVal': ''
     },

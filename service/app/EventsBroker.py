@@ -16,7 +16,7 @@ def processBroadcastEvent(event, event_group):
         if(event_group == 'equus'):
             assignment_id = event.event_pk
             response = ControlFlow.sendEquusMilestone(assignment_id, event_data_rows)
-            ControlFlow.handleEquusMilestoneResponse(assignment_id, response)
+            ControlFlow.handleEquusMilestoneResponse(assignment_id, response, event)
         else:
             logger.error(f'"{event_group}" is not a valid integration_type in the config')
     else:

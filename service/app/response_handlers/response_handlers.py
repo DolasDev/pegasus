@@ -40,7 +40,7 @@ def fixDataTypes(response_dict):
                             pass
                     except Exception:
                         try:
-                            if value[0] != '0' and lower(value) != 'nan':
+                            if value[0] != '0' and value.lower() != 'nan':
                                 working_dict[key] = float(value)
                             else:
                                 pass

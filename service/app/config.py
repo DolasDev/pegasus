@@ -27,6 +27,7 @@ with open(config_file) as f:
     # ServiceInfo
     service_name = data['service_name']
     service_type = data['service_type']
+    event_type = data['event_type']
     
     # API Config
     client_secret = data['client_secret']

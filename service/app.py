@@ -53,6 +53,7 @@ def setupDB():
         SetupDataBase.setItUp(config.service_type)
     except Exception:
         logger.exception('Setup Exception')
+    input("Press Enter to quit...")
 
 def runPegasusEventsReceiver():
     logger.info('Service Starting...')
@@ -71,15 +72,14 @@ def runPegasusEventsReceiver():
         logger.critical('Main Loop Exited, Please contact Pegasus Software and Dolas Development to resolve')
         logger.exception('Main Loop Exited')
 
-
 def runPegasusEventsReceiverDebug():
+    logger.info('Running runPegasusEventsReceiverDebug()')
     try:
         config.debug = True
-        logger.info('Running in debug...')
         from app import ControlFlow
         ControlFlow.runEventsReceiver()
-    except Exception:
-        logger.exception()
+    except Exception as e:
+        logger.error(e)
     input("Press Enter to quit...")
 
 

@@ -32,7 +32,7 @@ class BoadcastEvent(Base):
     event_pk = Column(String)
     event_view_prefix = Column(String)
     event_processed = Column(String)
-    event_message = Column(String)
+    event_response = Column(String)
     
     def __repr__(self):
         return (str(self.id) + self.event_type)

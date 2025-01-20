@@ -1,0 +1,199 @@
+{
+  "openapi" : "3.0.1",
+  "info" : {
+    "title" : "Pegasus REST API",
+    "description" : "Secured rest api for pegasus, only to be used by authenticated clients",
+    "version" : "2025-01-09 06:41:49UTC"
+  },
+  "servers" : [ {
+    "url" : "https://jc53u7ina2.execute-api.us-east-1.amazonaws.com/{basePath}",
+    "variables" : {
+      "basePath" : {
+        "default" : "default"
+      }
+    }
+  } ],
+  "paths" : {
+    "/EventEndpointHandler" : {
+      "x-amazon-apigateway-any-method" : {
+        "responses" : {
+          "default" : {
+            "description" : "Default response for ANY /EventEndpointHandler"
+          }
+        },
+        "x-amazon-apigateway-integration" : {
+          "payloadFormatVersion" : "1.0",
+          "type" : "aws_proxy",
+          "httpMethod" : "POST",
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:949999885619:function:EventEndpointHandler/invocations",
+          "connectionType" : "INTERNET",
+          "timeoutInMillis" : 30000
+        }
+      }
+    },
+    "/events/{eventId}" : {
+      "delete" : {
+        "responses" : {
+          "default" : {
+            "description" : "Default response for DELETE /events/{eventId}"
+          }
+        },
+        "security" : [ {
+          "Cognito" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "payloadFormatVersion" : "1.0",
+          "type" : "aws_proxy",
+          "httpMethod" : "POST",
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:949999885619:function:EventEndpointHandler/invocations",
+          "connectionType" : "INTERNET",
+          "timeoutInMillis" : 30000
+        }
+      },
+      "parameters" : [ {
+        "name" : "eventId",
+        "in" : "path",
+        "description" : "Generated path parameter for eventId",
+        "required" : true,
+        "schema" : {
+          "type" : "string"
+        }
+      } ]
+    },
+    "/events/{eventType}" : {
+      "get" : {
+        "responses" : {
+          "default" : {
+            "description" : "Default response for GET /events/{eventType}"
+          }
+        },
+        "security" : [ {
+          "Cognito" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "payloadFormatVersion" : "1.0",
+          "type" : "aws_proxy",
+          "httpMethod" : "POST",
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:949999885619:function:EventEndpointHandler/invocations",
+          "connectionType" : "INTERNET",
+          "timeoutInMillis" : 30000
+        }
+      },
+      "parameters" : [ {
+        "name" : "eventType",
+        "in" : "path",
+        "description" : "Generated path parameter for eventType",
+        "required" : true,
+        "schema" : {
+          "type" : "string"
+        }
+      } ]
+    },
+    "/orders" : {
+      "get" : {
+        "responses" : {
+          "default" : {
+            "description" : "Default response for GET /orders"
+          }
+        },
+        "security" : [ {
+          "Cognito" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "payloadFormatVersion" : "1.0",
+          "type" : "aws_proxy",
+          "httpMethod" : "POST",
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:949999885619:function:pegasus_api_StoreRequest2EventsQueue/invocations",
+          "connectionType" : "INTERNET",
+          "timeoutInMillis" : 30000
+        }
+      }
+    },
+    "/authn/oauth2/token" : {
+      "post" : {
+        "responses" : {
+          "default" : {
+            "description" : "Default response for POST /authn/oauth2/token"
+          }
+        },
+        "x-amazon-apigateway-integration" : {
+          "payloadFormatVersion" : "1.0",
+          "type" : "aws_proxy",
+          "httpMethod" : "POST",
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:949999885619:function:pegasus_api_login/invocations",
+          "connectionType" : "INTERNET"
+        }
+      }
+    },
+    "/orders/create" : {
+      "post" : {
+        "responses" : {
+          "default" : {
+            "description" : "Default response for POST /orders/create"
+          }
+        },
+        "security" : [ {
+          "Cognito" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "payloadFormatVersion" : "1.0",
+          "type" : "aws_proxy",
+          "httpMethod" : "POST",
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:949999885619:function:pegasus_api_StoreRequest2EventsQueue/invocations",
+          "connectionType" : "INTERNET",
+          "timeoutInMillis" : 30000
+        }
+      }
+    },
+    "/orders/create/{customer_app_id}" : {
+      "post" : {
+        "responses" : {
+          "default" : {
+            "description" : "Default response for POST /orders/create/{customer_app_id}"
+          }
+        },
+        "security" : [ {
+          "Cognito" : [ ]
+        } ],
+        "x-amazon-apigateway-integration" : {
+          "payloadFormatVersion" : "1.0",
+          "type" : "aws_proxy",
+          "httpMethod" : "POST",
+          "uri" : "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:949999885619:function:pegasus_api_StoreRequest2EventsQueue/invocations",
+          "connectionType" : "INTERNET",
+          "timeoutInMillis" : 30000
+        }
+      },
+      "parameters" : [ {
+        "name" : "customer_app_id",
+        "in" : "path",
+        "description" : "Generated path parameter for customer_app_id",
+        "required" : true,
+        "schema" : {
+          "type" : "string"
+        }
+      } ]
+    }
+  },
+  "components" : {
+    "securitySchemes" : {
+      "Cognito" : {
+        "type" : "oauth2",
+        "flows" : { },
+        "x-amazon-apigateway-authorizer" : {
+          "identitySource" : "$request.header.Authorization",
+          "jwtConfiguration" : {
+            "audience" : [ "3dddl65un7ntu1f1paanija3t5", "552qqd163uhet0et56qcpf0st4", "77pd9ddgn3g4pk0il5ass2c98a" ],
+            "issuer" : "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_OjcHKpxUv"
+          },
+          "type" : "jwt"
+        }
+      }
+    }
+  },
+  "x-amazon-apigateway-cors" : {
+    "maxAge" : -42,
+    "allowCredentials" : false
+  },
+  "x-amazon-apigateway-importexport-version" : "1.0"
+}

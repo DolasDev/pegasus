@@ -12,6 +12,9 @@ console.log('env', process.env.NODE_ENV);
 const REL_PATH = process.env.NODE_ENV === 'development' ? '.' : '..';
 const CONFIG_FOLDER = path.join(process.env.ProgramData, './DOLAS/PEGASUS-SERVICES/CONFIG');
 const SYSTEM_APPDATA = 'C:\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming\\DOLAS\\PEGASUS-SERVICES';
+const USER_APPDATA = path.join(process.env.APPDATA, './DOLAS/PEGASUS-SERVICES');
+let PROD_SERVICE_PATH = ''
+let DEV_SERVICE_PATH = ''
 let CONFIG_PATH=''
 let processDir=''
 
@@ -22,7 +25,11 @@ ipcRenderer.send('get-process-dir');
 ipcRenderer.on('process-dir', (event, exeDir) => {
   console.log('Process Directory:', exeDir);
   processDir=exeDir
-  console.log(path.join(processDir, REL_PATH, '/pegII-service.exe'))
+  PROD_SERVICE_PATH = path.join(processDir, REL_PATH, '/pegII-service/pegII-service.exe')
+  DEV_SERVICE_PATH  = path.join(processDir, REL_PATH, '..', '/service/app.dist/pegII-service.exe')
+  //DEV_SERVICE_PATH  = path.join('C:\\Users\\steve\\AppData\\Local\\Programs\\pegasus-events-services\\resources\\pegII-service\\pegII-service.exe')
+  console.log('Prod Service at: ',PROD_SERVICE_PATH)
+  console.log('Dev Service at: ',DEV_SERVICE_PATH)
   // You can now use `processDir` as needed in your renderer process
 });
 
@@ -62,9 +69,7 @@ function loadSelectors(){
                 input.setAttribute('id', name);
                 existing_configs = document.createElement('datalist');
                 existing_configs.setAttribute('id', 'existing_configs');
-                existing_config = document.createElement('option');
-                existing_config.setAttribute('value', 'equus-events-sender');
-                existing_configs.appendChild(existing_config);
+                addSavedConfigsAsOptions(existing_configs)
                 container.appendChild(labelEl);
                 container.appendChild(input);
                 container.appendChild(existing_configs);
@@ -72,10 +77,27 @@ function loadSelectors(){
             form.appendChild(container);
         }
     })
-    document.querySelector('#service_type_id').addEventListener('change', loadConfig)
     document.querySelector('#service_name_id').addEventListener('change', loadConfig)
 }
 
+function addSavedConfigsAsOptions(existing_configs){
+    const directoryPath = CONFIG_FOLDER;
+
+    fs.readdir(directoryPath, (err, files) => {
+    if (err) {
+        console.error('Error reading directory:', err);
+        return;
+    }
+
+    files.forEach(file => {
+        config_name = file.replace('.json','')
+        existing_config = document.createElement('option');
+        existing_config.setAttribute('value', config_name);
+        existing_configs.appendChild(existing_config);
+        });
+    });
+    
+}
 
 function mkdirSyncRecursive(directory) {
     var path = directory.split('\\');
@@ -110,74 +132,76 @@ function setup(CONFIG_FOLDER, CONFIG_PATH){
 
 function loadConfig(){
     serviceName = document.getElementsByName('service_name')[0].value
-    serviceType = document.getElementsByName('service_type')[0].value
-    console.log(serviceName)
-    CONFIG_PATH = path.join(process.env.ProgramData, `./DOLAS/PEGASUS-SERVICES/CONFIG/${serviceName}.json`);
-    log.info('config path ', CONFIG_PATH)
-    setup(CONFIG_FOLDER,CONFIG_PATH)
-    document.getElementById('config-form-container-0').innerHTML=''
-    document.getElementById('config-form-container-1').innerHTML=''
-    document.getElementById('config-form-container-2').innerHTML=''
-    loadSelectors()
-    serviceName = document.getElementsByName('service_name')[0].value=serviceName
-    serviceType = document.getElementsByName('service_type')[0].value=serviceType
-    fs.readFile(CONFIG_PATH, (err, rawData) => {
-        const data = rawData.toString();
-        const config = JSON.parse(data);
-    
-        fieldNames.forEach(({ label, name, defaultVal, type, options }, i) => {
-            const value = config[name] !== undefined ? config[name] : defaultVal;
-            if(name=='service_name' || name=='service_type'){
-            }
-            else{
-            
-                const form = document.getElementById('config-form-container-' + i % 3);
-                const container = document.createElement('div');
-                    
-                container.setAttribute('class', 'form-field-container');
-                container.setAttribute('id', name + '_id');
+    if(!serviceName.length < 1){
+        serviceType = document.getElementsByName('service_type')[0].value
+        console.log(serviceName)
+        CONFIG_PATH = path.join(process.env.ProgramData, `./DOLAS/PEGASUS-SERVICES/CONFIG/${serviceName}.json`);
+        log.info('config path ', CONFIG_PATH)
+        setup(CONFIG_FOLDER,CONFIG_PATH)
+        document.getElementById('config-form-container-0').innerHTML=''
+        document.getElementById('config-form-container-1').innerHTML=''
+        document.getElementById('config-form-container-2').innerHTML=''
+        loadSelectors()
+        serviceName = document.getElementsByName('service_name')[0].value=serviceName
+        serviceType = document.getElementsByName('service_type')[0].value=serviceType
+        fs.readFile(CONFIG_PATH, (err, rawData) => {
+            const data = rawData.toString();
+            const config = JSON.parse(data);
         
-                const labelEl = document.createElement('label');
-                labelEl.innerText = label;
-        
-                let input = document.createElement('input');
-        
-                if (type === 'select') {
-                    input = document.createElement('select');
-                    input.setAttribute('id', name);
-                    input.setAttribute('name', name);
-                    input.setAttribute('value', value.value || value);
-                    for (const option in options){
-                        opt = options[option]
-                        const optionEl = document.createElement('option');
-                        optionEl.innerText = opt.label
-                        optionEl.setAttribute('value',opt.value )
-                        input.appendChild(optionEl)
-                    }
+            fieldNames.forEach(({ label, name, defaultVal, type, options }, i) => {
+                const value = config[name] !== undefined ? config[name] : defaultVal;
+                if(name=='service_name'){
                 }
                 else{
-                    input = document.createElement('input');
-                    input.setAttribute('name', name);
-                    input.setAttribute('value', value);
-                } 
-        
-                if (type === 'password') {
-                    input.setAttribute('type', 'password');
-                }
-        
-                if (type === 'toggle') {
-                    input.setAttribute('type', 'checkbox');
-                    input.setAttribute('id', name);
-                    if (value === true) {
-                        input.setAttribute('checked', true);
+                
+                    const form = document.getElementById('config-form-container-' + i % 3);
+                    const container = document.createElement('div');
+                        
+                    container.setAttribute('class', 'form-field-container');
+                    container.setAttribute('id', name + '_id');
+            
+                    const labelEl = document.createElement('label');
+                    labelEl.innerText = label;
+            
+                    let input = document.createElement('input');
+            
+                    if (type === 'select') {
+                        input = document.createElement('select');
+                        input.setAttribute('id', name);
+                        input.setAttribute('name', name);
+                        //input.setAttribute('value', value.value || value);
+                        for (const option in options){
+                            opt = options[option]
+                            const optionEl = document.createElement('option');
+                            optionEl.innerText = opt.label
+                            optionEl.setAttribute('value',opt.value )
+                            input.appendChild(optionEl)
+                        }
                     }
+                    else{
+                        input = document.createElement('input');
+                        input.setAttribute('name', name);
+                        input.setAttribute('value', value);
+                    } 
+            
+                    if (type === 'password') {
+                        input.setAttribute('type', 'password');
+                    }
+            
+                    if (type === 'toggle') {
+                        input.setAttribute('type', 'checkbox');
+                        input.setAttribute('id', name);
+                        if (value === true) {
+                            input.setAttribute('checked', true);
+                        }
+                    }
+                    container.appendChild(labelEl);
+                    container.appendChild(input);
+                    form.appendChild(container);
                 }
-                container.appendChild(labelEl);
-                container.appendChild(input);
-                form.appendChild(container);
-            }
+            })
         })
-    })
+    }
 }
 
 
@@ -243,6 +267,17 @@ function save(event) {
             showSuccess();
         }
     })
+}
+
+function deleteConfing(event) {
+    showMsg('deleting...')
+    fs.unlink(CONFIG_PATH, (err) => {
+        if (err) {
+          console.error('Error deleting file:', err);
+        } else {
+          console.log('File deleted successfully!');
+        }
+      });
 }
 
 var logSubProcess = function(subProcess) {
@@ -345,7 +380,7 @@ function setupDB() {
         args = [app_path,'-setup_db' , '"'+CONFIG_PATH+'"'] ;
     }
     else{
-        python_exe = '"'+path.join(processDir, REL_PATH, '/pegII-service.exe')+'"';
+        python_exe = '"'+PROD_SERVICE_PATH+'"';
         args = ['-setup_db' , '"'+CONFIG_PATH+'"'] ;
     }
 
@@ -368,7 +403,7 @@ function setupService() {
     }
     else{
         nssm = '"'+path.join(processDir, REL_PATH, '/nssm.exe')+'"';
-        python_exe = '"'+path.join(processDir, REL_PATH, '/pegII-service.exe')+'"';
+        python_exe = '"'+PROD_SERVICE_PATH+'"';
         args = ['install', service_name, python_exe,'\\"-run\\"', '"\\"'+CONFIG_PATH+'\\""'];
 
     }
@@ -379,23 +414,25 @@ function setupService() {
     console.log(app_path)
     console.log(...args)
 
-    testAPI().then(function(){
-        log.info('Stopping old service');
-        showMsg('Stopping old service');
-        logSubProcess(spawn(nssm, ['stop', service_name],{detached: false, shell: true})).then(function(){
-            log.info('Removing old service');
-            showMsg('Removing old service');
-            logSubProcess(spawn(nssm, ['remove', service_name, 'confirm'],{detached: false, shell: true})).then(function(){
-                log.info('Installing service');
-                showMsg('Installing service');
-                logSubProcess(spawn(nssm, [...args],{detached: true, shell: true})).then(function(){
-                    log.info('Set delayed start');
-                    showMsg('Set delayed start');       
-                    logSubProcess(spawn(nssm, ['set', service_name, 'Start', 'SERVICE_DELAYED_AUTO_START'],{detached: false, shell: true})).then(function(){
-                        log.info('Set description');
-                        showMsg('Set description');
-                        logSubProcess(spawn(nssm, ['set', service_name, 'Description', service_name],{detached: true, shell: true}))           
-                    });
+    log.info('Stopping old service');
+    showMsg('Stopping old service');
+    logSubProcess(spawn(nssm, ['stop', service_name],{detached: false, shell: true})
+    ).then(function(){
+        log.info('Removing old service');
+        showMsg('Removing old service');
+        logSubProcess(spawn(nssm, ['remove', service_name, 'confirm'],{detached: false, shell: true})
+    ).then(function(){
+            log.info('Installing service');
+            showMsg('Installing service');
+            logSubProcess(spawn(nssm, [...args],{detached: true, shell: true})
+    ).then(function(){
+                log.info('Set delayed start');
+                showMsg('Set delayed start');       
+                logSubProcess(spawn(nssm, ['set', service_name, 'Start', 'SERVICE_DELAYED_AUTO_START'],{detached: false, shell: true})
+    ).then(function(){
+                    log.info('Set description');
+                    showMsg('Set description');
+                    logSubProcess(spawn(nssm, ['set', service_name, 'Description', service_name],{detached: false, shell: true}))           
                 });
             });
         });
@@ -405,10 +442,32 @@ function setupService() {
 function tailLogs(){
     log.info('tailing logs');
     const debug_log = '"' + path.join(SYSTEM_APPDATA, `./${serviceName}/LOGS/debug.log`) + '"';
-    console.log(debug_log)
+    log.info(debug_log)
     spawn("powershell", ['Get-Content','-Path',debug_log,'-Tail','100','-Wait'],{detached: true, shell: true})
 
 }
+
+function viewJson(){
+    log.info('view json');
+    
+    const service_json_folder = path.join(SYSTEM_APPDATA, `./${serviceName}`)
+    const quoted_service_json_folder = '"' + service_json_folder + '"';
+    log.info(`Service Json: ${service_json_folder}`)
+    if (fs.existsSync(service_json_folder)) {
+        log.info(`Opening... ${quoted_service_json_folder}`)
+        spawn('explorer', [quoted_service_json_folder],{detached: true, shell: true});
+    }
+    
+    const debug_json_folder = path.join(USER_APPDATA, `./${serviceName}`)
+    const quoted_debug_json_folder = '"' + debug_json_folder + '"';
+    log.info(`Debug Json: ${debug_json_folder}`)
+    if (fs.existsSync(debug_json_folder)) {
+        log.info(`Opening... ${quoted_debug_json_folder}`)
+        spawn('explorer', [quoted_debug_json_folder],{detached: true, shell: true});
+    }
+}
+
+
 
 var testAPI = function(){
     return new Promise(function(resolve,reject){
@@ -422,7 +481,7 @@ var testAPI = function(){
             args = [app_path, '-test_api','"'+CONFIG_PATH+'"']
         }
         else{
-            python_exe = '"'+path.join(processDir, REL_PATH, '/pegII-service.exe')+'"';
+            python_exe = '"'+PROD_SERVICE_PATH+'"';
             args = ['-test_api','"'+CONFIG_PATH+'"']
         }
         logSubProcess(spawn(python_exe, [...args],{detached: true, shell: true})).then(function(){
@@ -439,12 +498,19 @@ function runDebug() {
     const app_path = '"'+path.join(__dirname, REL_PATH, '../../service/app.py')+'"';
 
     if (process.env.NODE_ENV === 'development'){
+        /*
         python_exe = '"'+path.join(__dirname, REL_PATH, '../../service/python368/python.exe')+'"';
+        log.info(python_exe);
+        log.info(CONFIG_PATH);
         more_args = [app_path, '-run_debug', '"'+CONFIG_PATH+'"'];
+        */
+        console.log(DEV_SERVICE_PATH)
+        python_exe = '"'+DEV_SERVICE_PATH+'"';
+        more_args = ['-run_debug', '"'+CONFIG_PATH+'"'];
     }
     else{
-        console.log(path.join(processDir, REL_PATH, '/pegII-service.exe'))
-        python_exe = '"'+path.join(processDir, REL_PATH, '/pegII-service.exe')+'"';
+        console.log(PROD_SERVICE_PATH)
+        python_exe = '"'+PROD_SERVICE_PATH+'"';
         more_args = ['-run_debug', '"'+CONFIG_PATH+'"'];
     }
 
@@ -461,10 +527,10 @@ function testSMTP(){
     if (process.env.NODE_ENV === 'development'){
         python_exe = '"'+path.join(__dirname, REL_PATH, '../../service/python368/python.exe')+'"';
 
-        more_args = [app_path, '-run_debug', '"'+CONFIG_PATH+'"'];
+        more_args = [app_path, '-test_smtp', '"'+CONFIG_PATH+'"'];
     }
     else{
-        python_exe = '"'+path.join(processDir, REL_PATH, '/pegII-service.exe')+'"';
+        python_exe = '"'+PROD_SERVICE_PATH+'"';
         more_args = ['-test_smtp', '"'+CONFIG_PATH+'"'];  
     }
 
@@ -479,6 +545,7 @@ function testSMTP(){
 loadSelectors()
 
 document.querySelector('#btn-save').addEventListener('click', save)
+document.querySelector('#btn-delete').addEventListener('click', deleteConfing)
 document.querySelector('#btn-run-app').addEventListener('click', runApp)
 document.querySelector('#btn-stop-app').addEventListener('click', stopApp)
 document.querySelector('#btn-setup-db').addEventListener('click', setupDB)
@@ -486,3 +553,4 @@ document.querySelector('#btn-setup-service').addEventListener('click', setupServ
 document.querySelector('#btn-run-debug').addEventListener('click', runDebug)
 document.querySelector('#btn-test-smtp').addEventListener('click', testSMTP)
 document.querySelector('#btn-tail-logs').addEventListener('click', tailLogs)
+document.querySelector('#btn-view-json').addEventListener('click', viewJson)

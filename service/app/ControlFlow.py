@@ -3,7 +3,8 @@ from app.response_handlers import response_handlers, entity_handlers
 from app.models import base
 import traceback
 from app.loggers import logger
-import time
+import time, json
+from datetime import datetime, timezone
 
 def sendEquusMilestone(assignment_id, event_data_rows):
     logger.info('Running sendEquusMilestone()')
@@ -25,10 +26,48 @@ def sendEquusMilestone(assignment_id, event_data_rows):
     else:
         logger.error(f'No service order id was found in initiations or sales for equus event with assignment_id: {assignment_id}')
 
-def handleEquusMilestoneResponse(assignment_id, response):
+def handleEquusMilestoneResponse(assignment_id, response, event):
     logger.info('Running handleEquusMilestoneResponse()')
     parsed_response = response_handlers.parseEqussMilestoneResponse(response)
     CatchRawJson.logToJson(parsed_response, assignment_id, type='EQUUS-Milestone-Response')
+    session_manager = base.SessionManager()
+    event_processed = datetime.now(timezone.utc)
+    if parsed_response['IsValid']:
+        event_message = parsed_response['Result']
+        event_status='SUCCESS'
+        
+    else:
+        event_status='FAIL'
+        technical_errors = []
+        validation_errors = []
+        try:
+            for error_message in parsed_response['ErrorMessages']:
+                for technical_error in error_message['error_details']['TechnicalErrors']:
+                    technical_errors.append(removeNulls(technical_error))
+                for validation_error in error_message['error_details']['ValidationErrors']:
+                    validation_errors.append(
+                        (validation_error))
+            event_message = json.dumps({'ValidationErrors':validation_errors,'TechnicalErrors':technical_errors}, indent=4)
+        except Exception as e:
+            logger.error('Failed To Parse Error Response')
+            logger.error(traceback.format_exc())
+            event_message = f'Unknown Failure: could not parse response Error:{e}'
+    if event:
+        event.event_status = event_status
+        event.event_processed = event_processed
+        event.event_response = event_message
+        session_manager.current_session.merge(event)
+    
+        # Commit the changes
+        session_manager.current_session.commit()
+    else:
+        print("Event not found.")
+
+def removeNulls(input_dict):
+        logger.info('Running lookupEquusServiceOrderId()')
+        return {key: value for key, value in input_dict.items() if value not in (None, "")}    
+
+
 
 def lookupEquusServiceOrderId(service_order_id):
     logger.info('Running lookupEquusServiceOrderId()')
@@ -218,13 +257,14 @@ def deleteFromQueue(event_id, token):
         logger.exception('failed deleting from queue event: ' + event_id )
 
 
-def getEventsLists(token):
+def getEventsLists(token, event_type):
     logger.info('Running getEventsLists')
 
     # Get New Events
     new_events = APICalls.getNewEvents(
         config.client_id,
         config.client_secret,
+        event_type,
         token)
 
     if new_events:
@@ -269,17 +309,19 @@ def runEventsReceiver():
         return()
 
     # Step 3: Retrieve Events List from PegII api and write to pegasus events table
-    events = getEventsLists(token)
-    for event in events:
-        try:
-            new_event_id = createEvent(event)
-            if new_event_id:
-                EventsBroker.processEvent(event, new_event_id)
-            if (config.debug == False):
-                deleteFromQueue(event['event_id']['S'], token)
-        except Exception as e:
-            logger.error(f"Error processing event {event['event_id']['S']}: {e}")
-            logger.error(traceback.format_exc())
+    for event_type in config.event_types:
+        events = getEventsLists(token, event_type)
+        if(events):
+            for event in events:
+                try:
+                    new_event_id = createEvent(event)
+                    if new_event_id:
+                        EventsBroker.processEvent(event, new_event_id)
+                    if (config.debug == False):
+                        deleteFromQueue(event['event_id']['S'], token)
+                except Exception as e:
+                    logger.error(f"Error processing event {event['event_id']['S']}: {e}")
+                    logger.error(traceback.format_exc())
 
 def runEventsSender():
     logger.info('Running runEventsSender()')
@@ -314,7 +356,7 @@ def runEventsSender():
             try:
                 EventsBroker.processBroadcastEvent(event, event_group)
             except Exception as e:
-                logger.error(f"Error processing Broadcast event {event.id}: {e}")
+                logger.error(f"cast event {event.id}: {e}")
                 logger.exception(traceback.format_exc())
     else:
         logger.info('no broadcast events found')

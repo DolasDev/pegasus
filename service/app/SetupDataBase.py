@@ -1,6 +1,6 @@
 import importlib
 from app.models.base import Base, engine
-from app.models import Events, EquusMilestones, EquusLeads # keep these here. They need to be initialized
+from app.models import Events, EquusLeads # keep these here. They need to be initialized
 
 from app.loggers import logger
 
@@ -19,4 +19,13 @@ def setItUp(service_type):
     """
     
     Base.metadata.create_all(engine, checkfirst=True)
+    
+    #Set up views seperately
+    try:
+        from app.models import EquusMilestones # checkfirst=True limitation on view so they must be imported
+        Base.metadata.create_all(engine, checkfirst=True)
+    except Exception as e:
+        logger.info(f'One or more views already exists. Updates to views will need to be manually completed')
+        logger.debug(f'{e}')
+    
     logger.info('Tables Are Set Up')

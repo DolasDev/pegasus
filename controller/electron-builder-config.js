@@ -6,7 +6,7 @@ module.exports = {
   icon: "./icon/controller.ico",
   asar: true,
   files: ["./**/*"],
-  extraResources : [{from:"nssm.exe", to:"nssm.exe"},{from: "../service/pegII-service.exe", to:"pegII-service.exe"}],
+  extraResources : [{from:"nssm.exe", to:"nssm.exe"},{from: "../service/app.dist", to:"pegII-service"}],
   directories: {
     buildResources: "assets"
   },
