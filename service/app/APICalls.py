@@ -9,13 +9,13 @@ except Exception:
 
 api_url = config.api_base_url
 api_auth_url=config.api_auth_url
-logger.debug('API Calls Directed at Production')
+logger.info('API Calls Directed at Production')
 
 
 # ADE - Access Request Description
 
 def addCallErrorEvent(LeadId=None, OpportunityId=None, QuoteId=None):
-    logger.debug('Running addCallErrorEvent()')
+    logger.info('Running addCallErrorEvent()')
     logger.error('Error on API Call. Added error event to be retried on next cycle')
     call_error = {
         'Interface_Status': 'Inbound',
@@ -33,11 +33,11 @@ def addCallErrorEvent(LeadId=None, OpportunityId=None, QuoteId=None):
 
 
 def accessRequest(client_id, client_secret):
-    logger.debug('Running accessRequest()')
+    logger.info('Running accessRequest()')
     try:
         token_url = api_auth_url  # Ensure api_auth_url is defined
-        logger.debug('Authenticating with: ' + token_url)
-        logger.debug('client_id: ' + client_id + ', client_secret: ' + client_secret)
+        logger.info('Authenticating with: ' + token_url)
+        logger.info('client_id: ' + client_id + ', client_secret: ' + client_secret)
         
         # Define the request payload and headers
         payload = {'grant_type': 'client_credentials'}
@@ -51,31 +51,31 @@ def accessRequest(client_id, client_secret):
         
         # Parse and return the token
         token = response.json()
-        logger.debug('Retrieved Token Successfully')
+        logger.info('Retrieved Token Successfully')
         return token
     except requests.exceptions.RequestException as e:
         logger.exception('Failed to Authenticate: %s', str(e))
         return None
 
 def equusAccessRequest(client_id, client_secret):
-    logger.debug('Running equusAccessRequest()')
+    logger.info('Running equusAccessRequest()')
     params = {
     'clientId': client_id,
     'clientSecret': client_secret
     }
     try:
         token_url = api_auth_url
-        logger.debug('Authenticating with: ' + token_url)
-        logger.debug('client_id:'+client_id+ ', client_secret:'+client_secret)
+        logger.info('Authenticating with: ' + token_url)
+        logger.info('client_id:'+client_id+ ', client_secret:'+client_secret)
         response = requests.post(token_url, params=params)
-        logger.debug('Retrieved Token Successfully')
+        logger.info('Retrieved Token Successfully')
         return(response.json()['access_token'])
     except Exception:
         logger.exception('Failed to Authenticate, possible timeout')
 
     
 def deleteEvent(client_id, client_secret, token, event_id):
-    logger.debug('Running deleteEvent()')
+    logger.info('Running deleteEvent()')
     try:
         url = api_url + "/events/" + event_id  # Ensure `api_url` is defined
         headers = {"Authorization": f"Bearer {token}"}
@@ -85,7 +85,7 @@ def deleteEvent(client_id, client_secret, token, event_id):
         
         # Check if the token has expired or another error occurred
         if response.status_code == 401:  # Unauthorized, possibly token expired
-            logger.debug("Token expired, requesting new token.")
+            logger.info("Token expired, requesting new token.")
             token_response = accessRequest(client_id, client_secret)
             
             if token_response:
@@ -93,7 +93,7 @@ def deleteEvent(client_id, client_secret, token, event_id):
                 headers = {"Authorization": f"Bearer {token}"}
                 response = requests.delete(url, headers=headers)
             else:
-                logger.debug("Failed to refresh token.")
+                logger.info("Failed to refresh token.")
                 return None
         
         # Raise an exception for HTTP errors
@@ -104,12 +104,12 @@ def deleteEvent(client_id, client_secret, token, event_id):
         logger.exception("Error occurred during deleteEvent: %s", str(e))
         return None
     except Exception:
-        logger.debug('Some sort of network error on deleteEvent')
+        logger.info('Some sort of network error on deleteEvent')
         return None
 
 def sendEquusMilestone(client_id, client_secret, token, milestone_update_body):
-    logger.debug('Running sendEquusMilestone()')
-    logger.debug(f"Token: {token}")
+    logger.info('Running sendEquusMilestone()')
+    logger.info(f"Token: {token}")
     
     url = api_url  # Ensure `api_url` is defined
     headers = {
@@ -128,7 +128,7 @@ def sendEquusMilestone(client_id, client_secret, token, milestone_update_body):
         
         # Handle token expiration (401 Unauthorized)
         if response.status_code == 401:  # Token expired or invalid
-            logger.debug("Token expired, requesting a new token.")
+            logger.info("Token expired, requesting a new token.")
             token_response = accessRequest(client_id, client_secret)
             
             if token_response:
@@ -136,7 +136,7 @@ def sendEquusMilestone(client_id, client_secret, token, milestone_update_body):
                 headers['Authorization'] = f'Bearer {token}'
                 response = requests.post(url, headers=headers, json=milestone_update_body)
             else:
-                logger.debug("Failed to refresh token.")
+                logger.info("Failed to refresh token.")
                 return None
         
         # Raise an exception for HTTP errors
@@ -147,12 +147,12 @@ def sendEquusMilestone(client_id, client_secret, token, milestone_update_body):
         logger.exception("Error occurred during sendEquusMilestone: %s", str(e))
         return None
     except Exception:
-        logger.debug('Unexpected network error in sendEquusMilestone.')
+        logger.info('Unexpected network error in sendEquusMilestone.')
         return None 
 
 
 def getNewEvents(client_id, client_secret, token, event_type):
-    logger.debug('Running getNewEvents()')
+    logger.info(f'Running getNewEvents({event_type})')
     
     url = api_url + "/events/" + event_type # Ensure `api_url` is defined
     headers = {
@@ -167,7 +167,7 @@ def getNewEvents(client_id, client_secret, token, event_type):
         
         # Handle token expiration (401 Unauthorized)
         if response.status_code == 401:  # Token expired or invalid
-            logger.debug("Token expired, requesting a new token.")
+            logger.info("Token expired, requesting a new token.")
             token_response = accessRequest(client_id, client_secret)
             
             if token_response:
@@ -175,7 +175,7 @@ def getNewEvents(client_id, client_secret, token, event_type):
                 headers['Authorization'] = f'Bearer {token}'
                 response = requests.get(url, headers=headers)
             else:
-                logger.debug("Failed to refresh token.")
+                logger.info("Failed to refresh token.")
                 return None
         
         # Raise an exception for HTTP errors
@@ -186,7 +186,7 @@ def getNewEvents(client_id, client_secret, token, event_type):
         logger.exception("Error occurred during getNewEvents: %s", str(e))
         return None
     except Exception:
-        logger.debug('Unexpected network error in getNewEvents.')
+        logger.info('Unexpected network error in getNewEvents.')
         return None   
 
 if (__name__ == '__main__'):

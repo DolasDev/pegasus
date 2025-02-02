@@ -1,0 +1,211 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "EDI 204 API",
+    "version": "1.0.0",
+    "description": "API for handling Motor Carrier Load Tender (EDI 204) transactions"
+  },
+  "paths": {
+    "/orders/create": {
+      "post": {
+        "summary": "Create a new order",
+        "description": "Submit a new Motor Carrier Load Tender",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoadTender"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Order created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoadTenderResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request data"
+          }
+        }
+      }
+    },
+    "/loadTender/{id}": {
+      "get": {
+        "summary": "Get load tender details",
+        "description": "Retrieve details of a specific load tender by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique ID of the load tender"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Load tender details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoadTender"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Load tender not found"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a load tender",
+        "description": "Remove a load tender by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique ID of the load tender"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Load tender deleted successfully"
+          },
+          "404": {
+            "description": "Load tender not found"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "LoadTender": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "12345"
+          },
+          "shipper": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "example": "Acme Corporation"
+              },
+              "address": {
+                "type": "string",
+                "example": "123 Main St, Springfield, IL"
+              }
+            },
+            "required": ["name", "address"]
+          },
+          "receiver": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "example": "Beta Logistics"
+              },
+              "address": {
+                "type": "string",
+                "example": "456 Elm St, Shelbyville, IL"
+              }
+            },
+            "required": ["name", "address"]
+          },
+          "shipmentDetails": {
+            "type": "object",
+            "properties": {
+              "pickupDate": {
+                "type": "string",
+                "format": "date",
+                "example": "2025-01-23"
+              },
+              "deliveryDate": {
+                "type": "string",
+                "format": "date",
+                "example": "2025-01-25"
+              },
+              "weight": {
+                "type": "number",
+                "example": 5000
+              },
+              "commodity": {
+                "type": "string",
+                "example": "Electronics"
+              },
+              "handlingInstructions": {
+                "type": "string",
+                "example": "Handle with care"
+              },
+              "referenceNumbers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "example": "BOL"
+                    },
+                    "number": {
+                      "type": "string",
+                      "example": "BOL123456"
+                    }
+                  },
+                  "required": ["type", "number"]
+                }
+              },
+              "equipmentDetails": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "example": "Dry Van"
+                  },
+                  "length": {
+                    "type": "number",
+                    "example": 53
+                  }
+                },
+                "required": ["type", "length"]
+              }
+            },
+            "required": ["pickupDate", "deliveryDate", "weight", "commodity", "referenceNumbers", "equipmentDetails"]
+          }
+        },
+        "required": ["id", "shipper", "receiver", "shipmentDetails"]
+      },
+      "LoadTenderResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "12345"
+          },
+          "status": {
+            "type": "string",
+            "example": "Created"
+          }
+        },
+        "required": ["id", "status"]
+      }
+    }
+  }
+}

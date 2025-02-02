@@ -258,14 +258,14 @@ def deleteFromQueue(event_id, token):
 
 
 def getEventsLists(token, event_type):
-    logger.info('Running getEventsLists')
+    logger.info(f'Running getEventsLists {event_type}')
 
     # Get New Events
     new_events = APICalls.getNewEvents(
         config.client_id,
         config.client_secret,
-        event_type,
-        token)
+        token,
+        event_type)
 
     if new_events:
         try:
@@ -309,19 +309,18 @@ def runEventsReceiver():
         return()
 
     # Step 3: Retrieve Events List from PegII api and write to pegasus events table
-    for event_type in config.event_types:
-        events = getEventsLists(token, event_type)
-        if(events):
-            for event in events:
-                try:
-                    new_event_id = createEvent(event)
-                    if new_event_id:
-                        EventsBroker.processEvent(event, new_event_id)
-                    if (config.debug == False):
-                        deleteFromQueue(event['event_id']['S'], token)
-                except Exception as e:
-                    logger.error(f"Error processing event {event['event_id']['S']}: {e}")
-                    logger.error(traceback.format_exc())
+    events = getEventsLists(token, config.event_type)
+    if(events):
+        for event in events:
+            try:
+                new_event_id = createEvent(event)
+                if new_event_id:
+                    EventsBroker.processEvent(event, new_event_id)
+                if (config.debug == False):
+                    deleteFromQueue(event['event_id']['S'], token)
+            except Exception as e:
+                logger.error(f"Error processing event {event['event_id']['S']}: {e}")
+                logger.error(traceback.format_exc())
 
 def runEventsSender():
     logger.info('Running runEventsSender()')
