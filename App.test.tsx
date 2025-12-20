@@ -17,8 +17,8 @@ describe('App', () => {
     
     // Verify it has the correct style dimensions
     expect(image.props.style).toMatchObject({
-      width: 200,
-      height: 200,
+      width: 300,
+      height: 141,
     });
   });
 

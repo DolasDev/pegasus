@@ -41,7 +41,7 @@ jobs:
     name: Build Preview (Expo)
     needs: test
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && secrets.EXPO_TOKEN != ''
     
     steps:
       - name: Checkout code
@@ -69,7 +69,7 @@ jobs:
     name: Deploy to Staging
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push' && secrets.EXPO_TOKEN != ''
     
     steps:
       - name: Checkout code
@@ -97,7 +97,7 @@ jobs:
     name: Deploy to Production
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && secrets.EXPO_TOKEN != ''
     
     steps:
       - name: Checkout code
