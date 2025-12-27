@@ -1,33 +1,46 @@
-# Minimal React Native App
+# Moving & Storage Driver App
 
-A minimal React Native application built with Expo, featuring comprehensive testing and automated CI/CD pipeline.
+A production-ready React Native app built with Expo for truck drivers to manage moving and storage orders.
 
-## 🎯 Features
+## Features
 
-- **Minimal UI**: Displays a single image (meets App Store requirements)
+### Core Functionality
+- **Driver Authentication**: Mock login with AsyncStorage session persistence
+- **Order Dashboard**: List view of all assigned orders with status indicators
+- **Order Details**: Complete order information including customer, locations, and inventory
+- **Status Management**: Update orders through workflow (Pending → In Transit → Delivered)
+- **Proof of Delivery**: Camera integration for capturing delivery photos
+- **Settings**: Driver profile, app info, and account management
+
+### UI/UX
+- **Trucker-Friendly Design**: High contrast colors, large fonts (18pt+), and touch targets (48px+)
+- **Status-Coded**: Color-coded badges (Yellow=Pending, Blue=In Transit, Green=Delivered)
+- **Responsive**: Works on all screen sizes (phones and tablets)
+- **TypeScript**: Full type safety with complete data schema
+
+## Tech Stack
+
+- **Framework**: React Native with Expo SDK 54
+- **Routing**: Expo Router (file-based routing)
+- **State Management**: React Context + AsyncStorage
+- **Styling**: StyleSheet with design system
+- **Permissions**: Camera, Photo Library, Location
 - **TypeScript**: Full type safety
-- **100% Test Coverage**: Comprehensive unit tests with Jest
-- **CI/CD Pipeline**: Automated testing and deployment via GitHub Actions
-- **Modern Stack**: Uses latest stable versions of React Native and Expo
 
-## 📋 Prerequisites
+## Prerequisites
 
-- Node.js 20 or higher
+- Node.js 18+
 - npm or yarn
-- Expo CLI (optional, installed locally)
-- For deployment: Expo account and EAS CLI
+- Expo account (for building)
+- EAS CLI (for deployment)
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Installation
 
 ```bash
-# Clone the repository
-git clone <your-repo-url>
-cd minimal-rn-app
-
 # Install dependencies
-npm install --legacy-peer-deps
+npm install
 ```
 
 ### Running the App
@@ -36,155 +49,185 @@ npm install --legacy-peer-deps
 # Start the development server
 npm start
 
-# Run on Android
-npm run android
-
-# Run on iOS (macOS only)
-npm run ios
-
-# Run on web
-npm run web
+# Run on device
+# - Press 'i' for iOS simulator
+# - Press 'a' for Android emulator
+# - Scan QR code with Expo Go app
 ```
 
-## 🧪 Testing
+### Demo Credentials
 
-### Run Tests
+Login with any email and password (minimum 4 characters).
 
+Example:
+- Email: `driver@test.com`
+- Password: `test1234`
+
+## Mock Data
+
+The app includes 4 sample orders with different statuses:
+- **Order #12345**: Pending (LA to San Francisco)
+- **Order #12346**: In Transit (San Diego to Phoenix)
+- **Order #12347**: Delivered (Las Vegas to Reno)
+- **Order #12348**: Pending (Oakland to Sacramento)
+
+## Data Schema
+
+### TruckingOrder Interface
+```typescript
+{
+  orderId: string;
+  orderNumber: string;
+  pickup: LocationData;
+  dropoff: LocationData;
+  inventory: InventoryItem[];
+  customer: CustomerInfo;
+  status: 'pending' | 'in_transit' | 'delivered' | 'cancelled';
+  proofOfDelivery?: ProofData;
+  assignedDriverId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+See `src/types/index.ts` for complete schema
+
+## Building for Production
+
+### Prerequisites
+1. Create Expo account: https://expo.dev
+2. Install EAS CLI: `npm install -g eas-cli`
+3. Login: `eas login`
+4. Configure: `eas build:configure`
+
+### Build Commands
+
+**Preview (Internal Testing):**
 ```bash
-# Run all tests
-npm test
-
-# Run tests in watch mode
-npm run test:watch
-
-# Run tests with coverage
-npm run test:coverage
+eas build --platform all --profile preview
 ```
 
-### Test Coverage
+**Production (App Stores):**
+```bash
+eas build --platform all --profile production
+```
 
-The app maintains 100% test coverage on all source files:
-- Component rendering tests
-- Image display verification
-- Structure validation
+### iOS Device Registration
+For preview builds, register devices:
+```bash
+eas device:create
+```
 
-## 🔄 CI/CD Pipeline
+See **DEPLOYMENT_GUIDE.md** for complete instructions
 
-The project includes a GitHub Actions workflow that:
-
-1. **On Pull Requests**:
-   - Runs all tests
-   - Generates coverage reports
-   - Builds a preview version
-
-2. **On Push to `develop` branch**:
-   - Runs all tests
-   - Publishes to Expo staging channel
-
-3. **On Push to `main` branch**:
-   - Runs all tests
-   - Builds Android APK/AAB
-   - Builds iOS IPA
-   - Submits to Google Play Internal Testing
-
-### Setting Up CI/CD
-
-To enable automated deployment, add these secrets to your GitHub repository:
-
-1. **EXPO_TOKEN**: Your Expo access token
-   - Get it by running: `npx expo login` then `npx expo whoami --token`
-
-2. Configure EAS (Expo Application Services):
-   ```bash
-   npm install -g eas-cli
-   eas login
-   eas build:configure
-   ```
-
-## 📁 Project Structure
+## Project Structure
 
 ```
 minimal-rn-app/
-├── .github/
-│   └── workflows/
-│       └── ci-cd.yml          # GitHub Actions workflow
-├── assets/                     # Images and static assets
-├── App.tsx                     # Main app component
-├── App.test.tsx               # App tests
-├── index.ts                    # App entry point
-├── babel.config.js            # Babel configuration
-├── jest.config.js             # Jest configuration
-├── jest.setup.js              # Jest setup file
-├── package.json               # Dependencies and scripts
-└── tsconfig.json              # TypeScript configuration
+├── app/
+│   ├── (auth)/
+│   │   ├── login.tsx              # Login screen
+│   │   └── _layout.tsx
+│   ├── (tabs)/
+│   │   ├── index.tsx              # Dashboard (order list)
+│   │   ├── settings.tsx           # Settings screen
+│   │   └── _layout.tsx            # Tab navigation
+│   ├── order/
+│   │   ├── [id].tsx               # Order detail screen
+│   │   └── _layout.tsx
+│   ├── _layout.tsx                # Root layout with auth guard
+│   └── +not-found.tsx
+├── src/
+│   ├── components/
+│   │   ├── OrderCard.tsx          # Order list item
+│   │   └── StatusBadge.tsx        # Status indicator
+│   ├── context/
+│   │   └── AuthContext.tsx        # Authentication provider
+│   ├── services/
+│   │   ├── mockData.ts            # Sample orders
+│   │   └── orderService.ts        # Order CRUD operations
+│   ├── theme/
+│   │   └── colors.ts              # Design system
+│   └── types/
+│       └── index.ts               # TypeScript interfaces
+├── eas.json                       # EAS Build configuration
+├── app.json                       # Expo configuration
+├── DEPLOYMENT_GUIDE.md            # Complete deployment instructions
+└── README.md                      # This file
 ```
 
-## 🛠️ Technology Stack
+## App Store Submission
 
-- **React Native**: 0.81.5
-- **Expo**: ~54.0.30
-- **TypeScript**: ~5.9.2
-- **Jest**: Latest
-- **React Native Testing Library**: Latest
+### Bundle Identifiers
+- **iOS**: `com.movingstorage.driverapp`
+- **Android**: `com.movingstorage.driverapp`
 
-## 📝 Development Workflow
+### Required Accounts
+- **Apple Developer**: $99/year (https://developer.apple.com)
+- **Google Play Console**: $25 one-time (https://play.google.com/console)
 
-1. Create a new branch for your feature
-2. Make changes and write tests
-3. Run `npm test` to ensure all tests pass
-4. Push to GitHub - CI will run automatically
-5. Create a PR to `develop` for staging deployment
-6. Merge to `main` for production deployment
+### Required Assets
+- App icon: 1024x1024 PNG
+- Screenshots: iPhone 6.7" and Android
+- Privacy Policy URL
+- App description
 
-## 🔧 Configuration Files
+## Testing
 
-- **babel.config.js**: Configures Babel for TypeScript and React Native
-- **jest.config.js**: Configures Jest testing framework
-- **tsconfig.json**: TypeScript compiler options
-- **app.json**: Expo configuration
+Run tests:
+```bash
+npm test
+```
 
-## 📱 Deployment
+Run with coverage:
+```bash
+npm run test:coverage
+```
 
-### Manual Deployment
+## Scripts
 
 ```bash
-# Install EAS CLI
-npm install -g eas-cli
-
-# Login to Expo
-eas login
-
-# Build for Android
-eas build --platform android
-
-# Build for iOS
-eas build --platform ios
-
-# Submit to stores
-eas submit --platform android
-eas submit --platform ios
+npm start          # Start Expo dev server
+npm run android    # Run on Android
+npm run ios        # Run on iOS
+npm run web        # Run in browser
+npm test           # Run tests
 ```
 
-### Automated Deployment
+## Troubleshooting
 
-Deployment happens automatically via GitHub Actions:
-- Push to `develop` → Publishes to Expo staging
-- Push to `main` → Builds and submits to app stores
+### App Won't Start
+```bash
+# Clear cache
+npx expo start -c
+```
 
-## 🤝 Contributing
+### Build Fails
+```bash
+# Clear EAS cache
+eas build --platform [ios|android] --clear-cache
+```
 
-1. Fork the repository
-2. Create your feature branch
-3. Write tests for new features
-4. Ensure all tests pass
-5. Submit a pull request
+### Camera Not Working
+Ensure permissions are granted in device settings:
+- iOS: Settings → [App Name] → Camera
+- Android: Settings → Apps → [App Name] → Permissions
 
-## 📄 License
+## App Store Compliance
 
-This project is licensed under the MIT License.
+This app meets Apple App Store Guideline 4.2 (Minimum Functionality) requirements:
+- Persistent login/logout
+- Data display (order list)
+- Interactive features (status updates, photo capture)
+- Settings and account management
+- Clear user value (order management for drivers)
 
-## 🙏 Acknowledgments
+## License
 
-- Built with Expo for simplified React Native development
-- Uses Testing Library for clean, maintainable tests
-- GitHub Actions for reliable CI/CD
+Proprietary - All rights reserved
+
+---
+
+**Version**: 1.0.0
+**Last Updated**: December 2025
+**Expo SDK**: 54.0.0

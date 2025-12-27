@@ -1,30 +1,64 @@
 {
   "expo": {
-    "name": "minimal-rn-app",
-    "slug": "minimal-rn-app",
+    "name": "Moving & Storage Driver",
+    "slug": "moving-storage-driver",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "scheme": "movingapp",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#1a1a2e"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.movingstorage.driverapp",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app requires camera access to capture proof of delivery photos.",
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to select delivery photos.",
+        "NSLocationWhenInUseUsageDescription": "This app uses your location to optimize delivery routes and track order progress."
+      }
     },
     "android": {
+      "package": "com.movingstorage.driverapp",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#1a1a2e"
       },
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "This app needs access to your photos to capture proof of delivery.",
+          "cameraPermission": "This app requires camera access to capture proof of delivery photos."
+        }
+      ]
+    ],
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "PLACEHOLDER-RUN-eas-build-configure"
+      }
     }
   }
 }
+
