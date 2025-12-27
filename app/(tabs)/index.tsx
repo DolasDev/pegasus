@@ -7,6 +7,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { OrderCard } from '../../src/components/OrderCard';
 import { OrderService } from '../../src/services/orderService';
@@ -53,15 +54,15 @@ export default function DashboardScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Loading orders...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <FlatList
         data={orders}
         keyExtractor={(item) => item.orderId}
@@ -82,7 +83,7 @@ export default function DashboardScreen() {
           />
         }
       />
-    </View>
+    </SafeAreaView>
   );
 }
 

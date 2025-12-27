@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TruckingOrder, OrderStatus } from '../types';
 import { MOCK_ORDERS } from './mockData';
+import { logger } from '../utils/logger';
 
 const ORDERS_STORAGE_KEY = '@moving_app_orders';
 
@@ -9,13 +10,16 @@ export class OrderService {
     try {
       const stored = await AsyncStorage.getItem(ORDERS_STORAGE_KEY);
       if (stored) {
-        return JSON.parse(stored);
+        const orders = JSON.parse(stored);
+        logger.logOrderLoad(orders.length);
+        return orders;
       }
       // Initialize with mock data on first load
       await AsyncStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(MOCK_ORDERS));
+      logger.logOrderLoad(MOCK_ORDERS.length);
       return MOCK_ORDERS;
     } catch (error) {
-      console.error('Error loading orders:', error);
+      logger.error('Error loading orders', error);
       return MOCK_ORDERS;
     }
   }
@@ -36,6 +40,7 @@ export class OrderService {
 
       if (orderIndex === -1) return false;
 
+      const oldStatus = orders[orderIndex].status;
       const updatedOrder = {
         ...orders[orderIndex],
         status,
@@ -58,9 +63,10 @@ export class OrderService {
 
       orders[orderIndex] = updatedOrder;
       await AsyncStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(orders));
+      logger.logOrderStatusChange(orderId, oldStatus, status);
       return true;
     } catch (error) {
-      console.error('Error updating order:', error);
+      logger.error('Error updating order', error);
       return false;
     }
   }
@@ -86,9 +92,10 @@ export class OrderService {
       orders[orderIndex] = order;
 
       await AsyncStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(orders));
+      logger.logCameraCapture(orderId, order.proofOfDelivery.photos.length);
       return true;
     } catch (error) {
-      console.error('Error adding proof photo:', error);
+      logger.error('Error adding proof photo', error);
       return false;
     }
   }

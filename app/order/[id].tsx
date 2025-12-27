@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { TruckingOrder, OrderStatus } from '../../src/types';
@@ -140,15 +141,15 @@ export default function OrderDetailScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (!order) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer}>
         <Text style={styles.errorText}>Order not found</Text>
         <TouchableOpacity
           style={styles.button}
@@ -156,22 +157,14 @@ export default function OrderDetailScreen() {
         >
           <Text style={styles.buttonText}>Go Back</Text>
         </TouchableOpacity>
-      </View>
+      </SafeAreaView>
     );
   }
 
   const nextStatus = getNextStatus();
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: order.orderNumber,
-          headerStyle: { backgroundColor: colors.backgroundDark },
-          headerTintColor: colors.textLight,
-          headerTitleStyle: { fontWeight: '700', fontSize: fontSize.xlarge },
-        }}
-      />
+    <SafeAreaView style={styles.safeArea}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <Text style={styles.orderNumber}>{order.orderNumber}</Text>
@@ -291,11 +284,15 @@ export default function OrderDetailScreen() {
           </View>
         )}
       </ScrollView>
-    </>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.backgroundLight,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.backgroundLight,

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MOCK_DRIVER } from '../services/mockData';
+import { logger } from '../utils/logger';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -56,9 +57,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setDriverEmail(email);
         setDriverName(MOCK_DRIVER.name);
         setIsAuthenticated(true);
+        logger.logAuth('login', email);
         return true;
       } catch (error) {
-        console.error('Error saving session:', error);
+        logger.error('Error saving session', error);
         return false;
       }
     }
@@ -67,12 +69,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
+      const email = driverEmail;
       await AsyncStorage.removeItem(STORAGE_KEY);
       setIsAuthenticated(false);
       setDriverEmail('');
       setDriverName('');
+      logger.logAuth('logout', email);
     } catch (error) {
-      console.error('Error logging out:', error);
+      logger.error('Error logging out', error);
     }
   };
 
