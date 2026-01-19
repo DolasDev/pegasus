@@ -29,11 +29,12 @@
         "backgroundColor": "#1a1a2e"
       },
       "permissions": [
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.RECORD_AUDIO"
       ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -56,9 +57,9 @@
         "origin": false
       },
       "eas": {
-        "projectId": "PLACEHOLDER-RUN-eas-build-configure"
+        "projectId": "a2e694fd-15da-47ba-8ef0-8a3e1cd7c4be"
       }
-    }
+    },
+    "owner": "kbeck"
   }
 }
-
