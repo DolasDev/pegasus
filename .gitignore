@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Turbo cache
+.turbo/
+
+# TypeScript incremental
+*.tsbuildinfo
+
+# Vite
+*.local
+
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Editor directories
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# CDK
+cdk.out/
+cdk.context.json
+
+# Prisma
+prisma/migrations/
+
+# Test coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS
+Thumbs.db

@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": ".",
+    "lib": ["ES2022"],
+    // AWS CDK types predate exactOptionalPropertyTypes; override to keep strict
+    // mode on everything else while staying compatible with CDK's type signatures.
+    "exactOptionalPropertyTypes": false
+  },
+  "include": ["bin/**/*", "lib/**/*"]
+}
