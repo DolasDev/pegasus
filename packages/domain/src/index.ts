@@ -1,95 +1,34 @@
 // ---------------------------------------------------------------------------
-// Branded scalar types — enforce nominal identity at the type level
-// ---------------------------------------------------------------------------
-type Brand<T, B extends string> = T & { readonly __brand: B }
-
-export type UserId = Brand<string, 'UserId'>
-export type MoveId = Brand<string, 'MoveId'>
-export type QuoteId = Brand<string, 'QuoteId'>
-export type AddressId = Brand<string, 'AddressId'>
-
-// ---------------------------------------------------------------------------
-// Factory helpers (the only place we use `as` casts)
-// ---------------------------------------------------------------------------
-export const toUserId = (raw: string): UserId => raw as UserId
-export const toMoveId = (raw: string): MoveId => raw as MoveId
-export const toQuoteId = (raw: string): QuoteId => raw as QuoteId
-export const toAddressId = (raw: string): AddressId => raw as AddressId
-
-// ---------------------------------------------------------------------------
-// Value objects
-// ---------------------------------------------------------------------------
-export interface Address {
-  readonly id: AddressId
-  readonly line1: string
-  readonly line2?: string
-  readonly city: string
-  readonly state: string
-  readonly postalCode: string
-  readonly country: string
-}
-
-export interface Money {
-  readonly amount: number
-  /** ISO 4217 currency code, e.g. "USD" */
-  readonly currency: string
-}
-
-// ---------------------------------------------------------------------------
-// Move aggregate
-// ---------------------------------------------------------------------------
-export type MoveStatus = 'PENDING' | 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
-
-export const MOVE_STATUSES: readonly MoveStatus[] = [
-  'PENDING',
-  'SCHEDULED',
-  'IN_PROGRESS',
-  'COMPLETED',
-  'CANCELLED',
-] as const
-
-export interface Move {
-  readonly id: MoveId
-  readonly userId: UserId
-  readonly status: MoveStatus
-  readonly origin: Address
-  readonly destination: Address
-  readonly scheduledDate: Date
-  readonly createdAt: Date
-  readonly updatedAt: Date
-}
-
-// ---------------------------------------------------------------------------
-// Quote aggregate
-// ---------------------------------------------------------------------------
-export type QuoteStatus = 'DRAFT' | 'SENT' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED'
-
-export interface Quote {
-  readonly id: QuoteId
-  readonly moveId: MoveId
-  readonly price: Money
-  readonly status: QuoteStatus
-  readonly validUntil: Date
-  readonly createdAt: Date
-}
-
-// ---------------------------------------------------------------------------
-// Domain helpers
+// packages/domain — public barrel
+//
+// Re-exports the full surface of every bounded context.
+// Consumers should import from this file, not from internal context paths.
 // ---------------------------------------------------------------------------
 
-/** Returns true when a move can legally transition to `next`. */
-export function canTransition(current: MoveStatus, next: MoveStatus): boolean {
-  const allowed: Record<MoveStatus, readonly MoveStatus[]> = {
-    PENDING: ['SCHEDULED', 'CANCELLED'],
-    SCHEDULED: ['IN_PROGRESS', 'CANCELLED'],
-    IN_PROGRESS: ['COMPLETED', 'CANCELLED'],
-    COMPLETED: [],
-    CANCELLED: [],
-  }
-  return allowed[current].includes(next)
-}
+// Shared primitives
+export type { Brand, UserId, AddressId, Address, Money, DateRange } from './shared/types'
+export { toUserId, toAddressId, createMoney, addMoney, validateAddress, dateRangesOverlap } from './shared/types'
 
-/** Returns true when the quote is still valid at the given point in time. */
-export function isQuoteValid(quote: Quote, at: Date = new Date()): boolean {
-  return quote.status === 'SENT' && quote.validUntil > at
-}
+// Customer context
+export type { CustomerId, ContactId, LeadSourceId, AccountId, Customer, Contact, LeadSource } from './customer/index'
+export { toCustomerId, toContactId, toLeadSourceId, toAccountId, hasPrimaryContact } from './customer/index'
+
+// Schedule context
+export type { CrewMemberId, VehicleId, AvailabilityId, CrewMember, Vehicle, Availability, CrewRole } from './schedule/index'
+export { toCrewMemberId, toVehicleId, toAvailabilityId } from './schedule/index'
+
+// Inventory context
+export type { InventoryRoomId, InventoryItemId, InventoryRoom, InventoryItem, ItemCondition } from './inventory/index'
+export { toInventoryRoomId, toInventoryItemId, roomTotalValue } from './inventory/index'
+
+// Dispatch context
+export type { MoveId, StopId, Move, Stop, MoveStatus, StopType } from './dispatch/index'
+export { toMoveId, toStopId, MOVE_STATUSES, canTransition, canDispatch } from './dispatch/index'
+
+// Quoting context
+export type { QuoteId, QuoteLineItemId, RateTableId, RateId, Quote, QuoteLineItem, RateTable, Rate, QuoteStatus } from './quoting/index'
+export { toQuoteId, toQuoteLineItemId, toRateTableId, toRateId, isQuoteValid, canFinalizeQuote, calculateQuoteTotal } from './quoting/index'
+
+// Billing context
+export type { InvoiceId, PaymentId, Invoice, Payment, InvoiceStatus, PaymentMethod } from './billing/index'
+export { toInvoiceId, toPaymentId, calculateInvoiceBalance, canVoidInvoice } from './billing/index'

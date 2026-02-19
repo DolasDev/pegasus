@@ -7,15 +7,22 @@
     "build": "tsc",
     "test": "vitest run",
     "lint": "eslint src --ext .ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio"
   },
   "dependencies": {
     "@pegasus/domain": "*",
+    "@prisma/client": "^6.0.0",
     "hono": "^4.6.14"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",
     "@types/node": "^20.16.0",
+    "prisma": "^6.0.0",
+    "tsx": "^4.19.2",
     "typescript": "*",
     "vitest": "*"
   }
