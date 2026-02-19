@@ -87,3 +87,53 @@ export async function listQuotesByMoveId(moveId: string): Promise<Quote[]> {
   })
   return rows.map(mapQuote)
 }
+
+/** Lists all quotes for every move belonging to a given customer. */
+export async function listQuotesByCustomerId(customerId: string): Promise<Quote[]> {
+  const rows = await db.quote.findMany({
+    where: { move: { customerId } },
+    include: quoteInclude,
+    orderBy: { createdAt: 'desc' },
+  })
+  return rows.map(mapQuote)
+}
+
+/** Returns the first ACCEPTED quote for a move, or null if none exists. */
+export async function findAcceptedQuoteByMoveId(moveId: string): Promise<Quote | null> {
+  const row = await db.quote.findFirst({
+    where: { moveId, status: 'ACCEPTED' },
+    include: quoteInclude,
+  })
+  return row ? mapQuote(row) : null
+}
+
+export type AddLineItemInput = {
+  description: string
+  quantity: number
+  unitPrice: number
+  currency?: string
+}
+
+/** Appends a line item to an existing quote. Returns the updated quote, or null if not found. */
+export async function addLineItem(quoteId: string, input: AddLineItemInput): Promise<Quote | null> {
+  const exists = await db.quote.findUnique({ where: { id: quoteId }, select: { id: true } })
+  if (!exists) return null
+  await db.quoteLineItem.create({
+    data: {
+      quoteId,
+      description: input.description,
+      quantity: input.quantity,
+      unitPrice: input.unitPrice,
+      currency: input.currency ?? 'USD',
+    },
+  })
+  return findQuoteById(quoteId)
+}
+
+/** Transitions a DRAFT quote to SENT status. Returns the updated quote, or null if not found. */
+export async function finalizeQuote(id: string): Promise<Quote | null> {
+  const exists = await db.quote.findUnique({ where: { id }, select: { id: true } })
+  if (!exists) return null
+  await db.quote.update({ where: { id }, data: { status: 'SENT' } })
+  return findQuoteById(id)
+}

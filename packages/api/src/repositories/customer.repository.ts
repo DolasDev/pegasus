@@ -128,3 +128,49 @@ export async function listCustomers(opts: { limit?: number; offset?: number } = 
 export async function deleteCustomer(id: string): Promise<void> {
   await db.customer.delete({ where: { id } })
 }
+
+export type UpdateCustomerInput = {
+  firstName?: string
+  lastName?: string
+  email?: string
+  phone?: string
+}
+
+/** Updates mutable fields on a customer. Returns null if not found. */
+export async function updateCustomer(id: string, input: UpdateCustomerInput): Promise<Customer | null> {
+  const exists = await db.customer.findUnique({ where: { id }, select: { id: true } })
+  if (!exists) return null
+  await db.customer.update({
+    where: { id },
+    data: {
+      ...(input.firstName != null ? { firstName: input.firstName } : {}),
+      ...(input.lastName != null ? { lastName: input.lastName } : {}),
+      ...(input.email != null ? { email: input.email } : {}),
+      ...(input.phone != null ? { phone: input.phone } : {}),
+    },
+  })
+  return findCustomerById(id)
+}
+
+/** Adds a new contact to an existing customer. */
+export async function createContact(customerId: string, input: CreateContactInput): Promise<Contact> {
+  const row = await db.contact.create({
+    data: {
+      customerId,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      email: input.email,
+      isPrimary: input.isPrimary ?? false,
+      ...(input.phone != null ? { phone: input.phone } : {}),
+    },
+  })
+  return {
+    id: toContactId(row.id),
+    customerId: toCustomerId(row.customerId),
+    firstName: row.firstName,
+    lastName: row.lastName,
+    email: row.email,
+    isPrimary: row.isPrimary,
+    ...(row.phone != null ? { phone: row.phone } : {}),
+  }
+}

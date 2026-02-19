@@ -1,4 +1,2 @@
-import { handle } from 'hono/aws-lambda'
-import { app } from './app'
-
-export const handler = handle(app)
+// Re-export the Lambda handler from the dedicated entry point.
+export { handler } from './lambda'

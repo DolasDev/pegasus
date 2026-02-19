@@ -134,3 +134,38 @@ export async function updateMoveStatus(id: string, status: MoveStatus): Promise<
   await db.move.update({ where: { id }, data: { status } })
   return findMoveById(id)
 }
+
+/** Lists all moves, ordered by scheduled date ascending, with optional pagination. */
+export async function listMoves(opts: { limit?: number; offset?: number } = {}): Promise<Move[]> {
+  const rows = await db.move.findMany({
+    include: moveInclude,
+    orderBy: { scheduledDate: 'asc' },
+    take: opts.limit ?? 50,
+    skip: opts.offset ?? 0,
+  })
+  return rows.map(mapMove)
+}
+
+/** Assigns a crew member to a move. Idempotent — duplicate assignments are ignored. */
+export async function assignCrewMember(moveId: string, crewMemberId: string): Promise<Move | null> {
+  const move = await db.move.findUnique({ where: { id: moveId }, select: { id: true } })
+  if (!move) return null
+  await db.moveCrewAssignment.upsert({
+    where: { moveId_crewMemberId: { moveId, crewMemberId } },
+    create: { moveId, crewMemberId },
+    update: {},
+  })
+  return findMoveById(moveId)
+}
+
+/** Assigns a vehicle to a move. Idempotent — duplicate assignments are ignored. */
+export async function assignVehicle(moveId: string, vehicleId: string): Promise<Move | null> {
+  const move = await db.move.findUnique({ where: { id: moveId }, select: { id: true } })
+  if (!move) return null
+  await db.moveVehicleAssignment.upsert({
+    where: { moveId_vehicleId: { moveId, vehicleId } },
+    create: { moveId, vehicleId },
+    update: {},
+  })
+  return findMoveById(moveId)
+}

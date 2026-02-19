@@ -3,7 +3,8 @@ import * as cdk from 'aws-cdk-lib'
 import * as ec2 from 'aws-cdk-lib/aws-ec2'
 import * as lambda from 'aws-cdk-lib/aws-lambda'
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs'
-import * as apigateway from 'aws-cdk-lib/aws-apigateway'
+import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2'
+import * as apigwv2i from 'aws-cdk-lib/aws-apigatewayv2-integrations'
 import { type Construct } from 'constructs'
 import type { DatabaseStack } from './database-stack'
 
@@ -19,15 +20,21 @@ export class ApiStack extends cdk.Stack {
 
     const apiFunction = new nodejs.NodejsFunction(this, 'ApiFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
-      // Entry is resolved at deploy time by esbuild — path is relative to this file
-      entry: path.join(__dirname, '../../../../api/src/index.ts'),
+      // Entry resolved relative to this file at deploy time by esbuild
+      entry: path.join(__dirname, '../../../api/src/lambda.ts'),
       handler: 'handler',
       vpc: databaseStack.vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+      // Use the pre-created SG from DatabaseStack to avoid cross-stack SG cycles
+      securityGroups: [databaseStack.lambdaSecurityGroup],
       environment: {
         NODE_ENV: 'production',
-        DB_HOST: databaseStack.cluster.clusterEndpoint.hostname,
-        DB_PORT: databaseStack.cluster.clusterEndpoint.port.toString(),
+        // RDS Proxy endpoint (CloudFormation GetAtt — resolved at deploy time)
+        DB_PROXY_ENDPOINT: databaseStack.proxy.endpoint,
+        // Secrets Manager secret ARN — Lambda fetches credentials at startup
+        DB_SECRET_ARN: databaseStack.secret.secretArn,
+        DB_PORT: '5432',
+        DB_NAME: 'pegasus',
       },
       bundling: {
         minify: true,
@@ -38,33 +45,36 @@ export class ApiStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(29),
     })
 
-    // Allow the Lambda function to connect to the Aurora cluster
-    databaseStack.cluster.connections.allowDefaultPortFrom(apiFunction)
+    // ---------------------------------------------------------------------------
+    // IAM: sm:GetSecretValue to read DB credentials
+    // ---------------------------------------------------------------------------
+    databaseStack.secret.grantRead(apiFunction)
 
-    const api = new apigateway.RestApi(this, 'PegasusRestApi', {
-      restApiName: 'Pegasus Move Management API',
-      defaultCorsPreflightOptions: {
-        allowOrigins: apigateway.Cors.ALL_ORIGINS,
-        allowMethods: apigateway.Cors.ALL_METHODS,
+    // ---------------------------------------------------------------------------
+    // IAM: rds-db:connect to authenticate via RDS Proxy IAM auth
+    // ---------------------------------------------------------------------------
+    databaseStack.proxy.grantConnect(apiFunction, 'postgres')
+
+    // ---------------------------------------------------------------------------
+    // API Gateway v2 HTTP API
+    // ---------------------------------------------------------------------------
+    const httpApi = new apigwv2.HttpApi(this, 'PegasusHttpApi', {
+      apiName: 'Pegasus Move Management API',
+      corsPreflight: {
+        allowOrigins: ['*'],
+        allowMethods: [apigwv2.CorsHttpMethod.ANY],
         allowHeaders: ['Content-Type', 'Authorization'],
       },
-      deployOptions: {
-        stageName: 'v1',
-        tracingEnabled: true,
-      },
     })
 
-    const integration = new apigateway.LambdaIntegration(apiFunction, {
-      proxy: true,
-    })
-
-    api.root.addProxy({
-      defaultIntegration: integration,
-      anyMethod: true,
+    httpApi.addRoutes({
+      path: '/{proxy+}',
+      methods: [apigwv2.HttpMethod.ANY],
+      integration: new apigwv2i.HttpLambdaIntegration('LambdaIntegration', apiFunction),
     })
 
     new cdk.CfnOutput(this, 'ApiUrl', {
-      value: api.url,
+      value: httpApi.apiEndpoint,
       exportName: 'PegasusApiUrl',
     })
   }
