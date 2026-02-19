@@ -10,8 +10,11 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
+    "exactOptionalPropertyTypes": false,
+    "noUncheckedIndexedAccess": false,
     "paths": {
-      "@pegasus/domain": ["../domain/src/index.ts"]
+      "@pegasus/domain": ["../domain/src/index.ts"],
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src"]

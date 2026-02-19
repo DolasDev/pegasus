@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@pegasus/domain': path.resolve(__dirname, '../domain/src/index.ts'),
+      '@': path.resolve(__dirname, './src'),
     },
   },
 })
