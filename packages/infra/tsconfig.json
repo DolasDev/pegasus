@@ -8,5 +8,5 @@
     // mode on everything else while staying compatible with CDK's type signatures.
     "exactOptionalPropertyTypes": false
   },
-  "include": ["bin/**/*", "lib/**/*"]
+  "include": ["bin/**/*", "lib/**/*", "vitest.config.ts"]
 }

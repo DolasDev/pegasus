@@ -3,6 +3,7 @@ import 'source-map-support/register'
 import * as cdk from 'aws-cdk-lib'
 import { DatabaseStack } from '../lib/stacks/database-stack'
 import { ApiStack } from '../lib/stacks/api-stack'
+import { FrontendStack } from '../lib/stacks/frontend-stack'
 
 const app = new cdk.App()
 
@@ -22,4 +23,10 @@ new ApiStack(app, 'PegasusDev-ApiStack', {
   stackName: 'pegasus-dev-api',
   description: 'Pegasus dev — Hono Lambda + HTTP API Gateway v2',
   databaseStack,
+})
+
+new FrontendStack(app, 'PegasusDev-FrontendStack', {
+  env: devEnv,
+  stackName: 'pegasus-dev-frontend',
+  description: 'Pegasus dev — S3 static assets + CloudFront distribution',
 })
