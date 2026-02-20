@@ -2,6 +2,8 @@ import * as cdk from 'aws-cdk-lib'
 import * as s3 from 'aws-cdk-lib/aws-s3'
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront'
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins'
+import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment'
+import * as path from 'path'
 import { type Construct } from 'constructs'
 
 /**
@@ -60,6 +62,16 @@ export class FrontendStack extends cdk.Stack {
       ],
       httpVersion: cloudfront.HttpVersion.HTTP2,
       minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
+    })
+
+    // ---------------------------------------------------------------------------
+    // Deploy assets to S3 and invalidate CloudFront
+    // ---------------------------------------------------------------------------
+    new s3deploy.BucketDeployment(this, 'DeployWebsite', {
+      sources: [s3deploy.Source.asset(path.join(__dirname, '../../../../../web/dist'))],
+      destinationBucket: siteBucket,
+      distribution: this.distribution,
+      distributionPaths: ['/*'],
     })
 
     // ---------------------------------------------------------------------------

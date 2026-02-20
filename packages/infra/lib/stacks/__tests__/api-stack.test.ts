@@ -1,13 +1,11 @@
 import { describe, it } from 'vitest'
 import * as cdk from 'aws-cdk-lib'
 import { Template, Match } from 'aws-cdk-lib/assertions'
-import { DatabaseStack } from '../database-stack'
 import { ApiStack } from '../api-stack'
 
 function synthApiStack() {
   const app = new cdk.App()
-  const dbStack = new DatabaseStack(app, 'TestDb')
-  const apiStack = new ApiStack(app, 'TestApi', { databaseStack: dbStack })
+  const apiStack = new ApiStack(app, 'TestApi')
   return Template.fromStack(apiStack)
 }
 
@@ -44,59 +42,38 @@ describe('ApiStack — Lambda function', () => {
       Environment: {
         Variables: Match.objectLike({
           NODE_ENV: 'production',
-          DB_PORT: '5432',
-          DB_NAME: 'pegasus',
         }),
       },
     })
   })
 
-  it('sets DB_PROXY_ENDPOINT and DB_SECRET_ARN environment variables', () => {
+  it('sets DATABASE_URL environment variable', () => {
     const template = synthApiStack()
-    // Cross-stack references appear as Fn::ImportValue tokens
     template.hasResourceProperties('AWS::Lambda::Function', {
       Environment: {
         Variables: Match.objectLike({
-          DB_PROXY_ENDPOINT: Match.anyValue(),
-          DB_SECRET_ARN: Match.anyValue(),
+          DATABASE_URL: Match.anyValue(),
         }),
       },
     })
   })
 
-  it('places the Lambda in a VPC private subnet', () => {
+  it('does not place the Lambda in a VPC', () => {
     const template = synthApiStack()
     template.hasResourceProperties('AWS::Lambda::Function', {
-      VpcConfig: Match.objectLike({
-        SubnetIds: Match.anyValue(),
-        SecurityGroupIds: Match.anyValue(),
-      }),
+      VpcConfig: Match.absent(),
     })
   })
 })
 
 describe('ApiStack — IAM permissions', () => {
-  it('grants sm:GetSecretValue on the database secret', () => {
+  it('grants sm:GetSecretValue on the Neon database secret', () => {
     const template = synthApiStack()
     template.hasResourceProperties('AWS::IAM::Policy', {
       PolicyDocument: {
         Statement: Match.arrayWith([
           Match.objectLike({
             Action: Match.arrayWith(['secretsmanager:GetSecretValue']),
-            Effect: 'Allow',
-          }),
-        ]),
-      },
-    })
-  })
-
-  it('grants rds-db:connect for IAM authentication', () => {
-    const template = synthApiStack()
-    template.hasResourceProperties('AWS::IAM::Policy', {
-      PolicyDocument: {
-        Statement: Match.arrayWith([
-          Match.objectLike({
-            Action: 'rds-db:connect',
             Effect: 'Allow',
           }),
         ]),
