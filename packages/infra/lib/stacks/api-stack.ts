@@ -29,11 +29,31 @@ export class ApiStack extends cdk.Stack {
         NODE_ENV: 'production',
         // CloudFormation dynamic reference — resolved to plaintext at deploy time
         DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+        // Prisma schema requires DIRECT_URL when directUrl is set. Lambda only runs
+        // queries (not migrations), so the pooled URL works for both.
+        DIRECT_URL: dbSecret.secretValue.unsafeUnwrap(),
+        // Tell Prisma exactly where the native query engine lives so it skips
+        // its path-search heuristics (which bake in local build-machine paths).
+        PRISMA_QUERY_ENGINE_LIBRARY: '/var/task/libquery_engine-rhel-openssl-3.0.x.so.node',
       },
       bundling: {
         minify: true,
         sourceMap: true,
         externalModules: ['@aws-sdk/*'],
+        commandHooks: {
+          beforeBundling: () => [],
+          beforeInstall: () => [],
+          afterBundling(_inputDir: string, outputDir: string): string[] {
+            // Copy the Lambda-compatible Prisma query engine binary alongside the
+            // bundle. esbuild inlines @prisma/client JS but cannot include native
+            // .so.node files, so we copy it explicitly.
+            const repoRoot = path.join(__dirname, '../../../..')
+            const engine = 'libquery_engine-rhel-openssl-3.0.x.so.node'
+            return [
+              `cp ${repoRoot}/node_modules/.prisma/client/${engine} ${outputDir}/${engine}`,
+            ]
+          },
+        },
       },
       memorySize: 512,
       timeout: cdk.Duration.seconds(29),
