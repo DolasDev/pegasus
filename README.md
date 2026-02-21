@@ -24,6 +24,7 @@ Create a `.env` file in `packages/api/`:
 
 ```bash
 # packages/api/.env
+DIRECT_URL="postgres://user:pass@host/dbname?sslmode=require"
 DATABASE_URL="postgres://user:pass@host/dbname?sslmode=require"
 ```
 

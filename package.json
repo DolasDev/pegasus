@@ -10,6 +10,7 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
+    "deploy": "bash packages/infra/deploy.sh",
     "prepare": "node ./node_modules/husky/bin.js || true"
   },
   "devDependencies": {

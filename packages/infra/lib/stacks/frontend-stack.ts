@@ -68,7 +68,7 @@ export class FrontendStack extends cdk.Stack {
     // Deploy assets to S3 and invalidate CloudFront
     // ---------------------------------------------------------------------------
     new s3deploy.BucketDeployment(this, 'DeployWebsite', {
-      sources: [s3deploy.Source.asset(path.join(__dirname, '../../../../../web/dist'))],
+      sources: [s3deploy.Source.asset(path.join(__dirname, '../../../../packages/web/dist'))],
       destinationBucket: siteBucket,
       distribution: this.distribution,
       distributionPaths: ['/*'],

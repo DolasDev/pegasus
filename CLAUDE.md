@@ -11,7 +11,7 @@ Pegasus is a cloud-native move management SaaS platform replacing a legacy VB.NE
 | Monorepo orchestration | [Turborepo](https://turbo.build/) |
 | Language | TypeScript 5 (strict mode throughout) |
 | API | [Hono](https://hono.dev/) (lightweight edge-ready HTTP framework) |
-| ORM / DB | [Prisma](https://www.prisma.io/) + PostgreSQL (RDS) |
+| ORM / DB | [Prisma](https://www.prisma.io/) + PostgreSQL ([Neon](https://neon.tech)) |
 | Frontend | React 18 + Vite |
 | Infrastructure | AWS CDK (TypeScript) |
 | Testing | Vitest (unit + integration) |
@@ -26,7 +26,7 @@ packages/
 ├── api/      Hono HTTP handlers. Calls domain logic, reads/writes via Prisma.
 │             Deployed as AWS Lambda behind API Gateway.
 ├── web/      React SPA. Consumes the API; no direct DB or domain imports.
-└── infra/    AWS CDK stacks that provision RDS, Lambda, API Gateway, S3, CloudFront.
+└── infra/    AWS CDK stacks that provision Lambda, API Gateway, S3, CloudFront.
 ```
 
 ## Bounded Contexts
