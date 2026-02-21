@@ -9,6 +9,7 @@ import { canFinalizeQuote } from '@pegasus/domain'
 import {
   createQuote,
   findQuoteById,
+  listQuotes,
   addLineItem,
   finalizeQuote,
 } from '../repositories'
@@ -67,6 +68,17 @@ quotesHandler.post(
     }
   },
 )
+
+quotesHandler.get('/', async (c) => {
+  const limit = Math.min(Number(c.req.query('limit') ?? '50'), 100)
+  const offset = Number(c.req.query('offset') ?? '0')
+  try {
+    const data = await listQuotes({ limit, offset })
+    return c.json({ data, meta: { count: data.length, limit, offset } })
+  } catch {
+    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+  }
+})
 
 quotesHandler.get('/:id', async (c) => {
   const id = c.req.param('id')

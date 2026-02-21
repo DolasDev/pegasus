@@ -73,6 +73,16 @@ export async function findInvoiceById(id: string): Promise<Invoice | null> {
   return row ? mapInvoice(row) : null
 }
 
+export async function listInvoices(opts: { limit?: number; offset?: number } = {}): Promise<Invoice[]> {
+  const rows = await db.invoice.findMany({
+    include: invoiceInclude,
+    orderBy: { createdAt: 'desc' },
+    take: opts.limit ?? 50,
+    skip: opts.offset ?? 0,
+  })
+  return rows.map(mapInvoice)
+}
+
 export async function findInvoiceByMoveId(moveId: string): Promise<Invoice | null> {
   const row = await db.invoice.findFirst({
     where: { moveId },

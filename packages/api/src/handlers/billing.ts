@@ -11,6 +11,7 @@ import {
   findAcceptedQuoteByMoveId,
   findInvoiceByMoveId,
   findInvoiceById,
+  listInvoices,
   createInvoice,
   recordPayment,
 } from '../repositories'
@@ -73,6 +74,17 @@ billingHandler.post(
     }
   },
 )
+
+billingHandler.get('/', async (c) => {
+  const limit = Math.min(Number(c.req.query('limit') ?? '50'), 100)
+  const offset = Number(c.req.query('offset') ?? '0')
+  try {
+    const data = await listInvoices({ limit, offset })
+    return c.json({ data, meta: { count: data.length, limit, offset } })
+  } catch {
+    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+  }
+})
 
 billingHandler.get('/:id', async (c) => {
   const id = c.req.param('id')

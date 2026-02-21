@@ -99,6 +99,16 @@ export async function listQuotesByCustomerId(customerId: string): Promise<Quote[
 }
 
 /** Returns the first ACCEPTED quote for a move, or null if none exists. */
+export async function listQuotes(opts: { limit?: number; offset?: number } = {}): Promise<Quote[]> {
+  const rows = await db.quote.findMany({
+    include: quoteInclude,
+    orderBy: { createdAt: 'desc' },
+    take: opts.limit ?? 50,
+    skip: opts.offset ?? 0,
+  })
+  return rows.map(mapQuote)
+}
+
 export async function findAcceptedQuoteByMoveId(moveId: string): Promise<Quote | null> {
   const row = await db.quote.findFirst({
     where: { moveId, status: 'ACCEPTED' },
