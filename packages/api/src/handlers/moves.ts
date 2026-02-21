@@ -6,6 +6,7 @@ import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
 import { canDispatch, canTransition } from '@pegasus/domain'
+import type { AppEnv } from '../types'
 import {
   createMove,
   findMoveById,
@@ -45,7 +46,7 @@ const AssignVehicleBody = z.object({
   vehicleId: z.string().min(1),
 })
 
-export const movesHandler = new Hono()
+export const movesHandler = new Hono<AppEnv>()
 
 movesHandler.post(
   '/',
@@ -55,9 +56,11 @@ movesHandler.post(
     return r.data
   }),
   async (c) => {
+    const db = c.get('db')
+    const tenantId = c.get('tenantId')
     try {
       const body = c.req.valid('json')
-      const data = await createMove({
+      const data = await createMove(db, tenantId, {
         userId: body.userId,
         scheduledDate: new Date(body.scheduledDate),
         origin: {
@@ -86,10 +89,11 @@ movesHandler.post(
 )
 
 movesHandler.get('/', async (c) => {
+  const db = c.get('db')
   const limit = Math.min(Number(c.req.query('limit') ?? '50'), 100)
   const offset = Number(c.req.query('offset') ?? '0')
   try {
-    const data = await listMoves({ limit, offset })
+    const data = await listMoves(db, { limit, offset })
     return c.json({ data, meta: { count: data.length, limit, offset } })
   } catch {
     return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
@@ -97,9 +101,10 @@ movesHandler.get('/', async (c) => {
 })
 
 movesHandler.get('/:id', async (c) => {
+  const db = c.get('db')
   const id = c.req.param('id')
   try {
-    const data = await findMoveById(id)
+    const data = await findMoveById(db, id)
     if (!data) return c.json({ error: 'Move not found', code: 'NOT_FOUND' }, 404)
     return c.json({ data })
   } catch {
@@ -115,10 +120,11 @@ movesHandler.put(
     return r.data
   }),
   async (c) => {
+    const db = c.get('db')
     const id = c.req.param('id')
     try {
       const { status } = c.req.valid('json')
-      const move = await findMoveById(id)
+      const move = await findMoveById(db, id)
       if (!move) return c.json({ error: 'Move not found', code: 'NOT_FOUND' }, 404)
       if (!canTransition(move.status, status)) {
         return c.json(
@@ -136,7 +142,7 @@ movesHandler.put(
           422,
         )
       }
-      const data = await updateMoveStatus(id, status)
+      const data = await updateMoveStatus(db, id, status)
       return c.json({ data })
     } catch {
       return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
@@ -152,10 +158,11 @@ movesHandler.post(
     return r.data
   }),
   async (c) => {
+    const db = c.get('db')
     const id = c.req.param('id')
     try {
       const { crewMemberId } = c.req.valid('json')
-      const data = await assignCrewMember(id, crewMemberId)
+      const data = await assignCrewMember(db, id, crewMemberId)
       if (!data) return c.json({ error: 'Move not found', code: 'NOT_FOUND' }, 404)
       return c.json({ data })
     } catch {
@@ -172,10 +179,11 @@ movesHandler.post(
     return r.data
   }),
   async (c) => {
+    const db = c.get('db')
     const id = c.req.param('id')
     try {
       const { vehicleId } = c.req.valid('json')
-      const data = await assignVehicle(id, vehicleId)
+      const data = await assignVehicle(db, id, vehicleId)
       if (!data) return c.json({ error: 'Move not found', code: 'NOT_FOUND' }, 404)
       return c.json({ data })
     } catch {
@@ -185,11 +193,12 @@ movesHandler.post(
 )
 
 movesHandler.get('/:moveId/quotes', async (c) => {
+  const db = c.get('db')
   const moveId = c.req.param('moveId')
   try {
-    const move = await findMoveById(moveId)
+    const move = await findMoveById(db, moveId)
     if (!move) return c.json({ error: 'Move not found', code: 'NOT_FOUND' }, 404)
-    const data = await listQuotesByMoveId(moveId)
+    const data = await listQuotesByMoveId(db, moveId)
     return c.json({ data, meta: { count: data.length } })
   } catch {
     return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)

@@ -9,6 +9,8 @@
  */
 import { describe, it, expect, afterAll, beforeAll } from 'vitest'
 import { db } from '../../db'
+import { createTenantDb } from '../../lib/prisma'
+import type { PrismaClient } from '@prisma/client'
 import {
   createMove,
   findMoveById,
@@ -20,7 +22,11 @@ import {
 
 const hasDb = Boolean(process.env['DATABASE_URL'])
 
+const TEST_TENANT_SLUG = 'test-move-repo'
+
 const createdMoveIds: string[] = []
+let testDb: PrismaClient
+let tenantId: string
 
 afterAll(async () => {
   if (hasDb) {
@@ -52,7 +58,15 @@ describe.skipIf(!hasDb)('MoveRepository (integration)', () => {
   let moveId: string
 
   beforeAll(async () => {
-    const move = await createMove({
+    const tenant = await db.tenant.upsert({
+      where: { slug: TEST_TENANT_SLUG },
+      create: { name: 'Test Tenant (Move Repo)', slug: TEST_TENANT_SLUG },
+      update: {},
+    })
+    tenantId = tenant.id
+    testDb = createTenantDb(db, tenantId) as unknown as PrismaClient
+
+    const move = await createMove(testDb, tenantId, {
       userId: `user-${Date.now()}`,
       scheduledDate: new Date('2025-09-01T08:00:00Z'),
       origin: originAddress,
@@ -67,47 +81,47 @@ describe.skipIf(!hasDb)('MoveRepository (integration)', () => {
   })
 
   it('createMove sets initial status to PENDING', async () => {
-    const move = await findMoveById(moveId)
+    const move = await findMoveById(testDb, moveId)
     expect(move?.status).toBe('PENDING')
   })
 
   it('createMove stores the origin address', async () => {
-    const move = await findMoveById(moveId)
+    const move = await findMoveById(testDb, moveId)
     expect(move?.origin.line1).toBe('1 Origin Rd')
     expect(move?.origin.city).toBe('Austin')
   })
 
   it('createMove stores the destination address', async () => {
-    const move = await findMoveById(moveId)
+    const move = await findMoveById(testDb, moveId)
     expect(move?.destination.line1).toBe('2 Dest Blvd')
     expect(move?.destination.city).toBe('Houston')
   })
 
   it('findMoveById returns null for an unknown id', async () => {
-    const result = await findMoveById('00000000-0000-0000-0000-000000000000')
+    const result = await findMoveById(testDb, '00000000-0000-0000-0000-000000000000')
     expect(result).toBeNull()
   })
 
   it('listMoves includes the created move', async () => {
-    const list = await listMoves({ limit: 100 })
+    const list = await listMoves(testDb, { limit: 100 })
     const found = list.find((m) => m.id === moveId)
     expect(found).toBeDefined()
   })
 
   it('updateMoveStatus transitions PENDING → SCHEDULED', async () => {
-    const updated = await updateMoveStatus(moveId, 'SCHEDULED')
+    const updated = await updateMoveStatus(testDb, moveId, 'SCHEDULED')
     expect(updated?.status).toBe('SCHEDULED')
   })
 
   it('assignCrewMember adds a crew member to the move', async () => {
     const crewMemberId = `crew-test-${Date.now()}`
-    // Upsert a crew member to avoid FK constraint violations
+    // Upsert a crew member to avoid FK constraint violations. tenantId is now required.
     await db.crewMember.upsert({
       where: { id: crewMemberId },
-      create: { id: crewMemberId, name: 'Test Crew', role: 'DRIVER' },
+      create: { id: crewMemberId, tenantId, name: 'Test Crew', role: 'DRIVER', licenceClasses: [] },
       update: {},
     })
-    const result = await assignCrewMember(moveId, crewMemberId)
+    const result = await assignCrewMember(testDb, moveId, crewMemberId)
     expect(result?.assignedCrewIds).toContain(crewMemberId)
 
     // Cleanup
@@ -120,6 +134,7 @@ describe.skipIf(!hasDb)('MoveRepository (integration)', () => {
       where: { id: vehicleId },
       create: {
         id: vehicleId,
+        tenantId,
         registrationPlate: `TST-${Date.now()}`,
         make: 'Ford',
         model: 'Transit',
@@ -128,7 +143,7 @@ describe.skipIf(!hasDb)('MoveRepository (integration)', () => {
       },
       update: {},
     })
-    const result = await assignVehicle(moveId, vehicleId)
+    const result = await assignVehicle(testDb, moveId, vehicleId)
     expect(result?.assignedVehicleIds).toContain(vehicleId)
 
     // Cleanup

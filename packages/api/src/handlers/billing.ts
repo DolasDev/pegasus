@@ -6,6 +6,7 @@ import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
 import { calculateInvoiceBalance } from '@pegasus/domain'
+import type { AppEnv } from '../types'
 import {
   findMoveById,
   findAcceptedQuoteByMoveId,
@@ -29,7 +30,7 @@ const RecordPaymentBody = z.object({
   reference: z.string().min(1).optional(),
 })
 
-export const billingHandler = new Hono()
+export const billingHandler = new Hono<AppEnv>()
 
 billingHandler.post(
   '/',
@@ -39,19 +40,21 @@ billingHandler.post(
     return r.data
   }),
   async (c) => {
+    const db = c.get('db')
+    const tenantId = c.get('tenantId')
     try {
       const body = c.req.valid('json')
       const { moveId } = body
 
-      const move = await findMoveById(moveId)
+      const move = await findMoveById(db, moveId)
       if (!move) return c.json({ error: 'Move not found', code: 'NOT_FOUND' }, 404)
 
-      const existing = await findInvoiceByMoveId(moveId)
+      const existing = await findInvoiceByMoveId(db, moveId)
       if (existing) {
         return c.json({ error: 'Invoice already exists for this move', code: 'CONFLICT' }, 409)
       }
 
-      const quote = await findAcceptedQuoteByMoveId(moveId)
+      const quote = await findAcceptedQuoteByMoveId(db, moveId)
       if (!quote) {
         return c.json(
           { error: 'No accepted quote found for this move', code: 'PRECONDITION_FAILED' },
@@ -59,7 +62,7 @@ billingHandler.post(
         )
       }
 
-      const invoice = await createInvoice({
+      const invoice = await createInvoice(db, tenantId, {
         moveId,
         totalAmount: quote.price.amount,
         totalCurrency: quote.price.currency,
@@ -76,10 +79,11 @@ billingHandler.post(
 )
 
 billingHandler.get('/', async (c) => {
+  const db = c.get('db')
   const limit = Math.min(Number(c.req.query('limit') ?? '50'), 100)
   const offset = Number(c.req.query('offset') ?? '0')
   try {
-    const data = await listInvoices({ limit, offset })
+    const data = await listInvoices(db, { limit, offset })
     return c.json({ data, meta: { count: data.length, limit, offset } })
   } catch {
     return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
@@ -87,9 +91,10 @@ billingHandler.get('/', async (c) => {
 })
 
 billingHandler.get('/:id', async (c) => {
+  const db = c.get('db')
   const id = c.req.param('id')
   try {
-    const invoice = await findInvoiceById(id)
+    const invoice = await findInvoiceById(db, id)
     if (!invoice) return c.json({ error: 'Invoice not found', code: 'NOT_FOUND' }, 404)
     const balance = calculateInvoiceBalance(invoice)
     return c.json({ data: { ...invoice, balance } })
@@ -106,13 +111,14 @@ billingHandler.post(
     return r.data
   }),
   async (c) => {
+    const db = c.get('db')
     const id = c.req.param('id')
     try {
       const body = c.req.valid('json')
-      const invoice = await findInvoiceById(id)
+      const invoice = await findInvoiceById(db, id)
       if (!invoice) return c.json({ error: 'Invoice not found', code: 'NOT_FOUND' }, 404)
 
-      const updated = await recordPayment({
+      const updated = await recordPayment(db, {
         invoiceId: id,
         amount: body.amount,
         method: body.method,

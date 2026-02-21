@@ -6,6 +6,7 @@ import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
 import { canFinalizeQuote } from '@pegasus/domain'
+import type { AppEnv } from '../types'
 import {
   createQuote,
   findQuoteById,
@@ -37,7 +38,7 @@ const AddLineItemBody = z.object({
   currency: z.string().min(1).optional(),
 })
 
-export const quotesHandler = new Hono()
+export const quotesHandler = new Hono<AppEnv>()
 
 quotesHandler.post(
   '/',
@@ -47,9 +48,11 @@ quotesHandler.post(
     return r.data
   }),
   async (c) => {
+    const db = c.get('db')
+    const tenantId = c.get('tenantId')
     try {
       const body = c.req.valid('json')
-      const data = await createQuote({
+      const data = await createQuote(db, tenantId, {
         moveId: body.moveId,
         priceAmount: body.priceAmount,
         validUntil: new Date(body.validUntil),
@@ -70,10 +73,11 @@ quotesHandler.post(
 )
 
 quotesHandler.get('/', async (c) => {
+  const db = c.get('db')
   const limit = Math.min(Number(c.req.query('limit') ?? '50'), 100)
   const offset = Number(c.req.query('offset') ?? '0')
   try {
-    const data = await listQuotes({ limit, offset })
+    const data = await listQuotes(db, { limit, offset })
     return c.json({ data, meta: { count: data.length, limit, offset } })
   } catch {
     return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
@@ -81,9 +85,10 @@ quotesHandler.get('/', async (c) => {
 })
 
 quotesHandler.get('/:id', async (c) => {
+  const db = c.get('db')
   const id = c.req.param('id')
   try {
-    const data = await findQuoteById(id)
+    const data = await findQuoteById(db, id)
     if (!data) return c.json({ error: 'Quote not found', code: 'NOT_FOUND' }, 404)
     return c.json({ data })
   } catch {
@@ -99,10 +104,11 @@ quotesHandler.post(
     return r.data
   }),
   async (c) => {
+    const db = c.get('db')
     const id = c.req.param('id')
     try {
       const body = c.req.valid('json')
-      const quote = await findQuoteById(id)
+      const quote = await findQuoteById(db, id)
       if (!quote) return c.json({ error: 'Quote not found', code: 'NOT_FOUND' }, 404)
       if (quote.status !== 'DRAFT') {
         return c.json(
@@ -110,7 +116,7 @@ quotesHandler.post(
           422,
         )
       }
-      const data = await addLineItem(id, {
+      const data = await addLineItem(db, id, {
         description: body.description,
         quantity: body.quantity,
         unitPrice: body.unitPrice,
@@ -124,9 +130,10 @@ quotesHandler.post(
 )
 
 quotesHandler.post('/:id/finalize', async (c) => {
+  const db = c.get('db')
   const id = c.req.param('id')
   try {
-    const quote = await findQuoteById(id)
+    const quote = await findQuoteById(db, id)
     if (!quote) return c.json({ error: 'Quote not found', code: 'NOT_FOUND' }, 404)
     if (quote.status !== 'DRAFT') {
       return c.json(
@@ -140,7 +147,7 @@ quotesHandler.post('/:id/finalize', async (c) => {
         422,
       )
     }
-    const data = await finalizeQuote(id)
+    const data = await finalizeQuote(db, id)
     return c.json({ data })
   } catch {
     return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)

@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client'
+import type { PrismaClient, Prisma } from '@prisma/client'
 import type { Move, Stop, MoveStatus } from '@pegasus/domain'
 import {
   toMoveId,
@@ -9,7 +9,6 @@ import {
   toVehicleId,
   toAddressId,
 } from '@pegasus/domain'
-import { db } from '../db'
 
 // ---------------------------------------------------------------------------
 // Include shape
@@ -97,11 +96,15 @@ export type CreateMoveInput = {
   destination: { line1: string; line2?: string; city: string; state: string; postalCode: string; country: string }
 }
 
-export async function createMove(input: CreateMoveInput): Promise<Move> {
+export async function createMove(db: PrismaClient, tenantId: string, input: CreateMoveInput): Promise<Move> {
   // Use the relation-based "connect" for customerId to stay in MoveCreateInput
   // territory (required when also using nested relation creates for addresses).
+  // Use relation-based inputs (MoveCreateInput) throughout to avoid the
+  // Without<> constraint conflict with exactOptionalPropertyTypes.
+  // tenant/customer/origin/destination all use { connect } or { create } forms.
   const row = await db.move.create({
     data: {
+      tenant: { connect: { id: tenantId } },
       userId: input.userId,
       scheduledDate: input.scheduledDate,
       origin: { create: { ...input.origin } },
@@ -115,12 +118,12 @@ export async function createMove(input: CreateMoveInput): Promise<Move> {
   return mapMove(row)
 }
 
-export async function findMoveById(id: string): Promise<Move | null> {
+export async function findMoveById(db: PrismaClient, id: string): Promise<Move | null> {
   const row = await db.move.findUnique({ where: { id }, include: moveInclude })
   return row ? mapMove(row) : null
 }
 
-export async function listMovesByStatus(status: MoveStatus): Promise<Move[]> {
+export async function listMovesByStatus(db: PrismaClient, status: MoveStatus): Promise<Move[]> {
   const rows = await db.move.findMany({
     where: { status },
     include: moveInclude,
@@ -129,14 +132,17 @@ export async function listMovesByStatus(status: MoveStatus): Promise<Move[]> {
   return rows.map(mapMove)
 }
 
-export async function updateMoveStatus(id: string, status: MoveStatus): Promise<Move | null> {
+export async function updateMoveStatus(db: PrismaClient, id: string, status: MoveStatus): Promise<Move | null> {
   // Update then re-fetch with full includes so the mapper has all required fields.
   await db.move.update({ where: { id }, data: { status } })
-  return findMoveById(id)
+  return findMoveById(db, id)
 }
 
 /** Lists all moves, ordered by scheduled date ascending, with optional pagination. */
-export async function listMoves(opts: { limit?: number; offset?: number } = {}): Promise<Move[]> {
+export async function listMoves(
+  db: PrismaClient,
+  opts: { limit?: number; offset?: number } = {},
+): Promise<Move[]> {
   const rows = await db.move.findMany({
     include: moveInclude,
     orderBy: { scheduledDate: 'asc' },
@@ -147,7 +153,11 @@ export async function listMoves(opts: { limit?: number; offset?: number } = {}):
 }
 
 /** Assigns a crew member to a move. Idempotent — duplicate assignments are ignored. */
-export async function assignCrewMember(moveId: string, crewMemberId: string): Promise<Move | null> {
+export async function assignCrewMember(
+  db: PrismaClient,
+  moveId: string,
+  crewMemberId: string,
+): Promise<Move | null> {
   const move = await db.move.findUnique({ where: { id: moveId }, select: { id: true } })
   if (!move) return null
   await db.moveCrewAssignment.upsert({
@@ -155,11 +165,15 @@ export async function assignCrewMember(moveId: string, crewMemberId: string): Pr
     create: { moveId, crewMemberId },
     update: {},
   })
-  return findMoveById(moveId)
+  return findMoveById(db, moveId)
 }
 
 /** Assigns a vehicle to a move. Idempotent — duplicate assignments are ignored. */
-export async function assignVehicle(moveId: string, vehicleId: string): Promise<Move | null> {
+export async function assignVehicle(
+  db: PrismaClient,
+  moveId: string,
+  vehicleId: string,
+): Promise<Move | null> {
   const move = await db.move.findUnique({ where: { id: moveId }, select: { id: true } })
   if (!move) return null
   await db.moveVehicleAssignment.upsert({
@@ -167,5 +181,5 @@ export async function assignVehicle(moveId: string, vehicleId: string): Promise<
     create: { moveId, vehicleId },
     update: {},
   })
-  return findMoveById(moveId)
+  return findMoveById(db, moveId)
 }

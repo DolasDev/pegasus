@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client'
+import type { PrismaClient, Prisma } from '@prisma/client'
 import type { Customer, Contact } from '@pegasus/domain'
 import {
   toCustomerId,
@@ -7,7 +7,6 @@ import {
   toAccountId,
   toLeadSourceId,
 } from '@pegasus/domain'
-import { db } from '../db'
 
 // ---------------------------------------------------------------------------
 // Include shape used in all customer queries
@@ -72,13 +71,20 @@ export type CreateContactInput = {
   isPrimary?: boolean
 }
 
-/** Persists a new customer together with an initial primary contact. */
+/**
+ * Persists a new customer together with an initial primary contact.
+ * tenantId must be provided explicitly; the Prisma extension also injects it
+ * at runtime as a defence-in-depth measure.
+ */
 export async function createCustomer(
+  db: PrismaClient,
+  tenantId: string,
   input: CreateCustomerInput,
   primaryContact: CreateContactInput,
 ): Promise<Customer> {
   const row = await db.customer.create({
     data: {
+      tenantId,
       userId: input.userId,
       firstName: input.firstName,
       lastName: input.lastName,
@@ -102,19 +108,25 @@ export async function createCustomer(
 }
 
 /** Returns a customer by ID, including all contacts. Returns null if not found. */
-export async function findCustomerById(id: string): Promise<Customer | null> {
+export async function findCustomerById(db: PrismaClient, id: string): Promise<Customer | null> {
   const row = await db.customer.findUnique({ where: { id }, include: customerInclude })
   return row ? mapCustomer(row) : null
 }
 
-/** Returns a customer by email address. Returns null if not found. */
-export async function findCustomerByEmail(email: string): Promise<Customer | null> {
-  const row = await db.customer.findUnique({ where: { email }, include: customerInclude })
+/**
+ * Returns a customer by email address within the current tenant.
+ * Uses findFirst because email is only unique per-tenant (not globally).
+ */
+export async function findCustomerByEmail(db: PrismaClient, email: string): Promise<Customer | null> {
+  const row = await db.customer.findFirst({ where: { email }, include: customerInclude })
   return row ? mapCustomer(row) : null
 }
 
 /** Lists all customers, newest first. */
-export async function listCustomers(opts: { limit?: number; offset?: number } = {}): Promise<Customer[]> {
+export async function listCustomers(
+  db: PrismaClient,
+  opts: { limit?: number; offset?: number } = {},
+): Promise<Customer[]> {
   const rows = await db.customer.findMany({
     include: customerInclude,
     orderBy: { createdAt: 'desc' },
@@ -124,8 +136,8 @@ export async function listCustomers(opts: { limit?: number; offset?: number } = 
   return rows.map(mapCustomer)
 }
 
-/** Deletes a customer and all cascading records. Used only in tests. */
-export async function deleteCustomer(id: string): Promise<void> {
+/** Deletes a customer and all cascading records. */
+export async function deleteCustomer(db: PrismaClient, id: string): Promise<void> {
   await db.customer.delete({ where: { id } })
 }
 
@@ -137,7 +149,11 @@ export type UpdateCustomerInput = {
 }
 
 /** Updates mutable fields on a customer. Returns null if not found. */
-export async function updateCustomer(id: string, input: UpdateCustomerInput): Promise<Customer | null> {
+export async function updateCustomer(
+  db: PrismaClient,
+  id: string,
+  input: UpdateCustomerInput,
+): Promise<Customer | null> {
   const exists = await db.customer.findUnique({ where: { id }, select: { id: true } })
   if (!exists) return null
   await db.customer.update({
@@ -149,11 +165,15 @@ export async function updateCustomer(id: string, input: UpdateCustomerInput): Pr
       ...(input.phone != null ? { phone: input.phone } : {}),
     },
   })
-  return findCustomerById(id)
+  return findCustomerById(db, id)
 }
 
-/** Adds a new contact to an existing customer. */
-export async function createContact(customerId: string, input: CreateContactInput): Promise<Contact> {
+/** Adds a new contact to an existing customer. Contact inherits tenant scope from its customer. */
+export async function createContact(
+  db: PrismaClient,
+  customerId: string,
+  input: CreateContactInput,
+): Promise<Contact> {
   const row = await db.contact.create({
     data: {
       customerId,

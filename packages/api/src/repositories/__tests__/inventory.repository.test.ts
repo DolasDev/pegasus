@@ -9,6 +9,8 @@
  */
 import { describe, it, expect, afterAll, beforeAll } from 'vitest'
 import { db } from '../../db'
+import { createTenantDb } from '../../lib/prisma'
+import type { PrismaClient } from '@prisma/client'
 import { createMove } from '../move.repository'
 import {
   createRoom,
@@ -19,7 +21,10 @@ import {
 
 const hasDb = Boolean(process.env['DATABASE_URL'])
 
+const TEST_TENANT_SLUG = 'test-inventory-repo'
+
 const createdMoveIds: string[] = []
+let testDb: PrismaClient
 
 afterAll(async () => {
   if (hasDb) {
@@ -48,9 +53,18 @@ describe.skipIf(!hasDb)('InventoryRepository (integration)', () => {
 
   let moveId: string
   let roomId: string
+  let tenantId: string
 
   beforeAll(async () => {
-    const move = await createMove({
+    const tenant = await db.tenant.upsert({
+      where: { slug: TEST_TENANT_SLUG },
+      create: { name: 'Test Tenant (Inventory Repo)', slug: TEST_TENANT_SLUG },
+      update: {},
+    })
+    tenantId = tenant.id
+    testDb = createTenantDb(db, tenantId) as unknown as PrismaClient
+
+    const move = await createMove(testDb, tenantId, {
       userId: `user-inventory-${Date.now()}`,
       scheduledDate: new Date('2025-11-01T07:00:00Z'),
       origin,
@@ -61,31 +75,31 @@ describe.skipIf(!hasDb)('InventoryRepository (integration)', () => {
   })
 
   it('createRoom returns a room with a valid id', async () => {
-    const room = await createRoom({ moveId, name: 'Kitchen' })
+    const room = await createRoom(testDb, tenantId, { moveId, name: 'Kitchen' })
     roomId = room.id
     expect(roomId).toBeTruthy()
     expect(room.name).toBe('Kitchen')
   })
 
   it('createRoom starts with no items', async () => {
-    const room = await findRoomById(roomId)
+    const room = await findRoomById(testDb, roomId)
     expect(room?.items).toHaveLength(0)
   })
 
   it('findRoomById returns null for an unknown id', async () => {
-    const result = await findRoomById('00000000-0000-0000-0000-000000000000')
+    const result = await findRoomById(testDb, '00000000-0000-0000-0000-000000000000')
     expect(result).toBeNull()
   })
 
   it('listRoomsByMoveId returns the created room', async () => {
-    const rooms = await listRoomsByMoveId(moveId)
+    const rooms = await listRoomsByMoveId(testDb, moveId)
     const found = rooms.find((r) => r.id === roomId)
     expect(found).toBeDefined()
     expect(found?.name).toBe('Kitchen')
   })
 
   it('addItem appends an item to the room', async () => {
-    const updated = await addItem(roomId, {
+    const updated = await addItem(testDb, roomId, {
       name: 'Refrigerator',
       quantity: 1,
     })
@@ -95,7 +109,7 @@ describe.skipIf(!hasDb)('InventoryRepository (integration)', () => {
   })
 
   it('addItem stores optional fields correctly', async () => {
-    const updated = await addItem(roomId, {
+    const updated = await addItem(testDb, roomId, {
       name: 'Microwave',
       description: 'Samsung 1.6 cu ft',
       quantity: 1,
@@ -109,14 +123,14 @@ describe.skipIf(!hasDb)('InventoryRepository (integration)', () => {
   })
 
   it('addItem returns null for an unknown room id', async () => {
-    const result = await addItem('00000000-0000-0000-0000-000000000000', { name: 'Ghost item' })
+    const result = await addItem(testDb, '00000000-0000-0000-0000-000000000000', { name: 'Ghost item' })
     expect(result).toBeNull()
   })
 
   it('multiple rooms can be created for the same move', async () => {
-    await createRoom({ moveId, name: 'Bedroom' })
-    await createRoom({ moveId, name: 'Living Room' })
-    const rooms = await listRoomsByMoveId(moveId)
+    await createRoom(testDb, tenantId, { moveId, name: 'Bedroom' })
+    await createRoom(testDb, tenantId, { moveId, name: 'Living Room' })
+    const rooms = await listRoomsByMoveId(testDb, moveId)
     expect(rooms.length).toBeGreaterThanOrEqual(3)
   })
 })

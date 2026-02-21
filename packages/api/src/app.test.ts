@@ -10,6 +10,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // ---------------------------------------------------------------------------
 // Mock the repository module — hoisted above imports by vitest
 // ---------------------------------------------------------------------------
+// Bypass the tenant middleware — repositories are fully mocked so the db value
+// passed via context is never used. We just need tenantId and db to be set.
+vi.mock('./middleware/tenant', () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tenantMiddleware: async (c: any, next: () => Promise<void>) => {
+    c.set('tenantId', 'test-tenant-id')
+    c.set('db', {})
+    await next()
+  },
+}))
+
 vi.mock('./repositories', () => ({
   // customer
   createCustomer: vi.fn(),
@@ -190,7 +201,7 @@ describe('POST /customers', () => {
   it('returns 201 with the created customer', async () => {
     vi.mocked(repos.createCustomer).mockResolvedValue(mockCustomer as never)
 
-    const res = await app.request('/customers', {
+    const res = await app.request('/api/v1/customers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -207,7 +218,7 @@ describe('POST /customers', () => {
   })
 
   it('returns 400 for a missing required field', async () => {
-    const res = await app.request('/customers', {
+    const res = await app.request('/api/v1/customers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ firstName: 'Jane' }), // missing email, lastName, userId, primaryContact
@@ -222,7 +233,7 @@ describe('GET /customers', () => {
   it('returns 200 with an empty list', async () => {
     vi.mocked(repos.listCustomers).mockResolvedValue([])
 
-    const res = await app.request('/customers')
+    const res = await app.request('/api/v1/customers')
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
     expect(Array.isArray(body['data'])).toBe(true)
@@ -232,7 +243,7 @@ describe('GET /customers', () => {
   it('returns the customer list with pagination meta', async () => {
     vi.mocked(repos.listCustomers).mockResolvedValue([mockCustomer] as never)
 
-    const res = await app.request('/customers?limit=10&offset=0')
+    const res = await app.request('/api/v1/customers?limit=10&offset=0')
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
     expect((body['data'] as unknown[]).length).toBe(1)
@@ -244,7 +255,7 @@ describe('GET /customers/:id', () => {
   it('returns 200 with the customer', async () => {
     vi.mocked(repos.findCustomerById).mockResolvedValue(mockCustomer as never)
 
-    const res = await app.request('/customers/cust-1')
+    const res = await app.request('/api/v1/customers/cust-1')
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
     expect((body['data'] as Record<string, unknown>)['email']).toBe('jane@example.com')
@@ -253,7 +264,7 @@ describe('GET /customers/:id', () => {
   it('returns 404 when the customer is not found', async () => {
     vi.mocked(repos.findCustomerById).mockResolvedValue(null)
 
-    const res = await app.request('/customers/unknown')
+    const res = await app.request('/api/v1/customers/unknown')
     expect(res.status).toBe(404)
     const body = (await res.json()) as Record<string, unknown>
     expect(body['code']).toBe('NOT_FOUND')
@@ -265,7 +276,7 @@ describe('PUT /customers/:id', () => {
     const updated = { ...mockCustomer, firstName: 'Janet' }
     vi.mocked(repos.updateCustomer).mockResolvedValue(updated as never)
 
-    const res = await app.request('/customers/cust-1', {
+    const res = await app.request('/api/v1/customers/cust-1', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ firstName: 'Janet' }),
@@ -278,7 +289,7 @@ describe('PUT /customers/:id', () => {
   it('returns 404 when the customer does not exist', async () => {
     vi.mocked(repos.updateCustomer).mockResolvedValue(null)
 
-    const res = await app.request('/customers/unknown', {
+    const res = await app.request('/api/v1/customers/unknown', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ firstName: 'X' }),
@@ -292,14 +303,14 @@ describe('DELETE /customers/:id', () => {
     vi.mocked(repos.findCustomerById).mockResolvedValue(mockCustomer as never)
     vi.mocked(repos.deleteCustomer).mockResolvedValue(undefined as never)
 
-    const res = await app.request('/customers/cust-1', { method: 'DELETE' })
+    const res = await app.request('/api/v1/customers/cust-1', { method: 'DELETE' })
     expect(res.status).toBe(204)
   })
 
   it('returns 404 when the customer is not found', async () => {
     vi.mocked(repos.findCustomerById).mockResolvedValue(null)
 
-    const res = await app.request('/customers/unknown', { method: 'DELETE' })
+    const res = await app.request('/api/v1/customers/unknown', { method: 'DELETE' })
     expect(res.status).toBe(404)
   })
 })
@@ -309,7 +320,7 @@ describe('POST /customers/:id/contacts', () => {
     vi.mocked(repos.findCustomerById).mockResolvedValue(mockCustomer as never)
     vi.mocked(repos.createContact).mockResolvedValue(mockContact as never)
 
-    const res = await app.request('/customers/cust-1/contacts', {
+    const res = await app.request('/api/v1/customers/cust-1/contacts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ firstName: 'John', lastName: 'Doe', email: 'john@example.com' }),
@@ -322,7 +333,7 @@ describe('POST /customers/:id/contacts', () => {
   it('returns 404 when the parent customer is not found', async () => {
     vi.mocked(repos.findCustomerById).mockResolvedValue(null)
 
-    const res = await app.request('/customers/unknown/contacts', {
+    const res = await app.request('/api/v1/customers/unknown/contacts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ firstName: 'John', lastName: 'Doe', email: 'john@example.com' }),
@@ -331,7 +342,7 @@ describe('POST /customers/:id/contacts', () => {
   })
 
   it('returns 400 when the contact body is invalid', async () => {
-    const res = await app.request('/customers/cust-1/contacts', {
+    const res = await app.request('/api/v1/customers/cust-1/contacts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ firstName: 'John' }), // missing lastName and email
@@ -345,7 +356,7 @@ describe('GET /customers/:customerId/quotes', () => {
     vi.mocked(repos.findCustomerById).mockResolvedValue(mockCustomer as never)
     vi.mocked(repos.listQuotesByCustomerId).mockResolvedValue([mockQuote] as never)
 
-    const res = await app.request('/customers/cust-1/quotes')
+    const res = await app.request('/api/v1/customers/cust-1/quotes')
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
     expect(Array.isArray(body['data'])).toBe(true)
@@ -354,7 +365,7 @@ describe('GET /customers/:customerId/quotes', () => {
   it('returns 404 when the customer is not found', async () => {
     vi.mocked(repos.findCustomerById).mockResolvedValue(null)
 
-    const res = await app.request('/customers/unknown/quotes')
+    const res = await app.request('/api/v1/customers/unknown/quotes')
     expect(res.status).toBe(404)
   })
 
@@ -362,7 +373,7 @@ describe('GET /customers/:customerId/quotes', () => {
     const noPrimary = { ...mockCustomer, contacts: [{ ...mockContact, isPrimary: false }] }
     vi.mocked(repos.findCustomerById).mockResolvedValue(noPrimary as never)
 
-    const res = await app.request('/customers/cust-1/quotes')
+    const res = await app.request('/api/v1/customers/cust-1/quotes')
     expect(res.status).toBe(422)
     const body = (await res.json()) as Record<string, unknown>
     expect(body['code']).toBe('INVALID_STATE')
@@ -377,7 +388,7 @@ describe('POST /moves', () => {
   it('returns 201 with the created move', async () => {
     vi.mocked(repos.createMove).mockResolvedValue(mockMove as never)
 
-    const res = await app.request('/moves', {
+    const res = await app.request('/api/v1/moves', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -393,7 +404,7 @@ describe('POST /moves', () => {
   })
 
   it('returns 400 for an invalid body', async () => {
-    const res = await app.request('/moves', {
+    const res = await app.request('/api/v1/moves', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: 'user-1' }), // missing scheduledDate, origin, destination
@@ -408,7 +419,7 @@ describe('GET /moves', () => {
   it('returns 200 with an empty list', async () => {
     vi.mocked(repos.listMoves).mockResolvedValue([])
 
-    const res = await app.request('/moves')
+    const res = await app.request('/api/v1/moves')
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
     expect(Array.isArray(body['data'])).toBe(true)
@@ -417,7 +428,7 @@ describe('GET /moves', () => {
   it('returns moves with pagination meta', async () => {
     vi.mocked(repos.listMoves).mockResolvedValue([mockMove] as never)
 
-    const res = await app.request('/moves?limit=20&offset=0')
+    const res = await app.request('/api/v1/moves?limit=20&offset=0')
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
     expect((body['data'] as unknown[]).length).toBe(1)
@@ -429,7 +440,7 @@ describe('GET /moves/:id', () => {
   it('returns 200 with the move', async () => {
     vi.mocked(repos.findMoveById).mockResolvedValue(mockMove as never)
 
-    const res = await app.request('/moves/move-1')
+    const res = await app.request('/api/v1/moves/move-1')
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
     expect((body['data'] as Record<string, unknown>)['status']).toBe('PENDING')
@@ -438,7 +449,7 @@ describe('GET /moves/:id', () => {
   it('returns 404 when the move is not found', async () => {
     vi.mocked(repos.findMoveById).mockResolvedValue(null)
 
-    const res = await app.request('/moves/unknown-id')
+    const res = await app.request('/api/v1/moves/unknown-id')
     expect(res.status).toBe(404)
     const body = (await res.json()) as Record<string, unknown>
     expect(body['code']).toBe('NOT_FOUND')
@@ -451,7 +462,7 @@ describe('PUT /moves/:id/status', () => {
     const scheduled = { ...mockMove, status: 'SCHEDULED' as const }
     vi.mocked(repos.updateMoveStatus).mockResolvedValue(scheduled as never)
 
-    const res = await app.request('/moves/move-1/status', {
+    const res = await app.request('/api/v1/moves/move-1/status', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'SCHEDULED' }),
@@ -464,7 +475,7 @@ describe('PUT /moves/:id/status', () => {
   it('returns 422 for an illegal state transition (PENDING → COMPLETED)', async () => {
     vi.mocked(repos.findMoveById).mockResolvedValue(mockMove as never)
 
-    const res = await app.request('/moves/move-1/status', {
+    const res = await app.request('/api/v1/moves/move-1/status', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'COMPLETED' }),
@@ -478,7 +489,7 @@ describe('PUT /moves/:id/status', () => {
     const scheduledNoCrew = { ...mockMove, status: 'SCHEDULED' as const, assignedCrewIds: [] }
     vi.mocked(repos.findMoveById).mockResolvedValue(scheduledNoCrew as never)
 
-    const res = await app.request('/moves/move-1/status', {
+    const res = await app.request('/api/v1/moves/move-1/status', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'IN_PROGRESS' }),
@@ -493,7 +504,7 @@ describe('PUT /moves/:id/status', () => {
     const inProgress = { ...mockMoveWithCrew, status: 'IN_PROGRESS' as const }
     vi.mocked(repos.updateMoveStatus).mockResolvedValue(inProgress as never)
 
-    const res = await app.request('/moves/move-1/status', {
+    const res = await app.request('/api/v1/moves/move-1/status', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'IN_PROGRESS' }),
@@ -504,7 +515,7 @@ describe('PUT /moves/:id/status', () => {
   it('returns 404 when the move is not found', async () => {
     vi.mocked(repos.findMoveById).mockResolvedValue(null)
 
-    const res = await app.request('/moves/unknown/status', {
+    const res = await app.request('/api/v1/moves/unknown/status', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'SCHEDULED' }),
@@ -513,7 +524,7 @@ describe('PUT /moves/:id/status', () => {
   })
 
   it('returns 400 for an invalid status value', async () => {
-    const res = await app.request('/moves/move-1/status', {
+    const res = await app.request('/api/v1/moves/move-1/status', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'INVALID_STATUS' }),
@@ -528,7 +539,7 @@ describe('POST /moves/:id/crew', () => {
   it('returns 200 with the updated move', async () => {
     vi.mocked(repos.assignCrewMember).mockResolvedValue(mockMoveWithCrew as never)
 
-    const res = await app.request('/moves/move-1/crew', {
+    const res = await app.request('/api/v1/moves/move-1/crew', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ crewMemberId: 'crew-1' }),
@@ -541,7 +552,7 @@ describe('POST /moves/:id/crew', () => {
   it('returns 404 when the move is not found', async () => {
     vi.mocked(repos.assignCrewMember).mockResolvedValue(null)
 
-    const res = await app.request('/moves/unknown/crew', {
+    const res = await app.request('/api/v1/moves/unknown/crew', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ crewMemberId: 'crew-1' }),
@@ -555,7 +566,7 @@ describe('POST /moves/:id/vehicles', () => {
     const withVehicle = { ...mockMove, assignedVehicleIds: ['vehicle-1'] }
     vi.mocked(repos.assignVehicle).mockResolvedValue(withVehicle as never)
 
-    const res = await app.request('/moves/move-1/vehicles', {
+    const res = await app.request('/api/v1/moves/move-1/vehicles', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ vehicleId: 'vehicle-1' }),
@@ -566,7 +577,7 @@ describe('POST /moves/:id/vehicles', () => {
   it('returns 404 when the move is not found', async () => {
     vi.mocked(repos.assignVehicle).mockResolvedValue(null)
 
-    const res = await app.request('/moves/unknown/vehicles', {
+    const res = await app.request('/api/v1/moves/unknown/vehicles', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ vehicleId: 'vehicle-1' }),
@@ -580,7 +591,7 @@ describe('GET /moves/:moveId/quotes', () => {
     vi.mocked(repos.findMoveById).mockResolvedValue(mockMove as never)
     vi.mocked(repos.listQuotesByMoveId).mockResolvedValue([mockQuote] as never)
 
-    const res = await app.request('/moves/move-1/quotes')
+    const res = await app.request('/api/v1/moves/move-1/quotes')
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
     expect(Array.isArray(body['data'])).toBe(true)
@@ -589,7 +600,7 @@ describe('GET /moves/:moveId/quotes', () => {
   it('returns 404 when the move is not found', async () => {
     vi.mocked(repos.findMoveById).mockResolvedValue(null)
 
-    const res = await app.request('/moves/unknown/quotes')
+    const res = await app.request('/api/v1/moves/unknown/quotes')
     expect(res.status).toBe(404)
   })
 })
@@ -602,7 +613,7 @@ describe('POST /quotes', () => {
   it('returns 201 with the created quote', async () => {
     vi.mocked(repos.createQuote).mockResolvedValue(mockQuote as never)
 
-    const res = await app.request('/quotes', {
+    const res = await app.request('/api/v1/quotes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -617,7 +628,7 @@ describe('POST /quotes', () => {
   })
 
   it('returns 400 for an invalid body', async () => {
-    const res = await app.request('/quotes', {
+    const res = await app.request('/api/v1/quotes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ moveId: 'move-1' }), // missing priceAmount and validUntil
@@ -632,7 +643,7 @@ describe('GET /quotes/:id', () => {
   it('returns 200 with the quote', async () => {
     vi.mocked(repos.findQuoteById).mockResolvedValue(mockQuote as never)
 
-    const res = await app.request('/quotes/quote-1')
+    const res = await app.request('/api/v1/quotes/quote-1')
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
     expect((body['data'] as Record<string, unknown>)['status']).toBe('DRAFT')
@@ -641,7 +652,7 @@ describe('GET /quotes/:id', () => {
   it('returns 404 when the quote is not found', async () => {
     vi.mocked(repos.findQuoteById).mockResolvedValue(null)
 
-    const res = await app.request('/quotes/unknown')
+    const res = await app.request('/api/v1/quotes/unknown')
     expect(res.status).toBe(404)
     const body = (await res.json()) as Record<string, unknown>
     expect(body['code']).toBe('NOT_FOUND')
@@ -653,7 +664,7 @@ describe('POST /quotes/:id/line-items', () => {
     vi.mocked(repos.findQuoteById).mockResolvedValue(mockQuote as never)
     vi.mocked(repos.addLineItem).mockResolvedValue(mockQuoteWithLineItem as never)
 
-    const res = await app.request('/quotes/quote-1/line-items', {
+    const res = await app.request('/api/v1/quotes/quote-1/line-items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ description: 'Labor', quantity: 2, unitPrice: 750 }),
@@ -666,7 +677,7 @@ describe('POST /quotes/:id/line-items', () => {
   it('returns 422 when the quote is not in DRAFT status', async () => {
     vi.mocked(repos.findQuoteById).mockResolvedValue({ ...mockQuote, status: 'SENT' } as never)
 
-    const res = await app.request('/quotes/quote-1/line-items', {
+    const res = await app.request('/api/v1/quotes/quote-1/line-items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ description: 'Labor', quantity: 2, unitPrice: 750 }),
@@ -679,7 +690,7 @@ describe('POST /quotes/:id/line-items', () => {
   it('returns 404 when the quote is not found', async () => {
     vi.mocked(repos.findQuoteById).mockResolvedValue(null)
 
-    const res = await app.request('/quotes/unknown/line-items', {
+    const res = await app.request('/api/v1/quotes/unknown/line-items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ description: 'Labor', quantity: 2, unitPrice: 750 }),
@@ -688,7 +699,7 @@ describe('POST /quotes/:id/line-items', () => {
   })
 
   it('returns 400 for an invalid line item body', async () => {
-    const res = await app.request('/quotes/quote-1/line-items', {
+    const res = await app.request('/api/v1/quotes/quote-1/line-items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ description: 'Labor' }), // missing quantity and unitPrice
@@ -702,7 +713,7 @@ describe('POST /quotes/:id/finalize', () => {
     vi.mocked(repos.findQuoteById).mockResolvedValue(mockQuoteWithLineItem as never)
     vi.mocked(repos.finalizeQuote).mockResolvedValue({ ...mockQuoteWithLineItem, status: 'SENT' } as never)
 
-    const res = await app.request('/quotes/quote-1/finalize', { method: 'POST' })
+    const res = await app.request('/api/v1/quotes/quote-1/finalize', { method: 'POST' })
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
     expect((body['data'] as Record<string, unknown>)['status']).toBe('SENT')
@@ -711,7 +722,7 @@ describe('POST /quotes/:id/finalize', () => {
   it('returns 422 when the quote has no line items', async () => {
     vi.mocked(repos.findQuoteById).mockResolvedValue(mockQuote as never) // empty lineItems
 
-    const res = await app.request('/quotes/quote-1/finalize', { method: 'POST' })
+    const res = await app.request('/api/v1/quotes/quote-1/finalize', { method: 'POST' })
     expect(res.status).toBe(422)
     const body = (await res.json()) as Record<string, unknown>
     expect(body['code']).toBe('INVALID_STATE')
@@ -720,7 +731,7 @@ describe('POST /quotes/:id/finalize', () => {
   it('returns 422 when the quote is already finalized (not DRAFT)', async () => {
     vi.mocked(repos.findQuoteById).mockResolvedValue({ ...mockQuoteWithLineItem, status: 'SENT' } as never)
 
-    const res = await app.request('/quotes/quote-1/finalize', { method: 'POST' })
+    const res = await app.request('/api/v1/quotes/quote-1/finalize', { method: 'POST' })
     expect(res.status).toBe(422)
     const body = (await res.json()) as Record<string, unknown>
     expect(body['code']).toBe('INVALID_STATE')
@@ -729,7 +740,7 @@ describe('POST /quotes/:id/finalize', () => {
   it('returns 404 when the quote is not found', async () => {
     vi.mocked(repos.findQuoteById).mockResolvedValue(null)
 
-    const res = await app.request('/quotes/unknown/finalize', { method: 'POST' })
+    const res = await app.request('/api/v1/quotes/unknown/finalize', { method: 'POST' })
     expect(res.status).toBe(404)
   })
 })
@@ -743,7 +754,7 @@ describe('GET /moves/:moveId/inventory', () => {
     vi.mocked(repos.findMoveById).mockResolvedValue(mockMove as never)
     vi.mocked(repos.listRoomsByMoveId).mockResolvedValue([mockRoom] as never)
 
-    const res = await app.request('/moves/move-1/inventory')
+    const res = await app.request('/api/v1/moves/move-1/inventory')
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
     expect(Array.isArray(body['data'])).toBe(true)
@@ -753,7 +764,7 @@ describe('GET /moves/:moveId/inventory', () => {
   it('returns 404 when the move is not found', async () => {
     vi.mocked(repos.findMoveById).mockResolvedValue(null)
 
-    const res = await app.request('/moves/unknown/inventory')
+    const res = await app.request('/api/v1/moves/unknown/inventory')
     expect(res.status).toBe(404)
   })
 })
@@ -763,7 +774,7 @@ describe('POST /moves/:moveId/rooms', () => {
     vi.mocked(repos.findMoveById).mockResolvedValue(mockMove as never)
     vi.mocked(repos.createRoom).mockResolvedValue(mockRoom as never)
 
-    const res = await app.request('/moves/move-1/rooms', {
+    const res = await app.request('/api/v1/moves/move-1/rooms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Living Room' }),
@@ -776,7 +787,7 @@ describe('POST /moves/:moveId/rooms', () => {
   it('returns 404 when the move is not found', async () => {
     vi.mocked(repos.findMoveById).mockResolvedValue(null)
 
-    const res = await app.request('/moves/unknown/rooms', {
+    const res = await app.request('/api/v1/moves/unknown/rooms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Living Room' }),
@@ -785,7 +796,7 @@ describe('POST /moves/:moveId/rooms', () => {
   })
 
   it('returns 400 when the room name is missing', async () => {
-    const res = await app.request('/moves/move-1/rooms', {
+    const res = await app.request('/api/v1/moves/move-1/rooms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
@@ -804,7 +815,7 @@ describe('POST /moves/:moveId/rooms/:roomId/items', () => {
     }
     vi.mocked(repos.addItem).mockResolvedValue(roomWithItem as never)
 
-    const res = await app.request('/moves/move-1/rooms/room-1/items', {
+    const res = await app.request('/api/v1/moves/move-1/rooms/room-1/items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Sofa' }),
@@ -818,7 +829,7 @@ describe('POST /moves/:moveId/rooms/:roomId/items', () => {
   it('returns 404 when the move is not found', async () => {
     vi.mocked(repos.findMoveById).mockResolvedValue(null)
 
-    const res = await app.request('/moves/unknown/rooms/room-1/items', {
+    const res = await app.request('/api/v1/moves/unknown/rooms/room-1/items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Sofa' }),
@@ -830,7 +841,7 @@ describe('POST /moves/:moveId/rooms/:roomId/items', () => {
     vi.mocked(repos.findMoveById).mockResolvedValue(mockMove as never)
     vi.mocked(repos.findRoomById).mockResolvedValue(null)
 
-    const res = await app.request('/moves/move-1/rooms/unknown/items', {
+    const res = await app.request('/api/v1/moves/move-1/rooms/unknown/items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Sofa' }),
@@ -839,7 +850,7 @@ describe('POST /moves/:moveId/rooms/:roomId/items', () => {
   })
 
   it('returns 400 when the item name is missing', async () => {
-    const res = await app.request('/moves/move-1/rooms/room-1/items', {
+    const res = await app.request('/api/v1/moves/move-1/rooms/room-1/items', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),
@@ -859,7 +870,7 @@ describe('POST /invoices', () => {
     vi.mocked(repos.findAcceptedQuoteByMoveId).mockResolvedValue(mockAcceptedQuote as never)
     vi.mocked(repos.createInvoice).mockResolvedValue(mockInvoice as never)
 
-    const res = await app.request('/invoices', {
+    const res = await app.request('/api/v1/invoices', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ moveId: 'move-1' }),
@@ -874,7 +885,7 @@ describe('POST /invoices', () => {
   it('returns 404 when the move is not found', async () => {
     vi.mocked(repos.findMoveById).mockResolvedValue(null)
 
-    const res = await app.request('/invoices', {
+    const res = await app.request('/api/v1/invoices', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ moveId: 'unknown' }),
@@ -886,7 +897,7 @@ describe('POST /invoices', () => {
     vi.mocked(repos.findMoveById).mockResolvedValue(mockMove as never)
     vi.mocked(repos.findInvoiceByMoveId).mockResolvedValue(mockInvoice as never)
 
-    const res = await app.request('/invoices', {
+    const res = await app.request('/api/v1/invoices', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ moveId: 'move-1' }),
@@ -901,7 +912,7 @@ describe('POST /invoices', () => {
     vi.mocked(repos.findInvoiceByMoveId).mockResolvedValue(null)
     vi.mocked(repos.findAcceptedQuoteByMoveId).mockResolvedValue(null)
 
-    const res = await app.request('/invoices', {
+    const res = await app.request('/api/v1/invoices', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ moveId: 'move-1' }),
@@ -912,7 +923,7 @@ describe('POST /invoices', () => {
   })
 
   it('returns 400 for an invalid body', async () => {
-    const res = await app.request('/invoices', {
+    const res = await app.request('/api/v1/invoices', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}), // missing moveId
@@ -925,7 +936,7 @@ describe('GET /invoices/:id', () => {
   it('returns 200 with the invoice and balance', async () => {
     vi.mocked(repos.findInvoiceById).mockResolvedValue(mockInvoice as never)
 
-    const res = await app.request('/invoices/inv-1')
+    const res = await app.request('/api/v1/invoices/inv-1')
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
     const data = body['data'] as Record<string, unknown>
@@ -936,7 +947,7 @@ describe('GET /invoices/:id', () => {
   it('returns 404 when the invoice is not found', async () => {
     vi.mocked(repos.findInvoiceById).mockResolvedValue(null)
 
-    const res = await app.request('/invoices/unknown')
+    const res = await app.request('/api/v1/invoices/unknown')
     expect(res.status).toBe(404)
     const body = (await res.json()) as Record<string, unknown>
     expect(body['code']).toBe('NOT_FOUND')
@@ -952,7 +963,7 @@ describe('POST /invoices/:id/payments', () => {
     }
     vi.mocked(repos.recordPayment).mockResolvedValue(paid as never)
 
-    const res = await app.request('/invoices/inv-1/payments', {
+    const res = await app.request('/api/v1/invoices/inv-1/payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount: 1500, method: 'CARD' }),
@@ -966,7 +977,7 @@ describe('POST /invoices/:id/payments', () => {
   it('returns 404 when the invoice is not found', async () => {
     vi.mocked(repos.findInvoiceById).mockResolvedValue(null)
 
-    const res = await app.request('/invoices/unknown/payments', {
+    const res = await app.request('/api/v1/invoices/unknown/payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount: 500, method: 'CASH' }),
@@ -975,7 +986,7 @@ describe('POST /invoices/:id/payments', () => {
   })
 
   it('returns 400 for an invalid payment body', async () => {
-    const res = await app.request('/invoices/inv-1/payments', {
+    const res = await app.request('/api/v1/invoices/inv-1/payments', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount: -100, method: 'INVALID_METHOD' }),

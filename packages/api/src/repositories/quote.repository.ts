@@ -1,7 +1,6 @@
-import type { Prisma } from '@prisma/client'
+import type { PrismaClient, Prisma } from '@prisma/client'
 import type { Quote, QuoteLineItem } from '@pegasus/domain'
 import { toQuoteId, toQuoteLineItemId, toMoveId, toRateTableId } from '@pegasus/domain'
-import { db } from '../db'
 
 // ---------------------------------------------------------------------------
 // Include shape
@@ -52,9 +51,10 @@ export type CreateQuoteInput = {
   lineItems: Array<{ description: string; quantity: number; unitPrice: number; currency?: string }>
 }
 
-export async function createQuote(input: CreateQuoteInput): Promise<Quote> {
+export async function createQuote(db: PrismaClient, tenantId: string, input: CreateQuoteInput): Promise<Quote> {
   const row = await db.quote.create({
     data: {
+      tenantId,
       moveId: input.moveId,
       priceAmount: input.priceAmount,
       priceCurrency: input.priceCurrency ?? 'USD',
@@ -74,12 +74,12 @@ export async function createQuote(input: CreateQuoteInput): Promise<Quote> {
   return mapQuote(row)
 }
 
-export async function findQuoteById(id: string): Promise<Quote | null> {
+export async function findQuoteById(db: PrismaClient, id: string): Promise<Quote | null> {
   const row = await db.quote.findUnique({ where: { id }, include: quoteInclude })
   return row ? mapQuote(row) : null
 }
 
-export async function listQuotesByMoveId(moveId: string): Promise<Quote[]> {
+export async function listQuotesByMoveId(db: PrismaClient, moveId: string): Promise<Quote[]> {
   const rows = await db.quote.findMany({
     where: { moveId },
     include: quoteInclude,
@@ -89,7 +89,7 @@ export async function listQuotesByMoveId(moveId: string): Promise<Quote[]> {
 }
 
 /** Lists all quotes for every move belonging to a given customer. */
-export async function listQuotesByCustomerId(customerId: string): Promise<Quote[]> {
+export async function listQuotesByCustomerId(db: PrismaClient, customerId: string): Promise<Quote[]> {
   const rows = await db.quote.findMany({
     where: { move: { customerId } },
     include: quoteInclude,
@@ -98,8 +98,10 @@ export async function listQuotesByCustomerId(customerId: string): Promise<Quote[
   return rows.map(mapQuote)
 }
 
-/** Returns the first ACCEPTED quote for a move, or null if none exists. */
-export async function listQuotes(opts: { limit?: number; offset?: number } = {}): Promise<Quote[]> {
+export async function listQuotes(
+  db: PrismaClient,
+  opts: { limit?: number; offset?: number } = {},
+): Promise<Quote[]> {
   const rows = await db.quote.findMany({
     include: quoteInclude,
     orderBy: { createdAt: 'desc' },
@@ -109,7 +111,7 @@ export async function listQuotes(opts: { limit?: number; offset?: number } = {})
   return rows.map(mapQuote)
 }
 
-export async function findAcceptedQuoteByMoveId(moveId: string): Promise<Quote | null> {
+export async function findAcceptedQuoteByMoveId(db: PrismaClient, moveId: string): Promise<Quote | null> {
   const row = await db.quote.findFirst({
     where: { moveId, status: 'ACCEPTED' },
     include: quoteInclude,
@@ -125,7 +127,11 @@ export type AddLineItemInput = {
 }
 
 /** Appends a line item to an existing quote. Returns the updated quote, or null if not found. */
-export async function addLineItem(quoteId: string, input: AddLineItemInput): Promise<Quote | null> {
+export async function addLineItem(
+  db: PrismaClient,
+  quoteId: string,
+  input: AddLineItemInput,
+): Promise<Quote | null> {
   const exists = await db.quote.findUnique({ where: { id: quoteId }, select: { id: true } })
   if (!exists) return null
   await db.quoteLineItem.create({
@@ -137,13 +143,13 @@ export async function addLineItem(quoteId: string, input: AddLineItemInput): Pro
       currency: input.currency ?? 'USD',
     },
   })
-  return findQuoteById(quoteId)
+  return findQuoteById(db, quoteId)
 }
 
 /** Transitions a DRAFT quote to SENT status. Returns the updated quote, or null if not found. */
-export async function finalizeQuote(id: string): Promise<Quote | null> {
+export async function finalizeQuote(db: PrismaClient, id: string): Promise<Quote | null> {
   const exists = await db.quote.findUnique({ where: { id }, select: { id: true } })
   if (!exists) return null
   await db.quote.update({ where: { id }, data: { status: 'SENT' } })
-  return findQuoteById(id)
+  return findQuoteById(db, id)
 }

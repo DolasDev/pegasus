@@ -1,7 +1,6 @@
-import type { Prisma } from '@prisma/client'
+import type { PrismaClient, Prisma } from '@prisma/client'
 import type { InventoryRoom, InventoryItem } from '@pegasus/domain'
 import { toInventoryRoomId, toInventoryItemId } from '@pegasus/domain'
-import { db } from '../db'
 
 // ---------------------------------------------------------------------------
 // Include shape
@@ -62,22 +61,26 @@ export type AddItemInput = {
 }
 
 /** Creates an inventory room for a move. */
-export async function createRoom(input: CreateRoomInput): Promise<InventoryRoom> {
+export async function createRoom(
+  db: PrismaClient,
+  tenantId: string,
+  input: CreateRoomInput,
+): Promise<InventoryRoom> {
   const row = await db.inventoryRoom.create({
-    data: { moveId: input.moveId, name: input.name },
+    data: { tenantId, moveId: input.moveId, name: input.name },
     include: roomInclude,
   })
   return mapRoom(row)
 }
 
 /** Returns a room by ID with all its items. Returns null if not found. */
-export async function findRoomById(id: string): Promise<InventoryRoom | null> {
+export async function findRoomById(db: PrismaClient, id: string): Promise<InventoryRoom | null> {
   const row = await db.inventoryRoom.findUnique({ where: { id }, include: roomInclude })
   return row ? mapRoom(row) : null
 }
 
 /** Lists all rooms for a move, ordered by creation time. */
-export async function listRoomsByMoveId(moveId: string): Promise<InventoryRoom[]> {
+export async function listRoomsByMoveId(db: PrismaClient, moveId: string): Promise<InventoryRoom[]> {
   const rows = await db.inventoryRoom.findMany({
     where: { moveId },
     include: roomInclude,
@@ -87,7 +90,11 @@ export async function listRoomsByMoveId(moveId: string): Promise<InventoryRoom[]
 }
 
 /** Adds an inventory item to a room. Returns the updated room, or null if the room is not found. */
-export async function addItem(roomId: string, input: AddItemInput): Promise<InventoryRoom | null> {
+export async function addItem(
+  db: PrismaClient,
+  roomId: string,
+  input: AddItemInput,
+): Promise<InventoryRoom | null> {
   const room = await db.inventoryRoom.findUnique({ where: { id: roomId }, select: { id: true } })
   if (!room) return null
   await db.inventoryItem.create({
@@ -102,5 +109,5 @@ export async function addItem(roomId: string, input: AddItemInput): Promise<Inve
         : {}),
     },
   })
-  return findRoomById(roomId)
+  return findRoomById(db, roomId)
 }

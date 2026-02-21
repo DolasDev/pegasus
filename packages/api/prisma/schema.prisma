@@ -73,44 +73,83 @@ enum CrewRole {
 }
 
 // ---------------------------------------------------------------------------
+// Multi-tenancy — Tenant is the root of every bounded context.
+// Each moving-company instance is one Tenant. The slug is the subdomain
+// identifier (e.g. "acme" in acme.pegasusapp.com).
+// ---------------------------------------------------------------------------
+
+model Tenant {
+  id   String @id @default(uuid())
+  name String
+  slug String @unique
+
+  customers      Customer[]
+  moves          Move[]
+  quotes         Quote[]
+  invoices       Invoice[]
+  crewMembers    CrewMember[]
+  vehicles       Vehicle[]
+  availabilities Availability[]
+  inventoryRooms InventoryRoom[]
+  leadSources    LeadSource[]
+  accounts       Account[]
+  rateTables     RateTable[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("tenants")
+}
+
+// ---------------------------------------------------------------------------
 // Customer context
 // ---------------------------------------------------------------------------
 
 model LeadSource {
-  id          String     @id @default(uuid())
-  name        String     @unique
+  id          String @id @default(uuid())
+  tenantId    String @map("tenant_id")
+  name        String
   description String?
 
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
   customers Customer[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@unique([tenantId, name])
+  @@index([tenantId])
   @@map("lead_sources")
 }
 
 model Account {
-  id   String @id @default(uuid())
-  name String @unique
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  name     String
 
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
   customers Customer[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@unique([tenantId, name])
+  @@index([tenantId])
   @@map("accounts")
 }
 
 model Customer {
   id           String  @id @default(uuid())
+  tenantId     String  @map("tenant_id")
   userId       String  @map("user_id")
   accountId    String? @map("account_id")
   leadSourceId String? @map("lead_source_id")
   firstName    String  @map("first_name")
   lastName     String  @map("last_name")
-  email        String  @unique
+  email        String
   phone        String?
 
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
   account    Account?    @relation(fields: [accountId], references: [id])
   leadSource LeadSource? @relation(fields: [leadSourceId], references: [id])
   contacts   Contact[]
@@ -119,8 +158,9 @@ model Customer {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@unique([tenantId, email])
+  @@index([tenantId])
   @@index([userId])
-  @@index([email])
   @@map("customers")
 }
 
@@ -171,6 +211,7 @@ model Address {
 
 model Move {
   id            String     @id @default(uuid())
+  tenantId      String     @map("tenant_id")
   userId        String     @map("user_id")
   customerId    String?    @map("customer_id")
   status        MoveStatus @default(PENDING)
@@ -178,9 +219,10 @@ model Move {
   destinationId String     @map("destination_id")
   scheduledDate DateTime   @map("scheduled_date")
 
-  customer           Customer?             @relation(fields: [customerId], references: [id])
-  origin             Address               @relation("MoveOrigin", fields: [originId], references: [id])
-  destination        Address               @relation("MoveDestination", fields: [destinationId], references: [id])
+  tenant             Tenant                  @relation(fields: [tenantId], references: [id])
+  customer           Customer?               @relation(fields: [customerId], references: [id])
+  origin             Address                 @relation("MoveOrigin", fields: [originId], references: [id])
+  destination        Address                 @relation("MoveDestination", fields: [destinationId], references: [id])
   stops              Stop[]
   crewAssignments    MoveCrewAssignment[]
   vehicleAssignments MoveVehicleAssignment[]
@@ -191,6 +233,7 @@ model Move {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([tenantId])
   @@index([userId])
   @@index([customerId])
   @@index([status])
@@ -225,52 +268,62 @@ model Stop {
 
 model CrewMember {
   id             String   @id @default(uuid())
+  tenantId       String   @map("tenant_id")
   name           String
   role           CrewRole
   licenceClasses String[] @map("licence_classes")
   isActive       Boolean  @default(true) @map("is_active")
 
+  tenant          Tenant               @relation(fields: [tenantId], references: [id])
   moveAssignments MoveCrewAssignment[]
   availabilities  Availability[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([tenantId])
   @@map("crew_members")
 }
 
 model Vehicle {
   id                 String   @id @default(uuid())
-  registrationPlate  String   @unique @map("registration_plate")
+  tenantId           String   @map("tenant_id")
+  registrationPlate  String   @map("registration_plate")
   make               String
   model              String
   capacityCubicFeet  Float    @map("capacity_cubic_feet")
   lastInspectionDate DateTime @map("last_inspection_date")
   isActive           Boolean  @default(true) @map("is_active")
 
+  tenant          Tenant                  @relation(fields: [tenantId], references: [id])
   moveAssignments MoveVehicleAssignment[]
   availabilities  Availability[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@unique([tenantId, registrationPlate])
+  @@index([tenantId])
   @@map("vehicles")
 }
 
 model Availability {
-  id          String   @id @default(uuid())
-  crewMemberId String? @map("crew_member_id")
-  vehicleId   String?  @map("vehicle_id")
-  windowStart DateTime @map("window_start")
-  windowEnd   DateTime @map("window_end")
-  isAvailable Boolean  @default(true) @map("is_available")
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  crewMemberId String?  @map("crew_member_id")
+  vehicleId    String?  @map("vehicle_id")
+  windowStart  DateTime @map("window_start")
+  windowEnd    DateTime @map("window_end")
+  isAvailable  Boolean  @default(true) @map("is_available")
 
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
   crewMember CrewMember? @relation(fields: [crewMemberId], references: [id])
   vehicle    Vehicle?    @relation(fields: [vehicleId], references: [id])
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([tenantId])
   @@index([crewMemberId])
   @@index([vehicleId])
   @@index([windowStart, windowEnd])
@@ -307,27 +360,31 @@ model MoveVehicleAssignment {
 
 model RateTable {
   id            String    @id @default(uuid())
-  name          String    @unique
+  tenantId      String    @map("tenant_id")
+  name          String
   effectiveFrom DateTime  @map("effective_from")
   effectiveTo   DateTime? @map("effective_to")
   isActive      Boolean   @default(false) @map("is_active")
 
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
   rates  Rate[]
   quotes Quote[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@unique([tenantId, name])
+  @@index([tenantId])
   @@map("rate_tables")
 }
 
 model Rate {
-  id          String    @id @default(uuid())
-  rateTableId String    @map("rate_table_id")
-  serviceCode String    @map("service_code")
+  id          String  @id @default(uuid())
+  rateTableId String  @map("rate_table_id")
+  serviceCode String  @map("service_code")
   description String
-  unitPrice   Decimal   @map("unit_price") @db.Decimal(12, 2)
-  currency    String    @default("USD")
+  unitPrice   Decimal @map("unit_price") @db.Decimal(12, 2)
+  currency    String  @default("USD")
 
   rateTable RateTable @relation(fields: [rateTableId], references: [id], onDelete: Cascade)
 
@@ -341,6 +398,7 @@ model Rate {
 
 model Quote {
   id            String      @id @default(uuid())
+  tenantId      String      @map("tenant_id")
   moveId        String      @map("move_id")
   rateTableId   String?     @map("rate_table_id")
   status        QuoteStatus @default(DRAFT)
@@ -348,6 +406,7 @@ model Quote {
   priceCurrency String      @default("USD") @map("price_currency")
   validUntil    DateTime    @map("valid_until")
 
+  tenant    Tenant         @relation(fields: [tenantId], references: [id])
   move      Move           @relation(fields: [moveId], references: [id])
   rateTable RateTable?     @relation(fields: [rateTableId], references: [id])
   lineItems QuoteLineItem[]
@@ -355,6 +414,7 @@ model Quote {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([tenantId])
   @@index([moveId])
   @@index([status])
   @@map("quotes")
@@ -382,16 +442,19 @@ model QuoteLineItem {
 // ---------------------------------------------------------------------------
 
 model InventoryRoom {
-  id     String @id @default(uuid())
-  moveId String @map("move_id")
-  name   String
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  moveId   String @map("move_id")
+  name     String
 
-  move  Move            @relation(fields: [moveId], references: [id], onDelete: Cascade)
-  items InventoryItem[]
+  tenant Tenant          @relation(fields: [tenantId], references: [id])
+  move   Move            @relation(fields: [moveId], references: [id], onDelete: Cascade)
+  items  InventoryItem[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([tenantId])
   @@index([moveId])
   @@map("inventory_rooms")
 }
@@ -422,6 +485,7 @@ model InventoryItem {
 
 model Invoice {
   id            String        @id @default(uuid())
+  tenantId      String        @map("tenant_id")
   moveId        String        @map("move_id")
   quoteId       String?       @unique @map("quote_id")
   status        InvoiceStatus @default(DRAFT)
@@ -430,12 +494,14 @@ model Invoice {
   issuedAt      DateTime?     @map("issued_at")
   dueAt         DateTime?     @map("due_at")
 
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
   move     Move      @relation(fields: [moveId], references: [id])
   payments Payment[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([tenantId])
   @@index([moveId])
   @@index([status])
   @@map("invoices")

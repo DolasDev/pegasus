@@ -9,6 +9,8 @@
  */
 import { describe, it, expect, afterAll, beforeAll } from 'vitest'
 import { db } from '../../db'
+import { createTenantDb } from '../../lib/prisma'
+import type { PrismaClient } from '@prisma/client'
 import { createMove } from '../move.repository'
 import {
   createInvoice,
@@ -19,7 +21,10 @@ import {
 
 const hasDb = Boolean(process.env['DATABASE_URL'])
 
+const TEST_TENANT_SLUG = 'test-billing-repo'
+
 const createdMoveIds: string[] = []
+let testDb: PrismaClient
 
 afterAll(async () => {
   if (hasDb) {
@@ -48,9 +53,18 @@ describe.skipIf(!hasDb)('BillingRepository (integration)', () => {
 
   let moveId: string
   let invoiceId: string
+  let tenantId: string
 
   beforeAll(async () => {
-    const move = await createMove({
+    const tenant = await db.tenant.upsert({
+      where: { slug: TEST_TENANT_SLUG },
+      create: { name: 'Test Tenant (Billing Repo)', slug: TEST_TENANT_SLUG },
+      update: {},
+    })
+    tenantId = tenant.id
+    testDb = createTenantDb(db, tenantId) as unknown as PrismaClient
+
+    const move = await createMove(testDb, tenantId, {
       userId: `user-billing-${Date.now()}`,
       scheduledDate: new Date('2025-10-15T08:00:00Z'),
       origin,
@@ -59,7 +73,7 @@ describe.skipIf(!hasDb)('BillingRepository (integration)', () => {
     moveId = move.id
     createdMoveIds.push(moveId)
 
-    const invoice = await createInvoice({
+    const invoice = await createInvoice(testDb, tenantId, {
       moveId,
       totalAmount: 1800,
       totalCurrency: 'USD',
@@ -71,39 +85,39 @@ describe.skipIf(!hasDb)('BillingRepository (integration)', () => {
     expect(invoiceId).toBeTruthy()
   })
 
-  it('createInvoice sets initial status to UNPAID', async () => {
-    const invoice = await findInvoiceById(invoiceId)
-    expect(invoice?.status).toBe('UNPAID')
+  it('createInvoice sets initial status to DRAFT', async () => {
+    const invoice = await findInvoiceById(testDb, invoiceId)
+    expect(invoice?.status).toBe('DRAFT')
   })
 
   it('createInvoice stores the total correctly', async () => {
-    const invoice = await findInvoiceById(invoiceId)
+    const invoice = await findInvoiceById(testDb, invoiceId)
     expect(invoice?.total.amount).toBe(1800)
     expect(invoice?.total.currency).toBe('USD')
   })
 
   it('createInvoice starts with no payments', async () => {
-    const invoice = await findInvoiceById(invoiceId)
+    const invoice = await findInvoiceById(testDb, invoiceId)
     expect(invoice?.payments).toHaveLength(0)
   })
 
   it('findInvoiceById returns null for an unknown id', async () => {
-    const result = await findInvoiceById('00000000-0000-0000-0000-000000000000')
+    const result = await findInvoiceById(testDb, '00000000-0000-0000-0000-000000000000')
     expect(result).toBeNull()
   })
 
   it('findInvoiceByMoveId returns the invoice for the move', async () => {
-    const result = await findInvoiceByMoveId(moveId)
+    const result = await findInvoiceByMoveId(testDb, moveId)
     expect(result?.id).toBe(invoiceId)
   })
 
   it('findInvoiceByMoveId returns null for an unknown move', async () => {
-    const result = await findInvoiceByMoveId('00000000-0000-0000-0000-000000000000')
+    const result = await findInvoiceByMoveId(testDb, '00000000-0000-0000-0000-000000000000')
     expect(result).toBeNull()
   })
 
   it('recordPayment appends a payment to the invoice', async () => {
-    const updated = await recordPayment({
+    const updated = await recordPayment(testDb, {
       invoiceId,
       amount: 900,
       currency: 'USD',
@@ -115,7 +129,7 @@ describe.skipIf(!hasDb)('BillingRepository (integration)', () => {
   })
 
   it('recordPayment can accept a second payment on the same invoice', async () => {
-    const updated = await recordPayment({
+    const updated = await recordPayment(testDb, {
       invoiceId,
       amount: 900,
       currency: 'USD',
@@ -129,7 +143,7 @@ describe.skipIf(!hasDb)('BillingRepository (integration)', () => {
 
   it('createInvoice with a dueAt date stores it', async () => {
     // Create a second move for this test to keep invoices isolated
-    const move2 = await createMove({
+    const move2 = await createMove(testDb, tenantId, {
       userId: `user-billing2-${Date.now()}`,
       scheduledDate: new Date('2025-11-01T08:00:00Z'),
       origin,
@@ -138,7 +152,7 @@ describe.skipIf(!hasDb)('BillingRepository (integration)', () => {
     createdMoveIds.push(move2.id)
 
     const dueDate = new Date('2025-12-31T23:59:59Z')
-    const invoice = await createInvoice({
+    const invoice = await createInvoice(testDb, tenantId, {
       moveId: move2.id,
       totalAmount: 500,
       dueAt: dueDate,

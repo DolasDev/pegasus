@@ -1,7 +1,6 @@
-import type { Prisma } from '@prisma/client'
+import type { PrismaClient, Prisma } from '@prisma/client'
 import type { Invoice, Payment } from '@pegasus/domain'
 import { toInvoiceId, toPaymentId, toMoveId, toQuoteId } from '@pegasus/domain'
-import { db } from '../db'
 
 // ---------------------------------------------------------------------------
 // Include shape
@@ -54,9 +53,10 @@ export type CreateInvoiceInput = {
   dueAt?: Date
 }
 
-export async function createInvoice(input: CreateInvoiceInput): Promise<Invoice> {
+export async function createInvoice(db: PrismaClient, tenantId: string, input: CreateInvoiceInput): Promise<Invoice> {
   const row = await db.invoice.create({
     data: {
+      tenantId,
       moveId: input.moveId,
       totalAmount: input.totalAmount,
       totalCurrency: input.totalCurrency ?? 'USD',
@@ -68,12 +68,15 @@ export async function createInvoice(input: CreateInvoiceInput): Promise<Invoice>
   return mapInvoice(row)
 }
 
-export async function findInvoiceById(id: string): Promise<Invoice | null> {
+export async function findInvoiceById(db: PrismaClient, id: string): Promise<Invoice | null> {
   const row = await db.invoice.findUnique({ where: { id }, include: invoiceInclude })
   return row ? mapInvoice(row) : null
 }
 
-export async function listInvoices(opts: { limit?: number; offset?: number } = {}): Promise<Invoice[]> {
+export async function listInvoices(
+  db: PrismaClient,
+  opts: { limit?: number; offset?: number } = {},
+): Promise<Invoice[]> {
   const rows = await db.invoice.findMany({
     include: invoiceInclude,
     orderBy: { createdAt: 'desc' },
@@ -83,7 +86,7 @@ export async function listInvoices(opts: { limit?: number; offset?: number } = {
   return rows.map(mapInvoice)
 }
 
-export async function findInvoiceByMoveId(moveId: string): Promise<Invoice | null> {
+export async function findInvoiceByMoveId(db: PrismaClient, moveId: string): Promise<Invoice | null> {
   const row = await db.invoice.findFirst({
     where: { moveId },
     include: invoiceInclude,
@@ -101,7 +104,7 @@ export type RecordPaymentInput = {
   reference?: string
 }
 
-export async function recordPayment(input: RecordPaymentInput): Promise<Invoice> {
+export async function recordPayment(db: PrismaClient, input: RecordPaymentInput): Promise<Invoice> {
   await db.payment.create({
     data: {
       invoiceId: input.invoiceId,

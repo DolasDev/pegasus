@@ -9,6 +9,8 @@
  */
 import { describe, it, expect, afterAll, beforeAll } from 'vitest'
 import { db } from '../../db'
+import { createTenantDb } from '../../lib/prisma'
+import type { PrismaClient } from '@prisma/client'
 import { createMove } from '../move.repository'
 import {
   createQuote,
@@ -21,7 +23,10 @@ import {
 
 const hasDb = Boolean(process.env['DATABASE_URL'])
 
+const TEST_TENANT_SLUG = 'test-quote-repo'
+
 const createdMoveIds: string[] = []
+let testDb: PrismaClient
 
 afterAll(async () => {
   if (hasDb) {
@@ -50,9 +55,18 @@ describe.skipIf(!hasDb)('QuoteRepository (integration)', () => {
 
   let moveId: string
   let quoteId: string
+  let tenantId: string
 
   beforeAll(async () => {
-    const move = await createMove({
+    const tenant = await db.tenant.upsert({
+      where: { slug: TEST_TENANT_SLUG },
+      create: { name: 'Test Tenant (Quote Repo)', slug: TEST_TENANT_SLUG },
+      update: {},
+    })
+    tenantId = tenant.id
+    testDb = createTenantDb(db, tenantId) as unknown as PrismaClient
+
+    const move = await createMove(testDb, tenantId, {
       userId: `user-quote-${Date.now()}`,
       scheduledDate: new Date('2025-10-01T09:00:00Z'),
       origin,
@@ -61,7 +75,7 @@ describe.skipIf(!hasDb)('QuoteRepository (integration)', () => {
     moveId = move.id
     createdMoveIds.push(moveId)
 
-    const quote = await createQuote({
+    const quote = await createQuote(testDb, tenantId, {
       moveId,
       priceAmount: 2000,
       priceCurrency: 'USD',
@@ -76,28 +90,28 @@ describe.skipIf(!hasDb)('QuoteRepository (integration)', () => {
   })
 
   it('createQuote sets initial status to DRAFT', async () => {
-    const quote = await findQuoteById(quoteId)
+    const quote = await findQuoteById(testDb, quoteId)
     expect(quote?.status).toBe('DRAFT')
   })
 
   it('createQuote stores the price correctly', async () => {
-    const quote = await findQuoteById(quoteId)
+    const quote = await findQuoteById(testDb, quoteId)
     expect(quote?.price.amount).toBe(2000)
     expect(quote?.price.currency).toBe('USD')
   })
 
   it('findQuoteById returns null for an unknown id', async () => {
-    const result = await findQuoteById('00000000-0000-0000-0000-000000000000')
+    const result = await findQuoteById(testDb, '00000000-0000-0000-0000-000000000000')
     expect(result).toBeNull()
   })
 
   it('listQuotesByMoveId returns quotes for the move', async () => {
-    const list = await listQuotesByMoveId(moveId)
+    const list = await listQuotesByMoveId(testDb, moveId)
     expect(list.some((q) => q.id === quoteId)).toBe(true)
   })
 
   it('addLineItem appends a line item to the quote', async () => {
-    const updated = await addLineItem(quoteId, {
+    const updated = await addLineItem(testDb, quoteId, {
       description: 'Packing materials',
       quantity: 3,
       unitPrice: 50,
@@ -109,18 +123,18 @@ describe.skipIf(!hasDb)('QuoteRepository (integration)', () => {
   })
 
   it('finalizeQuote transitions DRAFT → SENT', async () => {
-    const result = await finalizeQuote(quoteId)
+    const result = await finalizeQuote(testDb, quoteId)
     expect(result?.status).toBe('SENT')
   })
 
   it('findAcceptedQuoteByMoveId returns null when no ACCEPTED quote exists', async () => {
-    const result = await findAcceptedQuoteByMoveId(moveId)
+    const result = await findAcceptedQuoteByMoveId(testDb, moveId)
     // Our quote is SENT, not ACCEPTED
     expect(result).toBeNull()
   })
 
   it('createQuote with inline line items stores them correctly', async () => {
-    const quote = await createQuote({
+    const quote = await createQuote(testDb, tenantId, {
       moveId,
       priceAmount: 500,
       validUntil: new Date('2025-12-01T00:00:00Z'),
