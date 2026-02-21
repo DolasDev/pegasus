@@ -21,6 +21,7 @@ WEB_DIR="$REPO_ROOT/packages/web"
 OUTPUTS_FILE="/tmp/pegasus-cdk-outputs.json"
 WEB_ENV_FILE="$WEB_DIR/.env"
 
+AWS_PROFILE="${AWS_PROFILE:-admin}"
 API_ONLY=false
 for arg in "$@"; do
   [[ "$arg" == "--api-only" ]] && API_ONLY=true
@@ -36,6 +37,7 @@ echo ""
 echo "▶  [1/4] Deploying ApiStack..."
 cd "$INFRA_DIR"
 npx cdk deploy PegasusDev-ApiStack \
+  --profile "$AWS_PROFILE" \
   --require-approval never \
   --outputs-file "$OUTPUTS_FILE"
 
@@ -75,6 +77,7 @@ npm run build --workspace=packages/web
 echo "▶  [4/4] Deploying FrontendStack..."
 cd "$INFRA_DIR"
 npx cdk deploy PegasusDev-FrontendStack \
+  --profile "$AWS_PROFILE" \
   --require-approval never
 
 echo ""
