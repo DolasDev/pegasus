@@ -7,8 +7,21 @@ import * as apigwv2i from 'aws-cdk-lib/aws-apigatewayv2-integrations'
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
 import { type Construct } from 'constructs'
 
+export interface ApiStackProps extends cdk.StackProps {
+  /**
+   * Cognito User Pool JWKS URL injected into the Lambda so the admin auth
+   * middleware can verify JWTs without a shared secret.
+   *
+   * Format: https://cognito-idp.<region>.amazonaws.com/<poolId>/.well-known/jwks.json
+   *
+   * Provided by CognitoStack.jwksUrl. Optional so the stack can still be
+   * synthesised in isolation (e.g. during CI typechecks without Cognito).
+   */
+  readonly cognitoJwksUrl?: string
+}
+
 export class ApiStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: ApiStackProps = {}) {
     super(scope, id, props)
 
     // ---------------------------------------------------------------------------
@@ -35,6 +48,10 @@ export class ApiStack extends cdk.Stack {
         // Tell Prisma exactly where the native query engine lives so it skips
         // its path-search heuristics (which bake in local build-machine paths).
         PRISMA_QUERY_ENGINE_LIBRARY: '/var/task/libquery_engine-rhel-openssl-3.0.x.so.node',
+        // Cognito JWKS endpoint for admin JWT verification. The admin auth
+        // middleware derives the issuer URL from this value and caches keys
+        // in-process after the first fetch. Provided by CognitoStack.
+        COGNITO_JWKS_URL: props.cognitoJwksUrl ?? '',
       },
       bundling: {
         minify: true,

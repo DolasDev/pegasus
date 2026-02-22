@@ -69,6 +69,20 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
     return c.json({ error: 'Tenant not found', code: 'TENANT_NOT_FOUND' }, 404)
   }
 
+  // Enforce tenant lifecycle status before routing the request any further.
+  // SUSPENDED  → 403: the tenant's users should know their account is blocked.
+  // OFFBOARDED → 404: deliberately indistinguishable from an unknown slug so
+  //              offboarded tenants appear non-existent to their former users.
+  if (tenant.status === 'SUSPENDED') {
+    return c.json(
+      { error: 'Tenant account is suspended', code: 'TENANT_SUSPENDED' },
+      403,
+    )
+  }
+  if (tenant.status === 'OFFBOARDED') {
+    return c.json({ error: 'Tenant not found', code: 'TENANT_NOT_FOUND' }, 404)
+  }
+
   const tenantDb = createTenantDb(basePrisma, tenant.id)
 
   c.set('tenantId', tenant.id)

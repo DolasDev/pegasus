@@ -26,3 +26,20 @@ export type AppVariables = {
 
 /** Hono environment type used when constructing the app and all sub-routers. */
 export type AppEnv = { Variables: AppVariables }
+
+/**
+ * Variables injected into Hono context by the admin auth middleware.
+ * Every handler mounted under the /api/admin/* prefix can rely on these being
+ * present — the middleware aborts with 401/403 before reaching the handler if
+ * the token is missing, invalid, or lacks the PLATFORM_ADMIN group claim.
+ */
+export type AdminVariables = {
+  /** Stable Cognito user identifier (`sub` JWT claim). Never changes even if
+   *  the admin updates their email. Use this as the durable identity key. */
+  adminSub: string
+  /** Admin user's email address (`email` JWT claim from the Cognito ID token). */
+  adminEmail: string
+}
+
+/** Hono environment type used when constructing the admin sub-router. */
+export type AdminEnv = { Variables: AdminVariables }

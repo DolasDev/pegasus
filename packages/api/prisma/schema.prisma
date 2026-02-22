@@ -1,6 +1,10 @@
 // ---------------------------------------------------------------------------
 // Pegasus — Prisma Schema
 // Translates the domain bounded contexts into PostgreSQL tables.
+//
+// Two PostgreSQL schemas are used:
+//   public   — all tenant-facing tables (@@schema("public") on every model/enum)
+//   platform — platform/admin-only tables; never queried by tenant APIs
 // ---------------------------------------------------------------------------
 
 generator client {
@@ -14,10 +18,11 @@ datasource db {
   url        = env("DATABASE_URL")
   directUrl  = env("DIRECT_URL")
   extensions = [uuidOssp(map: "uuid-ossp")]
+  schemas    = ["public", "platform"]
 }
 
 // ---------------------------------------------------------------------------
-// Enums
+// Enums — public schema
 // ---------------------------------------------------------------------------
 
 enum MoveStatus {
@@ -26,6 +31,8 @@ enum MoveStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
+
+  @@schema("public")
 }
 
 enum StopType {
@@ -33,6 +40,8 @@ enum StopType {
   DELIVERY
   STORAGE
   WAYPOINT
+
+  @@schema("public")
 }
 
 enum QuoteStatus {
@@ -41,6 +50,8 @@ enum QuoteStatus {
   ACCEPTED
   REJECTED
   EXPIRED
+
+  @@schema("public")
 }
 
 enum InvoiceStatus {
@@ -49,6 +60,8 @@ enum InvoiceStatus {
   PARTIALLY_PAID
   PAID
   VOID
+
+  @@schema("public")
 }
 
 enum PaymentMethod {
@@ -56,6 +69,8 @@ enum PaymentMethod {
   BANK_TRANSFER
   CASH
   CHECK
+
+  @@schema("public")
 }
 
 enum ItemCondition {
@@ -64,12 +79,37 @@ enum ItemCondition {
   FAIR
   DAMAGED
   MISSING
+
+  @@schema("public")
 }
 
 enum CrewRole {
   DRIVER
   MOVER
   SUPERVISOR
+
+  @@schema("public")
+}
+
+/// Lifecycle status of a tenant account, managed by platform administrators.
+enum TenantStatus {
+  /// Fully operational — tenant users can access the API.
+  ACTIVE
+  /// Access suspended — tenant middleware returns 403 for this tenant.
+  SUSPENDED
+  /// Soft-deleted — tenant middleware returns 404; excluded from admin list by default.
+  OFFBOARDED
+
+  @@schema("public")
+}
+
+/// Subscription plan tier for a tenant account.
+enum TenantPlan {
+  STARTER
+  GROWTH
+  ENTERPRISE
+
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -82,6 +122,35 @@ model Tenant {
   id   String @id @default(uuid())
   name String
   slug String @unique
+
+  // -------------------------------------------------------------------------
+  // Admin-managed fields (written only by platform admin routes)
+  // -------------------------------------------------------------------------
+
+  /// Current lifecycle status. The tenant middleware enforces this:
+  /// SUSPENDED → 403, OFFBOARDED → 404, ACTIVE → normal flow.
+  status TenantStatus @default(ACTIVE)
+
+  /// Subscription plan tier. Used for feature gating (future).
+  plan TenantPlan @default(STARTER)
+
+  /// Primary contact name for this tenant account (billing/support contact).
+  contactName String? @map("contact_name")
+
+  /// Primary contact email for this tenant account.
+  contactEmail String? @map("contact_email")
+
+  /// Stub for future per-tenant SSO / organisational login configuration.
+  /// Will hold provider type, client IDs, and metadata when implemented.
+  ssoProviderConfig Json? @map("sso_provider_config")
+
+  /// Set when the tenant is offboarded. Data is retained; the tenant is
+  /// excluded from all default queries. Null means not offboarded.
+  deletedAt DateTime? @map("deleted_at")
+
+  // -------------------------------------------------------------------------
+  // Relations
+  // -------------------------------------------------------------------------
 
   customers      Customer[]
   moves          Move[]
@@ -98,6 +167,9 @@ model Tenant {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([status])
+  @@index([deletedAt])
+  @@schema("public")
   @@map("tenants")
 }
 
@@ -119,6 +191,7 @@ model LeadSource {
 
   @@unique([tenantId, name])
   @@index([tenantId])
+  @@schema("public")
   @@map("lead_sources")
 }
 
@@ -135,6 +208,7 @@ model Account {
 
   @@unique([tenantId, name])
   @@index([tenantId])
+  @@schema("public")
   @@map("accounts")
 }
 
@@ -161,6 +235,7 @@ model Customer {
   @@unique([tenantId, email])
   @@index([tenantId])
   @@index([userId])
+  @@schema("public")
   @@map("customers")
 }
 
@@ -179,6 +254,7 @@ model Contact {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([customerId])
+  @@schema("public")
   @@map("contacts")
 }
 
@@ -202,6 +278,7 @@ model Address {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@schema("public")
   @@map("addresses")
 }
 
@@ -238,6 +315,7 @@ model Move {
   @@index([customerId])
   @@index([status])
   @@index([scheduledDate])
+  @@schema("public")
   @@map("moves")
 }
 
@@ -259,6 +337,7 @@ model Stop {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([moveId])
+  @@schema("public")
   @@map("stops")
 }
 
@@ -282,6 +361,7 @@ model CrewMember {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([tenantId])
+  @@schema("public")
   @@map("crew_members")
 }
 
@@ -304,6 +384,7 @@ model Vehicle {
 
   @@unique([tenantId, registrationPlate])
   @@index([tenantId])
+  @@schema("public")
   @@map("vehicles")
 }
 
@@ -327,6 +408,7 @@ model Availability {
   @@index([crewMemberId])
   @@index([vehicleId])
   @@index([windowStart, windowEnd])
+  @@schema("public")
   @@map("availabilities")
 }
 
@@ -339,6 +421,7 @@ model MoveCrewAssignment {
   crewMember CrewMember @relation(fields: [crewMemberId], references: [id])
 
   @@id([moveId, crewMemberId])
+  @@schema("public")
   @@map("move_crew_assignments")
 }
 
@@ -351,6 +434,7 @@ model MoveVehicleAssignment {
   vehicle Vehicle @relation(fields: [vehicleId], references: [id])
 
   @@id([moveId, vehicleId])
+  @@schema("public")
   @@map("move_vehicle_assignments")
 }
 
@@ -375,6 +459,7 @@ model RateTable {
 
   @@unique([tenantId, name])
   @@index([tenantId])
+  @@schema("public")
   @@map("rate_tables")
 }
 
@@ -393,6 +478,7 @@ model Rate {
 
   @@index([rateTableId])
   @@unique([rateTableId, serviceCode])
+  @@schema("public")
   @@map("rates")
 }
 
@@ -406,9 +492,9 @@ model Quote {
   priceCurrency String      @default("USD") @map("price_currency")
   validUntil    DateTime    @map("valid_until")
 
-  tenant    Tenant         @relation(fields: [tenantId], references: [id])
-  move      Move           @relation(fields: [moveId], references: [id])
-  rateTable RateTable?     @relation(fields: [rateTableId], references: [id])
+  tenant    Tenant          @relation(fields: [tenantId], references: [id])
+  move      Move            @relation(fields: [moveId], references: [id])
+  rateTable RateTable?      @relation(fields: [rateTableId], references: [id])
   lineItems QuoteLineItem[]
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -417,6 +503,7 @@ model Quote {
   @@index([tenantId])
   @@index([moveId])
   @@index([status])
+  @@schema("public")
   @@map("quotes")
 }
 
@@ -434,6 +521,7 @@ model QuoteLineItem {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([quoteId])
+  @@schema("public")
   @@map("quote_line_items")
 }
 
@@ -456,6 +544,7 @@ model InventoryRoom {
 
   @@index([tenantId])
   @@index([moveId])
+  @@schema("public")
   @@map("inventory_rooms")
 }
 
@@ -476,6 +565,7 @@ model InventoryItem {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([roomId])
+  @@schema("public")
   @@map("inventory_items")
 }
 
@@ -504,6 +594,7 @@ model Invoice {
   @@index([tenantId])
   @@index([moveId])
   @@index([status])
+  @@schema("public")
   @@map("invoices")
 }
 
@@ -522,5 +613,81 @@ model Payment {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([invoiceId])
+  @@schema("public")
   @@map("payments")
+}
+
+// ---------------------------------------------------------------------------
+// Platform schema — admin-only tables
+//
+// These models live in the `platform` PostgreSQL schema. They are never
+// queried by tenant-facing API routes or the tenant-scoped Prisma extension.
+// The platform schema is not accessible to TENANT_USER-scoped requests.
+// ---------------------------------------------------------------------------
+
+/// Tracks Cognito users who have been granted platform administrator access.
+/// A record is upserted on first successful admin portal sign-in using the
+/// Cognito sub claim as the stable identifier.
+model AdminUser {
+  id          String  @id @default(uuid())
+  /// Stable Cognito user identifier (JWT `sub` claim). Never changes even if
+  /// the user updates their email address.
+  cognitoSub  String  @unique @map("cognito_sub")
+  email       String  @unique
+  displayName String? @map("display_name")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@schema("platform")
+  @@map("admin_users")
+}
+
+/// Append-only audit trail for every action taken by a platform administrator.
+///
+/// `before` and `after` capture JSON snapshots of the affected resource so the
+/// full change history can be reconstructed. Neither field is set for the
+/// irrelevant side (before=null on create, after=null on hard delete).
+model AuditLog {
+  id           String   @id @default(uuid())
+  /// Cognito sub of the administrator who performed the action.
+  adminSub     String   @map("admin_sub")
+  /// Denormalised email for display — avoids joins when rendering the log.
+  adminEmail   String   @map("admin_email")
+  /// Action identifier. Values: CREATE_TENANT | UPDATE_TENANT |
+  /// SUSPEND_TENANT | REACTIVATE_TENANT | OFFBOARD_TENANT
+  action       String
+  /// Type of the affected resource. Currently always "TENANT".
+  resourceType String   @map("resource_type")
+  /// ID of the affected resource.
+  resourceId   String   @map("resource_id")
+  /// Snapshot of the resource before the mutation (null for creates).
+  before       Json?
+  /// Snapshot of the resource after the mutation (null for hard deletes).
+  after        Json?
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  /// No updatedAt — audit logs are immutable once written.
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([resourceId])
+  @@index([adminSub])
+  @@index([createdAt])
+  @@schema("platform")
+  @@map("audit_logs")
+}
+
+/// Platform-level feature flags for gradual rollout of new capabilities.
+/// Not yet surfaced in the admin UI — stub for future use.
+model FeatureFlag {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  enabled     Boolean @default(false)
+  description String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@schema("platform")
+  @@map("feature_flags")
 }

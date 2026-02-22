@@ -136,22 +136,89 @@ npx cdk bootstrap
 
 ### Deploy
 
-Build everything first, then deploy the CDK stacks:
+The deploy script handles everything: CDK stacks, Vite builds, and asset uploads.
 
 ```bash
-# From repo root
-npm run build
+# Full deployment (Cognito + API + tenant frontend + admin portal)
+npm run deploy
 
-# Deploy API + Frontend
-cd packages/infra
-npx cdk deploy PegasusDev-ApiStack PegasusDev-FrontendStack
+# API only (skips all frontend builds)
+npm run deploy -- --api-only
+
+# Admin portal only (re-build and re-upload admin assets)
+npm run deploy -- --admin-only
+
+# Skip CognitoStack when the user pool is stable
+npm run deploy -- --skip-cognito
 ```
 
-The API Gateway URL is printed as a CloudFormation output (`ApiUrl`) after the API stack deploys.
+The script writes `VITE_*` environment files and resolves Cognito configuration from SSM automatically. The admin portal requires two CDK passes on first deploy (CloudFront URL is not known until the stack exists).
+
+The AWS profile defaults to `admin-dev`. Override with:
+
+```bash
+AWS_PROFILE=my-profile npm run deploy
+```
 
 ### Destroy
 
 ```bash
 cd packages/infra
-npx cdk destroy PegasusDev-ApiStack PegasusDev-FrontendStack
+npx cdk destroy PegasusDev-ApiStack PegasusDev-FrontendStack PegasusDev-AdminFrontendStack
 ```
+
+> The `PegasusDev-CognitoStack` has `removalPolicy: RETAIN` on the user pool. Destroy the stack via the AWS Console if you need to fully tear down.
+
+---
+
+## Create the initial platform admin
+
+After deploying `PegasusDev-CognitoStack` for the first time, run the guided setup script to create a `PLATFORM_ADMIN` user with TOTP MFA enrolled.
+
+**Prerequisites:**
+
+- `PegasusDev-CognitoStack` deployed (`pegasus-dev-cognito` stack exists).
+- An authenticator app ready: Google Authenticator, Authy, 1Password, etc.
+- An active AWS SSO session for the target profile:
+
+```bash
+aws sso login --profile admin-dev
+```
+
+**Run the script:**
+
+```bash
+AWS_PROFILE=admin-dev npm run create-admin-user
+```
+
+The script walks through seven steps interactively:
+
+1. Resolves the Cognito User Pool ID and admin app client ID (prompts if not set via env vars).
+2. Prompts for the new admin's email address.
+3. Creates the Cognito user (welcome email suppressed).
+4. Sets a cryptographically random permanent password (shown once at the end — save it immediately).
+5. Enrolls TOTP MFA: displays a secret key and `otpauth://` URI to add to your authenticator app, then verifies a 6-digit code before proceeding.
+6. Grants `PLATFORM_ADMIN` group membership (after MFA is verified — not before).
+7. Prints a summary with the email, generated password, and next steps.
+
+**Skip the interactive prompts** by pre-setting environment variables:
+
+```bash
+PEGASUS_COGNITO_POOL_ID=us-east-1_XXXXXXXXX \
+PEGASUS_COGNITO_CLIENT_ID=YYYYYYYYYY \
+AWS_REGION=us-east-1 \
+npm run create-admin-user
+```
+
+The pool ID and client ID are available as CloudFormation outputs on the `pegasus-dev-cognito` stack, or from SSM:
+
+```bash
+aws ssm get-parameter --profile admin-dev --name /pegasus/admin/cognito-user-pool-id    --query Parameter.Value --output text
+aws ssm get-parameter --profile admin-dev --name /pegasus/admin/cognito-admin-client-id --query Parameter.Value --output text
+```
+
+**After the script completes:**
+
+- Copy the generated password to a team password manager — it is shown only once.
+- Sign into the admin portal using the Cognito Hosted UI to confirm MFA is working.
+- Share the email and password with the user via a secure channel.

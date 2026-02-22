@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import type { AppEnv } from './types'
 import { tenantMiddleware } from './middleware/tenant'
+import { adminRouter } from './handlers/admin'
 import { customersHandler } from './handlers/customers'
 import { quotesHandler } from './handlers/quotes'
 import { movesHandler } from './handlers/moves'
@@ -23,6 +24,14 @@ app.use('*', cors())
 app.get('/health', (c) => {
   return c.json({ status: 'ok' as const, timestamp: new Date().toISOString() })
 })
+
+// ---------------------------------------------------------------------------
+// Platform admin API — all routes under /api/admin require a valid
+// PLATFORM_ADMIN Cognito JWT. Auth is enforced inside the adminRouter itself
+// so there is no risk of a misconfigured mount bypassing the middleware.
+// Must be mounted BEFORE the tenant-protected /api/v1 block.
+// ---------------------------------------------------------------------------
+app.route('/api/admin', adminRouter)
 
 // ---------------------------------------------------------------------------
 // Tenant-protected API — all routes under /api/v1 require a resolved tenant.

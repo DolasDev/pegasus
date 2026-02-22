@@ -21,6 +21,47 @@ vi.mock('./middleware/tenant', () => ({
   },
 }))
 
+// Bypass admin JWT verification — sets the admin identity claims directly.
+vi.mock('./middleware/admin-auth', () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  adminAuthMiddleware: async (c: any, next: () => Promise<void>) => {
+    c.set('adminSub', 'test-admin-sub')
+    c.set('adminEmail', 'admin@test.com')
+    await next()
+  },
+}))
+
+// Mock the base Prisma client used by admin routes directly (not via repositories).
+// $transaction receives a callback and invokes it with a mock transaction client
+// so handler code that uses the interactive transaction form still works.
+vi.mock('./db', () => {
+  const txClient = {
+    tenant: {
+      create: vi.fn(),
+      update: vi.fn(),
+      findUnique: vi.fn(),
+    },
+    auditLog: {
+      create: vi.fn(),
+    },
+  }
+  return {
+    db: {
+      tenant: {
+        findMany: vi.fn(),
+        count: vi.fn(),
+        findUnique: vi.fn(),
+      },
+      auditLog: {
+        create: vi.fn(),
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      $transaction: vi.fn(async (fn: (tx: any) => Promise<unknown>) => fn(txClient)),
+      _txClient: txClient, // exposed so tests can configure tx-level mocks
+    },
+  }
+})
+
 vi.mock('./repositories', () => ({
   // customer
   createCustomer: vi.fn(),
@@ -60,6 +101,8 @@ vi.mock('./repositories', () => ({
 
 import { app } from './app'
 import * as repos from './repositories'
+import { db } from './db'
+import { Prisma } from '@prisma/client'
 
 // ---------------------------------------------------------------------------
 // Shared mock fixtures
@@ -164,6 +207,15 @@ const mockInvoice = {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  // vi.resetAllMocks() clears mockImplementation too, so we must re-establish
+  // the $transaction stub after each reset. The handler passes a callback that
+  // receives the transaction client; we forward it to the exposed _txClient so
+  // individual tests can configure tenant.create / auditLog.create on it.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(db.$transaction as any).mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    fn((db as any)._txClient),
+  )
 })
 
 // ---------------------------------------------------------------------------
@@ -992,5 +1044,451 @@ describe('POST /invoices/:id/payments', () => {
       body: JSON.stringify({ amount: -100, method: 'INVALID_METHOD' }),
     })
     expect(res.status).toBe(400)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Admin — GET /api/admin/me
+// ---------------------------------------------------------------------------
+
+describe('GET /api/admin/me', () => {
+  it('returns the admin identity from JWT claims', async () => {
+    const res = await app.request('/api/admin/me')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    const data = body['data'] as Record<string, unknown>
+    expect(data['sub']).toBe('test-admin-sub')
+    expect(data['email']).toBe('admin@test.com')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Admin — POST /api/admin/tenants
+// ---------------------------------------------------------------------------
+
+const mockCreatedTenant = {
+  id: 'tenant-new',
+  name: 'Beta Movers',
+  slug: 'beta',
+  status: 'ACTIVE' as const,
+  plan: 'STARTER' as const,
+  contactName: null,
+  contactEmail: null,
+  ssoProviderConfig: null,
+  createdAt: new Date('2025-06-01T00:00:00Z'),
+  updatedAt: new Date('2025-06-01T00:00:00Z'),
+  deletedAt: null,
+}
+
+// Typed accessor for the transaction-level mock client exposed by the db mock.
+function getTxClient() {
+  return (
+    db as unknown as {
+      _txClient: {
+        tenant: {
+          create: ReturnType<typeof vi.fn>
+          update: ReturnType<typeof vi.fn>
+          findUnique: ReturnType<typeof vi.fn>
+        }
+        auditLog: { create: ReturnType<typeof vi.fn> }
+      }
+    }
+  )._txClient
+}
+
+describe('POST /api/admin/tenants', () => {
+  it('returns 201 with the created tenant', async () => {
+    // The handler uses db.$transaction which invokes its callback with _txClient.
+    const tx = getTxClient()
+    tx.tenant.create.mockResolvedValue(mockCreatedTenant)
+    tx.auditLog.create.mockResolvedValue(undefined)
+
+    const res = await app.request('/api/admin/tenants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Beta Movers', slug: 'beta' }),
+    })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as Record<string, unknown>
+    const data = body['data'] as Record<string, unknown>
+    expect(data['id']).toBe('tenant-new')
+    expect(data['slug']).toBe('beta')
+    expect('ssoProviderConfig' in data).toBe(true)
+  })
+
+  it('returns 400 when name is missing', async () => {
+    const res = await app.request('/api/admin/tenants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug: 'beta' }),
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['code']).toBe('VALIDATION_ERROR')
+  })
+
+  it('returns 400 when slug is missing', async () => {
+    const res = await app.request('/api/admin/tenants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Beta Movers' }),
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['code']).toBe('VALIDATION_ERROR')
+  })
+
+  it('returns 400 when slug has invalid format (uppercase)', async () => {
+    const res = await app.request('/api/admin/tenants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Beta', slug: 'Beta' }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 400 when slug has invalid format (too short)', async () => {
+    const res = await app.request('/api/admin/tenants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Beta', slug: 'ab' }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 409 when the slug is already taken', async () => {
+    getTxClient().tenant.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '6.0.0',
+      }),
+    )
+
+    const res = await app.request('/api/admin/tenants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Duplicate', slug: 'acme' }),
+    })
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['code']).toBe('CONFLICT')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Admin — GET /api/admin/tenants
+// ---------------------------------------------------------------------------
+
+const mockTenant = {
+  id: 'tenant-1',
+  name: 'Acme Movers',
+  slug: 'acme',
+  status: 'ACTIVE' as const,
+  plan: 'STARTER' as const,
+  contactName: 'Alice Admin',
+  contactEmail: 'alice@acme.com',
+  createdAt: new Date('2025-01-01T00:00:00Z'),
+  updatedAt: new Date('2025-01-01T00:00:00Z'),
+  deletedAt: null,
+}
+
+describe('GET /api/admin/tenants', () => {
+  it('returns 200 with an empty list when no tenants exist', async () => {
+    vi.mocked(db.tenant.findMany).mockResolvedValue([])
+    vi.mocked(db.tenant.count).mockResolvedValue(0)
+
+    const res = await app.request('/api/admin/tenants')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(Array.isArray(body['data'])).toBe(true)
+    expect((body['data'] as unknown[]).length).toBe(0)
+    const meta = body['meta'] as Record<string, unknown>
+    expect(meta['total']).toBe(0)
+    expect(meta['limit']).toBe(50)
+    expect(meta['offset']).toBe(0)
+  })
+
+  it('returns the tenant list with pagination meta', async () => {
+    vi.mocked(db.tenant.findMany).mockResolvedValue([mockTenant] as never)
+    vi.mocked(db.tenant.count).mockResolvedValue(1)
+
+    const res = await app.request('/api/admin/tenants?limit=10&offset=0')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect((body['data'] as unknown[]).length).toBe(1)
+    const meta = body['meta'] as Record<string, unknown>
+    expect(meta['total']).toBe(1)
+    expect(meta['count']).toBe(1)
+    expect(meta['limit']).toBe(10)
+  })
+
+  it('caps limit at 100', async () => {
+    vi.mocked(db.tenant.findMany).mockResolvedValue([])
+    vi.mocked(db.tenant.count).mockResolvedValue(0)
+
+    const res = await app.request('/api/admin/tenants?limit=9999')
+    expect(res.status).toBe(200)
+    const meta = ((await res.json()) as Record<string, unknown>)['meta'] as Record<string, unknown>
+    expect(meta['limit']).toBe(100)
+  })
+
+  it('filters by status when ?status= is provided', async () => {
+    vi.mocked(db.tenant.findMany).mockResolvedValue([])
+    vi.mocked(db.tenant.count).mockResolvedValue(0)
+
+    const res = await app.request('/api/admin/tenants?status=SUSPENDED')
+    expect(res.status).toBe(200)
+    // Verify findMany was called with the status filter
+    expect(vi.mocked(db.tenant.findMany)).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: 'SUSPENDED' } }),
+    )
+  })
+
+  it('returns 400 for an invalid status value', async () => {
+    const res = await app.request('/api/admin/tenants?status=INVALID')
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['code']).toBe('VALIDATION_ERROR')
+  })
+
+  it('includes OFFBOARDED tenants when ?includeOffboarded=true', async () => {
+    vi.mocked(db.tenant.findMany).mockResolvedValue([])
+    vi.mocked(db.tenant.count).mockResolvedValue(0)
+
+    const res = await app.request('/api/admin/tenants?includeOffboarded=true')
+    expect(res.status).toBe(200)
+    expect(vi.mocked(db.tenant.findMany)).toHaveBeenCalledWith(
+      expect.objectContaining({ where: {} }),
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Admin — GET /api/admin/tenants/:id
+// ---------------------------------------------------------------------------
+
+describe('GET /api/admin/tenants/:id', () => {
+  it('returns 200 with the tenant detail', async () => {
+    const detail = { ...mockTenant, ssoProviderConfig: null }
+    vi.mocked(db.tenant.findUnique).mockResolvedValue(detail as never)
+
+    const res = await app.request('/api/admin/tenants/tenant-1')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    const data = body['data'] as Record<string, unknown>
+    expect(data['id']).toBe('tenant-1')
+    expect(data['slug']).toBe('acme')
+    expect('ssoProviderConfig' in data).toBe(true)
+  })
+
+  it('returns 404 when the tenant is not found', async () => {
+    vi.mocked(db.tenant.findUnique).mockResolvedValue(null)
+
+    const res = await app.request('/api/admin/tenants/unknown-id')
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['code']).toBe('NOT_FOUND')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Admin — PATCH /api/admin/tenants/:id
+// ---------------------------------------------------------------------------
+
+const mockTenantDetail = { ...mockTenant, ssoProviderConfig: null }
+
+describe('PATCH /api/admin/tenants/:id', () => {
+  it('returns 200 with the updated tenant', async () => {
+    const tx = getTxClient()
+    tx.tenant.findUnique.mockResolvedValue(mockTenantDetail)
+    const updated = { ...mockTenantDetail, name: 'Acme Movers LLC' }
+    tx.tenant.update.mockResolvedValue(updated)
+    tx.auditLog.create.mockResolvedValue(undefined)
+
+    const res = await app.request('/api/admin/tenants/tenant-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Acme Movers LLC' }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect((body['data'] as Record<string, unknown>)['name']).toBe('Acme Movers LLC')
+  })
+
+  it('returns 200 and clears contactEmail when passed null', async () => {
+    const tx = getTxClient()
+    tx.tenant.findUnique.mockResolvedValue(mockTenantDetail)
+    const updated = { ...mockTenantDetail, contactEmail: null }
+    tx.tenant.update.mockResolvedValue(updated)
+    tx.auditLog.create.mockResolvedValue(undefined)
+
+    const res = await app.request('/api/admin/tenants/tenant-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contactEmail: null }),
+    })
+    expect(res.status).toBe(200)
+    const data = ((await res.json()) as Record<string, unknown>)['data'] as Record<string, unknown>
+    expect(data['contactEmail']).toBeNull()
+  })
+
+  it('returns 400 for an invalid email in contactEmail', async () => {
+    const res = await app.request('/api/admin/tenants/tenant-1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contactEmail: 'not-an-email' }),
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['code']).toBe('VALIDATION_ERROR')
+  })
+
+  it('returns 404 when the tenant does not exist', async () => {
+    getTxClient().tenant.findUnique.mockResolvedValue(null)
+
+    const res = await app.request('/api/admin/tenants/unknown-id', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'X' }),
+    })
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['code']).toBe('NOT_FOUND')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Admin — POST /api/admin/tenants/:id/suspend
+// ---------------------------------------------------------------------------
+
+describe('POST /api/admin/tenants/:id/suspend', () => {
+  it('returns 200 with the suspended tenant when currently ACTIVE', async () => {
+    vi.mocked(db.tenant.findUnique).mockResolvedValue(mockTenantDetail as never)
+    const suspended = { ...mockTenantDetail, status: 'SUSPENDED' as const }
+    getTxClient().tenant.update.mockResolvedValue(suspended)
+    getTxClient().auditLog.create.mockResolvedValue(undefined)
+
+    const res = await app.request('/api/admin/tenants/tenant-1/suspend', { method: 'POST' })
+    expect(res.status).toBe(200)
+    const data = ((await res.json()) as Record<string, unknown>)['data'] as Record<string, unknown>
+    expect(data['status']).toBe('SUSPENDED')
+  })
+
+  it('returns 404 when the tenant does not exist', async () => {
+    vi.mocked(db.tenant.findUnique).mockResolvedValue(null)
+
+    const res = await app.request('/api/admin/tenants/unknown/suspend', { method: 'POST' })
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 422 when the tenant is already SUSPENDED', async () => {
+    const alreadySuspended = { ...mockTenantDetail, status: 'SUSPENDED' as const }
+    vi.mocked(db.tenant.findUnique).mockResolvedValue(alreadySuspended as never)
+
+    const res = await app.request('/api/admin/tenants/tenant-1/suspend', { method: 'POST' })
+    expect(res.status).toBe(422)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['code']).toBe('INVALID_STATE')
+  })
+
+  it('returns 422 when the tenant is OFFBOARDED', async () => {
+    const offboarded = { ...mockTenantDetail, status: 'OFFBOARDED' as const }
+    vi.mocked(db.tenant.findUnique).mockResolvedValue(offboarded as never)
+
+    const res = await app.request('/api/admin/tenants/tenant-1/suspend', { method: 'POST' })
+    expect(res.status).toBe(422)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['code']).toBe('INVALID_STATE')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Admin — POST /api/admin/tenants/:id/reactivate
+// ---------------------------------------------------------------------------
+
+describe('POST /api/admin/tenants/:id/reactivate', () => {
+  it('returns 200 with the reactivated tenant when currently SUSPENDED', async () => {
+    const suspended = { ...mockTenantDetail, status: 'SUSPENDED' as const }
+    vi.mocked(db.tenant.findUnique).mockResolvedValue(suspended as never)
+    const reactivated = { ...mockTenantDetail, status: 'ACTIVE' as const }
+    getTxClient().tenant.update.mockResolvedValue(reactivated)
+    getTxClient().auditLog.create.mockResolvedValue(undefined)
+
+    const res = await app.request('/api/admin/tenants/tenant-1/reactivate', { method: 'POST' })
+    expect(res.status).toBe(200)
+    const data = ((await res.json()) as Record<string, unknown>)['data'] as Record<string, unknown>
+    expect(data['status']).toBe('ACTIVE')
+  })
+
+  it('returns 404 when the tenant does not exist', async () => {
+    vi.mocked(db.tenant.findUnique).mockResolvedValue(null)
+
+    const res = await app.request('/api/admin/tenants/unknown/reactivate', { method: 'POST' })
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 422 when the tenant is already ACTIVE', async () => {
+    vi.mocked(db.tenant.findUnique).mockResolvedValue(mockTenantDetail as never)
+
+    const res = await app.request('/api/admin/tenants/tenant-1/reactivate', { method: 'POST' })
+    expect(res.status).toBe(422)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['code']).toBe('INVALID_STATE')
+  })
+
+  it('returns 422 when the tenant is OFFBOARDED', async () => {
+    const offboarded = { ...mockTenantDetail, status: 'OFFBOARDED' as const }
+    vi.mocked(db.tenant.findUnique).mockResolvedValue(offboarded as never)
+
+    const res = await app.request('/api/admin/tenants/tenant-1/reactivate', { method: 'POST' })
+    expect(res.status).toBe(422)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['code']).toBe('INVALID_STATE')
+  })
+})
+
+// Admin — POST /api/admin/tenants/:id/offboard
+// -----------------------------------------------------------------------
+describe('POST /api/admin/tenants/:id/offboard', () => {
+  it('returns 200 with the offboarded tenant when currently ACTIVE', async () => {
+    vi.mocked(db.tenant.findUnique).mockResolvedValue(mockTenantDetail as never)
+    const offboarded = { ...mockTenantDetail, status: 'OFFBOARDED' as const, deletedAt: new Date() }
+    getTxClient().tenant.update.mockResolvedValue(offboarded)
+
+    const res = await app.request('/api/admin/tenants/tenant-1/offboard', { method: 'POST' })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect((body['data'] as Record<string, unknown>)['status']).toBe('OFFBOARDED')
+  })
+
+  it('returns 200 with the offboarded tenant when currently SUSPENDED', async () => {
+    const suspended = { ...mockTenantDetail, status: 'SUSPENDED' as const }
+    vi.mocked(db.tenant.findUnique).mockResolvedValue(suspended as never)
+    const offboarded = { ...mockTenantDetail, status: 'OFFBOARDED' as const, deletedAt: new Date() }
+    getTxClient().tenant.update.mockResolvedValue(offboarded)
+
+    const res = await app.request('/api/admin/tenants/tenant-1/offboard', { method: 'POST' })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect((body['data'] as Record<string, unknown>)['status']).toBe('OFFBOARDED')
+  })
+
+  it('returns 404 when the tenant does not exist', async () => {
+    vi.mocked(db.tenant.findUnique).mockResolvedValue(null)
+
+    const res = await app.request('/api/admin/tenants/unknown/offboard', { method: 'POST' })
+    expect(res.status).toBe(404)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['code']).toBe('NOT_FOUND')
+  })
+
+  it('returns 422 when the tenant is already OFFBOARDED', async () => {
+    const offboarded = { ...mockTenantDetail, status: 'OFFBOARDED' as const, deletedAt: new Date() }
+    vi.mocked(db.tenant.findUnique).mockResolvedValue(offboarded as never)
+
+    const res = await app.request('/api/admin/tenants/tenant-1/offboard', { method: 'POST' })
+    expect(res.status).toBe(422)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['code']).toBe('INVALID_STATE')
   })
 })

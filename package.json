@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
     "build": "turbo run build",
@@ -11,6 +12,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "deploy": "bash packages/infra/deploy.sh",
+    "create-admin-user": "tsx scripts/create-admin-user.ts",
     "prepare": "node ./node_modules/husky/bin.js || true"
   },
   "devDependencies": {
