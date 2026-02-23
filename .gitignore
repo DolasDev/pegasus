@@ -50,3 +50,4 @@ lerna-debug.log*
 
 # OS
 Thumbs.db
+settings.local.json
