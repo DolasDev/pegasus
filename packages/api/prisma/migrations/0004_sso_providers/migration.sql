@@ -9,8 +9,8 @@ CREATE TYPE "public"."SsoProviderType" AS ENUM ('OIDC', 'SAML');
 
 -- Create the tenant_sso_providers table
 CREATE TABLE "public"."tenant_sso_providers" (
-    "id"                    UUID         NOT NULL DEFAULT uuid_generate_v4(),
-    "tenant_id"             UUID         NOT NULL,
+    "id"                    TEXT         NOT NULL,
+    "tenant_id"             TEXT         NOT NULL,
     "name"                  TEXT         NOT NULL,
     "type"                  "public"."SsoProviderType" NOT NULL,
     "cognito_provider_name" TEXT         NOT NULL,
