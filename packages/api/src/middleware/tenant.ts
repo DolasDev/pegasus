@@ -11,39 +11,24 @@
 // ---------------------------------------------------------------------------
 
 import type { Context, Next } from 'hono'
+import { createRemoteJWKSet, errors, jwtVerify } from 'jose'
 import type { AppEnv } from '../types'
 import { db as basePrisma } from '../db'
 import { createTenantDb } from '../lib/prisma'
 
-// Root-level subdomains that do not represent a tenant (e.g. the marketing
-// site or API gateway health checks).
-const NON_TENANT_SUBDOMAINS = new Set(['www', 'api', 'app', 'mail'])
+let _jwks: ReturnType<typeof createRemoteJWKSet> | null = null
 
-/**
- * Extracts the subdomain segment from a Host header value.
- *
- * Examples:
- *   acme.pegasusapp.com  → "acme"
- *   www.pegasusapp.com   → null  (reserved subdomain)
- *   pegasusapp.com       → null  (no subdomain)
- *   localhost            → null  (local without X-Tenant-Slug)
- *
- * For local development where there is no real subdomain, callers can set the
- * `X-Tenant-Slug` header to simulate a tenant.
- */
-function extractSubdomain(host: string): string | null {
-  // Strip port number if present (e.g. "acme.pegasusapp.com:3000")
-  const hostname = host.split(':')[0] ?? ''
-  const parts = hostname.split('.')
-
-  // A real subdomain requires at least 3 dot-separated segments.
-  if (parts.length >= 3) {
-    const sub = parts[0] ?? ''
-    if (!sub || NON_TENANT_SUBDOMAINS.has(sub)) return null
-    return sub
+function getJwks(): ReturnType<typeof createRemoteJWKSet> {
+  if (_jwks === null) {
+    const url = process.env['COGNITO_JWKS_URL']
+    if (!url) throw new Error('COGNITO_JWKS_URL environment variable is not set')
+    _jwks = createRemoteJWKSet(new URL(url))
   }
+  return _jwks
+}
 
-  return null
+function deriveIssuer(jwksUrl: string): string {
+  return jwksUrl.replace('/.well-known/jwks.json', '')
 }
 
 /**
@@ -57,14 +42,48 @@ function extractSubdomain(host: string): string | null {
  * On failure, returns 400 (no slug) or 404 (unknown slug).
  */
 export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<Response | void> {
-  const host = c.req.header('host') ?? ''
-  const slug = extractSubdomain(host) ?? c.req.header('x-tenant-slug') ?? null
-
-  if (!slug) {
-    return c.json({ error: 'Tenant slug could not be determined from Host header', code: 'TENANT_REQUIRED' }, 400)
+  const authHeader = c.req.header('Authorization')
+  if (!authHeader?.startsWith('Bearer ')) {
+    return c.json(
+      { error: 'Missing or malformed Authorization header', code: 'UNAUTHORIZED' },
+      401,
+    )
   }
 
-  const tenant = await basePrisma.tenant.findUnique({ where: { slug } })
+  const token = authHeader.slice(7)
+  const jwksUrl = process.env['COGNITO_JWKS_URL'] ?? ''
+  const tenantClientId = process.env['COGNITO_TENANT_CLIENT_ID'] ?? ''
+
+  let payload: Record<string, unknown>
+  try {
+    const result = await jwtVerify(token, getJwks(), {
+      issuer: deriveIssuer(jwksUrl),
+      audience: tenantClientId,
+      algorithms: ['RS256'],
+    })
+    payload = result.payload as Record<string, unknown>
+  } catch (err) {
+    if (err instanceof errors.JWTExpired) {
+      return c.json({ error: 'Token has expired', code: 'TOKEN_EXPIRED' }, 401)
+    }
+    return c.json({ error: 'Invalid or unverifiable token', code: 'UNAUTHORIZED' }, 401)
+  }
+
+  if (payload['token_use'] !== 'id') {
+    return c.json({ error: 'Invalid token: ID token required', code: 'UNAUTHORIZED' }, 401)
+  }
+
+  const customTenantId = payload['custom:tenantId'] as string | undefined
+  const customRole = payload['custom:role'] as string | undefined
+
+  if (!customTenantId || !customRole) {
+    return c.json(
+      { error: 'Forbidden: incomplete tenant configuration', code: 'FORBIDDEN' },
+      403,
+    )
+  }
+
+  const tenant = await basePrisma.tenant.findUnique({ where: { id: customTenantId } })
   if (!tenant) {
     return c.json({ error: 'Tenant not found', code: 'TENANT_NOT_FOUND' }, 404)
   }
@@ -86,6 +105,7 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
   const tenantDb = createTenantDb(basePrisma, tenant.id)
 
   c.set('tenantId', tenant.id)
+  c.set('role', customRole)
   // Cast required because TenantDb is a Prisma extension subtype of PrismaClient.
   // The runtime instance IS the extension; the type annotation in AppVariables
   // uses PrismaClient for ergonomics across handler and repository code.

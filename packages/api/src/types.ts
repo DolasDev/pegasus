@@ -17,6 +17,8 @@ import type { PrismaClient } from '@prisma/client'
 export type AppVariables = {
   /** The UUID of the resolved tenant for this request. */
   tenantId: string
+  /** The specific role the authenticated user holds in this tenant. */
+  role: string
   /**
    * A tenant-scoped Prisma client. All reads/writes are automatically
    * filtered/stamped with tenantId by the query extension in lib/prisma.ts.

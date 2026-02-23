@@ -6,19 +6,25 @@ import {
   Users,
   Calendar,
   Receipt,
+  LogOut,
+  ShieldCheck,
   type LucideIcon,
 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { getSession, clearSession } from '@/auth/session'
+import { getCognitoConfig, buildLogoutUrl } from '@/auth/cognito'
 
 const NAV_ITEMS = [
-  { to: '/' as const, label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { to: '/dashboard' as const, label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { to: '/moves' as const, label: 'Moves', icon: Truck, exact: false },
   { to: '/quotes' as const, label: 'Quotes', icon: FileText, exact: false },
   { to: '/customers' as const, label: 'Customers', icon: Users, exact: false },
   { to: '/dispatch' as const, label: 'Dispatch', icon: Calendar, exact: false },
   { to: '/invoices' as const, label: 'Billing', icon: Receipt, exact: false },
+  { to: '/settings/sso' as const, label: 'SSO Providers', icon: ShieldCheck, exact: false },
 ] as const
 
 type NavItemProps = {
@@ -54,6 +60,21 @@ type AppShellProps = {
 }
 
 export function AppShell({ children }: AppShellProps) {
+  const session = getSession()
+
+  function handleLogout() {
+    clearSession()
+    // Redirect to the Cognito logout endpoint, which clears the Cognito SSO
+    // cookie so the next login requires re-authentication with the IdP.
+    // Falls back to /login if Cognito env vars are not configured (local dev).
+    try {
+      const config = getCognitoConfig()
+      window.location.href = buildLogoutUrl(config)
+    } catch {
+      window.location.href = '/login'
+    }
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Sidebar */}
@@ -73,8 +94,17 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* Main area */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 items-center border-b px-6">
+        <header className="flex h-14 items-center justify-between border-b px-6">
           <span className="text-sm text-muted-foreground">Move Management Platform</span>
+          {session && (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground">{session.email}</span>
+              <Button variant="ghost" size="sm" className="gap-1.5" onClick={handleLogout}>
+                <LogOut size={14} />
+                Sign out
+              </Button>
+            </div>
+          )}
         </header>
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>

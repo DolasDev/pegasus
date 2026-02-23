@@ -23,6 +23,7 @@ import * as iam from 'aws-cdk-lib/aws-iam'
 import * as lambda from 'aws-cdk-lib/aws-lambda'
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs'
 import * as ssm from 'aws-cdk-lib/aws-ssm'
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
 import type { Construct } from 'constructs'
 
 export interface CognitoStackProps extends cdk.StackProps {
@@ -38,6 +39,20 @@ export interface CognitoStackProps extends cdk.StackProps {
    * Defaults to localhost for local development.
    */
   readonly adminLogoutUrls?: readonly string[]
+
+  /**
+   * OAuth 2.0 callback URLs for the tenant app client.
+   * Must include the /login/callback path on every environment domain.
+   * Defaults to localhost for local development.
+   */
+  readonly tenantCallbackUrls?: readonly string[]
+
+  /**
+   * OAuth 2.0 logout URLs for the tenant app client.
+   * Must include the /login path on every environment domain.
+   * Defaults to localhost for local development.
+   */
+  readonly tenantLogoutUrls?: readonly string[]
 }
 
 export class CognitoStack extends cdk.Stack {
@@ -65,6 +80,8 @@ export class CognitoStack extends cdk.Stack {
 
     const adminCallbackUrls = props.adminCallbackUrls ?? ['http://localhost:5174/auth/callback']
     const adminLogoutUrls = props.adminLogoutUrls ?? ['http://localhost:5174/login']
+    const tenantCallbackUrls = props.tenantCallbackUrls ?? ['http://localhost:5173/login/callback']
+    const tenantLogoutUrls = props.tenantLogoutUrls ?? ['http://localhost:5173/login']
 
     // -------------------------------------------------------------------------
     // Pre-Authentication Lambda trigger
@@ -90,6 +107,54 @@ export class CognitoStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(5),
     })
 
+    // ---------------------------------------------------------------------------
+    // Secrets Manager: externally-managed Neon connection string (for Pre-Token Lambda)
+    // ---------------------------------------------------------------------------
+    const dbSecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      'NeonDatabaseUrl',
+      'pegasus/dev/database-url',
+    )
+
+    // -------------------------------------------------------------------------
+    // Pre-Token-Generation Lambda trigger
+    //
+    // Fires after successful authentication but before the token is securely
+    // minted. Injects `custom:tenantId` and `custom:role`.
+    // -------------------------------------------------------------------------
+    const preTokenFn = new nodejs.NodejsFunction(this, 'PreTokenFunction', {
+      functionName: `pegasus-cognito-pre-token-${this.stackName}`,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../../../api/src/cognito/pre-token.ts'),
+      handler: 'handler',
+      environment: {
+        NODE_ENV: 'production',
+        DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+        DIRECT_URL: dbSecret.secretValue.unsafeUnwrap(),
+        PRISMA_QUERY_ENGINE_LIBRARY: '/var/task/libquery_engine-rhel-openssl-3.0.x.so.node',
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        externalModules: ['@aws-sdk/*'],
+        commandHooks: {
+          beforeBundling: () => [],
+          beforeInstall: () => [],
+          afterBundling(_inputDir: string, outputDir: string): string[] {
+            const repoRoot = path.join(__dirname, '../../../..')
+            const engine = 'libquery_engine-rhel-openssl-3.0.x.so.node'
+            return [
+              `cp ${repoRoot}/node_modules/.prisma/client/${engine} ${outputDir}/${engine}`,
+            ]
+          },
+        },
+      },
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(15),
+    })
+
+    dbSecret.grantRead(preTokenFn)
+
     // -------------------------------------------------------------------------
     // User Pool
     // -------------------------------------------------------------------------
@@ -112,6 +177,7 @@ export class CognitoStack extends cdk.Stack {
       },
       lambdaTriggers: {
         preAuthentication: preAuthFn,
+        preTokenGeneration: preTokenFn,
       },
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
       // RETAIN: user accounts must survive stack updates and accidental
@@ -206,8 +272,19 @@ export class CognitoStack extends cdk.Stack {
     // -------------------------------------------------------------------------
     // Tenant app client
     //
-    // Used by packages/web. OIDC identity providers (Google, GitHub) will be
-    // configured here when the main-app auth feature is built.
+    // Used by packages/web for the tenant SSO login flow.
+    //
+    // Design decisions:
+    //   - generateSecret: false — PKCE-only flow; no client secret in the browser.
+    //   - No SRP/password flows — tenant users must authenticate via a registered
+    //     IdP through the Hosted UI. Direct username/password login is not
+    //     offered to tenant users; that path is reserved for admin accounts.
+    //   - idTokenValidity: 8h — matches a typical working day session.
+    //   - refreshTokenValidity: 30d — allows silent re-auth across days; the
+    //     backend will reject expired ID tokens (exp check in validate-token).
+    //
+    // Adding a new tenant environment (staging, prod):
+    //   Pass the CloudFront domain URL in tenantCallbackUrls / tenantLogoutUrls.
     // -------------------------------------------------------------------------
     this.tenantAppClient = this.userPool.addClient('TenantAppClient', {
       userPoolClientName: 'tenant-app-client',
@@ -216,8 +293,8 @@ export class CognitoStack extends cdk.Stack {
       oAuth: {
         flows: { authorizationCodeGrant: true },
         scopes: [cognito.OAuthScope.EMAIL, cognito.OAuthScope.OPENID, cognito.OAuthScope.PROFILE],
-        callbackUrls: ['http://localhost:5173/auth/callback'],
-        logoutUrls: ['http://localhost:5173/login'],
+        callbackUrls: [...tenantCallbackUrls],
+        logoutUrls: [...tenantLogoutUrls],
       },
       idTokenValidity: cdk.Duration.hours(8),
       accessTokenValidity: cdk.Duration.hours(8),
@@ -252,6 +329,20 @@ export class CognitoStack extends cdk.Stack {
       parameterName: '/pegasus/admin/cognito-hosted-ui-domain',
       stringValue: hostedUiDomain.baseUrl(),
       description: 'Pegasus Cognito Hosted UI base URL (e.g. https://pegasus-123.auth.us-east-1.amazoncognito.com)',
+    })
+
+    // Tenant app client parameters — used by the API Lambda for ID token audience
+    // validation (COGNITO_TENANT_CLIENT_ID) and by the web app build pipeline.
+    new ssm.StringParameter(this, 'TenantClientIdParam', {
+      parameterName: '/pegasus/tenant/cognito-client-id',
+      stringValue: this.tenantAppClient.userPoolClientId,
+      description: 'Pegasus tenant app client ID (no secret — PKCE only)',
+    })
+
+    new ssm.StringParameter(this, 'JwksUrlParam', {
+      parameterName: '/pegasus/cognito/jwks-url',
+      stringValue: this.jwksUrl,
+      description: 'Pegasus Cognito JWKS endpoint URL for JWT signature verification',
     })
 
     // -------------------------------------------------------------------------

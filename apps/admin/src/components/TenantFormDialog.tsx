@@ -10,6 +10,19 @@ import { ApiError } from '@/api/client'
 
 const SLUG_RE = /^[a-z][a-z0-9-]*[a-z0-9]$/
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/
+
+/** Parses a comma-separated domain string into a trimmed, deduplicated array. */
+function parseDomains(raw: string): string[] {
+  return [
+    ...new Set(
+      raw
+        .split(',')
+        .map((d) => d.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ]
+}
 
 function validateCreate(fields: CreateFields): Partial<Record<keyof CreateFields, string>> {
   const errors: Partial<Record<keyof CreateFields, string>> = {}
@@ -25,6 +38,18 @@ function validateCreate(fields: CreateFields): Partial<Record<keyof CreateFields
   if (fields.contactEmail && !EMAIL_RE.test(fields.contactEmail)) {
     errors.contactEmail = 'Must be a valid email address.'
   }
+  if (!fields.adminEmail.trim()) {
+    errors.adminEmail = 'Admin email is required.'
+  } else if (!EMAIL_RE.test(fields.adminEmail)) {
+    errors.adminEmail = 'Must be a valid email address.'
+  }
+  const domains = parseDomains(fields.emailDomains)
+  if (domains.length === 0) {
+    errors.emailDomains = 'At least one email domain is required.'
+  } else {
+    const invalid = domains.find((d) => !DOMAIN_RE.test(d))
+    if (invalid) errors.emailDomains = `"${invalid}" is not a valid domain.`
+  }
   return errors
 }
 
@@ -34,14 +59,13 @@ function validateEdit(fields: EditFields): Partial<Record<keyof EditFields, stri
   if (fields.contactEmail && !EMAIL_RE.test(fields.contactEmail)) {
     errors.contactEmail = 'Must be a valid email address.'
   }
-  if (fields.ssoConfig.trim()) {
-    try {
-      const parsed = JSON.parse(fields.ssoConfig) as unknown
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-        errors.ssoConfig = 'Must be a JSON object (e.g. {"key": "value"}).'
-      }
-    } catch {
-      errors.ssoConfig = 'Invalid JSON.'
+  if (fields.emailDomains.trim()) {
+    const domains = parseDomains(fields.emailDomains)
+    if (domains.length === 0) {
+      errors.emailDomains = 'At least one email domain is required.'
+    } else {
+      const invalid = domains.find((d) => !DOMAIN_RE.test(d))
+      if (invalid) errors.emailDomains = `"${invalid}" is not a valid domain.`
     }
   }
   return errors
@@ -57,6 +81,10 @@ interface CreateFields {
   plan: TenantPlan | ''
   contactName: string
   contactEmail: string
+  /** Initial tenant administrator email. A Cognito account is provisioned on submit. */
+  adminEmail: string
+  /** Comma-separated email domains, e.g. "acme.com, acme.co.uk". */
+  emailDomains: string
 }
 
 interface EditFields {
@@ -64,7 +92,8 @@ interface EditFields {
   plan: TenantPlan | ''
   contactName: string
   contactEmail: string
-  ssoConfig: string
+  /** Comma-separated email domains. Leave blank to keep existing domains unchanged. */
+  emailDomains: string
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +147,8 @@ export function TenantFormDialog(props: TenantFormDialogProps) {
     plan: '',
     contactName: '',
     contactEmail: '',
+    adminEmail: '',
+    emailDomains: '',
   })
 
   // --- Edit-mode state (initialised from tenant prop) ---
@@ -129,11 +160,10 @@ export function TenantFormDialog(props: TenantFormDialogProps) {
         plan: t.plan,
         contactName: t.contactName ?? '',
         contactEmail: t.contactEmail ?? '',
-        ssoConfig:
-          t.ssoProviderConfig !== null ? JSON.stringify(t.ssoProviderConfig, null, 2) : '',
+        emailDomains: t.emailDomains.join(', '),
       }
     }
-    return { name: '', plan: '', contactName: '', contactEmail: '', ssoConfig: '' }
+    return { name: '', plan: '', contactName: '', contactEmail: '', emailDomains: '' }
   })
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -188,6 +218,8 @@ export function TenantFormDialog(props: TenantFormDialogProps) {
       const body: CreateTenantBody = {
         name: create.name.trim(),
         slug: create.slug.trim(),
+        adminEmail: create.adminEmail.trim(),
+        emailDomains: parseDomains(create.emailDomains),
         ...(create.plan ? { plan: create.plan } : {}),
         ...(create.contactName.trim() ? { contactName: create.contactName.trim() } : {}),
         ...(create.contactEmail.trim() ? { contactEmail: create.contactEmail.trim() } : {}),
@@ -201,20 +233,13 @@ export function TenantFormDialog(props: TenantFormDialogProps) {
       }
       setFieldErrors({})
 
-      let ssoProviderConfig: Record<string, unknown> | null | undefined = undefined
-      if (edit.ssoConfig.trim()) {
-        ssoProviderConfig = JSON.parse(edit.ssoConfig) as Record<string, unknown>
-      } else if (props.tenant.ssoProviderConfig !== null) {
-        // Field was cleared — send null to remove it.
-        ssoProviderConfig = null
-      }
-
       const body: UpdateTenantBody = {
         name: edit.name.trim(),
         ...(edit.plan ? { plan: edit.plan } : {}),
         contactName: edit.contactName.trim() || null,
         contactEmail: edit.contactEmail.trim() || null,
-        ...(ssoProviderConfig !== undefined ? { ssoProviderConfig } : {}),
+        // Only send emailDomains if the field is non-empty; empty means no change.
+        ...(edit.emailDomains.trim() ? { emailDomains: parseDomains(edit.emailDomains) } : {}),
       }
       editMutation.mutate({ id: props.tenant.id, body })
     }
@@ -398,21 +423,46 @@ export function TenantFormDialog(props: TenantFormDialogProps) {
               )}
             </Field>
 
-            {mode === 'edit' && (
-              <Field
-                label="SSO provider config (JSON)"
-                error={fieldErrors['ssoConfig']}
-              >
-                <textarea
-                  className={inputCls + ' font-mono text-xs h-24 resize-y'}
-                  value={edit.ssoConfig}
-                  onChange={(e) => setEdit((p) => ({ ...p, ssoConfig: e.target.value }))}
-                  placeholder={'{\n  "provider": "okta",\n  "clientId": "…"\n}'}
+            <Field
+              label="Email domains *"
+              error={fieldErrors['emailDomains']}
+            >
+              {mode === 'create' ? (
+                <input
+                  className={inputCls + ' font-mono'}
+                  value={create.emailDomains}
+                  onChange={(e) => setCreate((p) => ({ ...p, emailDomains: e.target.value }))}
+                  placeholder="acme.com, acme.co.uk"
                   disabled={isPending}
-                  spellCheck={false}
+                />
+              ) : (
+                <input
+                  className={inputCls + ' font-mono'}
+                  value={edit.emailDomains}
+                  onChange={(e) => setEdit((p) => ({ ...p, emailDomains: e.target.value }))}
+                  placeholder="acme.com, acme.co.uk"
+                  disabled={isPending}
+                />
+              )}
+              <p className="text-xs text-muted-foreground">
+                Comma-separated list. Used to resolve the tenant from the user&apos;s work email at
+                login.
+              </p>
+            </Field>
+
+            {mode === 'create' && (
+              <Field label="Admin email *" error={fieldErrors['adminEmail']}>
+                <input
+                  type="email"
+                  className={inputCls}
+                  value={create.adminEmail}
+                  onChange={(e) => setCreate((p) => ({ ...p, adminEmail: e.target.value }))}
+                  placeholder="admin@acme.com"
+                  disabled={isPending}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Optional JSON object. Clear the field to remove the configuration.
+                  A Cognito account is created for this address. The administrator receives an
+                  invite email to set their password and configure SSO.
                 </p>
               </Field>
             )}

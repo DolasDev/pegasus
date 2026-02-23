@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(python3:*)",
+      "Bash(git -C /mnt/c/_repos/pegasus status)",
+      "Bash(git -C /mnt/c/_repos/pegasus log --oneline -5)",
+      "Bash(git -C /mnt/c/_repos/pegasus add .eslintrc.js .gitignore .husky/ .prettierrc CLAUDE.md bootstrap.sh package-lock.json package.json packages/ tsconfig.base.json turbo.json vitest.workspace.ts)",
+      "Bash(git -C /mnt/c/_repos/pegasus push origin main)",
+      "Bash(~/bin/gh auth login:*)",
+      "Bash(chmod:*)",
+      "Bash(/home/steve/repos/pegasus/node_modules/.bin/tsc:*)",
+      "Bash(pg_isready:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:postgres@localhost:5432/pegasus_dev\" node:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(wc:*)",
+      "Bash(ls:*)",
+      "Bash(git -C /home/steve/repos/pegasus status)",
+      "Bash(git -C /home/steve/repos/pegasus diff)",
+      "Bash(git -C /home/steve/repos/pegasus log --oneline -5)",
+      "Bash(git -C /home/steve/repos/pegasus add packages/infra/bin/app.ts packages/infra/lib/stacks/api-stack.ts packages/infra/lib/stacks/database-stack.ts packages/infra/lib/stacks/__tests__/api-stack.test.ts packages/infra/lib/stacks/__tests__/database-stack.test.ts packages/infra/lib/stacks/frontend-stack.ts)",
+      "Bash(git -C:*)",
+      "Bash(bash packages/infra/deploy.sh --api-only)",
+      "Bash(echo exit:$?:*)",
+      "Bash(bash:*)",
+      "Bash(git check-ignore:*)"
+    ]
+  }
+}

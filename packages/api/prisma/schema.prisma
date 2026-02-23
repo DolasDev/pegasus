@@ -91,6 +91,14 @@ enum CrewRole {
   @@schema("public")
 }
 
+/// SSO identity provider protocol type.
+enum SsoProviderType {
+  OIDC
+  SAML
+
+  @@schema("public")
+}
+
 /// Lifecycle status of a tenant account, managed by platform administrators.
 enum TenantStatus {
   /// Fully operational — tenant users can access the API.
@@ -140,9 +148,12 @@ model Tenant {
   /// Primary contact email for this tenant account.
   contactEmail String? @map("contact_email")
 
-  /// Stub for future per-tenant SSO / organisational login configuration.
-  /// Will hold provider type, client IDs, and metadata when implemented.
-  ssoProviderConfig Json? @map("sso_provider_config")
+  /// Email domains that belong to this tenant (e.g. ["acme.com", "acme.co.uk"]).
+  /// During SSO login the backend resolves the tenant from the user's email domain
+  /// by querying this array. Phase 4 (tenant creation) populates this field;
+  /// Phase 3 (SSO config UI) may surface it alongside provider settings.
+  /// Indexed with GIN for fast array-containment lookups.
+  emailDomains String[] @default([]) @map("email_domains")
 
   /// Set when the tenant is offboarded. Data is retained; the tenant is
   /// excluded from all default queries. Null means not offboarded.
@@ -163,6 +174,7 @@ model Tenant {
   leadSources    LeadSource[]
   accounts       Account[]
   rateTables     RateTable[]
+  ssoProviders   TenantSsoProvider[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -171,6 +183,55 @@ model Tenant {
   @@index([deletedAt])
   @@schema("public")
   @@map("tenants")
+}
+
+// ---------------------------------------------------------------------------
+// SSO provider configuration — one record per IdP per tenant.
+//
+// Each row describes a single identity provider registered in the Cognito User
+// Pool for this tenant. Sensitive credentials (client secrets, SAML SP private
+// keys) are stored in Secrets Manager; only the ARN reference is persisted here
+// and NEVER returned by API responses.
+// ---------------------------------------------------------------------------
+
+model TenantSsoProvider {
+  id      String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// Display name shown in the login page provider picker (e.g. "Acme Okta").
+  name String
+
+  /// Protocol type: OIDC or SAML.
+  type SsoProviderType
+
+  /// The Cognito identity provider name — passed as `identity_provider` in the
+  /// authorization URL. Must exactly match the name registered in the User Pool.
+  cognitoProviderName String @map("cognito_provider_name")
+
+  /// OIDC: discovery document URL (stored for admin reference / future auto-config).
+  /// SAML: metadata URL (used when registering the IdP in Cognito).
+  metadataUrl String? @map("metadata_url")
+
+  /// OIDC only: the client ID issued by this IdP. Null for SAML providers.
+  oidcClientId String? @map("oidc_client_id")
+
+  /// Secrets Manager ARN for the IdP credential.
+  /// OIDC: the client secret. SAML: SP private key / assertion signing cert.
+  /// Null until a secret is configured. NEVER returned from the API.
+  secretArn String? @map("secret_arn")
+
+  /// Whether this provider is offered on the login page.
+  isEnabled Boolean @default(true) @map("is_enabled")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, cognitoProviderName])
+  @@index([tenantId])
+  @@schema("public")
+  @@map("tenant_sso_providers")
 }
 
 // ---------------------------------------------------------------------------

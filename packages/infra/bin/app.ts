@@ -13,13 +13,15 @@ const devEnv: cdk.Environment = {
   region: process.env['CDK_DEFAULT_REGION'] ?? 'us-east-1',
 }
 
-// The admin CloudFront URL is resolved at deploy time (after AdminFrontendStack
-// is provisioned) and passed in via CDK context so Cognito can register it as
-// an allowed OAuth callback/logout URL alongside the localhost dev URL.
+// CloudFront URLs resolved at deploy time and passed via CDK context so Cognito
+// registers them as allowed OAuth callback/logout URLs alongside localhost.
 //
-// Usage:  cdk deploy PegasusDev-CognitoStack --context adminUrl=https://xxx.cloudfront.net
-// The deploy.sh script sets this automatically.
+// Usage:
+//   --context adminUrl=https://xxx.cloudfront.net
+//   --context tenantUrl=https://yyy.cloudfront.net
+// The deploy.sh script sets these automatically.
 const adminUrl = app.node.tryGetContext('adminUrl') as string | undefined
+const tenantUrl = app.node.tryGetContext('tenantUrl') as string | undefined
 
 // Shared Cognito User Pool — provisioned first; other stacks reference its outputs.
 const cognitoStack = new CognitoStack(app, 'PegasusDev-CognitoStack', {
@@ -32,15 +34,24 @@ const cognitoStack = new CognitoStack(app, 'PegasusDev-CognitoStack', {
   adminLogoutUrls: adminUrl
     ? ['http://localhost:5174/login', `${adminUrl}/login`]
     : undefined,
+  tenantCallbackUrls: tenantUrl
+    ? ['http://localhost:5173/login/callback', `${tenantUrl}/login/callback`]
+    : undefined,
+  tenantLogoutUrls: tenantUrl
+    ? ['http://localhost:5173/login', `${tenantUrl}/login`]
+    : undefined,
 })
 
 new ApiStack(app, 'PegasusDev-ApiStack', {
   env: devEnv,
   stackName: 'pegasus-dev-api',
   description: 'Pegasus dev — Hono Lambda + HTTP API Gateway v2',
-  // Thread the JWKS URL from the Cognito stack into the API Lambda environment
-  // so the admin auth middleware can verify JWTs without a shared secret.
+  // Thread Cognito values from CognitoStack into the API Lambda env.
   cognitoJwksUrl: cognitoStack.jwksUrl,
+  // Tenant client ID for /api/auth/validate-token audience validation.
+  cognitoTenantClientId: cognitoStack.tenantAppClient.userPoolClientId,
+  // User Pool ID for AdminCreateUser when provisioning tenant admin accounts.
+  cognitoUserPoolId: cognitoStack.userPool.userPoolId,
 })
 
 new FrontendStack(app, 'PegasusDev-FrontendStack', {

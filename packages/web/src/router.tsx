@@ -1,6 +1,9 @@
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 
 import { RootLayout } from '@/routes/__root'
+import { LandingPage } from '@/routes/landing'
+import { LoginPage } from '@/routes/login'
+import { LoginCallbackPage } from '@/routes/login.callback'
 import { DashboardPage } from '@/routes/index'
 import { MovesPage } from '@/routes/moves.index'
 import { MoveDetailPage } from '@/routes/moves.$moveId'
@@ -10,6 +13,7 @@ import { CustomersPage } from '@/routes/customers.index'
 import { CustomerDetailPage } from '@/routes/customers.$customerId'
 import { DispatchPage } from '@/routes/dispatch.index'
 import { InvoicesPage } from '@/routes/invoices.index'
+import { SsoConfigPage } from '@/routes/sso-config'
 
 // ---------------------------------------------------------------------------
 // Root
@@ -19,9 +23,27 @@ const rootRoute = createRootRoute({ component: RootLayout })
 // ---------------------------------------------------------------------------
 // Top-level routes
 // ---------------------------------------------------------------------------
-const indexRoute = createRoute({
+const landingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
+  component: LandingPage,
+})
+
+const loginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/login',
+  component: LoginPage,
+})
+
+const loginCallbackRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/login/callback',
+  component: LoginCallbackPage,
+})
+
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/dashboard',
   component: DashboardPage,
 })
 
@@ -73,10 +95,19 @@ const invoicesRoute = createRoute({
   component: InvoicesPage,
 })
 
+const ssoConfigRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/sso',
+  component: SsoConfigPage,
+})
+
 // ---------------------------------------------------------------------------
 // Route tree + router
 // ---------------------------------------------------------------------------
 const routeTree = rootRoute.addChildren([
+  landingRoute,
+  loginRoute,
+  loginCallbackRoute,
   indexRoute,
   movesIndexRoute,
   movesDetailRoute,
@@ -86,6 +117,7 @@ const routeTree = rootRoute.addChildren([
   customersDetailRoute,
   dispatchRoute,
   invoicesRoute,
+  ssoConfigRoute,
 ])
 
 export const router = createRouter({ routeTree })

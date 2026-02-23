@@ -9,16 +9,76 @@
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
+import {
+  CognitoIdentityProviderClient,
+  AdminCreateUserCommand,
+} from '@aws-sdk/client-cognito-identity-provider'
 import { Prisma } from '@prisma/client'
 import type { AdminEnv } from '../../types'
 import { db } from '../../db'
 import { writeAuditLog } from './audit'
+
+// ---------------------------------------------------------------------------
+// Cognito client — lazy singleton reused across warm Lambda invocations.
+// Region is resolved automatically from the Lambda execution environment.
+// ---------------------------------------------------------------------------
+let _cognito: CognitoIdentityProviderClient | null = null
+function getCognito(): CognitoIdentityProviderClient {
+  return (_cognito ??= new CognitoIdentityProviderClient({}))
+}
+
+/**
+ * Provisions a Cognito user for the initial tenant administrator.
+ *
+ * The user is created with FORCE_CHANGE_PASSWORD status. Cognito sends the
+ * invite email with a temporary password unless the runtime is non-production,
+ * in which case the email is suppressed to avoid noise in development.
+ *
+ * Idempotent: UsernameExistsException is silently ignored so callers can retry
+ * without side effects after a previous partial failure.
+ */
+async function provisionCognitoAdminUser(email: string): Promise<void> {
+  const userPoolId = process.env['COGNITO_USER_POOL_ID']
+  if (!userPoolId) {
+    throw new Error('COGNITO_USER_POOL_ID environment variable is not set')
+  }
+
+  try {
+    await getCognito().send(
+      new AdminCreateUserCommand({
+        UserPoolId: userPoolId,
+        Username: email,
+        UserAttributes: [
+          { Name: 'email', Value: email },
+          // Mark the email as verified so Cognito doesn't send a separate
+          // verification code on top of the invite.
+          { Name: 'email_verified', Value: 'true' },
+        ],
+        // Suppress the invite email in non-production environments to avoid
+        // sending real emails during development and testing.
+        ...(process.env['NODE_ENV'] !== 'production' ? { MessageAction: 'SUPPRESS' as const } : {}),
+      }),
+    )
+  } catch (err) {
+    // User already exists — acceptable for idempotency (e.g. retrying after
+    // a DB failure). The existing Cognito user record is left unchanged.
+    if ((err as { name?: string }).name === 'UsernameExistsException') return
+    throw err
+  }
+}
 
 const TenantStatusSchema = z.enum(['ACTIVE', 'SUSPENDED', 'OFFBOARDED'])
 
 // ---------------------------------------------------------------------------
 // Zod schemas
 // ---------------------------------------------------------------------------
+
+/** Validates a DNS domain label: lowercase letters, digits, optional hyphens. */
+const DomainSchema = z
+  .string()
+  .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/, {
+    message: 'Each domain must be a valid DNS domain (e.g. acme.com)',
+  })
 
 const CreateTenantBody = z.object({
   /** Display name of the moving company. */
@@ -39,6 +99,18 @@ const CreateTenantBody = z.object({
   plan: z.enum(['STARTER', 'GROWTH', 'ENTERPRISE']).optional(),
   contactName: z.string().min(1).max(255).optional(),
   contactEmail: z.string().email().optional(),
+  /**
+   * Email domains belonging to this tenant (e.g. ["acme.com"]).
+   * At least one domain is required so the SSO login flow can resolve the
+   * tenant from the user's email address.
+   */
+  emailDomains: z.array(DomainSchema).min(1),
+  /**
+   * Email address for the initial tenant administrator account.
+   * A Cognito user is created with FORCE_CHANGE_PASSWORD status and an invite
+   * email is sent so the administrator can set their password and configure SSO.
+   */
+  adminEmail: z.string().email(),
 })
 
 const PatchTenantBody = z.object({
@@ -51,10 +123,10 @@ const PatchTenantBody = z.object({
   /** Primary contact email. Pass null to clear. */
   contactEmail: z.string().email().nullable().optional(),
   /**
-   * SSO provider configuration stub. Accepts any JSON object or null.
-   * The field is reserved for future per-tenant OIDC/SAML configuration.
+   * Email domains belonging to this tenant. Replaces the full array.
+   * Must contain at least one valid domain if provided.
    */
-  ssoProviderConfig: z.record(z.unknown()).nullable().optional(),
+  emailDomains: z.array(DomainSchema).min(1).optional(),
 })
 
 // ---------------------------------------------------------------------------
@@ -66,7 +138,7 @@ function toSnapshot(row: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(row)) as Prisma.InputJsonValue
 }
 
-// Fields projected by the list view — omits ssoProviderConfig (large JSON blob).
+// Fields returned by both list and detail views.
 const LIST_SELECT = {
   id: true,
   name: true,
@@ -75,17 +147,15 @@ const LIST_SELECT = {
   plan: true,
   contactName: true,
   contactEmail: true,
+  emailDomains: true,
   createdAt: true,
   updatedAt: true,
   deletedAt: true,
 } as const
 
-// Fields projected by the detail view — adds ssoProviderConfig for the
-// SSO stub UI and the full admin edit form.
-const DETAIL_SELECT = {
-  ...LIST_SELECT,
-  ssoProviderConfig: true,
-} as const
+// Detail view uses the same fields as the list view for tenants.
+// SSO providers are managed via the dedicated /api/v1/sso/providers routes.
+const DETAIL_SELECT = LIST_SELECT
 
 export const adminTenantsRouter = new Hono<AdminEnv>()
 
@@ -157,7 +227,7 @@ adminTenantsRouter.get('/', async (c) => {
 // The creation and its audit log entry are committed in a single Prisma
 // interactive transaction so they are always consistent.
 //
-// Response: 201 { data: Tenant } — same shape as GET /:id (includes ssoProviderConfig).
+// Response: 201 { data: Tenant } — includes emailDomains; see LIST_SELECT for all fields.
 // ---------------------------------------------------------------------------
 adminTenantsRouter.post(
   '/',
@@ -173,12 +243,30 @@ adminTenantsRouter.post(
     const ipAddress = c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip')
     const userAgent = c.req.header('user-agent')
 
+    // Provision the Cognito admin user before touching the database.
+    // This is idempotent (UsernameExistsException is silently ignored), so
+    // retrying after a DB failure is safe. If Cognito fails, we abort early
+    // so no orphaned DB record is created.
+    try {
+      await provisionCognitoAdminUser(body.adminEmail)
+    } catch (err) {
+      console.error('Failed to provision Cognito admin user', err)
+      return c.json(
+        {
+          error: 'Failed to create the administrator account. Please try again.',
+          code: 'COGNITO_ERROR',
+        },
+        500,
+      )
+    }
+
     try {
       const tenant = await db.$transaction(async (tx) => {
         const created = await tx.tenant.create({
           data: {
             name: body.name,
             slug: body.slug,
+            emailDomains: body.emailDomains,
             ...(body.plan !== undefined ? { plan: body.plan } : {}),
             ...(body.contactName !== undefined ? { contactName: body.contactName } : {}),
             ...(body.contactEmail !== undefined ? { contactEmail: body.contactEmail } : {}),
@@ -254,14 +342,8 @@ adminTenantsRouter.patch(
             // null clears the nullable fields; undefined is a no-op.
             ...(body.contactName !== undefined ? { contactName: body.contactName } : {}),
             ...(body.contactEmail !== undefined ? { contactEmail: body.contactEmail } : {}),
-            ...(body.ssoProviderConfig !== undefined
-              ? {
-                  ssoProviderConfig:
-                    body.ssoProviderConfig !== null
-                      ? (body.ssoProviderConfig as Prisma.InputJsonValue)
-                      : Prisma.JsonNull,
-                }
-              : {}),
+            // emailDomains replaces the whole array when provided.
+            ...(body.emailDomains !== undefined ? { emailDomains: body.emailDomains } : {}),
           },
           select: DETAIL_SELECT,
         })
@@ -293,7 +375,7 @@ adminTenantsRouter.patch(
 // ---------------------------------------------------------------------------
 // GET /api/admin/tenants/:id
 //
-// Returns a single tenant including ssoProviderConfig.
+// Returns a single tenant record including emailDomains.
 // Returns 404 for unknown IDs including offboarded tenants (admins must use
 // ?status=OFFBOARDED on the list endpoint to find them).
 // ---------------------------------------------------------------------------

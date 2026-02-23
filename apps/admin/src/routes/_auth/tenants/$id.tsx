@@ -292,21 +292,18 @@ export function TenantDetailPage() {
                 <em className="text-muted-foreground">—</em>
               )}
             </Row>
+            <Row label="Email domains">
+              {tenant.emailDomains.length > 0 ? (
+                <span className="font-mono text-xs">{tenant.emailDomains.join(', ')}</span>
+              ) : (
+                <em className="text-muted-foreground">—</em>
+              )}
+            </Row>
             <Row label="Created">{formatDate(tenant.createdAt)}</Row>
             <Row label="Last updated">{formatDate(tenant.updatedAt)}</Row>
             {tenant.deletedAt && <Row label="Offboarded">{formatDate(tenant.deletedAt)}</Row>}
           </dl>
         </div>
-
-        {/* SSO config */}
-        {tenant.ssoProviderConfig !== null && (
-          <section className="space-y-2">
-            <h2 className="text-sm font-semibold text-foreground">SSO provider config</h2>
-            <pre className="rounded-md border border-border bg-muted/40 p-3 text-xs font-mono overflow-x-auto">
-              {JSON.stringify(tenant.ssoProviderConfig, null, 2)}
-            </pre>
-          </section>
-        )}
 
         {/* Status management */}
         <section className="space-y-3">

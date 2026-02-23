@@ -16,6 +16,8 @@ export interface Tenant {
   plan: TenantPlan
   contactName: string | null
   contactEmail: string | null
+  /** Email domains that map to this tenant (e.g. ["acme.com"]). Used for SSO domain resolution. */
+  emailDomains: string[]
   /** ISO 8601 string — Date fields are serialised by Prisma/JSON.stringify. */
   createdAt: string
   updatedAt: string
@@ -62,12 +64,11 @@ export async function listTenants({
 }
 
 // ---------------------------------------------------------------------------
-// Detail type (list + ssoProviderConfig)
+// Detail type — same shape as the list view (SSO providers are managed via
+// the dedicated /api/v1/sso/providers routes in the tenant portal).
 // ---------------------------------------------------------------------------
 
-export interface TenantDetail extends Tenant {
-  ssoProviderConfig: Record<string, unknown> | null
-}
+export type TenantDetail = Tenant
 
 // ---------------------------------------------------------------------------
 // Mutation payloads
@@ -79,6 +80,10 @@ export interface CreateTenantBody {
   plan?: TenantPlan
   contactName?: string
   contactEmail?: string
+  /** Email domains for SSO resolution (e.g. ["acme.com"]). At least one required. */
+  emailDomains: string[]
+  /** Email address for the initial tenant administrator. Cognito account is provisioned on creation. */
+  adminEmail: string
 }
 
 export interface UpdateTenantBody {
@@ -88,8 +93,8 @@ export interface UpdateTenantBody {
   contactName?: string | null
   /** Pass null to clear. */
   contactEmail?: string | null
-  /** Pass null to clear. */
-  ssoProviderConfig?: Record<string, unknown> | null
+  /** Replace the full set of email domains. Must contain at least one domain if provided. */
+  emailDomains?: string[]
 }
 
 // ---------------------------------------------------------------------------
