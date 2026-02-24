@@ -322,7 +322,7 @@ git commit -m "test: add vitest setup and unit tests for admin app (auth, Tenant
 |------|---------|--------|
 | 1 — RBAC middleware | `packages/api/src/middleware/rbac.test.ts` | ✅ DONE |
 | 2 — Pre-token trigger | `packages/api/src/cognito/pre-token.test.ts` | ✅ DONE |
-| 3 — SSO handler | `packages/api/src/handlers/sso.test.ts` | ☐ TODO |
+| 3 — SSO handler | `packages/api/src/handlers/sso.test.ts` | ✅ DONE |
 | 4 — Cognito CDK stack | `packages/infra/lib/stacks/__tests__/cognito-stack.test.ts` | ☐ TODO |
 | 5 — Web package setup + units | `packages/web/vitest.config.ts` + test files | ☐ TODO |
 | 6 — Admin app setup + units | `apps/admin/vitest.config.ts` + test files | ☐ TODO |
