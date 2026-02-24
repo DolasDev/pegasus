@@ -1,16 +1,134 @@
 /// <reference types="vite/client" />
 
 // ---------------------------------------------------------------------------
-// Cognito PKCE helpers
+// Cognito auth helpers
 //
-// Implements the Authorization Code + PKCE flow for the admin SPA.
-// No client secret is involved — security relies on the code_verifier /
-// code_challenge pair and short-lived authorization codes.
+// Two flows are supported:
+//
+// 1. Direct password flow (USER_PASSWORD_AUTH)
+//    Used for platform admin login. Calls the Cognito Identity Provider API
+//    directly — no Hosted UI redirect. Handles the SOFTWARE_TOKEN_MFA
+//    challenge for TOTP-enrolled admins.
+//
+// 2. Authorization Code + PKCE flow
+//    Kept for completeness / future federation use. Calls getAuthorizationUrl()
+//    which redirects to the Cognito Hosted UI.
 // ---------------------------------------------------------------------------
 
 const DOMAIN = (import.meta.env['VITE_COGNITO_DOMAIN'] as string | undefined) ?? ''
 const CLIENT_ID = (import.meta.env['VITE_COGNITO_CLIENT_ID'] as string | undefined) ?? ''
 const REDIRECT_URI = (import.meta.env['VITE_COGNITO_REDIRECT_URI'] as string | undefined) ?? ''
+
+// ---------------------------------------------------------------------------
+// Direct password auth (USER_PASSWORD_AUTH)
+// ---------------------------------------------------------------------------
+
+/** Parses the AWS region from the Cognito domain env var. */
+function parseRegion(): string {
+  const match = DOMAIN.match(/\.auth\.([^.]+)\.amazoncognito\.com/)
+  if (!match?.[1]) throw new Error('Cannot parse AWS region from VITE_COGNITO_DOMAIN')
+  return match[1]
+}
+
+/** Typed error carrying the Cognito error code (e.g. NotAuthorizedException). */
+export class CognitoError extends Error {
+  constructor(public readonly code: string, message: string) {
+    super(message)
+    this.name = code
+  }
+}
+
+async function cognitoApiRequest(
+  target: string,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const region = parseRegion()
+  const res = await fetch(`https://cognito-idp.${region}.amazonaws.com/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-amz-json-1.1',
+      'X-Amz-Target': `AWSCognitoIdentityProviderService.${target}`,
+    },
+    body: JSON.stringify(body),
+  })
+
+  const json = (await res.json()) as Record<string, unknown>
+  if (!res.ok) {
+    throw new CognitoError(
+      (json['__type'] as string | undefined) ?? 'UnknownError',
+      (json['message'] as string | undefined) ?? 'Authentication failed',
+    )
+  }
+  return json
+}
+
+export type SignInResult =
+  | { type: 'success'; tokens: TokenSet }
+  | { type: 'mfa'; session: string; username: string }
+
+/**
+ * Initiates a direct username/password sign-in via USER_PASSWORD_AUTH.
+ *
+ * Returns `{ type: 'success', tokens }` on successful auth without MFA, or
+ * `{ type: 'mfa', session, username }` when a TOTP challenge is required.
+ * Call `respondToMfaChallenge()` with the returned session to complete login.
+ *
+ * Throws `CognitoError` on invalid credentials or other Cognito errors.
+ */
+export async function signIn(email: string, password: string): Promise<SignInResult> {
+  const json = await cognitoApiRequest('InitiateAuth', {
+    AuthFlow: 'USER_PASSWORD_AUTH',
+    AuthParameters: { USERNAME: email, PASSWORD: password },
+    ClientId: CLIENT_ID,
+  })
+
+  if (json['ChallengeName'] === 'SOFTWARE_TOKEN_MFA') {
+    return { type: 'mfa', session: json['Session'] as string, username: email }
+  }
+
+  const result = json['AuthenticationResult'] as {
+    AccessToken: string
+    IdToken: string
+    RefreshToken: string
+  }
+  const tokens: TokenSet = {
+    accessToken: result.AccessToken,
+    idToken: result.IdToken,
+    refreshToken: result.RefreshToken,
+  }
+  storeTokens(tokens)
+  return { type: 'success', tokens }
+}
+
+/**
+ * Completes a SOFTWARE_TOKEN_MFA challenge with a TOTP code.
+ * The `session` value comes from the `signIn()` mfa result.
+ */
+export async function respondToMfaChallenge(
+  session: string,
+  username: string,
+  code: string,
+): Promise<TokenSet> {
+  const json = await cognitoApiRequest('RespondToAuthChallenge', {
+    ChallengeName: 'SOFTWARE_TOKEN_MFA',
+    ClientId: CLIENT_ID,
+    Session: session,
+    ChallengeResponses: { USERNAME: username, SOFTWARE_TOKEN_MFA_CODE: code },
+  })
+
+  const result = json['AuthenticationResult'] as {
+    AccessToken: string
+    IdToken: string
+    RefreshToken: string
+  }
+  const tokens: TokenSet = {
+    accessToken: result.AccessToken,
+    idToken: result.IdToken,
+    refreshToken: result.RefreshToken,
+  }
+  storeTokens(tokens)
+  return tokens
+}
 
 const STORAGE_KEY_ACCESS_TOKEN = 'pegasus_admin_access_token'
 const STORAGE_KEY_ID_TOKEN = 'pegasus_admin_id_token'
