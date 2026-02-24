@@ -140,6 +140,94 @@ export async function exchangeCodeForTokens(
 }
 
 // ---------------------------------------------------------------------------
+// Direct password auth (USER_PASSWORD_AUTH)
+//
+// Used when a tenant's domain is registered but no SSO providers are
+// configured yet. The tenant admin uses this path to log in and set up SSO,
+// after which regular users can authenticate via the PKCE/IdP flow above.
+// ---------------------------------------------------------------------------
+
+/** Typed error carrying the Cognito error code (e.g. NotAuthorizedException). */
+export class CognitoError extends Error {
+  constructor(public readonly code: string, message: string) {
+    super(message)
+    this.name = code
+  }
+}
+
+async function cognitoApiRequest(
+  region: string,
+  target: string,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const res = await fetch(`https://cognito-idp.${region}.amazonaws.com/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-amz-json-1.1',
+      'X-Amz-Target': `AWSCognitoIdentityProviderService.${target}`,
+    },
+    body: JSON.stringify(body),
+  })
+
+  const json = (await res.json()) as Record<string, unknown>
+  if (!res.ok) {
+    throw new CognitoError(
+      (json['__type'] as string | undefined) ?? 'UnknownError',
+      (json['message'] as string | undefined) ?? 'Authentication failed',
+    )
+  }
+  return json
+}
+
+export type SignInResult =
+  | { type: 'success'; idToken: string }
+  | { type: 'mfa'; session: string; username: string }
+
+/**
+ * Initiates a direct username/password sign-in via USER_PASSWORD_AUTH.
+ *
+ * Returns `{ type: 'success', idToken }` on success, or
+ * `{ type: 'mfa', session, username }` when a TOTP challenge is required.
+ * Call `respondToMfaChallenge()` with the returned session to complete login.
+ */
+export async function signIn(email: string, password: string): Promise<SignInResult> {
+  const { region, clientId } = getCognitoConfig()
+  const json = await cognitoApiRequest(region, 'InitiateAuth', {
+    AuthFlow: 'USER_PASSWORD_AUTH',
+    AuthParameters: { USERNAME: email, PASSWORD: password },
+    ClientId: clientId,
+  })
+
+  if (json['ChallengeName'] === 'SOFTWARE_TOKEN_MFA') {
+    return { type: 'mfa', session: json['Session'] as string, username: email }
+  }
+
+  const result = json['AuthenticationResult'] as { IdToken: string }
+  return { type: 'success', idToken: result.IdToken }
+}
+
+/**
+ * Completes a SOFTWARE_TOKEN_MFA challenge with a TOTP code.
+ * The `session` value comes from the `signIn()` mfa result.
+ */
+export async function respondToMfaChallenge(
+  session: string,
+  username: string,
+  code: string,
+): Promise<{ idToken: string }> {
+  const { region, clientId } = getCognitoConfig()
+  const json = await cognitoApiRequest(region, 'RespondToAuthChallenge', {
+    ChallengeName: 'SOFTWARE_TOKEN_MFA',
+    ClientId: clientId,
+    Session: session,
+    ChallengeResponses: { USERNAME: username, SOFTWARE_TOKEN_MFA_CODE: code },
+  })
+
+  const result = json['AuthenticationResult'] as { IdToken: string }
+  return { idToken: result.IdToken }
+}
+
+// ---------------------------------------------------------------------------
 // Logout URL
 // ---------------------------------------------------------------------------
 

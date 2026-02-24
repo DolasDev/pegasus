@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type FormEvent } from 'react'
 import { ArrowRight, Loader2, AlertCircle, LogIn } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,10 +9,13 @@ import {
   type TenantResolution,
   type TenantProvider,
 } from '@/auth/tenant-resolver'
-import { ApiError } from '@/api/client'
+import { apiFetch, ApiError } from '@/api/client'
 import {
   getCognitoConfig,
   buildAuthorizeUrl,
+  signIn,
+  respondToMfaChallenge,
+  CognitoError,
 } from '@/auth/cognito'
 import {
   generateCodeVerifier,
@@ -20,6 +23,8 @@ import {
   generateState,
   savePkceState,
 } from '@/auth/pkce'
+import { setSession } from '@/auth/session'
+import type { Session } from '@/auth/session'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -41,6 +46,8 @@ type Step =
   | { name: 'resolving' }
   | { name: 'select-provider'; resolution: TenantResolution }
   | { name: 'redirecting'; provider: TenantProvider; tenantId: string; email: string }
+  | { name: 'password' }
+  | { name: 'mfa'; session: string; username: string }
   | { name: 'error'; message: string }
 
 // ---------------------------------------------------------------------------
@@ -70,11 +77,8 @@ export function LoginPage() {
       resolution = await resolveTenantByDomain(domain)
     } catch (err) {
       if (err instanceof ApiError && err.code === 'SSO_NOT_CONFIGURED') {
-        setStep({
-          name: 'error',
-          message:
-            'Your organisation has not configured SSO yet. Contact your administrator to set up a sign-in provider.',
-        })
+        // SSO not yet configured — offer direct Cognito password login.
+        setStep({ name: 'password' })
       } else {
         setStep({
           name: 'error',
@@ -93,11 +97,9 @@ export function LoginPage() {
     }
 
     if (resolution.providers.length === 0) {
-      setStep({
-        name: 'error',
-        message:
-          'Your organisation has no SSO providers configured. Contact your administrator.',
-      })
+      // Tenant domain is registered but no SSO providers configured yet.
+      // Show password login so the tenant admin can sign in to set up SSO.
+      setStep({ name: 'password' })
       return
     }
 
@@ -120,6 +122,50 @@ export function LoginPage() {
   // -------------------------------------------------------------------------
   function handleProviderSelect(provider: TenantProvider, resolution: TenantResolution) {
     setStep({ name: 'redirecting', provider, tenantId: resolution.tenantId, email })
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 2c — Direct password login (no SSO providers configured)
+  // -------------------------------------------------------------------------
+  async function handlePasswordSubmit(e: FormEvent, password: string) {
+    e.preventDefault()
+    try {
+      const result = await signIn(email, password)
+      if (result.type === 'mfa') {
+        setStep({ name: 'mfa', session: result.session, username: result.username })
+      } else {
+        await completePasswordSession(result.idToken)
+      }
+    } catch (err) {
+      setStep({
+        name: 'error',
+        message: err instanceof CognitoError ? err.message : 'Sign-in failed. Please try again.',
+      })
+    }
+  }
+
+  async function handleMfaSubmit(e: FormEvent, session: string, username: string, code: string) {
+    e.preventDefault()
+    try {
+      const { idToken } = await respondToMfaChallenge(session, username, code)
+      await completePasswordSession(idToken)
+    } catch (err) {
+      setStep({
+        name: 'error',
+        message:
+          err instanceof CognitoError ? err.message : 'MFA verification failed. Please try again.',
+      })
+    }
+  }
+
+  /** Validates the ID token via the API and stores the session — mirrors the SSO callback. */
+  async function completePasswordSession(idToken: string) {
+    const session = await apiFetch<Session>('/api/auth/validate-token', {
+      method: 'POST',
+      body: JSON.stringify({ idToken }),
+    })
+    setSession({ ...session, token: idToken })
+    window.location.replace('/dashboard')
   }
 
   // -------------------------------------------------------------------------
@@ -281,6 +327,25 @@ export function LoginPage() {
           </>
         )}
 
+        {/* ── Step: password ─────────────────────────────── */}
+        {step.name === 'password' && (
+          <PasswordForm
+            email={email}
+            onSubmit={handlePasswordSubmit}
+            onBack={() => setStep({ name: 'email' })}
+          />
+        )}
+
+        {/* ── Step: mfa ──────────────────────────────────── */}
+        {step.name === 'mfa' && (
+          <MfaForm
+            session={step.session}
+            username={step.username}
+            onSubmit={handleMfaSubmit}
+            onBack={() => setStep({ name: 'password' })}
+          />
+        )}
+
         {/* ── Step: error ────────────────────────────────── */}
         {step.name === 'error' && (
           <>
@@ -304,5 +369,136 @@ export function LoginPage() {
         )}
       </Card>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// PasswordForm — renders inside the Card when no SSO providers are configured
+// ---------------------------------------------------------------------------
+
+function PasswordForm({
+  email,
+  onSubmit,
+  onBack,
+}: {
+  email: string
+  onSubmit: (e: FormEvent, password: string) => Promise<void>
+  onBack: () => void
+}) {
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    setLoading(true)
+    try {
+      await onSubmit(e, password)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <>
+      <CardHeader>
+        <CardTitle>Sign in</CardTitle>
+        <CardDescription>{email}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+              // eslint-disable-next-line jsx-a11y/no-autofocus
+              autoFocus
+            />
+          </div>
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? <Loader2 size={16} className="animate-spin" /> : 'Sign in'}
+          </Button>
+        </form>
+        <button
+          type="button"
+          onClick={onBack}
+          className="w-full pt-1 text-center text-xs text-muted-foreground hover:underline"
+        >
+          Use a different email
+        </button>
+      </CardContent>
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// MfaForm — renders when Cognito returns a SOFTWARE_TOKEN_MFA challenge
+// ---------------------------------------------------------------------------
+
+function MfaForm({
+  session,
+  username,
+  onSubmit,
+  onBack,
+}: {
+  session: string
+  username: string
+  onSubmit: (e: FormEvent, session: string, username: string, code: string) => Promise<void>
+  onBack: () => void
+}) {
+  const [code, setCode] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    setLoading(true)
+    try {
+      await onSubmit(e, session, username, code)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <>
+      <CardHeader>
+        <CardTitle>Two-factor authentication</CardTitle>
+        <CardDescription>Enter the code from your authenticator app.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="totp">Authenticator code</Label>
+            <Input
+              id="totp"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]{6}"
+              maxLength={6}
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+              required
+              autoComplete="one-time-code"
+              // eslint-disable-next-line jsx-a11y/no-autofocus
+              autoFocus
+              className="text-center tracking-widest"
+              placeholder="000000"
+            />
+          </div>
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? <Loader2 size={16} className="animate-spin" /> : 'Verify'}
+          </Button>
+        </form>
+        <button
+          type="button"
+          onClick={onBack}
+          className="w-full pt-1 text-center text-xs text-muted-foreground hover:underline"
+        >
+          ← Back
+        </button>
+      </CardContent>
+    </>
   )
 }

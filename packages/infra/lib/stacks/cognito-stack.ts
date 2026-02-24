@@ -289,6 +289,14 @@ export class CognitoStack extends cdk.Stack {
       userPoolClientName: 'tenant-app-client',
       generateSecret: false,
       preventUserExistenceErrors: true,
+      authFlows: {
+        // USER_PASSWORD_AUTH: allows tenant admin users to sign in with
+        // email + password directly (no Hosted UI redirect) before their
+        // organisation's SSO is configured. Regular tenant users still
+        // authenticate via the PKCE/SSO flow — this flow is only reachable
+        // from the login page when no SSO providers exist for the tenant.
+        userPassword: true,
+      },
       oAuth: {
         flows: { authorizationCodeGrant: true },
         scopes: [cognito.OAuthScope.EMAIL, cognito.OAuthScope.OPENID, cognito.OAuthScope.PROFILE],
@@ -370,6 +378,11 @@ export class CognitoStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'JwksUrl', {
       value: this.jwksUrl,
       exportName: 'PegasusCognitoJwksUrl',
+    })
+
+    new cdk.CfnOutput(this, 'adminCallbackUrls', {
+      value: props.adminCallbackUrls?.[1] ? props.adminCallbackUrls[1] : 'http://localhost:5174/auth/callback',
+      exportName: 'adminCallbackUrls',
     })
   }
 }
