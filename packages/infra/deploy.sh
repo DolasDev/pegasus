@@ -93,6 +93,7 @@ if [[ "$ADMIN_ONLY" == "false" ]]; then
   npx cdk deploy PegasusDev-ApiStack \
     --profile "$AWS_PROFILE" \
     --require-approval never \
+    --context "adminUrl=${ADMIN_URL}" \
     --outputs-file "$OUTPUTS_FILE"
 else
   echo "▶  [3/9] Skipping ApiStack."
@@ -142,6 +143,7 @@ if [[ "$ADMIN_ONLY" == "false" ]]; then
   npx cdk deploy PegasusDev-FrontendStack \
     --profile "$AWS_PROFILE" \
     --require-approval never \
+    --context "adminUrl=${ADMIN_URL}" \
     --outputs-file "$OUTPUTS_FILE"
 fi
 
@@ -191,6 +193,7 @@ cd "$INFRA_DIR"
 npx cdk deploy PegasusDev-AdminFrontendStack \
   --profile "$AWS_PROFILE" \
   --require-approval never \
+  --context "adminUrl=${ADMIN_URL}" \
   --outputs-file "$OUTPUTS_FILE"
 
 echo ""
