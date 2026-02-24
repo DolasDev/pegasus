@@ -66,6 +66,7 @@ npx cdk deploy PegasusDev-AdminFrontendStack \
   --outputs-file "$OUTPUTS_FILE"
 
 ADMIN_URL=$(jq -r '.["pegasus-dev-admin-frontend"].AdminDistributionUrl // empty' "$OUTPUTS_FILE")
+echo "ADMIN_URL is: ${ADMIN_URL}"
 if [[ -z "$ADMIN_URL" ]]; then
   echo "✘  Could not read AdminDistributionUrl from CDK outputs. Aborting."
   exit 1
@@ -76,11 +77,12 @@ echo "   Admin URL: $ADMIN_URL"
 # Pass the admin CloudFront URL via CDK context so the app client registers it
 # as an allowed OAuth callback/logout URL alongside the localhost dev URL.
 if [[ "$API_ONLY" == "false" && "$SKIP_COGNITO" == "false" ]]; then
-  echo "▶  [2/9] Deploying CognitoStack (adminUrl=$ADMIN_URL)..."
+  echo "▶  [2/9] Deploying CognitoStack (adminUrl=${ADMIN_URL})..."
   npx cdk deploy PegasusDev-CognitoStack \
+    --region us-east-1 \
     --profile "$AWS_PROFILE" \
     --require-approval never \
-    --context "adminUrl=$ADMIN_URL"
+    --context "adminUrl=${ADMIN_URL}"
 else
   echo "▶  [2/9] Skipping CognitoStack."
 fi

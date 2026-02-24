@@ -82,7 +82,6 @@ export class CognitoStack extends cdk.Stack {
     const adminLogoutUrls = props.adminLogoutUrls ?? ['http://localhost:5174/login']
     const tenantCallbackUrls = props.tenantCallbackUrls ?? ['http://localhost:5173/login/callback']
     const tenantLogoutUrls = props.tenantLogoutUrls ?? ['http://localhost:5173/login']
-
     // -------------------------------------------------------------------------
     // Pre-Authentication Lambda trigger
     //
