@@ -161,6 +161,12 @@ else
   ok "Git identity: $GIT_NAME <$GIT_EMAIL>"
 fi
 
+# ── Husky git hooks ───────────────────────────────────────────────────────────
+if [[ -d ".husky/_" ]]; then
+  chmod +x .husky/_/* 2>/dev/null || true
+  ok "Husky hooks are executable"
+fi
+
 # ── 7. Docker (optional) ─────────────────────────────────────────────────────
 header "Docker (optional — only needed for offline local Postgres)"
 if command_exists docker; then
