@@ -6,6 +6,19 @@ Each step has a **Completion Check** — run it before starting to skip already-
 After implementing the test file(s) for a step, run all tests and commit if the suite is clean.
 Steps are independent within each phase and may be re-run safely without duplicating work.
 
+### Tests vs Code bugs
+
+**If a new test fails because the code is wrong, leave the test failing — do not rewrite the test to pass.**
+The test is the correct specification of behaviour. A failing test that exposes a real bug is
+valuable; a passing test that masks one is not. When this happens:
+
+1. Note the failure in the step's "Run & Commit" block before committing.
+2. Commit the test file anyway — the failing test is intentional documentation of the bug.
+3. Open a separate bug-fix task rather than silencing the test.
+
+Only rewrite a test if the test itself is genuinely wrong (wrong expectation, wrong mock shape,
+wrong understanding of the contract). When in doubt, assume the test is right.
+
 ---
 
 ## Known Baseline Failures
