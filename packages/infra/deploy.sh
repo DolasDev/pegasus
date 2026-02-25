@@ -72,10 +72,10 @@ echo ""
 if [[ "$API_ONLY" == "false" ]]; then
   if [[ "$ADMIN_ONLY" == "false" ]]; then
     echo "▶  [1/6] Building web package..."
-    run npm run build --workspace=packages/web --prefix "$REPO_ROOT"
+    run npm run build --workspace=@pegasus/web --prefix "$REPO_ROOT"
   fi
   echo "▶  [1/6] Building apps/admin..."
-  run npm run build --workspace=apps/admin --prefix "$REPO_ROOT"
+  run npm run build --workspace=@pegasus/admin --prefix "$REPO_ROOT"
 fi
 
 # ── 2. Deploy AdminFrontendStack — first pass (infra only) ────────────────────
