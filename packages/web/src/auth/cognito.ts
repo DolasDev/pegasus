@@ -152,6 +152,7 @@ async function cognitoApiRequest(
 export type SignInResult =
   | { type: 'success'; idToken: string }
   | { type: 'mfa'; session: string; username: string }
+  | { type: 'new_password_required'; session: string; username: string }
 
 /**
  * Initiates a direct username/password sign-in via USER_PASSWORD_AUTH.
@@ -170,6 +171,10 @@ export async function signIn(email: string, password: string): Promise<SignInRes
 
   if (json['ChallengeName'] === 'SOFTWARE_TOKEN_MFA') {
     return { type: 'mfa', session: json['Session'] as string, username: email }
+  }
+
+  if (json['ChallengeName'] === 'NEW_PASSWORD_REQUIRED') {
+    return { type: 'new_password_required', session: json['Session'] as string, username: email }
   }
 
   const result = json['AuthenticationResult'] as { IdToken: string }
@@ -191,6 +196,28 @@ export async function respondToMfaChallenge(
     ClientId: clientId,
     Session: session,
     ChallengeResponses: { USERNAME: username, SOFTWARE_TOKEN_MFA_CODE: code },
+  })
+
+  const result = json['AuthenticationResult'] as { IdToken: string }
+  return { idToken: result.IdToken }
+}
+
+/**
+ * Completes a NEW_PASSWORD_REQUIRED challenge by setting a permanent password.
+ * Cognito issues this challenge for admin-created users on their first sign-in.
+ * The `session` value comes from the `signIn()` new_password_required result.
+ */
+export async function respondToNewPasswordChallenge(
+  session: string,
+  username: string,
+  newPassword: string,
+): Promise<{ idToken: string }> {
+  const { region, clientId } = getCognitoConfig()
+  const json = await cognitoApiRequest(region, 'RespondToAuthChallenge', {
+    ChallengeName: 'NEW_PASSWORD_REQUIRED',
+    ClientId: clientId,
+    Session: session,
+    ChallengeResponses: { USERNAME: username, NEW_PASSWORD: newPassword },
   })
 
   const result = json['AuthenticationResult'] as { IdToken: string }

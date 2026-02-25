@@ -15,6 +15,7 @@ import {
   buildAuthorizeUrl,
   signIn,
   respondToMfaChallenge,
+  respondToNewPasswordChallenge,
 } from '@/auth/cognito'
 import {
   generateCodeVerifier,
@@ -47,6 +48,7 @@ type Step =
   | { name: 'redirecting'; provider: TenantProvider; tenantId: string; email: string }
   | { name: 'password' }
   | { name: 'mfa'; session: string; username: string }
+  | { name: 'new-password'; session: string; username: string }
   | { name: 'error'; message: string }
 
 // ---------------------------------------------------------------------------
@@ -132,6 +134,8 @@ export function LoginPage() {
       const result = await signIn(email, password)
       if (result.type === 'mfa') {
         setStep({ name: 'mfa', session: result.session, username: result.username })
+      } else if (result.type === 'new_password_required') {
+        setStep({ name: 'new-password', session: result.session, username: result.username })
       } else {
         await completePasswordSession(result.idToken)
       }
@@ -153,6 +157,24 @@ export function LoginPage() {
         name: 'error',
         message:
           err instanceof Error ? err.message : 'MFA verification failed. Please try again.',
+      })
+    }
+  }
+
+  async function handleNewPasswordSubmit(
+    e: FormEvent,
+    session: string,
+    username: string,
+    newPassword: string,
+  ) {
+    e.preventDefault()
+    try {
+      const { idToken } = await respondToNewPasswordChallenge(session, username, newPassword)
+      await completePasswordSession(idToken)
+    } catch (err) {
+      setStep({
+        name: 'error',
+        message: err instanceof Error ? err.message : 'Failed to set new password. Please try again.',
       })
     }
   }
@@ -345,6 +367,16 @@ export function LoginPage() {
           />
         )}
 
+        {/* ── Step: new-password ─────────────────────────── */}
+        {step.name === 'new-password' && (
+          <NewPasswordForm
+            session={step.session}
+            username={step.username}
+            onSubmit={handleNewPasswordSubmit}
+            onBack={() => setStep({ name: 'password' })}
+          />
+        )}
+
         {/* ── Step: error ────────────────────────────────── */}
         {step.name === 'error' && (
           <>
@@ -427,6 +459,100 @@ function PasswordForm({
           className="w-full pt-1 text-center text-xs text-muted-foreground hover:underline"
         >
           Use a different email
+        </button>
+      </CardContent>
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// NewPasswordForm — renders when Cognito returns a NEW_PASSWORD_REQUIRED challenge
+// (admin-created users must set a permanent password on first sign-in)
+// ---------------------------------------------------------------------------
+
+function NewPasswordForm({
+  session,
+  username,
+  onSubmit,
+  onBack,
+}: {
+  session: string
+  username: string
+  onSubmit: (
+    e: FormEvent,
+    session: string,
+    username: string,
+    newPassword: string,
+  ) => Promise<void>
+  onBack: () => void
+}) {
+  const [newPassword, setNewPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [mismatch, setMismatch] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (newPassword !== confirm) {
+      setMismatch(true)
+      return
+    }
+    setMismatch(false)
+    setLoading(true)
+    try {
+      await onSubmit(e, session, username, newPassword)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <>
+      <CardHeader>
+        <CardTitle>Set a new password</CardTitle>
+        <CardDescription>
+          Your account requires a permanent password before you can continue.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="new-password">New password</Label>
+            <Input
+              id="new-password"
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+              // eslint-disable-next-line jsx-a11y/no-autofocus
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="confirm-password">Confirm password</Label>
+            <Input
+              id="confirm-password"
+              type="password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              required
+              autoComplete="new-password"
+            />
+          </div>
+          {mismatch && (
+            <p className="text-sm text-destructive">Passwords do not match.</p>
+          )}
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? <Loader2 size={16} className="animate-spin" /> : 'Set password'}
+          </Button>
+        </form>
+        <button
+          type="button"
+          onClick={onBack}
+          className="w-full pt-1 text-center text-xs text-muted-foreground hover:underline"
+        >
+          ← Back
         </button>
       </CardContent>
     </>
