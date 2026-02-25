@@ -96,87 +96,117 @@ Models crew and vehicle availability.
 
 These rules govern how the agent executes tasks in this repository. They are **mandatory** — not suggestions.
 
-### Task Completion Gate: All Tests Must Pass
+### Operating Context
+
+You are operating inside a Git worktree on a dedicated feature branch. Each worktree is an isolated working directory mapped to exactly one branch — the main repository directory is not your workspace. Multiple agents may run in parallel in separate worktrees.
+
+Operate as a disciplined senior engineer: stay within scope, preserve architectural consistency, minimize merge-conflict surface, and assume other agents depend on public interfaces you touch.
+
+### Branch Discipline
+
+- Work ONLY within the current working directory and its branch.
+- Never run `git checkout`, `git switch`, `git merge`, or `git rebase`.
+- Never remove or prune worktrees. Never modify git configuration.
+- Do NOT pull or push unless explicitly instructed.
+
+**At session start**, identify the current branch (`git branch --show-current`), state it at the top of your plan file, and confirm all changes will remain on this branch.
+
+### Mandatory Pre-Implementation Phase
+
+**No code before plan approval.**
+
+Before writing any code, produce a plan containing:
+1. The task restated in your own words.
+2. A step-by-step implementation plan.
+3. Every file to be modified and every new file to be created.
+4. Potential side effects or risks.
+
+Wait for explicit developer approval before implementing anything.
+
+### Scope Control
+
+You may ONLY modify files explicitly listed in the approved plan or inside directories assigned for this task.
+
+You MUST NOT:
+- Refactor code unrelated to the task. If refactoring is required, limit it to in-scope files, ensure it does not alter unrelated public behaviour, and get separate approval for large refactors.
+- Rename global symbols outside scope.
+- Introduce architectural changes unless explicitly requested.
+- Apply formatting-only changes to unrelated files.
+- Update dependencies or lock files (`package-lock.json`, etc.) unless explicitly instructed.
+- Modify shared utilities, types, or interfaces without noting it in the plan and getting explicit approval.
+- Modify files outside the current worktree.
+
+If you discover a necessary change outside scope: **stop, report it, and request instruction.**
+
+### Conflict Handling
+
+Stop and seek clarification when:
+- Task is unclear → clarify before writing a plan.
+- Required files are missing → report and pause.
+- Architecture appears inconsistent → ask before fixing.
+- Overlapping responsibility detected with another subsystem → stop and ask.
+- Change requires cross-branch coordination → stop immediately.
+- Solution requires modifying shared infrastructure outside scope → stop.
+
+### Task Completion Gate
 
 **A task is not complete until the full test suite passes.**
 
-Before marking any task or subtask as done:
-1. Run `npm test` from the repo root.
-2. Every test across every package must pass.
-3. If tests fail, **fix the code** — do not work around the failure by:
-   - Skipping, disabling, or deleting a failing test
-   - Marking a task complete despite test failures
-   - Commenting out assertions
-   - Widening types or using `as any` to silence type errors
-   - Using `// @ts-ignore` or `// eslint-disable` to suppress legitimate errors
+Run `npm test` from the repo root. Every test across every package must pass. If tests fail, fix the code — do not work around failures by:
+- Skipping, disabling, or deleting a failing test
+- Marking a task complete despite failures
+- Commenting out assertions
+- Using `as any`, `// @ts-ignore`, or `// eslint-disable`
 
 A failing test is evidence of a real problem. Treat it as signal, not noise.
 
 ### Plan File
 
-Each agent works from its own plan file in `plans/in-progress/`. Use a short, descriptive kebab-case name that uniquely identifies the work:
-
-```
-plans/in-progress/<short-name>.md
-```
-
-Examples: `plans/in-progress/add-rbac-middleware.md`, `plans/in-progress/cognito-sso-config.md`
-
-**Why a named file per agent:** multiple agents may work in parallel on different features. A unique file per plan prevents conflicts and makes it obvious at a glance what work is in flight — `ls plans/in-progress/` shows every active workstream.
-
-**Before starting work**, check `plans/in-progress/` for an existing plan file for this task. If one exists, resume from it. If not, create one.
+Each agent works from a plan file in `plans/in-progress/`. Check for an existing file before creating one. Use a short, descriptive kebab-case name (e.g. `plans/in-progress/add-rbac-middleware.md`).
 
 Every plan file must contain:
-- A one-line goal at the top
-- An ordered checklist of tasks/subtasks with status markers: `[ ]` pending · `[x]` done · `[~]` in progress
-- Enough context (key files, decisions made, blockers) that any agent can pick up mid-task without re-reading the whole codebase
+- Current branch name and one-line goal
+- Ordered checklist: `[ ]` pending · `[x]` done · `[~]` in progress
+- All files to be modified and created, plus identified side effects or risks
+- Enough context that any agent can resume without re-reading the codebase
 
-After completing each task or subtask, immediately update the plan file to mark it done. The plan file is the source of truth for progress — keep it current at all times.
+**Write and get the plan approved before implementing.** Update it after every completed subtask — it is the source of truth for progress.
 
 ### Non-Breaking, Independently Deployable Steps
 
-Complete work in increments that are safe to deploy on their own:
-- Each step must leave the codebase in a working, deployable state.
-- Do not introduce partially-implemented features that break existing behaviour.
-- Prefer feature flags, additive changes (new files, new fields), and backwards-compatible interfaces over disruptive rewrites.
+Each increment must leave the codebase deployable:
+- No partially-implemented features that break existing behaviour.
+- Prefer feature flags, additive changes, and backwards-compatible interfaces.
 - Database migrations must be non-destructive (no dropped columns/tables while old code still references them).
 
-### Commit and Push: Await Developer Approval
+### Safety Rails
 
-**Do not commit or push, even if all tests pass**, unless the developer explicitly instructs you to.
+You MUST NOT:
+- Delete large blocks of code without explicit justification in the plan.
+- Remove configuration or environment logic.
+- Modify the database schema unless explicitly in the approved plan.
+- Introduce breaking API changes unless explicitly specified.
 
-When work is ready:
-1. Run the full test suite and confirm it passes.
-2. Summarise what was done and what changed.
-3. Wait for explicit developer approval before running `git commit` or `git push`.
+### Output Format
+
+When presenting results: show changes clearly (diffs preferred), keep diffs minimal, explain why each change is necessary, and include no unrelated commentary.
+
+### Commits
+
+Every commit must be focused and atomic — one logical change, no debug artifacts, no temp files. Commit messages must state what changed and why.
+
+**Do not commit or push until the developer explicitly instructs you to.** When ready: run the full test suite, confirm it passes, summarise what changed, and wait for explicit approval.
 
 ### Archiving Completed Plans
 
-Once a plan has been fully executed and the developer has approved the commit, archive the plan file from `plans/in-progress/` into `plans/completed/`.
-
-**Naming convention** — use the short commit hash of the commit that completes the work, followed by a slug of the plan title:
+After developer approval and commit, move the plan file from `plans/in-progress/` to `plans/completed/`:
 
 ```
-plans/completed/<short-hash>-<slug>.md
+plans/completed/<short-hash>-<slug>.md   # git rev-parse --short HEAD
+plans/completed/<YYYY-MM-DDTHHMM>-<slug>.md  # if no commit yet
 ```
 
-Example: `plans/completed/a3f9c12-add-rbac-middleware.md`
-
-If no commit has been made yet (e.g. the developer approves but asks you to commit later), fall back to an ISO-8601 datetime prefix instead:
-
-```
-plans/completed/<YYYY-MM-DDTHHMM>-<slug>.md
-```
-
-Example: `plans/completed/2026-02-25T1430-add-rbac-middleware.md`
-
-Steps:
-1. After the developer approves the commit, run `git rev-parse --short HEAD` to get the short hash.
-2. Move the plan file to `plans/completed/<short-hash>-<slug>.md` (use the same slug as the in-progress name).
-3. The archived file is a permanent record — do not edit it after archiving.
-4. An empty `plans/in-progress/` means no work is currently in flight.
-
-This makes it straightforward to trace any archived plan back to its place in git history with `git show <short-hash>`.
+The archived file is a permanent record — do not edit it. An empty `plans/in-progress/` means no work is in flight.
 
 ---
 
