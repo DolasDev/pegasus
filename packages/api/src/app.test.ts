@@ -5,7 +5,7 @@
  * These tests verify HTTP status codes, response shapes, validation,
  * and business-rule enforcement performed within the handlers.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // ---------------------------------------------------------------------------
 // Mock the repository module — hoisted above imports by vitest
@@ -98,6 +98,18 @@ vi.mock('./repositories', () => ({
   createInvoice: vi.fn(),
   recordPayment: vi.fn(),
 }))
+
+vi.mock('@aws-sdk/client-cognito-identity-provider', () => {
+  class MockCognitoClient {
+    send() {
+      return Promise.resolve({})
+    }
+  }
+  return {
+    CognitoIdentityProviderClient: MockCognitoClient,
+    AdminCreateUserCommand: class {},
+  }
+})
 
 import { app } from './app'
 import * as repos from './repositories'
@@ -763,7 +775,10 @@ describe('POST /quotes/:id/line-items', () => {
 describe('POST /quotes/:id/finalize', () => {
   it('returns 200 with the finalized quote', async () => {
     vi.mocked(repos.findQuoteById).mockResolvedValue(mockQuoteWithLineItem as never)
-    vi.mocked(repos.finalizeQuote).mockResolvedValue({ ...mockQuoteWithLineItem, status: 'SENT' } as never)
+    vi.mocked(repos.finalizeQuote).mockResolvedValue({
+      ...mockQuoteWithLineItem,
+      status: 'SENT',
+    } as never)
 
     const res = await app.request('/api/v1/quotes/quote-1/finalize', { method: 'POST' })
     expect(res.status).toBe(200)
@@ -781,7 +796,10 @@ describe('POST /quotes/:id/finalize', () => {
   })
 
   it('returns 422 when the quote is already finalized (not DRAFT)', async () => {
-    vi.mocked(repos.findQuoteById).mockResolvedValue({ ...mockQuoteWithLineItem, status: 'SENT' } as never)
+    vi.mocked(repos.findQuoteById).mockResolvedValue({
+      ...mockQuoteWithLineItem,
+      status: 'SENT',
+    } as never)
 
     const res = await app.request('/api/v1/quotes/quote-1/finalize', { method: 'POST' })
     expect(res.status).toBe(422)
@@ -1011,7 +1029,15 @@ describe('POST /invoices/:id/payments', () => {
     vi.mocked(repos.findInvoiceById).mockResolvedValue(mockInvoice as never)
     const paid = {
       ...mockInvoice,
-      payments: [{ id: 'pay-1', invoiceId: 'inv-1', amount: { amount: 1500, currency: 'USD' }, method: 'CARD', paidAt: new Date() }],
+      payments: [
+        {
+          id: 'pay-1',
+          invoiceId: 'inv-1',
+          amount: { amount: 1500, currency: 'USD' },
+          method: 'CARD',
+          paidAt: new Date(),
+        },
+      ],
     }
     vi.mocked(repos.recordPayment).mockResolvedValue(paid as never)
 
@@ -1074,6 +1100,7 @@ const mockCreatedTenant = {
   plan: 'STARTER' as const,
   contactName: null,
   contactEmail: null,
+  emailDomains: ['beta.com'],
   ssoProviderConfig: null,
   createdAt: new Date('2025-06-01T00:00:00Z'),
   updatedAt: new Date('2025-06-01T00:00:00Z'),
@@ -1097,6 +1124,13 @@ function getTxClient() {
 }
 
 describe('POST /api/admin/tenants', () => {
+  beforeEach(() => {
+    process.env['COGNITO_USER_POOL_ID'] = 'us-east-1_test'
+  })
+  afterEach(() => {
+    delete process.env['COGNITO_USER_POOL_ID']
+  })
+
   it('returns 201 with the created tenant', async () => {
     // The handler uses db.$transaction which invokes its callback with _txClient.
     const tx = getTxClient()
@@ -1106,7 +1140,12 @@ describe('POST /api/admin/tenants', () => {
     const res = await app.request('/api/admin/tenants', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Beta Movers', slug: 'beta' }),
+      body: JSON.stringify({
+        name: 'Beta Movers',
+        slug: 'beta',
+        adminEmail: 'admin@beta.com',
+        emailDomains: ['beta.com'],
+      }),
     })
     expect(res.status).toBe(201)
     const body = (await res.json()) as Record<string, unknown>
@@ -1167,7 +1206,12 @@ describe('POST /api/admin/tenants', () => {
     const res = await app.request('/api/admin/tenants', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Duplicate', slug: 'acme' }),
+      body: JSON.stringify({
+        name: 'Duplicate',
+        slug: 'acme',
+        adminEmail: 'admin@acme.com',
+        emailDomains: ['acme.com'],
+      }),
     })
     expect(res.status).toBe(409)
     const body = (await res.json()) as Record<string, unknown>

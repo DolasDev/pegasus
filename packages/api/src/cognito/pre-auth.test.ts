@@ -73,7 +73,6 @@ const fakeCallback = () => undefined
 describe('pre-auth trigger', () => {
   beforeEach(() => {
     mockSend.mockReset()
-    process.env['USER_POOL_ID'] = 'us-east-1_test'
   })
 
   // ── Non-admin users pass through unconditionally ──────────────────────────
@@ -149,36 +148,36 @@ describe('pre-auth trigger', () => {
       groups: ['PLATFORM_ADMIN'],
     })
 
-    await expect(
-      handler(makeEvent('admin-incomplete'), fakeContext, fakeCallback),
-    ).rejects.toThrow('account setup is incomplete')
+    await expect(handler(makeEvent('admin-incomplete'), fakeContext, fakeCallback)).rejects.toThrow(
+      'account setup is incomplete',
+    )
   })
 
   // ── Fail-closed on configuration errors ───────────────────────────────────
 
-  it('blocks sign-in when USER_POOL_ID env var is not set', async () => {
-    delete process.env['USER_POOL_ID']
+  it('blocks sign-in when userPoolId is missing from the trigger event', async () => {
+    const event = { ...makeEvent('any-user'), userPoolId: '' }
 
-    await expect(handler(makeEvent('any-user'), fakeContext, fakeCallback)).rejects.toThrow(
-      'Authentication configuration error',
-    )
+    await expect(
+      handler(event as Parameters<typeof handler>[0], fakeContext, fakeCallback),
+    ).rejects.toThrow('Authentication configuration error')
     expect(mockSend).not.toHaveBeenCalled()
   })
 
   it('blocks sign-in on unexpected SDK errors (fail-closed)', async () => {
     mockSend.mockRejectedValueOnce(new Error('IAM policy denied'))
 
-    await expect(handler(makeEvent('admin@pegasus.com'), fakeContext, fakeCallback)).rejects.toThrow(
-      'Authentication check failed',
-    )
+    await expect(
+      handler(makeEvent('admin@pegasus.com'), fakeContext, fakeCallback),
+    ).rejects.toThrow('Authentication check failed')
   })
 
   it('re-throws MFA rejection message unchanged so Cognito surfaces it', async () => {
     mockCognito({ userStatus: 'CONFIRMED', mfaList: [], groups: ['PLATFORM_ADMIN'] })
 
-    await expect(
-      handler(makeEvent('admin-no-mfa'), fakeContext, fakeCallback),
-    ).rejects.toThrow('MFA enrollment is required')
+    await expect(handler(makeEvent('admin-no-mfa'), fakeContext, fakeCallback)).rejects.toThrow(
+      'MFA enrollment is required',
+    )
   })
 
   it('re-throws incomplete-setup message unchanged so Cognito surfaces it', async () => {
@@ -188,8 +187,8 @@ describe('pre-auth trigger', () => {
       groups: ['PLATFORM_ADMIN'],
     })
 
-    await expect(
-      handler(makeEvent('admin-incomplete'), fakeContext, fakeCallback),
-    ).rejects.toThrow('account setup is incomplete')
+    await expect(handler(makeEvent('admin-incomplete'), fakeContext, fakeCallback)).rejects.toThrow(
+      'account setup is incomplete',
+    )
   })
 })

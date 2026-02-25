@@ -203,6 +203,14 @@ export function TenantFormDialog(props: TenantFormDialogProps) {
 
   const isPending = createMutation.isPending || editMutation.isPending
 
+  const isFormValid =
+    mode === 'create'
+      ? create.name.trim() !== '' &&
+        create.slug.trim() !== '' &&
+        create.adminEmail.trim() !== '' &&
+        parseDomains(create.emailDomains).length > 0
+      : edit.name.trim() !== ''
+
   // --- Submit ---
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -318,10 +326,7 @@ export function TenantFormDialog(props: TenantFormDialogProps) {
             </Field>
 
             {mode === 'create' ? (
-              <Field
-                label="Slug *"
-                error={fieldErrors['slug']}
-              >
+              <Field label="Slug *" error={fieldErrors['slug']}>
                 <input
                   className={inputCls + ' font-mono'}
                   value={create.slug}
@@ -423,10 +428,7 @@ export function TenantFormDialog(props: TenantFormDialogProps) {
               )}
             </Field>
 
-            <Field
-              label="Email domains *"
-              error={fieldErrors['emailDomains']}
-            >
+            <Field label="Email domains *" error={fieldErrors['emailDomains']}>
               {mode === 'create' ? (
                 <input
                   className={inputCls + ' font-mono'}
@@ -480,7 +482,7 @@ export function TenantFormDialog(props: TenantFormDialogProps) {
             </button>
             <button
               type="submit"
-              disabled={isPending}
+              disabled={isPending || !isFormValid}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {isPending ? 'Saving…' : mode === 'create' ? 'Create tenant' : 'Save changes'}

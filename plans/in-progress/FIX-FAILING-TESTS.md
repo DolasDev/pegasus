@@ -18,13 +18,13 @@ right.
 
 ## All Failing Tests at a Glance
 
-| # | File | Test | Root cause | Fix target |
-|---|------|------|-----------|-----------|
-| 1 | `packages/api/src/app.test.ts` | `POST /api/admin/tenants > returns 201 with the created tenant` | Body missing required `adminEmail` + `emailDomains`; Cognito SDK not mocked | Test |
-| 2 | `packages/api/src/app.test.ts` | `POST /api/admin/tenants > returns 409 when the slug is already taken` | Same as above | Test |
-| 3 | `packages/api/src/cognito/pre-auth.test.ts` | `blocks sign-in when USER_POOL_ID env var is not set` | Test deletes a non-existent env var instead of triggering the actual guard (empty `userPoolId` on the event) | Test |
-| 4 | `apps/admin/src/__tests__/TenantFormDialog.test.tsx` | `submit button is disabled when required fields are empty` | Submit button is only `disabled={isPending}`, never based on field emptiness | Code |
-| 5–12 | `packages/api/src/__tests__/tenant-middleware.test.ts` | 8 tests (all header-based) | Middleware was rewritten from slug-based resolution to JWT/Bearer authentication; tests still expect the old behaviour | Test |
+| #    | File                                                   | Test                                                                   | Root cause                                                                                                             | Fix target |
+| ---- | ------------------------------------------------------ | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------- |
+| 1    | `packages/api/src/app.test.ts`                         | `POST /api/admin/tenants > returns 201 with the created tenant`        | Body missing required `adminEmail` + `emailDomains`; Cognito SDK not mocked                                            | Test       |
+| 2    | `packages/api/src/app.test.ts`                         | `POST /api/admin/tenants > returns 409 when the slug is already taken` | Same as above                                                                                                          | Test       |
+| 3    | `packages/api/src/cognito/pre-auth.test.ts`            | `blocks sign-in when USER_POOL_ID env var is not set`                  | Test deletes a non-existent env var instead of triggering the actual guard (empty `userPoolId` on the event)           | Test       |
+| 4    | `apps/admin/src/__tests__/TenantFormDialog.test.tsx`   | `submit button is disabled when required fields are empty`             | Submit button is only `disabled={isPending}`, never based on field emptiness                                           | Code       |
+| 5–12 | `packages/api/src/__tests__/tenant-middleware.test.ts` | 8 tests (all header-based)                                             | Middleware was rewritten from slug-based resolution to JWT/Bearer authentication; tests still expect the old behaviour | Test       |
 
 **Baseline before this plan:** 12 failing (11 in `@pegasus/api`, 1 in `@pegasus/admin`).
 
@@ -33,6 +33,7 @@ right.
 ## Step 1 — `app.test.ts`: Fix POST /api/admin/tenants bodies (2 tests)
 
 ### Completion check
+
 ```bash
 grep -c "adminEmail" packages/api/src/app.test.ts | xargs -I{} test {} -gt 1 && echo DONE || echo TODO
 ```
@@ -41,6 +42,7 @@ grep -c "adminEmail" packages/api/src/app.test.ts | xargs -I{} test {} -gt 1 && 
 
 The `CreateTenantBody` Zod schema (in `handlers/admin/tenants.ts`) requires two
 fields that were added after the tests were written:
+
 - `adminEmail` — triggers Cognito user provisioning
 - `emailDomains` — array, at least one entry required
 
@@ -82,6 +84,7 @@ describe('POST /api/admin/tenants', () => {
 **Change 3 — Add missing fields to the two failing test bodies:**
 
 Line 1109 — "returns 201 with the created tenant":
+
 ```ts
 // Before:
 body: JSON.stringify({ name: 'Beta Movers', slug: 'beta' }),
@@ -90,6 +93,7 @@ body: JSON.stringify({ name: 'Beta Movers', slug: 'beta', adminEmail: 'admin@bet
 ```
 
 Line 1170 — "returns 409 when the slug is already taken":
+
 ```ts
 // Before:
 body: JSON.stringify({ name: 'Duplicate', slug: 'acme' }),
@@ -99,14 +103,16 @@ body: JSON.stringify({ name: 'Duplicate', slug: 'acme', adminEmail: 'admin@acme.
 
 Also update `mockCreatedTenant` (line 1069) to add the `emailDomains` field so
 the response shape passes the `data['slug']` assertions:
+
 ```ts
 const mockCreatedTenant = {
   // ...existing fields...
-  emailDomains: ['beta.com'],   // add this
+  emailDomains: ['beta.com'], // add this
 }
 ```
 
 ### Run & commit
+
 ```bash
 npm test
 
@@ -120,6 +126,7 @@ git commit -m "fix(test): add missing adminEmail/emailDomains and Cognito mock t
 ## Step 2 — `pre-auth.test.ts`: Fix failing guard test (1 test)
 
 ### Completion check
+
 ```bash
 grep -q "userPoolId: ''" packages/api/src/cognito/pre-auth.test.ts && echo DONE || echo TODO
 ```
@@ -196,6 +203,7 @@ beforeEach(() => {
 ```
 
 ### Run & commit
+
 ```bash
 npm test
 
@@ -209,6 +217,7 @@ git commit -m "fix(test): trigger pre-auth guard via empty event.userPoolId inst
 ## Step 3 — `TenantFormDialog.tsx`: Disable submit when required fields are empty (1 test)
 
 ### Completion check
+
 ```bash
 grep -q "isFormValid" apps/admin/src/components/TenantFormDialog.tsx && echo DONE || echo TODO
 ```
@@ -249,6 +258,7 @@ disabled={isPending || !isFormValid}
 ```
 
 ### Run & commit
+
 ```bash
 npm test
 
@@ -262,6 +272,7 @@ git commit -m "fix: disable TenantFormDialog submit button when required fields 
 ## Step 4 — `tenant-middleware.test.ts`: Rewrite for JWT-based middleware (8 tests)
 
 ### Completion check
+
 ```bash
 grep -q "mockJwtVerify\|jwtVerify" packages/api/src/__tests__/tenant-middleware.test.ts && echo DONE || echo TODO
 ```
@@ -350,9 +361,7 @@ function mockValidToken(tenantId = 'tenant-uuid', role = 'tenant_user') {
 **Update probe endpoint** to expose `role` so tests can assert on it:
 
 ```ts
-app.get('/probe', (c) =>
-  c.json({ tenantId: c.get('tenantId'), role: c.get('role') }),
-)
+app.get('/probe', (c) => c.json({ tenantId: c.get('tenantId'), role: c.get('role') }))
 ```
 
 **New test cases** (replace all existing tests in the describe block):
@@ -390,6 +399,7 @@ mockJwtVerify.mockRejectedValueOnce(expired)
 ```
 
 ### Run & commit
+
 ```bash
 npm test
 
@@ -403,11 +413,26 @@ git commit -m "fix(test): rewrite tenant-middleware tests for JWT Bearer authent
 
 ## Completion Summary
 
-| Step | File(s) | Tests fixed | Status |
-|------|---------|-------------|--------|
-| 1 — POST tenant body + Cognito mock | `packages/api/src/app.test.ts` | 2 | ☐ TODO |
-| 2 — pre-auth guard trigger | `packages/api/src/cognito/pre-auth.test.ts` | 1 | ☐ TODO |
-| 3 — TenantFormDialog submit disabled | `apps/admin/src/components/TenantFormDialog.tsx` | 1 | ☐ TODO |
-| 4 — Tenant middleware rewrite | `packages/api/src/__tests__/tenant-middleware.test.ts` | 8 | ☐ TODO |
+| Step                                 | File(s)                                                | Tests fixed | Status  |
+| ------------------------------------ | ------------------------------------------------------ | ----------- | ------- |
+| 1 — POST tenant body + Cognito mock  | `packages/api/src/app.test.ts`                         | 2           | ✅ DONE |
+| 2 — pre-auth guard trigger           | `packages/api/src/cognito/pre-auth.test.ts`            | 1           | ✅ DONE |
+| 3 — TenantFormDialog submit disabled | `apps/admin/src/components/TenantFormDialog.tsx`       | 1           | ✅ DONE |
+| 4 — Tenant middleware rewrite        | `packages/api/src/__tests__/tenant-middleware.test.ts` | 8           | ✅ DONE |
 
 **Target after all steps:** 0 failing tests across all packages.
+
+## Implementation Notes
+
+- Step 1: The plan suggested `vi.fn(() => ({ send: vi.fn() }))` for the Cognito constructor mock. This
+  pattern doesn't work correctly in Vitest when the mock is used as a constructor (the spy doesn't
+  forward the factory's return value as the `new` result). Used a plain class instead:
+  ```ts
+  class MockCognitoClient {
+    send() {
+      return Promise.resolve({})
+    }
+  }
+  ```
+- The 2 remaining `apps/admin/src/__tests__/cognito.test.ts` failures are pre-existing and not part
+  of this plan (confirmed by `git stash` test run).
