@@ -1,24 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const DOMAIN = 'https://auth.eu-west-1.amazoncognito.com'
-const CLIENT_ID = 'test-client-id'
-const REDIRECT_URI = 'http://localhost:5174/auth/callback'
+// Hoisted so constants are available inside the vi.mock factory below.
+const { DOMAIN, CLIENT_ID, REDIRECT_URI } = vi.hoisted(() => ({
+  DOMAIN: 'https://auth.eu-west-1.amazoncognito.com',
+  CLIENT_ID: 'test-client-id',
+  REDIRECT_URI: 'http://localhost:5174/auth/callback',
+}))
 
-function stubCognitoEnv() {
-  vi.stubEnv('VITE_COGNITO_DOMAIN', DOMAIN)
-  vi.stubEnv('VITE_COGNITO_CLIENT_ID', CLIENT_ID)
-  vi.stubEnv('VITE_COGNITO_REDIRECT_URI', REDIRECT_URI)
-}
+// Mock ../config so getConfig() returns test values without needing loadConfig()
+// (which would try to fetch /config.json at runtime).
+vi.mock('../config', () => ({
+  getConfig: () => ({
+    apiUrl: 'http://localhost:3000',
+    cognito: {
+      domain: DOMAIN,
+      clientId: CLIENT_ID,
+      redirectUri: REDIRECT_URI,
+    },
+  }),
+}))
 
 describe('getAuthorizationUrl', () => {
   beforeEach(() => {
-    stubCognitoEnv()
     vi.resetModules()
     sessionStorage.clear()
-  })
-
-  afterEach(() => {
-    vi.unstubAllEnvs()
   })
 
   it('produces a valid Cognito authorize URL with correct query params', async () => {
@@ -43,7 +48,6 @@ describe('signOut (logout URL builder)', () => {
   let originalLocation: Location
 
   beforeEach(() => {
-    stubCognitoEnv()
     vi.resetModules()
     originalLocation = window.location
     Object.defineProperty(window, 'location', {
@@ -54,7 +58,6 @@ describe('signOut (logout URL builder)', () => {
   })
 
   afterEach(() => {
-    vi.unstubAllEnvs()
     Object.defineProperty(window, 'location', {
       value: originalLocation,
       writable: true,
