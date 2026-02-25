@@ -1,20 +1,9 @@
-/// <reference types="vite/client" />
+import { getConfig } from '../config'
 
 // ---------------------------------------------------------------------------
 // Cognito — configuration and Hosted UI helpers for the tenant web app.
 //
-// All configuration is read from Vite environment variables at runtime —
-// nothing is hardcoded. This makes the same bundle work in every environment
-// (local / staging / production) with different .env files.
-//
-// Required env vars (see packages/web/.env.example):
-//   VITE_COGNITO_REGION         AWS region (e.g. us-east-1)
-//   VITE_COGNITO_USER_POOL_ID   User Pool ID (e.g. us-east-1_Abc123)
-//   VITE_COGNITO_CLIENT_ID      Tenant app client ID (no secret — PKCE only)
-//   VITE_COGNITO_DOMAIN         Hosted UI base URL
-//                               (e.g. https://pegasus-123.auth.us-east-1.amazoncognito.com)
-//   VITE_COGNITO_REDIRECT_URI   Registered callback URL
-//                               (e.g. http://localhost:5173/login/callback)
+// All configuration is read from the runtime /config.json (loaded at boot).
 // ---------------------------------------------------------------------------
 
 export type CognitoConfig = {
@@ -26,28 +15,9 @@ export type CognitoConfig = {
   redirectUri: string
 }
 
-function requireEnv(key: string): string {
-  const value = (import.meta.env as Record<string, string | undefined>)[key]
-  if (!value) throw new Error(`Missing required Cognito env var: ${key}`)
-  return value
-}
-
-// Resolved lazily — does not throw until first call, so Phase 1 mock mode
-// (no Cognito env vars) can still boot without errors.
-let _config: CognitoConfig | null = null
-
-/** Returns the Cognito config, resolving env vars on the first call. */
+/** Returns the Cognito config from the runtime config loaded at boot. */
 export function getCognitoConfig(): CognitoConfig {
-  if (!_config) {
-    _config = {
-      region: requireEnv('VITE_COGNITO_REGION'),
-      userPoolId: requireEnv('VITE_COGNITO_USER_POOL_ID'),
-      clientId: requireEnv('VITE_COGNITO_CLIENT_ID'),
-      domain: requireEnv('VITE_COGNITO_DOMAIN').replace(/\/$/, ''),
-      redirectUri: requireEnv('VITE_COGNITO_REDIRECT_URI'),
-    }
-  }
-  return _config
+  return getConfig().cognito
 }
 
 // ---------------------------------------------------------------------------

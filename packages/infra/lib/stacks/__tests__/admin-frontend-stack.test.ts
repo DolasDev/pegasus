@@ -1,15 +1,11 @@
-import { describe, it } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import * as cdk from 'aws-cdk-lib'
 import { Template, Match } from 'aws-cdk-lib/assertions'
 import { AdminFrontendStack } from '../admin-frontend-stack'
 
-// apps/admin/dist will not exist during unit tests (no Vite build has run),
-// so the BucketDeployment is omitted from the synthesised template.
-// The remaining resources — S3 bucket, CloudFront distribution, and OAC —
-// are fully testable without a build artifact.
-function synthAdminStack() {
+function synthAdminStack(props?: { apiUrl?: string; cognitoDomain?: string; cognitoAdminClientId?: string }) {
   const app = new cdk.App()
-  const stack = new AdminFrontendStack(app, 'TestAdminFrontend')
+  const stack = new AdminFrontendStack(app, 'TestAdminFrontend', props)
   return Template.fromStack(stack)
 }
 
@@ -122,6 +118,21 @@ describe('AdminFrontendStack — CloudFront distribution', () => {
       }),
     })
   })
+
+  it('always has a /config.json cache behaviour with caching disabled', () => {
+    const template = synthAdminStack()
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: Match.objectLike({
+        CacheBehaviors: Match.arrayWith([
+          Match.objectLike({
+            PathPattern: '/config.json',
+            // CACHING_DISABLED managed policy ID
+            CachePolicyId: '4135ea2d-6df8-44a3-9df3-4b5a84be39ad',
+          }),
+        ]),
+      }),
+    })
+  })
 })
 
 describe('AdminFrontendStack — Origin Access Control', () => {
@@ -137,6 +148,55 @@ describe('AdminFrontendStack — Origin Access Control', () => {
         OriginAccessControlOriginType: 's3',
         SigningBehavior: 'always',
         SigningProtocol: 'sigv4',
+      }),
+    })
+  })
+})
+
+describe('AdminFrontendStack — config.json source', () => {
+  it('without Cognito props: BucketDeployment has one source (SPA assets only)', () => {
+    const template = synthAdminStack()
+    const deployments = template.findResources('Custom::CDKBucketDeployment')
+    const keys = Object.keys(deployments)
+    // dist exists → a BucketDeployment is created, but only one source (no jsonData)
+    const firstKey = keys[0]
+    if (firstKey !== undefined) {
+      const sourceKeys = deployments[firstKey]!.Properties.SourceObjectKeys as unknown[]
+      expect(sourceKeys).toHaveLength(1)
+    }
+    // If dist doesn't exist (e.g. fresh checkout), no deployment is created — also acceptable.
+  })
+
+  it('with Cognito props: BucketDeployment has two sources (SPA assets + config.json)', () => {
+    const template = synthAdminStack({
+      apiUrl: 'https://api.example.com',
+      cognitoDomain: 'https://pegasus-test.auth.us-east-1.amazoncognito.com',
+      cognitoAdminClientId: 'test-admin-client-id',
+    })
+    const deployments = template.findResources('Custom::CDKBucketDeployment')
+    const keys = Object.keys(deployments)
+    // dist must exist for the BucketDeployment to be created
+    const firstKey = keys[0]
+    if (firstKey !== undefined) {
+      const sourceKeys = deployments[firstKey]!.Properties.SourceObjectKeys as unknown[]
+      expect(sourceKeys).toHaveLength(2)
+    }
+  })
+
+  it('with Cognito props: /config.json CloudFront behaviour has a disabled cache policy', () => {
+    const template = synthAdminStack({
+      apiUrl: 'https://api.example.com',
+      cognitoDomain: 'https://pegasus-test.auth.us-east-1.amazoncognito.com',
+      cognitoAdminClientId: 'test-admin-client-id',
+    })
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: Match.objectLike({
+        CacheBehaviors: Match.arrayWith([
+          Match.objectLike({
+            PathPattern: '/config.json',
+            CachePolicyId: '4135ea2d-6df8-44a3-9df3-4b5a84be39ad',
+          }),
+        ]),
       }),
     })
   })

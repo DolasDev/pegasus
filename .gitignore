@@ -24,6 +24,9 @@ out/
 .env.*.local
 !.env.example
 
+# Runtime config (generated at deploy time; local copies are developer-managed)
+public/config.json
+
 # Editor directories
 .vscode/
 .idea/

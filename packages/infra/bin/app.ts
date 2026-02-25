@@ -42,7 +42,7 @@ const cognitoStack = new CognitoStack(app, 'PegasusDev-CognitoStack', {
     : undefined,
 })
 
-new ApiStack(app, 'PegasusDev-ApiStack', {
+const apiStack = new ApiStack(app, 'PegasusDev-ApiStack', {
   env: devEnv,
   stackName: 'pegasus-dev-api',
   description: 'Pegasus dev — Hono Lambda + HTTP API Gateway v2',
@@ -58,10 +58,32 @@ new FrontendStack(app, 'PegasusDev-FrontendStack', {
   env: devEnv,
   stackName: 'pegasus-dev-frontend',
   description: 'Pegasus dev — S3 static assets + CloudFront distribution',
+  apiUrl: apiStack.apiUrl,
+  cognitoRegion: devEnv.region ?? 'us-east-1',
+  cognitoUserPoolId: cognitoStack.userPool.userPoolId,
+  cognitoTenantClientId: cognitoStack.tenantAppClient.userPoolClientId,
+  cognitoDomain: cognitoStack.hostedUiBaseUrl,
 })
+
+// AdminFrontendStack is deployed twice by deploy.sh:
+//   Pass 1 (infra): no Cognito/API context — provisions the CloudFront distribution
+//                   so the URL can be registered with CognitoStack.
+//   Pass 2 (assets): Cognito/API context is provided via --context flags, CDK
+//                    uploads the built assets and generates config.json.
+//
+// Pass Cognito/API props via CDK context on the second deploy:
+//   --context apiUrl=https://...
+//   --context cognitoDomain=https://...
+//   --context cognitoAdminClientId=xxxx
+const adminApiUrl = app.node.tryGetContext('apiUrl') as string | undefined
+const adminCognitoDomain = app.node.tryGetContext('cognitoDomain') as string | undefined
+const adminCognitoClientId = app.node.tryGetContext('cognitoAdminClientId') as string | undefined
 
 new AdminFrontendStack(app, 'PegasusDev-AdminFrontendStack', {
   env: devEnv,
   stackName: 'pegasus-dev-admin-frontend',
   description: 'Pegasus dev — Admin portal S3 static assets + CloudFront distribution',
+  apiUrl: adminApiUrl,
+  cognitoDomain: adminCognitoDomain,
+  cognitoAdminClientId: adminCognitoClientId,
 })

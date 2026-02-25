@@ -1,9 +1,5 @@
-/// <reference types="vite/client" />
-
 import { getAccessToken } from '@/auth/cognito'
-
-/** Base URL from Vite env — falls back to localhost:3000 for local dev. */
-const BASE_URL = (import.meta.env['VITE_API_URL'] as string | undefined) ?? 'http://localhost:3000'
+import { getConfig } from '@/config'
 
 type SuccessEnvelope<T> = { data: T }
 type ErrorEnvelope = { error: string; code: string }
@@ -37,7 +33,7 @@ export class ApiError extends Error {
 export async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getAccessToken()
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(`${getConfig().apiUrl}${path}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -65,7 +61,7 @@ export async function adminFetchPaginated<T>(
 ): Promise<{ data: T[]; meta: PaginationMeta }> {
   const token = getAccessToken()
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(`${getConfig().apiUrl}${path}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

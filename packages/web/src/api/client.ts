@@ -1,7 +1,5 @@
-/// <reference types="vite/client" />
-
-/** Base URL from Vite env — falls back to localhost:3000 for local dev. */
-const BASE_URL = (import.meta.env['VITE_API_URL'] as string | undefined) ?? 'http://localhost:3000'
+import { getConfig } from '../config'
+import { getSession } from '../auth/session'
 
 type SuccessEnvelope<T> = { data: T }
 type ErrorEnvelope = { error: string; code: string }
@@ -18,8 +16,6 @@ export class ApiError extends Error {
   }
 }
 
-import { getSession } from '../auth/session'
-
 /**
  * Typed fetch wrapper. Unwraps `{ data }` envelopes and throws `ApiError` on
  * error responses. All calls go through here so the base URL and headers are
@@ -34,7 +30,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     headers.set('Authorization', `Bearer ${session.token}`)
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(`${getConfig().apiUrl}${path}`, {
     ...init,
     headers,
   })

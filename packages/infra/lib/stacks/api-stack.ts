@@ -42,6 +42,9 @@ export interface ApiStackProps extends cdk.StackProps {
 }
 
 export class ApiStack extends cdk.Stack {
+  /** The HTTP API endpoint URL — used by other stacks to inject into frontend config. */
+  public readonly apiUrl: string
+
   constructor(scope: Construct, id: string, props: ApiStackProps = {}) {
     super(scope, id, props)
 
@@ -145,6 +148,8 @@ export class ApiStack extends cdk.Stack {
       methods: [apigwv2.HttpMethod.ANY],
       integration: new apigwv2i.HttpLambdaIntegration('LambdaIntegration', apiFunction),
     })
+
+    this.apiUrl = httpApi.apiEndpoint
 
     new cdk.CfnOutput(this, 'ApiUrl', {
       value: httpApi.apiEndpoint,

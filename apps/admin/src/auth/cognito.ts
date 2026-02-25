@@ -1,4 +1,4 @@
-/// <reference types="vite/client" />
+import { getConfig } from '../config'
 
 // ---------------------------------------------------------------------------
 // Cognito auth helpers
@@ -15,18 +15,15 @@
 //    which redirects to the Cognito Hosted UI.
 // ---------------------------------------------------------------------------
 
-const DOMAIN = (import.meta.env['VITE_COGNITO_DOMAIN'] as string | undefined) ?? ''
-const CLIENT_ID = (import.meta.env['VITE_COGNITO_CLIENT_ID'] as string | undefined) ?? ''
-const REDIRECT_URI = (import.meta.env['VITE_COGNITO_REDIRECT_URI'] as string | undefined) ?? ''
-
 // ---------------------------------------------------------------------------
 // Direct password auth (USER_PASSWORD_AUTH)
 // ---------------------------------------------------------------------------
 
-/** Parses the AWS region from the Cognito domain env var. */
+/** Parses the AWS region from the Cognito domain. */
 function parseRegion(): string {
-  const match = DOMAIN.match(/\.auth\.([^.]+)\.amazoncognito\.com/)
-  if (!match?.[1]) throw new Error('Cannot parse AWS region from VITE_COGNITO_DOMAIN')
+  const { domain } = getConfig().cognito
+  const match = domain.match(/\.auth\.([^.]+)\.amazoncognito\.com/)
+  if (!match?.[1]) throw new Error('Cannot parse AWS region from cognito.domain in config.json')
   return match[1]
 }
 
@@ -79,7 +76,7 @@ export async function signIn(email: string, password: string): Promise<SignInRes
   const json = await cognitoApiRequest('InitiateAuth', {
     AuthFlow: 'USER_PASSWORD_AUTH',
     AuthParameters: { USERNAME: email, PASSWORD: password },
-    ClientId: CLIENT_ID,
+    ClientId: getConfig().cognito.clientId,
   })
 
   if (json['ChallengeName'] === 'SOFTWARE_TOKEN_MFA') {
@@ -111,7 +108,7 @@ export async function respondToMfaChallenge(
 ): Promise<TokenSet> {
   const json = await cognitoApiRequest('RespondToAuthChallenge', {
     ChallengeName: 'SOFTWARE_TOKEN_MFA',
-    ClientId: CLIENT_ID,
+    ClientId: getConfig().cognito.clientId,
     Session: session,
     ChallengeResponses: { USERNAME: username, SOFTWARE_TOKEN_MFA_CODE: code },
   })
@@ -191,17 +188,18 @@ export async function getAuthorizationUrl(): Promise<string> {
   sessionStorage.setItem(STORAGE_KEY_CODE_VERIFIER, verifier)
   sessionStorage.setItem(STORAGE_KEY_STATE, state)
 
+  const { domain, clientId, redirectUri } = getConfig().cognito
   const params = new URLSearchParams({
     response_type: 'code',
-    client_id: CLIENT_ID,
-    redirect_uri: REDIRECT_URI,
+    client_id: clientId,
+    redirect_uri: redirectUri,
     scope: 'openid email profile',
     code_challenge: challenge,
     code_challenge_method: 'S256',
     state,
   })
 
-  return `${DOMAIN}/oauth2/authorize?${params.toString()}`
+  return `${domain}/oauth2/authorize?${params.toString()}`
 }
 
 // ---------------------------------------------------------------------------
@@ -225,15 +223,16 @@ export async function exchangeCode(code: string, returnedState: string): Promise
   sessionStorage.removeItem(STORAGE_KEY_CODE_VERIFIER)
   sessionStorage.removeItem(STORAGE_KEY_STATE)
 
+  const { domain, clientId, redirectUri } = getConfig().cognito
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
-    client_id: CLIENT_ID,
-    redirect_uri: REDIRECT_URI,
+    client_id: clientId,
+    redirect_uri: redirectUri,
     code_verifier: verifier,
   })
 
-  const res = await fetch(`${DOMAIN}/oauth2/token`, {
+  const res = await fetch(`${domain}/oauth2/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
@@ -292,10 +291,11 @@ export function clearTokens(): void {
 export function signOut(): void {
   clearTokens()
 
+  const { domain, clientId, redirectUri } = getConfig().cognito
   const params = new URLSearchParams({
-    client_id: CLIENT_ID,
-    logout_uri: REDIRECT_URI.replace('/auth/callback', '/login'),
+    client_id: clientId,
+    logout_uri: redirectUri.replace('/auth/callback', '/login'),
   })
 
-  window.location.href = `${DOMAIN}/logout?${params.toString()}`
+  window.location.href = `${domain}/logout?${params.toString()}`
 }

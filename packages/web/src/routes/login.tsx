@@ -15,7 +15,6 @@ import {
   buildAuthorizeUrl,
   signIn,
   respondToMfaChallenge,
-  CognitoError,
 } from '@/auth/cognito'
 import {
   generateCodeVerifier,
@@ -139,7 +138,7 @@ export function LoginPage() {
     } catch (err) {
       setStep({
         name: 'error',
-        message: err instanceof CognitoError ? err.message : 'Sign-in failed. Please try again.',
+        message: err instanceof Error ? err.message : 'Sign-in failed. Please try again.',
       })
     }
   }
@@ -153,7 +152,7 @@ export function LoginPage() {
       setStep({
         name: 'error',
         message:
-          err instanceof CognitoError ? err.message : 'MFA verification failed. Please try again.',
+          err instanceof Error ? err.message : 'MFA verification failed. Please try again.',
       })
     }
   }

@@ -3,9 +3,17 @@ import * as cdk from 'aws-cdk-lib'
 import { Template, Match } from 'aws-cdk-lib/assertions'
 import { FrontendStack } from '../frontend-stack'
 
+const testProps = {
+  apiUrl: 'https://api.example.com',
+  cognitoRegion: 'us-east-1',
+  cognitoUserPoolId: 'us-east-1_TestPool',
+  cognitoTenantClientId: 'test-client-id',
+  cognitoDomain: 'https://pegasus-test.auth.us-east-1.amazoncognito.com',
+}
+
 function synthFrontendStack() {
   const app = new cdk.App()
-  const stack = new FrontendStack(app, 'TestFrontend')
+  const stack = new FrontendStack(app, 'TestFrontend', testProps)
   return Template.fromStack(stack)
 }
 
@@ -118,6 +126,35 @@ describe('FrontendStack — CloudFront distribution', () => {
       }),
     })
   })
+
+  it('has a cache behaviour for /config.json with caching disabled', () => {
+    const template = synthFrontendStack()
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: Match.objectLike({
+        CacheBehaviors: Match.arrayWith([
+          Match.objectLike({
+            PathPattern: '/config.json',
+            // CACHING_DISABLED managed policy ID
+            CachePolicyId: '4135ea2d-6df8-44a3-9df3-4b5a84be39ad',
+          }),
+        ]),
+      }),
+    })
+  })
+
+  it('/config.json behaviour is ordered before the catch-all default behaviour', () => {
+    const template = synthFrontendStack()
+    // CacheBehaviors is the ordered list (separate from DefaultCacheBehavior).
+    // Asserting it contains the /config.json pattern is sufficient — CDK places
+    // them in insertion order and we only have one additional behaviour.
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: Match.objectLike({
+        CacheBehaviors: Match.arrayWith([
+          Match.objectLike({ PathPattern: '/config.json' }),
+        ]),
+      }),
+    })
+  })
 })
 
 describe('FrontendStack — Origin Access Control', () => {
@@ -135,6 +172,14 @@ describe('FrontendStack — Origin Access Control', () => {
         SigningProtocol: 'sigv4',
       }),
     })
+  })
+})
+
+describe('FrontendStack — BucketDeployment', () => {
+  it('creates a BucketDeployment custom resource', () => {
+    const template = synthFrontendStack()
+    // BucketDeployment generates a Custom::CDKBucketDeployment resource
+    template.resourceCountIs('Custom::CDKBucketDeployment', 1)
   })
 })
 

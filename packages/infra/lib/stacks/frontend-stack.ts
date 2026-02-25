@@ -6,17 +6,32 @@ import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment'
 import * as path from 'path'
 import { type Construct } from 'constructs'
 
+export interface FrontendStackProps extends cdk.StackProps {
+  /** API Gateway URL — injected into /config.json at deploy time. */
+  readonly apiUrl: string
+  /** AWS region of the Cognito User Pool (e.g. us-east-1). */
+  readonly cognitoRegion: string
+  /** Cognito User Pool ID. */
+  readonly cognitoUserPoolId: string
+  /** Tenant app client ID (PKCE, no secret). */
+  readonly cognitoTenantClientId: string
+  /** Cognito Hosted UI base URL (e.g. https://pegasus-123.auth.us-east-1.amazoncognito.com). */
+  readonly cognitoDomain: string
+}
+
 /**
  * FrontendStack provisions the static hosting infrastructure for the Pegasus React SPA.
  *
  * Resources:
  *   - S3 bucket (private, no public access) — stores compiled frontend assets
  *   - CloudFront distribution — HTTPS delivery, SPA routing fallback, Origin Access Control
+ *   - /config.json — generated at deploy time via s3deploy.Source.jsonData with resolved
+ *     CloudFormation tokens (API URL, Cognito settings, redirect URI)
  */
 export class FrontendStack extends cdk.Stack {
   public readonly distribution: cloudfront.Distribution
 
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: FrontendStackProps) {
     super(scope, id, props)
 
     // ---------------------------------------------------------------------------
@@ -33,14 +48,28 @@ export class FrontendStack extends cdk.Stack {
     // ---------------------------------------------------------------------------
     // CloudFront distribution — HTTPS only, OAC, SPA routing fallback
     // ---------------------------------------------------------------------------
+    // Shared origin — S3BucketOrigin.withOriginAccessControl creates one OAC per
+    // call so we create it once and reuse it across all cache behaviours.
+    const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(siteBucket)
+
     this.distribution = new cloudfront.Distribution(this, 'SiteDistribution', {
       defaultBehavior: {
         // S3BucketOrigin.withOriginAccessControl creates an OAC (not the legacy OAI)
-        origin: origins.S3BucketOrigin.withOriginAccessControl(siteBucket),
+        origin: s3Origin,
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
         allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
         compress: true,
+      },
+      // /config.json is served without caching so updates take effect immediately.
+      additionalBehaviors: {
+        '/config.json': {
+          origin: s3Origin,
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+          originRequestPolicy: cloudfront.OriginRequestPolicy.CORS_S3_ORIGIN,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+        },
       },
       // Serve index.html for the root path
       defaultRootObject: 'index.html',
@@ -66,9 +95,23 @@ export class FrontendStack extends cdk.Stack {
 
     // ---------------------------------------------------------------------------
     // Deploy assets to S3 and invalidate CloudFront
+    // The second source (jsonData) generates /config.json with resolved
+    // CloudFormation tokens — no env vars baked into the bundle at build time.
     // ---------------------------------------------------------------------------
     new s3deploy.BucketDeployment(this, 'DeployWebsite', {
-      sources: [s3deploy.Source.asset(path.join(__dirname, '../../../../packages/web/dist'))],
+      sources: [
+        s3deploy.Source.asset(path.join(__dirname, '../../../../packages/web/dist')),
+        s3deploy.Source.jsonData('config.json', {
+          apiUrl: props.apiUrl,
+          cognito: {
+            region: props.cognitoRegion,
+            userPoolId: props.cognitoUserPoolId,
+            clientId: props.cognitoTenantClientId,
+            domain: props.cognitoDomain,
+            redirectUri: `https://${this.distribution.distributionDomainName}/login/callback`,
+          },
+        }),
+      ],
       destinationBucket: siteBucket,
       distribution: this.distribution,
       distributionPaths: ['/*'],

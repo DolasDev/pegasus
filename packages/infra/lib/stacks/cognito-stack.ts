@@ -75,6 +75,12 @@ export class CognitoStack extends cdk.Stack {
    */
   public readonly jwksUrl: string
 
+  /**
+   * Cognito Hosted UI base URL (e.g. https://pegasus-123.auth.us-east-1.amazoncognito.com).
+   * Injected into frontend config.json at deploy time.
+   */
+  public readonly hostedUiBaseUrl: string
+
   constructor(scope: Construct, id: string, props: CognitoStackProps = {}) {
     super(scope, id, props)
 
@@ -316,6 +322,7 @@ export class CognitoStack extends cdk.Stack {
     // first request (keys are cached in-process by the jose library).
     // -------------------------------------------------------------------------
     this.jwksUrl = `https://cognito-idp.${this.region}.amazonaws.com/${this.userPool.userPoolId}/.well-known/jwks.json`
+    this.hostedUiBaseUrl = hostedUiDomain.baseUrl()
 
     // -------------------------------------------------------------------------
     // SSM Parameters — /pegasus/admin/* (separate from /pegasus/dev/*)
