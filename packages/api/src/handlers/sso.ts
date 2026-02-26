@@ -25,7 +25,6 @@ import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
 import type { AppEnv } from '../types'
-import { requireRole } from '../middleware/rbac'
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -145,8 +144,6 @@ const PROVIDER_SELECT = {
 // Router
 // ---------------------------------------------------------------------------
 export const ssoHandler = new Hono<AppEnv>()
-
-ssoHandler.use('*', requireRole(['tenant_admin']))
 
 // ---------------------------------------------------------------------------
 // GET /providers

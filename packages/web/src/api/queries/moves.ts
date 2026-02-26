@@ -16,13 +16,13 @@ export const moveKeys = {
 // ---------------------------------------------------------------------------
 export const movesQueryOptions = queryOptions({
   queryKey: moveKeys.list(),
-  queryFn: () => apiFetch<Move[]>('/moves'),
+  queryFn: () => apiFetch<Move[]>('/api/v1/moves'),
 })
 
 export const moveDetailQueryOptions = (id: string) =>
   queryOptions({
     queryKey: moveKeys.detail(id),
-    queryFn: () => apiFetch<Move>(`/moves/${id}`),
+    queryFn: () => apiFetch<Move>(`/api/v1/moves/${id}`),
     enabled: id !== '',
   })
 
@@ -40,7 +40,7 @@ export function useCreateMove() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: CreateMoveInput) =>
-      apiFetch<Move>('/moves', { method: 'POST', body: JSON.stringify(input) }),
+      apiFetch<Move>('/api/v1/moves', { method: 'POST', body: JSON.stringify(input) }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: moveKeys.list() })
     },
@@ -51,7 +51,7 @@ export function useUpdateMoveStatus() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: MoveStatus }) =>
-      apiFetch<Move>(`/moves/${id}`, { method: 'PUT', body: JSON.stringify({ status }) }),
+      apiFetch<Move>(`/api/v1/moves/${id}`, { method: 'PUT', body: JSON.stringify({ status }) }),
     onSuccess: (_, { id }) => {
       void qc.invalidateQueries({ queryKey: moveKeys.detail(id) })
       void qc.invalidateQueries({ queryKey: moveKeys.list() })
@@ -63,7 +63,7 @@ export function useAssignCrew() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ moveId, crewMemberId }: { moveId: string; crewMemberId: string }) =>
-      apiFetch<Move>(`/moves/${moveId}/crew`, {
+      apiFetch<Move>(`/api/v1/moves/${moveId}/crew`, {
         method: 'POST',
         body: JSON.stringify({ crewMemberId }),
       }),

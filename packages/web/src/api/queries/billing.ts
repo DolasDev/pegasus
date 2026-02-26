@@ -10,13 +10,13 @@ export const invoiceKeys = {
 
 export const invoicesQueryOptions = queryOptions({
   queryKey: invoiceKeys.list(),
-  queryFn: () => apiFetch<Invoice[]>('/invoices'),
+  queryFn: () => apiFetch<Invoice[]>('/api/v1/invoices'),
 })
 
 export const invoiceDetailQueryOptions = (id: string) =>
   queryOptions({
     queryKey: invoiceKeys.detail(id),
-    queryFn: () => apiFetch<Invoice>(`/invoices/${id}`),
+    queryFn: () => apiFetch<Invoice>(`/api/v1/invoices/${id}`),
     enabled: id !== '',
   })
 
@@ -24,7 +24,7 @@ export function useGenerateInvoice() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (moveId: string) =>
-      apiFetch<Invoice>('/invoices', { method: 'POST', body: JSON.stringify({ moveId }) }),
+      apiFetch<Invoice>('/api/v1/invoices', { method: 'POST', body: JSON.stringify({ moveId }) }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: invoiceKeys.list() })
     },
@@ -43,7 +43,7 @@ export function useRecordPayment() {
       amount: number
       method: string
     }) =>
-      apiFetch<Invoice>(`/invoices/${invoiceId}/payments`, {
+      apiFetch<Invoice>(`/api/v1/invoices/${invoiceId}/payments`, {
         method: 'POST',
         body: JSON.stringify({ amount, method }),
       }),
