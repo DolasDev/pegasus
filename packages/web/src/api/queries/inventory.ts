@@ -10,7 +10,7 @@ export const inventoryKeys = {
 export const inventoryRoomsQueryOptions = (moveId: string) =>
   queryOptions({
     queryKey: inventoryKeys.rooms(moveId),
-    queryFn: () => apiFetch<InventoryRoom[]>(`/moves/${moveId}/rooms`),
+    queryFn: () => apiFetch<InventoryRoom[]>(`/api/v1/moves/${moveId}/rooms`),
     enabled: moveId !== '',
   })
 
@@ -18,7 +18,7 @@ export function useAddRoom() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ moveId, name }: { moveId: string; name: string }) =>
-      apiFetch<InventoryRoom>(`/moves/${moveId}/rooms`, {
+      apiFetch<InventoryRoom>(`/api/v1/moves/${moveId}/rooms`, {
         method: 'POST',
         body: JSON.stringify({ name }),
       }),
@@ -42,7 +42,7 @@ export function useAddItem() {
       name: string
       quantity?: number
     }) =>
-      apiFetch<InventoryRoom>(`/moves/${moveId}/rooms/${roomId}/items`, {
+      apiFetch<InventoryRoom>(`/api/v1/moves/${moveId}/rooms/${roomId}/items`, {
         method: 'POST',
         body: JSON.stringify({ name, quantity }),
       }),

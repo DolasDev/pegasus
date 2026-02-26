@@ -11,20 +11,20 @@ export const quoteKeys = {
 
 export const quotesQueryOptions = queryOptions({
   queryKey: quoteKeys.list(),
-  queryFn: () => apiFetch<Quote[]>('/quotes'),
+  queryFn: () => apiFetch<Quote[]>('/api/v1/quotes'),
 })
 
 export const quoteDetailQueryOptions = (id: string) =>
   queryOptions({
     queryKey: quoteKeys.detail(id),
-    queryFn: () => apiFetch<Quote>(`/quotes/${id}`),
+    queryFn: () => apiFetch<Quote>(`/api/v1/quotes/${id}`),
     enabled: id !== '',
   })
 
 export const customerQuotesQueryOptions = (customerId: string) =>
   queryOptions({
     queryKey: quoteKeys.forCustomer(customerId),
-    queryFn: () => apiFetch<Quote[]>(`/customers/${customerId}/quotes`),
+    queryFn: () => apiFetch<Quote[]>(`/api/v1/customers/${customerId}/quotes`),
     enabled: customerId !== '',
   })
 
@@ -32,7 +32,7 @@ export function useFinalizeQuote() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) =>
-      apiFetch<Quote>(`/quotes/${id}/finalize`, { method: 'POST' }),
+      apiFetch<Quote>(`/api/v1/quotes/${id}/finalize`, { method: 'POST' }),
     onSuccess: (data) => {
       void qc.invalidateQueries({ queryKey: quoteKeys.detail(String(data.id)) })
       void qc.invalidateQueries({ queryKey: quoteKeys.list() })
@@ -54,7 +54,7 @@ export function useAddLineItem() {
       quantity: number
       unitPrice: number
     }) =>
-      apiFetch<Quote>(`/quotes/${quoteId}/line-items`, {
+      apiFetch<Quote>(`/api/v1/quotes/${quoteId}/line-items`, {
         method: 'POST',
         body: JSON.stringify({ description, quantity, unitPrice }),
       }),

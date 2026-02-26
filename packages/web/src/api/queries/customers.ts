@@ -10,13 +10,13 @@ export const customerKeys = {
 
 export const customersQueryOptions = queryOptions({
   queryKey: customerKeys.list(),
-  queryFn: () => apiFetch<Customer[]>('/customers'),
+  queryFn: () => apiFetch<Customer[]>('/api/v1/customers'),
 })
 
 export const customerDetailQueryOptions = (id: string) =>
   queryOptions({
     queryKey: customerKeys.detail(id),
-    queryFn: () => apiFetch<Customer>(`/customers/${id}`),
+    queryFn: () => apiFetch<Customer>(`/api/v1/customers/${id}`),
     enabled: id !== '',
   })
 
@@ -31,7 +31,7 @@ export function useCreateCustomer() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: CreateCustomerInput) =>
-      apiFetch<Customer>('/customers', { method: 'POST', body: JSON.stringify(input) }),
+      apiFetch<Customer>('/api/v1/customers', { method: 'POST', body: JSON.stringify(input) }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: customerKeys.list() })
     },
