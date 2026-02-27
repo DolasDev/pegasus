@@ -6,14 +6,14 @@ Pegasus is a cloud-native move management SaaS platform replacing a legacy VB.NE
 
 ## Tech Stack
 
-| Package / App | Layer | Technology |
-|---|---|---|
-| (Root) | Monorepo orchestration | [Turborepo](https://turbo.build/) + npm workspaces + TypeScript 5 (strict mode) |
-| `packages/domain` | Domain Model | Pure TypeScript — entities, value objects, business rules. Zero runtime dependencies. |
-| `packages/api` | API | [Hono](https://hono.dev/) on AWS Lambda. [Prisma](https://www.prisma.io/) + PostgreSQL ([Neon](https://neon.tech)). Zod & jose. |
-| `packages/web` | Frontend (Tenant) | React 18 + Vite SPA, TanStack. |
-| `apps/admin` | Frontend (Admin) | React 18 + Vite SPA, TanStack. |
-| `packages/infra` | Infrastructure | AWS CDK (TypeScript). |
+| Package / App     | Layer                  | Technology                                                                                                                      |
+| ----------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| (Root)            | Monorepo orchestration | [Turborepo](https://turbo.build/) + npm workspaces + TypeScript 5 (strict mode)                                                 |
+| `packages/domain` | Domain Model           | Pure TypeScript — entities, value objects, business rules. Zero runtime dependencies.                                           |
+| `packages/api`    | API                    | [Hono](https://hono.dev/) on AWS Lambda. [Prisma](https://www.prisma.io/) + PostgreSQL ([Neon](https://neon.tech)). Zod & jose. |
+| `packages/web`    | Frontend (Tenant)      | React 18 + Vite SPA, TanStack.                                                                                                  |
+| `apps/admin`      | Frontend (Admin)       | React 18 + Vite SPA, TanStack.                                                                                                  |
+| `packages/infra`  | Infrastructure         | AWS CDK (TypeScript).                                                                                                           |
 
 ## Monorepo Package Map
 
@@ -30,6 +30,7 @@ apps/
 ## Turbo Pipeline & Script Execution
 
 The monorepo uses Turborepo (`turbo.json`) and top-level npm scripts:
+
 - `build`: Topologically sorted (`dependsOn: ["^build"]`). Outputs to `dist/**`.
 - `test`: Cache disabled, runs in parallel across all packages (`dependsOn: []`).
 - `lint`: Runs in parallel.
@@ -38,6 +39,7 @@ The monorepo uses Turborepo (`turbo.json`) and top-level npm scripts:
 ## Key Commands
 
 ### Root Commands
+
 - `npm install` — Install all workspace dependencies.
 - `npm run dev` — Start all packages in development mode (parallel).
 - `npm test` — Run all testing layers across all packages.
@@ -46,6 +48,7 @@ The monorepo uses Turborepo (`turbo.json`) and top-level npm scripts:
 - `npm run create-admin-user` — Creates an admin user.
 
 ### Per-Package Commands
+
 - `packages/api`: `npm run db:generate`, `npm run db:migrate`, `npm run db:seed`, `npm run db:studio`.
 - `packages/infra`: `npm run synth` and `npm run deploy` (via AWS CDK).
 - `apps/admin`: `npm run dev` explicitly starts Vite on port `5174`.
@@ -53,32 +56,44 @@ The monorepo uses Turborepo (`turbo.json`) and top-level npm scripts:
 ## Bounded Contexts
 
 ### Customer
+
 Manages the people and organisations that request moves.
+
 - **Entities:** `Customer`, `Contact`, `Account`, **Value objects:** `LeadSource`
 - **Key rules:** A customer must have at least one primary contact.
 
 ### Quoting
+
 Converts a survey into a priced proposal.
+
 - **Entities:** `Quote`, `QuoteLineItem`, `RateTable`, `Rate`
 - **Key rules:** Quotes require a line item. Accepted quotes are immutable.
 
 ### Dispatch
+
 Owns the operational record of the move itself.
+
 - **Entities:** `Move`, `Stop`, **Value objects:** `MoveStatus`, `StopType`
 - **Key rules:** Must have crew member assigned logic. Needs two stops (origin, destination). Strict state machine transitions.
 
 ### Inventory
+
 Tracks everything being moved, room by room.
+
 - **Entities:** `InventoryRoom`, `InventoryItem`, **Value objects:** `ItemCondition`
 - **Key rules:** Tracks condition at pack and delivery to support claims.
 
 ### Billing
+
 Handles money in and money out.
+
 - **Entities:** `Invoice`, `Payment`, **Value objects:** `InvoiceStatus`, `Money`
 - **Key rules:** Generated from quotes. Invoices cannot be deleted once payments exist.
 
 ### Schedule
+
 Models crew and vehicle availability.
+
 - **Entities:** `CrewMember`, `Vehicle`, `Availability`, **Value objects:** `DateRange`
 - **Key rules:** No overlap permitted. Vehicles require validation against last inspection.
 
@@ -116,6 +131,7 @@ Operate as a disciplined senior engineer: stay within scope, preserve architectu
 **No code before plan approval.**
 
 Before writing any code, produce a plan containing:
+
 1. The task restated in your own words.
 2. A step-by-step implementation plan.
 3. Every file to be modified and every new file to be created.
@@ -128,6 +144,7 @@ Wait for explicit developer approval before implementing anything.
 You may ONLY modify files explicitly listed in the approved plan or inside directories assigned for this task.
 
 You MUST NOT:
+
 - Refactor code unrelated to the task. If refactoring is required, limit it to in-scope files, ensure it does not alter unrelated public behaviour, and get separate approval for large refactors.
 - Rename global symbols outside scope.
 - Introduce architectural changes unless explicitly requested.
@@ -141,6 +158,7 @@ If you discover a necessary change outside scope: **stop, report it, and request
 ### Conflict Handling
 
 Stop and seek clarification when:
+
 - Task is unclear → clarify before writing a plan.
 - Required files are missing → report and pause.
 - Architecture appears inconsistent → ask before fixing.
@@ -153,6 +171,7 @@ Stop and seek clarification when:
 **A task is not complete until the full test suite passes.**
 
 Run `npm test` from the repo root. Every test across every package must pass. If tests fail, fix the code — do not work around failures by:
+
 - Skipping, disabling, or deleting a failing test
 - Marking a task complete despite failures
 - Commenting out assertions
@@ -165,6 +184,7 @@ A failing test is evidence of a real problem. Treat it as signal, not noise.
 Each agent works from a plan file in `plans/in-progress/`. Check for an existing file before creating one. Use a short, descriptive kebab-case name (e.g. `plans/in-progress/add-rbac-middleware.md`).
 
 Every plan file must contain:
+
 - Current branch name and one-line goal
 - Ordered checklist: `[ ]` pending · `[x]` done · `[~]` in progress
 - All files to be modified and created, plus identified side effects or risks
@@ -175,6 +195,7 @@ Every plan file must contain:
 ### Non-Breaking, Independently Deployable Steps
 
 Each increment must leave the codebase deployable:
+
 - No partially-implemented features that break existing behaviour.
 - Prefer feature flags, additive changes, and backwards-compatible interfaces.
 - Database migrations must be non-destructive (no dropped columns/tables while old code still references them).
@@ -182,10 +203,19 @@ Each increment must leave the codebase deployable:
 ### Safety Rails
 
 You MUST NOT:
+
 - Delete large blocks of code without explicit justification in the plan.
 - Remove configuration or environment logic.
 - Modify the database schema unless explicitly in the approved plan.
 - Introduce breaking API changes unless explicitly specified.
+
+### Observability & Logging
+
+When implementing any change, you MUST consider telemetry, tracing, and logging:
+
+- Use structured logging (e.g., `@aws-lambda-powertools/logger` in the backend) instead of `console.log`.
+- Do not leak internal stack traces or sensitive system data to the client in HTTP responses. Instead, catch exceptions, log the full details securely on the server with a `correlationId`, and return a sanitized JSON error payload to the client.
+- Propagate trace IDs (`x-correlation-id`) from the frontend across network boundaries to the backend for end-to-end traceability.
 
 ### Output Format
 
@@ -217,5 +247,5 @@ The archived file is a permanent record — do not edit it. An empty `plans/in-p
 - **[PATTERNS.md](./PATTERNS.md)** — Code patterns, abstractions, and conventions to follow or avoid.
 - **[GOTCHAS.md](./GOTCHAS.md)** — Bugs, env issues, and non-obvious things discovered.
 
-> **Agent Instructions:** 
+> **Agent Instructions:**
 > After completing significant work in the repository, update the relevant memory files above. Before closing any task, confirm whether memory files accurately reflect what was learned or added so nothing is lost. This is your persistent memory system.
