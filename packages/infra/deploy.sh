@@ -140,6 +140,7 @@ fi
 
 # ── 5. Deploy FrontendStack ───────────────────────────────────────────────────
 # CDK resolves the API URL and Cognito outputs into config.json at deploy time.
+WEB_URL=""
 if [[ "$ADMIN_ONLY" == "false" ]]; then
   echo "▶  [5/6] Deploying FrontendStack..."
   run npx cdk deploy PegasusDev-FrontendStack \
@@ -148,6 +149,13 @@ if [[ "$ADMIN_ONLY" == "false" ]]; then
     --context "adminUrl=${ADMIN_URL}" \
     --outputs-file "$OUTPUTS_FILE" \
     --app "npx tsx bin/app.ts"
+
+  # Capture the client URL now — step 6 will overwrite the outputs file.
+  if [[ "$DRY_RUN" == "false" ]]; then
+    WEB_URL=$(jq -r '.["pegasus-dev-frontend"].DistributionUrl // empty' "$OUTPUTS_FILE" 2>/dev/null || true)
+  else
+    WEB_URL="https://dry-run-web.cloudfront.net"
+  fi
 fi
 
 # ── 6. Deploy AdminFrontendStack — second pass (asset + config.json upload) ───
@@ -184,8 +192,7 @@ echo "✔  Deployment complete!"
 echo ""
 
 if [[ "$DRY_RUN" == "false" ]]; then
-  DIST_URL=$(jq -r '.["pegasus-dev-frontend"].DistributionUrl // empty' "$OUTPUTS_FILE" 2>/dev/null || true)
-  [[ -n "$DIST_URL" ]]  && echo "   Tenant frontend: $DIST_URL"
+  [[ -n "$WEB_URL" ]]   && echo "   Client app:      $WEB_URL"
   [[ -n "$ADMIN_URL" ]] && echo "   Admin portal:    $ADMIN_URL"
   echo "   API:             $API_URL"
 fi
