@@ -13,11 +13,11 @@ The `sso.ts` handler already persists tenant SSO provider records to Postgres vi
 
 ## Step-by-step Implementation Plan
 
-- [ ] 1. Write plan → await approval _(this file)_
-- [ ] 2. Update `sso.ts` — add Cognito SDK calls to POST, PUT, DELETE
-- [ ] 3. Update `api-stack.ts` — add IAM permissions for IdP CRUD actions
-- [ ] 4. Update `sso.test.ts` — mock Cognito client, add tests for each operation
-- [ ] 5. Run `npm test` — confirm all tests pass
+- [x] 1. Write plan → await approval _(this file)_
+- [x] 2. Update `sso.ts` — add Cognito SDK calls to POST, PUT, DELETE
+- [x] 3. Update `api-stack.ts` — add IAM permissions for IdP CRUD actions
+- [x] 4. Update `sso.test.ts` — mock Cognito client, add tests for each operation
+- [x] 5. Run `npm test` — confirm all tests pass (183 API tests pass; 15 pre-existing infra bundling failures unrelated to this change)
 
 ---
 

@@ -132,7 +132,12 @@ export class ApiStack extends cdk.Stack {
     if (props.cognitoUserPoolId) {
       apiFunction.addToRolePolicy(
         new iam.PolicyStatement({
-          actions: ['cognito-idp:AdminCreateUser'],
+          actions: [
+            'cognito-idp:AdminCreateUser',
+            'cognito-idp:CreateIdentityProvider',
+            'cognito-idp:UpdateIdentityProvider',
+            'cognito-idp:DeleteIdentityProvider',
+          ],
           resources: [
             `arn:aws:cognito-idp:${this.region}:${this.account}:userpool/${props.cognitoUserPoolId}`,
           ],

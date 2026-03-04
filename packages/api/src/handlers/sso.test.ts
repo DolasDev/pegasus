@@ -7,6 +7,9 @@
 //
 // The tenant-scoped db is mocked via vi.fn() on tenantSsoProvider methods,
 // so no database connection is required.
+//
+// The @aws-sdk/client-cognito-identity-provider module is mocked so Cognito
+// calls are captured and verified without hitting AWS.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -14,6 +17,27 @@ import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../types'
 import { ssoHandler } from './sso'
+import {
+  CreateIdentityProviderCommand,
+  UpdateIdentityProviderCommand,
+  DeleteIdentityProviderCommand,
+} from '@aws-sdk/client-cognito-identity-provider'
+
+// ---------------------------------------------------------------------------
+// Cognito SDK mock
+// ---------------------------------------------------------------------------
+
+const { mockSend } = vi.hoisted(() => {
+  const mockSend = vi.fn()
+  return { mockSend }
+})
+
+vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
+  CognitoIdentityProviderClient: vi.fn().mockImplementation(() => ({ send: mockSend })),
+  CreateIdentityProviderCommand: vi.fn((input: unknown) => input),
+  UpdateIdentityProviderCommand: vi.fn((input: unknown) => input),
+  DeleteIdentityProviderCommand: vi.fn((input: unknown) => input),
+}))
 
 // ---------------------------------------------------------------------------
 // Mock db
@@ -93,12 +117,41 @@ const mockProviderRow = {
   updatedAt: now,
 }
 
+/** Full row shape returned by findUnique in PUT — includes Cognito call context fields. */
+const mockExistingRow = {
+  id: 'provider-1',
+  cognitoProviderName: 'GoogleOIDC',
+  type: 'OIDC' as const,
+  metadataUrl: 'https://accounts.google.com/.well-known/openid-configuration',
+  oidcClientId: 'google-client-id',
+}
+
+/** Minimal row shape returned by findUnique in DELETE. */
+const mockDeleteRow = { id: 'provider-1', cognitoProviderName: 'GoogleOIDC' }
+
 const validCreateBody = {
   name: 'Google OIDC',
   type: 'OIDC',
   cognitoProviderName: 'GoogleOIDC',
   metadataUrl: 'https://accounts.google.com/.well-known/openid-configuration',
   oidcClientId: 'google-client-id',
+}
+
+const validSamlCreateBody = {
+  name: 'Okta SAML',
+  type: 'SAML',
+  cognitoProviderName: 'OktaSAML',
+  metadataUrl: 'https://okta.example.com/metadata',
+}
+
+const mockSamlProviderRow = {
+  ...mockProviderRow,
+  id: 'provider-2',
+  name: 'Okta SAML',
+  type: 'SAML' as const,
+  cognitoProviderName: 'OktaSAML',
+  metadataUrl: 'https://okta.example.com/metadata',
+  oidcClientId: null,
 }
 
 // ---------------------------------------------------------------------------
@@ -108,6 +161,8 @@ const validCreateBody = {
 describe('SSO handler', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Default: Cognito calls succeed unless overridden in a specific test
+    mockSend.mockResolvedValue({})
   })
 
   // ── Role access ───────────────────────────────────────────────────────────
@@ -229,6 +284,66 @@ describe('SSO handler', () => {
       expect(res.status).toBe(500)
       expect((await json(res)).code).toBe('INTERNAL_ERROR')
     })
+
+    // ── POST — Cognito provisioning ──────────────────────────────────────────
+
+    it('calls CreateIdentityProviderCommand with correct OIDC ProviderDetails', async () => {
+      mockDb.tenantSsoProvider.create.mockResolvedValue(mockProviderRow)
+
+      const res = await buildApp().request(
+        '/providers',
+        post({ ...validCreateBody, oidcClientSecret: 'super-secret' }),
+      )
+      expect(res.status).toBe(201)
+
+      expect(CreateIdentityProviderCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          UserPoolId: expect.any(String),
+          ProviderName: 'GoogleOIDC',
+          ProviderType: 'OIDC',
+          ProviderDetails: expect.objectContaining({
+            authorize_scopes: 'openid email profile',
+            client_id: 'google-client-id',
+            client_secret: 'super-secret',
+            attributes_request_method: 'GET',
+          }),
+          AttributeMapping: { email: 'email' },
+        }),
+      )
+    })
+
+    it('calls CreateIdentityProviderCommand with ProviderType SAML for SAML provider', async () => {
+      mockDb.tenantSsoProvider.create.mockResolvedValue(mockSamlProviderRow)
+
+      const res = await buildApp().request('/providers', post(validSamlCreateBody))
+      expect(res.status).toBe(201)
+
+      expect(CreateIdentityProviderCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ProviderName: 'OktaSAML',
+          ProviderType: 'SAML',
+          ProviderDetails: expect.objectContaining({
+            MetadataURL: 'https://okta.example.com/metadata',
+          }),
+        }),
+      )
+      // SAML providers do not get authorize_scopes
+      const call = (CreateIdentityProviderCommand as ReturnType<typeof vi.fn>).mock.calls[0]![0]
+      expect((call as { ProviderDetails: Record<string, string> }).ProviderDetails).not.toHaveProperty('authorize_scopes')
+    })
+
+    it('rolls back the DB record and returns 500 when Cognito CreateIdentityProvider fails', async () => {
+      mockDb.tenantSsoProvider.create.mockResolvedValue(mockProviderRow)
+      mockDb.tenantSsoProvider.delete.mockResolvedValue(undefined)
+      mockSend.mockRejectedValue(new Error('Cognito error'))
+
+      const res = await buildApp().request('/providers', post(validCreateBody))
+      expect(res.status).toBe(500)
+      expect((await json(res)).code).toBe('INTERNAL_ERROR')
+      expect(mockDb.tenantSsoProvider.delete).toHaveBeenCalledWith({
+        where: { id: 'provider-1' },
+      })
+    })
   })
 
   // ── PUT /providers/:id ────────────────────────────────────────────────────
@@ -236,7 +351,7 @@ describe('SSO handler', () => {
   describe('PUT /providers/:id', () => {
     it('returns 200 with the updated provider', async () => {
       const updated = { ...mockProviderRow, name: 'Renamed Provider', isEnabled: false }
-      mockDb.tenantSsoProvider.findUnique.mockResolvedValue({ id: 'provider-1' })
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockExistingRow)
       mockDb.tenantSsoProvider.update.mockResolvedValue(updated)
 
       const res = await buildApp().request(
@@ -258,7 +373,7 @@ describe('SSO handler', () => {
     })
 
     it('returns 400 VALIDATION_ERROR when metadataUrl is not a valid URL', async () => {
-      mockDb.tenantSsoProvider.findUnique.mockResolvedValue({ id: 'provider-1' })
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockExistingRow)
 
       const res = await buildApp().request(
         '/providers/provider-1',
@@ -269,7 +384,7 @@ describe('SSO handler', () => {
     })
 
     it('does not include cognitoProviderName or type in the DB update payload', async () => {
-      mockDb.tenantSsoProvider.findUnique.mockResolvedValue({ id: 'provider-1' })
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockExistingRow)
       mockDb.tenantSsoProvider.update.mockResolvedValue(mockProviderRow)
 
       await buildApp().request('/providers/provider-1', put({ name: 'New Name' }))
@@ -280,13 +395,58 @@ describe('SSO handler', () => {
       expect('cognitoProviderName' in updateCall.data).toBe(false)
       expect('type' in updateCall.data).toBe(false)
     })
+
+    // ── PUT — Cognito sync ───────────────────────────────────────────────────
+
+    it('calls UpdateIdentityProviderCommand with cognitoProviderName and authorize_scopes for OIDC', async () => {
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockExistingRow)
+      mockDb.tenantSsoProvider.update.mockResolvedValue(mockProviderRow)
+
+      const res = await buildApp().request('/providers/provider-1', put({ name: 'Renamed' }))
+      expect(res.status).toBe(200)
+
+      expect(UpdateIdentityProviderCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          UserPoolId: expect.any(String),
+          ProviderName: 'GoogleOIDC',
+          ProviderDetails: expect.objectContaining({
+            authorize_scopes: 'openid email profile',
+          }),
+        }),
+      )
+    })
+
+    it('includes client_secret in UpdateIdentityProviderCommand only when oidcClientSecret is provided', async () => {
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockExistingRow)
+      mockDb.tenantSsoProvider.update.mockResolvedValue(mockProviderRow)
+
+      await buildApp().request(
+        '/providers/provider-1',
+        put({ oidcClientSecret: 'new-secret' }),
+      )
+
+      const call = (UpdateIdentityProviderCommand as ReturnType<typeof vi.fn>).mock.calls[0]![0]
+      expect(
+        (call as { ProviderDetails: Record<string, string> }).ProviderDetails['client_secret'],
+      ).toBe('new-secret')
+    })
+
+    it('returns 500 and does not retry when Cognito UpdateIdentityProvider fails', async () => {
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockExistingRow)
+      mockDb.tenantSsoProvider.update.mockResolvedValue(mockProviderRow)
+      mockSend.mockRejectedValue(new Error('Cognito error'))
+
+      const res = await buildApp().request('/providers/provider-1', put({ name: 'X' }))
+      expect(res.status).toBe(500)
+      expect((await json(res)).code).toBe('INTERNAL_ERROR')
+    })
   })
 
   // ── DELETE /providers/:id ─────────────────────────────────────────────────
 
   describe('DELETE /providers/:id', () => {
     it('returns 204 No Content on success', async () => {
-      mockDb.tenantSsoProvider.findUnique.mockResolvedValue({ id: 'provider-1' })
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockDeleteRow)
       mockDb.tenantSsoProvider.delete.mockResolvedValue(undefined)
 
       const res = await buildApp().request('/providers/provider-1', { method: 'DELETE' })
@@ -299,6 +459,55 @@ describe('SSO handler', () => {
       const res = await buildApp().request('/providers/missing-id', { method: 'DELETE' })
       expect(res.status).toBe(404)
       expect((await json(res)).code).toBe('NOT_FOUND')
+    })
+
+    // ── DELETE — Cognito cleanup ─────────────────────────────────────────────
+
+    it('calls DeleteIdentityProviderCommand with the provider cognitoProviderName', async () => {
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockDeleteRow)
+      mockDb.tenantSsoProvider.delete.mockResolvedValue(undefined)
+
+      const res = await buildApp().request('/providers/provider-1', { method: 'DELETE' })
+      expect(res.status).toBe(204)
+
+      expect(DeleteIdentityProviderCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          UserPoolId: expect.any(String),
+          ProviderName: 'GoogleOIDC',
+        }),
+      )
+    })
+
+    it('treats ResourceNotFoundException from Cognito as idempotent and still deletes DB record', async () => {
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockDeleteRow)
+      mockDb.tenantSsoProvider.delete.mockResolvedValue(undefined)
+      const err = Object.assign(new Error('not found'), { name: 'ResourceNotFoundException' })
+      mockSend.mockRejectedValue(err)
+
+      const res = await buildApp().request('/providers/provider-1', { method: 'DELETE' })
+      expect(res.status).toBe(204)
+      expect(mockDb.tenantSsoProvider.delete).toHaveBeenCalledWith({ where: { id: 'provider-1' } })
+    })
+
+    it('treats NotAuthorizedException from Cognito as idempotent and still deletes DB record', async () => {
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockDeleteRow)
+      mockDb.tenantSsoProvider.delete.mockResolvedValue(undefined)
+      const err = Object.assign(new Error('not authorized'), { name: 'NotAuthorizedException' })
+      mockSend.mockRejectedValue(err)
+
+      const res = await buildApp().request('/providers/provider-1', { method: 'DELETE' })
+      expect(res.status).toBe(204)
+      expect(mockDb.tenantSsoProvider.delete).toHaveBeenCalledWith({ where: { id: 'provider-1' } })
+    })
+
+    it('returns 500 and preserves DB record on other Cognito DELETE errors', async () => {
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockDeleteRow)
+      mockSend.mockRejectedValue(new Error('Cognito internal error'))
+
+      const res = await buildApp().request('/providers/provider-1', { method: 'DELETE' })
+      expect(res.status).toBe(500)
+      expect((await json(res)).code).toBe('INTERNAL_ERROR')
+      expect(mockDb.tenantSsoProvider.delete).not.toHaveBeenCalled()
     })
   })
 })
