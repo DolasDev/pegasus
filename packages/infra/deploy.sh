@@ -3,18 +3,25 @@
 # deploy.sh — Full-stack deployment for Pegasus
 #
 # Steps:
-#   1. Build both frontends (build once — no env vars baked in)
-#   2. Deploy AdminFrontendStack (infra pass) → provisions CloudFront distribution,
-#      captures admin URL so Cognito can register it as an allowed callback URL.
-#   3. Deploy CognitoStack  → provisions / updates user pool with admin URL in
-#      context so the CloudFront callback is whitelisted (skipped with --skip-cognito)
-#   4. Deploy ApiStack      → captures API Gateway URL via --outputs-file
-#   5. Deploy FrontendStack → CDK generates /config.json in the S3 bucket
-#   6. Deploy AdminFrontendStack (asset pass) → CDK uploads assets + /config.json
+#   1.  Build both frontends (build once — no env vars baked in)
+#   2a. Deploy AdminFrontendStack (infra pass) → provisions CloudFront distribution,
+#       captures admin URL so Cognito can register it as an allowed callback URL.
+#   2b. Deploy FrontendStack (infra pass) → provisions CloudFront distribution,
+#       captures tenant URL so Cognito can register it as an allowed callback URL.
+#   3.  Deploy CognitoStack  → provisions / updates user pool with both CloudFront
+#       URLs in context so the callbacks are whitelisted (skipped with --skip-cognito)
+#   4.  Deploy ApiStack      → captures API Gateway URL
+#   5.  Deploy FrontendStack (asset pass) → CDK uploads assets + /config.json
+#   6.  Deploy AdminFrontendStack (asset pass) → CDK uploads assets + /config.json
 #
-# AdminFrontendStack is deployed twice so the CloudFront URL is known before
-# CognitoStack registers it as an allowed callback. On subsequent runs step 2
-# is a fast no-op (infra unchanged).
+# Both frontend stacks are deployed twice so each CloudFront URL is known before
+# CognitoStack registers it as an allowed callback. On subsequent runs steps 2a/2b
+# are fast no-ops (infra unchanged).
+#
+# Variable capture strategy:
+#   Each stack's key outputs are read into bash variables immediately after that
+#   stack is deployed (before subsequent deploys overwrite the outputs file).
+#   This avoids relying on CDK to accumulate cross-stack outputs in a single file.
 #
 # Usage:
 #   ./deploy.sh                  # deploy everything (default)
@@ -58,6 +65,31 @@ run() {
   fi
 }
 
+# Read a single output value from a CloudFormation stack via the AWS CLI.
+# Used when the CDK outputs file does not contain the required value (e.g. when
+# a stack was deployed in a prior run or skipped with a flag).
+cfn_output() {
+  local stack_name="$1"
+  local output_key="$2"
+  aws cloudformation describe-stacks \
+    --stack-name "$stack_name" \
+    --profile "$AWS_PROFILE" \
+    --region us-east-1 \
+    --query "Stacks[0].Outputs[?OutputKey=='${output_key}'].OutputValue" \
+    --output text 2>/dev/null || true
+}
+
+# Read a single SSM parameter value.
+ssm_param() {
+  local name="$1"
+  aws ssm get-parameter \
+    --name "$name" \
+    --profile "$AWS_PROFILE" \
+    --region us-east-1 \
+    --query 'Parameter.Value' \
+    --output text 2>/dev/null || true
+}
+
 echo ""
 echo "┌─────────────────────────────────────────────────┐"
 echo "│         Pegasus — Full-Stack Deployment          │"
@@ -66,6 +98,15 @@ if [[ "$DRY_RUN" == "true" ]]; then
   echo "  (dry-run mode — no AWS calls or file writes)"
 fi
 echo ""
+
+# Initialise all key values — populated as stacks are deployed below.
+ADMIN_URL=""
+TENANT_URL=""
+API_URL=""
+COGNITO_DOMAIN=""
+COGNITO_ADMIN_CLIENT_ID=""
+COGNITO_USER_POOL_ID=""
+COGNITO_TENANT_CLIENT_ID=""
 
 # ── 1. Build both frontends ───────────────────────────────────────────────────
 # Builds happen before any CDK deploy; no URLs are needed at build time.
@@ -78,9 +119,9 @@ if [[ "$API_ONLY" == "false" ]]; then
   run npm run build --workspace=@pegasus/admin --prefix "$REPO_ROOT"
 fi
 
-# ── 2. Deploy AdminFrontendStack — first pass (infra only) ────────────────────
-# Must run before CognitoStack so we have the CloudFront URL to pass as context.
-echo "▶  [2/6] Deploying AdminFrontendStack (infra pass)..."
+# ── 2a. Deploy AdminFrontendStack — first pass (infra only) ───────────────────
+# Must run before CognitoStack so we have the admin CloudFront URL to pass as context.
+echo "▶  [2a/6] Deploying AdminFrontendStack (infra pass)..."
 run npx cdk deploy PegasusDev-AdminFrontendStack \
   --profile "$AWS_PROFILE" \
   --require-approval never \
@@ -89,7 +130,6 @@ run npx cdk deploy PegasusDev-AdminFrontendStack \
 
 if [[ "$DRY_RUN" == "false" ]]; then
   ADMIN_URL=$(jq -r '.["pegasus-dev-admin-frontend"].AdminDistributionUrl // empty' "$OUTPUTS_FILE")
-  echo "ADMIN_URL is: ${ADMIN_URL}"
   if [[ -z "$ADMIN_URL" ]]; then
     echo "✘  Could not read AdminDistributionUrl from CDK outputs. Aborting."
     exit 1
@@ -99,19 +139,87 @@ else
   ADMIN_URL="https://dry-run-admin.cloudfront.net"
 fi
 
+# ── 2b. Deploy FrontendStack — first pass (infra only) ────────────────────────
+# Must run before CognitoStack so we have the tenant CloudFront URL to register
+# as an allowed OAuth callback/logout URL alongside localhost.
+if [[ "$API_ONLY" == "false" && "$ADMIN_ONLY" == "false" ]]; then
+  echo "▶  [2b/6] Deploying FrontendStack (infra pass)..."
+  run npx cdk deploy PegasusDev-FrontendStack \
+    --profile "$AWS_PROFILE" \
+    --require-approval never \
+    --outputs-file "$OUTPUTS_FILE" \
+    --app "npx tsx bin/app.ts"
+
+  if [[ "$DRY_RUN" == "false" ]]; then
+    TENANT_URL=$(jq -r '.["pegasus-dev-frontend"].DistributionUrl // empty' "$OUTPUTS_FILE")
+    if [[ -z "$TENANT_URL" ]]; then
+      echo "✘  Could not read DistributionUrl from CDK outputs. Aborting."
+      exit 1
+    fi
+    echo "   Tenant URL: $TENANT_URL"
+  else
+    TENANT_URL="https://dry-run-web.cloudfront.net"
+  fi
+else
+  echo "▶  [2b/6] Skipping FrontendStack infra pass."
+fi
+
 # ── 3. Deploy CognitoStack ────────────────────────────────────────────────────
-# Pass the admin CloudFront URL via CDK context so the app client registers it
-# as an allowed OAuth callback/logout URL alongside the localhost dev URL.
+# Pass both CloudFront URLs via CDK context so both app clients register them
+# as allowed OAuth callback/logout URLs alongside the localhost dev URLs.
+# Outputs are captured immediately into bash variables before step 4 overwrites
+# the outputs file.
 if [[ "$API_ONLY" == "false" && "$SKIP_COGNITO" == "false" ]]; then
-  echo "▶  [3/6] Deploying CognitoStack (adminUrl=${ADMIN_URL})..."
+  COGNITO_CONTEXT="--context adminUrl=${ADMIN_URL}"
+  if [[ -n "$TENANT_URL" ]]; then
+    COGNITO_CONTEXT="${COGNITO_CONTEXT} --context tenantUrl=${TENANT_URL}"
+  fi
+  echo "▶  [3/6] Deploying CognitoStack (adminUrl=${ADMIN_URL} tenantUrl=${TENANT_URL})..."
+  echo "COGNITO CONTEXT: {$COGNITO_CONTEXT}"  
+  # shellcheck disable=SC2086
   run npx cdk deploy PegasusDev-CognitoStack \
     --region us-east-1 \
     --profile "$AWS_PROFILE" \
     --require-approval never \
-    --context "adminUrl=${ADMIN_URL}" \
+    $COGNITO_CONTEXT \
+    --outputs-file "$OUTPUTS_FILE" \
     --app "npx tsx bin/app.ts"
+
+  # Capture Cognito values immediately — step 4 will overwrite the outputs file.
+  if [[ "$DRY_RUN" == "false" ]]; then
+    COGNITO_USER_POOL_ID=$(jq -r '.["pegasus-dev-cognito"].UserPoolId // empty' "$OUTPUTS_FILE")
+    COGNITO_TENANT_CLIENT_ID=$(jq -r '.["pegasus-dev-cognito"].TenantClientId // empty' "$OUTPUTS_FILE")
+    COGNITO_DOMAIN=$(jq -r '.["pegasus-dev-cognito"].HostedUiBaseUrl // empty' "$OUTPUTS_FILE")
+    COGNITO_ADMIN_CLIENT_ID=$(jq -r '.["pegasus-dev-cognito"].AdminClientId // empty' "$OUTPUTS_FILE")
+
+    if [[ -z "$COGNITO_USER_POOL_ID" || -z "$COGNITO_TENANT_CLIENT_ID" || -z "$COGNITO_DOMAIN" || -z "$COGNITO_ADMIN_CLIENT_ID" ]]; then
+      echo "✘  Could not read Cognito outputs after CognitoStack deploy. Aborting."
+      exit 1
+    fi
+  else
+    COGNITO_USER_POOL_ID="us-east-1_DryRunPool"
+    COGNITO_TENANT_CLIENT_ID="dry-run-tenant-client-id"
+    COGNITO_DOMAIN="https://pegasus-dry-run.auth.us-east-1.amazoncognito.com"
+    COGNITO_ADMIN_CLIENT_ID="dry-run-admin-client-id"
+  fi
 else
-  echo "▶  [3/6] Skipping CognitoStack."
+  echo "▶  [3/6] Skipping CognitoStack — reading Cognito values from SSM."
+  if [[ "$DRY_RUN" == "false" ]]; then
+    COGNITO_USER_POOL_ID=$(ssm_param '/pegasus/admin/cognito-user-pool-id')
+    COGNITO_TENANT_CLIENT_ID=$(ssm_param '/pegasus/tenant/cognito-client-id')
+    COGNITO_DOMAIN=$(ssm_param '/pegasus/admin/cognito-hosted-ui-domain')
+    COGNITO_ADMIN_CLIENT_ID=$(ssm_param '/pegasus/admin/cognito-admin-client-id')
+
+    if [[ -z "$COGNITO_USER_POOL_ID" || -z "$COGNITO_TENANT_CLIENT_ID" || -z "$COGNITO_DOMAIN" || -z "$COGNITO_ADMIN_CLIENT_ID" ]]; then
+      echo "✘  Could not read Cognito values from SSM. Deploy CognitoStack at least once without --skip-cognito."
+      exit 1
+    fi
+  else
+    COGNITO_USER_POOL_ID="us-east-1_DryRunPool"
+    COGNITO_TENANT_CLIENT_ID="dry-run-tenant-client-id"
+    COGNITO_DOMAIN="https://pegasus-dry-run.auth.us-east-1.amazoncognito.com"
+    COGNITO_ADMIN_CLIENT_ID="dry-run-admin-client-id"
+  fi
 fi
 
 # ── 4. Deploy ApiStack ────────────────────────────────────────────────────────
@@ -123,12 +231,27 @@ if [[ "$ADMIN_ONLY" == "false" ]]; then
     --context "adminUrl=${ADMIN_URL}" \
     --outputs-file "$OUTPUTS_FILE" \
     --app "npx tsx bin/app.ts"
+
+  # Capture API URL immediately after deploy.
+  if [[ "$DRY_RUN" == "false" ]]; then
+    API_URL=$(jq -r '.["pegasus-dev-api"].ApiUrl // empty' "$OUTPUTS_FILE")
+    if [[ -z "$API_URL" ]]; then
+      echo "✘  Could not read ApiUrl from CDK outputs. Aborting."
+      exit 1
+    fi
+  else
+    API_URL="https://dry-run-api.execute-api.us-east-1.amazonaws.com"
+  fi
 else
-  echo "▶  [4/6] Skipping ApiStack."
-  # Still need outputs for subsequent stacks — fetch from a prior run if available.
-  if [[ ! -f "$OUTPUTS_FILE" ]]; then
-    echo "   Outputs file not found; run without --admin-only at least once first."
-    exit 1
+  echo "▶  [4/6] Skipping ApiStack — reading API URL from CloudFormation."
+  if [[ "$DRY_RUN" == "false" ]]; then
+    API_URL=$(cfn_output 'pegasus-dev-api' 'ApiUrl')
+    if [[ -z "$API_URL" ]]; then
+      echo "✘  Could not read ApiUrl from CloudFormation. Deploy ApiStack at least once without --admin-only."
+      exit 1
+    fi
+  else
+    API_URL="https://dry-run-api.execute-api.us-east-1.amazonaws.com"
   fi
 fi
 
@@ -138,19 +261,21 @@ if [[ "$API_ONLY" == "true" ]]; then
   exit 0
 fi
 
-# ── 5. Deploy FrontendStack ───────────────────────────────────────────────────
-# CDK resolves the API URL and Cognito outputs into config.json at deploy time.
+# ── 5. Deploy FrontendStack — second pass (asset + config.json upload) ────────
 WEB_URL=""
 if [[ "$ADMIN_ONLY" == "false" ]]; then
-  echo "▶  [5/6] Deploying FrontendStack..."
+  echo "▶  [5/6] Deploying FrontendStack (asset pass, config.json)..."
   run npx cdk deploy PegasusDev-FrontendStack \
     --profile "$AWS_PROFILE" \
     --require-approval never \
-    --context "adminUrl=${ADMIN_URL}" \
+    --context "tenantUrl=${TENANT_URL}" \
+    --context "apiUrl=${API_URL}" \
+    --context "cognitoDomain=${COGNITO_DOMAIN}" \
+    --context "cognitoUserPoolId=${COGNITO_USER_POOL_ID}" \
+    --context "cognitoTenantClientId=${COGNITO_TENANT_CLIENT_ID}" \
     --outputs-file "$OUTPUTS_FILE" \
     --app "npx tsx bin/app.ts"
 
-  # Capture the client URL now — step 6 will overwrite the outputs file.
   if [[ "$DRY_RUN" == "false" ]]; then
     WEB_URL=$(jq -r '.["pegasus-dev-frontend"].DistributionUrl // empty' "$OUTPUTS_FILE" 2>/dev/null || true)
   else
@@ -159,28 +284,12 @@ if [[ "$ADMIN_ONLY" == "false" ]]; then
 fi
 
 # ── 6. Deploy AdminFrontendStack — second pass (asset + config.json upload) ───
-# Read Cognito/API values from the CDK outputs file and pass them as context.
-if [[ "$DRY_RUN" == "false" ]]; then
-  API_URL=$(jq -r '.["pegasus-dev-api"].ApiUrl // empty' "$OUTPUTS_FILE")
-  COGNITO_DOMAIN=$(jq -r '.["pegasus-dev-cognito"].HostedUiBaseUrl // empty' "$OUTPUTS_FILE")
-  COGNITO_ADMIN_CLIENT_ID=$(jq -r '.["pegasus-dev-cognito"].AdminClientId // empty' "$OUTPUTS_FILE")
-
-  if [[ -z "$API_URL" || -z "$COGNITO_DOMAIN" || -z "$COGNITO_ADMIN_CLIENT_ID" ]]; then
-    echo "✘  Could not read required values from CDK outputs. Aborting."
-    echo "   Ensure CognitoStack and ApiStack have been deployed at least once."
-    exit 1
-  fi
-else
-  API_URL="https://dry-run-api.execute-api.us-east-1.amazonaws.com"
-  COGNITO_DOMAIN="https://pegasus-dry-run.auth.us-east-1.amazoncognito.com"
-  COGNITO_ADMIN_CLIENT_ID="dry-run-client-id"
-fi
-
 echo "▶  [6/6] Deploying AdminFrontendStack (asset pass, config.json)..."
 run npx cdk deploy PegasusDev-AdminFrontendStack \
   --profile "$AWS_PROFILE" \
   --require-approval never \
   --context "adminUrl=${ADMIN_URL}" \
+  --context "tenantUrl=${TENANT_URL}" \
   --context "apiUrl=${API_URL}" \
   --context "cognitoDomain=${COGNITO_DOMAIN}" \
   --context "cognitoAdminClientId=${COGNITO_ADMIN_CLIENT_ID}" \

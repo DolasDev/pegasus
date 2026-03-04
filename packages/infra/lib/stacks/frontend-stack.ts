@@ -1,3 +1,4 @@
+import * as fs from 'fs'
 import * as cdk from 'aws-cdk-lib'
 import * as s3 from 'aws-cdk-lib/aws-s3'
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront'
@@ -7,16 +8,19 @@ import * as path from 'path'
 import { type Construct } from 'constructs'
 
 export interface FrontendStackProps extends cdk.StackProps {
-  /** API Gateway URL — injected into /config.json at deploy time. */
-  readonly apiUrl: string
-  /** AWS region of the Cognito User Pool (e.g. us-east-1). */
-  readonly cognitoRegion: string
-  /** Cognito User Pool ID. */
-  readonly cognitoUserPoolId: string
-  /** Tenant app client ID (PKCE, no secret). */
-  readonly cognitoTenantClientId: string
+  /**
+   * API Gateway URL — injected into /config.json at deploy time.
+   * Optional: when omitted the config.json source is not included (infra-only pass).
+   */
+  readonly apiUrl?: string
+  /** AWS region of the Cognito User Pool (e.g. us-east-1). Defaults to us-east-1. */
+  readonly cognitoRegion?: string
+  /** Cognito User Pool ID. Required together with other Cognito props to generate config.json. */
+  readonly cognitoUserPoolId?: string
+  /** Tenant app client ID (PKCE, no secret). Required together with other Cognito props. */
+  readonly cognitoTenantClientId?: string
   /** Cognito Hosted UI base URL (e.g. https://pegasus-123.auth.us-east-1.amazoncognito.com). */
-  readonly cognitoDomain: string
+  readonly cognitoDomain?: string
 }
 
 /**
@@ -31,7 +35,7 @@ export interface FrontendStackProps extends cdk.StackProps {
 export class FrontendStack extends cdk.Stack {
   public readonly distribution: cloudfront.Distribution
 
-  constructor(scope: Construct, id: string, props: FrontendStackProps) {
+  constructor(scope: Construct, id: string, props: FrontendStackProps = {}) {
     super(scope, id, props)
 
     // ---------------------------------------------------------------------------
@@ -95,27 +99,47 @@ export class FrontendStack extends cdk.Stack {
 
     // ---------------------------------------------------------------------------
     // Deploy assets to S3 and invalidate CloudFront
-    // The second source (jsonData) generates /config.json with resolved
-    // CloudFormation tokens — no env vars baked into the bundle at build time.
+    //
+    // Only added when the built dist directory exists so synth succeeds without
+    // a prior build (important for CDK unit tests and pull-request synthesis).
+    //
+    // When all Cognito/API props are provided, a config.json source is appended
+    // so the tenant app boots with the correct runtime configuration. On the
+    // first (infra-only) deploy pass, props are omitted and no config.json is
+    // generated — the CloudFront URL is captured so CognitoStack can register
+    // it as a callback URL before the second (asset) pass runs.
     // ---------------------------------------------------------------------------
-    new s3deploy.BucketDeployment(this, 'DeployWebsite', {
-      sources: [
-        s3deploy.Source.asset(path.join(__dirname, '../../../../packages/web/dist')),
-        s3deploy.Source.jsonData('config.json', {
-          apiUrl: props.apiUrl,
-          cognito: {
-            region: props.cognitoRegion,
-            userPoolId: props.cognitoUserPoolId,
-            clientId: props.cognitoTenantClientId,
-            domain: props.cognitoDomain,
-            redirectUri: `https://${this.distribution.distributionDomainName}/login/callback`,
-          },
-        }),
-      ],
-      destinationBucket: siteBucket,
-      distribution: this.distribution,
-      distributionPaths: ['/*'],
-    })
+    const distPath = path.join(__dirname, '../../../../packages/web/dist')
+    if (fs.existsSync(distPath)) {
+      const sources: s3deploy.ISource[] = [s3deploy.Source.asset(distPath)]
+
+      if (
+        props.apiUrl &&
+        props.cognitoUserPoolId &&
+        props.cognitoTenantClientId &&
+        props.cognitoDomain
+      ) {
+        sources.push(
+          s3deploy.Source.jsonData('config.json', {
+            apiUrl: props.apiUrl,
+            cognito: {
+              region: props.cognitoRegion ?? 'us-east-1',
+              userPoolId: props.cognitoUserPoolId,
+              clientId: props.cognitoTenantClientId,
+              domain: props.cognitoDomain,
+              redirectUri: `https://${this.distribution.distributionDomainName}/login/callback`,
+            },
+          }),
+        )
+      }
+
+      new s3deploy.BucketDeployment(this, 'DeployWebsite', {
+        sources,
+        destinationBucket: siteBucket,
+        distribution: this.distribution,
+        distributionPaths: ['/*'],
+      })
+    }
 
     // ---------------------------------------------------------------------------
     // Outputs

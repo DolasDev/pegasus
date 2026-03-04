@@ -23,6 +23,20 @@ const devEnv: cdk.Environment = {
 const adminUrl = app.node.tryGetContext('adminUrl') as string | undefined
 const tenantUrl = app.node.tryGetContext('tenantUrl') as string | undefined
 
+// Cognito/API values for the tenant frontend two-pass deploy.
+// Passed via CDK context on the asset pass (step 5 of deploy.sh) so the
+// FrontendStack can be provisioned infrastructure-only on the first pass
+// (before these values exist) and then re-deployed with assets + config.json.
+//
+//   --context apiUrl=https://...execute-api.amazonaws.com
+//   --context cognitoDomain=https://pegasus-xxx.auth.us-east-1.amazoncognito.com
+//   --context cognitoUserPoolId=us-east-1_XXXXXX
+//   --context cognitoTenantClientId=xxxx
+const tenantApiUrl = app.node.tryGetContext('apiUrl') as string | undefined
+const tenantCognitoDomain = app.node.tryGetContext('cognitoDomain') as string | undefined
+const tenantCognitoUserPoolId = app.node.tryGetContext('cognitoUserPoolId') as string | undefined
+const tenantCognitoClientId = app.node.tryGetContext('cognitoTenantClientId') as string | undefined
+
 // Shared Cognito User Pool — provisioned first; other stacks reference its outputs.
 const cognitoStack = new CognitoStack(app, 'PegasusDev-CognitoStack', {
   env: devEnv,
@@ -31,18 +45,14 @@ const cognitoStack = new CognitoStack(app, 'PegasusDev-CognitoStack', {
   adminCallbackUrls: adminUrl
     ? ['http://localhost:5174/auth/callback', `${adminUrl}/auth/callback`]
     : undefined,
-  adminLogoutUrls: adminUrl
-    ? ['http://localhost:5174/login', `${adminUrl}/login`]
-    : undefined,
+  adminLogoutUrls: adminUrl ? ['http://localhost:5174/login', `${adminUrl}/login`] : undefined,
   tenantCallbackUrls: tenantUrl
     ? ['http://localhost:5173/login/callback', `${tenantUrl}/login/callback`]
     : undefined,
-  tenantLogoutUrls: tenantUrl
-    ? ['http://localhost:5173/login', `${tenantUrl}/login`]
-    : undefined,
+  tenantLogoutUrls: tenantUrl ? ['http://localhost:5173/login', `${tenantUrl}/login`] : undefined,
 })
 
-const apiStack = new ApiStack(app, 'PegasusDev-ApiStack', {
+new ApiStack(app, 'PegasusDev-ApiStack', {
   env: devEnv,
   stackName: 'pegasus-dev-api',
   description: 'Pegasus dev — Hono Lambda + HTTP API Gateway v2',
@@ -54,15 +64,20 @@ const apiStack = new ApiStack(app, 'PegasusDev-ApiStack', {
   cognitoUserPoolId: cognitoStack.userPool.userPoolId,
 })
 
+// FrontendStack is deployed twice by deploy.sh (mirrors AdminFrontendStack):
+//   Pass 1 (infra): no Cognito/API context — provisions CloudFront so the URL
+//                   can be registered with CognitoStack as a callback URL.
+//   Pass 2 (assets): Cognito/API context provided via --context flags; CDK
+//                    uploads built assets and generates config.json.
 new FrontendStack(app, 'PegasusDev-FrontendStack', {
   env: devEnv,
   stackName: 'pegasus-dev-frontend',
   description: 'Pegasus dev — S3 static assets + CloudFront distribution',
-  apiUrl: apiStack.apiUrl,
+  apiUrl: tenantApiUrl,
   cognitoRegion: devEnv.region ?? 'us-east-1',
-  cognitoUserPoolId: cognitoStack.userPool.userPoolId,
-  cognitoTenantClientId: cognitoStack.tenantAppClient.userPoolClientId,
-  cognitoDomain: cognitoStack.hostedUiBaseUrl,
+  cognitoUserPoolId: tenantCognitoUserPoolId,
+  cognitoTenantClientId: tenantCognitoClientId,
+  cognitoDomain: tenantCognitoDomain,
 })
 
 // AdminFrontendStack is deployed twice by deploy.sh:
