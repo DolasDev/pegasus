@@ -28,31 +28,18 @@ import type { Construct } from 'constructs'
 
 export interface CognitoStackProps extends cdk.StackProps {
   /**
-   * OAuth 2.0 callback URLs for the admin app client.
-   * Add the production admin CloudFront URL when the AdminFrontendStack is deployed.
-   * Defaults to localhost for local development.
+   * CloudFront distributionDomainName token from FrontendStack (e.g. xxx.cloudfront.net, no protocol).
+   * When provided, the CloudFront URL is registered as an allowed OAuth callback/logout URL alongside
+   * localhost. CDK resolves this cross-stack token via Fn::ImportValue at deploy time.
    */
-  readonly adminCallbackUrls?: readonly string[]
+  readonly tenantDistributionDomain?: string
 
   /**
-   * OAuth 2.0 logout URLs for the admin app client.
-   * Defaults to localhost for local development.
+   * CloudFront distributionDomainName token from AdminFrontendStack (e.g. xxx.cloudfront.net, no protocol).
+   * When provided, the CloudFront URL is registered as an allowed OAuth callback/logout URL alongside
+   * localhost. CDK resolves this cross-stack token via Fn::ImportValue at deploy time.
    */
-  readonly adminLogoutUrls?: readonly string[]
-
-  /**
-   * OAuth 2.0 callback URLs for the tenant app client.
-   * Must include the /login/callback path on every environment domain.
-   * Defaults to localhost for local development.
-   */
-  readonly tenantCallbackUrls?: readonly string[]
-
-  /**
-   * OAuth 2.0 logout URLs for the tenant app client.
-   * Must include the /login path on every environment domain.
-   * Defaults to localhost for local development.
-   */
-  readonly tenantLogoutUrls?: readonly string[]
+  readonly adminDistributionDomain?: string
 }
 
 export class CognitoStack extends cdk.Stack {
@@ -84,10 +71,28 @@ export class CognitoStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: CognitoStackProps = {}) {
     super(scope, id, props)
 
-    const adminCallbackUrls = props.adminCallbackUrls ?? ['http://localhost:5174/auth/callback']
-    const adminLogoutUrls = props.adminLogoutUrls ?? ['http://localhost:5174/login']
-    const tenantCallbackUrls = props.tenantCallbackUrls ?? ['http://localhost:5173/login/callback']
-    const tenantLogoutUrls = props.tenantLogoutUrls ?? ['http://localhost:5173/login']
+    // Construct callback/logout URL arrays from distribution domain tokens.
+    // When the domain token is a CloudFormation reference (cross-stack), CDK
+    // automatically generates Fn::ImportValue so CloudFormation resolves the
+    // real CloudFront hostname before creating/updating the Cognito app client.
+    const tenantCallbackUrls = props.tenantDistributionDomain
+      ? [
+          'http://localhost:5173/login/callback',
+          `https://${props.tenantDistributionDomain}/login/callback`,
+        ]
+      : ['http://localhost:5173/login/callback']
+    const tenantLogoutUrls = props.tenantDistributionDomain
+      ? ['http://localhost:5173/login', `https://${props.tenantDistributionDomain}/login`]
+      : ['http://localhost:5173/login']
+    const adminCallbackUrls = props.adminDistributionDomain
+      ? [
+          'http://localhost:5174/auth/callback',
+          `https://${props.adminDistributionDomain}/auth/callback`,
+        ]
+      : ['http://localhost:5174/auth/callback']
+    const adminLogoutUrls = props.adminDistributionDomain
+      ? ['http://localhost:5174/login', `https://${props.adminDistributionDomain}/login`]
+      : ['http://localhost:5174/login']
     // -------------------------------------------------------------------------
     // Pre-Authentication Lambda trigger
     //
@@ -148,9 +153,7 @@ export class CognitoStack extends cdk.Stack {
           afterBundling(_inputDir: string, outputDir: string): string[] {
             const repoRoot = path.join(__dirname, '../../../..')
             const engine = 'libquery_engine-rhel-openssl-3.0.x.so.node'
-            return [
-              `cp ${repoRoot}/node_modules/.prisma/client/${engine} ${outputDir}/${engine}`,
-            ]
+            return [`cp ${repoRoot}/node_modules/.prisma/client/${engine} ${outputDir}/${engine}`]
           },
         },
       },
@@ -202,9 +205,7 @@ export class CognitoStack extends cdk.Stack {
     preAuthFn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['cognito-idp:AdminGetUser', 'cognito-idp:AdminListGroupsForUser'],
-        resources: [
-          `arn:aws:cognito-idp:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:userpool/*`,
-        ],
+        resources: [`arn:aws:cognito-idp:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:userpool/*`],
       }),
     )
 
@@ -342,7 +343,8 @@ export class CognitoStack extends cdk.Stack {
     new ssm.StringParameter(this, 'HostedUiDomainParam', {
       parameterName: '/pegasus/admin/cognito-hosted-ui-domain',
       stringValue: hostedUiDomain.baseUrl(),
-      description: 'Pegasus Cognito Hosted UI base URL (e.g. https://pegasus-123.auth.us-east-1.amazoncognito.com)',
+      description:
+        'Pegasus Cognito Hosted UI base URL (e.g. https://pegasus-123.auth.us-east-1.amazoncognito.com)',
     })
 
     // Tenant app client parameters — used by the API Lambda for ID token audience
@@ -385,11 +387,6 @@ export class CognitoStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'JwksUrl', {
       value: this.jwksUrl,
       exportName: 'PegasusCognitoJwksUrl',
-    })
-
-    new cdk.CfnOutput(this, 'adminCallbackUrls', {
-      value: props.adminCallbackUrls?.[1] ? props.adminCallbackUrls[1] : 'http://localhost:5174/auth/callback',
-      exportName: 'adminCallbackUrls',
     })
   }
 }

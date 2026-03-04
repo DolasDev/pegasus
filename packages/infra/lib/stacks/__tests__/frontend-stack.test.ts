@@ -1,19 +1,11 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it } from 'vitest'
 import * as cdk from 'aws-cdk-lib'
 import { Template, Match } from 'aws-cdk-lib/assertions'
 import { FrontendStack } from '../frontend-stack'
 
-const fullProps = {
-  apiUrl: 'https://api.example.com',
-  cognitoRegion: 'us-east-1',
-  cognitoUserPoolId: 'us-east-1_TestPool',
-  cognitoTenantClientId: 'test-client-id',
-  cognitoDomain: 'https://pegasus-test.auth.us-east-1.amazoncognito.com',
-}
-
-function synthFrontendStack(props?: typeof fullProps) {
+function synthFrontendStack() {
   const app = new cdk.App()
-  const stack = new FrontendStack(app, 'TestFrontend', props)
+  const stack = new FrontendStack(app, 'TestFrontend')
   return Template.fromStack(stack)
 }
 
@@ -156,47 +148,6 @@ describe('FrontendStack — Origin Access Control', () => {
         OriginAccessControlOriginType: 's3',
         SigningBehavior: 'always',
         SigningProtocol: 'sigv4',
-      }),
-    })
-  })
-})
-
-describe('FrontendStack — config.json source', () => {
-  it('without Cognito props: BucketDeployment has one source (SPA assets only)', () => {
-    const template = synthFrontendStack()
-    const deployments = template.findResources('Custom::CDKBucketDeployment')
-    const keys = Object.keys(deployments)
-    // dist exists → a BucketDeployment is created, but only one source (no jsonData)
-    const firstKey = keys[0]
-    if (firstKey !== undefined) {
-      const sourceKeys = deployments[firstKey]!.Properties.SourceObjectKeys as unknown[]
-      expect(sourceKeys).toHaveLength(1)
-    }
-    // If dist doesn't exist (e.g. fresh checkout), no deployment is created — also acceptable.
-  })
-
-  it('with Cognito props: BucketDeployment has two sources (SPA assets + config.json)', () => {
-    const template = synthFrontendStack(fullProps)
-    const deployments = template.findResources('Custom::CDKBucketDeployment')
-    const keys = Object.keys(deployments)
-    // dist must exist for the BucketDeployment to be created
-    const firstKey = keys[0]
-    if (firstKey !== undefined) {
-      const sourceKeys = deployments[firstKey]!.Properties.SourceObjectKeys as unknown[]
-      expect(sourceKeys).toHaveLength(2)
-    }
-  })
-
-  it('with Cognito props: /config.json CloudFront behaviour has a disabled cache policy', () => {
-    const template = synthFrontendStack(fullProps)
-    template.hasResourceProperties('AWS::CloudFront::Distribution', {
-      DistributionConfig: Match.objectLike({
-        CacheBehaviors: Match.arrayWith([
-          Match.objectLike({
-            PathPattern: '/config.json',
-            CachePolicyId: '4135ea2d-6df8-44a3-9df3-4b5a84be39ad',
-          }),
-        ]),
       }),
     })
   })

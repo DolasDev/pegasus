@@ -1,27 +1,8 @@
-import * as fs from 'fs'
 import * as cdk from 'aws-cdk-lib'
 import * as s3 from 'aws-cdk-lib/aws-s3'
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront'
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins'
-import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment'
-import * as path from 'path'
 import { type Construct } from 'constructs'
-
-export interface FrontendStackProps extends cdk.StackProps {
-  /**
-   * API Gateway URL — injected into /config.json at deploy time.
-   * Optional: when omitted the config.json source is not included (infra-only pass).
-   */
-  readonly apiUrl?: string
-  /** AWS region of the Cognito User Pool (e.g. us-east-1). Defaults to us-east-1. */
-  readonly cognitoRegion?: string
-  /** Cognito User Pool ID. Required together with other Cognito props to generate config.json. */
-  readonly cognitoUserPoolId?: string
-  /** Tenant app client ID (PKCE, no secret). Required together with other Cognito props. */
-  readonly cognitoTenantClientId?: string
-  /** Cognito Hosted UI base URL (e.g. https://pegasus-123.auth.us-east-1.amazoncognito.com). */
-  readonly cognitoDomain?: string
-}
 
 /**
  * FrontendStack provisions the static hosting infrastructure for the Pegasus React SPA.
@@ -29,19 +10,22 @@ export interface FrontendStackProps extends cdk.StackProps {
  * Resources:
  *   - S3 bucket (private, no public access) — stores compiled frontend assets
  *   - CloudFront distribution — HTTPS delivery, SPA routing fallback, Origin Access Control
- *   - /config.json — generated at deploy time via s3deploy.Source.jsonData with resolved
- *     CloudFormation tokens (API URL, Cognito settings, redirect URI)
+ *
+ * Asset deployment (config.json) is handled by FrontendAssetsStack, which depends on
+ * this stack for the bucket and distribution references plus CognitoStack / ApiStack
+ * for runtime configuration values.
  */
 export class FrontendStack extends cdk.Stack {
   public readonly distribution: cloudfront.Distribution
+  public readonly siteBucket: s3.Bucket
 
-  constructor(scope: Construct, id: string, props: FrontendStackProps = {}) {
+  constructor(scope: Construct, id: string, props: cdk.StackProps = {}) {
     super(scope, id, props)
 
     // ---------------------------------------------------------------------------
     // S3 bucket — private, no direct public access
     // ---------------------------------------------------------------------------
-    const siteBucket = new s3.Bucket(this, 'SiteBucket', {
+    this.siteBucket = new s3.Bucket(this, 'SiteBucket', {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
       versioned: false,
@@ -54,7 +38,7 @@ export class FrontendStack extends cdk.Stack {
     // ---------------------------------------------------------------------------
     // Shared origin — S3BucketOrigin.withOriginAccessControl creates one OAC per
     // call so we create it once and reuse it across all cache behaviours.
-    const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(siteBucket)
+    const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(this.siteBucket)
 
     this.distribution = new cloudfront.Distribution(this, 'SiteDistribution', {
       defaultBehavior: {
@@ -98,50 +82,6 @@ export class FrontendStack extends cdk.Stack {
     })
 
     // ---------------------------------------------------------------------------
-    // Deploy assets to S3 and invalidate CloudFront
-    //
-    // Only added when the built dist directory exists so synth succeeds without
-    // a prior build (important for CDK unit tests and pull-request synthesis).
-    //
-    // When all Cognito/API props are provided, a config.json source is appended
-    // so the tenant app boots with the correct runtime configuration. On the
-    // first (infra-only) deploy pass, props are omitted and no config.json is
-    // generated — the CloudFront URL is captured so CognitoStack can register
-    // it as a callback URL before the second (asset) pass runs.
-    // ---------------------------------------------------------------------------
-    const distPath = path.join(__dirname, '../../../../packages/web/dist')
-    if (fs.existsSync(distPath)) {
-      const sources: s3deploy.ISource[] = [s3deploy.Source.asset(distPath)]
-
-      if (
-        props.apiUrl &&
-        props.cognitoUserPoolId &&
-        props.cognitoTenantClientId &&
-        props.cognitoDomain
-      ) {
-        sources.push(
-          s3deploy.Source.jsonData('config.json', {
-            apiUrl: props.apiUrl,
-            cognito: {
-              region: props.cognitoRegion ?? 'us-east-1',
-              userPoolId: props.cognitoUserPoolId,
-              clientId: props.cognitoTenantClientId,
-              domain: props.cognitoDomain,
-              redirectUri: `https://${this.distribution.distributionDomainName}/login/callback`,
-            },
-          }),
-        )
-      }
-
-      new s3deploy.BucketDeployment(this, 'DeployWebsite', {
-        sources,
-        destinationBucket: siteBucket,
-        distribution: this.distribution,
-        distributionPaths: ['/*'],
-      })
-    }
-
-    // ---------------------------------------------------------------------------
     // Outputs
     // ---------------------------------------------------------------------------
     new cdk.CfnOutput(this, 'DistributionUrl', {
@@ -155,7 +95,7 @@ export class FrontendStack extends cdk.Stack {
     })
 
     new cdk.CfnOutput(this, 'SiteBucketName', {
-      value: siteBucket.bucketName,
+      value: this.siteBucket.bucketName,
       exportName: 'PegasusSiteBucketName',
     })
   }
