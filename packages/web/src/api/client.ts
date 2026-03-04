@@ -25,6 +25,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const session = getSession()
   const headers = new Headers(init?.headers)
   headers.set('Content-Type', 'application/json')
+  headers.set('x-correlation-id', crypto.randomUUID())
 
   if (session?.token) {
     headers.set('Authorization', `Bearer ${session.token}`)

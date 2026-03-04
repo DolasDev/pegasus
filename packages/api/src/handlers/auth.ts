@@ -25,6 +25,7 @@ import { validator } from 'hono/validator'
 import { z } from 'zod'
 import { createRemoteJWKSet, jwtVerify, errors } from 'jose'
 import { db } from '../db'
+import { logger } from '../lib/logger'
 
 // ---------------------------------------------------------------------------
 // JWKS cache — initialised on the first request, shared across warm Lambda
@@ -133,10 +134,7 @@ authHandler.post(
     }
 
     if (!tenant) {
-      return c.json(
-        { error: 'Domain not registered with Pegasus', code: 'TENANT_NOT_FOUND' },
-        404,
-      )
+      return c.json({ error: 'Domain not registered with Pegasus', code: 'TENANT_NOT_FOUND' }, 404)
     }
 
     // Server-side guard: SSO must be configured before users can log in.
@@ -212,7 +210,7 @@ authHandler.post(
     const tenantClientId = process.env['COGNITO_TENANT_CLIENT_ID'] ?? ''
 
     if (!jwksUrl || !tenantClientId) {
-      console.error('validate-token: COGNITO_JWKS_URL or COGNITO_TENANT_CLIENT_ID not set')
+      logger.error('validate-token: COGNITO_JWKS_URL or COGNITO_TENANT_CLIENT_ID not set')
       return c.json({ error: 'Authentication service misconfigured', code: 'INTERNAL_ERROR' }, 500)
     }
 
@@ -243,10 +241,7 @@ authHandler.post(
     // they serve a different purpose and have different claim sets.
     // -----------------------------------------------------------------------
     if (payload['token_use'] !== 'id') {
-      return c.json(
-        { error: 'Invalid token: ID token required', code: 'UNAUTHORIZED' },
-        401,
-      )
+      return c.json({ error: 'Invalid token: ID token required', code: 'UNAUTHORIZED' }, 401)
     }
 
     // -----------------------------------------------------------------------
@@ -256,10 +251,7 @@ authHandler.post(
     const email = payload['email'] as string | undefined
 
     if (!sub || !email) {
-      return c.json(
-        { error: 'Invalid token: missing required claims', code: 'UNAUTHORIZED' },
-        401,
-      )
+      return c.json({ error: 'Invalid token: missing required claims', code: 'UNAUTHORIZED' }, 401)
     }
 
     const domain = email.split('@')[1]?.toLowerCase()
@@ -294,7 +286,7 @@ authHandler.post(
     const session = {
       sub,
       tenantId: customTenantId,
-      role: customRole as any, // 'tenant_user' or other roles
+      role: customRole, // 'tenant_user' or other roles
       email,
       expiresAt,
       // The Cognito identity provider used to authenticate. Cognito stores the

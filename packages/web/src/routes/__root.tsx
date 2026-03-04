@@ -1,5 +1,6 @@
 import { Outlet, useRouter } from '@tanstack/react-router'
 import { AppShell } from '@/components/AppShell'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 /** Routes that render without the AppShell sidebar/header. */
 function isShellFree(pathname: string): boolean {
@@ -11,12 +12,18 @@ export function RootLayout() {
   const pathname = router.state.location.pathname
 
   if (isShellFree(pathname)) {
-    return <Outlet />
+    return (
+      <ErrorBoundary>
+        <Outlet />
+      </ErrorBoundary>
+    )
   }
 
   return (
-    <AppShell>
-      <Outlet />
-    </AppShell>
+    <ErrorBoundary>
+      <AppShell>
+        <Outlet />
+      </AppShell>
+    </ErrorBoundary>
   )
 }

@@ -36,6 +36,7 @@ export async function adminFetch<T>(path: string, init?: RequestInit): Promise<T
   const res = await fetch(`${getConfig().apiUrl}${path}`, {
     headers: {
       'Content-Type': 'application/json',
+      'x-correlation-id': crypto.randomUUID(),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init?.headers,
     },
@@ -64,6 +65,7 @@ export async function adminFetchPaginated<T>(
   const res = await fetch(`${getConfig().apiUrl}${path}`, {
     headers: {
       'Content-Type': 'application/json',
+      'x-correlation-id': crypto.randomUUID(),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init?.headers,
     },

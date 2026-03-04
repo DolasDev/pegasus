@@ -15,6 +15,12 @@ import type { PrismaClient } from '@prisma/client'
  * the resolved tenant. Developers never need to pass tenantId to Prisma calls.
  */
 export type AppVariables = {
+  /**
+   * Correlation ID for this request — either forwarded from the `x-correlation-id`
+   * request header or generated as a UUID by the correlation middleware.
+   * Present on every request including /health and unauthenticated routes.
+   */
+  correlationId: string
   /** The UUID of the resolved tenant for this request. */
   tenantId: string
   /** The specific role the authenticated user holds in this tenant. */

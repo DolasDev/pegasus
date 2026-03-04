@@ -65,10 +65,13 @@ export async function setup(): Promise<void> {
     try {
       execSync('docker info', { stdio: 'pipe' })
     } catch {
-      throw new Error(
-        '\n[test:db] Postgres is not running and Docker is not available.\n' +
-          'Start the container manually (`docker compose up -d`) or set DATABASE_URL.\n',
+      // Docker is unavailable — warn and continue. Integration tests that
+      // require a DB guard themselves with `describe.skipIf(!process.env['DATABASE_URL'])`.
+      console.warn(
+        '\n[test:db] Postgres is not running and Docker is not available.' +
+          ' DB-dependent tests will be skipped. Set DATABASE_URL or start Docker to run them.\n',
       )
+      return
     }
 
     console.log('\n[test:db] Starting postgres container...')

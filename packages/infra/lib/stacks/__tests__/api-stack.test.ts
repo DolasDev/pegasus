@@ -121,6 +121,15 @@ describe('ApiStack — HTTP API Gateway', () => {
   })
 })
 
+describe('ApiStack — CloudWatch log group', () => {
+  it('creates a log group with one-month retention', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::Logs::LogGroup', {
+      RetentionInDays: 30,
+    })
+  })
+})
+
 describe('ApiStack — CloudFormation Outputs', () => {
   it('exports the API URL', () => {
     const template = synthApiStack()

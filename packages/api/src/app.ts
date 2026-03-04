@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { logger } from 'hono/logger'
 import type { AppEnv } from './types'
+import { correlationMiddleware } from './middleware/correlation'
 import { tenantMiddleware } from './middleware/tenant'
 import { adminRouter } from './handlers/admin'
 import { authHandler } from './handlers/auth'
@@ -11,14 +11,44 @@ import { quotesHandler } from './handlers/quotes'
 import { movesHandler } from './handlers/moves'
 import { inventoryHandler } from './handlers/inventory'
 import { billingHandler } from './handlers/billing'
+import { logger } from './lib/logger'
+import { DomainError } from '@pegasus/domain'
 
 const app = new Hono<AppEnv>()
 
 // ---------------------------------------------------------------------------
 // Global middleware (applies to all routes including /health)
 // ---------------------------------------------------------------------------
-app.use('*', logger())
+// Correlation ID must be first so every subsequent log line and error response
+// carries the request-scoped trace identifier.
+app.use('*', correlationMiddleware)
 app.use('*', cors())
+
+// ---------------------------------------------------------------------------
+// Global error handler
+//
+// Catches any unhandled exception thrown from a route handler or middleware.
+// Logs the full error server-side (including stack) and returns a sanitised
+// JSON payload — never leaking internal stack traces to the client.
+// ---------------------------------------------------------------------------
+app.onError((err, c) => {
+  const correlationId = c.get('correlationId') ?? 'unknown'
+
+  if (err instanceof DomainError) {
+    logger.warn('Domain rule violation', { code: err.code, message: err.message })
+    return c.json({ error: err.message, code: err.code, correlationId }, 422)
+  }
+
+  logger.error('Unhandled error', {
+    error: err.message,
+    stack: err.stack,
+    correlationId,
+  })
+  return c.json(
+    { error: 'An unexpected error occurred', code: 'INTERNAL_ERROR', correlationId },
+    500,
+  )
+})
 
 // ---------------------------------------------------------------------------
 // Public routes — no tenant required

@@ -27,6 +27,9 @@ import {
   AdminListGroupsForUserCommand,
   CognitoIdentityProviderClient,
 } from '@aws-sdk/client-cognito-identity-provider'
+import { createLogger } from '../lib/logger'
+
+const logger = createLogger('pegasus-pre-auth')
 
 const cognitoClient = new CognitoIdentityProviderClient({})
 
@@ -47,7 +50,7 @@ export const handler: PreAuthenticationTriggerHandler = async (event) => {
   const userName = event.userName
 
   if (!userPoolId || !userName) {
-    console.error('Pre-auth trigger: missing userPoolId or userName', {
+    logger.error('Pre-auth trigger: missing userPoolId or userName', {
       userPoolId: userPoolId ?? '(unset)',
       userName: userName ?? '(unset)',
     })
@@ -118,7 +121,7 @@ export const handler: PreAuthenticationTriggerHandler = async (event) => {
     }
 
     // Any unexpected error (IAM, network, Cognito API) — fail closed.
-    console.error('Pre-auth trigger: unexpected error during MFA check', err)
+    logger.error('Pre-auth trigger: unexpected error during MFA check', { error: String(err) })
     throw new Error('Authentication check failed. Please try again or contact support.')
   }
 }

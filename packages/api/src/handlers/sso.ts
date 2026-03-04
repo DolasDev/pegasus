@@ -25,6 +25,7 @@ import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
 import type { AppEnv } from '../types'
+import { logger } from '../lib/logger'
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -48,7 +49,7 @@ const CreateSsoProviderBody = z.object({
     .string()
     .min(1)
     .max(100)
-    .regex(/^[a-zA-Z0-9_\-]+$/, {
+    .regex(/^[a-zA-Z0-9_-]+$/, {
       message: 'cognitoProviderName may only contain letters, digits, hyphens, and underscores',
     }),
 
@@ -162,7 +163,8 @@ ssoHandler.get('/providers', async (c) => {
       orderBy: { createdAt: 'asc' },
     })
     return c.json({ data: providers.map(toResponse) })
-  } catch {
+  } catch (err) {
+    logger.error('GET /providers: failed to list SSO providers', { error: String(err) })
     return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
   }
 })
@@ -219,6 +221,7 @@ ssoHandler.post(
           409,
         )
       }
+      logger.error('POST /providers: failed to create SSO provider', { error: String(err) })
       return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
     }
   },
@@ -249,7 +252,10 @@ ssoHandler.put(
     const body = c.req.valid('json')
 
     try {
-      const existing = await db.tenantSsoProvider.findUnique({ where: { id }, select: { id: true } })
+      const existing = await db.tenantSsoProvider.findUnique({
+        where: { id },
+        select: { id: true },
+      })
       if (!existing) return c.json({ error: 'SSO provider not found', code: 'NOT_FOUND' }, 404)
 
       const provider = await db.tenantSsoProvider.update({
@@ -263,7 +269,8 @@ ssoHandler.put(
         select: PROVIDER_SELECT,
       })
       return c.json({ data: toResponse(provider) })
-    } catch {
+    } catch (err) {
+      logger.error('PUT /providers/:id: failed to update SSO provider', { error: String(err) })
       return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
     }
   },
@@ -288,7 +295,8 @@ ssoHandler.delete('/providers/:id', async (c) => {
 
     await db.tenantSsoProvider.delete({ where: { id } })
     return c.body(null, 204)
-  } catch {
+  } catch (err) {
+    logger.error('DELETE /providers/:id: failed to delete SSO provider', { error: String(err) })
     return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
   }
 })

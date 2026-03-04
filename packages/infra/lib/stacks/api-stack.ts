@@ -2,6 +2,7 @@ import * as path from 'path'
 import * as cdk from 'aws-cdk-lib'
 import * as iam from 'aws-cdk-lib/aws-iam'
 import * as lambda from 'aws-cdk-lib/aws-lambda'
+import * as logs from 'aws-cdk-lib/aws-logs'
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs'
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2'
 import * as apigwv2i from 'aws-cdk-lib/aws-apigatewayv2-integrations'
@@ -57,6 +58,13 @@ export class ApiStack extends cdk.Stack {
       'pegasus/dev/database-url',
     )
 
+    // Explicit log group so retention is set without the deprecated
+    // `logRetention` custom-resource Lambda.
+    const apiLogGroup = new logs.LogGroup(this, 'ApiLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+
     const apiFunction = new nodejs.NodejsFunction(this, 'ApiFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
       // Entry resolved relative to this file at deploy time by esbuild
@@ -72,6 +80,8 @@ export class ApiStack extends cdk.Stack {
         // Tell Prisma exactly where the native query engine lives so it skips
         // its path-search heuristics (which bake in local build-machine paths).
         PRISMA_QUERY_ENGINE_LIBRARY: '/var/task/libquery_engine-rhel-openssl-3.0.x.so.node',
+        // Structured log level consumed by @aws-lambda-powertools/logger.
+        LOG_LEVEL: 'INFO',
         // Cognito JWKS endpoint for JWT verification. Used by:
         //   - adminAuthMiddleware: verifies admin access tokens
         //   - /api/auth/validate-token: verifies tenant ID tokens
@@ -98,14 +108,13 @@ export class ApiStack extends cdk.Stack {
             // .so.node files, so we copy it explicitly.
             const repoRoot = path.join(__dirname, '../../../..')
             const engine = 'libquery_engine-rhel-openssl-3.0.x.so.node'
-            return [
-              `cp ${repoRoot}/node_modules/.prisma/client/${engine} ${outputDir}/${engine}`,
-            ]
+            return [`cp ${repoRoot}/node_modules/.prisma/client/${engine} ${outputDir}/${engine}`]
           },
         },
       },
       memorySize: 512,
       timeout: cdk.Duration.seconds(29),
+      logGroup: apiLogGroup,
     })
 
     // ---------------------------------------------------------------------------
@@ -139,7 +148,8 @@ export class ApiStack extends cdk.Stack {
       corsPreflight: {
         allowOrigins: ['*'],
         allowMethods: [apigwv2.CorsHttpMethod.ANY],
-        allowHeaders: ['Content-Type', 'Authorization'],
+        allowHeaders: ['Content-Type', 'Authorization', 'x-correlation-id'],
+        exposeHeaders: ['x-correlation-id'],
       },
     })
 

@@ -14,6 +14,9 @@
 
 import type { PreTokenGenerationTriggerHandler } from 'aws-lambda'
 import { PrismaClient } from '@prisma/client'
+import { createLogger } from '../lib/logger'
+
+const logger = createLogger('pegasus-pre-token')
 
 // Use a shared client to pool connections across warm invocations.
 const db = new PrismaClient()
@@ -43,13 +46,13 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
   const email = event.request.userAttributes.email
 
   if (!email) {
-    console.error('Pre-Token trigger: Missing email claim')
+    logger.error('Pre-Token trigger: Missing email claim')
     throw new Error('Authentication failed: No email associated with identity')
   }
 
   const domain = email.split('@')[1]?.toLowerCase()
   if (!domain) {
-    console.error(`Pre-Token trigger: Invalid email format ${email}`)
+    logger.error('Pre-Token trigger: Invalid email format', { email })
     throw new Error('Authentication failed: Invalid email format')
   }
 
@@ -63,7 +66,7 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
 
   // Fail-closed: no active tenant means no session.
   if (!tenant) {
-    console.warn(`Pre-Token trigger: No active tenant for domain ${domain}`)
+    logger.warn('Pre-Token trigger: No active tenant for domain', { domain })
     throw new Error(
       'Your email domain is not associated with any active Pegasus tenant. Contact your administrator.',
     )

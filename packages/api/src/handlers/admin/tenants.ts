@@ -17,6 +17,7 @@ import { Prisma } from '@prisma/client'
 import type { AdminEnv } from '../../types'
 import { db } from '../../db'
 import { writeAuditLog } from './audit'
+import { logger } from '../../lib/logger'
 
 // ---------------------------------------------------------------------------
 // Cognito client — lazy singleton reused across warm Lambda invocations.
@@ -250,7 +251,7 @@ adminTenantsRouter.post(
     try {
       await provisionCognitoAdminUser(body.adminEmail)
     } catch (err) {
-      console.error('Failed to provision Cognito admin user', err)
+      logger.error('Failed to provision Cognito admin user', { error: String(err) })
       return c.json(
         {
           error: 'Failed to create the administrator account. Please try again.',
