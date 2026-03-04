@@ -20,7 +20,7 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, ShieldCheck, Loader2, AlertCircle } from 'lucide-react'
+import { Plus, Pencil, Trash2, ShieldCheck, Loader2, AlertCircle, KeyRound } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
@@ -34,6 +34,7 @@ import {
   useCreateSsoProvider,
   useUpdateSsoProvider,
   useDeleteSsoProvider,
+  useUpdateAuthSettings,
   type SsoProvider,
   type CreateSsoProviderInput,
   type UpdateSsoProviderInput,
@@ -366,8 +367,72 @@ type PanelState =
   | { kind: 'edit'; provider: SsoProvider }
   | { kind: 'delete'; provider: SsoProvider }
 
+// ---------------------------------------------------------------------------
+// CognitoAuthToggle — standalone toggle for built-in password login
+// ---------------------------------------------------------------------------
+
+function CognitoAuthToggle({ initialValue }: { initialValue: boolean }) {
+  const [enabled, setEnabled] = useState(initialValue)
+  const updateMutation = useUpdateAuthSettings()
+
+  async function handleToggle() {
+    const newValue = !enabled
+    setEnabled(newValue)
+    try {
+      await updateMutation.mutateAsync(newValue)
+    } catch {
+      // Revert on failure
+      setEnabled(!newValue)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <KeyRound size={16} className="text-muted-foreground" />
+          Password sign-in
+        </CardTitle>
+        <CardDescription>
+          When enabled, users can sign in with their Cognito email and password in addition to any
+          configured SSO providers.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            onClick={() => void handleToggle()}
+            disabled={updateMutation.isPending}
+            className={[
+              'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
+              enabled ? 'bg-primary' : 'bg-muted',
+              updateMutation.isPending ? 'opacity-50 cursor-not-allowed' : '',
+            ].join(' ')}
+          >
+            <span
+              className={[
+                'inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform',
+                enabled ? 'translate-x-5' : 'translate-x-1',
+              ].join(' ')}
+            />
+          </button>
+          <span className="text-sm text-muted-foreground">
+            {enabled ? 'Enabled — password login is available' : 'Disabled — SSO providers only'}
+          </span>
+          {updateMutation.isPending && <Loader2 size={14} className="animate-spin text-muted-foreground" />}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function SsoConfigPage() {
-  const { data: providers = [], isLoading, isError } = useQuery(ssoProvidersQueryOptions)
+  const { data, isLoading, isError } = useQuery(ssoProvidersQueryOptions)
+  const providers = data?.providers ?? []
+  const cognitoAuthEnabled = data?.cognitoAuthEnabled ?? true
   const deleteMutation = useDeleteSsoProvider()
   const [panel, setPanel] = useState<PanelState>({ kind: 'none' })
 
@@ -427,6 +492,11 @@ export function SsoConfigPage() {
           )
         }
       />
+
+      {/* Built-in password auth toggle */}
+      <div className="mb-6">
+        <CognitoAuthToggle initialValue={cognitoAuthEnabled} />
+      </div>
 
       <div className="space-y-3">
         {/* Provider list */}

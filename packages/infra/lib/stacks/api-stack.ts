@@ -134,6 +134,9 @@ export class ApiStack extends cdk.Stack {
         new iam.PolicyStatement({
           actions: [
             'cognito-idp:AdminCreateUser',
+            'cognito-idp:AdminDisableUser',
+            'cognito-idp:AdminEnableUser',
+            'cognito-idp:AdminGetUser',
             'cognito-idp:CreateIdentityProvider',
             'cognito-idp:UpdateIdentityProvider',
             'cognito-idp:DeleteIdentityProvider',

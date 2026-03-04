@@ -85,10 +85,9 @@ export const authHandler = new Hono()
 // Called before any session exists — no authentication required.
 //
 // Request:  { domain: string }               (the email domain, not full address)
-// Response: { data: TenantResolution }       on success (200)
+// Response: { data: TenantResolution }       on success (200) — always includes cognitoAuthEnabled
 //           { error, code: NOT_FOUND }       if domain is not registered (404)
 //           { error, code: VALIDATION_ERROR} if domain is malformed (400)
-//           { error, code: SSO_NOT_CONFIGURED} if tenant has no providers (422)
 //
 // Security: returns only id, name, and type for each provider — no secrets,
 // client IDs, or metadata URLs are exposed.
@@ -107,6 +106,7 @@ authHandler.post(
       id: string
       name: string
       status: string
+      cognitoAuthEnabled: boolean
       ssoProviders: Array<{ cognitoProviderName: string; name: string; type: 'OIDC' | 'SAML' }>
     } | null
 
@@ -122,6 +122,7 @@ authHandler.post(
           id: true,
           name: true,
           status: true,
+          cognitoAuthEnabled: true,
           ssoProviders: {
             where: { isEnabled: true },
             select: { cognitoProviderName: true, name: true, type: true },
@@ -137,24 +138,11 @@ authHandler.post(
       return c.json({ error: 'Domain not registered with Pegasus', code: 'TENANT_NOT_FOUND' }, 404)
     }
 
-    // Server-side guard: SSO must be configured before users can log in.
-    // A tenant with no enabled providers has not completed setup. Return 422
-    // rather than 404 so the frontend can show an actionable error message.
-    if (tenant.ssoProviders.length === 0) {
-      return c.json(
-        {
-          error:
-            'SSO is not configured for this organisation. Contact your administrator to set up a sign-in provider.',
-          code: 'SSO_NOT_CONFIGURED',
-        },
-        422,
-      )
-    }
-
     return c.json({
       data: {
         tenantId: tenant.id,
         tenantName: tenant.name,
+        cognitoAuthEnabled: tenant.cognitoAuthEnabled,
         // cognitoProviderName is used as the provider ID — it is passed as
         // `identity_provider` in the Cognito authorization URL.
         providers: tenant.ssoProviders.map((p) => ({

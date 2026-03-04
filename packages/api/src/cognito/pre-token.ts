@@ -8,8 +8,13 @@
 // PLATFORM_ADMIN users: inject custom:role = 'platform_admin' only.
 //   No tenant lookup — admins are not associated with any tenant.
 //
-// Tenant users: resolve the active tenant from the email domain and inject
-//   custom:tenantId + custom:role = 'tenant_user'.
+// Tenant users: resolve the active tenant from the email domain, then look up
+//   the TenantUser record to determine role and status:
+//
+//   ACTIVE    → inject custom:tenantId + custom:role from TenantUser.role
+//   PENDING   → first login: inject role, then set status=ACTIVE + activatedAt + cognitoSub
+//   DEACTIVATED → block token generation (fail-closed)
+//   Not found → block token generation (strict invite-only — no JIT provisioning)
 // ---------------------------------------------------------------------------
 
 import type { PreTokenGenerationTriggerHandler } from 'aws-lambda'
@@ -44,6 +49,7 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
   // Tenant users — resolve tenant from email domain.
   // -------------------------------------------------------------------------
   const email = event.request.userAttributes.email
+  const sub = event.request.userAttributes.sub
 
   if (!email) {
     logger.error('Pre-Token trigger: Missing email claim')
@@ -72,11 +78,57 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
     )
   }
 
+  // -------------------------------------------------------------------------
+  // Look up the TenantUser roster entry for this email within the tenant.
+  // Strict invite-only — no JIT provisioning.
+  // -------------------------------------------------------------------------
+  const tenantUser = await db.tenantUser.findUnique({
+    where: { tenantId_email: { tenantId: tenant.id, email } },
+    select: { id: true, role: true, status: true },
+  })
+
+  if (!tenantUser) {
+    logger.warn('Pre-Token trigger: User not in tenant roster', { email, tenantId: tenant.id })
+    throw new Error(
+      'Your account has not been granted access. Contact your administrator.',
+    )
+  }
+
+  if (tenantUser.status === 'DEACTIVATED') {
+    logger.warn('Pre-Token trigger: Deactivated user attempted login', {
+      email,
+      tenantId: tenant.id,
+    })
+    throw new Error('Your account has been deactivated. Contact your administrator.')
+  }
+
+  // Map TenantUserRole to the claim string used throughout the API.
+  const roleClaimValue = tenantUser.role === 'ADMIN' ? 'tenant_admin' : 'tenant_user'
+
+  // -------------------------------------------------------------------------
+  // PENDING → first login: activate the account.
+  // -------------------------------------------------------------------------
+  if (tenantUser.status === 'PENDING') {
+    await db.tenantUser.update({
+      where: { id: tenantUser.id },
+      data: {
+        status: 'ACTIVE',
+        activatedAt: new Date(),
+        ...(sub ? { cognitoSub: sub } : {}),
+      },
+    })
+    logger.info('Pre-Token trigger: First login — tenant user activated', {
+      email,
+      tenantId: tenant.id,
+      role: tenantUser.role,
+    })
+  }
+
   event.response = {
     claimsOverrideDetails: {
       claimsToAddOrOverride: {
         'custom:tenantId': tenant.id,
-        'custom:role': 'tenant_user',
+        'custom:role': roleClaimValue,
       },
     },
   }

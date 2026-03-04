@@ -6,6 +6,7 @@ import { tenantMiddleware } from './middleware/tenant'
 import { adminRouter } from './handlers/admin'
 import { authHandler } from './handlers/auth'
 import { ssoHandler } from './handlers/sso'
+import { usersHandler } from './handlers/users'
 import { customersHandler } from './handlers/customers'
 import { quotesHandler } from './handlers/quotes'
 import { movesHandler } from './handlers/moves'
@@ -98,6 +99,7 @@ v1.use('*', tenantMiddleware)
 
 // Bounded-context routers
 v1.route('/sso', ssoHandler)
+v1.route('/users', usersHandler)
 v1.route('/customers', customersHandler)
 v1.route('/quotes', quotesHandler)
 v1.route('/moves', movesHandler)

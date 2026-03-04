@@ -192,12 +192,24 @@ export const ssoHandler = new Hono<AppEnv>()
 // ---------------------------------------------------------------------------
 ssoHandler.get('/providers', async (c) => {
   const db = c.get('db')
+  const tenantId = c.get('tenantId')
   try {
-    const providers = await db.tenantSsoProvider.findMany({
-      select: PROVIDER_SELECT,
-      orderBy: { createdAt: 'asc' },
+    const [providers, tenant] = await Promise.all([
+      db.tenantSsoProvider.findMany({
+        select: PROVIDER_SELECT,
+        orderBy: { createdAt: 'asc' },
+      }),
+      db.tenant.findUnique({
+        where: { id: tenantId },
+        select: { cognitoAuthEnabled: true },
+      }),
+    ])
+    return c.json({
+      data: {
+        providers: providers.map(toResponse),
+        cognitoAuthEnabled: tenant?.cognitoAuthEnabled ?? true,
+      },
     })
-    return c.json({ data: providers.map(toResponse) })
   } catch (err) {
     logger.error('GET /providers: failed to list SSO providers', { error: String(err) })
     return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
@@ -421,6 +433,45 @@ ssoHandler.put(
 //           { error, code: NOT_FOUND }        (404)
 //           { error, code: INTERNAL_ERROR }   (500) — Cognito or DB failure
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// PATCH /providers/auth-settings
+//
+// Updates the cognitoAuthEnabled flag for the tenant.
+// Controls whether Cognito built-in email+password login is available.
+//
+// Request:  { cognitoAuthEnabled: boolean }
+// Response: { data: { cognitoAuthEnabled: boolean } } (200)
+//           { error, code: VALIDATION_ERROR }         (400)
+// ---------------------------------------------------------------------------
+const AuthSettingsBody = z.object({
+  cognitoAuthEnabled: z.boolean(),
+})
+
+ssoHandler.patch(
+  '/providers/auth-settings',
+  validator('json', (value, c) => {
+    const r = AuthSettingsBody.safeParse(value)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => {
+    const db = c.get('db')
+    const tenantId = c.get('tenantId')
+    const { cognitoAuthEnabled } = c.req.valid('json')
+
+    try {
+      await db.tenant.update({
+        where: { id: tenantId },
+        data: { cognitoAuthEnabled },
+      })
+      return c.json({ data: { cognitoAuthEnabled } })
+    } catch (err) {
+      logger.error('PATCH /sso/providers/auth-settings: failed to update', { error: String(err) })
+      return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+    }
+  },
+)
+
 ssoHandler.delete('/providers/:id', async (c) => {
   const db = c.get('db')
   const id = c.req.param('id')

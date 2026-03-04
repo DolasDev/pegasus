@@ -36,7 +36,12 @@ export type TenantProvider = {
 export type TenantResolution = {
   tenantId: string
   tenantName: string
-  /** Configured SSO providers. Empty array means SSO is not yet set up. */
+  /**
+   * When true, Cognito built-in email+password login is available.
+   * When false, only configured SSO providers may be used.
+   */
+  cognitoAuthEnabled: boolean
+  /** Configured SSO providers. Empty array means no external SSO is configured. */
   providers: TenantProvider[]
 }
 

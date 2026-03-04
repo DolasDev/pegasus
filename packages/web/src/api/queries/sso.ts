@@ -5,6 +5,11 @@ import { apiFetch } from '@/api/client'
 // Types — mirror the API response shape (secretArn is never present)
 // ---------------------------------------------------------------------------
 
+export type SsoProvidersResponse = {
+  providers: SsoProvider[]
+  cognitoAuthEnabled: boolean
+}
+
 export type SsoProvider = {
   id: string
   name: string
@@ -48,7 +53,7 @@ export const ssoKeys = {
 
 export const ssoProvidersQueryOptions = queryOptions({
   queryKey: ssoKeys.providers(),
-  queryFn: () => apiFetch<SsoProvider[]>('/api/v1/sso/providers'),
+  queryFn: () => apiFetch<SsoProvidersResponse>('/api/v1/sso/providers'),
 })
 
 // ---------------------------------------------------------------------------
@@ -91,5 +96,15 @@ export function useDeleteSsoProvider() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ssoKeys.providers() })
     },
+  })
+}
+
+export function useUpdateAuthSettings() {
+  return useMutation({
+    mutationFn: (cognitoAuthEnabled: boolean) =>
+      apiFetch<{ cognitoAuthEnabled: boolean }>('/api/v1/sso/providers/auth-settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ cognitoAuthEnabled }),
+      }),
   })
 }
