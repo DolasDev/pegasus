@@ -99,6 +99,26 @@ enum SsoProviderType {
   @@schema("public")
 }
 
+/// Role of a user within a tenant — controls access to admin-only features.
+enum TenantUserRole {
+  ADMIN
+  USER
+
+  @@schema("public")
+}
+
+/// Lifecycle status of an invited tenant user.
+enum TenantUserStatus {
+  /// Invited but has not yet completed first login.
+  PENDING
+  /// Has completed first login and has an active session.
+  ACTIVE
+  /// Access revoked — Cognito account disabled, token generation blocked.
+  DEACTIVATED
+
+  @@schema("public")
+}
+
 /// Lifecycle status of a tenant account, managed by platform administrators.
 enum TenantStatus {
   /// Fully operational — tenant users can access the API.
@@ -155,6 +175,11 @@ model Tenant {
   /// Indexed with GIN for fast array-containment lookups.
   emailDomains String[] @default([]) @map("email_domains")
 
+  /// When true, Cognito built-in email+password authentication is available as
+  /// a login option in addition to (or instead of) configured SSO providers.
+  /// When false, only configured SSO providers may be used to log in.
+  cognitoAuthEnabled Boolean @default(true) @map("cognito_auth_enabled")
+
   /// Set when the tenant is offboarded. Data is retained; the tenant is
   /// excluded from all default queries. Null means not offboarded.
   deletedAt DateTime? @map("deleted_at")
@@ -175,6 +200,7 @@ model Tenant {
   accounts       Account[]
   rateTables     RateTable[]
   ssoProviders   TenantSsoProvider[]
+  users          TenantUser[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -232,6 +258,41 @@ model TenantSsoProvider {
   @@index([tenantId])
   @@schema("public")
   @@map("tenant_sso_providers")
+}
+
+// ---------------------------------------------------------------------------
+// Tenant user roster — explicit invite list for tenant authentication.
+//
+// Any user who authenticates via Cognito must have a matching TenantUser record
+// with status ACTIVE or PENDING (first login). DEACTIVATED users are blocked
+// at token generation by the Pre-Token-Generation Lambda.
+//
+// Populated by:
+//   - POST /api/admin/tenants          (creates ADMIN for the contactEmail)
+//   - POST /api/v1/users/invite        (tenant admin invites additional users)
+// ---------------------------------------------------------------------------
+
+model TenantUser {
+  id            String           @id @default(uuid())
+  tenantId      String           @map("tenant_id")
+  email         String
+
+  /// Cognito sub claim — null until first successful login.
+  cognitoSub    String?          @map("cognito_sub")
+
+  role          TenantUserRole   @default(USER)
+  status        TenantUserStatus @default(PENDING)
+  invitedAt     DateTime         @default(now()) @map("invited_at")
+  activatedAt   DateTime?        @map("activated_at")
+  deactivatedAt DateTime?        @map("deactivated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([cognitoSub])
+  @@schema("public")
+  @@map("tenant_users")
 }
 
 // ---------------------------------------------------------------------------

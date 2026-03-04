@@ -128,6 +128,8 @@ const PatchTenantBody = z.object({
    * Must contain at least one valid domain if provided.
    */
   emailDomains: z.array(DomainSchema).min(1).optional(),
+  /** When true, Cognito built-in email+password login is available. */
+  cognitoAuthEnabled: z.boolean().optional(),
 })
 
 // ---------------------------------------------------------------------------
@@ -149,6 +151,7 @@ const LIST_SELECT = {
   contactName: true,
   contactEmail: true,
   emailDomains: true,
+  cognitoAuthEnabled: true,
   createdAt: true,
   updatedAt: true,
   deletedAt: true,
@@ -275,6 +278,17 @@ adminTenantsRouter.post(
           select: DETAIL_SELECT,
         })
 
+        // Create the initial admin TenantUser record so the first login
+        // succeeds and the user receives the tenant_admin role.
+        await tx.tenantUser.create({
+          data: {
+            tenantId: created.id,
+            email: body.adminEmail,
+            role: 'ADMIN',
+            status: 'PENDING',
+          },
+        })
+
         await writeAuditLog(
           tx,
           adminSub,
@@ -345,6 +359,9 @@ adminTenantsRouter.patch(
             ...(body.contactEmail !== undefined ? { contactEmail: body.contactEmail } : {}),
             // emailDomains replaces the whole array when provided.
             ...(body.emailDomains !== undefined ? { emailDomains: body.emailDomains } : {}),
+            ...(body.cognitoAuthEnabled !== undefined
+              ? { cognitoAuthEnabled: body.cognitoAuthEnabled }
+              : {}),
           },
           select: DETAIL_SELECT,
         })

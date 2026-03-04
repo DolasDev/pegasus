@@ -9,7 +9,7 @@ import {
   type TenantResolution,
   type TenantProvider,
 } from '@/auth/tenant-resolver'
-import { apiFetch, ApiError } from '@/api/client'
+import { apiFetch } from '@/api/client'
 import {
   getCognitoConfig,
   buildAuthorizeUrl,
@@ -76,16 +76,11 @@ export function LoginPage() {
     let resolution: TenantResolution | null
     try {
       resolution = await resolveTenantByDomain(domain)
-    } catch (err) {
-      if (err instanceof ApiError && err.code === 'SSO_NOT_CONFIGURED') {
-        // SSO not yet configured — offer direct Cognito password login.
-        setStep({ name: 'password' })
-      } else {
-        setStep({
-          name: 'error',
-          message: 'Unable to reach the authentication service. Please try again.',
-        })
-      }
+    } catch {
+      setStep({
+        name: 'error',
+        message: 'Unable to reach the authentication service. Please try again.',
+      })
       return
     }
 
@@ -97,25 +92,38 @@ export function LoginPage() {
       return
     }
 
-    if (resolution.providers.length === 0) {
-      // Tenant domain is registered but no SSO providers configured yet.
-      // Show password login so the tenant admin can sign in to set up SSO.
+    const hasProviders = resolution.providers.length > 0
+    const hasCognito = resolution.cognitoAuthEnabled
+
+    // No authentication configured at all — tenant admin needs to fix this.
+    if (!hasProviders && !hasCognito) {
+      setStep({
+        name: 'error',
+        message:
+          'No authentication method is configured for this organisation. Contact your administrator.',
+      })
+      return
+    }
+
+    // Only Cognito built-in auth, no SSO providers.
+    if (!hasProviders && hasCognito) {
       setStep({ name: 'password' })
       return
     }
 
-    if (resolution.providers.length === 1) {
-      // Single provider — skip the selection screen.
-      const [provider] = resolution.providers
-      setStep({
-        name: 'redirecting',
-        provider: provider!,
-        tenantId: resolution.tenantId,
-        email,
-      })
-    } else {
-      setStep({ name: 'select-provider', resolution })
+    // Only SSO providers — no password option.
+    if (hasProviders && !hasCognito) {
+      if (resolution.providers.length === 1) {
+        const [provider] = resolution.providers
+        setStep({ name: 'redirecting', provider: provider!, tenantId: resolution.tenantId, email })
+      } else {
+        setStep({ name: 'select-provider', resolution })
+      }
+      return
     }
+
+    // Both SSO providers and Cognito auth — show all options including password.
+    setStep({ name: 'select-provider', resolution })
   }
 
   // -------------------------------------------------------------------------
@@ -303,8 +311,7 @@ export function LoginPage() {
             <CardHeader>
               <CardTitle>Choose your sign-in method</CardTitle>
               <CardDescription>
-                {step.resolution.tenantName} has {step.resolution.providers.length} providers
-                configured. Select one to continue.
+                {step.resolution.tenantName} — select a sign-in option to continue.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -322,6 +329,19 @@ export function LoginPage() {
                   </span>
                 </Button>
               ))}
+              {step.resolution.cognitoAuthEnabled && (
+                <Button
+                  variant="outline"
+                  className="w-full justify-start gap-2"
+                  onClick={() => setStep({ name: 'password' })}
+                >
+                  <LogIn size={16} />
+                  Sign in with password
+                  <span className="ml-auto text-xs uppercase text-muted-foreground">
+                    email
+                  </span>
+                </Button>
+              )}
               <button
                 type="button"
                 onClick={() => setStep({ name: 'email' })}

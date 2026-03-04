@@ -8,6 +8,7 @@ import {
   Receipt,
   LogOut,
   ShieldCheck,
+  UserCog,
   type LucideIcon,
 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
@@ -24,6 +25,10 @@ const NAV_ITEMS = [
   { to: '/customers' as const, label: 'Customers', icon: Users, exact: false },
   { to: '/dispatch' as const, label: 'Dispatch', icon: Calendar, exact: false },
   { to: '/invoices' as const, label: 'Billing', icon: Receipt, exact: false },
+] as const
+
+const SETTINGS_NAV_ITEMS = [
+  { to: '/settings/users' as const, label: 'Users', icon: UserCog, exact: false },
   { to: '/settings/sso' as const, label: 'SSO Providers', icon: ShieldCheck, exact: false },
 ] as const
 
@@ -86,6 +91,16 @@ export function AppShell({ children }: AppShellProps) {
         <ScrollArea className="flex-1 py-2">
           <nav className="space-y-1 px-2">
             {NAV_ITEMS.map((item) => (
+              <NavItem key={item.to} {...item} />
+            ))}
+          </nav>
+          <div className="px-4 pb-1 pt-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Settings
+            </p>
+          </div>
+          <nav className="space-y-1 px-2">
+            {SETTINGS_NAV_ITEMS.map((item) => (
               <NavItem key={item.to} {...item} />
             ))}
           </nav>
