@@ -9,64 +9,13 @@
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
-import {
-  CognitoIdentityProviderClient,
-  AdminCreateUserCommand,
-} from '@aws-sdk/client-cognito-identity-provider'
 import { Prisma } from '@prisma/client'
 import type { AdminEnv } from '../../types'
 import { db } from '../../db'
 import { writeAuditLog } from './audit'
+import { provisionCognitoUser } from './cognito'
 import { logger } from '../../lib/logger'
-
-// ---------------------------------------------------------------------------
-// Cognito client — lazy singleton reused across warm Lambda invocations.
-// Region is resolved automatically from the Lambda execution environment.
-// ---------------------------------------------------------------------------
-let _cognito: CognitoIdentityProviderClient | null = null
-function getCognito(): CognitoIdentityProviderClient {
-  return (_cognito ??= new CognitoIdentityProviderClient({}))
-}
-
-/**
- * Provisions a Cognito user for the initial tenant administrator.
- *
- * The user is created with FORCE_CHANGE_PASSWORD status. Cognito sends the
- * invite email with a temporary password unless the runtime is non-production,
- * in which case the email is suppressed to avoid noise in development.
- *
- * Idempotent: UsernameExistsException is silently ignored so callers can retry
- * without side effects after a previous partial failure.
- */
-async function provisionCognitoAdminUser(email: string): Promise<void> {
-  const userPoolId = process.env['COGNITO_USER_POOL_ID']
-  if (!userPoolId) {
-    throw new Error('COGNITO_USER_POOL_ID environment variable is not set')
-  }
-
-  try {
-    await getCognito().send(
-      new AdminCreateUserCommand({
-        UserPoolId: userPoolId,
-        Username: email,
-        UserAttributes: [
-          { Name: 'email', Value: email },
-          // Mark the email as verified so Cognito doesn't send a separate
-          // verification code on top of the invite.
-          { Name: 'email_verified', Value: 'true' },
-        ],
-        // Suppress the invite email in non-production environments to avoid
-        // sending real emails during development and testing.
-        ...(process.env['NODE_ENV'] !== 'production' ? { MessageAction: 'SUPPRESS' as const } : {}),
-      }),
-    )
-  } catch (err) {
-    // User already exists — acceptable for idempotency (e.g. retrying after
-    // a DB failure). The existing Cognito user record is left unchanged.
-    if ((err as { name?: string }).name === 'UsernameExistsException') return
-    throw err
-  }
-}
+import { adminTenantUsersRouter } from './tenant-users'
 
 const TenantStatusSchema = z.enum(['ACTIVE', 'SUSPENDED', 'OFFBOARDED'])
 
@@ -252,7 +201,7 @@ adminTenantsRouter.post(
     // retrying after a DB failure is safe. If Cognito fails, we abort early
     // so no orphaned DB record is created.
     try {
-      await provisionCognitoAdminUser(body.adminEmail)
+      await provisionCognitoUser(body.adminEmail)
     } catch (err) {
       logger.error('Failed to provision Cognito admin user', { error: String(err) })
       return c.json(
@@ -527,7 +476,7 @@ adminTenantsRouter.post('/:id/reactivate', async (c) => {
 })
 
 // ---------------------------------------------------------------------------
-// POST /api/admin/tenants/:id/offboard
+// POST /api/admin/tenants/:id/reactivate
 //
 // Permanently offboards a tenant. Sets status = OFFBOARDED and records the
 // offboard timestamp in deletedAt. Data is retained (soft delete).
@@ -576,3 +525,11 @@ adminTenantsRouter.post('/:id/offboard', async (c) => {
     return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
   }
 })
+
+// ---------------------------------------------------------------------------
+// Mount tenant-user sub-router
+//
+// Routes: GET|POST /api/admin/tenants/:tenantId/users
+//         PATCH|DELETE /api/admin/tenants/:tenantId/users/:userId
+// ---------------------------------------------------------------------------
+adminTenantsRouter.route('/:tenantId/users', adminTenantUsersRouter)

@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getTenant, suspendTenant, reactivateTenant, offboardTenant } from '@/api/tenants'
 import type { TenantDetail } from '@/api/tenants'
 import { TenantFormDialog } from '@/components/TenantFormDialog'
+import { TenantUsersSection } from '@/components/TenantUsersSection'
 import { ApiError } from '@/api/client'
 
 // ---------------------------------------------------------------------------
@@ -53,13 +54,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 // Offboard confirmation dialog
 // ---------------------------------------------------------------------------
 
-function OffboardDialog({
-  tenant,
-  onClose,
-}: {
-  tenant: TenantDetail
-  onClose: () => void
-}) {
+function OffboardDialog({ tenant, onClose }: { tenant: TenantDetail; onClose: () => void }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [apiError, setApiError] = useState<string | null>(null)
@@ -88,8 +83,8 @@ function OffboardDialog({
         </div>
         <div className="px-6 py-4 space-y-3">
           <p className="text-sm text-foreground">
-            You are about to offboard{' '}
-            <span className="font-semibold">{tenant.name}</span>. This will:
+            You are about to offboard <span className="font-semibold">{tenant.name}</span>. This
+            will:
           </p>
           <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
             <li>Set the tenant status to Offboarded immediately.</li>
@@ -196,9 +191,7 @@ function StatusActions({ tenant }: { tenant: TenantDetail }) {
           <p className="text-sm text-muted-foreground">Restores normal access for this tenant.</p>
         </div>
       )}
-      {actionError && (
-        <p className="text-sm text-destructive">{actionError}</p>
-      )}
+      {actionError && <p className="text-sm text-destructive">{actionError}</p>}
     </div>
   )
 }
@@ -213,7 +206,12 @@ export function TenantDetailPage() {
   const [editOpen, setEditOpen] = useState(false)
   const [offboardOpen, setOffboardOpen] = useState(false)
 
-  const { data: tenant, isPending, isError, error } = useQuery({
+  const {
+    data: tenant,
+    isPending,
+    isError,
+    error,
+  } = useQuery({
     queryKey: ['tenant', id],
     queryFn: () => getTenant(id),
   })
@@ -276,10 +274,10 @@ export function TenantDetailPage() {
             <Row label="Slug">
               <span className="font-mono text-xs">{tenant.slug}</span>
             </Row>
-            <Row label="Plan">
-              {tenant.plan.charAt(0) + tenant.plan.slice(1).toLowerCase()}
+            <Row label="Plan">{tenant.plan.charAt(0) + tenant.plan.slice(1).toLowerCase()}</Row>
+            <Row label="Contact name">
+              {tenant.contactName ?? <em className="text-muted-foreground">—</em>}
             </Row>
-            <Row label="Contact name">{tenant.contactName ?? <em className="text-muted-foreground">—</em>}</Row>
             <Row label="Contact email">
               {tenant.contactEmail ? (
                 <a
@@ -311,6 +309,14 @@ export function TenantDetailPage() {
           <StatusActions tenant={tenant} />
         </section>
 
+        {/* Users */}
+        {tenant.status !== 'OFFBOARDED' && (
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold text-foreground">Users</h2>
+            <TenantUsersSection tenantId={id} />
+          </section>
+        )}
+
         {/* Danger zone */}
         {tenant.status !== 'OFFBOARDED' && (
           <section className="space-y-3 rounded-md border border-destructive/30 p-4">
@@ -330,13 +336,9 @@ export function TenantDetailPage() {
         )}
       </div>
 
-      {editOpen && (
-        <TenantFormDialog mode="edit" tenant={tenant} onClose={handleEditClose} />
-      )}
+      {editOpen && <TenantFormDialog mode="edit" tenant={tenant} onClose={handleEditClose} />}
 
-      {offboardOpen && (
-        <OffboardDialog tenant={tenant} onClose={() => setOffboardOpen(false)} />
-      )}
+      {offboardOpen && <OffboardDialog tenant={tenant} onClose={() => setOffboardOpen(false)} />}
     </>
   )
 }

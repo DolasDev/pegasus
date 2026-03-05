@@ -293,12 +293,12 @@ Deactivate:
 
 ## Checklist
 
-- [ ] Extract Cognito helper to `packages/api/src/handlers/admin/cognito.ts`
-- [ ] Write `packages/api/src/handlers/admin/tenant-users.test.ts` (18 cases — all failing)
-- [ ] Implement `packages/api/src/handlers/admin/tenant-users.ts` (make handler tests pass)
-- [ ] Mount router in `packages/api/src/handlers/admin/tenants.ts`
-- [ ] Implement `apps/admin/src/api/tenant-users.ts`
-- [ ] Write `apps/admin/src/__tests__/TenantUsersSection.test.tsx` (13 cases — all failing)
-- [ ] Implement `apps/admin/src/components/TenantUsersSection.tsx` (make component tests pass)
-- [ ] Update `apps/admin/src/routes/_auth/tenants/$id.tsx`
-- [ ] Run full test suite — all tests pass
+- [x] Extract Cognito helper to `packages/api/src/handlers/admin/cognito.ts`
+- [x] Write `packages/api/src/handlers/admin/tenant-users.test.ts` (18 cases — all failing)
+- [x] Implement `packages/api/src/handlers/admin/tenant-users.ts` (make handler tests pass)
+- [x] Mount router in `packages/api/src/handlers/admin/tenants.ts`
+- [x] Implement `apps/admin/src/api/tenant-users.ts`
+- [x] Write `apps/admin/src/__tests__/TenantUsersSection.test.tsx` (13 cases — all failing)
+- [x] Implement `apps/admin/src/components/TenantUsersSection.tsx` (make component tests pass)
+- [x] Update `apps/admin/src/routes/_auth/tenants/$id.tsx`
+- [x] Run full test suite — all tests pass
