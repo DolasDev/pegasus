@@ -12,6 +12,7 @@
 
 import type { Context, Next } from 'hono'
 import { createRemoteJWKSet, errors, jwtVerify } from 'jose'
+import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../types'
 import { db as basePrisma } from '../db'
 import { createTenantDb } from '../lib/prisma'
@@ -44,10 +45,7 @@ function deriveIssuer(jwksUrl: string): string {
 export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<Response | void> {
   const authHeader = c.req.header('Authorization')
   if (!authHeader?.startsWith('Bearer ')) {
-    return c.json(
-      { error: 'Missing or malformed Authorization header', code: 'UNAUTHORIZED' },
-      401,
-    )
+    return c.json({ error: 'Missing or malformed Authorization header', code: 'UNAUTHORIZED' }, 401)
   }
 
   const token = authHeader.slice(7)
@@ -75,12 +73,10 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
 
   const customTenantId = payload['custom:tenantId'] as string | undefined
   const customRole = payload['custom:role'] as string | undefined
+  const cognitoSub = payload['sub'] as string | undefined
 
   if (!customTenantId || !customRole) {
-    return c.json(
-      { error: 'Forbidden: incomplete tenant configuration', code: 'FORBIDDEN' },
-      403,
-    )
+    return c.json({ error: 'Forbidden: incomplete tenant configuration', code: 'FORBIDDEN' }, 403)
   }
 
   const tenant = await basePrisma.tenant.findUnique({ where: { id: customTenantId } })
@@ -93,10 +89,7 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
   // OFFBOARDED → 404: deliberately indistinguishable from an unknown slug so
   //              offboarded tenants appear non-existent to their former users.
   if (tenant.status === 'SUSPENDED') {
-    return c.json(
-      { error: 'Tenant account is suspended', code: 'TENANT_SUSPENDED' },
-      403,
-    )
+    return c.json({ error: 'Tenant account is suspended', code: 'TENANT_SUSPENDED' }, 403)
   }
   if (tenant.status === 'OFFBOARDED') {
     return c.json({ error: 'Tenant not found', code: 'TENANT_NOT_FOUND' }, 404)
@@ -109,7 +102,20 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
   // Cast required because TenantDb is a Prisma extension subtype of PrismaClient.
   // The runtime instance IS the extension; the type annotation in AppVariables
   // uses PrismaClient for ergonomics across handler and repository code.
-  c.set('db', tenantDb as unknown as import('@prisma/client').PrismaClient)
+  c.set('db', tenantDb as unknown as PrismaClient)
+
+  // Resolve the TenantUser.id so handlers can use it for audit trails (e.g.
+  // recording who created an API client). Fail-open: if the user record is not
+  // found (shouldn't happen for valid authenticated sessions), userId is unset.
+  if (cognitoSub) {
+    const tenantUser = await basePrisma.tenantUser.findFirst({
+      where: { tenantId: tenant.id, cognitoSub },
+      select: { id: true },
+    })
+    if (tenantUser) {
+      c.set('userId', tenantUser.id)
+    }
+  }
 
   await next()
 }

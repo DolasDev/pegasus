@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import type { PrismaClient } from '@prisma/client'
+import type { ApiClientRow } from './repositories/api-client.repository'
 
 /**
  * Variables injected into Hono context by the tenant middleware.
@@ -25,6 +26,13 @@ export type AppVariables = {
   tenantId: string
   /** The specific role the authenticated user holds in this tenant. */
   role: string
+  /**
+   * The TenantUser.id of the authenticated Cognito user. Set by tenantMiddleware
+   * after resolving the TenantUser record by cognitoSub. Used for audit trails
+   * (e.g. recording who created an API client). Undefined when the user's
+   * TenantUser record cannot be found (e.g. race condition on first login).
+   */
+  userId: string | undefined
   /**
    * A tenant-scoped Prisma client. All reads/writes are automatically
    * filtered/stamped with tenantId by the query extension in lib/prisma.ts.
@@ -51,3 +59,20 @@ export type AdminVariables = {
 
 /** Hono environment type used when constructing the admin sub-router. */
 export type AdminEnv = { Variables: AdminVariables }
+
+/**
+ * Variables injected into Hono context by apiClientAuthMiddleware.
+ * Routes protected by API key auth (M2M) can rely on these being present.
+ */
+export type ApiClientVariables = {
+  /**
+   * The authenticated API client record — excludes keyHash.
+   * Set by apiClientAuthMiddleware after successful key verification.
+   */
+  apiClient: Omit<ApiClientRow, never>
+  /** The UUID of the resolved tenant (same tenantId as apiClient.tenantId). */
+  tenantId: string
+}
+
+/** Hono environment type for routes protected by API key auth. */
+export type ApiClientEnv = { Variables: ApiClientVariables }

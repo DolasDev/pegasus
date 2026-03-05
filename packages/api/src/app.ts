@@ -12,6 +12,7 @@ import { quotesHandler } from './handlers/quotes'
 import { movesHandler } from './handlers/moves'
 import { inventoryHandler } from './handlers/inventory'
 import { billingHandler } from './handlers/billing'
+import { apiClientsHandler } from './handlers/api-clients'
 import { logger } from './lib/logger'
 import { DomainError } from '@pegasus/domain'
 
@@ -106,6 +107,7 @@ v1.route('/moves', movesHandler)
 // Inventory routes are nested under /moves (e.g. /moves/:moveId/rooms)
 v1.route('/moves', inventoryHandler)
 v1.route('/invoices', billingHandler)
+v1.route('/api-clients', apiClientsHandler)
 
 app.route('/api/v1', v1)
 

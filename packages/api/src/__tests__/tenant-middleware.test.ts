@@ -40,6 +40,7 @@ vi.mock('jose', async (importOriginal) => {
 vi.mock('../db', () => ({
   db: {
     tenant: { findUnique: vi.fn() },
+    tenantUser: { findFirst: vi.fn() },
   },
 }))
 
@@ -57,7 +58,9 @@ import { tenantMiddleware } from '../middleware/tenant'
 function buildApp() {
   const app = new Hono<AppEnv>()
   app.use('*', tenantMiddleware)
-  app.get('/probe', (c) => c.json({ tenantId: c.get('tenantId'), role: c.get('role') }))
+  app.get('/probe', (c) =>
+    c.json({ tenantId: c.get('tenantId'), role: c.get('role'), userId: c.get('userId') }),
+  )
   return app
 }
 
@@ -85,9 +88,9 @@ function bearerRequest(opts: RequestInit = {}): RequestInit {
 }
 
 /** Configures mockJwtVerify to resolve with valid tenant claims. */
-function mockValidToken(tenantId = 'tenant-uuid', role = 'tenant_user') {
+function mockValidToken(tenantId = 'tenant-uuid', role = 'tenant_user', sub = 'cognito-sub-xyz') {
   mockJwtVerify.mockResolvedValueOnce({
-    payload: { token_use: 'id', 'custom:tenantId': tenantId, 'custom:role': role },
+    payload: { token_use: 'id', 'custom:tenantId': tenantId, 'custom:role': role, sub },
   })
 }
 
@@ -101,6 +104,7 @@ beforeEach(() => {
   process.env['COGNITO_TENANT_CLIENT_ID'] = 'tenant-client-id'
   mockJwtVerify.mockReset()
   vi.mocked(db.tenant.findUnique).mockReset()
+  vi.mocked(db.tenantUser.findFirst).mockResolvedValue(null)
 })
 
 afterEach(() => {
@@ -242,5 +246,30 @@ describe('tenantMiddleware', () => {
     const text = await res.text()
     expect(text).not.toContain('OFFBOARDED')
     expect(text).not.toContain('offboard')
+  })
+
+  // ── userId resolution ──────────────────────────────────────────────────────
+
+  it('sets userId when TenantUser is found by cognitoSub', async () => {
+    mockValidToken('tenant-uuid', 'tenant_user', 'cognito-sub-abc')
+    mockTenant('ACTIVE')
+    vi.mocked(db.tenantUser.findFirst).mockResolvedValue({ id: 'tenant-user-uuid' } as never)
+
+    const res = await buildApp().request('/probe', bearerRequest())
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['userId']).toBe('tenant-user-uuid')
+  })
+
+  it('does not set userId when TenantUser is not found (fail-open)', async () => {
+    mockValidToken('tenant-uuid', 'tenant_user', 'cognito-sub-unknown')
+    mockTenant('ACTIVE')
+    vi.mocked(db.tenantUser.findFirst).mockResolvedValue(null)
+
+    const res = await buildApp().request('/probe', bearerRequest())
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    // userId should be undefined/absent, not set
+    expect(body['userId']).toBeUndefined()
   })
 })

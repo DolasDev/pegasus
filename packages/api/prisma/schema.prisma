@@ -201,6 +201,7 @@ model Tenant {
   rateTables     RateTable[]
   ssoProviders   TenantSsoProvider[]
   users          TenantUser[]
+  apiClients     ApiClient[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -286,13 +287,56 @@ model TenantUser {
   activatedAt   DateTime?        @map("activated_at")
   deactivatedAt DateTime?        @map("deactivated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant             Tenant      @relation(fields: [tenantId], references: [id])
+  createdApiClients  ApiClient[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
   @@index([cognitoSub])
   @@schema("public")
   @@map("tenant_users")
+}
+
+// ---------------------------------------------------------------------------
+// API client (M2M) — vendor systems that call the API without a Cognito session
+// ---------------------------------------------------------------------------
+
+/// An API key issued to an external vendor for machine-to-machine access.
+/// Only a SHA-256 hash of the key is stored — the plaintext is shown once on
+/// creation or rotation and never persisted.
+model ApiClient {
+  id          String    @id @default(uuid())
+  tenantId    String    @map("tenant_id")
+  name        String
+
+  /// First 12 chars of the full key (e.g. "vnd_a1b2c3d4") — stored plain for
+  /// fast prefix-based lookup without a full-table scan.
+  keyPrefix   String    @map("key_prefix")
+
+  /// SHA-256 hex digest of the full key — compared with timing-safe equality.
+  keyHash     String    @unique @map("key_hash")
+
+  /// Granted permission scopes (e.g. ["orders:read", "invoices:write"]).
+  scopes      String[]
+
+  lastUsedAt  DateTime? @map("last_used_at")
+
+  /// Set when the key is revoked. Revoked keys return 403 after hash match.
+  revokedAt   DateTime? @map("revoked_at")
+
+  /// TenantUser who created this key.
+  createdById String    @map("created_by")
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  createdBy TenantUser @relation(fields: [createdById], references: [id])
+
+  @@index([keyPrefix])
+  @@index([tenantId])
+  @@schema("public")
+  @@map("api_clients")
 }
 
 // ---------------------------------------------------------------------------
