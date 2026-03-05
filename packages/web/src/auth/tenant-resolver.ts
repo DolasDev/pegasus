@@ -67,3 +67,37 @@ export async function resolveTenantByDomain(domain: string): Promise<TenantResol
     throw err
   }
 }
+
+/**
+ * Returns all tenants the given email is invited to.
+ *
+ * Calls POST /api/auth/resolve-tenants. Returns an empty array when the email
+ * is not associated with any active tenant (rather than throwing). Any
+ * unexpected server/network error is rethrown so the caller can show a
+ * generic error message.
+ *
+ * @param email - The full email address, e.g. "user@acme.com".
+ */
+export async function resolveTenantsForEmail(email: string): Promise<TenantResolution[]> {
+  return apiFetch<TenantResolution[]>('/api/auth/resolve-tenants', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
+/**
+ * Records the user's tenant selection server-side and returns the tenant's
+ * auth configuration (providers, cognitoAuthEnabled).
+ *
+ * Calls POST /api/auth/select-tenant. Creates a short-lived AuthSession that
+ * the pre-token Lambda reads during Cognito authentication.
+ *
+ * @param email    - The full email address of the authenticating user.
+ * @param tenantId - The ID of the tenant the user selected.
+ */
+export async function selectTenant(email: string, tenantId: string): Promise<TenantResolution> {
+  return apiFetch<TenantResolution>('/api/auth/select-tenant', {
+    method: 'POST',
+    body: JSON.stringify({ email, tenantId }),
+  })
+}

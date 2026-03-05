@@ -66,10 +66,44 @@ const ResolveTenantBody = z.object({
     }),
 })
 
+const ResolveTenantsBody = z.object({
+  /** Full email address — backend extracts domain for fallback lookup. */
+  email: z.string().email(),
+})
+
+const SelectTenantBody = z.object({
+  /** Full email address of the user selecting a tenant. */
+  email: z.string().email(),
+  /** ID of the tenant the user selected. */
+  tenantId: z.string().min(1),
+})
+
 const ValidateTokenBody = z.object({
   /** Cognito ID token JWT string. */
   idToken: z.string().min(1),
 })
+
+// ---------------------------------------------------------------------------
+// Shared Prisma select fragment and mapper for login-facing SSO provider data.
+//
+// Used by all three endpoints that return provider lists to the login UI.
+// Secrets, client IDs, and metadata URLs are intentionally excluded.
+// ---------------------------------------------------------------------------
+const enabledSsoProvidersSelect = {
+  where: { isEnabled: true },
+  select: { cognitoProviderName: true, name: true, type: true },
+  orderBy: { createdAt: 'asc' },
+} as const
+
+function mapProviders(
+  providers: Array<{ cognitoProviderName: string; name: string; type: 'OIDC' | 'SAML' }>,
+) {
+  return providers.map((p) => ({
+    id: p.cognitoProviderName,
+    name: p.name,
+    type: p.type.toLowerCase() as 'oidc' | 'saml',
+  }))
+}
 
 // ---------------------------------------------------------------------------
 // Router
@@ -123,11 +157,7 @@ authHandler.post(
           name: true,
           status: true,
           cognitoAuthEnabled: true,
-          ssoProviders: {
-            where: { isEnabled: true },
-            select: { cognitoProviderName: true, name: true, type: true },
-            orderBy: { createdAt: 'asc' },
-          },
+          ssoProviders: enabledSsoProvidersSelect,
         },
       })
     } catch {
@@ -145,13 +175,174 @@ authHandler.post(
         cognitoAuthEnabled: tenant.cognitoAuthEnabled,
         // cognitoProviderName is used as the provider ID — it is passed as
         // `identity_provider` in the Cognito authorization URL.
-        providers: tenant.ssoProviders.map((p) => ({
-          id: p.cognitoProviderName,
-          name: p.name,
-          type: p.type.toLowerCase() as 'oidc' | 'saml',
-        })),
+        providers: mapProviders(tenant.ssoProviders),
       },
     })
+  },
+)
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/resolve-tenants
+//
+// Returns ALL tenants the given email address is invited to, for use in the
+// multi-tenant login picker. Called before any session exists.
+//
+// Resolution order:
+//   1. Find TenantUser records for email where status != DEACTIVATED and
+//      tenant.status = ACTIVE. If found, return as array.
+//   2. If none found, fall back to domain-based lookup (backward compat for
+//      domain-only tenants who have no TenantUser records for this email).
+//   3. If still nothing, return empty array — UI shows "not registered".
+//
+// Request:  { email: string }
+// Response: { data: TenantResolution[] }   always 200; empty array = unknown
+//           { error, code: VALIDATION_ERROR } if email is malformed (400)
+// ---------------------------------------------------------------------------
+authHandler.post(
+  '/resolve-tenants',
+  validator('json', (value, c) => {
+    const r = ResolveTenantsBody.safeParse(value)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => {
+    const { email } = c.req.valid('json')
+
+    try {
+      // Step 1: look up all TenantUser entries for this email.
+      const tenantUsers = await db.tenantUser.findMany({
+        where: {
+          email,
+          status: { not: 'DEACTIVATED' },
+          tenant: { status: 'ACTIVE' },
+        },
+        select: {
+          tenant: {
+            select: {
+              id: true,
+              name: true,
+              cognitoAuthEnabled: true,
+              ssoProviders: enabledSsoProvidersSelect,
+            },
+          },
+        },
+      })
+
+      if (tenantUsers.length > 0) {
+        return c.json({
+          data: tenantUsers.map((tu) => ({
+            tenantId: tu.tenant.id,
+            tenantName: tu.tenant.name,
+            cognitoAuthEnabled: tu.tenant.cognitoAuthEnabled,
+            providers: mapProviders(tu.tenant.ssoProviders),
+          })),
+        })
+      }
+
+      // Step 2: domain-based fallback for tenants not using the TenantUser roster flow.
+      const domain = email.split('@')[1]?.toLowerCase()
+      const tenant = domain
+        ? await db.tenant.findFirst({
+            where: { emailDomains: { has: domain }, status: 'ACTIVE' },
+            select: {
+              id: true,
+              name: true,
+              cognitoAuthEnabled: true,
+              ssoProviders: enabledSsoProvidersSelect,
+            },
+          })
+        : null
+
+      return c.json({
+        data: tenant
+          ? [
+              {
+                tenantId: tenant.id,
+                tenantName: tenant.name,
+                cognitoAuthEnabled: tenant.cognitoAuthEnabled,
+                providers: mapProviders(tenant.ssoProviders),
+              },
+            ]
+          : [],
+      })
+    } catch {
+      return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+    }
+  },
+)
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/select-tenant
+//
+// Records the tenant the user has chosen so the pre-token Lambda can use it
+// during Cognito authentication. Creates a short-lived AuthSession that the
+// Lambda reads and deletes in one step.
+//
+// Validation:
+//   - TenantUser must exist for (tenantId, email) with status != DEACTIVATED
+//   - Tenant must have status ACTIVE
+//
+// Request:  { email: string, tenantId: string }
+// Response: { data: TenantResolution }      on success (200) — same shape as resolve-tenants item
+//           { error, code: FORBIDDEN }      if user not invited or deactivated (403)
+//           { error, code: NOT_FOUND }      if tenant not found or not ACTIVE (404)
+//           { error, code: VALIDATION_ERROR } if body is malformed (400)
+// ---------------------------------------------------------------------------
+authHandler.post(
+  '/select-tenant',
+  validator('json', (value, c) => {
+    const r = SelectTenantBody.safeParse(value)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => {
+    const { email, tenantId } = c.req.valid('json')
+
+    try {
+      // Validate TenantUser is invited and not deactivated.
+      const tenantUser = await db.tenantUser.findUnique({
+        where: { tenantId_email: { tenantId, email } },
+        select: { status: true },
+      })
+
+      if (!tenantUser) {
+        return c.json({ error: 'You are not invited to this tenant', code: 'FORBIDDEN' }, 403)
+      }
+
+      if (tenantUser.status === 'DEACTIVATED') {
+        return c.json({ error: 'Your account has been deactivated', code: 'FORBIDDEN' }, 403)
+      }
+
+      // Validate tenant is active and fetch provider config.
+      const tenant = await db.tenant.findFirst({
+        where: { id: tenantId, status: 'ACTIVE' },
+        select: {
+          id: true,
+          name: true,
+          cognitoAuthEnabled: true,
+          ssoProviders: enabledSsoProvidersSelect,
+        },
+      })
+
+      if (!tenant) {
+        return c.json({ error: 'Tenant not found or not active', code: 'NOT_FOUND' }, 404)
+      }
+
+      // Create the short-lived auth session (10-minute window).
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
+      await db.authSession.create({ data: { email, tenantId, expiresAt } })
+
+      return c.json({
+        data: {
+          tenantId: tenant.id,
+          tenantName: tenant.name,
+          cognitoAuthEnabled: tenant.cognitoAuthEnabled,
+          providers: mapProviders(tenant.ssoProviders),
+        },
+      })
+    } catch {
+      return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+    }
   },
 )
 

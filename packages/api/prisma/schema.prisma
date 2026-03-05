@@ -298,6 +298,24 @@ model TenantUser {
 }
 
 // ---------------------------------------------------------------------------
+// Auth session — short-lived record that communicates tenant selection from
+// the login UI to the pre-token Lambda. Created by POST /api/auth/select-tenant,
+// consumed and deleted by the pre-token Lambda. Expires after 10 minutes.
+// ---------------------------------------------------------------------------
+
+model AuthSession {
+  id        String   @id @default(uuid())
+  email     String
+  tenantId  String   @map("tenant_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email])
+  @@schema("public")
+  @@map("auth_sessions")
+}
+
+// ---------------------------------------------------------------------------
 // API client (M2M) — vendor systems that call the API without a Cognito session
 // ---------------------------------------------------------------------------
 

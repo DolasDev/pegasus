@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
-  resolveTenantByDomain,
+  resolveTenantsForEmail,
+  selectTenant,
   type TenantResolution,
   type TenantProvider,
 } from '@/auth/tenant-resolver'
@@ -30,13 +31,6 @@ import type { Session } from '@/auth/session'
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Extracts the domain from an email string. Returns null for invalid input. */
-function extractDomain(email: string): string | null {
-  const parts = email.trim().toLowerCase().split('@')
-  if (parts.length !== 2 || !parts[1]) return null
-  return parts[1]
-}
-
 // ---------------------------------------------------------------------------
 // Step union type — drives the multi-step UI as a state machine.
 // The shape is identical to Phase 1; only the "redirecting" step's action changed.
@@ -44,6 +38,7 @@ function extractDomain(email: string): string | null {
 type Step =
   | { name: 'email' }
   | { name: 'resolving' }
+  | { name: 'select-tenant'; tenants: TenantResolution[] }
   | { name: 'select-provider'; resolution: TenantResolution }
   | { name: 'redirecting'; provider: TenantProvider; tenantId: string; email: string }
   | { name: 'password' }
@@ -65,17 +60,17 @@ export function LoginPage() {
   async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    const domain = extractDomain(email)
-    if (!domain) {
+    const trimmedEmail = email.trim()
+    if (!trimmedEmail) {
       setStep({ name: 'error', message: 'Please enter a valid work email address.' })
       return
     }
 
     setStep({ name: 'resolving' })
 
-    let resolution: TenantResolution | null
+    let tenants: TenantResolution[]
     try {
-      resolution = await resolveTenantByDomain(domain)
+      tenants = await resolveTenantsForEmail(trimmedEmail)
     } catch {
       setStep({
         name: 'error',
@@ -84,14 +79,45 @@ export function LoginPage() {
       return
     }
 
-    if (!resolution) {
+    if (tenants.length === 0) {
       setStep({
         name: 'error',
-        message: `The domain "${domain}" is not registered with Pegasus. Contact your administrator.`,
+        message: `"${trimmedEmail}" is not registered with Pegasus. Contact your administrator.`,
       })
       return
     }
 
+    if (tenants.length === 1) {
+      // Single tenant — skip the picker and proceed straight to auth options.
+      await proceedWithTenant(tenants[0]!)
+      return
+    }
+
+    // Multiple tenants — show the picker.
+    setStep({ name: 'select-tenant', tenants })
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 1b — Tenant selected (from picker or auto-selected when only one)
+  // -------------------------------------------------------------------------
+  async function proceedWithTenant(resolution: TenantResolution) {
+    // Register the selection server-side so the pre-token Lambda can use it.
+    let confirmed: TenantResolution
+    try {
+      confirmed = await selectTenant(email.trim(), resolution.tenantId)
+    } catch {
+      setStep({
+        name: 'error',
+        message: 'Unable to select tenant. Please try again.',
+      })
+      return
+    }
+
+    advanceToAuth(confirmed)
+  }
+
+  /** Moves to the appropriate auth step for the given tenant resolution. */
+  function advanceToAuth(resolution: TenantResolution) {
     const hasProviders = resolution.providers.length > 0
     const hasCognito = resolution.cognitoAuthEnabled
 
@@ -163,8 +189,7 @@ export function LoginPage() {
     } catch (err) {
       setStep({
         name: 'error',
-        message:
-          err instanceof Error ? err.message : 'MFA verification failed. Please try again.',
+        message: err instanceof Error ? err.message : 'MFA verification failed. Please try again.',
       })
     }
   }
@@ -182,7 +207,8 @@ export function LoginPage() {
     } catch (err) {
       setStep({
         name: 'error',
-        message: err instanceof Error ? err.message : 'Failed to set new password. Please try again.',
+        message:
+          err instanceof Error ? err.message : 'Failed to set new password. Please try again.',
       })
     }
   }
@@ -305,6 +331,36 @@ export function LoginPage() {
           </>
         )}
 
+        {/* ── Step: select-tenant ────────────────────────────── */}
+        {step.name === 'select-tenant' && (
+          <>
+            <CardHeader>
+              <CardTitle>Choose your organisation</CardTitle>
+              <CardDescription>{email} is associated with multiple organisations.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {step.tenants.map((tenant) => (
+                <Button
+                  key={tenant.tenantId}
+                  variant="outline"
+                  className="w-full justify-start gap-2"
+                  onClick={() => void proceedWithTenant(tenant)}
+                >
+                  <LogIn size={16} />
+                  {tenant.tenantName}
+                </Button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setStep({ name: 'email' })}
+                className="w-full pt-1 text-center text-xs text-muted-foreground hover:underline"
+              >
+                Use a different email
+              </button>
+            </CardContent>
+          </>
+        )}
+
         {/* ── Step: select-provider ──────────────────────── */}
         {step.name === 'select-provider' && (
           <>
@@ -337,9 +393,7 @@ export function LoginPage() {
                 >
                   <LogIn size={16} />
                   Sign in with password
-                  <span className="ml-auto text-xs uppercase text-muted-foreground">
-                    email
-                  </span>
+                  <span className="ml-auto text-xs uppercase text-muted-foreground">email</span>
                 </Button>
               )}
               <button
@@ -358,9 +412,7 @@ export function LoginPage() {
           <>
             <CardHeader>
               <CardTitle>Redirecting</CardTitle>
-              <CardDescription>
-                Taking you to {step.provider.name}&hellip;
-              </CardDescription>
+              <CardDescription>Taking you to {step.provider.name}&hellip;</CardDescription>
             </CardHeader>
             <CardContent className="flex justify-center py-8">
               <Loader2 size={32} className="animate-spin text-muted-foreground" />
@@ -465,7 +517,6 @@ function PasswordForm({
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
-              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
             />
           </div>
@@ -498,12 +549,7 @@ function NewPasswordForm({
 }: {
   session: string
   username: string
-  onSubmit: (
-    e: FormEvent,
-    session: string,
-    username: string,
-    newPassword: string,
-  ) => Promise<void>
+  onSubmit: (e: FormEvent, session: string, username: string, newPassword: string) => Promise<void>
   onBack: () => void
 }) {
   const [newPassword, setNewPassword] = useState('')
@@ -545,7 +591,6 @@ function NewPasswordForm({
               onChange={(e) => setNewPassword(e.target.value)}
               required
               autoComplete="new-password"
-              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
             />
           </div>
@@ -560,9 +605,7 @@ function NewPasswordForm({
               autoComplete="new-password"
             />
           </div>
-          {mismatch && (
-            <p className="text-sm text-destructive">Passwords do not match.</p>
-          )}
+          {mismatch && <p className="text-sm text-destructive">Passwords do not match.</p>}
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? <Loader2 size={16} className="animate-spin" /> : 'Set password'}
           </Button>
@@ -626,7 +669,6 @@ function MfaForm({
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
               required
               autoComplete="one-time-code"
-              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
               className="text-center tracking-widest"
               placeholder="000000"
