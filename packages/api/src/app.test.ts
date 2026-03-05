@@ -41,6 +41,9 @@ vi.mock('./db', () => {
       update: vi.fn(),
       findUnique: vi.fn(),
     },
+    tenantUser: {
+      create: vi.fn(),
+    },
     auditLog: {
       create: vi.fn(),
     },
@@ -1117,6 +1120,7 @@ function getTxClient() {
           update: ReturnType<typeof vi.fn>
           findUnique: ReturnType<typeof vi.fn>
         }
+        tenantUser: { create: ReturnType<typeof vi.fn> }
         auditLog: { create: ReturnType<typeof vi.fn> }
       }
     }

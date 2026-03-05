@@ -16,6 +16,7 @@
  */
 
 import { execSync } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 
@@ -50,7 +51,22 @@ async function waitForPostgres(attempts = 30, intervalMs = 500): Promise<void> {
   throw new Error('[test:db] Postgres did not become reachable in time.')
 }
 
+/** Loads key=value pairs from a .env file into process.env (does not override existing vars). */
+function loadDotEnv(filePath: string): void {
+  if (!existsSync(filePath)) return
+  const lines = readFileSync(filePath, 'utf8').split('\n')
+  for (const line of lines) {
+    const match = line.match(/^([A-Z_][A-Z0-9_]*)="?([^"]*)"?\s*$/)
+    if (match && match[1] && match[2] && !process.env[match[1]]) {
+      process.env[match[1]] = match[2]
+    }
+  }
+}
+
 export async function setup(): Promise<void> {
+  // ── 0. Load .env so DATABASE_URL / DIRECT_URL are available ───────────────
+  loadDotEnv(path.join(API_DIR, '.env'))
+
   // ── 1. Honour an externally-provided DATABASE_URL ─────────────────────────
   if (process.env['DATABASE_URL']) {
     console.log('\n[test:db] DATABASE_URL already set — skipping Docker setup\n')

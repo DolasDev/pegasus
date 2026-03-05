@@ -51,6 +51,10 @@ const mockDb = {
     update: vi.fn(),
     delete: vi.fn(),
   },
+  tenant: {
+    findUnique: vi.fn(),
+    update: vi.fn(),
+  },
 }
 
 // ---------------------------------------------------------------------------
@@ -163,6 +167,8 @@ describe('SSO handler', () => {
     vi.clearAllMocks()
     // Default: Cognito calls succeed unless overridden in a specific test
     mockSend.mockResolvedValue({})
+    // Default: tenant exists with cognitoAuthEnabled true
+    mockDb.tenant.findUnique.mockResolvedValue({ cognitoAuthEnabled: true })
   })
 
   // ── Role access ───────────────────────────────────────────────────────────
@@ -193,7 +199,9 @@ describe('SSO handler', () => {
       const res = await buildApp().request('/providers')
       expect(res.status).toBe(200)
       const body = await json(res)
-      expect(body.data).toEqual([])
+      const data = body.data as JsonBody
+      expect(data['providers']).toEqual([])
+      expect(data['cognitoAuthEnabled']).toBe(true)
     })
 
     it('returns 200 with provider list and secretArn never present', async () => {
@@ -205,7 +213,7 @@ describe('SSO handler', () => {
       const res = await buildApp().request('/providers')
       expect(res.status).toBe(200)
       const body = await json(res)
-      const providers = body.data as JsonBody[]
+      const providers = (body.data as JsonBody)['providers'] as JsonBody[]
       expect(providers).toHaveLength(1)
       expect(providers[0]!['id']).toBe('provider-1')
       expect('secretArn' in providers[0]!).toBe(false)
@@ -248,7 +256,7 @@ describe('SSO handler', () => {
     })
 
     it('returns 400 VALIDATION_ERROR when name is missing', async () => {
-      const { name: _name, ...bodyWithoutName } = validCreateBody
+      const { name: _name, ...bodyWithoutName } = validCreateBody // eslint-disable-line @typescript-eslint/no-unused-vars
       const res = await buildApp().request('/providers', post(bodyWithoutName))
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')
@@ -329,7 +337,9 @@ describe('SSO handler', () => {
       )
       // SAML providers do not get authorize_scopes
       const call = (CreateIdentityProviderCommand as ReturnType<typeof vi.fn>).mock.calls[0]![0]
-      expect((call as { ProviderDetails: Record<string, string> }).ProviderDetails).not.toHaveProperty('authorize_scopes')
+      expect(
+        (call as { ProviderDetails: Record<string, string> }).ProviderDetails,
+      ).not.toHaveProperty('authorize_scopes')
     })
 
     it('rolls back the DB record and returns 500 when Cognito CreateIdentityProvider fails', async () => {
@@ -420,10 +430,7 @@ describe('SSO handler', () => {
       mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockExistingRow)
       mockDb.tenantSsoProvider.update.mockResolvedValue(mockProviderRow)
 
-      await buildApp().request(
-        '/providers/provider-1',
-        put({ oidcClientSecret: 'new-secret' }),
-      )
+      await buildApp().request('/providers/provider-1', put({ oidcClientSecret: 'new-secret' }))
 
       const call = (UpdateIdentityProviderCommand as ReturnType<typeof vi.fn>).mock.calls[0]![0]
       expect(
