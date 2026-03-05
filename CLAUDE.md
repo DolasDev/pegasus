@@ -166,6 +166,33 @@ Stop and seek clarification when:
 - Change requires cross-branch coordination → stop immediately.
 - Solution requires modifying shared infrastructure outside scope → stop.
 
+### Test-Driven Development
+
+**Tests are written before the implementation, not after.**
+
+For every feature, endpoint, or component being built:
+
+1. Write the test file first, covering the expected behaviour, error paths, and edge cases.
+2. Run the tests and confirm they fail for the right reason (the implementation does not exist yet).
+3. Write the minimum implementation needed to make the tests pass.
+4. Refactor if necessary, keeping tests green throughout.
+
+This applies at every layer:
+
+- **Domain logic** — write the unit test before the function.
+- **API handlers** — write the handler test (with mocked repositories) before the handler.
+- **Repository functions** — write the integration test (skip-guarded) before the repository.
+- **UI components** — write the component test before the component.
+
+**Plans and individual checklist items must reflect this order.** Each step in a plan that introduces new behaviour must list the test file as the item to implement first, with the implementation item immediately following. Example:
+
+```
+- [ ] Write tenant-users.test.ts (handler unit tests — all cases failing)
+- [ ] Implement tenant-users.ts (make tests pass)
+```
+
+Do not merge test and implementation steps into a single checklist item. They are distinct deliverables with a defined sequence.
+
 ### Task Completion Gate
 
 **A task is not complete until the full test suite passes.**
