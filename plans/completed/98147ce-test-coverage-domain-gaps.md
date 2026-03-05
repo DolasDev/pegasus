@@ -18,12 +18,12 @@ already tested.
 
 ## Checklist
 
-- [ ] Extend `packages/domain/src/__tests__/domain.test.ts`:
-  - [ ] Import `roomTotalValue`, `toInventoryRoomId`, `toInventoryItemId` from `'../index'`
-  - [ ] Add `roomTotalValue` describe block (4 cases — see below)
-  - [ ] Import `DomainError` from `'../shared/errors'`
-  - [ ] Add `DomainError` describe block (3 cases — see below)
-- [ ] Run `node node_modules/.bin/turbo run test --filter=@pegasus/domain` — all tests pass
+- [x] Extend `packages/domain/src/__tests__/domain.test.ts`:
+  - [x] Import `roomTotalValue`, `toInventoryRoomId`, `toInventoryItemId` from `'../index'`
+  - [x] Add `roomTotalValue` describe block (5 cases)
+  - [x] Import `DomainError` from `'../shared/errors'`
+  - [x] Add `DomainError` describe block (3 cases)
+- [x] Run `node node_modules/.bin/turbo run test --filter=@pegasus/domain` — all 56 tests pass
 
 ## Test cases
 

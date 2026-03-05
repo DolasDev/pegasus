@@ -12,11 +12,8 @@ import {
   type DateRange,
   // dispatch
   toMoveId,
-  toStopId,
   canDispatch,
-  canTransition,
   type Move,
-  type Stop,
   // quoting
   toQuoteId,
   toQuoteLineItemId,
@@ -33,14 +30,20 @@ import {
   type Payment,
   // schedule
   toCrewMemberId,
-  toVehicleId,
   // customer
   toCustomerId,
   hasPrimaryContact,
   type Customer,
   type Contact,
   toContactId,
+  // inventory
+  roomTotalValue,
+  toInventoryRoomId,
+  toInventoryItemId,
+  type InventoryRoom,
+  type InventoryItem,
 } from '../index'
+import { DomainError } from '../shared/errors'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -64,7 +67,13 @@ function makeMove(overrides: Partial<Move> = {}): Move {
     userId: toUserId('u-1'),
     status: 'PENDING',
     origin: makeAddress(),
-    destination: makeAddress({ id: toAddressId('a-2'), line1: '456 Oak Ave', city: 'Seattle', state: 'WA', postalCode: '98101' }),
+    destination: makeAddress({
+      id: toAddressId('a-2'),
+      line1: '456 Oak Ave',
+      city: 'Seattle',
+      state: 'WA',
+      postalCode: '98101',
+    }),
     scheduledDate: new Date('2026-03-01'),
     createdAt: new Date('2026-02-01'),
     updatedAt: new Date('2026-02-01'),
@@ -183,7 +192,9 @@ describe('canDispatch — A Move cannot be dispatched without at least one crew 
 
   it('returns true when multiple crew members are assigned', () => {
     expect(
-      canDispatch(makeMove({ assignedCrewIds: [toCrewMemberId('crew-1'), toCrewMemberId('crew-2')] })),
+      canDispatch(
+        makeMove({ assignedCrewIds: [toCrewMemberId('crew-1'), toCrewMemberId('crew-2')] }),
+      ),
     ).toBe(true)
   })
 })
@@ -215,10 +226,21 @@ describe('calculateQuoteTotal', () => {
 
   it('sums quantities × unit price for each line item', () => {
     const items: QuoteLineItem[] = [
-      makeLineItem({ id: toQuoteLineItemId('li-1'), quantity: 2, unitPrice: { amount: 100, currency: 'USD' } }),
-      makeLineItem({ id: toQuoteLineItemId('li-2'), quantity: 3, unitPrice: { amount: 50, currency: 'USD' } }),
+      makeLineItem({
+        id: toQuoteLineItemId('li-1'),
+        quantity: 2,
+        unitPrice: { amount: 100, currency: 'USD' },
+      }),
+      makeLineItem({
+        id: toQuoteLineItemId('li-2'),
+        quantity: 3,
+        unitPrice: { amount: 50, currency: 'USD' },
+      }),
     ]
-    expect(calculateQuoteTotal(makeQuote({ lineItems: items }))).toEqual({ amount: 350, currency: 'USD' })
+    expect(calculateQuoteTotal(makeQuote({ lineItems: items }))).toEqual({
+      amount: 350,
+      currency: 'USD',
+    })
   })
 })
 
@@ -238,7 +260,10 @@ describe('calculateInvoiceBalance', () => {
       method: 'CARD',
       paidAt: new Date(),
     }
-    expect(calculateInvoiceBalance(makeInvoice({ payments: [payment] }))).toEqual({ amount: 1000, currency: 'USD' })
+    expect(calculateInvoiceBalance(makeInvoice({ payments: [payment] }))).toEqual({
+      amount: 1000,
+      currency: 'USD',
+    })
   })
 
   it('clamps balance to zero when overpaid', () => {
@@ -287,15 +312,21 @@ describe('dateRangesOverlap', () => {
   })
 
   it('returns true for overlapping ranges', () => {
-    expect(dateRangesOverlap(range('2026-03-01', '2026-03-10'), range('2026-03-05', '2026-03-15'))).toBe(true)
+    expect(
+      dateRangesOverlap(range('2026-03-01', '2026-03-10'), range('2026-03-05', '2026-03-15')),
+    ).toBe(true)
   })
 
   it('returns false for non-overlapping ranges', () => {
-    expect(dateRangesOverlap(range('2026-03-01', '2026-03-05'), range('2026-03-10', '2026-03-15'))).toBe(false)
+    expect(
+      dateRangesOverlap(range('2026-03-01', '2026-03-05'), range('2026-03-10', '2026-03-15')),
+    ).toBe(false)
   })
 
   it('returns false for adjacent (touching) ranges', () => {
-    expect(dateRangesOverlap(range('2026-03-01', '2026-03-05'), range('2026-03-05', '2026-03-10'))).toBe(false)
+    expect(
+      dateRangesOverlap(range('2026-03-01', '2026-03-05'), range('2026-03-05', '2026-03-10')),
+    ).toBe(false)
   })
 })
 
@@ -336,6 +367,88 @@ describe('hasPrimaryContact', () => {
   })
 
   it('returns false when more than one contact is primary', () => {
-    expect(hasPrimaryContact(makeCustomer([makeContact(true, 'c-1'), makeContact(true, 'c-2')]))).toBe(false)
+    expect(
+      hasPrimaryContact(makeCustomer([makeContact(true, 'c-1'), makeContact(true, 'c-2')])),
+    ).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 11. Inventory: roomTotalValue
+// ---------------------------------------------------------------------------
+describe('roomTotalValue', () => {
+  function makeRoom(items: readonly InventoryItem[] = []): InventoryRoom {
+    return { id: toInventoryRoomId('room-1'), name: 'Living Room', items }
+  }
+
+  function makeItem(overrides: Partial<InventoryItem> = {}): InventoryItem {
+    return {
+      id: toInventoryItemId('item-1'),
+      roomId: toInventoryRoomId('room-1'),
+      name: 'Sofa',
+      quantity: 1,
+      ...overrides,
+    }
+  }
+
+  it('returns zero for a room with no items', () => {
+    expect(roomTotalValue(makeRoom())).toEqual({ amount: 0, currency: 'USD' })
+  })
+
+  it('sums quantity × declaredValue.amount for a single item', () => {
+    const item = makeItem({ quantity: 2, declaredValue: { amount: 300, currency: 'USD' } })
+    expect(roomTotalValue(makeRoom([item]))).toEqual({ amount: 600, currency: 'USD' })
+  })
+
+  it('sums multiple items', () => {
+    const items: InventoryItem[] = [
+      makeItem({
+        id: toInventoryItemId('i-1'),
+        quantity: 1,
+        declaredValue: { amount: 200, currency: 'USD' },
+      }),
+      makeItem({
+        id: toInventoryItemId('i-2'),
+        quantity: 3,
+        declaredValue: { amount: 50, currency: 'USD' },
+      }),
+    ]
+    expect(roomTotalValue(makeRoom(items))).toEqual({ amount: 350, currency: 'USD' })
+  })
+
+  it('skips items without a declaredValue', () => {
+    const items: InventoryItem[] = [
+      makeItem({ id: toInventoryItemId('i-1'), declaredValue: { amount: 100, currency: 'USD' } }),
+      makeItem({ id: toInventoryItemId('i-2') }), // no declaredValue
+    ]
+    expect(roomTotalValue(makeRoom(items))).toEqual({ amount: 100, currency: 'USD' })
+  })
+
+  it('skips items whose declaredValue currency does not match the requested currency', () => {
+    const items: InventoryItem[] = [
+      makeItem({ id: toInventoryItemId('i-1'), declaredValue: { amount: 100, currency: 'USD' } }),
+      makeItem({ id: toInventoryItemId('i-2'), declaredValue: { amount: 80, currency: 'EUR' } }),
+    ]
+    expect(roomTotalValue(makeRoom(items), 'USD')).toEqual({ amount: 100, currency: 'USD' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 12. DomainError
+// ---------------------------------------------------------------------------
+describe('DomainError', () => {
+  it('is an instance of Error', () => {
+    const err = new DomainError('something went wrong', 'SOME_CODE')
+    expect(err).toBeInstanceOf(Error)
+  })
+
+  it('sets name to DomainError', () => {
+    const err = new DomainError('test message', 'TEST_CODE')
+    expect(err.name).toBe('DomainError')
+  })
+
+  it('exposes the code passed to the constructor', () => {
+    const err = new DomainError('test message', 'MY_CODE')
+    expect(err.code).toBe('MY_CODE')
   })
 })

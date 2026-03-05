@@ -29,6 +29,11 @@ let testDb: PrismaClient
 afterAll(async () => {
   if (hasDb) {
     for (const id of createdMoveIds) {
+      const invoices = await db.invoice.findMany({ where: { moveId: id }, select: { id: true } })
+      await db.payment
+        .deleteMany({ where: { invoiceId: { in: invoices.map((i) => i.id) } } })
+        .catch(() => undefined)
+      await db.invoice.deleteMany({ where: { moveId: id } }).catch(() => undefined)
       await db.move.delete({ where: { id } }).catch(() => undefined)
     }
     await db.$disconnect()

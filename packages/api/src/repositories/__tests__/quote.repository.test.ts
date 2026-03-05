@@ -31,6 +31,7 @@ let testDb: PrismaClient
 afterAll(async () => {
   if (hasDb) {
     for (const id of createdMoveIds) {
+      await db.quote.deleteMany({ where: { moveId: id } }).catch(() => undefined)
       await db.move.delete({ where: { id } }).catch(() => undefined)
     }
     await db.$disconnect()

@@ -31,9 +31,7 @@ let tenantId: string
 afterAll(async () => {
   if (hasDb) {
     for (const id of createdMoveIds) {
-      await db.move
-        .delete({ where: { id } })
-        .catch(() => undefined)
+      await db.move.delete({ where: { id } }).catch(() => undefined)
     }
     await db.$disconnect()
   }
@@ -124,7 +122,8 @@ describe.skipIf(!hasDb)('MoveRepository (integration)', () => {
     const result = await assignCrewMember(testDb, moveId, crewMemberId)
     expect(result?.assignedCrewIds).toContain(crewMemberId)
 
-    // Cleanup
+    // Cleanup — remove junction row before deleting the crew member
+    await db.moveCrewAssignment.deleteMany({ where: { crewMemberId } }).catch(() => undefined)
     await db.crewMember.delete({ where: { id: crewMemberId } }).catch(() => undefined)
   })
 
@@ -146,7 +145,8 @@ describe.skipIf(!hasDb)('MoveRepository (integration)', () => {
     const result = await assignVehicle(testDb, moveId, vehicleId)
     expect(result?.assignedVehicleIds).toContain(vehicleId)
 
-    // Cleanup
+    // Cleanup — remove junction row before deleting the vehicle
+    await db.moveVehicleAssignment.deleteMany({ where: { vehicleId } }).catch(() => undefined)
     await db.vehicle.delete({ where: { id: vehicleId } }).catch(() => undefined)
   })
 })
