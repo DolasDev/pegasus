@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import type { PrismaClient } from '@prisma/client'
+import type { ConnectionPool } from 'mssql'
 import type { ApiClientRow } from './repositories/api-client.repository'
 
 /**
@@ -38,6 +39,12 @@ export type AppVariables = {
    * filtered/stamped with tenantId by the query extension in lib/prisma.ts.
    */
   db: PrismaClient
+  /**
+   * Legacy SQL Server connection pool for pegii routes. Set by mssqlMiddleware
+   * after looking up the tenant's mssqlConnectionString. Only present on
+   * /api/v1/pegii/* routes.
+   */
+  mssqlPool: ConnectionPool
 }
 
 /** Hono environment type used when constructing the app and all sub-routers. */

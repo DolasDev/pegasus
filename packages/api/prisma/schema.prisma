@@ -180,6 +180,10 @@ model Tenant {
   /// When false, only configured SSO providers may be used to log in.
   cognitoAuthEnabled Boolean @default(true) @map("cognito_auth_enabled")
 
+  /// Legacy SQL Server connection string for the pegii bridge API.
+  /// Used by mssqlMiddleware to open a connection pool per tenant.
+  mssqlConnectionString String? @map("mssql_connection_string")
+
   /// Set when the tenant is offboarded. Data is retained; the tenant is
   /// excluded from all default queries. Null means not offboarded.
   deletedAt DateTime? @map("deleted_at")

@@ -9,6 +9,7 @@ import {
   LogOut,
   ShieldCheck,
   UserCog,
+  Key,
   type LucideIcon,
 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
@@ -30,6 +31,7 @@ const NAV_ITEMS = [
 const SETTINGS_NAV_ITEMS = [
   { to: '/settings/users' as const, label: 'Users', icon: UserCog, exact: false },
   { to: '/settings/sso' as const, label: 'SSO Providers', icon: ShieldCheck, exact: false },
+  { to: '/settings/developer' as const, label: 'Developer Settings', icon: Key, exact: false },
 ] as const
 
 type NavItemProps = {

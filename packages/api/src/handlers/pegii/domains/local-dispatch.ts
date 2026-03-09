@@ -1,0 +1,61 @@
+import { empty, eqNum, static_ } from '../keyword-helpers'
+import type { EntityConfig } from '../types'
+
+export const localDispatchEntities: EntityConfig[] = [
+  {
+    slug: 'local-dispatch-jobs',
+    tableName: 'LocalDispatchJobs',
+    idField: 'id',
+    codeField: 'id',
+    idType: 'integer',
+    orderBy: 'ORDER BY id',
+    searchKeywords: [
+      empty(),
+      eqNum('ID', 'id'),
+      eqNum('SALE', 'sale_id'),
+      eqNum('SALEID', 'sale_id'),
+      eqNum('ORDER', 'order_num'),
+      eqNum('ORDERNUM', 'order_num'),
+      static_('ACTIVE', "active='Y'"),
+      static_('NOTACTIVE', "active='N'"),
+    ],
+  },
+  {
+    slug: 'local-dispatch-job-masters',
+    tableName: 'LocalDispatchJobMaster',
+    idField: 'id',
+    codeField: 'id',
+    idType: 'integer',
+    orderBy: 'ORDER BY id',
+    searchKeywords: [
+      empty(),
+      eqNum('ID', 'id'),
+      eqNum('SALE', 'sale_id'),
+      eqNum('SALEID', 'sale_id'),
+      eqNum('ORDER', 'order_num'),
+      eqNum('ORDERNUM', 'order_num'),
+      static_('ACTIVE', "active='Y'"),
+      static_('NOTACTIVE', "active='N'"),
+    ],
+  },
+  {
+    slug: 'local-dispatch-job-details',
+    tableName: 'LocalDispatchJobsDetail',
+    idField: 'id',
+    codeField: 'id',
+    idType: 'integer',
+    orderBy: 'ORDER BY id',
+    searchKeywords: [
+      empty(),
+      eqNum('ID', 'id'),
+      eqNum('SALE', 'sale_id'),
+      eqNum('SALEID', 'sale_id'),
+      eqNum('ORDER', 'order_num'),
+      eqNum('ORDERNUM', 'order_num'),
+      eqNum('MASTER', 'master_id'),
+      eqNum('MASTERID', 'master_id'),
+      static_('ACTIVE', "active='Y'"),
+      static_('NOTACTIVE', "active='N'"),
+    ],
+  },
+]

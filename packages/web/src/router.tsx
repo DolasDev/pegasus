@@ -15,6 +15,7 @@ import { DispatchPage } from '@/routes/dispatch.index'
 import { InvoicesPage } from '@/routes/invoices.index'
 import { SsoConfigPage } from '@/routes/sso-config'
 import { UsersPage } from '@/routes/users'
+import { DeveloperSettingsPage } from '@/routes/settings.developer'
 
 // ---------------------------------------------------------------------------
 // Root
@@ -108,6 +109,12 @@ const usersRoute = createRoute({
   component: UsersPage,
 })
 
+const developerSettingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings/developer',
+  component: DeveloperSettingsPage,
+})
+
 // ---------------------------------------------------------------------------
 // Route tree + router
 // ---------------------------------------------------------------------------
@@ -126,6 +133,7 @@ const routeTree = rootRoute.addChildren([
   invoicesRoute,
   ssoConfigRoute,
   usersRoute,
+  developerSettingsRoute,
 ])
 
 export const router = createRouter({ routeTree })

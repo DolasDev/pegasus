@@ -1,0 +1,73 @@
+import { empty, eqNum, eq, static_, dateLte } from '../keyword-helpers'
+import type { EntityConfig } from '../types'
+
+export const surveyEntities: EntityConfig[] = [
+  {
+    slug: 'survey-results-masters',
+    tableName: 'SurveyResultsMasters',
+    idField: 'id',
+    codeField: 'rvs_num',
+    idType: 'integer',
+    orderBy: 'ORDER BY id',
+    searchKeywords: [empty(), eqNum('ID', 'id'), eq('CODE', 'rvs_num')],
+  },
+  {
+    slug: 'survey-results-services',
+    tableName: 'SurveyResultsServices',
+    idField: 'id',
+    codeField: 'survey_id',
+    idType: 'integer',
+    orderBy: 'ORDER BY id',
+    searchKeywords: [
+      empty(),
+      eqNum('ID', 'id'),
+      eqNum('CODE', 'survey_id'),
+      eqNum('SURVEYID', 'survey_id'),
+    ],
+  },
+  {
+    slug: 'survey-results-materials',
+    tableName: 'salessurverymaterials',
+    idField: 'id',
+    codeField: 'id',
+    idType: 'integer',
+    orderBy: 'ORDER BY id',
+    searchKeywords: [empty(), eqNum('ID', 'id')],
+  },
+  {
+    slug: 'survey-results-vehicles',
+    tableName: 'SurveyResultsVehicles',
+    idField: 'id',
+    codeField: 'rvs_num',
+    idType: 'integer',
+    orderBy: 'ORDER BY id',
+    searchKeywords: [empty(), eqNum('ID', 'id'), eq('CODE', 'rvs_num')],
+  },
+  {
+    slug: 'tasks',
+    tableName: 'Tasks',
+    idField: 'Id',
+    codeField: 'Code',
+    idType: 'integer',
+    orderBy: 'ORDER BY Id',
+    searchKeywords: [
+      empty(),
+      eqNum('ID', 'Id'),
+      eq('CODE', 'Code'),
+      eq('TBD', 'tbd_date'),
+      dateLte('DUEBY', 'due_date'),
+      eq('COMPLETED', 'completed_date'),
+      static_('ACTIVE', "active='Y'"),
+      static_('NOTACTIVE', "active='N'"),
+    ],
+  },
+  {
+    slug: 'master-tasks',
+    tableName: 'mastertasks',
+    idField: 'id',
+    codeField: 'code',
+    idType: 'integer',
+    orderBy: 'ORDER BY code',
+    searchKeywords: [empty(), eqNum('ID', 'id'), eq('CODE', 'code')],
+  },
+]
