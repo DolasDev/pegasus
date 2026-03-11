@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from './types'
 import { correlationMiddleware } from './middleware/correlation'
 import { tenantMiddleware } from './middleware/tenant'
@@ -16,6 +17,7 @@ import { apiClientsHandler } from './handlers/api-clients'
 import { pegiiRouter } from './handlers/pegii'
 import { logger } from './lib/logger'
 import { DomainError } from '@pegasus/domain'
+import { db as basePrisma } from './db'
 
 const app = new Hono<AppEnv>()
 
@@ -56,7 +58,25 @@ app.onError((err, c) => {
 // ---------------------------------------------------------------------------
 // Public routes — no tenant required
 // ---------------------------------------------------------------------------
-app.get('/health', (c) => {
+app.get('/health', async (c) => {
+  const deep = c.req.query('deep') === 'true'
+  if (deep) {
+    try {
+      await basePrisma.$queryRaw`SELECT 1`
+      return c.json({
+        status: 'ok' as const,
+        db: 'ok' as const,
+        timestamp: new Date().toISOString(),
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown'
+      logger.error('Deep health check failed', { error: message })
+      return c.json(
+        { status: 'degraded' as const, db: 'error' as const, timestamp: new Date().toISOString() },
+        503,
+      )
+    }
+  }
   return c.json({ status: 'ok' as const, timestamp: new Date().toISOString() })
 })
 
@@ -97,7 +117,19 @@ app.route('/api/admin', adminRouter)
 //   })
 // ---------------------------------------------------------------------------
 const v1 = new Hono<AppEnv>()
-v1.use('*', tenantMiddleware)
+
+if (process.env['SKIP_AUTH'] === 'true') {
+  logger.warn('SKIP_AUTH is enabled — all authentication is bypassed. Do NOT use in production.')
+  v1.use('*', async (c, next) => {
+    c.set('tenantId', process.env['DEFAULT_TENANT_ID'] ?? 'default-tenant')
+    c.set('role', 'tenant_admin')
+    c.set('userId', 'skip-auth-user')
+    c.set('db', basePrisma as unknown as PrismaClient)
+    await next()
+  })
+} else {
+  v1.use('*', tenantMiddleware)
+}
 
 // Bounded-context routers
 v1.route('/sso', ssoHandler)
