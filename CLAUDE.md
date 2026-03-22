@@ -99,9 +99,22 @@ Models crew and vehicle availability.
 
 ## Testing Approach
 
-- **Domain (`packages/domain`)**: Vitest (unit). Pure functions, no I/O, no mocks. Co-located with business context logic.
-- **API (`packages/api`)**: Vitest (integration) requiring Docker local Postgres container.
-- **Infra (`packages/infra`)**: CDK snapshot and fine-grained assertions tests.
+| Layer                      | Tool                  | Location                  | Notes                                                                 |
+| -------------------------- | --------------------- | ------------------------- | --------------------------------------------------------------------- |
+| Unit                       | Vitest                | `packages/domain`         | Pure functions, no I/O, no mocks. Co-located with business logic.     |
+| Integration (API handlers) | Vitest                | `packages/api`            | Requires Docker local Postgres. Tests skip when `DATABASE_URL` unset. |
+| Infrastructure             | CDK + Vitest          | `packages/infra`          | Snapshot and fine-grained assertion tests.                            |
+| API acceptance             | Playwright            | `apps/e2e/tests/api/`     | HTTP-level tests against a running API server.                        |
+| Browser / E2E              | Playwright + Chromium | `apps/e2e/tests/browser/` | Full browser tests via `@playwright/test`.                            |
+
+### E2E Suite (`apps/e2e`)
+
+- **Run:** `npm run e2e` from `apps/e2e/`
+- **Config:** `apps/e2e/playwright.config.ts` — reads `.env.test` for `DATABASE_URL`, `TEST_TENANT_ID`, API base URL, etc.
+- **Setup:** `apps/e2e/global-setup.ts` — checks for Postgres via `pg_isready`; starts Docker Compose if needed.
+- **Install browsers (once):** `npm run install:browsers` from `apps/e2e/`
+- API spec files: `tests/api/{health,customers,moves,quotes}.spec.ts`
+- Browser spec files: `tests/browser/landing.spec.ts`
 
 > **Note**: For code patterns, architectural decisions, and other system rules, see the memory files below.
 
@@ -195,9 +208,29 @@ Do not merge test and implementation steps into a single checklist item. They ar
 
 ### Task Completion Gate
 
-**A task is not complete until the full test suite passes.**
+**A task is not complete until all required test layers pass.**
 
-Run `npm test` from the repo root. Every test across every package must pass. If tests fail, fix the code — do not work around failures by:
+#### Step 1 — Unit + integration suite (always required)
+
+Run `npm test` from the repo root. Every Vitest test across every package must pass.
+
+#### Step 2 — E2E / acceptance suite (required when applicable)
+
+Run the Playwright suite from `apps/e2e/` when the task touches:
+
+- Any API endpoint (new, modified, or deleted)
+- Any browser-visible UI behaviour
+- Auth flows, routing, or data displayed to the user
+
+```bash
+cd apps/e2e && npm run e2e
+```
+
+If no `.env.test` exists, create one from `.env.test.example` (or ask the developer for values) before running. The global setup will start Docker Postgres automatically if it is not already running.
+
+If the task is purely internal (domain logic, infra config, dev tooling) and no existing E2E spec is affected, Step 2 may be skipped — but state explicitly in the plan why it is not applicable.
+
+#### Never work around failures by:
 
 - Skipping, disabling, or deleting a failing test
 - Marking a task complete despite failures
@@ -252,7 +285,7 @@ When presenting results: show changes clearly (diffs preferred), keep diffs mini
 
 Every commit must be focused and atomic — one logical change, no debug artifacts, no temp files. Commit messages must state what changed and why.
 
-**Do not commit or push until the developer explicitly instructs you to.** When ready: run the full test suite, confirm it passes, summarise what changed, and wait for explicit approval.
+**Do not commit or push until the developer explicitly instructs you to.** When ready: run the full test suite (unit + integration, and E2E where applicable per the Task Completion Gate above), confirm all layers pass, summarise what changed, and wait for explicit approval.
 
 ### Archiving Completed Plans
 

@@ -1,0 +1,16 @@
+{
+  "name": "@pegasus/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "test": "echo 'use npm run e2e'",
+    "e2e": "playwright test",
+    "install:browsers": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/mcp": "^0.0.26",
+    "@playwright/test": "^1.58.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

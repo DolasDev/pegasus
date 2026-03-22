@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest", "--headless"]
+    }
+  },
+  "permissions": {
+    "allow": [
+      "Write",
+      "Edit",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(cp:*)",
+      "Bash(touch:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(cd:*)",
+      "Bash(chmod:*)",
+      "Bash(xargs:*)",
+      "Bash(node:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(git:*)"
+    ]
+  }
+}
