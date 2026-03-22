@@ -122,9 +122,20 @@ Operate as a disciplined senior engineer: stay within scope, preserve architectu
 - Work ONLY within the current working directory and its branch.
 - Never run `git checkout`, `git switch`, `git merge`, or `git rebase`.
 - Never remove or prune worktrees. Never modify git configuration.
-- Do NOT pull or push unless explicitly instructed.
+- Do NOT push unless explicitly instructed.
 
 **At session start**, identify the current branch (`git branch --show-current`), state it at the top of your plan file, and confirm all changes will remain on this branch.
+
+### Sync Before Coding
+
+**Before writing any code**, always run:
+
+```
+git fetch
+git pull
+```
+
+If `git pull` results in merge conflicts, **stop immediately**. Do not attempt to write any code. Present the conflicting files and conflict markers to the developer, explain the nature of each conflict, and assist in resolving them interactively. Only proceed with implementation after the working tree is clean and all conflicts are resolved.
 
 ### Mandatory Pre-Implementation Phase
 
