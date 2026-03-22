@@ -15,7 +15,8 @@
     "create-admin-user": "tsx scripts/create-admin-user.ts",
     "prepare": "node ./node_modules/husky/bin.js || true",
     "launch-agent": "bash ./scripts/launch_agent.sh",
-    "remove-agent": "bash ./scripts/remove_agent.sh"
+    "remove-agent": "bash ./scripts/remove_agent.sh",
+    "e2e": "turbo run e2e --filter=@pegasus/e2e"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.18.0",

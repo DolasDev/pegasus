@@ -11,5 +11,10 @@ export default defineConfig({
     // child_process.spawn's stdio option. Running vitest tests in forked child
     // processes gives each test file a real writable stdout stream.
     pool: 'forks',
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      reportsDirectory: './coverage',
+    },
   },
 })

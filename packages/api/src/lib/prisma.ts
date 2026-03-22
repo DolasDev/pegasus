@@ -16,7 +16,7 @@ import { PrismaClient } from '@prisma/client'
  * are intentionally excluded because they inherit tenant scope through their
  * parent relation.
  */
-const TENANT_SCOPED_MODELS = new Set([
+export const TENANT_SCOPED_MODELS = new Set([
   'Customer',
   'Move',
   'Quote',

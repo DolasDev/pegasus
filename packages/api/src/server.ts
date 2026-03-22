@@ -13,6 +13,7 @@
 import { serve } from '@hono/node-server'
 import { app } from './app'
 import { logger } from './lib/logger'
+import { validateEnv } from './lib/env'
 import { closeAllPools } from './lib/mssql'
 import { db } from './db'
 
@@ -20,6 +21,8 @@ import { db } from './db'
  * Starts the HTTP server. Returns the server instance.
  */
 export function startServer() {
+  validateEnv()
+
   const port = parseInt(process.env['PORT'] ?? '3000', 10)
   const hostname = process.env['HOST'] ?? '0.0.0.0'
 

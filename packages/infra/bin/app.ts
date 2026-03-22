@@ -7,6 +7,7 @@ import { FrontendStack } from '../lib/stacks/frontend-stack'
 import { AdminFrontendStack } from '../lib/stacks/admin-frontend-stack'
 import { FrontendAssetsStack } from '../lib/stacks/frontend-assets-stack'
 import { AdminFrontendAssetsStack } from '../lib/stacks/admin-frontend-assets-stack'
+import { MonitoringStack } from '../lib/stacks/monitoring-stack'
 
 const app = new cdk.App()
 
@@ -54,6 +55,18 @@ const apiStack = new ApiStack(app, 'PegasusDev-ApiStack', {
   cognitoJwksUrl: cognitoStack.jwksUrl,
   cognitoTenantClientId: cognitoStack.tenantAppClient.userPoolClientId,
   cognitoUserPoolId: cognitoStack.userPool.userPoolId,
+})
+
+// ── MonitoringStack ───────────────────────────────────────────────────────────
+// CDK deployment order: ApiStack → MonitoringStack.
+
+new MonitoringStack(app, 'PegasusDev-MonitoringStack', {
+  env: devEnv,
+  stackName: 'pegasus-dev-monitoring',
+  description: 'Pegasus dev — CloudWatch alarms and dashboard',
+  lambdaFunctionName: apiStack.lambdaFunctionName,
+  httpApiId: apiStack.httpApiId,
+  httpApiStage: apiStack.httpApiStage,
 })
 
 // ── Asset stacks (deployed last — depend on all upstream stacks) ──────────────

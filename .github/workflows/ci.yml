@@ -1,0 +1,200 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Gitleaks secret scanning — runs first, fast, no deps
+  # ---------------------------------------------------------------------------
+  gitleaks:
+    name: Secret Scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  # Type-check
+  # ---------------------------------------------------------------------------
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fix binary permissions
+        run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
+
+      - name: Typecheck
+        run: node node_modules/.bin/turbo run typecheck
+
+  # ---------------------------------------------------------------------------
+  # Lint
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fix binary permissions
+        run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
+
+      - name: Lint
+        run: node node_modules/.bin/turbo run lint
+
+  # ---------------------------------------------------------------------------
+  # Unit + integration tests (Vitest across all packages)
+  # ---------------------------------------------------------------------------
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pegasus
+          POSTGRES_PASSWORD: pegasus
+          POSTGRES_DB: pegasus
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pegasus -d pegasus"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://pegasus:pegasus@localhost:5432/pegasus?schema=public
+      DIRECT_URL: postgresql://pegasus:pegasus@localhost:5432/pegasus?schema=public
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fix binary permissions
+        run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      - name: Initialise database schema and extensions
+        run: |
+          PGPASSWORD=pegasus psql -h localhost -U pegasus -d pegasus -c "CREATE SCHEMA IF NOT EXISTS platform;"
+          PGPASSWORD=pegasus psql -h localhost -U pegasus -d pegasus -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'
+
+      - name: Run Prisma migrations
+        working-directory: packages/api
+        run: node ../../node_modules/.bin/prisma migrate deploy
+
+      - name: Run tests
+        run: node node_modules/.bin/turbo run test
+
+  # ---------------------------------------------------------------------------
+  # E2E / acceptance tests (Playwright)
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pegasus
+          POSTGRES_PASSWORD: pegasus
+          POSTGRES_DB: pegasus
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pegasus -d pegasus"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://pegasus:pegasus@localhost:5432/pegasus?schema=public
+      DIRECT_URL: postgresql://pegasus:pegasus@localhost:5432/pegasus?schema=public
+      DEFAULT_TENANT_ID: e2e00000-0000-0000-0000-000000000001
+      TEST_TENANT_ID: e2e00000-0000-0000-0000-000000000001
+      SKIP_AUTH: "true"
+      CI: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fix binary permissions
+        run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
+
+      - name: Install Playwright browsers
+        working-directory: apps/e2e
+        run: node ../../node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Initialise database schema and extensions
+        run: |
+          PGPASSWORD=pegasus psql -h localhost -U pegasus -d pegasus -c "CREATE SCHEMA IF NOT EXISTS platform;"
+          PGPASSWORD=pegasus psql -h localhost -U pegasus -d pegasus -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'
+
+      - name: Run Prisma migrations
+        working-directory: packages/api
+        run: node ../../node_modules/.bin/prisma migrate deploy
+
+      - name: Generate Prisma client
+        working-directory: packages/api
+        run: node ../../node_modules/.bin/prisma generate
+
+      - name: Run E2E tests
+        working-directory: apps/e2e
+        run: node ../../node_modules/.bin/playwright test
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/e2e/playwright-report/
+          retention-days: 7

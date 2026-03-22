@@ -46,6 +46,15 @@ export class ApiStack extends cdk.Stack {
   /** The HTTP API endpoint URL — used by other stacks to inject into frontend config. */
   public readonly apiUrl: string
 
+  /** The Lambda function name — used by MonitoringStack to scope CloudWatch alarms. */
+  public readonly lambdaFunctionName: string
+
+  /** The HTTP API Gateway v2 ID — used by MonitoringStack to scope CloudWatch alarms. */
+  public readonly httpApiId: string
+
+  /** The HTTP API Gateway v2 default stage name. */
+  public readonly httpApiStage: string = '$default'
+
   constructor(scope: Construct, id: string, props: ApiStackProps = {}) {
     super(scope, id, props)
 
@@ -168,6 +177,8 @@ export class ApiStack extends cdk.Stack {
     })
 
     this.apiUrl = httpApi.apiEndpoint
+    this.lambdaFunctionName = apiFunction.functionName
+    this.httpApiId = httpApi.apiId
 
     new cdk.CfnOutput(this, 'ApiUrl', {
       value: httpApi.apiEndpoint,

@@ -6,6 +6,11 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     globalSetup: './vitest.global-setup.ts',
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      reportsDirectory: './coverage',
+    },
   },
   resolve: {
     alias: {

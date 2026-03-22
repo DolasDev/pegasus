@@ -8,9 +8,14 @@
     "build": "tsc",
     "test": "vitest run",
     "lint": "eslint src --ext .ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "mutation-test": "stryker run"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "^9.6.0",
+    "@stryker-mutator/vitest-runner": "^9.6.0",
+    "@vitest/coverage-v8": "^4.1.0",
+    "fast-check": "^4.6.0",
     "typescript": "*",
     "vitest": "*"
   }
