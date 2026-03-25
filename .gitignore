@@ -47,6 +47,13 @@ prisma/migrations/
 # Test coverage
 coverage/
 
+# Playwright
+apps/e2e/playwright-report/
+
+# Per-package lock files (root package-lock.json is canonical)
+packages/domain/package-lock.json
+packages/infra/package-lock.json
+
 # Logs
 *.log
 npm-debug.log*
