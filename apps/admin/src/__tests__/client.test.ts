@@ -42,22 +42,16 @@ describe('adminFetch', () => {
   it('sends an x-correlation-id header with a UUID', async () => {
     await adminFetch('/test')
     const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
-    const headers = init?.headers as Record<string, string>
-    expect(headers['x-correlation-id']).toMatch(UUID_RE)
+    const headers = new Headers(init?.headers)
+    expect(headers.get('x-correlation-id')).toMatch(UUID_RE)
   })
 
   it('generates a different correlation ID for each request', async () => {
     await adminFetch('/test')
     await adminFetch('/test')
-    const h1 = (fetchSpy.mock.calls[0] as [string, RequestInit])[1]?.headers as Record<
-      string,
-      string
-    >
-    const h2 = (fetchSpy.mock.calls[1] as [string, RequestInit])[1]?.headers as Record<
-      string,
-      string
-    >
-    expect(h1['x-correlation-id']).not.toBe(h2['x-correlation-id'])
+    const h1 = new Headers((fetchSpy.mock.calls[0] as [string, RequestInit])[1]?.headers)
+    const h2 = new Headers((fetchSpy.mock.calls[1] as [string, RequestInit])[1]?.headers)
+    expect(h1.get('x-correlation-id')).not.toBe(h2.get('x-correlation-id'))
   })
 })
 
@@ -82,7 +76,7 @@ describe('adminFetchPaginated', () => {
   it('sends an x-correlation-id header with a UUID', async () => {
     await adminFetchPaginated('/tenants')
     const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
-    const headers = init?.headers as Record<string, string>
-    expect(headers['x-correlation-id']).toMatch(UUID_RE)
+    const headers = new Headers(init?.headers)
+    expect(headers.get('x-correlation-id')).toMatch(UUID_RE)
   })
 })

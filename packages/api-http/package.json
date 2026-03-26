@@ -1,0 +1,16 @@
+{
+  "name": "@pegasus/api-http",
+  "version": "0.1.0",
+  "description": "Shared typed HTTP client (ApiError, createApiClient factory) for Pegasus frontends.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "~5.5.4",
+    "vitest": "^3.0.0"
+  },
+  "private": true
+}
