@@ -77,7 +77,7 @@ Plans:
 Plans:
 
 - [x] 03-01-PLAN.md — expo-secure-store install + Jest config + AuthContext rewrite (login, logout, SESSION-01, SESSION-03)
-- [x] 03-02-PLAN.md — Cold-start restore + AppState expiry detection + _layout.tsx wiring + call-site updates (SESSION-02, SESSION-04)
+- [x] 03-02-PLAN.md — Cold-start restore + AppState expiry detection + \_layout.tsx wiring + call-site updates (SESSION-02, SESSION-04)
 
 ### Phase 4: Tenant Resolution Flow
 
@@ -91,12 +91,13 @@ Plans:
 3. The resolved company name is visible above the password input so the driver can confirm they are logging into the right company
 4. When no tenants match the email, an inline error message ("Email not registered with Pegasus") appears on the email step without navigating away
 5. Tapping back from the tenant picker returns to the email step with all auth state reset
-   **Plans**: TBD
+
+**Plans**: 2 plans
 
 Plans:
 
-- [ ] 04-01: Tenant picker screen (app/(auth)/tenant-picker.tsx)
-- [ ] 04-02: Login screen two-step flow and tenant resolution logic
+- [ ] 04-01-PLAN.md — TenantResolution type + authService extension (resolveTenants, selectTenant) + tenant-picker screen + auth layout update
+- [ ] 04-02-PLAN.md — login.tsx two-step state machine (email step + password step + URL param handoff)
 
 ### Phase 5: Login UX and Auth Guard
 
@@ -109,7 +110,8 @@ Plans:
 2. Authentication errors (wrong password, account locked, network failure) appear as inline text below the relevant input — no `Alert.alert` popups are triggered
 3. From the moment the driver submits their email through the completion of `validate-token`, all inputs are non-editable and the submit button is disabled; double-tapping cannot initiate a second concurrent flow
 4. An authenticated driver cold-launching the app never sees the login screen flash before the home route renders
-   **Plans**: TBD
+
+**Plans**: TBD
 
 Plans:
 
@@ -122,10 +124,10 @@ Plans:
 **Execution Order:**
 Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
-| Phase                        | Plans Complete | Status      | Completed |
-| ---------------------------- | -------------- | ----------- | --------- |
-| 1. Infrastructure Foundation | 3/3 | Complete   | 2026-03-27 |
-| 2. Auth Service Layer        | 1/2 | In Progress|  |
-| 3. AuthContext and Session   | 2/2 | Complete   | 2026-03-27 |
-| 4. Tenant Resolution Flow    | 0/2            | Not started | -         |
-| 5. Login UX and Auth Guard   | 0/2            | Not started | -         |
+| Phase                        | Plans Complete | Status      | Completed  |
+| ---------------------------- | -------------- | ----------- | ---------- |
+| 1. Infrastructure Foundation | 3/3            | Complete    | 2026-03-27 |
+| 2. Auth Service Layer        | 1/2            | In Progress |            |
+| 3. AuthContext and Session   | 2/2            | Complete    | 2026-03-27 |
+| 4. Tenant Resolution Flow    | 0/2            | Not started | -          |
+| 5. Login UX and Auth Guard   | 0/2            | Not started | -          |
