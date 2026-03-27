@@ -23,10 +23,10 @@ A driver can log in with their real company credentials and the app knows which 
 
 - [x] `GET /api/auth/mobile-config` — returns Cognito user pool ID and mobile app client ID; called after tenant resolution so the app never hardcodes Cognito credentials — Validated in Phase 01: infrastructure-foundation
 - [x] Mobile auth service — wraps `resolve-tenants`, `select-tenant`, `validate-token` and Cognito SRP in a clean typed API consumed by `AuthContext` — Validated in Phase 02: auth-service-layer
+- [x] Updated `AuthContext` — replaces mock login with real auth service backed by expo-secure-store; session persisted/restored from encrypted storage; AppState expiry detection on foreground resume — Validated in Phase 03: authcontext-and-session
 - [ ] Two-step login UX — email submitted first → tenant resolution → tenant picker shown only when >1 tenant found → password entry
 - [ ] Tenant picker screen — `app/(auth)/tenant-picker.tsx` — list of tenant names, driver selects one, app calls `select-tenant`
 - [ ] Cognito SRP authentication — `amazon-cognito-identity-js` performs in-app SRP challenge; no browser redirect; uses pool ID + mobile client ID from mobile-config endpoint
-- [ ] Updated `AuthContext` — replaces mock login with real auth service; session stores `tenantId`, `role`, `email`, `sub`, `expiresAt` from validated token claims
 - [ ] Logout — removes Cognito tokens, clears AsyncStorage session
 - [ ] Error handling — "email not registered", "invalid credentials", "account not in tenant", network errors each produce clear user-facing messages (no raw error codes leaked to UI)
 
@@ -60,11 +60,11 @@ The Pegasus monorepo already has a complete Cognito-backed auth system for the w
 
 ## Key Decisions
 
-| Decision                                      | Rationale                                                                      | Outcome   |
-| --------------------------------------------- | ------------------------------------------------------------------------------ | --------- |
+| Decision                                      | Rationale                                                                      | Outcome    |
+| --------------------------------------------- | ------------------------------------------------------------------------------ | ---------- |
 | Cognito config via API endpoint               | Keeps credentials out of app bundle; single source of truth if pool changes    | ✓ Phase 01 |
 | `amazon-cognito-identity-js` for SRP          | Pure JS, works in RN without native modules; lighter than Amplify              | ✓ Phase 01 |
-| Two-step login (email first, password second) | Required for tenant resolution before Cognito auth; matches web app UX pattern | — Pending |
+| Two-step login (email first, password second) | Required for tenant resolution before Cognito auth; matches web app UX pattern | — Pending  |
 | Dedicated mobile Cognito app client           | Best practice for mobile — no client secret, separate from web client          | ✓ Phase 01 |
 
 ## Evolution
@@ -88,4 +88,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-_Last updated: 2026-03-27 after Phase 02 (auth-service-layer) complete_
+_Last updated: 2026-03-27 after Phase 03 (authcontext-and-session) complete_
