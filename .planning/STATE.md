@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-03-27T22:19:00.575Z"
+status: verifying
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-03-27T22:23:32.959Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 
 Phase: 03 (authcontext-and-session) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-03-27
 
 Progress: [░░░░░░░░░░] 0%
@@ -58,6 +58,7 @@ _Updated after each plan completion_
 | Phase 02-auth-service-layer P01 | 2min | 2 tasks | 3 files |
 | Phase 02-auth-service-layer P02 | 5min | 1 tasks | 2 files |
 | Phase 03-authcontext-and-session P01 | 2min | 2 tasks | 5 files |
+| Phase 03-authcontext-and-session P02 | 5min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,8 @@ Recent decisions affecting current work:
 - [Phase 03-01]: expo-secure-store ~15.0.8 for session persistence replacing AsyncStorage (SESSION-01 requirement)
 - [Phase 03-01]: isAuthenticated derived from session !== null, not separate useState (eliminates sync issues)
 - [Phase 03-01]: authService injected as AuthProvider prop for clean unit tests without module mock
+- [Phase 03-02]: AppState useEffect dep array contains session (not []) — prevents stale closure where null session at mount would never detect expiry
+- [Phase 03-02]: authService created at module scope in _layout.tsx — avoids recreating service instance on every render
 
 ### Pending Todos
 
@@ -97,6 +100,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T22:19:00.571Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-03-27T22:23:32.955Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None

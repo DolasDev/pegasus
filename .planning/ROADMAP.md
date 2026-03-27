@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Infrastructure Foundation** - Cognito mobile app client, crypto polyfill entry point, and mobile-config API endpoint (completed 2026-03-27)
 - [ ] **Phase 2: Auth Service Layer** - cognitoService and authService built test-first; SRP handshake proven in isolation
-- [ ] **Phase 3: AuthContext and Session** - AuthContext replaces mock auth; session persisted to secure store; logout and expiry detection working
+- [x] **Phase 3: AuthContext and Session** - AuthContext replaces mock auth; session persisted to secure store; logout and expiry detection working (completed 2026-03-27)
 - [ ] **Phase 4: Tenant Resolution Flow** - Two-step email-first login, tenant picker screen, back navigation, and error states
 - [ ] **Phase 5: Login UX and Auth Guard** - Password show/hide, inline errors, input locking, and flash-free auth guard
 
@@ -77,7 +77,7 @@ Plans:
 Plans:
 
 - [x] 03-01-PLAN.md — expo-secure-store install + Jest config + AuthContext rewrite (login, logout, SESSION-01, SESSION-03)
-- [ ] 03-02-PLAN.md — Cold-start restore + AppState expiry detection + _layout.tsx wiring + call-site updates (SESSION-02, SESSION-04)
+- [x] 03-02-PLAN.md — Cold-start restore + AppState expiry detection + _layout.tsx wiring + call-site updates (SESSION-02, SESSION-04)
 
 ### Phase 4: Tenant Resolution Flow
 
@@ -126,6 +126,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | ---------------------------- | -------------- | ----------- | --------- |
 | 1. Infrastructure Foundation | 3/3 | Complete   | 2026-03-27 |
 | 2. Auth Service Layer        | 1/2 | In Progress|  |
-| 3. AuthContext and Session   | 1/2 | In Progress|  |
+| 3. AuthContext and Session   | 2/2 | Complete   | 2026-03-27 |
 | 4. Tenant Resolution Flow    | 0/2            | Not started | -         |
 | 5. Login UX and Auth Guard   | 0/2            | Not started | -         |
