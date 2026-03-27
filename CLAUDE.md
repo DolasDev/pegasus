@@ -116,207 +116,26 @@ Models crew and vehicle availability.
 - API spec files: `tests/api/{health,customers,moves,quotes}.spec.ts`
 - Browser spec files: `tests/browser/landing.spec.ts`
 
-> **Note**: For code patterns, architectural decisions, and other system rules, see the memory files below.
+> **Note**: For code patterns, architectural decisions, and other system rules, see the agent files below.
 
 ---
 
-## Agent Working Rules
+## Agent Files
 
-These rules govern how the agent executes tasks in this repository. They are **mandatory** — not suggestions.
+### Company (universal DolasDev principles)
 
-### Operating Context
+- **[dolas/agents/company/engineering-principles.md](./dolas/agents/company/engineering-principles.md)** — Plan before code, TDD, non-breaking increments, safety rails, observability standards, output format.
 
-You are operating inside a Git worktree on a dedicated feature branch. Each worktree is an isolated working directory mapped to exactly one branch — the main repository directory is not your workspace. Multiple agents may run in parallel in separate worktrees.
+### Team (DolasDev workflow)
 
-Operate as a disciplined senior engineer: stay within scope, preserve architectural consistency, minimize merge-conflict surface, and assume other agents depend on public interfaces you touch.
+- **[dolas/agents/team/workflow.md](./dolas/agents/team/workflow.md)** — Branch discipline, sync protocol, scope control, conflict handling, commits, plan file format, archiving.
 
-### Branch Discipline
+### Project (Pegasus-specific)
 
-- Work ONLY within the current working directory and its branch.
-- Never run `git checkout`, `git switch`, `git merge`, or `git rebase`.
-- Never remove or prune worktrees. Never modify git configuration.
-- Do NOT push unless explicitly instructed.
-
-**At session start**, identify the current branch (`git branch --show-current`), state it at the top of your plan file, and confirm all changes will remain on this branch.
-
-### Sync Before Coding
-
-**Before writing any code**, always run:
-
-```
-git fetch
-git pull
-```
-
-If `git pull` results in merge conflicts, **stop immediately**. Do not attempt to write any code. Present the conflicting files and conflict markers to the developer, explain the nature of each conflict, and assist in resolving them interactively. Only proceed with implementation after the working tree is clean and all conflicts are resolved.
-
-### Mandatory Pre-Implementation Phase
-
-**No code before plan approval.**
-
-Before writing any code, produce a plan containing:
-
-1. The task restated in your own words.
-2. A step-by-step implementation plan.
-3. Every file to be modified and every new file to be created.
-4. Potential side effects or risks.
-
-Wait for explicit developer approval before implementing anything.
-
-### Scope Control
-
-You may ONLY modify files explicitly listed in the approved plan or inside directories assigned for this task.
-
-You MUST NOT:
-
-- Refactor code unrelated to the task. If refactoring is required, limit it to in-scope files, ensure it does not alter unrelated public behaviour, and get separate approval for large refactors.
-- Rename global symbols outside scope.
-- Introduce architectural changes unless explicitly requested.
-- Apply formatting-only changes to unrelated files.
-- Update dependencies or lock files (`package-lock.json`, etc.) unless explicitly instructed.
-- Modify shared utilities, types, or interfaces without noting it in the plan and getting explicit approval.
-- Modify files outside the current worktree.
-
-If you discover a necessary change outside scope: **stop, report it, and request instruction.**
-
-### Conflict Handling
-
-Stop and seek clarification when:
-
-- Task is unclear → clarify before writing a plan.
-- Required files are missing → report and pause.
-- Architecture appears inconsistent → ask before fixing.
-- Overlapping responsibility detected with another subsystem → stop and ask.
-- Change requires cross-branch coordination → stop immediately.
-- Solution requires modifying shared infrastructure outside scope → stop.
-
-### Test-Driven Development
-
-**Tests are written before the implementation, not after.**
-
-For every feature, endpoint, or component being built:
-
-1. Write the test file first, covering the expected behaviour, error paths, and edge cases.
-2. Run the tests and confirm they fail for the right reason (the implementation does not exist yet).
-3. Write the minimum implementation needed to make the tests pass.
-4. Refactor if necessary, keeping tests green throughout.
-
-This applies at every layer:
-
-- **Domain logic** — write the unit test before the function.
-- **API handlers** — write the handler test (with mocked repositories) before the handler.
-- **Repository functions** — write the integration test (skip-guarded) before the repository.
-- **UI components** — write the component test before the component.
-
-**Plans and individual checklist items must reflect this order.** Each step in a plan that introduces new behaviour must list the test file as the item to implement first, with the implementation item immediately following. Example:
-
-```
-- [ ] Write tenant-users.test.ts (handler unit tests — all cases failing)
-- [ ] Implement tenant-users.ts (make tests pass)
-```
-
-Do not merge test and implementation steps into a single checklist item. They are distinct deliverables with a defined sequence.
-
-### Task Completion Gate
-
-**A task is not complete until all required test layers pass.**
-
-#### Step 1 — Unit + integration suite (always required)
-
-Run `npm test` from the repo root. Every Vitest test across every package must pass.
-
-#### Step 2 — E2E / acceptance suite (required when applicable)
-
-Run the Playwright suite from `apps/e2e/` when the task touches:
-
-- Any API endpoint (new, modified, or deleted)
-- Any browser-visible UI behaviour
-- Auth flows, routing, or data displayed to the user
-
-```bash
-cd apps/e2e && npm run e2e
-```
-
-If no `.env.test` exists, create one from `.env.test.example` (or ask the developer for values) before running. The global setup will start Docker Postgres automatically if it is not already running.
-
-If the task is purely internal (domain logic, infra config, dev tooling) and no existing E2E spec is affected, Step 2 may be skipped — but state explicitly in the plan why it is not applicable.
-
-#### Never work around failures by:
-
-- Skipping, disabling, or deleting a failing test
-- Marking a task complete despite failures
-- Commenting out assertions
-- Using `as any`, `// @ts-ignore`, or `// eslint-disable`
-
-A failing test is evidence of a real problem. Treat it as signal, not noise.
-
-### Plan File
-
-Each agent works from a plan file in `plans/in-progress/`. Check for an existing file before creating one. Use a short, descriptive kebab-case name (e.g. `plans/in-progress/add-rbac-middleware.md`).
-
-Every plan file must contain:
-
-- Current branch name and one-line goal
-- Ordered checklist: `[ ]` pending · `[x]` done · `[~]` in progress
-- All files to be modified and created, plus identified side effects or risks
-- Enough context that any agent can resume without re-reading the codebase
-
-**Write and get the plan approved before implementing.** Update it after every completed subtask — it is the source of truth for progress.
-
-### Non-Breaking, Independently Deployable Steps
-
-Each increment must leave the codebase deployable:
-
-- No partially-implemented features that break existing behaviour.
-- Prefer feature flags, additive changes, and backwards-compatible interfaces.
-- Database migrations must be non-destructive (no dropped columns/tables while old code still references them).
-
-### Safety Rails
-
-You MUST NOT:
-
-- Delete large blocks of code without explicit justification in the plan.
-- Remove configuration or environment logic.
-- Modify the database schema unless explicitly in the approved plan.
-- Introduce breaking API changes unless explicitly specified.
-
-### Observability & Logging
-
-When implementing any change, you MUST consider telemetry, tracing, and logging:
-
-- Use structured logging (e.g., `@aws-lambda-powertools/logger` in the backend) instead of `console.log`.
-- Do not leak internal stack traces or sensitive system data to the client in HTTP responses. Instead, catch exceptions, log the full details securely on the server with a `correlationId`, and return a sanitized JSON error payload to the client.
-- Propagate trace IDs (`x-correlation-id`) from the frontend across network boundaries to the backend for end-to-end traceability.
-
-### Output Format
-
-When presenting results: show changes clearly (diffs preferred), keep diffs minimal, explain why each change is necessary, and include no unrelated commentary.
-
-### Commits
-
-Every commit must be focused and atomic — one logical change, no debug artifacts, no temp files. Commit messages must state what changed and why.
-
-**Do not commit or push until the developer explicitly instructs you to.** When ready: run the full test suite (unit + integration, and E2E where applicable per the Task Completion Gate above), confirm all layers pass, summarise what changed, and wait for explicit approval.
-
-### Archiving Completed Plans
-
-After developer approval and commit, move the plan file from `plans/in-progress/` to `plans/completed/`:
-
-```
-plans/completed/<short-hash>-<slug>.md   # git rev-parse --short HEAD
-plans/completed/<YYYY-MM-DDTHHMM>-<slug>.md  # if no commit yet
-```
-
-The archived file is a permanent record — do not edit it. An empty `plans/in-progress/` means no work is in flight.
-
----
-
-## Memory File Index
-
-- **[CLAUDE.md](./CLAUDE.md)** — Main entry point: Repo overview, package map, commands, turbo pipeline, bounded contexts, test strategy.
-- **[DECISIONS.md](./DECISIONS.md)** — Architectural and technical decisions with reasoning.
-- **[PATTERNS.md](./PATTERNS.md)** — Code patterns, abstractions, and conventions to follow or avoid.
-- **[GOTCHAS.md](./GOTCHAS.md)** — Bugs, env issues, and non-obvious things discovered.
+- **[dolas/agents/project/context.md](./dolas/agents/project/context.md)** — Multi-agent worktree model, task completion gate, TDD layers for this repo.
+- **[dolas/agents/project/DECISIONS.md](./dolas/agents/project/DECISIONS.md)** — Architectural and technical decisions with reasoning.
+- **[dolas/agents/project/PATTERNS.md](./dolas/agents/project/PATTERNS.md)** — Code patterns, abstractions, and conventions to follow or avoid.
+- **[dolas/agents/project/GOTCHAS.md](./dolas/agents/project/GOTCHAS.md)** — Bugs, env issues, and non-obvious things discovered.
 
 > **Agent Instructions:**
-> After completing significant work in the repository, update the relevant memory files above. Before closing any task, confirm whether memory files accurately reflect what was learned or added so nothing is lost. This is your persistent memory system.
+> After completing significant work in the repository, update the relevant files above. Before closing any task, confirm whether these files accurately reflect what was learned or added so nothing is lost.
