@@ -57,7 +57,7 @@ Plans:
 
 Plans:
 
-- [ ] 02-01-PLAN.md — Auth types (AuthError, Session, MobileConfig) and cognitoService (SRP wrapper + tests)
+- [x] 02-01-PLAN.md — Auth types (AuthError, Session, MobileConfig) and cognitoService (SRP wrapper + tests)
 - [ ] 02-02-PLAN.md — authService factory (fetchMobileConfig, authenticate) + tests
 
 ### Phase 3: AuthContext and Session
@@ -124,7 +124,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase                        | Plans Complete | Status      | Completed |
 | ---------------------------- | -------------- | ----------- | --------- |
 | 1. Infrastructure Foundation | 3/3 | Complete   | 2026-03-27 |
-| 2. Auth Service Layer        | 0/2            | Not started | -         |
+| 2. Auth Service Layer        | 1/2 | In Progress|  |
 | 3. AuthContext and Session   | 0/2            | Not started | -         |
 | 4. Tenant Resolution Flow    | 0/2            | Not started | -         |
 | 5. Login UX and Auth Guard   | 0/2            | Not started | -         |

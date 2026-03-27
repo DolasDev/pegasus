@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 2 context gathered
-last_updated: "2026-03-27T19:12:31.271Z"
+status: executing
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-03-27T20:00:02.828Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 5
+  completed_plans: 4
   percent: 0
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** A driver can log in with their real company credentials and the app knows which tenant they belong to — no mock data, no hardcoded sessions.
-**Current focus:** Phase 01 — infrastructure-foundation
+**Current focus:** Phase 02 — auth-service-layer
 
 ## Current Position
 
-Phase: 2
-Plan: Not started
-Status: Phase complete — ready for verification
+Phase: 02 (auth-service-layer) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
 Last activity: 2026-03-27
 
 Progress: [░░░░░░░░░░] 0%
@@ -55,6 +55,7 @@ _Updated after each plan completion_
 | Phase 01 P03 | 2 | 1 tasks | 3 files |
 | Phase 01 P02 | 3min | 2 tasks | 2 files |
 | Phase 01 P01 | 3m | 2 tasks | 5 files |
+| Phase 02-auth-service-layer P01 | 2min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,9 @@ Recent decisions affecting current work:
 - [Phase 01]: Env vars checked before DB lookup in mobile-config — returns 500 early if misconfigured
 - [Phase 01]: Single COGNITO_MOBILE_CLIENT_ID env var — mobile app shares one Cognito client across all tenants
 - [Phase 01]: Mobile Cognito client uses userSrp authFlow (no OAuth, no secret) — CDK default adds OAuth to all clients in pools with Hosted UI domain
+- [Phase 02-01]: Session type has no token field — raw ID token discarded after validate-token; enforced at the type level
+- [Phase 02-01]: newPasswordRequired Cognito challenge rejects with AuthError(NewPasswordRequired) — prevents silent hang
+- [Phase 02-01]: signIn accepts poolId and clientId as args — Cognito config passed at call time to support runtime pool switching after tenant selection
 
 ### Pending Todos
 
@@ -85,6 +89,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T19:12:31.266Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-auth-service-layer/02-CONTEXT.md
+Last session: 2026-03-27T20:00:02.823Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: None
