@@ -30,15 +30,16 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 1. A dedicated mobile Cognito app client exists in the CDK stack with `generateSecret: false` and `ALLOW_USER_SRP_AUTH` enabled, verified in the AWS Console after deployment
 2. `GET /api/auth/mobile-config?tenantId=<id>` returns `{ userPoolId, clientId }` for a valid tenant and a 400 for an unknown tenantId
-3. `apps/mobile/index.ts` is the app entry point and imports `react-native-get-random-values` as its absolute first statement; the app runs as a development build (not Expo Go)
+3. `apps/mobile/app/_layout.tsx` imports `react-native-get-random-values` as its absolute first statement (polyfill is in \_layout.tsx, not index.ts — expo-router bypasses index.ts); the app runs as a development build (not Expo Go)
 4. `amazon-cognito-identity-js` and `react-native-get-random-values` are installed via `npx expo install` and appear in `apps/mobile/package.json`
-   **Plans**: TBD
+
+**Plans**: 3 plans
 
 Plans:
 
-- [ ] 01-01: CDK mobile Cognito app client
-- [ ] 01-02: GET /api/auth/mobile-config endpoint
-- [ ] 01-03: Entry-point polyfill and dependency installation
+- [ ] 01-01-PLAN.md — CDK mobile Cognito app client (CognitoStack + ApiStack + CDK tests)
+- [ ] 01-02-PLAN.md — GET /api/auth/mobile-config endpoint + API unit tests
+- [ ] 01-03-PLAN.md — Entry-point polyfill and dependency installation
 
 ### Phase 2: Auth Service Layer
 
