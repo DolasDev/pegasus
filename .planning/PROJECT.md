@@ -21,7 +21,7 @@ A driver can log in with their real company credentials and the app knows which 
 
 ### Active
 
-- [ ] `GET /api/auth/mobile-config` — returns Cognito user pool ID and mobile app client ID; called after tenant resolution so the app never hardcodes Cognito credentials
+- [x] `GET /api/auth/mobile-config` — returns Cognito user pool ID and mobile app client ID; called after tenant resolution so the app never hardcodes Cognito credentials — Validated in Phase 01: infrastructure-foundation
 - [ ] Mobile auth service — wraps `resolve-tenants`, `select-tenant`, `validate-token` and Cognito SRP in a clean typed API consumed by `AuthContext`
 - [ ] Two-step login UX — email submitted first → tenant resolution → tenant picker shown only when >1 tenant found → password entry
 - [ ] Tenant picker screen — `app/(auth)/tenant-picker.tsx` — list of tenant names, driver selects one, app calls `select-tenant`
@@ -62,10 +62,10 @@ The Pegasus monorepo already has a complete Cognito-backed auth system for the w
 
 | Decision                                      | Rationale                                                                      | Outcome   |
 | --------------------------------------------- | ------------------------------------------------------------------------------ | --------- |
-| Cognito config via API endpoint               | Keeps credentials out of app bundle; single source of truth if pool changes    | — Pending |
-| `amazon-cognito-identity-js` for SRP          | Pure JS, works in RN without native modules; lighter than Amplify              | — Pending |
+| Cognito config via API endpoint               | Keeps credentials out of app bundle; single source of truth if pool changes    | ✓ Phase 01 |
+| `amazon-cognito-identity-js` for SRP          | Pure JS, works in RN without native modules; lighter than Amplify              | ✓ Phase 01 |
 | Two-step login (email first, password second) | Required for tenant resolution before Cognito auth; matches web app UX pattern | — Pending |
-| Dedicated mobile Cognito app client           | Best practice for mobile — no client secret, separate from web client          | — Pending |
+| Dedicated mobile Cognito app client           | Best practice for mobile — no client secret, separate from web client          | ✓ Phase 01 |
 
 ## Evolution
 
@@ -88,4 +88,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-_Last updated: 2026-03-27 after initialization_
+_Last updated: 2026-03-27 after Phase 01 (infrastructure-foundation) complete_
