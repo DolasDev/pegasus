@@ -71,12 +71,13 @@ Plans:
 2. On cold start with a valid stored session, the app renders the authenticated route without navigating to the login screen
 3. Driver can log out; secure store is cleared, `AuthContext` user is null, and the login screen is shown
 4. On app resume (foreground event) with an expired session, the driver sees a re-login prompt rather than proceeding to the authenticated route
-   **Plans**: TBD
+
+**Plans**: 2 plans
 
 Plans:
 
-- [ ] 03-01: AuthContext replacement with secure-store session persistence
-- [ ] 03-02: Cold-start restore and expiry detection
+- [ ] 03-01-PLAN.md — expo-secure-store install + Jest config + AuthContext rewrite (login, logout, SESSION-01, SESSION-03)
+- [ ] 03-02-PLAN.md — Cold-start restore + AppState expiry detection + _layout.tsx wiring + call-site updates (SESSION-02, SESSION-04)
 
 ### Phase 4: Tenant Resolution Flow
 
