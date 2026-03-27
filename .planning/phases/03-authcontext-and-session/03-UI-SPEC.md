@@ -1,7 +1,8 @@
 ---
 phase: 3
 slug: authcontext-and-session
-status: draft
+status: approved
+reviewed_at: 2026-03-27
 shadcn_initialized: false
 preset: none
 created: 2026-03-27
@@ -62,18 +63,18 @@ Source: `packages/theme/src/spacing.ts`
 
 ## Typography
 
-Font sizes from `packages/theme/src/typography.ts`. Weights follow the existing pattern (400 regular, 600 semibold, 700 bold):
+Font sizes from `packages/theme/src/typography.ts`. Two weights only: 400 (regular) and 600 (semibold):
 
 | Role    | Size | Weight | Line Height | Token     |
 | ------- | ---- | ------ | ----------- | --------- |
 | Caption | 14px | 600    | 1.4         | small     |
 | Body    | 16px | 400    | 1.5         | medium    |
 | Value   | 18px | 600    | 1.4         | large     |
-| Label   | 22px | 700    | 1.2         | xlarge    |
+| Label   | 22px | 600    | 1.2         | xlarge    |
 
 Notes:
 - 18px (`large`) is the minimum for trucker-mode readability — enforced by existing theme comment.
-- Field labels (`EMAIL`, `PASSWORD`, section titles) use 14px weight 700 with `letterSpacing: 0.5`–`1.0` — match existing `settings.tsx` pattern.
+- Field labels (`EMAIL`, `PASSWORD`, section titles) use 14px weight 600 with `letterSpacing: 0.5`–`1.0` — match existing `settings.tsx` pattern.
 - No new font sizes. Do not introduce sizes outside this table.
 - Role field uses `session?.role` — display as-is (e.g. `"driver"`, `"admin"`). No transformation needed in Phase 3.
 
@@ -162,7 +163,7 @@ No other changes to `login.tsx` in Phase 3.
 | Settings field empty value           | — (em dash, shown when `session` is null)                         |
 | Logout confirmation title            | Log Out                                                           |
 | Logout confirmation body             | Are you sure you want to log out?                                 |
-| Logout confirmation cancel           | Cancel                                                            |
+| Logout confirmation cancel           | Stay Logged In                                                    |
 | Logout confirmation destructive      | Log Out                                                           |
 | Expired session — no copy needed     | (logout() is called silently; the login screen is the re-prompt)  |
 | Login screen hint                    | (removed — no hint text in Phase 3)                               |
