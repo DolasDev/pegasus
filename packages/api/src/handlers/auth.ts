@@ -83,6 +83,10 @@ const ValidateTokenBody = z.object({
   idToken: z.string().min(1),
 })
 
+const MobileConfigQuery = z.object({
+  tenantId: z.string().min(1),
+})
+
 // ---------------------------------------------------------------------------
 // Shared Prisma select fragment and mapper for login-facing SSO provider data.
 //
@@ -474,6 +478,58 @@ authHandler.post(
     }
 
     return c.json({ data: session })
+  },
+)
+
+// ---------------------------------------------------------------------------
+// GET /api/auth/mobile-config
+//
+// Returns the Cognito user pool ID and mobile app client ID for the given
+// tenant. Called by the mobile app after tenant selection to obtain Cognito
+// credentials at runtime — credentials are never baked into the app bundle.
+//
+// The tenant existence check ensures callers cannot probe for arbitrary pool
+// IDs using fabricated tenant IDs. Unknown tenants receive a 400.
+//
+// Request:  ?tenantId=<uuid>
+// Response: { data: { userPoolId: string, clientId: string } }   200
+//           { error, code: TENANT_NOT_FOUND }                     400
+//           { error, code: VALIDATION_ERROR }                     400
+//           { error, code: INTERNAL_ERROR }                       500
+//
+// Public — no auth middleware. Called before any session exists.
+// ---------------------------------------------------------------------------
+authHandler.get(
+  '/mobile-config',
+  validator('query', (value, c) => {
+    const r = MobileConfigQuery.safeParse(value)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => {
+    const { tenantId } = c.req.valid('query')
+
+    const userPoolId = process.env['COGNITO_USER_POOL_ID'] ?? ''
+    const clientId = process.env['COGNITO_MOBILE_CLIENT_ID'] ?? ''
+
+    if (!userPoolId || !clientId) {
+      logger.error('mobile-config: COGNITO_USER_POOL_ID or COGNITO_MOBILE_CLIENT_ID not set')
+      return c.json(
+        { error: 'Authentication service misconfigured', code: 'INTERNAL_ERROR' },
+        500,
+      )
+    }
+
+    const tenant = await db.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true },
+    })
+
+    if (!tenant) {
+      return c.json({ error: 'Tenant not found', code: 'TENANT_NOT_FOUND' }, 400)
+    }
+
+    return c.json({ data: { userPoolId, clientId } })
   },
 )
 
