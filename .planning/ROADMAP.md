@@ -39,7 +39,7 @@ Plans:
 
 - [ ] 01-01-PLAN.md — CDK mobile Cognito app client (CognitoStack + ApiStack + CDK tests)
 - [ ] 01-02-PLAN.md — GET /api/auth/mobile-config endpoint + API unit tests
-- [ ] 01-03-PLAN.md — Entry-point polyfill and dependency installation
+- [x] 01-03-PLAN.md — Entry-point polyfill and dependency installation
 
 ### Phase 2: Auth Service Layer
 
@@ -122,7 +122,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase                        | Plans Complete | Status      | Completed |
 | ---------------------------- | -------------- | ----------- | --------- |
-| 1. Infrastructure Foundation | 0/3            | Not started | -         |
+| 1. Infrastructure Foundation | 1/3 | In Progress|  |
 | 2. Auth Service Layer        | 0/2            | Not started | -         |
 | 3. AuthContext and Session   | 0/2            | Not started | -         |
 | 4. Tenant Resolution Flow    | 0/2            | Not started | -         |
