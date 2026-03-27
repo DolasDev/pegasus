@@ -13,7 +13,7 @@ Three infrastructure blockers must be cleared first (Cognito app client, crypto 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Infrastructure Foundation** - Cognito mobile app client, crypto polyfill entry point, and mobile-config API endpoint
+- [x] **Phase 1: Infrastructure Foundation** - Cognito mobile app client, crypto polyfill entry point, and mobile-config API endpoint (completed 2026-03-27)
 - [ ] **Phase 2: Auth Service Layer** - cognitoService and authService built test-first; SRP handshake proven in isolation
 - [ ] **Phase 3: AuthContext and Session** - AuthContext replaces mock auth; session persisted to secure store; logout and expiry detection working
 - [ ] **Phase 4: Tenant Resolution Flow** - Two-step email-first login, tenant picker screen, back navigation, and error states
@@ -37,7 +37,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 
-- [ ] 01-01-PLAN.md — CDK mobile Cognito app client (CognitoStack + ApiStack + CDK tests)
+- [x] 01-01-PLAN.md — CDK mobile Cognito app client (CognitoStack + ApiStack + CDK tests)
 - [x] 01-02-PLAN.md — GET /api/auth/mobile-config endpoint + API unit tests
 - [x] 01-03-PLAN.md — Entry-point polyfill and dependency installation
 
@@ -122,7 +122,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase                        | Plans Complete | Status      | Completed |
 | ---------------------------- | -------------- | ----------- | --------- |
-| 1. Infrastructure Foundation | 1/3 | In Progress|  |
+| 1. Infrastructure Foundation | 3/3 | Complete   | 2026-03-27 |
 | 2. Auth Service Layer        | 0/2            | Not started | -         |
 | 3. AuthContext and Session   | 0/2            | Not started | -         |
 | 4. Tenant Resolution Flow    | 0/2            | Not started | -         |

@@ -8,7 +8,7 @@
 ### Infrastructure
 
 - [x] **INFRA-01**: App entry point imports `react-native-get-random-values` before all other imports so the Cognito SRP handshake has a working crypto implementation at runtime
-- [ ] **INFRA-02**: A dedicated mobile Cognito app client exists (CDK) with `generateSecret: false` and SRP auth flow enabled — no client secret, separate from the web app client
+- [x] **INFRA-02**: A dedicated mobile Cognito app client exists (CDK) with `generateSecret: false` and SRP auth flow enabled — no client secret, separate from the web app client
 
 ### API
 
@@ -70,7 +70,7 @@
 | Requirement | Phase   | Status  |
 | ----------- | ------- | ------- |
 | INFRA-01    | Phase 1 | Complete |
-| INFRA-02    | Phase 1 | Pending |
+| INFRA-02    | Phase 1 | Complete |
 | API-01      | Phase 1 | Complete |
 | TENANT-01   | Phase 4 | Pending |
 | TENANT-02   | Phase 4 | Pending |
