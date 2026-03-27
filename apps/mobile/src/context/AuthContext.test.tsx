@@ -1,10 +1,12 @@
 import React from 'react'
 import { render, act } from '@testing-library/react-native'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import * as SecureStore from 'expo-secure-store'
+import { AppState } from 'react-native'
 import { AuthProvider, useAuth } from './AuthContext'
 import { logger } from '../utils/logger'
+import type { Session } from '../auth/types'
 
-// Updates ctxRef.current on every render so tests always see the latest state.
+// Updates ctxRef.current on every render so tests always see latest state.
 function TestConsumer({
   ctxRef,
 }: {
@@ -14,12 +16,24 @@ function TestConsumer({
   return null
 }
 
-// Render synchronously — never inside act(), which unmounts the renderer.
-// Call `await act(async () => {})` after this to flush async effects (checkSession).
-function renderWithProvider(): React.MutableRefObject<ReturnType<typeof useAuth> | null> {
+const mockSession: Session = {
+  sub: 'user-123',
+  tenantId: 'tenant-abc',
+  role: 'driver',
+  email: 'driver@example.com',
+  expiresAt: Date.now() + 3600_000, // 1 hour from now
+}
+
+const mockAuthService = {
+  authenticate: jest.fn(),
+}
+
+function renderWithProvider(
+  authService: typeof mockAuthService = mockAuthService,
+): React.MutableRefObject<ReturnType<typeof useAuth> | null> {
   const ctxRef: React.MutableRefObject<ReturnType<typeof useAuth> | null> = { current: null }
   render(
-    <AuthProvider>
+    <AuthProvider authService={authService}>
       <TestConsumer ctxRef={ctxRef} />
     </AuthProvider>,
   )
@@ -28,113 +42,99 @@ function renderWithProvider(): React.MutableRefObject<ReturnType<typeof useAuth>
 
 describe('AuthProvider', () => {
   describe('initial state', () => {
-    it('has isAuthenticated false and isLoading false after session check with no stored session', async () => {
+    it('has session null, isAuthenticated false, isLoading true initially, false after checkSession', async () => {
       const ctxRef = renderWithProvider()
+      // isLoading starts true while checkSession runs
+      expect(ctxRef.current!.isLoading).toBe(true)
       await act(async () => {})
+      expect(ctxRef.current!.session).toBeNull()
       expect(ctxRef.current!.isAuthenticated).toBe(false)
       expect(ctxRef.current!.isLoading).toBe(false)
     })
   })
 
-  describe('checkSession', () => {
-    it('restores auth state from AsyncStorage when session exists', async () => {
-      const session = JSON.stringify({ email: 'test@example.com', name: 'Test User' })
-      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(session)
-
-      const ctxRef = renderWithProvider()
-      await act(async () => {})
-
-      expect(ctxRef.current!.isAuthenticated).toBe(true)
-      expect(ctxRef.current!.driverEmail).toBe('test@example.com')
-      expect(ctxRef.current!.driverName).toBe('Test User')
-      expect(ctxRef.current!.isLoading).toBe(false)
-    })
-
-    it('leaves isAuthenticated false when no session in storage', async () => {
-      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(null)
-
-      const ctxRef = renderWithProvider()
-      await act(async () => {})
-
-      expect(ctxRef.current!.isAuthenticated).toBe(false)
-      expect(ctxRef.current!.isLoading).toBe(false)
-    })
-  })
-
-  describe('login', () => {
+  describe('login — SESSION-01', () => {
     let ctxRef: React.MutableRefObject<ReturnType<typeof useAuth> | null>
 
     beforeEach(async () => {
+      mockAuthService.authenticate.mockReset()
       ctxRef = renderWithProvider()
       await act(async () => {})
     })
 
-    it('returns true, persists session, and updates state on success', async () => {
+    it('returns true, persists session to secure store, sets session state', async () => {
+      mockAuthService.authenticate.mockResolvedValueOnce(mockSession)
       let result = false
       await act(async () => {
-        result = await ctxRef.current!.login('driver@example.com', 'pass1')
+        result = await ctxRef.current!.login('driver@example.com', 'pass123', 'tenant-abc')
       })
 
       expect(result).toBe(true)
+      expect(ctxRef.current!.session).toEqual(mockSession)
       expect(ctxRef.current!.isAuthenticated).toBe(true)
-      expect(ctxRef.current!.driverEmail).toBe('driver@example.com')
-      expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-        '@moving_app_session',
-        expect.stringContaining('driver@example.com'),
+      expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
+        'pegasus_session',
+        JSON.stringify(mockSession),
       )
       expect(logger.logAuth).toHaveBeenCalledWith('login', 'driver@example.com')
     })
 
-    it('returns false when email is empty', async () => {
-      let result = true
+    it('does NOT store raw tokens — only Session object fields are persisted (SESSION-01)', async () => {
+      mockAuthService.authenticate.mockResolvedValueOnce(mockSession)
       await act(async () => {
-        result = await ctxRef.current!.login('', 'pass1')
+        await ctxRef.current!.login('driver@example.com', 'pass123', 'tenant-abc')
       })
 
-      expect(result).toBe(false)
-      expect(ctxRef.current!.isAuthenticated).toBe(false)
+      const storedArg = (SecureStore.setItemAsync as jest.Mock).mock.calls[0]?.[1] as string
+      const parsed = JSON.parse(storedArg)
+      // Session must not contain any token field
+      expect(parsed).not.toHaveProperty('idToken')
+      expect(parsed).not.toHaveProperty('token')
+      expect(parsed).not.toHaveProperty('accessToken')
+      expect(parsed).not.toHaveProperty('refreshToken')
+      // Must contain exactly the Session fields
+      expect(parsed).toHaveProperty('sub')
+      expect(parsed).toHaveProperty('tenantId')
+      expect(parsed).toHaveProperty('role')
+      expect(parsed).toHaveProperty('email')
+      expect(parsed).toHaveProperty('expiresAt')
     })
 
-    it('returns false when password is shorter than 4 characters', async () => {
+    it('returns false and does not persist when authenticate rejects', async () => {
+      mockAuthService.authenticate.mockRejectedValueOnce(
+        new Error('NotAuthorizedException'),
+      )
       let result = true
       await act(async () => {
-        result = await ctxRef.current!.login('driver@example.com', 'abc')
+        result = await ctxRef.current!.login('driver@example.com', 'wrongpass', 'tenant-abc')
       })
 
       expect(result).toBe(false)
+      expect(ctxRef.current!.session).toBeNull()
       expect(ctxRef.current!.isAuthenticated).toBe(false)
-    })
-
-    it('returns false when AsyncStorage.setItem throws', async () => {
-      ;(AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('Storage full'))
-
-      let result = true
-      await act(async () => {
-        result = await ctxRef.current!.login('driver@example.com', 'pass1')
-      })
-
-      expect(result).toBe(false)
+      expect(SecureStore.setItemAsync).not.toHaveBeenCalled()
     })
   })
 
-  describe('logout', () => {
-    it('removes session from AsyncStorage, resets state, and calls logAuth', async () => {
-      const session = JSON.stringify({ email: 'driver@example.com', name: 'Driver' })
-      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(session)
-
+  describe('logout — SESSION-03', () => {
+    it('clears secure store, resets session to null, calls logAuth', async () => {
+      // Set up logged-in state first
+      mockAuthService.authenticate.mockResolvedValueOnce(mockSession)
       const ctxRef = renderWithProvider()
       await act(async () => {})
-
+      await act(async () => {
+        await ctxRef.current!.login('driver@example.com', 'pass123', 'tenant-abc')
+      })
       expect(ctxRef.current!.isAuthenticated).toBe(true)
 
+      // Logout
       await act(async () => {
         await ctxRef.current!.logout()
       })
 
-      expect(AsyncStorage.removeItem).toHaveBeenCalledWith('@moving_app_session')
+      expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith('pegasus_session')
+      expect(ctxRef.current!.session).toBeNull()
       expect(ctxRef.current!.isAuthenticated).toBe(false)
-      expect(ctxRef.current!.driverEmail).toBe('')
-      expect(ctxRef.current!.driverName).toBe('')
       expect(logger.logAuth).toHaveBeenCalledWith('logout', 'driver@example.com')
     })
   })

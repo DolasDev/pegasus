@@ -1,79 +1,70 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import AsyncStorage from '@react-native-async-storage/async-storage'
-import { MOCK_DRIVER } from '../services/mockData'
+import * as SecureStore from 'expo-secure-store'
+import type { Session } from '../auth/types'
 import { logger } from '../utils/logger'
 
+const SESSION_KEY = 'pegasus_session'
+
 interface AuthContextType {
+  session: Session | null
   isAuthenticated: boolean
   isLoading: boolean
-  driverName: string
-  driverEmail: string
-  login: (email: string, password: string) => Promise<boolean>
+  login: (email: string, password: string, tenantId: string) => Promise<boolean>
   logout: () => Promise<void>
+}
+
+type AuthProviderProps = {
+  authService: {
+    authenticate(email: string, password: string, tenantId: string): Promise<Session>
+  }
+  children: React.ReactNode
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-const STORAGE_KEY = '@moving_app_session'
-
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+export const AuthProvider: React.FC<AuthProviderProps> = ({ authService, children }) => {
+  const [session, setSession] = useState<Session | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [driverName, setDriverName] = useState('')
-  const [driverEmail, setDriverEmail] = useState('')
 
+  // Derived — never stored as separate useState to avoid sync issues (D-03)
+  const isAuthenticated = session !== null
+
+  // Cold-start restore (SESSION-02) — check for existing session on mount
   useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const raw = await SecureStore.getItemAsync(SESSION_KEY)
+        if (raw) {
+          const stored = JSON.parse(raw) as Session
+          setSession(stored)
+        }
+      } catch (error) {
+        logger.error('Error restoring session', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
     checkSession()
   }, [])
 
-  const checkSession = async () => {
+  const login = async (email: string, password: string, tenantId: string): Promise<boolean> => {
     try {
-      const session = await AsyncStorage.getItem(STORAGE_KEY)
-      if (session) {
-        const { email, name } = JSON.parse(session)
-        setDriverEmail(email)
-        setDriverName(name)
-        setIsAuthenticated(true)
-      }
+      const newSession = await authService.authenticate(email, password, tenantId)
+      await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(newSession))
+      setSession(newSession)
+      logger.logAuth('login', email)
+      return true
     } catch (error) {
-      console.error('Error checking session:', error)
-    } finally {
-      setIsLoading(false)
+      logger.error('Login failed', error)
+      return false
     }
   }
 
-  const login = async (email: string, password: string): Promise<boolean> => {
-    // Mock authentication - accept any credentials
-    // In production, this would call a real API
-    if (email && password.length >= 4) {
-      const session = {
-        email: email,
-        name: MOCK_DRIVER.name,
-        timestamp: new Date().toISOString(),
-      }
-
-      try {
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(session))
-        setDriverEmail(email)
-        setDriverName(MOCK_DRIVER.name)
-        setIsAuthenticated(true)
-        logger.logAuth('login', email)
-        return true
-      } catch (error) {
-        logger.error('Error saving session', error)
-        return false
-      }
-    }
-    return false
-  }
-
-  const logout = async () => {
+  const logout = async (): Promise<void> => {
     try {
-      const email = driverEmail
-      await AsyncStorage.removeItem(STORAGE_KEY)
-      setIsAuthenticated(false)
-      setDriverEmail('')
-      setDriverName('')
+      const email = session?.email ?? ''
+      await SecureStore.deleteItemAsync(SESSION_KEY)
+      setSession(null)
       logger.logAuth('logout', email)
     } catch (error) {
       logger.error('Error logging out', error)
@@ -83,10 +74,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider
       value={{
+        session,
         isAuthenticated,
         isLoading,
-        driverName,
-        driverEmail,
         login,
         logout,
       }}
