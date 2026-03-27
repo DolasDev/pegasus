@@ -67,38 +67,36 @@
 
 ## Traceability
 
-_Populated during roadmap creation._
-
-| Requirement | Phase | Status  |
-| ----------- | ----- | ------- |
-| INFRA-01    | —     | Pending |
-| INFRA-02    | —     | Pending |
-| API-01      | —     | Pending |
-| TENANT-01   | —     | Pending |
-| TENANT-02   | —     | Pending |
-| TENANT-03   | —     | Pending |
-| TENANT-04   | —     | Pending |
-| TENANT-05   | —     | Pending |
-| TENANT-06   | —     | Pending |
-| AUTH-01     | —     | Pending |
-| AUTH-02     | —     | Pending |
-| AUTH-03     | —     | Pending |
-| AUTH-04     | —     | Pending |
-| AUTH-05     | —     | Pending |
-| AUTH-06     | —     | Pending |
-| SESSION-01  | —     | Pending |
-| SESSION-02  | —     | Pending |
-| SESSION-03  | —     | Pending |
-| SESSION-04  | —     | Pending |
-| GUARD-01    | —     | Pending |
+| Requirement | Phase   | Status  |
+| ----------- | ------- | ------- |
+| INFRA-01    | Phase 1 | Pending |
+| INFRA-02    | Phase 1 | Pending |
+| API-01      | Phase 1 | Pending |
+| TENANT-01   | Phase 4 | Pending |
+| TENANT-02   | Phase 4 | Pending |
+| TENANT-03   | Phase 4 | Pending |
+| TENANT-04   | Phase 4 | Pending |
+| TENANT-05   | Phase 4 | Pending |
+| TENANT-06   | Phase 4 | Pending |
+| AUTH-01     | Phase 2 | Pending |
+| AUTH-02     | Phase 2 | Pending |
+| AUTH-03     | Phase 2 | Pending |
+| AUTH-04     | Phase 5 | Pending |
+| AUTH-05     | Phase 5 | Pending |
+| AUTH-06     | Phase 5 | Pending |
+| SESSION-01  | Phase 3 | Pending |
+| SESSION-02  | Phase 3 | Pending |
+| SESSION-03  | Phase 3 | Pending |
+| SESSION-04  | Phase 3 | Pending |
+| GUARD-01    | Phase 5 | Pending |
 
 **Coverage:**
 
 - v1 requirements: 20 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 20 ⚠️
+- Mapped to phases: 20
+- Unmapped: 0 ✓
 
 ---
 
 _Requirements defined: 2026-03-27_
-_Last updated: 2026-03-27 after initial definition_
+_Last updated: 2026-03-27 after roadmap creation_
