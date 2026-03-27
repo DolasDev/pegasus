@@ -57,9 +57,9 @@ Sourced from `packages/theme/src/typography.ts`. All sizes are React Native nume
 | Body    | 16   | 400 (regular)  | 1.5         | Form labels, input text, body copy        |
 | Label   | 14   | 400 (regular)  | 1.4         | Helper text, secondary labels, timestamps |
 | Heading | 22   | 600 (semibold) | 1.2         | Screen titles, section headings           |
-| Display | 28   | 700 (bold)     | 1.1         | App name / brand headline                 |
+| Display | 28   | 600 (semibold) | 1.1         | App name / brand headline                 |
 
-Weights declared: regular (400) and semibold (600). Bold (700) is reserved for the display role only (existing brand usage in login screen title).
+Weights declared: regular (400) and semibold (600) only. Display is differentiated from Heading by size (28 vs 22) — no third weight is needed or permitted. Update `packages/theme/src/typography.ts` to assign `fontWeight: '600'` to both Heading and Display roles.
 
 > Minimum body size is 18px per theme comments ("Minimum for Trucker Mode") — the 16px body above is for non-critical secondary copy only. Any primary action copy or input placeholder uses 18px (`fontSize.large` token).
 
