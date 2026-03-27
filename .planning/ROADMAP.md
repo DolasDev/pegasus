@@ -38,7 +38,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 
 - [ ] 01-01-PLAN.md — CDK mobile Cognito app client (CognitoStack + ApiStack + CDK tests)
-- [ ] 01-02-PLAN.md — GET /api/auth/mobile-config endpoint + API unit tests
+- [x] 01-02-PLAN.md — GET /api/auth/mobile-config endpoint + API unit tests
 - [x] 01-03-PLAN.md — Entry-point polyfill and dependency installation
 
 ### Phase 2: Auth Service Layer

@@ -12,7 +12,7 @@
 
 ### API
 
-- [ ] **API-01**: `GET /api/auth/mobile-config?tenantId=<id>` returns the Cognito user pool ID and mobile app client ID for the given tenant; public endpoint, no authentication required
+- [x] **API-01**: `GET /api/auth/mobile-config?tenantId=<id>` returns the Cognito user pool ID and mobile app client ID for the given tenant; public endpoint, no authentication required
 
 ### Tenant Resolution
 
@@ -71,7 +71,7 @@
 | ----------- | ------- | ------- |
 | INFRA-01    | Phase 1 | Complete |
 | INFRA-02    | Phase 1 | Pending |
-| API-01      | Phase 1 | Pending |
+| API-01      | Phase 1 | Complete |
 | TENANT-01   | Phase 4 | Pending |
 | TENANT-02   | Phase 4 | Pending |
 | TENANT-03   | Phase 4 | Pending |
