@@ -1,0 +1,10 @@
+{
+  "permission": {
+    "read": {
+      "/home/steve/repos/pegasus/.opencode/get-shit-done/*": "allow"
+    },
+    "external_directory": {
+      "/home/steve/repos/pegasus/.opencode/get-shit-done/*": "allow"
+    }
+  }
+}
