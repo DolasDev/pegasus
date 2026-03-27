@@ -64,6 +64,17 @@ describe('ApiStack — Lambda function', () => {
       VpcConfig: Match.absent(),
     })
   })
+
+  it('sets COGNITO_MOBILE_CLIENT_ID environment variable (per D-07)', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.objectLike({
+          COGNITO_MOBILE_CLIENT_ID: Match.anyValue(),
+        }),
+      },
+    })
+  })
 })
 
 describe('ApiStack — IAM permissions', () => {

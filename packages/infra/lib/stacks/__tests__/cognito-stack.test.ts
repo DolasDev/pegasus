@@ -1,4 +1,4 @@
-import { describe, it, beforeAll } from 'vitest'
+import { describe, it, beforeAll, expect } from 'vitest'
 import * as cdk from 'aws-cdk-lib'
 import { Template, Match } from 'aws-cdk-lib/assertions'
 import { CognitoStack } from '../cognito-stack'
@@ -378,5 +378,93 @@ describe('CognitoStack — CloudFormation Outputs', () => {
     template.hasOutput('JwksUrl', {
       Export: { Name: 'PegasusCognitoJwksUrl' },
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Mobile app client (INFRA-02)
+// ---------------------------------------------------------------------------
+
+describe('CognitoStack — Mobile app client', () => {
+  it('names the client "mobile-app-client"', () => {
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      ClientName: 'mobile-app-client',
+    })
+  })
+
+  it('does not generate a client secret (SRP-only — no secret in the mobile app)', () => {
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      ClientName: 'mobile-app-client',
+      GenerateSecret: false,
+    })
+  })
+
+  it('enables ALLOW_USER_SRP_AUTH (required by amazon-cognito-identity-js)', () => {
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      ClientName: 'mobile-app-client',
+      ExplicitAuthFlows: Match.arrayWith(['ALLOW_USER_SRP_AUTH']),
+    })
+  })
+
+  it('does not register tenant or admin Hosted UI callback URLs', () => {
+    // When no oAuth block is set, CDK emits a placeholder "https://example.com"
+    // callback rather than the tenant/admin localhost or CloudFront URLs.
+    // This confirms the mobile client is not wired to the Hosted UI flow.
+    // The absence of localhost:5173 / localhost:5174 is the key invariant.
+    const clients = template.findResources('AWS::Cognito::UserPoolClient', {
+      Properties: { ClientName: 'mobile-app-client' },
+    })
+    const mobileClient = Object.values(clients)[0] as {
+      Properties: { CallbackURLs?: string[] }
+    }
+    const callbackUrls: string[] = mobileClient?.Properties?.CallbackURLs ?? []
+    expect(callbackUrls.some((u) => u.includes('localhost:5173'))).toBe(false)
+    expect(callbackUrls.some((u) => u.includes('localhost:5174'))).toBe(false)
+  })
+
+  it('sets ID token validity to 8 hours (480 minutes in CloudFormation)', () => {
+    // CDK Duration.hours(8) → 480 minutes in CloudFormation (not raw hours)
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      ClientName: 'mobile-app-client',
+      IdTokenValidity: 480,
+    })
+  })
+
+  it('sets refresh token validity to 30 days (43200 minutes in CloudFormation)', () => {
+    // CDK Duration.days(30) → 43200 minutes in CloudFormation
+    const thirtyDaysInMinutes = 30 * 24 * 60
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      ClientName: 'mobile-app-client',
+      RefreshTokenValidity: thirtyDaysInMinutes,
+    })
+  })
+
+  it('enables token revocation', () => {
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      ClientName: 'mobile-app-client',
+      EnableTokenRevocation: true,
+    })
+  })
+
+  it('exports mobile client ID to SSM at /pegasus/mobile/cognito-client-id', () => {
+    template.hasResourceProperties('AWS::SSM::Parameter', {
+      Name: '/pegasus/mobile/cognito-client-id',
+      Type: 'String',
+    })
+  })
+
+  it('exports mobile client ID as CloudFormation output PegasusCognitoMobileClientId', () => {
+    const outputs = template.findOutputs('*')
+    const mobileClientOutput = Object.values(outputs).find(
+      (o: Record<string, unknown>) =>
+        (o['Export'] as Record<string, unknown> | undefined)?.['Name'] ===
+        'PegasusCognitoMobileClientId',
+    )
+    expect(mobileClientOutput).toBeDefined()
+  })
+
+  it('does not change the Lambda function count (still 2: pre-auth + pre-token)', () => {
+    // Mobile app client addition must not add any Lambda functions
+    template.resourceCountIs('AWS::Lambda::Function', 2)
   })
 })
