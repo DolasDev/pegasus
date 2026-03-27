@@ -58,7 +58,7 @@ Plans:
 Plans:
 
 - [x] 02-01-PLAN.md — Auth types (AuthError, Session, MobileConfig) and cognitoService (SRP wrapper + tests)
-- [ ] 02-02-PLAN.md — authService factory (fetchMobileConfig, authenticate) + tests
+- [x] 02-02-PLAN.md — authService factory (fetchMobileConfig, authenticate) + tests
 
 ### Phase 3: AuthContext and Session
 

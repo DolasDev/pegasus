@@ -25,9 +25,9 @@
 
 ### Authentication
 
-- [ ] **AUTH-01**: After tenant selection, app fetches `GET /api/auth/mobile-config?tenantId=<id>` to obtain the Cognito user pool ID and mobile client ID at runtime (never baked into app bundle)
+- [x] **AUTH-01**: After tenant selection, app fetches `GET /api/auth/mobile-config?tenantId=<id>` to obtain the Cognito user pool ID and mobile client ID at runtime (never baked into app bundle)
 - [x] **AUTH-02**: Driver enters password and app authenticates via Cognito SRP using `amazon-cognito-identity-js` — entirely in-app, no browser redirect
-- [ ] **AUTH-03**: On successful SRP auth, app calls `POST /api/auth/validate-token` with the Cognito ID token and uses the returned claims (tenantId, role, email, sub, expiresAt) as the session
+- [x] **AUTH-03**: On successful SRP auth, app calls `POST /api/auth/validate-token` with the Cognito ID token and uses the returned claims (tenantId, role, email, sub, expiresAt) as the session
 - [ ] **AUTH-04**: Password field includes a show/hide toggle so the driver can verify what they typed
 - [ ] **AUTH-05**: Authentication errors (wrong password, account locked, network failure) are displayed inline — not as `Alert.alert` popups
 - [ ] **AUTH-06**: Submit button is disabled and all inputs are non-editable throughout the entire login flow (email → tenant resolution → password → SRP → token validation) to prevent concurrent requests and the associated cross-tenant session race
@@ -78,9 +78,9 @@
 | TENANT-04   | Phase 4 | Pending |
 | TENANT-05   | Phase 4 | Pending |
 | TENANT-06   | Phase 4 | Pending |
-| AUTH-01     | Phase 2 | Pending |
+| AUTH-01     | Phase 2 | Complete |
 | AUTH-02     | Phase 2 | Complete |
-| AUTH-03     | Phase 2 | Pending |
+| AUTH-03     | Phase 2 | Complete |
 | AUTH-04     | Phase 5 | Pending |
 | AUTH-05     | Phase 5 | Pending |
 | AUTH-06     | Phase 5 | Pending |
