@@ -22,7 +22,7 @@ A driver can log in with their real company credentials and the app knows which 
 ### Active
 
 - [x] `GET /api/auth/mobile-config` — returns Cognito user pool ID and mobile app client ID; called after tenant resolution so the app never hardcodes Cognito credentials — Validated in Phase 01: infrastructure-foundation
-- [ ] Mobile auth service — wraps `resolve-tenants`, `select-tenant`, `validate-token` and Cognito SRP in a clean typed API consumed by `AuthContext`
+- [x] Mobile auth service — wraps `resolve-tenants`, `select-tenant`, `validate-token` and Cognito SRP in a clean typed API consumed by `AuthContext` — Validated in Phase 02: auth-service-layer
 - [ ] Two-step login UX — email submitted first → tenant resolution → tenant picker shown only when >1 tenant found → password entry
 - [ ] Tenant picker screen — `app/(auth)/tenant-picker.tsx` — list of tenant names, driver selects one, app calls `select-tenant`
 - [ ] Cognito SRP authentication — `amazon-cognito-identity-js` performs in-app SRP challenge; no browser redirect; uses pool ID + mobile client ID from mobile-config endpoint
@@ -88,4 +88,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-_Last updated: 2026-03-27 after Phase 01 (infrastructure-foundation) complete_
+_Last updated: 2026-03-27 after Phase 02 (auth-service-layer) complete_
