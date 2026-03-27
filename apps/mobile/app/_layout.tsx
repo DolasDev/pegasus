@@ -3,8 +3,15 @@ import 'react-native-get-random-values'
 import { useEffect } from 'react'
 import { Stack, useRouter, useSegments } from 'expo-router'
 import { AuthProvider, useAuth } from '../src/context/AuthContext'
+import { createAuthService } from '../src/auth/authService'
+import * as cognitoService from '../src/auth/cognitoService'
 import { View, ActivityIndicator, StyleSheet } from 'react-native'
 import { colors } from '../src/theme/colors'
+
+const authService = createAuthService({
+  apiBaseUrl: process.env.EXPO_PUBLIC_API_URL ?? '',
+  cognitoService,
+})
 
 function RootLayoutNav() {
   const { isAuthenticated, isLoading } = useAuth()
@@ -46,7 +53,7 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
+    <AuthProvider authService={authService}>
       <RootLayoutNav />
     </AuthProvider>
   )

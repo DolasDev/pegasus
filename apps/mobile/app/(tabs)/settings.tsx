@@ -5,7 +5,7 @@ import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/
 import Constants from 'expo-constants'
 
 export default function SettingsScreen() {
-  const { driverName, driverEmail, logout } = useAuth()
+  const { session, logout } = useAuth()
 
   const handleLogout = () => {
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
@@ -32,13 +32,13 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>DRIVER PROFILE</Text>
         <View style={styles.profileCard}>
           <View style={styles.profileRow}>
-            <Text style={styles.label}>Name</Text>
-            <Text style={styles.value}>{driverName}</Text>
+            <Text style={styles.label}>Email</Text>
+            <Text style={styles.value}>{session?.email ?? '—'}</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.profileRow}>
-            <Text style={styles.label}>Email</Text>
-            <Text style={styles.value}>{driverEmail}</Text>
+            <Text style={styles.label}>Role</Text>
+            <Text style={styles.value}>{session?.role ?? '—'}</Text>
           </View>
         </View>
       </View>

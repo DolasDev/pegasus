@@ -24,13 +24,9 @@ export default function LoginScreen() {
       return
     }
 
-    if (password.length < 4) {
-      Alert.alert('Error', 'Password must be at least 4 characters')
-      return
-    }
-
     setIsLoading(true)
-    const success = await login(email, password)
+    // TODO Phase 4: tenantId supplied from tenant resolution
+    const success = await login(email, password, '')
     setIsLoading(false)
 
     if (!success) {
@@ -88,9 +84,6 @@ export default function LoginScreen() {
             <Text style={styles.buttonText}>{isLoading ? 'LOGGING IN...' : 'LOG IN'}</Text>
           </TouchableOpacity>
 
-          <View style={styles.hint}>
-            <Text style={styles.hintText}>Demo: Use any email and password (4+ chars)</Text>
-          </View>
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -164,17 +157,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.textLight,
     letterSpacing: 1,
-  },
-  hint: {
-    marginTop: spacing.lg,
-    padding: spacing.md,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: borderRadius.medium,
-  },
-  hintText: {
-    fontSize: fontSize.small,
-    color: colors.textLight,
-    textAlign: 'center',
-    opacity: 0.7,
   },
 })

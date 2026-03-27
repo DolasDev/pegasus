@@ -7,8 +7,13 @@ const mockLogout = jest.fn()
 
 jest.mock('../../src/context/AuthContext', () => ({
   useAuth: jest.fn(() => ({
-    driverName: 'John Driver',
-    driverEmail: 'john@example.com',
+    session: {
+      sub: 'user-123',
+      tenantId: 'tenant-abc',
+      role: 'driver',
+      email: 'john@example.com',
+      expiresAt: Date.now() + 3600_000,
+    },
     logout: mockLogout,
   })),
 }))
@@ -23,14 +28,14 @@ describe('SettingsScreen', () => {
     expect(getByText('DRIVER PROFILE')).toBeTruthy()
   })
 
-  it('displays driver name from context', () => {
-    const { getByText } = render(<SettingsScreen />)
-    expect(getByText('John Driver')).toBeTruthy()
-  })
-
-  it('displays driver email from context', () => {
+  it('displays email from session', () => {
     const { getByText } = render(<SettingsScreen />)
     expect(getByText('john@example.com')).toBeTruthy()
+  })
+
+  it('displays role from session', () => {
+    const { getByText } = render(<SettingsScreen />)
+    expect(getByText('driver')).toBeTruthy()
   })
 
   it('renders "APP INFORMATION" section with version from expo-constants', () => {

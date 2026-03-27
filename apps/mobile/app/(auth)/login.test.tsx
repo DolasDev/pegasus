@@ -37,11 +37,6 @@ describe('LoginScreen', () => {
     expect(getByText('LOG IN')).toBeTruthy()
   })
 
-  it('renders demo hint text', () => {
-    const { getByText } = render(<LoginScreen />)
-    expect(getByText(/Demo:/i)).toBeTruthy()
-  })
-
   it('shows Alert when pressing LOG IN with empty fields', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert')
     const { getByText } = render(<LoginScreen />)
@@ -53,21 +48,7 @@ describe('LoginScreen', () => {
     expect(alertSpy).toHaveBeenCalledWith('Error', 'Please enter email and password')
   })
 
-  it('shows Alert when password is shorter than 4 characters', async () => {
-    const alertSpy = jest.spyOn(Alert, 'alert')
-    const { getByText, getByPlaceholderText } = render(<LoginScreen />)
-
-    fireEvent.changeText(getByPlaceholderText('driver@company.com'), 'driver@example.com')
-    fireEvent.changeText(getByPlaceholderText('Enter password'), 'abc')
-
-    await act(async () => {
-      fireEvent.press(getByText('LOG IN'))
-    })
-
-    expect(alertSpy).toHaveBeenCalledWith('Error', 'Password must be at least 4 characters')
-  })
-
-  it('calls login(email, password) with valid credentials', async () => {
+  it('calls login(email, password, \'\') with valid credentials — TODO Phase 4: tenantId', async () => {
     mockLogin.mockResolvedValueOnce(true)
     const { getByText, getByPlaceholderText } = render(<LoginScreen />)
 
@@ -78,7 +59,7 @@ describe('LoginScreen', () => {
       fireEvent.press(getByText('LOG IN'))
     })
 
-    expect(mockLogin).toHaveBeenCalledWith('driver@example.com', 'pass1')
+    expect(mockLogin).toHaveBeenCalledWith('driver@example.com', 'pass1', '')
   })
 
   it('shows "LOGGING IN..." while login is in progress', async () => {
