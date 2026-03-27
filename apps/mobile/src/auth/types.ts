@@ -26,3 +26,13 @@ export type MobileConfig = {
   userPoolId: string
   clientId: string
 }
+
+/**
+ * Tenant entry returned by POST /api/auth/resolve-tenants and POST /api/auth/select-tenant.
+ * Mobile code uses tenantId and tenantName; cognitoAuthEnabled retained for completeness.
+ */
+export type TenantResolution = {
+  tenantId: string
+  tenantName: string
+  cognitoAuthEnabled: boolean
+}

@@ -1,4 +1,4 @@
-import { AuthError, MobileConfig, Session } from './types'
+import { AuthError, MobileConfig, Session, TenantResolution } from './types'
 
 type CognitoService = {
   signIn(email: string, password: string, poolId: string, clientId: string): Promise<{ idToken: string }>
@@ -80,5 +80,41 @@ export function createAuthService({ apiBaseUrl, cognitoService }: AuthServiceDep
     // idToken is NOT stored or returned — raw Cognito token ends here (AUTH-03)
   }
 
-  return { fetchMobileConfig, authenticate }
+  /**
+   * Resolves the list of tenants the given email belongs to.
+   * Calls POST /api/auth/resolve-tenants.
+   * Returns [] when no tenants match (200 with empty array) — does NOT throw (D-04).
+   * Throws AuthError('ResolveTenantsFailed') on non-2xx.
+   */
+  async function resolveTenants(email: string): Promise<TenantResolution[]> {
+    const res = await fetch(`${apiBaseUrl}/api/auth/resolve-tenants`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    })
+    if (!res.ok) {
+      throw new AuthError('ResolveTenantsFailed', `resolve-tenants returned ${res.status}`)
+    }
+    const body = (await res.json()) as { data: TenantResolution[] }
+    return body.data
+  }
+
+  /**
+   * Confirms tenant selection for the given email+tenantId pair.
+   * Calls POST /api/auth/select-tenant.
+   * Returns void on success.
+   * Throws AuthError('SelectTenantFailed') on non-2xx (D-05).
+   */
+  async function selectTenant(email: string, tenantId: string): Promise<void> {
+    const res = await fetch(`${apiBaseUrl}/api/auth/select-tenant`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, tenantId }),
+    })
+    if (!res.ok) {
+      throw new AuthError('SelectTenantFailed', `select-tenant returned ${res.status}`)
+    }
+  }
+
+  return { fetchMobileConfig, authenticate, resolveTenants, selectTenant }
 }

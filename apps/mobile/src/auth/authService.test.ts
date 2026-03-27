@@ -1,5 +1,5 @@
 import { createAuthService } from './authService'
-import { AuthError, MobileConfig, Session } from './types'
+import { AuthError, MobileConfig, Session, TenantResolution } from './types'
 
 const mockConfig: MobileConfig = { userPoolId: 'us-east-1_ABC', clientId: 'client123' }
 const mockSession: Session = {
@@ -9,6 +9,11 @@ const mockSession: Session = {
   email: 'a@b.com',
   expiresAt: 9999999999,
 }
+
+const mockTenants: TenantResolution[] = [
+  { tenantId: 'tenant-acme', tenantName: 'Acme Moving Co', cognitoAuthEnabled: true },
+  { tenantId: 'tenant-best', tenantName: 'Best Movers', cognitoAuthEnabled: true },
+]
 
 const mockCognitoService = {
   signIn: jest.fn<Promise<{ idToken: string }>, [string, string, string, string]>(),
@@ -178,6 +183,139 @@ describe('createAuthService', () => {
         await authenticate('a@b.com', 'pass', 'tenant-1')
       } catch (err) {
         expect((err as AuthError).code).toBe('ValidateTokenFailed')
+      }
+    })
+  })
+
+  describe('resolveTenants', () => {
+    it('calls POST /api/auth/resolve-tenants with email body and returns TenantResolution[]', async () => {
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ data: mockTenants }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      )
+
+      const { resolveTenants } = createAuthService({
+        apiBaseUrl: BASE_URL,
+        cognitoService: mockCognitoService,
+      })
+      const result = await resolveTenants('a@b.com')
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        `${BASE_URL}/api/auth/resolve-tenants`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ email: 'a@b.com' }),
+        }),
+      )
+      expect(result).toEqual(mockTenants)
+    })
+
+    it('returns [] when API responds 200 with empty array (does not throw)', async () => {
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ data: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      )
+
+      const { resolveTenants } = createAuthService({
+        apiBaseUrl: BASE_URL,
+        cognitoService: mockCognitoService,
+      })
+      const result = await resolveTenants('unknown@b.com')
+
+      expect(result).toEqual([])
+    })
+
+    it('throws AuthError(ResolveTenantsFailed) on non-2xx response', async () => {
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(new Response('Bad Request', { status: 400 })),
+      )
+
+      const { resolveTenants } = createAuthService({
+        apiBaseUrl: BASE_URL,
+        cognitoService: mockCognitoService,
+      })
+
+      await expect(resolveTenants('a@b.com')).rejects.toThrow(AuthError)
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(new Response('Bad Request', { status: 400 })),
+      )
+      try {
+        await resolveTenants('a@b.com')
+      } catch (err) {
+        expect((err as AuthError).code).toBe('ResolveTenantsFailed')
+      }
+    })
+  })
+
+  describe('selectTenant', () => {
+    it('calls POST /api/auth/select-tenant with email and tenantId body and resolves void', async () => {
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(new Response('{}', { status: 200 })),
+      )
+
+      const { selectTenant } = createAuthService({
+        apiBaseUrl: BASE_URL,
+        cognitoService: mockCognitoService,
+      })
+      const result = await selectTenant('a@b.com', 'tenant-acme')
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        `${BASE_URL}/api/auth/select-tenant`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ email: 'a@b.com', tenantId: 'tenant-acme' }),
+        }),
+      )
+      expect(result).toBeUndefined()
+    })
+
+    it('throws AuthError(SelectTenantFailed) on 403', async () => {
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(new Response('Forbidden', { status: 403 })),
+      )
+
+      const { selectTenant } = createAuthService({
+        apiBaseUrl: BASE_URL,
+        cognitoService: mockCognitoService,
+      })
+
+      await expect(selectTenant('a@b.com', 'bad-id')).rejects.toThrow(AuthError)
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(new Response('Forbidden', { status: 403 })),
+      )
+      try {
+        await selectTenant('a@b.com', 'bad-id')
+      } catch (err) {
+        expect((err as AuthError).code).toBe('SelectTenantFailed')
+      }
+    })
+
+    it('throws AuthError(SelectTenantFailed) on 404', async () => {
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(new Response('Not Found', { status: 404 })),
+      )
+
+      const { selectTenant } = createAuthService({
+        apiBaseUrl: BASE_URL,
+        cognitoService: mockCognitoService,
+      })
+
+      await expect(selectTenant('a@b.com', 'bad-id')).rejects.toThrow(AuthError)
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(new Response('Not Found', { status: 404 })),
+      )
+      try {
+        await selectTenant('a@b.com', 'bad-id')
+      } catch (err) {
+        expect((err as AuthError).code).toBe('SelectTenantFailed')
       }
     })
   })
