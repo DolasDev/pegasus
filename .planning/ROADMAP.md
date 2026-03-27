@@ -52,12 +52,13 @@ Plans:
 2. `authService.fetchMobileConfig(tenantId)` calls `GET /api/auth/mobile-config` and returns `{ userPoolId, clientId }`
 3. `authService.authenticate(email, password, tenantId)` calls `fetchMobileConfig`, then `cognitoService.signIn`, then `POST /api/auth/validate-token`, and returns a validated `Session` — all verified with mocked API and Cognito responses
 4. Raw Cognito ID tokens are never stored; only the server-validated `Session` object is returned from `authenticate`
-   **Plans**: TBD
+
+**Plans**: 2 plans
 
 Plans:
 
-- [ ] 02-01: Auth types and cognitoService
-- [ ] 02-02: authService (fetchMobileConfig, authenticate)
+- [ ] 02-01-PLAN.md — Auth types (AuthError, Session, MobileConfig) and cognitoService (SRP wrapper + tests)
+- [ ] 02-02-PLAN.md — authService factory (fetchMobileConfig, authenticate) + tests
 
 ### Phase 3: AuthContext and Session
 
