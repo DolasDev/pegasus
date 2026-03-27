@@ -8,7 +8,7 @@
 // so vi.mock('../db') intercepts it before authHandler is imported.
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { authHandler } from './auth'
 
 // ---------------------------------------------------------------------------
@@ -17,11 +17,13 @@ import { authHandler } from './auth'
 
 const {
   mockTenantFindFirst,
+  mockTenantFindUnique,
   mockTenantUserFindMany,
   mockTenantUserFindUnique,
   mockAuthSessionCreate,
 } = vi.hoisted(() => ({
   mockTenantFindFirst: vi.fn(),
+  mockTenantFindUnique: vi.fn(),
   mockTenantUserFindMany: vi.fn(),
   mockTenantUserFindUnique: vi.fn(),
   mockAuthSessionCreate: vi.fn(),
@@ -29,7 +31,10 @@ const {
 
 vi.mock('../db', () => ({
   db: {
-    tenant: { findFirst: mockTenantFindFirst },
+    tenant: {
+      findFirst: mockTenantFindFirst,
+      findUnique: mockTenantFindUnique,
+    },
     tenantUser: {
       findMany: mockTenantUserFindMany,
       findUnique: mockTenantUserFindUnique,
@@ -332,5 +337,60 @@ describe('POST /api/auth/select-tenant', () => {
       post({ email: 'new@acme.com', tenantId: 'tenant-1' }),
     )
     expect(res.status).toBe(200)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GET /api/auth/mobile-config (API-01)
+// ---------------------------------------------------------------------------
+
+describe('GET /api/auth/mobile-config', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.stubEnv('COGNITO_USER_POOL_ID', 'us-east-1_TestPool')
+    vi.stubEnv('COGNITO_MOBILE_CLIENT_ID', 'test-mobile-client-id')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('returns 400 VALIDATION_ERROR when tenantId query param is missing', async () => {
+    const res = await authHandler.request('/mobile-config')
+    expect(res.status).toBe(400)
+    const body = await json(res)
+    expect(body['code']).toBe('VALIDATION_ERROR')
+  })
+
+  it('returns 400 TENANT_NOT_FOUND when tenantId does not match any tenant', async () => {
+    mockTenantFindUnique.mockResolvedValue(null)
+
+    const res = await authHandler.request('/mobile-config?tenantId=non-existent-id')
+    expect(res.status).toBe(400)
+    const body = await json(res)
+    expect(body['error']).toBe('Tenant not found')
+    expect(body['code']).toBe('TENANT_NOT_FOUND')
+  })
+
+  it('returns 500 INTERNAL_ERROR when COGNITO env vars are not set', async () => {
+    vi.unstubAllEnvs()
+    mockTenantFindUnique.mockResolvedValue({ id: 'tenant-uuid-1' })
+
+    const res = await authHandler.request('/mobile-config?tenantId=tenant-uuid-1')
+    expect(res.status).toBe(500)
+    const body = await json(res)
+    expect(body['error']).toBe('Authentication service misconfigured')
+    expect(body['code']).toBe('INTERNAL_ERROR')
+  })
+
+  it('returns 200 with userPoolId and clientId for a valid tenant', async () => {
+    mockTenantFindUnique.mockResolvedValue({ id: 'tenant-uuid-1' })
+
+    const res = await authHandler.request('/mobile-config?tenantId=tenant-uuid-1')
+    expect(res.status).toBe(200)
+    const body = await json(res)
+    const data = body['data'] as Record<string, unknown>
+    expect(data['userPoolId']).toBe('us-east-1_TestPool')
+    expect(data['clientId']).toBe('test-mobile-client-id')
   })
 })
