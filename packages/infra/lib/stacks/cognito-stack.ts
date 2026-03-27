@@ -57,6 +57,12 @@ export class CognitoStack extends cdk.Stack {
   public readonly tenantAppClient: cognito.UserPoolClient
 
   /**
+   * App client used by apps/mobile for SRP-based driver authentication.
+   * No client secret — standard practice for mobile clients.
+   */
+  public readonly mobileAppClient: cognito.UserPoolClient
+
+  /**
    * JWKS endpoint URL for the user pool.
    * Injected into the API Lambda so it can verify JWTs without any secret.
    */
@@ -316,6 +322,29 @@ export class CognitoStack extends cdk.Stack {
     })
 
     // -------------------------------------------------------------------------
+    // Mobile app client
+    //
+    // Used by apps/mobile for SRP-based driver authentication.
+    //
+    // Design decisions:
+    //   - generateSecret: false — SRP-only flow; no client secret in the mobile app.
+    //   - authFlows: { userSrp: true } — required by amazon-cognito-identity-js SRP handshake.
+    //   - No oAuth block — mobile app never touches the Hosted UI.
+    //   - idTokenValidity: 8h / accessTokenValidity: 8h — matches a driver shift.
+    //   - refreshTokenValidity: 30d — allows drivers to stay logged in across days.
+    //   - enableTokenRevocation: true — consistent with other clients.
+    // -------------------------------------------------------------------------
+    this.mobileAppClient = this.userPool.addClient('MobileAppClient', {
+      userPoolClientName: 'mobile-app-client',
+      generateSecret: false,
+      authFlows: { userSrp: true },
+      idTokenValidity: cdk.Duration.hours(8),
+      accessTokenValidity: cdk.Duration.hours(8),
+      refreshTokenValidity: cdk.Duration.days(30),
+      enableTokenRevocation: true,
+    })
+
+    // -------------------------------------------------------------------------
     // JWKS URL
     //
     // This is a public endpoint; no secret is required to fetch it. The API
@@ -355,6 +384,12 @@ export class CognitoStack extends cdk.Stack {
       description: 'Pegasus tenant app client ID (no secret — PKCE only)',
     })
 
+    new ssm.StringParameter(this, 'MobileClientIdParam', {
+      parameterName: '/pegasus/mobile/cognito-client-id',
+      stringValue: this.mobileAppClient.userPoolClientId,
+      description: 'Pegasus mobile app client ID (no secret — SRP only)',
+    })
+
     new ssm.StringParameter(this, 'JwksUrlParam', {
       parameterName: '/pegasus/cognito/jwks-url',
       stringValue: this.jwksUrl,
@@ -377,6 +412,11 @@ export class CognitoStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'TenantClientId', {
       value: this.tenantAppClient.userPoolClientId,
       exportName: 'PegasusCognitoTenantClientId',
+    })
+
+    new cdk.CfnOutput(this, 'MobileClientId', {
+      value: this.mobileAppClient.userPoolClientId,
+      exportName: 'PegasusCognitoMobileClientId',
     })
 
     new cdk.CfnOutput(this, 'HostedUiBaseUrl', {

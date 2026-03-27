@@ -55,6 +55,7 @@ const apiStack = new ApiStack(app, 'PegasusDev-ApiStack', {
   cognitoJwksUrl: cognitoStack.jwksUrl,
   cognitoTenantClientId: cognitoStack.tenantAppClient.userPoolClientId,
   cognitoUserPoolId: cognitoStack.userPool.userPoolId,
+  cognitoMobileClientId: cognitoStack.mobileAppClient.userPoolClientId,
 })
 
 // ── MonitoringStack ───────────────────────────────────────────────────────────

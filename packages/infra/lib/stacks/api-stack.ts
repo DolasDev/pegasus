@@ -40,6 +40,13 @@ export interface ApiStackProps extends cdk.StackProps {
    * Provided by CognitoStack.userPool.userPoolId.
    */
   readonly cognitoUserPoolId?: string
+
+  /**
+   * Cognito mobile app client ID.
+   * Used by GET /api/auth/mobile-config to return the client ID to the mobile app.
+   * Provided by CognitoStack.mobileAppClient.userPoolClientId.
+   */
+  readonly cognitoMobileClientId?: string
 }
 
 export class ApiStack extends cdk.Stack {
@@ -103,6 +110,10 @@ export class ApiStack extends cdk.Stack {
         // User Pool ID. Used by POST /api/admin/tenants to provision the
         // initial tenant administrator via Cognito AdminCreateUser.
         COGNITO_USER_POOL_ID: props.cognitoUserPoolId ?? '',
+        // Mobile app client ID. Returned by GET /api/auth/mobile-config so the
+        // mobile app can authenticate against Cognito without baking credentials
+        // into the app bundle.
+        COGNITO_MOBILE_CLIENT_ID: props.cognitoMobileClientId ?? '',
       },
       bundling: {
         minify: true,
