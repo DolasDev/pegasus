@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
+import { AppState, AppStateStatus } from 'react-native'
 import * as SecureStore from 'expo-secure-store'
 import type { Session } from '../auth/types'
 import { logger } from '../utils/logger'
@@ -46,6 +47,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ authService, childre
     }
     checkSession()
   }, [])
+
+  // AppState expiry detection (SESSION-04) — check for expired session on foreground resume
+  useEffect(() => {
+    const subscription = AppState.addEventListener(
+      'change',
+      (nextState: AppStateStatus) => {
+        if (nextState === 'active' && session !== null && session.expiresAt < Date.now()) {
+          logout()
+        }
+      },
+    )
+    return () => subscription.remove()
+  }, [session]) // session in dep array — avoids stale closure
 
   const login = async (email: string, password: string, tenantId: string): Promise<boolean> => {
     try {

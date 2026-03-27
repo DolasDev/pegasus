@@ -140,6 +140,119 @@ describe('AuthProvider', () => {
   })
 })
 
+describe('checkSession — SESSION-02', () => {
+  it('restores session from secure store on cold start', async () => {
+    const stored: Session = {
+      sub: 'user-456',
+      tenantId: 'tenant-xyz',
+      role: 'driver',
+      email: 'restored@example.com',
+      expiresAt: Date.now() + 3600_000,
+    }
+    ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(stored))
+
+    const ctxRef = renderWithProvider()
+    expect(ctxRef.current!.isLoading).toBe(true) // still loading synchronously
+    await act(async () => {})
+
+    expect(ctxRef.current!.session).toEqual(stored)
+    expect(ctxRef.current!.isAuthenticated).toBe(true)
+    expect(ctxRef.current!.isLoading).toBe(false)
+  })
+
+  it('sets isAuthenticated false when no session in secure store', async () => {
+    ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(null)
+
+    const ctxRef = renderWithProvider()
+    await act(async () => {})
+
+    expect(ctxRef.current!.session).toBeNull()
+    expect(ctxRef.current!.isAuthenticated).toBe(false)
+    expect(ctxRef.current!.isLoading).toBe(false)
+  })
+})
+
+describe('AppState expiry detection — SESSION-04', () => {
+  let mockAppStateListeners: Array<(state: string) => void>
+
+  beforeEach(() => {
+    mockAppStateListeners = []
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_event: any, handler: any) => {
+      mockAppStateListeners.push(handler)
+      return { remove: jest.fn() }
+    })
+  })
+
+  it('calls logout when app returns to foreground with expired session', async () => {
+    const expiredSession: Session = {
+      sub: 'user-789',
+      tenantId: 'tenant-abc',
+      role: 'driver',
+      email: 'expired@example.com',
+      expiresAt: Date.now() - 1000, // already expired
+    }
+    ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(expiredSession))
+
+    const ctxRef = renderWithProvider()
+    await act(async () => {})
+
+    expect(ctxRef.current!.isAuthenticated).toBe(true) // session loaded
+
+    // Simulate foreground resume
+    await act(async () => {
+      mockAppStateListeners.forEach((fn) => fn('active'))
+    })
+
+    expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith('pegasus_session')
+    expect(ctxRef.current!.session).toBeNull()
+    expect(ctxRef.current!.isAuthenticated).toBe(false)
+  })
+
+  it('does NOT logout when app returns to foreground with valid (non-expired) session', async () => {
+    const validSession: Session = {
+      sub: 'user-789',
+      tenantId: 'tenant-abc',
+      role: 'driver',
+      email: 'valid@example.com',
+      expiresAt: Date.now() + 3600_000, // 1 hour from now
+    }
+    ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(validSession))
+
+    const ctxRef = renderWithProvider()
+    await act(async () => {})
+
+    await act(async () => {
+      mockAppStateListeners.forEach((fn) => fn('active'))
+    })
+
+    expect(ctxRef.current!.isAuthenticated).toBe(true) // still authenticated
+    expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled()
+  })
+
+  it('does NOT logout on background or inactive state changes', async () => {
+    const expiredSession: Session = {
+      sub: 'user-789',
+      tenantId: 'tenant-abc',
+      role: 'driver',
+      email: 'expired@example.com',
+      expiresAt: Date.now() - 1000,
+    }
+    ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(expiredSession))
+
+    const ctxRef = renderWithProvider()
+    await act(async () => {})
+
+    await act(async () => {
+      mockAppStateListeners.forEach((fn) => fn('background'))
+      mockAppStateListeners.forEach((fn) => fn('inactive'))
+    })
+
+    // logout not triggered — only 'active' triggers expiry check
+    expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled()
+    expect(ctxRef.current!.isAuthenticated).toBe(true)
+  })
+})
+
 describe('useAuth', () => {
   it('throws when used outside AuthProvider', () => {
     const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
