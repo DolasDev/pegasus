@@ -76,7 +76,7 @@ Plans:
 
 Plans:
 
-- [ ] 03-01-PLAN.md — expo-secure-store install + Jest config + AuthContext rewrite (login, logout, SESSION-01, SESSION-03)
+- [x] 03-01-PLAN.md — expo-secure-store install + Jest config + AuthContext rewrite (login, logout, SESSION-01, SESSION-03)
 - [ ] 03-02-PLAN.md — Cold-start restore + AppState expiry detection + _layout.tsx wiring + call-site updates (SESSION-02, SESSION-04)
 
 ### Phase 4: Tenant Resolution Flow
@@ -126,6 +126,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | ---------------------------- | -------------- | ----------- | --------- |
 | 1. Infrastructure Foundation | 3/3 | Complete   | 2026-03-27 |
 | 2. Auth Service Layer        | 1/2 | In Progress|  |
-| 3. AuthContext and Session   | 0/2            | Not started | -         |
+| 3. AuthContext and Session   | 1/2 | In Progress|  |
 | 4. Tenant Resolution Flow    | 0/2            | Not started | -         |
 | 5. Login UX and Auth Guard   | 0/2            | Not started | -         |
