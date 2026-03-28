@@ -24,6 +24,8 @@ A driver can log in with their real company credentials and the app knows which 
 - [x] `GET /api/auth/mobile-config` — returns Cognito user pool ID and mobile app client ID; called after tenant resolution so the app never hardcodes Cognito credentials — Validated in Phase 01: infrastructure-foundation
 - [x] Mobile auth service — wraps `resolve-tenants`, `select-tenant`, `validate-token` and Cognito SRP in a clean typed API consumed by `AuthContext` — Validated in Phase 02: auth-service-layer
 - [x] Updated `AuthContext` — replaces mock login with real auth service backed by expo-secure-store; session persisted/restored from encrypted storage; AppState expiry detection on foreground resume — Validated in Phase 03: authcontext-and-session
+- [x] Login UX hardening — `AuthContext.login()` now `Promise<void>` (throws `AuthError`); SHOW/HIDE password toggle; inline error messages for all auth failure codes; input locking during loading; no Alert.alert — Validated in Phase 05: login-ux-and-auth-guard
+- [x] Auth guard — `_layout.tsx` uses `Stack.Protected guard={isAuthenticated}` + `SplashScreen.preventAutoHideAsync()` to eliminate login flash on cold start; useEffect redirect removed — Validated in Phase 05: login-ux-and-auth-guard
 - [ ] Two-step login UX — email submitted first → tenant resolution → tenant picker shown only when >1 tenant found → password entry
 - [ ] Tenant picker screen — `app/(auth)/tenant-picker.tsx` — list of tenant names, driver selects one, app calls `select-tenant`
 - [ ] Cognito SRP authentication — `amazon-cognito-identity-js` performs in-app SRP challenge; no browser redirect; uses pool ID + mobile client ID from mobile-config endpoint
@@ -88,4 +90,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-_Last updated: 2026-03-28 after Phase 04 (tenant-resolution-flow) complete — TenantResolution type, resolveTenants/selectTenant auth service methods, TenantPickerScreen, and two-step login state machine all delivered. Requirements TENANT-01 through TENANT-06 validated._
+_Last updated: 2026-03-28 after Phase 05 (login-ux-and-auth-guard) complete — AuthContext.login() hardened to Promise<void>/throw pattern; SHOW/HIDE toggle and inline errors on login screen; Stack.Protected + SplashScreen guard replaces useEffect redirect. Requirements AUTH-04, AUTH-05, AUTH-06, GUARD-01 validated._
