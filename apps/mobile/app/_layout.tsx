@@ -8,7 +8,7 @@ import * as cognitoService from '../src/auth/cognitoService'
 import { View, ActivityIndicator, StyleSheet } from 'react-native'
 import { colors } from '../src/theme/colors'
 
-const authService = createAuthService({
+export const authService = createAuthService({
   apiBaseUrl: process.env.EXPO_PUBLIC_API_URL ?? '',
   cognitoService,
 })
