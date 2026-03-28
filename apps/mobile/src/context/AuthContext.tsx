@@ -10,7 +10,7 @@ interface AuthContextType {
   session: Session | null
   isAuthenticated: boolean
   isLoading: boolean
-  login: (email: string, password: string, tenantId: string) => Promise<boolean>
+  login: (email: string, password: string, tenantId: string) => Promise<void>
   logout: () => Promise<void>
 }
 
@@ -61,16 +61,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ authService, childre
     return () => subscription.remove()
   }, [session]) // session in dep array — avoids stale closure
 
-  const login = async (email: string, password: string, tenantId: string): Promise<boolean> => {
+  const login = async (email: string, password: string, tenantId: string): Promise<void> => {
     try {
       const newSession = await authService.authenticate(email, password, tenantId)
       await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(newSession))
       setSession(newSession)
       logger.logAuth('login', email)
-      return true
     } catch (error) {
       logger.error('Login failed', error)
-      return false
+      throw error
     }
   }
 

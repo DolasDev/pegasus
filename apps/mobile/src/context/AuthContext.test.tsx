@@ -5,6 +5,7 @@ import { AppState } from 'react-native'
 import { AuthProvider, useAuth } from './AuthContext'
 import { logger } from '../utils/logger'
 import type { Session } from '../auth/types'
+import { AuthError } from '../auth/types'
 
 // Updates ctxRef.current on every render so tests always see latest state.
 function TestConsumer({
@@ -62,14 +63,14 @@ describe('AuthProvider', () => {
       await act(async () => {})
     })
 
-    it('returns true, persists session to secure store, sets session state', async () => {
+    it('resolves to undefined, persists session to secure store, sets session state', async () => {
       mockAuthService.authenticate.mockResolvedValueOnce(mockSession)
-      let result = false
       await act(async () => {
-        result = await ctxRef.current!.login('driver@example.com', 'pass123', 'tenant-abc')
+        await expect(
+          ctxRef.current!.login('driver@example.com', 'pass123', 'tenant-abc'),
+        ).resolves.toBeUndefined()
       })
 
-      expect(result).toBe(true)
       expect(ctxRef.current!.session).toEqual(mockSession)
       expect(ctxRef.current!.isAuthenticated).toBe(true)
       expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
@@ -100,16 +101,16 @@ describe('AuthProvider', () => {
       expect(parsed).toHaveProperty('expiresAt')
     })
 
-    it('returns false and does not persist when authenticate rejects', async () => {
+    it('throws AuthError and does not persist when authenticate rejects', async () => {
       mockAuthService.authenticate.mockRejectedValueOnce(
-        new Error('NotAuthorizedException'),
+        new AuthError('NotAuthorizedException', 'Bad credentials'),
       )
-      let result = true
       await act(async () => {
-        result = await ctxRef.current!.login('driver@example.com', 'wrongpass', 'tenant-abc')
+        await expect(
+          ctxRef.current!.login('driver@example.com', 'wrongpass', 'tenant-abc'),
+        ).rejects.toMatchObject({ code: 'NotAuthorizedException' })
       })
 
-      expect(result).toBe(false)
       expect(ctxRef.current!.session).toBeNull()
       expect(ctxRef.current!.isAuthenticated).toBe(false)
       expect(SecureStore.setItemAsync).not.toHaveBeenCalled()
