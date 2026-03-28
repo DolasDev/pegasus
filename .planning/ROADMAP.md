@@ -111,13 +111,12 @@ Plans:
 3. From the moment the driver submits their email through the completion of `validate-token`, all inputs are non-editable and the submit button is disabled; double-tapping cannot initiate a second concurrent flow
 4. An authenticated driver cold-launching the app never sees the login screen flash before the home route renders
 
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
 
-- [ ] 05-01: Password toggle, inline errors, and input locking
-- [ ] 05-02: Auth guard with expo-splash-screen (Stack.Protected)
-      **UI hint**: yes
+- [ ] 05-01-PLAN.md — AuthContext login() throw-on-failure + password toggle, inline errors, and input locking (AUTH-04, AUTH-05, AUTH-06)
+- [ ] 05-02-PLAN.md — Stack.Protected + SplashScreen auth guard replacing useEffect redirect (GUARD-01)
 
 ## Progress
 
@@ -129,5 +128,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Infrastructure Foundation | 3/3            | Complete    | 2026-03-27 |
 | 2. Auth Service Layer        | 1/2            | In Progress |            |
 | 3. AuthContext and Session   | 2/2            | Complete    | 2026-03-27 |
-| 4. Tenant Resolution Flow    | 1/2 | In Progress|  |
+| 4. Tenant Resolution Flow    | 1/2            | In Progress |            |
 | 5. Login UX and Auth Guard   | 0/2            | Not started | -          |
