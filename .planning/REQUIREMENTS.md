@@ -41,7 +41,7 @@
 
 ### Auth Guard
 
-- [ ] **GUARD-01**: Root layout uses `Stack.Protected` with `guard={isAuthenticated}` (expo-router v6) plus `SplashScreen.preventAutoHideAsync()` instead of the current `useEffect`-based redirect, eliminating the login screen flash on cold start for authenticated drivers
+- [x] **GUARD-01**: Root layout uses `Stack.Protected` with `guard={isAuthenticated}` (expo-router v6) plus `SplashScreen.preventAutoHideAsync()` instead of the current `useEffect`-based redirect, eliminating the login screen flash on cold start for authenticated drivers
 
 ## v2 Requirements
 
@@ -88,7 +88,7 @@
 | SESSION-02  | Phase 3 | Complete |
 | SESSION-03  | Phase 3 | Complete |
 | SESSION-04  | Phase 3 | Complete |
-| GUARD-01    | Phase 5 | Pending |
+| GUARD-01    | Phase 5 | Complete |
 
 **Coverage:**
 

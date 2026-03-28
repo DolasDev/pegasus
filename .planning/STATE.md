@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-03-28T12:24:36.018Z"
+status: verifying
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-03-28T12:30:17.561Z"
 last_activity: 2026-03-28
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 11
-  completed_plans: 10
+  completed_plans: 11
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 
 Phase: 05 (login-ux-and-auth-guard) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-03-28
 
 Progress: [░░░░░░░░░░] 0%
@@ -62,6 +62,7 @@ _Updated after each plan completion_
 | Phase 04-tenant-resolution-flow P01 | 2 | 2 tasks | 7 files |
 | Phase 04-tenant-resolution-flow P02 | 4min | 1 tasks | 2 files |
 | Phase 05-login-ux-and-auth-guard P01 | 2min | 2 tasks | 4 files |
+| Phase 05-login-ux-and-auth-guard P02 | 4min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,8 @@ Recent decisions affecting current work:
 - [Phase 04-tenant-resolution-flow]: URL param handoff from tenant-picker to login password step (step=password + tenantId + tenantName + email) — D-08 pattern
 - [Phase 05-01]: Promise<void> throw-on-failure: login() throws AuthError instead of returning false — enables try/catch inline error mapping at call site
 - [Phase 05-01]: Inline errors over Alert.alert: passwordError state renders below password input — AUTH-05 UX requirement for polished driver experience
+- [Phase 05-02]: Stack mock as callable function: jest.fn() with .Screen/.Protected properties attached — plain object mock breaks JSX rendering
+- [Phase 05-02]: Guard prop assertion via mock.calls[0]?.[0]: React 19 calls components as Component(props, undefined) — expect.anything() does not match undefined
 
 ### Pending Todos
 
@@ -111,6 +114,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T12:24:36.014Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-03-28T12:30:17.557Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None

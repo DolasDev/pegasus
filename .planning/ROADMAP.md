@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 2: Auth Service Layer** - cognitoService and authService built test-first; SRP handshake proven in isolation
 - [x] **Phase 3: AuthContext and Session** - AuthContext replaces mock auth; session persisted to secure store; logout and expiry detection working (completed 2026-03-27)
 - [ ] **Phase 4: Tenant Resolution Flow** - Two-step email-first login, tenant picker screen, back navigation, and error states
-- [ ] **Phase 5: Login UX and Auth Guard** - Password show/hide, inline errors, input locking, and flash-free auth guard
+- [x] **Phase 5: Login UX and Auth Guard** - Password show/hide, inline errors, input locking, and flash-free auth guard (completed 2026-03-28)
 
 ## Phase Details
 
@@ -116,7 +116,7 @@ Plans:
 Plans:
 
 - [x] 05-01-PLAN.md — AuthContext login() throw-on-failure + password toggle, inline errors, and input locking (AUTH-04, AUTH-05, AUTH-06)
-- [ ] 05-02-PLAN.md — Stack.Protected + SplashScreen auth guard replacing useEffect redirect (GUARD-01)
+- [x] 05-02-PLAN.md — Stack.Protected + SplashScreen auth guard replacing useEffect redirect (GUARD-01)
 
 ## Progress
 
@@ -129,4 +129,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Auth Service Layer        | 1/2            | In Progress |            |
 | 3. AuthContext and Session   | 2/2            | Complete    | 2026-03-27 |
 | 4. Tenant Resolution Flow    | 1/2            | In Progress |            |
-| 5. Login UX and Auth Guard   | 1/2 | In Progress|  |
+| 5. Login UX and Auth Guard   | 2/2 | Complete   | 2026-03-28 |
