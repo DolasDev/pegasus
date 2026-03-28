@@ -59,12 +59,11 @@ All sizes from `packages/theme/src/typography.ts` (fontSize object). Login.tsx u
 | Role          | Token    | Size | Weight                    | Line Height | Usage                                                                         |
 | ------------- | -------- | ---- | ------------------------- | ----------- | ----------------------------------------------------------------------------- |
 | Display       | `huge`   | 36px | 700                       | 1.2         | App title ("Moving & Storage") — `styles.title`                               |
-| Heading       | `xlarge` | 22px | 600–700                   | 1.2         | Subtitle ("Driver Portal"), company name, button text                         |
+| Heading       | `xlarge` | 22px | 700                       | 1.2         | Subtitle ("Driver Portal"), company name, button text                         |
 | Body / Input  | `large`  | 18px | 400                       | 1.5         | TextInput value text, placeholder text — minimum per theme comment            |
-| Label / Error | `medium` | 16px | 600 (label) / 400 (error) | 1.5         | Field labels (`EMAIL`, `PASSWORD`), inline error text, SHOW/HIDE toggle label |
+| Label / Error | `medium` | 16px | 700 (label) / 400 (error) | 1.5         | Field labels (`EMAIL`, `PASSWORD`), inline error text, SHOW/HIDE toggle label |
 
-Weights in use: **400** (regular) and **700** (bold). Weight **600** (semibold) used only on subtitle and labels.
-Constrain new elements in this phase to these four sizes and these three weights — do not introduce new values.
+Weights in use: **400** (regular) and **700** (bold). Do not introduce a third weight value. Constrain new elements in this phase to these four sizes and these two weights only.
 
 Source: `packages/theme/src/typography.ts`; `apps/mobile/app/(auth)/login.tsx` StyleSheet.
 
@@ -94,6 +93,8 @@ Disabled state: `colors.textDisabled` (`#9E9E9E`) — used for button background
 
 Border color: `colors.border` (`#E0E0E0`) — TextInput border at 2px width.
 
+Primary focal point: the "LOG IN" / "FIND MY COMPANY" submit button via accent (`#FF6B35`) background. Secondary anchor: the app title at 36px display weight 700.
+
 Source: `packages/theme/src/colors.ts`; CONTEXT.md D-05.
 
 ---
@@ -119,7 +120,7 @@ Components used or added in this phase. All are React Native primitives — no t
 
 - Toggle is a `TouchableOpacity` inside a flex-row wrapper that replaces the bare `TextInput` for the password field.
 - Label text: `"SHOW"` when `secureTextEntry={true}`; `"HIDE"` when `secureTextEntry={false}`.
-- Label style: `fontSize.medium` (16px), `fontWeight: '600'`, `color: colors.primary` (`#FF6B35`), `letterSpacing: 0.5` (matches `styles.label`).
+- Label style: `fontSize.medium` (16px), `fontWeight: '700'`, `color: colors.primary` (`#FF6B35`), `letterSpacing: 0.5` (matches `styles.label`).
 - Toggle sits flush to the right inside the input container, vertically centred.
 - Toggle is only rendered on the password step, not the email step.
 - Source: CONTEXT.md D-04, D-05.
