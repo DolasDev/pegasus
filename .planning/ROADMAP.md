@@ -18,6 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: AuthContext and Session** - AuthContext replaces mock auth; session persisted to secure store; logout and expiry detection working (completed 2026-03-27)
 - [ ] **Phase 4: Tenant Resolution Flow** - Two-step email-first login, tenant picker screen, back navigation, and error states
 - [x] **Phase 5: Login UX and Auth Guard** - Password show/hide, inline errors, input locking, and flash-free auth guard (completed 2026-03-28)
+- [ ] **Phase 6: Fix Mobile Token Validation** - Resolve audience mismatch in validate-token, commit BREAK-01 fix, and patch Session type shape
 
 ## Phase Details
 
@@ -118,15 +119,31 @@ Plans:
 - [x] 05-01-PLAN.md — AuthContext login() throw-on-failure + password toggle, inline errors, and input locking (AUTH-04, AUTH-05, AUTH-06)
 - [x] 05-02-PLAN.md — Stack.Protected + SplashScreen auth guard replacing useEffect redirect (GUARD-01)
 
+### Phase 6: Fix Mobile Token Validation
+
+**Goal**: The `validate-token` endpoint accepts both web and mobile Cognito app client audiences; the BREAK-01 field name fix is committed; the Session type reflects the full API response shape
+**Depends on**: Phase 5
+**Requirements**: AUTH-03
+**Gap Closure**: Closes gaps from v1.0 audit (BREAK-01, BREAK-02, FLOW-BREAK-01)
+**Success Criteria** (what must be TRUE):
+
+1. `POST /api/auth/validate-token` with a mobile Cognito ID token (audience = `COGNITO_MOBILE_CLIENT_ID`) returns 200 with session claims — not 401
+2. `authService.authenticate()` completes the full flow end-to-end: mobile-config fetch → SRP → validate-token → Session returned
+3. `Session` type in `apps/mobile/src/auth/types.ts` includes `ssoProvider: string | null`
+4. API handler tests cover both tenant-client and mobile-client audience acceptance
+
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
-| Phase                        | Plans Complete | Status      | Completed  |
-| ---------------------------- | -------------- | ----------- | ---------- |
-| 1. Infrastructure Foundation | 3/3            | Complete    | 2026-03-27 |
-| 2. Auth Service Layer        | 1/2            | In Progress |            |
-| 3. AuthContext and Session   | 2/2            | Complete    | 2026-03-27 |
-| 4. Tenant Resolution Flow    | 1/2            | In Progress |            |
-| 5. Login UX and Auth Guard   | 2/2 | Complete   | 2026-03-28 |
+| Phase                          | Plans Complete | Status      | Completed  |
+| ------------------------------ | -------------- | ----------- | ---------- |
+| 1. Infrastructure Foundation   | 3/3            | Complete    | 2026-03-27 |
+| 2. Auth Service Layer          | 2/2            | Complete    | 2026-03-27 |
+| 3. AuthContext and Session     | 2/2            | Complete    | 2026-03-27 |
+| 4. Tenant Resolution Flow      | 2/2            | Complete    | 2026-03-28 |
+| 5. Login UX and Auth Guard     | 2/2            | Complete    | 2026-03-28 |
+| 6. Fix Mobile Token Validation | 0/TBD          | Pending     |            |
