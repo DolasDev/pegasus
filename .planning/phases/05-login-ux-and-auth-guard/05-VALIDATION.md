@@ -1,10 +1,11 @@
 ---
 phase: 5
 slug: login-ux-and-auth-guard
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-28
+audited: 2026-03-28
 ---
 
 # Phase 5 — Validation Strategy
@@ -38,10 +39,10 @@ created: 2026-03-28
 
 | Task ID  | Plan | Wave | Requirement | Test Type | Automated Command                                                     | File Exists | Status     |
 | -------- | ---- | ---- | ----------- | --------- | --------------------------------------------------------------------- | ----------- | ---------- |
-| 05-01-01 | 01   | 1    | AUTH-04     | unit      | `cd apps/mobile && npx jest --testPathPattern="login" --no-coverage`  | ❌ W0       | ⬜ pending |
-| 05-01-02 | 01   | 1    | AUTH-05     | unit      | `cd apps/mobile && npx jest --testPathPattern="login" --no-coverage`  | ❌ W0       | ⬜ pending |
-| 05-01-03 | 01   | 1    | AUTH-06     | unit      | `cd apps/mobile && npx jest --testPathPattern="login" --no-coverage`  | ❌ W0       | ⬜ pending |
-| 05-02-01 | 02   | 2    | GUARD-01    | unit      | `cd apps/mobile && npx jest --testPathPattern="layout" --no-coverage` | ❌ W0       | ⬜ pending |
+| 05-01-01 | 01   | 1    | AUTH-04     | unit      | `cd apps/mobile && npx jest --testPathPattern="login" --no-coverage`  | ✅ `app/(auth)/login.test.tsx`  | ✅ green |
+| 05-01-02 | 01   | 1    | AUTH-05     | unit      | `cd apps/mobile && npx jest --testPathPattern="login" --no-coverage`  | ✅ `app/(auth)/login.test.tsx`  | ✅ green |
+| 05-01-03 | 01   | 1    | AUTH-06     | unit      | `cd apps/mobile && npx jest --testPathPattern="login" --no-coverage`  | ✅ `app/(auth)/login.test.tsx`  | ✅ green |
+| 05-02-01 | 02   | 2    | GUARD-01    | unit      | `cd apps/mobile && npx jest --testPathPattern="layout" --no-coverage` | ✅ `app/_layout.test.tsx`       | ✅ green |
 
 _Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky_
 
@@ -49,10 +50,10 @@ _Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky_
 
 ## Wave 0 Requirements
 
-- [ ] `apps/mobile/__tests__/login.test.tsx` — stubs for AUTH-04, AUTH-05, AUTH-06 (password toggle, inline errors, input locking)
-- [ ] `apps/mobile/__tests__/layout.test.tsx` — stubs for GUARD-01 (Stack.Protected auth guard, no flash)
-- [ ] `jest.setup.js` — extend expo-router mock with `Stack.Protected` and `SplashScreen.preventAutoHideAsync`/`hideAsync` stubs (CRITICAL: current mock only has `Stack.Screen`)
-- [ ] Update AuthContext mock to reflect `login()` → `Promise<void>` (throws `AuthError`) interface change
+- [x] `apps/mobile/app/(auth)/login.test.tsx` — AUTH-04, AUTH-05, AUTH-06 (password toggle, inline errors, input locking) — 22 tests, all green
+- [x] `apps/mobile/app/_layout.test.tsx` — GUARD-01 (Stack.Protected auth guard, SplashScreen) — 5 tests, all green
+- [x] `jest.setup.js` — expo-router mock includes `Stack.Protected`, `SplashScreen.preventAutoHideAsync`/`hideAsync`
+- [x] AuthContext mock reflects `login()` → `Promise<void>` (throws `AuthError`) interface
 
 ---
 
@@ -67,11 +68,25 @@ _Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky_
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 15s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have automated verify
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (all complete)
+- [x] No watch-mode flags
+- [x] Feedback latency < 15s (1.46s observed)
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** 2026-03-28
+
+---
+
+## Validation Audit 2026-03-28
+
+| Metric     | Count |
+| ---------- | ----- |
+| Gaps found | 0     |
+| Resolved   | 4     |
+| Escalated  | 0     |
+
+All 4 requirements (AUTH-04, AUTH-05, AUTH-06, GUARD-01) had complete test coverage at audit time.
+Tests co-located with source in `apps/mobile/app/` rather than `apps/mobile/__tests__/` (plan noted `__tests__/` path, implementation chose co-location).
+27 tests total, 100% green.
