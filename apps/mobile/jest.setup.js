@@ -56,25 +56,28 @@ jest.mock('expo-constants', () => ({
 }));
 
 // Mock expo-router
-jest.mock('expo-router', () => ({
-  useRouter: jest.fn(() => ({
-    push: jest.fn(),
-    replace: jest.fn(),
-    back: jest.fn(),
-  })),
-  useLocalSearchParams: jest.fn(() => ({})),
-  useSegments: jest.fn(() => []),
-  Stack: {
-    Screen: jest.fn(({ children }) => children),
-    Protected: jest.fn(({ children }) => children),
-  },
-  Tabs: jest.fn(({ children }) => children),
-  Link: jest.fn(({ children }) => children),
-  SplashScreen: {
-    preventAutoHideAsync: jest.fn(() => Promise.resolve()),
-    hideAsync: jest.fn(() => Promise.resolve()),
-  },
-}));
+jest.mock('expo-router', () => {
+  const React = require('react');
+  const StackMock = jest.fn(({ children }) => React.createElement(React.Fragment, null, children));
+  StackMock.Screen = jest.fn(() => null);
+  StackMock.Protected = jest.fn(({ children }) => React.createElement(React.Fragment, null, children));
+  return {
+    useRouter: jest.fn(() => ({
+      push: jest.fn(),
+      replace: jest.fn(),
+      back: jest.fn(),
+    })),
+    useLocalSearchParams: jest.fn(() => ({})),
+    useSegments: jest.fn(() => []),
+    Stack: StackMock,
+    Tabs: jest.fn(({ children }) => React.createElement(React.Fragment, null, children)),
+    Link: jest.fn(({ children }) => React.createElement(React.Fragment, null, children)),
+    SplashScreen: {
+      preventAutoHideAsync: jest.fn(() => Promise.resolve()),
+      hideAsync: jest.fn(() => Promise.resolve()),
+    },
+  };
+});
 
 // Mock expo-image-picker
 jest.mock('expo-image-picker', () => ({
