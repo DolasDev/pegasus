@@ -1,6 +1,5 @@
 import React from 'react'
 import { render, fireEvent, act } from '@testing-library/react-native'
-import { Alert } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import LoginScreen from './login'
 import { TenantResolution } from '../../src/auth/types'
@@ -174,7 +173,7 @@ describe('LoginScreen', () => {
     })
 
     it('calls login(email, password, tenantId) when LOG IN is pressed', async () => {
-      mockLogin.mockResolvedValueOnce(true)
+      mockLogin.mockResolvedValueOnce(undefined)
 
       const { getByText, getByPlaceholderText } = render(<LoginScreen />)
 
@@ -188,9 +187,9 @@ describe('LoginScreen', () => {
     })
 
     it('shows "LOGGING IN..." while login is in progress', async () => {
-      let resolveLogin!: (v: boolean) => void
+      let resolveLogin!: () => void
       mockLogin.mockReturnValueOnce(
-        new Promise<boolean>((res) => {
+        new Promise<void>((res) => {
           resolveLogin = res
         }),
       )
@@ -206,8 +205,103 @@ describe('LoginScreen', () => {
       expect(getByText('LOGGING IN...')).toBeTruthy()
 
       await act(async () => {
-        resolveLogin(true)
+        resolveLogin()
       })
+    })
+
+    it('renders SHOW toggle when password step is active (AUTH-04)', () => {
+      const { getByText } = render(<LoginScreen />)
+      expect(getByText('SHOW')).toBeTruthy()
+    })
+
+    it('toggles to HIDE after SHOW is tapped (AUTH-04)', async () => {
+      const { getByText } = render(<LoginScreen />)
+      await act(async () => {
+        fireEvent.press(getByText('SHOW'))
+      })
+      expect(getByText('HIDE')).toBeTruthy()
+    })
+
+    it('shows inline "Please enter your password." when LOG IN pressed with empty password (AUTH-05)', async () => {
+      const { getByText } = render(<LoginScreen />)
+      await act(async () => {
+        fireEvent.press(getByText('LOG IN'))
+      })
+      expect(getByText('Please enter your password.')).toBeTruthy()
+      expect(mockLogin).not.toHaveBeenCalled()
+    })
+
+    it('shows inline error for NotAuthorizedException (AUTH-05)', async () => {
+      const { AuthError } = require('../../src/auth/types')
+      mockLogin.mockRejectedValueOnce(new AuthError('NotAuthorizedException', 'Bad creds'))
+      const { getByText, getByPlaceholderText } = render(<LoginScreen />)
+      fireEvent.changeText(getByPlaceholderText('Enter password'), 'wrongpass')
+      await act(async () => {
+        fireEvent.press(getByText('LOG IN'))
+      })
+      expect(getByText('Incorrect password. Please try again.')).toBeTruthy()
+    })
+
+    it('shows inline error for LimitExceededException (AUTH-05)', async () => {
+      const { AuthError } = require('../../src/auth/types')
+      mockLogin.mockRejectedValueOnce(new AuthError('LimitExceededException', 'Throttled'))
+      const { getByText, getByPlaceholderText } = render(<LoginScreen />)
+      fireEvent.changeText(getByPlaceholderText('Enter password'), 'pass1')
+      await act(async () => {
+        fireEvent.press(getByText('LOG IN'))
+      })
+      expect(getByText('Too many attempts. Please wait and try again.')).toBeTruthy()
+    })
+
+    it('shows fallback inline error for unknown error code (AUTH-05)', async () => {
+      mockLogin.mockRejectedValueOnce(new Error('NetworkError'))
+      const { getByText, getByPlaceholderText } = render(<LoginScreen />)
+      fireEvent.changeText(getByPlaceholderText('Enter password'), 'pass1')
+      await act(async () => {
+        fireEvent.press(getByText('LOG IN'))
+      })
+      expect(getByText('Unable to connect. Check your internet and try again.')).toBeTruthy()
+    })
+
+    it('does not call Alert.alert on login failure (AUTH-05)', async () => {
+      const alertSpy = jest.spyOn(require('react-native').Alert, 'alert')
+      mockLogin.mockRejectedValueOnce(new Error('SomeError'))
+      const { getByText, getByPlaceholderText } = render(<LoginScreen />)
+      fireEvent.changeText(getByPlaceholderText('Enter password'), 'pass1')
+      await act(async () => {
+        fireEvent.press(getByText('LOG IN'))
+      })
+      expect(alertSpy).not.toHaveBeenCalled()
+      alertSpy.mockRestore()
+    })
+
+    it('password TextInput is non-editable while loading (AUTH-06)', async () => {
+      let resolveFn!: () => void
+      mockLogin.mockReturnValueOnce(
+        new Promise<void>((res) => {
+          resolveFn = res
+        }),
+      )
+      const { getByPlaceholderText, getByText } = render(<LoginScreen />)
+      fireEvent.changeText(getByPlaceholderText('Enter password'), 'pass1')
+      act(() => {
+        fireEvent.press(getByText('LOG IN'))
+      })
+      const input = getByPlaceholderText('Enter password')
+      expect(input.props.editable).toBe(false)
+      await act(async () => {
+        resolveFn()
+      })
+    })
+
+    it('clears passwordError when driver re-types in password field (AUTH-05)', async () => {
+      const { getByText, getByPlaceholderText, queryByText } = render(<LoginScreen />)
+      await act(async () => {
+        fireEvent.press(getByText('LOG IN'))
+      })
+      expect(getByText('Please enter your password.')).toBeTruthy()
+      fireEvent.changeText(getByPlaceholderText('Enter password'), 'a')
+      expect(queryByText('Please enter your password.')).toBeNull()
     })
   })
 })

@@ -7,10 +7,10 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useAuth } from '../../src/context/AuthContext'
+import { AuthError } from '../../src/auth/types'
 import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
 import { authService } from '../_layout'
 
@@ -37,6 +37,8 @@ export default function LoginScreen() {
   const [tenantName, setTenantName] = useState(initialTenantName)
   const [isLoading, setIsLoading] = useState(false)
   const [emailError, setEmailError] = useState<string | null>(null)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
 
   const { login } = useAuth()
   const router = useRouter()
@@ -87,16 +89,25 @@ export default function LoginScreen() {
   // Password step: authenticate
   const handleLogin = async () => {
     if (!password) {
-      Alert.alert('Error', 'Please enter your password')
+      setPasswordError('Please enter your password.')
       return
     }
-
+    setPasswordError(null)
     setIsLoading(true)
-    const success = await login(email, password, tenantId)
-    setIsLoading(false)
-
-    if (!success) {
-      Alert.alert('Error', 'Login failed. Please try again.')
+    try {
+      await login(email, password, tenantId)
+      // navigation handled by Stack.Protected — no router.replace needed here
+    } catch (error) {
+      const code = error instanceof AuthError ? error.code : 'unknown'
+      const messages: Record<string, string> = {
+        NotAuthorizedException: 'Incorrect password. Please try again.',
+        UserNotFoundException: 'Account not found.',
+        UserNotConfirmedException: 'Account not confirmed. Contact your company admin.',
+        LimitExceededException: 'Too many attempts. Please wait and try again.',
+      }
+      setPasswordError(messages[code] ?? 'Unable to connect. Check your internet and try again.')
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -120,16 +131,29 @@ export default function LoginScreen() {
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>PASSWORD</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter password"
-                placeholderTextColor={colors.textDisabled}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                autoComplete="password"
-                editable={!isLoading}
-              />
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  style={[styles.input, styles.inputFlex]}
+                  placeholder="Enter password"
+                  placeholderTextColor={colors.textDisabled}
+                  value={password}
+                  onChangeText={(text) => {
+                    setPassword(text)
+                    if (passwordError) setPasswordError(null)
+                  }}
+                  secureTextEntry={!showPassword}
+                  autoComplete="password"
+                  editable={!isLoading}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword((prev) => !prev)}
+                  style={styles.toggleButton}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.toggleText}>{showPassword ? 'HIDE' : 'SHOW'}</Text>
+                </TouchableOpacity>
+              </View>
+              {passwordError && <Text style={styles.errorText}>{passwordError}</Text>}
             </View>
 
             <TouchableOpacity
@@ -246,6 +270,32 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontSize: fontSize.medium,
     marginTop: spacing.sm,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.medium,
+    borderWidth: 2,
+    borderColor: colors.border,
+    minHeight: touchTarget.minHeight,
+  },
+  inputFlex: {
+    flex: 1,
+    borderWidth: 0,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+  },
+  toggleButton: {
+    paddingHorizontal: spacing.lg,
+    justifyContent: 'center',
+    alignSelf: 'stretch',
+  },
+  toggleText: {
+    fontSize: fontSize.medium,
+    fontWeight: '700',
+    color: colors.primary,
+    letterSpacing: 0.5,
   },
   companyNameContainer: {
     marginBottom: spacing.lg,
