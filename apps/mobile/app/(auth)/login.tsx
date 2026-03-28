@@ -9,24 +9,90 @@ import {
   Platform,
   Alert,
 } from 'react-native'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useAuth } from '../../src/context/AuthContext'
 import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
+import { authService } from '../_layout'
+
+type LoginStep = 'email' | 'password'
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const { login } = useAuth()
+  const params = useLocalSearchParams<{
+    step?: string
+    tenantId?: string
+    tenantName?: string
+    email?: string
+  }>()
 
+  // D-08: if picker handed off step=password params, initialise directly in password step
+  const initialStep: LoginStep = params.step === 'password' ? 'password' : 'email'
+  const initialEmail = params.email ?? ''
+  const initialTenantId = params.tenantId ?? ''
+  const initialTenantName = params.tenantName ?? ''
+
+  const [step, setStep] = useState<LoginStep>(initialStep)
+  const [email, setEmail] = useState(initialEmail)
+  const [password, setPassword] = useState('')
+  const [tenantId, setTenantId] = useState(initialTenantId)
+  const [tenantName, setTenantName] = useState(initialTenantName)
+  const [isLoading, setIsLoading] = useState(false)
+  const [emailError, setEmailError] = useState<string | null>(null)
+
+  const { login } = useAuth()
+  const router = useRouter()
+
+  // Email step: resolve tenants
+  const handleEmailSubmit = async () => {
+    if (!email.trim()) return
+
+    setIsLoading(true)
+    setEmailError(null)
+
+    try {
+      const tenants = await authService.resolveTenants(email.trim())
+
+      if (tenants.length === 0) {
+        // TENANT-04: inline error, no navigation
+        setEmailError('Email not registered with Pegasus')
+        setIsLoading(false)
+        return
+      }
+
+      if (tenants.length === 1) {
+        // TENANT-02: auto-select, no picker
+        const tenant = tenants[0]
+        await authService.selectTenant(email.trim(), tenant.tenantId)
+        setTenantId(tenant.tenantId)
+        setTenantName(tenant.tenantName)
+        setStep('password')
+        setIsLoading(false)
+        return
+      }
+
+      // TENANT-03: multiple tenants — navigate to picker
+      setIsLoading(false)
+      router.push({
+        pathname: '/(auth)/tenant-picker',
+        params: {
+          email: email.trim(),
+          tenantsJson: JSON.stringify(tenants),
+        },
+      })
+    } catch {
+      setEmailError('Unable to look up account. Please try again.')
+      setIsLoading(false)
+    }
+  }
+
+  // Password step: authenticate
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please enter email and password')
+    if (!password) {
+      Alert.alert('Error', 'Please enter your password')
       return
     }
 
     setIsLoading(true)
-    // TODO Phase 4: tenantId supplied from tenant resolution
-    const success = await login(email, password, '')
+    const success = await login(email, password, tenantId)
     setIsLoading(false)
 
     if (!success) {
@@ -34,6 +100,53 @@ export default function LoginScreen() {
     }
   }
 
+  if (step === 'password') {
+    return (
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <Text style={styles.title}>Moving & Storage</Text>
+            <Text style={styles.subtitle}>Driver Portal</Text>
+          </View>
+
+          <View style={styles.form}>
+            {/* TENANT-05: company name above password input */}
+            <View style={styles.companyNameContainer}>
+              <Text style={styles.companyName}>{tenantName}</Text>
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>PASSWORD</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter password"
+                placeholderTextColor={colors.textDisabled}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                autoComplete="password"
+                editable={!isLoading}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.button, isLoading && styles.buttonDisabled]}
+              onPress={handleLogin}
+              disabled={isLoading}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.buttonText}>{isLoading ? 'LOGGING IN...' : 'LOG IN'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    )
+  }
+
+  // Email step (default)
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -59,31 +172,20 @@ export default function LoginScreen() {
               autoComplete="email"
               editable={!isLoading}
             />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>PASSWORD</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter password"
-              placeholderTextColor={colors.textDisabled}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoComplete="password"
-              editable={!isLoading}
-            />
+            {/* TENANT-04: inline error below email input */}
+            {emailError && <Text style={styles.errorText}>{emailError}</Text>}
           </View>
 
           <TouchableOpacity
             style={[styles.button, isLoading && styles.buttonDisabled]}
-            onPress={handleLogin}
+            onPress={handleEmailSubmit}
             disabled={isLoading}
             activeOpacity={0.8}
           >
-            <Text style={styles.buttonText}>{isLoading ? 'LOGGING IN...' : 'LOG IN'}</Text>
+            <Text style={styles.buttonText}>
+              {isLoading ? 'FINDING COMPANY...' : 'FIND MY COMPANY'}
+            </Text>
           </TouchableOpacity>
-
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -139,6 +241,20 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.border,
     minHeight: touchTarget.minHeight,
+  },
+  errorText: {
+    color: colors.error,
+    fontSize: fontSize.medium,
+    marginTop: spacing.sm,
+  },
+  companyNameContainer: {
+    marginBottom: spacing.lg,
+    alignItems: 'center',
+  },
+  companyName: {
+    fontSize: fontSize.xlarge,
+    fontWeight: '700',
+    color: colors.primary,
   },
   button: {
     backgroundColor: colors.primary,
