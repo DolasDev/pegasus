@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 5 context gathered (discuss mode)
-last_updated: '2026-03-28T00:30:14.773Z'
+status: executing
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-03-28T12:24:36.018Z"
 last_activity: 2026-03-28
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 9
-  completed_plans: 9
+  total_plans: 11
+  completed_plans: 10
   percent: 0
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** A driver can log in with their real company credentials and the app knows which tenant they belong to — no mock data, no hardcoded sessions.
-**Current focus:** Phase 04 — tenant-resolution-flow
+**Current focus:** Phase 05 — login-ux-and-auth-guard
 
 ## Current Position
 
-Phase: 5
-Plan: Not started
-Status: Phase complete — ready for verification
+Phase: 05 (login-ux-and-auth-guard) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
 Last activity: 2026-03-28
 
 Progress: [░░░░░░░░░░] 0%
@@ -61,6 +61,7 @@ _Updated after each plan completion_
 | Phase 03-authcontext-and-session P02 | 5min | 2 tasks | 7 files |
 | Phase 04-tenant-resolution-flow P01 | 2 | 2 tasks | 7 files |
 | Phase 04-tenant-resolution-flow P02 | 4min | 1 tasks | 2 files |
+| Phase 05-login-ux-and-auth-guard P01 | 2min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,8 @@ Recent decisions affecting current work:
 - [Phase 04-tenant-resolution-flow]: router.push to tenant-picker (not replace) so hardware back returns to email step natively (TENANT-06)
 - [Phase 04-tenant-resolution-flow]: Inline error text for no-tenant case (not Alert.alert) — TENANT-04 UX consistency
 - [Phase 04-tenant-resolution-flow]: URL param handoff from tenant-picker to login password step (step=password + tenantId + tenantName + email) — D-08 pattern
+- [Phase 05-01]: Promise<void> throw-on-failure: login() throws AuthError instead of returning false — enables try/catch inline error mapping at call site
+- [Phase 05-01]: Inline errors over Alert.alert: passwordError state renders below password input — AUTH-05 UX requirement for polished driver experience
 
 ### Pending Todos
 
@@ -108,6 +111,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T00:30:14.769Z
-Stopped at: Phase 5 context gathered (discuss mode)
-Resume file: .planning/phases/05-login-ux-and-auth-guard/05-CONTEXT.md
+Last session: 2026-03-28T12:24:36.014Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: None
