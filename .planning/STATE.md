@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 04-02 two-step LoginScreen
-last_updated: "2026-03-28T00:06:58.136Z"
+stopped_at: Phase 5 context gathered (discuss mode)
+last_updated: '2026-03-28T00:30:14.773Z'
 last_activity: 2026-03-28
 progress:
   total_phases: 5
@@ -89,7 +89,7 @@ Recent decisions affecting current work:
 - [Phase 03-01]: authService injected as AuthProvider prop for clean unit tests without module mock
 - [Phase 03-02]: AppState useEffect dep array contains session (not []) — prevents stale closure where null session at mount would never detect expiry
 - [Phase 03-02]: authService created at module scope in \_layout.tsx — avoids recreating service instance on every render
-- [Phase 04-01]: Named export pattern for authService from _layout.tsx - simplest approach, avoids context, login.tsx and picker import directly
+- [Phase 04-01]: Named export pattern for authService from \_layout.tsx - simplest approach, avoids context, login.tsx and picker import directly
 - [Phase 04-01]: resolveTenants returns [] on empty 200 (never throws) - empty means no match, calling screen handles as UI concern
 - [Phase 04-01]: tenant-picker registered with headerShown:true in auth layout - OS-native back button for TENANT-06 without explicit handler
 - [Phase 04-tenant-resolution-flow]: router.push to tenant-picker (not replace) so hardware back returns to email step natively (TENANT-06)
@@ -108,6 +108,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T00:02:50.939Z
-Stopped at: Completed 04-02 two-step LoginScreen
-Resume file: None
+Last session: 2026-03-28T00:30:14.769Z
+Stopped at: Phase 5 context gathered (discuss mode)
+Resume file: .planning/phases/05-login-ux-and-auth-guard/05-CONTEXT.md
