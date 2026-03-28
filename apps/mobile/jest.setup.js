@@ -63,11 +63,17 @@ jest.mock('expo-router', () => ({
     back: jest.fn(),
   })),
   useLocalSearchParams: jest.fn(() => ({})),
+  useSegments: jest.fn(() => []),
   Stack: {
     Screen: jest.fn(({ children }) => children),
+    Protected: jest.fn(({ children }) => children),
   },
   Tabs: jest.fn(({ children }) => children),
   Link: jest.fn(({ children }) => children),
+  SplashScreen: {
+    preventAutoHideAsync: jest.fn(() => Promise.resolve()),
+    hideAsync: jest.fn(() => Promise.resolve()),
+  },
 }));
 
 // Mock expo-image-picker
