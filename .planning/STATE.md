@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 4 context gathered (discuss mode)
-last_updated: '2026-03-27T23:32:19.952Z'
-last_activity: 2026-03-27
+status: executing
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-03-28T00:01:21.911Z"
+last_activity: 2026-03-28
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 9
+  completed_plans: 8
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** A driver can log in with their real company credentials and the app knows which tenant they belong to — no mock data, no hardcoded sessions.
-**Current focus:** Phase 03 — authcontext-and-session
+**Current focus:** Phase 04 — tenant-resolution-flow
 
 ## Current Position
 
-Phase: 4
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-03-27
+Phase: 04 (tenant-resolution-flow) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-03-28
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -59,6 +59,7 @@ _Updated after each plan completion_
 | Phase 02-auth-service-layer P02 | 5min | 1 tasks | 2 files |
 | Phase 03-authcontext-and-session P01 | 2min | 2 tasks | 5 files |
 | Phase 03-authcontext-and-session P02 | 5min | 2 tasks | 7 files |
+| Phase 04-tenant-resolution-flow P01 | 2 | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,9 @@ Recent decisions affecting current work:
 - [Phase 03-01]: authService injected as AuthProvider prop for clean unit tests without module mock
 - [Phase 03-02]: AppState useEffect dep array contains session (not []) — prevents stale closure where null session at mount would never detect expiry
 - [Phase 03-02]: authService created at module scope in \_layout.tsx — avoids recreating service instance on every render
+- [Phase 04-01]: Named export pattern for authService from _layout.tsx - simplest approach, avoids context, login.tsx and picker import directly
+- [Phase 04-01]: resolveTenants returns [] on empty 200 (never throws) - empty means no match, calling screen handles as UI concern
+- [Phase 04-01]: tenant-picker registered with headerShown:true in auth layout - OS-native back button for TENANT-06 without explicit handler
 
 ### Pending Todos
 
@@ -100,6 +104,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T23:32:19.948Z
-Stopped at: Phase 4 context gathered (discuss mode)
-Resume file: .planning/phases/04-tenant-resolution-flow/04-CONTEXT.md
+Last session: 2026-03-28T00:01:21.907Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: None

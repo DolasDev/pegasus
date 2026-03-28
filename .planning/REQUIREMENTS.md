@@ -17,11 +17,11 @@
 ### Tenant Resolution
 
 - [ ] **TENANT-01**: Driver enters email and app calls `POST /api/auth/resolve-tenants`, receiving a list of tenants the email belongs to
-- [ ] **TENANT-02**: If exactly one tenant matches, app auto-selects it and calls `POST /api/auth/select-tenant` without showing a picker
-- [ ] **TENANT-03**: If multiple tenants match, driver sees a list of company names and selects one; app then calls `POST /api/auth/select-tenant`
+- [x] **TENANT-02**: If exactly one tenant matches, app auto-selects it and calls `POST /api/auth/select-tenant` without showing a picker
+- [x] **TENANT-03**: If multiple tenants match, driver sees a list of company names and selects one; app then calls `POST /api/auth/select-tenant`
 - [ ] **TENANT-04**: If no tenants match the email, driver sees an inline error message ("Email not registered with Pegasus") without navigating away
 - [ ] **TENANT-05**: The resolved company name is displayed above the password input field so the driver can confirm they are logging into the right company
-- [ ] **TENANT-06**: Back navigation from the tenant picker screen returns to the email entry step and resets all auth state
+- [x] **TENANT-06**: Back navigation from the tenant picker screen returns to the email entry step and resets all auth state
 
 ### Authentication
 
@@ -34,10 +34,10 @@
 
 ### Session
 
-- [ ] **SESSION-01**: Validated session object (tenantId, role, email, sub, expiresAt) is persisted in `expo-secure-store` (encrypted); raw Cognito tokens are discarded after `validate-token` succeeds
-- [ ] **SESSION-02**: On cold start, app restores session from secure store before rendering any route so the auth guard never flickers to login for an already-authenticated driver
-- [ ] **SESSION-03**: Driver can log out — clears secure store, resets AuthContext state, and navigates to login screen
-- [ ] **SESSION-04**: On app resume (foreground event), if the stored session's `expiresAt` is in the past, driver is shown a re-login prompt rather than silently failing on API calls
+- [x] **SESSION-01**: Validated session object (tenantId, role, email, sub, expiresAt) is persisted in `expo-secure-store` (encrypted); raw Cognito tokens are discarded after `validate-token` succeeds
+- [x] **SESSION-02**: On cold start, app restores session from secure store before rendering any route so the auth guard never flickers to login for an already-authenticated driver
+- [x] **SESSION-03**: Driver can log out — clears secure store, resets AuthContext state, and navigates to login screen
+- [x] **SESSION-04**: On app resume (foreground event), if the stored session's `expiresAt` is in the past, driver is shown a re-login prompt rather than silently failing on API calls
 
 ### Auth Guard
 
@@ -73,21 +73,21 @@
 | INFRA-02    | Phase 1 | Complete |
 | API-01      | Phase 1 | Complete |
 | TENANT-01   | Phase 4 | Pending |
-| TENANT-02   | Phase 4 | Pending |
-| TENANT-03   | Phase 4 | Pending |
+| TENANT-02   | Phase 4 | Complete |
+| TENANT-03   | Phase 4 | Complete |
 | TENANT-04   | Phase 4 | Pending |
 | TENANT-05   | Phase 4 | Pending |
-| TENANT-06   | Phase 4 | Pending |
+| TENANT-06   | Phase 4 | Complete |
 | AUTH-01     | Phase 2 | Complete |
 | AUTH-02     | Phase 2 | Complete |
 | AUTH-03     | Phase 2 | Complete |
 | AUTH-04     | Phase 5 | Pending |
 | AUTH-05     | Phase 5 | Pending |
 | AUTH-06     | Phase 5 | Pending |
-| SESSION-01  | Phase 3 | Pending |
-| SESSION-02  | Phase 3 | Pending |
-| SESSION-03  | Phase 3 | Pending |
-| SESSION-04  | Phase 3 | Pending |
+| SESSION-01  | Phase 3 | Complete |
+| SESSION-02  | Phase 3 | Complete |
+| SESSION-03  | Phase 3 | Complete |
+| SESSION-04  | Phase 3 | Complete |
 | GUARD-01    | Phase 5 | Pending |
 
 **Coverage:**

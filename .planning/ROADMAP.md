@@ -96,7 +96,7 @@ Plans:
 
 Plans:
 
-- [ ] 04-01-PLAN.md — TenantResolution type + authService extension (resolveTenants, selectTenant) + tenant-picker screen + auth layout update
+- [x] 04-01-PLAN.md — TenantResolution type + authService extension (resolveTenants, selectTenant) + tenant-picker screen + auth layout update
 - [ ] 04-02-PLAN.md — login.tsx two-step state machine (email step + password step + URL param handoff)
 
 ### Phase 5: Login UX and Auth Guard
@@ -129,5 +129,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Infrastructure Foundation | 3/3            | Complete    | 2026-03-27 |
 | 2. Auth Service Layer        | 1/2            | In Progress |            |
 | 3. AuthContext and Session   | 2/2            | Complete    | 2026-03-27 |
-| 4. Tenant Resolution Flow    | 0/2            | Not started | -          |
+| 4. Tenant Resolution Flow    | 1/2 | In Progress|  |
 | 5. Login UX and Auth Guard   | 0/2            | Not started | -          |
