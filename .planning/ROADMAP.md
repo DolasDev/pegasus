@@ -97,7 +97,7 @@ Plans:
 Plans:
 
 - [x] 04-01-PLAN.md — TenantResolution type + authService extension (resolveTenants, selectTenant) + tenant-picker screen + auth layout update
-- [ ] 04-02-PLAN.md — login.tsx two-step state machine (email step + password step + URL param handoff)
+- [x] 04-02-PLAN.md — login.tsx two-step state machine (email step + password step + URL param handoff)
 
 ### Phase 5: Login UX and Auth Guard
 

@@ -16,11 +16,11 @@
 
 ### Tenant Resolution
 
-- [ ] **TENANT-01**: Driver enters email and app calls `POST /api/auth/resolve-tenants`, receiving a list of tenants the email belongs to
+- [x] **TENANT-01**: Driver enters email and app calls `POST /api/auth/resolve-tenants`, receiving a list of tenants the email belongs to
 - [x] **TENANT-02**: If exactly one tenant matches, app auto-selects it and calls `POST /api/auth/select-tenant` without showing a picker
 - [x] **TENANT-03**: If multiple tenants match, driver sees a list of company names and selects one; app then calls `POST /api/auth/select-tenant`
-- [ ] **TENANT-04**: If no tenants match the email, driver sees an inline error message ("Email not registered with Pegasus") without navigating away
-- [ ] **TENANT-05**: The resolved company name is displayed above the password input field so the driver can confirm they are logging into the right company
+- [x] **TENANT-04**: If no tenants match the email, driver sees an inline error message ("Email not registered with Pegasus") without navigating away
+- [x] **TENANT-05**: The resolved company name is displayed above the password input field so the driver can confirm they are logging into the right company
 - [x] **TENANT-06**: Back navigation from the tenant picker screen returns to the email entry step and resets all auth state
 
 ### Authentication
@@ -72,11 +72,11 @@
 | INFRA-01    | Phase 1 | Complete |
 | INFRA-02    | Phase 1 | Complete |
 | API-01      | Phase 1 | Complete |
-| TENANT-01   | Phase 4 | Pending |
+| TENANT-01   | Phase 4 | Complete |
 | TENANT-02   | Phase 4 | Complete |
 | TENANT-03   | Phase 4 | Complete |
-| TENANT-04   | Phase 4 | Pending |
-| TENANT-05   | Phase 4 | Pending |
+| TENANT-04   | Phase 4 | Complete |
+| TENANT-05   | Phase 4 | Complete |
 | TENANT-06   | Phase 4 | Complete |
 | AUTH-01     | Phase 2 | Complete |
 | AUTH-02     | Phase 2 | Complete |
