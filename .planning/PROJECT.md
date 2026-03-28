@@ -88,4 +88,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-_Last updated: 2026-03-27 after Phase 03 (authcontext-and-session) complete_
+_Last updated: 2026-03-28 after Phase 04 (tenant-resolution-flow) complete — TenantResolution type, resolveTenants/selectTenant auth service methods, TenantPickerScreen, and two-step login state machine all delivered. Requirements TENANT-01 through TENANT-06 validated._
