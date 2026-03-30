@@ -1,0 +1,28 @@
+{
+  "name": "pegasus-events-services",
+  "productName": "PegII Services",
+  "version": "1.1.8",
+  "description": "PegII Services Controller and service runner",
+  "author": {
+    "name": "DOLAS LLC",
+    "email": "admin@dolas.dev",
+    "url": "https://dolasdevelopment.com/"
+  },
+  "main": "main.js",
+  "scripts": {
+    "start": "cross-env NODE_ENV=development electron .",
+    "build-service": "cd ..\\service && activate.bat && python -m nuitka --standalone --follow-imports --jobs=4 --no-debug --output-filename=pegII-service app.py && deactivate && cd ..\\controller",
+    "build-controller": "node incriment-patch-vers.js && electron-builder --config ./electron-builder-config.js --publish never",
+    "build": "cross-env NODE_ENV=production npm run build-service && npm run build-controller",
+    "dist": "cross-env NODE_ENV=production build"
+  },
+  "license": "CC0-1.0",
+  "devDependencies": {
+    "cross-env": "^5.2.1",
+    "electron": "^4.0.1",
+    "electron-builder": "^20.44.4"
+  },
+  "dependencies": {
+    "electron-log": "^2.2.17"
+  }
+}
