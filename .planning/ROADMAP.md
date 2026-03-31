@@ -132,7 +132,12 @@ Plans:
 3. `Session` type in `apps/mobile/src/auth/types.ts` includes `ssoProvider: string | null`
 4. API handler tests cover both tenant-client and mobile-client audience acceptance
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+
+- [ ] 06-01-PLAN.md — BREAK-01 commit + audience array fix + env guard + Session type update
+- [ ] 06-02-PLAN.md — validate-token unit test suite (9 cases)
 
 ## Progress
 
@@ -146,4 +151,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. AuthContext and Session     | 2/2            | Complete    | 2026-03-27 |
 | 4. Tenant Resolution Flow      | 2/2            | Complete    | 2026-03-28 |
 | 5. Login UX and Auth Guard     | 2/2            | Complete    | 2026-03-28 |
-| 6. Fix Mobile Token Validation | 0/TBD          | Pending     |            |
+| 6. Fix Mobile Token Validation | 0/2            | Pending     |            |
