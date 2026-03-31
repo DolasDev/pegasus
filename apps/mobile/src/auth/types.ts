@@ -16,6 +16,7 @@ export type Session = {
   role: string
   email: string
   expiresAt: number
+  ssoProvider: string | null
 }
 
 /**

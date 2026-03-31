@@ -8,6 +8,7 @@ const mockSession: Session = {
   role: 'driver',
   email: 'a@b.com',
   expiresAt: 9999999999,
+  ssoProvider: null,
 }
 
 const mockTenants: TenantResolution[] = [

@@ -23,6 +23,7 @@ const mockSession: Session = {
   role: 'driver',
   email: 'driver@example.com',
   expiresAt: Date.now() + 3600_000, // 1 hour from now
+  ssoProvider: null,
 }
 
 const mockAuthService = {
@@ -149,6 +150,7 @@ describe('checkSession — SESSION-02', () => {
       role: 'driver',
       email: 'restored@example.com',
       expiresAt: Date.now() + 3600_000,
+      ssoProvider: null,
     }
     ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(stored))
 
@@ -191,6 +193,7 @@ describe('AppState expiry detection — SESSION-04', () => {
       role: 'driver',
       email: 'expired@example.com',
       expiresAt: Date.now() - 1000, // already expired
+      ssoProvider: null,
     }
     ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(expiredSession))
 
@@ -216,6 +219,7 @@ describe('AppState expiry detection — SESSION-04', () => {
       role: 'driver',
       email: 'valid@example.com',
       expiresAt: Date.now() + 3600_000, // 1 hour from now
+      ssoProvider: null,
     }
     ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(validSession))
 
@@ -237,6 +241,7 @@ describe('AppState expiry detection — SESSION-04', () => {
       role: 'driver',
       email: 'expired@example.com',
       expiresAt: Date.now() - 1000,
+      ssoProvider: null,
     }
     ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(expiredSession))
 
