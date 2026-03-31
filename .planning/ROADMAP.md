@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: AuthContext and Session** - AuthContext replaces mock auth; session persisted to secure store; logout and expiry detection working (completed 2026-03-27)
 - [ ] **Phase 4: Tenant Resolution Flow** - Two-step email-first login, tenant picker screen, back navigation, and error states
 - [x] **Phase 5: Login UX and Auth Guard** - Password show/hide, inline errors, input locking, and flash-free auth guard (completed 2026-03-28)
-- [ ] **Phase 6: Fix Mobile Token Validation** - Resolve audience mismatch in validate-token, commit BREAK-01 fix, and patch Session type shape
+- [x] **Phase 6: Fix Mobile Token Validation** - Resolve audience mismatch in validate-token, commit BREAK-01 fix, and patch Session type shape (completed 2026-03-31)
 
 ## Phase Details
 
@@ -137,7 +137,7 @@ Plans:
 Plans:
 
 - [x] 06-01-PLAN.md — BREAK-01 commit + audience array fix + env guard + Session type update
-- [ ] 06-02-PLAN.md — validate-token unit test suite (9 cases)
+- [x] 06-02-PLAN.md — validate-token unit test suite (9 cases)
 
 ## Progress
 
@@ -151,4 +151,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. AuthContext and Session     | 2/2            | Complete    | 2026-03-27 |
 | 4. Tenant Resolution Flow      | 2/2            | Complete    | 2026-03-28 |
 | 5. Login UX and Auth Guard     | 2/2            | Complete    | 2026-03-28 |
-| 6. Fix Mobile Token Validation | 1/2 | In Progress|  |
+| 6. Fix Mobile Token Validation | 2/2 | Complete   | 2026-03-31 |
