@@ -206,6 +206,7 @@ model Tenant {
   ssoProviders   TenantSsoProvider[]
   users          TenantUser[]
   apiClients     ApiClient[]
+  pegasusEvents  PegasusEvent[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -863,6 +864,49 @@ model AuditLog {
   @@index([createdAt])
   @@schema("platform")
   @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Integration events — inbound events published to the Pegasus event queue
+// by external vendors and services. The Python-based service processes these
+// and writes them to the legacy SQL Server. Events are tenant-scoped and
+// deleted from the queue once processed.
+// ---------------------------------------------------------------------------
+
+/// An inbound integration event received from an external system or vendor.
+/// After the consumer reads and processes the event it is deleted (DELETE /events/:id).
+model PegasusEvent {
+  id             String    @id @default(cuid())
+  tenantId       String    @map("tenant_id")
+
+  /// External event identifier assigned by the publisher. Unique globally.
+  eventApiId     String    @unique @map("event_api_id")
+
+  /// Logical event type used for routing (e.g. "LEAD_CREATED", "MOVE_UPDATED").
+  eventType      String    @map("event_type")
+
+  /// Original timestamp from the publisher.
+  eventDatetime  DateTime? @map("event_datetime")
+
+  /// Processing state: NEW → IN_PROGRESS → PROCESSED | ERROR.
+  eventStatus    String    @default("NEW") @map("event_status")
+
+  /// Name or identifier of the system that published this event.
+  eventPublisher String?   @map("event_publisher")
+
+  /// Arbitrary JSON payload from the publisher — schema varies by event type.
+  eventData      Json?     @map("event_data")
+
+  receivedAt     DateTime  @default(now()) @map("received_at")
+  processedAt    DateTime? @map("processed_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, eventType])
+  @@index([tenantId, eventStatus])
+  @@schema("public")
+  @@map("pegasus_events")
 }
 
 /// Platform-level feature flags for gradual rollout of new capabilities.

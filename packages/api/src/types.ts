@@ -6,6 +6,9 @@ import type { PrismaClient } from '@prisma/client'
 import type { ConnectionPool } from 'mssql'
 import type { ApiClientRow } from './repositories/api-client.repository'
 
+/** API client record without the keyHash — set for M2M-authenticated requests. */
+export type ApiClientContext = Omit<ApiClientRow, 'keyHash'>
+
 /**
  * Variables injected into Hono context by the tenant middleware.
  * Every handler mounted under the /api/v1/* prefix can rely on these being
@@ -45,6 +48,12 @@ export type AppVariables = {
    * /api/v1/pegii/* routes.
    */
   mssqlPool: ConnectionPool
+  /**
+   * The authenticated API client for M2M (machine-to-machine) requests.
+   * Set by m2mAppAuthMiddleware. Undefined for Cognito-authenticated requests.
+   * Handlers that require scope enforcement read scopes from this field.
+   */
+  apiClient: ApiClientContext | undefined
 }
 
 /** Hono environment type used when constructing the app and all sub-routers. */

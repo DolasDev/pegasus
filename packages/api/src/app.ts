@@ -16,6 +16,8 @@ import { billingHandler } from './handlers/billing'
 import { apiClientsHandler } from './handlers/api-clients'
 import { pegiiRouter } from './handlers/pegii'
 import { efwkRouter } from './handlers/efwk'
+import { eventsHandler } from './handlers/events'
+import { ordersHandler } from './handlers/orders'
 import { logger } from './lib/logger'
 import { DomainError } from '@pegasus/domain'
 import { db as basePrisma } from './db'
@@ -438,6 +440,29 @@ app.route('/api/auth', authHandler)
 // Must be mounted BEFORE the tenant-protected /api/v1 block.
 // ---------------------------------------------------------------------------
 app.route('/api/admin', adminRouter)
+
+// ---------------------------------------------------------------------------
+// M2M API — routes accessible only by authenticated API clients (vnd_ keys).
+//
+// These are mounted BEFORE the Cognito v1 block so that requests carrying a
+// vendor API key reach their handler without first hitting tenantMiddleware.
+// Each handler applies m2mAppAuthMiddleware internally (not as a wildcard on
+// this router) so that non-matching paths fall through cleanly to the Cognito
+// v1 block below.
+//
+// URL mapping from the legacy standalone AWS Lambda API (apps/services/api):
+//   POST   /api/v1/events              ← POST /EventEndpointHandler
+//   GET    /api/v1/events/:eventType   ← GET  /events/{eventType}
+//   DELETE /api/v1/events/:eventId     ← DELETE /events/{eventId}
+//   GET    /api/v1/orders              ← GET  /orders
+//   POST   /api/v1/orders              ← POST /orders/create[/{customer_app_id}]
+//   GET    /api/v1/orders/:orderId     ← (new — single order lookup)
+// ---------------------------------------------------------------------------
+const m2mV1 = new Hono<AppEnv>()
+m2mV1.route('/events', eventsHandler)
+m2mV1.route('/orders', ordersHandler)
+
+app.route('/api/v1', m2mV1)
 
 // ---------------------------------------------------------------------------
 // Tenant-protected API — all routes under /api/v1 require a resolved tenant.
