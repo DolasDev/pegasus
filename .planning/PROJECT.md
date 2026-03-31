@@ -26,6 +26,7 @@ A driver can log in with their real company credentials and the app knows which 
 - [x] Updated `AuthContext` — replaces mock login with real auth service backed by expo-secure-store; session persisted/restored from encrypted storage; AppState expiry detection on foreground resume — Validated in Phase 03: authcontext-and-session
 - [x] Login UX hardening — `AuthContext.login()` now `Promise<void>` (throws `AuthError`); SHOW/HIDE password toggle; inline error messages for all auth failure codes; input locking during loading; no Alert.alert — Validated in Phase 05: login-ux-and-auth-guard
 - [x] Auth guard — `_layout.tsx` uses `Stack.Protected guard={isAuthenticated}` + `SplashScreen.preventAutoHideAsync()` to eliminate login flash on cold start; useEffect redirect removed — Validated in Phase 05: login-ux-and-auth-guard
+- [x] Mobile token validation fix — `validate-token` accepts mobile Cognito client ID in audience array; BREAK-01 field name fixed in `authService.ts`; `Session` type extended with `ssoProvider`; 9-case unit test suite added — Validated in Phase 06: fix-mobile-token-validation
 - [ ] Two-step login UX — email submitted first → tenant resolution → tenant picker shown only when >1 tenant found → password entry
 - [ ] Tenant picker screen — `app/(auth)/tenant-picker.tsx` — list of tenant names, driver selects one, app calls `select-tenant`
 - [ ] Cognito SRP authentication — `amazon-cognito-identity-js` performs in-app SRP challenge; no browser redirect; uses pool ID + mobile client ID from mobile-config endpoint
@@ -90,4 +91,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-_Last updated: 2026-03-28 after Phase 05 (login-ux-and-auth-guard) complete — AuthContext.login() hardened to Promise<void>/throw pattern; SHOW/HIDE toggle and inline errors on login screen; Stack.Protected + SplashScreen guard replaces useEffect redirect. Requirements AUTH-04, AUTH-05, AUTH-06, GUARD-01 validated._
+_Last updated: 2026-03-31 after Phase 06 (fix-mobile-token-validation) complete — mobile token validation fixed (audience array, BREAK-01 field name, Session.ssoProvider); 9-case validate-token unit test suite added. Requirement AUTH-03 validated._
