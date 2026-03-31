@@ -44,7 +44,7 @@ export function createAuthService({ apiBaseUrl, cognitoService }: AuthServiceDep
    * Authenticates the driver via three sequential steps:
    *  1. fetchMobileConfig(tenantId) → { userPoolId, clientId }
    *  2. cognitoService.signIn(email, password, userPoolId, clientId) → { idToken }
-   *  3. POST /api/auth/validate-token with { token: idToken } → { data: Session }
+   *  3. POST /api/auth/validate-token with { idToken } → { data: Session }
    *
    * Returns the server-validated Session. The raw idToken is discarded after
    * step 3 — it is never attached to the returned Session (AUTH-03, D-07).
@@ -68,7 +68,7 @@ export function createAuthService({ apiBaseUrl, cognitoService }: AuthServiceDep
     const res = await fetch(`${apiBaseUrl}/api/auth/validate-token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: idToken }),
+      body: JSON.stringify({ idToken }),
     })
 
     if (!res.ok) {
