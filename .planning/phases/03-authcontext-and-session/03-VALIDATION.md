@@ -1,10 +1,11 @@
 ---
 phase: 3
 slug: authcontext-and-session
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-27
+audited: 2026-03-31
 ---
 
 # Phase 3 — Validation Strategy
@@ -38,11 +39,11 @@ created: 2026-03-27
 
 | Task ID   | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status     |
 | --------- | ---- | ---- | ----------- | --------- | ----------------- | ----------- | ---------- |
-| 03-01-01  | 01   | 0    | SESSION-01  | unit      | `cd apps/mobile && npm test -- --testPathPattern=AuthContext --forceExit` | ❌ W0 | ⬜ pending |
-| 03-01-02  | 01   | 1    | SESSION-01  | unit      | `cd apps/mobile && npm test -- --testPathPattern=AuthContext --forceExit` | Rewrite existing | ⬜ pending |
-| 03-01-03  | 01   | 1    | SESSION-03  | unit      | `cd apps/mobile && npm test -- --testPathPattern=AuthContext --forceExit` | Rewrite existing | ⬜ pending |
-| 03-02-01  | 02   | 2    | SESSION-02  | unit      | `cd apps/mobile && npm test -- --testPathPattern=AuthContext --forceExit` | Rewrite existing | ⬜ pending |
-| 03-02-02  | 02   | 2    | SESSION-04  | unit      | `cd apps/mobile && npm test -- --testPathPattern=AuthContext --forceExit` | Rewrite existing | ⬜ pending |
+| 03-01-01  | 01   | 0    | SESSION-01  | unit      | `cd apps/mobile && npm test -- --testPathPattern=AuthContext --forceExit` | ✅ | ✅ green |
+| 03-01-02  | 01   | 1    | SESSION-01  | unit      | `cd apps/mobile && npm test -- --testPathPattern=AuthContext --forceExit` | ✅ | ✅ green |
+| 03-01-03  | 01   | 1    | SESSION-03  | unit      | `cd apps/mobile && npm test -- --testPathPattern=AuthContext --forceExit` | ✅ | ✅ green |
+| 03-02-01  | 02   | 2    | SESSION-02  | unit      | `cd apps/mobile && npm test -- --testPathPattern=AuthContext --forceExit` | ✅ | ✅ green |
+| 03-02-02  | 02   | 2    | SESSION-04  | unit      | `cd apps/mobile && npm test -- --testPathPattern=AuthContext --forceExit` | ✅ | ✅ green |
 
 _Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky_
 
@@ -50,10 +51,10 @@ _Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky_
 
 ## Wave 0 Requirements
 
-- [ ] `apps/mobile/jest.setup.js` — add `expo-secure-store` mock
-- [ ] `apps/mobile/jest.config.js` — add `expo-secure-store` to `transformIgnorePatterns`
-- [ ] `apps/mobile/package.json` — add `expo-secure-store ~15.0.8` (via `npx expo install expo-secure-store`)
-- [ ] `apps/mobile/src/context/AuthContext.test.tsx` — full rewrite to cover SESSION-01 through SESSION-04 with mock authService and AppState spy
+- [x] `apps/mobile/jest.setup.js` — `expo-secure-store` mock (getItemAsync, setItemAsync, deleteItemAsync)
+- [x] `apps/mobile/jest.config.js` — `expo-secure-store` in `transformIgnorePatterns`
+- [x] `apps/mobile/package.json` — `expo-secure-store ~15.0.8` installed
+- [x] `apps/mobile/src/context/AuthContext.test.tsx` — 11 tests covering SESSION-01 through SESSION-04 with mock authService, AppState spy, and SecureStore mock
 
 ---
 
@@ -67,11 +68,29 @@ _Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky_
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 15s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (all test files exist)
+- [x] No watch-mode flags
+- [x] Feedback latency < 15s (11 AuthContext tests in ~2s)
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** 2026-03-31
+
+---
+
+## Validation Audit 2026-03-31
+
+| Metric     | Count |
+| ---------- | ----- |
+| Gaps found | 0     |
+| Resolved   | 5     |
+| Escalated  | 0     |
+
+All 4 requirements (SESSION-01, SESSION-02, SESSION-03, SESSION-04) have automated verification.
+SESSION-01: `AuthContext.test.tsx` "login — SESSION-01" describe — 3 tests covering persist, no-raw-token, failure.
+SESSION-02: `AuthContext.test.tsx` "checkSession — SESSION-02" describe — 2 tests covering restore and no-session.
+SESSION-03: `AuthContext.test.tsx` "logout — SESSION-03" describe — 1 test.
+SESSION-04: `AuthContext.test.tsx` "AppState expiry detection — SESSION-04" describe — 3 tests (expired/valid/background). Note: expiresAt fixtures use seconds-scale values (Math.floor(Date.now() / 1000)) after Phase 07 fix.
+131/131 mobile tests green.
+Manual-only: cold-start session restore visual (device/emulator required).

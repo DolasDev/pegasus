@@ -1,10 +1,11 @@
 ---
 phase: 7
 slug: fix-session-expiry-and-stale-tests
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-31
+audited: 2026-03-31
 ---
 
 # Phase 7 — Validation Strategy
@@ -39,9 +40,9 @@ created: 2026-03-31
 
 | Task ID   | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status     |
 | --------- | ---- | ---- | ----------- | --------- | ----------------- | ----------- | ---------- |
-| 07-01-01  | 01   | 1    | SESSION-04  | unit      | `cd packages/api && node ../../node_modules/.bin/vitest run src/handlers/auth.test.ts` | ✅ | ⬜ pending |
-| 07-01-02  | 01   | 1    | SESSION-04  | unit      | `cd apps/mobile && node ../../node_modules/.bin/jest --testPathPattern=AuthContext` | ✅ | ⬜ pending |
-| 07-01-03  | 01   | 1    | AUTH-03     | unit      | `cd apps/mobile && node ../../node_modules/.bin/jest --testPathPattern=authService` | ✅ | ⬜ pending |
+| 07-01-01  | 01   | 1    | SESSION-04  | unit      | `cd packages/api && node ../../node_modules/.bin/vitest run src/handlers/auth.test.ts` | ✅ | ✅ green |
+| 07-01-02  | 01   | 1    | SESSION-04  | unit      | `cd apps/mobile && node ../../node_modules/.bin/jest --testPathPattern=AuthContext` | ✅ | ✅ green |
+| 07-01-03  | 01   | 1    | AUTH-03     | unit      | `cd apps/mobile && node ../../node_modules/.bin/jest --testPathPattern=authService` | ✅ | ✅ green |
 
 _Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky_
 
@@ -63,11 +64,25 @@ Existing infrastructure covers all phase requirements. All test files exist; cha
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 30s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (all test files existed)
+- [x] No watch-mode flags
+- [x] Feedback latency < 15s (131 mobile tests in ~2.35s)
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** 2026-03-31
+
+---
+
+## Validation Audit 2026-03-31
+
+| Metric     | Count |
+| ---------- | ----- |
+| Gaps found | 0     |
+| Resolved   | 3     |
+| Escalated  | 0     |
+
+SESSION-04: `AuthContext.test.tsx` "AppState expiry detection" describe — 3 tests with seconds-scale fixtures (Math.floor(Date.now() / 1000) ± offset). AuthContext.tsx:57 `session.expiresAt * 1000 < Date.now()` confirmed correct.
+AUTH-03: `authService.test.ts` "passes idToken from signIn to validate-token body" — asserts `body.idToken` (commit 92cc2f4).
+131/131 mobile tests green · 32/32 API tests green.
