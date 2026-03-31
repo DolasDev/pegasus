@@ -411,3 +411,174 @@ describe('GET /api/auth/mobile-config', () => {
     expect(data['clientId']).toBe('test-mobile-client-id')
   })
 })
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/validate-token (AUTH-03)
+// ---------------------------------------------------------------------------
+
+describe('POST /api/auth/validate-token', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.stubEnv(
+      'COGNITO_JWKS_URL',
+      'https://cognito-idp.us-east-1.amazonaws.com/us-east-1_TEST/.well-known/jwks.json',
+    )
+    vi.stubEnv('COGNITO_TENANT_CLIENT_ID', 'tenant-client-id')
+    vi.stubEnv('COGNITO_MOBILE_CLIENT_ID', 'mobile-client-id')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  // Case 1: Tenant client ID token — full session shape asserted
+  it('returns 200 with session claims when tenant client ID token is valid', async () => {
+    mockJwtVerify.mockResolvedValueOnce({
+      payload: {
+        sub: 'user-sub-123',
+        email: 'user@acme.com',
+        exp: 9999999999,
+        token_use: 'id',
+        'custom:tenantId': 'tenant-abc',
+        'custom:role': 'tenant_user',
+      },
+    })
+
+    const res = await authHandler.request('/validate-token', post({ idToken: 'tok' }))
+    expect(res.status).toBe(200)
+    const body = await json(res)
+    const data = body['data'] as Record<string, unknown>
+    expect(data['sub']).toBe('user-sub-123')
+    expect(data['tenantId']).toBe('tenant-abc')
+    expect(data['role']).toBe('tenant_user')
+    expect(data['email']).toBe('user@acme.com')
+    expect(data['expiresAt']).toBe(9999999999)
+    expect(data['ssoProvider']).toBeNull()
+  })
+
+  // Case 2: Mobile client ID token — ssoProvider populated from identities claim
+  it('returns 200 with ssoProvider populated when mobile token includes identities claim', async () => {
+    mockJwtVerify.mockResolvedValueOnce({
+      payload: {
+        sub: 'user-sub-456',
+        email: 'driver@acme.com',
+        exp: 9999999999,
+        token_use: 'id',
+        'custom:tenantId': 'tenant-abc',
+        'custom:role': 'tenant_user',
+        identities: [{ providerName: 'acme-okta' }],
+      },
+    })
+
+    const res = await authHandler.request('/validate-token', post({ idToken: 'tok' }))
+    expect(res.status).toBe(200)
+    const body = await json(res)
+    const data = body['data'] as Record<string, unknown>
+    expect(data['ssoProvider']).toBe('acme-okta')
+  })
+
+  // Case 3: Unknown audience — jose throws generic error (audience mismatch path)
+  it('returns 401 UNAUTHORIZED when token audience does not match', async () => {
+    mockJwtVerify.mockRejectedValueOnce(new Error('JWT audience mismatch'))
+
+    const res = await authHandler.request('/validate-token', post({ idToken: 'tok' }))
+    expect(res.status).toBe(401)
+    const body = await json(res)
+    expect(body['code']).toBe('UNAUTHORIZED')
+  })
+
+  // Case 4: Expired token — jose throws JWTExpired (specific error path)
+  it('returns 401 TOKEN_EXPIRED when token is expired', async () => {
+    // Use Object.assign to create an error that passes instanceof errors.JWTExpired
+    // without needing to satisfy the full JWTClaimValidationFailed constructor signature.
+    // The ...actual spread in vi.mock('jose') preserves the real errors export.
+    const { errors } = await import('jose')
+    const expiredErr = Object.assign(
+      new errors.JWTExpired('token expired', {}, 'exp', 'check_failed'),
+      {},
+    )
+    mockJwtVerify.mockRejectedValueOnce(expiredErr)
+
+    const res = await authHandler.request('/validate-token', post({ idToken: 'tok' }))
+    expect(res.status).toBe(401)
+    const body = await json(res)
+    expect(body['code']).toBe('TOKEN_EXPIRED')
+  })
+
+  // Case 5: Wrong token_use — access token instead of ID token
+  it('returns 401 UNAUTHORIZED when token_use is "access" instead of "id"', async () => {
+    mockJwtVerify.mockResolvedValueOnce({
+      payload: {
+        sub: 'user-sub-123',
+        email: 'user@acme.com',
+        exp: 9999999999,
+        token_use: 'access',
+        'custom:tenantId': 'tenant-abc',
+        'custom:role': 'tenant_user',
+      },
+    })
+
+    const res = await authHandler.request('/validate-token', post({ idToken: 'tok' }))
+    expect(res.status).toBe(401)
+    const body = await json(res)
+    expect(body['code']).toBe('UNAUTHORIZED')
+  })
+
+  // Case 6: Missing sub or email — cannot build a session
+  it('returns 401 UNAUTHORIZED when sub or email claims are missing', async () => {
+    mockJwtVerify.mockResolvedValueOnce({
+      payload: {
+        // sub deliberately absent
+        email: 'user@acme.com',
+        exp: 9999999999,
+        token_use: 'id',
+        'custom:tenantId': 'tenant-abc',
+        'custom:role': 'tenant_user',
+      },
+    })
+
+    const res = await authHandler.request('/validate-token', post({ idToken: 'tok' }))
+    expect(res.status).toBe(401)
+    const body = await json(res)
+    expect(body['code']).toBe('UNAUTHORIZED')
+  })
+
+  // Case 7: Missing custom:tenantId or custom:role — pre-token Lambda did not inject claims
+  it('returns 403 FORBIDDEN when custom:tenantId or custom:role claims are missing', async () => {
+    mockJwtVerify.mockResolvedValueOnce({
+      payload: {
+        sub: 'user-sub-123',
+        email: 'user@acme.com',
+        exp: 9999999999,
+        token_use: 'id',
+        // custom:tenantId and custom:role deliberately absent
+      },
+    })
+
+    const res = await authHandler.request('/validate-token', post({ idToken: 'tok' }))
+    expect(res.status).toBe(403)
+    const body = await json(res)
+    expect(body['code']).toBe('FORBIDDEN')
+  })
+
+  // Case 8: Env vars not set — guard fires before jwtVerify is called
+  it('returns 500 INTERNAL_ERROR when required env vars are not set', async () => {
+    vi.unstubAllEnvs()
+    // Do not call mockJwtVerify — the env guard returns before reaching jwtVerify
+
+    const res = await authHandler.request('/validate-token', post({ idToken: 'tok' }))
+    expect(res.status).toBe(500)
+    const body = await json(res)
+    expect(body['code']).toBe('INTERNAL_ERROR')
+  })
+
+  // Case 9: Invalid JWT — general catch-all path (distinct from JWTExpired path)
+  it('returns 401 UNAUTHORIZED when JWT is invalid or unparseable', async () => {
+    mockJwtVerify.mockRejectedValueOnce(new Error('Invalid compact JWS'))
+
+    const res = await authHandler.request('/validate-token', post({ idToken: 'tok' }))
+    expect(res.status).toBe(401)
+    const body = await json(res)
+    expect(body['code']).toBe('UNAUTHORIZED')
+  })
+})
