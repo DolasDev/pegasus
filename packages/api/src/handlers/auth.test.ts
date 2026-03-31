@@ -44,6 +44,23 @@ vi.mock('../db', () => ({
 }))
 
 // ---------------------------------------------------------------------------
+// jose mock — intercept jwtVerify before authHandler import resolves
+// ---------------------------------------------------------------------------
+
+const { mockJwtVerify } = vi.hoisted(() => ({
+  mockJwtVerify: vi.fn(),
+}))
+
+vi.mock('jose', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('jose')>()
+  return {
+    ...actual,
+    createRemoteJWKSet: vi.fn().mockReturnValue('mock-jwks'),
+    jwtVerify: mockJwtVerify,
+  }
+})
+
+// ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
