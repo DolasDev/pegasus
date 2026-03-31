@@ -391,9 +391,12 @@ authHandler.post(
 
     const jwksUrl = process.env['COGNITO_JWKS_URL'] ?? ''
     const tenantClientId = process.env['COGNITO_TENANT_CLIENT_ID'] ?? ''
+    const mobileClientId = process.env['COGNITO_MOBILE_CLIENT_ID'] ?? ''
 
-    if (!jwksUrl || !tenantClientId) {
-      logger.error('validate-token: COGNITO_JWKS_URL or COGNITO_TENANT_CLIENT_ID not set')
+    if (!jwksUrl || !tenantClientId || !mobileClientId) {
+      logger.error(
+        'validate-token: COGNITO_JWKS_URL, COGNITO_TENANT_CLIENT_ID, or COGNITO_MOBILE_CLIENT_ID not set',
+      )
       return c.json({ error: 'Authentication service misconfigured', code: 'INTERNAL_ERROR' }, 500)
     }
 
@@ -404,7 +407,7 @@ authHandler.post(
     try {
       const result = await jwtVerify(idToken, getJwks(), {
         issuer: deriveIssuer(jwksUrl),
-        audience: tenantClientId,
+        audience: [tenantClientId, mobileClientId],
         algorithms: ['RS256'],
       })
       payload = result.payload as Record<string, unknown>
