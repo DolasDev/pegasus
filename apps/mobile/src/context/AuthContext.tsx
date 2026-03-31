@@ -53,7 +53,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ authService, childre
     const subscription = AppState.addEventListener(
       'change',
       (nextState: AppStateStatus) => {
-        if (nextState === 'active' && session !== null && session.expiresAt < Date.now()) {
+        // session.expiresAt is JWT exp in seconds; Date.now() is milliseconds — convert before comparing
+        if (nextState === 'active' && session !== null && session.expiresAt * 1000 < Date.now()) {
           logout()
         }
       },
