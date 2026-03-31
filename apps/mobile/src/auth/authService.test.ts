@@ -140,8 +140,8 @@ describe('createAuthService', () => {
 
       const validateCall = (global.fetch as jest.Mock).mock.calls[1]
       expect(validateCall[0]).toBe(`${BASE_URL}/api/auth/validate-token`)
-      const body = JSON.parse(validateCall[1].body as string) as { token: string }
-      expect(body.token).toBe('raw-id-token')
+      const body = JSON.parse(validateCall[1].body as string) as { idToken: string }
+      expect(body.idToken).toBe('raw-id-token')
     })
 
     it('rejects with AuthError(ValidateTokenFailed) when validate-token returns non-2xx', async () => {
