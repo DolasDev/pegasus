@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 06-fix-mobile-token-validation 06-02-PLAN.md
-last_updated: "2026-03-31T14:28:39.874Z"
+stopped_at: Completed 07-fix-session-expiry-and-stale-tests 07-01-PLAN.md
+last_updated: "2026-03-31T16:56:14.771Z"
 last_activity: 2026-03-31
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 13
-  completed_plans: 13
+  total_phases: 7
+  completed_phases: 7
+  total_plans: 14
+  completed_plans: 14
   percent: 0
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** A driver can log in with their real company credentials and the app knows which tenant they belong to — no mock data, no hardcoded sessions.
-**Current focus:** Phase 06 — fix-mobile-token-validation
+**Current focus:** Phase 07 — fix-session-expiry-and-stale-tests
 
 ## Current Position
 
-Phase: 06
-Plan: Not started
+Phase: 07 (fix-session-expiry-and-stale-tests) — EXECUTING
+Plan: 1 of 1
 Status: Phase complete — ready for verification
 Last activity: 2026-03-31
 
@@ -65,6 +65,7 @@ _Updated after each plan completion_
 | Phase 05-login-ux-and-auth-guard P02 | 4min | 2 tasks | 3 files |
 | Phase 06-fix-mobile-token-validation P01 | 3min | 3 tasks | 5 files |
 | Phase 06-fix-mobile-token-validation P02 | 2min | 2 tasks | 1 files |
+| Phase 07-fix-session-expiry-and-stale-tests P01 | 2min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -107,6 +108,8 @@ Recent decisions affecting current work:
 - [Phase 06-fix-mobile-token-validation]: COGNITO_MOBILE_CLIENT_ID env guard on validate-token — empty string check before jwtVerify call prevents D-02 empty-string-audience risk
 - [Phase 06-fix-mobile-token-validation]: ssoProvider: string | null (not optional) on Session type — matches API explicit null return for non-SSO tenants
 - [Phase 06-fix-mobile-token-validation]: jose mock uses ...actual spread to preserve real errors export — allows instanceof errors.JWTExpired checks in test case 4
+- [Phase 07-fix-session-expiry-and-stale-tests]: Option B for SESSION-04: multiply expiresAt by 1000 at comparison site — no API change, no web package impact
+- [Phase 07-fix-session-expiry-and-stale-tests]: JWT exp comparison pattern: session.expiresAt * 1000 < Date.now() — always convert seconds to ms at comparison site
 
 ### Pending Todos
 
@@ -120,6 +123,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T14:25:08.696Z
-Stopped at: Completed 06-fix-mobile-token-validation 06-02-PLAN.md
+Last session: 2026-03-31T16:56:14.766Z
+Stopped at: Completed 07-fix-session-expiry-and-stale-tests 07-01-PLAN.md
 Resume file: None

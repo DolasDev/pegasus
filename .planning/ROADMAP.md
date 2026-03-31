@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 4: Tenant Resolution Flow** - Two-step email-first login, tenant picker screen, back navigation, and error states
 - [x] **Phase 5: Login UX and Auth Guard** - Password show/hide, inline errors, input locking, and flash-free auth guard (completed 2026-03-28)
 - [x] **Phase 6: Fix Mobile Token Validation** - Resolve audience mismatch in validate-token, commit BREAK-01 fix, and patch Session type shape (completed 2026-03-31)
-- [ ] **Phase 7: Fix Session Expiry and Stale Tests** - Correct expiresAt units mismatch (seconds→milliseconds), update AuthContext test fixtures, and fix stale authService test assertion
+- [x] **Phase 7: Fix Session Expiry and Stale Tests** - Correct expiresAt units mismatch (seconds→milliseconds), update AuthContext test fixtures, and fix stale authService test assertion (completed 2026-03-31)
 
 ## Phase Details
 
@@ -156,7 +156,7 @@ Plans:
 
 Plans:
 
-- [ ] 07-01-PLAN.md — Fix expiresAt units mismatch and stale test assertions
+- [x] 07-01-PLAN.md — Fix expiresAt units mismatch and stale test assertions
 
 ## Progress
 
@@ -171,4 +171,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 4. Tenant Resolution Flow      | 2/2            | Complete    | 2026-03-28 |
 | 5. Login UX and Auth Guard     | 2/2            | Complete    | 2026-03-28 |
 | 6. Fix Mobile Token Validation | 2/2            | Complete    | 2026-03-31 |
-| 7. Fix Session Expiry and Stale Tests | 0/1     | Pending    | —          |
+| 7. Fix Session Expiry and Stale Tests | 1/1 | Complete   | 2026-03-31 |

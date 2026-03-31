@@ -37,7 +37,7 @@
 - [x] **SESSION-01**: Validated session object (tenantId, role, email, sub, expiresAt) is persisted in `expo-secure-store` (encrypted); raw Cognito tokens are discarded after `validate-token` succeeds
 - [x] **SESSION-02**: On cold start, app restores session from secure store before rendering any route so the auth guard never flickers to login for an already-authenticated driver
 - [x] **SESSION-03**: Driver can log out — clears secure store, resets AuthContext state, and navigates to login screen
-- [ ] **SESSION-04**: On app resume (foreground event), if the stored session's `expiresAt` is in the past, driver is shown a re-login prompt rather than silently failing on API calls
+- [x] **SESSION-04**: On app resume (foreground event), if the stored session's `expiresAt` is in the past, driver is shown a re-login prompt rather than silently failing on API calls
 
 ### Auth Guard
 
@@ -87,7 +87,7 @@
 | SESSION-01  | Phase 3 | Complete |
 | SESSION-02  | Phase 3 | Complete |
 | SESSION-03  | Phase 3 | Complete |
-| SESSION-04  | Phase 7 | Pending  |
+| SESSION-04  | Phase 7 | Complete |
 | GUARD-01    | Phase 5 | Complete |
 
 **Coverage:**
