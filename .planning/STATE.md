@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 6 plans verified and ready for execution
-last_updated: "2026-03-31T03:01:01.449Z"
-last_activity: 2026-03-28
+status: executing
+stopped_at: Completed 06-fix-mobile-token-validation 06-01-PLAN.md
+last_updated: "2026-03-31T14:21:50.032Z"
+last_activity: 2026-03-31
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 13
-  completed_plans: 11
+  completed_plans: 12
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** A driver can log in with their real company credentials and the app knows which tenant they belong to — no mock data, no hardcoded sessions.
-**Current focus:** Phase 05 — login-ux-and-auth-guard
+**Current focus:** Phase 06 — fix-mobile-token-validation
 
 ## Current Position
 
-Phase: 05
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-03-28
+Phase: 06 (fix-mobile-token-validation) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-03-31
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -63,6 +63,7 @@ _Updated after each plan completion_
 | Phase 04-tenant-resolution-flow P02 | 4min | 1 tasks | 2 files |
 | Phase 05-login-ux-and-auth-guard P01 | 2min | 2 tasks | 4 files |
 | Phase 05-login-ux-and-auth-guard P02 | 4min | 2 tasks | 3 files |
+| Phase 06-fix-mobile-token-validation P01 | 3min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,9 @@ Recent decisions affecting current work:
 - [Phase 05-01]: Inline errors over Alert.alert: passwordError state renders below password input — AUTH-05 UX requirement for polished driver experience
 - [Phase 05-02]: Stack mock as callable function: jest.fn() with .Screen/.Protected properties attached — plain object mock breaks JSX rendering
 - [Phase 05-02]: Guard prop assertion via mock.calls[0]?.[0]: React 19 calls components as Component(props, undefined) — expect.anything() does not match undefined
+- [Phase 06-fix-mobile-token-validation]: jose audience array [tenantClientId, mobileClientId]: accepts token if aud matches either element — web tokens match tenant client, mobile tokens match mobile client
+- [Phase 06-fix-mobile-token-validation]: COGNITO_MOBILE_CLIENT_ID env guard on validate-token — empty string check before jwtVerify call prevents D-02 empty-string-audience risk
+- [Phase 06-fix-mobile-token-validation]: ssoProvider: string | null (not optional) on Session type — matches API explicit null return for non-SSO tenants
 
 ### Pending Todos
 
@@ -114,6 +118,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T03:01:01.444Z
-Stopped at: Phase 6 plans verified and ready for execution
-Resume file: .planning/phases/06-fix-mobile-token-validation/06-01-PLAN.md
+Last session: 2026-03-31T14:21:50.027Z
+Stopped at: Completed 06-fix-mobile-token-validation 06-01-PLAN.md
+Resume file: None
