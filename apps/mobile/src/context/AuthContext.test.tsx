@@ -22,7 +22,7 @@ const mockSession: Session = {
   tenantId: 'tenant-abc',
   role: 'driver',
   email: 'driver@example.com',
-  expiresAt: Date.now() + 3600_000, // 1 hour from now
+  expiresAt: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now in seconds
   ssoProvider: null,
 }
 
@@ -149,7 +149,7 @@ describe('checkSession — SESSION-02', () => {
       tenantId: 'tenant-xyz',
       role: 'driver',
       email: 'restored@example.com',
-      expiresAt: Date.now() + 3600_000,
+      expiresAt: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now in seconds
       ssoProvider: null,
     }
     ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(stored))
@@ -192,7 +192,7 @@ describe('AppState expiry detection — SESSION-04', () => {
       tenantId: 'tenant-abc',
       role: 'driver',
       email: 'expired@example.com',
-      expiresAt: Date.now() - 1000, // already expired
+      expiresAt: Math.floor(Date.now() / 1000) - 1, // 1 second ago in seconds
       ssoProvider: null,
     }
     ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(expiredSession))
@@ -218,7 +218,7 @@ describe('AppState expiry detection — SESSION-04', () => {
       tenantId: 'tenant-abc',
       role: 'driver',
       email: 'valid@example.com',
-      expiresAt: Date.now() + 3600_000, // 1 hour from now
+      expiresAt: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now in seconds
       ssoProvider: null,
     }
     ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(validSession))
@@ -240,7 +240,7 @@ describe('AppState expiry detection — SESSION-04', () => {
       tenantId: 'tenant-abc',
       role: 'driver',
       email: 'expired@example.com',
-      expiresAt: Date.now() - 1000,
+      expiresAt: Math.floor(Date.now() / 1000) - 1, // 1 second ago in seconds
       ssoProvider: null,
     }
     ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(expiredSession))
