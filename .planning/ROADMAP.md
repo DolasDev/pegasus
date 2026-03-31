@@ -19,6 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 4: Tenant Resolution Flow** - Two-step email-first login, tenant picker screen, back navigation, and error states
 - [x] **Phase 5: Login UX and Auth Guard** - Password show/hide, inline errors, input locking, and flash-free auth guard (completed 2026-03-28)
 - [x] **Phase 6: Fix Mobile Token Validation** - Resolve audience mismatch in validate-token, commit BREAK-01 fix, and patch Session type shape (completed 2026-03-31)
+- [ ] **Phase 7: Fix Session Expiry and Stale Tests** - Correct expiresAt units mismatch (seconds→milliseconds), update AuthContext test fixtures, and fix stale authService test assertion
 
 ## Phase Details
 
@@ -139,10 +140,24 @@ Plans:
 - [x] 06-01-PLAN.md — BREAK-01 commit + audience array fix + env guard + Session type update
 - [x] 06-02-PLAN.md — validate-token unit test suite (9 cases)
 
+### Phase 7: Fix Session Expiry and Stale Tests
+
+**Goal**: Every real driver session survives app backgrounding; the expiresAt cross-phase contract is consistent (milliseconds throughout); all tests reflect current production code
+**Depends on**: Phase 6
+**Requirements**: SESSION-04
+**Gap Closure**: Closes BREAK-03, MISSING-01, FLOW-BREAK-03 from v1.0 audit
+**Success Criteria** (what must be TRUE):
+
+1. `packages/api/src/handlers/auth.ts:470` stores `expiresAt: (payload['exp'] as number) * 1000` (milliseconds) so session expiry comparisons with `Date.now()` are valid
+2. `apps/mobile/src/context/AuthContext.test.tsx` mock fixtures use seconds-scale `expiresAt` values (e.g. `Date.now() / 1000 + 3600`) matching the real API contract
+3. `apps/mobile/src/auth/authService.test.ts:143-144` asserts `body.idToken === 'raw-id-token'` (not `body.token`) matching the Phase 06 BREAK-01 fix
+
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase                          | Plans Complete | Status      | Completed  |
 | ------------------------------ | -------------- | ----------- | ---------- |
@@ -152,3 +167,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 4. Tenant Resolution Flow      | 2/2            | Complete    | 2026-03-28 |
 | 5. Login UX and Auth Guard     | 2/2            | Complete    | 2026-03-28 |
 | 6. Fix Mobile Token Validation | 2/2 | Complete   | 2026-03-31 |
+| 7. Fix Session Expiry and Stale Tests | 0/TBD | Pending    | —          |
