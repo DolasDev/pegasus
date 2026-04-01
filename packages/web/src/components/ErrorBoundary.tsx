@@ -14,17 +14,17 @@ interface State {
  * of a blank or broken page. Logs the error to the console for debugging.
  */
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false }
+  override state: State = { hasError: false }
 
   static getDerivedStateFromError(): State {
     return { hasError: true }
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
+  override componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[ErrorBoundary] Unhandled React error', error, info.componentStack)
   }
 
-  render() {
+  override render() {
     if (this.state.hasError) {
       return (
         this.props.fallback ?? (
