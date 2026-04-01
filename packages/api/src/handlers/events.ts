@@ -29,6 +29,7 @@ import {
   createEvent,
   listEventsByType,
   findEventById,
+  updateEvent,
   deleteEvent,
 } from '../repositories/events.repository'
 import type { PegasusEventRow } from '../repositories/events.repository'
@@ -61,6 +62,11 @@ const CreateEventBody = z.object({
   eventDatetime: z.string().datetime().optional(),
   eventPublisher: z.string().min(1).optional(),
   eventData: z.record(z.unknown()).optional(),
+})
+
+const UpdateEventBody = z.object({
+  eventStatus: z.string().min(1),
+  processedAt: z.string().datetime().optional(),
 })
 
 // ---------------------------------------------------------------------------
@@ -166,6 +172,50 @@ eventsHandler.get('/:eventType', requireScope('events:read'), async (c) => {
     return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
   }
 })
+
+// ---------------------------------------------------------------------------
+// PATCH /:eventId
+//
+// Updates the status (and optionally processedAt) of an existing event.
+// Used by the integration service to transition events through the processing
+// pipeline (e.g. NEW → PROCESSING → DONE).
+//
+// Equivalent to the legacy PATCH_events_update Lambda (previously a stub).
+//
+// Request:  { eventStatus: string, processedAt?: string (ISO datetime) }
+// Response: { data: EventResponse } (200) | 404 Not Found
+// ---------------------------------------------------------------------------
+eventsHandler.patch(
+  '/:eventId',
+  requireScope('events:write'),
+  validator('json', (value, c) => {
+    const r = UpdateEventBody.safeParse(value)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => {
+    const db = c.get('db')
+    const tenantId = c.get('tenantId')
+    const eventId = c.req.param('eventId')
+    const body = c.req.valid('json')
+
+    try {
+      const existing = await findEventById(db, eventId)
+      if (!existing) {
+        return c.json({ error: 'Event not found', code: 'NOT_FOUND' }, 404)
+      }
+      const row = await updateEvent(db, eventId, {
+        eventStatus: body.eventStatus,
+        ...(body.processedAt !== undefined ? { processedAt: new Date(body.processedAt) } : {}),
+      })
+      logger.info('Event updated', { id: eventId, eventStatus: body.eventStatus, tenantId })
+      return c.json({ data: toResponse(row) })
+    } catch (err) {
+      logger.error('PATCH /events/:eventId: failed', { error: String(err), eventId, tenantId })
+      return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+    }
+  },
+)
 
 // ---------------------------------------------------------------------------
 // DELETE /:eventId

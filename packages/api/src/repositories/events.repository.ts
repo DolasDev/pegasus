@@ -96,6 +96,21 @@ export async function findEventByApiId(
   })
 }
 
+export async function updateEvent(
+  db: PrismaClient,
+  id: string,
+  patch: { eventStatus?: string; processedAt?: Date | null },
+): Promise<PegasusEventRow> {
+  return db.pegasusEvent.update({
+    where: { id },
+    data: {
+      ...(patch.eventStatus != null ? { eventStatus: patch.eventStatus } : {}),
+      ...(patch.processedAt !== undefined ? { processedAt: patch.processedAt } : {}),
+    },
+    select: eventSelect,
+  })
+}
+
 export async function deleteEvent(db: PrismaClient, id: string): Promise<void> {
   await db.pegasusEvent.delete({ where: { id } })
 }

@@ -44,6 +44,7 @@ const { mockEventsRepo } = vi.hoisted(() => ({
     createEvent: vi.fn(),
     listEventsByType: vi.fn(),
     findEventById: vi.fn(),
+    updateEvent: vi.fn(),
     deleteEvent: vi.fn(),
   },
 }))
@@ -52,6 +53,7 @@ vi.mock('../repositories/events.repository', () => ({
   createEvent: (...args: unknown[]) => mockEventsRepo.createEvent(...args),
   listEventsByType: (...args: unknown[]) => mockEventsRepo.listEventsByType(...args),
   findEventById: (...args: unknown[]) => mockEventsRepo.findEventById(...args),
+  updateEvent: (...args: unknown[]) => mockEventsRepo.updateEvent(...args),
   deleteEvent: (...args: unknown[]) => mockEventsRepo.deleteEvent(...args),
 }))
 
@@ -320,6 +322,81 @@ describe('events handler', () => {
       mockEventsRepo.listEventsByType.mockRejectedValue(new Error('db error'))
       const app = buildApp()
       const res = await app.request('/LEAD_CREATED')
+      expect(res.status).toBe(500)
+    })
+  })
+
+  // ── PATCH /:eventId ───────────────────────────────────────────────────────
+
+  describe('PATCH /:eventId — update event status', () => {
+    function patch(body: unknown): RequestInit {
+      return {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }
+    }
+
+    it('returns 403 FORBIDDEN when apiClient lacks events:write scope', async () => {
+      const readOnlyClient: ApiClientContext = { ...mockApiClient, scopes: ['events:read'] }
+      const app = buildApp(readOnlyClient)
+      const res = await app.request('/evt-cuid-1', patch({ eventStatus: 'PROCESSING' }))
+      expect(res.status).toBe(403)
+      expect((await json(res)).code).toBe('FORBIDDEN')
+    })
+
+    it('returns 400 VALIDATION_ERROR when eventStatus is missing', async () => {
+      const app = buildApp()
+      const res = await app.request('/evt-cuid-1', patch({}))
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    it('returns 400 VALIDATION_ERROR when processedAt is not ISO datetime', async () => {
+      const app = buildApp()
+      const res = await app.request('/evt-cuid-1', patch({ eventStatus: 'DONE', processedAt: 'not-a-date' }))
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    it('returns 404 NOT_FOUND when event does not exist', async () => {
+      mockEventsRepo.findEventById.mockResolvedValue(null)
+      const app = buildApp()
+      const res = await app.request('/evt-missing', patch({ eventStatus: 'PROCESSING' }))
+      expect(res.status).toBe(404)
+      expect((await json(res)).code).toBe('NOT_FOUND')
+    })
+
+    it('returns 200 with updated event on success', async () => {
+      const updatedRow = { ...mockEventRow, eventStatus: 'PROCESSING' }
+      mockEventsRepo.findEventById.mockResolvedValue(mockEventRow)
+      mockEventsRepo.updateEvent.mockResolvedValue(updatedRow)
+      const app = buildApp()
+      const res = await app.request('/evt-cuid-1', patch({ eventStatus: 'PROCESSING' }))
+      expect(res.status).toBe(200)
+      const body = await json(res)
+      expect((body.data as JsonBody)['eventStatus']).toBe('PROCESSING')
+    })
+
+    it('passes eventStatus and processedAt to the repository', async () => {
+      const processedAt = '2024-06-01T15:00:00.000Z'
+      const updatedRow = { ...mockEventRow, eventStatus: 'DONE', processedAt: new Date(processedAt) }
+      mockEventsRepo.findEventById.mockResolvedValue(mockEventRow)
+      mockEventsRepo.updateEvent.mockResolvedValue(updatedRow)
+      const app = buildApp()
+      await app.request('/evt-cuid-1', patch({ eventStatus: 'DONE', processedAt }))
+      expect(mockEventsRepo.updateEvent).toHaveBeenCalledWith(
+        expect.anything(),
+        'evt-cuid-1',
+        expect.objectContaining({ eventStatus: 'DONE', processedAt: new Date(processedAt) }),
+      )
+    })
+
+    it('returns 500 on repository error', async () => {
+      mockEventsRepo.findEventById.mockResolvedValue(mockEventRow)
+      mockEventsRepo.updateEvent.mockRejectedValue(new Error('db error'))
+      const app = buildApp()
+      const res = await app.request('/evt-cuid-1', patch({ eventStatus: 'PROCESSING' }))
       expect(res.status).toBe(500)
     })
   })
