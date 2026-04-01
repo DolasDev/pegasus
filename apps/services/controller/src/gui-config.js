@@ -20,11 +20,6 @@ module.exports = [
         'defaultVal': "https://"
     },
     {
-        'label': 'API Auth Endpoint',
-        'name': 'api_auth_url',
-        'defaultVal': "https://"
-    },
-    {
         'label': 'Run Frequency (Minutes)*',
         'name': 'run_frequency',
         'defaultVal': 5
@@ -36,13 +31,8 @@ module.exports = [
         
     },
     {
-        'label': 'API Client Id*',
-        'name': 'client_id',
-        'defaultVal': ''
-    },
-    {
-        'label': 'API Client Secret*',
-        'name': 'client_secret',
+        'label': 'API Key',
+        'name': 'api_key',
         'defaultVal': ''
     },
     {

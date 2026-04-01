@@ -30,10 +30,8 @@ with open(config_file) as f:
     event_type = data['event_type']
     
     # API Config
-    client_secret = data['client_secret']
-    client_id = data['client_id']
+    api_key = data['api_key']
     api_base_url = data['api_base_url']
-    api_auth_url = data['api_auth_url']
 
     run_frequency = float(data['run_frequency']) * 60
 
