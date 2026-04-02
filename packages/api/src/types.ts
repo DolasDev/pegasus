@@ -54,6 +54,14 @@ export type AppVariables = {
    * Handlers that require scope enforcement read scopes from this field.
    */
   apiClient: ApiClientContext | undefined
+  /**
+   * The authenticated longhaul user (from v_longhaul_salesman).
+   * Set by longhaulUserMiddleware when SKIP_AUTH=true and X-Windows-User header
+   * is provided. Undefined for M2M-authenticated requests.
+   */
+  longhaulUser:
+    | { code: number; first_name: string; last_name: string; [key: string]: unknown }
+    | undefined
 }
 
 /** Hono environment type used when constructing the app and all sub-routers. */
