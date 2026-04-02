@@ -16,6 +16,7 @@ import { billingHandler } from './handlers/billing'
 import { apiClientsHandler } from './handlers/api-clients'
 import { pegiiRouter } from './handlers/pegii'
 import { efwkRouter } from './handlers/efwk'
+import { longhaulRouter } from './handlers/longhaul'
 import { eventsHandler } from './handlers/events'
 import { ordersHandler } from './handlers/orders'
 import { logger } from './lib/logger'
@@ -78,7 +79,8 @@ app.get('/openapi.json', (c) => {
         get: {
           operationId: 'getHealth',
           summary: 'Health check',
-          description: 'Returns the operational status of the API. Add ?deep=true to also probe the database.',
+          description:
+            'Returns the operational status of the API. Add ?deep=true to also probe the database.',
           parameters: [
             {
               name: 'deep',
@@ -509,6 +511,7 @@ v1.route('/invoices', billingHandler)
 v1.route('/api-clients', apiClientsHandler)
 v1.route('/pegii', pegiiRouter)
 v1.route('/efwk', efwkRouter)
+v1.route('/longhaul', longhaulRouter)
 
 app.route('/api/v1', v1)
 
