@@ -66,7 +66,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: `node ../../node_modules/.bin/tsx ../../packages/api/src/server.ts`,
+    command: `node ../../node_modules/.bin/tsx ../api/src/server.ts`,
     url: `${API_BASE_URL}/health`,
     reuseExistingServer: !process.env['CI'],
     timeout: 30000,

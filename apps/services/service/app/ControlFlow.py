@@ -1,4 +1,4 @@
-from app import APICalls, config, CatchRawJson, db, EventsBroker
+from app import APICalls, config, CatchRawJson, db, EventsBroker, xml_handler
 from app.response_handlers import response_handlers, entity_handlers
 from app.models import base
 import traceback
@@ -194,6 +194,13 @@ def createEvent(event):
         session_manager.current_session_commit(RecordType='Event', RecordId=str(event_instance.event_id))
         return(event_instance.id)
 
+def normaliseEventData(event):
+    if config.input_format == 'xml':
+        xml_string = event['event_data']['S']
+        event['event_data']['S'] = xml_handler.parseEventDataXml(xml_string)
+    return event
+
+
 def insertIntoDB(event, new_event_id, table_prefix=None):
     session_manager = base.SessionManager()
     logger.info('Running insertIntoDB()')
@@ -295,6 +302,7 @@ def runEventsReceiver():
             try:
                 new_event_id = createEvent(event)
                 if new_event_id:
+                    normaliseEventData(event)
                     EventsBroker.processEvent(event, new_event_id)
                 if (config.debug == False):
                     deleteFromQueue(event['event_id']['S'])

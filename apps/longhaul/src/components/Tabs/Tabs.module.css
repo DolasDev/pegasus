@@ -1,0 +1,17 @@
+.container {
+    display: flex;
+}
+
+.tab {
+    padding: 5px;
+    font-size: 14px;
+    font-weight: 700;
+    width: fit-content;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: border-bottom 200ms;
+}
+
+.tab.selected {
+    border-bottom: 2px solid var(--blue);
+}

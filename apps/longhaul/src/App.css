@@ -1,0 +1,81 @@
+.App {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+}
+
+body {
+  overflow: hidden;
+}
+
+h1 {
+  font-weight: 100;
+  font-size: 30px;
+}
+
+label {
+  margin-top: 5px;
+  font-weight: bold;
+}
+
+.pegasus-link {
+  color: var(--blue);
+  outline: none;
+  background: none;
+  padding: none;
+  border: none;
+  cursor: pointer;
+}
+
+.pegasus-link:hover {
+  text-decoration: underline;
+}
+
+.App-inner-container {
+  padding: 0 10px;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  flex: 1;
+  overflow: auto;
+}
+
+.PlanningModule__container {
+  display: flex;
+  flex: 1;
+  margin: 10px 0;
+  overflow: hidden;
+  width: fit-content;
+  width: 100%;
+}
+
+.TripsModule__container {
+  margin: 10px 0;
+  overflow: auto;
+  height: 100%;
+}
+
+.App__right-column {
+  flex: 1;
+  height: 100%;
+  box-sizing: border-box;
+  flex-direction: column;
+  margin-left: 10px;
+  overflow: auto;
+  display: flex;
+}
+
+.App__left-column {
+  flex: 3;
+  height: 100%;
+  box-sizing: border-box;
+  flex-direction: column;
+  overflow: auto;
+  display: flex;
+}
+
+.App_planning-button {
+  position: relative;
+  top: 25%;
+  margin-top: -12px;
+}

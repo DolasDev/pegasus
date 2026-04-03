@@ -1,0 +1,30 @@
+.container {
+  box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.2);
+  padding: 15px;
+  box-sizing: border-box;
+  background-color: rgba(255, 255, 255, 0.315);
+  border-radius: 3px;
+  position: relative;
+}
+
+.container:hover {
+  background-color: var(--smoke);
+  cursor: pointer;
+}
+
+.container.active,
+.container.active:hover {
+  background-color: var(--light-50);
+}
+
+.title {
+  font-weight: bold;
+  color: var(--blue-700);
+  font-size: 15px;
+}
+
+.children {
+  font-weight: 300;
+  color: var(--blue-700);
+  font-size: 12px;
+}

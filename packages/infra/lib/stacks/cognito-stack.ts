@@ -109,8 +109,8 @@ export class CognitoStack extends cdk.Stack {
     const preAuthFn = new nodejs.NodejsFunction(this, 'PreAuthFunction', {
       functionName: `pegasus-cognito-pre-auth-${this.stackName}`,
       runtime: lambda.Runtime.NODEJS_20_X,
-      // Entry point is in packages/api so Lambda code stays alongside app code.
-      entry: path.join(__dirname, '../../../api/src/cognito/pre-auth.ts'),
+      // Entry point is in apps/api so Lambda code stays alongside app code.
+      entry: path.join(__dirname, '../../../../apps/api/src/cognito/pre-auth.ts'),
       handler: 'handler',
       bundling: {
         minify: true,
@@ -141,7 +141,7 @@ export class CognitoStack extends cdk.Stack {
     const preTokenFn = new nodejs.NodejsFunction(this, 'PreTokenFunction', {
       functionName: `pegasus-cognito-pre-token-${this.stackName}`,
       runtime: lambda.Runtime.NODEJS_20_X,
-      entry: path.join(__dirname, '../../../api/src/cognito/pre-token.ts'),
+      entry: path.join(__dirname, '../../../../apps/api/src/cognito/pre-token.ts'),
       handler: 'handler',
       environment: {
         NODE_ENV: 'production',
@@ -246,7 +246,7 @@ export class CognitoStack extends cdk.Stack {
     // -------------------------------------------------------------------------
     // Admin app client
     //
-    // Used by apps/admin (OAuth authorization code grant, no client secret).
+    // Used by apps/admin-web (OAuth authorization code grant, no client secret).
     // Refresh token validity is set to the minimum (1 hour) since the admin
     // portal stores tokens in sessionStorage which is cleared on tab close,
     // making refresh tokens effectively unused.
@@ -284,7 +284,7 @@ export class CognitoStack extends cdk.Stack {
     // -------------------------------------------------------------------------
     // Tenant app client
     //
-    // Used by packages/web for the tenant SSO login flow.
+    // Used by apps/tenant-web for the tenant SSO login flow.
     //
     // Design decisions:
     //   - generateSecret: false — PKCE-only flow; no client secret in the browser.

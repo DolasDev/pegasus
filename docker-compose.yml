@@ -6,12 +6,12 @@
 #   docker compose down -v      # stop and wipe data
 #
 # After first start, apply migrations and seed data:
-#   cd packages/api
+#   cd apps/api
 #   npm run db:migrate
 #   npm run db:seed
 #
-# Set DATABASE_URL and DIRECT_URL in packages/api/.env before running
-# migrations (see packages/api/.env.example for the local connection string).
+# Set DATABASE_URL and DIRECT_URL in apps/api/.env before running
+# migrations (see apps/api/.env.example for the local connection string).
 
 services:
   postgres:

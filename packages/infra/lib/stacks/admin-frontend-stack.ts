@@ -6,7 +6,7 @@ import { type Construct } from 'constructs'
 
 /**
  * AdminFrontendStack provisions the static hosting infrastructure for the
- * Pegasus Admin Portal React SPA (apps/admin).
+ * Pegasus Admin Portal React SPA (apps/admin-web).
  *
  * Resources:
  *   - S3 bucket (private, no public access) — stores compiled admin assets

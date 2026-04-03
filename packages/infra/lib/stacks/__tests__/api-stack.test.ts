@@ -4,7 +4,7 @@ import { Template, Match } from 'aws-cdk-lib/assertions'
 import { ApiStack } from '../api-stack'
 
 function synthApiStack() {
-  const app = new cdk.App()
+  const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
   const apiStack = new ApiStack(app, 'TestApi')
   return Template.fromStack(apiStack)
 }

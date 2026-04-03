@@ -1,0 +1,8 @@
+# Runtime deps needed by the service modules
+requests==2.32.3
+SQLAlchemy==2.0.31
+python-dateutil>=2.8.2
+
+# Test framework
+pytest>=8.0
+pytest-mock>=3.14

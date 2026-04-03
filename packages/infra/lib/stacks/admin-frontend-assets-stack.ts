@@ -33,7 +33,7 @@ export class AdminFrontendAssetsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: AdminFrontendAssetsStackProps) {
     super(scope, id, props)
 
-    const distPath = path.join(__dirname, '../../../../apps/admin/dist')
+    const distPath = path.join(__dirname, '../../../../apps/admin-web/dist')
     if (fs.existsSync(distPath)) {
       new s3deploy.BucketDeployment(this, 'DeployAdmin', {
         sources: [

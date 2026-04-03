@@ -1,0 +1,58 @@
+.container {
+  height: 100%;
+  width: 100%;
+  position: relative;
+  transition: width 300ms;
+  z-index: 1;
+}
+
+.large {
+  width: calc(100vw - 120px);
+  flex: none;
+}
+  
+/* this isn't great, we are selecting the card like this */
+.container > div > div {
+  margin: 3px;
+}
+  
+.flexContainer {
+  display: flex;
+  justify-content: space-evenly;
+  padding: 10px;
+}
+
+.flexContainer > b {
+  flex: 1;
+  font-size: 12px;
+}
+
+.flexContainer i {
+  margin-left: 5px;
+}
+
+.down {
+  transform: rotate(180deg);
+}
+
+.header {
+  cursor: pointer;
+}
+
+.emptyContent {
+  flex: none;
+  width: 30px;
+}
+
+.iconButton {
+  position: absolute;
+  right: 20px;
+  top: 10px;
+  z-index: 1;
+}
+
+.empty-dislaimer {
+  font-size: 12px;
+  text-align: center;
+  padding: 20px;
+}

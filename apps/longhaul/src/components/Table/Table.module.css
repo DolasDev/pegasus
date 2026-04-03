@@ -1,0 +1,39 @@
+.table {
+    background-color: var(--grey-light);
+    border-collapse: collapse;
+    width: 100%;
+  }
+  
+  .thead .tr {
+    border-bottom: 1px solid var(--grey);
+  }
+  
+  .tr {
+    margin-bottom: 10px;
+    background-color: #fff;
+  }
+  
+  .tr:nth-child(odd) {
+    background-color:  rgba(162,170,195, 0.1);
+  }
+  
+    tr:hover td {
+        background-color: var(--grey-light);
+        cursor: pointer;
+    }
+
+  .td, .th {
+    font-size: 10px;
+    padding: 10px;
+  }
+
+  .th {
+    background-color: white;
+    padding: 10px;
+    text-align: left;
+  }
+  
+  .thead {
+    height: 100px;
+  }
+  

@@ -1,0 +1,31 @@
+.navItem {
+    display: flex;
+    height: 60px;
+    width: 100%;
+    color: var(--light);
+    text-align: center;
+    text-decoration: none;
+    font-size: 10px;
+    font-weight: 100;
+    text-transform: uppercase;
+    flex-direction: column;
+    align-items: center;
+    box-sizing: border-box;
+    border-left: 2px solid transparent;
+    line-height: 1.5;
+    padding: 7px 0;
+    justify-content: space-evenly;
+}
+
+.navItem > i {
+    font-size: 18px;
+}
+
+.navItem > * {
+    display: block;
+}
+
+.navItem.selected {
+    color: #fff;
+    border-left: 2px solid #fff;
+}

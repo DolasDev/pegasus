@@ -1,0 +1,153 @@
+.container {
+  width: 100%;
+  flex: 1;
+}
+
+.pending-trip-buttons-container {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  display: flex;
+  width: 170px;
+  justify-content: flex-end;
+}
+
+.pending-trip-buttons-container button {
+  background-color: var(--blue-700);
+  margin-right: 5px;
+}
+
+.pending-trip-buttons-container button:last-child {
+  margin-right: 0px;
+}
+
+.activityCreationContainer {
+  display: flex;
+  align-items: center;
+}
+
+.activityCreationContainer h3 {
+  margin-block-start: 0.5em;
+  margin-block-end: 0.5em;
+}
+
+.save-trip-button {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+}
+
+.content {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.content a {
+  color: var(--blue);
+  cursor: pointer;
+}
+
+.title {
+  font-weight: bold;
+  font-size: 12px;
+  margin-top: 10px;
+}
+
+.trip-card-container {
+  margin-top: 20px;
+}
+
+.trip-card-container > div:not(.title) {
+  margin: 10px;
+}
+
+.no-trips-disclaimer {
+  text-align: center;
+  padding: 40px 0;
+}
+
+.iconButton {
+  outline: none;
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.floatingDeleteButton {
+  display: none;
+  position: absolute;
+  top: 5px;
+  right: 5px;
+}
+
+.floatingDeleteButton:hover i {
+  color: red;
+}
+
+.trip-card-container > div:not(.title):hover .floatingDeleteButton {
+  display: block;
+}
+
+.driver-select-container {
+  width: 180px;
+  display: inline-block;
+}
+
+.arrow-container {
+  position: absolute;
+  left: -25px;
+  height: 60px;
+  top: 50%;
+  margin-top: -30px;
+  display: flex;
+  justify-content: space-between;
+  flex-direction: column;
+  z-index: 0;
+}
+
+.arrow-container button:not(:disabled) i:hover {
+  color: var(--green);
+}
+
+.row {
+  display: flex;
+}
+
+.row > div:not(:first-child) {
+  margin-left: 20px;
+}
+
+.activityCard {
+  padding: 5px;
+  border: 1px solid var(--blue-700);
+  position: relative;
+  margin: 5px 0;
+  border-radius: 2px;
+  background-color: #fff;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+}
+
+.menuItem {
+  justify-content: center;
+  height: 28px;
+  padding-right: 10px;
+  padding-left: 10px;
+  align-items: center;
+  display: flex;
+  font-size: 11px;
+  user-select: none;
+  cursor: pointer;
+}
+
+.menuItem:hover {
+  background-color: var(--blue-light);
+}
+
+.menuItem:active {
+  font-weight: 700;
+  color: var(--blue-300);
+}

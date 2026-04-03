@@ -28,6 +28,7 @@ with open(config_file) as f:
     service_name = data['service_name']
     service_type = data['service_type']
     event_type = data['event_type']
+    input_format = data.get('input_format', 'json')
     
     # API Config
     api_key = data['api_key']

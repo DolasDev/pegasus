@@ -15,6 +15,16 @@ module.exports = [
         ]
     },
     {
+        'label': 'Input Format',
+        'name': 'input_format',
+        'defaultVal': {'label': 'JSON', 'value': 'json'},
+        'type': 'select',
+        'options': [
+            {'label': 'JSON', 'value': 'json'},
+            {'label': 'XML',  'value': 'xml'}
+        ]
+    },
+    {
         'label': 'API base URL',
         'name': 'api_base_url',
         'defaultVal': "https://"

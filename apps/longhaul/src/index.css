@@ -1,0 +1,11 @@
+@import url("colors.css");
+
+body {
+  font-family: 'Open Sans', Tinos, serif, sans-serif;
+  margin: 0;
+  --webkit-font-smooth: antialiased;
+}
+
+* {
+  font-family: 'Open Sans', Tinos, serif, sans-serif;
+}

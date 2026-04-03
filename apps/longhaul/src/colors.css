@@ -1,0 +1,18 @@
+:root {
+    --smoke: #F5F5F5;
+    --grey-light: #e6e6e6;
+    --grey: #eee;
+    --dark-grey: #cccccc;
+    --light-30: rgba(162, 170, 195, 0.3); 
+    --light-50: rgba(162, 170, 195, 0.5); 
+    --light: #A2AAC3; 
+    --blue-light: #858AB0;
+    --blue-300: #5D6DBF;
+    --blue: #081AD3;
+    --blue-500: #0917A9;
+    --blue-700: #0C145C;
+    --blue-dark: #040823;
+    --green: rgb(60, 156, 60);
+    --green-500: rgb(46, 122, 46);
+    --red: rgb(172, 67, 67);
+}

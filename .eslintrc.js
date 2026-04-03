@@ -13,8 +13,22 @@ module.exports = {
     ],
     // Disable base rule in favour of the TS-aware version
     'no-unused-vars': 'off',
-    '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    '@typescript-eslint/no-unused-vars': [
+      'error',
+      { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true },
+    ],
   },
+  overrides: [
+    {
+      // Legacy migrated app — relax strict typing rules
+      files: ['apps/longhaul/**/*.{ts,tsx}'],
+      rules: {
+        '@typescript-eslint/no-explicit-any': 'off',
+        '@typescript-eslint/ban-types': 'off',
+        '@typescript-eslint/no-unused-vars': 'off',
+      },
+    },
+  ],
   env: {
     node: true,
     es2022: true,

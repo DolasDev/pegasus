@@ -9,4 +9,5 @@ requests==2.32.3
 SQLAlchemy==2.0.31
 typing-extensions==4.12.2
 urllib3==2.2.2
+xmltodict==0.14.2
 zstandard==0.23.0

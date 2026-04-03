@@ -1,0 +1,57 @@
+.container {
+  position: relative;
+}
+
+.menuContainer {
+  position: relative;
+  z-index: 1;
+}
+
+.menu {
+  padding: 0;
+  margin-top: 0;
+  position: absolute;
+  background-color: white;
+  width: 100%;
+  max-height: 20rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  outline: 0;
+  transition: opacity 0.1s ease;
+  border-radius: 0 0 0.28571429rem 0.28571429rem;
+  box-shadow: 0 2px 3px 0 rgba(34, 36, 38, 0.15);
+}
+
+.menu.isOpen {
+  border: none;
+}
+
+.item {
+  position: relative;
+  cursor: pointer;
+  display: block;
+  border: none;
+  height: auto;
+  text-align: left;
+  border-top: none;
+  line-height: 1em;
+  color: rgba(0, 0, 0, 0.87);
+  font-size: 1rem;
+  text-transform: none;
+  font-weight: 400;
+  box-shadow: none;
+  padding: 0.8rem 1.1rem;
+  white-space: normal;
+  word-wrap: normal;
+  font-size: 12px;
+}
+
+.item.isActive {
+  color: rgba(0, 0, 0, 0.95);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.item.isSelected {
+  color: rgba(0, 0, 0, 0.95);
+  font-weight: 700;
+}

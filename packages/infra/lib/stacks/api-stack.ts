@@ -84,7 +84,7 @@ export class ApiStack extends cdk.Stack {
     const apiFunction = new nodejs.NodejsFunction(this, 'ApiFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
       // Entry resolved relative to this file at deploy time by esbuild
-      entry: path.join(__dirname, '../../../api/src/lambda.ts'),
+      entry: path.join(__dirname, '../../../../apps/api/src/lambda.ts'),
       handler: 'handler',
       environment: {
         NODE_ENV: 'production',

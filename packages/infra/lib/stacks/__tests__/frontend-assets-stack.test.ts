@@ -32,7 +32,7 @@ describe('FrontendAssetsStack — BucketDeployment', () => {
     const template = synthAssetsStack()
     const deployments = template.findResources('Custom::CDKBucketDeployment')
     const keys = Object.keys(deployments)
-    // If packages/web/dist exists (i.e. after a build), the deployment is created
+    // If apps/tenant-web/dist exists (i.e. after a build), the deployment is created
     // with exactly two sources: the compiled SPA assets and the generated config.json.
     // In a fresh checkout without a prior build, no deployment is created — also acceptable.
     const firstKey = keys[0]

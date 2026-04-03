@@ -47,6 +47,6 @@ A failing test is evidence of a real problem. Treat it as signal, not noise.
 ### TDD layers in this repo
 
 - **Domain logic** — write the unit test before the function. (`packages/domain`, pure Vitest, no I/O)
-- **API handlers** — write the handler test (with mocked repositories) before the handler. (`packages/api`)
+- **API handlers** — write the handler test (with mocked repositories) before the handler. (`apps/api`)
 - **Repository functions** — write the integration test (skip-guarded with `describe.skipIf(!process.env['DATABASE_URL'])`) before the repository.
 - **UI components** — write the component test before the component.

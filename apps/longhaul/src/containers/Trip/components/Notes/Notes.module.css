@@ -1,0 +1,49 @@
+.notesContainer {
+  max-width: 600px;
+}
+
+.noteTitle {
+  margin-right: 20px;
+}
+
+.noteMeta {
+  color: darkGrey;
+  font-size: 12px;
+  position: relative;
+}
+
+.noteModalTextArea {
+  height: 160px;
+  width: 100%;
+}
+
+.noteModalButtonContainer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.noteModalButtonContainer > button {
+  margin: 5px;
+}
+
+.noteCard {
+  margin: 10px;
+  padding: 5px 50px 5px 5px;
+  border: 1px solid var(--blue);
+  position: relative;
+  min-height: 36px;
+  background-color: var(--grey);
+}
+
+.noteCard p {
+  margin-block-start: 0.25em;
+  margin-block-end: 0.25em;
+  overflow: auto;
+}
+
+.editButton {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+}

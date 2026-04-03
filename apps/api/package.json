@@ -1,0 +1,47 @@
+{
+  "name": "@pegasus/api",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/server.js",
+    "start:dev": "tsx src/server.ts",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "service:install": "node service/install.js",
+    "service:uninstall": "node service/uninstall.js"
+  },
+  "dependencies": {
+    "@aws-lambda-powertools/logger": "^2.0.0",
+    "@hono/node-server": "^1.19.11",
+    "@hono/zod-openapi": "^0.18.4",
+    "@pegasus/domain": "*",
+    "@prisma/client": "^6.0.0",
+    "hono": "^4.6.14",
+    "jose": "^5.0.0",
+    "knex": "^3.1.0",
+    "mssql": "^12.2.0",
+    "fast-xml-parser": "^4.5.0",
+    "zod": "^3.23.8"
+  },
+  "optionalDependencies": {
+    "node-windows": "^1.0.0-beta.8"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
+    "@types/aws-lambda": "^8.10.145",
+    "@types/mssql": "^9.1.9",
+    "@types/node": "^20.16.0",
+    "@vitest/coverage-v8": "*",
+    "prisma": "^6.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "*",
+    "vitest": "*"
+  }
+}

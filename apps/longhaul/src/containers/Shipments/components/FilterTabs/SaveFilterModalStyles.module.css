@@ -1,0 +1,11 @@
+.checkbox-container {
+    display: flex; margin-top: 20px; align-items: flex-end;
+}
+
+.checkbox-container > input {
+    margin: 2px 5px;
+}
+
+.checkbox-container > label:not(:first-child) {
+    margin-left: 5px;
+}

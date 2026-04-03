@@ -63,7 +63,7 @@ export default async function globalSetup() {
 
   // Run Prisma migrations
   try {
-    const apiDir = path.resolve(__dirname, '../../packages/api')
+    const apiDir = path.resolve(__dirname, '../api')
     console.log('[e2e] Running prisma migrate deploy...')
     execSync('node ../../node_modules/.bin/prisma migrate deploy', {
       cwd: apiDir,

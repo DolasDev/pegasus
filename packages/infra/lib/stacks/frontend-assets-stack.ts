@@ -40,7 +40,7 @@ export class FrontendAssetsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: FrontendAssetsStackProps) {
     super(scope, id, props)
 
-    const distPath = path.join(__dirname, '../../../../packages/web/dist')
+    const distPath = path.join(__dirname, '../../../../apps/tenant-web/dist')
     if (fs.existsSync(distPath)) {
       new s3deploy.BucketDeployment(this, 'DeployWebsite', {
         sources: [

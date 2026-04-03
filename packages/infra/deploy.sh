@@ -65,10 +65,10 @@ echo ""
 if [[ "$API_ONLY" == "false" ]]; then
   if [[ "$ADMIN_ONLY" == "false" ]]; then
     echo "▶  [1/2] Building web package..."
-    run npm run build --workspace=@pegasus/web --prefix "$REPO_ROOT"
+    run npm run build --workspace=@pegasus/tenant-web --prefix "$REPO_ROOT"
   fi
-  echo "▶  [1/2] Building apps/admin..."
-  run npm run build --workspace=@pegasus/admin --prefix "$REPO_ROOT"
+  echo "▶  [1/2] Building apps/admin-web..."
+  run npm run build --workspace=@pegasus/admin-web --prefix "$REPO_ROOT"
 fi
 
 # ── 2. Deploy — CDK resolves ordering from the dependency graph ───────────────
