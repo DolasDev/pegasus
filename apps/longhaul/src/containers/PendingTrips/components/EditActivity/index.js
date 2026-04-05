@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { usePopper } from 'react-popper';
+import { useFloating, offset } from '@floating-ui/react';
 import { Popover } from '../../../../components/Popover';
 import  styles  from "./EditActivity.module.css";
 import { DatePicker } from '../../../../components/DatePicker';
@@ -10,21 +10,11 @@ import { Button, IconButton } from "src/components/Button"
 
 export const EditActivity = ({activity, _referenceElement, closeEditActivity, editDateSpread}) => {
   const [selectedActivity, setSelectedActivity] = useState(activity);
-  const [referenceElement, setReferenceElement] = useState(_referenceElement);
-  const [popperElement, setPopperElement] = useState(null);
-  const [arrowElement, setArrowElement] = useState(null);
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
-  const { styles: popperStyles, attributes } = usePopper(referenceElement, popperElement, {
-    modifiers: [
-      { name: 'arrow', options: { element: arrowElement } },
-      {
-        name: 'offset',
-        options: {
-          offset: [0, 5],
-        },
-      },
-    ],
+  const { refs, floatingStyles } = useFloating({
+    elements: { reference: _referenceElement },
+    middleware: [offset(5)],
   });
 
   const onChange = dates => {
@@ -49,7 +39,7 @@ export const EditActivity = ({activity, _referenceElement, closeEditActivity, ed
   
     return(
     <div ref={wrapperRef}>
-      <Popover ref={setPopperElement} style={popperStyles.popper} {...attributes.popper}> 
+      <Popover ref={refs.setFloating} style={floatingStyles}> 
         <div className={styles.formField}>
           <label htmlFor="estimated_date">Date Spread</label> 
           <div>
@@ -74,7 +64,6 @@ export const EditActivity = ({activity, _referenceElement, closeEditActivity, ed
             Icon={<i className="fa fa-close"></i>}
           >Clear Dates</Button>
         </div>
-        <div ref={setArrowElement} style={popperStyles.arrow} />
       </Popover>
     </div>
     )
