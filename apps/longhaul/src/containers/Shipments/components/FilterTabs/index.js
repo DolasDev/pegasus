@@ -1,6 +1,4 @@
 import React, { useState } from 'react';
-import chunk from 'lodash/chunk';
-
 import { InputField } from '../../../../components/InputField';
 import { Select } from '../../../../components/Select';
 import SaveFilterModal from './SaveFilterModal';
@@ -232,7 +230,10 @@ const FIELDS_PER_COLUMN = Math.ceil(FIELDS.length / COLUMNS);
 
 export function FilterTabs() {
   const [isOpen, setOpen] = useState(false);
-  const chunkedFields = chunk(FIELDS, FIELDS_PER_COLUMN);
+  const chunkedFields = [];
+  for (let i = 0; i < FIELDS.length; i += FIELDS_PER_COLUMN) {
+    chunkedFields.push(FIELDS.slice(i, i + FIELDS_PER_COLUMN));
+  }
   const dispatch = useDispatch();
   const query = useSelector((state) => state.shipments.query);
   const common_state = useSelector(state => state.common);

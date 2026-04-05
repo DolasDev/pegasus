@@ -321,7 +321,7 @@ const PendingTripsInternal = (props) => {
                   <div>Please add a shipment to this trip by selecting one in the left panel</div>
                 </div>
               )}
-              {sortBy(currentTrip.shipments.map((shipment, idx) => ({...shipment, stateIdx: idx})), 'load_date').map((shipment) => (
+              {[...currentTrip.shipments.map((shipment, idx) => ({...shipment, stateIdx: idx}))].sort((a, b) => a.load_date < b.load_date ? -1 : a.load_date > b.load_date ? 1 : 0).map((shipment) => (
                 <Card key={shipment.order_num} title={dashboardSettings.title(shipment)}>
                   {dashboardSettings.children(shipment)}
                   <div className={styles.activityCreationContainer}>

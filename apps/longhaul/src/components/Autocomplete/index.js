@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import Downshift from 'downshift';
 import styles from './Autocomplete.module.css';
 import { InputField } from '../InputField';
-import startCase from "lodash/startCase";
-import toLower from "lodash/toLower";
 
 const Item = React.forwardRef(({ classNames, ...props }, ref) => (
   <li className={`${styles.item} ${classNames}`} ref={ref} {...props} />

@@ -1,5 +1,4 @@
 import React from 'react';
-import get from 'lodash/get';
 
 import { Card } from '../../../../components/Card';
 import styles from './TripCard.module.css';
@@ -73,7 +72,7 @@ export function TripCard({ trip, i }) {
         title={(<><span>{`Trip 
         ${trip.id} | 
         ${getTripTitle(trip.trip_title)} | 
-        ${getDriverName(get(trip, 'driver.driver_name'))} 
+        ${getDriverName(trip?.driver?.driver_name)}
         ${isCanceled ? ' - CANCELED': ''}
         `}</span> 
         {(trip.vip_count || trip.supervip_count) ? ' | ' : '' }

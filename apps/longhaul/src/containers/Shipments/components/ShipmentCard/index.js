@@ -9,7 +9,7 @@ import styles from './ShipmentCard.module.css';
 import { formatDate, formatDateShort } from '../../../../utils/format-date';
 import { sHaulMapping, haulModeMapping } from '../../../../utils/haul-mode-mapping';
 import { HoverToolTip } from '../../../ToolTips';
-import {startCase , toLower} from 'lodash'
+import { startCase } from 'src/utils/string'
 
 function getShortHaul(mode) {
   return mode === 'yes' ? `${'S/H'}` : '';
@@ -47,7 +47,7 @@ function getNameShort(value){
 }
 
 function getTitleCaseWord(value){
-  const titeCaseWord = startCase(toLower(value))
+  const titeCaseWord = startCase(value.toLowerCase())
   return(titeCaseWord)
 }
 
