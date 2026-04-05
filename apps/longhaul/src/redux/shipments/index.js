@@ -1,5 +1,4 @@
 import { createSlice } from "@reduxjs/toolkit";
-import { cloneDeep } from 'lodash';
 import { API } from "../../utils/api";
 
 const getDateOffset = (offsetDays) => {
@@ -31,7 +30,7 @@ const shipmentsSlice = createSlice({
     loadingSelectedShipment: false,
     selectedShipment: null,
     shipmentList: [],
-    query: cloneDeep(DEFAULT_QUERY),
+    query: structuredClone(DEFAULT_QUERY),
     haulModes: [], // populates haulModes filter options
     pegasus_shadow: {},
     error: false
@@ -64,7 +63,7 @@ const shipmentsSlice = createSlice({
     },
 
     resetToDefaultShipmentQuery(state) {
-      state.query = cloneDeep(DEFAULT_QUERY);
+      state.query = structuredClone(DEFAULT_QUERY);
     },
 
     fetchShipmentsStart(state, action) {

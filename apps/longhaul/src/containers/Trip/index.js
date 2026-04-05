@@ -16,7 +16,7 @@ import { TripStatusOptions } from '../../common/trip-status';
 import { ShipmentDetail } from '../ShipmentDetail';
 
 import { selectShipment as selectShipmentAction } from '../../redux/shipments';
-import { startCase, toLower } from 'lodash';
+import { startCase } from 'src/utils/string';
 
 import { HoverToolTip } from 'src/containers/ToolTips';
 
@@ -35,8 +35,8 @@ const ACTIVITY_TYPE_CODE = {
 };
 
 const lastCommaFirst = (first, last) => {
-  const first_name = startCase(toLower(first))
-  const last_name = startCase(toLower(last))
+  const first_name = startCase((first || '').toLowerCase())
+  const last_name = startCase((last || '').toLowerCase())
   return((!!first || !!last) ? `${last_name} , ${first_name}` : 'N/A')
 }
 
@@ -333,7 +333,7 @@ function TripInternal() {
                         selectShipment(shipment);
                       }}
                     >
-                      <span>{`${startCase(toLower(activity.shipment?.shipper_name.split(", ")[0]))}`}</span><span>{` - ${activity.shipment?.order_num}`}</span> 
+                      <span>{`${startCase(activity.shipment?.shipper_name.split(", ")[0].toLowerCase())}`}</span><span>{` - ${activity.shipment?.order_num}`}</span> 
                       <div><span>{`${activity.city[0] + activity.city.slice(1).toLowerCase()}, ${activity.state}`}</span><span>{' '}</span><span>{vipIndicator}</span></div>
                       {/*`${activity.shipment?.avl_reg}, ${activity.shipment?.order_num}`*/}
 

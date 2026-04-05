@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { isEmpty } from 'lodash';
-
 import { InputField } from '../../../components/InputField';
 import { Select } from '../../../components/Select';
 import { changeTripsQuery } from '../../../redux/trips';
@@ -167,7 +165,13 @@ export function TripsFilter() {
     dispatch(changeTripsQuery({ filters: {} }));
   };
   const filterLength = Object.keys(query.filters).filter(
-    (key) => query.filters[key] && (typeof query.filters[key] ? !isEmpty(query.filters[key]) : query.filters[key]),
+    (key) => {
+      const val = query.filters[key];
+      if (!val) return false;
+      if (Array.isArray(val)) return val.length > 0;
+      if (typeof val === 'object') return Object.keys(val).length > 0;
+      return true;
+    },
   ).length;
 
   return (

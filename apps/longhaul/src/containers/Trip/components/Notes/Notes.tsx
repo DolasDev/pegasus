@@ -6,7 +6,7 @@ import { Button as PegasusButton } from '../../../../components/Button'
 import styles from './Notes.module.css'
 import { API } from 'src/utils/api'
 import logger from 'src/utils/logger'
-import { startCase, toLower } from 'lodash'
+import { startCase } from 'src/utils/string'
 
 Modal.setAppElement('#root')
 
@@ -76,7 +76,7 @@ export const Notes: React.FC<NotesProps> = ({ notes, tripId, reloadTrip }) => {
 
   const getName = (user: any) => {
     if (user?.first_name && user?.last_name) {
-      return startCase(toLower(`${user?.first_name} ${user?.last_name}`))
+      return startCase(`${user?.first_name} ${user?.last_name}`.toLowerCase())
     } else {
       return user?.email_address
     }
