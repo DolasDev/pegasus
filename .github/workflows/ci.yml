@@ -36,8 +36,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: '20'
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
@@ -46,7 +46,7 @@ jobs:
         run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
 
       - name: Typecheck
-        run: node node_modules/.bin/turbo run typecheck
+        run: node node_modules/.bin/turbo run typecheck --continue
 
   # ---------------------------------------------------------------------------
   # Lint
@@ -59,8 +59,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: '20'
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
@@ -102,8 +102,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: '20'
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
@@ -153,16 +153,16 @@ jobs:
       DIRECT_URL: postgresql://pegasus:pegasus@localhost:5432/pegasus?schema=public
       DEFAULT_TENANT_ID: e2e00000-0000-0000-0000-000000000001
       TEST_TENANT_ID: e2e00000-0000-0000-0000-000000000001
-      SKIP_AUTH: "true"
-      CI: "true"
+      SKIP_AUTH: 'true'
+      CI: 'true'
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: '20'
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
