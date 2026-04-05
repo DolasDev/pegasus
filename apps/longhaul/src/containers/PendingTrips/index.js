@@ -27,7 +27,7 @@ import { DriverTypeahead } from '../DriverTypeahead';
 import { formatDate } from '../../utils/format-date';
 import { AddActivity } from './components/AddActivity';
 import { EditActivity } from './components/EditActivity';
-import { usePopper } from 'react-popper';
+import { useFloating, offset } from '@floating-ui/react';
 import { Popover } from 'src/components/Popover';
 
 
@@ -105,20 +105,9 @@ const Activity = ({ activity, onDelete, editActivityDates }) => {
 const MoreTripActions = ({ tripId }) => {
   const { user: planner } = useSelector((state) => state.user);
   const [isOpen, setOpen] = useState(false);
-  const [referenceElement, setReferenceElement] = useState(null);
-  const [popperElement, setPopperElement] = useState(null);
-  const [arrowElement, setArrowElement] = useState(null);
   const dispatch = useDispatch();
-  const { styles: popperStyles, attributes } = usePopper(referenceElement, popperElement, {
-    modifiers: [
-      { name: 'arrow', options: { element: arrowElement } },
-      {
-        name: 'offset',
-        options: {
-          offset: [0, 5],
-        },
-      },
-    ],
+  const { refs, floatingStyles } = useFloating({
+    middleware: [offset(5)],
   });
 
   const cancelTrip = async () => {
@@ -132,23 +121,22 @@ const MoreTripActions = ({ tripId }) => {
 
   return (
     <>
-      <Button ref={setReferenceElement} onClick={() => setOpen((state) => !state)}>
+      <Button ref={refs.setReference} onClick={() => setOpen((state) => !state)}>
         <i className="fa fa-ellipsis-v" />
       </Button>
       {isOpen &&
         <Popover
-          ref={setPopperElement}
+          ref={refs.setFloating}
           style={{
-            ...popperStyles.popper,
+            ...floatingStyles,
             padding: 0,
-          }} {...attributes.popper}
+          }}
         >
             <div className={styles.menu}>
               <div className={styles.menuItem} onClick={cancelTrip}>
                 Cancel Trip
               </div>
             </div>
-            <div ref={setArrowElement} style={popperStyles.arrow} />
         </Popover>
       }
     </>

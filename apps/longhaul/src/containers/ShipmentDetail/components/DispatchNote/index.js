@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { usePopper } from 'react-popper';
+import { useFloating, offset } from '@floating-ui/react';
 import { useDispatch, useSelector } from "react-redux";
 
 import { Button, IconButton } from "../../../../components/Button";
@@ -21,19 +21,8 @@ export const DispatchNote = ({onUpdate}) => {
     );
     const [editMode, setEditMode] = useState(false);
 
-    const [referenceElement, setReferenceElement] = useState(null);
-    const [popperElement, setPopperElement] = useState(null);
-    const [arrowElement, setArrowElement] = useState(null);
-    const { styles: popperStyles, attributes } = usePopper(referenceElement, popperElement, {
-      modifiers: [
-        { name: 'arrow', options: { element: arrowElement } },
-        {
-          name: 'offset',
-          options: {
-            offset: [0, 5],
-          },
-        },
-      ],
+    const { refs, floatingStyles } = useFloating({
+      middleware: [offset(5)],
     });
   
     const [dispatchNote, setDispatchNote] = useState(selectedShipment.pegasus_shadow.lng_dis_comments);
@@ -53,7 +42,7 @@ export const DispatchNote = ({onUpdate}) => {
   
     return(
     <span>
-      <span ref={setReferenceElement}>
+      <span ref={refs.setReference}>
         <HoverToolTip direction={'right'} content={'Update Comment'}>
           <IconButton
           style={{color: 'green'}}
@@ -65,7 +54,7 @@ export const DispatchNote = ({onUpdate}) => {
       </span>
       <>
        {editMode && (<div className={styles['shipment-coverage-popover']}>
-        <Popover ref={setPopperElement} style={popperStyles.popper} {...attributes.popper} >
+        <Popover ref={refs.setFloating} style={floatingStyles} >
           <div>
             <div>
               <label htmlFor="estimated_date">Update Comment:</label>

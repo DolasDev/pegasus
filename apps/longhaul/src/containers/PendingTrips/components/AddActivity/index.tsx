@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { usePopper } from 'react-popper'
+import { useFloating, offset } from '@floating-ui/react'
 import { useDispatch } from 'react-redux'
 import { clsx } from 'clsx'
 import { CircularButton as CircularButtonTyped } from '../../../../components/Button'
@@ -25,20 +25,9 @@ interface AddActivityProps {
 
 export const AddActivity: React.FC<AddActivityProps> = ({ shipment, shipmentIndex }) => {
   const [menuIsOpen, setMenuState] = useState(false)
-  const [referenceElement, setReferenceElement] = useState(null)
-  const [popperElement, setPopperElement] = useState(null)
-  const [arrowElement, setArrowElement] = useState(null)
   const dispatch = useDispatch<any>()
-  const { styles: popperStyles, attributes } = usePopper(referenceElement, popperElement, {
-    modifiers: [
-      { name: 'arrow', options: { element: arrowElement } },
-      {
-        name: 'offset',
-        options: {
-          offset: [0, 5],
-        },
-      },
-    ],
+  const { refs, floatingStyles } = useFloating({
+    middleware: [offset(5)],
   })
   const toggleMenu = () => {
     setMenuState((state) => !state)
@@ -61,7 +50,7 @@ export const AddActivity: React.FC<AddActivityProps> = ({ shipment, shipmentInde
   return (
     <div className={styles.addActivityContainer}>
       <CircularButton
-        ref={setReferenceElement}
+        ref={refs.setReference}
         onClick={toggleMenu}
         className={clsx(styles.addActivityButton, menuIsOpen ? styles.closeAddActivityButton : null)}
       >
@@ -69,12 +58,11 @@ export const AddActivity: React.FC<AddActivityProps> = ({ shipment, shipmentInde
       </CircularButton>
       {menuIsOpen && (
         <Popover
-          ref={setPopperElement}
+          ref={refs.setFloating}
           style={{
-            ...popperStyles.popper,
+            ...floatingStyles,
             padding: 0,
           }}
-          {...attributes.popper}
         >
           <div className={styles.menu}>
             {(extraActivities || []).map((activity, idx) => (
@@ -87,7 +75,6 @@ export const AddActivity: React.FC<AddActivityProps> = ({ shipment, shipmentInde
               </div>
             ))}
           </div>
-          <div ref={setArrowElement as any} style={popperStyles.arrow} />
         </Popover>
       )}
     </div>

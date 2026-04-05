@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { usePopper } from 'react-popper';
+import { useFloating, offset } from '@floating-ui/react';
 import { useDispatch } from 'react-redux';
 
 import styles from './ActivityGantt.module.css';
@@ -42,19 +42,8 @@ function getOffset(targetDay, days) {
 
 export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip }) {
   const [selectedActivity, setSelectedActivity] = useState(null);
-  const [referenceElement, setReferenceElement] = useState(null);
-  const [popperElement, setPopperElement] = useState(null);
-  const [arrowElement, setArrowElement] = useState(null);
-  const { styles: popperStyles, attributes } = usePopper(referenceElement, popperElement, {
-    modifiers: [
-      { name: 'arrow', options: { element: arrowElement } },
-      {
-        name: 'offset',
-        options: {
-          offset: [0, 5],
-        },
-      },
-    ],
+  const { refs, floatingStyles } = useFloating({
+    middleware: [offset(5)],
   });
 
   const dispatch = useDispatch();
@@ -129,7 +118,7 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip }) 
               activity={activity}
               onClick={() => onActivityClick(activity)}
               days={days}
-              ref={isSelectedActivity ? setReferenceElement : null}
+              ref={isSelectedActivity ? refs.setReference : null}
             />
           </div>
         );
@@ -139,7 +128,7 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip }) 
 
     </div>
     {selectedActivity && (
-        <Popover ref={setPopperElement} style={popperStyles.popper} {...attributes.popper}>
+        <Popover ref={refs.setFloating} style={floatingStyles}>
           {selectedActivity.hasDateChange ? 
           <>
             <button
@@ -259,7 +248,6 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip }) 
               </div>
             </div>  
             ) : '' }
-            <div ref={setArrowElement} style={popperStyles.arrow} />
           </>}
         </Popover>
       )}
