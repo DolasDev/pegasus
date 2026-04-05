@@ -45,6 +45,10 @@ jobs:
       - name: Fix binary permissions
         run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
 
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: node ../../node_modules/.bin/prisma generate
+
       - name: Typecheck
         run: node node_modules/.bin/turbo run typecheck --continue
 
@@ -120,7 +124,7 @@ jobs:
           PGPASSWORD=pegasus psql -h localhost -U pegasus -d pegasus -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'
 
       - name: Run Prisma migrations
-        working-directory: packages/api
+        working-directory: apps/api
         run: node ../../node_modules/.bin/prisma migrate deploy
 
       - name: Run tests
@@ -180,11 +184,11 @@ jobs:
           PGPASSWORD=pegasus psql -h localhost -U pegasus -d pegasus -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'
 
       - name: Run Prisma migrations
-        working-directory: packages/api
+        working-directory: apps/api
         run: node ../../node_modules/.bin/prisma migrate deploy
 
       - name: Generate Prisma client
-        working-directory: packages/api
+        working-directory: apps/api
         run: node ../../node_modules/.bin/prisma generate
 
       - name: Run E2E tests
