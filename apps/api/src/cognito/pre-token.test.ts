@@ -61,8 +61,8 @@ function makeEvent({
   email?: string
   sub?: string
   groups?: string[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }): any {
-  // eslint-disable-line @typescript-eslint/no-explicit-any
   return {
     version: '1',
     triggerSource: 'TokenGeneration_Authentication' as const,
