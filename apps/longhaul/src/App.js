@@ -2,9 +2,9 @@ import React, { useEffect } from 'react';
 import {
   // BrowserRouter as Router,
   HashRouter as Router,
-  Switch,
+  Routes,
   Route,
-  Redirect,
+  Navigate,
 } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 
@@ -30,33 +30,21 @@ function App() {
     dispatch(fetchDispatchers());
   }, [dispatch]);
   return (
-    <Router
-      getUserConfirmation={(message, callback) => {
-        const allowTransition = window.confirm(message);
-        callback(allowTransition);
-      }}  
-    >
+    <Router>
       <ErrorBoundary>
         <div className="App">
           <Nav />
           <ErrorBoundary>
           <div className="App-inner-container">
             <AppGuard>
-              <Switch>
-                <Route exact path={['/', '/planning']}>
-                  <PlanningModule />
-                </Route>
-                <Route path={['/trips']}>
-                  <TripsModule />
-                </Route>
-                <Route path="/shipments">
-                  <ShipmentModule />
-                </Route>
-                <Route exact path="/trip/:tripId">
-                  <Trip />
-                </Route>
-                <Redirect to="/trips" />
-              </Switch>
+              <Routes>
+                <Route path="/" element={<PlanningModule />} />
+                <Route path="/planning" element={<PlanningModule />} />
+                <Route path="/trips" element={<TripsModule />} />
+                <Route path="/shipments" element={<ShipmentModule />} />
+                <Route path="/trip/:tripId" element={<Trip />} />
+                <Route path="*" element={<Navigate to="/trips" replace />} />
+              </Routes>
             </AppGuard>
           </div>
           </ErrorBoundary>

@@ -20,7 +20,7 @@
     "react-redux": "^9.0.0",
     "react-modal": "^3.16.1",
     "react-popper": "^2.3.0",
-    "react-router-dom": "^5.3.4"
+    "react-router-dom": "^6.0.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.1.5",
@@ -32,7 +32,6 @@
     "@types/node": "^20.10.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@types/react-router-dom": "^5.3.3",
     "@vitejs/plugin-react": "^4.7.0",
     "typescript": "^5.3.3",
     "vite": "^6.0.0",

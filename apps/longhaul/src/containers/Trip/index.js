@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { withRouter } from 'react-router';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import cn from 'classnames';
 
@@ -158,7 +158,9 @@ function parseActivities(activities = []) {
   };
 }
 
-function TripInternal(props) {
+function TripInternal() {
+  const { tripId } = useParams();
+  const navigate = useNavigate();
   const [trip, setTrip] = useState(null);
   const [showError, setShowError] = useState(false);
   const dispatch = useDispatch();
@@ -168,15 +170,15 @@ function TripInternal(props) {
   useEffect(() => {
     async function fetchTrip() {
       try {
-      await API.updateTripSummaryInfo(props.match.params.tripId);  
-      const trip = await API.fetchTrip(String(props.match.params.tripId));
+      await API.updateTripSummaryInfo(tripId);  
+      const trip = await API.fetchTrip(String(tripId));
       setTrip(trip);
       } catch (e) {
         setShowError(e)
       }
     }
     fetchTrip();
-  }, [props.match.params.tripId]);
+  }, [tripId]);
 
   let sortedActivities = [];
   let days = [];
@@ -193,7 +195,7 @@ function TripInternal(props) {
   function reloadTrip() {
     async function fetchTrip() {
       console.time('trip reload')
-      const trip = await API.fetchTrip(String(props.match.params.tripId));
+      const trip = await API.fetchTrip(String(tripId));
       console.timeEnd('trip reload')
       setTrip(trip);
     }
@@ -254,12 +256,12 @@ function TripInternal(props) {
                 <Notes notes={trip.notes} tripId={trip.id} reloadTrip={reloadTrip} />
               </div>
               <div className={styles.buttonContainer}>
-                <Button onClick={() => props.history.push('/trips')}>
+                <Button onClick={() => navigate('/trips')}>
                   <i className="fa fa-arrow-left"></i> All trips
                 </Button>
                 <Button
                   className={styles.editTripButton}
-                  onClick={() => props.history.push(`/planning?tripId=${props.match.params.tripId}`)}
+                  onClick={() => navigate(`/planning?tripId=${tripId}`)}
                 >
                   <i className="fa fa-pencil"></i> &nbsp;Edit planning
                 </Button>
@@ -354,4 +356,4 @@ function TripInternal(props) {
   );
 }
 
-export const Trip = withRouter(TripInternal);
+export const Trip = TripInternal;

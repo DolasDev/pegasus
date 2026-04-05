@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import get from 'lodash/get';
 import sortBy from 'lodash/sortBy';
-import { withRouter } from 'react-router';
 import { Link } from 'react-router-dom';
 
 import { Lane } from '../../components/Lane';
@@ -379,4 +378,4 @@ const TypeAheadEdit = (props) => (
   </div>
 )
 
-export const PendingTrips = withRouter(PendingTripsInternal);
+export const PendingTrips = PendingTripsInternal;
