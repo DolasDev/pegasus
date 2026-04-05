@@ -82,7 +82,6 @@ export const m2mAppAuthMiddleware: MiddlewareHandler<AppEnv> = async (c, next) =
 
   const tenantDb = createTenantDb(basePrisma, tenant.id)
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { keyHash, ...clientRow } = candidate
 
   c.set('tenantId', tenant.id)

@@ -256,7 +256,7 @@ describe('SSO handler', () => {
     })
 
     it('returns 400 VALIDATION_ERROR when name is missing', async () => {
-      const { name: _name, ...bodyWithoutName } = validCreateBody // eslint-disable-line @typescript-eslint/no-unused-vars
+      const { name: _name, ...bodyWithoutName } = validCreateBody
       const res = await buildApp().request('/providers', post(bodyWithoutName))
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')

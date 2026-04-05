@@ -71,7 +71,6 @@ export async function apiClientAuthMiddleware(
   })
 
   // Exclude keyHash from context — strip it before setting.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { keyHash, ...clientRow } = candidate
   c.set('apiClient', clientRow)
   c.set('tenantId', candidate.tenantId)

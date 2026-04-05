@@ -13,7 +13,6 @@ import { exchangeCode } from '@/auth/cognito'
  */
 export function AuthCallbackPage() {
   const navigate = useNavigate()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const search = useSearch({ strict: false }) as Record<string, string>
   const exchanged = useRef(false)
 
