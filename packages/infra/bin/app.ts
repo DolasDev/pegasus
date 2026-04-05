@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import 'source-map-support/register'
 import * as cdk from 'aws-cdk-lib'
 import { CognitoStack } from '../lib/stacks/cognito-stack'
 import { ApiStack } from '../lib/stacks/api-stack'
