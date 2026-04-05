@@ -33,7 +33,7 @@ export const AddActivity: React.FC<AddActivityProps> = ({ shipment, shipmentInde
     setMenuState((state) => !state)
   }
 
-  const addActivity = (activity: any, activityIdx: Number) => {
+  const addActivity = (activity: any, activityIdx: number) => {
     toggleMenu()
 
     dispatch(
