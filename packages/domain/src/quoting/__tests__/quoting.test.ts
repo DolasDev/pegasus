@@ -12,7 +12,6 @@ import {
   type QuoteStatus,
 } from '../index'
 import { toMoveId } from '../../dispatch/index'
-import type { Money } from '../../shared/types'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -143,7 +142,10 @@ describe('calculateQuoteTotal', () => {
   })
 
   it('returns zero amount in USD when lineItems is empty', () => {
-    expect(calculateQuoteTotal(makeQuote({ lineItems: [] }))).toEqual({ amount: 0, currency: 'USD' })
+    expect(calculateQuoteTotal(makeQuote({ lineItems: [] }))).toEqual({
+      amount: 0,
+      currency: 'USD',
+    })
   })
 
   it('calculates quantity × unitPrice for a single item', () => {
@@ -156,9 +158,21 @@ describe('calculateQuoteTotal', () => {
 
   it('sums multiple items correctly', () => {
     const items: QuoteLineItem[] = [
-      makeLineItem({ id: toQuoteLineItemId('li-1'), quantity: 2, unitPrice: { amount: 100, currency: 'USD' } }),
-      makeLineItem({ id: toQuoteLineItemId('li-2'), quantity: 3, unitPrice: { amount: 50, currency: 'USD' } }),
-      makeLineItem({ id: toQuoteLineItemId('li-3'), quantity: 1, unitPrice: { amount: 250, currency: 'USD' } }),
+      makeLineItem({
+        id: toQuoteLineItemId('li-1'),
+        quantity: 2,
+        unitPrice: { amount: 100, currency: 'USD' },
+      }),
+      makeLineItem({
+        id: toQuoteLineItemId('li-2'),
+        quantity: 3,
+        unitPrice: { amount: 50, currency: 'USD' },
+      }),
+      makeLineItem({
+        id: toQuoteLineItemId('li-3'),
+        quantity: 1,
+        unitPrice: { amount: 250, currency: 'USD' },
+      }),
     ]
     // 200 + 150 + 250 = 600
     expect(calculateQuoteTotal(makeQuote({ lineItems: items }))).toEqual({
@@ -169,8 +183,16 @@ describe('calculateQuoteTotal', () => {
 
   it('excludes items whose currency does not match the requested currency', () => {
     const items: QuoteLineItem[] = [
-      makeLineItem({ id: toQuoteLineItemId('li-1'), quantity: 1, unitPrice: { amount: 500, currency: 'USD' } }),
-      makeLineItem({ id: toQuoteLineItemId('li-2'), quantity: 2, unitPrice: { amount: 100, currency: 'EUR' } }),
+      makeLineItem({
+        id: toQuoteLineItemId('li-1'),
+        quantity: 1,
+        unitPrice: { amount: 500, currency: 'USD' },
+      }),
+      makeLineItem({
+        id: toQuoteLineItemId('li-2'),
+        quantity: 2,
+        unitPrice: { amount: 100, currency: 'EUR' },
+      }),
     ]
     expect(calculateQuoteTotal(makeQuote({ lineItems: items }), 'USD')).toEqual({
       amount: 500,
@@ -180,8 +202,16 @@ describe('calculateQuoteTotal', () => {
 
   it('returns only EUR items when EUR is requested', () => {
     const items: QuoteLineItem[] = [
-      makeLineItem({ id: toQuoteLineItemId('li-1'), quantity: 1, unitPrice: { amount: 500, currency: 'USD' } }),
-      makeLineItem({ id: toQuoteLineItemId('li-2'), quantity: 2, unitPrice: { amount: 100, currency: 'EUR' } }),
+      makeLineItem({
+        id: toQuoteLineItemId('li-1'),
+        quantity: 1,
+        unitPrice: { amount: 500, currency: 'USD' },
+      }),
+      makeLineItem({
+        id: toQuoteLineItemId('li-2'),
+        quantity: 2,
+        unitPrice: { amount: 100, currency: 'EUR' },
+      }),
     ]
     expect(calculateQuoteTotal(makeQuote({ lineItems: items }), 'EUR')).toEqual({
       amount: 200,

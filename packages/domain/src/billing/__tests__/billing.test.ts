@@ -11,7 +11,6 @@ import {
 } from '../index'
 import { toMoveId } from '../../dispatch/index'
 import { toQuoteId } from '../../quoting/index'
-import type { Money } from '../../shared/types'
 
 // ---------------------------------------------------------------------------
 // Helpers
