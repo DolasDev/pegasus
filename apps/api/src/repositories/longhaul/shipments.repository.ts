@@ -316,7 +316,6 @@ export async function saveCoverage(
     .first()
 
   if (existing) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id: _id, ...rest } = coverageData as { id?: unknown } & typeof coverageData
     await db(COVERAGE_TABLE)
       .where('id', existing.id as number)

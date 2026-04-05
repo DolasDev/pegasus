@@ -113,7 +113,7 @@ describe('quotes handler', () => {
     })
 
     it('returns 400 VALIDATION_ERROR when moveId is missing', async () => {
-      const { moveId: _m, ...body } = validCreateBody // eslint-disable-line @typescript-eslint/no-unused-vars
+      const { moveId: _m, ...body } = validCreateBody
       const res = await buildApp().request('/', post(body))
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')

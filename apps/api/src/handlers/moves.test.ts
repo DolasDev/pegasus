@@ -140,7 +140,7 @@ describe('moves handler', () => {
     })
 
     it('returns 400 VALIDATION_ERROR when scheduledDate is missing', async () => {
-      const { scheduledDate: _s, ...body } = validCreateBody // eslint-disable-line @typescript-eslint/no-unused-vars
+      const { scheduledDate: _s, ...body } = validCreateBody
       const res = await buildApp().request('/', post(body))
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')

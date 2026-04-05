@@ -129,7 +129,7 @@ describe('customers handler', () => {
     })
 
     it('returns 400 VALIDATION_ERROR when firstName is missing', async () => {
-      const { firstName: _f, ...bodyWithout } = validCreateBody // eslint-disable-line @typescript-eslint/no-unused-vars
+      const { firstName: _f, ...bodyWithout } = validCreateBody
       const res = await buildApp().request('/', post(bodyWithout))
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')

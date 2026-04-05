@@ -52,7 +52,6 @@ const fakeContext = {} as Context
 const fakeCallback = () => undefined
 
 /** Builds a minimal PreTokenGeneration trigger event. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeEvent({
   email,
   sub,

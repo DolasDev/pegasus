@@ -6,7 +6,8 @@ describe('cn', () => {
   })
 
   it('ignores falsy conditional classes', () => {
-    expect(cn('foo', false && 'bar', 'baz')).toBe('foo baz')
+    const condition = false
+    expect(cn('foo', condition && 'bar', 'baz')).toBe('foo baz')
   })
 
   it('resolves tailwind merge conflicts (last class wins)', () => {
