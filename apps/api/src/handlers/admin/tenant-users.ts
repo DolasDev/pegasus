@@ -79,7 +79,7 @@ export const adminTenantUsersRouter = new Hono<AdminEnv>()
 // Response: { data: TenantUserResponse[], meta: { count } }
 // ---------------------------------------------------------------------------
 adminTenantUsersRouter.get('/', async (c) => {
-  const tenantId = c.req.param('tenantId')
+  const tenantId = c.req.param('tenantId')!
 
   try {
     const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { id: true } })
@@ -116,7 +116,7 @@ adminTenantUsersRouter.post(
     return r.data
   }),
   async (c) => {
-    const tenantId = c.req.param('tenantId')
+    const tenantId = c.req.param('tenantId')!
     const body = c.req.valid('json')
     const adminSub = c.get('adminSub')
     const adminEmail = c.get('adminEmail')
@@ -208,8 +208,8 @@ adminTenantUsersRouter.patch(
     return r.data
   }),
   async (c) => {
-    const tenantId = c.req.param('tenantId')
-    const userId = c.req.param('userId')
+    const tenantId = c.req.param('tenantId')!
+    const userId = c.req.param('userId')!
     const { role } = c.req.valid('json')
     const adminSub = c.get('adminSub')
     const adminEmail = c.get('adminEmail')
@@ -266,8 +266,8 @@ adminTenantUsersRouter.patch(
 // Response: { data: TenantUserResponse } (200)
 // ---------------------------------------------------------------------------
 adminTenantUsersRouter.delete('/:userId', async (c) => {
-  const tenantId = c.req.param('tenantId')
-  const userId = c.req.param('userId')
+  const tenantId = c.req.param('tenantId')!
+  const userId = c.req.param('userId')!
   const adminSub = c.get('adminSub')
   const adminEmail = c.get('adminEmail')
   const ipAddress = c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip')

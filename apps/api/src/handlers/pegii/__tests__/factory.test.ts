@@ -53,7 +53,7 @@ describe('factory - createEntityRouter', () => {
       vi.mocked(repo.allIds).mockResolvedValue([1, 2, 3])
       const res = await buildApp().request('/ids')
       expect(res.status).toBe(200)
-      const body = await res.json()
+      const body = (await res.json()) as Record<string, unknown>
       expect(body.data).toEqual([1, 2, 3])
     })
 
@@ -69,7 +69,7 @@ describe('factory - createEntityRouter', () => {
       vi.mocked(repo.readById).mockResolvedValue({ id: 1, name: 'test' })
       const res = await buildApp().request('/1')
       expect(res.status).toBe(200)
-      const body = await res.json()
+      const body = (await res.json()) as Record<string, unknown>
       expect(body.data).toEqual({ id: 1, name: 'test' })
     })
 
@@ -77,14 +77,14 @@ describe('factory - createEntityRouter', () => {
       vi.mocked(repo.readById).mockResolvedValue(null)
       const res = await buildApp().request('/999')
       expect(res.status).toBe(404)
-      const body = await res.json()
+      const body = (await res.json()) as Record<string, unknown>
       expect(body.correlationId).toBe('test-corr')
     })
 
     it('returns 400 with correlationId for invalid integer ID', async () => {
       const res = await buildApp().request('/abc')
       expect(res.status).toBe(400)
-      const body = await res.json()
+      const body = (await res.json()) as Record<string, unknown>
       expect(body.correlationId).toBe('test-corr')
     })
   })
@@ -94,7 +94,7 @@ describe('factory - createEntityRouter', () => {
       vi.mocked(repo.readByCode).mockResolvedValue({ id: 1, code: 'ABC' })
       const res = await buildApp().request('/code/ABC')
       expect(res.status).toBe(200)
-      const body = await res.json()
+      const body = (await res.json()) as Record<string, unknown>
       expect(body.data).toEqual({ id: 1, code: 'ABC' })
     })
 
@@ -102,7 +102,7 @@ describe('factory - createEntityRouter', () => {
       vi.mocked(repo.readByCode).mockResolvedValue(null)
       const res = await buildApp().request('/code/MISSING')
       expect(res.status).toBe(404)
-      const body = await res.json()
+      const body = (await res.json()) as Record<string, unknown>
       expect(body.correlationId).toBe('test-corr')
     })
   })
@@ -112,7 +112,7 @@ describe('factory - createEntityRouter', () => {
       vi.mocked(repo.readList).mockResolvedValue([{ id: 1 }, { id: 2 }])
       const res = await buildApp().request('/')
       expect(res.status).toBe(200)
-      const body = await res.json()
+      const body = (await res.json()) as Record<string, unknown>
       expect(body.data).toHaveLength(2)
       expect(body.meta).toEqual({ count: 2, limit: 1000, offset: 0 })
     })
@@ -139,7 +139,7 @@ describe('factory - createEntityRouter', () => {
         body: JSON.stringify({ name: 'new' }),
       })
       expect(res.status).toBe(201)
-      const body = await res.json()
+      const body = (await res.json()) as Record<string, unknown>
       expect(body.data).toEqual({ id: 42, name: 'new' })
     })
   })
@@ -153,7 +153,7 @@ describe('factory - createEntityRouter', () => {
         body: JSON.stringify({ name: 'updated' }),
       })
       expect(res.status).toBe(200)
-      const body = await res.json()
+      const body = (await res.json()) as Record<string, unknown>
       expect(body.data).toEqual({ id: 1, name: 'updated' })
     })
 
@@ -164,7 +164,7 @@ describe('factory - createEntityRouter', () => {
         body: JSON.stringify({ name: 'updated' }),
       })
       expect(res.status).toBe(400)
-      const body = await res.json()
+      const body = (await res.json()) as Record<string, unknown>
       expect(body.correlationId).toBe('test-corr')
     })
   })

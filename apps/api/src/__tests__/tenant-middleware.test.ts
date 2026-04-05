@@ -145,7 +145,7 @@ describe('tenantMiddleware', () => {
   })
 
   it('returns 401 TOKEN_EXPIRED when JWT is expired', async () => {
-    const expired = new errors.JWTExpired('token expired')
+    const expired = new errors.JWTExpired('token expired', {})
     mockJwtVerify.mockRejectedValueOnce(expired)
 
     const res = await buildApp().request('/probe', bearerRequest())

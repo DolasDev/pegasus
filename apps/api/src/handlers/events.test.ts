@@ -288,7 +288,7 @@ describe('events handler', () => {
       const app = buildApp()
       const res = await app.request('/LEAD_CREATED')
       const body = await json(res)
-      const event = (body.data as JsonBody[])[0]
+      const event = (body.data as JsonBody[])[0]!
       expect(event['eventDatetime']).toBe(now.toISOString())
     })
 

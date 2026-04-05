@@ -8,7 +8,7 @@ export function createEntityRouter(config: EntityConfig): Hono<AppEnv> {
   const router = new Hono<AppEnv>()
 
   router.get('/ids', async (c) => {
-    const pool = c.get('mssqlPool' as keyof AppEnv['Variables'])
+    const pool = c.get('mssqlPool')
     const q = c.req.query('q') ?? ''
     logger.info('pegii allIds', { entity: config.slug, q })
     const ids = await repo.allIds(pool, config, q)
@@ -16,7 +16,7 @@ export function createEntityRouter(config: EntityConfig): Hono<AppEnv> {
   })
 
   router.get('/code/:code', async (c) => {
-    const pool = c.get('mssqlPool' as keyof AppEnv['Variables'])
+    const pool = c.get('mssqlPool')
     const code = c.req.param('code')
     logger.info('pegii readByCode', { entity: config.slug, code })
     const row = await repo.readByCode(pool, config, code)
@@ -31,7 +31,7 @@ export function createEntityRouter(config: EntityConfig): Hono<AppEnv> {
   })
 
   router.get('/:id', async (c) => {
-    const pool = c.get('mssqlPool' as keyof AppEnv['Variables'])
+    const pool = c.get('mssqlPool')
     const rawId = c.req.param('id')
     const id = config.idType === 'integer' ? Number(rawId) : rawId
     if (config.idType === 'integer' && isNaN(id as number)) {
@@ -53,7 +53,7 @@ export function createEntityRouter(config: EntityConfig): Hono<AppEnv> {
   })
 
   router.get('/', async (c) => {
-    const pool = c.get('mssqlPool' as keyof AppEnv['Variables'])
+    const pool = c.get('mssqlPool')
     const q = c.req.query('q') ?? ''
     const limit = Math.min(Number(c.req.query('limit') ?? '1000'), 1000)
     const offset = Number(c.req.query('offset') ?? '0')
@@ -63,7 +63,7 @@ export function createEntityRouter(config: EntityConfig): Hono<AppEnv> {
   })
 
   router.post('/', async (c) => {
-    const pool = c.get('mssqlPool' as keyof AppEnv['Variables'])
+    const pool = c.get('mssqlPool')
     const body = await c.req.json<Record<string, unknown>>()
     logger.info('pegii create', { entity: config.slug })
     const row = await repo.write(pool, config, body)
@@ -71,7 +71,7 @@ export function createEntityRouter(config: EntityConfig): Hono<AppEnv> {
   })
 
   router.put('/:id', async (c) => {
-    const pool = c.get('mssqlPool' as keyof AppEnv['Variables'])
+    const pool = c.get('mssqlPool')
     const rawId = c.req.param('id')
     const id = config.idType === 'integer' ? Number(rawId) : rawId
     if (config.idType === 'integer' && isNaN(id as number)) {

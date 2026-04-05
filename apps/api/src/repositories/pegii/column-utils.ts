@@ -7,7 +7,7 @@ export async function getColumns(
   pool: sql.ConnectionPool,
   tableName: string,
 ): Promise<ColumnDef[]> {
-  const dbName = pool.config.database ?? ''
+  const dbName = (pool as unknown as { config: { database?: string } }).config.database ?? ''
   let tableMap = schemaCache.get(dbName)
   if (tableMap?.has(tableName)) return tableMap.get(tableName)!
 

@@ -25,7 +25,8 @@ import { apiFetch } from '../api/client'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 describe('apiFetch', () => {
-  let fetchSpy: ReturnType<typeof vi.spyOn>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let fetchSpy: any
 
   beforeEach(() => {
     fetchSpy = vi

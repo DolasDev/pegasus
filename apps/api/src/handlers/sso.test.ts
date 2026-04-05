@@ -336,7 +336,8 @@ describe('SSO handler', () => {
         }),
       )
       // SAML providers do not get authorize_scopes
-      const call = (CreateIdentityProviderCommand as ReturnType<typeof vi.fn>).mock.calls[0]![0]
+      const call = (CreateIdentityProviderCommand as unknown as ReturnType<typeof vi.fn>).mock
+        .calls[0]![0]
       expect(
         (call as { ProviderDetails: Record<string, string> }).ProviderDetails,
       ).not.toHaveProperty('authorize_scopes')
@@ -432,7 +433,8 @@ describe('SSO handler', () => {
 
       await buildApp().request('/providers/provider-1', put({ oidcClientSecret: 'new-secret' }))
 
-      const call = (UpdateIdentityProviderCommand as ReturnType<typeof vi.fn>).mock.calls[0]![0]
+      const call = (UpdateIdentityProviderCommand as unknown as ReturnType<typeof vi.fn>).mock
+        .calls[0]![0]
       expect(
         (call as { ProviderDetails: Record<string, string> }).ProviderDetails['client_secret'],
       ).toBe('new-secret')

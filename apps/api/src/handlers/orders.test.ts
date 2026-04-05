@@ -123,7 +123,6 @@ function makeMove(overrides: Partial<Move> = {}): Move {
   return {
     id: toMoveId('move-id-1'),
     userId: toUserId('user-1'),
-    customerId: undefined,
     status: 'PENDING',
     scheduledDate: now,
     origin: {
@@ -143,8 +142,8 @@ function makeMove(overrides: Partial<Move> = {}): Move {
       country: 'US',
     },
     stops: [],
-    crewAssignments: [],
-    vehicleAssignments: [],
+    assignedCrewIds: [],
+    assignedVehicleIds: [],
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -270,7 +269,7 @@ describe('orders handler', () => {
       const app = buildApp()
       const res = await app.request('/')
       const body = await json(res)
-      const order = (body.data as JsonBody[])[0]
+      const order = (body.data as JsonBody[])[0]!
       expect(order['scheduledDate']).toBe(now.toISOString())
     })
 
@@ -395,7 +394,7 @@ describe('orders handler', () => {
       mockMovesRepo.createMove.mockResolvedValue(makeMove())
       const app = buildApp()
       await app.request('/', post(validOrderBody))
-      const args = mockMovesRepo.createMove.mock.calls[0][2] as Record<string, unknown>
+      const args = mockMovesRepo.createMove.mock.calls[0]![2] as Record<string, unknown>
       expect(args['customerId']).toBeUndefined()
     })
 
