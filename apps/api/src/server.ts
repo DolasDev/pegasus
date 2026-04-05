@@ -60,8 +60,7 @@ if (isDirectRun) {
   const onSignal = async () => {
     await shutdown()
     if (server && typeof (server as { close?: (cb: () => void) => void }).close === 'function') {
-      const s = server as { close: (cb: () => void) => void }
-      s.close(() => process.exit(0))
+      ;(server as { close: (cb: () => void) => void }).close(() => process.exit(0))
     } else {
       process.exit(0)
     }
