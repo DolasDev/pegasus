@@ -1,31 +1,11 @@
 import React, { useEffect, useState } from 'react'
-import Modal from 'react-modal'
+import * as Dialog from '@radix-ui/react-dialog'
 import { useSelector, useDispatch } from 'react-redux'
 import { Button } from '../../../../components/Button'
 import { API } from 'src/utils/api'
 import { changeShipmentQuery, deleteShipmentFilter } from 'src/redux/shipments'
 import styles from './FilterModalStyles.module.css'
 import { Snackbar } from '../../../../components/Snackbar'
-
-Modal.setAppElement('#root')
-
-const modalStyles = {
-  content: {
-    top: '50%',
-    left: '50%',
-    right: 'auto',
-    bottom: 'auto',
-    marginRight: '-50%',
-    transform: 'translate(-50%, -50%)',
-    width: '500px',
-    height: '500px',
-    zIndex: 50,
-    fontSize: '12px',
-  },
-  overlay: {
-    zIndex: 1,
-  },
-}
 
 interface FilterModalProps {
   modalIsOpen: boolean
@@ -110,94 +90,117 @@ const FilterModal: React.FC<FilterModalProps> = ({ modalIsOpen, closeModal }: Fi
   }
 
   return (
-    <Modal isOpen={modalIsOpen} style={modalStyles} contentLabel="Filters">
-      <h2>Choose a Filter</h2>
-      <div>
-        <TabGroup
-          setSelectedTabCallback={(number: number) => {
-            setSelectedTab(number)
-            setSelectedFilter(undefined)
+    <Dialog.Root open={modalIsOpen} onOpenChange={(open) => { if (!open) closeModal() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 1 }} />
+        <Dialog.Content
+          aria-describedby={undefined}
+          style={{
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: '500px',
+            height: '500px',
+            zIndex: 50,
+            fontSize: '12px',
+            backgroundColor: 'white',
+            borderRadius: '4px',
+            padding: '20px',
           }}
-          tabs={[
-            {
-              name: 'My Filters',
-              Component: () => (
-                <FilterList
-                  listType="my-filters"
-                  selectedFilter={selectedFilter}
-                  list={myFilters}
-                  setSelectedFilter={setSelectedFilter}
-                  defaultFilter={defaultFilter}
-                />
-              ),
-            },
-            {
-              name: 'All Filters',
-              Component: () => (
-                <FilterList
-                  listType="all-filters"
-                  selectedFilter={selectedFilter}
-                  list={publicFilters}
-                  setSelectedFilter={setSelectedFilter}
-                  defaultFilter={defaultFilter}
-                />
-              ),
-            },
-          ]}
-        />
-      </div>
-      <div style={{ position: 'absolute', bottom: '20px', right: '20px' }}>
-        <Button
-          type="button"
-          onClick={closeModal}
-          inverted
-          color="rgb(172, 67, 67)"
-          style={{ marginRight: '10px' }}
         >
-          Close
-        </Button>
-        {selectedFilter ? (
-          <>
-            <Button
-              type="button"
-              onClick={setAsDefaultAndLoad}
-              inverted
-              color="rgb(172, 67, 67)"
-              style={{ marginRight: '10px' }}
-            >
-              Use as Default
-            </Button>
-            <Button
-              type="button"
-              onClick={loadSelectedFilter}
-              inverted
-              color="rgb(172, 67, 67)"
-              style={{ marginRight: '10px' }}
-            >
-              Load
-            </Button>
-            {selectedTab === 0 ? (
+          <Dialog.Title asChild>
+            <h2>Choose a Filter</h2>
+          </Dialog.Title>
+          <div>
+            <TabGroup
+              setSelectedTabCallback={(number: number) => {
+                setSelectedTab(number)
+                setSelectedFilter(undefined)
+              }}
+              tabs={[
+                {
+                  name: 'My Filters',
+                  Component: () => (
+                    <FilterList
+                      listType="my-filters"
+                      selectedFilter={selectedFilter}
+                      list={myFilters}
+                      setSelectedFilter={setSelectedFilter}
+                      defaultFilter={defaultFilter}
+                    />
+                  ),
+                },
+                {
+                  name: 'All Filters',
+                  Component: () => (
+                    <FilterList
+                      listType="all-filters"
+                      selectedFilter={selectedFilter}
+                      list={publicFilters}
+                      setSelectedFilter={setSelectedFilter}
+                      defaultFilter={defaultFilter}
+                    />
+                  ),
+                },
+              ]}
+            />
+          </div>
+          <div style={{ position: 'absolute', bottom: '20px', right: '20px' }}>
+            <Dialog.Close asChild>
               <Button
                 type="button"
-                onClick={deleteSelectedFilter}
                 inverted
                 color="rgb(172, 67, 67)"
                 style={{ marginRight: '10px' }}
               >
-                Delete
+                Close
               </Button>
+            </Dialog.Close>
+            {selectedFilter ? (
+              <>
+                <Button
+                  type="button"
+                  onClick={setAsDefaultAndLoad}
+                  inverted
+                  color="rgb(172, 67, 67)"
+                  style={{ marginRight: '10px' }}
+                >
+                  Use as Default
+                </Button>
+                <Button
+                  type="button"
+                  onClick={loadSelectedFilter}
+                  inverted
+                  color="rgb(172, 67, 67)"
+                  style={{ marginRight: '10px' }}
+                >
+                  Load
+                </Button>
+                {selectedTab === 0 ? (
+                  <Button
+                    type="button"
+                    onClick={deleteSelectedFilter}
+                    inverted
+                    color="rgb(172, 67, 67)"
+                    style={{ marginRight: '10px' }}
+                  >
+                    Delete
+                  </Button>
+                ) : null}
+              </>
             ) : null}
-          </>
-        ) : null}
-      </div>
-      <Snackbar
-        autoHideDuration={10 * 1000} // 10 seconds
-        type={snackBarConfig.type}
-        open={snackBarConfig.show}
-        onClose={() => setShowSnackbar({ show: false, message: '', type: '' })}
-        message={snackBarConfig.message}
-      />
-    </Modal>
+          </div>
+          <Snackbar
+            autoHideDuration={10 * 1000} // 10 seconds
+            type={snackBarConfig.type}
+            open={snackBarConfig.show}
+            onClose={() => setShowSnackbar({ show: false, message: '', type: '' })}
+            message={snackBarConfig.message}
+          />
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }
 

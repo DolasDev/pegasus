@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import Modal from 'react-modal'
+import * as Dialog from '@radix-ui/react-dialog'
 import { useSelector } from 'react-redux'
 import { Expandable } from '../../../../components/Expandable/Expandable'
 import { Button as PegasusButton } from '../../../../components/Button'
@@ -7,8 +7,6 @@ import styles from './Notes.module.css'
 import { API } from 'src/utils/api'
 import logger from 'src/utils/logger'
 import { startCase } from 'src/utils/string'
-
-Modal.setAppElement('#root')
 
 interface User {
   first_name: string
@@ -32,23 +30,6 @@ interface NotesProps {
 
 // TODO fix this, not sure why forwarding react refs seem to be making the types fail
 const Button = PegasusButton as any
-
-const modalStyles = {
-  content: {
-    top: '50%',
-    left: '50%',
-    right: 'auto',
-    bottom: 'auto',
-    marginRight: '-50%',
-    transform: 'translate(-50%, -50%)',
-    width: '300px',
-    height: '300px',
-    zIndex: 50,
-  },
-  overlay: {
-    zIndex: 1,
-  },
-}
 
 enum NoteModalType {
   EDIT = 'EDIT',
@@ -182,24 +163,47 @@ const NoteModal: React.FC<NoteModalProps> = ({
   }
 
   return (
-    <Modal isOpen={modalIsOpen} style={modalStyles} contentLabel="Add/Edit Note">
-      <h3>Add/Edit Note</h3>
-      <textarea
-        value={noteValue}
-        onChange={(e) => {
-          setNote(e.target.value)
-        }}
-        className={styles.noteModalTextArea}
-        name="note"
-      />
-      <div className={styles.noteModalButtonContainer}>
-        <Button type="button" onClick={closeNoteModal} inverted color="rgb(172, 67, 67)">
-          Cancel
-        </Button>
-        <Button onClick={saveNote} type="submit">
-          Save Note
-        </Button>
-      </div>
-    </Modal>
+    <Dialog.Root open={modalIsOpen} onOpenChange={(open) => { if (!open) closeNoteModal() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 1 }} />
+        <Dialog.Content
+          aria-describedby={undefined}
+          style={{
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: '300px',
+            height: '300px',
+            zIndex: 50,
+            backgroundColor: 'white',
+            borderRadius: '4px',
+            padding: '20px',
+          }}
+        >
+          <Dialog.Title asChild>
+            <h3>Add/Edit Note</h3>
+          </Dialog.Title>
+          <textarea
+            value={noteValue}
+            onChange={(e) => {
+              setNote(e.target.value)
+            }}
+            className={styles.noteModalTextArea}
+            name="note"
+          />
+          <div className={styles.noteModalButtonContainer}>
+            <Dialog.Close asChild>
+              <Button type="button" inverted color="rgb(172, 67, 67)">
+                Cancel
+              </Button>
+            </Dialog.Close>
+            <Button onClick={saveNote} type="submit">
+              Save Note
+            </Button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }
