@@ -16,7 +16,7 @@ const SaveFilterModal: React.FC<SaveFilterModalProps> = ({
   modalIsOpen,
   closeModal,
 }: SaveFilterModalProps) => {
-  const [filterName, setFilterName] = useState()
+  const [filterName, setFilterName] = useState<any>()
   const [isDefault, setIsDefault] = useState(false)
   const [isPublic, setIsPublic] = useState(false)
 
