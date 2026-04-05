@@ -12,18 +12,20 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Gitleaks secret scanning — runs first, fast, no deps
+  # Secret scanning — runs first, fast, no deps
   # ---------------------------------------------------------------------------
-  gitleaks:
-    name: Secret Scanning (Gitleaks)
+  secret-scan:
+    name: Secret Scanning (Betterleaks)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install Betterleaks
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/betterleaks/betterleaks/main/install.sh | sh -s -- -b /usr/local/bin
+      - name: Run Betterleaks
+        run: betterleaks git .
 
   # ---------------------------------------------------------------------------
   # Type-check
