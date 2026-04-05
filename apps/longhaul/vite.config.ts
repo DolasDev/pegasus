@@ -9,4 +9,15 @@ export default defineConfig({
       src: path.resolve(__dirname, './src'),
     },
   },
+  esbuild: {
+    loader: 'jsx',
+    include: /src\/.*\.js$/,
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      loader: {
+        '.js': 'jsx',
+      },
+    },
+  },
 })
