@@ -30,9 +30,6 @@
     "mssql": "^12.2.0",
     "zod": "^3.23.8"
   },
-  "optionalDependencies": {
-    "node-windows": "^1.0.0-beta.8"
-  },
   "devDependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
     "@types/aws-lambda": "^8.10.145",
