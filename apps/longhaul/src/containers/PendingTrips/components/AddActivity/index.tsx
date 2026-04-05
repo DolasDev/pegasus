@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { usePopper } from 'react-popper'
 import { useDispatch } from 'react-redux'
-import cn from 'classnames'
+import { clsx } from 'clsx'
 import { CircularButton as CircularButtonTyped } from '../../../../components/Button'
 import { Popover as PopoverTyped } from '../../../../components/Popover'
 import { ActivityType } from '../../../../utils/constants/activity-type'
@@ -63,7 +63,7 @@ export const AddActivity: React.FC<AddActivityProps> = ({ shipment, shipmentInde
       <CircularButton
         ref={setReferenceElement}
         onClick={toggleMenu}
-        className={cn(styles.addActivityButton, menuIsOpen ? styles.closeAddActivityButton : null)}
+        className={clsx(styles.addActivityButton, menuIsOpen ? styles.closeAddActivityButton : null)}
       >
         {menuIsOpen ? '-' : '+'}
       </CircularButton>

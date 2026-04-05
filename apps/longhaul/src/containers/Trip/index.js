@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import cn from 'classnames';
+import { clsx } from 'clsx';
 
 import { Lane } from '../../components/Lane';
 import { ActivityGantt } from './components/ActivityGantt/ActivityGantt';
@@ -300,7 +300,7 @@ function TripInternal() {
                         onClick={() => promptAndChangeStatus(status, status_id)}
                       >
                         <div
-                          className={cn(
+                          className={clsx(
                             styles.statusStepCircle,
                             trip.status && trip.status.status === status ? styles.selected : null,
                           )}

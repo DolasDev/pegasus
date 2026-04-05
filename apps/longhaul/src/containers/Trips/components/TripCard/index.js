@@ -1,6 +1,5 @@
 import React from 'react';
 import get from 'lodash/get';
-import cn from 'classnames';
 
 import { Card } from '../../../../components/Card';
 import styles from './TripCard.module.css';
