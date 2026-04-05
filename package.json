@@ -40,11 +40,6 @@
     ]
   },
   "overrides": {
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "react-test-renderer": "19.2.4",
-    "@types/react": "19.2.14",
-    "@types/react-dom": "19.2.3",
     "handlebars": ">=4.7.9",
     "flatted": ">=3.4.2",
     "@xmldom/xmldom": ">=0.9.9",
