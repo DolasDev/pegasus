@@ -42,6 +42,16 @@ copy_if_missing packages/api/.env.example   packages/api/.env
 copy_if_missing packages/web/.env.example   packages/web/.env
 copy_if_missing apps/admin/.env.example     apps/admin/.env
 
+# Comment out DATABASE_URL/DIRECT_URL so tests skip DB-dependent suites
+# until the developer configures a real database (Docker or Neon).
+if [[ -f packages/api/.env ]]; then
+  if grep -q '^DATABASE_URL="postgresql://pegasus:pegasus' packages/api/.env 2>/dev/null; then
+    sed -i 's/^DATABASE_URL=/#DATABASE_URL=/' packages/api/.env
+    sed -i 's/^DIRECT_URL=/#DIRECT_URL=/' packages/api/.env
+    info "Commented out default DATABASE_URL — uncomment after starting Docker or configuring Neon"
+  fi
+fi
+
 # ── 2. Copy runtime config.json templates ────────────────────────────────────
 
 echo -e "\n${BOLD}SPA runtime config${RESET}"
