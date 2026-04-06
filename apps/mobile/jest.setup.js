@@ -1,13 +1,6 @@
 // Setup file for jest tests
 // Built-in matchers are now included in @testing-library/react-native v12.4+
 
-// react-native@0.81.6 bundles a renderer built against react@19.1.4. It performs
-// a strict React.version === "19.1.4" check at renderer load time. The workspace
-// installs react@19.1.5 (same API, newer patch), so we spoof the version string
-// before any renderer is loaded to pass the check in the test environment.
-const React = require('react');
-Object.defineProperty(React, 'version', { configurable: true, writable: true, value: '19.1.4' });
-
 // Global cleanup after each test
 afterEach(() => {
   jest.clearAllMocks();
