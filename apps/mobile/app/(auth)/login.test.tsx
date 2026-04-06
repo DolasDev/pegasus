@@ -1,6 +1,6 @@
 import React from 'react'
 import { Alert } from 'react-native'
-import { render, fireEvent, act, waitFor } from '@testing-library/react-native'
+import { render, fireEvent, act } from '@testing-library/react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import LoginScreen from './login'
 import { type TenantResolution, AuthError } from '../../src/auth/types'
@@ -195,18 +195,20 @@ describe('LoginScreen', () => {
         }),
       )
 
-      const { getByText, getByPlaceholderText } = render(<LoginScreen />)
+      const { getByText, getByPlaceholderText, unmount } = render(<LoginScreen />)
 
       fireEvent.changeText(getByPlaceholderText('Enter password'), 'pass1')
       fireEvent.press(getByText('LOG IN'))
 
-      await waitFor(() => {
-        expect(getByText('LOGGING IN...')).toBeTruthy()
-      })
+      // Yield to microtask queue so React flushes the setIsLoading(true) update,
+      // without using act() which hangs on the pending login promise
+      await new Promise((r) => setTimeout(r, 50))
 
-      await act(async () => {
-        resolveLogin()
-      })
+      expect(getByText('LOGGING IN...')).toBeTruthy()
+
+      // Clean up: resolve the pending promise and unmount
+      resolveLogin()
+      unmount()
     })
 
     it('renders SHOW toggle when password step is active (AUTH-04)', () => {
@@ -280,16 +282,18 @@ describe('LoginScreen', () => {
           resolveFn = res
         }),
       )
-      const { getByPlaceholderText, getByText } = render(<LoginScreen />)
+      const { getByPlaceholderText, getByText, unmount } = render(<LoginScreen />)
       fireEvent.changeText(getByPlaceholderText('Enter password'), 'pass1')
       fireEvent.press(getByText('LOG IN'))
 
-      await waitFor(() => {
-        expect(getByPlaceholderText('Enter password').props.editable).toBe(false)
-      })
-      await act(async () => {
-        resolveFn()
-      })
+      // Yield to microtask queue so React flushes the setIsLoading(true) update
+      await new Promise((r) => setTimeout(r, 50))
+
+      expect(getByPlaceholderText('Enter password').props.editable).toBe(false)
+
+      // Clean up: resolve the pending promise and unmount
+      resolveFn()
+      unmount()
     })
 
     it('clears passwordError when driver re-types in password field (AUTH-05)', async () => {

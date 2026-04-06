@@ -63,11 +63,22 @@ describe('OrderDetailScreen', () => {
   })
 
   describe('loading state', () => {
-    it('shows ActivityIndicator while fetching', () => {
-      MockedOrderService.getOrderById.mockReturnValue(new Promise(() => {}))
+    it('shows ActivityIndicator while fetching', async () => {
+      let resolve!: (v: TruckingOrder | null) => void
+      MockedOrderService.getOrderById.mockReturnValue(
+        new Promise<TruckingOrder | null>((r) => {
+          resolve = r
+        }),
+      )
 
-      const { UNSAFE_getByType } = render(<OrderDetailScreen />)
+      const { UNSAFE_getByType, unmount } = render(<OrderDetailScreen />)
       expect(UNSAFE_getByType(ActivityIndicator)).toBeTruthy()
+
+      // Clean up: resolve the pending promise and unmount to avoid
+      // poisoning act() in subsequent tests
+      unmount()
+      resolve(null)
+      await act(async () => {})
     })
   })
 
