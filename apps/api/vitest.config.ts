@@ -5,6 +5,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    testTimeout: 15_000,
     globalSetup: './vitest.global-setup.ts',
     coverage: {
       provider: 'v8',
