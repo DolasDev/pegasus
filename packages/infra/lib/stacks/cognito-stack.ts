@@ -146,22 +146,11 @@ export class CognitoStack extends cdk.Stack {
       environment: {
         NODE_ENV: 'production',
         DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
-        DIRECT_URL: dbSecret.secretValue.unsafeUnwrap(),
-        PRISMA_QUERY_ENGINE_LIBRARY: '/var/task/libquery_engine-rhel-openssl-3.0.x.so.node',
       },
       bundling: {
         minify: true,
         sourceMap: true,
         externalModules: ['@aws-sdk/*'],
-        commandHooks: {
-          beforeBundling: () => [],
-          beforeInstall: () => [],
-          afterBundling(_inputDir: string, outputDir: string): string[] {
-            const repoRoot = path.join(__dirname, '../../../..')
-            const engine = 'libquery_engine-rhel-openssl-3.0.x.so.node'
-            return [`cp ${repoRoot}/node_modules/.prisma/client/${engine} ${outputDir}/${engine}`]
-          },
-        },
       },
       memorySize: 256,
       timeout: cdk.Duration.seconds(15),

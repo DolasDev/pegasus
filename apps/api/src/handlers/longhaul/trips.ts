@@ -54,12 +54,12 @@ const PatchTripStatusBody = z.object({
 const TripBody = z
   .object({
     id: z.number().optional(),
-    driver: z.record(z.unknown()).nullable().optional(),
+    driver: z.record(z.string(), z.unknown()).nullable().optional(),
     driver_id: z.number().nullable().optional(),
-    dispatcher: z.record(z.unknown()).nullable().optional(),
+    dispatcher: z.record(z.string(), z.unknown()).nullable().optional(),
     dispatcher_id: z.union([z.number(), z.string()]).nullable().optional(),
     TripStatus_id: z.number().optional(),
-    status: z.record(z.unknown()).nullable().optional(),
+    status: z.record(z.string(), z.unknown()).nullable().optional(),
     created_by_id: z.number().nullable().optional(),
     updated_by_id: z.number().nullable().optional(),
     origin_state_id: z.number().nullable().optional(),
@@ -81,8 +81,8 @@ const TripBody = z
     driver_accepted_date: z.string().nullable().optional(),
     created_date: z.string().nullable().optional(),
     finalized_date: z.string().nullable().optional(),
-    shipments: z.array(z.record(z.unknown())).optional(),
-    activities: z.array(z.record(z.unknown())).optional(),
+    shipments: z.array(z.record(z.string(), z.unknown())).optional(),
+    activities: z.array(z.record(z.string(), z.unknown())).optional(),
   })
   .passthrough()
 
@@ -513,7 +513,7 @@ tripsRouter.post('/trips/:id/cancel', async (c) => {
 tripsRouter.patch(
   '/trips/:id/summary',
   validator('json', (value, c) => {
-    const r = z.record(z.unknown()).safeParse(value)
+    const r = z.record(z.string(), z.unknown()).safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
     return r.data
   }),

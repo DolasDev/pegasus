@@ -91,9 +91,17 @@ export async function setup(): Promise<void> {
     }
 
     console.log('\n[test:db] Starting postgres container...')
-    execSync('docker compose up -d postgres', { cwd: ROOT_DIR, stdio: 'inherit' })
-    await waitForPostgres()
-    console.log('[test:db] Postgres is ready.\n')
+    try {
+      execSync('docker compose up -d postgres', { cwd: ROOT_DIR, stdio: 'inherit' })
+      await waitForPostgres()
+      console.log('[test:db] Postgres is ready.\n')
+    } catch {
+      console.warn(
+        '\n[test:db] Failed to start postgres container via Docker Compose.' +
+          ' DB-dependent tests will be skipped. Set DATABASE_URL or fix Docker to run them.\n',
+      )
+      return
+    }
   } else {
     console.log('\n[test:db] Postgres already running — reusing.\n')
   }

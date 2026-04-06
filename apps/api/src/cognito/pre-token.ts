@@ -28,13 +28,19 @@
 
 import type { PreTokenGenerationTriggerHandler } from 'aws-lambda'
 import { PrismaClient } from '@prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm'
 import { createLogger } from '../lib/logger'
 
 const logger = createLogger('pegasus-pre-token')
 
 // Use a shared client to pool connections across warm invocations.
-const db = new PrismaClient()
+// Prisma 7 requires an explicit driver adapter for database connections.
+// In Lambda, DATABASE_URL is always injected by CDK. The fallback prevents
+// a module-level throw that would break test mocking (vi.mock replaces the
+// PrismaClient constructor, but process.env is checked before it runs).
+const adapter = new PrismaPg({ connectionString: process.env['DATABASE_URL'] ?? '' })
+const db = new PrismaClient({ adapter })
 const ssm = new SSMClient({})
 
 // ---------------------------------------------------------------------------

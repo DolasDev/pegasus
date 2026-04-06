@@ -4,9 +4,14 @@
  *
  * Idempotent — running twice is safe (upserts where possible, skips if present).
  */
+import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
 
-const db = new PrismaClient()
+const connectionString = process.env['DATABASE_URL']
+if (!connectionString) throw new Error('DATABASE_URL environment variable is not set')
+const adapter = new PrismaPg({ connectionString })
+const db = new PrismaClient({ adapter })
 
 async function main(): Promise<void> {
   console.log('🌱  Seeding database …')

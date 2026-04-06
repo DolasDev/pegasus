@@ -34,9 +34,15 @@ const { mockSend, mockRepo } = vi.hoisted(() => ({
 }))
 
 vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
-  CognitoIdentityProviderClient: vi.fn().mockImplementation(() => ({ send: mockSend })),
-  AdminCreateUserCommand: vi.fn((input: unknown) => input),
-  AdminDisableUserCommand: vi.fn((input: unknown) => input),
+  CognitoIdentityProviderClient: vi.fn().mockImplementation(function () {
+    return { send: mockSend }
+  }),
+  AdminCreateUserCommand: vi.fn().mockImplementation(function (input: unknown) {
+    return input
+  }),
+  AdminDisableUserCommand: vi.fn().mockImplementation(function (input: unknown) {
+    return input
+  }),
 }))
 
 vi.mock('../repositories/users', () => ({

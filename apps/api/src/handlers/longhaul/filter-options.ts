@@ -65,7 +65,7 @@ function transformTimeDiffToDate(query: Record<string, unknown>): Record<string,
 const SaveFilterBody = z.object({
   name: z.string().min(1),
   user_code: z.string().or(z.number()),
-  query: z.record(z.unknown()),
+  query: z.record(z.string(), z.unknown()),
   is_public: z.boolean().optional(),
   is_default: z.boolean().optional(),
 })
