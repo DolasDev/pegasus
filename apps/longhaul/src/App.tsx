@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router'
 import './App.css'
 import { Nav } from './containers/Nav'
 import { PlanningModule } from './routes/PlanningModule'

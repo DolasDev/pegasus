@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { useLocation, useBlocker } from 'react-router-dom'
+import { useLocation, useBlocker } from 'react-router'
 import { useSelector } from 'react-redux'
 import qs from 'query-string'
 
