@@ -78,7 +78,9 @@ export default async function globalSetup() {
 
   // Upsert the test tenant record via raw SQL through Prisma
   try {
-    const { PrismaClient } = await import('@prisma/client')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma 7 ESM export compat
+    const prismaModule: Record<string, any> = await import('@prisma/client')
+    const PrismaClient = prismaModule['PrismaClient'] ?? prismaModule['default']?.PrismaClient
     const prisma = new PrismaClient({ datasourceUrl: DATABASE_URL })
     await prisma.$executeRawUnsafe(
       `INSERT INTO public."Tenant" (id, name, slug, "cognitoAuthEnabled", "createdAt", "updatedAt")
