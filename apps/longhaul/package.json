@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@floating-ui/react": "^0.26.0",
+    "@floating-ui/react": "^0.27.19",
     "@radix-ui/react-dialog": "^1.1.6",
     "@reduxjs/toolkit": "^2.0.1",
     "clsx": "^2.1.1",
@@ -32,7 +32,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.7.0",
     "typescript": "*",
-    "vite": "^6.0.0",
+    "vite": "^6.4.2",
     "vitest": "^3.0.0"
   }
 }
