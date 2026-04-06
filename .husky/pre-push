@@ -1,1 +1,1 @@
-node node_modules/.bin/turbo run typecheck
+node node_modules/.bin/turbo run typecheck test
