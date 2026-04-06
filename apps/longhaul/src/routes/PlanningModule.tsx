@@ -2,7 +2,6 @@ import React, { useEffect } from 'react'
 import { useLocation, useBlocker } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import qs from 'query-string'
-import isEqual from 'lodash/isEqual'
 
 import { SearchDashboard } from '../containers/Shipments'
 import { PendingTrips } from '../containers/PendingTrips'
@@ -40,7 +39,8 @@ export function PlanningModule() {
 function PromptWrapper() {
   const { user: planner } = useSelector((state: RootState) => (state as any).user)
   const tripSlice = useSelector((state: RootState) => (state as any).tripPlanning)
-  const shouldBlockNavigation = !isEqual(tripSlice.trip, tripSlice.unsavedTrip)
+  const shouldBlockNavigation =
+    JSON.stringify(tripSlice.trip) !== JSON.stringify(tripSlice.unsavedTrip)
   const dispatch = useAppDispatch()
 
   const blocker = useBlocker(shouldBlockNavigation)

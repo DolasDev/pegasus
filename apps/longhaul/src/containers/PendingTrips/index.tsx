@@ -1,8 +1,6 @@
 import React, { useState } from 'react'
 
 import { useSelector } from 'react-redux'
-import get from 'lodash/get'
-import sortBy from 'lodash/sortBy'
 import { Link } from 'react-router-dom'
 
 import { Lane } from '../../components/Lane'
@@ -340,39 +338,44 @@ const PendingTripsInternal = (_props: any) => {
                   <div>Please add a shipment to this trip by selecting one in the left panel</div>
                 </div>
               )}
-              {sortBy(
-                currentTrip.shipments.map((shipment: any, idx: number) => ({
+              {[
+                ...currentTrip.shipments.map((shipment: any, idx: number) => ({
                   ...shipment,
                   stateIdx: idx,
                 })),
-                'load_date',
-              ).map((shipment: any) => (
-                <Card key={shipment.order_num} title={dashboardSettings.title(shipment)}>
-                  {dashboardSettings.children(shipment)}
-                  <div className={styles.activityCreationContainer}>
-                    <h3>Activities</h3>
-                    <AddActivity shipment={shipment} shipmentIndex={shipment.stateIdx} />
-                  </div>
-                  {shipment.activities.map((activity: any, activityIndex: number) => (
-                    <Activity
-                      key={activityIndex}
-                      activity={activity}
-                      onDelete={() => removeActivity(shipment.stateIdx, activityIndex)}
-                      editActivityDates={(partialActivity: any) =>
-                        editActivity(shipment.stateIdx, activityIndex, partialActivity)
-                      }
-                    />
-                  ))}
-                  <button
-                    className={`${styles.iconButton} ${styles.floatingDeleteButton}`}
-                    onClick={() => {
-                      removeShipment(shipment.stateIdx)
-                    }}
-                  >
-                    <i className="fas fa-trash"></i>
-                  </button>
-                </Card>
-              ))}
+              ]
+                .sort((a: any, b: any) => {
+                  const aDate = a.load_date ?? ''
+                  const bDate = b.load_date ?? ''
+                  return aDate < bDate ? -1 : aDate > bDate ? 1 : 0
+                })
+                .map((shipment: any) => (
+                  <Card key={shipment.order_num} title={dashboardSettings.title(shipment)}>
+                    {dashboardSettings.children(shipment)}
+                    <div className={styles.activityCreationContainer}>
+                      <h3>Activities</h3>
+                      <AddActivity shipment={shipment} shipmentIndex={shipment.stateIdx} />
+                    </div>
+                    {shipment.activities.map((activity: any, activityIndex: number) => (
+                      <Activity
+                        key={activityIndex}
+                        activity={activity}
+                        onDelete={() => removeActivity(shipment.stateIdx, activityIndex)}
+                        editActivityDates={(partialActivity: any) =>
+                          editActivity(shipment.stateIdx, activityIndex, partialActivity)
+                        }
+                      />
+                    ))}
+                    <button
+                      className={`${styles.iconButton} ${styles.floatingDeleteButton}`}
+                      onClick={() => {
+                        removeShipment(shipment.stateIdx)
+                      }}
+                    >
+                      <i className="fas fa-trash"></i>
+                    </button>
+                  </Card>
+                ))}
             </div>
           </div>
         </div>

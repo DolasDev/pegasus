@@ -1,16 +1,14 @@
-import React, { useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { isEmpty } from 'lodash';
+import React, { useState } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import { InputField } from '../../../components/InputField'
+import { Select } from '../../../components/Select'
+import { changeTripsQuery } from '../../../redux/trips'
+import { StatusDropdown } from '../../../containers/StatusDropdown'
+import { StateDropdown } from '../../../containers/StateDropdown'
 
-import { InputField } from '../../../components/InputField';
-import { Select } from '../../../components/Select';
-import { changeTripsQuery } from '../../../redux/trips';
-import { StatusDropdown } from '../../../containers/StatusDropdown';
-import { StateDropdown } from '../../../containers/StateDropdown';
-
-import styles from './TripsFilter.module.css';
-import { DriverTypeahead } from '../../../containers/DriverTypeahead';
-import type { RootState } from '../../../redux/store';
+import styles from './TripsFilter.module.css'
+import { DriverTypeahead } from '../../../containers/DriverTypeahead'
+import type { RootState } from '../../../redux/store'
 
 const FIELDS = [
   { label: 'Status', property: 'TripStatus_id', type: 'status' },
@@ -27,7 +25,7 @@ const FIELDS = [
   { label: 'Active Dates', property: 'planned_date', type: 'date' },
   { label: 'Start Date', property: 'planned_start', type: 'date' },
   { label: 'End Date', property: 'planned_end', type: 'date' },
-];
+]
 
 const createInputStyles = (minWidth: any) => ({
   input: (s: any) => ({ ...s, minWidth }),
@@ -35,35 +33,54 @@ const createInputStyles = (minWidth: any) => ({
     ...s,
     boxShadow: '0 2px 4px 0 rgba(0,0,0,0.2)',
   }),
-});
-
+})
 
 function renderFilterComponentByType(type: any, args: any, common_state: any) {
-  const zoneListAsOptions = (common_state.zoneList || [] ).map((zone: any) => ({ label: zone.zone_description, value: zone.zone_code }));
-  const plannerListAsOptions = (common_state.plannersList || [] ).map((planner: any) => ({ label: `${planner.first_name} ${planner.last_name}`, value: planner.code }));
-  const internalStatusAsOptions = [{label: 'yes', value: 'active'} , {label: 'no', value: 'canceled'}]
-  const dispatcherOptions = (common_state.dispatcherList || [] ).map((dispatcher: any) => ({ label: `${dispatcher.first_name} ${dispatcher.last_name}`, value: dispatcher.code }));
+  const zoneListAsOptions = (common_state.zoneList || []).map((zone: any) => ({
+    label: zone.zone_description,
+    value: zone.zone_code,
+  }))
+  const plannerListAsOptions = (common_state.plannersList || []).map((planner: any) => ({
+    label: `${planner.first_name} ${planner.last_name}`,
+    value: planner.code,
+  }))
+  const internalStatusAsOptions = [
+    { label: 'yes', value: 'active' },
+    { label: 'no', value: 'canceled' },
+  ]
+  const dispatcherOptions = (common_state.dispatcherList || []).map((dispatcher: any) => ({
+    label: `${dispatcher.first_name} ${dispatcher.last_name}`,
+    value: dispatcher.code,
+  }))
 
   function rangeOnChange(e: any, index: any) {
-    const val = args.value || [];
-    args.onChange([...val.slice(0, index), e.target.value, ...val.slice(index + 1)]);
+    const val = args.value || []
+    args.onChange([...val.slice(0, index), e.target.value, ...val.slice(index + 1)])
   }
   switch (type) {
     case 'state':
       return (
-        <StateDropdown isMulti placeholder="State" styles={createInputStyles(100)} {...args} value={args.value || []} />
-      );
+        <StateDropdown
+          isMulti
+          placeholder="State"
+          styles={createInputStyles(100)}
+          {...args}
+          value={args.value || []}
+        />
+      )
     case 'status':
-      return <StatusDropdown isMulti {...args} value={args.value || []} />;
+      return <StatusDropdown isMulti {...args} value={args.value || []} />
     case 'internal_status':
-      return (<Select
-        isMulti
-        placeholder="Active Status"
-        options={internalStatusAsOptions}
-        styles={createInputStyles(100)}
-        {...args}
-        value={args.value || []}
-      />);
+      return (
+        <Select
+          isMulti
+          placeholder="Active Status"
+          options={internalStatusAsOptions}
+          styles={createInputStyles(100)}
+          {...args}
+          value={args.value || []}
+        />
+      )
     case 'zone':
       return (
         <Select
@@ -74,7 +91,7 @@ function renderFilterComponentByType(type: any, args: any, common_state: any) {
           {...args}
           value={args.value || []}
         />
-      );
+      )
     case 'date':
       return (
         <div style={{ display: 'flex' }}>
@@ -94,7 +111,7 @@ function renderFilterComponentByType(type: any, args: any, common_state: any) {
             onChange={(e: any) => rangeOnChange(e, 1)}
           />
         </div>
-      );
+      )
     case 'range':
       return (
         <div style={{ display: 'flex' }}>
@@ -112,17 +129,17 @@ function renderFilterComponentByType(type: any, args: any, common_state: any) {
             onChange={(e: any) => rangeOnChange(e, 1)}
           />
         </div>
-      );
+      )
     case 'driver':
       return (
         <DriverTypeahead
           {...args}
           value={args.value || ''}
           onChange={(val: any) => {
-            args.onChange({value: val?.value.id , label: val?.label})
+            args.onChange({ value: val?.value.id, label: val?.label })
           }}
         />
-      );
+      )
     case 'planner':
       return (
         <Select
@@ -133,7 +150,7 @@ function renderFilterComponentByType(type: any, args: any, common_state: any) {
           {...args}
           value={args.value || []}
         />
-      );
+      )
     case 'dispatcher':
       return (
         <Select
@@ -144,32 +161,37 @@ function renderFilterComponentByType(type: any, args: any, common_state: any) {
           {...args}
           value={args.value || []}
         />
-      );
+      )
     default:
       return (
         <InputField
           {...args}
           value={args.value || ''}
           onChange={(e: any) => {
-            args.onChange(e.target.value);
+            args.onChange(e.target.value)
           }}
         />
-      );
+      )
   }
 }
 
 export function TripsFilter() {
-  const dispatch = useDispatch();
-  const query = useSelector((state: RootState) => state.trips.query);
-  const common_state = useSelector((state: RootState) => state.common);
-  const changeQuery = (query: any) => dispatch(changeTripsQuery(query));
+  const dispatch = useDispatch()
+  const query = useSelector((state: RootState) => state.trips.query)
+  const common_state = useSelector((state: RootState) => state.common)
+  const changeQuery = (query: any) => dispatch(changeTripsQuery(query))
   const clearFilters = (e: any) => {
-    e.stopPropagation();
-    dispatch(changeTripsQuery({ filters: {} }));
-  };
-  const filterLength = Object.keys(query.filters).filter(
-    (key: any) => query.filters[key] && (typeof query.filters[key] ? !isEmpty(query.filters[key]) : query.filters[key]),
-  ).length;
+    e.stopPropagation()
+    dispatch(changeTripsQuery({ filters: {} }))
+  }
+  const filterLength = Object.keys(query.filters).filter((key: any) => {
+    const v = query.filters[key]
+    if (v == null) return false
+    if (Array.isArray(v)) return v.length > 0
+    if (typeof v === 'object') return Object.keys(v).length > 0
+    if (typeof v === 'string') return v.length > 0
+    return Boolean(v)
+  }).length
 
   return (
     <div className={styles.container}>
@@ -189,19 +211,23 @@ export function TripsFilter() {
           <div className={styles.filterRow} key={i}>
             <label>{field.label}</label>
             <div className={styles.filterContainer}>
-              {renderFilterComponentByType(field.type, {
-                value: query.filters[field.property],
-                onChange: (value: any) => {
-                  changeQuery({
-                    filters: { ...query.filters, [field.property]: value },
-                  });
+              {renderFilterComponentByType(
+                field.type,
+                {
+                  value: query.filters[field.property],
+                  onChange: (value: any) => {
+                    changeQuery({
+                      filters: { ...query.filters, [field.property]: value },
+                    })
+                  },
+                  ...field,
                 },
-                ...field,
-              }, common_state)}
+                common_state,
+              )}
             </div>
           </div>
         ))}
       </div>
     </div>
-  );
+  )
 }
