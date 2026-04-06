@@ -1,8 +1,9 @@
 import React from 'react'
+import { Alert } from 'react-native'
 import { render, fireEvent, act } from '@testing-library/react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import LoginScreen from './login'
-import { TenantResolution } from '../../src/auth/types'
+import { type TenantResolution, AuthError } from '../../src/auth/types'
 
 // Mock the module-scope authService exported from _layout
 jest.mock('../_layout', () => ({
@@ -198,7 +199,7 @@ describe('LoginScreen', () => {
 
       fireEvent.changeText(getByPlaceholderText('Enter password'), 'pass1')
 
-      act(() => {
+      await act(async () => {
         fireEvent.press(getByText('LOG IN'))
       })
 
@@ -232,7 +233,6 @@ describe('LoginScreen', () => {
     })
 
     it('shows inline error for NotAuthorizedException (AUTH-05)', async () => {
-      const { AuthError } = require('../../src/auth/types')
       mockLogin.mockRejectedValueOnce(new AuthError('NotAuthorizedException', 'Bad creds'))
       const { getByText, getByPlaceholderText } = render(<LoginScreen />)
       fireEvent.changeText(getByPlaceholderText('Enter password'), 'wrongpass')
@@ -243,7 +243,6 @@ describe('LoginScreen', () => {
     })
 
     it('shows inline error for LimitExceededException (AUTH-05)', async () => {
-      const { AuthError } = require('../../src/auth/types')
       mockLogin.mockRejectedValueOnce(new AuthError('LimitExceededException', 'Throttled'))
       const { getByText, getByPlaceholderText } = render(<LoginScreen />)
       fireEvent.changeText(getByPlaceholderText('Enter password'), 'pass1')
@@ -264,7 +263,7 @@ describe('LoginScreen', () => {
     })
 
     it('does not call Alert.alert on login failure (AUTH-05)', async () => {
-      const alertSpy = jest.spyOn(require('react-native').Alert, 'alert')
+      const alertSpy = jest.spyOn(Alert, 'alert')
       mockLogin.mockRejectedValueOnce(new Error('SomeError'))
       const { getByText, getByPlaceholderText } = render(<LoginScreen />)
       fireEvent.changeText(getByPlaceholderText('Enter password'), 'pass1')
