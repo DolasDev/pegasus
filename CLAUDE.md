@@ -118,6 +118,10 @@ Models crew and vehicle availability.
 
 > **Note**: For code patterns, architectural decisions, and other system rules, see the agent files below.
 
+## Dependency Management
+
+When dependency version conflicts or resolution issues arise, **do not** attempt to make multiple versions of the same dependency coexist (nested `node_modules`, manual copies, overrides hacks, etc.). Instead, plan and execute a code migration to upgrade all usages to the latest stable version of the dependency across the entire codebase. Rewriting code to work with one consistent version is always preferable to fighting npm hoisting, lockfile quirks, or version shims.
+
 ---
 
 ## Agent Files
