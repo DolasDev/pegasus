@@ -28,7 +28,7 @@
     "jose": "^5.0.0",
     "knex": "^3.1.0",
     "mssql": "^12.2.0",
-    "zod": "^3.23.8"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
