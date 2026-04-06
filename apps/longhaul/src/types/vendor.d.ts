@@ -7,11 +7,6 @@ declare module 'downshift' {
   export default Downshift
 }
 
-declare module 'react-datepicker' {
-  const ReactDatePicker: any
-  export default ReactDatePicker
-}
-
 declare module 'react-select' {
   const ReactSelect: any
   export default ReactSelect
@@ -20,14 +15,6 @@ declare module 'react-select' {
 declare module 'redux-logger' {
   const logger: any
   export default logger
-}
-
-declare module 'query-string' {
-  const qs: {
-    parse(query: string): Record<string, string | undefined>
-    stringify(obj: Record<string, unknown>): string
-  }
-  export default qs
 }
 
 declare module '*.module.css' {

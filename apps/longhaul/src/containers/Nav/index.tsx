@@ -1,5 +1,5 @@
 import React from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router'
 import styles from './Nav.module.css'
 import { NavItem } from './NavItem'
 import { useSelector } from 'react-redux'
