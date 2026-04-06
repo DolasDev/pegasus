@@ -37,32 +37,47 @@ copy_if_missing() {
   fi
 }
 
-echo -e "${BOLD}Environment files${RESET}"
-copy_if_missing packages/api/.env.example   packages/api/.env
-copy_if_missing packages/web/.env.example   packages/web/.env
-copy_if_missing apps/admin/.env.example     apps/admin/.env
-
-# Comment out DATABASE_URL/DIRECT_URL so tests skip DB-dependent suites
-# until the developer configures a real database (Docker or Neon).
-if [[ -f packages/api/.env ]]; then
-  if grep -q '^DATABASE_URL="postgresql://pegasus:pegasus' packages/api/.env 2>/dev/null; then
-    sed -i 's/^DATABASE_URL=/#DATABASE_URL=/' packages/api/.env
-    sed -i 's/^DIRECT_URL=/#DIRECT_URL=/' packages/api/.env
-    info "Commented out default DATABASE_URL — uncomment after starting Docker or configuring Neon"
+comment_out_default_db_url() {
+  local envfile="$1"
+  if [[ -f "$envfile" ]] && grep -q '^DATABASE_URL="postgresql://pegasus:pegasus' "$envfile" 2>/dev/null; then
+    sed -i 's/^DATABASE_URL=/#DATABASE_URL=/' "$envfile"
+    sed -i 's/^DIRECT_URL=/#DIRECT_URL=/' "$envfile"
+    info "Commented out default DATABASE_URL in $envfile — uncomment after starting Docker or configuring Neon"
   fi
-fi
+}
+
+echo -e "${BOLD}Environment files${RESET}"
+# Support both pre- and post-restructure layouts
+for api_dir in apps/api packages/api; do
+  [[ -d "$api_dir" ]] && copy_if_missing "$api_dir/.env.example" "$api_dir/.env" && comment_out_default_db_url "$api_dir/.env"
+done
+for web_dir in apps/tenant-web packages/web; do
+  [[ -d "$web_dir" ]] && copy_if_missing "$web_dir/.env.example" "$web_dir/.env"
+done
+for admin_dir in apps/admin-web apps/admin; do
+  [[ -d "$admin_dir" ]] && copy_if_missing "$admin_dir/.env.example" "$admin_dir/.env"
+done
 
 # ── 2. Copy runtime config.json templates ────────────────────────────────────
 
 echo -e "\n${BOLD}SPA runtime config${RESET}"
-copy_if_missing packages/web/public/config.json.example  packages/web/public/config.json
-copy_if_missing apps/admin/public/config.json.example    apps/admin/public/config.json
+for web_dir in apps/tenant-web packages/web; do
+  [[ -f "$web_dir/public/config.json.example" ]] && copy_if_missing "$web_dir/public/config.json.example" "$web_dir/public/config.json"
+done
+for admin_dir in apps/admin-web apps/admin; do
+  [[ -f "$admin_dir/public/config.json.example" ]] && copy_if_missing "$admin_dir/public/config.json.example" "$admin_dir/public/config.json"
+done
 
 # ── 3. Generate Prisma client ────────────────────────────────────────────────
 
 echo -e "\n${BOLD}Prisma client${RESET}"
-(cd packages/api && npx prisma generate --no-hints 2>/dev/null)
-ok "Prisma client generated"
+for api_dir in apps/api packages/api; do
+  if [[ -f "$api_dir/prisma/schema.prisma" ]]; then
+    (cd "$api_dir" && npx prisma generate --no-hints 2>/dev/null)
+    ok "Prisma client generated from $api_dir"
+    break
+  fi
+done
 
 # ── 4. Fix binary permissions (WSL2 / restrictive mounts) ───────────────────
 
@@ -75,5 +90,5 @@ ok "node_modules binaries are executable"
 # ── Done ─────────────────────────────────────────────────────────────────────
 
 echo -e "\n${GREEN}${BOLD}✔ Setup complete.${RESET}"
-echo -e "  Edit ${BOLD}packages/api/.env${RESET} with your Neon connection strings before starting the API."
+echo -e "  Edit your API ${BOLD}.env${RESET} with your Neon connection strings before starting the API."
 echo -e "  Then run: ${BOLD}npm run dev${RESET}\n"
