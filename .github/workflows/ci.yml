@@ -130,6 +130,10 @@ jobs:
           PGPASSWORD=pegasus psql -h localhost -U pegasus -d pegasus -c "CREATE SCHEMA IF NOT EXISTS platform;"
           PGPASSWORD=pegasus psql -h localhost -U pegasus -d pegasus -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'
 
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: node ../../node_modules/.bin/prisma generate
+
       - name: Run Prisma migrations
         working-directory: apps/api
         run: node ../../node_modules/.bin/prisma migrate deploy
