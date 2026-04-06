@@ -75,18 +75,19 @@ describe('OrderDetailScreen', () => {
     it('shows "Order not found" when getOrderById returns null', async () => {
       MockedOrderService.getOrderById.mockResolvedValueOnce(null)
 
-      const { findByText } = render(<OrderDetailScreen />)
+      const { getByText } = render(<OrderDetailScreen />)
+      await act(async () => {})
 
-      expect(await findByText('Order not found')).toBeTruthy()
+      expect(getByText('Order not found')).toBeTruthy()
     })
 
     it('"Go Back" button calls router.back() when order not found', async () => {
       MockedOrderService.getOrderById.mockResolvedValueOnce(null)
 
-      const { findByText } = render(<OrderDetailScreen />)
-      const goBack = await findByText('Go Back')
+      const { getByText } = render(<OrderDetailScreen />)
+      await act(async () => {})
 
-      fireEvent.press(goBack)
+      fireEvent.press(getByText('Go Back'))
       expect(routerBack).toHaveBeenCalled()
     })
   })

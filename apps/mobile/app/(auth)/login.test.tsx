@@ -199,7 +199,8 @@ describe('LoginScreen', () => {
 
       fireEvent.changeText(getByPlaceholderText('Enter password'), 'pass1')
 
-      await act(async () => {
+      // Use sync act — async act would wait for the pending login promise and timeout
+      act(() => {
         fireEvent.press(getByText('LOG IN'))
       })
 
