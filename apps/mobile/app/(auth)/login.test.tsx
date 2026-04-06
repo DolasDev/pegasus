@@ -1,6 +1,6 @@
 import React from 'react'
 import { Alert } from 'react-native'
-import { render, fireEvent, act } from '@testing-library/react-native'
+import { render, fireEvent, act, waitFor } from '@testing-library/react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import LoginScreen from './login'
 import { type TenantResolution, AuthError } from '../../src/auth/types'
@@ -199,14 +199,17 @@ describe('LoginScreen', () => {
 
       fireEvent.changeText(getByPlaceholderText('Enter password'), 'pass1')
 
-      // Use sync act — async act would wait for the pending login promise and timeout.
-      // advanceTimersByTime(0) flushes React's useEffect scheduling under fake timers.
-      act(() => {
+      // Fire the press then advance fake timers to flush React state updates
+      await act(async () => {
         fireEvent.press(getByText('LOG IN'))
         jest.advanceTimersByTime(0)
+        // Yield to let the synchronous setIsLoading(true) re-render propagate
+        await Promise.resolve()
       })
 
-      expect(getByText('LOGGING IN...')).toBeTruthy()
+      await waitFor(() => {
+        expect(getByText('LOGGING IN...')).toBeTruthy()
+      })
 
       await act(async () => {
         resolveLogin()
@@ -286,11 +289,15 @@ describe('LoginScreen', () => {
       )
       const { getByPlaceholderText, getByText } = render(<LoginScreen />)
       fireEvent.changeText(getByPlaceholderText('Enter password'), 'pass1')
-      act(() => {
+      await act(async () => {
         fireEvent.press(getByText('LOG IN'))
+        jest.advanceTimersByTime(0)
+        await Promise.resolve()
       })
-      const input = getByPlaceholderText('Enter password')
-      expect(input.props.editable).toBe(false)
+      await waitFor(() => {
+        const input = getByPlaceholderText('Enter password')
+        expect(input.props.editable).toBe(false)
+      })
       await act(async () => {
         resolveFn()
       })
