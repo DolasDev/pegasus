@@ -1,11 +1,10 @@
-import React, { useCallback, useState, useRef } from 'react';
-import { withRouter } from 'react-router';
-import type { RouteComponentProps } from 'react-router';
-import styles from './Nav.module.css';
-import { NavItem } from './NavItem';
-import { useDispatch, useSelector } from 'react-redux';
-import { toggleNav as toggleNavAction } from '../../redux/nav';
-import type { RootState } from '../../redux/store';
+import React from 'react'
+import { useLocation } from 'react-router-dom'
+import styles from './Nav.module.css'
+import { NavItem } from './NavItem'
+import { useSelector } from 'react-redux'
+import { toggleNav as toggleNavAction } from '../../redux/nav'
+import type { RootState } from '../../redux/store'
 
 const options = [
   {
@@ -18,10 +17,11 @@ const options = [
     route: '/trips',
     Icon: <i className="fas fa-calendar-alt"></i>,
   },
-];
+]
 
-function NavPriv({ location }: RouteComponentProps) {
-  const visible = useSelector((state: RootState) => state.nav.visible);
+export function Nav() {
+  const location = useLocation()
+  const visible = useSelector((state: RootState) => state.nav.visible)
   return (
     <nav>
       <nav role="navigation" className={`${styles.navbar} ${visible ? styles.show : styles.hide}`}>
@@ -32,7 +32,5 @@ function NavPriv({ location }: RouteComponentProps) {
         </div>
       </nav>
     </nav>
-  );
+  )
 }
-
-export const Nav = withRouter(NavPriv);

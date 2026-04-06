@@ -20,8 +20,6 @@
     "baseUrl": ".",
     "paths": {
       "src/*": ["./src/*"],
-      "react-router-dom": ["./src/types/react-router-dom.d.ts"],
-      "react-router": ["./src/types/react-router.d.ts"],
       "react-modal": ["./src/types/react-modal.d.ts"]
     }
   },
