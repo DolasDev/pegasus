@@ -39,6 +39,23 @@
       "prettier --write"
     ]
   },
+  "//overrides": {
+    "handlebars": "CVE-2019-19919 prototype pollution",
+    "flatted": "security fix",
+    "@xmldom/xmldom": "CVE-2022-39353 XML parsing",
+    "defu": "prototype pollution fix",
+    "undici": "HTTP request smuggling fixes",
+    "path-to-regexp": "ReDoS vulnerability",
+    "picomatch": "ReDoS vulnerability",
+    "rollup": "esbuild CVE transitive fix",
+    "yaml": "CVE-2023-2251 code injection",
+    "minimatch": "ReDoS vulnerability",
+    "brace-expansion": "ReDoS via minimatch",
+    "ajv": "prototype pollution",
+    "eslint.ajv": "ESLint uses ajv v6 internally",
+    "effect": "compatibility fix",
+    "esbuild": "GHSA-67mh-4wv8-2f99 moderate CVE"
+  },
   "overrides": {
     "handlebars": ">=4.7.9",
     "flatted": ">=3.4.2",
