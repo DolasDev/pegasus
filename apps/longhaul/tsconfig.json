@@ -12,6 +12,7 @@
     "declaration": false,
     "declarationMap": false,
     "jsx": "react-jsx",
+    "ignoreDeprecations": "6.0",
     "exactOptionalPropertyTypes": false,
     "noUncheckedIndexedAccess": false,
     "noUnusedLocals": false,

@@ -43,7 +43,7 @@ export async function apiClientAuthMiddleware(
 
   // Timing-safe comparison — prevents timing attacks on the hash comparison.
   const incomingHash = crypto.createHash('sha256').update(token).digest('hex')
-  let match = false
+  let match: boolean
   try {
     match = crypto.timingSafeEqual(
       Buffer.from(candidate.keyHash, 'hex'),
