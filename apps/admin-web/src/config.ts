@@ -25,6 +25,7 @@ export async function loadConfig(): Promise<void> {
   } catch (err) {
     throw new Error(
       `Failed to load /config.json: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     )
   }
 

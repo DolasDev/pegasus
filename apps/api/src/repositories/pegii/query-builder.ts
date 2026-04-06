@@ -68,12 +68,11 @@ export function queryGiven(
     params = fragment.params
   }
 
-  let pre = ''
   const doubleBraceStart = whr.indexOf('{{')
   if (doubleBraceStart !== -1) {
     const doubleBraceEnd = whr.indexOf('}}', doubleBraceStart)
     if (doubleBraceEnd !== -1) {
-      pre = whr.substring(doubleBraceStart + 2, doubleBraceEnd)
+      const pre = whr.substring(doubleBraceStart + 2, doubleBraceEnd)
       whr = pre + whr.substring(0, doubleBraceStart) + whr.substring(doubleBraceEnd + 2)
     }
   }

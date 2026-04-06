@@ -122,6 +122,8 @@ export const handler: PreAuthenticationTriggerHandler = async (event) => {
 
     // Any unexpected error (IAM, network, Cognito API) — fail closed.
     logger.error('Pre-auth trigger: unexpected error during MFA check', { error: String(err) })
-    throw new Error('Authentication check failed. Please try again or contact support.')
+    throw new Error('Authentication check failed. Please try again or contact support.', {
+      cause: err,
+    })
   }
 }

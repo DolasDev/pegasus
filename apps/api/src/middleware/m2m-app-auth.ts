@@ -41,13 +41,14 @@ export const m2mAppAuthMiddleware: MiddlewareHandler<AppEnv> = async (c, next) =
   }
 
   const incomingHash = crypto.createHash('sha256').update(token).digest('hex')
-  let match = false
+  let match: boolean
   try {
     match = crypto.timingSafeEqual(
       Buffer.from(candidate.keyHash, 'hex'),
       Buffer.from(incomingHash, 'hex'),
     )
   } catch {
+    // timingSafeEqual throws if buffer lengths differ — treat as mismatch
     match = false
   }
 
