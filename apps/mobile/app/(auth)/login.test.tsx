@@ -199,9 +199,11 @@ describe('LoginScreen', () => {
 
       fireEvent.changeText(getByPlaceholderText('Enter password'), 'pass1')
 
-      // Use sync act — async act would wait for the pending login promise and timeout
+      // Use sync act — async act would wait for the pending login promise and timeout.
+      // advanceTimersByTime(0) flushes React's useEffect scheduling under fake timers.
       act(() => {
         fireEvent.press(getByText('LOG IN'))
+        jest.advanceTimersByTime(0)
       })
 
       expect(getByText('LOGGING IN...')).toBeTruthy()
