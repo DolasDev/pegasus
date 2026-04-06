@@ -30,18 +30,26 @@ const {
   mockAuthSessionDeleteMany: vi.fn(),
 }))
 
+vi.mock('@prisma/adapter-pg', () => ({
+  PrismaPg: vi.fn().mockImplementation(function () {
+    return {}
+  }),
+}))
+
 vi.mock('@prisma/client', () => ({
-  PrismaClient: vi.fn(() => ({
-    tenant: { findFirst: mockTenantFindFirst },
-    tenantUser: {
-      findUnique: mockTenantUserFindUnique,
-      update: mockTenantUserUpdate,
-    },
-    authSession: {
-      findFirst: mockAuthSessionFindFirst,
-      deleteMany: mockAuthSessionDeleteMany,
-    },
-  })),
+  PrismaClient: vi.fn().mockImplementation(function () {
+    return {
+      tenant: { findFirst: mockTenantFindFirst },
+      tenantUser: {
+        findUnique: mockTenantUserFindUnique,
+        update: mockTenantUserUpdate,
+      },
+      authSession: {
+        findFirst: mockAuthSessionFindFirst,
+        deleteMany: mockAuthSessionDeleteMany,
+      },
+    }
+  }),
 }))
 
 // ---------------------------------------------------------------------------
@@ -49,11 +57,13 @@ vi.mock('@prisma/client', () => ({
 // ---------------------------------------------------------------------------
 vi.mock('@aws-sdk/client-ssm', () => {
   return {
-    SSMClient: vi.fn(() => ({
-      send: vi.fn().mockResolvedValue({
-        Parameter: { Value: ADMIN_CLIENT_ID },
-      }),
-    })),
+    SSMClient: vi.fn().mockImplementation(function () {
+      return {
+        send: vi.fn().mockResolvedValue({
+          Parameter: { Value: ADMIN_CLIENT_ID },
+        }),
+      }
+    }),
     GetParameterCommand: vi.fn(),
   }
 })

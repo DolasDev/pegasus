@@ -61,7 +61,7 @@ const CreateEventBody = z.object({
   eventType: z.string().min(1),
   eventDatetime: z.string().datetime().optional(),
   eventPublisher: z.string().min(1).optional(),
-  eventData: z.record(z.unknown()).optional(),
+  eventData: z.record(z.string(), z.unknown()).optional(),
 })
 
 const UpdateEventBody = z.object({

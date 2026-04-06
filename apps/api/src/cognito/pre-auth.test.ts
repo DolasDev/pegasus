@@ -19,12 +19,15 @@ import type { Context } from 'aws-lambda'
 const { mockSend } = vi.hoisted(() => ({ mockSend: vi.fn() }))
 
 vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
-  CognitoIdentityProviderClient: vi.fn(() => ({ send: mockSend })),
-  AdminGetUserCommand: vi.fn((params: unknown) => ({ _cmd: 'AdminGetUser', params })),
-  AdminListGroupsForUserCommand: vi.fn((params: unknown) => ({
-    _cmd: 'AdminListGroups',
-    params,
-  })),
+  CognitoIdentityProviderClient: vi.fn().mockImplementation(function () {
+    return { send: mockSend }
+  }),
+  AdminGetUserCommand: vi.fn().mockImplementation(function (params: unknown) {
+    return { _cmd: 'AdminGetUser', params }
+  }),
+  AdminListGroupsForUserCommand: vi.fn().mockImplementation(function (params: unknown) {
+    return { _cmd: 'AdminListGroups', params }
+  }),
 }))
 
 import { handler } from './pre-auth'
