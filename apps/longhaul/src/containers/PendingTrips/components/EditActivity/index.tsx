@@ -1,60 +1,56 @@
-import React, { useState, useRef } from "react";
-import { usePopper } from 'react-popper';
-import { Popover } from '../../../../components/Popover';
-import  styles  from "./EditActivity.module.css";
-import { DatePicker } from '../../../../components/DatePicker';
-import { useOutsideClick } from "src/utils/hooks/use-outside-click";
-import { Button, IconButton } from "src/components/Button"
+import React, { useState, useRef } from 'react'
+import { useFloating, offset } from '@floating-ui/react'
+import { Popover } from '../../../../components/Popover'
+import styles from './EditActivity.module.css'
+import { DatePicker } from '../../../../components/DatePicker'
+import { useOutsideClick } from 'src/utils/hooks/use-outside-click'
+import { Button, IconButton } from 'src/components/Button'
 
 interface EditActivityProps {
-  activity: any;
-  _referenceElement: any;
-  closeEditActivity: () => void;
-  editDateSpread: (dates: { start_date: string | undefined; end_date: string | undefined }) => void;
+  activity: any
+  _referenceElement: any
+  closeEditActivity: () => void
+  editDateSpread: (dates: { start_date: string | undefined; end_date: string | undefined }) => void
 }
 
-export const EditActivity: React.FC<EditActivityProps> = ({activity, _referenceElement, closeEditActivity, editDateSpread}) => {
-  const [selectedActivity, setSelectedActivity] = useState<any>(activity);
-  const [referenceElement, setReferenceElement] = useState<any>(_referenceElement);
-  const [popperElement, setPopperElement] = useState<HTMLDivElement | null>(null);
-  const [arrowElement, setArrowElement] = useState<HTMLDivElement | null>(null);
-  const [startDate, setStartDate] = useState<any>(null);
-  const [endDate, setEndDate] = useState<any>(null);
-  const { styles: popperStyles, attributes } = usePopper(referenceElement, popperElement, {
-    modifiers: [
-      { name: 'arrow', options: { element: arrowElement } },
-      {
-        name: 'offset',
-        options: {
-          offset: [0, 5],
-        },
-      },
-    ],
-  });
+export const EditActivity: React.FC<EditActivityProps> = ({
+  activity,
+  _referenceElement,
+  closeEditActivity,
+  editDateSpread,
+}) => {
+  const [selectedActivity, setSelectedActivity] = useState<any>(activity)
+  const [startDate, setStartDate] = useState<any>(null)
+  const [endDate, setEndDate] = useState<any>(null)
+  const { refs, floatingStyles } = useFloating({
+    middleware: [offset(5)],
+  })
 
   const onChange = (dates: any) => {
-    const [start, end] = dates;
-    setStartDate(start);
-    setEndDate(end);
+    const [start, end] = dates
+    setStartDate(start)
+    setEndDate(end)
     editDateSpread({
       start_date: start?.toISOString(),
-      end_date: end?.toISOString() || start?.toISOString()
+      end_date: end?.toISOString() || start?.toISOString(),
     })
-    if(end){
+    if (end) {
       closeEditActivity()
     }
-  };
+  }
 
-  const openDate = selectedActivity?.estimated_date ? new Date(selectedActivity.estimated_date) : new Date();
+  const openDate = selectedActivity?.estimated_date
+    ? new Date(selectedActivity.estimated_date)
+    : new Date()
 
-  const wrapperRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null)
   useOutsideClick([wrapperRef], () => {
     closeEditActivity()
-  });
+  })
 
-    return(
+  return (
     <div ref={wrapperRef}>
-      <Popover ref={setPopperElement} style={popperStyles.popper} {...attributes.popper}>
+      <Popover ref={refs.setFloating} style={floatingStyles}>
         <div className={styles.formField}>
           <label htmlFor="estimated_date">Date Spread</label>
           <div>
@@ -73,14 +69,15 @@ export const EditActivity: React.FC<EditActivityProps> = ({activity, _referenceE
             className={''}
             color={'darkblue'}
             onClick={() => {
-              onChange([null,null]);
-              closeEditActivity();
+              onChange([null, null])
+              closeEditActivity()
             }}
             Icon={<i className="fa fa-close"></i>}
-          >Clear Dates</Button>
+          >
+            Clear Dates
+          </Button>
         </div>
-        <div ref={setArrowElement} style={popperStyles.arrow} />
       </Popover>
     </div>
-    )
-  }
+  )
+}
