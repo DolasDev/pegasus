@@ -14,16 +14,7 @@ module.exports = {
     '!**/*.test.{ts,tsx}',
     '!**/__tests__/**',
   ],
-  // Ensure Jest resolves packages from mobile's own node_modules first.
-  // This is required because @testing-library/react-native is hoisted to the
-  // root workspace node_modules and its internal require calls for
-  // react must resolve to the local versions.
-  modulePaths: ['<rootDir>/node_modules'],
   moduleNameMapper: {
-    // Pin React to the local copy so hoisted packages always share the same
-    // module instance. Without this, hook calls can break.
-    '^react$': '<rootDir>/node_modules/react',
-    '^react/(.*)$': '<rootDir>/node_modules/react/$1',
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@pegasus/theme$': '<rootDir>/../../packages/theme/src/index.ts',
   },
