@@ -20,7 +20,7 @@
     "e2e": "turbo run e2e --filter=@pegasus/e2e"
   },
   "devDependencies": {
-    "@aws-sdk/client-ssm": "^3.1024.0",
+    "@aws-sdk/client-ssm": "^3.1025.0",
     "@eslint/js": "^10.0.0",
     "eslint": "^10.0.0",
     "eslint-config-prettier": "^10.1.8",
