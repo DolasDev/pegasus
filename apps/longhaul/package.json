@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@floating-ui/react": "^0.26.0",
+    "@floating-ui/react": "^0.27.19",
     "@radix-ui/react-dialog": "^1.1.6",
     "@reduxjs/toolkit": "^2.0.1",
     "clsx": "^2.1.1",
@@ -27,7 +27,7 @@
     "@testing-library/jest-dom": "^6.1.5",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.5.1",
-    "@types/node": "^20.10.6",
+    "@types/node": "^20.19.39",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.7.0",
