@@ -44,8 +44,8 @@ worktrees/
 # Prisma
 prisma/migrations/
 
-# Test coverage
-coverage/
+# Test coverage (root-level only, not src/**/Coverage component dirs)
+/coverage/
 
 # Playwright
 apps/e2e/playwright-report/

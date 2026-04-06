@@ -8,7 +8,6 @@ import { formatDate } from '../../utils/format-date'
 import { Link } from 'react-router-dom'
 import { Clickable } from '../../components/Clickable'
 import { API } from '../../utils/api'
-// @ts-expect-error Coverage component does not exist yet
 import { ShipmentCoverage } from './components/Coverage'
 import { ShipmentWeight } from './components/Weight'
 import { DispatchNote } from './components/DispatchNote'
