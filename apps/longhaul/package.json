@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@floating-ui/react": "^0.26.0",
+    "@floating-ui/react": "^0.27.19",
     "@radix-ui/react-dialog": "^1.1.6",
     "@reduxjs/toolkit": "^2.0.1",
     "clsx": "^2.1.1",
