@@ -204,7 +204,7 @@ if [[ -f ".env" ]]; then
     ok ".env file found with DATABASE_URL set"
   fi
 else
-  warn ".env not found — run 'make setup' after cloning the repo to create it from .env.example"
+  warn ".env not found — run 'npm run setup' after cloning the repo to create it from .env.example"
 fi
 
 # ── 9. Final summary ─────────────────────────────────────────────────────────
@@ -228,7 +228,7 @@ if [[ $ERRORS -eq 0 ]]; then
   echo -e "   1. Create a Neon account and project at https://neon.tech"
   echo -e "   2. Run Prompt 0 in Claude Code from the repo root"
   echo -e "   3. Edit .env with your Neon connection strings"
-  echo -e "   4. Run: make setup"
+  echo -e "   4. Run: npm run setup"
   echo -e "   5. Then continue with Prompts 1–5"
 else
   echo -e "${YELLOW}${BOLD}⚠ $ERRORS item(s) need attention before you proceed (see warnings above).${RESET}"

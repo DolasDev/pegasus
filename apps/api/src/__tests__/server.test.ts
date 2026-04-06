@@ -50,12 +50,15 @@ vi.mock('jose', () => ({
 describe('server bootstrap', () => {
   const originalPort = process.env['PORT']
   const originalHost = process.env['HOST']
+  const originalDbUrl = process.env['DATABASE_URL']
 
   beforeEach(() => {
     mockServe.mockClear()
     mockCloseAllPools.mockClear()
     mockDbDisconnect.mockClear()
     process.env['SKIP_AUTH'] = 'true'
+    process.env['DATABASE_URL'] =
+      process.env['DATABASE_URL'] ?? 'postgresql://test:test@localhost:5432/test'
   })
 
   afterEach(() => {
@@ -63,6 +66,8 @@ describe('server bootstrap', () => {
     else process.env['PORT'] = originalPort
     if (originalHost === undefined) delete process.env['HOST']
     else process.env['HOST'] = originalHost
+    if (originalDbUrl === undefined) delete process.env['DATABASE_URL']
+    else process.env['DATABASE_URL'] = originalDbUrl
     delete process.env['SKIP_AUTH']
   })
 

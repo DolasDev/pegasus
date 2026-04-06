@@ -13,6 +13,7 @@
     "typecheck": "turbo run typecheck",
     "deploy": "bash packages/infra/deploy.sh",
     "create-admin-user": "tsx scripts/create-admin-user.ts",
+    "setup": "bash scripts/setup.sh",
     "prepare": "node ./node_modules/husky/bin.js || true",
     "launch-agent": "bash ./scripts/launch_agent.sh",
     "remove-agent": "bash ./scripts/remove_agent.sh",
