@@ -277,7 +277,8 @@ export function TenantFormDialog(props: TenantFormDialogProps) {
       ref={backdropRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={(e) => {
-        if (e.target === backdropRef.current) onClose()
+        // Prevent closing on backdrop click — form should only close via X or Cancel
+        e.stopPropagation()
       }}
     >
       <div className="w-full max-w-lg rounded-lg border border-border bg-card shadow-xl">
