@@ -5,7 +5,7 @@
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
-import type { AppEnv } from '../../types'
+import type { OnPremEnv } from '../../types.onprem'
 import { getLonghaulDb } from '../../lib/longhaul-db'
 import { saveActivity } from '../../repositories/longhaul/activities.repository'
 import { logger } from '../../lib/logger'
@@ -30,7 +30,7 @@ const PatchActivityBody = z.object({
   location_id: z.number().nullable().optional(),
 })
 
-export const activitiesRouter = new Hono<AppEnv>()
+export const activitiesRouter = new Hono<OnPremEnv>()
 
 activitiesRouter.post(
   '/activities/:id',

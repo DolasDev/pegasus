@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 
 import { serve } from '@hono/node-server'
-import { app } from './app'
+import { app } from './app.server'
 import { logger } from './lib/logger'
 import { validateEnv } from './lib/env'
 import { closeAllPools } from './lib/mssql'

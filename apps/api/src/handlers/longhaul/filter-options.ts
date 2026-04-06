@@ -5,7 +5,7 @@
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
-import type { AppEnv } from '../../types'
+import type { OnPremEnv } from '../../types.onprem'
 import { getLonghaulDb } from '../../lib/longhaul-db'
 import {
   getFilterOptions,
@@ -74,7 +74,7 @@ const SetDefaultFilterBody = z.object({
   filter_id: z.number(),
 })
 
-export const filterOptionsRouter = new Hono<AppEnv>()
+export const filterOptionsRouter = new Hono<OnPremEnv>()
 
 filterOptionsRouter.get('/filter-options', async (c) => {
   try {

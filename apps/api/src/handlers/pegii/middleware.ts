@@ -1,10 +1,10 @@
 import type { MiddlewareHandler } from 'hono'
-import type { AppEnv } from '../../types'
+import type { OnPremEnv } from '../../types.onprem'
 import { getPool } from '../../lib/mssql'
 import { db } from '../../db'
 import { logger } from '../../lib/logger'
 
-export const mssqlMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
+export const mssqlMiddleware: MiddlewareHandler<OnPremEnv> = async (c, next) => {
   const tenantId = c.get('tenantId')
 
   const tenant = await db.tenant.findUnique({
@@ -25,7 +25,7 @@ export const mssqlMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
 
   const pool = await getPool(tenant.mssqlConnectionString)
-  c.set('mssqlPool' as keyof AppEnv['Variables'], pool as never)
+  c.set('mssqlPool', pool)
 
   await next()
 }

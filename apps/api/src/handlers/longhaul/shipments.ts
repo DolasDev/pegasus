@@ -5,7 +5,7 @@
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
-import type { AppEnv } from '../../types'
+import type { OnPremEnv } from '../../types.onprem'
 import { getLonghaulDb } from '../../lib/longhaul-db'
 import {
   findShipmentsWithQuery,
@@ -38,7 +38,7 @@ const ShadowBody = z.object({
   weight: z.number().nullable().optional(),
 })
 
-export const shipmentsRouter = new Hono<AppEnv>()
+export const shipmentsRouter = new Hono<OnPremEnv>()
 
 shipmentsRouter.get('/shipments', async (c) => {
   try {

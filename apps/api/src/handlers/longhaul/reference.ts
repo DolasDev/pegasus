@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
-import type { AppEnv } from '../../types'
+import type { OnPremEnv } from '../../types.onprem'
 import { getLonghaulDb } from '../../lib/longhaul-db'
 import {
   getDrivers,
@@ -17,7 +17,7 @@ import {
 } from '../../repositories/longhaul/reference.repository'
 import { logger } from '../../lib/logger'
 
-export const referenceRouter = new Hono<AppEnv>()
+export const referenceRouter = new Hono<OnPremEnv>()
 
 referenceRouter.get('/drivers', async (c) => {
   try {

@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
-import type { AppEnv } from '../../types'
+import type { OnPremEnv } from '../../types.onprem'
 import { longhaulUserMiddleware } from '../../middleware/longhaul-user'
 import { tripsRouter } from './trips'
 import { shipmentsRouter } from './shipments'
@@ -12,7 +12,7 @@ import { filterOptionsRouter } from './filter-options'
 import { referenceRouter } from './reference'
 import { remoteRouter } from './remote'
 
-const longhaulRouter = new Hono<AppEnv>()
+const longhaulRouter = new Hono<OnPremEnv>()
 
 // All longhaul routes require authentication via the longhaul user middleware.
 // The middleware handles both SKIP_AUTH (Windows user header) and M2M (API key) modes.

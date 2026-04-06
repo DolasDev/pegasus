@@ -3,7 +3,6 @@
 // ---------------------------------------------------------------------------
 
 import type { PrismaClient } from '@prisma/client'
-import type { ConnectionPool } from 'mssql'
 import type { ApiClientRow } from './repositories/api-client.repository'
 
 /** API client record without the keyHash — set for M2M-authenticated requests. */
@@ -43,25 +42,11 @@ export type AppVariables = {
    */
   db: PrismaClient
   /**
-   * Legacy SQL Server connection pool for pegii routes. Set by mssqlMiddleware
-   * after looking up the tenant's mssqlConnectionString. Only present on
-   * /api/v1/pegii/* routes.
-   */
-  mssqlPool: ConnectionPool
-  /**
    * The authenticated API client for M2M (machine-to-machine) requests.
    * Set by m2mAppAuthMiddleware. Undefined for Cognito-authenticated requests.
    * Handlers that require scope enforcement read scopes from this field.
    */
   apiClient: ApiClientContext | undefined
-  /**
-   * The authenticated longhaul user (from v_longhaul_salesman).
-   * Set by longhaulUserMiddleware when SKIP_AUTH=true and X-Windows-User header
-   * is provided. Undefined for M2M-authenticated requests.
-   */
-  longhaulUser:
-    | { code: number; first_name: string; last_name: string; [key: string]: unknown }
-    | undefined
 }
 
 /** Hono environment type used when constructing the app and all sub-routers. */

@@ -5,7 +5,7 @@
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
-import type { AppEnv } from '../../types'
+import type { OnPremEnv } from '../../types.onprem'
 import { getLonghaulDb } from '../../lib/longhaul-db'
 import {
   findTripsWithQuery,
@@ -86,7 +86,7 @@ const TripBody = z
   })
   .passthrough()
 
-export const tripsRouter = new Hono<AppEnv>()
+export const tripsRouter = new Hono<OnPremEnv>()
 
 // ---------------------------------------------------------------------------
 // Helper: compute trip summary from activities + shipments

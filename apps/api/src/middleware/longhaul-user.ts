@@ -20,13 +20,13 @@
 // ---------------------------------------------------------------------------
 
 import type { MiddlewareHandler } from 'hono'
-import type { AppEnv } from '../types'
+import type { OnPremEnv } from '../types.onprem'
 import { longhaulDbConfigured, getLonghaulDb } from '../lib/longhaul-db'
 import { getUserByWindowsUsername } from '../repositories/longhaul/reference.repository'
 import { hasScope } from '../lib/scopes'
 import { logger } from '../lib/logger'
 
-export const longhaulUserMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
+export const longhaulUserMiddleware: MiddlewareHandler<OnPremEnv> = async (c, next) => {
   // Check MSSQL availability first — applies to both auth modes
   if (!longhaulDbConfigured()) {
     logger.warn('Longhaul MSSQL not configured — returning 503')

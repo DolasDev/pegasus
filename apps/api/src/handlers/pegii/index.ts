@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import type { AppEnv } from '../../types'
+import type { OnPremEnv } from '../../types.onprem'
 import { mssqlMiddleware } from './middleware'
 import { createDomainRouter } from './factory'
 import { sharedEntities } from './domains/shared'
@@ -24,7 +24,7 @@ import { warehouseEntities } from './domains/warehouse'
 import { storedProceduresEntities } from './domains/stored-procedures'
 import { unsortedEntities } from './domains/unsorted'
 
-const pegiiRouter = new Hono<AppEnv>()
+const pegiiRouter = new Hono<OnPremEnv>()
 
 pegiiRouter.use('*', mssqlMiddleware)
 

@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import type { AppEnv } from '../../types'
+import type { OnPremEnv } from '../../types.onprem'
 import { mssqlMiddleware } from '../pegii/middleware'
 import { createDomainRouter } from '../pegii/factory'
 
@@ -15,7 +15,7 @@ import { mastersEntities } from './domains/masters'
 import { textTemplatesEntities } from './domains/text-templates'
 import { saleEntities } from './domains/sale'
 
-const efwkRouter = new Hono<AppEnv>()
+const efwkRouter = new Hono<OnPremEnv>()
 
 efwkRouter.use('*', mssqlMiddleware)
 

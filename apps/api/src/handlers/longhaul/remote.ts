@@ -3,9 +3,9 @@
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
-import type { AppEnv } from '../../types'
+import type { OnPremEnv } from '../../types.onprem'
 
-export const remoteRouter = new Hono<AppEnv>()
+export const remoteRouter = new Hono<OnPremEnv>()
 
 remoteRouter.post('/remote/jump-to-order', async (c) => {
   // This feature requires a Windows desktop environment. It is not available

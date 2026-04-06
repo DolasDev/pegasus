@@ -1,5 +1,5 @@
 import type { Hono } from 'hono'
-import type { AppEnv } from '../../types'
+import type { OnPremEnv } from '../../types.onprem'
 
 export interface SqlFragment {
   sql: string
@@ -21,7 +21,7 @@ export interface EntityConfig {
   listFields?: string
   searchKeywords: SearchKeyword[]
   freeTextColumns?: string[]
-  customRoutes?: (router: Hono<AppEnv>) => void
+  customRoutes?: (router: Hono<OnPremEnv>) => void
 }
 
 export interface ColumnDef {

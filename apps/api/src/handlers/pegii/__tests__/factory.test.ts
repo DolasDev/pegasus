@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
-import type { AppEnv } from '../../../types'
+import type { OnPremEnv } from '../../../types.onprem'
 import type { EntityConfig } from '../types'
 
 vi.mock('../../../lib/logger', () => ({
@@ -29,7 +29,7 @@ const testConfig: EntityConfig = {
 }
 
 function buildApp() {
-  const app = new Hono<AppEnv>()
+  const app = new Hono<OnPremEnv>()
   app.use('*', async (c, next) => {
     c.set('tenantId', 'test-tenant')
     c.set('mssqlPool' as never, {} as never)

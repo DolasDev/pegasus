@@ -14,9 +14,6 @@ import { movesHandler } from './handlers/moves'
 import { inventoryHandler } from './handlers/inventory'
 import { billingHandler } from './handlers/billing'
 import { apiClientsHandler } from './handlers/api-clients'
-import { pegiiRouter } from './handlers/pegii'
-import { efwkRouter } from './handlers/efwk'
-import { longhaulRouter } from './handlers/longhaul'
 import { eventsHandler } from './handlers/events'
 import { ordersHandler } from './handlers/orders'
 import { logger } from './lib/logger'
@@ -509,9 +506,6 @@ v1.route('/moves', movesHandler)
 v1.route('/moves', inventoryHandler)
 v1.route('/invoices', billingHandler)
 v1.route('/api-clients', apiClientsHandler)
-v1.route('/pegii', pegiiRouter)
-v1.route('/efwk', efwkRouter)
-v1.route('/longhaul', longhaulRouter)
 
 app.route('/api/v1', v1)
 

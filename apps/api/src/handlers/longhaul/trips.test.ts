@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
-import type { AppEnv } from '../../types'
+import type { OnPremEnv } from '../../types.onprem'
 import type { ConnectionPool } from 'mssql'
 import type { PrismaClient } from '@prisma/client'
 
@@ -95,7 +95,7 @@ const MOCK_USER = {
 }
 
 function buildApp() {
-  const app = new Hono<AppEnv>()
+  const app = new Hono<OnPremEnv>()
   app.use('*', async (c, next) => {
     c.set('tenantId', 'test-tenant')
     c.set('longhaulUser', MOCK_USER)

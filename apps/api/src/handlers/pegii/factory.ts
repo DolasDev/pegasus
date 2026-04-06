@@ -1,11 +1,11 @@
 import { Hono } from 'hono'
-import type { AppEnv } from '../../types'
+import type { OnPremEnv } from '../../types.onprem'
 import type { EntityConfig } from './types'
 import * as repo from '../../repositories/pegii/generic.repository'
 import { logger } from '../../lib/logger'
 
-export function createEntityRouter(config: EntityConfig): Hono<AppEnv> {
-  const router = new Hono<AppEnv>()
+export function createEntityRouter(config: EntityConfig): Hono<OnPremEnv> {
+  const router = new Hono<OnPremEnv>()
 
   router.get('/ids', async (c) => {
     const pool = c.get('mssqlPool')
@@ -93,8 +93,8 @@ export function createEntityRouter(config: EntityConfig): Hono<AppEnv> {
   return router
 }
 
-export function createDomainRouter(domainSlug: string, entities: EntityConfig[]): Hono<AppEnv> {
-  const router = new Hono<AppEnv>()
+export function createDomainRouter(domainSlug: string, entities: EntityConfig[]): Hono<OnPremEnv> {
+  const router = new Hono<OnPremEnv>()
   for (const entity of entities) {
     router.route(`/${entity.slug}`, createEntityRouter(entity))
   }
