@@ -5,36 +5,91 @@
 // The backend middleware relies on these claims so it does not have to
 // re-evaluate context on every API request.
 //
-// PLATFORM_ADMIN users: inject custom:role = 'platform_admin' only.
-//   No tenant lookup — admins are not associated with any tenant.
+// Routing is based on callerContext.clientId (which Cognito app client
+// initiated the auth), NOT on group membership. This cleanly separates
+// admin and tenant login flows:
 //
-// Tenant users: resolve the active tenant from the email domain, then look up
-//   the TenantUser record to determine role and status:
+// ADMIN APP CLIENT:
+//   Inject custom:role = 'platform_admin'. No tenant lookup.
 //
-//   ACTIVE    → inject custom:tenantId + custom:role from TenantUser.role
-//   PENDING   → first login: inject role, then set status=ACTIVE + activatedAt + cognitoSub
+// TENANT / MOBILE APP CLIENT:
+//   Resolve the active tenant from an AuthSession (multi-tenant picker)
+//   or fall back to email domain lookup, then look up the TenantUser
+//   record to determine role and status:
+//
+//   ACTIVE      → inject custom:tenantId + custom:role from TenantUser.role
+//   PENDING     → first login: inject role, set status=ACTIVE + activatedAt + cognitoSub
 //   DEACTIVATED → block token generation (fail-closed)
-//   Not found → block token generation (strict invite-only — no JIT provisioning)
+//   Not found   → block token generation (strict invite-only)
+//
+// NO-GROUP USERS:
+//   Allow token issuance with no custom claims (admin setup flow only).
 // ---------------------------------------------------------------------------
 
 import type { PreTokenGenerationTriggerHandler } from 'aws-lambda'
 import { PrismaClient } from '@prisma/client'
+import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm'
 import { createLogger } from '../lib/logger'
 
 const logger = createLogger('pegasus-pre-token')
 
 // Use a shared client to pool connections across warm invocations.
 const db = new PrismaClient()
+const ssm = new SSMClient({})
 
-const PLATFORM_ADMIN_GROUP = 'PLATFORM_ADMIN'
+// ---------------------------------------------------------------------------
+// Admin client ID — read from SSM once at cold start, cached thereafter.
+//
+// The CDK stack stores the admin app client ID at this well-known path.
+// Reading from SSM (instead of an env var) breaks a circular CloudFormation
+// dependency: Lambda → UserPoolClient → UserPool → Lambda.
+// ---------------------------------------------------------------------------
+const ADMIN_CLIENT_ID_PARAM = '/pegasus/admin/cognito-admin-client-id'
+let _adminClientId: string | null = null
+
+async function getAdminClientId(): Promise<string> {
+  if (_adminClientId) return _adminClientId
+
+  const result = await ssm.send(new GetParameterCommand({ Name: ADMIN_CLIENT_ID_PARAM }))
+
+  const value = result.Parameter?.Value
+  if (!value) {
+    throw new Error(`SSM parameter ${ADMIN_CLIENT_ID_PARAM} not found or empty`)
+  }
+
+  _adminClientId = value
+  return value
+}
 
 export const handler: PreTokenGenerationTriggerHandler = async (event) => {
   const groups: string[] = event.request.groupConfiguration?.groupsToOverride ?? []
 
   // -------------------------------------------------------------------------
-  // Platform admins — skip tenant lookup, inject role claim only.
+  // No-group users — allow token issuance with no custom claims.
+  //
+  // This covers the admin setup flow: the create-admin-user script must
+  // authenticate to obtain an access token for TOTP enrollment *before* the
+  // user is added to PLATFORM_ADMIN. Without any group membership the user
+  // receives an empty token (no custom:role, no custom:tenantId) which is
+  // useless for API access but sufficient for Cognito TOTP association.
   // -------------------------------------------------------------------------
-  if (groups.includes(PLATFORM_ADMIN_GROUP)) {
+  if (groups.length === 0) {
+    logger.info('Pre-Token trigger: User has no groups — issuing token without custom claims', {
+      userName: event.userName,
+    })
+    return event
+  }
+
+  // -------------------------------------------------------------------------
+  // Route by app client — admin and tenant flows are completely independent.
+  // -------------------------------------------------------------------------
+  const clientId = event.callerContext.clientId
+  const adminClientId = await getAdminClientId()
+
+  if (clientId === adminClientId) {
+    // -----------------------------------------------------------------------
+    // ADMIN APP CLIENT — inject platform_admin role, no tenant resolution.
+    // -----------------------------------------------------------------------
     event.response = {
       claimsOverrideDetails: {
         claimsToAddOrOverride: {
@@ -46,8 +101,7 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
   }
 
   // -------------------------------------------------------------------------
-  // Tenant users — resolve tenant via AuthSession (multi-tenant picker) or
-  // fall back to email domain lookup (single-tenant / backward compat).
+  // TENANT / MOBILE APP CLIENT — full tenant resolution flow.
   // -------------------------------------------------------------------------
   const email = event.request.userAttributes.email
   const sub = event.request.userAttributes.sub
@@ -90,11 +144,9 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
 
     logger.info('Pre-Token trigger: Resolved tenant via AuthSession', { email, tenantId })
   } else {
-    // -------------------------------------------------------------------------
+    // -----------------------------------------------------------------------
     // Step 2: No pending session — fall back to email domain resolution.
-    // This is the original single-tenant flow. Zero behaviour change for users
-    // who never hit the tenant picker.
-    // -------------------------------------------------------------------------
+    // -----------------------------------------------------------------------
     const tenant = await db.tenant.findFirst({
       where: { emailDomains: { has: domain }, status: 'ACTIVE' },
       select: { id: true },

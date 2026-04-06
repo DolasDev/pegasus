@@ -1,26 +1,28 @@
 // ---------------------------------------------------------------------------
 // Unit tests for the Cognito pre-token-generation Lambda trigger
 //
-// @prisma/client is fully mocked so tests run without any database connection.
-// PrismaClient is constructed at module level in pre-token.ts, so vi.hoisted()
-// is used to ensure the mock functions are available before the factory
-// runs and the module is imported.
+// @prisma/client and @aws-sdk/client-ssm are fully mocked so tests run
+// without any database connection or AWS credentials.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Context } from 'aws-lambda'
 
 // ---------------------------------------------------------------------------
-// Prisma mock — hoisted so the fns are available inside the vi.mock factory
+// Hoisted constants and mocks — available inside vi.mock factories
 // ---------------------------------------------------------------------------
 
 const {
+  ADMIN_CLIENT_ID,
+  TENANT_CLIENT_ID,
   mockTenantFindFirst,
   mockTenantUserFindUnique,
   mockTenantUserUpdate,
   mockAuthSessionFindFirst,
   mockAuthSessionDeleteMany,
 } = vi.hoisted(() => ({
+  ADMIN_CLIENT_ID: 'admin-client-id-test',
+  TENANT_CLIENT_ID: 'tenant-client-id-test',
   mockTenantFindFirst: vi.fn(),
   mockTenantUserFindUnique: vi.fn(),
   mockTenantUserUpdate: vi.fn(),
@@ -42,6 +44,20 @@ vi.mock('@prisma/client', () => ({
   })),
 }))
 
+// ---------------------------------------------------------------------------
+// SSM mock — returns ADMIN_CLIENT_ID for the well-known parameter name
+// ---------------------------------------------------------------------------
+vi.mock('@aws-sdk/client-ssm', () => {
+  return {
+    SSMClient: vi.fn(() => ({
+      send: vi.fn().mockResolvedValue({
+        Parameter: { Value: ADMIN_CLIENT_ID },
+      }),
+    })),
+    GetParameterCommand: vi.fn(),
+  }
+})
+
 import { handler } from './pre-token'
 
 // ---------------------------------------------------------------------------
@@ -51,15 +67,20 @@ import { handler } from './pre-token'
 const fakeContext = {} as Context
 const fakeCallback = () => undefined
 
+/** Default group assigned to tenant users so they pass the no-groups guard. */
+const TENANT_GROUP = 'us-east-1_test_tenant-uuid-123'
+
 /** Builds a minimal PreTokenGeneration trigger event. */
 function makeEvent({
   email,
   sub,
-  groups = [],
+  groups,
+  clientId = TENANT_CLIENT_ID,
 }: {
   email?: string
   sub?: string
   groups?: string[]
+  clientId?: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }): any {
   return {
@@ -67,14 +88,18 @@ function makeEvent({
     triggerSource: 'TokenGeneration_Authentication' as const,
     region: 'us-east-1',
     userPoolId: 'us-east-1_test',
-    callerContext: { awsSdkVersion: '1', clientId: 'test-client' },
+    callerContext: { awsSdkVersion: '1', clientId },
     userName: 'test-user',
     request: {
       userAttributes: {
         ...(email ? { email } : {}),
         ...(sub ? { sub } : {}),
       },
-      groupConfiguration: { groupsToOverride: groups, iamRolesToOverride: [], preferredRole: '' },
+      groupConfiguration: {
+        groupsToOverride: groups ?? [TENANT_GROUP],
+        iamRolesToOverride: [],
+        preferredRole: '',
+      },
     },
     response: { claimsOverrideDetails: {} },
   }
@@ -101,10 +126,14 @@ describe('pre-token trigger', () => {
     mockAuthSessionDeleteMany.mockResolvedValue({ count: 0 })
   })
 
-  // ── Platform admin path ───────────────────────────────────────────────────
+  // ── Admin app client path ─────────────────────────────────────────────────
 
-  it('injects custom:role=platform_admin for PLATFORM_ADMIN users', async () => {
-    const event = makeEvent({ email: 'admin@pegasus.com', groups: ['PLATFORM_ADMIN'] })
+  it('injects custom:role=platform_admin for admin app client', async () => {
+    const event = makeEvent({
+      email: 'admin@pegasus.com',
+      groups: ['PLATFORM_ADMIN'],
+      clientId: ADMIN_CLIENT_ID,
+    })
     const result = await handler(event, fakeContext, fakeCallback)
 
     expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride?.['custom:role']).toBe(
@@ -112,8 +141,12 @@ describe('pre-token trigger', () => {
     )
   })
 
-  it('does not inject custom:tenantId for PLATFORM_ADMIN users', async () => {
-    const event = makeEvent({ email: 'admin@pegasus.com', groups: ['PLATFORM_ADMIN'] })
+  it('does not inject custom:tenantId for admin app client', async () => {
+    const event = makeEvent({
+      email: 'admin@pegasus.com',
+      groups: ['PLATFORM_ADMIN'],
+      clientId: ADMIN_CLIENT_ID,
+    })
     const result = await handler(event, fakeContext, fakeCallback)
 
     expect(
@@ -121,15 +154,74 @@ describe('pre-token trigger', () => {
     ).toBeUndefined()
   })
 
-  it('skips the DB lookup entirely for PLATFORM_ADMIN users', async () => {
-    const event = makeEvent({ email: 'admin@pegasus.com', groups: ['PLATFORM_ADMIN'] })
+  it('skips all DB lookups for admin app client', async () => {
+    const event = makeEvent({
+      email: 'admin@pegasus.com',
+      groups: ['PLATFORM_ADMIN'],
+      clientId: ADMIN_CLIENT_ID,
+    })
     await handler(event, fakeContext, fakeCallback)
 
     expect(mockTenantFindFirst).not.toHaveBeenCalled()
     expect(mockTenantUserFindUnique).not.toHaveBeenCalled()
+    expect(mockAuthSessionFindFirst).not.toHaveBeenCalled()
   })
 
-  // ── Tenant user path — happy path (ACTIVE user) ───────────────────────────
+  it('issues platform_admin token via admin client even without PLATFORM_ADMIN group', async () => {
+    // Edge case: admin client always gets platform_admin regardless of groups
+    const event = makeEvent({
+      email: 'admin@pegasus.com',
+      groups: [TENANT_GROUP],
+      clientId: ADMIN_CLIENT_ID,
+    })
+    const result = await handler(event, fakeContext, fakeCallback)
+
+    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride?.['custom:role']).toBe(
+      'platform_admin',
+    )
+  })
+
+  // ── Platform admin logging into tenant app ────────────────────────────────
+
+  it('resolves tenant claims when platform admin uses tenant app client', async () => {
+    mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
+    mockTenantUserFindUnique.mockResolvedValue(
+      activeTenantUser({ role: 'ADMIN', status: 'ACTIVE' }),
+    )
+
+    const event = makeEvent({
+      email: 'admin@acme.com',
+      groups: ['PLATFORM_ADMIN'],
+      clientId: TENANT_CLIENT_ID,
+    })
+    const result = await handler(event, fakeContext, fakeCallback)
+
+    const claims = result.response.claimsOverrideDetails?.claimsToAddOrOverride
+    expect(claims?.['custom:tenantId']).toBe('tenant-uuid-123')
+    expect(claims?.['custom:role']).toBe('tenant_admin')
+  })
+
+  // ── No-group users (admin setup flow) ──────────────────────────────────────
+
+  it('returns event without custom claims when user has no groups', async () => {
+    const event = makeEvent({ email: 'newadmin@pegasus.com', groups: [] })
+    const result = await handler(event, fakeContext, fakeCallback)
+
+    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toBeUndefined()
+    expect(mockTenantFindFirst).not.toHaveBeenCalled()
+    expect(mockTenantUserFindUnique).not.toHaveBeenCalled()
+  })
+
+  it('returns event without custom claims when groupsToOverride is undefined', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const event = makeEvent({ email: 'newadmin@pegasus.com' }) as any
+    event.request.groupConfiguration.groupsToOverride = undefined
+    const result = await handler(event, fakeContext, fakeCallback)
+
+    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toBeUndefined()
+  })
+
+  // ── Tenant app client — happy path (ACTIVE user) ─────────────────────────
 
   it('injects custom:tenantId and custom:role=tenant_user for an ACTIVE USER', async () => {
     mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
@@ -232,7 +324,7 @@ describe('pre-token trigger', () => {
     ).rejects.toThrow('not been granted access')
   })
 
-  // ── Tenant user path — failure cases ──────────────────────────────────────
+  // ── Tenant app client — failure cases ─────────────────────────────────────
 
   it('throws when no active tenant matches the email domain', async () => {
     mockTenantFindFirst.mockResolvedValue(null)
@@ -243,14 +335,18 @@ describe('pre-token trigger', () => {
   })
 
   it('throws when the email attribute is missing', async () => {
-    await expect(handler(makeEvent({ groups: [] }), fakeContext, fakeCallback)).rejects.toThrow(
-      'No email associated with identity',
-    )
+    await expect(
+      handler(makeEvent({ groups: [TENANT_GROUP] }), fakeContext, fakeCallback),
+    ).rejects.toThrow('No email associated with identity')
   })
 
   it('throws when the email has no @ character (invalid format)', async () => {
     await expect(
-      handler(makeEvent({ email: 'notanemail' }), fakeContext, fakeCallback),
+      handler(
+        makeEvent({ email: 'notanemail', groups: [TENANT_GROUP] }),
+        fakeContext,
+        fakeCallback,
+      ),
     ).rejects.toThrow('Invalid email format')
   })
 
