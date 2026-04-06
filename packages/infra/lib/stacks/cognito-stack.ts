@@ -169,6 +169,24 @@ export class CognitoStack extends cdk.Stack {
 
     dbSecret.grantRead(preTokenFn)
 
+    // Grant the pre-token Lambda read access to the admin client ID SSM parameter.
+    // The Lambda reads this at cold start to distinguish admin-app from tenant-app
+    // token requests via callerContext.clientId.
+    //
+    // NOTE: We use a string-literal ARN rather than referencing the SSM construct
+    // (created later in this stack). Referencing the construct would create a
+    // CloudFormation circular dependency:
+    //   Lambda → SSM Param → UserPoolClient → UserPool → Lambda (trigger)
+    // The literal ARN is safe — the parameter name is a well-known constant.
+    preTokenFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ssm:GetParameter'],
+        resources: [
+          `arn:aws:ssm:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:parameter/pegasus/admin/cognito-admin-client-id`,
+        ],
+      }),
+    )
+
     // -------------------------------------------------------------------------
     // User Pool
     // -------------------------------------------------------------------------
