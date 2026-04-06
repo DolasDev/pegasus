@@ -76,9 +76,7 @@ describe('OrderDetailScreen', () => {
       MockedOrderService.getOrderById.mockResolvedValueOnce(null)
 
       const { getByText } = render(<OrderDetailScreen />)
-      await act(async () => {
-        jest.advanceTimersByTime(0)
-      })
+      await act(async () => {})
 
       expect(getByText('Order not found')).toBeTruthy()
     })
@@ -87,9 +85,7 @@ describe('OrderDetailScreen', () => {
       MockedOrderService.getOrderById.mockResolvedValueOnce(null)
 
       const { getByText } = render(<OrderDetailScreen />)
-      await act(async () => {
-        jest.advanceTimersByTime(0)
-      })
+      await act(async () => {})
 
       fireEvent.press(getByText('Go Back'))
       expect(routerBack).toHaveBeenCalled()

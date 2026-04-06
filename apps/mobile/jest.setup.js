@@ -8,12 +8,8 @@
 const React = require('react');
 Object.defineProperty(React, 'version', { configurable: true, writable: true, value: '19.1.4' });
 
-// Use fake timers to prevent stray timeouts/animations
-jest.useFakeTimers();
-
 // Global cleanup after each test
 afterEach(() => {
-  jest.clearAllTimers();
   jest.clearAllMocks();
 });
 
@@ -21,7 +17,6 @@ afterEach(() => {
 afterAll(() => {
   jest.clearAllMocks();
   jest.restoreAllMocks();
-  jest.clearAllTimers();
 });
 
 // Mock AsyncStorage

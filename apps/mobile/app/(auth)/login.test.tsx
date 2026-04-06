@@ -198,14 +198,7 @@ describe('LoginScreen', () => {
       const { getByText, getByPlaceholderText } = render(<LoginScreen />)
 
       fireEvent.changeText(getByPlaceholderText('Enter password'), 'pass1')
-
-      // Fire the press then advance fake timers to flush React state updates
-      await act(async () => {
-        fireEvent.press(getByText('LOG IN'))
-        jest.advanceTimersByTime(0)
-        // Yield to let the synchronous setIsLoading(true) re-render propagate
-        await Promise.resolve()
-      })
+      fireEvent.press(getByText('LOG IN'))
 
       await waitFor(() => {
         expect(getByText('LOGGING IN...')).toBeTruthy()
@@ -289,14 +282,10 @@ describe('LoginScreen', () => {
       )
       const { getByPlaceholderText, getByText } = render(<LoginScreen />)
       fireEvent.changeText(getByPlaceholderText('Enter password'), 'pass1')
-      await act(async () => {
-        fireEvent.press(getByText('LOG IN'))
-        jest.advanceTimersByTime(0)
-        await Promise.resolve()
-      })
+      fireEvent.press(getByText('LOG IN'))
+
       await waitFor(() => {
-        const input = getByPlaceholderText('Enter password')
-        expect(input.props.editable).toBe(false)
+        expect(getByPlaceholderText('Enter password').props.editable).toBe(false)
       })
       await act(async () => {
         resolveFn()
