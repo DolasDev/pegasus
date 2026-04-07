@@ -24,5 +24,7 @@ module.exports = {
     '^react/(.*)$': '<rootDir>/node_modules/react/$1',
     '^react-test-renderer$': '<rootDir>/node_modules/react-test-renderer',
     '^react-test-renderer/(.*)$': '<rootDir>/node_modules/react-test-renderer/$1',
+    '^react-native$': '<rootDir>/node_modules/react-native',
+    '^react-native/(.*)$': '<rootDir>/node_modules/react-native/$1',
   },
 };
