@@ -28,6 +28,7 @@ const mockSession: Session = {
 
 const mockAuthService = {
   authenticate: jest.fn(),
+  authenticateWithSso: jest.fn(),
 }
 
 function renderWithProvider(
@@ -180,10 +181,12 @@ describe('AppState expiry detection — SESSION-04', () => {
 
   beforeEach(() => {
     mockAppStateListeners = []
-    jest.spyOn(AppState, 'addEventListener').mockImplementation((_event: any, handler: any) => {
-      mockAppStateListeners.push(handler)
-      return { remove: jest.fn() }
-    })
+    jest
+      .spyOn(AppState, 'addEventListener')
+      .mockImplementation((_event: string, handler: (state: string) => void) => {
+        mockAppStateListeners.push(handler)
+        return { remove: jest.fn() }
+      })
   })
 
   it('calls logout when app returns to foreground with expired session', async () => {
@@ -256,6 +259,60 @@ describe('AppState expiry detection — SESSION-04', () => {
     // logout not triggered — only 'active' triggers expiry check
     expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled()
     expect(ctxRef.current!.isAuthenticated).toBe(true)
+  })
+})
+
+describe('loginWithSso — SSO authentication', () => {
+  let ctxRef: React.MutableRefObject<ReturnType<typeof useAuth> | null>
+
+  beforeEach(async () => {
+    mockAuthService.authenticateWithSso.mockReset()
+    ctxRef = renderWithProvider()
+    await act(async () => {})
+  })
+
+  it('resolves to undefined, persists session to secure store, sets session state', async () => {
+    mockAuthService.authenticateWithSso.mockResolvedValueOnce(mockSession)
+    await act(async () => {
+      await expect(ctxRef.current!.loginWithSso('tenant-abc', 'GoogleSSO')).resolves.toBeUndefined()
+    })
+
+    expect(ctxRef.current!.session).toEqual(mockSession)
+    expect(ctxRef.current!.isAuthenticated).toBe(true)
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
+      'pegasus_session',
+      JSON.stringify(mockSession),
+    )
+    expect(logger.logAuth).toHaveBeenCalledWith('login', 'driver@example.com')
+  })
+
+  it('does NOT store raw tokens — only Session object fields are persisted', async () => {
+    mockAuthService.authenticateWithSso.mockResolvedValueOnce(mockSession)
+    await act(async () => {
+      await ctxRef.current!.loginWithSso('tenant-abc', 'GoogleSSO')
+    })
+
+    const storedArg = (SecureStore.setItemAsync as jest.Mock).mock.calls[0]?.[1] as string
+    const parsed = JSON.parse(storedArg)
+    expect(parsed).not.toHaveProperty('idToken')
+    expect(parsed).not.toHaveProperty('token')
+    expect(parsed).toHaveProperty('sub')
+    expect(parsed).toHaveProperty('tenantId')
+  })
+
+  it('throws AuthError and does not persist when authenticateWithSso rejects', async () => {
+    mockAuthService.authenticateWithSso.mockRejectedValueOnce(
+      new AuthError('UserCancelled', 'SSO login cancelled'),
+    )
+    await act(async () => {
+      await expect(ctxRef.current!.loginWithSso('tenant-abc', 'GoogleSSO')).rejects.toMatchObject({
+        code: 'UserCancelled',
+      })
+    })
+
+    expect(ctxRef.current!.session).toBeNull()
+    expect(ctxRef.current!.isAuthenticated).toBe(false)
+    expect(SecureStore.setItemAsync).not.toHaveBeenCalled()
   })
 })
 

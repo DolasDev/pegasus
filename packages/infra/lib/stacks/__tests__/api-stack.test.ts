@@ -75,6 +75,17 @@ describe('ApiStack — Lambda function', () => {
       },
     })
   })
+
+  it('sets COGNITO_HOSTED_UI_DOMAIN environment variable for mobile SSO', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.objectLike({
+          COGNITO_HOSTED_UI_DOMAIN: Match.anyValue(),
+        }),
+      },
+    })
+  })
 })
 
 describe('ApiStack — IAM permissions', () => {

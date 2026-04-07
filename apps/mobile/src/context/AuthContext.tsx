@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { AppState, AppStateStatus } from 'react-native'
+import { AppState, type AppStateStatus } from 'react-native'
 import * as SecureStore from 'expo-secure-store'
 import type { Session } from '../auth/types'
 import { logger } from '../utils/logger'
@@ -11,12 +11,14 @@ interface AuthContextType {
   isAuthenticated: boolean
   isLoading: boolean
   login: (email: string, password: string, tenantId: string) => Promise<void>
+  loginWithSso: (tenantId: string, providerId: string) => Promise<void>
   logout: () => Promise<void>
 }
 
 type AuthProviderProps = {
   authService: {
     authenticate(email: string, password: string, tenantId: string): Promise<Session>
+    authenticateWithSso(tenantId: string, providerId: string): Promise<Session>
   }
   children: React.ReactNode
 }
@@ -50,15 +52,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ authService, childre
 
   // AppState expiry detection (SESSION-04) — check for expired session on foreground resume
   useEffect(() => {
-    const subscription = AppState.addEventListener(
-      'change',
-      (nextState: AppStateStatus) => {
-        // session.expiresAt is JWT exp in seconds; Date.now() is milliseconds — convert before comparing
-        if (nextState === 'active' && session !== null && session.expiresAt * 1000 < Date.now()) {
-          logout()
-        }
-      },
-    )
+    const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      // session.expiresAt is JWT exp in seconds; Date.now() is milliseconds — convert before comparing
+      if (nextState === 'active' && session !== null && session.expiresAt * 1000 < Date.now()) {
+        logout()
+      }
+    })
     return () => subscription.remove()
   }, [session]) // session in dep array — avoids stale closure
 
@@ -70,6 +69,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ authService, childre
       logger.logAuth('login', email)
     } catch (error) {
       logger.error('Login failed', error)
+      throw error
+    }
+  }
+
+  const loginWithSso = async (tenantId: string, providerId: string): Promise<void> => {
+    try {
+      const newSession = await authService.authenticateWithSso(tenantId, providerId)
+      await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(newSession))
+      setSession(newSession)
+      logger.logAuth('login', newSession.email)
+    } catch (error) {
+      logger.error('SSO login failed', error)
       throw error
     }
   }
@@ -92,6 +103,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ authService, childre
         isAuthenticated,
         isLoading,
         login,
+        loginWithSso,
         logout,
       }}
     >

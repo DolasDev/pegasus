@@ -529,7 +529,19 @@ authHandler.get(
       return c.json({ error: 'Tenant not found', code: 'TENANT_NOT_FOUND' }, 400)
     }
 
-    return c.json({ data: { userPoolId, clientId } })
+    // hostedUiDomain is optional — null when not configured (e.g. CI, local dev
+    // without Cognito). The mobile app uses it to build OAuth authorize URLs for
+    // SSO flows. When null, only password (SRP) auth is available.
+    const hostedUiDomain = process.env['COGNITO_HOSTED_UI_DOMAIN'] || null
+
+    return c.json({
+      data: {
+        userPoolId,
+        clientId,
+        hostedUiDomain,
+        redirectUri: 'movingapp://auth/callback',
+      },
+    })
   },
 )
 

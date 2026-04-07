@@ -10,11 +10,11 @@ import {
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useAuth } from '../../src/context/AuthContext'
-import { AuthError } from '../../src/auth/types'
+import { AuthError, type TenantProvider } from '../../src/auth/types'
 import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
 import { authService } from '../_layout'
 
-type LoginStep = 'email' | 'password'
+type LoginStep = 'email' | 'password' | 'providers'
 
 export default function LoginScreen() {
   const params = useLocalSearchParams<{
@@ -22,26 +22,55 @@ export default function LoginScreen() {
     tenantId?: string
     tenantName?: string
     email?: string
+    providersJson?: string
+    cognitoAuthEnabled?: string
   }>()
 
-  // D-08: if picker handed off step=password params, initialise directly in password step
-  const initialStep: LoginStep = params.step === 'password' ? 'password' : 'email'
+  // D-08: if picker handed off step params, initialise directly in that step
+  const initialStep: LoginStep =
+    params.step === 'password' ? 'password' : params.step === 'providers' ? 'providers' : 'email'
   const initialEmail = params.email ?? ''
   const initialTenantId = params.tenantId ?? ''
   const initialTenantName = params.tenantName ?? ''
+  const initialProviders: TenantProvider[] = params.providersJson
+    ? JSON.parse(params.providersJson)
+    : []
+  const initialCognitoAuthEnabled = params.cognitoAuthEnabled === 'true'
 
   const [step, setStep] = useState<LoginStep>(initialStep)
   const [email, setEmail] = useState(initialEmail)
   const [password, setPassword] = useState('')
   const [tenantId, setTenantId] = useState(initialTenantId)
   const [tenantName, setTenantName] = useState(initialTenantName)
+  const [providers, setProviders] = useState<TenantProvider[]>(initialProviders)
+  const [cognitoAuthEnabled, setCognitoAuthEnabled] = useState(initialCognitoAuthEnabled)
   const [isLoading, setIsLoading] = useState(false)
   const [emailError, setEmailError] = useState<string | null>(null)
   const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [ssoError, setSsoError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
 
-  const { login } = useAuth()
+  const { login, loginWithSso } = useAuth()
   const router = useRouter()
+
+  /** Advance to the correct auth step based on tenant capabilities. */
+  function advanceToAuth(
+    selectedTenantId: string,
+    selectedTenantName: string,
+    selectedProviders: TenantProvider[],
+    selectedCognitoAuthEnabled: boolean,
+  ) {
+    setTenantId(selectedTenantId)
+    setTenantName(selectedTenantName)
+    setProviders(selectedProviders)
+    setCognitoAuthEnabled(selectedCognitoAuthEnabled)
+
+    if (selectedProviders.length > 0) {
+      setStep('providers')
+    } else {
+      setStep('password')
+    }
+  }
 
   // Email step: resolve tenants
   const handleEmailSubmit = async () => {
@@ -54,24 +83,25 @@ export default function LoginScreen() {
       const tenants = await authService.resolveTenants(email.trim())
 
       if (tenants.length === 0) {
-        // TENANT-04: inline error, no navigation
         setEmailError('Email not registered with Pegasus')
         setIsLoading(false)
         return
       }
 
       if (tenants.length === 1) {
-        // TENANT-02: auto-select, no picker
         const tenant = tenants[0]
         await authService.selectTenant(email.trim(), tenant.tenantId)
-        setTenantId(tenant.tenantId)
-        setTenantName(tenant.tenantName)
-        setStep('password')
+        advanceToAuth(
+          tenant.tenantId,
+          tenant.tenantName,
+          tenant.providers,
+          tenant.cognitoAuthEnabled,
+        )
         setIsLoading(false)
         return
       }
 
-      // TENANT-03: multiple tenants — navigate to picker
+      // Multiple tenants — navigate to picker
       setIsLoading(false)
       router.push({
         pathname: '/(auth)/tenant-picker',
@@ -86,6 +116,25 @@ export default function LoginScreen() {
     }
   }
 
+  // SSO step: authenticate with provider
+  const handleSsoLogin = async (provider: TenantProvider) => {
+    setIsLoading(true)
+    setSsoError(null)
+    try {
+      await loginWithSso(tenantId, provider.id)
+    } catch (error) {
+      const code = error instanceof AuthError ? error.code : 'unknown'
+      if (code === 'UserCancelled') {
+        // User dismissed the browser — not an error, just reset loading
+        setIsLoading(false)
+        return
+      }
+      setSsoError('Unable to sign in. Please try again.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   // Password step: authenticate
   const handleLogin = async () => {
     if (!password) {
@@ -96,7 +145,6 @@ export default function LoginScreen() {
     setIsLoading(true)
     try {
       await login(email, password, tenantId)
-      // navigation handled by Stack.Protected — no router.replace needed here
     } catch (error) {
       const code = error instanceof AuthError ? error.code : 'unknown'
       const messages: Record<string, string> = {
@@ -111,6 +159,69 @@ export default function LoginScreen() {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Providers step — SSO provider buttons
+  // ---------------------------------------------------------------------------
+  if (step === 'providers') {
+    return (
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <Text style={styles.title}>Moving & Storage</Text>
+            <Text style={styles.subtitle}>Driver Portal</Text>
+          </View>
+
+          <View style={styles.form}>
+            <View style={styles.companyNameContainer}>
+              <Text style={styles.companyName}>{tenantName}</Text>
+            </View>
+
+            {ssoError && <Text style={styles.errorText}>{ssoError}</Text>}
+
+            {providers.map((provider) => (
+              <TouchableOpacity
+                key={provider.id}
+                style={[styles.ssoButton, isLoading && styles.buttonDisabled]}
+                onPress={() => handleSsoLogin(provider)}
+                disabled={isLoading}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.ssoButtonText}>
+                  {isLoading ? 'SIGNING IN...' : `SIGN IN WITH ${provider.name.toUpperCase()}`}
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            {cognitoAuthEnabled && (
+              <>
+                <View style={styles.divider}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>OR</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.passwordFallbackButton, isLoading && styles.buttonDisabled]}
+                  onPress={() => setStep('password')}
+                  disabled={isLoading}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.passwordFallbackText}>SIGN IN WITH PASSWORD</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    )
+  }
+
+  // ---------------------------------------------------------------------------
+  // Password step
+  // ---------------------------------------------------------------------------
   if (step === 'password') {
     return (
       <KeyboardAvoidingView
@@ -323,5 +434,52 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.textLight,
     letterSpacing: 1,
+  },
+  ssoButton: {
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.medium,
+    padding: spacing.lg,
+    alignItems: 'center',
+    marginBottom: spacing.md,
+    minHeight: touchTarget.minHeight,
+    justifyContent: 'center',
+  },
+  ssoButtonText: {
+    fontSize: fontSize.large,
+    fontWeight: '700',
+    color: colors.textLight,
+    letterSpacing: 0.5,
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: spacing.lg,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    color: colors.textDisabled,
+    fontSize: fontSize.medium,
+    fontWeight: '600',
+    marginHorizontal: spacing.lg,
+  },
+  passwordFallbackButton: {
+    backgroundColor: 'transparent',
+    borderRadius: borderRadius.medium,
+    borderWidth: 2,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    alignItems: 'center',
+    minHeight: touchTarget.minHeight,
+    justifyContent: 'center',
+  },
+  passwordFallbackText: {
+    fontSize: fontSize.large,
+    fontWeight: '700',
+    color: colors.textDisabled,
+    letterSpacing: 0.5,
   },
 })

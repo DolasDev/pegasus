@@ -2,7 +2,7 @@ import React from 'react'
 import { render, fireEvent, act } from '@testing-library/react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import TenantPickerScreen from './tenant-picker'
-import { TenantResolution } from '../../src/auth/types'
+import { type TenantResolution } from '../../src/auth/types'
 
 // Mock authService module — avoid importing real _layout.tsx (pulls in polyfills etc.)
 jest.mock('../_layout', () => ({
@@ -16,8 +16,13 @@ import { authService } from '../_layout'
 const mockSelectTenant = authService.selectTenant as jest.Mock
 
 const mockTenants: TenantResolution[] = [
-  { tenantId: 'tenant-acme', tenantName: 'Acme Moving Co', cognitoAuthEnabled: true },
-  { tenantId: 'tenant-best', tenantName: 'Best Movers', cognitoAuthEnabled: true },
+  {
+    tenantId: 'tenant-acme',
+    tenantName: 'Acme Moving Co',
+    cognitoAuthEnabled: true,
+    providers: [],
+  },
+  { tenantId: 'tenant-best', tenantName: 'Best Movers', cognitoAuthEnabled: true, providers: [] },
 ]
 
 const tenantsJson = JSON.stringify(mockTenants)
@@ -76,6 +81,7 @@ describe('TenantPickerScreen', () => {
         tenantId: 'tenant-acme',
         tenantName: 'Acme Moving Co',
         email: 'driver@example.com',
+        cognitoAuthEnabled: 'true',
       },
     })
   })

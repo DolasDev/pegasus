@@ -11,7 +11,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
 import { authService } from '../_layout'
-import { TenantResolution } from '../../src/auth/types'
+import { type TenantResolution } from '../../src/auth/types'
 
 export default function TenantPickerScreen() {
   const { email, tenantsJson } = useLocalSearchParams<{
@@ -36,13 +36,20 @@ export default function TenantPickerScreen() {
     setError(null)
     try {
       await authService.selectTenant(email as string, tenant.tenantId)
+
+      // Determine the next step based on available auth methods
+      const hasProviders = tenant.providers.length > 0
+      const nextStep = hasProviders ? 'providers' : 'password'
+
       router.replace({
         pathname: '/(auth)/login',
         params: {
-          step: 'password',
+          step: nextStep,
           tenantId: tenant.tenantId,
           tenantName: tenant.tenantName,
           email: email as string,
+          ...(hasProviders ? { providersJson: JSON.stringify(tenant.providers) } : {}),
+          cognitoAuthEnabled: tenant.cognitoAuthEnabled ? 'true' : 'false',
         },
       })
     } catch {

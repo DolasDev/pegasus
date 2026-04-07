@@ -47,6 +47,14 @@ export interface ApiStackProps extends cdk.StackProps {
    * Provided by CognitoStack.mobileAppClient.userPoolClientId.
    */
   readonly cognitoMobileClientId?: string
+
+  /**
+   * Cognito Hosted UI base URL (e.g. https://pegasus-123.auth.us-east-1.amazoncognito.com).
+   * Used by GET /api/auth/mobile-config to return the OAuth domain to the mobile app
+   * for SSO login flows.
+   * Provided by CognitoStack.hostedUiBaseUrl.
+   */
+  readonly cognitoHostedUiDomain?: string
 }
 
 export class ApiStack extends cdk.Stack {
@@ -108,6 +116,9 @@ export class ApiStack extends cdk.Stack {
         // mobile app can authenticate against Cognito without baking credentials
         // into the app bundle.
         COGNITO_MOBILE_CLIENT_ID: props.cognitoMobileClientId ?? '',
+        // Cognito Hosted UI domain. Returned by GET /api/auth/mobile-config so
+        // the mobile app can build OAuth authorize URLs for SSO login flows.
+        COGNITO_HOSTED_UI_DOMAIN: props.cognitoHostedUiDomain ?? '',
       },
       bundling: {
         minify: true,

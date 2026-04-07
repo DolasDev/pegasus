@@ -19,16 +19,23 @@ const mockResolveTenants = authService.resolveTenants as jest.Mock
 const mockSelectTenant = authService.selectTenant as jest.Mock
 
 const mockLogin = jest.fn()
+const mockLoginWithSso = jest.fn()
 
 jest.mock('../../src/context/AuthContext', () => ({
   useAuth: jest.fn(() => ({
     login: mockLogin,
+    loginWithSso: mockLoginWithSso,
   })),
 }))
 
 const mockTenants: TenantResolution[] = [
-  { tenantId: 'tenant-acme', tenantName: 'Acme Moving Co', cognitoAuthEnabled: true },
-  { tenantId: 'tenant-best', tenantName: 'Best Movers', cognitoAuthEnabled: true },
+  {
+    tenantId: 'tenant-acme',
+    tenantName: 'Acme Moving Co',
+    cognitoAuthEnabled: true,
+    providers: [],
+  },
+  { tenantId: 'tenant-best', tenantName: 'Best Movers', cognitoAuthEnabled: true, providers: [] },
 ]
 
 describe('LoginScreen', () => {
@@ -37,6 +44,7 @@ describe('LoginScreen', () => {
 
   beforeEach(() => {
     mockLogin.mockReset()
+    mockLoginWithSso.mockReset()
     mockResolveTenants.mockReset()
     mockSelectTenant.mockReset()
     routerPush = jest.fn()
@@ -108,6 +116,7 @@ describe('LoginScreen', () => {
         tenantId: 'tenant-acme',
         tenantName: 'Acme Moving Co',
         cognitoAuthEnabled: true,
+        providers: [],
       }
       mockResolveTenants.mockResolvedValueOnce([singleTenant])
       mockSelectTenant.mockResolvedValueOnce(undefined)
@@ -304,6 +313,143 @@ describe('LoginScreen', () => {
       expect(getByText('Please enter your password.')).toBeTruthy()
       fireEvent.changeText(getByPlaceholderText('Enter password'), 'a')
       expect(queryByText('Please enter your password.')).toBeNull()
+    })
+  })
+
+  describe('providers step (SSO login)', () => {
+    it('shows SSO provider buttons when single tenant has providers', async () => {
+      const ssoTenant: TenantResolution = {
+        tenantId: 'tenant-acme',
+        tenantName: 'Acme Moving Co',
+        cognitoAuthEnabled: false,
+        providers: [{ id: 'GoogleSSO', name: 'Google', type: 'oidc' }],
+      }
+      mockResolveTenants.mockResolvedValueOnce([ssoTenant])
+      mockSelectTenant.mockResolvedValueOnce(undefined)
+
+      const { getByText, getByPlaceholderText } = render(<LoginScreen />)
+
+      fireEvent.changeText(getByPlaceholderText('driver@company.com'), 'driver@example.com')
+      await act(async () => {
+        fireEvent.press(getByText('FIND MY COMPANY'))
+      })
+
+      expect(getByText('Acme Moving Co')).toBeTruthy()
+      expect(getByText('SIGN IN WITH GOOGLE')).toBeTruthy()
+    })
+
+    it('shows password fallback when tenant has both SSO and cognitoAuth', async () => {
+      const bothTenant: TenantResolution = {
+        tenantId: 'tenant-acme',
+        tenantName: 'Acme Moving Co',
+        cognitoAuthEnabled: true,
+        providers: [{ id: 'OktaSSO', name: 'Okta', type: 'oidc' }],
+      }
+      mockResolveTenants.mockResolvedValueOnce([bothTenant])
+      mockSelectTenant.mockResolvedValueOnce(undefined)
+
+      const { getByText, getByPlaceholderText } = render(<LoginScreen />)
+
+      fireEvent.changeText(getByPlaceholderText('driver@company.com'), 'driver@example.com')
+      await act(async () => {
+        fireEvent.press(getByText('FIND MY COMPANY'))
+      })
+
+      expect(getByText('SIGN IN WITH OKTA')).toBeTruthy()
+      expect(getByText('SIGN IN WITH PASSWORD')).toBeTruthy()
+    })
+
+    it('navigates to password step when "SIGN IN WITH PASSWORD" is tapped', async () => {
+      const bothTenant: TenantResolution = {
+        tenantId: 'tenant-acme',
+        tenantName: 'Acme Moving Co',
+        cognitoAuthEnabled: true,
+        providers: [{ id: 'OktaSSO', name: 'Okta', type: 'oidc' }],
+      }
+      mockResolveTenants.mockResolvedValueOnce([bothTenant])
+      mockSelectTenant.mockResolvedValueOnce(undefined)
+
+      const { getByText, getByPlaceholderText } = render(<LoginScreen />)
+
+      fireEvent.changeText(getByPlaceholderText('driver@company.com'), 'driver@example.com')
+      await act(async () => {
+        fireEvent.press(getByText('FIND MY COMPANY'))
+      })
+
+      await act(async () => {
+        fireEvent.press(getByText('SIGN IN WITH PASSWORD'))
+      })
+
+      expect(getByText('PASSWORD')).toBeTruthy()
+    })
+
+    it('calls loginWithSso when SSO provider button is tapped', async () => {
+      const ssoTenant: TenantResolution = {
+        tenantId: 'tenant-acme',
+        tenantName: 'Acme Moving Co',
+        cognitoAuthEnabled: false,
+        providers: [{ id: 'GoogleSSO', name: 'Google', type: 'oidc' }],
+      }
+      mockResolveTenants.mockResolvedValueOnce([ssoTenant])
+      mockSelectTenant.mockResolvedValueOnce(undefined)
+      mockLoginWithSso.mockResolvedValueOnce(undefined)
+
+      const { getByText, getByPlaceholderText } = render(<LoginScreen />)
+
+      fireEvent.changeText(getByPlaceholderText('driver@company.com'), 'driver@example.com')
+      await act(async () => {
+        fireEvent.press(getByText('FIND MY COMPANY'))
+      })
+
+      await act(async () => {
+        fireEvent.press(getByText('SIGN IN WITH GOOGLE'))
+      })
+
+      expect(mockLoginWithSso).toHaveBeenCalledWith('tenant-acme', 'GoogleSSO')
+    })
+
+    it('renders providers step when step=providers param is passed (picker handoff)', () => {
+      ;(useLocalSearchParams as jest.Mock).mockReturnValue({
+        step: 'providers',
+        tenantId: 'tenant-acme',
+        tenantName: 'Acme Moving Co',
+        email: 'driver@example.com',
+        providersJson: JSON.stringify([{ id: 'GoogleSSO', name: 'Google', type: 'oidc' }]),
+        cognitoAuthEnabled: 'true',
+      })
+
+      const { getByText } = render(<LoginScreen />)
+
+      expect(getByText('Acme Moving Co')).toBeTruthy()
+      expect(getByText('SIGN IN WITH GOOGLE')).toBeTruthy()
+      expect(getByText('SIGN IN WITH PASSWORD')).toBeTruthy()
+    })
+
+    it('shows error message when SSO login fails', async () => {
+      const ssoTenant: TenantResolution = {
+        tenantId: 'tenant-acme',
+        tenantName: 'Acme Moving Co',
+        cognitoAuthEnabled: false,
+        providers: [{ id: 'GoogleSSO', name: 'Google', type: 'oidc' }],
+      }
+      mockResolveTenants.mockResolvedValueOnce([ssoTenant])
+      mockSelectTenant.mockResolvedValueOnce(undefined)
+      mockLoginWithSso.mockRejectedValueOnce(
+        new AuthError('TokenExchangeFailed', 'Token exchange failed'),
+      )
+
+      const { getByText, getByPlaceholderText } = render(<LoginScreen />)
+
+      fireEvent.changeText(getByPlaceholderText('driver@company.com'), 'driver@example.com')
+      await act(async () => {
+        fireEvent.press(getByText('FIND MY COMPANY'))
+      })
+
+      await act(async () => {
+        fireEvent.press(getByText('SIGN IN WITH GOOGLE'))
+      })
+
+      expect(getByText('Unable to sign in. Please try again.')).toBeTruthy()
     })
   })
 })

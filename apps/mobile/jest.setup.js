@@ -67,6 +67,20 @@ jest.mock('expo-router', () => {
   };
 });
 
+// Mock expo-web-browser
+jest.mock('expo-web-browser', () => ({
+  openAuthSessionAsync: jest.fn(() => Promise.resolve({ type: 'cancel' })),
+  dismissBrowser: jest.fn(),
+}));
+
+// Mock expo-crypto
+jest.mock('expo-crypto', () => ({
+  getRandomBytesAsync: jest.fn((size) => Promise.resolve(new Uint8Array(size).fill(65))),
+  digestStringAsync: jest.fn(() => Promise.resolve('bW9jay1kaWdlc3Q')),
+  CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
+  CryptoEncoding: { BASE64: 'base64' },
+}));
+
 // Mock expo-image-picker
 jest.mock('expo-image-picker', () => ({
   requestCameraPermissionsAsync: jest.fn(() =>

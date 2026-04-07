@@ -1,6 +1,9 @@
 /** Typed error carrying the Cognito error code (e.g. NotAuthorizedException). */
 export class AuthError extends Error {
-  constructor(public readonly code: string, message: string) {
+  constructor(
+    public readonly code: string,
+    message: string,
+  ) {
     super(message)
     this.name = code
   }
@@ -26,14 +29,31 @@ export type Session = {
 export type MobileConfig = {
   userPoolId: string
   clientId: string
+  hostedUiDomain: string | null
+  redirectUri: string
+}
+
+export type ProviderType = 'oidc' | 'saml'
+
+/**
+ * SSO provider entry returned by the resolve-tenants and select-tenant endpoints.
+ * The `id` field must exactly match the Cognito identity provider name registered
+ * in the User Pool — it is passed as the `identity_provider` hint in the OAuth
+ * authorize URL.
+ */
+export type TenantProvider = {
+  id: string
+  name: string
+  type: ProviderType
 }
 
 /**
  * Tenant entry returned by POST /api/auth/resolve-tenants and POST /api/auth/select-tenant.
- * Mobile code uses tenantId and tenantName; cognitoAuthEnabled retained for completeness.
+ * Includes SSO providers so the mobile app can show provider selection buttons.
  */
 export type TenantResolution = {
   tenantId: string
   tenantName: string
   cognitoAuthEnabled: boolean
+  providers: TenantProvider[]
 }

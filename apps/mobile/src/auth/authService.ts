@@ -1,12 +1,23 @@
-import { AuthError, MobileConfig, Session, TenantResolution } from './types'
+import { AuthError, type MobileConfig, type Session, type TenantResolution } from './types'
+import type { OAuthConfig } from './oauthService'
 
 type CognitoService = {
-  signIn(email: string, password: string, poolId: string, clientId: string): Promise<{ idToken: string }>
+  signIn(
+    email: string,
+    password: string,
+    poolId: string,
+    clientId: string,
+  ): Promise<{ idToken: string }>
+}
+
+type OAuthService = {
+  authorize(config: OAuthConfig, providerId: string): Promise<{ idToken: string }>
 }
 
 type AuthServiceDeps = {
   apiBaseUrl: string
   cognitoService: CognitoService
+  oauthService: OAuthService
 }
 
 /**
@@ -23,7 +34,7 @@ type AuthServiceDeps = {
  * jest.mock() module patching (D-05). apiBaseUrl is never read from env vars
  * inside the function bodies (D-06).
  */
-export function createAuthService({ apiBaseUrl, cognitoService }: AuthServiceDeps) {
+export function createAuthService({ apiBaseUrl, cognitoService, oauthService }: AuthServiceDeps) {
   /**
    * Fetches the Cognito user pool ID and mobile client ID for the given tenant.
    * Calls GET /api/auth/mobile-config?tenantId=<id>.
@@ -51,11 +62,7 @@ export function createAuthService({ apiBaseUrl, cognitoService }: AuthServiceDep
    *
    * Rejects with AuthError on any failure in any step.
    */
-  async function authenticate(
-    email: string,
-    password: string,
-    tenantId: string,
-  ): Promise<Session> {
+  async function authenticate(email: string, password: string, tenantId: string): Promise<Session> {
     const config = await fetchMobileConfig(tenantId)
 
     const { idToken } = await cognitoService.signIn(
@@ -116,5 +123,43 @@ export function createAuthService({ apiBaseUrl, cognitoService }: AuthServiceDep
     }
   }
 
-  return { fetchMobileConfig, authenticate, resolveTenants, selectTenant }
+  /**
+   * Authenticates the driver via SSO (OAuth2 Authorization Code + PKCE):
+   *  1. fetchMobileConfig(tenantId) → { clientId, hostedUiDomain, redirectUri }
+   *  2. oauthService.authorize(config, providerId) → { idToken }
+   *  3. POST /api/auth/validate-token with { idToken } → { data: Session }
+   *
+   * Returns the server-validated Session. The raw idToken is discarded after
+   * step 3 — same security model as password-based authenticate().
+   */
+  async function authenticateWithSso(tenantId: string, providerId: string): Promise<Session> {
+    const config = await fetchMobileConfig(tenantId)
+
+    if (!config.hostedUiDomain) {
+      throw new AuthError('SsoNotConfigured', 'SSO is not configured for this environment')
+    }
+
+    const oauthConfig: OAuthConfig = {
+      hostedUiDomain: config.hostedUiDomain,
+      clientId: config.clientId,
+      redirectUri: config.redirectUri,
+    }
+
+    const { idToken } = await oauthService.authorize(oauthConfig, providerId)
+
+    const res = await fetch(`${apiBaseUrl}/api/auth/validate-token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    })
+
+    if (!res.ok) {
+      throw new AuthError('ValidateTokenFailed', `validate-token returned ${res.status}`)
+    }
+
+    const body = (await res.json()) as { data: Session }
+    return body.data
+  }
+
+  return { fetchMobileConfig, authenticate, authenticateWithSso, resolveTenants, selectTenant }
 }

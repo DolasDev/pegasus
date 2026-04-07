@@ -5,12 +5,14 @@ import { Stack, SplashScreen } from 'expo-router'
 import { AuthProvider, useAuth } from '../src/context/AuthContext'
 import { createAuthService } from '../src/auth/authService'
 import * as cognitoService from '../src/auth/cognitoService'
+import * as oauthService from '../src/auth/oauthService'
 
 SplashScreen.preventAutoHideAsync()
 
 export const authService = createAuthService({
   apiBaseUrl: process.env.EXPO_PUBLIC_API_URL ?? '',
   cognitoService,
+  oauthService,
 })
 
 function RootLayoutNav() {

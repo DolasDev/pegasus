@@ -411,6 +411,29 @@ describe('GET /api/auth/mobile-config', () => {
     expect(data['userPoolId']).toBe('us-east-1_TestPool')
     expect(data['clientId']).toBe('test-mobile-client-id')
   })
+
+  it('returns hostedUiDomain and redirectUri when COGNITO_HOSTED_UI_DOMAIN is set', async () => {
+    vi.stubEnv('COGNITO_HOSTED_UI_DOMAIN', 'https://pegasus-test.auth.us-east-1.amazoncognito.com')
+    mockTenantFindUnique.mockResolvedValue({ id: 'tenant-uuid-1' })
+
+    const res = await authHandler.request('/mobile-config?tenantId=tenant-uuid-1')
+    expect(res.status).toBe(200)
+    const body = await json(res)
+    const data = body['data'] as Record<string, unknown>
+    expect(data['hostedUiDomain']).toBe('https://pegasus-test.auth.us-east-1.amazoncognito.com')
+    expect(data['redirectUri']).toBe('movingapp://auth/callback')
+  })
+
+  it('returns hostedUiDomain as null when COGNITO_HOSTED_UI_DOMAIN is not set', async () => {
+    mockTenantFindUnique.mockResolvedValue({ id: 'tenant-uuid-1' })
+
+    const res = await authHandler.request('/mobile-config?tenantId=tenant-uuid-1')
+    expect(res.status).toBe(200)
+    const body = await json(res)
+    const data = body['data'] as Record<string, unknown>
+    expect(data['hostedUiDomain']).toBeNull()
+    expect(data['redirectUri']).toBe('movingapp://auth/callback')
+  })
 })
 
 // ---------------------------------------------------------------------------

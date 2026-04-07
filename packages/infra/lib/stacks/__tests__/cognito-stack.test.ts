@@ -406,11 +406,35 @@ describe('CognitoStack — Mobile app client', () => {
     })
   })
 
-  it('does not register tenant or admin Hosted UI callback URLs', () => {
-    // When no oAuth block is set, CDK emits a placeholder "https://example.com"
-    // callback rather than the tenant/admin localhost or CloudFront URLs.
-    // This confirms the mobile client is not wired to the Hosted UI flow.
-    // The absence of localhost:5173 / localhost:5174 is the key invariant.
+  it('uses the authorization code grant OAuth flow for SSO support', () => {
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      ClientName: 'mobile-app-client',
+      AllowedOAuthFlows: ['code'],
+    })
+  })
+
+  it('requests email, openid, and profile OAuth scopes', () => {
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      ClientName: 'mobile-app-client',
+      AllowedOAuthScopes: Match.arrayWith(['email', 'openid', 'profile']),
+    })
+  })
+
+  it('registers movingapp:// deep link as OAuth callback URL', () => {
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      ClientName: 'mobile-app-client',
+      CallbackURLs: Match.arrayWith(['movingapp://auth/callback']),
+    })
+  })
+
+  it('registers movingapp:// deep link as OAuth logout URL', () => {
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      ClientName: 'mobile-app-client',
+      LogoutURLs: Match.arrayWith(['movingapp://auth/logout']),
+    })
+  })
+
+  it('does not register tenant or admin localhost callback URLs', () => {
     const clients = template.findResources('AWS::Cognito::UserPoolClient', {
       Properties: { ClientName: 'mobile-app-client' },
     })

@@ -1,7 +1,12 @@
 import { createAuthService } from './authService'
-import { AuthError, MobileConfig, Session, TenantResolution } from './types'
+import { AuthError, type MobileConfig, type Session, type TenantResolution } from './types'
 
-const mockConfig: MobileConfig = { userPoolId: 'us-east-1_ABC', clientId: 'client123' }
+const mockConfig: MobileConfig = {
+  userPoolId: 'us-east-1_ABC',
+  clientId: 'client123',
+  hostedUiDomain: 'https://pegasus-test.auth.us-east-1.amazoncognito.com',
+  redirectUri: 'movingapp://auth/callback',
+}
 const mockSession: Session = {
   sub: 'sub-1',
   tenantId: 'tenant-1',
@@ -12,12 +17,26 @@ const mockSession: Session = {
 }
 
 const mockTenants: TenantResolution[] = [
-  { tenantId: 'tenant-acme', tenantName: 'Acme Moving Co', cognitoAuthEnabled: true },
-  { tenantId: 'tenant-best', tenantName: 'Best Movers', cognitoAuthEnabled: true },
+  {
+    tenantId: 'tenant-acme',
+    tenantName: 'Acme Moving Co',
+    cognitoAuthEnabled: true,
+    providers: [],
+  },
+  {
+    tenantId: 'tenant-best',
+    tenantName: 'Best Movers',
+    cognitoAuthEnabled: true,
+    providers: [{ id: 'GoogleSSO', name: 'Google', type: 'oidc' as const }],
+  },
 ]
 
 const mockCognitoService = {
   signIn: jest.fn<Promise<{ idToken: string }>, [string, string, string, string]>(),
+}
+
+const mockOAuthService = {
+  authorize: jest.fn<Promise<{ idToken: string }>, [Record<string, string>, string]>(),
 }
 
 const BASE_URL = 'http://api.test'
@@ -25,6 +44,7 @@ const BASE_URL = 'http://api.test'
 beforeEach(() => {
   global.fetch = jest.fn()
   mockCognitoService.signIn.mockReset()
+  mockOAuthService.authorize.mockReset()
 })
 
 describe('createAuthService', () => {
@@ -42,6 +62,7 @@ describe('createAuthService', () => {
       const { fetchMobileConfig } = createAuthService({
         apiBaseUrl: BASE_URL,
         cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
       })
       const result = await fetchMobileConfig('tenant-1')
 
@@ -59,10 +80,10 @@ describe('createAuthService', () => {
       const { fetchMobileConfig } = createAuthService({
         apiBaseUrl: BASE_URL,
         cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
       })
 
       await expect(fetchMobileConfig('unknown-tenant')).rejects.toThrow(AuthError)
-
       ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
         Promise.resolve(new Response('Not found', { status: 400 })),
       )
@@ -99,6 +120,7 @@ describe('createAuthService', () => {
       const { authenticate } = createAuthService({
         apiBaseUrl: BASE_URL,
         cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
       })
       const result = await authenticate('a@b.com', 'pass', 'tenant-1')
 
@@ -135,6 +157,7 @@ describe('createAuthService', () => {
       const { authenticate } = createAuthService({
         apiBaseUrl: BASE_URL,
         cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
       })
       await authenticate('a@b.com', 'pass', 'tenant-1')
 
@@ -162,10 +185,10 @@ describe('createAuthService', () => {
       const { authenticate } = createAuthService({
         apiBaseUrl: BASE_URL,
         cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
       })
 
       await expect(authenticate('a@b.com', 'pass', 'tenant-1')).rejects.toThrow(AuthError)
-
       ;(global.fetch as jest.Mock)
         .mockImplementationOnce(() =>
           Promise.resolve(
@@ -202,6 +225,7 @@ describe('createAuthService', () => {
       const { resolveTenants } = createAuthService({
         apiBaseUrl: BASE_URL,
         cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
       })
       const result = await resolveTenants('a@b.com')
 
@@ -228,6 +252,7 @@ describe('createAuthService', () => {
       const { resolveTenants } = createAuthService({
         apiBaseUrl: BASE_URL,
         cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
       })
       const result = await resolveTenants('unknown@b.com')
 
@@ -242,6 +267,7 @@ describe('createAuthService', () => {
       const { resolveTenants } = createAuthService({
         apiBaseUrl: BASE_URL,
         cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
       })
 
       await expect(resolveTenants('a@b.com')).rejects.toThrow(AuthError)
@@ -265,6 +291,7 @@ describe('createAuthService', () => {
       const { selectTenant } = createAuthService({
         apiBaseUrl: BASE_URL,
         cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
       })
       const result = await selectTenant('a@b.com', 'tenant-acme')
 
@@ -286,6 +313,7 @@ describe('createAuthService', () => {
       const { selectTenant } = createAuthService({
         apiBaseUrl: BASE_URL,
         cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
       })
 
       await expect(selectTenant('a@b.com', 'bad-id')).rejects.toThrow(AuthError)
@@ -307,6 +335,7 @@ describe('createAuthService', () => {
       const { selectTenant } = createAuthService({
         apiBaseUrl: BASE_URL,
         cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
       })
 
       await expect(selectTenant('a@b.com', 'bad-id')).rejects.toThrow(AuthError)
@@ -317,6 +346,195 @@ describe('createAuthService', () => {
         await selectTenant('a@b.com', 'bad-id')
       } catch (err) {
         expect((err as AuthError).code).toBe('SelectTenantFailed')
+      }
+    })
+  })
+
+  describe('authenticateWithSso', () => {
+    it('calls fetchMobileConfig, oauthService.authorize, then validate-token and returns Session', async () => {
+      ;(global.fetch as jest.Mock)
+        .mockImplementationOnce(() =>
+          Promise.resolve(
+            new Response(JSON.stringify({ data: mockConfig }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          ),
+        )
+        .mockImplementationOnce(() =>
+          Promise.resolve(
+            new Response(JSON.stringify({ data: mockSession }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          ),
+        )
+      mockOAuthService.authorize.mockResolvedValue({ idToken: 'sso-id-token' })
+
+      const { authenticateWithSso } = createAuthService({
+        apiBaseUrl: BASE_URL,
+        cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
+      })
+      const result = await authenticateWithSso('tenant-1', 'GoogleSSO')
+
+      expect(mockOAuthService.authorize).toHaveBeenCalledWith(
+        {
+          hostedUiDomain: mockConfig.hostedUiDomain,
+          clientId: mockConfig.clientId,
+          redirectUri: mockConfig.redirectUri,
+        },
+        'GoogleSSO',
+      )
+      expect(result).toEqual(mockSession)
+    })
+
+    it('passes idToken from oauthService to validate-token body', async () => {
+      ;(global.fetch as jest.Mock)
+        .mockImplementationOnce(() =>
+          Promise.resolve(
+            new Response(JSON.stringify({ data: mockConfig }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          ),
+        )
+        .mockImplementationOnce(() =>
+          Promise.resolve(
+            new Response(JSON.stringify({ data: mockSession }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          ),
+        )
+      mockOAuthService.authorize.mockResolvedValue({ idToken: 'sso-id-token' })
+
+      const { authenticateWithSso } = createAuthService({
+        apiBaseUrl: BASE_URL,
+        cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
+      })
+      await authenticateWithSso('tenant-1', 'GoogleSSO')
+
+      const validateCall = (global.fetch as jest.Mock).mock.calls[1]
+      expect(validateCall[0]).toBe(`${BASE_URL}/api/auth/validate-token`)
+      const body = JSON.parse(validateCall[1].body as string) as { idToken: string }
+      expect(body.idToken).toBe('sso-id-token')
+    })
+
+    it('throws AuthError(SsoNotConfigured) when hostedUiDomain is null', async () => {
+      const configNoSso: MobileConfig = { ...mockConfig, hostedUiDomain: null }
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ data: configNoSso }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      )
+
+      const { authenticateWithSso } = createAuthService({
+        apiBaseUrl: BASE_URL,
+        cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
+      })
+
+      await expect(authenticateWithSso('tenant-1', 'GoogleSSO')).rejects.toThrow(AuthError)
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ data: configNoSso }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      )
+
+      try {
+        await authenticateWithSso('tenant-1', 'GoogleSSO')
+      } catch (err) {
+        expect((err as AuthError).code).toBe('SsoNotConfigured')
+      }
+    })
+
+    it('rejects with AuthError(ValidateTokenFailed) when validate-token returns non-2xx', async () => {
+      ;(global.fetch as jest.Mock)
+        .mockImplementationOnce(() =>
+          Promise.resolve(
+            new Response(JSON.stringify({ data: mockConfig }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          ),
+        )
+        .mockImplementationOnce(() =>
+          Promise.resolve(new Response('Unauthorized', { status: 401 })),
+        )
+      mockOAuthService.authorize.mockResolvedValue({ idToken: 'sso-id-token' })
+
+      const { authenticateWithSso } = createAuthService({
+        apiBaseUrl: BASE_URL,
+        cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
+      })
+
+      await expect(authenticateWithSso('tenant-1', 'GoogleSSO')).rejects.toThrow(AuthError)
+      ;(global.fetch as jest.Mock)
+        .mockImplementationOnce(() =>
+          Promise.resolve(
+            new Response(JSON.stringify({ data: mockConfig }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }),
+          ),
+        )
+        .mockImplementationOnce(() =>
+          Promise.resolve(new Response('Unauthorized', { status: 401 })),
+        )
+      mockOAuthService.authorize.mockResolvedValue({ idToken: 'sso-id-token' })
+
+      try {
+        await authenticateWithSso('tenant-1', 'GoogleSSO')
+      } catch (err) {
+        expect((err as AuthError).code).toBe('ValidateTokenFailed')
+      }
+    })
+
+    it('propagates AuthError from oauthService.authorize', async () => {
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ data: mockConfig }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      )
+      mockOAuthService.authorize.mockRejectedValue(
+        new AuthError('UserCancelled', 'SSO login was cancelled'),
+      )
+
+      const { authenticateWithSso } = createAuthService({
+        apiBaseUrl: BASE_URL,
+        cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
+      })
+
+      await expect(authenticateWithSso('tenant-1', 'GoogleSSO')).rejects.toThrow(AuthError)
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ data: mockConfig }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      )
+      mockOAuthService.authorize.mockRejectedValue(
+        new AuthError('UserCancelled', 'SSO login was cancelled'),
+      )
+
+      try {
+        await authenticateWithSso('tenant-1', 'GoogleSSO')
+      } catch (err) {
+        expect((err as AuthError).code).toBe('UserCancelled')
       }
     })
   })

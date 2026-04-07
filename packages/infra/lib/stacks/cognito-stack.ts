@@ -331,12 +331,17 @@ export class CognitoStack extends cdk.Stack {
     // -------------------------------------------------------------------------
     // Mobile app client
     //
-    // Used by apps/mobile for SRP-based driver authentication.
+    // Used by apps/mobile for driver authentication via SRP (password) and
+    // OAuth2 Authorization Code + PKCE (SSO).
     //
     // Design decisions:
-    //   - generateSecret: false — SRP-only flow; no client secret in the mobile app.
-    //   - authFlows: { userSrp: true } — required by amazon-cognito-identity-js SRP handshake.
-    //   - No oAuth block — mobile app never touches the Hosted UI.
+    //   - generateSecret: false — public client; no secret in the mobile app.
+    //   - authFlows: { userSrp: true } — required by amazon-cognito-identity-js
+    //     for password-based login (drivers without SSO).
+    //   - oAuth: authorization code grant with PKCE — used for SSO logins.
+    //     The mobile app opens the Cognito Hosted UI in a system browser,
+    //     passing identity_provider to route directly to the IdP. The callback
+    //     deep link (movingapp://auth/callback) returns the authorization code.
     //   - idTokenValidity: 8h / accessTokenValidity: 8h — matches a driver shift.
     //   - refreshTokenValidity: 30d — allows drivers to stay logged in across days.
     //   - enableTokenRevocation: true — consistent with other clients.
@@ -345,6 +350,12 @@ export class CognitoStack extends cdk.Stack {
       userPoolClientName: 'mobile-app-client',
       generateSecret: false,
       authFlows: { userSrp: true },
+      oAuth: {
+        flows: { authorizationCodeGrant: true },
+        scopes: [cognito.OAuthScope.EMAIL, cognito.OAuthScope.OPENID, cognito.OAuthScope.PROFILE],
+        callbackUrls: ['movingapp://auth/callback'],
+        logoutUrls: ['movingapp://auth/logout'],
+      },
       idTokenValidity: cdk.Duration.hours(8),
       accessTokenValidity: cdk.Duration.hours(8),
       refreshTokenValidity: cdk.Duration.days(30),

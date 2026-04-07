@@ -9,7 +9,8 @@
     "web": "expo start --web",
     "test": "jest --forceExit",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage --forceExit"
+    "test:coverage": "jest --coverage --forceExit",
+    "dev": "REACT_NATIVE_PACKAGER_HOSTNAME=100.69.252.113 npx expo start --clear"
   },
   "dependencies": {
     "@pegasus/theme": "*",
@@ -17,11 +18,13 @@
     "amazon-cognito-identity-js": "^6.3.16",
     "expo": "~55.0.11",
     "expo-constants": "~55.0.11",
+    "expo-crypto": "^55.0.13",
     "expo-image-picker": "~55.0.16",
     "expo-linking": "~55.0.11",
     "expo-router": "~55.0.10",
     "expo-secure-store": "~55.0.11",
     "expo-status-bar": "~55.0.5",
+    "expo-web-browser": "^55.0.13",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native": "0.83.4",
