@@ -3,7 +3,8 @@
   "compilerOptions": {
     "outDir": "./dist",
     "paths": {
-      "@pegasus/domain": ["../domain/src/index.ts"]
+      "@pegasus/domain": ["../domain/src/index.ts"],
+      "@prisma/client": ["./src/generated/prisma/client.ts"]
     }
   },
   "include": ["src/**/*"],

@@ -14,8 +14,15 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: {
-      '@pegasus/domain': path.resolve(__dirname, '../../packages/domain/src/index.ts'),
-    },
+    alias: [
+      {
+        find: '@pegasus/domain',
+        replacement: path.resolve(__dirname, '../../packages/domain/src/index.ts'),
+      },
+      {
+        find: /^@prisma\/client$/,
+        replacement: path.resolve(__dirname, 'src/generated/prisma/client.ts'),
+      },
+    ],
   },
 })

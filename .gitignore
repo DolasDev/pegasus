@@ -43,6 +43,7 @@ worktrees/
 
 # Prisma
 prisma/migrations/
+apps/api/src/generated/
 
 # Test coverage (root-level only, not src/**/Coverage component dirs)
 /coverage/
