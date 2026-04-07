@@ -22,8 +22,9 @@
 //   DEACTIVATED → block token generation (fail-closed)
 //   Not found   → block token generation (strict invite-only)
 //
-// NO-GROUP USERS:
+// NO-GROUP ADMIN USERS:
 //   Allow token issuance with no custom claims (admin setup flow only).
+//   Tenant users with no groups proceed to full tenant resolution.
 // ---------------------------------------------------------------------------
 
 import type { PreTokenGenerationTriggerHandler } from 'aws-lambda'
@@ -71,28 +72,32 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
   const groups: string[] = event.request.groupConfiguration?.groupsToOverride ?? []
 
   // -------------------------------------------------------------------------
-  // No-group users — allow token issuance with no custom claims.
-  //
-  // This covers the admin setup flow: the create-admin-user script must
-  // authenticate to obtain an access token for TOTP enrollment *before* the
-  // user is added to PLATFORM_ADMIN. Without any group membership the user
-  // receives an empty token (no custom:role, no custom:tenantId) which is
-  // useless for API access but sufficient for Cognito TOTP association.
-  // -------------------------------------------------------------------------
-  if (groups.length === 0) {
-    logger.info('Pre-Token trigger: User has no groups — issuing token without custom claims', {
-      userName: event.userName,
-    })
-    return event
-  }
-
-  // -------------------------------------------------------------------------
   // Route by app client — admin and tenant flows are completely independent.
   // -------------------------------------------------------------------------
   const clientId = event.callerContext.clientId
   const adminClientId = await getAdminClientId()
 
   if (clientId === adminClientId) {
+    // -----------------------------------------------------------------------
+    // No-group admin users — allow token issuance with no custom claims.
+    //
+    // This covers the admin setup flow: the create-admin-user script must
+    // authenticate to obtain an access token for TOTP enrollment *before*
+    // the user is added to PLATFORM_ADMIN. Without any group membership the
+    // user receives an empty token (no custom:role, no custom:tenantId)
+    // which is useless for API access but sufficient for Cognito TOTP
+    // association.
+    // -----------------------------------------------------------------------
+    if (groups.length === 0) {
+      logger.info(
+        'Pre-Token trigger: Admin user has no groups — issuing token without custom claims',
+        {
+          userName: event.userName,
+        },
+      )
+      return event
+    }
+
     // -----------------------------------------------------------------------
     // ADMIN APP CLIENT — inject platform_admin role, no tenant resolution.
     // -----------------------------------------------------------------------

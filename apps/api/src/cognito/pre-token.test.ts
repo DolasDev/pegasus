@@ -211,10 +211,14 @@ describe('pre-token trigger', () => {
     expect(claims?.['custom:role']).toBe('tenant_admin')
   })
 
-  // ── No-group users (admin setup flow) ──────────────────────────────────────
+  // ── No-group admin users (admin setup flow) ────────────────────────────────
 
-  it('returns event without custom claims when user has no groups', async () => {
-    const event = makeEvent({ email: 'newadmin@pegasus.com', groups: [] })
+  it('returns event without custom claims when admin user has no groups', async () => {
+    const event = makeEvent({
+      email: 'newadmin@pegasus.com',
+      groups: [],
+      clientId: ADMIN_CLIENT_ID,
+    })
     const result = await handler(event, fakeContext, fakeCallback)
 
     expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toBeUndefined()
@@ -222,13 +226,27 @@ describe('pre-token trigger', () => {
     expect(mockTenantUserFindUnique).not.toHaveBeenCalled()
   })
 
-  it('returns event without custom claims when groupsToOverride is undefined', async () => {
+  it('returns event without custom claims when admin groupsToOverride is undefined', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const event = makeEvent({ email: 'newadmin@pegasus.com' }) as any
+    const event = makeEvent({ email: 'newadmin@pegasus.com', clientId: ADMIN_CLIENT_ID }) as any
     event.request.groupConfiguration.groupsToOverride = undefined
     const result = await handler(event, fakeContext, fakeCallback)
 
     expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toBeUndefined()
+  })
+
+  // ── Tenant user with no groups proceeds to tenant resolution ──────────────
+
+  it('resolves tenant claims for tenant user with no groups', async () => {
+    mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
+    mockTenantUserFindUnique.mockResolvedValue(activeTenantUser())
+
+    const event = makeEvent({ email: 'user@acme.com', groups: [] })
+    const result = await handler(event, fakeContext, fakeCallback)
+
+    const claims = result.response.claimsOverrideDetails?.claimsToAddOrOverride
+    expect(claims?.['custom:tenantId']).toBe('tenant-uuid-123')
+    expect(claims?.['custom:role']).toBe('tenant_user')
   })
 
   // ── Tenant app client — happy path (ACTIVE user) ─────────────────────────
