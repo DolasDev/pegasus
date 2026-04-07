@@ -5,7 +5,7 @@
  * Idempotent — running twice is safe (upserts where possible, skips if present).
  */
 import 'dotenv/config'
-import { PrismaClient } from '../src/generated/prisma/client'
+import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 
 const connectionString = process.env['DATABASE_URL']
