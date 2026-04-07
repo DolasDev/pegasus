@@ -233,7 +233,7 @@ describe('TenantUsersSection', () => {
       })
     })
 
-    it('deactivate button is disabled for already-deactivated users', async () => {
+    it('shows reactivate instead of deactivate for already-deactivated users', async () => {
       vi.mocked(listTenantUsers).mockResolvedValue({
         data: [makeUser({ status: 'DEACTIVATED' })],
         meta: { count: 1 },
@@ -241,7 +241,8 @@ describe('TenantUsersSection', () => {
       renderSection()
       await screen.findByText('user@acme.com')
 
-      expect(screen.getByRole('button', { name: /deactivate/i })).toBeDisabled()
+      expect(screen.queryByRole('button', { name: /deactivate/i })).toBeNull()
+      expect(screen.getByRole('button', { name: /reactivate/i })).toBeInTheDocument()
     })
 
     it('shows an inline error when deactivateTenantUser rejects with LAST_ADMIN', async () => {
