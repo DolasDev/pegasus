@@ -1,15 +1,16 @@
 // ---------------------------------------------------------------------------
 // Admin tenant-user management handler — /api/admin/tenants/:tenantId/users/**
 //
-// Lets platform administrators view, invite, update role, and deactivate users
-// belonging to any tenant. Uses the base Prisma singleton (not the
-// tenant-scoped extension) and bypasses tenant RBAC.
+// Lets platform administrators view, invite, update role, deactivate, and
+// reactivate users belonging to any tenant. Uses the base Prisma singleton
+// (not the tenant-scoped extension) and bypasses tenant RBAC.
 //
 // Endpoints:
-//   GET    /                  — list all TenantUsers for the tenant
-//   POST   /                  — invite a new user
-//   PATCH  /:userId            — update role (ADMIN ↔ USER)
-//   DELETE /:userId            — deactivate user
+//   GET    /                       — list all TenantUsers for the tenant
+//   POST   /                       — invite a new user
+//   PATCH  /:userId                — update role (ADMIN ↔ USER)
+//   POST   /:userId/reactivate     — reactivate a deactivated user
+//   DELETE /:userId                — deactivate user
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
@@ -20,7 +21,7 @@ import type { Prisma } from '@prisma/client'
 import type { AdminEnv } from '../../types'
 import { db } from '../../db'
 import { createUsersRepository, type TenantUserRow } from '../../repositories/users'
-import { provisionCognitoUser, disableCognitoUser } from './cognito'
+import { provisionCognitoUser, disableCognitoUser, enableCognitoUser } from './cognito'
 import { writeAuditLog } from './audit'
 import { logger } from '../../lib/logger'
 
@@ -253,6 +254,79 @@ adminTenantUsersRouter.patch(
     }
   },
 )
+
+// ---------------------------------------------------------------------------
+// POST /:userId/reactivate
+//
+// Reactivates a deactivated TenantUser:
+//   1. Guard against reactivating a non-deactivated user (422 INVALID_STATE)
+//   2. Call cognito-idp:AdminEnableUser (fail-open on UserNotFoundException)
+//   3. Set TenantUser status=ACTIVE, clear deactivatedAt + audit log in transaction
+//
+// Response: { data: TenantUserResponse } (200)
+// ---------------------------------------------------------------------------
+adminTenantUsersRouter.post('/:userId/reactivate', async (c) => {
+  const tenantId = c.req.param('tenantId')!
+  const userId = c.req.param('userId')!
+  const adminSub = c.get('adminSub')
+  const adminEmail = c.get('adminEmail')
+  const ipAddress = c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip')
+  const userAgent = c.req.header('user-agent')
+
+  const repo = createUsersRepository(db as PrismaClient)
+
+  const existing = await repo.findById(userId, tenantId)
+  if (!existing) {
+    return c.json({ error: 'User not found', code: 'NOT_FOUND' }, 404)
+  }
+
+  if (existing.status !== 'DEACTIVATED') {
+    return c.json({ error: 'User is not deactivated', code: 'INVALID_STATE' }, 422)
+  }
+
+  try {
+    await enableCognitoUser(existing.email)
+  } catch (err) {
+    logger.error(
+      'POST admin/tenants/:tenantId/users/:userId/reactivate: Cognito AdminEnableUser failed',
+      {
+        error: String(err),
+        userId,
+        email: existing.email,
+      },
+    )
+    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+  }
+
+  try {
+    const reactivated = await db.$transaction(async (tx) => {
+      const txRepo = createUsersRepository(tx as PrismaClient)
+      const u = await txRepo.reactivate(userId)
+      await writeAuditLog(
+        tx as Prisma.TransactionClient,
+        adminSub,
+        adminEmail,
+        'ADMIN_REACTIVATE_TENANT_USER',
+        'TENANT_USER',
+        userId,
+        { status: existing.status, email: existing.email },
+        { status: 'ACTIVE' },
+        ipAddress,
+        userAgent,
+      )
+      return u
+    })
+
+    return c.json({ data: toResponse(reactivated) })
+  } catch (err) {
+    logger.error('POST admin/tenants/:tenantId/users/:userId/reactivate: failed to reactivate', {
+      error: String(err),
+      userId,
+      tenantId,
+    })
+    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+  }
+})
 
 // ---------------------------------------------------------------------------
 // DELETE /:userId

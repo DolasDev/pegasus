@@ -70,3 +70,9 @@ export async function deactivateTenantUser(tenantId: string, userId: string): Pr
     method: 'DELETE',
   })
 }
+
+export async function reactivateTenantUser(tenantId: string, userId: string): Promise<TenantUser> {
+  return adminFetch<TenantUser>(`/api/admin/tenants/${tenantId}/users/${userId}/reactivate`, {
+    method: 'POST',
+  })
+}

@@ -93,6 +93,15 @@ export function createUsersRepository(db: PrismaClient) {
       })
     },
 
+    /** Reactivate a deactivated TenantUser — restores login access. */
+    reactivate(id: string): Promise<TenantUserRow> {
+      return db.tenantUser.update({
+        where: { id },
+        data: { status: 'ACTIVE', deactivatedAt: null },
+        select: USER_SELECT,
+      })
+    },
+
     /** Count ADMIN users for the tenant — used to prevent last-admin lockout. */
     countAdmins(tenantId: string): Promise<number> {
       return db.tenantUser.count({

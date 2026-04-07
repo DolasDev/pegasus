@@ -5,6 +5,7 @@ import {
   inviteTenantUser,
   updateTenantUserRole,
   deactivateTenantUser,
+  reactivateTenantUser,
 } from '@/api/tenant-users'
 import type { TenantUser, TenantUserRole } from '@/api/tenant-users'
 import { ApiError } from '@/api/client'
@@ -161,7 +162,19 @@ function UserRow({
     },
   })
 
-  const isPending = roleMutation.isPending || deactivateMutation.isPending
+  const reactivateMutation = useMutation({
+    mutationFn: () => reactivateTenantUser(tenantId, user.id),
+    onSuccess: () => {
+      setRowError(null)
+      onMutated()
+    },
+    onError: (err) => {
+      setRowError(err instanceof ApiError ? err.message : 'An unexpected error occurred.')
+    },
+  })
+
+  const isPending =
+    roleMutation.isPending || deactivateMutation.isPending || reactivateMutation.isPending
 
   return (
     <>
@@ -193,13 +206,23 @@ function UserRow({
                 Make user
               </button>
             )}
-            <button
-              onClick={() => deactivateMutation.mutate()}
-              disabled={user.status === 'DEACTIVATED' || isPending}
-              className="text-xs text-destructive hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Deactivate
-            </button>
+            {user.status === 'DEACTIVATED' ? (
+              <button
+                onClick={() => reactivateMutation.mutate()}
+                disabled={isPending}
+                className="text-xs text-green-600 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Reactivate
+              </button>
+            ) : (
+              <button
+                onClick={() => deactivateMutation.mutate()}
+                disabled={isPending}
+                className="text-xs text-destructive hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Deactivate
+              </button>
+            )}
           </div>
         </td>
       </tr>

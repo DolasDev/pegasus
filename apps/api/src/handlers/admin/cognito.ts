@@ -10,6 +10,7 @@ import {
   CognitoIdentityProviderClient,
   AdminCreateUserCommand,
   AdminDisableUserCommand,
+  AdminEnableUserCommand,
 } from '@aws-sdk/client-cognito-identity-provider'
 
 // ---------------------------------------------------------------------------
@@ -60,6 +61,30 @@ export async function provisionCognitoUser(email: string): Promise<void> {
  *
  * Throws for all other Cognito errors.
  */
+/**
+ * Re-enables a previously disabled Cognito user (AdminEnableUser).
+ *
+ * Fail-open: UserNotFoundException is silently ignored — the user may not
+ * have a Cognito account yet (e.g. never completed first login).
+ *
+ * Throws for all other Cognito errors.
+ */
+export async function enableCognitoUser(email: string): Promise<void> {
+  const userPoolId = process.env['COGNITO_USER_POOL_ID'] ?? ''
+
+  try {
+    await getCognito().send(
+      new AdminEnableUserCommand({
+        UserPoolId: userPoolId,
+        Username: email,
+      }),
+    )
+  } catch (err) {
+    if ((err as { name?: string }).name === 'UserNotFoundException') return
+    throw err
+  }
+}
+
 export async function disableCognitoUser(email: string): Promise<void> {
   const userPoolId = process.env['COGNITO_USER_POOL_ID'] ?? ''
 
