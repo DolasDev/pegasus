@@ -6,14 +6,14 @@ Pegasus is a cloud-native move management SaaS platform replacing a legacy VB.NE
 
 ## Tech Stack
 
-| Package / App     | Layer                  | Technology                                                                                                                      |
-| ----------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| (Root)            | Monorepo orchestration | [Turborepo](https://turbo.build/) + npm workspaces + TypeScript 5 (strict mode)                                                 |
-| `packages/domain` | Domain Model           | Pure TypeScript — entities, value objects, business rules. Zero runtime dependencies.                                           |
-| `apps/api`        | API                    | [Hono](https://hono.dev/) on AWS Lambda. [Prisma](https://www.prisma.io/) + PostgreSQL ([Neon](https://neon.tech)). Zod & jose. |
-| `apps/tenant-web` | Frontend (Tenant)      | React 18 + Vite SPA, TanStack.                                                                                                  |
-| `apps/admin-web`  | Frontend (Admin)       | React 18 + Vite SPA, TanStack.                                                                                                  |
-| `packages/infra`  | Infrastructure         | AWS CDK (TypeScript).                                                                                                           |
+| Package / App     | Layer                  | Technology                                                                                                                          |
+| ----------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| (Root)            | Monorepo orchestration | [Turborepo](https://turbo.build/) + npm workspaces + TypeScript 6 (strict mode)                                                     |
+| `packages/domain` | Domain Model           | Pure TypeScript — entities, value objects, business rules. Zero runtime dependencies.                                               |
+| `apps/api`        | API                    | [Hono](https://hono.dev/) on AWS Lambda. [Prisma 7](https://www.prisma.io/) + PostgreSQL ([Neon](https://neon.tech)). Zod 4 & jose. |
+| `apps/tenant-web` | Frontend (Tenant)      | React 19 + Vite 8 SPA, TanStack.                                                                                                    |
+| `apps/admin-web`  | Frontend (Admin)       | React 19 + Vite 8 SPA, TanStack.                                                                                                    |
+| `packages/infra`  | Infrastructure         | AWS CDK (TypeScript).                                                                                                               |
 
 ## Monorepo Package Map
 
