@@ -232,7 +232,7 @@ adminTenantsRouter.post(
         await tx.tenantUser.create({
           data: {
             tenantId: created.id,
-            email: body.adminEmail,
+            email: body.adminEmail.toLowerCase(),
             role: 'ADMIN',
             status: 'PENDING',
           },

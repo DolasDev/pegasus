@@ -19,12 +19,14 @@ const {
   mockTenantFindFirst,
   mockTenantFindUnique,
   mockTenantUserFindMany,
+  mockTenantUserFindFirst,
   mockTenantUserFindUnique,
   mockAuthSessionCreate,
 } = vi.hoisted(() => ({
   mockTenantFindFirst: vi.fn(),
   mockTenantFindUnique: vi.fn(),
   mockTenantUserFindMany: vi.fn(),
+  mockTenantUserFindFirst: vi.fn(),
   mockTenantUserFindUnique: vi.fn(),
   mockAuthSessionCreate: vi.fn(),
 }))
@@ -37,6 +39,7 @@ vi.mock('../db', () => ({
     },
     tenantUser: {
       findMany: mockTenantUserFindMany,
+      findFirst: mockTenantUserFindFirst,
       findUnique: mockTenantUserFindUnique,
     },
     authSession: { create: mockAuthSessionCreate },
@@ -175,7 +178,7 @@ describe('POST /api/auth/resolve-tenants', () => {
     expect(mockTenantUserFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          email: 'user@acme.com',
+          email: { equals: 'user@acme.com', mode: 'insensitive' },
           status: { not: 'DEACTIVATED' },
           tenant: { status: 'ACTIVE' },
         }),
@@ -237,7 +240,7 @@ describe('POST /api/auth/select-tenant', () => {
   })
 
   it('returns 200 with TenantResolution on success', async () => {
-    mockTenantUserFindUnique.mockResolvedValue({ status: 'ACTIVE' })
+    mockTenantUserFindFirst.mockResolvedValue({ status: 'ACTIVE' })
     mockTenantFindFirst.mockResolvedValue(
       makeTenantRow({ id: 'tenant-1', name: 'Acme Corp', cognitoAuthEnabled: true }),
     )
@@ -256,7 +259,7 @@ describe('POST /api/auth/select-tenant', () => {
 
   it('creates an AuthSession with 10-minute expiry', async () => {
     const before = Date.now()
-    mockTenantUserFindUnique.mockResolvedValue({ status: 'ACTIVE' })
+    mockTenantUserFindFirst.mockResolvedValue({ status: 'ACTIVE' })
     mockTenantFindFirst.mockResolvedValue(makeTenantRow())
     mockAuthSessionCreate.mockResolvedValue({})
 
@@ -278,7 +281,7 @@ describe('POST /api/auth/select-tenant', () => {
   })
 
   it('returns 403 FORBIDDEN when TenantUser not found (user not invited)', async () => {
-    mockTenantUserFindUnique.mockResolvedValue(null)
+    mockTenantUserFindFirst.mockResolvedValue(null)
 
     const res = await authHandler.request(
       '/select-tenant',
@@ -289,7 +292,7 @@ describe('POST /api/auth/select-tenant', () => {
   })
 
   it('returns 403 FORBIDDEN when TenantUser is DEACTIVATED', async () => {
-    mockTenantUserFindUnique.mockResolvedValue({ status: 'DEACTIVATED' })
+    mockTenantUserFindFirst.mockResolvedValue({ status: 'DEACTIVATED' })
 
     const res = await authHandler.request(
       '/select-tenant',
@@ -300,7 +303,7 @@ describe('POST /api/auth/select-tenant', () => {
   })
 
   it('returns 404 NOT_FOUND when tenant not found or not ACTIVE', async () => {
-    mockTenantUserFindUnique.mockResolvedValue({ status: 'ACTIVE' })
+    mockTenantUserFindFirst.mockResolvedValue({ status: 'ACTIVE' })
     mockTenantFindFirst.mockResolvedValue(null)
 
     const res = await authHandler.request(
@@ -312,7 +315,7 @@ describe('POST /api/auth/select-tenant', () => {
   })
 
   it('does not create AuthSession when validation fails', async () => {
-    mockTenantUserFindUnique.mockResolvedValue(null)
+    mockTenantUserFindFirst.mockResolvedValue(null)
 
     await authHandler.request(
       '/select-tenant',
@@ -335,7 +338,7 @@ describe('POST /api/auth/select-tenant', () => {
   })
 
   it('returns 500 on DB error', async () => {
-    mockTenantUserFindUnique.mockRejectedValue(new Error('timeout'))
+    mockTenantUserFindFirst.mockRejectedValue(new Error('timeout'))
 
     const res = await authHandler.request(
       '/select-tenant',
@@ -346,7 +349,7 @@ describe('POST /api/auth/select-tenant', () => {
   })
 
   it('accepts PENDING TenantUser status (invited, not yet logged in)', async () => {
-    mockTenantUserFindUnique.mockResolvedValue({ status: 'PENDING' })
+    mockTenantUserFindFirst.mockResolvedValue({ status: 'PENDING' })
     mockTenantFindFirst.mockResolvedValue(makeTenantRow())
     mockAuthSessionCreate.mockResolvedValue({})
 

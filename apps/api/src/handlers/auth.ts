@@ -211,12 +211,14 @@ authHandler.post(
   }),
   async (c) => {
     const { email } = c.req.valid('json')
+    const normalizedEmail = email.toLowerCase()
 
     try {
       // Step 1: look up all TenantUser entries for this email.
+      // Use case-insensitive matching so "John@Acme.com" matches "john@acme.com".
       const tenantUsers = await db.tenantUser.findMany({
         where: {
-          email,
+          email: { equals: normalizedEmail, mode: 'insensitive' },
           status: { not: 'DEACTIVATED' },
           tenant: { status: 'ACTIVE' },
         },
@@ -244,7 +246,7 @@ authHandler.post(
       }
 
       // Step 2: domain-based fallback for tenants not using the TenantUser roster flow.
-      const domain = email.split('@')[1]?.toLowerCase()
+      const domain = normalizedEmail.split('@')[1]
       const tenant = domain
         ? await db.tenant.findFirst({
             where: { emailDomains: { has: domain }, status: 'ACTIVE' },
@@ -301,11 +303,17 @@ authHandler.post(
   }),
   async (c) => {
     const { email, tenantId } = c.req.valid('json')
+    const normalizedEmail = email.toLowerCase()
 
     try {
       // Validate TenantUser is invited and not deactivated.
-      const tenantUser = await db.tenantUser.findUnique({
-        where: { tenantId_email: { tenantId, email } },
+      // Use case-insensitive lookup — findFirst instead of findUnique because
+      // Prisma's compound unique where clause does not support mode:'insensitive'.
+      const tenantUser = await db.tenantUser.findFirst({
+        where: {
+          tenantId,
+          email: { equals: normalizedEmail, mode: 'insensitive' },
+        },
         select: { status: true },
       })
 
@@ -333,8 +341,10 @@ authHandler.post(
       }
 
       // Create the short-lived auth session (10-minute window).
+      // Store the normalized (lowercase) email so the pre-token Lambda can
+      // match it reliably regardless of how the user typed it.
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
-      await db.authSession.create({ data: { email, tenantId, expiresAt } })
+      await db.authSession.create({ data: { email: normalizedEmail, tenantId, expiresAt } })
 
       return c.json({
         data: {

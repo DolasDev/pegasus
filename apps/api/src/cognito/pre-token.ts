@@ -122,7 +122,9 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
     throw new Error('Authentication failed: No email associated with identity')
   }
 
-  const domain = email.split('@')[1]?.toLowerCase()
+  const normalizedEmail = email.toLowerCase()
+
+  const domain = normalizedEmail.split('@')[1]
   if (!domain) {
     logger.error('Pre-Token trigger: Invalid email format', { email })
     throw new Error('Authentication failed: Invalid email format')
@@ -133,8 +135,10 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
   // If found, use its tenantId — this bypasses the email domain restriction,
   // enabling cross-org users (contractors, invited users with different domains).
   // -------------------------------------------------------------------------
+  // AuthSession.email is stored lowercase by select-tenant, so match with
+  // the normalised email to avoid case-mismatch misses.
   const authSession = await db.authSession.findFirst({
-    where: { email, expiresAt: { gt: new Date() } },
+    where: { email: normalizedEmail, expiresAt: { gt: new Date() } },
     orderBy: { createdAt: 'desc' },
     select: { id: true, tenantId: true },
   })
@@ -177,8 +181,11 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
   // Look up the TenantUser roster entry for this email within the resolved tenant.
   // Strict invite-only — no JIT provisioning.
   // -------------------------------------------------------------------------
-  const tenantUser = await db.tenantUser.findUnique({
-    where: { tenantId_email: { tenantId, email } },
+  const tenantUser = await db.tenantUser.findFirst({
+    where: {
+      tenantId,
+      email: { equals: normalizedEmail, mode: 'insensitive' },
+    },
     select: { id: true, role: true, status: true },
   })
 

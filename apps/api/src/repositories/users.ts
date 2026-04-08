@@ -62,7 +62,7 @@ export function createUsersRepository(db: PrismaClient) {
     /** Find a TenantUser by email within a specific tenant. */
     findByEmail(email: string, tenantId: string): Promise<TenantUserRow | null> {
       return db.tenantUser.findFirst({
-        where: { email, tenantId },
+        where: { email: { equals: email, mode: 'insensitive' }, tenantId },
         select: USER_SELECT,
       })
     },
@@ -70,7 +70,7 @@ export function createUsersRepository(db: PrismaClient) {
     /** Create a new invited TenantUser with PENDING status. */
     invite(tenantId: string, email: string, role: 'ADMIN' | 'USER'): Promise<TenantUserRow> {
       return db.tenantUser.create({
-        data: { tenantId, email, role },
+        data: { tenantId, email: email.toLowerCase(), role },
         select: USER_SELECT,
       })
     },
