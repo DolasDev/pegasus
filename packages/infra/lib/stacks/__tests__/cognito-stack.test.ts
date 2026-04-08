@@ -10,7 +10,10 @@ import { CognitoStack } from '../cognito-stack'
 let template: Template
 
 beforeAll(() => {
-  const app = new cdk.App()
+  // Skip actual esbuild bundling during tests (same pattern as api-stack.test.ts).
+  // The pre-token Lambda imports @prisma/client which requires generated
+  // artifacts that are not available in the test environment.
+  const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
   const stack = new CognitoStack(app, 'TestCognito')
   template = Template.fromStack(stack)
 })
@@ -402,7 +405,11 @@ describe('CognitoStack — Mobile app client', () => {
   it('enables USER_SRP_AUTH and USER_PASSWORD_AUTH flows', () => {
     template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
       ClientName: 'mobile-app-client',
-      ExplicitAuthFlows: Match.arrayWith(['ALLOW_USER_SRP_AUTH', 'ALLOW_USER_PASSWORD_AUTH']),
+      ExplicitAuthFlows: Match.arrayWith(['ALLOW_USER_SRP_AUTH']),
+    })
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      ClientName: 'mobile-app-client',
+      ExplicitAuthFlows: Match.arrayWith(['ALLOW_USER_PASSWORD_AUTH']),
     })
   })
 
