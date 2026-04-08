@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "start": "node dist/server.js",
     "start:dev": "tsx src/server.ts",
+    "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
