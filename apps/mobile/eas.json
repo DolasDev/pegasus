@@ -14,13 +14,7 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_ENV": "preview",
-        "EXPO_PUBLIC_API_URL": "https://API_URL_FROM_CDK",
-        "EXPO_PUBLIC_COGNITO_REGION": "us-east-1",
-        "EXPO_PUBLIC_COGNITO_USER_POOL_ID": "us-east-1_XXXXX",
-        "EXPO_PUBLIC_COGNITO_CLIENT_ID": "XXXXX",
-        "EXPO_PUBLIC_COGNITO_DOMAIN": "https://pegasus-XXXXX.auth.us-east-1.amazoncognito.com",
-        "EXPO_PUBLIC_COGNITO_REDIRECT_URI": "movingapp://auth/callback"
+        "EXPO_PUBLIC_ENV": "preview"
       }
     },
     "production": {
@@ -31,13 +25,7 @@
         "resourceClass": "m-medium"
       },
       "env": {
-        "EXPO_PUBLIC_ENV": "production",
-        "EXPO_PUBLIC_API_URL": "https://API_URL_FROM_CDK",
-        "EXPO_PUBLIC_COGNITO_REGION": "us-east-1",
-        "EXPO_PUBLIC_COGNITO_USER_POOL_ID": "us-east-1_XXXXX",
-        "EXPO_PUBLIC_COGNITO_CLIENT_ID": "XXXXX",
-        "EXPO_PUBLIC_COGNITO_DOMAIN": "https://pegasus-XXXXX.auth.us-east-1.amazoncognito.com",
-        "EXPO_PUBLIC_COGNITO_REDIRECT_URI": "movingapp://auth/callback"
+        "EXPO_PUBLIC_ENV": "production"
       }
     }
   },
