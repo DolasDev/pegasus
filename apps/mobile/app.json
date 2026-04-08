@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "scheme": "movingapp",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -36,7 +35,6 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.RECORD_AUDIO"
       ],
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {

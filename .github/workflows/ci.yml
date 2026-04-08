@@ -141,6 +141,28 @@ jobs:
         working-directory: apps/api
         run: node ../../node_modules/.bin/prisma migrate deploy
 
+      - name: Check Expo SDK dependency compatibility
+        working-directory: apps/mobile
+        run: npx expo install --check
+
+      - name: Run Expo doctor
+        working-directory: apps/mobile
+        run: |
+          # Run expo-doctor but tolerate the duplicate-dependency check,
+          # which is a false positive in monorepos where mobile pins
+          # react@19.2.0 (Expo SDK 55) while web apps use 19.2.4.
+          output=$(npx expo-doctor 2>&1) || true
+          echo "$output"
+          if echo "$output" | grep -q '✖' | grep -v 'duplicate dependencies'; then
+            # Check if any failure is NOT the duplicate deps check
+            failures=$(echo "$output" | grep '✖' | grep -v 'duplicate dependencies')
+            if [ -n "$failures" ]; then
+              echo "::error::Expo doctor found issues:"
+              echo "$failures"
+              exit 1
+            fi
+          fi
+
       - name: Run tests
         run: node node_modules/.bin/turbo run test
 

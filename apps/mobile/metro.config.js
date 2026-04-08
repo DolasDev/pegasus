@@ -6,8 +6,8 @@ const monorepoRoot = path.resolve(projectRoot, '../..');
 
 const config = getDefaultConfig(projectRoot);
 
-// Watch all files in the monorepo
-config.watchFolders = [monorepoRoot];
+// Watch all files in the monorepo (merge with Expo defaults)
+config.watchFolders = [...(config.watchFolders || []), monorepoRoot];
 
 // Resolve modules from both the app and the monorepo root node_modules
 config.resolver.nodeModulesPaths = [

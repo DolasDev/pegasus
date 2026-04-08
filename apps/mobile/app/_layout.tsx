@@ -1,5 +1,3 @@
-import 'react-native-get-random-values'
-
 import { useEffect } from 'react'
 import { Stack, SplashScreen } from 'expo-router'
 import { AuthProvider, useAuth } from '../src/context/AuthContext'
@@ -28,7 +26,9 @@ function RootLayoutNav() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="order" />
       </Stack.Protected>
-      <Stack.Screen name="(auth)" />
+      <Stack.Protected guard={!isAuthenticated}>
+        <Stack.Screen name="(auth)" />
+      </Stack.Protected>
     </Stack>
   )
 }

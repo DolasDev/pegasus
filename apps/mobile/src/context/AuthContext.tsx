@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { AppState, type AppStateStatus } from 'react-native'
-import * as SecureStore from 'expo-secure-store'
 import type { Session } from '../auth/types'
 import { logger } from '../utils/logger'
+import { storage } from '../utils/storage'
 
 const SESSION_KEY = 'pegasus_session'
 
@@ -36,7 +36,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ authService, childre
   useEffect(() => {
     const checkSession = async () => {
       try {
-        const raw = await SecureStore.getItemAsync(SESSION_KEY)
+        const raw = await storage.getItem(SESSION_KEY)
         if (raw) {
           const stored = JSON.parse(raw) as Session
           setSession(stored)
@@ -64,7 +64,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ authService, childre
   const login = async (email: string, password: string, tenantId: string): Promise<void> => {
     try {
       const newSession = await authService.authenticate(email, password, tenantId)
-      await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(newSession))
+      await storage.setItem(SESSION_KEY, JSON.stringify(newSession))
       setSession(newSession)
       logger.logAuth('login', email)
     } catch (error) {
@@ -76,7 +76,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ authService, childre
   const loginWithSso = async (tenantId: string, providerId: string): Promise<void> => {
     try {
       const newSession = await authService.authenticateWithSso(tenantId, providerId)
-      await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(newSession))
+      await storage.setItem(SESSION_KEY, JSON.stringify(newSession))
       setSession(newSession)
       logger.logAuth('login', newSession.email)
     } catch (error) {
@@ -88,7 +88,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ authService, childre
   const logout = async (): Promise<void> => {
     try {
       const email = session?.email ?? ''
-      await SecureStore.deleteItemAsync(SESSION_KEY)
+      await storage.deleteItem(SESSION_KEY)
       setSession(null)
       logger.logAuth('logout', email)
     } catch (error) {

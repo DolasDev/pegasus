@@ -336,8 +336,9 @@ export class CognitoStack extends cdk.Stack {
     //
     // Design decisions:
     //   - generateSecret: false — public client; no secret in the mobile app.
-    //   - authFlows: { userSrp: true } — required by amazon-cognito-identity-js
-    //     for password-based login (drivers without SSO).
+    //   - authFlows: { userSrp: true, userPassword: true } — userPassword is
+    //     the primary password flow (direct REST API call, fast). userSrp is
+    //     retained for Hosted UI compatibility during SSO flows.
     //   - oAuth: authorization code grant with PKCE — used for SSO logins.
     //     The mobile app opens the Cognito Hosted UI in a system browser,
     //     passing identity_provider to route directly to the IdP. The callback
@@ -349,7 +350,7 @@ export class CognitoStack extends cdk.Stack {
     this.mobileAppClient = this.userPool.addClient('MobileAppClient', {
       userPoolClientName: 'mobile-app-client',
       generateSecret: false,
-      authFlows: { userSrp: true },
+      authFlows: { userSrp: true, userPassword: true },
       oAuth: {
         flows: { authorizationCodeGrant: true },
         scopes: [cognito.OAuthScope.EMAIL, cognito.OAuthScope.OPENID, cognito.OAuthScope.PROFILE],

@@ -44,7 +44,7 @@
   "//overrides": {
     "handlebars": "CVE-2019-19919 prototype pollution",
     "flatted": "security fix",
-    "@xmldom/xmldom": "CVE-2022-39353 XML parsing",
+    "@xmldom/xmldom": "CVE-2022-39353 XML parsing (>=0.8.10 has fix; 0.9.x breaks @expo/plist mimeType API)",
     "defu": "prototype pollution fix",
     "undici": "HTTP request smuggling fixes",
     "path-to-regexp": "ReDoS vulnerability",
@@ -61,6 +61,12 @@
     "handlebars": ">=4.7.9",
     "flatted": ">=3.4.2",
     "@xmldom/xmldom": ">=0.9.9",
+    "@expo/plist": {
+      "@xmldom/xmldom": "^0.8.10"
+    },
+    "plist": {
+      "@xmldom/xmldom": "^0.8.10"
+    },
     "defu": ">=6.1.5",
     "undici": ">=7.24.0 <8.0.0",
     "path-to-regexp": ">=8.4.0",
@@ -82,5 +88,8 @@
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
   },
-  "packageManager": "npm@10.8.2"
+  "packageManager": "npm@10.8.2",
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0"
+  }
 }

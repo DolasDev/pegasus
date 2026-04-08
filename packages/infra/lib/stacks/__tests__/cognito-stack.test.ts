@@ -399,10 +399,10 @@ describe('CognitoStack — Mobile app client', () => {
     })
   })
 
-  it('enables ALLOW_USER_SRP_AUTH (required by amazon-cognito-identity-js)', () => {
+  it('enables USER_SRP_AUTH and USER_PASSWORD_AUTH flows', () => {
     template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
       ClientName: 'mobile-app-client',
-      ExplicitAuthFlows: Match.arrayWith(['ALLOW_USER_SRP_AUTH']),
+      ExplicitAuthFlows: Match.arrayWith(['ALLOW_USER_SRP_AUTH', 'ALLOW_USER_PASSWORD_AUTH']),
     })
   })
 
