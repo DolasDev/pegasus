@@ -2,18 +2,18 @@ import React from 'react'
 import { Alert } from 'react-native'
 import { render, fireEvent, act } from '@testing-library/react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import LoginScreen from './login'
-import { type TenantResolution, AuthError } from '../../src/auth/types'
+import LoginScreen from '../../../app/(auth)/login'
+import { type TenantResolution, AuthError } from '../../../src/auth/types'
 
 // Mock the module-scope authService exported from _layout
-jest.mock('../_layout', () => ({
+jest.mock('../../../app/_layout', () => ({
   authService: {
     resolveTenants: jest.fn(),
     selectTenant: jest.fn(),
   },
 }))
 
-import { authService } from '../_layout'
+import { authService } from '../../../app/_layout'
 
 const mockResolveTenants = authService.resolveTenants as jest.Mock
 const mockSelectTenant = authService.selectTenant as jest.Mock
@@ -21,7 +21,7 @@ const mockSelectTenant = authService.selectTenant as jest.Mock
 const mockLogin = jest.fn()
 const mockLoginWithSso = jest.fn()
 
-jest.mock('../../src/context/AuthContext', () => ({
+jest.mock('../../../src/context/AuthContext', () => ({
   useAuth: jest.fn(() => ({
     login: mockLogin,
     loginWithSso: mockLoginWithSso,

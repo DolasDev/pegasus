@@ -2,11 +2,11 @@ import React from 'react'
 import { render, fireEvent, act } from '@testing-library/react-native'
 import { Alert, ActivityIndicator } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import OrderDetailScreen from './[id]'
-import { OrderService } from '../../src/services/orderService'
-import { type TruckingOrder } from '../../src/types'
+import OrderDetailScreen from '../../../app/order/[id]'
+import { OrderService } from '../../../src/services/orderService'
+import { type TruckingOrder } from '../../../src/types'
 
-jest.mock('../../src/services/orderService')
+jest.mock('../../../src/services/orderService')
 
 const MockedOrderService = OrderService as jest.Mocked<typeof OrderService>
 

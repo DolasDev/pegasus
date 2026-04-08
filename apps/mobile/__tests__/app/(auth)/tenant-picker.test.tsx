@@ -1,17 +1,17 @@
 import React from 'react'
 import { render, fireEvent, act } from '@testing-library/react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import TenantPickerScreen from './tenant-picker'
-import { type TenantResolution } from '../../src/auth/types'
+import TenantPickerScreen from '../../../app/(auth)/tenant-picker'
+import { type TenantResolution } from '../../../src/auth/types'
 
 // Mock authService module — avoid importing real _layout.tsx (pulls in polyfills etc.)
-jest.mock('../_layout', () => ({
+jest.mock('../../../app/_layout', () => ({
   authService: {
     selectTenant: jest.fn(),
   },
 }))
 
-import { authService } from '../_layout'
+import { authService } from '../../../app/_layout'
 
 const mockSelectTenant = authService.selectTenant as jest.Mock
 

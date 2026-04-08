@@ -1,11 +1,11 @@
 import React from 'react'
 import { render, fireEvent, act } from '@testing-library/react-native'
 import { Alert } from 'react-native'
-import SettingsScreen from './settings'
+import SettingsScreen from '../../../app/(tabs)/settings'
 
 const mockLogout = jest.fn()
 
-jest.mock('../../src/context/AuthContext', () => ({
+jest.mock('../../../src/context/AuthContext', () => ({
   useAuth: jest.fn(() => ({
     session: {
       sub: 'user-123',

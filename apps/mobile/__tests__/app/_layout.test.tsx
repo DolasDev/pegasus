@@ -1,17 +1,17 @@
 import React from 'react'
 import { render } from '@testing-library/react-native'
 import { SplashScreen } from 'expo-router'
-import RootLayout from './_layout'
+import RootLayout from '../../app/_layout'
 
 // Mock AuthContext to control isAuthenticated and isLoading
 const mockUseAuth = jest.fn()
-jest.mock('../src/context/AuthContext', () => ({
+jest.mock('../../src/context/AuthContext', () => ({
   AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useAuth: () => mockUseAuth(),
 }))
 
 // Mock authService factory (module-scope call in _layout.tsx)
-jest.mock('../src/auth/authService', () => ({
+jest.mock('../../src/auth/authService', () => ({
   createAuthService: jest.fn(() => ({
     authenticate: jest.fn(),
     fetchMobileConfig: jest.fn(),
@@ -20,7 +20,7 @@ jest.mock('../src/auth/authService', () => ({
   })),
 }))
 
-jest.mock('../src/auth/cognitoService', () => ({}))
+jest.mock('../../src/auth/cognitoService', () => ({}))
 
 describe('RootLayout auth guard (GUARD-01)', () => {
   beforeEach(() => {
@@ -72,6 +72,7 @@ describe('RootLayout auth guard (GUARD-01)', () => {
       isLoading: false,
     })
 
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { Stack } = require('expo-router')
 
     render(<RootLayout />)
@@ -88,6 +89,7 @@ describe('RootLayout auth guard (GUARD-01)', () => {
       isLoading: false,
     })
 
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { Stack } = require('expo-router')
 
     render(<RootLayout />)

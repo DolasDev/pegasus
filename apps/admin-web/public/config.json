@@ -1,0 +1,8 @@
+{
+  "apiUrl": "http://localhost:3000",
+  "cognito": {
+    "domain": "https://pegasus-123456789.auth.us-east-1.amazoncognito.com",
+    "clientId": "xxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "redirectUri": "http://localhost:5174/auth/callback"
+  }
+}
