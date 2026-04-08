@@ -521,6 +521,7 @@ authHandler.get(
   }),
   async (c) => {
     const { tenantId } = c.req.valid('query')
+    logger.info('mobile-config: DEPRECATED — mobile app should use baked-in config')
 
     const userPoolId = process.env['COGNITO_USER_POOL_ID'] ?? ''
     const clientId = process.env['COGNITO_MOBILE_CLIENT_ID'] ?? ''

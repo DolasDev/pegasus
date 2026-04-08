@@ -22,17 +22,6 @@ export type Session = {
   ssoProvider: string | null
 }
 
-/**
- * Cognito pool credentials returned by GET /api/auth/mobile-config.
- * Fetched at runtime after tenant selection — never baked into the app bundle.
- */
-export type MobileConfig = {
-  userPoolId: string
-  clientId: string
-  hostedUiDomain: string | null
-  redirectUri: string
-}
-
 export type ProviderType = 'oidc' | 'saml'
 
 /**

@@ -1,4 +1,5 @@
-import { AuthError, type MobileConfig, type Session, type TenantResolution } from './types'
+import { AuthError, type Session, type TenantResolution } from './types'
+import type { MobileConfig } from '../config'
 import type { OAuthConfig } from './oauthService'
 
 type CognitoService = {
@@ -15,7 +16,7 @@ type OAuthService = {
 }
 
 type AuthServiceDeps = {
-  apiBaseUrl: string
+  config: MobileConfig
   cognitoService: CognitoService
   oauthService: OAuthService
 }
@@ -24,55 +25,41 @@ type AuthServiceDeps = {
  * Creates an authService instance with injected dependencies.
  *
  * Usage (production):
- *   import * as cognitoService from './cognitoService'
- *   const authService = createAuthService({
- *     apiBaseUrl: process.env.EXPO_PUBLIC_API_URL ?? '',
- *     cognitoService,
- *   })
+ *   import { getMobileConfig } from '../config'
+ *   const config = getMobileConfig()
+ *   const authService = createAuthService({ config, cognitoService, oauthService })
  *
  * The factory pattern enables tests to inject a mock cognitoService without
- * jest.mock() module patching (D-05). apiBaseUrl is never read from env vars
- * inside the function bodies (D-06).
+ * jest.mock() module patching (D-05). Config is baked in at build time via
+ * EXPO_PUBLIC_* env vars — no runtime fetch needed (D-06).
  */
-export function createAuthService({ apiBaseUrl, cognitoService, oauthService }: AuthServiceDeps) {
-  /**
-   * Fetches the Cognito user pool ID and mobile client ID for the given tenant.
-   * Calls GET /api/auth/mobile-config?tenantId=<id>.
-   * Rejects with AuthError('ConfigFetchFailed') on non-2xx response.
-   */
-  async function fetchMobileConfig(tenantId: string): Promise<MobileConfig> {
-    const res = await fetch(
-      `${apiBaseUrl}/api/auth/mobile-config?tenantId=${encodeURIComponent(tenantId)}`,
-    )
-    if (!res.ok) {
-      throw new AuthError('ConfigFetchFailed', `mobile-config returned ${res.status}`)
-    }
-    const body = (await res.json()) as { data: MobileConfig }
-    return body.data
-  }
+export function createAuthService({ config, cognitoService, oauthService }: AuthServiceDeps) {
+  const { apiUrl, cognito } = config
 
   /**
-   * Authenticates the driver via three sequential steps:
-   *  1. fetchMobileConfig(tenantId) → { userPoolId, clientId }
-   *  2. cognitoService.signIn(email, password, userPoolId, clientId) → { idToken }
-   *  3. POST /api/auth/validate-token with { idToken } → { data: Session }
+   * Authenticates the driver via two sequential steps:
+   *  1. cognitoService.signIn(email, password, userPoolId, clientId) → { idToken }
+   *  2. POST /api/auth/validate-token with { idToken } → { data: Session }
    *
+   * Config comes from baked-in constants — no network call needed.
    * Returns the server-validated Session. The raw idToken is discarded after
-   * step 3 — it is never attached to the returned Session (AUTH-03, D-07).
+   * step 2 — it is never attached to the returned Session (AUTH-03, D-07).
    *
    * Rejects with AuthError on any failure in any step.
    */
-  async function authenticate(email: string, password: string, tenantId: string): Promise<Session> {
-    const config = await fetchMobileConfig(tenantId)
-
+  async function authenticate(
+    email: string,
+    password: string,
+    _tenantId: string,
+  ): Promise<Session> {
     const { idToken } = await cognitoService.signIn(
       email,
       password,
-      config.userPoolId,
-      config.clientId,
+      cognito.userPoolId,
+      cognito.clientId,
     )
 
-    const res = await fetch(`${apiBaseUrl}/api/auth/validate-token`, {
+    const res = await fetch(`${apiUrl}/api/auth/validate-token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken }),
@@ -94,7 +81,7 @@ export function createAuthService({ apiBaseUrl, cognitoService, oauthService }: 
    * Throws AuthError('ResolveTenantsFailed') on non-2xx.
    */
   async function resolveTenants(email: string): Promise<TenantResolution[]> {
-    const res = await fetch(`${apiBaseUrl}/api/auth/resolve-tenants`, {
+    const res = await fetch(`${apiUrl}/api/auth/resolve-tenants`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
@@ -113,7 +100,7 @@ export function createAuthService({ apiBaseUrl, cognitoService, oauthService }: 
    * Throws AuthError('SelectTenantFailed') on non-2xx (D-05).
    */
   async function selectTenant(email: string, tenantId: string): Promise<void> {
-    const res = await fetch(`${apiBaseUrl}/api/auth/select-tenant`, {
+    const res = await fetch(`${apiUrl}/api/auth/select-tenant`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, tenantId }),
@@ -125,29 +112,27 @@ export function createAuthService({ apiBaseUrl, cognitoService, oauthService }: 
 
   /**
    * Authenticates the driver via SSO (OAuth2 Authorization Code + PKCE):
-   *  1. fetchMobileConfig(tenantId) → { clientId, hostedUiDomain, redirectUri }
-   *  2. oauthService.authorize(config, providerId) → { idToken }
-   *  3. POST /api/auth/validate-token with { idToken } → { data: Session }
+   *  1. oauthService.authorize(config, providerId) → { idToken }
+   *  2. POST /api/auth/validate-token with { idToken } → { data: Session }
    *
+   * Config comes from baked-in constants — no network call needed.
    * Returns the server-validated Session. The raw idToken is discarded after
-   * step 3 — same security model as password-based authenticate().
+   * step 2 — same security model as password-based authenticate().
    */
-  async function authenticateWithSso(tenantId: string, providerId: string): Promise<Session> {
-    const config = await fetchMobileConfig(tenantId)
-
-    if (!config.hostedUiDomain) {
+  async function authenticateWithSso(_tenantId: string, providerId: string): Promise<Session> {
+    if (!cognito.domain) {
       throw new AuthError('SsoNotConfigured', 'SSO is not configured for this environment')
     }
 
     const oauthConfig: OAuthConfig = {
-      hostedUiDomain: config.hostedUiDomain,
-      clientId: config.clientId,
-      redirectUri: config.redirectUri,
+      hostedUiDomain: cognito.domain,
+      clientId: cognito.clientId,
+      redirectUri: cognito.redirectUri,
     }
 
     const { idToken } = await oauthService.authorize(oauthConfig, providerId)
 
-    const res = await fetch(`${apiBaseUrl}/api/auth/validate-token`, {
+    const res = await fetch(`${apiUrl}/api/auth/validate-token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken }),
@@ -161,5 +146,5 @@ export function createAuthService({ apiBaseUrl, cognitoService, oauthService }: 
     return body.data
   }
 
-  return { fetchMobileConfig, authenticate, authenticateWithSso, resolveTenants, selectTenant }
+  return { authenticate, authenticateWithSso, resolveTenants, selectTenant }
 }

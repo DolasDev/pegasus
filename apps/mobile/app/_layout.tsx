@@ -2,13 +2,16 @@ import { useEffect } from 'react'
 import { Stack, SplashScreen } from 'expo-router'
 import { AuthProvider, useAuth } from '../src/context/AuthContext'
 import { createAuthService } from '../src/auth/authService'
+import { getMobileConfig } from '../src/config'
 import * as cognitoService from '../src/auth/cognitoService'
 import * as oauthService from '../src/auth/oauthService'
 
 SplashScreen.preventAutoHideAsync()
 
+const config = getMobileConfig() // Fails fast at startup if env vars missing
+
 export const authService = createAuthService({
-  apiBaseUrl: process.env.EXPO_PUBLIC_API_URL ?? '',
+  config,
   cognitoService,
   oauthService,
 })

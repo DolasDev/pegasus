@@ -1,12 +1,18 @@
 import { createAuthService } from './authService'
-import { AuthError, type MobileConfig, type Session, type TenantResolution } from './types'
+import { AuthError, type Session, type TenantResolution } from './types'
+import type { MobileConfig } from '../config'
 
 const mockConfig: MobileConfig = {
-  userPoolId: 'us-east-1_ABC',
-  clientId: 'client123',
-  hostedUiDomain: 'https://pegasus-test.auth.us-east-1.amazoncognito.com',
-  redirectUri: 'movingapp://auth/callback',
+  apiUrl: 'http://api.test',
+  cognito: {
+    region: 'us-east-1',
+    userPoolId: 'us-east-1_ABC',
+    clientId: 'client123',
+    domain: 'https://pegasus-test.auth.us-east-1.amazoncognito.com',
+    redirectUri: 'movingapp://auth/callback',
+  },
 }
+
 const mockSession: Session = {
   sub: 'sub-1',
   tenantId: 'tenant-1',
@@ -39,8 +45,6 @@ const mockOAuthService = {
   authorize: jest.fn<Promise<{ idToken: string }>, [Record<string, string>, string]>(),
 }
 
-const BASE_URL = 'http://api.test'
-
 beforeEach(() => {
   global.fetch = jest.fn()
   mockCognitoService.signIn.mockReset()
@@ -48,77 +52,20 @@ beforeEach(() => {
 })
 
 describe('createAuthService', () => {
-  describe('fetchMobileConfig', () => {
-    it('calls GET /api/auth/mobile-config?tenantId=<id> and returns MobileConfig', async () => {
+  describe('authenticate', () => {
+    it('calls signIn with baked config then validate-token, and returns Session', async () => {
       ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ data: mockConfig }), {
+          new Response(JSON.stringify({ data: mockSession }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           }),
         ),
       )
-
-      const { fetchMobileConfig } = createAuthService({
-        apiBaseUrl: BASE_URL,
-        cognitoService: mockCognitoService,
-        oauthService: mockOAuthService,
-      })
-      const result = await fetchMobileConfig('tenant-1')
-
-      expect(global.fetch).toHaveBeenCalledWith(
-        `${BASE_URL}/api/auth/mobile-config?tenantId=tenant-1`,
-      )
-      expect(result).toEqual(mockConfig)
-    })
-
-    it('rejects with AuthError(ConfigFetchFailed) when mobile-config returns non-2xx', async () => {
-      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
-        Promise.resolve(new Response('Not found', { status: 400 })),
-      )
-
-      const { fetchMobileConfig } = createAuthService({
-        apiBaseUrl: BASE_URL,
-        cognitoService: mockCognitoService,
-        oauthService: mockOAuthService,
-      })
-
-      await expect(fetchMobileConfig('unknown-tenant')).rejects.toThrow(AuthError)
-      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
-        Promise.resolve(new Response('Not found', { status: 400 })),
-      )
-
-      try {
-        await fetchMobileConfig('unknown-tenant')
-      } catch (err) {
-        expect((err as AuthError).code).toBe('ConfigFetchFailed')
-      }
-    })
-  })
-
-  describe('authenticate', () => {
-    it('calls fetchMobileConfig, signIn, then validate-token in order and returns Session', async () => {
-      ;(global.fetch as jest.Mock)
-        .mockImplementationOnce(() =>
-          Promise.resolve(
-            new Response(JSON.stringify({ data: mockConfig }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-          ),
-        )
-        .mockImplementationOnce(() =>
-          Promise.resolve(
-            new Response(JSON.stringify({ data: mockSession }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-          ),
-        )
       mockCognitoService.signIn.mockResolvedValue({ idToken: 'raw-id-token' })
 
       const { authenticate } = createAuthService({
-        apiBaseUrl: BASE_URL,
+        config: mockConfig,
         cognitoService: mockCognitoService,
         oauthService: mockOAuthService,
       })
@@ -134,73 +81,67 @@ describe('createAuthService', () => {
       expect(result).not.toHaveProperty('token')
     })
 
-    it('passes idToken from signIn to validate-token body', async () => {
-      ;(global.fetch as jest.Mock)
-        .mockImplementationOnce(() =>
-          Promise.resolve(
-            new Response(JSON.stringify({ data: mockConfig }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-          ),
-        )
-        .mockImplementationOnce(() =>
-          Promise.resolve(
-            new Response(JSON.stringify({ data: mockSession }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-          ),
-        )
+    it('makes exactly 1 fetch call (validate-token only — no config fetch)', async () => {
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ data: mockSession }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      )
       mockCognitoService.signIn.mockResolvedValue({ idToken: 'raw-id-token' })
 
       const { authenticate } = createAuthService({
-        apiBaseUrl: BASE_URL,
+        config: mockConfig,
         cognitoService: mockCognitoService,
         oauthService: mockOAuthService,
       })
       await authenticate('a@b.com', 'pass', 'tenant-1')
 
-      const validateCall = (global.fetch as jest.Mock).mock.calls[1]
-      expect(validateCall[0]).toBe(`${BASE_URL}/api/auth/validate-token`)
+      expect(global.fetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('passes idToken from signIn to validate-token body', async () => {
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ data: mockSession }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      )
+      mockCognitoService.signIn.mockResolvedValue({ idToken: 'raw-id-token' })
+
+      const { authenticate } = createAuthService({
+        config: mockConfig,
+        cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
+      })
+      await authenticate('a@b.com', 'pass', 'tenant-1')
+
+      const validateCall = (global.fetch as jest.Mock).mock.calls[0]
+      expect(validateCall[0]).toBe(`${mockConfig.apiUrl}/api/auth/validate-token`)
       const body = JSON.parse(validateCall[1].body as string) as { idToken: string }
       expect(body.idToken).toBe('raw-id-token')
     })
 
     it('rejects with AuthError(ValidateTokenFailed) when validate-token returns non-2xx', async () => {
-      ;(global.fetch as jest.Mock)
-        .mockImplementationOnce(() =>
-          Promise.resolve(
-            new Response(JSON.stringify({ data: mockConfig }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-          ),
-        )
-        .mockImplementationOnce(() =>
-          Promise.resolve(new Response('Unauthorized', { status: 401 })),
-        )
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(new Response('Unauthorized', { status: 401 })),
+      )
       mockCognitoService.signIn.mockResolvedValue({ idToken: 'raw-id-token' })
 
       const { authenticate } = createAuthService({
-        apiBaseUrl: BASE_URL,
+        config: mockConfig,
         cognitoService: mockCognitoService,
         oauthService: mockOAuthService,
       })
 
       await expect(authenticate('a@b.com', 'pass', 'tenant-1')).rejects.toThrow(AuthError)
-      ;(global.fetch as jest.Mock)
-        .mockImplementationOnce(() =>
-          Promise.resolve(
-            new Response(JSON.stringify({ data: mockConfig }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-          ),
-        )
-        .mockImplementationOnce(() =>
-          Promise.resolve(new Response('Unauthorized', { status: 401 })),
-        )
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(new Response('Unauthorized', { status: 401 })),
+      )
       mockCognitoService.signIn.mockResolvedValue({ idToken: 'raw-id-token' })
 
       try {
@@ -223,14 +164,14 @@ describe('createAuthService', () => {
       )
 
       const { resolveTenants } = createAuthService({
-        apiBaseUrl: BASE_URL,
+        config: mockConfig,
         cognitoService: mockCognitoService,
         oauthService: mockOAuthService,
       })
       const result = await resolveTenants('a@b.com')
 
       expect(global.fetch).toHaveBeenCalledWith(
-        `${BASE_URL}/api/auth/resolve-tenants`,
+        `${mockConfig.apiUrl}/api/auth/resolve-tenants`,
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({ email: 'a@b.com' }),
@@ -250,7 +191,7 @@ describe('createAuthService', () => {
       )
 
       const { resolveTenants } = createAuthService({
-        apiBaseUrl: BASE_URL,
+        config: mockConfig,
         cognitoService: mockCognitoService,
         oauthService: mockOAuthService,
       })
@@ -265,7 +206,7 @@ describe('createAuthService', () => {
       )
 
       const { resolveTenants } = createAuthService({
-        apiBaseUrl: BASE_URL,
+        config: mockConfig,
         cognitoService: mockCognitoService,
         oauthService: mockOAuthService,
       })
@@ -289,14 +230,14 @@ describe('createAuthService', () => {
       )
 
       const { selectTenant } = createAuthService({
-        apiBaseUrl: BASE_URL,
+        config: mockConfig,
         cognitoService: mockCognitoService,
         oauthService: mockOAuthService,
       })
       const result = await selectTenant('a@b.com', 'tenant-acme')
 
       expect(global.fetch).toHaveBeenCalledWith(
-        `${BASE_URL}/api/auth/select-tenant`,
+        `${mockConfig.apiUrl}/api/auth/select-tenant`,
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({ email: 'a@b.com', tenantId: 'tenant-acme' }),
@@ -311,7 +252,7 @@ describe('createAuthService', () => {
       )
 
       const { selectTenant } = createAuthService({
-        apiBaseUrl: BASE_URL,
+        config: mockConfig,
         cognitoService: mockCognitoService,
         oauthService: mockOAuthService,
       })
@@ -333,7 +274,7 @@ describe('createAuthService', () => {
       )
 
       const { selectTenant } = createAuthService({
-        apiBaseUrl: BASE_URL,
+        config: mockConfig,
         cognitoService: mockCognitoService,
         oauthService: mockOAuthService,
       })
@@ -351,28 +292,19 @@ describe('createAuthService', () => {
   })
 
   describe('authenticateWithSso', () => {
-    it('calls fetchMobileConfig, oauthService.authorize, then validate-token and returns Session', async () => {
-      ;(global.fetch as jest.Mock)
-        .mockImplementationOnce(() =>
-          Promise.resolve(
-            new Response(JSON.stringify({ data: mockConfig }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-          ),
-        )
-        .mockImplementationOnce(() =>
-          Promise.resolve(
-            new Response(JSON.stringify({ data: mockSession }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-          ),
-        )
+    it('calls oauthService.authorize with baked config then validate-token, and returns Session', async () => {
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ data: mockSession }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      )
       mockOAuthService.authorize.mockResolvedValue({ idToken: 'sso-id-token' })
 
       const { authenticateWithSso } = createAuthService({
-        apiBaseUrl: BASE_URL,
+        config: mockConfig,
         cognitoService: mockCognitoService,
         oauthService: mockOAuthService,
       })
@@ -380,75 +312,73 @@ describe('createAuthService', () => {
 
       expect(mockOAuthService.authorize).toHaveBeenCalledWith(
         {
-          hostedUiDomain: mockConfig.hostedUiDomain,
-          clientId: mockConfig.clientId,
-          redirectUri: mockConfig.redirectUri,
+          hostedUiDomain: mockConfig.cognito.domain,
+          clientId: mockConfig.cognito.clientId,
+          redirectUri: mockConfig.cognito.redirectUri,
         },
         'GoogleSSO',
       )
       expect(result).toEqual(mockSession)
     })
 
-    it('passes idToken from oauthService to validate-token body', async () => {
-      ;(global.fetch as jest.Mock)
-        .mockImplementationOnce(() =>
-          Promise.resolve(
-            new Response(JSON.stringify({ data: mockConfig }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-          ),
-        )
-        .mockImplementationOnce(() =>
-          Promise.resolve(
-            new Response(JSON.stringify({ data: mockSession }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-          ),
-        )
+    it('makes exactly 1 fetch call (validate-token only — no config fetch)', async () => {
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ data: mockSession }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      )
       mockOAuthService.authorize.mockResolvedValue({ idToken: 'sso-id-token' })
 
       const { authenticateWithSso } = createAuthService({
-        apiBaseUrl: BASE_URL,
+        config: mockConfig,
         cognitoService: mockCognitoService,
         oauthService: mockOAuthService,
       })
       await authenticateWithSso('tenant-1', 'GoogleSSO')
 
-      const validateCall = (global.fetch as jest.Mock).mock.calls[1]
-      expect(validateCall[0]).toBe(`${BASE_URL}/api/auth/validate-token`)
-      const body = JSON.parse(validateCall[1].body as string) as { idToken: string }
-      expect(body.idToken).toBe('sso-id-token')
+      expect(global.fetch).toHaveBeenCalledTimes(1)
     })
 
-    it('throws AuthError(SsoNotConfigured) when hostedUiDomain is null', async () => {
-      const configNoSso: MobileConfig = { ...mockConfig, hostedUiDomain: null }
+    it('passes idToken from oauthService to validate-token body', async () => {
       ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ data: configNoSso }), {
+          new Response(JSON.stringify({ data: mockSession }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           }),
         ),
       )
+      mockOAuthService.authorize.mockResolvedValue({ idToken: 'sso-id-token' })
 
       const { authenticateWithSso } = createAuthService({
-        apiBaseUrl: BASE_URL,
+        config: mockConfig,
+        cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
+      })
+      await authenticateWithSso('tenant-1', 'GoogleSSO')
+
+      const validateCall = (global.fetch as jest.Mock).mock.calls[0]
+      expect(validateCall[0]).toBe(`${mockConfig.apiUrl}/api/auth/validate-token`)
+      const body = JSON.parse(validateCall[1].body as string) as { idToken: string }
+      expect(body.idToken).toBe('sso-id-token')
+    })
+
+    it('throws AuthError(SsoNotConfigured) when domain is null', async () => {
+      const configNoSso: MobileConfig = {
+        ...mockConfig,
+        cognito: { ...mockConfig.cognito, domain: null },
+      }
+
+      const { authenticateWithSso } = createAuthService({
+        config: configNoSso,
         cognitoService: mockCognitoService,
         oauthService: mockOAuthService,
       })
 
       await expect(authenticateWithSso('tenant-1', 'GoogleSSO')).rejects.toThrow(AuthError)
-      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
-        Promise.resolve(
-          new Response(JSON.stringify({ data: configNoSso }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        ),
-      )
-
       try {
         await authenticateWithSso('tenant-1', 'GoogleSSO')
       } catch (err) {
@@ -457,39 +387,21 @@ describe('createAuthService', () => {
     })
 
     it('rejects with AuthError(ValidateTokenFailed) when validate-token returns non-2xx', async () => {
-      ;(global.fetch as jest.Mock)
-        .mockImplementationOnce(() =>
-          Promise.resolve(
-            new Response(JSON.stringify({ data: mockConfig }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-          ),
-        )
-        .mockImplementationOnce(() =>
-          Promise.resolve(new Response('Unauthorized', { status: 401 })),
-        )
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(new Response('Unauthorized', { status: 401 })),
+      )
       mockOAuthService.authorize.mockResolvedValue({ idToken: 'sso-id-token' })
 
       const { authenticateWithSso } = createAuthService({
-        apiBaseUrl: BASE_URL,
+        config: mockConfig,
         cognitoService: mockCognitoService,
         oauthService: mockOAuthService,
       })
 
       await expect(authenticateWithSso('tenant-1', 'GoogleSSO')).rejects.toThrow(AuthError)
-      ;(global.fetch as jest.Mock)
-        .mockImplementationOnce(() =>
-          Promise.resolve(
-            new Response(JSON.stringify({ data: mockConfig }), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            }),
-          ),
-        )
-        .mockImplementationOnce(() =>
-          Promise.resolve(new Response('Unauthorized', { status: 401 })),
-        )
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(new Response('Unauthorized', { status: 401 })),
+      )
       mockOAuthService.authorize.mockResolvedValue({ idToken: 'sso-id-token' })
 
       try {
@@ -500,33 +412,17 @@ describe('createAuthService', () => {
     })
 
     it('propagates AuthError from oauthService.authorize', async () => {
-      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
-        Promise.resolve(
-          new Response(JSON.stringify({ data: mockConfig }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        ),
-      )
       mockOAuthService.authorize.mockRejectedValue(
         new AuthError('UserCancelled', 'SSO login was cancelled'),
       )
 
       const { authenticateWithSso } = createAuthService({
-        apiBaseUrl: BASE_URL,
+        config: mockConfig,
         cognitoService: mockCognitoService,
         oauthService: mockOAuthService,
       })
 
       await expect(authenticateWithSso('tenant-1', 'GoogleSSO')).rejects.toThrow(AuthError)
-      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
-        Promise.resolve(
-          new Response(JSON.stringify({ data: mockConfig }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        ),
-      )
       mockOAuthService.authorize.mockRejectedValue(
         new AuthError('UserCancelled', 'SSO login was cancelled'),
       )

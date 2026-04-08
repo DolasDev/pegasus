@@ -10,11 +10,24 @@ jest.mock('../../src/context/AuthContext', () => ({
   useAuth: () => mockUseAuth(),
 }))
 
+// Mock config module (called at module scope in _layout.tsx)
+jest.mock('../../src/config', () => ({
+  getMobileConfig: jest.fn(() => ({
+    apiUrl: 'http://localhost:3000',
+    cognito: {
+      region: 'us-east-1',
+      userPoolId: 'us-east-1_TestPool123',
+      clientId: 'test-client-id',
+      domain: 'https://pegasus-test.auth.us-east-1.amazoncognito.com',
+      redirectUri: 'movingapp://auth/callback',
+    },
+  })),
+}))
+
 // Mock authService factory (module-scope call in _layout.tsx)
 jest.mock('../../src/auth/authService', () => ({
   createAuthService: jest.fn(() => ({
     authenticate: jest.fn(),
-    fetchMobileConfig: jest.fn(),
     resolveTenants: jest.fn(),
     selectTenant: jest.fn(),
   })),

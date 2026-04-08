@@ -1,6 +1,15 @@
 // Setup file for jest tests
 // Built-in matchers are now included in @testing-library/react-native v12.4+
 
+// Provide EXPO_PUBLIC_COGNITO_* env vars so getMobileConfig() works in tests
+// that import modules calling it at module scope (e.g. _layout.tsx).
+process.env.EXPO_PUBLIC_API_URL = 'http://localhost:3000'
+process.env.EXPO_PUBLIC_COGNITO_REGION = 'us-east-1'
+process.env.EXPO_PUBLIC_COGNITO_USER_POOL_ID = 'us-east-1_TestPool123'
+process.env.EXPO_PUBLIC_COGNITO_CLIENT_ID = 'test-mobile-client-id'
+process.env.EXPO_PUBLIC_COGNITO_DOMAIN = 'https://pegasus-test.auth.us-east-1.amazoncognito.com'
+process.env.EXPO_PUBLIC_COGNITO_REDIRECT_URI = 'movingapp://auth/callback'
+
 // Global cleanup after each test
 afterEach(() => {
   jest.clearAllMocks();
