@@ -99,3 +99,35 @@ If you ever need to remove the Windows Service smoothly, run:
 ```bash
 npm run service:uninstall
 ```
+
+### 7. Legacy MSSQL Database Connection
+
+The on-prem deployment supports connecting to the legacy SQL Server database used by the original VB.NET WinForms application. This enables the `pegii`, `efwk`, and `longhaul` API routes, which read from and write to the legacy schema.
+
+> **Note:** These routes are only available in the on-prem standalone server (`server.ts`). They are excluded from the AWS Lambda bundle.
+
+#### How It Works
+
+The MSSQL connection string is stored **per-tenant** in the PostgreSQL `tenants` table (`mssql_connection_string` column). When a request hits a legacy route, middleware looks up the tenant's connection string and opens a pooled connection to the SQL Server instance.
+
+#### Configuration
+
+After the PostgreSQL database is migrated (step 4), set the tenant's legacy connection string by updating the tenant row directly:
+
+```sql
+UPDATE tenants
+SET mssql_connection_string = 'Server=LEGACYHOST;Database=PegDB;User Id=pegasus;Password=YOURPASSWORD;Encrypt=false;TrustServerCertificate=true'
+WHERE id = 'your-tenant-id';
+```
+
+**Configuring via the Web UI**
+
+Tenant administrators can also update the connection string from the tenant web app at **Settings > Developer Settings > Legacy Database Connection**. This requires the `tenant_admin` role.
+
+**Connection string requirements:**
+
+- The SQL Server instance must be network-reachable from the Windows Server running the API.
+- Use `Encrypt=false;TrustServerCertificate=true` for on-prem instances that don't have TLS configured.
+- The database user needs read/write access to the tables used by the legacy application.
+
+If the connection string is not set for a tenant, legacy route requests will return a `422` response with code `MSSQL_NOT_CONFIGURED`.
