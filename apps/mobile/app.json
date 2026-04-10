@@ -50,7 +50,8 @@
           "cameraPermission": "This app requires camera access to capture proof of delivery photos."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-web-browser"
     ],
     "extra": {
       "router": {
