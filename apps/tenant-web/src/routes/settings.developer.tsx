@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Copy,
   Check,
+  Database,
 } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
@@ -33,6 +34,7 @@ import {
   useRevokeApiClient,
   useRotateApiClient,
 } from '@/api/queries/api-clients'
+import { mssqlSettingsQueryOptions, useUpdateMssqlSettings } from '@/api/queries/settings'
 import type { ApiClient, ApiClientWithKey } from '@/api/api-clients'
 
 // ---------------------------------------------------------------------------
@@ -393,6 +395,161 @@ function RotateConfirm({ client, onConfirm, onCancel, isPending }: RotateConfirm
 }
 
 // ---------------------------------------------------------------------------
+// MSSQL Settings section
+// ---------------------------------------------------------------------------
+
+function MssqlSettingsSection() {
+  const { data: mssqlSettings, isLoading, isError } = useQuery(mssqlSettingsQueryOptions)
+  const updateMutation = useUpdateMssqlSettings()
+
+  const [isEditing, setIsEditing] = useState(false)
+  const [connectionString, setConnectionString] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  function startEditing() {
+    setConnectionString(mssqlSettings?.mssqlConnectionString ?? '')
+    setError(null)
+    setIsEditing(true)
+  }
+
+  function cancelEditing() {
+    setIsEditing(false)
+    setConnectionString('')
+    setError(null)
+  }
+
+  async function handleSave() {
+    setError(null)
+    try {
+      await updateMutation.mutateAsync({
+        mssqlConnectionString: connectionString || null,
+      })
+      setIsEditing(false)
+      setConnectionString('')
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'An unexpected error occurred. Please try again.'
+      setError(message)
+    }
+  }
+
+  async function handleClear() {
+    setError(null)
+    try {
+      await updateMutation.mutateAsync({ mssqlConnectionString: null })
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'An unexpected error occurred. Please try again.'
+      setError(message)
+    }
+  }
+
+  function maskConnectionString(value: string): string {
+    if (value.length <= 20) return value
+    return value.slice(0, 20) + '********'
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Database size={18} className="text-muted-foreground" />
+          <CardTitle>Legacy Database Connection</CardTitle>
+        </div>
+        <CardDescription>
+          Configure the SQL Server connection string for the legacy application database.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 size={14} className="animate-spin" />
+            Loading settings...
+          </div>
+        )}
+
+        {isError && (
+          <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <AlertCircle size={14} className="shrink-0" />
+            Failed to load MSSQL settings.
+          </div>
+        )}
+
+        {!isLoading && !isError && !isEditing && (
+          <div className="flex items-center justify-between">
+            <div className="text-sm">
+              {mssqlSettings?.mssqlConnectionString ? (
+                <code className="font-mono text-muted-foreground">
+                  {maskConnectionString(mssqlSettings.mssqlConnectionString)}
+                </code>
+              ) : (
+                <span className="text-muted-foreground">Not configured</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {mssqlSettings?.mssqlConnectionString && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={() => void handleClear()}
+                  disabled={updateMutation.isPending}
+                >
+                  {updateMutation.isPending && <Loader2 size={13} className="animate-spin" />}
+                  Clear
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={startEditing}>
+                <Pencil size={13} />
+                Edit
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {isEditing && (
+          <div className="space-y-3">
+            <Input
+              placeholder="Server=myserver;Database=mydb;User Id=sa;Password=..."
+              value={connectionString}
+              onChange={(e) => setConnectionString(e.target.value)}
+              className="font-mono text-sm"
+            />
+
+            {error && (
+              <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <AlertCircle size={14} className="shrink-0" />
+                {error}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={cancelEditing}
+                disabled={updateMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void handleSave()}
+                disabled={updateMutation.isPending}
+                className="gap-2"
+              >
+                {updateMutation.isPending && <Loader2 size={14} className="animate-spin" />}
+                Save
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -567,6 +724,10 @@ export function DeveloperSettingsPage() {
             />
           )}
         </div>
+
+        <Separator className="my-6" />
+
+        <MssqlSettingsSection />
       </div>
 
       {newKey && <KeyDisplayModal clientWithKey={newKey} onClose={() => setNewKey(null)} />}
