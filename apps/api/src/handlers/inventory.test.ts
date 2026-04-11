@@ -9,7 +9,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
+import { DomainError } from '@pegasus/domain'
 import type { AppEnv } from '../types'
+import { registerTestErrorHandler } from '../test-helpers'
 import { inventoryHandler } from './inventory'
 
 vi.mock('../repositories', () => ({
@@ -50,6 +52,7 @@ function post(body: unknown): RequestInit {
 
 function buildApp() {
   const app = new Hono<AppEnv>()
+  registerTestErrorHandler(app)
   app.use('*', async (c, next) => {
     c.set('tenantId', 'test-tenant-id')
     c.set('db', {} as unknown as PrismaClient)
@@ -115,6 +118,16 @@ describe('inventory handler', () => {
       const res = await buildApp().request('/move-1/rooms', post({}))
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    it('returns 422 with DomainError code when repository throws DomainError', async () => {
+      vi.mocked(findMoveById).mockResolvedValue(mockMove as never)
+      vi.mocked(createRoom).mockRejectedValue(new DomainError('Room limit exceeded', 'ROOM_LIMIT'))
+      const res = await buildApp().request('/move-1/rooms', post({ name: 'Living Room' }))
+      expect(res.status).toBe(422)
+      const body = await json(res)
+      expect(body.code).toBe('ROOM_LIMIT')
+      expect(body.error).toBe('Room limit exceeded')
     })
   })
 

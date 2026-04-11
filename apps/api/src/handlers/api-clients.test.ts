@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../types'
+import { registerTestErrorHandler } from '../test-helpers'
 
 // ---------------------------------------------------------------------------
 // Mock the repository
@@ -60,6 +61,7 @@ function patch(body: unknown): RequestInit {
 
 function buildApp(role: string | null = 'tenant_admin', userId = 'user-1') {
   const app = new Hono<AppEnv>()
+  registerTestErrorHandler(app)
   app.use('*', async (c, next) => {
     c.set('tenantId', 'test-tenant-id')
     c.set('db', {} as unknown as PrismaClient)

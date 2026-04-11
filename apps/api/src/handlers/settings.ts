@@ -53,21 +53,16 @@ settingsHandler.use('*', requireRole(['tenant_admin']))
 settingsHandler.get('/mssql', async (c) => {
   const tenantId = c.get('tenantId')
 
-  try {
-    const tenant = await db.tenant.findUnique({
-      where: { id: tenantId },
-      select: { mssqlConnectionString: true },
-    })
+  const tenant = await db.tenant.findUnique({
+    where: { id: tenantId },
+    select: { mssqlConnectionString: true },
+  })
 
-    if (!tenant) {
-      return c.json({ error: 'Tenant not found', code: 'NOT_FOUND' }, 404)
-    }
-
-    return c.json({ data: { mssqlConnectionString: maskConnectionString(tenant.mssqlConnectionString) } })
-  } catch (err) {
-    logger.error('GET /settings/mssql: failed', { error: String(err) })
-    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+  if (!tenant) {
+    return c.json({ error: 'Tenant not found', code: 'NOT_FOUND' }, 404)
   }
+
+  return c.json({ data: { mssqlConnectionString: maskConnectionString(tenant.mssqlConnectionString) } })
 })
 
 // ---------------------------------------------------------------------------
@@ -89,18 +84,13 @@ settingsHandler.patch(
     const tenantId = c.get('tenantId')
     const { mssqlConnectionString } = c.req.valid('json')
 
-    try {
-      const tenant = await db.tenant.update({
-        where: { id: tenantId },
-        data: { mssqlConnectionString },
-        select: { mssqlConnectionString: true },
-      })
+    const tenant = await db.tenant.update({
+      where: { id: tenantId },
+      data: { mssqlConnectionString },
+      select: { mssqlConnectionString: true },
+    })
 
-      logger.info('MSSQL connection string updated', { tenantId })
-      return c.json({ data: { mssqlConnectionString: maskConnectionString(tenant.mssqlConnectionString) } })
-    } catch (err) {
-      logger.error('PATCH /settings/mssql: failed', { error: String(err) })
-      return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-    }
+    logger.info('MSSQL connection string updated', { tenantId })
+    return c.json({ data: { mssqlConnectionString: maskConnectionString(tenant.mssqlConnectionString) } })
   },
 )

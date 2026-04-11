@@ -11,7 +11,8 @@ import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
 import type { AppEnv, ApiClientContext } from '../types'
 import type { Move } from '@pegasus/domain'
-import { toMoveId, toUserId, toAddressId } from '@pegasus/domain'
+import { DomainError, toMoveId, toUserId, toAddressId } from '@pegasus/domain'
+import { registerTestErrorHandler } from '../test-helpers'
 
 // ---------------------------------------------------------------------------
 // Mock m2mAppAuthMiddleware
@@ -109,6 +110,7 @@ function buildApp(apiClient: ApiClientContext | null = mockApiClient) {
   })
 
   const app = new Hono<AppEnv>()
+  registerTestErrorHandler(app)
   app.route('/', ordersHandler)
   return app
 }
@@ -404,6 +406,16 @@ describe('orders handler', () => {
       const res = await app.request('/', post(validOrderBody))
       expect(res.status).toBe(500)
       expect((await json(res)).code).toBe('INTERNAL_ERROR')
+    })
+
+    it('returns 422 with DomainError code when repository throws DomainError', async () => {
+      mockMovesRepo.createMove.mockRejectedValue(new DomainError('Order date in past', 'INVALID_DATE'))
+      const app = buildApp()
+      const res = await app.request('/', post(validOrderBody))
+      expect(res.status).toBe(422)
+      const body = await json(res)
+      expect(body.code).toBe('INVALID_DATE')
+      expect(body.error).toBe('Order date in past')
     })
   })
 

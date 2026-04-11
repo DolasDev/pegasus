@@ -106,17 +106,12 @@ ordersHandler.get('/', requireScope('orders:read'), async (c) => {
   const limit = Math.min(Number(c.req.query('limit') ?? '50'), 100)
   const offset = Number(c.req.query('offset') ?? '0')
 
-  try {
-    const moves = await listMoves(db, { limit, offset })
-    logger.info('Orders listed', { count: moves.length, tenantId })
-    return c.json({
-      data: moves.map(toOrderResponse),
-      meta: { count: moves.length, limit, offset },
-    })
-  } catch (err) {
-    logger.error('GET /orders: failed to list', { error: String(err), tenantId })
-    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-  }
+  const moves = await listMoves(db, { limit, offset })
+  logger.info('Orders listed', { count: moves.length, tenantId })
+  return c.json({
+    data: moves.map(toOrderResponse),
+    meta: { count: moves.length, limit, offset },
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -131,16 +126,11 @@ ordersHandler.get('/:orderId', requireScope('orders:read'), async (c) => {
   const tenantId = c.get('tenantId')
   const orderId = c.req.param('orderId')
 
-  try {
-    const move = await findMoveById(db, orderId)
-    if (!move) {
-      return c.json({ error: 'Order not found', code: 'NOT_FOUND' }, 404)
-    }
-    return c.json({ data: toOrderResponse(move) })
-  } catch (err) {
-    logger.error('GET /orders/:orderId: failed', { error: String(err), orderId, tenantId })
-    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+  const move = await findMoveById(db, orderId)
+  if (!move) {
+    return c.json({ error: 'Order not found', code: 'NOT_FOUND' }, 404)
   }
+  return c.json({ data: toOrderResponse(move) })
 })
 
 // ---------------------------------------------------------------------------
@@ -181,32 +171,27 @@ ordersHandler.post('/', requireScope('orders:write'), async (c) => {
   if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
   const body = r.data
 
-  try {
-    const move = await createMove(db, tenantId, {
-      userId: body.userId,
-      scheduledDate: new Date(body.scheduledDate),
-      ...(body.customerId ? { customerId: body.customerId } : {}),
-      origin: {
-        line1: body.origin.line1,
-        city: body.origin.city,
-        state: body.origin.state,
-        postalCode: body.origin.postalCode,
-        country: body.origin.country,
-        ...(body.origin.line2 ? { line2: body.origin.line2 } : {}),
-      },
-      destination: {
-        line1: body.destination.line1,
-        city: body.destination.city,
-        state: body.destination.state,
-        postalCode: body.destination.postalCode,
-        country: body.destination.country,
-        ...(body.destination.line2 ? { line2: body.destination.line2 } : {}),
-      },
-    })
-    logger.info('Order created', { id: String(move.id), tenantId })
-    return c.json({ data: toOrderResponse(move) }, 201)
-  } catch (err) {
-    logger.error('POST /orders: failed to create', { error: String(err), tenantId })
-    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-  }
+  const move = await createMove(db, tenantId, {
+    userId: body.userId,
+    scheduledDate: new Date(body.scheduledDate),
+    ...(body.customerId ? { customerId: body.customerId } : {}),
+    origin: {
+      line1: body.origin.line1,
+      city: body.origin.city,
+      state: body.origin.state,
+      postalCode: body.origin.postalCode,
+      country: body.origin.country,
+      ...(body.origin.line2 ? { line2: body.origin.line2 } : {}),
+    },
+    destination: {
+      line1: body.destination.line1,
+      city: body.destination.city,
+      state: body.destination.state,
+      postalCode: body.destination.postalCode,
+      country: body.destination.country,
+      ...(body.destination.line2 ? { line2: body.destination.line2 } : {}),
+    },
+  })
+  logger.info('Order created', { id: String(move.id), tenantId })
+  return c.json({ data: toOrderResponse(move) }, 201)
 })

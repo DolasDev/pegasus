@@ -10,7 +10,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
+import { DomainError } from '@pegasus/domain'
 import type { AppEnv } from '../types'
+import { registerTestErrorHandler } from '../test-helpers'
 import { billingHandler } from './billing'
 
 vi.mock('../repositories', () => ({
@@ -61,6 +63,7 @@ function post(body: unknown): RequestInit {
 
 function buildApp() {
   const app = new Hono<AppEnv>()
+  registerTestErrorHandler(app)
   app.use('*', async (c, next) => {
     c.set('tenantId', 'test-tenant-id')
     c.set('db', {} as unknown as PrismaClient)
@@ -131,6 +134,18 @@ describe('billing handler', () => {
       const res = await buildApp().request('/', post({ moveId: 'move-1' }))
       expect(res.status).toBe(422)
       expect((await json(res)).code).toBe('PRECONDITION_FAILED')
+    })
+
+    it('returns 422 with DomainError code when repository throws DomainError', async () => {
+      vi.mocked(findMoveById).mockResolvedValue(mockMove as never)
+      vi.mocked(findInvoiceByMoveId).mockResolvedValue(null)
+      vi.mocked(findAcceptedQuoteByMoveId).mockResolvedValue(mockAcceptedQuote as never)
+      vi.mocked(createInvoice).mockRejectedValue(new DomainError('Invoice total mismatch', 'TOTAL_MISMATCH'))
+      const res = await buildApp().request('/', post({ moveId: 'move-1' }))
+      expect(res.status).toBe(422)
+      const body = await json(res)
+      expect(body.code).toBe('TOTAL_MISMATCH')
+      expect(body.error).toBe('Invoice total mismatch')
     })
 
     it('returns 201 with invoice and balance on success', async () => {
