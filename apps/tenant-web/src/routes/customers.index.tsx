@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import type { Customer } from '@pegasus/domain'
+import type { Customer, Serialized } from '@pegasus/domain'
 import { PageHeader } from '@/components/PageHeader'
 import { DataTable, type Column } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import { customersQueryOptions } from '@/api/queries/customers'
 
-const columns: Column<Customer>[] = [
+const columns: Column<Serialized<Customer>>[] = [
   { key: 'id', header: 'ID', sortable: true },
   { key: 'firstName', header: 'First Name', sortable: true },
   { key: 'lastName', header: 'Last Name', sortable: true },

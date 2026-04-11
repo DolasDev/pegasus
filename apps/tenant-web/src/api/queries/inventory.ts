@@ -1,5 +1,5 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { InventoryRoom } from '@pegasus/domain'
+import type { InventoryRoom, Serialized } from '@pegasus/domain'
 import { apiFetch } from '@/api/client'
 
 export const inventoryKeys = {
@@ -10,7 +10,7 @@ export const inventoryKeys = {
 export const inventoryRoomsQueryOptions = (moveId: string) =>
   queryOptions({
     queryKey: inventoryKeys.rooms(moveId),
-    queryFn: () => apiFetch<InventoryRoom[]>(`/api/v1/moves/${moveId}/rooms`),
+    queryFn: () => apiFetch<Serialized<InventoryRoom>[]>(`/api/v1/moves/${moveId}/rooms`),
     enabled: moveId !== '',
   })
 
@@ -18,7 +18,7 @@ export function useAddRoom() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ moveId, name }: { moveId: string; name: string }) =>
-      apiFetch<InventoryRoom>(`/api/v1/moves/${moveId}/rooms`, {
+      apiFetch<Serialized<InventoryRoom>>(`/api/v1/moves/${moveId}/rooms`, {
         method: 'POST',
         body: JSON.stringify({ name }),
       }),
@@ -42,7 +42,7 @@ export function useAddItem() {
       name: string
       quantity?: number
     }) =>
-      apiFetch<InventoryRoom>(`/api/v1/moves/${moveId}/rooms/${roomId}/items`, {
+      apiFetch<Serialized<InventoryRoom>>(`/api/v1/moves/${moveId}/rooms/${roomId}/items`, {
         method: 'POST',
         body: JSON.stringify({ name, quantity }),
       }),

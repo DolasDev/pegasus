@@ -66,9 +66,7 @@ export function MoveDetailPage() {
             <CardContent className="space-y-1 text-sm">
               <p>
                 <span className="text-muted-foreground">Scheduled: </span>
-                {move.scheduledDate instanceof Date
-                  ? move.scheduledDate.toLocaleDateString()
-                  : String(move.scheduledDate).slice(0, 10)}
+                {move.scheduledDate.slice(0, 10)}
               </p>
               <p>
                 <span className="text-muted-foreground">Status: </span>
