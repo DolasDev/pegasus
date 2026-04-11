@@ -19,6 +19,7 @@ vi.mock('../repositories', () => ({
   createRoom: vi.fn(),
   findRoomById: vi.fn(),
   listRoomsByMoveId: vi.fn(),
+  countRoomsByMoveId: vi.fn(),
   addItem: vi.fn(),
 }))
 
@@ -29,7 +30,14 @@ vi.mock('@pegasus/domain', async (importOriginal) => {
   return { ...actual, roomTotalValue: vi.fn() }
 })
 
-import { findMoveById, createRoom, findRoomById, listRoomsByMoveId, addItem } from '../repositories'
+import {
+  findMoveById,
+  createRoom,
+  findRoomById,
+  listRoomsByMoveId,
+  countRoomsByMoveId,
+  addItem,
+} from '../repositories'
 import { roomTotalValue } from '@pegasus/domain'
 
 // ---------------------------------------------------------------------------
@@ -134,15 +142,19 @@ describe('inventory handler', () => {
   // ── GET /:moveId/inventory ────────────────────────────────────────────────
 
   describe('GET /:moveId/inventory', () => {
-    it('returns 200 with rooms and totalValue on each', async () => {
+    it('returns 200 with rooms, totalValue, and meta.total', async () => {
       vi.mocked(findMoveById).mockResolvedValue(mockMove as never)
       vi.mocked(listRoomsByMoveId).mockResolvedValue([mockRoom] as never)
+      vi.mocked(countRoomsByMoveId).mockResolvedValue(3 as never)
       const res = await buildApp().request('/move-1/inventory')
       expect(res.status).toBe(200)
       const body = await json(res)
       const data = body.data as JsonBody[]
       expect(data.length).toBe(1)
       expect(data[0]!['totalValue']).toEqual(mockTotalValue)
+      const meta = body.meta as { total: number; count: number }
+      expect(meta.total).toBe(3)
+      expect(meta.count).toBe(1)
     })
 
     it('returns 404 NOT_FOUND when move does not exist', async () => {

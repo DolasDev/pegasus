@@ -92,6 +92,11 @@ export async function listRoomsByMoveId(
   return rows.map(mapRoom)
 }
 
+/** Returns the total number of rooms for a given move. */
+export async function countRoomsByMoveId(db: PrismaClient, moveId: string): Promise<number> {
+  return db.inventoryRoom.count({ where: { moveId } })
+}
+
 /** Adds an inventory item to a room. Returns the updated room, or null if the room is not found. */
 export async function addItem(
   db: PrismaClient,

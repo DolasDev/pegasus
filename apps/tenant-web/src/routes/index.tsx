@@ -7,9 +7,13 @@ import { customersQueryOptions } from '@/api/queries/customers'
 import { invoicesQueryOptions } from '@/api/queries/billing'
 
 export function DashboardPage() {
-  const { data: moves } = useQuery(movesQueryOptions)
-  const { data: customers } = useQuery(customersQueryOptions)
-  const { data: invoices } = useQuery(invoicesQueryOptions)
+  const { data: movesResult } = useQuery(movesQueryOptions)
+  const { data: customersResult } = useQuery(customersQueryOptions)
+  const { data: invoicesResult } = useQuery(invoicesQueryOptions)
+
+  const moves = movesResult?.data
+  const customers = customersResult?.data
+  const invoices = invoicesResult?.data
 
   const pendingMoves = moves?.filter((m) => m.status === 'PENDING').length ?? 0
   const openInvoices =
@@ -18,7 +22,7 @@ export function DashboardPage() {
   const stats = [
     {
       label: 'Total Moves',
-      value: moves?.length ?? '—',
+      value: movesResult?.meta.total ?? moves?.length ?? '—',
       icon: Truck,
       href: '/moves',
     },

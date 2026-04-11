@@ -32,7 +32,8 @@ const columns: Column<Serialized<Move>>[] = [
 ]
 
 export function MovesPage() {
-  const { data: moves = [], isLoading } = useQuery(movesQueryOptions)
+  const { data: result, isLoading } = useQuery(movesQueryOptions)
+  const moves = result?.data ?? []
 
   if (isLoading) {
     return (

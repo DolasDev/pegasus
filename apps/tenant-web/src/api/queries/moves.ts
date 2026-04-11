@@ -1,6 +1,6 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Move, MoveStatus, Serialized } from '@pegasus/domain'
-import { apiFetch } from '@/api/client'
+import { apiFetch, apiFetchPaginated } from '@/api/client'
 
 // ---------------------------------------------------------------------------
 // Query keys
@@ -16,7 +16,7 @@ export const moveKeys = {
 // ---------------------------------------------------------------------------
 export const movesQueryOptions = queryOptions({
   queryKey: moveKeys.list(),
-  queryFn: () => apiFetch<Serialized<Move>[]>('/api/v1/moves'),
+  queryFn: () => apiFetchPaginated<Serialized<Move>>('/api/v1/moves'),
 })
 
 export const moveDetailQueryOptions = (id: string) =>

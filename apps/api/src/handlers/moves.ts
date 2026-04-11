@@ -11,6 +11,7 @@ import {
   createMove,
   findMoveById,
   listMoves,
+  countMoves,
   updateMoveStatus,
   assignCrewMember,
   assignVehicle,
@@ -88,8 +89,8 @@ movesHandler.get('/', async (c) => {
   const db = c.get('db')
   const limit = Math.min(Number(c.req.query('limit') ?? '50'), 100)
   const offset = Number(c.req.query('offset') ?? '0')
-  const data = await listMoves(db, { limit, offset })
-  return c.json({ data, meta: { count: data.length, limit, offset } })
+  const [data, total] = await Promise.all([listMoves(db, { limit, offset }), countMoves(db)])
+  return c.json({ data, meta: { total, count: data.length, limit, offset } })
 })
 
 movesHandler.get('/:id', async (c) => {

@@ -25,7 +25,8 @@ const columns: Column<Serialized<Invoice>>[] = [
 ]
 
 export function InvoicesPage() {
-  const { data: invoices = [], isLoading } = useQuery(invoicesQueryOptions)
+  const { data: result, isLoading } = useQuery(invoicesQueryOptions)
+  const invoices = result?.data ?? []
 
   if (isLoading) {
     return (

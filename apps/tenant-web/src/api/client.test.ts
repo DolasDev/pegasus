@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { apiFetch } from './client'
+import { apiFetch, apiFetchPaginated } from './client'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -41,6 +41,24 @@ describe('apiFetch — x-correlation-id header', () => {
     const id = headers.get('x-correlation-id')
     expect(id).not.toBeNull()
     expect(UUID_REGEX.test(id!)).toBe(true)
+  })
+
+  it('attaches an x-correlation-id header on fetchPaginated calls', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        makeOkResponse({ data: [{ id: 1 }], meta: { total: 1, count: 1, limit: 50, offset: 0 } }),
+      )
+
+    const result = await apiFetchPaginated('/test-paginated')
+
+    const [, init] = fetchSpy.mock.calls[0]!
+    const headers = new Headers(init?.headers)
+    const id = headers.get('x-correlation-id')
+    expect(id).not.toBeNull()
+    expect(UUID_REGEX.test(id!)).toBe(true)
+    expect(result.data).toEqual([{ id: 1 }])
+    expect(result.meta.total).toBe(1)
   })
 
   it('generates a different UUID on each call', async () => {
