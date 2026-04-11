@@ -4,6 +4,8 @@ import { RootLayout } from '@/routes/__root'
 import { LandingPage } from '@/routes/landing'
 import { LoginPage } from '@/routes/login'
 import { LoginCallbackPage } from '@/routes/login.callback'
+import { AuthLayout } from '@/routes/_auth'
+import { authGuard } from '@/auth/guard'
 import { DashboardPage } from '@/routes/index'
 import { MovesPage } from '@/routes/moves.index'
 import { MoveDetailPage } from '@/routes/moves.$moveId'
@@ -23,7 +25,7 @@ import { DeveloperSettingsPage } from '@/routes/settings.developer'
 const rootRoute = createRootRoute({ component: RootLayout })
 
 // ---------------------------------------------------------------------------
-// Top-level routes
+// Public routes
 // ---------------------------------------------------------------------------
 const landingRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -43,74 +45,87 @@ const loginCallbackRoute = createRoute({
   component: LoginCallbackPage,
 })
 
-const indexRoute = createRoute({
+// ---------------------------------------------------------------------------
+// Auth-guarded layout — all protected routes nest inside this
+// ---------------------------------------------------------------------------
+const authLayout = createRoute({
   getParentRoute: () => rootRoute,
+  id: '_auth',
+  beforeLoad: authGuard,
+  component: AuthLayout,
+})
+
+// ---------------------------------------------------------------------------
+// Protected routes (children of authLayout)
+// ---------------------------------------------------------------------------
+const indexRoute = createRoute({
+  getParentRoute: () => authLayout,
   path: '/dashboard',
   component: DashboardPage,
 })
 
 const movesIndexRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authLayout,
   path: '/moves',
   component: MovesPage,
 })
 
 const movesDetailRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authLayout,
   path: '/moves/$moveId',
   component: MoveDetailPage,
 })
 
 const quotesIndexRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authLayout,
   path: '/quotes',
   component: QuotesPage,
 })
 
 const quotesDetailRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authLayout,
   path: '/quotes/$quoteId',
   component: QuoteDetailPage,
 })
 
 const customersIndexRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authLayout,
   path: '/customers',
   component: CustomersPage,
 })
 
 const customersDetailRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authLayout,
   path: '/customers/$customerId',
   component: CustomerDetailPage,
 })
 
 const dispatchRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authLayout,
   path: '/dispatch',
   component: DispatchPage,
 })
 
 const invoicesRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authLayout,
   path: '/invoices',
   component: InvoicesPage,
 })
 
 const ssoConfigRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authLayout,
   path: '/settings/sso',
   component: SsoConfigPage,
 })
 
 const usersRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authLayout,
   path: '/settings/users',
   component: UsersPage,
 })
 
 const developerSettingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authLayout,
   path: '/settings/developer',
   component: DeveloperSettingsPage,
 })
@@ -122,18 +137,20 @@ const routeTree = rootRoute.addChildren([
   landingRoute,
   loginRoute,
   loginCallbackRoute,
-  indexRoute,
-  movesIndexRoute,
-  movesDetailRoute,
-  quotesIndexRoute,
-  quotesDetailRoute,
-  customersIndexRoute,
-  customersDetailRoute,
-  dispatchRoute,
-  invoicesRoute,
-  ssoConfigRoute,
-  usersRoute,
-  developerSettingsRoute,
+  authLayout.addChildren([
+    indexRoute,
+    movesIndexRoute,
+    movesDetailRoute,
+    quotesIndexRoute,
+    quotesDetailRoute,
+    customersIndexRoute,
+    customersDetailRoute,
+    dispatchRoute,
+    invoicesRoute,
+    ssoConfigRoute,
+    usersRoute,
+    developerSettingsRoute,
+  ]),
 ])
 
 export const router = createRouter({ routeTree })
