@@ -1,4 +1,11 @@
 import { getConfig } from '../config'
+import {
+  cognitoApiRequest,
+  CognitoError,
+  generateCodeVerifier,
+  generateCodeChallenge,
+  generateState,
+} from '@pegasus/auth'
 
 // ---------------------------------------------------------------------------
 // Cognito auth helpers
@@ -15,6 +22,8 @@ import { getConfig } from '../config'
 //    which redirects to the Cognito Hosted UI.
 // ---------------------------------------------------------------------------
 
+export { CognitoError }
+
 // ---------------------------------------------------------------------------
 // Direct password auth (USER_PASSWORD_AUTH)
 // ---------------------------------------------------------------------------
@@ -25,41 +34,6 @@ function parseRegion(): string {
   const match = domain.match(/\.auth\.([^.]+)\.amazoncognito\.com/)
   if (!match?.[1]) throw new Error('Cannot parse AWS region from cognito.domain in config.json')
   return match[1]
-}
-
-/** Typed error carrying the Cognito error code (e.g. NotAuthorizedException). */
-export class CognitoError extends Error {
-  constructor(
-    public readonly code: string,
-    message: string,
-  ) {
-    super(message)
-    this.name = code
-  }
-}
-
-async function cognitoApiRequest(
-  target: string,
-  body: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  const region = parseRegion()
-  const res = await fetch(`https://cognito-idp.${region}.amazonaws.com/`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-amz-json-1.1',
-      'X-Amz-Target': `AWSCognitoIdentityProviderService.${target}`,
-    },
-    body: JSON.stringify(body),
-  })
-
-  const json = (await res.json()) as Record<string, unknown>
-  if (!res.ok) {
-    throw new CognitoError(
-      (json['__type'] as string | undefined) ?? 'UnknownError',
-      (json['message'] as string | undefined) ?? 'Authentication failed',
-    )
-  }
-  return json
 }
 
 export type SignInResult =
@@ -76,7 +50,8 @@ export type SignInResult =
  * Throws `CognitoError` on invalid credentials or other Cognito errors.
  */
 export async function signIn(email: string, password: string): Promise<SignInResult> {
-  const json = await cognitoApiRequest('InitiateAuth', {
+  const region = parseRegion()
+  const json = await cognitoApiRequest(region, 'InitiateAuth', {
     AuthFlow: 'USER_PASSWORD_AUTH',
     AuthParameters: { USERNAME: email, PASSWORD: password },
     ClientId: getConfig().cognito.clientId,
@@ -109,7 +84,8 @@ export async function respondToMfaChallenge(
   username: string,
   code: string,
 ): Promise<TokenSet> {
-  const json = await cognitoApiRequest('RespondToAuthChallenge', {
+  const region = parseRegion()
+  const json = await cognitoApiRequest(region, 'RespondToAuthChallenge', {
     ChallengeName: 'SOFTWARE_TOKEN_MFA',
     ClientId: getConfig().cognito.clientId,
     Session: session,
@@ -140,38 +116,6 @@ export interface TokenSet {
   accessToken: string
   idToken: string
   refreshToken: string
-}
-
-// ---------------------------------------------------------------------------
-// PKCE helpers
-// ---------------------------------------------------------------------------
-
-function base64UrlEncode(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer)
-  let str = ''
-  for (const byte of bytes) {
-    str += String.fromCharCode(byte)
-  }
-  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
-}
-
-function generateCodeVerifier(): string {
-  const array = new Uint8Array(32)
-  crypto.getRandomValues(array)
-  return base64UrlEncode(array.buffer)
-}
-
-async function generateCodeChallenge(verifier: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(verifier)
-  const digest = await crypto.subtle.digest('SHA-256', data)
-  return base64UrlEncode(digest)
-}
-
-function generateState(): string {
-  const array = new Uint8Array(16)
-  crypto.getRandomValues(array)
-  return base64UrlEncode(array.buffer)
 }
 
 // ---------------------------------------------------------------------------
