@@ -120,6 +120,7 @@ jest.mock('./src/utils/logger', () => ({
     info: jest.fn(),
     warn: jest.fn(),
     error: jest.fn(),
+    transport: { log: jest.fn() },
     logAuth: jest.fn(),
     logOrderStatusChange: jest.fn(),
     logCameraCapture: jest.fn(),

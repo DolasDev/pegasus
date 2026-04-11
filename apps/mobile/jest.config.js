@@ -36,6 +36,8 @@ module.exports = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@pegasus/theme$': '<rootDir>/../../packages/theme/src/index.ts',
+    '^@pegasus/api-http$': '<rootDir>/../../packages/api-http/src/index.ts',
+    '^@pegasus/domain$': '<rootDir>/../../packages/domain/src/index.ts',
     // Resolve from local node_modules first (pinned versions), then root (hoisted).
     '^react$': resolvePackage('react'),
     '^react/(.*)$': resolvePackage('react') + '/$1',

@@ -1,20 +1,12 @@
-import { useEffect } from 'react'
+import React, { useEffect, useMemo } from 'react'
+import { View, Text, StyleSheet } from 'react-native'
 import { Stack, SplashScreen } from 'expo-router'
 import { AuthProvider, useAuth } from '../src/context/AuthContext'
-import { createAuthService } from '../src/auth/authService'
-import { getMobileConfig } from '../src/config'
-import * as cognitoService from '../src/auth/cognitoService'
-import * as oauthService from '../src/auth/oauthService'
+import { isConfigValid } from '../src/config'
+import { getAuthService } from '../src/auth/authServiceInstance'
+import { colors, fontSize, spacing } from '../src/theme/colors'
 
 SplashScreen.preventAutoHideAsync()
-
-const config = getMobileConfig() // Fails fast at startup if env vars missing
-
-export const authService = createAuthService({
-  config,
-  cognitoService,
-  oauthService,
-})
 
 function RootLayoutNav() {
   const { isAuthenticated, isLoading } = useAuth()
@@ -36,10 +28,55 @@ function RootLayoutNav() {
   )
 }
 
+function ConfigErrorScreen() {
+  return (
+    <View style={styles.errorContainer}>
+      <Text style={styles.errorTitle}>Configuration Error</Text>
+      <Text style={styles.errorMessage}>
+        Required environment variables are missing. Please check your .env file or EAS build
+        profile.
+      </Text>
+    </View>
+  )
+}
+
 export default function RootLayout() {
+  const configValid = isConfigValid()
+
+  const authService = useMemo(() => {
+    if (!configValid) return null
+    return getAuthService()
+  }, [configValid])
+
+  if (!configValid || !authService) {
+    return <ConfigErrorScreen />
+  }
+
   return (
     <AuthProvider authService={authService}>
       <RootLayoutNav />
     </AuthProvider>
   )
 }
+
+const styles = StyleSheet.create({
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.background,
+  },
+  errorTitle: {
+    fontSize: fontSize.xlarge,
+    fontWeight: '700',
+    color: colors.error,
+    marginBottom: spacing.md,
+  },
+  errorMessage: {
+    fontSize: fontSize.large,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+})

@@ -1,4 +1,13 @@
-export { type Session } from '@pegasus/auth'
+import type { Session as BaseSession } from '@pegasus/auth'
+
+/**
+ * Mobile session extends the shared Session with an auth token
+ * needed for authenticated API requests.
+ */
+export type Session = BaseSession & {
+  /** Cognito ID token used as Bearer token for API requests. */
+  token: string
+}
 
 /** Typed error carrying the Cognito error code (e.g. NotAuthorizedException). */
 export class AuthError extends Error {
@@ -10,7 +19,6 @@ export class AuthError extends Error {
     this.name = code
   }
 }
-
 export type ProviderType = 'oidc' | 'saml'
 
 /**

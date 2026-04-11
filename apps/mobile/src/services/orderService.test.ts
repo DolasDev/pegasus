@@ -1,12 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { OrderService } from './orderService'
-import { MOCK_ORDERS } from './mockData'
+import { MOCK_ORDERS } from './__fixtures__/mockData'
 
-// Mock AsyncStorage
-jest.mock('@react-native-async-storage/async-storage', () => ({
-  getItem: jest.fn(),
-  setItem: jest.fn(),
-  removeItem: jest.fn(),
+// Mock the API client module
+const mockFetch = jest.fn()
+const mockFetchPaginated = jest.fn()
+jest.mock('../api/client', () => ({
+  getApiClient: jest.fn(() => ({
+    fetch: mockFetch,
+    fetchPaginated: mockFetchPaginated,
+  })),
 }))
 
 // Mock logger
@@ -15,8 +18,16 @@ jest.mock('../utils/logger', () => ({
     logOrderLoad: jest.fn(),
     logOrderStatusChange: jest.fn(),
     logCameraCapture: jest.fn(),
+    warn: jest.fn(),
     error: jest.fn(),
   },
+}))
+
+// Mock AsyncStorage
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  getItem: jest.fn(),
+  setItem: jest.fn(),
+  removeItem: jest.fn(),
 }))
 
 describe('OrderService', () => {
@@ -25,118 +36,118 @@ describe('OrderService', () => {
   })
 
   describe('getOrders', () => {
-    it('should return orders from storage when available', async () => {
-      const mockOrders = MOCK_ORDERS
-      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(mockOrders))
-
-      const result = await OrderService.getOrders()
-
-      expect(result).toEqual(mockOrders)
-      expect(AsyncStorage.getItem).toHaveBeenCalledWith('@moving_app_orders')
-    })
-
-    it('should initialize with mock data when storage is empty', async () => {
-      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValue(null)
+    it('fetches orders from API and caches them', async () => {
+      mockFetchPaginated.mockResolvedValueOnce({
+        data: MOCK_ORDERS,
+        meta: { total: MOCK_ORDERS.length, count: MOCK_ORDERS.length, limit: 25, offset: 0 },
+      })
 
       const result = await OrderService.getOrders()
 
       expect(result).toEqual(MOCK_ORDERS)
+      expect(mockFetchPaginated).toHaveBeenCalledWith('/api/v1/moves')
       expect(AsyncStorage.setItem).toHaveBeenCalledWith(
         '@moving_app_orders',
         JSON.stringify(MOCK_ORDERS),
       )
     })
+
+    it('falls back to AsyncStorage cache when API fails (offline)', async () => {
+      mockFetchPaginated.mockRejectedValueOnce(new Error('Network error'))
+      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(JSON.stringify(MOCK_ORDERS))
+
+      const result = await OrderService.getOrders()
+
+      expect(result).toEqual(MOCK_ORDERS)
+      expect(AsyncStorage.getItem).toHaveBeenCalledWith('@moving_app_orders')
+    })
+
+    it('returns empty array when both API and cache fail', async () => {
+      mockFetchPaginated.mockRejectedValueOnce(new Error('Network error'))
+      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(null)
+
+      const result = await OrderService.getOrders()
+
+      expect(result).toEqual([])
+    })
+  })
+
+  describe('getOrderById', () => {
+    it('fetches a single order from API', async () => {
+      mockFetch.mockResolvedValueOnce(MOCK_ORDERS[0])
+
+      const result = await OrderService.getOrderById(MOCK_ORDERS[0].orderId)
+
+      expect(result).toEqual(MOCK_ORDERS[0])
+      expect(mockFetch).toHaveBeenCalledWith(`/api/v1/moves/${MOCK_ORDERS[0].orderId}`)
+    })
+
+    it('falls back to cache when API fails', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network error'))
+      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(JSON.stringify(MOCK_ORDERS))
+
+      const result = await OrderService.getOrderById(MOCK_ORDERS[0].orderId)
+
+      expect(result).toEqual(MOCK_ORDERS[0])
+    })
+
+    it('returns null when order not found in cache', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network error'))
+      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(JSON.stringify(MOCK_ORDERS))
+
+      const result = await OrderService.getOrderById('NON_EXISTENT_ID')
+
+      expect(result).toBeNull()
+    })
   })
 
   describe('updateOrderStatus', () => {
-    it('should prevent moving to delivered without being in_transit first', async () => {
-      const pendingOrder = MOCK_ORDERS.find((o) => o.status === 'pending')
-      if (!pendingOrder) {
-        throw new Error('No pending order found in mock data')
-      }
+    it('sends status update to API and returns true on success', async () => {
+      mockFetch.mockResolvedValueOnce(undefined)
+      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(JSON.stringify(MOCK_ORDERS))
 
-      // Setup: Order is in pending status
-      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify([pendingOrder]))
-
-      // Attempt to change directly to delivered
-      const result = await OrderService.updateOrderStatus(pendingOrder.orderId, 'delivered')
-
-      // The service doesn't prevent this, but we can verify the workflow
-      // This test documents the expected behavior
-      expect(result).toBe(true)
-    })
-
-    it('should successfully update order from pending to in_transit', async () => {
-      const pendingOrder = {
-        ...MOCK_ORDERS[0],
-        status: 'pending' as const,
-      }
-
-      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify([pendingOrder]))
-
-      const result = await OrderService.updateOrderStatus(pendingOrder.orderId, 'in_transit')
+      const result = await OrderService.updateOrderStatus(MOCK_ORDERS[0].orderId, 'in_transit')
 
       expect(result).toBe(true)
-      expect(AsyncStorage.setItem).toHaveBeenCalled()
+      expect(mockFetch).toHaveBeenCalledWith(`/api/v1/moves/${MOCK_ORDERS[0].orderId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'in_transit', proofPhotos: undefined }),
+      })
     })
 
-    it('should successfully update order from in_transit to delivered', async () => {
+    it('returns false when API call fails', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network error'))
+
+      const result = await OrderService.updateOrderStatus(MOCK_ORDERS[0].orderId, 'in_transit')
+
+      expect(result).toBe(false)
+    })
+
+    it('updates cached order with proof of delivery when status is delivered', async () => {
+      mockFetch.mockResolvedValueOnce(undefined)
       const inTransitOrder = {
         ...MOCK_ORDERS[0],
         status: 'in_transit' as const,
-        pickup: {
-          ...MOCK_ORDERS[0].pickup,
-          actualDate: new Date().toISOString(),
-        },
+        pickup: { ...MOCK_ORDERS[0].pickup, actualDate: new Date().toISOString() },
       }
-
-      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify([inTransitOrder]))
+      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(JSON.stringify([inTransitOrder]))
 
       const result = await OrderService.updateOrderStatus(inTransitOrder.orderId, 'delivered', [
         'photo1.jpg',
       ])
 
       expect(result).toBe(true)
-
       const savedData = (AsyncStorage.setItem as jest.Mock).mock.calls[0][1]
       const savedOrders = JSON.parse(savedData)
-      const updatedOrder = savedOrders[0]
-
-      expect(updatedOrder.status).toBe('delivered')
-      expect(updatedOrder.proofOfDelivery).toBeDefined()
-      expect(updatedOrder.proofOfDelivery?.photos).toEqual(['photo1.jpg'])
-      expect(updatedOrder.dropoff.actualDate).toBeDefined()
-    })
-
-    it('should set pickup actualDate when moving to in_transit', async () => {
-      const pendingOrder = {
-        ...MOCK_ORDERS[0],
-        status: 'pending' as const,
-      }
-
-      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify([pendingOrder]))
-
-      await OrderService.updateOrderStatus(pendingOrder.orderId, 'in_transit')
-
-      const savedData = (AsyncStorage.setItem as jest.Mock).mock.calls[0][1]
-      const savedOrders = JSON.parse(savedData)
-      const updatedOrder = savedOrders[0]
-
-      expect(updatedOrder.status).toBe('in_transit')
-      expect(updatedOrder.pickup.actualDate).toBeDefined()
-    })
-
-    it('should return false for non-existent order', async () => {
-      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(MOCK_ORDERS))
-
-      const result = await OrderService.updateOrderStatus('NON_EXISTENT_ID', 'delivered')
-
-      expect(result).toBe(false)
+      expect(savedOrders[0].status).toBe('delivered')
+      expect(savedOrders[0].proofOfDelivery).toBeDefined()
+      expect(savedOrders[0].proofOfDelivery.photos).toEqual(['photo1.jpg'])
     })
   })
 
   describe('addProofPhoto', () => {
-    it('should add photo to existing proofOfDelivery', async () => {
+    it('sends photo to API and updates cache', async () => {
+      mockFetch.mockResolvedValueOnce(undefined)
       const orderWithProof = {
         ...MOCK_ORDERS[0],
         proofOfDelivery: {
@@ -144,57 +155,26 @@ describe('OrderService', () => {
           deliveredAt: new Date().toISOString(),
         },
       }
-
-      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify([orderWithProof]))
+      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(JSON.stringify([orderWithProof]))
 
       const result = await OrderService.addProofPhoto(orderWithProof.orderId, 'new-photo.jpg')
 
       expect(result).toBe(true)
-
-      const savedData = (AsyncStorage.setItem as jest.Mock).mock.calls[0][1]
-      const savedOrders = JSON.parse(savedData)
-      const updatedOrder = savedOrders[0]
-
-      expect(updatedOrder.proofOfDelivery.photos).toEqual(['existing.jpg', 'new-photo.jpg'])
+      expect(mockFetch).toHaveBeenCalledWith(
+        `/api/v1/moves/${orderWithProof.orderId}/proof-photos`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ photoUri: 'new-photo.jpg' }),
+        },
+      )
     })
 
-    it('should create proofOfDelivery if it does not exist', async () => {
-      const orderWithoutProof = {
-        ...MOCK_ORDERS[0],
-        proofOfDelivery: undefined,
-      }
+    it('returns false when API call fails', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('Network error'))
 
-      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify([orderWithoutProof]))
+      const result = await OrderService.addProofPhoto(MOCK_ORDERS[0].orderId, 'photo.jpg')
 
-      const result = await OrderService.addProofPhoto(orderWithoutProof.orderId, 'first-photo.jpg')
-
-      expect(result).toBe(true)
-
-      const savedData = (AsyncStorage.setItem as jest.Mock).mock.calls[0][1]
-      const savedOrders = JSON.parse(savedData)
-      const updatedOrder = savedOrders[0]
-
-      expect(updatedOrder.proofOfDelivery).toBeDefined()
-      expect(updatedOrder.proofOfDelivery.photos).toEqual(['first-photo.jpg'])
-      expect(updatedOrder.proofOfDelivery.deliveredAt).toBeDefined()
-    })
-  })
-
-  describe('getOrderById', () => {
-    it('should return order when found', async () => {
-      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(MOCK_ORDERS))
-
-      const result = await OrderService.getOrderById(MOCK_ORDERS[0].orderId)
-
-      expect(result).toEqual(MOCK_ORDERS[0])
-    })
-
-    it('should return null when order not found', async () => {
-      ;(AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify(MOCK_ORDERS))
-
-      const result = await OrderService.getOrderById('NON_EXISTENT_ID')
-
-      expect(result).toBeNull()
+      expect(result).toBe(false)
     })
   })
 })

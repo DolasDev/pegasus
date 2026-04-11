@@ -5,18 +5,15 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import LoginScreen from '../../../app/(auth)/login'
 import { type TenantResolution, AuthError } from '../../../src/auth/types'
 
-// Mock the module-scope authService exported from _layout
-jest.mock('../../../app/_layout', () => ({
-  authService: {
-    resolveTenants: jest.fn(),
-    selectTenant: jest.fn(),
-  },
+// Mock the authServiceInstance module used by login and tenant-picker screens
+const mockResolveTenants = jest.fn()
+const mockSelectTenant = jest.fn()
+jest.mock('../../../src/auth/authServiceInstance', () => ({
+  getAuthService: jest.fn(() => ({
+    resolveTenants: mockResolveTenants,
+    selectTenant: mockSelectTenant,
+  })),
 }))
-
-import { authService } from '../../../app/_layout'
-
-const mockResolveTenants = authService.resolveTenants as jest.Mock
-const mockSelectTenant = authService.selectTenant as jest.Mock
 
 const mockLogin = jest.fn()
 const mockLoginWithSso = jest.fn()
