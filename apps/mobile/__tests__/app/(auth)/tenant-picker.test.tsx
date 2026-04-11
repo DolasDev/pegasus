@@ -4,16 +4,13 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import TenantPickerScreen from '../../../app/(auth)/tenant-picker'
 import { type TenantResolution } from '../../../src/auth/types'
 
-// Mock authService module — avoid importing real _layout.tsx (pulls in polyfills etc.)
-jest.mock('../../../app/_layout', () => ({
-  authService: {
-    selectTenant: jest.fn(),
-  },
+// Mock the authServiceInstance module used by tenant-picker screen
+const mockSelectTenant = jest.fn()
+jest.mock('../../../src/auth/authServiceInstance', () => ({
+  getAuthService: jest.fn(() => ({
+    selectTenant: mockSelectTenant,
+  })),
 }))
-
-import { authService } from '../../../app/_layout'
-
-const mockSelectTenant = authService.selectTenant as jest.Mock
 
 const mockTenants: TenantResolution[] = [
   {

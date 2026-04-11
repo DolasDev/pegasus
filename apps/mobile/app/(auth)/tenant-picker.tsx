@@ -10,7 +10,7 @@ import {
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
-import { authService } from '../_layout'
+import { getAuthService } from '../../src/auth/authServiceInstance'
 import { type TenantResolution } from '../../src/auth/types'
 
 export default function TenantPickerScreen() {
@@ -35,7 +35,7 @@ export default function TenantPickerScreen() {
     setIsLoading(true)
     setError(null)
     try {
-      await authService.selectTenant(email as string, tenant.tenantId)
+      await getAuthService().selectTenant(email as string, tenant.tenantId)
 
       // Determine the next step based on available auth methods
       const hasProviders = tenant.providers.length > 0

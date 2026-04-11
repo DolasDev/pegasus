@@ -13,7 +13,7 @@ const mockConfig: MobileConfig = {
   },
 }
 
-const mockSession: Session = {
+const mockApiSession: Omit<Session, 'token'> = {
   sub: 'sub-1',
   tenantId: 'tenant-1',
   role: 'driver',
@@ -53,10 +53,10 @@ beforeEach(() => {
 
 describe('createAuthService', () => {
   describe('authenticate', () => {
-    it('calls signIn with baked config then validate-token, and returns Session', async () => {
+    it('calls signIn with baked config then validate-token, and returns Session with token', async () => {
       ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ data: mockSession }), {
+          new Response(JSON.stringify({ data: mockApiSession }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           }),
@@ -77,14 +77,14 @@ describe('createAuthService', () => {
         'us-east-1_ABC',
         'client123',
       )
-      expect(result).toEqual(mockSession)
-      expect(result).not.toHaveProperty('token')
+      expect(result).toEqual({ ...mockApiSession, token: 'raw-id-token' })
+      expect(result.token).toBe('raw-id-token')
     })
 
     it('makes exactly 1 fetch call (validate-token only — no config fetch)', async () => {
       ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ data: mockSession }), {
+          new Response(JSON.stringify({ data: mockApiSession }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           }),
@@ -105,7 +105,7 @@ describe('createAuthService', () => {
     it('passes idToken from signIn to validate-token body', async () => {
       ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ data: mockSession }), {
+          new Response(JSON.stringify({ data: mockApiSession }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           }),
@@ -295,7 +295,7 @@ describe('createAuthService', () => {
     it('calls oauthService.authorize with baked config then validate-token, and returns Session', async () => {
       ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ data: mockSession }), {
+          new Response(JSON.stringify({ data: mockApiSession }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           }),
@@ -318,13 +318,14 @@ describe('createAuthService', () => {
         },
         'GoogleSSO',
       )
-      expect(result).toEqual(mockSession)
+      expect(result).toEqual({ ...mockApiSession, token: 'sso-id-token' })
+      expect(result.token).toBe('sso-id-token')
     })
 
     it('makes exactly 1 fetch call (validate-token only — no config fetch)', async () => {
       ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ data: mockSession }), {
+          new Response(JSON.stringify({ data: mockApiSession }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           }),
@@ -345,7 +346,7 @@ describe('createAuthService', () => {
     it('passes idToken from oauthService to validate-token body', async () => {
       ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ data: mockSession }), {
+          new Response(JSON.stringify({ data: mockApiSession }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           }),

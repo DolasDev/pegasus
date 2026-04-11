@@ -14,7 +14,13 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_ENV": "preview"
+        "EXPO_PUBLIC_ENV": "preview",
+        "EXPO_PUBLIC_API_URL": "https://api-preview.pegasus.example.com",
+        "EXPO_PUBLIC_COGNITO_REGION": "us-east-1",
+        "EXPO_PUBLIC_COGNITO_USER_POOL_ID": "PLACEHOLDER",
+        "EXPO_PUBLIC_COGNITO_CLIENT_ID": "PLACEHOLDER",
+        "EXPO_PUBLIC_COGNITO_DOMAIN": "PLACEHOLDER",
+        "EXPO_PUBLIC_COGNITO_REDIRECT_URI": "movingapp://auth/callback"
       }
     },
     "production": {
@@ -25,7 +31,13 @@
         "resourceClass": "m-medium"
       },
       "env": {
-        "EXPO_PUBLIC_ENV": "production"
+        "EXPO_PUBLIC_ENV": "production",
+        "EXPO_PUBLIC_API_URL": "https://api.pegasus.example.com",
+        "EXPO_PUBLIC_COGNITO_REGION": "us-east-1",
+        "EXPO_PUBLIC_COGNITO_USER_POOL_ID": "PLACEHOLDER",
+        "EXPO_PUBLIC_COGNITO_CLIENT_ID": "PLACEHOLDER",
+        "EXPO_PUBLIC_COGNITO_DOMAIN": "PLACEHOLDER",
+        "EXPO_PUBLIC_COGNITO_REDIRECT_URI": "movingapp://auth/callback"
       }
     }
   },

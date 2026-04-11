@@ -1,3 +1,22 @@
+/**
+ * Re-export domain types for the mobile app.
+ *
+ * The mobile app uses "TruckingOrder" terminology for driver-facing screens.
+ * These are transitional aliases mapping to the domain model's Move type.
+ *
+ * TODO: Once the mobile app fully adopts domain types, remove these aliases
+ * and import from @pegasus/domain directly.
+ */
+import type { Move, MoveStatus as DomainMoveStatus } from '@pegasus/domain'
+
+/**
+ * Mobile-facing order type. Currently defined locally because the mobile
+ * order shape (flat pickup/dropoff, inventory array, customer inline)
+ * differs from the domain Move model (stops array, separate customer entity).
+ *
+ * TODO: Converge this type with Serialized<Move> once the API returns a
+ * mobile-friendly response shape, or build a mapper in the API client.
+ */
 export interface TruckingOrder {
   orderId: string
   orderNumber: string
@@ -37,7 +56,7 @@ export interface TruckingOrder {
     notes?: string
   }
 
-  status: 'pending' | 'in_transit' | 'delivered' | 'cancelled'
+  status: OrderStatus
 
   proofOfDelivery?: {
     photos: string[]
@@ -70,3 +89,6 @@ export interface Driver {
 }
 
 export type OrderStatus = 'pending' | 'in_transit' | 'delivered' | 'cancelled'
+
+// Re-export domain types that consumers may need directly
+export type { Move, DomainMoveStatus }

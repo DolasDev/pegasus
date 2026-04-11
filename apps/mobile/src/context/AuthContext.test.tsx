@@ -24,6 +24,7 @@ const mockSession: Session = {
   email: 'driver@example.com',
   expiresAt: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now in seconds
   ssoProvider: null,
+  token: 'mock-id-token',
 }
 
 const mockAuthService = {
@@ -82,7 +83,7 @@ describe('AuthProvider', () => {
       expect(logger.logAuth).toHaveBeenCalledWith('login', 'driver@example.com')
     })
 
-    it('does NOT store raw tokens — only Session object fields are persisted (SESSION-01)', async () => {
+    it('persists full Session including token to secure store (SESSION-01)', async () => {
       mockAuthService.authenticate.mockResolvedValueOnce(mockSession)
       await act(async () => {
         await ctxRef.current!.login('driver@example.com', 'pass123', 'tenant-abc')
@@ -90,17 +91,12 @@ describe('AuthProvider', () => {
 
       const storedArg = (SecureStore.setItemAsync as jest.Mock).mock.calls[0]?.[1] as string
       const parsed = JSON.parse(storedArg)
-      // Session must not contain any token field
-      expect(parsed).not.toHaveProperty('idToken')
-      expect(parsed).not.toHaveProperty('token')
-      expect(parsed).not.toHaveProperty('accessToken')
-      expect(parsed).not.toHaveProperty('refreshToken')
-      // Must contain exactly the Session fields
       expect(parsed).toHaveProperty('sub')
       expect(parsed).toHaveProperty('tenantId')
       expect(parsed).toHaveProperty('role')
       expect(parsed).toHaveProperty('email')
       expect(parsed).toHaveProperty('expiresAt')
+      expect(parsed).toHaveProperty('token')
     })
 
     it('throws AuthError and does not persist when authenticate rejects', async () => {
@@ -152,6 +148,7 @@ describe('checkSession — SESSION-02', () => {
       email: 'restored@example.com',
       expiresAt: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now in seconds
       ssoProvider: null,
+      token: 'stored-token',
     }
     ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(stored))
 
@@ -197,6 +194,7 @@ describe('AppState expiry detection — SESSION-04', () => {
       email: 'expired@example.com',
       expiresAt: Math.floor(Date.now() / 1000) - 1, // 1 second ago in seconds
       ssoProvider: null,
+      token: 'expired-token',
     }
     ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(expiredSession))
 
@@ -223,6 +221,7 @@ describe('AppState expiry detection — SESSION-04', () => {
       email: 'valid@example.com',
       expiresAt: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now in seconds
       ssoProvider: null,
+      token: 'valid-token',
     }
     ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(validSession))
 
@@ -245,6 +244,7 @@ describe('AppState expiry detection — SESSION-04', () => {
       email: 'expired@example.com',
       expiresAt: Math.floor(Date.now() / 1000) - 1, // 1 second ago in seconds
       ssoProvider: null,
+      token: 'expired-token-2',
     }
     ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(expiredSession))
 
@@ -286,7 +286,7 @@ describe('loginWithSso — SSO authentication', () => {
     expect(logger.logAuth).toHaveBeenCalledWith('login', 'driver@example.com')
   })
 
-  it('does NOT store raw tokens — only Session object fields are persisted', async () => {
+  it('persists full Session including token to secure store', async () => {
     mockAuthService.authenticateWithSso.mockResolvedValueOnce(mockSession)
     await act(async () => {
       await ctxRef.current!.loginWithSso('tenant-abc', 'GoogleSSO')
@@ -294,10 +294,9 @@ describe('loginWithSso — SSO authentication', () => {
 
     const storedArg = (SecureStore.setItemAsync as jest.Mock).mock.calls[0]?.[1] as string
     const parsed = JSON.parse(storedArg)
-    expect(parsed).not.toHaveProperty('idToken')
-    expect(parsed).not.toHaveProperty('token')
     expect(parsed).toHaveProperty('sub')
     expect(parsed).toHaveProperty('tenantId')
+    expect(parsed).toHaveProperty('token')
   })
 
   it('throws AuthError and does not persist when authenticateWithSso rejects', async () => {

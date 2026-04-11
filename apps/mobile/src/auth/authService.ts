@@ -70,8 +70,7 @@ export function createAuthService({ config, cognitoService, oauthService }: Auth
     }
 
     const body = (await res.json()) as { data: Session }
-    return body.data
-    // idToken is NOT stored or returned — raw Cognito token ends here (AUTH-03)
+    return { ...body.data, token: idToken }
   }
 
   /**
@@ -143,7 +142,7 @@ export function createAuthService({ config, cognitoService, oauthService }: Auth
     }
 
     const body = (await res.json()) as { data: Session }
-    return body.data
+    return { ...body.data, token: idToken }
   }
 
   return { authenticate, authenticateWithSso, resolveTenants, selectTenant }

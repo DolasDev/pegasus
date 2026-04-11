@@ -10,8 +10,9 @@ jest.mock('../../src/context/AuthContext', () => ({
   useAuth: () => mockUseAuth(),
 }))
 
-// Mock config module (called at module scope in _layout.tsx)
+// Mock config module
 jest.mock('../../src/config', () => ({
+  isConfigValid: jest.fn(() => true),
   getMobileConfig: jest.fn(() => ({
     apiUrl: 'http://localhost:3000',
     cognito: {
@@ -24,16 +25,15 @@ jest.mock('../../src/config', () => ({
   })),
 }))
 
-// Mock authService factory (module-scope call in _layout.tsx)
-jest.mock('../../src/auth/authService', () => ({
-  createAuthService: jest.fn(() => ({
+// Mock authServiceInstance
+jest.mock('../../src/auth/authServiceInstance', () => ({
+  getAuthService: jest.fn(() => ({
     authenticate: jest.fn(),
+    authenticateWithSso: jest.fn(),
     resolveTenants: jest.fn(),
     selectTenant: jest.fn(),
   })),
 }))
-
-jest.mock('../../src/auth/cognitoService', () => ({}))
 
 describe('RootLayout auth guard (GUARD-01)', () => {
   beforeEach(() => {
@@ -63,20 +63,10 @@ describe('RootLayout auth guard (GUARD-01)', () => {
   })
 
   it('SplashScreen.preventAutoHideAsync was called at module load', () => {
-    // preventAutoHideAsync is called at module scope — it fires when _layout is imported
-    // jest.setup.js mocks it; confirm it was invoked during module load (import side effect)
-    // Note: jest.clearAllMocks() in beforeEach clears call counts.
-    // We verify by rendering and checking the mock was invoked at some point.
-    // The module-level call happens once at import time; this test ensures the mock exists and is wired.
     mockUseAuth.mockReturnValue({ isAuthenticated: false, isLoading: false })
     render(<RootLayout />)
-    // preventAutoHideAsync fires at module scope (import side effect) — called once per module load
-    // Since clearAllMocks clears the count, we verify it is a properly wired jest.fn()
     expect(SplashScreen.preventAutoHideAsync).toBeDefined()
     expect(typeof SplashScreen.preventAutoHideAsync).toBe('function')
-    // Verify it was called (at module import time, before clearAllMocks ran for this test)
-    // Re-import is not possible without jest.resetModules(), so we verify the function exists
-    // and is mockable — the module-level call is confirmed by the implementation in _layout.tsx
   })
 
   it('renders Stack.Protected with guard=false when not authenticated', () => {
@@ -90,7 +80,6 @@ describe('RootLayout auth guard (GUARD-01)', () => {
 
     render(<RootLayout />)
 
-    // Stack.Protected was called with guard=false
     expect(Stack.Protected).toHaveBeenCalled()
     const receivedProps = (Stack.Protected as jest.Mock).mock.calls[0]?.[0]
     expect(receivedProps).toMatchObject({ guard: false })
@@ -110,5 +99,16 @@ describe('RootLayout auth guard (GUARD-01)', () => {
     expect(Stack.Protected).toHaveBeenCalled()
     const receivedProps = (Stack.Protected as jest.Mock).mock.calls[0]?.[0]
     expect(receivedProps).toMatchObject({ guard: true })
+  })
+
+  it('renders ConfigErrorScreen when config is invalid', () => {
+    // Override the mock for this test
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { isConfigValid } = require('../../src/config')
+    ;(isConfigValid as jest.Mock).mockReturnValueOnce(false)
+
+    const { getByText } = render(<RootLayout />)
+
+    expect(getByText('Configuration Error')).toBeTruthy()
   })
 })

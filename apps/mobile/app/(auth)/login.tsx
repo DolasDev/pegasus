@@ -12,7 +12,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useAuth } from '../../src/context/AuthContext'
 import { AuthError, type TenantProvider } from '../../src/auth/types'
 import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
-import { authService } from '../_layout'
+import { getAuthService } from '../../src/auth/authServiceInstance'
 
 type LoginStep = 'email' | 'password' | 'providers'
 
@@ -80,7 +80,7 @@ export default function LoginScreen() {
     setEmailError(null)
 
     try {
-      const tenants = await authService.resolveTenants(email.trim())
+      const tenants = await getAuthService().resolveTenants(email.trim())
 
       if (tenants.length === 0) {
         setEmailError('Email not registered with Pegasus')
@@ -90,7 +90,7 @@ export default function LoginScreen() {
 
       if (tenants.length === 1) {
         const tenant = tenants[0]
-        await authService.selectTenant(email.trim(), tenant.tenantId)
+        await getAuthService().selectTenant(email.trim(), tenant.tenantId)
         advanceToAuth(
           tenant.tenantId,
           tenant.tenantName,
