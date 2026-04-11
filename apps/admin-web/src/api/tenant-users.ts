@@ -1,6 +1,4 @@
-import { adminFetch, ApiError } from './client'
-import { getAccessToken } from '@/auth/cognito'
-import { getConfig } from '@/config'
+import { adminFetch, adminFetchPaginated } from './client'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -27,21 +25,7 @@ export interface TenantUser {
 export async function listTenantUsers(
   tenantId: string,
 ): Promise<{ data: TenantUser[]; meta: { count: number } }> {
-  const token = getAccessToken()
-  const res = await fetch(`${getConfig().apiUrl}/api/admin/tenants/${tenantId}/users`, {
-    headers: {
-      'Content-Type': 'application/json',
-      'x-correlation-id': crypto.randomUUID(),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  })
-  const json = (await res.json()) as
-    | { data: TenantUser[]; meta: { count: number } }
-    | { error: string; code: string }
-  if ('error' in json) {
-    throw new ApiError(json.error, json.code, res.status)
-  }
-  return json
+  return adminFetchPaginated<TenantUser>(`/api/admin/tenants/${tenantId}/users`)
 }
 
 export async function inviteTenantUser(
