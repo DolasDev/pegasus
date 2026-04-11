@@ -136,8 +136,7 @@ eventsHandler.post(
       if (String(err).includes('Unique constraint')) {
         return c.json({ error: 'Event with this ID already exists', code: 'CONFLICT' }, 409)
       }
-      logger.error('POST /events: failed to create event', { error: String(err), tenantId })
-      return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+      throw err
     }
   },
 )
@@ -160,17 +159,12 @@ eventsHandler.get('/:eventType', requireScope('events:read'), async (c) => {
   const limit = Math.min(Number(c.req.query('limit') ?? '100'), 500)
   const offset = Number(c.req.query('offset') ?? '0')
 
-  try {
-    const rows = await listEventsByType(db, eventType, { limit, offset })
-    logger.info('Events listed', { eventType, count: rows.length, tenantId })
-    return c.json({
-      data: rows.map(toResponse),
-      meta: { count: rows.length, limit, offset },
-    })
-  } catch (err) {
-    logger.error('GET /events/:eventType: failed', { error: String(err), eventType, tenantId })
-    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-  }
+  const rows = await listEventsByType(db, eventType, { limit, offset })
+  logger.info('Events listed', { eventType, count: rows.length, tenantId })
+  return c.json({
+    data: rows.map(toResponse),
+    meta: { count: rows.length, limit, offset },
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -199,21 +193,16 @@ eventsHandler.patch(
     const eventId = c.req.param('eventId')
     const body = c.req.valid('json')
 
-    try {
-      const existing = await findEventById(db, eventId)
-      if (!existing) {
-        return c.json({ error: 'Event not found', code: 'NOT_FOUND' }, 404)
-      }
-      const row = await updateEvent(db, eventId, {
-        eventStatus: body.eventStatus,
-        ...(body.processedAt !== undefined ? { processedAt: new Date(body.processedAt) } : {}),
-      })
-      logger.info('Event updated', { id: eventId, eventStatus: body.eventStatus, tenantId })
-      return c.json({ data: toResponse(row) })
-    } catch (err) {
-      logger.error('PATCH /events/:eventId: failed', { error: String(err), eventId, tenantId })
-      return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+    const existing = await findEventById(db, eventId)
+    if (!existing) {
+      return c.json({ error: 'Event not found', code: 'NOT_FOUND' }, 404)
     }
+    const row = await updateEvent(db, eventId, {
+      eventStatus: body.eventStatus,
+      ...(body.processedAt !== undefined ? { processedAt: new Date(body.processedAt) } : {}),
+    })
+    logger.info('Event updated', { id: eventId, eventStatus: body.eventStatus, tenantId })
+    return c.json({ data: toResponse(row) })
   },
 )
 
@@ -233,16 +222,11 @@ eventsHandler.delete('/:eventId', requireScope('events:write'), async (c) => {
   const tenantId = c.get('tenantId')
   const eventId = c.req.param('eventId')
 
-  try {
-    const existing = await findEventById(db, eventId)
-    if (!existing) {
-      return c.json({ error: 'Event not found', code: 'NOT_FOUND' }, 404)
-    }
-    await deleteEvent(db, eventId)
-    logger.info('Event deleted', { id: eventId, eventType: existing.eventType, tenantId })
-    return new Response(null, { status: 204 })
-  } catch (err) {
-    logger.error('DELETE /events/:eventId: failed', { error: String(err), eventId, tenantId })
-    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+  const existing = await findEventById(db, eventId)
+  if (!existing) {
+    return c.json({ error: 'Event not found', code: 'NOT_FOUND' }, 404)
   }
+  await deleteEvent(db, eventId)
+  logger.info('Event deleted', { id: eventId, eventType: existing.eventType, tenantId })
+  return new Response(null, { status: 204 })
 })

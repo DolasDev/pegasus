@@ -99,13 +99,8 @@ usersHandler.get('/', async (c) => {
   const db = c.get('db')
   const repo = createUsersRepository(db)
 
-  try {
-    const users = await repo.listByTenant(c.get('tenantId'))
-    return c.json({ data: users.map(toResponse), meta: { count: users.length } })
-  } catch (err) {
-    logger.error('GET /users: failed to list users', { error: String(err) })
-    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-  }
+  const users = await repo.listByTenant(c.get('tenantId'))
+  return c.json({ data: users.map(toResponse), meta: { count: users.length } })
 })
 
 // ---------------------------------------------------------------------------
@@ -194,8 +189,7 @@ usersHandler.post(
           409,
         )
       }
-      logger.error('POST /users/invite: failed to create TenantUser', { error: String(err), email })
-      return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+      throw err
     }
   },
 )
@@ -229,13 +223,8 @@ usersHandler.patch(
       return c.json({ error: 'User not found', code: 'NOT_FOUND' }, 404)
     }
 
-    try {
-      const updated = await repo.updateRole(id, role)
-      return c.json({ data: toResponse(updated) })
-    } catch (err) {
-      logger.error('PATCH /users/:id: failed to update role', { error: String(err), id })
-      return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-    }
+    const updated = await repo.updateRole(id, role)
+    return c.json({ data: toResponse(updated) })
   },
 )
 
@@ -301,11 +290,6 @@ usersHandler.delete('/:id', async (c) => {
     }
   }
 
-  try {
-    const deactivated = await repo.deactivate(id)
-    return c.json({ data: toResponse(deactivated) })
-  } catch (err) {
-    logger.error('DELETE /users/:id: failed to deactivate TenantUser', { error: String(err), id })
-    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-  }
+  const deactivated = await repo.deactivate(id)
+  return c.json({ data: toResponse(deactivated) })
 })

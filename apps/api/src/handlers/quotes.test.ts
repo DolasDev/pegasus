@@ -9,7 +9,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
+import { DomainError } from '@pegasus/domain'
 import type { AppEnv } from '../types'
+import { registerTestErrorHandler } from '../test-helpers'
 import { quotesHandler } from './quotes'
 
 vi.mock('../repositories', () => ({
@@ -50,6 +52,7 @@ function post(body: unknown): RequestInit {
 
 function buildApp() {
   const app = new Hono<AppEnv>()
+  registerTestErrorHandler(app)
   app.use('*', async (c, next) => {
     c.set('tenantId', 'test-tenant-id')
     c.set('db', {} as unknown as PrismaClient)
@@ -124,6 +127,15 @@ describe('quotes handler', () => {
       const res = await buildApp().request('/', post(validCreateBody))
       expect(res.status).toBe(500)
       expect((await json(res)).code).toBe('INTERNAL_ERROR')
+    })
+
+    it('returns 422 with DomainError code when repository throws DomainError', async () => {
+      vi.mocked(createQuote).mockRejectedValue(new DomainError('Quote exceeds limit', 'QUOTE_LIMIT_EXCEEDED'))
+      const res = await buildApp().request('/', post(validCreateBody))
+      expect(res.status).toBe(422)
+      const body = await json(res)
+      expect(body.code).toBe('QUOTE_LIMIT_EXCEEDED')
+      expect(body.error).toBe('Quote exceeds limit')
     })
   })
 

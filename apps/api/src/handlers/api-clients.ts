@@ -109,15 +109,10 @@ apiClientsHandler.post(
     const { name, scopes } = c.req.valid('json')
     const repo = createApiClientRepository(c.get('db'))
 
-    try {
-      const { row, plainKey } = await repo.create(tenantId, name, scopes, userId)
-      logger.info('API client created', { id: row.id, keyPrefix: row.keyPrefix, tenantId })
-      const response: ApiClientCreateResponse = { ...toResponse(row), plainKey }
-      return c.json({ data: response }, 201)
-    } catch (err) {
-      logger.error('POST /api-clients: failed to create', { error: String(err) })
-      return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-    }
+    const { row, plainKey } = await repo.create(tenantId, name, scopes, userId)
+    logger.info('API client created', { id: row.id, keyPrefix: row.keyPrefix, tenantId })
+    const response: ApiClientCreateResponse = { ...toResponse(row), plainKey }
+    return c.json({ data: response }, 201)
   },
 )
 
@@ -132,13 +127,8 @@ apiClientsHandler.get('/', async (c) => {
   const tenantId = c.get('tenantId')
   const repo = createApiClientRepository(c.get('db'))
 
-  try {
-    const rows = await repo.listByTenant(tenantId)
-    return c.json({ data: rows.map(toResponse), meta: { count: rows.length } })
-  } catch (err) {
-    logger.error('GET /api-clients: failed to list', { error: String(err) })
-    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-  }
+  const rows = await repo.listByTenant(tenantId)
+  return c.json({ data: rows.map(toResponse), meta: { count: rows.length } })
 })
 
 // ---------------------------------------------------------------------------
@@ -154,14 +144,9 @@ apiClientsHandler.get('/:id', async (c) => {
   const id = c.req.param('id')
   const repo = createApiClientRepository(c.get('db'))
 
-  try {
-    const row = await repo.findById(id, tenantId)
-    if (!row) return c.json({ error: 'API client not found', code: 'NOT_FOUND' }, 404)
-    return c.json({ data: toResponse(row) })
-  } catch (err) {
-    logger.error('GET /api-clients/:id: failed', { error: String(err), id })
-    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-  }
+  const row = await repo.findById(id, tenantId)
+  if (!row) return c.json({ error: 'API client not found', code: 'NOT_FOUND' }, 404)
+  return c.json({ data: toResponse(row) })
 })
 
 // ---------------------------------------------------------------------------
@@ -193,13 +178,8 @@ apiClientsHandler.patch(
     if (patch.name !== undefined) cleanPatch.name = patch.name
     if (patch.scopes !== undefined) cleanPatch.scopes = patch.scopes
 
-    try {
-      const updated = await repo.update(id, tenantId, cleanPatch)
-      return c.json({ data: toResponse(updated) })
-    } catch (err) {
-      logger.error('PATCH /api-clients/:id: failed', { error: String(err), id })
-      return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-    }
+    const updated = await repo.update(id, tenantId, cleanPatch)
+    return c.json({ data: toResponse(updated) })
   },
 )
 
@@ -223,14 +203,9 @@ apiClientsHandler.post('/:id/revoke', async (c) => {
     return c.json({ error: 'API client is already revoked', code: 'CONFLICT' }, 409)
   }
 
-  try {
-    const revoked = await repo.revoke(id, tenantId)
-    logger.info('API client revoked', { id, tenantId })
-    return c.json({ data: toResponse(revoked) })
-  } catch (err) {
-    logger.error('POST /api-clients/:id/revoke: failed', { error: String(err), id })
-    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-  }
+  const revoked = await repo.revoke(id, tenantId)
+  logger.info('API client revoked', { id, tenantId })
+  return c.json({ data: toResponse(revoked) })
 })
 
 // ---------------------------------------------------------------------------
@@ -249,13 +224,8 @@ apiClientsHandler.post('/:id/rotate', async (c) => {
   const existing = await repo.findById(id, tenantId)
   if (!existing) return c.json({ error: 'API client not found', code: 'NOT_FOUND' }, 404)
 
-  try {
-    const { row, plainKey } = await repo.rotate(id, tenantId)
-    logger.info('API client rotated', { id: row.id, keyPrefix: row.keyPrefix, tenantId })
-    const response: ApiClientCreateResponse = { ...toResponse(row), plainKey }
-    return c.json({ data: response })
-  } catch (err) {
-    logger.error('POST /api-clients/:id/rotate: failed', { error: String(err), id })
-    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-  }
+  const { row, plainKey } = await repo.rotate(id, tenantId)
+  logger.info('API client rotated', { id: row.id, keyPrefix: row.keyPrefix, tenantId })
+  const response: ApiClientCreateResponse = { ...toResponse(row), plainKey }
+  return c.json({ data: response })
 })

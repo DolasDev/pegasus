@@ -34,30 +34,22 @@ inventoryHandler.post(
     const db = c.get('db')
     const tenantId = c.get('tenantId')
     const moveId = c.req.param('moveId')
-    try {
-      const move = await findMoveById(db, moveId)
-      if (!move) return c.json({ error: 'Move not found', code: 'NOT_FOUND' }, 404)
-      const { name } = c.req.valid('json')
-      const data = await createRoom(db, tenantId, { moveId, name })
-      return c.json({ data }, 201)
-    } catch {
-      return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-    }
+    const move = await findMoveById(db, moveId)
+    if (!move) return c.json({ error: 'Move not found', code: 'NOT_FOUND' }, 404)
+    const { name } = c.req.valid('json')
+    const data = await createRoom(db, tenantId, { moveId, name })
+    return c.json({ data }, 201)
   },
 )
 
 inventoryHandler.get('/:moveId/inventory', async (c) => {
   const db = c.get('db')
   const moveId = c.req.param('moveId')
-  try {
-    const move = await findMoveById(db, moveId)
-    if (!move) return c.json({ error: 'Move not found', code: 'NOT_FOUND' }, 404)
-    const rooms = await listRoomsByMoveId(db, moveId)
-    const data = rooms.map((room) => ({ ...room, totalValue: roomTotalValue(room) }))
-    return c.json({ data, meta: { count: rooms.length } })
-  } catch {
-    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-  }
+  const move = await findMoveById(db, moveId)
+  if (!move) return c.json({ error: 'Move not found', code: 'NOT_FOUND' }, 404)
+  const rooms = await listRoomsByMoveId(db, moveId)
+  const data = rooms.map((room) => ({ ...room, totalValue: roomTotalValue(room) }))
+  return c.json({ data, meta: { count: rooms.length } })
 })
 
 inventoryHandler.post(
@@ -71,24 +63,20 @@ inventoryHandler.post(
     const db = c.get('db')
     const moveId = c.req.param('moveId')
     const roomId = c.req.param('roomId')
-    try {
-      const move = await findMoveById(db, moveId)
-      if (!move) return c.json({ error: 'Move not found', code: 'NOT_FOUND' }, 404)
-      const body = c.req.valid('json')
-      const room = await findRoomById(db, roomId)
-      if (!room) return c.json({ error: 'Room not found', code: 'NOT_FOUND' }, 404)
-      const data = await addItem(db, roomId, {
-        name: body.name,
-        ...(body.description !== undefined ? { description: body.description } : {}),
-        ...(body.quantity !== undefined ? { quantity: body.quantity } : {}),
-        ...(body.declaredValue !== undefined ? { declaredValue: body.declaredValue } : {}),
-        ...(body.declaredValueCurrency !== undefined
-          ? { declaredValueCurrency: body.declaredValueCurrency }
-          : {}),
-      })
-      return c.json({ data }, 201)
-    } catch {
-      return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-    }
+    const move = await findMoveById(db, moveId)
+    if (!move) return c.json({ error: 'Move not found', code: 'NOT_FOUND' }, 404)
+    const body = c.req.valid('json')
+    const room = await findRoomById(db, roomId)
+    if (!room) return c.json({ error: 'Room not found', code: 'NOT_FOUND' }, 404)
+    const data = await addItem(db, roomId, {
+      name: body.name,
+      ...(body.description !== undefined ? { description: body.description } : {}),
+      ...(body.quantity !== undefined ? { quantity: body.quantity } : {}),
+      ...(body.declaredValue !== undefined ? { declaredValue: body.declaredValue } : {}),
+      ...(body.declaredValueCurrency !== undefined
+        ? { declaredValueCurrency: body.declaredValueCurrency }
+        : {}),
+    })
+    return c.json({ data }, 201)
   },
 )

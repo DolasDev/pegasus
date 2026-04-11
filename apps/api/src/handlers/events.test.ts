@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
 import type { AppEnv, ApiClientContext } from '../types'
+import { registerTestErrorHandler } from '../test-helpers'
 
 // ---------------------------------------------------------------------------
 // Mock m2mAppAuthMiddleware — replaced with a context-injecting stub
@@ -100,6 +101,7 @@ function buildApp(apiClient: ApiClientContext | null = mockApiClient) {
   })
 
   const app = new Hono<AppEnv>()
+  registerTestErrorHandler(app)
   app.route('/', eventsHandler)
   return app
 }
