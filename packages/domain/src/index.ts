@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 // Shared primitives
-export type { Brand, UserId, AddressId, Address, Money, DateRange } from './shared/types'
+export type { Brand, UserId, AddressId, Address, Money, DateRange, Serialized } from './shared/types'
 export {
   toUserId,
   toAddressId,

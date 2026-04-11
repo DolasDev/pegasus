@@ -114,3 +114,40 @@ export interface DateRange {
 export function dateRangesOverlap(a: DateRange, b: DateRange): boolean {
   return a.start < b.end && b.start < a.end
 }
+
+// ---------------------------------------------------------------------------
+// Wire-safe serialization type
+// ---------------------------------------------------------------------------
+
+/**
+ * Strips the phantom `__brand` tag from a branded type, returning the
+ * underlying primitive (`string`, `number`, etc.).
+ */
+type StripBrand<T> =
+  T extends string & { readonly __brand: string }
+    ? string
+    : T extends number & { readonly __brand: string }
+      ? number
+      : T
+
+/**
+ * Recursively maps a domain type to its JSON-serialized representation:
+ *  - `Date` → `string`
+ *  - `Brand<string, B>` → `string` (phantom brand stripped)
+ *  - Arrays and readonly arrays are traversed recursively
+ *  - Nested objects are traversed recursively
+ *  - Everything else is preserved as-is
+ *
+ * Use this in frontend query hooks to reflect what actually arrives over the
+ * wire from `JSON.stringify` / `JSON.parse`.
+ */
+export type Serialized<T> =
+  T extends Date
+    ? string
+    : T extends { readonly __brand: string }
+      ? StripBrand<T>
+      : T extends ReadonlyArray<infer U>
+        ? Serialized<U>[]
+        : T extends object
+          ? { [K in keyof T]: Serialized<T[K]> }
+          : T

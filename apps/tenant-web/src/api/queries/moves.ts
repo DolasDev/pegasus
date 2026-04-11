@@ -1,5 +1,5 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { Move, MoveStatus } from '@pegasus/domain'
+import type { Move, MoveStatus, Serialized } from '@pegasus/domain'
 import { apiFetch } from '@/api/client'
 
 // ---------------------------------------------------------------------------
@@ -16,13 +16,13 @@ export const moveKeys = {
 // ---------------------------------------------------------------------------
 export const movesQueryOptions = queryOptions({
   queryKey: moveKeys.list(),
-  queryFn: () => apiFetch<Move[]>('/api/v1/moves'),
+  queryFn: () => apiFetch<Serialized<Move>[]>('/api/v1/moves'),
 })
 
 export const moveDetailQueryOptions = (id: string) =>
   queryOptions({
     queryKey: moveKeys.detail(id),
-    queryFn: () => apiFetch<Move>(`/api/v1/moves/${id}`),
+    queryFn: () => apiFetch<Serialized<Move>>(`/api/v1/moves/${id}`),
     enabled: id !== '',
   })
 
@@ -40,7 +40,7 @@ export function useCreateMove() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: CreateMoveInput) =>
-      apiFetch<Move>('/api/v1/moves', { method: 'POST', body: JSON.stringify(input) }),
+      apiFetch<Serialized<Move>>('/api/v1/moves', { method: 'POST', body: JSON.stringify(input) }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: moveKeys.list() })
     },
@@ -51,7 +51,7 @@ export function useUpdateMoveStatus() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: MoveStatus }) =>
-      apiFetch<Move>(`/api/v1/moves/${id}`, { method: 'PUT', body: JSON.stringify({ status }) }),
+      apiFetch<Serialized<Move>>(`/api/v1/moves/${id}`, { method: 'PUT', body: JSON.stringify({ status }) }),
     onSuccess: (_, { id }) => {
       void qc.invalidateQueries({ queryKey: moveKeys.detail(id) })
       void qc.invalidateQueries({ queryKey: moveKeys.list() })
@@ -63,7 +63,7 @@ export function useAssignCrew() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ moveId, crewMemberId }: { moveId: string; crewMemberId: string }) =>
-      apiFetch<Move>(`/api/v1/moves/${moveId}/crew`, {
+      apiFetch<Serialized<Move>>(`/api/v1/moves/${moveId}/crew`, {
         method: 'POST',
         body: JSON.stringify({ crewMemberId }),
       }),

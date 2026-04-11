@@ -65,9 +65,7 @@ export function QuoteDetailPage() {
             </p>
             <p>
               <span className="text-muted-foreground">Valid Until: </span>
-              {quote.validUntil instanceof Date
-                ? quote.validUntil.toLocaleDateString()
-                : String(quote.validUntil).slice(0, 10)}
+              {quote.validUntil.slice(0, 10)}
             </p>
           </CardContent>
         </Card>

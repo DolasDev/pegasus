@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import type { Invoice } from '@pegasus/domain'
+import type { Invoice, Serialized } from '@pegasus/domain'
 import { PageHeader } from '@/components/PageHeader'
 import { DataTable, type Column } from '@/components/DataTable'
 import { InvoiceStatusBadge } from '@/components/StatusBadge'
 import { EmptyState } from '@/components/EmptyState'
 import { invoicesQueryOptions } from '@/api/queries/billing'
 
-const columns: Column<Invoice>[] = [
+const columns: Column<Serialized<Invoice>>[] = [
   { key: 'id', header: 'ID', sortable: true },
   { key: 'moveId', header: 'Move ID', sortable: true },
   {

@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import type { Quote } from '@pegasus/domain'
+import type { Quote, Serialized } from '@pegasus/domain'
 import { PageHeader } from '@/components/PageHeader'
 import { DataTable, type Column } from '@/components/DataTable'
 import { QuoteStatusBadge } from '@/components/StatusBadge'
 import { EmptyState } from '@/components/EmptyState'
 import { quotesQueryOptions } from '@/api/queries/quotes'
 
-const columns: Column<Quote>[] = [
+const columns: Column<Serialized<Quote>>[] = [
   { key: 'id', header: 'ID', sortable: true },
   { key: 'moveId', header: 'Move ID', sortable: true },
   {
@@ -25,10 +25,7 @@ const columns: Column<Quote>[] = [
   {
     key: 'validUntil',
     header: 'Valid Until',
-    cell: (row) =>
-      row.validUntil instanceof Date
-        ? row.validUntil.toLocaleDateString()
-        : String(row.validUntil).slice(0, 10),
+    cell: (row) => row.validUntil.slice(0, 10),
     sortable: true,
   },
 ]

@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import type { Move } from '@pegasus/domain'
+import type { Move, Serialized } from '@pegasus/domain'
 import { PageHeader } from '@/components/PageHeader'
 import { DataTable, type Column } from '@/components/DataTable'
 import { MoveStatusBadge } from '@/components/StatusBadge'
 import { EmptyState } from '@/components/EmptyState'
 import { movesQueryOptions } from '@/api/queries/moves'
 
-const columns: Column<Move>[] = [
+const columns: Column<Serialized<Move>>[] = [
   { key: 'id', header: 'ID', sortable: true },
   {
     key: 'status',
@@ -16,10 +16,7 @@ const columns: Column<Move>[] = [
   {
     key: 'scheduledDate',
     header: 'Scheduled',
-    cell: (row) =>
-      row.scheduledDate instanceof Date
-        ? row.scheduledDate.toLocaleDateString()
-        : String(row.scheduledDate).slice(0, 10),
+    cell: (row) => row.scheduledDate.slice(0, 10),
     sortable: true,
   },
   {
