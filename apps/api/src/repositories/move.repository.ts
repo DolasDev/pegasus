@@ -172,6 +172,11 @@ export async function listMoves(
   return rows.map(mapMove)
 }
 
+/** Returns the total number of moves (ignoring pagination). */
+export async function countMoves(db: PrismaClient): Promise<number> {
+  return db.move.count()
+}
+
 /** Assigns a crew member to a move. Idempotent — duplicate assignments are ignored. */
 export async function assignCrewMember(
   db: PrismaClient,

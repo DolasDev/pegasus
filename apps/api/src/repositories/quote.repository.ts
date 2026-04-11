@@ -118,6 +118,11 @@ export async function listQuotes(
   return rows.map(mapQuote)
 }
 
+/** Returns the total number of quotes (ignoring pagination). */
+export async function countQuotes(db: PrismaClient): Promise<number> {
+  return db.quote.count()
+}
+
 export async function findAcceptedQuoteByMoveId(
   db: PrismaClient,
   moveId: string,

@@ -90,6 +90,11 @@ export async function listInvoices(
   return rows.map(mapInvoice)
 }
 
+/** Returns the total number of invoices (ignoring pagination). */
+export async function countInvoices(db: PrismaClient): Promise<number> {
+  return db.invoice.count()
+}
+
 export async function findInvoiceByMoveId(
   db: PrismaClient,
   moveId: string,

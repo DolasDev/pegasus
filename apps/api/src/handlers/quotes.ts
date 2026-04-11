@@ -7,7 +7,14 @@ import { validator } from 'hono/validator'
 import { z } from 'zod'
 import { canFinalizeQuote } from '@pegasus/domain'
 import type { AppEnv } from '../types'
-import { createQuote, findQuoteById, listQuotes, addLineItem, finalizeQuote } from '../repositories'
+import {
+  createQuote,
+  findQuoteById,
+  listQuotes,
+  countQuotes,
+  addLineItem,
+  finalizeQuote,
+} from '../repositories'
 
 const LineItemSchema = z.object({
   description: z.string().min(1),
@@ -66,8 +73,8 @@ quotesHandler.get('/', async (c) => {
   const db = c.get('db')
   const limit = Math.min(Number(c.req.query('limit') ?? '50'), 100)
   const offset = Number(c.req.query('offset') ?? '0')
-  const data = await listQuotes(db, { limit, offset })
-  return c.json({ data, meta: { count: data.length, limit, offset } })
+  const [data, total] = await Promise.all([listQuotes(db, { limit, offset }), countQuotes(db)])
+  return c.json({ data, meta: { total, count: data.length, limit, offset } })
 })
 
 quotesHandler.get('/:id', async (c) => {

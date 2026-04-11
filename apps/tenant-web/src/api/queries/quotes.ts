@@ -1,6 +1,6 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Quote, Serialized } from '@pegasus/domain'
-import { apiFetch } from '@/api/client'
+import { apiFetch, apiFetchPaginated } from '@/api/client'
 
 export const quoteKeys = {
   all: ['quotes'] as const,
@@ -11,7 +11,7 @@ export const quoteKeys = {
 
 export const quotesQueryOptions = queryOptions({
   queryKey: quoteKeys.list(),
-  queryFn: () => apiFetch<Serialized<Quote>[]>('/api/v1/quotes'),
+  queryFn: () => apiFetchPaginated<Serialized<Quote>>('/api/v1/quotes'),
 })
 
 export const quoteDetailQueryOptions = (id: string) =>

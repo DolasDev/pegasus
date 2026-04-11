@@ -21,6 +21,7 @@ vi.mock('../repositories', () => ({
   findInvoiceByMoveId: vi.fn(),
   findInvoiceById: vi.fn(),
   listInvoices: vi.fn(),
+  countInvoices: vi.fn(),
   createInvoice: vi.fn(),
   recordPayment: vi.fn(),
 }))
@@ -38,6 +39,7 @@ import {
   findInvoiceByMoveId,
   findInvoiceById,
   listInvoices,
+  countInvoices,
   createInvoice,
   recordPayment,
 } from '../repositories'
@@ -165,11 +167,16 @@ describe('billing handler', () => {
   // ── GET / ─────────────────────────────────────────────────────────────────
 
   describe('GET /', () => {
-    it('returns 200 with invoice list', async () => {
+    it('returns 200 with invoice list and meta.total', async () => {
       vi.mocked(listInvoices).mockResolvedValue([mockInvoice] as never)
+      vi.mocked(countInvoices).mockResolvedValue(8 as never)
       const res = await buildApp().request('/')
       expect(res.status).toBe(200)
-      expect((await json(res)).data).toBeTruthy()
+      const body = await json(res)
+      expect((body.data as unknown[]).length).toBe(1)
+      const meta = body.meta as { total: number; count: number; limit: number; offset: number }
+      expect(meta.total).toBe(8)
+      expect(meta.count).toBe(1)
     })
   })
 

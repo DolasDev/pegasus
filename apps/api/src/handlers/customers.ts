@@ -11,6 +11,7 @@ import {
   createCustomer,
   findCustomerById,
   listCustomers,
+  countCustomers,
   updateCustomer,
   deleteCustomer,
   createContact,
@@ -83,8 +84,11 @@ customersHandler.get('/', async (c) => {
   const db = c.get('db')
   const limit = Math.min(Number(c.req.query('limit') ?? '50'), 100)
   const offset = Number(c.req.query('offset') ?? '0')
-  const data = await listCustomers(db, { limit, offset })
-  return c.json({ data, meta: { count: data.length, limit, offset } })
+  const [data, total] = await Promise.all([
+    listCustomers(db, { limit, offset }),
+    countCustomers(db),
+  ])
+  return c.json({ data, meta: { total, count: data.length, limit, offset } })
 })
 
 customersHandler.get('/:id', async (c) => {

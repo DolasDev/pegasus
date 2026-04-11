@@ -18,6 +18,7 @@ vi.mock('../repositories', () => ({
   createMove: vi.fn(),
   findMoveById: vi.fn(),
   listMoves: vi.fn(),
+  countMoves: vi.fn(),
   updateMoveStatus: vi.fn(),
   assignCrewMember: vi.fn(),
   assignVehicle: vi.fn(),
@@ -35,6 +36,7 @@ import {
   createMove,
   findMoveById,
   listMoves,
+  countMoves,
   updateMoveStatus,
   assignCrewMember,
   assignVehicle,
@@ -169,11 +171,16 @@ describe('moves handler', () => {
   // ── GET / ─────────────────────────────────────────────────────────────────
 
   describe('GET /', () => {
-    it('returns 200 with move list', async () => {
+    it('returns 200 with move list and meta.total', async () => {
       vi.mocked(listMoves).mockResolvedValue([mockMove] as never)
+      vi.mocked(countMoves).mockResolvedValue(25 as never)
       const res = await buildApp().request('/')
       expect(res.status).toBe(200)
-      expect((await json(res)).data).toBeTruthy()
+      const body = await json(res)
+      expect((body.data as unknown[]).length).toBe(1)
+      const meta = body.meta as { total: number; count: number; limit: number; offset: number }
+      expect(meta.total).toBe(25)
+      expect(meta.count).toBe(1)
     })
 
     it('returns 500 INTERNAL_ERROR on DB error', async () => {

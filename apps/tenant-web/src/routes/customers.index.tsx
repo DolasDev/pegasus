@@ -18,7 +18,8 @@ const columns: Column<Serialized<Customer>>[] = [
 ]
 
 export function CustomersPage() {
-  const { data: customers = [], isLoading } = useQuery(customersQueryOptions)
+  const { data: result, isLoading } = useQuery(customersQueryOptions)
+  const customers = result?.data ?? []
 
   if (isLoading) {
     return (

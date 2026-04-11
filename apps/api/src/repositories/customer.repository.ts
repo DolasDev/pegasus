@@ -133,6 +133,11 @@ export async function listCustomers(
   return rows.map(mapCustomer)
 }
 
+/** Returns the total number of customers (ignoring pagination). */
+export async function countCustomers(db: PrismaClient): Promise<number> {
+  return db.customer.count()
+}
+
 /** Deletes a customer and all cascading records. */
 export async function deleteCustomer(db: PrismaClient, id: string): Promise<void> {
   await db.customer.delete({ where: { id } })

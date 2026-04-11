@@ -7,7 +7,14 @@ import { validator } from 'hono/validator'
 import { z } from 'zod'
 import { roomTotalValue } from '@pegasus/domain'
 import type { AppEnv } from '../types'
-import { findMoveById, createRoom, findRoomById, listRoomsByMoveId, addItem } from '../repositories'
+import {
+  findMoveById,
+  createRoom,
+  findRoomById,
+  listRoomsByMoveId,
+  countRoomsByMoveId,
+  addItem,
+} from '../repositories'
 
 const CreateRoomBody = z.object({
   name: z.string().min(1),
@@ -47,9 +54,12 @@ inventoryHandler.get('/:moveId/inventory', async (c) => {
   const moveId = c.req.param('moveId')
   const move = await findMoveById(db, moveId)
   if (!move) return c.json({ error: 'Move not found', code: 'NOT_FOUND' }, 404)
-  const rooms = await listRoomsByMoveId(db, moveId)
+  const [rooms, total] = await Promise.all([
+    listRoomsByMoveId(db, moveId),
+    countRoomsByMoveId(db, moveId),
+  ])
   const data = rooms.map((room) => ({ ...room, totalValue: roomTotalValue(room) }))
-  return c.json({ data, meta: { count: rooms.length } })
+  return c.json({ data, meta: { total, count: rooms.length } })
 })
 
 inventoryHandler.post(

@@ -31,7 +31,8 @@ const columns: Column<Serialized<Quote>>[] = [
 ]
 
 export function QuotesPage() {
-  const { data: quotes = [], isLoading } = useQuery(quotesQueryOptions)
+  const { data: result, isLoading } = useQuery(quotesQueryOptions)
+  const quotes = result?.data ?? []
 
   if (isLoading) {
     return (

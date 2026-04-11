@@ -13,6 +13,7 @@ import {
   findInvoiceByMoveId,
   findInvoiceById,
   listInvoices,
+  countInvoices,
   createInvoice,
   recordPayment,
 } from '../repositories'
@@ -78,8 +79,11 @@ billingHandler.get('/', async (c) => {
   const db = c.get('db')
   const limit = Math.min(Number(c.req.query('limit') ?? '50'), 100)
   const offset = Number(c.req.query('offset') ?? '0')
-  const data = await listInvoices(db, { limit, offset })
-  return c.json({ data, meta: { count: data.length, limit, offset } })
+  const [data, total] = await Promise.all([
+    listInvoices(db, { limit, offset }),
+    countInvoices(db),
+  ])
+  return c.json({ data, meta: { total, count: data.length, limit, offset } })
 })
 
 billingHandler.get('/:id', async (c) => {

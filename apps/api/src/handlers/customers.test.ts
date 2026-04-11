@@ -18,6 +18,7 @@ vi.mock('../repositories', () => ({
   createCustomer: vi.fn(),
   findCustomerById: vi.fn(),
   listCustomers: vi.fn(),
+  countCustomers: vi.fn(),
   updateCustomer: vi.fn(),
   deleteCustomer: vi.fn(),
   createContact: vi.fn(),
@@ -35,6 +36,7 @@ import {
   createCustomer,
   findCustomerById,
   listCustomers,
+  countCustomers,
   updateCustomer,
   deleteCustomer,
   createContact,
@@ -158,12 +160,16 @@ describe('customers handler', () => {
   // ── GET / ─────────────────────────────────────────────────────────────────
 
   describe('GET /', () => {
-    it('returns 200 with customer list', async () => {
+    it('returns 200 with customer list and meta.total', async () => {
       vi.mocked(listCustomers).mockResolvedValue([mockCustomer] as never)
+      vi.mocked(countCustomers).mockResolvedValue(10 as never)
       const res = await buildApp().request('/')
       expect(res.status).toBe(200)
       const body = await json(res)
       expect((body.data as unknown[]).length).toBe(1)
+      const meta = body.meta as { total: number; count: number; limit: number; offset: number }
+      expect(meta.total).toBe(10)
+      expect(meta.count).toBe(1)
     })
 
     it('returns 500 INTERNAL_ERROR on DB error', async () => {

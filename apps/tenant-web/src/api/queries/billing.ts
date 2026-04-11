@@ -1,6 +1,6 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Invoice, Serialized } from '@pegasus/domain'
-import { apiFetch } from '@/api/client'
+import { apiFetch, apiFetchPaginated } from '@/api/client'
 
 export const invoiceKeys = {
   all: ['invoices'] as const,
@@ -10,7 +10,7 @@ export const invoiceKeys = {
 
 export const invoicesQueryOptions = queryOptions({
   queryKey: invoiceKeys.list(),
-  queryFn: () => apiFetch<Serialized<Invoice>[]>('/api/v1/invoices'),
+  queryFn: () => apiFetchPaginated<Serialized<Invoice>>('/api/v1/invoices'),
 })
 
 export const invoiceDetailQueryOptions = (id: string) =>

@@ -71,6 +71,7 @@ vi.mock('./repositories', () => ({
   findCustomerById: vi.fn(),
   findCustomerByEmail: vi.fn(),
   listCustomers: vi.fn(),
+  countCustomers: vi.fn(),
   updateCustomer: vi.fn(),
   deleteCustomer: vi.fn(),
   createContact: vi.fn(),
@@ -79,6 +80,7 @@ vi.mock('./repositories', () => ({
   createMove: vi.fn(),
   findMoveById: vi.fn(),
   listMoves: vi.fn(),
+  countMoves: vi.fn(),
   listMovesByStatus: vi.fn(),
   updateMoveStatus: vi.fn(),
   assignCrewMember: vi.fn(),
@@ -87,6 +89,8 @@ vi.mock('./repositories', () => ({
   // quote
   createQuote: vi.fn(),
   findQuoteById: vi.fn(),
+  listQuotes: vi.fn(),
+  countQuotes: vi.fn(),
   addLineItem: vi.fn(),
   finalizeQuote: vi.fn(),
   findAcceptedQuoteByMoveId: vi.fn(),
@@ -94,10 +98,13 @@ vi.mock('./repositories', () => ({
   createRoom: vi.fn(),
   findRoomById: vi.fn(),
   listRoomsByMoveId: vi.fn(),
+  countRoomsByMoveId: vi.fn(),
   addItem: vi.fn(),
   // billing
   findInvoiceByMoveId: vi.fn(),
   findInvoiceById: vi.fn(),
+  listInvoices: vi.fn(),
+  countInvoices: vi.fn(),
   createInvoice: vi.fn(),
   recordPayment: vi.fn(),
 }))

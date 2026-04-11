@@ -18,6 +18,7 @@ vi.mock('../repositories', () => ({
   createQuote: vi.fn(),
   findQuoteById: vi.fn(),
   listQuotes: vi.fn(),
+  countQuotes: vi.fn(),
   addLineItem: vi.fn(),
   finalizeQuote: vi.fn(),
 }))
@@ -29,7 +30,14 @@ vi.mock('@pegasus/domain', async (importOriginal) => {
   return { ...actual, canFinalizeQuote: vi.fn() }
 })
 
-import { createQuote, findQuoteById, listQuotes, addLineItem, finalizeQuote } from '../repositories'
+import {
+  createQuote,
+  findQuoteById,
+  listQuotes,
+  countQuotes,
+  addLineItem,
+  finalizeQuote,
+} from '../repositories'
 import { canFinalizeQuote } from '@pegasus/domain'
 
 // ---------------------------------------------------------------------------
@@ -142,12 +150,16 @@ describe('quotes handler', () => {
   // ── GET / ─────────────────────────────────────────────────────────────────
 
   describe('GET /', () => {
-    it('returns 200 with quote list', async () => {
+    it('returns 200 with quote list and meta.total', async () => {
       vi.mocked(listQuotes).mockResolvedValue([mockDraftQuote] as never)
+      vi.mocked(countQuotes).mockResolvedValue(15 as never)
       const res = await buildApp().request('/')
       expect(res.status).toBe(200)
       const body = await json(res)
       expect((body.data as unknown[]).length).toBe(1)
+      const meta = body.meta as { total: number; count: number; limit: number; offset: number }
+      expect(meta.total).toBe(15)
+      expect(meta.count).toBe(1)
     })
   })
 
