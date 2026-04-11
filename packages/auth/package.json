@@ -1,0 +1,16 @@
+{
+  "name": "@pegasus/auth",
+  "version": "0.1.0",
+  "description": "Shared PKCE helpers and Cognito REST client for Pegasus apps.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "*",
+    "vitest": "^4.0.0"
+  },
+  "private": true
+}

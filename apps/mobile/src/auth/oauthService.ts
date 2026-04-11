@@ -1,5 +1,6 @@
 import * as WebBrowser from 'expo-web-browser'
 import * as Crypto from 'expo-crypto'
+import { base64UrlEncode } from '@pegasus/auth'
 import { AuthError } from './types'
 
 export type OAuthConfig = {
@@ -129,11 +130,4 @@ async function exchangeCodeForTokens(
   }
 
   return res.json() as Promise<TokenResponse>
-}
-
-function base64UrlEncode(bytes: Uint8Array): string {
-  // Convert bytes to standard base64, then to base64url
-  const binary = String.fromCharCode(...bytes)
-  const base64 = btoa(binary)
-  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }

@@ -1,10 +1,13 @@
 import { getConfig } from '../config'
+import { cognitoApiRequest, CognitoError } from '@pegasus/auth'
 
 // ---------------------------------------------------------------------------
 // Cognito — configuration and Hosted UI helpers for the tenant web app.
 //
 // All configuration is read from the runtime /config.json (loaded at boot).
 // ---------------------------------------------------------------------------
+
+export { CognitoError }
 
 export type CognitoConfig = {
   region: string
@@ -116,41 +119,6 @@ export async function exchangeCodeForTokens(
 // configured yet. The tenant admin uses this path to log in and set up SSO,
 // after which regular users can authenticate via the PKCE/IdP flow above.
 // ---------------------------------------------------------------------------
-
-/** Typed error carrying the Cognito error code (e.g. NotAuthorizedException). */
-export class CognitoError extends Error {
-  constructor(
-    public readonly code: string,
-    message: string,
-  ) {
-    super(message)
-    this.name = code
-  }
-}
-
-async function cognitoApiRequest(
-  region: string,
-  target: string,
-  body: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  const res = await fetch(`https://cognito-idp.${region}.amazonaws.com/`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-amz-json-1.1',
-      'X-Amz-Target': `AWSCognitoIdentityProviderService.${target}`,
-    },
-    body: JSON.stringify(body),
-  })
-
-  const json = (await res.json()) as Record<string, unknown>
-  if (!res.ok) {
-    throw new CognitoError(
-      (json['__type'] as string | undefined) ?? 'UnknownError',
-      (json['message'] as string | undefined) ?? 'Authentication failed',
-    )
-  }
-  return json
-}
 
 export type SignInResult =
   | { type: 'success'; idToken: string }

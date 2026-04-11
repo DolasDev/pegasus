@@ -1,3 +1,5 @@
+export { type Session } from '@pegasus/auth'
+
 /** Typed error carrying the Cognito error code (e.g. NotAuthorizedException). */
 export class AuthError extends Error {
   constructor(
@@ -7,19 +9,6 @@ export class AuthError extends Error {
     super(message)
     this.name = code
   }
-}
-
-/**
- * Server-validated session returned from authService.authenticate.
- * Raw Cognito ID token is NOT included — it is discarded after validate-token succeeds.
- */
-export type Session = {
-  sub: string
-  tenantId: string
-  role: string
-  email: string
-  expiresAt: number
-  ssoProvider: string | null
 }
 
 export type ProviderType = 'oidc' | 'saml'
