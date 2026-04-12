@@ -17,8 +17,8 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^4.0.0",
-    "aws-cdk": "^2.160.0",
+    "aws-cdk": "^2.1118.0",
     "typescript": "*",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.4"
   }
 }
