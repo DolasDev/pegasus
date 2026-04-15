@@ -7,6 +7,7 @@ import { AdminFrontendStack } from '../lib/stacks/admin-frontend-stack'
 import { FrontendAssetsStack } from '../lib/stacks/frontend-assets-stack'
 import { AdminFrontendAssetsStack } from '../lib/stacks/admin-frontend-assets-stack'
 import { MonitoringStack } from '../lib/stacks/monitoring-stack'
+import { DocumentsStack } from '../lib/stacks/documents-stack'
 
 const app = new cdk.App()
 
@@ -44,8 +45,18 @@ const cognitoStack = new CognitoStack(app, 'PegasusDev-CognitoStack', {
   adminDistributionDomain: adminFrontendStack.distribution.distributionDomainName,
 })
 
+// ── DocumentsStack ────────────────────────────────────────────────────────────
+// Provisions the S3 bucket used by the document management system. Deployed
+// before ApiStack so the bucket reference can be injected into the Lambda.
+
+const documentsStack = new DocumentsStack(app, 'PegasusDev-DocumentsStack', {
+  env: devEnv,
+  stackName: 'pegasus-dev-documents',
+  description: 'Pegasus dev — S3 bucket for document attachments',
+})
+
 // ── ApiStack ──────────────────────────────────────────────────────────────────
-// CDK deployment order: CognitoStack → ApiStack.
+// CDK deployment order: CognitoStack + DocumentsStack → ApiStack.
 
 const apiStack = new ApiStack(app, 'PegasusDev-ApiStack', {
   env: devEnv,
@@ -56,6 +67,7 @@ const apiStack = new ApiStack(app, 'PegasusDev-ApiStack', {
   cognitoUserPoolId: cognitoStack.userPool.userPoolId,
   cognitoMobileClientId: cognitoStack.mobileAppClient.userPoolClientId,
   cognitoHostedUiDomain: cognitoStack.hostedUiBaseUrl,
+  documentsBucket: documentsStack.bucket,
 })
 
 // ── MonitoringStack ───────────────────────────────────────────────────────────

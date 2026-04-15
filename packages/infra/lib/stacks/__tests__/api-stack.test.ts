@@ -1,11 +1,27 @@
 import { describe, it } from 'vitest'
 import * as cdk from 'aws-cdk-lib'
 import { Template, Match } from 'aws-cdk-lib/assertions'
+import * as s3 from 'aws-cdk-lib/aws-s3'
 import { ApiStack } from '../api-stack'
 
 function synthApiStack() {
   const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
   const apiStack = new ApiStack(app, 'TestApi')
+  return Template.fromStack(apiStack)
+}
+
+function synthApiStackWithDocuments() {
+  const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+  // Documents bucket lives in a sibling stack so the IAM policy edges become
+  // cross-stack references — exactly how production wires DocumentsStack.
+  const docsStack = new cdk.Stack(app, 'TestDocs', {
+    env: { account: '111111111111', region: 'us-east-1' },
+  })
+  const bucket = new s3.Bucket(docsStack, 'DocsBucket', { bucketName: 'pegasus-test-docs' })
+  const apiStack = new ApiStack(app, 'TestApiWithDocs', {
+    env: { account: '111111111111', region: 'us-east-1' },
+    documentsBucket: bucket,
+  })
   return Template.fromStack(apiStack)
 }
 
@@ -148,6 +164,57 @@ describe('ApiStack — CloudWatch log group', () => {
     const template = synthApiStack()
     template.hasResourceProperties('AWS::Logs::LogGroup', {
       RetentionInDays: 30,
+    })
+  })
+})
+
+describe('ApiStack — Documents bucket wiring', () => {
+  it('injects DOCUMENTS_BUCKET_NAME env var when a bucket is provided', () => {
+    const template = synthApiStackWithDocuments()
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.objectLike({
+          DOCUMENTS_BUCKET_NAME: Match.anyValue(),
+        }),
+      },
+    })
+  })
+
+  it('grants the Lambda role s3:GetObject and s3:PutObject on the documents bucket', () => {
+    const template = synthApiStackWithDocuments()
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith(['s3:GetObject*', 's3:PutObject']),
+            Effect: 'Allow',
+          }),
+        ]),
+      },
+    })
+  })
+
+  it('grants s3:DeleteObject* on the documents bucket', () => {
+    const template = synthApiStackWithDocuments()
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 's3:DeleteObject*',
+            Effect: 'Allow',
+          }),
+        ]),
+      },
+    })
+  })
+
+  it('does not inject DOCUMENTS_BUCKET_NAME when no bucket is provided', () => {
+    const template = synthApiStack()
+    // Confirm the env var key is absent from the Lambda function properties.
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.not(Match.objectLike({ DOCUMENTS_BUCKET_NAME: Match.anyValue() })),
+      },
     })
   })
 })

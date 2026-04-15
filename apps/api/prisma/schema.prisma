@@ -137,6 +137,21 @@ enum TenantPlan {
   @@schema("public")
 }
 
+/// Lifecycle status of a stored document. The upload state machine is:
+/// PENDING_UPLOAD → ACTIVE (via finalize) → ARCHIVED or PENDING_DELETION.
+enum DocumentStatus {
+  /// Row created and presigned PUT issued; file not yet confirmed in S3.
+  PENDING_UPLOAD
+  /// Upload finalized and visible to list endpoints.
+  ACTIVE
+  /// Hidden from default lists, still retrievable.
+  ARCHIVED
+  /// Soft-deleted; S3 object still present, purged by background worker.
+  PENDING_DELETION
+
+  @@schema("public")
+}
+
 // ---------------------------------------------------------------------------
 // Multi-tenancy — Tenant is the root of every bounded context.
 // Each moving-company instance is one Tenant. The slug is the subdomain
@@ -204,6 +219,7 @@ model Tenant {
   users          TenantUser[]
   apiClients     ApiClient[]
   pegasusEvents  PegasusEvent[]
+  documents      Document[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -904,6 +920,53 @@ model PegasusEvent {
   @@index([tenantId, eventStatus])
   @@schema("public")
   @@map("pegasus_events")
+}
+
+// ---------------------------------------------------------------------------
+// Document storage — polymorphic attachments for any tenant entity.
+//
+// The row is created with status PENDING_UPLOAD when a presigned PUT URL is
+// issued. After the client confirms the upload, a finalize call promotes it
+// to ACTIVE. S3 coordinates (bucket/key) are infrastructure and never leak
+// past the repository layer.
+// ---------------------------------------------------------------------------
+
+model Document {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// Polymorphic back-reference. Not a FK — entity tables live in many
+  /// bounded contexts. Tenant scoping plus the composite index keeps lookups
+  /// cheap.
+  entityType String @map("entity_type")
+  entityId   String @map("entity_id")
+
+  /// Free-form classification (e.g. "contract", "photo", "bol", "receipt").
+  documentType String  @map("document_type")
+  category     String?
+
+  s3Bucket  String @map("s3_bucket")
+  s3Key     String @map("s3_key")
+  filename  String
+  mimeType  String @map("mime_type")
+  sizeBytes Int    @map("size_bytes")
+
+  status     DocumentStatus @default(PENDING_UPLOAD)
+  /// TenantUser.id of the uploader.
+  uploadedBy String         @map("uploaded_by")
+  expiresAt  DateTime?      @map("expires_at")
+  deletedAt  DateTime?      @map("deleted_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, documentType])
+  @@index([tenantId, status])
+  @@schema("public")
+  @@map("documents")
 }
 
 /// Platform-level feature flags for gradual rollout of new capabilities.

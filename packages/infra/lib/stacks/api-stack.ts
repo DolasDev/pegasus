@@ -7,6 +7,7 @@ import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs'
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2'
 import * as apigwv2i from 'aws-cdk-lib/aws-apigatewayv2-integrations'
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
+import type * as s3 from 'aws-cdk-lib/aws-s3'
 import { type Construct } from 'constructs'
 
 export interface ApiStackProps extends cdk.StackProps {
@@ -55,6 +56,14 @@ export interface ApiStackProps extends cdk.StackProps {
    * Provided by CognitoStack.hostedUiBaseUrl.
    */
   readonly cognitoHostedUiDomain?: string
+
+  /**
+   * S3 bucket for document uploads. Provided by DocumentsStack.
+   * When supplied, the API Lambda is granted ReadWrite + Delete on the
+   * bucket and receives the bucket name via the DOCUMENTS_BUCKET_NAME env var.
+   * Optional so the stack can still be synthesised in isolation.
+   */
+  readonly documentsBucket?: s3.IBucket
 }
 
 export class ApiStack extends cdk.Stack {
@@ -134,6 +143,18 @@ export class ApiStack extends cdk.Stack {
     // IAM: sm:GetSecretValue to read the Neon connection string
     // ---------------------------------------------------------------------------
     dbSecret.grantRead(apiFunction)
+
+    // ---------------------------------------------------------------------------
+    // S3 documents bucket — grant scoped read/write/delete and inject the
+    // bucket name as an environment variable. grantReadWrite covers
+    // GetObject + PutObject; grantDelete is added explicitly so the future
+    // hard-delete worker can reuse the same role pattern.
+    // ---------------------------------------------------------------------------
+    if (props.documentsBucket) {
+      props.documentsBucket.grantReadWrite(apiFunction)
+      props.documentsBucket.grantDelete(apiFunction)
+      apiFunction.addEnvironment('DOCUMENTS_BUCKET_NAME', props.documentsBucket.bucketName)
+    }
 
     // ---------------------------------------------------------------------------
     // IAM: cognito-idp:AdminCreateUser to provision tenant admin accounts

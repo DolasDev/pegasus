@@ -30,6 +30,7 @@ export const TENANT_SCOPED_MODELS = new Set([
   'RateTable',
   'TenantSsoProvider',
   'PegasusEvent',
+  'Document',
 ])
 
 /**
