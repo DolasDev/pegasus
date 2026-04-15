@@ -7,7 +7,7 @@ import { OrderService } from '../../src/services/orderService'
 import { type TruckingOrder } from '../../src/types'
 import { colors, fontSize, spacing } from '../../src/theme/colors'
 
-export default function DashboardScreen() {
+export default function PaperworkScreen() {
   const [orders, setOrders] = useState<TruckingOrder[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)

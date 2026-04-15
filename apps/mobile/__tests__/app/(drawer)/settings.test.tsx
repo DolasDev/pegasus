@@ -1,7 +1,7 @@
 import React from 'react'
 import { render, fireEvent, act } from '@testing-library/react-native'
 import { Alert } from 'react-native'
-import SettingsScreen from '../../../app/(tabs)/settings'
+import SettingsScreen from '../../../app/(drawer)/settings'
 
 const mockLogout = jest.fn()
 

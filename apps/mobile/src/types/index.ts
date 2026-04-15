@@ -90,5 +90,17 @@ export interface Driver {
 
 export type OrderStatus = 'pending' | 'in_transit' | 'delivered' | 'cancelled'
 
+/**
+ * Placeholder metrics for the driver dashboard. Replace with API-backed
+ * query when the backend exposes a driver stats endpoint.
+ */
+export interface DriverMetrics {
+  accountBalance: number
+  activeShipments: number
+  pendingSettlementTotal: number
+  completedThisWeek: number
+  milesThisWeek: number
+}
+
 // Re-export domain types that consumers may need directly
 export type { Move, DomainMoveStatus }

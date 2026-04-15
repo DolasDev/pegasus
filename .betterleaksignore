@@ -1,0 +1,46 @@
+# Betterleaks fingerprint allowlist.
+# Format: <commit-sha>:<file>:<rule-id>:<line>
+# One fingerprint per line. Scope is per-finding — narrowest possible.
+#
+# To add a new entry: run `betterleaks git . --report-format json --report-path /tmp/bl.json`,
+# then copy the `Fingerprint` field from the offending finding in the JSON output.
+# See dolas/agents/project/GOTCHAS.md for the full triage + rotation runbook.
+
+# ---------------------------------------------------------------------------
+# Airbrake browser projectKey — removed from HEAD in 584d1c5 when @airbrake/browser
+# was replaced. Airbrake project keys ship in the production browser bundle by design
+# (client-side identifier, not a server secret), so rotation was not pursued.
+# ---------------------------------------------------------------------------
+c375e0239dc4ebc2c2a3ac0dc5a6e643eb53e32f:apps/longhaul/src/utils/logger.ts:generic-api-key:5
+
+# ---------------------------------------------------------------------------
+# False positives: SHA-256 content hashes in GSD command manifests misidentified
+# as Discord API tokens because they happen to be 64 hex chars on a line containing
+# "discord". These are file checksums, not credentials.
+# ---------------------------------------------------------------------------
+8474f5a496dd91a39254f2a5b7eda3905dec5de9:.claude/gsd-file-manifest.json:discord-api-token:157
+8474f5a496dd91a39254f2a5b7eda3905dec5de9:.gemini/gsd-file-manifest.json:discord-api-token:157
+8474f5a496dd91a39254f2a5b7eda3905dec5de9:.opencode/gsd-file-manifest.json:discord-api-token:157
+
+# ---------------------------------------------------------------------------
+# False positives: Advanced Installer (.aip) XML `KeyPath="..."` attributes in a
+# legacy installer project file. These are Windows Installer component key paths
+# (filenames like "big5freq.py_1"), not API keys. The file no longer exists at HEAD.
+# ---------------------------------------------------------------------------
+ad0b245e6f3fca26937084b81044d33fec79043d:Pegasus_API_Receiver.aip:generic-api-key:2065
+ad0b245e6f3fca26937084b81044d33fec79043d:Pegasus_API_Receiver.aip:generic-api-key:2246
+ad0b245e6f3fca26937084b81044d33fec79043d:Pegasus_API_Receiver.aip:generic-api-key:2592
+ad0b245e6f3fca26937084b81044d33fec79043d:Pegasus_API_Receiver.aip:generic-api-key:2593
+ad0b245e6f3fca26937084b81044d33fec79043d:Pegasus_API_Receiver.aip:generic-api-key:2594
+ad0b245e6f3fca26937084b81044d33fec79043d:Pegasus_API_Receiver.aip:generic-api-key:2595
+ad0b245e6f3fca26937084b81044d33fec79043d:Pegasus_API_Receiver.aip:generic-api-key:2596
+ad0b245e6f3fca26937084b81044d33fec79043d:Pegasus_API_Receiver.aip:generic-api-key:2597
+ad0b245e6f3fca26937084b81044d33fec79043d:Pegasus_API_Receiver.aip:generic-api-key:2598
+ad0b245e6f3fca26937084b81044d33fec79043d:Pegasus_API_Receiver.aip:generic-api-key:2979
+ad0b245e6f3fca26937084b81044d33fec79043d:Pegasus_API_Receiver.aip:generic-api-key:3350
+ad0b245e6f3fca26937084b81044d33fec79043d:Pegasus_API_Receiver.aip:generic-api-key:3351
+ad0b245e6f3fca26937084b81044d33fec79043d:Pegasus_API_Receiver.aip:generic-api-key:3352
+ad0b245e6f3fca26937084b81044d33fec79043d:Pegasus_API_Receiver.aip:generic-api-key:3353
+ad0b245e6f3fca26937084b81044d33fec79043d:Pegasus_API_Receiver.aip:generic-api-key:3354
+ad0b245e6f3fca26937084b81044d33fec79043d:Pegasus_API_Receiver.aip:generic-api-key:3355
+ad0b245e6f3fca26937084b81044d33fec79043d:Pegasus_API_Receiver.aip:generic-api-key:3356

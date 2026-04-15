@@ -49,3 +49,26 @@ Historically, every API handler had `try { ... } catch { return 500 }`. This pre
 ## Mobile App Isolation
 
 The mobile app (`apps/mobile`) historically did not import `@pegasus/api-http` or `@pegasus/domain`. It used raw `fetch()`, local `AsyncStorage` mock data, and its own type definitions. The `mobile-api-integration` plan addresses this convergence. Until it lands, do not assume mobile shares any code with the web apps beyond `@pegasus/theme`.
+
+## Betterleaks Secret Scanning
+
+CI job `Secret Scanning (Betterleaks)` (`.github/workflows/ci.yml`) runs `betterleaks git .` over full history and fails the build on any finding.
+
+**Allowlist location:** `.betterleaksignore` at repo root. Each entry is a fingerprint: `<commit-sha>:<file>:<rule-id>:<line>` — the narrowest scope the tool supports. No regex or path-wide suppression.
+
+**Adding a new entry (false positive or rotated secret):**
+
+1. Install locally: `curl -sSfL https://github.com/betterleaks/betterleaks/releases/download/v1.1.1/betterleaks_1.1.1_linux_x64.tar.gz | tar -xz betterleaks`
+2. Reproduce: `./betterleaks git . --report-format json --report-path /tmp/bl.json`
+3. Open `/tmp/bl.json`, find the offending finding, copy its `Fingerprint` field verbatim.
+4. Append to `.betterleaksignore` under a comment block explaining the verdict (false positive / rotated / client-side identifier) and **why** it is safe.
+5. Re-run `./betterleaks git .` — must exit 0 before pushing.
+
+**If you find a real, live secret:**
+
+1. **Rotate first.** Revoke the credential at its source (AWS, Cognito, Airbrake, etc.) before touching git.
+2. Remove the secret from HEAD in a new commit.
+3. Add the historical fingerprint to `.betterleaksignore` with a `rotated YYYY-MM-DD` comment.
+4. Do **not** rewrite history with BFG / git-filter-repo unless absolutely required — it breaks everyone's clones and needs team coordination. Rotation is the mitigation, not history rewrite.
+
+**Never** blanket-allowlist a file, directory, or rule. Always fingerprint-scope.

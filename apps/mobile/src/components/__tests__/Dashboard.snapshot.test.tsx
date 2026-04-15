@@ -1,68 +1,48 @@
 import React from 'react'
-import { render } from '@testing-library/react-native'
-import DashboardScreen from '../../../app/(tabs)/index'
-import { OrderService } from '../../services/orderService'
-import { MOCK_ORDERS } from '../../services/mockData'
+import { render, waitFor } from '@testing-library/react-native'
+import DashboardScreen from '../../../app/(drawer)/index'
+import { getDriverMetrics } from '../../services/driverMetrics'
 
-jest.mock('../../services/orderService')
+jest.mock('../../services/driverMetrics')
 jest.mock('../../utils/logger')
 
-describe('Dashboard Snapshot Test (Trucker Mode)', () => {
+const mockMetrics = {
+  accountBalance: 1234.56,
+  activeShipments: 4,
+  pendingSettlementTotal: 500,
+  completedThisWeek: 6,
+  milesThisWeek: 980,
+}
+
+describe('Driver Dashboard', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    ;(OrderService.getOrders as jest.Mock).mockResolvedValue(MOCK_ORDERS)
+    ;(getDriverMetrics as jest.Mock).mockResolvedValue(mockMetrics)
   })
 
-  it('should render orders with correct structure', async () => {
-    const { findByText, getByText, getAllByText } = render(<DashboardScreen />)
+  it('renders metric tiles after loading', async () => {
+    const { getByText } = render(<DashboardScreen />)
 
-    // Wait for orders to load
-    await findByText('#12345')
+    await waitFor(() => {
+      expect(getByText('Account Balance')).toBeTruthy()
+    })
 
-    // Verify key elements are present
-    expect(getByText('#12345')).toBeTruthy()
-    expect(getByText('John Anderson')).toBeTruthy()
-    expect(getAllByText('PENDING').length).toBeGreaterThan(0)
+    expect(getByText('$1,234.56')).toBeTruthy()
+    expect(getByText('Active Shipments')).toBeTruthy()
+    expect(getByText('4')).toBeTruthy()
+    expect(getByText('Pending Settlement')).toBeTruthy()
+    expect(getByText('$500.00')).toBeTruthy()
+    expect(getByText('Completed (wk)')).toBeTruthy()
+    expect(getByText('Miles (wk)')).toBeTruthy()
+    expect(getByText('980')).toBeTruthy()
   })
 
-  it('should render empty state correctly', async () => {
-    ;(OrderService.getOrders as jest.Mock).mockResolvedValue([])
-
-    const { findByText, getByText } = render(<DashboardScreen />)
-
-    // Wait for empty message
-    await findByText('No orders assigned')
-
-    expect(getByText('No orders assigned')).toBeTruthy()
-    expect(getByText('Pull down to refresh')).toBeTruthy()
-  })
-
-  it('should show loading state', () => {
-    // Mock a delayed response
-    ;(OrderService.getOrders as jest.Mock).mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve(MOCK_ORDERS), 1000)),
+  it('shows loading state initially', () => {
+    ;(getDriverMetrics as jest.Mock).mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve(mockMetrics), 1000)),
     )
 
     const { getByText } = render(<DashboardScreen />)
-
-    expect(getByText('Loading orders...')).toBeTruthy()
-  })
-
-  it('should render multiple status badges', async () => {
-    const mixedStatusOrders = [
-      { ...MOCK_ORDERS[0], status: 'pending' as const },
-      { ...MOCK_ORDERS[1], status: 'in_transit' as const },
-      { ...MOCK_ORDERS[2], status: 'delivered' as const },
-    ]
-
-    ;(OrderService.getOrders as jest.Mock).mockResolvedValue(mixedStatusOrders)
-
-    const { findByText, getByText } = render(<DashboardScreen />)
-
-    await findByText('PENDING')
-
-    expect(getByText('PENDING')).toBeTruthy()
-    expect(getByText('IN TRANSIT')).toBeTruthy()
-    expect(getByText('DELIVERED')).toBeTruthy()
+    expect(getByText('Loading dashboard…')).toBeTruthy()
   })
 })
