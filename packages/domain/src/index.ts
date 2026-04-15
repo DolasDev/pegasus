@@ -6,7 +6,15 @@
 // ---------------------------------------------------------------------------
 
 // Shared primitives
-export type { Brand, UserId, AddressId, Address, Money, DateRange, Serialized } from './shared/types'
+export type {
+  Brand,
+  UserId,
+  AddressId,
+  Address,
+  Money,
+  DateRange,
+  Serialized,
+} from './shared/types'
 export {
   toUserId,
   toAddressId,
@@ -95,3 +103,7 @@ export type {
   PaymentMethod,
 } from './billing/index'
 export { toInvoiceId, toPaymentId, calculateInvoiceBalance, canVoidInvoice } from './billing/index'
+
+// Document context
+export type { DocumentId, Document, DocumentStatus } from './document/index'
+export { toDocumentId } from './document/index'

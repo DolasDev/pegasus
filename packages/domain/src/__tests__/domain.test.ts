@@ -434,6 +434,42 @@ describe('roomTotalValue', () => {
 })
 
 // ---------------------------------------------------------------------------
+// 11b. Document — type narrowing and ID brand
+// ---------------------------------------------------------------------------
+import { toDocumentId, type Document, type DocumentStatus } from '../index'
+
+describe('Document', () => {
+  it('brands a string into DocumentId', () => {
+    const id = toDocumentId('doc-1')
+    expect(typeof id).toBe('string')
+  })
+
+  it('narrows DocumentStatus literals', () => {
+    const statuses: DocumentStatus[] = ['PENDING_UPLOAD', 'ACTIVE', 'ARCHIVED', 'PENDING_DELETION']
+    expect(statuses).toHaveLength(4)
+  })
+
+  it('constructs a Document without S3 fields', () => {
+    const doc: Document = {
+      id: toDocumentId('doc-1'),
+      entityType: 'customer',
+      entityId: 'cust-1',
+      documentType: 'contract',
+      filename: 'agreement.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1234,
+      status: 'ACTIVE',
+      uploadedBy: 'user-1',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+    // Compile-time guarantee: there is no s3Key/s3Bucket on Document.
+    expect(doc).not.toHaveProperty('s3Key')
+    expect(doc).not.toHaveProperty('s3Bucket')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // 12. DomainError
 // ---------------------------------------------------------------------------
 describe('DomainError', () => {

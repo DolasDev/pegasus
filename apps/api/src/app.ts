@@ -15,6 +15,7 @@ import { inventoryHandler } from './handlers/inventory'
 import { billingHandler } from './handlers/billing'
 import { apiClientsHandler } from './handlers/api-clients'
 import { settingsHandler } from './handlers/settings'
+import { documentsHandler } from './handlers/documents'
 import { eventsHandler } from './handlers/events'
 import { ordersHandler } from './handlers/orders'
 import { logger } from './lib/logger'
@@ -170,6 +171,7 @@ v1.route('/moves', inventoryHandler)
 v1.route('/invoices', billingHandler)
 v1.route('/api-clients', apiClientsHandler)
 v1.route('/settings', settingsHandler)
+v1.route('/documents', documentsHandler)
 
 app.route('/api/v1', v1)
 
