@@ -34,6 +34,7 @@ Reference implementation: `apps/api/src/handlers/documents.ts`, `apps/api/src/re
 
 - **Do NOT add try/catch blocks in handlers.** The global `app.onError` handler in `app.ts` catches all unhandled exceptions. Per-handler catch blocks swallow `DomainError` (turning 422 → 500), suppress logging, and make error paths untestable. Let exceptions bubble.
 - **Exception:** If a handler must map a specific Prisma error to a specific HTTP status (e.g., P2025 → 404), do so with a targeted catch of that specific error class. Never catch-all.
+- **Test app onError:** Handler tests that construct a minimal Hono app must call `registerTestErrorHandler(app)` (from `apps/api/src/test-helpers.ts`) so `DomainError` → 422 routing works the same way it does in production. Without it, `DomainError` leaks as an unhandled 500 and test assertions against 422 will fail.
 
 ## Wire Types (API → Frontend)
 
