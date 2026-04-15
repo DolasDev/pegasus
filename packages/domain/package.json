@@ -12,11 +12,11 @@
     "mutation-test": "stryker run"
   },
   "devDependencies": {
-    "@stryker-mutator/core": "^9.6.0",
-    "@stryker-mutator/vitest-runner": "^9.6.0",
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/vitest-runner": "^9.6.1",
     "@vitest/coverage-v8": "^4.0.0",
     "fast-check": "^4.6.0",
     "typescript": "*",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.4"
   }
 }
