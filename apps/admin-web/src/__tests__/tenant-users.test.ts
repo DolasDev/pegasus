@@ -43,8 +43,8 @@ describe('tenant-users API', () => {
 
   describe('listTenantUsers', () => {
     it('calls adminFetchPaginated with the correct path', async () => {
-      const mockResult = { data: [], meta: { count: 0 } }
-      ;(adminFetchPaginated as any).mockResolvedValue(mockResult)
+      const mockResult = { data: [], meta: { total: 0, count: 0, limit: 20, offset: 0 } }
+      vi.mocked(adminFetchPaginated).mockResolvedValue(mockResult)
 
       const result = await listTenantUsers('tenant-123')
 
@@ -56,9 +56,12 @@ describe('tenant-users API', () => {
   describe('inviteTenantUser', () => {
     it('calls adminFetch with POST and body', async () => {
       const user = { id: 'u1', email: 'test@example.com' }
-      ;(adminFetch as any).mockResolvedValue(user)
+      vi.mocked(adminFetch).mockResolvedValue(user)
 
-      const result = await inviteTenantUser('tenant-123', { email: 'test@example.com', role: 'USER' })
+      const result = await inviteTenantUser('tenant-123', {
+        email: 'test@example.com',
+        role: 'USER',
+      })
 
       expect(adminFetch).toHaveBeenCalledWith('/api/admin/tenants/tenant-123/users', {
         method: 'POST',
@@ -71,7 +74,7 @@ describe('tenant-users API', () => {
   describe('updateTenantUserRole', () => {
     it('calls adminFetch with PATCH and role body', async () => {
       const user = { id: 'u1', role: 'ADMIN' }
-      ;(adminFetch as any).mockResolvedValue(user)
+      vi.mocked(adminFetch).mockResolvedValue(user)
 
       const result = await updateTenantUserRole('tenant-123', 'user-456', 'ADMIN')
 
@@ -86,7 +89,7 @@ describe('tenant-users API', () => {
   describe('deactivateTenantUser', () => {
     it('calls adminFetch with DELETE', async () => {
       const user = { id: 'u1', status: 'DEACTIVATED' }
-      ;(adminFetch as any).mockResolvedValue(user)
+      vi.mocked(adminFetch).mockResolvedValue(user)
 
       const result = await deactivateTenantUser('tenant-123', 'user-456')
 
@@ -100,7 +103,7 @@ describe('tenant-users API', () => {
   describe('reactivateTenantUser', () => {
     it('calls adminFetch with POST to reactivate path', async () => {
       const user = { id: 'u1', status: 'ACTIVE' }
-      ;(adminFetch as any).mockResolvedValue(user)
+      vi.mocked(adminFetch).mockResolvedValue(user)
 
       const result = await reactivateTenantUser('tenant-123', 'user-456')
 

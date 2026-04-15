@@ -6,6 +6,7 @@ import {
   Users,
   Calendar,
   Receipt,
+  MapPinned,
   LogOut,
   ShieldCheck,
   UserCog,
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { to: '/customers' as const, label: 'Customers', icon: Users, exact: false },
   { to: '/dispatch' as const, label: 'Dispatch', icon: Calendar, exact: false },
   { to: '/invoices' as const, label: 'Billing', icon: Receipt, exact: false },
+  { to: '/driver-planning' as const, label: 'Driver Planning', icon: MapPinned, exact: false },
 ] as const
 
 const SETTINGS_NAV_ITEMS = [

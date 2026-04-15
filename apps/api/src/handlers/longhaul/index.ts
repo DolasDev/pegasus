@@ -11,6 +11,7 @@ import { activitiesRouter } from './activities'
 import { filterOptionsRouter } from './filter-options'
 import { referenceRouter } from './reference'
 import { remoteRouter } from './remote'
+import { driverPlanningRouter } from './driver-planning'
 
 const longhaulRouter = new Hono<OnPremEnv>()
 
@@ -24,5 +25,6 @@ longhaulRouter.route('/', activitiesRouter)
 longhaulRouter.route('/', filterOptionsRouter)
 longhaulRouter.route('/', referenceRouter)
 longhaulRouter.route('/', remoteRouter)
+longhaulRouter.route('/', driverPlanningRouter)
 
 export { longhaulRouter }
