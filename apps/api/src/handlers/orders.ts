@@ -123,7 +123,6 @@ ordersHandler.get('/', requireScope('orders:read'), async (c) => {
 // ---------------------------------------------------------------------------
 ordersHandler.get('/:orderId', requireScope('orders:read'), async (c) => {
   const db = c.get('db')
-  const tenantId = c.get('tenantId')
   const orderId = c.req.param('orderId')
 
   const move = await findMoveById(db, orderId)
