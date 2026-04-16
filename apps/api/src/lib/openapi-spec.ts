@@ -233,6 +233,162 @@ export function getOpenApiSpec() {
           },
         },
       },
+      '/api/v1/documents/upload-url': {
+        post: {
+          operationId: 'createDocumentUploadUrl',
+          summary: 'Request a presigned upload URL',
+          description: 'Creates a pending document and returns a presigned PUT URL for S3 upload.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreateUploadBody' },
+              },
+            },
+          },
+          responses: {
+            '201': {
+              description: 'Upload URL created',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: {
+                      data: {
+                        type: 'object',
+                        required: ['documentId', 'uploadUrl', 'expiresInSeconds'],
+                        properties: {
+                          documentId: { type: 'string' },
+                          uploadUrl: { type: 'string', format: 'uri' },
+                          expiresInSeconds: { type: 'integer' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '400': { $ref: '#/components/responses/ValidationError' },
+          },
+        },
+      },
+      '/api/v1/documents/{documentId}/finalize': {
+        post: {
+          operationId: 'finalizeDocument',
+          summary: 'Finalize a document upload',
+          description: 'Transitions a pending document to ACTIVE after S3 upload.',
+          parameters: [
+            {
+              name: 'documentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string' },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Document finalized',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: { data: { $ref: '#/components/schemas/Document' } },
+                  },
+                },
+              },
+            },
+            '404': { $ref: '#/components/responses/NotFound' },
+          },
+        },
+      },
+      '/api/v1/documents/{documentId}/download-url': {
+        get: {
+          operationId: 'getDocumentDownloadUrl',
+          summary: 'Get a presigned download URL',
+          description:
+            'Returns a presigned GET URL for the document. Supports variant selection (thumb, web, original) with transparent fallback to the original.',
+          parameters: [
+            {
+              name: 'documentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string' },
+            },
+            {
+              name: 'variant',
+              in: 'query',
+              required: false,
+              schema: {
+                type: 'string',
+                enum: ['thumb', 'web', 'original'],
+              },
+              description:
+                'Variant to serve. Defaults to original. When a requested variant is pending or unavailable, the original is returned with a variantStatus hint.',
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Download URL',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/DownloadUrlResponse' },
+                },
+              },
+            },
+            '400': { $ref: '#/components/responses/ValidationError' },
+            '404': { $ref: '#/components/responses/NotFound' },
+          },
+        },
+      },
+      '/api/v1/documents/entity/{entityType}/{entityId}': {
+        get: {
+          operationId: 'listDocumentsForEntity',
+          summary: 'List documents for an entity',
+          description:
+            'Returns all ACTIVE documents attached to the given entity, with per-document variant status.',
+          parameters: [
+            {
+              name: 'entityType',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', enum: ['customer', 'quote', 'move', 'invoice'] },
+            },
+            {
+              name: 'entityId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string' },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Document list',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data', 'meta'],
+                    properties: {
+                      data: {
+                        type: 'array',
+                        items: { $ref: '#/components/schemas/DocumentWithVariants' },
+                      },
+                      meta: {
+                        type: 'object',
+                        required: ['count'],
+                        properties: { count: { type: 'integer' } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '400': { $ref: '#/components/responses/ValidationError' },
+          },
+        },
+      },
     },
     components: {
       parameters: {
@@ -305,6 +461,97 @@ export function getOpenApiSpec() {
             phone: { type: 'string', minLength: 1 },
             isPrimary: { type: 'boolean' },
           },
+        },
+        CreateUploadBody: {
+          type: 'object',
+          required: ['entityType', 'entityId', 'documentType', 'filename', 'mimeType', 'sizeBytes'],
+          properties: {
+            entityType: { type: 'string', enum: ['customer', 'quote', 'move', 'invoice'] },
+            entityId: { type: 'string', minLength: 1 },
+            documentType: { type: 'string', minLength: 1 },
+            filename: { type: 'string', minLength: 1 },
+            mimeType: {
+              type: 'string',
+              description:
+                'Allowed prefixes: image/* (including image/heic, image/heif), application/pdf, application/msword, application/vnd.openxmlformats-officedocument.*, text/*',
+            },
+            sizeBytes: { type: 'integer', minimum: 1, maximum: 52428800 },
+            category: { type: 'string', minLength: 1 },
+          },
+        },
+        Document: {
+          type: 'object',
+          required: [
+            'id',
+            'entityType',
+            'entityId',
+            'documentType',
+            'filename',
+            'mimeType',
+            'sizeBytes',
+            'status',
+            'uploadedBy',
+            'createdAt',
+            'updatedAt',
+          ],
+          properties: {
+            id: { type: 'string' },
+            entityType: { type: 'string' },
+            entityId: { type: 'string' },
+            documentType: { type: 'string' },
+            filename: { type: 'string' },
+            mimeType: { type: 'string' },
+            sizeBytes: { type: 'integer' },
+            status: {
+              type: 'string',
+              enum: ['PENDING_UPLOAD', 'ACTIVE', 'ARCHIVED', 'PENDING_DELETION'],
+            },
+            uploadedBy: { type: 'string' },
+            category: { type: 'string' },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        DownloadUrlResponse: {
+          type: 'object',
+          required: ['data'],
+          properties: {
+            data: {
+              type: 'object',
+              required: ['downloadUrl', 'expiresInSeconds', 'variant'],
+              properties: {
+                downloadUrl: { type: 'string', format: 'uri' },
+                expiresInSeconds: { type: 'integer' },
+                variant: { type: 'string', enum: ['thumb', 'web', 'original'] },
+                variantStatus: {
+                  type: 'string',
+                  enum: ['pending', 'unavailable'],
+                  description:
+                    'Present when the requested variant is not yet ready or permanently unavailable. The downloadUrl falls back to the original in these cases.',
+                },
+              },
+            },
+          },
+        },
+        VariantStatusMap: {
+          type: 'object',
+          required: ['thumb', 'web'],
+          properties: {
+            thumb: { type: 'string', enum: ['ready', 'pending', 'failed', 'none'] },
+            web: { type: 'string', enum: ['ready', 'pending', 'failed', 'none'] },
+          },
+        },
+        DocumentWithVariants: {
+          allOf: [
+            { $ref: '#/components/schemas/Document' },
+            {
+              type: 'object',
+              required: ['variants'],
+              properties: {
+                variants: { $ref: '#/components/schemas/VariantStatusMap' },
+              },
+            },
+          ],
         },
         ErrorResponse: {
           type: 'object',

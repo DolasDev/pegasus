@@ -137,6 +137,15 @@ export async function findDocumentById(db: PrismaClient, id: string): Promise<Do
   return row ? mapDocument(row) : null
 }
 
+/** Looks up a document by its S3 key. Used by the converter Lambda. */
+export async function findDocumentByS3Key(
+  db: PrismaClient,
+  s3Key: string,
+): Promise<DocumentWithLocation | null> {
+  const row = await db.document.findFirst({ where: { s3Key } })
+  return row ? mapDocumentWithLocation(row) : null
+}
+
 /** Lists ACTIVE documents for a given entity, newest first. */
 export async function listDocumentsForEntity(
   db: PrismaClient,

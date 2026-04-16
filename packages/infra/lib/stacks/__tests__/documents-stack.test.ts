@@ -101,3 +101,45 @@ describe('DocumentsStack — bucket', () => {
     t.hasOutput('DocumentsBucketArn', { Export: { Name: 'PegasusDocumentsBucketArn' } })
   })
 })
+
+describe('DocumentsStack — converter Lambda', () => {
+  it('creates a Lambda function for the converter', () => {
+    synth().hasResourceProperties('AWS::Lambda::Function', {
+      Runtime: 'nodejs20.x',
+      MemorySize: 1024,
+      Timeout: 300,
+    })
+  })
+
+  it('grants the converter Lambda read access to the DB secret', () => {
+    synth().hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith(['secretsmanager:GetSecretValue']),
+            Effect: 'Allow',
+          }),
+        ]),
+      },
+    })
+  })
+
+  it('configures S3 event notification on the bucket', () => {
+    const t = synth()
+    t.hasResourceProperties('Custom::S3BucketNotifications', {
+      NotificationConfiguration: {
+        LambdaFunctionConfigurations: Match.arrayWith([
+          Match.objectLike({
+            Events: ['s3:ObjectCreated:*'],
+          }),
+        ]),
+      },
+    })
+  })
+
+  it('creates a log group for the converter', () => {
+    synth().hasResourceProperties('AWS::Logs::LogGroup', {
+      RetentionInDays: 30,
+    })
+  })
+})

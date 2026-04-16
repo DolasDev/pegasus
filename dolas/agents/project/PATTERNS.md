@@ -30,6 +30,16 @@ S3 storage coordinates (`s3Bucket` / `s3Key`) are infrastructure: they live on t
 
 Reference implementation: `apps/api/src/handlers/documents.ts`, `apps/api/src/repositories/document.repository.ts`, `apps/api/src/lib/documents-s3.ts`.
 
+## Document Variant Lifecycle (eager derived-asset cache)
+
+Uploaded originals trigger a converter Lambda via S3 `ObjectCreated` events. For each original, two variants are generated: `THUMB` (400px longest edge) and `WEB` (2000px longest edge), both JPEG.
+
+- **Idempotent upsert**: The `(documentId, variant)` unique constraint handles S3 event re-delivery. The Lambda upserts a PENDING row, transcodes, then marks READY or FAILED.
+- **Pure transcoders**: `apps/api/src/lib/document-transcode.ts` exports `transcodeImage` and `transcodePdfFirstPage` as pure `Buffer → TranscodeResult` functions. They take no S3 or DB deps, so they're unit-testable with real image buffers.
+- **Thin Lambda handler**: `apps/api/src/lambda-document-converter.ts` is the glue — reads S3, calls the pure transcoder, writes S3, updates DB. Transcode failures mark the variant FAILED (not thrown — retrying won't fix a corrupt file). Infra failures (S3/DB) are thrown so S3 retries.
+- **`?variant=` fallback contract**: `GET /download-url?variant=thumb|web` returns the variant if READY, falls back to the original for PENDING/FAILED/missing, and includes a `variantStatus` hint so frontends know whether to poll or give up.
+- **Skipped types**: MS Office and text files produce no variant rows. The fallback serves the original, same as pre-variant behavior.
+
 ## API Handler Error Handling
 
 - **Do NOT add try/catch blocks in handlers.** The global `app.onError` handler in `app.ts` catches all unhandled exceptions. Per-handler catch blocks swallow `DomainError` (turning 422 → 500), suppress logging, and make error paths untestable. Let exceptions bubble.
