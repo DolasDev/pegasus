@@ -44,3 +44,32 @@ export interface Document {
   readonly category?: string
   readonly expiresAt?: Date
 }
+
+// ---------------------------------------------------------------------------
+// Variants (eager derived-asset cache)
+// ---------------------------------------------------------------------------
+
+/** Which pre-generated derived asset a row represents. */
+export type DocumentVariantKind = 'THUMB' | 'WEB'
+
+/** Lifecycle of a single derived-asset row. FAILED is terminal. */
+export type DocumentVariantStatus = 'PENDING' | 'READY' | 'FAILED'
+
+/**
+ * Metadata for a single derived asset. The `s3Key` is intentionally omitted
+ * from this domain type — like `Document`, S3 coordinates are infrastructure
+ * and live only in the repository layer.
+ */
+export interface DocumentVariant {
+  readonly id: string
+  readonly documentId: DocumentId
+  readonly variant: DocumentVariantKind
+  readonly status: DocumentVariantStatus
+  readonly sizeBytes?: number
+  readonly width?: number
+  readonly height?: number
+  readonly failureReason?: string
+  readonly generatedAt?: Date
+  readonly createdAt: Date
+  readonly updatedAt: Date
+}

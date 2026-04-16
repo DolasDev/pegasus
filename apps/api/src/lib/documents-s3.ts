@@ -27,11 +27,14 @@ function client(): S3Client {
 }
 
 /**
- * Builds the canonical S3 key for an uploaded document.
+ * Builds the canonical S3 key for an uploaded document original.
  *
+ * Layout: `{tenantId}/{entityType}/{entityId}/{documentId}/original/{filename}`.
  * The filename is sanitized to remove path-traversal characters and control
  * characters before it joins the key, so a malicious upload cannot escape its
- * tenant prefix.
+ * tenant prefix. The `original/` segment is load-bearing — the converter
+ * Lambda's S3 event notification filter and the key-migration script both
+ * assume originals live under that exact prefix.
  */
 export function buildS3Key(opts: {
   tenantId: string
@@ -41,7 +44,23 @@ export function buildS3Key(opts: {
   filename: string
 }): string {
   const safe = opts.filename.replace(/[^\w.-]/g, '_')
-  return `${opts.tenantId}/${opts.entityType}/${opts.entityId}/${opts.documentId}/${safe}`
+  return `${opts.tenantId}/${opts.entityType}/${opts.entityId}/${opts.documentId}/original/${safe}`
+}
+
+/**
+ * Builds the S3 key for a derived variant (thumb/web). The variant writer in
+ * the converter Lambda uses this; the API read path uses the `s3Key` stored
+ * on the variant row rather than re-deriving it, so that a future change to
+ * the variant layout does not silently break old rows.
+ */
+export function buildVariantS3Key(opts: {
+  tenantId: string
+  entityType: string
+  entityId: string
+  documentId: string
+  variant: 'thumb' | 'web'
+}): string {
+  return `${opts.tenantId}/${opts.entityType}/${opts.entityId}/${opts.documentId}/variants/${opts.variant}.jpg`
 }
 
 /**

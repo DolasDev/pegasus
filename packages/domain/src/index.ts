@@ -105,5 +105,12 @@ export type {
 export { toInvoiceId, toPaymentId, calculateInvoiceBalance, canVoidInvoice } from './billing/index'
 
 // Document context
-export type { DocumentId, Document, DocumentStatus } from './document/index'
+export type {
+  DocumentId,
+  Document,
+  DocumentStatus,
+  DocumentVariant,
+  DocumentVariantKind,
+  DocumentVariantStatus,
+} from './document/index'
 export { toDocumentId } from './document/index'
