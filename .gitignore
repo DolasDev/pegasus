@@ -38,6 +38,9 @@ public/config.json
 cdk.out/
 cdk.context.json
 
+# IAM policy files (contain account IDs)
+trust-policy.json
+
 # Git worktrees
 worktrees/
 
