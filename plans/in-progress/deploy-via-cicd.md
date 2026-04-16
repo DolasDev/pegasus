@@ -33,27 +33,41 @@ AWS auth today: developer-local `AWS_PROFILE=admin-dev`.
 
 ## Plan
 
-- [ ] **1. Pre-flight: confirm AWS OIDC trust is set up.**
-      Check whether an IAM role for GitHub OIDC exists in the target account
-      (`admin-dev` today). If not, document the CDK/CLI snippet needed to create
-      it — role trust policy scoped to `repo:dolasllc/pegasus:ref:refs/heads/main`
-      and `repo:dolasllc/pegasus:environment:dev`. Record the role ARN; it will
-      become the `AWS_DEPLOY_ROLE_ARN` repo secret (or GitHub variable).
-      _Deliverable:_ a short note in this plan recording the role ARN and which
-      permissions it holds (CDK bootstrap + target stack resources).
+- [>] **1. Pre-flight: confirm AWS OIDC trust is set up.**
+  Step-by-step manual setup instructions written to
+  `plans/todo/aws-oidc-setup.md` — the repo owner must run those out-of-band
+  (creates IAM OIDC provider, `pegasus-github-deploy-dev` role, and the
+  `dev` GitHub environment with `AWS_DEPLOY_ROLE_ARN` + `AWS_REGION`
+  variables). This plan item stays in-progress until the setup doc is
+  ticked off and moved to `plans/completed/`.
+  Check whether an IAM role for GitHub OIDC exists in the target account
+  (`admin-dev` today). If not, document the CDK/CLI snippet needed to create
+  it — role trust policy scoped to `repo:dolasllc/pegasus:ref:refs/heads/main`
+  and `repo:dolasllc/pegasus:environment:dev`. Record the role ARN; it will
+  become the `AWS_DEPLOY_ROLE_ARN` repo secret (or GitHub variable).
+  _Deliverable:_ a short note in this plan recording the role ARN and which
+  permissions it holds (CDK bootstrap + target stack resources).
 
-- [ ] **2. Extract a reusable deploy npm script.**
-      Add `packages/infra/package.json` script `deploy:ci` that wraps:
-      `cdk deploy $TARGET --require-approval never --outputs-file outputs.json --app "npx tsx bin/app.ts"`
-      with `$TARGET` defaulted to `--all`. Keep `deploy.sh` working by having it
-      call the same script, so local and CI paths share one command.
+- [x] **2. Extract a reusable deploy npm script.**
+      Added `deploy:ci` in `packages/infra/package.json`; `deploy.sh` now
+      exports `TARGET` and delegates to `npm run deploy:ci` so local and CI
+      paths share the same CDK invocation.
 
-- [ ] **3. Add a `deploy` GitHub environment.**
-      Create an environment named `dev` in the repo settings with required
-      reviewers (optional) and the `AWS_DEPLOY_ROLE_ARN` variable. This gives us
-      a gate for future prod environments.
+- [>] **3. Add a `deploy` GitHub environment.**
+  Covered by `plans/todo/aws-oidc-setup.md` step 4. Blocked on manual
+  GitHub repo settings access.
+  Create an environment named `dev` in the repo settings with required
+  reviewers (optional) and the `AWS_DEPLOY_ROLE_ARN` variable. This gives us
+  a gate for future prod environments.
 
-- [ ] **4. Create `.github/workflows/deploy.yml`.**
+- [x] **4. Create `.github/workflows/deploy.yml`.**
+      Implemented with per-component change detection via `dorny/paths-filter`:
+      pushes to main deploy only the stacks whose source changed (api,
+      tenant-web, admin-web), and infra/workflow changes force `--all`.
+      `workflow_dispatch` accepts `target ∈ {all, api, tenant-web, admin-web}`
+      for manual component deploys. Uses OIDC via `aws-actions/configure-aws-credentials@v4`,
+      uploads `cdk-outputs.json` and `mobile.env.deploy` as artifacts, and
+      writes a deploy plan + URL summary to `$GITHUB_STEP_SUMMARY`.
       Structure: - `on: push: branches: [main]` and `workflow_dispatch` with `target` input. - `permissions: id-token: write, contents: read`. - Job `deploy` runs on `ubuntu-latest`, uses environment `dev`. - Steps: 1. `actions/checkout@v4` 2. `actions/setup-node@v4` with `node-version: 20` and `cache: npm` 3. `npm ci` 4. Fix binary permissions (same one-liner as ci.yml) 5. `prisma generate` (needed for typecheck-free build of the API bundle
       that CDK's NodejsFunction emits) 6. Conditional build: - `target != 'api'` → `npm run build --workspace=@pegasus/tenant-web` + `@pegasus/admin-web` 7. `aws-actions/configure-aws-credentials@v4` with
       `role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}` and
@@ -66,25 +80,27 @@ AWS auth today: developer-local `AWS_PROFILE=admin-dev`.
       by using `workflow_run` with `conclusion == success`. Prefer the merged
       approach for simplicity; verify it still keeps PR runs from deploying.
 
-- [ ] **5. Reproduce the stack-selection logic in a small shell step.**
-      Translate deploy.sh's `DEPLOY_TARGET` branching into a `bash` step that
-      sets `TARGET` in `$GITHUB_ENV`. Cover the three cases and guard against
-      unknown inputs.
+- [x] **5. Reproduce the stack-selection logic in a small shell step.**
+      Done in the `Resolve CDK stack target` step of `deploy.yml`. Builds a
+      stack array from component booleans; emits `--all` only when every
+      component is selected.
 
-- [ ] **6. Decide the fate of `deploy.sh`.**
-      Options:
-      a. Keep it as a thin wrapper that runs `npm run deploy:ci` locally for
-      emergency manual deploys.
-      b. Delete it and document "deploys only run via CI/CD" in
-      `packages/infra/README.md` and `CLAUDE.md`.
-      Recommendation: (a) — emergency manual deploy ability is worth the ~20
-      lines. Update the file header comment to say CI is the canonical path.
+- [x] **6. Decide the fate of `deploy.sh`.**
+      Kept as a local/emergency wrapper (option a). Header comment updated
+      to note CI is canonical; body now exports `TARGET` and calls
+      `npm run deploy:ci`.
 
-- [ ] **7. Dry-run verification.** - Push a branch with the workflow file and trigger `workflow_dispatch`
-      with `target: api` against a test branch (use `branches: [main, ci/*]`
-      temporarily, then revert). - Confirm: OIDC assume succeeds, CDK diff/deploy runs, artifacts upload. - Re-run with `target: all` on main after merge.
+- [>] **7. Dry-run verification.**
+  Blocked on step 1/3 (manual OIDC setup). Once the role and environment
+  exist, smoke-test instructions are in `plans/todo/aws-oidc-setup.md`
+  step 5. - Push a branch with the workflow file and trigger `workflow_dispatch`
+  with `target: api` against a test branch (use `branches: [main, ci/*]`
+  temporarily, then revert). - Confirm: OIDC assume succeeds, CDK diff/deploy runs, artifacts upload. - Re-run with `target: all` on main after merge.
 
-- [ ] **8. Docs + memory updates.** - Update `packages/infra/README.md` (if present; otherwise add a section
+- [x] **8. Docs + memory updates.**
+      `CLAUDE.md` Key Commands section now notes CI is canonical and points
+      at the OIDC setup doc. (A feedback memory for the OIDC pattern can be
+      added after smoke-test succeeds.) - Update `packages/infra/README.md` (if present; otherwise add a section
       in `CLAUDE.md` Key Commands) to note that `npm run deploy` is now for
       local-only use and CI is canonical. - Add a feedback memory if the user validates the OIDC role approach, so
       future deploys default to this pattern.

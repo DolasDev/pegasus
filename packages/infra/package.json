@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "synth": "cdk synth",
-    "deploy": "cdk deploy --all"
+    "deploy": "cdk deploy --all",
+    "deploy:ci": "cdk deploy ${TARGET:---all} --require-approval never --outputs-file /tmp/pegasus-cdk-outputs.json --app \"npx tsx bin/app.ts\""
   },
   "dependencies": {
     "aws-cdk-lib": "^2.160.0",

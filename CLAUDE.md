@@ -44,7 +44,7 @@ The monorepo uses Turborepo (`turbo.json`) and top-level npm scripts:
 - `npm run dev` — Start all packages in development mode (parallel).
 - `npm test` — Run all testing layers across all packages.
 - `npm run typecheck` — Type-check all packages.
-- `npm run deploy` — Runs `packages/infra/deploy.sh` to deploy the entire stack.
+- `npm run deploy` — Local/emergency deploy via `packages/infra/deploy.sh`. **CI is the canonical deploy path**: pushes to `main` trigger `.github/workflows/deploy.yml`, which path-filters changes and deploys only the affected components (api / tenant-web / admin-web). A manual component deploy is available via `workflow_dispatch` from the Actions tab. OIDC role + GitHub environment setup is documented in `plans/todo/aws-oidc-setup.md` (or `plans/completed/` once done).
 - `npm run create-admin-user` — Creates an admin user.
 
 ### Per-Package Commands
