@@ -11,14 +11,14 @@
     "deploy": "cdk deploy --all"
   },
   "dependencies": {
-    "aws-cdk-lib": "^2.160.0",
+    "aws-cdk-lib": "^2.250.0",
     "constructs": "^10.4.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^4.0.0",
-    "aws-cdk": "^2.160.0",
+    "aws-cdk": "^2.1118.1",
     "typescript": "*",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.4"
   }
 }
