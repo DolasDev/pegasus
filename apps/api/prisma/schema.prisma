@@ -152,6 +152,25 @@ enum DocumentStatus {
   @@schema("public")
 }
 
+/// Which pre-generated derived asset this row represents.
+enum DocumentVariantKind {
+  THUMB
+  WEB
+
+  @@schema("public")
+}
+
+/// Lifecycle of a single derived-asset row. READY means the converter wrote
+/// the variant to S3. FAILED is terminal for decode errors (the download-url
+/// endpoint falls back to the original).
+enum DocumentVariantStatus {
+  PENDING
+  READY
+  FAILED
+
+  @@schema("public")
+}
+
 // ---------------------------------------------------------------------------
 // Multi-tenancy — Tenant is the root of every bounded context.
 // Each moving-company instance is one Tenant. The slug is the subdomain
@@ -960,13 +979,43 @@ model Document {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant   Tenant            @relation(fields: [tenantId], references: [id])
+  variants DocumentVariant[]
 
   @@index([tenantId, entityType, entityId])
   @@index([tenantId, documentType])
   @@index([tenantId, status])
   @@schema("public")
   @@map("documents")
+}
+
+// ---------------------------------------------------------------------------
+// Document variants — eager derived assets (thumb + web) generated out-of-band
+// by the converter Lambda. One row per (document, variant). The unique
+// constraint + upsert is the entire concurrency story: re-delivery of the
+// S3 ObjectCreated event is a no-op.
+// ---------------------------------------------------------------------------
+
+model DocumentVariant {
+  id            String                @id @default(uuid())
+  documentId    String                @map("document_id")
+  variant       DocumentVariantKind
+  status        DocumentVariantStatus @default(PENDING)
+  s3Key         String?               @map("s3_key")
+  sizeBytes     Int?                  @map("size_bytes")
+  width         Int?
+  height        Int?
+  failureReason String?               @map("failure_reason")
+  generatedAt   DateTime?             @map("generated_at")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, variant])
+  @@index([status])
+  @@schema("public")
+  @@map("document_variants")
 }
 
 /// Platform-level feature flags for gradual rollout of new capabilities.
