@@ -239,6 +239,7 @@ model Tenant {
   apiClients     ApiClient[]
   pegasusEvents  PegasusEvent[]
   documents      Document[]
+  vpnPeer        VpnPeer?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1016,6 +1017,57 @@ model DocumentVariant {
   @@index([status])
   @@schema("public")
   @@map("document_variants")
+}
+
+// ---------------------------------------------------------------------------
+// WireGuard VPN peers — one row per tenant that has VPN connectivity enabled.
+//
+// Per-tenant peer state for the multi-tenant WireGuard hub. Only the peer's
+// public key is persisted; the tenant private key is returned once in the
+// client.conf response and never stored server-side. Allocation of the overlay
+// IP (10.200.<octet1>.<octet2>) is tracked via (assignedOctet1, assignedOctet2)
+// with a composite unique constraint to prevent collisions.
+//
+// VpnState is a singleton row holding a monotonic `generation` counter bumped
+// on every peer mutation — the hub reconcile agent uses it as an ETag so it
+// can short-circuit polling when nothing has changed.
+//
+// See plans/in-progress/wireguard-multi-tenant-vpn.md Appendix A.
+// ---------------------------------------------------------------------------
+
+enum VpnStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REVOKED
+
+  @@schema("public")
+}
+
+model VpnPeer {
+  id              String    @id @default(cuid())
+  tenantId        String    @unique
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignedOctet1  Int
+  assignedOctet2  Int
+  publicKey       String
+  status          VpnStatus @default(PENDING)
+  lastHandshakeAt DateTime?
+  rxBytes         BigInt    @default(0)
+  txBytes         BigInt    @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([assignedOctet1, assignedOctet2])
+  @@index([status])
+  @@schema("public")
+}
+
+model VpnState {
+  id         Int @id @default(1)
+  generation Int @default(1)
+
+  @@schema("public")
 }
 
 /// Platform-level feature flags for gradual rollout of new capabilities.
