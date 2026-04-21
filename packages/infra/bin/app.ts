@@ -8,6 +8,7 @@ import { FrontendAssetsStack } from '../lib/stacks/frontend-assets-stack'
 import { AdminFrontendAssetsStack } from '../lib/stacks/admin-frontend-assets-stack'
 import { MonitoringStack } from '../lib/stacks/monitoring-stack'
 import { DocumentsStack } from '../lib/stacks/documents-stack'
+import { WireGuardStack } from '../lib/stacks/wireguard-stack'
 
 const app = new cdk.App()
 
@@ -68,6 +69,17 @@ const apiStack = new ApiStack(app, 'PegasusDev-ApiStack', {
   cognitoMobileClientId: cognitoStack.mobileAppClient.userPoolClientId,
   cognitoHostedUiDomain: cognitoStack.hostedUiBaseUrl,
   documentsBucket: documentsStack.bucket,
+})
+
+// ── WireGuardStack ────────────────────────────────────────────────────────────
+// Stand-alone VPN plane — its VPC, EIP, SGs, and Route 53 PHZ are independent
+// of the main ApiStack. Other stacks that need the hub reference the outputs
+// (HubSecurityGroupId, HubEipAddress, PrivateHostedZoneId) by name.
+
+new WireGuardStack(app, 'PegasusDev-WireGuardStack', {
+  env: devEnv,
+  stackName: 'pegasus-dev-wireguard',
+  description: 'Pegasus dev — multi-tenant WireGuard hub (VPC + ASG + Route 53 PHZ + alarms)',
 })
 
 // ── MonitoringStack ───────────────────────────────────────────────────────────
