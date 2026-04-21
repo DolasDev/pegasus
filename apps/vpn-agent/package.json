@@ -1,0 +1,27 @@
+{
+  "name": "@pegasus/vpn-agent",
+  "version": "0.0.0",
+  "private": true,
+  "description": "WireGuard hub reconcile agent — polls the admin API and applies wg set.",
+  "main": "dist/index.js",
+  "bin": {
+    "pegasus-vpn-agent": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "start:dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cloudwatch": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "*",
+    "vitest": "^4.0.0"
+  }
+}

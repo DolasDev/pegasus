@@ -49,6 +49,13 @@ export interface WireGuardStackProps extends cdk.StackProps {
 
   /** DNS name for the private hosted zone. Defaults to `vpn.pegasus.internal`. */
   readonly privateHostedZoneName?: string
+
+  /**
+   * Base URL of the admin API the reconcile agent polls. Written into
+   * /etc/pegasus/agent.env at boot. Defaults to the production hostname;
+   * cross-stack callers should pass `apiStack.apiUrl` instead.
+   */
+  readonly adminApiUrl?: string
 }
 
 export class WireGuardStack extends cdk.Stack {
@@ -193,13 +200,19 @@ export class WireGuardStack extends cdk.Stack {
 
     // -----------------------------------------------------------------------
     // Cloud-init — install wireguard-tools, template wg0.conf from SSM,
-    // enable the tunnel. Reconcile agent install is appended by Unit 5.
+    // enable the tunnel + the pegasus-vpn-agent reconcile daemon.
+    //
+    // The agent source lives in apps/vpn-agent. Deploy flow: the CI job for
+    // that workspace publishes a tarball to s3://pegasus-artifacts/vpn-agent/
+    // and the hub pulls it at boot. Until that pipeline exists, the agent
+    // tarball can be staged manually via `aws s3 cp` before the first hub
+    // boot — see docs/runbooks/wireguard/deploy-agent.md (follow-up).
     // -----------------------------------------------------------------------
     const userData = ec2.UserData.forLinux()
     userData.addCommands(
       'set -euxo pipefail',
       'dnf update -y',
-      'dnf install -y wireguard-tools chrony aws-cli',
+      'dnf install -y wireguard-tools chrony aws-cli nodejs20 tar',
       'systemctl enable --now chronyd',
       `HUB_PRIVKEY=$(aws ssm get-parameter --name ${hubPrivKeyParam} --with-decryption --query 'Parameter.Value' --output text --region ${this.region})`,
       'mkdir -p /etc/wireguard',
@@ -216,6 +229,28 @@ export class WireGuardStack extends cdk.Stack {
       "echo 'net.ipv4.ip_forward = 1' > /etc/sysctl.d/99-wireguard.conf",
       'sysctl -p /etc/sysctl.d/99-wireguard.conf',
       'systemctl enable --now wg-quick@wg0',
+      // Reconcile agent — install and start.
+      'mkdir -p /opt/pegasus-vpn-agent /etc/pegasus',
+      'chmod 700 /etc/pegasus',
+      `AGENT_APIKEY=$(aws ssm get-parameter --name /pegasus/wireguard/agent/apikey --with-decryption --query 'Parameter.Value' --output text --region ${this.region})`,
+      'cat > /etc/pegasus/agent.env <<EOF',
+      `ADMIN_API_URL=${props.adminApiUrl ?? 'https://api.pegasusapp.com'}`,
+      'AGENT_API_KEY=$AGENT_APIKEY',
+      `AWS_REGION=${this.region}`,
+      'TICK_SECS=30',
+      'EOF',
+      'chmod 600 /etc/pegasus/agent.env',
+      // Install the agent tarball. Skipped cleanly when the artifact bucket
+      // is not set — the hub still carries the tunnel, just without automatic
+      // peer reconciliation until the artifact lands.
+      'if [ -n "${PEGASUS_AGENT_S3_URI:-}" ]; then',
+      '  aws s3 cp "$PEGASUS_AGENT_S3_URI" /tmp/vpn-agent.tgz',
+      '  tar -xzf /tmp/vpn-agent.tgz -C /opt/pegasus-vpn-agent --strip-components=1',
+      '  (cd /opt/pegasus-vpn-agent && npm install --omit=dev)',
+      '  cp /opt/pegasus-vpn-agent/systemd/pegasus-vpn-agent.service /etc/systemd/system/',
+      '  systemctl daemon-reload',
+      '  systemctl enable --now pegasus-vpn-agent.service',
+      'fi',
       // Elastic IP association via AWS CLI — the instance ID comes from IMDSv2.
       'TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")',
       'INSTANCE_ID=$(curl -sH "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)',
