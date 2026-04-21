@@ -1,0 +1,21 @@
+[Unit]
+Description=Pegasus WireGuard hub reconcile agent
+After=network-online.target wg-quick@wg0.service
+Wants=network-online.target
+Requires=wg-quick@wg0.service
+
+[Service]
+Type=simple
+Environment=PEGASUS_VPN_AGENT_START=1
+EnvironmentFile=/etc/pegasus/agent.env
+ExecStart=/usr/bin/node /opt/pegasus-vpn-agent/dist/index.js
+Restart=always
+RestartSec=5s
+# The agent shells out to `wg set` and `wg show` which require CAP_NET_ADMIN;
+# simplest + safest is to run as root since the hub is single-purpose.
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
