@@ -16,6 +16,7 @@ import { writeAuditLog } from './audit'
 import { provisionCognitoUser } from './cognito'
 import { logger } from '../../lib/logger'
 import { adminTenantUsersRouter } from './tenant-users'
+import { adminVpnRouter } from './vpn'
 
 const TenantStatusSchema = z.enum(['ACTIVE', 'SUSPENDED', 'OFFBOARDED'])
 
@@ -533,3 +534,14 @@ adminTenantsRouter.post('/:id/offboard', async (c) => {
 //         PATCH|DELETE /api/admin/tenants/:tenantId/users/:userId
 // ---------------------------------------------------------------------------
 adminTenantsRouter.route('/:tenantId/users', adminTenantUsersRouter)
+
+// ---------------------------------------------------------------------------
+// Mount tenant VPN sub-router
+//
+// Routes: POST|GET|DELETE /api/admin/tenants/:tenantId/vpn
+//         GET             /api/admin/tenants/:tenantId/vpn/status
+//         POST            /api/admin/tenants/:tenantId/vpn/rotate
+//         POST            /api/admin/tenants/:tenantId/vpn/suspend
+//         POST            /api/admin/tenants/:tenantId/vpn/resume
+// ---------------------------------------------------------------------------
+adminTenantsRouter.route('/:tenantId/vpn', adminVpnRouter)

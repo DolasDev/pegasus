@@ -18,6 +18,7 @@ import { settingsHandler } from './handlers/settings'
 import { documentsHandler } from './handlers/documents'
 import { eventsHandler } from './handlers/events'
 import { ordersHandler } from './handlers/orders'
+import { vpnAgentHandler } from './handlers/vpn-agent'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
 import { DomainError } from '@pegasus/domain'
@@ -103,6 +104,15 @@ app.route('/api/auth', authHandler)
 // Must be mounted BEFORE the tenant-protected /api/v1 block.
 // ---------------------------------------------------------------------------
 app.route('/api/admin', adminRouter)
+
+// ---------------------------------------------------------------------------
+// Hub agent API — /api/vpn/**
+//
+// M2M endpoints for the WireGuard hub's reconcile agent. The router applies
+// apiClientAuthMiddleware + requireScope('vpn:sync') internally, so routes
+// under /api/vpn are reachable only with a valid vpn:sync-scoped ApiClient.
+// ---------------------------------------------------------------------------
+app.route('/api/vpn', vpnAgentHandler)
 
 // ---------------------------------------------------------------------------
 // M2M API — routes accessible only by authenticated API clients (vnd_ keys).
