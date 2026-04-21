@@ -1,4 +1,4 @@
-import { describe, it } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import * as cdk from 'aws-cdk-lib'
 import { Template, Match } from 'aws-cdk-lib/assertions'
 import { WireGuardStack } from '../wireguard-stack'
@@ -126,6 +126,35 @@ describe('WireGuardStack — Route 53 + SNS', () => {
     synth().hasResourceProperties('AWS::SNS::Topic', {
       TopicName: 'pegasus-wireguard-alerts',
     })
+  })
+})
+
+describe('WireGuardStack — agent artifacts', () => {
+  it('creates a versioned S3 bucket with SSL enforced', () => {
+    const template = synth()
+    template.hasResourceProperties('AWS::S3::Bucket', {
+      VersioningConfiguration: { Status: 'Enabled' },
+      PublicAccessBlockConfiguration: Match.objectLike({ BlockPublicAcls: true }),
+    })
+    template.hasResourceProperties('AWS::S3::BucketPolicy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Condition: Match.objectLike({
+              Bool: { 'aws:SecureTransport': 'false' },
+            }),
+          }),
+        ]),
+      }),
+    })
+  })
+
+  it('exports the bucket name, tarball SSM param, and ASG name', () => {
+    const template = synth().toJSON()
+    const outputs = Object.keys(template.Outputs ?? {})
+    expect(outputs).toContain('AgentArtifactsBucketName')
+    expect(outputs).toContain('AgentTarballUriParameterName')
+    expect(outputs).toContain('HubAsgName')
   })
 })
 

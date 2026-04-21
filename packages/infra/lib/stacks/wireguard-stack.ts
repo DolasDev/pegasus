@@ -28,6 +28,7 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2'
 import * as autoscaling from 'aws-cdk-lib/aws-autoscaling'
 import * as iam from 'aws-cdk-lib/aws-iam'
 import * as route53 from 'aws-cdk-lib/aws-route53'
+import * as s3 from 'aws-cdk-lib/aws-s3'
 import * as sns from 'aws-cdk-lib/aws-sns'
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch'
 import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions'
@@ -77,12 +78,19 @@ export class WireGuardStack extends cdk.Stack {
   /** Private subnets Lambda functions should attach to when they need the tunnel. */
   public readonly privateLambdaSubnets: ec2.ISubnet[]
 
+  /** Bucket the CI publish-vpn-agent workflow drops agent tarballs into. */
+  public readonly agentArtifactsBucket: s3.IBucket
+
+  /** ASG name — used by CI to trigger an instance refresh after publishing a new agent. */
+  public readonly hubAsgName: string
+
   constructor(scope: Construct, id: string, props: WireGuardStackProps = {}) {
     super(scope, id, props)
 
     const hubPrivKeyParam = props.hubPrivateKeyParameterName ?? '/pegasus/wireguard/hub/privkey'
     const hubPubKeyParam = props.hubPublicKeyParameterName ?? '/pegasus/wireguard/hub/pubkey'
     const phzName = props.privateHostedZoneName ?? 'vpn.pegasus.internal'
+    const agentTarballUriParam = '/pegasus/wireguard/agent/tarball-uri'
 
     // -----------------------------------------------------------------------
     // VPC — 10.10.0.0/16 per plan §2
@@ -190,6 +198,38 @@ export class WireGuardStack extends cdk.Stack {
     )
 
     // -----------------------------------------------------------------------
+    // Agent artifacts bucket — CI uploads agent tarballs here, hub downloads.
+    // -----------------------------------------------------------------------
+    const agentBucket = new s3.Bucket(this, 'AgentArtifactsBucket', {
+      bucketName: `pegasus-vpn-agent-${this.account}-${this.region}`,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      versioned: true,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      enforceSSL: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      lifecycleRules: [
+        {
+          // Keep recent tarballs for rollback; expire older noncurrent versions.
+          noncurrentVersionExpiration: cdk.Duration.days(90),
+        },
+      ],
+    })
+    this.agentArtifactsBucket = agentBucket
+    agentBucket.grantRead(hubRole)
+    hubRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['ssm:GetParameter'],
+        resources: [
+          cdk.Stack.of(this).formatArn({
+            service: 'ssm',
+            resource: 'parameter',
+            resourceName: agentTarballUriParam.replace(/^\//, ''),
+          }),
+        ],
+      }),
+    )
+
+    // -----------------------------------------------------------------------
     // EIP — the hub's stable public address
     // -----------------------------------------------------------------------
     const eip = new ec2.CfnEIP(this, 'HubEip', {
@@ -202,11 +242,12 @@ export class WireGuardStack extends cdk.Stack {
     // Cloud-init — install wireguard-tools, template wg0.conf from SSM,
     // enable the tunnel + the pegasus-vpn-agent reconcile daemon.
     //
-    // The agent source lives in apps/vpn-agent. Deploy flow: the CI job for
-    // that workspace publishes a tarball to s3://pegasus-artifacts/vpn-agent/
-    // and the hub pulls it at boot. Until that pipeline exists, the agent
-    // tarball can be staged manually via `aws s3 cp` before the first hub
-    // boot — see docs/runbooks/wireguard/deploy-agent.md (follow-up).
+    // The agent source lives in apps/vpn-agent. The `publish-vpn-agent` CI
+    // workflow builds the tarball, uploads it to the agent artifacts bucket,
+    // and writes the resulting S3 URI to SSM at `agentTarballUriParam`. The
+    // hub reads that param at boot and pulls the tarball. If the param is
+    // not set yet, the hub boots with the tunnel but without the agent —
+    // peer reconciliation is deferred until the URI appears.
     // -----------------------------------------------------------------------
     const userData = ec2.UserData.forLinux()
     userData.addCommands(
@@ -240,11 +281,13 @@ export class WireGuardStack extends cdk.Stack {
       'TICK_SECS=30',
       'EOF',
       'chmod 600 /etc/pegasus/agent.env',
-      // Install the agent tarball. Skipped cleanly when the artifact bucket
-      // is not set — the hub still carries the tunnel, just without automatic
-      // peer reconciliation until the artifact lands.
-      'if [ -n "${PEGASUS_AGENT_S3_URI:-}" ]; then',
-      '  aws s3 cp "$PEGASUS_AGENT_S3_URI" /tmp/vpn-agent.tgz',
+      // Install the agent tarball. The S3 URI comes from SSM so CI can bump
+      // it between deploys without a stack update. Skipped cleanly when the
+      // param is unset — the hub still carries the tunnel, just without
+      // automatic peer reconciliation until CI publishes an agent.
+      `AGENT_TARBALL_URI=$(aws ssm get-parameter --name ${agentTarballUriParam} --query 'Parameter.Value' --output text --region ${this.region} 2>/dev/null || echo '')`,
+      'if [ -n "$AGENT_TARBALL_URI" ]; then',
+      '  aws s3 cp "$AGENT_TARBALL_URI" /tmp/vpn-agent.tgz',
       '  tar -xzf /tmp/vpn-agent.tgz -C /opt/pegasus-vpn-agent --strip-components=1',
       '  (cd /opt/pegasus-vpn-agent && npm install --omit=dev)',
       '  cp /opt/pegasus-vpn-agent/systemd/pegasus-vpn-agent.service /etc/systemd/system/',
@@ -294,6 +337,7 @@ export class WireGuardStack extends cdk.Stack {
       associatePublicIpAddress: true,
     })
     cdk.Tags.of(asg).add('Name', 'pegasus-wireguard-hub')
+    this.hubAsgName = asg.autoScalingGroupName
 
     // -----------------------------------------------------------------------
     // SNS topic for alarms + CloudWatch alarms
@@ -376,6 +420,21 @@ export class WireGuardStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'PrivateHostedZoneId', {
       value: phz.hostedZoneId,
       exportName: 'PegasusWireGuardPhzId',
+    })
+    new cdk.CfnOutput(this, 'AgentArtifactsBucketName', {
+      value: agentBucket.bucketName,
+      description: 'Bucket the publish-vpn-agent workflow uploads tarballs into.',
+      exportName: 'PegasusWireGuardAgentBucket',
+    })
+    new cdk.CfnOutput(this, 'AgentTarballUriParameterName', {
+      value: agentTarballUriParam,
+      description: 'SSM param holding the current agent tarball S3 URI.',
+      exportName: 'PegasusWireGuardAgentTarballParam',
+    })
+    new cdk.CfnOutput(this, 'HubAsgName', {
+      value: asg.autoScalingGroupName,
+      description: 'ASG name — pass to `aws autoscaling start-instance-refresh` in CI.',
+      exportName: 'PegasusWireGuardHubAsgName',
     })
   }
 }
