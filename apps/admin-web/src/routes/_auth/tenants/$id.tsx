@@ -5,6 +5,7 @@ import { getTenant, suspendTenant, reactivateTenant, offboardTenant } from '@/ap
 import type { TenantDetail } from '@/api/tenants'
 import { TenantFormDialog } from '@/components/TenantFormDialog'
 import { TenantUsersSection } from '@/components/TenantUsersSection'
+import { TenantVpnSection } from '@/components/TenantVpnSection'
 import { ApiError } from '@/api/client'
 
 // ---------------------------------------------------------------------------
@@ -314,6 +315,14 @@ export function TenantDetailPage() {
           <section className="space-y-3">
             <h2 className="text-sm font-semibold text-foreground">Users</h2>
             <TenantUsersSection tenantId={id} />
+          </section>
+        )}
+
+        {/* VPN */}
+        {tenant.status !== 'OFFBOARDED' && (
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold text-foreground">WireGuard VPN</h2>
+            <TenantVpnSection tenantId={id} />
           </section>
         )}
 
