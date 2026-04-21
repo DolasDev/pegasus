@@ -1,0 +1,159 @@
+name: Publish VPN agent
+
+# Builds the apps/vpn-agent tarball, uploads it to the agent artifacts bucket
+# managed by WireGuardStack, writes the S3 URI to SSM, and triggers an ASG
+# instance refresh so the hub picks up the new agent.
+#
+# The bucket name, SSM parameter name, and ASG name are read from the
+# WireGuardStack CloudFormation outputs at job run time so they cannot drift
+# from the CDK-defined names.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/vpn-agent/**'
+      - '.github/workflows/publish-vpn-agent.yml'
+  workflow_dispatch:
+    inputs:
+      skip-instance-refresh:
+        description: 'Skip the ASG instance refresh after publishing'
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish-vpn-agent
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    name: Build, upload, refresh
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      STACK_NAME: pegasus-dev-wireguard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (full workspace)
+        run: npm ci
+
+      - name: Typecheck + test agent
+        run: |
+          npm run typecheck --workspace=@pegasus/vpn-agent
+          npm test --workspace=@pegasus/vpn-agent
+
+      - name: Build agent
+        run: npm run build --workspace=@pegasus/vpn-agent
+
+      - name: Stage prod tree
+        run: |
+          set -euo pipefail
+          STAGE=$(mktemp -d)
+          mkdir -p "$STAGE/pegasus-vpn-agent"
+          cp -r apps/vpn-agent/dist "$STAGE/pegasus-vpn-agent/"
+          cp -r apps/vpn-agent/systemd "$STAGE/pegasus-vpn-agent/"
+          cp apps/vpn-agent/package.json "$STAGE/pegasus-vpn-agent/"
+          # Install runtime-only dependencies into the staging dir so the hub's
+          # cloud-init doesn't need network access to NPM.
+          (cd "$STAGE/pegasus-vpn-agent" && npm install --omit=dev --no-audit --no-fund)
+          echo "STAGE=$STAGE" >> "$GITHUB_ENV"
+
+      - name: Create tarball
+        run: |
+          set -euo pipefail
+          TARBALL="$RUNNER_TEMP/vpn-agent-${{ github.sha }}.tgz"
+          tar -czf "$TARBALL" -C "$STAGE" pegasus-vpn-agent
+          ls -lh "$TARBALL"
+          echo "TARBALL=$TARBALL" >> "$GITHUB_ENV"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: publish-vpn-agent-${{ github.run_id }}
+
+      - name: Resolve WireGuardStack outputs
+        id: stack
+        run: |
+          set -euo pipefail
+          outputs=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query 'Stacks[0].Outputs' \
+            --output json)
+
+          bucket=$(echo "$outputs" | jq -r '.[] | select(.OutputKey == "AgentArtifactsBucketName") | .OutputValue')
+          param=$(echo  "$outputs" | jq -r '.[] | select(.OutputKey == "AgentTarballUriParameterName") | .OutputValue')
+          asg=$(echo    "$outputs" | jq -r '.[] | select(.OutputKey == "HubAsgName") | .OutputValue')
+
+          if [[ -z "$bucket" || -z "$param" || -z "$asg" ]]; then
+            echo "::error::Could not resolve stack outputs. Has WireGuardStack been deployed?"
+            echo "$outputs"
+            exit 1
+          fi
+
+          echo "bucket=$bucket" >> "$GITHUB_OUTPUT"
+          echo "param=$param" >> "$GITHUB_OUTPUT"
+          echo "asg=$asg" >> "$GITHUB_OUTPUT"
+          echo "Bucket: $bucket"
+          echo "SSM param: $param"
+          echo "ASG: $asg"
+
+      - name: Upload tarball to S3
+        id: upload
+        env:
+          BUCKET: ${{ steps.stack.outputs.bucket }}
+        run: |
+          set -euo pipefail
+          KEY="vpn-agent/${{ github.sha }}.tgz"
+          S3_URI="s3://$BUCKET/$KEY"
+          aws s3 cp "$TARBALL" "$S3_URI"
+          echo "s3_uri=$S3_URI" >> "$GITHUB_OUTPUT"
+          echo "Uploaded to $S3_URI"
+
+      - name: Update SSM tarball URI
+        env:
+          PARAM: ${{ steps.stack.outputs.param }}
+          S3_URI: ${{ steps.upload.outputs.s3_uri }}
+        run: |
+          set -euo pipefail
+          aws ssm put-parameter \
+            --name "$PARAM" \
+            --type String \
+            --value "$S3_URI" \
+            --overwrite
+          echo "SSM $PARAM → $S3_URI"
+
+      - name: Trigger ASG instance refresh
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip-instance-refresh }}
+        env:
+          ASG: ${{ steps.stack.outputs.asg }}
+        run: |
+          set -euo pipefail
+          aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name "$ASG" \
+            --preferences '{"MinHealthyPercentage": 0, "InstanceWarmup": 60}'
+          echo "Instance refresh started on $ASG — the hub will replace itself in ~90s."
+
+      - name: Summary
+        if: success()
+        env:
+          S3_URI: ${{ steps.upload.outputs.s3_uri }}
+        run: |
+          {
+            echo "### VPN agent published"
+            echo "- Tarball: \`$S3_URI\`"
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Instance refresh: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip-instance-refresh && 'triggered' || 'skipped' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
