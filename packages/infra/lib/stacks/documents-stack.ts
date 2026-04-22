@@ -85,8 +85,8 @@ export class DocumentsStack extends cdk.Stack {
       bundling: {
         minify: true,
         sourceMap: true,
-        externalModules: ['@aws-sdk/*', 'sharp'],
-        nodeModules: ['sharp'],
+        externalModules: ['@aws-sdk/*', 'sharp', '@napi-rs/canvas'],
+        nodeModules: ['sharp', '@napi-rs/canvas'],
       },
       memorySize: 1024,
       timeout: cdk.Duration.minutes(5),

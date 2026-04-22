@@ -75,8 +75,8 @@ Save as `trust-policy.json` (replace `AWS_ACCOUNT_ID`):
         },
         "StringLike": {
           "token.actions.githubusercontent.com:sub": [
-            "repo:dolasllc/pegasus:ref:refs/heads/main",
-            "repo:dolasllc/pegasus:environment:dev"
+            "repo:DolasDev/pegasus:ref:refs/heads/main",
+            "repo:DolasDev/pegasus:environment:dev"
           ]
         }
       }
@@ -90,6 +90,11 @@ The `sub` claims restrict who can assume the role:
 - `ref:refs/heads/main` — auto-deploys from `push` to main
 - `environment:dev` — manual `workflow_dispatch` runs scoped to the
   `dev` GitHub environment (set up in step 4)
+
+> **Case matters.** GitHub emits the `sub` claim with the exact case
+> of the repo owner, and IAM's `StringLike` is case-sensitive. The
+> owner here is `DolasDev` (not `dolasllc`). Double-check the casing
+> via `gh repo view --json nameWithOwner` before applying.
 
 ### 2b. Create the role
 
