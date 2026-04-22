@@ -85,22 +85,26 @@ aws s3 ls s3://pegasus-vpn-agent-864899848943-us-east-1 --profile admin-dev
 
 ## Plan
 
-- [ ] **1. Inventory the orphan bucket.** `aws s3 ls` — empty ⇒ delete; non-empty ⇒ import.
-- [ ] **2. Rewrite HubAsg to use `ec2.LaunchTemplate` + `launchTemplate:` prop.**
-      Keep IAM instance profile, user-data, SG, IMDSv2 config identical.
-      `cdk synth` locally and diff the template to confirm only the ASG
-      construct changes.
-- [ ] **3. Deploy WireGuard stack in isolation** via `AWS_PROFILE=admin-dev` +
-      `cdk deploy pegasus-dev-wireguard` from a developer machine. Iterate
-      locally to avoid the long CI loop.
-- [ ] **4. Re-enable full CI smoke-test.** Once WireGuard is green,
-      trigger `Deploy` workflow with `target=all` from the Actions UI.
-      Confirm client/admin/API URLs land in the `Deployed URLs` summary
-      and artifacts upload cleanly.
-- [ ] **5. Close out parent plans.** Tick the `target: all` bullet in
-      `plans/completed/aws-oidc-setup.md` (moved there by
-      deploy-via-cicd) and the deferred smoke-test note in
-      `deploy-via-cicd.md` § 7.
+- [x] **1. Inventory the orphan bucket.** `aws s3 ls` returned empty;
+      `list-object-versions` confirmed no versions/delete markers.
+      Deleted with `aws s3 rb`; CDK recreated it fresh on deploy.
+- [x] **2. Rewrite HubAsg to use `ec2.LaunchTemplate` + `launchTemplate:` prop.**
+      Commit `40a6c87`. All instance-level props (AMI, t4g.nano,
+      HubRole, HubSg, user-data, gp3 block device, public-IP association)
+      moved to the LT; ASG kept only vpc/vpcSubnets/capacity.
+      `BlockDevice` / `BlockDeviceVolume` imports swapped from
+      `autoscaling` to `ec2`. Test updated to assert
+      `AWS::EC2::LaunchTemplate` and forbid any LaunchConfiguration.
+- [x] **3. Deploy WireGuard stack in isolation** — 48/48
+      `CREATE_COMPLETE` against admin-dev in 287s. Hub EIP
+      `98.86.83.25`, public key
+      `uxdvOOi2kbWimPMuPCwcE6XmW/bGLhVFzgdXzIx7DGc=`.
+- [x] **4. Re-enable full CI smoke-test.** Push of `40a6c87` to main
+      triggered Deploy run `24797230359` with `target=all`; both
+      jobs succeeded, `cdk-outputs` + `mobile-env` artifacts uploaded.
+- [x] **5. Close out parent plans.** `target: all` and `cdk-outputs`
+      bullets in `plans/completed/aws-oidc-setup.md` §5 ticked.
+      `deploy-via-cicd.md` §7 follow-up closed by this plan landing.
 
 ## Out of scope
 

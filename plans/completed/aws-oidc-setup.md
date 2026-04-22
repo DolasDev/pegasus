@@ -188,12 +188,11 @@ Once `.github/workflows/deploy.yml` is merged to main:
       CDK synth, Lambda bundle, and CloudFormation change-set creation
       all succeed end-to-end. The mechanism is proven; `cdk-outputs`
       artifact uploads correctly.
-- [ ] `target: all` full-stack deploy deferred until
-      `plans/in-progress/fix-wireguard-stack.md` lands. That plan also
-      blocks `target: api` because `ApiStack` depends on WireGuardStack
-      in `bin/app.ts`.
-- [ ] Download the `cdk-outputs` and `mobile-env` artifacts after the
-      full-stack deploy lands.
+- [x] `target: all` full-stack deploy succeeded on run 24797230359
+      after `plans/completed/fix-wireguard-stack.md` landed
+      (commit `40a6c87`). All three stacks (api/tenant-web/admin-web + infra) deployed cleanly end-to-end.
+- [x] `cdk-outputs` and `mobile-env` artifacts upload correctly on
+      run 24797230359.
 
 ---
 
