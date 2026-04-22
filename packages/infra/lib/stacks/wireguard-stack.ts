@@ -23,15 +23,20 @@
 // after the agent lands.
 // ---------------------------------------------------------------------------
 
+import * as path from 'path'
 import * as cdk from 'aws-cdk-lib'
 import * as ec2 from 'aws-cdk-lib/aws-ec2'
 import * as autoscaling from 'aws-cdk-lib/aws-autoscaling'
 import * as iam from 'aws-cdk-lib/aws-iam'
+import * as lambda from 'aws-cdk-lib/aws-lambda'
+import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs'
+import * as logs from 'aws-cdk-lib/aws-logs'
 import * as route53 from 'aws-cdk-lib/aws-route53'
 import * as s3 from 'aws-cdk-lib/aws-s3'
 import * as sns from 'aws-cdk-lib/aws-sns'
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch'
 import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions'
+import * as customResources from 'aws-cdk-lib/custom-resources'
 import { type Construct } from 'constructs'
 
 export interface WireGuardStackProps extends cdk.StackProps {
@@ -83,6 +88,12 @@ export class WireGuardStack extends cdk.Stack {
 
   /** ASG name — used by CI to trigger an instance refresh after publishing a new agent. */
   public readonly hubAsgName: string
+
+  /** Base64 hub public key — produced by the key-bootstrap Custom Resource. */
+  public readonly hubPublicKey: string
+
+  /** Tenant-facing endpoint (EIP + port). Embed in tenant client.conf via renderClientConfig. */
+  public readonly hubEndpoint: string
 
   constructor(scope: Construct, id: string, props: WireGuardStackProps = {}) {
     super(scope, id, props)
@@ -237,6 +248,63 @@ export class WireGuardStack extends cdk.Stack {
       tags: [{ key: 'Name', value: 'pegasus-wireguard-hub' }],
     })
     this.hubEip = eip
+    this.hubEndpoint = `${eip.ref}:51820`
+
+    // -----------------------------------------------------------------------
+    // Custom Resource — bootstrap the hub keypair idempotently.
+    //
+    // On first deploy the Lambda generates a clamped X25519 scalar (same
+    // 32-byte shape `wg genkey` outputs), writes both halves to SSM, and
+    // returns the public key as a CR Data attribute. On re-deploy it sees
+    // the params already exist and just returns the current public key —
+    // no regeneration. Delete is a noop; the retained SSM params mean
+    // `cdk destroy` + redeploy does not invalidate tenant client.confs.
+    // -----------------------------------------------------------------------
+    const keyBootstrapFn = new nodejs.NodejsFunction(this, 'HubKeyBootstrapFn', {
+      entry: path.join(__dirname, 'wireguard-key-bootstrap.handler.ts'),
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
+      logRetention: logs.RetentionDays.ONE_MONTH,
+      bundling: {
+        externalModules: ['@aws-sdk/*'],
+      },
+    })
+    keyBootstrapFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ssm:GetParameter', 'ssm:PutParameter'],
+        resources: [
+          cdk.Stack.of(this).formatArn({
+            service: 'ssm',
+            resource: 'parameter',
+            resourceName: hubPrivKeyParam.replace(/^\//, ''),
+          }),
+          cdk.Stack.of(this).formatArn({
+            service: 'ssm',
+            resource: 'parameter',
+            resourceName: hubPubKeyParam.replace(/^\//, ''),
+          }),
+        ],
+      }),
+    )
+
+    const keyProvider = new customResources.Provider(this, 'HubKeyBootstrapProvider', {
+      onEventHandler: keyBootstrapFn,
+      logRetention: logs.RetentionDays.ONE_MONTH,
+    })
+
+    const keyBootstrap = new cdk.CustomResource(this, 'HubKeyBootstrap', {
+      serviceToken: keyProvider.serviceToken,
+      properties: {
+        PrivateKeyParameterName: hubPrivKeyParam,
+        PublicKeyParameterName: hubPubKeyParam,
+      },
+    })
+    // The SSM params this CR writes must survive stack deletion so destroying
+    // the stack does not silently invalidate every tenant's client.conf.
+    keyBootstrap.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN)
+    this.hubPublicKey = keyBootstrap.getAttString('PublicKey')
 
     // -----------------------------------------------------------------------
     // Cloud-init — install wireguard-tools, template wg0.conf from SSM,
@@ -435,6 +503,17 @@ export class WireGuardStack extends cdk.Stack {
       value: asg.autoScalingGroupName,
       description: 'ASG name — pass to `aws autoscaling start-instance-refresh` in CI.',
       exportName: 'PegasusWireGuardHubAsgName',
+    })
+    new cdk.CfnOutput(this, 'HubPublicKey', {
+      value: this.hubPublicKey,
+      description: 'Base64 hub public key — embedded in tenant client.conf as Peer.PublicKey.',
+      exportName: 'PegasusWireGuardHubPublicKey',
+    })
+    new cdk.CfnOutput(this, 'HubEndpoint', {
+      value: this.hubEndpoint,
+      description:
+        'Tenant-facing endpoint (EIP:51820) — embedded in tenant client.conf as Peer.Endpoint.',
+      exportName: 'PegasusWireGuardHubEndpoint',
     })
   }
 }

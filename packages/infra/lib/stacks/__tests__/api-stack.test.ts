@@ -102,6 +102,18 @@ describe('ApiStack — Lambda function', () => {
       },
     })
   })
+
+  it('declares WIREGUARD_HUB_PUBLIC_KEY + WIREGUARD_HUB_ENDPOINT (empty when not wired)', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.objectLike({
+          WIREGUARD_HUB_PUBLIC_KEY: Match.anyValue(),
+          WIREGUARD_HUB_ENDPOINT: Match.anyValue(),
+        }),
+      },
+    })
+  })
 })
 
 describe('ApiStack — IAM permissions', () => {

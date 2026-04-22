@@ -56,8 +56,20 @@ const documentsStack = new DocumentsStack(app, 'PegasusDev-DocumentsStack', {
   description: 'Pegasus dev — S3 bucket for document attachments',
 })
 
+// ── WireGuardStack ────────────────────────────────────────────────────────────
+// Stand-alone VPN plane — VPC, EIP, SGs, Route 53 PHZ, agent artifact bucket,
+// and the key-bootstrap Custom Resource that generates the hub Curve25519
+// keypair on first deploy. Deploys before ApiStack so the hub public key
+// and endpoint can be injected into the Lambda env as cross-stack exports.
+
+const wireguardStack = new WireGuardStack(app, 'PegasusDev-WireGuardStack', {
+  env: devEnv,
+  stackName: 'pegasus-dev-wireguard',
+  description: 'Pegasus dev — multi-tenant WireGuard hub (VPC + ASG + Route 53 PHZ + alarms)',
+})
+
 // ── ApiStack ──────────────────────────────────────────────────────────────────
-// CDK deployment order: CognitoStack + DocumentsStack → ApiStack.
+// CDK deployment order: CognitoStack + DocumentsStack + WireGuardStack → ApiStack.
 
 const apiStack = new ApiStack(app, 'PegasusDev-ApiStack', {
   env: devEnv,
@@ -69,17 +81,8 @@ const apiStack = new ApiStack(app, 'PegasusDev-ApiStack', {
   cognitoMobileClientId: cognitoStack.mobileAppClient.userPoolClientId,
   cognitoHostedUiDomain: cognitoStack.hostedUiBaseUrl,
   documentsBucket: documentsStack.bucket,
-})
-
-// ── WireGuardStack ────────────────────────────────────────────────────────────
-// Stand-alone VPN plane — its VPC, EIP, SGs, and Route 53 PHZ are independent
-// of the main ApiStack. Other stacks that need the hub reference the outputs
-// (HubSecurityGroupId, HubEipAddress, PrivateHostedZoneId) by name.
-
-new WireGuardStack(app, 'PegasusDev-WireGuardStack', {
-  env: devEnv,
-  stackName: 'pegasus-dev-wireguard',
-  description: 'Pegasus dev — multi-tenant WireGuard hub (VPC + ASG + Route 53 PHZ + alarms)',
+  wireguardHubPublicKey: wireguardStack.hubPublicKey,
+  wireguardHubEndpoint: wireguardStack.hubEndpoint,
 })
 
 // ── MonitoringStack ───────────────────────────────────────────────────────────
