@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// WireGuardStack — the single-hub multi-tenant VPN plane.
+// WireGuardStack - the single-hub multi-tenant VPN plane.
 //
 // Provisions everything in §6 of plans/in-progress/wireguard-multi-tenant-vpn.md:
 //   - A dedicated VPC (10.10.0.0/16) with one public + one private subnet.
@@ -19,7 +19,7 @@
 // The hub reconcile agent (apps/vpn-agent, landing in Unit 5) will extend
 // this stack by appending its install steps to the user-data script and
 // enabling pegasus-vpn-agent.service. Today the hub runs the tunnel without
-// the agent — peers are still added/removed by manually running `wg set` or
+// the agent - peers are still added/removed by manually running `wg set` or
 // after the agent lands.
 // ---------------------------------------------------------------------------
 
@@ -42,7 +42,7 @@ import { type Construct } from 'constructs'
 export interface WireGuardStackProps extends cdk.StackProps {
   /**
    * SSM parameter path holding the hub's base64 Curve25519 private key
-   * (SecureString). Seeded once out of band — see §8 Phase 2 of the plan.
+   * (SecureString). Seeded once out of band - see §8 Phase 2 of the plan.
    * Defaults to `/pegasus/wireguard/hub/privkey`.
    */
   readonly hubPrivateKeyParameterName?: string
@@ -68,7 +68,7 @@ export class WireGuardStack extends cdk.Stack {
   /** VPC exposed for Lambdas that need to reach the hub. */
   public readonly vpc: ec2.IVpc
 
-  /** Security group attached to the hub — Lambdas that need the tunnel egress to this SG on 443. */
+  /** Security group attached to the hub - Lambdas that need the tunnel egress to this SG on 443. */
   public readonly hubSecurityGroup: ec2.ISecurityGroup
 
   /** The stable public IPv4 address of the hub. Tenant `client.conf`s embed this via DNS CNAME. */
@@ -86,10 +86,10 @@ export class WireGuardStack extends cdk.Stack {
   /** Bucket the CI publish-vpn-agent workflow drops agent tarballs into. */
   public readonly agentArtifactsBucket: s3.IBucket
 
-  /** ASG name — used by CI to trigger an instance refresh after publishing a new agent. */
+  /** ASG name - used by CI to trigger an instance refresh after publishing a new agent. */
   public readonly hubAsgName: string
 
-  /** Base64 hub public key — produced by the key-bootstrap Custom Resource. */
+  /** Base64 hub public key - produced by the key-bootstrap Custom Resource. */
   public readonly hubPublicKey: string
 
   /** Tenant-facing endpoint (EIP + port). Embed in tenant client.conf via renderClientConfig. */
@@ -113,10 +113,10 @@ export class WireGuardStack extends cdk.Stack {
     const agentTarballUriParam = '/pegasus/wireguard/agent/tarball-uri'
 
     // -----------------------------------------------------------------------
-    // VPC — 10.10.0.0/16 per plan §2
+    // VPC - 10.10.0.0/16 per plan §2
     // -----------------------------------------------------------------------
     // Two AZs declared but only AZ-a is used in v1. Hub is in a public subnet
-    // (no NAT GW — its agent needs egress via its own public ENI per Q16).
+    // (no NAT GW - its agent needs egress via its own public ENI per Q16).
     const vpc = new ec2.Vpc(this, 'VpnVpc', {
       vpcName: 'pegasus-wireguard-vpc',
       ipAddresses: ec2.IpAddresses.cidr('10.10.0.0/16'),
@@ -130,7 +130,7 @@ export class WireGuardStack extends cdk.Stack {
         },
         {
           name: 'private-lambda',
-          // PRIVATE_ISOLATED — no NAT egress; Lambdas that need public
+          // PRIVATE_ISOLATED - no NAT egress; Lambdas that need public
           // egress for Cognito/Neon set their own routes via IGW when
           // attached.
           subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
@@ -153,7 +153,7 @@ export class WireGuardStack extends cdk.Stack {
     const hubSg = new ec2.SecurityGroup(this, 'HubSg', {
       vpc,
       securityGroupName: 'pegasus-wireguard-hub',
-      description: 'WireGuard hub — UDP 51820 ingress from tenants; 443 ingress from Lambdas',
+      description: 'WireGuard hub - UDP 51820 ingress from tenants; 443 ingress from Lambdas',
       allowAllOutbound: true,
     })
     hubSg.addIngressRule(
@@ -164,12 +164,12 @@ export class WireGuardStack extends cdk.Stack {
     this.hubSecurityGroup = hubSg
 
     // -----------------------------------------------------------------------
-    // IAM — narrow role for the hub instance
+    // IAM - narrow role for the hub instance
     // -----------------------------------------------------------------------
     const hubRole = new iam.Role(this, 'HubRole', {
       roleName: 'pegasus-wireguard-hub',
       assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
-      description: 'WireGuard hub instance — SSM session, keys, CloudWatch, Route 53 PHZ writes',
+      description: 'WireGuard hub instance - SSM session, keys, CloudWatch, Route 53 PHZ writes',
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
         iam.ManagedPolicy.fromAwsManagedPolicyName('CloudWatchAgentServerPolicy'),
@@ -208,12 +208,12 @@ export class WireGuardStack extends cdk.Stack {
     )
 
     // -----------------------------------------------------------------------
-    // Private hosted zone — per-tenant overlay CNAMEs
+    // Private hosted zone - per-tenant overlay CNAMEs
     // -----------------------------------------------------------------------
     const phz = new route53.PrivateHostedZone(this, 'VpnPhz', {
       zoneName: phzName,
       vpc,
-      comment: 'WireGuard overlay — <tenantId>.vpn.pegasus.internal → 10.200.<N>.1',
+      comment: 'WireGuard overlay - <tenantId>.vpn.pegasus.internal -> 10.200.<N>.1',
     })
     this.privateHostedZone = phz
     hubRole.addToPolicy(
@@ -224,7 +224,7 @@ export class WireGuardStack extends cdk.Stack {
     )
 
     // -----------------------------------------------------------------------
-    // Agent artifacts bucket — CI uploads agent tarballs here, hub downloads.
+    // Agent artifacts bucket - CI uploads agent tarballs here, hub downloads.
     // -----------------------------------------------------------------------
     const agentBucket = new s3.Bucket(this, 'AgentArtifactsBucket', {
       bucketName: `pegasus-vpn-agent-${this.account}-${this.region}`,
@@ -256,7 +256,7 @@ export class WireGuardStack extends cdk.Stack {
     )
 
     // -----------------------------------------------------------------------
-    // EIP — the hub's stable public address
+    // EIP - the hub's stable public address
     // -----------------------------------------------------------------------
     const eip = new ec2.CfnEIP(this, 'HubEip', {
       domain: 'vpc',
@@ -266,12 +266,12 @@ export class WireGuardStack extends cdk.Stack {
     this.hubEndpoint = `${eip.ref}:51820`
 
     // -----------------------------------------------------------------------
-    // Custom Resource — bootstrap the hub keypair idempotently.
+    // Custom Resource - bootstrap the hub keypair idempotently.
     //
     // On first deploy the Lambda generates a clamped X25519 scalar (same
     // 32-byte shape `wg genkey` outputs), writes both halves to SSM, and
     // returns the public key as a CR Data attribute. On re-deploy it sees
-    // the params already exist and just returns the current public key —
+    // the params already exist and just returns the current public key -
     // no regeneration. Delete is a noop; the retained SSM params mean
     // `cdk destroy` + redeploy does not invalidate tenant client.confs.
     // -----------------------------------------------------------------------
@@ -322,14 +322,14 @@ export class WireGuardStack extends cdk.Stack {
     this.hubPublicKey = keyBootstrap.getAttString('PublicKey')
 
     // -----------------------------------------------------------------------
-    // Cloud-init — install wireguard-tools, template wg0.conf from SSM,
+    // Cloud-init - install wireguard-tools, template wg0.conf from SSM,
     // enable the tunnel + the pegasus-vpn-agent reconcile daemon.
     //
     // The agent source lives in apps/vpn-agent. The `publish-vpn-agent` CI
     // workflow builds the tarball, uploads it to the agent artifacts bucket,
     // and writes the resulting S3 URI to SSM at `agentTarballUriParam`. The
     // hub reads that param at boot and pulls the tarball. If the param is
-    // not set yet, the hub boots with the tunnel but without the agent —
+    // not set yet, the hub boots with the tunnel but without the agent -
     // peer reconciliation is deferred until the URI appears.
     // -----------------------------------------------------------------------
     const userData = ec2.UserData.forLinux()
@@ -353,7 +353,7 @@ export class WireGuardStack extends cdk.Stack {
       "echo 'net.ipv4.ip_forward = 1' > /etc/sysctl.d/99-wireguard.conf",
       'sysctl -p /etc/sysctl.d/99-wireguard.conf',
       'systemctl enable --now wg-quick@wg0',
-      // Reconcile agent — install and start.
+      // Reconcile agent - install and start.
       'mkdir -p /opt/pegasus-vpn-agent /etc/pegasus',
       'chmod 700 /etc/pegasus',
       `AGENT_APIKEY=$(aws ssm get-parameter --name /pegasus/wireguard/agent/apikey --with-decryption --query 'Parameter.Value' --output text --region ${this.region})`,
@@ -366,7 +366,7 @@ export class WireGuardStack extends cdk.Stack {
       'chmod 600 /etc/pegasus/agent.env',
       // Install the agent tarball. The S3 URI comes from SSM so CI can bump
       // it between deploys without a stack update. Skipped cleanly when the
-      // param is unset — the hub still carries the tunnel, just without
+      // param is unset - the hub still carries the tunnel, just without
       // automatic peer reconciliation until CI publishes an agent.
       `AGENT_TARBALL_URI=$(aws ssm get-parameter --name ${agentTarballUriParam} --query 'Parameter.Value' --output text --region ${this.region} 2>/dev/null || echo '')`,
       'if [ -n "$AGENT_TARBALL_URI" ]; then',
@@ -377,7 +377,7 @@ export class WireGuardStack extends cdk.Stack {
       '  systemctl daemon-reload',
       '  systemctl enable --now pegasus-vpn-agent.service',
       'fi',
-      // Elastic IP association via AWS CLI — the instance ID comes from IMDSv2.
+      // Elastic IP association via AWS CLI - the instance ID comes from IMDSv2.
       'TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")',
       'INSTANCE_ID=$(curl -sH "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)',
       `aws ec2 associate-address --region ${this.region} --instance-id "$INSTANCE_ID" --allocation-id ${eip.attrAllocationId} --allow-reassociation || true`,
@@ -386,7 +386,7 @@ export class WireGuardStack extends cdk.Stack {
       `aws ec2 modify-instance-attribute --region ${this.region} --instance-id "$INSTANCE_ID" --source-dest-check '{"Value":false}'`,
       // Point the private-lambda subnets' route tables at this instance for
       // the 10.200.0.0/16 overlay. On first boot `create-route` wins; on
-      // replacement `replace-route` wins — try both to stay idempotent.
+      // replacement `replace-route` wins - try both to stay idempotent.
       `VPC_ID=${vpc.vpcId}`,
       'for RT_ID in $(aws ec2 describe-route-tables' +
         ` --region ${this.region}` +
@@ -414,7 +414,7 @@ export class WireGuardStack extends cdk.Stack {
     )
 
     // -----------------------------------------------------------------------
-    // ASG — one t4g.nano ARM hub, AL2023
+    // ASG - one t4g.nano ARM hub, AL2023
     // -----------------------------------------------------------------------
     const asg = new autoscaling.AutoScalingGroup(this, 'HubAsg', {
       vpc,
@@ -445,12 +445,12 @@ export class WireGuardStack extends cdk.Stack {
     this.hubAsgName = asg.autoScalingGroupName
 
     // -----------------------------------------------------------------------
-    // Tunnel-proxy Lambda — the data-plane hop that lets the main (public)
+    // Tunnel-proxy Lambda - the data-plane hop that lets the main (public)
     // API Lambda reach tenant overlay IPs without itself being VPC-attached.
     //
     // Lives in the private-lambda subnets so its only network egress is via
     // the 10.200.0.0/16 → hub route the cloud-init above maintains. No NAT,
-    // no interface endpoints — strictly zero ongoing infra cost.
+    // no interface endpoints - strictly zero ongoing infra cost.
     //
     // CloudWatch Logs from this Lambda will NOT publish (no network path
     // to the logs endpoint). That's accepted tradeoff for the $0 cost
@@ -461,7 +461,7 @@ export class WireGuardStack extends cdk.Stack {
     const proxySg = new ec2.SecurityGroup(this, 'TunnelProxySg', {
       vpc,
       securityGroupName: 'pegasus-wireguard-tunnel-proxy',
-      description: 'Tunnel-proxy Lambda — egress only (to tenant overlay IPs via hub).',
+      description: 'Tunnel-proxy Lambda - egress only (to tenant overlay IPs via hub).',
       allowAllOutbound: true,
     })
     const tunnelProxyFn = new nodejs.NodejsFunction(this, 'TunnelProxyFn', {
@@ -492,7 +492,7 @@ export class WireGuardStack extends cdk.Stack {
 
     const statusCheckFailedAlarm = new cloudwatch.Alarm(this, 'HubStatusCheckFailedAlarm', {
       alarmName: 'pegasus-wireguard-hub-status-check-failed',
-      alarmDescription: 'Hub instance EC2 status check has failed — ASG is replacing it.',
+      alarmDescription: 'Hub instance EC2 status check has failed - ASG is replacing it.',
       metric: new cloudwatch.Metric({
         namespace: 'AWS/EC2',
         metricName: 'StatusCheckFailed',
@@ -510,7 +510,7 @@ export class WireGuardStack extends cdk.Stack {
     const reconcileLagAlarm = new cloudwatch.Alarm(this, 'HubReconcileLagAlarm', {
       alarmName: 'pegasus-wireguard-reconcile-lag',
       alarmDescription:
-        'HubReconcileLagSeconds > 120 for 5 min — agent is not polling the admin API.',
+        'HubReconcileLagSeconds > 120 for 5 min - agent is not polling the admin API.',
       metric: new cloudwatch.Metric({
         namespace: 'PegasusWireGuard',
         metricName: 'HubReconcileLagSeconds',
@@ -527,7 +527,7 @@ export class WireGuardStack extends cdk.Stack {
     const handshakeAgeAlarm = new cloudwatch.Alarm(this, 'HandshakeAgeAlarm', {
       alarmName: 'pegasus-wireguard-handshake-stale',
       alarmDescription:
-        'HandshakeAgeMaxSeconds > 180 for 5 min — at least one ACTIVE peer has stopped handshaking.',
+        'HandshakeAgeMaxSeconds > 180 for 5 min - at least one ACTIVE peer has stopped handshaking.',
       metric: new cloudwatch.Metric({
         namespace: 'PegasusWireGuard',
         metricName: 'HandshakeAgeMaxSeconds',
@@ -542,12 +542,12 @@ export class WireGuardStack extends cdk.Stack {
     handshakeAgeAlarm.addAlarmAction(new cwActions.SnsAction(alertsTopic))
 
     // -----------------------------------------------------------------------
-    // CloudFormation outputs — consumed by the admin API (hub endpoint +
+    // CloudFormation outputs - consumed by the admin API (hub endpoint +
     // public key injection) and ops runbooks.
     // -----------------------------------------------------------------------
     new cdk.CfnOutput(this, 'HubEipAddress', {
       value: eip.ref,
-      description: 'Public IP of the WireGuard hub — embed in tenant client.conf Endpoint.',
+      description: 'Public IP of the WireGuard hub - embed in tenant client.conf Endpoint.',
       exportName: 'PegasusWireGuardHubEip',
     })
     new cdk.CfnOutput(this, 'VpcId', { value: vpc.vpcId, exportName: 'PegasusWireGuardVpcId' })
@@ -575,24 +575,24 @@ export class WireGuardStack extends cdk.Stack {
     })
     new cdk.CfnOutput(this, 'HubAsgName', {
       value: asg.autoScalingGroupName,
-      description: 'ASG name — pass to `aws autoscaling start-instance-refresh` in CI.',
+      description: 'ASG name - pass to `aws autoscaling start-instance-refresh` in CI.',
       exportName: 'PegasusWireGuardHubAsgName',
     })
     new cdk.CfnOutput(this, 'HubPublicKey', {
       value: this.hubPublicKey,
-      description: 'Base64 hub public key — embedded in tenant client.conf as Peer.PublicKey.',
+      description: 'Base64 hub public key - embedded in tenant client.conf as Peer.PublicKey.',
       exportName: 'PegasusWireGuardHubPublicKey',
     })
     new cdk.CfnOutput(this, 'HubEndpoint', {
       value: this.hubEndpoint,
       description:
-        'Tenant-facing endpoint (EIP:51820) — embedded in tenant client.conf as Peer.Endpoint.',
+        'Tenant-facing endpoint (EIP:51820) - embedded in tenant client.conf as Peer.Endpoint.',
       exportName: 'PegasusWireGuardHubEndpoint',
     })
     new cdk.CfnOutput(this, 'TunnelProxyFunctionArn', {
       value: tunnelProxyFn.functionArn,
       description:
-        'Tunnel-proxy Lambda ARN — the main API Lambda invokes this to reach tenant overlay IPs.',
+        'Tunnel-proxy Lambda ARN - the main API Lambda invokes this to reach tenant overlay IPs.',
       exportName: 'PegasusWireGuardTunnelProxyFnArn',
     })
   }
