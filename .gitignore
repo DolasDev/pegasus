@@ -73,3 +73,7 @@ lerna-debug.log*
 # OS
 Thumbs.db
 settings.local.json
+
+# Local AWS CLI installer artifacts — downloaded via curl/unzip for ad-hoc use.
+awscliv2.zip
+/aws/
