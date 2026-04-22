@@ -55,7 +55,11 @@
     "ajv": "prototype pollution",
     "eslint.ajv": "ESLint uses ajv v6 internally",
     "effect": "compatibility fix",
-    "esbuild": "GHSA-67mh-4wv8-2f99 moderate CVE"
+    "esbuild": "GHSA-67mh-4wv8-2f99 moderate CVE",
+    "react": "Expo SDK 55 pins to 19.2.0. React must be one version tree-wide (singleton peer), so every workspace + transitive gets this version.",
+    "react-dom": "Matches react override.",
+    "react-native": "Expo SDK 55 expects 0.83.6; transitive bumps via @react-navigation would otherwise pull 0.85.x.",
+    "react-test-renderer": "Pinned to match react exactly (the package requires react ^<its own>)."
   },
   "overrides": {
     "handlebars": ">=4.7.9",
@@ -82,7 +86,11 @@
       }
     },
     "effect": ">=3.20.0",
-    "esbuild": ">=0.25.0"
+    "esbuild": ">=0.25.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-native": "0.83.6",
+    "react-test-renderer": "19.2.0"
   },
   "engines": {
     "node": ">=18.0.0",
