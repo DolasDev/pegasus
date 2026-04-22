@@ -201,8 +201,10 @@ Once `.github/workflows/deploy.yml` is merged to main:
 - [x] Move this file to `plans/completed/aws-oidc-setup.md` (after
       WireGuard remediation closes the last §5 bullet).
 - [x] Tick matching checkboxes in `deploy-via-cicd.md` (steps 1, 3, 7).
-- [ ] Save a feedback memory once full-stack deploy smoke-test lands, so
-      the OIDC role pattern becomes the documented canonical path.
+- [x] ~~Save a feedback memory once full-stack deploy smoke-test lands,
+      so the OIDC role pattern becomes the documented canonical path.~~
+      Skipped — `CLAUDE.md` Key Commands section already documents CI
+      as the canonical deploy path, so a memory would be a duplicate.
 
 ---
 
