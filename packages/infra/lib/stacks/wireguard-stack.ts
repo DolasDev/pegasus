@@ -95,6 +95,15 @@ export class WireGuardStack extends cdk.Stack {
   /** Tenant-facing endpoint (EIP + port). Embed in tenant client.conf via renderClientConfig. */
   public readonly hubEndpoint: string
 
+  /**
+   * Tunnel-proxy Lambda. Main API Lambda invokes this synchronously when a
+   * handler needs to call a tenant overlay IP. Lives in the private-lambda
+   * subnets with the `10.200.0.0/16 → hub` route, so it can reach tenant
+   * servers through the WireGuard tunnel without giving the main API
+   * Lambda VPC attachment (and its cold-start / public-egress cost).
+   */
+  public readonly tunnelProxyFunction: lambda.IFunction
+
   constructor(scope: Construct, id: string, props: WireGuardStackProps = {}) {
     super(scope, id, props)
 
@@ -131,6 +140,12 @@ export class WireGuardStack extends cdk.Stack {
     })
     this.vpc = vpc
     this.privateLambdaSubnets = vpc.isolatedSubnets
+    // Tag the private-lambda subnets so the hub's cloud-init can find their
+    // route tables via `aws ec2 describe-route-tables` and point
+    // 10.200.0.0/16 at itself on each boot.
+    for (const subnet of vpc.isolatedSubnets) {
+      cdk.Tags.of(subnet).add('pegasus:subnet-role', 'private-lambda')
+    }
 
     // -----------------------------------------------------------------------
     // Security groups
@@ -366,12 +381,34 @@ export class WireGuardStack extends cdk.Stack {
       'TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")',
       'INSTANCE_ID=$(curl -sH "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)',
       `aws ec2 associate-address --region ${this.region} --instance-id "$INSTANCE_ID" --allocation-id ${eip.attrAllocationId} --allow-reassociation || true`,
+      // Disable source/dest check so the hub can forward overlay packets
+      // arriving from the tunnel proxy Lambda (NAT-instance-style).
+      `aws ec2 modify-instance-attribute --region ${this.region} --instance-id "$INSTANCE_ID" --source-dest-check '{"Value":false}'`,
+      // Point the private-lambda subnets' route tables at this instance for
+      // the 10.200.0.0/16 overlay. On first boot `create-route` wins; on
+      // replacement `replace-route` wins — try both to stay idempotent.
+      `VPC_ID=${vpc.vpcId}`,
+      'for RT_ID in $(aws ec2 describe-route-tables' +
+        ` --region ${this.region}` +
+        ' --filters "Name=vpc-id,Values=$VPC_ID" "Name=tag:pegasus:subnet-role,Values=private-lambda"' +
+        " --query 'RouteTables[*].RouteTableId' --output text); do",
+      `  aws ec2 create-route --region ${this.region} --route-table-id "$RT_ID" --destination-cidr-block 10.200.0.0/16 --instance-id "$INSTANCE_ID" 2>/dev/null || \\`,
+      `    aws ec2 replace-route --region ${this.region} --route-table-id "$RT_ID" --destination-cidr-block 10.200.0.0/16 --instance-id "$INSTANCE_ID"`,
+      'done',
     )
 
-    // Allow the hub to self-associate its EIP (replacement instances after ASG refresh).
+    // IAM for lifecycle self-setup on ASG replacement. Scoped tight: the hub
+    // may re-associate its own EIP, flip its own source/dest check, describe
+    // route tables, and modify the overlay route. No broader ec2:*.
     hubRole.addToPolicy(
       new iam.PolicyStatement({
-        actions: ['ec2:AssociateAddress'],
+        actions: [
+          'ec2:AssociateAddress',
+          'ec2:ModifyInstanceAttribute',
+          'ec2:DescribeRouteTables',
+          'ec2:CreateRoute',
+          'ec2:ReplaceRoute',
+        ],
         resources: ['*'],
       }),
     )
@@ -406,6 +443,43 @@ export class WireGuardStack extends cdk.Stack {
     })
     cdk.Tags.of(asg).add('Name', 'pegasus-wireguard-hub')
     this.hubAsgName = asg.autoScalingGroupName
+
+    // -----------------------------------------------------------------------
+    // Tunnel-proxy Lambda — the data-plane hop that lets the main (public)
+    // API Lambda reach tenant overlay IPs without itself being VPC-attached.
+    //
+    // Lives in the private-lambda subnets so its only network egress is via
+    // the 10.200.0.0/16 → hub route the cloud-init above maintains. No NAT,
+    // no interface endpoints — strictly zero ongoing infra cost.
+    //
+    // CloudWatch Logs from this Lambda will NOT publish (no network path
+    // to the logs endpoint). That's accepted tradeoff for the $0 cost
+    // target; invocation metrics (count, duration, errors) still work
+    // because Lambda's control plane reports them. Adding a CloudWatch
+    // Logs interface endpoint (~$7/mo) later would restore log output.
+    // -----------------------------------------------------------------------
+    const proxySg = new ec2.SecurityGroup(this, 'TunnelProxySg', {
+      vpc,
+      securityGroupName: 'pegasus-wireguard-tunnel-proxy',
+      description: 'Tunnel-proxy Lambda — egress only (to tenant overlay IPs via hub).',
+      allowAllOutbound: true,
+    })
+    const tunnelProxyFn = new nodejs.NodejsFunction(this, 'TunnelProxyFn', {
+      entry: path.join(__dirname, '../../../../apps/tunnel-proxy/src/index.ts'),
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(30),
+      vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      securityGroups: [proxySg],
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        externalModules: ['@aws-sdk/*'],
+      },
+    })
+    this.tunnelProxyFunction = tunnelProxyFn
 
     // -----------------------------------------------------------------------
     // SNS topic for alarms + CloudWatch alarms
@@ -514,6 +588,12 @@ export class WireGuardStack extends cdk.Stack {
       description:
         'Tenant-facing endpoint (EIP:51820) — embedded in tenant client.conf as Peer.Endpoint.',
       exportName: 'PegasusWireGuardHubEndpoint',
+    })
+    new cdk.CfnOutput(this, 'TunnelProxyFunctionArn', {
+      value: tunnelProxyFn.functionArn,
+      description:
+        'Tunnel-proxy Lambda ARN — the main API Lambda invokes this to reach tenant overlay IPs.',
+      exportName: 'PegasusWireGuardTunnelProxyFnArn',
     })
   }
 }

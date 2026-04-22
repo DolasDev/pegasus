@@ -1,0 +1,19 @@
+{
+  "name": "@pegasus/tunnel-proxy",
+  "version": "0.0.0",
+  "private": true,
+  "description": "VPC Lambda that forwards HTTPS requests through the WireGuard tunnel to tenant overlay IPs.",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "*",
+    "vitest": "^4.0.0"
+  }
+}

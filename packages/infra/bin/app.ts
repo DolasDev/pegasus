@@ -83,6 +83,7 @@ const apiStack = new ApiStack(app, 'PegasusDev-ApiStack', {
   documentsBucket: documentsStack.bucket,
   wireguardHubPublicKey: wireguardStack.hubPublicKey,
   wireguardHubEndpoint: wireguardStack.hubEndpoint,
+  tunnelProxyFunction: wireguardStack.tunnelProxyFunction,
 })
 
 // ── MonitoringStack ───────────────────────────────────────────────────────────
