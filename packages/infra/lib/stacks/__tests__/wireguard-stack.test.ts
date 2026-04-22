@@ -115,6 +115,46 @@ describe('WireGuardStack — IAM', () => {
   })
 })
 
+describe('WireGuardStack — key bootstrap', () => {
+  it('creates a Lambda-backed Custom Resource for the hub keypair', () => {
+    const template = synth()
+    // The AwsCustomResource / Provider framework synthesises one Lambda for
+    // the user handler and additional infrastructure Lambdas for the Provider
+    // state machine. Assert at least one user handler exists.
+    template.resourceCountIs('AWS::CloudFormation::CustomResource', 1)
+    template.hasResourceProperties('AWS::CloudFormation::CustomResource', {
+      PrivateKeyParameterName: '/pegasus/wireguard/hub/privkey',
+      PublicKeyParameterName: '/pegasus/wireguard/hub/pubkey',
+    })
+  })
+
+  it('grants the bootstrap Lambda narrow SSM access on the hub key paths only', () => {
+    synth().hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith(['ssm:GetParameter', 'ssm:PutParameter']),
+          }),
+        ]),
+      }),
+    })
+  })
+
+  it('retains the Custom Resource on stack deletion', () => {
+    synth().hasResource('AWS::CloudFormation::CustomResource', {
+      DeletionPolicy: 'Retain',
+      UpdateReplacePolicy: 'Retain',
+    })
+  })
+
+  it('exports the hub public key and endpoint as CF outputs', () => {
+    const template = synth().toJSON()
+    const outputs = Object.keys(template.Outputs ?? {})
+    expect(outputs).toContain('HubPublicKey')
+    expect(outputs).toContain('HubEndpoint')
+  })
+})
+
 describe('WireGuardStack — Route 53 + SNS', () => {
   it('creates the private hosted zone vpn.pegasus.internal', () => {
     synth().hasResourceProperties('AWS::Route53::HostedZone', {

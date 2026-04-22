@@ -29,24 +29,16 @@ single refresh).
 
 ## One-time bootstrap
 
-These steps must run once per AWS account before the automated flow works.
-They are documented here rather than automated because they either require
-interactive authentication or produce material that CloudFormation should
-never carry.
+### 1. Hub keypair — automatic
 
-### 1. Hub keypair (manual today — see plan follow-up (4))
-
-```
-wg genkey | tee priv | wg pubkey > pub
-
-aws ssm put-parameter --name /pegasus/wireguard/hub/privkey \
-  --type SecureString --value "$(cat priv)"
-aws ssm put-parameter --name /pegasus/wireguard/hub/pubkey \
-  --type String --value "$(cat pub)"
-```
-
-`priv` and `pub` are local artefacts — shred `priv` once the SSM write
-succeeds.
+The `HubKeyBootstrap` Custom Resource inside `WireGuardStack` generates the
+hub Curve25519 keypair on first deploy. It writes
+`/pegasus/wireguard/hub/privkey` (SecureString) and
+`/pegasus/wireguard/hub/pubkey` (String). Both params have
+`DeletionPolicy: Retain` at the CR level so `cdk destroy` + redeploy keeps
+existing tenant configs valid. On re-deploy the CR detects the existing
+params and reads them rather than regenerating. Rotation is still manual
+— follow `rotate-hub-keys.md`.
 
 ### 2. Agent API key
 

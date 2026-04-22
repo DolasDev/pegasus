@@ -64,6 +64,22 @@ export interface ApiStackProps extends cdk.StackProps {
    * Optional so the stack can still be synthesised in isolation.
    */
   readonly documentsBucket?: s3.IBucket
+
+  /**
+   * Hub Curve25519 public key. Passed through from WireGuardStack. Surfaced
+   * to the API Lambda as WIREGUARD_HUB_PUBLIC_KEY so the VPN admin handler
+   * can render it into tenant client.conf blobs without an extra SSM round-trip.
+   * Optional — when absent the VPN provision endpoint returns 503
+   * VPN_HUB_UNCONFIGURED, which is the correct behaviour in environments
+   * without WireGuardStack.
+   */
+  readonly wireguardHubPublicKey?: string
+
+  /**
+   * Tenant-facing hub endpoint (`<eip>:51820`). Passed through from
+   * WireGuardStack. Injected as WIREGUARD_HUB_ENDPOINT.
+   */
+  readonly wireguardHubEndpoint?: string
 }
 
 export class ApiStack extends cdk.Stack {
@@ -128,6 +144,11 @@ export class ApiStack extends cdk.Stack {
         // Cognito Hosted UI domain. Returned by GET /api/auth/mobile-config so
         // the mobile app can build OAuth authorize URLs for SSO login flows.
         COGNITO_HOSTED_UI_DOMAIN: props.cognitoHostedUiDomain ?? '',
+        // WireGuard hub identity — consumed by apps/api/src/handlers/admin/vpn.ts
+        // to render client.conf. Absent in environments without WireGuardStack;
+        // the handler returns 503 VPN_HUB_UNCONFIGURED.
+        WIREGUARD_HUB_PUBLIC_KEY: props.wireguardHubPublicKey ?? '',
+        WIREGUARD_HUB_ENDPOINT: props.wireguardHubEndpoint ?? '',
       },
       bundling: {
         minify: true,
