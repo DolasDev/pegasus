@@ -198,6 +198,43 @@ describe('WireGuardStack — agent artifacts', () => {
   })
 })
 
+describe('WireGuardStack — tunnel proxy', () => {
+  it('creates a Lambda attached to the VPC private-isolated subnets', () => {
+    const template = synth()
+    // Multiple Lambdas exist (key bootstrap, provider framework, proxy).
+    // Assert a VPC-attached Lambda with our proxy handler exists.
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      VpcConfig: Match.objectLike({
+        SubnetIds: Match.anyValue(),
+        SecurityGroupIds: Match.anyValue(),
+      }),
+    })
+  })
+
+  it('exports the tunnel-proxy function ARN as a CF output', () => {
+    const outputs = Object.keys(synth().toJSON().Outputs ?? {})
+    expect(outputs).toContain('TunnelProxyFunctionArn')
+  })
+
+  it('grants the hub role the narrow EC2 perms needed for self-setup on ASG replace', () => {
+    synth().hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith([
+              'ec2:AssociateAddress',
+              'ec2:ModifyInstanceAttribute',
+              'ec2:DescribeRouteTables',
+              'ec2:CreateRoute',
+              'ec2:ReplaceRoute',
+            ]),
+          }),
+        ]),
+      }),
+    })
+  })
+})
+
 describe('WireGuardStack — CloudWatch alarms', () => {
   it('creates three alarms', () => {
     synth().resourceCountIs('AWS::CloudWatch::Alarm', 3)

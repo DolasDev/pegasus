@@ -80,6 +80,15 @@ export interface ApiStackProps extends cdk.StackProps {
    * WireGuardStack. Injected as WIREGUARD_HUB_ENDPOINT.
    */
   readonly wireguardHubEndpoint?: string
+
+  /**
+   * Tunnel-proxy Lambda — lives inside the WireGuard VPC and is the only
+   * path from the public-egress API Lambda to tenant overlay IPs. When
+   * supplied, the API Lambda's role is granted `lambda:InvokeFunction`
+   * and the function name is injected as TUNNEL_PROXY_FUNCTION_NAME so
+   * application code can build the InvokeCommand.
+   */
+  readonly tunnelProxyFunction?: lambda.IFunction
 }
 
 export class ApiStack extends cdk.Stack {
@@ -175,6 +184,20 @@ export class ApiStack extends cdk.Stack {
       props.documentsBucket.grantReadWrite(apiFunction)
       props.documentsBucket.grantDelete(apiFunction)
       apiFunction.addEnvironment('DOCUMENTS_BUCKET_NAME', props.documentsBucket.bucketName)
+    }
+
+    // ---------------------------------------------------------------------------
+    // Tunnel proxy — grant invoke + surface function name as env var.
+    // apps/api/src/lib/tunnel-client.ts reads TUNNEL_PROXY_FUNCTION_NAME and
+    // falls back to throwing a VPN_NOT_ROUTED error if the var is unset, so
+    // ApiStack remains synthesizable in environments without WireGuardStack.
+    // ---------------------------------------------------------------------------
+    if (props.tunnelProxyFunction) {
+      props.tunnelProxyFunction.grantInvoke(apiFunction)
+      apiFunction.addEnvironment(
+        'TUNNEL_PROXY_FUNCTION_NAME',
+        props.tunnelProxyFunction.functionName,
+      )
     }
 
     // ---------------------------------------------------------------------------
