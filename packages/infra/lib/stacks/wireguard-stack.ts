@@ -415,10 +415,16 @@ export class WireGuardStack extends cdk.Stack {
 
     // -----------------------------------------------------------------------
     // ASG - one t4g.nano ARM hub, AL2023
+    //
+    // AWS retired AWS::AutoScaling::LaunchConfiguration for new accounts in
+    // late 2023 ("The Launch Configuration creation operation is not available
+    // in your account. Use launch templates..."), so the instance shape lives
+    // on an ec2.LaunchTemplate. The ASG only carries the capacity + subnet
+    // placement; everything else - AMI, instance type, IAM role, SG, user-data,
+    // block devices, public-IP association - is on the LT.
     // -----------------------------------------------------------------------
-    const asg = new autoscaling.AutoScalingGroup(this, 'HubAsg', {
-      vpc,
-      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+    const launchTemplate = new ec2.LaunchTemplate(this, 'HubLaunchTemplate', {
+      launchTemplateName: 'pegasus-wireguard-hub',
       instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.NANO),
       machineImage: ec2.MachineImage.fromSsmParameter(
         '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64',
@@ -427,19 +433,25 @@ export class WireGuardStack extends cdk.Stack {
       securityGroup: hubSg,
       role: hubRole,
       userData,
-      minCapacity: 1,
-      maxCapacity: 1,
-      desiredCapacity: 1,
       blockDevices: [
         {
           deviceName: '/dev/xvda',
-          volume: autoscaling.BlockDeviceVolume.ebs(8, {
-            volumeType: autoscaling.EbsDeviceVolumeType.GP3,
+          volume: ec2.BlockDeviceVolume.ebs(8, {
+            volumeType: ec2.EbsDeviceVolumeType.GP3,
             encrypted: true,
           }),
         },
       ],
       associatePublicIpAddress: true,
+    })
+
+    const asg = new autoscaling.AutoScalingGroup(this, 'HubAsg', {
+      vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+      launchTemplate,
+      minCapacity: 1,
+      maxCapacity: 1,
+      desiredCapacity: 1,
     })
     cdk.Tags.of(asg).add('Name', 'pegasus-wireguard-hub')
     this.hubAsgName = asg.autoScalingGroupName

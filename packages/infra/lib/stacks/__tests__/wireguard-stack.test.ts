@@ -60,9 +60,21 @@ describe('WireGuardStack — EC2 hub', () => {
     })
   })
 
-  it('uses a t4g.nano launch configuration', () => {
-    synth().hasResourceProperties('AWS::AutoScaling::LaunchConfiguration', {
-      InstanceType: 't4g.nano',
+  it('uses a t4g.nano launch template (not a LaunchConfiguration)', () => {
+    const template = synth()
+    // AWS retired AWS::AutoScaling::LaunchConfiguration for new accounts in
+    // late 2023; the hub must use AWS::EC2::LaunchTemplate instead.
+    template.resourceCountIs('AWS::AutoScaling::LaunchConfiguration', 0)
+    template.hasResourceProperties('AWS::EC2::LaunchTemplate', {
+      LaunchTemplateData: Match.objectLike({
+        InstanceType: 't4g.nano',
+      }),
+    })
+    template.hasResourceProperties('AWS::AutoScaling::AutoScalingGroup', {
+      LaunchTemplate: Match.objectLike({
+        LaunchTemplateId: Match.anyValue(),
+        Version: Match.anyValue(),
+      }),
     })
   })
 })
