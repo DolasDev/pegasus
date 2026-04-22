@@ -18,6 +18,7 @@ test.skip(!!process.env['E2E_SKIP'], 'Postgres unavailable — skipping E2E test
 const API_BASE = process.env['API_BASE_URL'] ?? 'http://localhost:3001'
 const DATABASE_URL = process.env['DATABASE_URL']
 const TENANT_ID = process.env['TEST_TENANT_ID'] ?? 'e2e00000-0000-0000-0000-000000000001'
+const TENANT_USER_ID = process.env['TEST_TENANT_USER_ID'] ?? 'e2e00000-0000-0000-0000-000000000002'
 
 type PrismaLike = {
   $executeRawUnsafe: (sql: string, ...params: unknown[]) => Promise<number>
@@ -59,14 +60,15 @@ async function seedAgentAndPeer(): Promise<Seeded> {
   const peerId = `e2e_vpn_${Date.now().toString(36)}`
 
   await prisma.$executeRawUnsafe(
-    `INSERT INTO public."ApiClient"
-       (id, "tenantId", name, "keyPrefix", "keyHash", scopes, "createdById", "createdAt", "updatedAt")
-     VALUES ($1, $2, 'e2e-vpn-agent', $3, $4, ARRAY['vpn:sync'], 'e2e', NOW(), NOW())
+    `INSERT INTO public.api_clients
+       (id, tenant_id, name, key_prefix, key_hash, scopes, created_by, created_at, updated_at)
+     VALUES ($1, $2, 'e2e-vpn-agent', $3, $4, ARRAY['vpn:sync'], $5, NOW(), NOW())
      ON CONFLICT (id) DO NOTHING`,
     apiClientId,
     TENANT_ID,
     keyPrefix,
     keyHash,
+    TENANT_USER_ID,
   )
 
   // Clean any leftover peer for this tenant before creating a fresh PENDING one.
@@ -93,7 +95,7 @@ async function seedAgentAndPeer(): Promise<Seeded> {
 async function cleanup(seeded: Seeded): Promise<void> {
   const prisma = await getPrisma()
   await prisma.$executeRawUnsafe(`DELETE FROM public."VpnPeer" WHERE id = $1`, seeded.peerId)
-  await prisma.$executeRawUnsafe(`DELETE FROM public."ApiClient" WHERE id = $1`, seeded.apiClientId)
+  await prisma.$executeRawUnsafe(`DELETE FROM public.api_clients WHERE id = $1`, seeded.apiClientId)
   await prisma.$disconnect()
 }
 

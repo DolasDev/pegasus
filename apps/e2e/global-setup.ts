@@ -2,6 +2,8 @@ import { execSync } from 'child_process'
 import path from 'path'
 
 const TEST_TENANT_ID = process.env['TEST_TENANT_ID'] ?? 'e2e00000-0000-0000-0000-000000000001'
+const TEST_TENANT_USER_ID =
+  process.env['TEST_TENANT_USER_ID'] ?? 'e2e00000-0000-0000-0000-000000000002'
 const DATABASE_URL = process.env['DATABASE_URL']
 
 /**
@@ -92,8 +94,15 @@ export default async function globalSetup() {
        ON CONFLICT (id) DO NOTHING`,
       TEST_TENANT_ID,
     )
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO public.tenant_users (id, tenant_id, email, role, status, invited_at)
+       VALUES ($1, $2, 'e2e-admin@example.com', 'ADMIN', 'ACTIVE', NOW())
+       ON CONFLICT (id) DO NOTHING`,
+      TEST_TENANT_USER_ID,
+      TEST_TENANT_ID,
+    )
     await prisma.$disconnect()
-    console.log(`[e2e] Test tenant ${TEST_TENANT_ID} ready`)
+    console.log(`[e2e] Test tenant ${TEST_TENANT_ID} + admin user ${TEST_TENANT_USER_ID} ready`)
   } catch (err) {
     console.error('[e2e] Failed to upsert test tenant:', err)
     process.env['E2E_SKIP'] = 'true'
