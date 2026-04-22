@@ -11,8 +11,13 @@ test('POST /api/v1/customers creates a customer', async ({ apiFetch }) => {
       lastName: 'E2E',
       email: `alice-e2e-${Date.now()}@example.com`,
       phone: '555-0100',
-      leadSource: 'WEBSITE',
-      contacts: [],
+      primaryContact: {
+        firstName: 'Alice',
+        lastName: 'E2E',
+        email: `alice-contact-${Date.now()}@example.com`,
+        phone: '555-0100',
+        isPrimary: true,
+      },
     }),
   })
   expect(res.status).toBe(201)

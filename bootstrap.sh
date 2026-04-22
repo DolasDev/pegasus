@@ -167,20 +167,44 @@ if [[ -d ".husky/_" ]]; then
   ok "Husky hooks are executable"
 fi
 
-# ── 7. Docker (optional) ─────────────────────────────────────────────────────
-header "Docker (optional — only needed for offline local Postgres)"
+# ── 7. Docker + Postgres client (needed for E2E tests) ───────────────────────
+# The E2E suite (apps/e2e) brings up Postgres via `docker compose up -d postgres`
+# and probes readiness with `pg_isready` from postgresql-client. Day-to-day dev
+# against Neon works without either, but you'll need both before `npm run e2e`.
+header "Docker (required for E2E tests — optional for day-to-day dev against Neon)"
 if command_exists docker; then
   ok "Docker $(docker --version | awk '{print $3}' | tr -d ',')"
+  if docker compose version &>/dev/null; then
+    ok "Docker Compose plugin $(docker compose version --short 2>/dev/null || echo 'present')"
+  else
+    warn "Docker Compose plugin missing — E2E uses 'docker compose up -d postgres'."
+    warn "Reinstall via the official script: curl -fsSL https://get.docker.com | sudo sh"
+  fi
   if docker info &>/dev/null; then
     ok "Docker daemon is running"
   else
-    warn "Docker is installed but the daemon is not running. Start it with: sudo systemctl start docker"
+    warn "Docker is installed but the current shell cannot reach the daemon."
+    warn "Either the daemon isn't running (sudo systemctl start docker) or you"
+    warn "haven't been added to the docker group yet:"
+    echo  "       sudo usermod -aG docker \$USER && newgrp docker"
+    echo  "     (log out and back in to make the group change permanent)"
   fi
 else
-  info "Docker not installed. This is OPTIONAL — the default database is Neon (cloud)."
-  info "Only install Docker if you need to work offline with a local Postgres."
-  info "Install with: sudo apt-get install -y docker.io && sudo systemctl enable --now docker"
-  info "Then add yourself to the docker group: sudo usermod -aG docker \$USER"
+  info "Installing Docker Engine + Compose plugin via the official convenience script..."
+  curl -fsSL https://get.docker.com | sudo sh
+  sudo usermod -aG docker "$USER"
+  ok "Docker $(docker --version | awk '{print $3}' | tr -d ',') installed"
+  warn "You were added to the 'docker' group but this shell doesn't have it yet."
+  warn "Run: newgrp docker  (or log out/in) before invoking docker without sudo."
+fi
+
+header "postgresql-client (pg_isready — required for E2E tests)"
+if command_exists pg_isready; then
+  ok "pg_isready $(pg_isready --version | awk '{print $NF}')"
+else
+  info "Installing postgresql-client..."
+  sudo apt-get install -y -qq postgresql-client
+  ok "pg_isready $(pg_isready --version | awk '{print $NF}') installed"
 fi
 
 # ── 8. Neon reminder ─────────────────────────────────────────────────────────
@@ -217,7 +241,8 @@ npm --version &>/dev/null       && ok "npm         $(npm --version)"         || 
 aws --version &>/dev/null 2>&1  && ok "AWS CLI     $(aws --version 2>&1 | awk '{print $1}')" || { fail "AWS CLI     NOT FOUND"; }
 cdk --version &>/dev/null       && ok "CDK         $(cdk --version | awk '{print $1}')" || { fail "CDK         NOT FOUND"; }
 git --version &>/dev/null       && ok "Git         $(git --version | awk '{print $3}')" || { fail "Git         NOT FOUND"; }
-command_exists docker           && ok "Docker      $(docker --version | awk '{print $3}' | tr -d ',')" || info "Docker      not installed (optional)"
+command_exists docker           && ok "Docker      $(docker --version | awk '{print $3}' | tr -d ',')" || info "Docker      not installed (needed for E2E only)"
+command_exists pg_isready       && ok "pg_isready  $(pg_isready --version | awk '{print $NF}')" || info "pg_isready  not installed (needed for E2E only)"
 
 echo ""
 

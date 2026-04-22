@@ -81,9 +81,13 @@ export default async function globalSetup() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma 7 ESM export compat
     const prismaModule: Record<string, any> = await import('@prisma/client')
     const PrismaClient = prismaModule['PrismaClient'] ?? prismaModule['default']?.PrismaClient
-    const prisma = new PrismaClient({ datasourceUrl: DATABASE_URL })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- adapter ESM export compat
+    const adapterModule: Record<string, any> = await import('@prisma/adapter-pg')
+    const PrismaPg = adapterModule['PrismaPg'] ?? adapterModule['default']?.PrismaPg
+    const adapter = new PrismaPg({ connectionString: DATABASE_URL })
+    const prisma = new PrismaClient({ adapter })
     await prisma.$executeRawUnsafe(
-      `INSERT INTO public."Tenant" (id, name, slug, "cognitoAuthEnabled", "createdAt", "updatedAt")
+      `INSERT INTO public.tenants (id, name, slug, cognito_auth_enabled, created_at, updated_at)
        VALUES ($1, 'E2E Test Tenant', 'e2e-test', false, NOW(), NOW())
        ON CONFLICT (id) DO NOTHING`,
       TEST_TENANT_ID,

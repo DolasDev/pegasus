@@ -29,7 +29,11 @@ async function getPrisma(): Promise<PrismaLike> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma 7 ESM export compat (matches global-setup.ts pattern).
   const mod: Record<string, any> = await import('@prisma/client')
   const PrismaClient = mod['PrismaClient'] ?? mod['default']?.PrismaClient
-  return new PrismaClient({ datasourceUrl: DATABASE_URL }) as PrismaLike
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- adapter ESM export compat
+  const adapterMod: Record<string, any> = await import('@prisma/adapter-pg')
+  const PrismaPg = adapterMod['PrismaPg'] ?? adapterMod['default']?.PrismaPg
+  const adapter = new PrismaPg({ connectionString: DATABASE_URL })
+  return new PrismaClient({ adapter }) as PrismaLike
 }
 
 function buildApiKey(): { plainKey: string; keyPrefix: string; keyHash: string } {

@@ -178,13 +178,6 @@ documentsHandler.get('/:documentId/download-url', async (c) => {
   const id = c.req.param('documentId')
   const variantParam = c.req.query('variant')
 
-  const found = await findDocumentByIdWithLocation(db, id)
-  // Fold "missing" and "not yet ACTIVE" into the same response so an attacker
-  // cannot probe for the existence of pending uploads.
-  if (!found || found.document.status !== 'ACTIVE') {
-    return c.json({ error: 'Document not found', code: 'NOT_FOUND' }, 404)
-  }
-
   if (
     variantParam &&
     variantParam !== 'thumb' &&
@@ -195,6 +188,13 @@ documentsHandler.get('/:documentId/download-url', async (c) => {
       { error: 'variant must be one of thumb, web, original', code: 'VALIDATION_ERROR' },
       400,
     )
+  }
+
+  const found = await findDocumentByIdWithLocation(db, id)
+  // Fold "missing" and "not yet ACTIVE" into the same response so an attacker
+  // cannot probe for the existence of pending uploads.
+  if (!found || found.document.status !== 'ACTIVE') {
+    return c.json({ error: 'Document not found', code: 'NOT_FOUND' }, 404)
   }
 
   if (!variantParam || variantParam === 'original') {
