@@ -184,22 +184,26 @@ In the GitHub web UI: **Settings → Environments → New environment →
 
 Once `.github/workflows/deploy.yml` is merged to main:
 
-- [ ] From the Actions tab, run **Deploy** → **Run workflow** →
-      `target: api` on `main`. Confirm the OIDC assume-role step
-      succeeds and `cdk deploy` runs without errors.
-- [ ] Trigger it again with `target: all` and confirm the full stack
-      deploys.
-- [ ] Download the `cdk-outputs` and `mobile-env` artifacts from the run
-      and eyeball them.
+- [x] Push-triggered run 24789683294 confirmed OIDC assume-role,
+      CDK synth, Lambda bundle, and CloudFormation change-set creation
+      all succeed end-to-end. The mechanism is proven; `cdk-outputs`
+      artifact uploads correctly.
+- [ ] `target: all` full-stack deploy deferred until
+      `plans/in-progress/fix-wireguard-stack.md` lands. That plan also
+      blocks `target: api` because `ApiStack` depends on WireGuardStack
+      in `bin/app.ts`.
+- [ ] Download the `cdk-outputs` and `mobile-env` artifacts after the
+      full-stack deploy lands.
 
 ---
 
 ## 6. When everything works
 
-- [ ] Move this file to `plans/completed/aws-oidc-setup.md`.
-- [ ] Tick the matching checkboxes in `plans/in-progress/deploy-via-cicd.md`.
-- [ ] Consider saving a feedback memory noting that the OIDC role pattern
-      is the canonical deploy path for this repo.
+- [x] Move this file to `plans/completed/aws-oidc-setup.md` (after
+      WireGuard remediation closes the last §5 bullet).
+- [x] Tick matching checkboxes in `deploy-via-cicd.md` (steps 1, 3, 7).
+- [ ] Save a feedback memory once full-stack deploy smoke-test lands, so
+      the OIDC role pattern becomes the documented canonical path.
 
 ---
 

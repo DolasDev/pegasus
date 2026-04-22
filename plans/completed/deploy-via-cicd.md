@@ -33,32 +33,26 @@ AWS auth today: developer-local `AWS_PROFILE=admin-dev`.
 
 ## Plan
 
-- [>] **1. Pre-flight: confirm AWS OIDC trust is set up.**
-  Step-by-step manual setup instructions written to
-  `plans/todo/aws-oidc-setup.md` — the repo owner must run those out-of-band
-  (creates IAM OIDC provider, `pegasus-github-deploy-dev` role, and the
-  `dev` GitHub environment with `AWS_DEPLOY_ROLE_ARN` + `AWS_REGION`
-  variables). This plan item stays in-progress until the setup doc is
-  ticked off and moved to `plans/completed/`.
-  Check whether an IAM role for GitHub OIDC exists in the target account
-  (`admin-dev` today). If not, document the CDK/CLI snippet needed to create
-  it — role trust policy scoped to `repo:dolasllc/pegasus:ref:refs/heads/main`
-  and `repo:dolasllc/pegasus:environment:dev`. Record the role ARN; it will
-  become the `AWS_DEPLOY_ROLE_ARN` repo secret (or GitHub variable).
-  _Deliverable:_ a short note in this plan recording the role ARN and which
-  permissions it holds (CDK bootstrap + target stack resources).
+- [x] **1. Pre-flight: AWS OIDC trust set up.**
+      Setup doc `plans/completed/aws-oidc-setup.md` captures the manual
+      steps. Deployed state: - OIDC provider `token.actions.githubusercontent.com` exists in the
+      `admin-dev` account (ID `864899848943`). - Deploy role ARN:
+      `arn:aws:iam::864899848943:role/pegasus-github-deploy-dev`,
+      `AdministratorAccess` attached (to tighten later). - Trust policy allows `repo:DolasDev/pegasus:ref:refs/heads/main`
+      and `repo:DolasDev/pegasus:environment:dev`. - `dev` GitHub environment holds `AWS_DEPLOY_ROLE_ARN` and
+      `AWS_REGION=us-east-1` as variables.
+      Two landmines surfaced during smoke-test, both corrected in the
+      setup doc: 1. Trust-policy template had a literal `AWS_ACCOUNT_ID` placeholder. 2. Repo owner is `DolasDev`, not `dolasllc`; `StringLike` is
+      case-sensitive, so the first trust policy rejected all claims.
 
 - [x] **2. Extract a reusable deploy npm script.**
       Added `deploy:ci` in `packages/infra/package.json`; `deploy.sh` now
       exports `TARGET` and delegates to `npm run deploy:ci` so local and CI
       paths share the same CDK invocation.
 
-- [>] **3. Add a `deploy` GitHub environment.**
-  Covered by `plans/todo/aws-oidc-setup.md` step 4. Blocked on manual
-  GitHub repo settings access.
-  Create an environment named `dev` in the repo settings with required
-  reviewers (optional) and the `AWS_DEPLOY_ROLE_ARN` variable. This gives us
-  a gate for future prod environments.
+- [x] **3. `deploy` GitHub environment.** Done as part of the OIDC
+      setup (step 4 of the setup doc). `dev` environment exists with
+      required-reviewer rules and the two AWS variables.
 
 - [x] **4. Create `.github/workflows/deploy.yml`.**
       Implemented with per-component change detection via `dorny/paths-filter`:
@@ -90,12 +84,22 @@ AWS auth today: developer-local `AWS_PROFILE=admin-dev`.
       to note CI is canonical; body now exports `TARGET` and calls
       `npm run deploy:ci`.
 
-- [>] **7. Dry-run verification.**
-  Blocked on step 1/3 (manual OIDC setup). Once the role and environment
-  exist, smoke-test instructions are in `plans/todo/aws-oidc-setup.md`
-  step 5. - Push a branch with the workflow file and trigger `workflow_dispatch`
-  with `target: api` against a test branch (use `branches: [main, ci/*]`
-  temporarily, then revert). - Confirm: OIDC assume succeeds, CDK diff/deploy runs, artifacts upload. - Re-run with `target: all` on main after merge.
+- [x] **7. Dry-run verification — mechanism proven; full-stack deploy
+      deferred to WireGuard remediation.**
+      Run 24789683294 (push to main) confirmed all pipeline layers:
+      `checkout → npm ci → prisma generate → tenant/admin build →
+    OIDC assume-role → CDK synth+bundle → CloudFormation change-set
+    → resource creation`. Artifacts (`cdk-outputs`, `mobile-env`)
+      upload cleanly.
+      CloudFormation then failed inside `pegasus-dev-wireguard` with two
+      independent bugs: em-dash in an IAM-role description (fixed,
+      `6c308f2`) and `AWS::AutoScaling::LaunchConfiguration` being
+      disabled on new AWS accounts. `target=api` can't bypass WireGuard
+      because `bin/app.ts` wires `wireguard.{hubPublicKey,hubEndpoint,
+    tunnelProxyFunction}` into `ApiStack` — CDK drags the stack in.
+      Follow-up in `plans/in-progress/fix-wireguard-stack.md`. Once that
+      plan lands, re-run `Deploy` with `target=all` from the Actions UI
+      to tick the last bullet of `aws-oidc-setup.md` §5.
 
 - [x] **8. Docs + memory updates.**
       `CLAUDE.md` Key Commands section now notes CI is canonical and points
