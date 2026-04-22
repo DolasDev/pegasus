@@ -210,7 +210,7 @@ the variant cache hides HEIC from the browser entirely.
 
 - [x] **7. CDK — wire the converter Lambda.**
       In `packages/infra/lib/stacks/documents-stack.ts`: - New `NodejsFunction` with sharp layer and `pdfjs-dist` bundled. - `bucket.addEventNotification(EventType.OBJECT_CREATED,
-      new LambdaDestination(fn), { prefix: '...', suffix: '' })` —
+    new LambdaDestination(fn), { prefix: '...', suffix: '' })` —
       filter on `original/` somewhere in the key. If S3 prefix
       filters can't match a mid-key segment, filter in the Lambda
       instead and document why in a one-line code comment. - Grant Lambda `s3:GetObject` on originals, `s3:PutObject` on
@@ -246,9 +246,13 @@ the variant cache hides HEIC from the browser entirely.
       pdfjs needing a canvas polyfill in Node, S3 event prefix filter
       limitations.
 
-- [ ] **12. Merge + full test sweep.**
-      Per workflow memory: after tests pass, merge to main and re-run
-      the full suite.
+- [x] **12. Merge + full test sweep.**
+      Merged to main (commits `c4e06ad`, `96329a5`, `537ba99`). Post-merge
+      sweep: `npm run typecheck`, `npm run lint`, `npm test` all green
+      across 13 packages / 868 API tests (including
+      `lambda-document-converter.test.ts`). E2E suite loaded all 32 specs
+      including `documents-variants.spec.ts`; gracefully skipped in
+      environments without Docker/Postgres per documented behavior.
 
 ## Risks / open questions
 
