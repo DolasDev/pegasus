@@ -4,12 +4,15 @@ name: Deploy
 #
 # - `push` to `main`: auto-deploys only the components whose source paths
 #   changed (api, tenant-web, admin-web). Infra/workflow changes trigger a
-#   full `--all` deploy.
+#   full `--all` deploy. Staging deploys first, then prod (gated by the
+#   `prod` GitHub environment's required-reviewer rule).
 # - `workflow_dispatch`: manual run with a `target` input for forcing a
-#   specific component.
+#   specific component. Same staging→prod flow.
 #
-# Setup steps (OIDC role, GitHub environment, secrets) are documented in
-# plans/todo/aws-oidc-setup.md (or plans/completed/ once done).
+# The actual deploy steps live in `_deploy.yml` (a reusable workflow) so
+# the env-by-env chain stays linear and future gates (e.g. E2E tests
+# against staging) can slot in between the calls without duplicating the
+# CDK deploy logic.
 
 on:
   push:
@@ -28,7 +31,7 @@ on:
           - admin-web
 
 concurrency:
-  group: deploy-dev
+  group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -67,6 +70,7 @@ jobs:
             infra:
               - 'packages/infra/**'
               - '.github/workflows/deploy.yml'
+              - '.github/workflows/_deploy.yml'
               - 'package-lock.json'
 
       - name: Decide components to deploy
@@ -114,149 +118,43 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
-  # Wait for CI to pass on the same commit. GitHub doesn't let one workflow
-  # depend on another, so we rely on branch protection rules ("require CI
-  # before merging") to gate main. For workflow_dispatch we skip the wait.
-  #
-  # The `deploy` job itself still runs ahead of any broken merge because the
-  # `changes` job is fast and the full deploy only proceeds if changes.any.
+  # Staging deploy. Runs on push to main and workflow_dispatch from main.
   # ---------------------------------------------------------------------------
-  deploy:
-    name: Deploy to dev
+  deploy-staging:
+    name: Deploy to staging
     needs: changes
-    if: needs.changes.outputs.any == 'true'
-    runs-on: ubuntu-latest
-    environment: dev
-    env:
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-    steps:
-      - uses: actions/checkout@v4
+    if: needs.changes.outputs.any == 'true' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      env-name: staging
+      stack-prefix: PegasusStaging
+      deploy-api: ${{ needs.changes.outputs.api }}
+      deploy-tenant: ${{ needs.changes.outputs.tenant_web }}
+      deploy-admin: ${{ needs.changes.outputs.admin_web }}
+    permissions:
+      id-token: write
+      contents: read
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Fix binary permissions
-        run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
-
-      - name: Generate Prisma client
-        working-directory: apps/api
-        run: node ../../node_modules/.bin/prisma generate
-
-      - name: Build tenant-web
-        if: needs.changes.outputs.tenant_web == 'true'
-        run: npm run build --workspace=@pegasus/tenant-web
-
-      - name: Build admin-web
-        if: needs.changes.outputs.admin_web == 'true'
-        run: npm run build --workspace=@pegasus/admin-web
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-          role-session-name: pegasus-deploy-${{ github.run_id }}
-
-      - name: Resolve CDK stack target
-        id: target
-        run: |
-          set -euo pipefail
-          api='${{ needs.changes.outputs.api }}'
-          tenant='${{ needs.changes.outputs.tenant_web }}'
-          admin='${{ needs.changes.outputs.admin_web }}'
-
-          if [[ "$api" == "true" && "$tenant" == "true" && "$admin" == "true" ]]; then
-            target="--all"
-          else
-            stacks=()
-            if [[ "$api" == "true" ]]; then
-              stacks+=( \
-                PegasusDev-CognitoStack \
-                PegasusDev-DocumentsStack \
-                PegasusDev-ApiStack \
-                PegasusDev-MonitoringStack \
-              )
-            fi
-            if [[ "$tenant" == "true" ]]; then
-              stacks+=( \
-                PegasusDev-FrontendStack \
-                PegasusDev-FrontendAssetsStack \
-              )
-            fi
-            if [[ "$admin" == "true" ]]; then
-              stacks+=( \
-                PegasusDev-AdminFrontendStack \
-                PegasusDev-AdminFrontendAssetsStack \
-              )
-            fi
-            target="${stacks[*]}"
-          fi
-          echo "target=${target}" >> "$GITHUB_OUTPUT"
-          echo "CDK target: ${target}"
-
-      - name: CDK deploy
-        working-directory: packages/infra
-        env:
-          TARGET: ${{ steps.target.outputs.target }}
-        run: npm run deploy:ci
-
-      - name: Summarise outputs
-        if: success()
-        run: |
-          set -euo pipefail
-          OUTPUTS_FILE=/tmp/pegasus-cdk-outputs.json
-          if [[ ! -f "$OUTPUTS_FILE" ]]; then
-            echo "No outputs file — skipping summary."
-            exit 0
-          fi
-
-          WEB_URL=$(jq -r '.["pegasus-dev-frontend"].DistributionUrl // empty' "$OUTPUTS_FILE")
-          ADMIN_URL=$(jq -r '.["pegasus-dev-admin-frontend"].AdminDistributionUrl // empty' "$OUTPUTS_FILE")
-          API_URL=$(jq -r '.["pegasus-dev-api"].ApiUrl // empty' "$OUTPUTS_FILE")
-          USER_POOL_ID=$(jq -r '.["pegasus-dev-cognito"].UserPoolId // empty' "$OUTPUTS_FILE")
-          MOBILE_CLIENT_ID=$(jq -r '.["pegasus-dev-cognito"].MobileClientId // empty' "$OUTPUTS_FILE")
-          HOSTED_UI=$(jq -r '.["pegasus-dev-cognito"].HostedUiBaseUrl // empty' "$OUTPUTS_FILE")
-
-          {
-            echo "### Deployed URLs"
-            [[ -n "$WEB_URL" ]]   && echo "- Client app: $WEB_URL"
-            [[ -n "$ADMIN_URL" ]] && echo "- Admin portal: $ADMIN_URL"
-            [[ -n "$API_URL" ]]   && echo "- API: $API_URL"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          # Write mobile env artifact if we have the pieces.
-          if [[ -n "$API_URL" && -n "$USER_POOL_ID" && -n "$MOBILE_CLIENT_ID" ]]; then
-            mkdir -p artifacts
-            cat > artifacts/mobile.env.deploy <<ENVEOF
-          # Generated by deploy.yml — do not commit
-          EXPO_PUBLIC_API_URL=$API_URL
-          EXPO_PUBLIC_COGNITO_REGION=${AWS_REGION}
-          EXPO_PUBLIC_COGNITO_USER_POOL_ID=$USER_POOL_ID
-          EXPO_PUBLIC_COGNITO_CLIENT_ID=$MOBILE_CLIENT_ID
-          EXPO_PUBLIC_COGNITO_DOMAIN=$HOSTED_UI
-          EXPO_PUBLIC_COGNITO_REDIRECT_URI=movingapp://auth/callback
-          ENVEOF
-          fi
-
-      - name: Upload CDK outputs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cdk-outputs
-          path: /tmp/pegasus-cdk-outputs.json
-          if-no-files-found: ignore
-          retention-days: 14
-
-      - name: Upload mobile env
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: mobile-env
-          path: artifacts/mobile.env.deploy
-          if-no-files-found: ignore
-          retention-days: 14
+  # ---------------------------------------------------------------------------
+  # Prod deploy. Auto-runs after staging succeeds, but the `prod` GitHub
+  # environment carries a required-reviewer rule, so the job pauses for
+  # approval before the underlying deploy steps execute.
+  #
+  # When the E2E gate (sibling plan `gate-prod-deploy-on-staging-e2e.md`)
+  # lands, an `e2e-staging` job slots between this and `deploy-staging`,
+  # and `needs:` flips to `[changes, e2e-staging]`.
+  # ---------------------------------------------------------------------------
+  deploy-prod:
+    name: Deploy to prod
+    needs: [changes, deploy-staging]
+    if: needs.changes.outputs.any == 'true' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      env-name: prod
+      stack-prefix: PegasusProd
+      deploy-api: ${{ needs.changes.outputs.api }}
+      deploy-tenant: ${{ needs.changes.outputs.tenant_web }}
+      deploy-admin: ${{ needs.changes.outputs.admin_web }}
+    permissions:
+      id-token: write
+      contents: read

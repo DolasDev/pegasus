@@ -12,36 +12,77 @@ import { WireGuardStack } from '../lib/stacks/wireguard-stack'
 
 const app = new cdk.App()
 
-const devEnv: cdk.Environment = {
-  account: process.env['CDK_DEFAULT_ACCOUNT'] ?? process.env['AWS_ACCOUNT_ID'],
-  region: process.env['CDK_DEFAULT_REGION'] ?? 'us-east-1',
+// ── Environment selection ────────────────────────────────────────────────────
+// Pass `-c env=dev|staging|prod` (or set `PEGASUS_ENV`) to choose target env.
+// Defaults to `dev` so existing local/admin workflows keep working.
+//
+// Account pinning: staging/prod accounts are hardcoded as a safety net — CDK
+// refuses to deploy if the assumed credentials don't match the stack env, so
+// a misconfigured runner can't accidentally cross-deploy. Dev inherits from
+// the ambient credentials to preserve the original behaviour.
+
+type EnvName = 'dev' | 'staging' | 'prod'
+
+type EnvConfig = {
+  cdkEnv: cdk.Environment
 }
+
+const ENVIRONMENTS: Record<EnvName, EnvConfig> = {
+  dev: {
+    cdkEnv: {
+      account: process.env['CDK_DEFAULT_ACCOUNT'] ?? process.env['AWS_ACCOUNT_ID'],
+      region: process.env['CDK_DEFAULT_REGION'] ?? 'us-east-1',
+    },
+  },
+  staging: {
+    cdkEnv: { account: '248812875460', region: 'us-east-1' },
+  },
+  prod: {
+    cdkEnv: { account: '331145994639', region: 'us-east-1' },
+  },
+}
+
+const rawEnvName = (app.node.tryGetContext('env') ?? process.env['PEGASUS_ENV'] ?? 'dev') as string
+if (!(rawEnvName in ENVIRONMENTS)) {
+  throw new Error(
+    `Unknown env "${rawEnvName}" — pass -c env=dev|staging|prod (or set PEGASUS_ENV).`,
+  )
+}
+const envName = rawEnvName as EnvName
+const env = ENVIRONMENTS[envName].cdkEnv
+
+// `PegasusDev`, `PegasusStaging`, `PegasusProd` — used as construct ID prefix.
+const stackIdPrefix = `Pegasus${envName.charAt(0).toUpperCase()}${envName.slice(1)}`
+// `pegasus-dev`, `pegasus-staging`, `pegasus-prod` — used as CFN stack name prefix.
+const stackNamePrefix = `pegasus-${envName}`
+
+const descPrefix = `Pegasus ${envName}`
 
 // ── Infra stacks (deployed first — no dependencies) ──────────────────────────
 // CloudFront distribution domain names are CDK tokens. When CognitoStack
 // references them, CDK generates Fn::ImportValue so CloudFormation resolves
 // the real hostname before creating/updating the Cognito app clients.
 
-const frontendStack = new FrontendStack(app, 'PegasusDev-FrontendStack', {
-  env: devEnv,
-  stackName: 'pegasus-dev-frontend',
-  description: 'Pegasus dev — S3 + CloudFront (tenant web app)',
+const frontendStack = new FrontendStack(app, `${stackIdPrefix}-FrontendStack`, {
+  env,
+  stackName: `${stackNamePrefix}-frontend`,
+  description: `${descPrefix} — S3 + CloudFront (tenant web app)`,
 })
 
-const adminFrontendStack = new AdminFrontendStack(app, 'PegasusDev-AdminFrontendStack', {
-  env: devEnv,
-  stackName: 'pegasus-dev-admin-frontend',
-  description: 'Pegasus dev — S3 + CloudFront (admin portal)',
+const adminFrontendStack = new AdminFrontendStack(app, `${stackIdPrefix}-AdminFrontendStack`, {
+  env,
+  stackName: `${stackNamePrefix}-admin-frontend`,
+  description: `${descPrefix} — S3 + CloudFront (admin portal)`,
 })
 
 // ── CognitoStack ──────────────────────────────────────────────────────────────
 // Receives cross-stack tokens for both CloudFront distribution domains.
 // CDK deployment order: FrontendStack + AdminFrontendStack → CognitoStack.
 
-const cognitoStack = new CognitoStack(app, 'PegasusDev-CognitoStack', {
-  env: devEnv,
-  stackName: 'pegasus-dev-cognito',
-  description: 'Pegasus dev — Cognito User Pool for platform and tenant auth',
+const cognitoStack = new CognitoStack(app, `${stackIdPrefix}-CognitoStack`, {
+  env,
+  stackName: `${stackNamePrefix}-cognito`,
+  description: `${descPrefix} — Cognito User Pool for platform and tenant auth`,
   tenantDistributionDomain: frontendStack.distribution.distributionDomainName,
   adminDistributionDomain: adminFrontendStack.distribution.distributionDomainName,
 })
@@ -50,10 +91,10 @@ const cognitoStack = new CognitoStack(app, 'PegasusDev-CognitoStack', {
 // Provisions the S3 bucket used by the document management system. Deployed
 // before ApiStack so the bucket reference can be injected into the Lambda.
 
-const documentsStack = new DocumentsStack(app, 'PegasusDev-DocumentsStack', {
-  env: devEnv,
-  stackName: 'pegasus-dev-documents',
-  description: 'Pegasus dev — S3 bucket for document attachments',
+const documentsStack = new DocumentsStack(app, `${stackIdPrefix}-DocumentsStack`, {
+  env,
+  stackName: `${stackNamePrefix}-documents`,
+  description: `${descPrefix} — S3 bucket for document attachments`,
 })
 
 // ── WireGuardStack ────────────────────────────────────────────────────────────
@@ -62,19 +103,19 @@ const documentsStack = new DocumentsStack(app, 'PegasusDev-DocumentsStack', {
 // keypair on first deploy. Deploys before ApiStack so the hub public key
 // and endpoint can be injected into the Lambda env as cross-stack exports.
 
-const wireguardStack = new WireGuardStack(app, 'PegasusDev-WireGuardStack', {
-  env: devEnv,
-  stackName: 'pegasus-dev-wireguard',
-  description: 'Pegasus dev — multi-tenant WireGuard hub (VPC + ASG + Route 53 PHZ + alarms)',
+const wireguardStack = new WireGuardStack(app, `${stackIdPrefix}-WireGuardStack`, {
+  env,
+  stackName: `${stackNamePrefix}-wireguard`,
+  description: `${descPrefix} — multi-tenant WireGuard hub (VPC + ASG + Route 53 PHZ + alarms)`,
 })
 
 // ── ApiStack ──────────────────────────────────────────────────────────────────
 // CDK deployment order: CognitoStack + DocumentsStack + WireGuardStack → ApiStack.
 
-const apiStack = new ApiStack(app, 'PegasusDev-ApiStack', {
-  env: devEnv,
-  stackName: 'pegasus-dev-api',
-  description: 'Pegasus dev — Hono Lambda + HTTP API Gateway v2',
+const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
+  env,
+  stackName: `${stackNamePrefix}-api`,
+  description: `${descPrefix} — Hono Lambda + HTTP API Gateway v2`,
   cognitoJwksUrl: cognitoStack.jwksUrl,
   cognitoTenantClientId: cognitoStack.tenantAppClient.userPoolClientId,
   cognitoUserPoolId: cognitoStack.userPool.userPoolId,
@@ -89,10 +130,10 @@ const apiStack = new ApiStack(app, 'PegasusDev-ApiStack', {
 // ── MonitoringStack ───────────────────────────────────────────────────────────
 // CDK deployment order: ApiStack → MonitoringStack.
 
-new MonitoringStack(app, 'PegasusDev-MonitoringStack', {
-  env: devEnv,
-  stackName: 'pegasus-dev-monitoring',
-  description: 'Pegasus dev — CloudWatch alarms and dashboard',
+new MonitoringStack(app, `${stackIdPrefix}-MonitoringStack`, {
+  env,
+  stackName: `${stackNamePrefix}-monitoring`,
+  description: `${descPrefix} — CloudWatch alarms and dashboard`,
   lambdaFunctionName: apiStack.lambdaFunctionName,
   httpApiId: apiStack.httpApiId,
   httpApiStage: apiStack.httpApiStage,
@@ -101,23 +142,23 @@ new MonitoringStack(app, 'PegasusDev-MonitoringStack', {
 // ── Asset stacks (deployed last — depend on all upstream stacks) ──────────────
 // CDK deployment order: ApiStack → FrontendAssetsStack + AdminFrontendAssetsStack.
 
-new FrontendAssetsStack(app, 'PegasusDev-FrontendAssetsStack', {
-  env: devEnv,
-  stackName: 'pegasus-dev-frontend-assets',
-  description: 'Pegasus dev — tenant web app assets + config.json',
+new FrontendAssetsStack(app, `${stackIdPrefix}-FrontendAssetsStack`, {
+  env,
+  stackName: `${stackNamePrefix}-frontend-assets`,
+  description: `${descPrefix} — tenant web app assets + config.json`,
   siteBucket: frontendStack.siteBucket,
   distribution: frontendStack.distribution,
   apiUrl: apiStack.apiUrl,
-  cognitoRegion: devEnv.region ?? 'us-east-1',
+  cognitoRegion: env.region ?? 'us-east-1',
   cognitoUserPoolId: cognitoStack.userPool.userPoolId,
   cognitoTenantClientId: cognitoStack.tenantAppClient.userPoolClientId,
   cognitoDomain: cognitoStack.hostedUiBaseUrl,
 })
 
-new AdminFrontendAssetsStack(app, 'PegasusDev-AdminFrontendAssetsStack', {
-  env: devEnv,
-  stackName: 'pegasus-dev-admin-frontend-assets',
-  description: 'Pegasus dev — admin portal assets + config.json',
+new AdminFrontendAssetsStack(app, `${stackIdPrefix}-AdminFrontendAssetsStack`, {
+  env,
+  stackName: `${stackNamePrefix}-admin-frontend-assets`,
+  description: `${descPrefix} — admin portal assets + config.json`,
   adminBucket: adminFrontendStack.adminBucket,
   distribution: adminFrontendStack.distribution,
   apiUrl: apiStack.apiUrl,

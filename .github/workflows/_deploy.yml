@@ -1,0 +1,179 @@
+name: _deploy
+
+# Reusable deploy workflow. Called by `deploy.yml` once per env (staging, prod).
+# Encapsulates the CDK deploy steps so the orchestrator can chain envs and
+# slot future gates (e.g. E2E tests against staging) between the calls
+# without duplicating the deploy logic.
+
+on:
+  workflow_call:
+    inputs:
+      env-name:
+        description: 'Target env: staging or prod'
+        type: string
+        required: true
+      stack-prefix:
+        description: 'Construct ID prefix, e.g. PegasusStaging or PegasusProd'
+        type: string
+        required: true
+      deploy-api:
+        description: 'true if api/domain stacks should be deployed'
+        type: string
+        required: true
+      deploy-tenant:
+        description: 'true if tenant-web stacks should be deployed'
+        type: string
+        required: true
+      deploy-admin:
+        description: 'true if admin-web stacks should be deployed'
+        type: string
+        required: true
+      aws-region:
+        description: 'AWS region (defaults to us-east-1)'
+        type: string
+        default: us-east-1
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.env-name }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env-name }}
+    env:
+      AWS_REGION: ${{ inputs.aws-region }}
+      ENV_NAME: ${{ inputs.env-name }}
+      STACK_PREFIX: ${{ inputs.stack-prefix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fix binary permissions
+        run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: node ../../node_modules/.bin/prisma generate
+
+      - name: Build tenant-web
+        if: inputs.deploy-tenant == 'true'
+        run: npm run build --workspace=@pegasus/tenant-web
+
+      - name: Build admin-web
+        if: inputs.deploy-admin == 'true'
+        run: npm run build --workspace=@pegasus/admin-web
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: pegasus-deploy-${{ inputs.env-name }}-${{ github.run_id }}
+
+      - name: Resolve CDK stack target
+        id: target
+        env:
+          API: ${{ inputs.deploy-api }}
+          TENANT: ${{ inputs.deploy-tenant }}
+          ADMIN: ${{ inputs.deploy-admin }}
+        run: |
+          set -euo pipefail
+          if [[ "$API" == "true" && "$TENANT" == "true" && "$ADMIN" == "true" ]]; then
+            target="--all"
+          else
+            stacks=()
+            if [[ "$API" == "true" ]]; then
+              stacks+=( \
+                "${STACK_PREFIX}-CognitoStack" \
+                "${STACK_PREFIX}-DocumentsStack" \
+                "${STACK_PREFIX}-ApiStack" \
+                "${STACK_PREFIX}-MonitoringStack" \
+              )
+            fi
+            if [[ "$TENANT" == "true" ]]; then
+              stacks+=( \
+                "${STACK_PREFIX}-FrontendStack" \
+                "${STACK_PREFIX}-FrontendAssetsStack" \
+              )
+            fi
+            if [[ "$ADMIN" == "true" ]]; then
+              stacks+=( \
+                "${STACK_PREFIX}-AdminFrontendStack" \
+                "${STACK_PREFIX}-AdminFrontendAssetsStack" \
+              )
+            fi
+            target="${stacks[*]}"
+          fi
+          echo "target=${target}" >> "$GITHUB_OUTPUT"
+          echo "CDK target: ${target}"
+
+      - name: CDK deploy
+        working-directory: packages/infra
+        env:
+          TARGET: ${{ steps.target.outputs.target }}
+        run: npm run deploy:ci
+
+      - name: Summarise outputs
+        if: success()
+        run: |
+          set -euo pipefail
+          OUTPUTS_FILE=/tmp/pegasus-cdk-outputs.json
+          if [[ ! -f "$OUTPUTS_FILE" ]]; then
+            echo "No outputs file — skipping summary."
+            exit 0
+          fi
+
+          STACK_NAME_PREFIX="pegasus-${ENV_NAME}"
+          WEB_URL=$(jq -r ".[\"${STACK_NAME_PREFIX}-frontend\"].DistributionUrl // empty" "$OUTPUTS_FILE")
+          ADMIN_URL=$(jq -r ".[\"${STACK_NAME_PREFIX}-admin-frontend\"].AdminDistributionUrl // empty" "$OUTPUTS_FILE")
+          API_URL=$(jq -r ".[\"${STACK_NAME_PREFIX}-api\"].ApiUrl // empty" "$OUTPUTS_FILE")
+          USER_POOL_ID=$(jq -r ".[\"${STACK_NAME_PREFIX}-cognito\"].UserPoolId // empty" "$OUTPUTS_FILE")
+          MOBILE_CLIENT_ID=$(jq -r ".[\"${STACK_NAME_PREFIX}-cognito\"].MobileClientId // empty" "$OUTPUTS_FILE")
+          HOSTED_UI=$(jq -r ".[\"${STACK_NAME_PREFIX}-cognito\"].HostedUiBaseUrl // empty" "$OUTPUTS_FILE")
+
+          {
+            echo "### Deployed URLs (${ENV_NAME})"
+            [[ -n "$WEB_URL" ]]   && echo "- Client app: $WEB_URL"
+            [[ -n "$ADMIN_URL" ]] && echo "- Admin portal: $ADMIN_URL"
+            [[ -n "$API_URL" ]]   && echo "- API: $API_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ -n "$API_URL" && -n "$USER_POOL_ID" && -n "$MOBILE_CLIENT_ID" ]]; then
+            mkdir -p artifacts
+            cat > artifacts/mobile.env.deploy <<ENVEOF
+          # Generated by deploy.yml — do not commit
+          EXPO_PUBLIC_API_URL=$API_URL
+          EXPO_PUBLIC_COGNITO_REGION=${AWS_REGION}
+          EXPO_PUBLIC_COGNITO_USER_POOL_ID=$USER_POOL_ID
+          EXPO_PUBLIC_COGNITO_CLIENT_ID=$MOBILE_CLIENT_ID
+          EXPO_PUBLIC_COGNITO_DOMAIN=$HOSTED_UI
+          EXPO_PUBLIC_COGNITO_REDIRECT_URI=movingapp://auth/callback
+          ENVEOF
+          fi
+
+      - name: Upload CDK outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cdk-outputs-${{ inputs.env-name }}
+          path: /tmp/pegasus-cdk-outputs.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload mobile env
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-env-${{ inputs.env-name }}
+          path: artifacts/mobile.env.deploy
+          if-no-files-found: ignore
+          retention-days: 14
