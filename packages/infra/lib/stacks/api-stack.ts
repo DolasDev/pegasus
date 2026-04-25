@@ -110,10 +110,11 @@ export class ApiStack extends cdk.Stack {
     // ---------------------------------------------------------------------------
     // Secrets Manager: externally-managed Neon connection string
     // ---------------------------------------------------------------------------
+    const envName = (this.node.tryGetContext('env') as string | undefined) ?? 'dev'
     const dbSecret = secretsmanager.Secret.fromSecretNameV2(
       this,
       'NeonDatabaseUrl',
-      'pegasus/dev/database-url',
+      `pegasus/${envName}/database-url`,
     )
 
     // Explicit log group so retention is set without the deprecated

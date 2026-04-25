@@ -61,10 +61,11 @@ export class DocumentsStack extends cdk.Stack {
     // Converter Lambda — generates thumb + web variants from uploaded originals
     // ---------------------------------------------------------------------------
 
+    const envName = (this.node.tryGetContext('env') as string | undefined) ?? 'dev'
     const dbSecret = secretsmanager.Secret.fromSecretNameV2(
       this,
       'NeonDatabaseUrl',
-      'pegasus/dev/database-url',
+      `pegasus/${envName}/database-url`,
     )
 
     const converterLogGroup = new logs.LogGroup(this, 'ConverterLogGroup', {

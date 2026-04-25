@@ -126,10 +126,11 @@ export class CognitoStack extends cdk.Stack {
     // ---------------------------------------------------------------------------
     // Secrets Manager: externally-managed Neon connection string (for Pre-Token Lambda)
     // ---------------------------------------------------------------------------
+    const envName = (this.node.tryGetContext('env') as string | undefined) ?? 'dev'
     const dbSecret = secretsmanager.Secret.fromSecretNameV2(
       this,
       'NeonDatabaseUrl',
-      'pegasus/dev/database-url',
+      `pegasus/${envName}/database-url`,
     )
 
     // -------------------------------------------------------------------------
