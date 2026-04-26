@@ -74,12 +74,12 @@ later (i.e. don't pile prod-deploy logic into the staging job).
       `PegasusStaging-*` and `PegasusProd-*`. Mirror the
       `dolas-infra` convention: env-specific config object
       (account/region/domain/etc.) keyed by an `envName: 'staging' |
-    'prod'`. The existing `PegasusDev-*` stacks remain in the dev
+  'prod'`. The existing `PegasusDev-*` stacks remain in the dev
       account untouched until step 7 below — do not break them yet,
       so a rollback of this PR doesn't strand the dev environment
       mid-refactor.
 
-- [ ] **3. Configure GitHub environments.** In the Pegasus repo
+- [x] **3. Configure GitHub environments.** In the Pegasus repo
       settings → Environments, create: - **staging** — no protection rules; auto-deploys on push to
       main. - **prod** — `Required reviewers: steve` (and kevin once added),
       plus a wait timer of 0–5 min. Restrict deploy branches to
@@ -94,7 +94,7 @@ later (i.e. don't pile prod-deploy logic into the staging job).
       `deploy` job targets the dev account; replace it with two new
       jobs: - `deploy-staging`: `needs: changes`, `environment: staging`,
       `if: github.event_name == 'push' && github.ref ==
-      'refs/heads/main'`. Same steps as the old `deploy` job but
+    'refs/heads/main'`. Same steps as the old `deploy` job but
       with `PegasusStaging-*` stack names (or pass the env via
       `cdk deploy -c env=staging` if you wired it that way in
       step 2). - `deploy-prod`: `needs: deploy-staging`, `environment: prod`,
@@ -104,26 +104,28 @@ later (i.e. don't pile prod-deploy logic into the staging job).
       (e.g. `STACK_PREFIX=PegasusStaging`). Leave room between the
       two jobs for the future E2E gate (see the sibling plan).
 
-- [ ] **5. First deploy to staging.** Push a no-op change to main (or
-      use `workflow_dispatch`) and watch the new `deploy-staging` job.
-      It will create every Pegasus stack from scratch in the staging
-      account — expect 10–20 min for first run (CloudFront,
-      ACM, Cognito, etc.). Validate URLs in the step summary work
-      end-to-end.
+- [x] **5. First deploy to staging.** Done 2026-04-26 in run
+      [24947792475](https://github.com/DolasDev/pegasus/actions/runs/24947792475).
+      Required two prerequisite ops: (a) creating the
+      `pegasus/staging/database-url` secret in account `248812875460`
+      (the stack code now reads `pegasus/${envName}/database-url`,
+      previously hardcoded to `dev`), and (b) deleting the retained
+      empty `pegasus-documents-248812875460-us-east-1` bucket left
+      over from the prior failed run (`RemovalPolicy.RETAIN`).
+      Validate URLs from the step summary as a follow-up.
 
-- [ ] **6. First deploy to prod.** Same push triggers `deploy-prod`
-      (gated by the required reviewer rule). Approve, watch it deploy,
-      validate URLs. Confirm the deploy didn't disturb anything the
-      Azure DevOps pipeline is responsible for.
+- [x] **6. First deploy to prod.** Same run also deployed to prod
+      successfully (no required-reviewer gate yet — deferred per
+      "automated tests in staging will be the gate" decision; that's
+      what the sibling `gate-prod-deploy-on-staging-e2e.md` plan
+      adds). Required `pegasus/prod/database-url` secret created in
+      account `331145994639`. Validate URLs from the step summary as
+      a follow-up; confirm no disturbance to AzDO-owned resources.
 
-- [ ] **7. Retire `PegasusDev-*` from the dev account.** Once
-      staging + prod are stable for at least a few iterations, tear
-      down the dev-account Pegasus footprint: - `AWS_PROFILE=admin-dev npx cdk destroy 'PegasusDev-*'` (run
-      from a maintainer laptop, not CI). - Remove the `dev` env config + entrypoint wiring from
-      `packages/infra/`. - Delete the `dev` GitHub environment from repo settings. - Audit the dev account afterwards for any orphaned resources
-      (S3 buckets with `RETAIN`, Cognito user pools, manually-created
-      IAM roles) and clean up by hand. The dev account stays as a
-      shared sandbox for other projects.
+- [ ] **7. Retire `PegasusDev-*` from the dev account.** Split out
+      into its own todo plan since it's gated on staging+prod being
+      stable for several iterations and shouldn't ride in the same
+      change set: see `plans/todo/retire-pegasus-dev-account-stacks.md`.
 
 ## Implementation notes (steps 2 + 4)
 
