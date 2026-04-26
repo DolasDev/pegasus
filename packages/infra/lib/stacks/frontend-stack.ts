@@ -2,7 +2,27 @@ import * as cdk from 'aws-cdk-lib'
 import * as s3 from 'aws-cdk-lib/aws-s3'
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront'
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins'
+import * as acm from 'aws-cdk-lib/aws-certificatemanager'
+import * as ssm from 'aws-cdk-lib/aws-ssm'
 import { type Construct } from 'constructs'
+
+// SSM parameters published by dolas-infra's PegasusDnsBootstrapStack into
+// each Pegasus account. Read at deploy time when attachCustomDomain is set.
+const CERT_ARN_PARAM = '/dolas/pegasus/web/cert-arn'
+const DOMAIN_NAME_PARAM = '/dolas/pegasus/web/domain-name'
+// Written back here so dolas-infra's PegasusDnsAliasStack can wire the
+// apex A/AAAA records.
+const DISTRIBUTION_DOMAIN_PARAM = '/dolas/pegasus/web/distribution-domain'
+
+export interface FrontendStackProps extends cdk.StackProps {
+  /**
+   * When true, attaches the dolas-managed custom domain (cert + domain name)
+   * read from SSM, and publishes the resulting CloudFront domain back to SSM
+   * so dolas-infra can create the apex alias records. Set for staging / prod;
+   * leave false for dev so the stack stays self-contained.
+   */
+  readonly attachCustomDomain?: boolean
+}
 
 /**
  * FrontendStack provisions the static hosting infrastructure for the Pegasus React SPA.
@@ -19,8 +39,19 @@ export class FrontendStack extends cdk.Stack {
   public readonly distribution: cloudfront.Distribution
   public readonly siteBucket: s3.Bucket
 
-  constructor(scope: Construct, id: string, props: cdk.StackProps = {}) {
+  constructor(scope: Construct, id: string, props: FrontendStackProps = {}) {
     super(scope, id, props)
+
+    const customDomain = props.attachCustomDomain
+      ? {
+          domainName: ssm.StringParameter.valueForStringParameter(this, DOMAIN_NAME_PARAM),
+          certificate: acm.Certificate.fromCertificateArn(
+            this,
+            'CustomDomainCertificate',
+            ssm.StringParameter.valueForStringParameter(this, CERT_ARN_PARAM),
+          ),
+        }
+      : undefined
 
     // ---------------------------------------------------------------------------
     // S3 bucket — private, no direct public access
@@ -41,6 +72,10 @@ export class FrontendStack extends cdk.Stack {
     const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(this.siteBucket)
 
     this.distribution = new cloudfront.Distribution(this, 'SiteDistribution', {
+      ...(customDomain && {
+        domainNames: [customDomain.domainName],
+        certificate: customDomain.certificate,
+      }),
       defaultBehavior: {
         // S3BucketOrigin.withOriginAccessControl creates an OAC (not the legacy OAI)
         origin: s3Origin,
@@ -98,5 +133,14 @@ export class FrontendStack extends cdk.Stack {
       value: this.siteBucket.bucketName,
       exportName: 'PegasusSiteBucketName',
     })
+
+    if (customDomain) {
+      new ssm.StringParameter(this, 'DistributionDomainParam', {
+        parameterName: DISTRIBUTION_DOMAIN_PARAM,
+        stringValue: this.distribution.distributionDomainName,
+        description:
+          'CloudFront distribution domain for the tenant frontend. Read by dolas-infra PegasusDnsAliasStack to create the apex alias.',
+      })
+    }
   }
 }

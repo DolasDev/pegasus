@@ -67,6 +67,9 @@ const frontendStack = new FrontendStack(app, `${stackIdPrefix}-FrontendStack`, {
   env,
   stackName: `${stackNamePrefix}-frontend`,
   description: `${descPrefix} — S3 + CloudFront (tenant web app)`,
+  // staging → pegasus-qa.dolas.dev, prod → pegasus.dolas.dev. Cert + domain
+  // come from SSM published by dolas-infra. dev stays at *.cloudfront.net.
+  attachCustomDomain: envName === 'staging' || envName === 'prod',
 })
 
 const adminFrontendStack = new AdminFrontendStack(app, `${stackIdPrefix}-AdminFrontendStack`, {
