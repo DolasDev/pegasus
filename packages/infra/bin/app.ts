@@ -76,6 +76,10 @@ const adminFrontendStack = new AdminFrontendStack(app, `${stackIdPrefix}-AdminFr
   env,
   stackName: `${stackNamePrefix}-admin-frontend`,
   description: `${descPrefix} — S3 + CloudFront (admin portal)`,
+  // staging → admin.pegasus-qa.dolas.dev, prod → admin.pegasus.dolas.dev. Cert
+  // + domain come from SSM published by dolas-infra. dev stays at
+  // *.cloudfront.net.
+  attachCustomDomain: envName === 'staging' || envName === 'prod',
 })
 
 // ── CognitoStack ──────────────────────────────────────────────────────────────
