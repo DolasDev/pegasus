@@ -37,9 +37,63 @@ permissions:
   id-token: write
   contents: read
 
+# Required env secrets per `environment`:
+#   - DIRECT_URL — Neon **direct** (non-pooled) connection string with
+#     `sslmode=require`. Consumed by `prisma migrate deploy` in the
+#     `migrate` job below; the pooler can't host advisory locks or the
+#     multi-statement transactions migrations need.
+#   - DATABASE_URL — Neon pooled connection string with `sslmode=require`.
+#     Used by the Lambda runtime; not read by the `migrate` job.
+# Required env vars per `environment`:
+#   - AWS_DEPLOY_ROLE_ARN — OIDC role assumed by the `deploy` job.
+
 jobs:
+  migrate:
+    name: Migrate ${{ inputs.env-name }} database
+    if: inputs.deploy-api == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env-name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fix binary permissions
+        run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: node ../../node_modules/.bin/prisma generate
+
+      - name: Show pending migrations
+        working-directory: apps/api
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          {
+            echo "### Pending migrations (${{ inputs.env-name }})"
+            echo ''
+            echo '```'
+            node ../../node_modules/.bin/prisma migrate status || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply migrations
+        working-directory: apps/api
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: node ../../node_modules/.bin/prisma migrate deploy
+
   deploy:
     name: Deploy to ${{ inputs.env-name }}
+    needs: [migrate]
+    if: always() && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
     runs-on: ubuntu-latest
     environment: ${{ inputs.env-name }}
     env:

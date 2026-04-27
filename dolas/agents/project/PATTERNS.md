@@ -51,6 +51,19 @@ Uploaded originals trigger a converter Lambda via S3 `ObjectCreated` events. For
 - **Domain types describe the server model.** Over JSON, `Date` becomes `string` and branded IDs become plain `string`. Frontends must use `Serialized<T>` (from `@pegasus/domain`) when typing API responses — never raw domain types like `Customer` or `Move`.
 - **Never write `instanceof Date` checks in frontend code.** If you need one, the type annotation is wrong — use `Serialized<T>`.
 
+## Database Migrations (expand-then-contract)
+
+The deploy pipeline runs `prisma migrate deploy` _before_ the CDK Lambda deploy in each env (`.github/workflows/_deploy.yml`). This means there is always a window — seconds in staging, potentially minutes in prod while waiting for reviewer approval — where the new schema is live but the **old** API code is still serving traffic.
+
+Every migration must therefore be safe for the previous deployed version of the code to run against. Concretely:
+
+- **Renames are multi-PR.** Add the new column → backfill → switch reads → switch writes → drop the old column. Never rename in a single migration.
+- **New NOT NULL columns need a default**, or be added nullable first and tightened in a later migration after the code that populates them is live.
+- **Dropping a column waits one deploy** after the code that referenced it has shipped.
+- **Type changes** (e.g. `int → bigint`) follow the same add-new / dual-write / cut-over / drop-old pattern.
+
+A failed migration aborts the env's deploy (intended). Recovery is revert-PR + redeploy; Prisma has no generic rollback, so don't write migrations you can't roll forward through.
+
 ## Shared Packages
 
 - **All frontend HTTP calls go through `@pegasus/api-http`** (`createApiClient`). Never use raw `fetch()` for API calls in any frontend app. This ensures correlation-id injection, token attachment, and envelope unwrapping are consistent.

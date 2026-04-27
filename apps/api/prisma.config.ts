@@ -7,9 +7,16 @@ export default defineConfig({
     path: 'prisma/migrations',
   },
   datasource: {
-    // Allow prisma generate to run without DATABASE_URL set (e.g. CI, local dev).
-    // At runtime the adapter in db.ts provides the connection.
+    // CLI operations (migrate, db pull, studio). Prefer DIRECT_URL so
+    // `prisma migrate deploy` bypasses Neon's PgBouncer pooler — pooled
+    // (transaction-mode) connections don't support advisory locks or the
+    // multi-statement transactions migrations rely on. Falls back to
+    // DATABASE_URL for local dev (single Postgres, no pooler) and to a
+    // placeholder so `prisma generate` works in CI without any env set.
+    // The Lambda runtime never reads this file; it consumes DATABASE_URL
+    // directly via the adapter in src/db.ts.
     url:
+      process.env['DIRECT_URL'] ??
       process.env['DATABASE_URL'] ??
       'postgresql://placeholder:placeholder@localhost:5432/placeholder',
   },
