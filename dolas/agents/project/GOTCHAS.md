@@ -84,3 +84,20 @@ CI job `Secret Scanning (Betterleaks)` (`.github/workflows/ci.yml`) runs `better
 4. Do **not** rewrite history with BFG / git-filter-repo unless absolutely required — it breaks everyone's clones and needs team coordination. Rotation is the mitigation, not history rewrite.
 
 **Never** blanket-allowlist a file, directory, or rule. Always fingerprint-scope.
+
+## WireGuard Hub: Manual Peer Break-Glass
+
+The reconcile agent (`apps/vpn-agent`) is the source of truth for hub peer state — it polls the admin API and applies `wg set` every ~30s. If the agent is wedged (process down, API unreachable, kernel disagreeing with desired state) and a tenant needs the tunnel up _now_, you can add a peer manually:
+
+```bash
+# SSM into the hub
+aws ssm start-session --target <hub-instance-id>
+sudo wg set wg0 peer <tenant-pubkey> allowed-ips 10.200.<n>.2/32
+sudo wg show wg0   # verify peer block is present
+```
+
+Caveats:
+
+- **Non-persistent.** ASG instance replacement wipes this. Fix the agent before the next refresh.
+- **Diagnose, don't paper over.** Check `journalctl -u pegasus-vpn-agent` and the `pegasus-wireguard-agent-down` / `pegasus-wireguard-eip-detached` / `pegasus-wireguard-peer-drift` alarms before reaching for this. Manual `wg set` is the _exception_, not the steady state.
+- **Drop the manual entry once the agent is back.** It will already have re-added the peer from the database; remove your manual entry with `sudo wg set wg0 peer <pubkey> remove` if it's still there alongside the agent's version.

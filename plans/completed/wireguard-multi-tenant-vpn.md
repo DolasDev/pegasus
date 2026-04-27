@@ -546,8 +546,14 @@ If you ever need <30s revocation, add an SNS topic that the agent subscribes to 
    ```
 2. `aws ssm put-parameter --name /pegasus/wireguard/hub/privkey --type SecureString --value "$(cat priv)"`
 3. `aws ssm put-parameter --name /pegasus/wireguard/hub/pubkey --type String --value "$(cat pub)"`
-4. Create M2M API client via existing admin UI; copy plainKey:
-5. `aws ssm put-parameter --name /pegasus/wireguard/agent/apikey --type SecureString --value "$PLAINKEY"`
+4. Create M2M API client + write SSM SecureString in one step:
+   ```
+   AWS_PROFILE=pegasus-<env> DIRECT_URL='postgresql://...' \
+     npx tsx apps/api/scripts/bootstrap-vpn-agent-apikey.ts
+   ```
+   The script creates a `vpn:sync`-scoped ApiClient row and writes the
+   plaintext to `/pegasus/wireguard/agent/apikey` (SecureString) in one
+   shot. Pass `--force` to rotate the key on a subsequent run.
 
 **Phase 3 — Hub launches (~2 min, automatic)**
 

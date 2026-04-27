@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
+import type { CloudWatchClient } from '@aws-sdk/client-cloudwatch'
 import { runTick } from '../index'
 import type { DesiredPeer } from '../reconciler'
 import type { WgDump, WgPeer } from '../wg-parser'
@@ -112,6 +113,66 @@ describe('runTick', () => {
       rxBytes: '100',
       txBytes: '200',
     })
+  })
+
+  it('emits AgentHeartbeat and HubEipAssociated metrics when eipCheck is provided', async () => {
+    const api = stubApi([])
+    const wg = stubWg([])
+    const sent: Array<{
+      Namespace?: string
+      MetricData?: Array<{ MetricName?: string; Value?: number }>
+    }> = []
+    const cw = {
+      send: vi.fn(async (cmd: { input: (typeof sent)[number] }) => {
+        sent.push(cmd.input)
+        return {}
+      }),
+    } as unknown as CloudWatchClient
+    const eipCheck = { isAssociated: vi.fn(async () => 1 as const) }
+
+    await runTick({
+      api,
+      wg,
+      cw,
+      state: { lastEtag: null, lastDesired: [], lastReconcileMs: Date.now() },
+      eipCheck,
+    })
+
+    expect(eipCheck.isAssociated).toHaveBeenCalledTimes(1)
+    const metricNames = sent.flatMap((p) => p.MetricData ?? []).map((d) => d.MetricName)
+    expect(metricNames).toContain('AgentHeartbeat')
+    expect(metricNames).toContain('HubEipAssociated')
+    const heartbeat = sent
+      .flatMap((p) => p.MetricData ?? [])
+      .find((d) => d.MetricName === 'AgentHeartbeat')
+    expect(heartbeat?.Value).toBe(1)
+    const eipMetric = sent
+      .flatMap((p) => p.MetricData ?? [])
+      .find((d) => d.MetricName === 'HubEipAssociated')
+    expect(eipMetric?.Value).toBe(1)
+  })
+
+  it('omits HubEipAssociated when eipCheck is absent and still emits AgentHeartbeat', async () => {
+    const api = stubApi([])
+    const wg = stubWg([])
+    const sent: Array<{ MetricData?: Array<{ MetricName?: string }> }> = []
+    const cw = {
+      send: vi.fn(async (cmd: { input: (typeof sent)[number] }) => {
+        sent.push(cmd.input)
+        return {}
+      }),
+    } as unknown as CloudWatchClient
+
+    await runTick({
+      api,
+      wg,
+      cw,
+      state: { lastEtag: null, lastDesired: [], lastReconcileMs: Date.now() },
+    })
+
+    const metricNames = sent.flatMap((p) => p.MetricData ?? []).map((d) => d.MetricName)
+    expect(metricNames).toContain('AgentHeartbeat')
+    expect(metricNames).not.toContain('HubEipAssociated')
   })
 
   it('caches the ETag across ticks — subsequent tick with 304 reuses last desired state', async () => {

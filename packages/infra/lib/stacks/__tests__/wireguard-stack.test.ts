@@ -248,8 +248,10 @@ describe('WireGuardStack — tunnel proxy', () => {
 })
 
 describe('WireGuardStack — CloudWatch alarms', () => {
-  it('creates three alarms', () => {
-    synth().resourceCountIs('AWS::CloudWatch::Alarm', 3)
+  it('creates the full alarm set', () => {
+    // 3 original (status check, reconcile lag, handshake age)
+    // + 3 new (agent heartbeat, EIP detached, peer drift)
+    synth().resourceCountIs('AWS::CloudWatch::Alarm', 6)
   })
 
   it('routes the reconcile-lag alarm to the SNS topic', () => {
@@ -257,6 +259,37 @@ describe('WireGuardStack — CloudWatch alarms', () => {
       AlarmName: 'pegasus-wireguard-reconcile-lag',
       // SnsAction serialises to a Ref → topic ARN; assert it's non-empty.
       AlarmActions: Match.anyValue(),
+    })
+  })
+
+  it('alarms when the agent stops emitting AgentHeartbeat', () => {
+    synth().hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-wireguard-agent-down',
+      MetricName: 'AgentHeartbeat',
+      Namespace: 'PegasusWireGuard',
+      ComparisonOperator: 'LessThanThreshold',
+      TreatMissingData: 'breaching',
+    })
+  })
+
+  it('alarms when the hub EIP is no longer associated with the hub instance', () => {
+    synth().hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-wireguard-eip-detached',
+      MetricName: 'HubEipAssociated',
+      Namespace: 'PegasusWireGuard',
+      ComparisonOperator: 'LessThanThreshold',
+    })
+  })
+
+  it('alarms when kernel peer count drifts from desired count', () => {
+    // Metric-math alarm — assert the math expression references KernelPeers.
+    synth().hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-wireguard-peer-drift',
+      Metrics: Match.arrayWith([
+        Match.objectLike({
+          Expression: Match.stringLikeRegexp('kernel'),
+        }),
+      ]),
     })
   })
 })

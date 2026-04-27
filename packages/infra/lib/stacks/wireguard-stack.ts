@@ -338,7 +338,12 @@ export class WireGuardStack extends cdk.Stack {
       'dnf update -y',
       'dnf install -y wireguard-tools chrony aws-cli nodejs20 tar',
       'systemctl enable --now chronyd',
+      // Resolve hub privkey. Bash's `set -e` does NOT abort on a failed
+      // command substitution in an assignment, so we read into a variable
+      // explicitly with a guard to make a missing/inaccessible param fatal.
+      'HUB_PRIVKEY=""',
       `HUB_PRIVKEY=$(aws ssm get-parameter --name ${hubPrivKeyParam} --with-decryption --query 'Parameter.Value' --output text --region ${this.region})`,
+      '[ -n "$HUB_PRIVKEY" ] || { echo "FATAL: hub privkey SSM param is empty or unreadable" >&2; exit 1; }',
       'mkdir -p /etc/wireguard',
       'umask 077',
       'cat > /etc/wireguard/wg0.conf <<EOF',
@@ -353,34 +358,57 @@ export class WireGuardStack extends cdk.Stack {
       "echo 'net.ipv4.ip_forward = 1' > /etc/sysctl.d/99-wireguard.conf",
       'sysctl -p /etc/sysctl.d/99-wireguard.conf',
       'systemctl enable --now wg-quick@wg0',
-      // Reconcile agent - install and start.
+      // Reconcile agent - install and start. Missing apikey or missing
+      // tarball URI is fatal: an instance without the agent silently drifts
+      // from the desired peer set, which is exactly the failure mode that
+      // motivated this hardening.
       'mkdir -p /opt/pegasus-vpn-agent /etc/pegasus',
       'chmod 700 /etc/pegasus',
+      'AGENT_APIKEY=""',
       `AGENT_APIKEY=$(aws ssm get-parameter --name /pegasus/wireguard/agent/apikey --with-decryption --query 'Parameter.Value' --output text --region ${this.region})`,
+      '[ -n "$AGENT_APIKEY" ] || { echo "FATAL: /pegasus/wireguard/agent/apikey SSM param is empty or unreadable - run scripts/bootstrap-vpn-agent-apikey.ts" >&2; exit 1; }',
+      // Resolve our own instance-id early so the agent can include it in
+      // /etc/pegasus/agent.env for the HubEipAssociated metric. The EIP
+      // allocation id is hard-baked from the CDK construct ID.
+      'TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")',
+      'INSTANCE_ID=$(curl -sH "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)',
+      '[ -n "$INSTANCE_ID" ] || { echo "FATAL: could not read instance-id from IMDSv2" >&2; exit 1; }',
       'cat > /etc/pegasus/agent.env <<EOF',
       `ADMIN_API_URL=${props.adminApiUrl ?? 'https://api.pegasusapp.com'}`,
       'AGENT_API_KEY=$AGENT_APIKEY',
       `AWS_REGION=${this.region}`,
       'TICK_SECS=30',
+      `HUB_EIP_ALLOCATION_ID=${eip.attrAllocationId}`,
+      'HUB_INSTANCE_ID=$INSTANCE_ID',
       'EOF',
       'chmod 600 /etc/pegasus/agent.env',
       // Install the agent tarball. The S3 URI comes from SSM so CI can bump
-      // it between deploys without a stack update. Skipped cleanly when the
-      // param is unset - the hub still carries the tunnel, just without
-      // automatic peer reconciliation until CI publishes an agent.
-      `AGENT_TARBALL_URI=$(aws ssm get-parameter --name ${agentTarballUriParam} --query 'Parameter.Value' --output text --region ${this.region} 2>/dev/null || echo '')`,
-      'if [ -n "$AGENT_TARBALL_URI" ]; then',
-      '  aws s3 cp "$AGENT_TARBALL_URI" /tmp/vpn-agent.tgz',
-      '  tar -xzf /tmp/vpn-agent.tgz -C /opt/pegasus-vpn-agent --strip-components=1',
-      '  (cd /opt/pegasus-vpn-agent && npm install --omit=dev)',
-      '  cp /opt/pegasus-vpn-agent/systemd/pegasus-vpn-agent.service /etc/systemd/system/',
-      '  systemctl daemon-reload',
-      '  systemctl enable --now pegasus-vpn-agent.service',
-      'fi',
-      // Elastic IP association via AWS CLI - the instance ID comes from IMDSv2.
-      'TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")',
-      'INSTANCE_ID=$(curl -sH "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)',
-      `aws ec2 associate-address --region ${this.region} --instance-id "$INSTANCE_ID" --allocation-id ${eip.attrAllocationId} --allow-reassociation || true`,
+      // it between deploys without a stack update. Missing tarball URI is
+      // fatal - the agent must run; without it, hub state silently drifts
+      // from the database.
+      'AGENT_TARBALL_URI=""',
+      `AGENT_TARBALL_URI=$(aws ssm get-parameter --name ${agentTarballUriParam} --query 'Parameter.Value' --output text --region ${this.region})`,
+      '[ -n "$AGENT_TARBALL_URI" ] || { echo "FATAL: agent tarball SSM param is empty - publish via .github/workflows/publish-vpn-agent.yml" >&2; exit 1; }',
+      'aws s3 cp "$AGENT_TARBALL_URI" /tmp/vpn-agent.tgz',
+      'tar -xzf /tmp/vpn-agent.tgz -C /opt/pegasus-vpn-agent --strip-components=1',
+      '(cd /opt/pegasus-vpn-agent && npm install --omit=dev)',
+      'cp /opt/pegasus-vpn-agent/systemd/pegasus-vpn-agent.service /etc/systemd/system/',
+      'systemctl daemon-reload',
+      'systemctl enable --now pegasus-vpn-agent.service',
+      // Elastic IP association via AWS CLI. INSTANCE_ID was already resolved
+      // above for the agent.env. Retried with backoff because the API is
+      // occasionally rate-limited when several stacks come up simultaneously,
+      // and a silent skip here leaves the hub orphaned from its EIP -
+      // tenants then can't connect.
+      'EIP_OK=0',
+      'for attempt in 1 2 3 4 5 6 7 8 9 10; do',
+      `  if aws ec2 associate-address --region ${this.region} --instance-id "$INSTANCE_ID" --allocation-id ${eip.attrAllocationId} --allow-reassociation; then`,
+      '    EIP_OK=1; break',
+      '  fi',
+      '  echo "associate-address attempt $attempt failed; retrying in 3s" >&2',
+      '  sleep 3',
+      'done',
+      '[ "$EIP_OK" = "1" ] || { echo "FATAL: could not associate EIP after 10 attempts" >&2; exit 1; }',
       // Disable source/dest check so the hub can forward overlay packets
       // arriving from the tunnel proxy Lambda (NAT-instance-style).
       `aws ec2 modify-instance-attribute --region ${this.region} --instance-id "$INSTANCE_ID" --source-dest-check '{"Value":false}'`,
@@ -399,7 +427,9 @@ export class WireGuardStack extends cdk.Stack {
 
     // IAM for lifecycle self-setup on ASG replacement. Scoped tight: the hub
     // may re-associate its own EIP, flip its own source/dest check, describe
-    // route tables, and modify the overlay route. No broader ec2:*.
+    // route tables, modify the overlay route, and read its own EIP
+    // association status (DescribeAddresses, used by the agent's
+    // HubEipAssociated metric). No broader ec2:*.
     hubRole.addToPolicy(
       new iam.PolicyStatement({
         actions: [
@@ -408,6 +438,7 @@ export class WireGuardStack extends cdk.Stack {
           'ec2:DescribeRouteTables',
           'ec2:CreateRoute',
           'ec2:ReplaceRoute',
+          'ec2:DescribeAddresses',
         ],
         resources: ['*'],
       }),
@@ -552,6 +583,93 @@ export class WireGuardStack extends cdk.Stack {
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     })
     handshakeAgeAlarm.addAlarmAction(new cwActions.SnsAction(alertsTopic))
+
+    // ---- Agent liveness: AgentHeartbeat is emitted every tick (~30s). If
+    // the agent process dies or can't reach CloudWatch, no datapoints land
+    // and the alarm flips to ALARM via missing-data treatment.
+    const agentHeartbeatAlarm = new cloudwatch.Alarm(this, 'AgentHeartbeatAlarm', {
+      alarmName: 'pegasus-wireguard-agent-down',
+      alarmDescription:
+        'AgentHeartbeat missing for >5 min - the reconcile agent process is not running.',
+      metric: new cloudwatch.Metric({
+        namespace: 'PegasusWireGuard',
+        metricName: 'AgentHeartbeat',
+        statistic: 'Sum',
+        period: cdk.Duration.minutes(1),
+      }),
+      threshold: 1,
+      evaluationPeriods: 5,
+      comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.BREACHING,
+    })
+    agentHeartbeatAlarm.addAlarmAction(new cwActions.SnsAction(alertsTopic))
+
+    // ---- EIP association: agent emits 1 when its instance currently holds
+    // the hub EIP, 0 if a manual operator action or AWS-side change has
+    // detached it. Below 1 for 5 min => alarm.
+    const eipAssociatedAlarm = new cloudwatch.Alarm(this, 'HubEipAssociatedAlarm', {
+      alarmName: 'pegasus-wireguard-eip-detached',
+      alarmDescription:
+        'HubEipAssociated < 1 for 5 min - the hub instance is not the current holder of the EIP. Tenants will fail to connect.',
+      metric: new cloudwatch.Metric({
+        namespace: 'PegasusWireGuard',
+        metricName: 'HubEipAssociated',
+        statistic: 'Minimum',
+        period: cdk.Duration.minutes(1),
+      }),
+      threshold: 1,
+      evaluationPeriods: 5,
+      comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+      // Missing data is "not breaching" so this alarm stays quiet on
+      // envs where HUB_EIP_ALLOCATION_ID/HUB_INSTANCE_ID are unset.
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    })
+    eipAssociatedAlarm.addAlarmAction(new cwActions.SnsAction(alertsTopic))
+
+    // ---- Peer count drift: kernel peer count diverges from desired
+    // (ACTIVE + PENDING) for >10 min. Uses a metric-math expression so
+    // we don't have to add yet another emitted metric.
+    const kernelPeersMetric = new cloudwatch.Metric({
+      namespace: 'PegasusWireGuard',
+      metricName: 'KernelPeers',
+      statistic: 'Maximum',
+      period: cdk.Duration.minutes(1),
+    })
+    const activePeersMetric = new cloudwatch.Metric({
+      namespace: 'PegasusWireGuard',
+      metricName: 'ActivePeers',
+      statistic: 'Maximum',
+      period: cdk.Duration.minutes(1),
+    })
+    const pendingPeersMetric = new cloudwatch.Metric({
+      namespace: 'PegasusWireGuard',
+      metricName: 'PendingPeers',
+      statistic: 'Maximum',
+      period: cdk.Duration.minutes(1),
+    })
+    const peerDriftMetric = new cloudwatch.MathExpression({
+      // Absolute drift between kernel-observed and desired (active+pending)
+      // peer counts. 0 in steady state.
+      expression: 'ABS(kernel - (active + pending))',
+      usingMetrics: {
+        kernel: kernelPeersMetric,
+        active: activePeersMetric,
+        pending: pendingPeersMetric,
+      },
+      period: cdk.Duration.minutes(1),
+      label: 'PeerCountDrift',
+    })
+    const peerDriftAlarm = new cloudwatch.Alarm(this, 'HubPeerCountDriftAlarm', {
+      alarmName: 'pegasus-wireguard-peer-drift',
+      alarmDescription:
+        'Kernel peer count diverged from desired (ACTIVE+PENDING) for >10 min. Reconcile is stuck or losing writes.',
+      metric: peerDriftMetric,
+      threshold: 0,
+      evaluationPeriods: 10,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    })
+    peerDriftAlarm.addAlarmAction(new cwActions.SnsAction(alertsTopic))
 
     // -----------------------------------------------------------------------
     // CloudFormation outputs - consumed by the admin API (hub endpoint +
