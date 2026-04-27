@@ -131,6 +131,7 @@ jobs:
       deploy-api: ${{ needs.changes.outputs.api }}
       deploy-tenant: ${{ needs.changes.outputs.tenant_web }}
       deploy-admin: ${{ needs.changes.outputs.admin_web }}
+    secrets: inherit
     permissions:
       id-token: write
       contents: read
@@ -155,6 +156,7 @@ jobs:
       deploy-api: ${{ needs.changes.outputs.api }}
       deploy-tenant: ${{ needs.changes.outputs.tenant_web }}
       deploy-admin: ${{ needs.changes.outputs.admin_web }}
+    secrets: inherit
     permissions:
       id-token: write
       contents: read
