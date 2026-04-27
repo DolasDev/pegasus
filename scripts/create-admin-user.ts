@@ -15,6 +15,7 @@
  *   PEGASUS_COGNITO_POOL_ID      — Cognito User Pool ID (e.g. us-east-1_XXXXXXXXX)
  *   PEGASUS_COGNITO_CLIENT_ID    — Admin app client ID
  *   AWS_REGION / AWS_DEFAULT_REGION — AWS region (default: us-east-1)
+ *   AWS_PROFILE                  — Named profile from ~/.aws/config (skips profile prompt)
  *
  * MFA enrolment order (prevents the pre-auth trigger blocking setup):
  *   1. AdminCreateUser
@@ -27,6 +28,9 @@
  */
 
 import crypto from 'crypto'
+import { readFileSync } from 'fs'
+import { homedir } from 'os'
+import { join } from 'path'
 import { createInterface } from 'readline/promises'
 import {
   CognitoIdentityProviderClient,
@@ -39,6 +43,7 @@ import {
   AdminSetUserMFAPreferenceCommand,
   type AuthenticationResultType,
 } from '@aws-sdk/client-cognito-identity-provider'
+import { fromIni } from '@aws-sdk/credential-providers'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -82,6 +87,37 @@ function generatePassword(): string {
   return chars.join('')
 }
 
+function listAwsProfiles(): string[] {
+  const profiles = new Set<string>()
+
+  // ~/.aws/config: section headers are [default] or [profile NAME]; anything else
+  // (e.g. [sso-session NAME], [services NAME]) is not a usable credential profile.
+  const configPath = process.env['AWS_CONFIG_FILE'] ?? join(homedir(), '.aws', 'config')
+  try {
+    for (const line of readFileSync(configPath, 'utf8').split('\n')) {
+      const m = line.match(/^\s*\[(default|profile\s+[^\]]+)\]\s*$/)
+      if (!m?.[1]) continue
+      profiles.add(m[1] === 'default' ? 'default' : m[1].replace(/^profile\s+/, '').trim())
+    }
+  } catch {
+    /* file may not exist — that's OK */
+  }
+
+  // ~/.aws/credentials: every section header is a profile name verbatim.
+  const credsPath =
+    process.env['AWS_SHARED_CREDENTIALS_FILE'] ?? join(homedir(), '.aws', 'credentials')
+  try {
+    for (const line of readFileSync(credsPath, 'utf8').split('\n')) {
+      const m = line.match(/^\s*\[([^\]]+)\]\s*$/)
+      if (m?.[1]) profiles.add(m[1].trim())
+    }
+  } catch {
+    /* file may not exist — that's OK */
+  }
+
+  return [...profiles].sort()
+}
+
 function buildTotpUri(secret: string, email: string): string {
   const issuer = encodeURIComponent('Pegasus Admin')
   const account = encodeURIComponent(email)
@@ -105,7 +141,8 @@ This script will:
   4. Grant PLATFORM_ADMIN privileges
 
 Prerequisites:
-  • AWS credentials configured in the current shell
+  • An AWS named profile in ~/.aws/config (run ${BOLD}aws sso login --profile <name>${RESET}
+    first if it uses SSO; you'll be prompted to pick one below)
   • CDK stack deployed: ${BOLD}pegasus-dev-cognito${RESET}
   • An authenticator app ready (Google Authenticator, Authy, 1Password, etc.)
 `)
@@ -113,15 +150,55 @@ Prerequisites:
   const rl = createInterface({ input: process.stdin, output: process.stdout })
 
   try {
-    const TOTAL_STEPS = 7
+    const TOTAL_STEPS = 8
 
     // -----------------------------------------------------------------------
-    // STEP 1 — Resolve Cognito config
+    // STEP 1 — Resolve AWS credentials (named profile from ~/.aws/config)
     // -----------------------------------------------------------------------
-    step(1, TOTAL_STEPS, 'Resolve Cognito configuration')
+    step(1, TOTAL_STEPS, 'Resolve AWS credentials')
 
-    const region =
-      process.env['AWS_REGION'] ?? process.env['AWS_DEFAULT_REGION'] ?? 'us-east-1'
+    const region = process.env['AWS_REGION'] ?? process.env['AWS_DEFAULT_REGION'] ?? 'us-east-1'
+
+    const profiles = listAwsProfiles()
+    const envProfile = process.env['AWS_PROFILE']?.trim()
+    let profile: string
+
+    if (envProfile) {
+      profile = envProfile
+      ok(`AWS profile (from AWS_PROFILE): ${profile}`)
+    } else {
+      if (profiles.length > 0) {
+        console.log(`  Available profiles in ~/.aws/config:`)
+        for (const p of profiles) console.log(`    • ${p}`)
+      } else {
+        warn('No profiles found in ~/.aws/config — falling back to "default".')
+      }
+      const answer = (await rl.question('\n  AWS profile to use (blank for "default"): ')).trim()
+      profile = answer || 'default'
+    }
+
+    const credentials = fromIni({ profile })
+
+    // Resolve once up-front so we fail fast with a clear hint if SSO/creds are stale.
+    try {
+      await credentials()
+      ok(`Credentials resolved for profile: ${profile}`)
+    } catch (err) {
+      fail(
+        `Could not resolve AWS credentials for profile "${profile}": ${err instanceof Error ? err.message : String(err)}`,
+      )
+      console.log(
+        `\n  If this profile uses AWS SSO, refresh your session:`,
+        `\n    ${BOLD}aws sso login --profile ${profile}${RESET}`,
+        `\n  Then re-run this script.`,
+      )
+      process.exit(1)
+    }
+
+    // -----------------------------------------------------------------------
+    // STEP 2 — Resolve Cognito config
+    // -----------------------------------------------------------------------
+    step(2, TOTAL_STEPS, 'Resolve Cognito configuration')
 
     let poolId = process.env['PEGASUS_COGNITO_POOL_ID'] ?? ''
     let clientId = process.env['PEGASUS_COGNITO_CLIENT_ID'] ?? ''
@@ -153,13 +230,13 @@ Prerequisites:
       process.exit(1)
     }
 
-    const cognito = new CognitoIdentityProviderClient({ region })
+    const cognito = new CognitoIdentityProviderClient({ region, credentials })
     ok(`Region: ${region}`)
 
     // -----------------------------------------------------------------------
-    // STEP 2 — Collect admin email
+    // STEP 3 — Collect admin email
     // -----------------------------------------------------------------------
-    step(2, TOTAL_STEPS, 'Admin user details')
+    step(3, TOTAL_STEPS, 'Admin user details')
 
     const email = (await rl.question('  Admin email address: ')).trim().toLowerCase()
     if (!email.includes('@')) {
@@ -168,9 +245,9 @@ Prerequisites:
     }
 
     // -----------------------------------------------------------------------
-    // STEP 3 — Create Cognito user
+    // STEP 4 — Create Cognito user
     // -----------------------------------------------------------------------
-    step(3, TOTAL_STEPS, 'Create Cognito user')
+    step(4, TOTAL_STEPS, 'Create Cognito user')
 
     const password = generatePassword()
 
@@ -190,9 +267,9 @@ Prerequisites:
     ok(`User created: ${email}`)
 
     // -----------------------------------------------------------------------
-    // STEP 4 — Set permanent password (moves status FORCE_CHANGE_PASSWORD → CONFIRMED)
+    // STEP 5 — Set permanent password (moves status FORCE_CHANGE_PASSWORD → CONFIRMED)
     // -----------------------------------------------------------------------
-    step(4, TOTAL_STEPS, 'Set permanent password')
+    step(5, TOTAL_STEPS, 'Set permanent password')
 
     await cognito.send(
       new AdminSetUserPasswordCommand({
@@ -205,13 +282,13 @@ Prerequisites:
     ok('Permanent password set')
 
     // -----------------------------------------------------------------------
-    // STEP 5 — Enroll TOTP MFA
+    // STEP 6 — Enroll TOTP MFA
     //
     // IMPORTANT: The user is NOT yet in PLATFORM_ADMIN. This allows the
     // pre-auth Lambda trigger to pass (no admin → no MFA check). TOTP is
     // enrolled first; only after successful verification is admin status granted.
     // -----------------------------------------------------------------------
-    step(5, TOTAL_STEPS, 'Enroll TOTP MFA')
+    step(6, TOTAL_STEPS, 'Enroll TOTP MFA')
 
     console.log('  Opening an auth session to associate a TOTP device…')
 
@@ -227,7 +304,9 @@ Prerequisites:
     const tokens = authResult.AuthenticationResult as AuthenticationResultType
     if (!tokens?.AccessToken) {
       fail(`Unexpected auth challenge: ${authResult.ChallengeName ?? 'unknown'}`)
-      fail('The user may already have MFA enrolled or the auth flow was not ADMIN_USER_PASSWORD_AUTH.')
+      fail(
+        'The user may already have MFA enrolled or the auth flow was not ADMIN_USER_PASSWORD_AUTH.',
+      )
       process.exit(1)
     }
     ok('Auth session opened')
@@ -297,9 +376,9 @@ Prerequisites:
     ok('TOTP set as preferred MFA')
 
     // -----------------------------------------------------------------------
-    // STEP 6 — Grant PLATFORM_ADMIN (after MFA is enrolled and verified)
+    // STEP 7 — Grant PLATFORM_ADMIN (after MFA is enrolled and verified)
     // -----------------------------------------------------------------------
-    step(6, TOTAL_STEPS, 'Grant PLATFORM_ADMIN group membership')
+    step(7, TOTAL_STEPS, 'Grant PLATFORM_ADMIN group membership')
 
     await cognito.send(
       new AdminAddUserToGroupCommand({
@@ -311,9 +390,9 @@ Prerequisites:
     ok('Added to PLATFORM_ADMIN group')
 
     // -----------------------------------------------------------------------
-    // STEP 7 — Summary
+    // STEP 8 — Summary
     // -----------------------------------------------------------------------
-    step(7, TOTAL_STEPS, 'Setup complete')
+    step(8, TOTAL_STEPS, 'Setup complete')
 
     console.log(`
 ${GREEN}${BOLD}  Admin user ready!${RESET}
