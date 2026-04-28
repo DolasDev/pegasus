@@ -94,6 +94,14 @@ export class WireGuardStack extends cdk.Stack {
   /** Base64 hub public key - produced by the key-bootstrap Custom Resource. */
   public readonly hubPublicKey: string
 
+  /**
+   * SSM parameter name (plain String) that holds the SHA-256 hex hash of the
+   * agent's `vnd_*` API key. ApiStack reads this at deploy time and injects
+   * it into the API Lambda env so the auth middleware can verify the agent's
+   * Bearer token without a DB lookup or per-request SSM call.
+   */
+  public readonly agentApiKeyHashParameterName: string
+
   /** Tenant-facing endpoint (EIP + port). Embed in tenant client.conf via renderClientConfig. */
   public readonly hubEndpoint: string
 
@@ -114,6 +122,8 @@ export class WireGuardStack extends cdk.Stack {
     const phzName = props.privateHostedZoneName ?? 'vpn.pegasus.internal'
     const agentTarballUriParam = '/pegasus/wireguard/agent/tarball-uri'
     const adminApiUrlParam = '/pegasus/wireguard/agent/admin-api-url'
+    const agentApiKeyParam = '/pegasus/wireguard/agent/apikey'
+    const agentApiKeyHashParam = '/pegasus/wireguard/agent/apikey-hash'
 
     // -----------------------------------------------------------------------
     // VPC - 10.10.0.0/16 per plan §2
@@ -325,6 +335,64 @@ export class WireGuardStack extends cdk.Stack {
     this.hubPublicKey = keyBootstrap.getAttString('PublicKey')
 
     // -----------------------------------------------------------------------
+    // Custom Resource - bootstrap the agent's M2M API key.
+    //
+    // The agent authenticates against the admin API with a token of shape
+    // `vnd_<48 hex>`, sent as a Bearer header. The API verifies it by hashing
+    // the incoming token with SHA-256 and comparing against the value stored
+    // at /pegasus/wireguard/agent/apikey-hash - no DB row required, since
+    // this is platform-level M2M that doesn't belong to any tenant. See the
+    // platform-key path in apps/api/src/middleware/api-client-auth.ts.
+    //
+    // First deploy: generates plaintext + hash, writes both. Re-deploy: reuses
+    // any existing plaintext (preserves a running agent's credential) and
+    // refreshes the hash from it. Delete: noop, both params retained.
+    // -----------------------------------------------------------------------
+    const agentKeyBootstrapFn = new nodejs.NodejsFunction(this, 'AgentKeyBootstrapFn', {
+      entry: path.join(__dirname, 'wireguard-agent-key-bootstrap.handler.ts'),
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
+      logRetention: logs.RetentionDays.ONE_MONTH,
+      bundling: {
+        externalModules: ['@aws-sdk/*'],
+      },
+    })
+    agentKeyBootstrapFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ssm:GetParameter', 'ssm:PutParameter'],
+        resources: [
+          cdk.Stack.of(this).formatArn({
+            service: 'ssm',
+            resource: 'parameter',
+            resourceName: agentApiKeyParam.replace(/^\//, ''),
+          }),
+          cdk.Stack.of(this).formatArn({
+            service: 'ssm',
+            resource: 'parameter',
+            resourceName: agentApiKeyHashParam.replace(/^\//, ''),
+          }),
+        ],
+      }),
+    )
+
+    const agentKeyProvider = new customResources.Provider(this, 'AgentKeyBootstrapProvider', {
+      onEventHandler: agentKeyBootstrapFn,
+      logRetention: logs.RetentionDays.ONE_MONTH,
+    })
+
+    const agentKeyBootstrap = new cdk.CustomResource(this, 'AgentKeyBootstrap', {
+      serviceToken: agentKeyProvider.serviceToken,
+      properties: {
+        ApiKeyParameterName: agentApiKeyParam,
+        ApiKeyHashParameterName: agentApiKeyHashParam,
+      },
+    })
+    agentKeyBootstrap.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN)
+    this.agentApiKeyHashParameterName = agentApiKeyHashParam
+
+    // -----------------------------------------------------------------------
     // Cloud-init - install wireguard-tools, template wg0.conf from SSM,
     // enable the tunnel + the pegasus-vpn-agent reconcile daemon.
     //
@@ -369,7 +437,7 @@ export class WireGuardStack extends cdk.Stack {
       'chmod 700 /etc/pegasus',
       'AGENT_APIKEY=""',
       `AGENT_APIKEY=$(aws ssm get-parameter --name /pegasus/wireguard/agent/apikey --with-decryption --query 'Parameter.Value' --output text --region ${this.region})`,
-      '[ -n "$AGENT_APIKEY" ] || { echo "FATAL: /pegasus/wireguard/agent/apikey SSM param is empty or unreadable - run scripts/bootstrap-vpn-agent-apikey.ts" >&2; exit 1; }',
+      '[ -n "$AGENT_APIKEY" ] || { echo "FATAL: /pegasus/wireguard/agent/apikey SSM param is empty or unreadable - WireGuardStack AgentKeyBootstrap custom resource should have created it on deploy" >&2; exit 1; }',
       // Admin API URL: ApiStack writes this on its own deploy. Required so
       // the agent polls the right endpoint - the previous default of a
       // hard-coded production hostname routed to a different service and
@@ -721,6 +789,11 @@ export class WireGuardStack extends cdk.Stack {
       value: asg.autoScalingGroupName,
       description: 'ASG name - pass to `aws autoscaling start-instance-refresh` in CI.',
       exportName: 'PegasusWireGuardHubAsgName',
+    })
+    new cdk.CfnOutput(this, 'AgentApiKeyHashParameterName', {
+      value: agentApiKeyHashParam,
+      description: 'SSM param holding the SHA-256 hash of the agent API key.',
+      exportName: 'PegasusWireGuardAgentApiKeyHashParam',
     })
     new cdk.CfnOutput(this, 'HubPublicKey', {
       value: this.hubPublicKey,

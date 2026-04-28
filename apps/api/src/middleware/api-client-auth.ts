@@ -5,14 +5,21 @@
 // Vendor keys are distinguished by the "vnd_" prefix — Cognito JWTs begin with
 // "eyJ" (base64-encoded JSON header) and never start with "vnd_".
 //
-// Auth flow:
-//   1. Extract Bearer token; reject non-vnd_ tokens immediately (401).
-//   2. Look up the ApiClient row by key_prefix (indexed column).
-//   3. Compute SHA-256 of the incoming key and compare with stored hash using
-//      crypto.timingSafeEqual to prevent timing-based attacks.
-//   4. Reject if hash does not match (401) or key is revoked (403).
-//   5. Fire-and-forget update of last_used_at.
-//   6. Populate c.set('apiClient') and c.set('tenantId').
+// Two auth paths, tried in order:
+//
+//   1. Platform-key path (DB-free).
+//      The WireGuard reconcile agent and any future platform-scoped daemon
+//      authenticate via a static token whose SHA-256 is injected into the
+//      Lambda env as VPN_AGENT_APIKEY_HASH (resolved from SSM at deploy time
+//      by ApiStack). On match, sets a synthetic apiClient with the
+//      'vpn:sync' scope and a null tenantId — tenant-scoped handlers reject
+//      such requests via the same null check they apply to misconfigured
+//      tokens.
+//
+//   2. Tenant-scoped DB path.
+//      Looks up the ApiClient row by key_prefix, timing-safe-compares the
+//      hash, rejects if revoked, fires-and-forgets last_used_at.
+//
 // ---------------------------------------------------------------------------
 
 import crypto from 'node:crypto'
@@ -20,7 +27,13 @@ import type { Context, Next } from 'hono'
 import { createApiClientRepository } from '../repositories/api-client.repository'
 import { db as basePrisma } from '../db'
 import { logger } from '../lib/logger'
-import type { ApiClientEnv } from '../types'
+import type { ApiClientContext, ApiClientEnv } from '../types'
+
+/** Scope granted to the WireGuard hub reconcile agent's platform key. */
+const VPN_AGENT_SCOPE = 'vpn:sync'
+
+/** Synthetic ApiClient id used for the platform-key path. */
+const PLATFORM_VPN_AGENT_ID = 'platform-vpn-agent'
 
 export async function apiClientAuthMiddleware(
   c: Context<ApiClientEnv>,
@@ -33,6 +46,18 @@ export async function apiClientAuthMiddleware(
     return c.json({ error: 'Missing or invalid API key', code: 'UNAUTHORIZED' }, 401)
   }
 
+  const incomingHash = crypto.createHash('sha256').update(token).digest('hex')
+
+  // ---- 1. Platform-key path
+  const platformContext = matchPlatformKey(incomingHash, token)
+  if (platformContext !== null) {
+    c.set('apiClient', platformContext)
+    c.set('tenantId', null)
+    await next()
+    return
+  }
+
+  // ---- 2. Tenant-scoped DB path
   const keyPrefix = token.slice(0, 12) // matches key_prefix column length
   const repo = createApiClientRepository(basePrisma)
   const candidate = await repo.findByPrefix(keyPrefix)
@@ -42,7 +67,6 @@ export async function apiClientAuthMiddleware(
   }
 
   // Timing-safe comparison — prevents timing attacks on the hash comparison.
-  const incomingHash = crypto.createHash('sha256').update(token).digest('hex')
   let match: boolean
   try {
     match = crypto.timingSafeEqual(
@@ -76,4 +100,43 @@ export async function apiClientAuthMiddleware(
   c.set('tenantId', candidate.tenantId)
 
   await next()
+}
+
+/**
+ * Compare the incoming token's hash against the env-injected platform-key
+ * hash. Returns a synthetic ApiClientContext on match, or null when the
+ * platform key is unconfigured or the hash doesn't match.
+ *
+ * The expected hash is read from the env on every call rather than
+ * captured at module load time so the middleware can be exercised by tests
+ * that set process.env.VPN_AGENT_APIKEY_HASH after import.
+ */
+function matchPlatformKey(incomingHash: string, token: string): ApiClientContext | null {
+  const expectedHash = process.env['VPN_AGENT_APIKEY_HASH']
+  if (!expectedHash) return null
+
+  let match: boolean
+  try {
+    match = crypto.timingSafeEqual(
+      Buffer.from(expectedHash, 'hex'),
+      Buffer.from(incomingHash, 'hex'),
+    )
+  } catch {
+    return null
+  }
+  if (!match) return null
+
+  const now = new Date()
+  return {
+    id: PLATFORM_VPN_AGENT_ID,
+    tenantId: null,
+    name: 'Platform VPN Agent',
+    keyPrefix: token.slice(0, 12),
+    scopes: [VPN_AGENT_SCOPE],
+    lastUsedAt: null,
+    revokedAt: null,
+    createdById: null,
+    createdAt: now,
+    updatedAt: now,
+  }
 }

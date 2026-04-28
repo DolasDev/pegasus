@@ -83,6 +83,17 @@ export interface ApiStackProps extends cdk.StackProps {
   readonly wireguardHubEndpoint?: string
 
   /**
+   * SSM parameter name (plain String) holding the SHA-256 hex hash of the
+   * agent's Bearer token. Passed through from WireGuardStack; ApiStack reads
+   * the value at deploy time and injects it as VPN_AGENT_APIKEY_HASH so the
+   * platform-key path in apiClientAuthMiddleware can verify the agent's
+   * token without a per-request SSM round-trip or DB lookup. Optional —
+   * absent in environments without WireGuardStack, in which case the agent
+   * cannot authenticate and the /api/vpn/* routes 401.
+   */
+  readonly wireguardAgentApiKeyHashParameterName?: string
+
+  /**
    * Tunnel-proxy Lambda — lives inside the WireGuard VPC and is the only
    * path from the public-egress API Lambda to tenant overlay IPs. When
    * supplied, the API Lambda's role is granted `lambda:InvokeFunction`
@@ -160,6 +171,16 @@ export class ApiStack extends cdk.Stack {
         // the handler returns 503 VPN_HUB_UNCONFIGURED.
         WIREGUARD_HUB_PUBLIC_KEY: props.wireguardHubPublicKey ?? '',
         WIREGUARD_HUB_ENDPOINT: props.wireguardHubEndpoint ?? '',
+        // Platform-key hash for the WireGuard hub reconcile agent. Resolved
+        // at deploy time from SSM (WireGuardStack writes it via custom
+        // resource). Empty string when WireGuardStack is absent — the
+        // platform-key path in api-client-auth.ts treats empty as disabled.
+        VPN_AGENT_APIKEY_HASH: props.wireguardAgentApiKeyHashParameterName
+          ? ssm.StringParameter.valueForStringParameter(
+              this,
+              props.wireguardAgentApiKeyHashParameterName,
+            )
+          : '',
       },
       bundling: {
         minify: true,

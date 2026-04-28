@@ -546,14 +546,19 @@ If you ever need <30s revocation, add an SNS topic that the agent subscribes to 
    ```
 2. `aws ssm put-parameter --name /pegasus/wireguard/hub/privkey --type SecureString --value "$(cat priv)"`
 3. `aws ssm put-parameter --name /pegasus/wireguard/hub/pubkey --type String --value "$(cat pub)"`
-4. Create M2M API client + write SSM SecureString in one step:
-   ```
-   AWS_PROFILE=pegasus-<env> DIRECT_URL='postgresql://...' \
-     npx tsx apps/api/scripts/bootstrap-vpn-agent-apikey.ts
-   ```
-   The script creates a `vpn:sync`-scoped ApiClient row and writes the
-   plaintext to `/pegasus/wireguard/agent/apikey` (SecureString) in one
-   shot. Pass `--force` to rotate the key on a subsequent run.
+4. Agent M2M key — automatic. WireGuardStack ships a CDK custom resource
+   (`AgentKeyBootstrap`) that on first deploy generates a `vnd_<48 hex>`
+   token, writes the plaintext to `/pegasus/wireguard/agent/apikey`
+   (SecureString) and the SHA-256 hash to
+   `/pegasus/wireguard/agent/apikey-hash` (plain String). On re-deploy it
+   reuses any existing plaintext and recomputes the hash. ApiStack reads
+   the hash via `ssm.StringParameter.valueForStringParameter` and injects
+   it as `VPN_AGENT_APIKEY_HASH` on the API Lambda; the platform-key path
+   in `apiClientAuthMiddleware` verifies the agent's Bearer token against
+   that hash without a DB lookup.
+
+   Rotation: change the plaintext in SSM, redeploy ApiStack to pick up
+   the new hash, restart the agent.
 
 **Phase 3 — Hub launches (~2 min, automatic)**
 

@@ -131,6 +131,7 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   documentsBucket: documentsStack.bucket,
   wireguardHubPublicKey: wireguardStack.hubPublicKey,
   wireguardHubEndpoint: wireguardStack.hubEndpoint,
+  wireguardAgentApiKeyHashParameterName: wireguardStack.agentApiKeyHashParameterName,
   tunnelProxyFunction: wireguardStack.tunnelProxyFunction,
 })
 

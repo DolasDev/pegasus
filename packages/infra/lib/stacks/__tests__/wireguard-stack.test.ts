@@ -128,15 +128,18 @@ describe('WireGuardStack — IAM', () => {
 })
 
 describe('WireGuardStack — key bootstrap', () => {
-  it('creates a Lambda-backed Custom Resource for the hub keypair', () => {
+  it('creates Lambda-backed Custom Resources for the hub keypair AND the agent apikey', () => {
     const template = synth()
-    // The AwsCustomResource / Provider framework synthesises one Lambda for
-    // the user handler and additional infrastructure Lambdas for the Provider
-    // state machine. Assert at least one user handler exists.
-    template.resourceCountIs('AWS::CloudFormation::CustomResource', 1)
+    // Two user handlers: hub key bootstrap + agent apikey bootstrap. The
+    // Provider framework also synthesises infrastructure Lambdas for each.
+    template.resourceCountIs('AWS::CloudFormation::CustomResource', 2)
     template.hasResourceProperties('AWS::CloudFormation::CustomResource', {
       PrivateKeyParameterName: '/pegasus/wireguard/hub/privkey',
       PublicKeyParameterName: '/pegasus/wireguard/hub/pubkey',
+    })
+    template.hasResourceProperties('AWS::CloudFormation::CustomResource', {
+      ApiKeyParameterName: '/pegasus/wireguard/agent/apikey',
+      ApiKeyHashParameterName: '/pegasus/wireguard/agent/apikey-hash',
     })
   })
 
@@ -152,18 +155,27 @@ describe('WireGuardStack — key bootstrap', () => {
     })
   })
 
-  it('retains the Custom Resource on stack deletion', () => {
-    synth().hasResource('AWS::CloudFormation::CustomResource', {
-      DeletionPolicy: 'Retain',
-      UpdateReplacePolicy: 'Retain',
-    })
+  it('retains both Custom Resources on stack deletion', () => {
+    const template = synth().toJSON()
+    const customResources = Object.values(template.Resources ?? {}).filter(
+      (r): r is { Type: string; DeletionPolicy?: string; UpdateReplacePolicy?: string } =>
+        typeof r === 'object' &&
+        r !== null &&
+        (r as { Type?: string }).Type === 'AWS::CloudFormation::CustomResource',
+    )
+    expect(customResources).toHaveLength(2)
+    for (const r of customResources) {
+      expect(r.DeletionPolicy).toBe('Retain')
+      expect(r.UpdateReplacePolicy).toBe('Retain')
+    }
   })
 
-  it('exports the hub public key and endpoint as CF outputs', () => {
+  it('exports the hub public key, endpoint, and agent apikey-hash param as CF outputs', () => {
     const template = synth().toJSON()
     const outputs = Object.keys(template.Outputs ?? {})
     expect(outputs).toContain('HubPublicKey')
     expect(outputs).toContain('HubEndpoint')
+    expect(outputs).toContain('AgentApiKeyHashParameterName')
   })
 })
 

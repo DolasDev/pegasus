@@ -101,6 +101,9 @@ function buildApp(apiClient: ApiClientContext | null = mockApiClient) {
     if (apiClient === null) {
       return c.json({ error: 'Missing or invalid API key', code: 'UNAUTHORIZED' }, 401)
     }
+    // m2mAppAuth always operates on tenant-scoped clients in this test —
+    // assert non-null to satisfy the AppEnv tenantId: string contract.
+    if (apiClient.tenantId === null) throw new Error('test fixture must have tenantId')
     c.set('tenantId', apiClient.tenantId)
     c.set('db', {} as unknown as PrismaClient)
     c.set('role', 'api_client')
@@ -409,7 +412,9 @@ describe('orders handler', () => {
     })
 
     it('returns 422 with DomainError code when repository throws DomainError', async () => {
-      mockMovesRepo.createMove.mockRejectedValue(new DomainError('Order date in past', 'INVALID_DATE'))
+      mockMovesRepo.createMove.mockRejectedValue(
+        new DomainError('Order date in past', 'INVALID_DATE'),
+      )
       const app = buildApp()
       const res = await app.request('/', post(validOrderBody))
       expect(res.status).toBe(422)

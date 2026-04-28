@@ -5,8 +5,18 @@
 import type { PrismaClient } from '@prisma/client'
 import type { ApiClientRow } from './repositories/api-client.repository'
 
-/** API client record without the keyHash — set for M2M-authenticated requests. */
-export type ApiClientContext = Omit<ApiClientRow, 'keyHash'>
+/**
+ * API client record without the keyHash — set for M2M-authenticated requests.
+ *
+ * `tenantId` and `createdById` are nullable to accommodate the platform-key
+ * path in apiClientAuthMiddleware: a platform daemon (e.g. the WireGuard
+ * reconcile agent) authenticates without a row in `api_clients`, has no
+ * tenant scope, and no human creator.
+ */
+export type ApiClientContext = Omit<ApiClientRow, 'keyHash' | 'tenantId' | 'createdById'> & {
+  tenantId: string | null
+  createdById: string | null
+}
 
 /**
  * Variables injected into Hono context by the tenant middleware.
@@ -72,15 +82,19 @@ export type AdminEnv = { Variables: AdminVariables }
 /**
  * Variables injected into Hono context by apiClientAuthMiddleware.
  * Routes protected by API key auth (M2M) can rely on these being present.
+ *
+ * `tenantId` is nullable: platform-scoped tokens (e.g. the WireGuard
+ * reconcile agent) authenticate without a tenant scope. Tenant-scoped
+ * handlers must guard against null and reject with 403.
  */
 export type ApiClientVariables = {
   /**
-   * The authenticated API client record — excludes keyHash.
-   * Set by apiClientAuthMiddleware after successful key verification.
+   * The authenticated API client record — excludes keyHash. Synthetic for
+   * platform-scoped clients (no row in `api_clients`).
    */
-  apiClient: Omit<ApiClientRow, never>
-  /** The UUID of the resolved tenant (same tenantId as apiClient.tenantId). */
-  tenantId: string
+  apiClient: ApiClientContext
+  /** The UUID of the resolved tenant. Null when the token is platform-scoped. */
+  tenantId: string | null
 }
 
 /** Hono environment type for routes protected by API key auth. */
