@@ -6,6 +6,10 @@
   - The `apps/admin` deployment requires two passes: one to provision the AWS infrastructure (to get the CloudFront URL) and a second pass to upload the Vite bundle after securely injecting `VITE_COGNITO_REDIRECT_URI`.
 - **Apps Ports**: Running `npm run dev` in `apps/admin` explicitly binds to port `5174`, unlike generic Vite apps which default to `5173`.
 - **Type Checking Strategy**: The system firmly enforces strict imports and avoids circular dependencies. Always verify architecture graph constraints with `madge` or `tsc --traceResolution` when modifying the domain model.
+- **On-prem API reachability via WireGuard tunnel**: The cloud API → on-prem call path (`apps/api/src/handlers/onprem.ts` → `tunnelFetch` → tunnel-proxy Lambda → WG hub → tenant overlay IP `10.200.<o1>.<o2>:3000`) requires three on-prem-side conditions, none enforced by code:
+  1. The on-prem Node server (`apps/api/src/server.ts`) must bind `0.0.0.0` (the default; verify the deployment's `HOST` env isn't overridden to `127.0.0.1`).
+  2. The host firewall must allow inbound on `wg0` to the listen port (`ufw allow in on wg0` or equivalent).
+  3. Plain HTTP is intentional — the WG tunnel provides confidentiality + peer auth, so cloud→onprem skips TLS by design (`ONPREM_TUNNEL_SCHEME` defaults to `http`). LAN-side TLS is a separate concern.
 
 ## Security Overrides in Root package.json
 

@@ -19,6 +19,7 @@ import { documentsHandler } from './handlers/documents'
 import { eventsHandler } from './handlers/events'
 import { ordersHandler } from './handlers/orders'
 import { vpnAgentHandler } from './handlers/vpn-agent'
+import { onpremHandler } from './handlers/onprem'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
 import { DomainError } from '@pegasus/domain'
@@ -182,6 +183,10 @@ v1.route('/invoices', billingHandler)
 v1.route('/api-clients', apiClientsHandler)
 v1.route('/settings', settingsHandler)
 v1.route('/documents', documentsHandler)
+// On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
+// on-prem API server. Routes are tenant-scoped; URL is derived from the
+// tenant's VpnPeer overlay IP. See handlers/onprem.ts.
+v1.route('/onprem', onpremHandler)
 
 app.route('/api/v1', v1)
 
