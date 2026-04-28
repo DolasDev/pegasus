@@ -7,6 +7,7 @@ import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs'
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2'
 import * as apigwv2i from 'aws-cdk-lib/aws-apigatewayv2-integrations'
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
+import * as ssm from 'aws-cdk-lib/aws-ssm'
 import type * as s3 from 'aws-cdk-lib/aws-s3'
 import { type Construct } from 'constructs'
 
@@ -253,6 +254,18 @@ export class ApiStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ApiUrl', {
       value: httpApi.apiEndpoint,
       exportName: 'PegasusApiUrl',
+    })
+
+    // Publish the API URL to the SSM path the WireGuard hub user-data reads
+    // at boot. WireGuardStack must deploy before ApiStack (it owns the hub
+    // public key + endpoint that ApiStack consumes), so we cannot pass this
+    // URL as a constructor prop without a circular dependency. SSM bridges
+    // the gap: ApiStack writes here, WireGuardStack's user-data fetches at
+    // instance launch.
+    new ssm.StringParameter(this, 'WireGuardAdminApiUrlParam', {
+      parameterName: '/pegasus/wireguard/agent/admin-api-url',
+      stringValue: httpApi.apiEndpoint,
+      description: 'API endpoint the WireGuard hub reconcile agent polls.',
     })
   }
 }

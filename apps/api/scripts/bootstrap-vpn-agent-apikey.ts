@@ -227,8 +227,8 @@ async function pickCreator(
 
   const users = await db.tenantUser.findMany({
     where: { tenantId },
-    select: { id: true, email: true, createdAt: true },
-    orderBy: { createdAt: 'asc' },
+    select: { id: true, email: true, invitedAt: true },
+    orderBy: { invitedAt: 'asc' },
     take: 25,
   })
   if (users.length === 0) {

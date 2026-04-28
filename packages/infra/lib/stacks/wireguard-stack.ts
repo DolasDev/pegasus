@@ -57,9 +57,11 @@ export interface WireGuardStackProps extends cdk.StackProps {
   readonly privateHostedZoneName?: string
 
   /**
-   * Base URL of the admin API the reconcile agent polls. Written into
-   * /etc/pegasus/agent.env at boot. Defaults to the production hostname;
-   * cross-stack callers should pass `apiStack.apiUrl` instead.
+   * Optional override for the admin API URL the reconcile agent polls.
+   * Normally left unset — the URL is read from SSM at hub boot from
+   * `/pegasus/wireguard/agent/admin-api-url`, which ApiStack writes (it
+   * deploys after WireGuardStack, so the prop-based wiring would create
+   * a circular dependency). Set this only for local testing.
    */
   readonly adminApiUrl?: string
 }
@@ -111,6 +113,7 @@ export class WireGuardStack extends cdk.Stack {
     const hubPubKeyParam = props.hubPublicKeyParameterName ?? '/pegasus/wireguard/hub/pubkey'
     const phzName = props.privateHostedZoneName ?? 'vpn.pegasus.internal'
     const agentTarballUriParam = '/pegasus/wireguard/agent/tarball-uri'
+    const adminApiUrlParam = '/pegasus/wireguard/agent/admin-api-url'
 
     // -----------------------------------------------------------------------
     // VPC - 10.10.0.0/16 per plan §2
@@ -367,6 +370,17 @@ export class WireGuardStack extends cdk.Stack {
       'AGENT_APIKEY=""',
       `AGENT_APIKEY=$(aws ssm get-parameter --name /pegasus/wireguard/agent/apikey --with-decryption --query 'Parameter.Value' --output text --region ${this.region})`,
       '[ -n "$AGENT_APIKEY" ] || { echo "FATAL: /pegasus/wireguard/agent/apikey SSM param is empty or unreadable - run scripts/bootstrap-vpn-agent-apikey.ts" >&2; exit 1; }',
+      // Admin API URL: ApiStack writes this on its own deploy. Required so
+      // the agent polls the right endpoint - the previous default of a
+      // hard-coded production hostname routed to a different service and
+      // silently corrupted reconcile.
+      ...(props.adminApiUrl
+        ? [`ADMIN_API_URL=${props.adminApiUrl}`]
+        : [
+            'ADMIN_API_URL=""',
+            `ADMIN_API_URL=$(aws ssm get-parameter --name ${adminApiUrlParam} --query 'Parameter.Value' --output text --region ${this.region})`,
+            `[ -n "$ADMIN_API_URL" ] || { echo "FATAL: ${adminApiUrlParam} SSM param is empty - ApiStack must deploy at least once before the hub can boot" >&2; exit 1; }`,
+          ]),
       // Resolve our own instance-id early so the agent can include it in
       // /etc/pegasus/agent.env for the HubEipAssociated metric. The EIP
       // allocation id is hard-baked from the CDK construct ID.
@@ -374,7 +388,7 @@ export class WireGuardStack extends cdk.Stack {
       'INSTANCE_ID=$(curl -sH "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)',
       '[ -n "$INSTANCE_ID" ] || { echo "FATAL: could not read instance-id from IMDSv2" >&2; exit 1; }',
       'cat > /etc/pegasus/agent.env <<EOF',
-      `ADMIN_API_URL=${props.adminApiUrl ?? 'https://api.pegasusapp.com'}`,
+      'ADMIN_API_URL=$ADMIN_API_URL',
       'AGENT_API_KEY=$AGENT_APIKEY',
       `AWS_REGION=${this.region}`,
       'TICK_SECS=30',
