@@ -88,7 +88,9 @@ npm run service:install
 
 This registers and starts the service. The first run takes 30–60s while `winsw.exe` is unpacked into a `daemon\` folder; do not interrupt it. You should see `Service installed. Starting...` followed by `Service started.`.
 
-The installer reads `apps\api\.env` and bakes `DATABASE_URL`, `SKIP_AUTH`, and `COGNITO_*` into the service definition. The service runs as **LocalSystem** by default, which does not inherit per-user environment variables, so values must come from `.env` (or be set system-wide via `setx /M`). If you change `.env`, run `npm run service:uninstall && npm run service:install` to refresh the service's baked-in env vars. Logs (including any startup errors) are written to `node_modules\node-windows\lib\daemon\pegasusapi.err.log` and `pegasusapi.out.log`.
+The installer reads `apps\api\.env` and bakes `DATABASE_URL`, `SKIP_AUTH`, and `COGNITO_*` into the service definition. The service runs as **LocalSystem** by default, which does not inherit per-user environment variables, so values must come from `.env` (or be set system-wide via `setx /M`). If you change `.env`, run `npm run service:uninstall && npm run service:install` to refresh the service's baked-in env vars.
+
+**Logs:** the installer writes Node stdout/stderr (and the wrapper log) to `C:\apps\pegasus\logs\` by default — `pegasusapi.out.log`, `pegasusapi.err.log`, and `pegasusapi.wrapper.log`, all rotated. Override the location by setting `PEGASUS_LOG_DIR` in the shell before running `service:install` (the path gets baked into the service XML, so changing it later requires a re-install). The directory is auto-created if it doesn't exist.
 
 If the install errors with `Cannot find module 'node-windows'`, the optional dependency was skipped during `npm install` (e.g. `--no-optional` was passed, or the install ran on a non-Windows machine and the `node_modules` was copied over). Re-run `npm install` from the repo root on the Windows server to pull it in, or install it directly with `npm install --no-save node-windows` inside `apps\api`.
 

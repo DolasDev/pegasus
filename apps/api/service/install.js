@@ -21,8 +21,12 @@ const fs = require('fs')
 
 const apiRoot = path.join(__dirname, '..')
 const envPath = path.join(apiRoot, '.env')
+const repoRoot = path.join(apiRoot, '..', '..')
+const logPath = process.env.PEGASUS_LOG_DIR || path.join(repoRoot, 'logs')
 
 require('dotenv').config({ path: envPath })
+
+fs.mkdirSync(logPath, { recursive: true })
 
 const { Service } = require('node-windows')
 
@@ -66,7 +70,11 @@ const svc = new Service({
   script: path.join(apiRoot, 'dist', 'server.js'),
   nodeOptions: [],
   env,
+  logpath: logPath,
+  logmode: 'rotate',
 })
+
+console.log(`[install] Logs will be written to: ${logPath}`)
 
 svc.on('install', () => {
   console.log('Service installed. Starting...')
