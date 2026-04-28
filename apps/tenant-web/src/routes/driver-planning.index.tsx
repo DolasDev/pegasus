@@ -19,6 +19,8 @@ import {
   useUpdateConfirmedAvailability,
   type DriverPlanningRow,
 } from '@/api/queries/driver-planning'
+import { onpremVersionQueryOptions } from '@/api/queries/onprem-version'
+import { ApiError } from '@/api/client'
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '-'
@@ -167,6 +169,60 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
   )
 }
 
+function formatOnpremError(err: unknown): string {
+  if (err instanceof ApiError) {
+    return [
+      `name:    ApiError`,
+      `status:  ${err.status}`,
+      `code:    ${err.code}`,
+      `message: ${err.message}`,
+      err.stack ? `\nstack:\n${err.stack}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+  if (err instanceof Error) {
+    return [
+      `name:    ${err.name}`,
+      `message: ${err.message}`,
+      err.stack ? `\nstack:\n${err.stack}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+  try {
+    return JSON.stringify(err, null, 2)
+  } catch {
+    return String(err)
+  }
+}
+
+function OnpremVersionStatus() {
+  const { data, error, isLoading, isError } = useQuery(onpremVersionQueryOptions)
+
+  if (isLoading) {
+    return (
+      <div className="rounded-md border p-3 text-sm text-muted-foreground">
+        Pinging on-prem API…
+      </div>
+    )
+  }
+  if (isError) {
+    return (
+      <div className="rounded-md border border-destructive bg-destructive/10 p-3 text-sm space-y-2">
+        <div className="font-semibold text-destructive">On-prem ping failed</div>
+        <pre className="whitespace-pre-wrap break-all text-xs">{formatOnpremError(error)}</pre>
+      </div>
+    )
+  }
+  return (
+    <div className="rounded-md border border-green-500/40 bg-green-500/10 p-3 text-sm space-y-2">
+      <div className="font-semibold">On-prem ping OK</div>
+      <pre className="whitespace-pre-wrap break-all text-xs">{JSON.stringify(data, null, 2)}</pre>
+    </div>
+  )
+}
+
 export function DriverPlanningPage() {
   const { data: drivers, isLoading } = useQuery(driverPlanningQueryOptions)
   const [filter, setFilter] = useState('')
@@ -177,16 +233,18 @@ export function DriverPlanningPage() {
 
   if (isLoading) {
     return (
-      <div>
+      <div className="space-y-4">
         <PageHeader title="Driver Planning" breadcrumbs={[{ label: 'Driver Planning' }]} />
+        <OnpremVersionStatus />
         <p className="text-sm text-muted-foreground">Loading...</p>
       </div>
     )
   }
 
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader title="Driver Planning" breadcrumbs={[{ label: 'Driver Planning' }]} />
+      <OnpremVersionStatus />
       {(drivers ?? []).length === 0 ? (
         <EmptyState
           title="No drivers found"
