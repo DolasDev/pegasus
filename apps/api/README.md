@@ -37,14 +37,14 @@ cd path\to\pegasus
 npm install
 ```
 
-This will install all root and workspace dependencies, including `node-windows` (which is needed to run the API as a service).
+This installs all root and workspace dependencies, including `node-windows` (declared as an `optionalDependency` of `apps/api`, so it downloads on Windows and is skipped on other platforms).
 
 ### 3. Environment Configuration
 
 Navigate to the API package directory and configure your environment variables:
 
 ```bash
-cd packages\api
+cd apps\api
 copy .env.example .env
 ```
 
@@ -80,11 +80,17 @@ This generates a `dist/` directory containing the `server.js` entry point.
 
 To ensure the API stays running in the background, starts automatically on server reboots, and restarts on crashes, we install it as a Windows Service using `node-windows`.
 
-From within the `packages\api` directory (in your Administrator terminal), run:
+From within the `apps\api` directory in your **Administrator** PowerShell, run:
 
 ```bash
 npm run service:install
 ```
+
+This registers and starts the service. The first run takes 30–60s while `winsw.exe` is unpacked into a `daemon\` folder; do not interrupt it. You should see `Service installed. Starting...` followed by `Service started.`.
+
+The installer reads `apps\api\.env` and bakes `DATABASE_URL`, `SKIP_AUTH`, and `COGNITO_*` into the service definition. The service runs as **LocalSystem** by default, which does not inherit per-user environment variables, so values must come from `.env` (or be set system-wide via `setx /M`). If you change `.env`, run `npm run service:uninstall && npm run service:install` to refresh the service's baked-in env vars. Logs (including any startup errors) are written to `node_modules\node-windows\lib\daemon\pegasusapi.err.log` and `pegasusapi.out.log`.
+
+If the install errors with `Cannot find module 'node-windows'`, the optional dependency was skipped during `npm install` (e.g. `--no-optional` was passed, or the install ran on a non-Windows machine and the `node_modules` was copied over). Re-run `npm install` from the repo root on the Windows server to pull it in, or install it directly with `npm install --no-save node-windows` inside `apps\api`.
 
 - This will register a new Windows Service named **"Pegasus API"**.
 - The service will begin running immediately.

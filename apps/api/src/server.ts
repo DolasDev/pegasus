@@ -10,6 +10,11 @@
 //   SKIP_AUTH — When "true", bypasses Cognito auth (on-prem / internal use)
 // ---------------------------------------------------------------------------
 
+// Load .env before any module reads process.env. Required for the on-prem
+// Windows Service path: the service runs as LocalSystem and does not inherit
+// per-user env vars, so config must come from a .env file in apps/api/.
+import 'dotenv/config'
+
 import { serve } from '@hono/node-server'
 import { app } from './app.server'
 import { logger } from './lib/logger'
