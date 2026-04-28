@@ -16,7 +16,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "service:install": "node service/install.js",
-    "service:uninstall": "node service/uninstall.js"
+    "service:uninstall": "node service/uninstall.js",
+    "service:reinstall": "turbo run build --filter=@pegasus/api && npm run service:uninstall && npm run service:install"
   },
   "dependencies": {
     "@aws-lambda-powertools/logger": "^2.33.0",

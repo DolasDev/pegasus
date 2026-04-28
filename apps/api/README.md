@@ -92,6 +92,14 @@ The installer reads `apps\api\.env` and bakes `DATABASE_URL`, `SKIP_AUTH`, and `
 
 **Logs:** the installer writes Node stdout/stderr (and the wrapper log) to `C:\apps\pegasus\logs\` by default — `pegasusapi.out.log`, `pegasusapi.err.log`, and `pegasusapi.wrapper.log`, all rotated. Override the location by setting `PEGASUS_LOG_DIR` in the shell before running `service:install` (the path gets baked into the service XML, so changing it later requires a re-install). The directory is auto-created if it doesn't exist.
 
+**One-shot rebuild + reinstall:** after pulling new code, run
+
+```bash
+npm run service:reinstall
+```
+
+from `apps\api`. This runs `turbo run build` (so `@pegasus/domain` builds before `@pegasus/api`), then `service:uninstall && service:install`. Use it when code changed; for `.env`-only changes, the manual `service:uninstall && service:install` pair is sufficient.
+
 If the install errors with `Cannot find module 'node-windows'`, the optional dependency was skipped during `npm install` (e.g. `--no-optional` was passed, or the install ran on a non-Windows machine and the `node_modules` was copied over). Re-run `npm install` from the repo root on the Windows server to pull it in, or install it directly with `npm install --no-save node-windows` inside `apps\api`.
 
 - This will register a new Windows Service named **"Pegasus API"**.
