@@ -227,6 +227,11 @@ jobs:
         working-directory: apps/api
         run: node ../../node_modules/.bin/prisma generate
 
+      # Domain ships dist/ via its package.json `main`; tsx-loaded API server
+      # at runtime needs that dist to require('@pegasus/domain') to resolve.
+      - name: Build @pegasus/domain
+        run: node node_modules/.bin/turbo run build --filter=@pegasus/domain
+
       - name: Run E2E tests
         working-directory: apps/e2e
         run: node ../../node_modules/.bin/playwright test

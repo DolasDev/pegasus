@@ -12,4 +12,17 @@ updates:
     ignore:
       - dependency-name: '*'
         update-types: ['version-update:semver-major']
+      # Pinned to Expo SDK 55's expected versions. npm `overrides` only constrains
+      # transitive deps, not workspace direct deps, so Dependabot would otherwise
+      # silently bump these and break `expo install --check`. Bump these manually
+      # in lockstep with Expo SDK upgrades, not via Dependabot.
+      - dependency-name: 'react'
+      - dependency-name: 'react-dom'
+      - dependency-name: 'react-test-renderer'
+      - dependency-name: 'react-native'
+      - dependency-name: 'react-native-gesture-handler'
+      - dependency-name: 'react-native-reanimated'
+      - dependency-name: 'react-native-safe-area-context'
+      - dependency-name: 'react-native-screens'
+      - dependency-name: '@react-navigation/drawer'
     target-branch: 'main'
