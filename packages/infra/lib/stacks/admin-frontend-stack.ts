@@ -131,6 +131,33 @@ export class AdminFrontendStack extends cdk.Stack {
       exportName: 'PegasusAdminBucketName',
     })
 
+    // ---------------------------------------------------------------------------
+    // Cross-stack exports for AdminFrontendAssetsStack — see frontend-stack.ts
+    // for the rationale. Same pinning approach: explicit logical IDs + names so
+    // we own the export contract instead of CDK's auto-export mechanism.
+    //
+    // Note: distributionDomainName is intentionally NOT pinned here because
+    // CognitoStack still consumes it as a construct-level cross-stack ref.
+    // CDK auto-generates that export with the same logical ID.
+    // ---------------------------------------------------------------------------
+    const bucketArnExport = new cdk.CfnOutput(this, 'AssetsAdminBucketArnExport', {
+      value: this.adminBucket.bucketArn,
+      exportName: `${this.stackName}:ExportsOutputFnGetAttAdminBucketB0A70AB7ArnB4CAD264`,
+    })
+    bucketArnExport.overrideLogicalId('ExportsOutputFnGetAttAdminBucketB0A70AB7ArnB4CAD264')
+
+    const bucketRefExport = new cdk.CfnOutput(this, 'AssetsAdminBucketRefExport', {
+      value: this.adminBucket.bucketName,
+      exportName: `${this.stackName}:ExportsOutputRefAdminBucketB0A70AB74CDEAEE9`,
+    })
+    bucketRefExport.overrideLogicalId('ExportsOutputRefAdminBucketB0A70AB74CDEAEE9')
+
+    const distributionRefExport = new cdk.CfnOutput(this, 'AssetsAdminDistRefExport', {
+      value: this.distribution.distributionId,
+      exportName: `${this.stackName}:ExportsOutputRefAdminDistribution4E89F8C01FE8A95D`,
+    })
+    distributionRefExport.overrideLogicalId('ExportsOutputRefAdminDistribution4E89F8C01FE8A95D')
+
     if (customDomain) {
       new ssm.StringParameter(this, 'DistributionDomainParam', {
         parameterName: DISTRIBUTION_DOMAIN_PARAM,

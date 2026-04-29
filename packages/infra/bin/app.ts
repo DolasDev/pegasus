@@ -150,26 +150,35 @@ new MonitoringStack(app, `${stackIdPrefix}-MonitoringStack`, {
 // ── Asset stacks (deployed last — depend on all upstream stacks) ──────────────
 // CDK deployment order: ApiStack → FrontendAssetsStack + AdminFrontendAssetsStack.
 
-new FrontendAssetsStack(app, `${stackIdPrefix}-FrontendAssetsStack`, {
+// Pass frontendStackName / adminFrontendStackName by string (not construct
+// ref) so CDK's auto-export mechanism doesn't generate cross-stack exports
+// whose logical IDs drift across CDK versions. The asset stacks resolve the
+// bucket + distribution via Fn::ImportValue against stable, hand-pinned
+// export names declared in FrontendStack / AdminFrontendStack.
+const frontendAssetsStack = new FrontendAssetsStack(app, `${stackIdPrefix}-FrontendAssetsStack`, {
   env,
   stackName: `${stackNamePrefix}-frontend-assets`,
   description: `${descPrefix} — tenant web app assets + config.json`,
-  siteBucket: frontendStack.siteBucket,
-  distribution: frontendStack.distribution,
+  frontendStackName: frontendStack.stackName,
   apiUrl: apiStack.apiUrl,
   cognitoRegion: env.region ?? 'us-east-1',
   cognitoUserPoolId: cognitoStack.userPool.userPoolId,
   cognitoTenantClientId: cognitoStack.tenantAppClient.userPoolClientId,
   cognitoDomain: cognitoStack.hostedUiBaseUrl,
 })
+frontendAssetsStack.addDependency(frontendStack)
 
-new AdminFrontendAssetsStack(app, `${stackIdPrefix}-AdminFrontendAssetsStack`, {
-  env,
-  stackName: `${stackNamePrefix}-admin-frontend-assets`,
-  description: `${descPrefix} — admin portal assets + config.json`,
-  adminBucket: adminFrontendStack.adminBucket,
-  distribution: adminFrontendStack.distribution,
-  apiUrl: apiStack.apiUrl,
-  cognitoDomain: cognitoStack.hostedUiBaseUrl,
-  cognitoAdminClientId: cognitoStack.adminAppClient.userPoolClientId,
-})
+const adminFrontendAssetsStack = new AdminFrontendAssetsStack(
+  app,
+  `${stackIdPrefix}-AdminFrontendAssetsStack`,
+  {
+    env,
+    stackName: `${stackNamePrefix}-admin-frontend-assets`,
+    description: `${descPrefix} — admin portal assets + config.json`,
+    adminFrontendStackName: adminFrontendStack.stackName,
+    apiUrl: apiStack.apiUrl,
+    cognitoDomain: cognitoStack.hostedUiBaseUrl,
+    cognitoAdminClientId: cognitoStack.adminAppClient.userPoolClientId,
+  },
+)
+adminFrontendAssetsStack.addDependency(adminFrontendStack)

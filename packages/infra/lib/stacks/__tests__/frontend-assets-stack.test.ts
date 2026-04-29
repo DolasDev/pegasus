@@ -1,23 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import * as cdk from 'aws-cdk-lib'
-import * as s3 from 'aws-cdk-lib/aws-s3'
-import * as cloudfront from 'aws-cdk-lib/aws-cloudfront'
-import * as origins from 'aws-cdk-lib/aws-cloudfront-origins'
 import { Template } from 'aws-cdk-lib/assertions'
 import { FrontendAssetsStack } from '../frontend-assets-stack'
 
 function synthAssetsStack() {
   const app = new cdk.App()
-  const parent = new cdk.Stack(app, 'Parent')
-  const bucket = new s3.Bucket(parent, 'Bucket')
-  const dist = new cloudfront.Distribution(parent, 'Dist', {
-    defaultBehavior: {
-      origin: origins.S3BucketOrigin.withOriginAccessControl(bucket),
-    },
-  })
   const stack = new FrontendAssetsStack(app, 'TestFrontendAssets', {
-    siteBucket: bucket,
-    distribution: dist,
+    frontendStackName: 'pegasus-test-frontend',
     apiUrl: 'https://api.example.com',
     cognitoRegion: 'us-east-1',
     cognitoUserPoolId: 'us-east-1_TestPool',

@@ -134,6 +134,40 @@ export class FrontendStack extends cdk.Stack {
       exportName: 'PegasusSiteBucketName',
     })
 
+    // ---------------------------------------------------------------------------
+    // Cross-stack exports for FrontendAssetsStack
+    //
+    // Pinned to the logical IDs and export names that CDK's auto-export
+    // mechanism generated when FrontendAssetsStack passed siteBucket as a
+    // construct ref. Now that the assets stack imports them by name via
+    // Fn::ImportValue (see frontend-assets-stack.ts), CDK no longer auto-emits
+    // these — they're declared explicitly so the export contract stays stable
+    // across CDK versions and consumer-side refactors. Renaming or removing
+    // these breaks the assets stack at deploy time, so leave them alone.
+    //
+    // Note: distributionDomainName is intentionally NOT pinned here because
+    // CognitoStack still consumes it as a construct-level cross-stack ref
+    // (for OAuth callback URLs). CDK auto-generates that export with the same
+    // logical ID; declaring it manually causes a synth-time duplicate.
+    // ---------------------------------------------------------------------------
+    const bucketArnExport = new cdk.CfnOutput(this, 'AssetsSiteBucketArnExport', {
+      value: this.siteBucket.bucketArn,
+      exportName: `${this.stackName}:ExportsOutputFnGetAttSiteBucket397A1860ArnB404F589`,
+    })
+    bucketArnExport.overrideLogicalId('ExportsOutputFnGetAttSiteBucket397A1860ArnB404F589')
+
+    const bucketRefExport = new cdk.CfnOutput(this, 'AssetsSiteBucketRefExport', {
+      value: this.siteBucket.bucketName,
+      exportName: `${this.stackName}:ExportsOutputRefSiteBucket397A1860ADBF1315`,
+    })
+    bucketRefExport.overrideLogicalId('ExportsOutputRefSiteBucket397A1860ADBF1315')
+
+    const distributionRefExport = new cdk.CfnOutput(this, 'AssetsSiteDistRefExport', {
+      value: this.distribution.distributionId,
+      exportName: `${this.stackName}:ExportsOutputRefSiteDistribution3FF9535D7CFA9D06`,
+    })
+    distributionRefExport.overrideLogicalId('ExportsOutputRefSiteDistribution3FF9535D7CFA9D06')
+
     if (customDomain) {
       new ssm.StringParameter(this, 'DistributionDomainParam', {
         parameterName: DISTRIBUTION_DOMAIN_PARAM,

@@ -122,6 +122,18 @@ Models crew and vehicle availability.
 
 When dependency version conflicts or resolution issues arise, **do not** attempt to make multiple versions of the same dependency coexist (nested `node_modules`, manual copies, overrides hacks, etc.). Instead, plan and execute a code migration to upgrade all usages to the latest stable version of the dependency across the entire codebase. Rewriting code to work with one consistent version is always preferable to fighting npm hoisting, lockfile quirks, or version shims.
 
+## CI/CD Failures
+
+When a pipeline run fails — whether the deploy itself, a CDK synth/diff step, a typecheck/test job, or any pre-deploy gate — **stop the current task and fix the pipeline first** before continuing with whatever feature or bugfix prompted the work. Do not:
+
+- Skip or work around the failure with `--no-verify`, `continue-on-error`, branch-protection bypasses, or "I'll fix it in a follow-up" patches.
+- Push another commit on top hoping the next run passes — re-running a flake is fine, but re-pushing without diagnosing repeated failures is not.
+- Trigger a different deploy path (e.g. local `cdk deploy`, manual upload, smaller `target=`) just to sidestep the broken automation. That hides the breakage from CI and lets it accumulate.
+
+Why: the pipeline is the contract that lets the team ship safely. A latent failure means the next person to deploy — possibly under time pressure for an unrelated change — inherits a broken release path. Fixing it immediately, while the context is fresh, is always cheaper than the next debugging session.
+
+Acceptable detours: a _targeted_ manual deploy is OK when (a) you've already diagnosed the CI failure and the manual deploy is genuinely independent of the broken path, (b) you have user approval, and (c) you commit the CI fix in the same session. Otherwise, fix CI first.
+
 ---
 
 ## Agent Files
