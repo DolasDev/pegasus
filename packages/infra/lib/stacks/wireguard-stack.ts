@@ -657,7 +657,7 @@ export class WireGuardStack extends cdk.Stack {
     hubSg.addIngressRule(
       proxySg,
       ec2.Port.allTraffic(),
-      'Tunnel-proxy Lambda -> hub ENI (forwarded onto wg0 to tenant overlays)',
+      'Tunnel-proxy Lambda to hub ENI (forwarded onto wg0 for tenant overlays)',
     )
 
     const tunnelProxyFn = new nodejs.NodejsFunction(this, 'TunnelProxyFn', {
