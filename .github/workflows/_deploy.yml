@@ -118,13 +118,49 @@ jobs:
         working-directory: apps/api
         run: node ../../node_modules/.bin/prisma generate
 
-      - name: Build tenant-web
-        if: inputs.deploy-tenant == 'true'
-        run: npm run build --workspace=@pegasus/tenant-web
-
-      - name: Build admin-web
-        if: inputs.deploy-admin == 'true'
-        run: npm run build --workspace=@pegasus/admin-web
+      # ---------------------------------------------------------------------
+      # Build workspace assets via Turbo so transitive `^build` dependencies
+      # are produced topologically.
+      #
+      # Why Turbo (and not `npm run build --workspace=…`):
+      #   `@pegasus/domain` exposes `main: ./dist/index.js` (required by the
+      #   on-prem Windows Service path). CDK's NodejsFunction esbuild bundles
+      #   `apps/api/src/lambda-document-converter.ts`, which transitively
+      #   imports `@pegasus/domain`. Without dist on disk, esbuild fails with
+      #   `Could not resolve "@pegasus/domain"`. The `npm run build --workspace`
+      #   form does not honour Turbo's `^build` topology, so domain was never
+      #   built before the bundle ran.
+      #
+      # Filters per component:
+      #   - api:       `@pegasus/api^...` builds api's deps (domain) but not
+      #                api itself — CDK still bundles api via esbuild.
+      #   - tenant:    `@pegasus/tenant-web` builds tenant-web + transitive
+      #                workspace deps.
+      #   - admin:     `@pegasus/admin-web` builds admin-web + transitive
+      #                workspace deps.
+      # ---------------------------------------------------------------------
+      - name: Build workspace assets (Turbo)
+        env:
+          DEPLOY_API: ${{ inputs.deploy-api }}
+          DEPLOY_TENANT: ${{ inputs.deploy-tenant }}
+          DEPLOY_ADMIN: ${{ inputs.deploy-admin }}
+        run: |
+          set -euo pipefail
+          filters=()
+          if [[ "$DEPLOY_API" == "true" ]]; then
+            filters+=(--filter=@pegasus/api^...)
+          fi
+          if [[ "$DEPLOY_TENANT" == "true" ]]; then
+            filters+=(--filter=@pegasus/tenant-web)
+          fi
+          if [[ "$DEPLOY_ADMIN" == "true" ]]; then
+            filters+=(--filter=@pegasus/admin-web)
+          fi
+          if [[ ${#filters[@]} -eq 0 ]]; then
+            echo "No deploy targets selected — skipping build."
+            exit 0
+          fi
+          npx turbo run build "${filters[@]}"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
