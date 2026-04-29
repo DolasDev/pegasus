@@ -645,6 +645,21 @@ export class WireGuardStack extends cdk.Stack {
       description: 'Tunnel-proxy Lambda - egress only (to tenant overlay IPs via hub).',
       allowAllOutbound: true,
     })
+    // Allow the tunnel-proxy Lambda to reach the hub ENI on any port. The
+    // VPC route table already directs 10.200.0.0/16 → hub instance, but AWS
+    // Security Groups also evaluate inbound traffic at the destination ENI
+    // before it reaches the OS — including traffic that the host is only
+    // forwarding. Without this rule, every TCP SYN from the Lambda gets
+    // silently dropped at the hub ENI: tcpdump on the hub sees nothing,
+    // wg0 stays quiet on the tenant-bound side, and the tunnel-proxy
+    // times out at 10s. The Lambda's egress is already allow-all by
+    // default; the missing piece is hub-side ingress acceptance.
+    hubSg.addIngressRule(
+      proxySg,
+      ec2.Port.allTraffic(),
+      'Tunnel-proxy Lambda → hub ENI (forwarded onto wg0 to tenant overlays)',
+    )
+
     const tunnelProxyFn = new nodejs.NodejsFunction(this, 'TunnelProxyFn', {
       entry: path.join(__dirname, '../../../../apps/tunnel-proxy/src/index.ts'),
       handler: 'handler',
