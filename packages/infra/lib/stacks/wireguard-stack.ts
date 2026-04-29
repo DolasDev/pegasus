@@ -288,13 +288,20 @@ export class WireGuardStack extends cdk.Stack {
     // no regeneration. Delete is a noop; the retained SSM params mean
     // `cdk destroy` + redeploy does not invalidate tenant client.confs.
     // -----------------------------------------------------------------------
+    // Explicit log group so retention is set without the deprecated
+    // `logRetention` custom-resource Lambda. RETAIN preserves the audit
+    // trail of bootstrap invocations across stack recreations.
+    const keyBootstrapFnLogGroup = new logs.LogGroup(this, 'HubKeyBootstrapFnLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    })
     const keyBootstrapFn = new nodejs.NodejsFunction(this, 'HubKeyBootstrapFn', {
       entry: path.join(__dirname, 'wireguard-key-bootstrap.handler.ts'),
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
-      logRetention: logs.RetentionDays.ONE_MONTH,
+      logGroup: keyBootstrapFnLogGroup,
       bundling: {
         externalModules: ['@aws-sdk/*'],
       },
@@ -317,9 +324,13 @@ export class WireGuardStack extends cdk.Stack {
       }),
     )
 
+    const keyProviderLogGroup = new logs.LogGroup(this, 'HubKeyBootstrapProviderLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    })
     const keyProvider = new customResources.Provider(this, 'HubKeyBootstrapProvider', {
       onEventHandler: keyBootstrapFn,
-      logRetention: logs.RetentionDays.ONE_MONTH,
+      logGroup: keyProviderLogGroup,
     })
 
     const keyBootstrap = new cdk.CustomResource(this, 'HubKeyBootstrap', {
@@ -348,13 +359,17 @@ export class WireGuardStack extends cdk.Stack {
     // any existing plaintext (preserves a running agent's credential) and
     // refreshes the hash from it. Delete: noop, both params retained.
     // -----------------------------------------------------------------------
+    const agentKeyBootstrapFnLogGroup = new logs.LogGroup(this, 'AgentKeyBootstrapFnLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    })
     const agentKeyBootstrapFn = new nodejs.NodejsFunction(this, 'AgentKeyBootstrapFn', {
       entry: path.join(__dirname, 'wireguard-agent-key-bootstrap.handler.ts'),
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
-      logRetention: logs.RetentionDays.ONE_MONTH,
+      logGroup: agentKeyBootstrapFnLogGroup,
       bundling: {
         externalModules: ['@aws-sdk/*'],
       },
@@ -377,9 +392,13 @@ export class WireGuardStack extends cdk.Stack {
       }),
     )
 
+    const agentKeyProviderLogGroup = new logs.LogGroup(this, 'AgentKeyBootstrapProviderLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    })
     const agentKeyProvider = new customResources.Provider(this, 'AgentKeyBootstrapProvider', {
       onEventHandler: agentKeyBootstrapFn,
-      logRetention: logs.RetentionDays.ONE_MONTH,
+      logGroup: agentKeyProviderLogGroup,
     })
 
     const agentKeyBootstrap = new cdk.CustomResource(this, 'AgentKeyBootstrap', {

@@ -33,8 +33,8 @@ deprecation warning disappears and the stack survives the next
 
 - [ ] **1. Replace `logRetention` with `logGroup`** on both sites.
       Follow the ApiStack pattern: create a `new logs.LogGroup(this,
-    'HubKeyBootstrapFnLogGroup', { retention: ONE_MONTH,
-    removalPolicy: RETAIN })` **before** the function, pass in via
+  'HubKeyBootstrapFnLogGroup', { retention: ONE_MONTH,
+  removalPolicy: RETAIN })` **before** the function, pass in via
       `logGroup:`. The CR Provider's `logRetention` option maps to
       `providerFunctionEnvEncryption`-free `logGroup:` on its
       internal functions — check the `customResources.Provider` API.
