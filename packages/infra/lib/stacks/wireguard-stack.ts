@@ -436,12 +436,23 @@ export class WireGuardStack extends cdk.Stack {
       '[ -n "$HUB_PRIVKEY" ] || { echo "FATAL: hub privkey SSM param is empty or unreadable" >&2; exit 1; }',
       'mkdir -p /etc/wireguard',
       'umask 077',
+      // PostUp: install the kernel route that tells the hub "to reach the
+      // tenant overlay range (10.200.0.0/16), send via wg0". Without this
+      // the hub's wg0 only owns 10.10.200.0/24 (its own /24), and any packet
+      // destined for a tenant IP falls through to the VPC default gateway —
+      // i.e. silently leaks out ens5. The two-subnet design (hub on
+      // 10.10.200.0/24, tenants on 10.200.0.0/16) is intentional, but the
+      // hub kernel doesn't infer the cross-subnet route from WG's cryptokey
+      // routing alone, so we install it explicitly. PostDown undoes it so
+      // wg-quick teardown stays clean.
       'cat > /etc/wireguard/wg0.conf <<EOF',
       '[Interface]',
       'Address    = 10.10.200.1/24',
       'ListenPort = 51820',
       'PrivateKey = $HUB_PRIVKEY',
       'MTU        = 1380',
+      'PostUp     = ip route replace 10.200.0.0/16 dev %i',
+      'PostDown   = ip route del 10.200.0.0/16 dev %i 2>/dev/null || true',
       'EOF',
       'chmod 600 /etc/wireguard/wg0.conf',
       // Enable IPv4 forwarding so the kernel can route between tunnel and API SG peers.
