@@ -6,7 +6,6 @@ import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
 import type { OnPremEnv } from '../../types.onprem'
-import { getLonghaulDb } from '../../lib/longhaul-db'
 import {
   findShipmentsWithQuery,
   saveCoverage,
@@ -42,7 +41,7 @@ export const shipmentsRouter = new Hono<OnPremEnv>()
 
 shipmentsRouter.get('/shipments', async (c) => {
   try {
-    const db = getLonghaulDb()
+    const db = c.get('longhaulDb')
 
     // Accept filters as a JSON-encoded query param or body
     let query: Record<string, unknown> = {}
@@ -89,7 +88,7 @@ shipmentsRouter.post(
   }),
   async (c) => {
     try {
-      const db = getLonghaulDb()
+      const db = c.get('longhaulDb')
       const body = c.req.valid('json')
       const data = await saveCoverage(db, body)
       return c.json({ data }, 201)
@@ -128,7 +127,7 @@ shipmentsRouter.patch(
     }
 
     try {
-      const db = getLonghaulDb()
+      const db = c.get('longhaulDb')
       const body = c.req.valid('json')
       await patchWeight(db, shipmentId, body as Record<string, unknown>)
       return c.json({ data: { success: true } })
@@ -155,7 +154,7 @@ shipmentsRouter.patch(
   }),
   async (c) => {
     try {
-      const db = getLonghaulDb()
+      const db = c.get('longhaulDb')
       const body = c.req.valid('json')
       await patchShipmentShadow(db, body)
       return c.json({ data: { success: true } })

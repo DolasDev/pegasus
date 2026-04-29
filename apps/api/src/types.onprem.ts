@@ -7,6 +7,7 @@
 // ---------------------------------------------------------------------------
 
 import type { ConnectionPool } from 'mssql'
+import type { Knex } from 'knex'
 import type { AppVariables } from './types'
 
 export type OnPremVariables = AppVariables & {
@@ -15,6 +16,11 @@ export type OnPremVariables = AppVariables & {
    * Set by mssqlMiddleware after looking up the tenant's mssqlConnectionString.
    */
   mssqlPool: ConnectionPool
+  /**
+   * Knex instance for longhaul routes, backed by the tenant's mssqlConnectionString.
+   * Set by longhaulUserMiddleware after looking up the tenant record.
+   */
+  longhaulDb: Knex
   /**
    * The authenticated longhaul user (from v_longhaul_salesman).
    * Set by longhaulUserMiddleware when SKIP_AUTH=true and X-Windows-User header

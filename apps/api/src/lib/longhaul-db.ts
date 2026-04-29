@@ -1,61 +1,85 @@
 // ---------------------------------------------------------------------------
-// Longhaul MSSQL connection — Knex singleton for on-prem SQL Server
+// Longhaul MSSQL connection — per-tenant Knex pools keyed by connection string
 //
 // Uses the same mssql driver that is already a dependency of packages/api,
 // but wires it through Knex for a query-builder API familiar to the rest of
 // the longhaul migration.
 //
-// Environment variables required (all mandatory when longhaul routes are used):
-//   MSSQL_HOST      — SQL Server hostname or IP
-//   MSSQL_PORT      — SQL Server port (default: 1433)
-//   MSSQL_USER      — SQL Server login username
-//   MSSQL_PASSWORD  — SQL Server login password
-//   MSSQL_DATABASE  — Database name
+// The tenant's mssqlConnectionString (stored in the Neon tenants table) is
+// parsed into Knex connection options. Connection strings follow the ADO.NET
+// format: "Server=HOST;Database=DB;User Id=USER;Password=PASS;..."
 // ---------------------------------------------------------------------------
 
 import knex, { type Knex } from 'knex'
+import { logger } from './logger'
 
-let instance: Knex | null = null
+const pools = new Map<string, Knex>()
 
-/** Returns true if all required MSSQL env vars are present. */
-export function longhaulDbConfigured(): boolean {
-  return Boolean(
-    process.env['MSSQL_HOST'] &&
-    process.env['MSSQL_USER'] &&
-    process.env['MSSQL_PASSWORD'] &&
-    process.env['MSSQL_DATABASE'],
-  )
+/**
+ * Parse an ADO.NET-style connection string into key/value pairs.
+ * Keys are normalised to lowercase for lookup.
+ */
+function parseConnectionString(cs: string): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const part of cs.split(';')) {
+    const idx = part.indexOf('=')
+    if (idx < 0) continue
+    const key = part.slice(0, idx).trim().toLowerCase()
+    const value = part.slice(idx + 1).trim()
+    if (key) result[key] = value
+  }
+  return result
 }
 
 /**
- * Returns the shared Knex instance for the longhaul on-prem SQL Server.
- * Lazily initialised on first call. Throws if configuration is missing.
+ * Returns a Knex instance for the given connection string.
+ * Lazily creates and caches one pool per unique connection string.
  */
-export function getLonghaulDb(): Knex {
-  if (instance) return instance
+export function getLonghaulDb(connectionString: string): Knex {
+  const existing = pools.get(connectionString)
+  if (existing) return existing
 
-  if (!longhaulDbConfigured()) {
+  const parsed = parseConnectionString(connectionString)
+  const server = parsed['server'] ?? parsed['data source'] ?? parsed['host']
+  const database = parsed['database'] ?? parsed['initial catalog']
+  const user = parsed['user id'] ?? parsed['uid'] ?? parsed['user']
+  const password = parsed['password'] ?? parsed['pwd']
+  const port = parseInt(parsed['port'] ?? '1433', 10)
+
+  if (!server || !database || !user || !password) {
     throw new Error(
-      'Longhaul MSSQL connection is not configured. ' +
-        'Set MSSQL_HOST, MSSQL_USER, MSSQL_PASSWORD, and MSSQL_DATABASE.',
+      'Invalid MSSQL connection string — must contain Server, Database, User Id, and Password.',
     )
   }
 
-  instance = knex({
+  logger.info('Opening longhaul Knex pool', { server, database })
+
+  const instance = knex({
     client: 'mssql',
     connection: {
-      server: process.env['MSSQL_HOST']!,
-      port: parseInt(process.env['MSSQL_PORT'] ?? '1433', 10),
-      user: process.env['MSSQL_USER']!,
-      password: process.env['MSSQL_PASSWORD']!,
-      database: process.env['MSSQL_DATABASE']!,
+      server,
+      port,
+      user,
+      password,
+      database,
       options: {
-        encrypt: true,
-        trustServerCertificate: true,
+        encrypt: parsed['encrypt']?.toLowerCase() !== 'false',
+        trustServerCertificate: parsed['trustservercertificate']?.toLowerCase() !== 'false',
       },
     },
     pool: { min: 0, max: 10 },
   })
 
+  pools.set(connectionString, instance)
   return instance
+}
+
+/**
+ * Closes all cached Knex pools. Called during graceful shutdown.
+ */
+export async function closeAllLonghaulPools(): Promise<void> {
+  for (const [key, instance] of pools) {
+    await instance.destroy()
+    pools.delete(key)
+  }
 }

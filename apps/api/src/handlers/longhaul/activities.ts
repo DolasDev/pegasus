@@ -6,7 +6,6 @@ import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
 import type { OnPremEnv } from '../../types.onprem'
-import { getLonghaulDb } from '../../lib/longhaul-db'
 import { saveActivity } from '../../repositories/longhaul/activities.repository'
 import { logger } from '../../lib/logger'
 
@@ -55,7 +54,7 @@ activitiesRouter.post(
     const user = c.get('longhaulUser')
 
     try {
-      const db = getLonghaulDb()
+      const db = c.get('longhaulDb')
       const body = c.req.valid('json')
       await saveActivity(db, activityId, body as Record<string, unknown>, user?.code)
       return c.json({ data: { success: true } })

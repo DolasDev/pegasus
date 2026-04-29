@@ -6,7 +6,6 @@ import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
 import type { OnPremEnv } from '../../types.onprem'
-import { getLonghaulDb } from '../../lib/longhaul-db'
 import {
   getDriverPlanning,
   upsertConfirmedAvailability,
@@ -23,7 +22,7 @@ export const driverPlanningRouter = new Hono<OnPremEnv>()
 
 driverPlanningRouter.get('/driver-planning', async (c) => {
   try {
-    const db = getLonghaulDb()
+    const db = c.get('longhaulDb')
     const data = await getDriverPlanning(db)
     return c.json({ data, meta: { count: data.length } })
   } catch (err) {
@@ -63,7 +62,7 @@ driverPlanningRouter.patch(
     const body = c.req.valid('json')
 
     try {
-      const db = getLonghaulDb()
+      const db = c.get('longhaulDb')
       await upsertConfirmedAvailability(
         db,
         driverId,

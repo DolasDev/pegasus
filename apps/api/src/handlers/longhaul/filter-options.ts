@@ -6,7 +6,6 @@ import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
 import type { OnPremEnv } from '../../types.onprem'
-import { getLonghaulDb } from '../../lib/longhaul-db'
 import {
   getFilterOptions,
   getSavedFiltersForUser,
@@ -78,7 +77,7 @@ export const filterOptionsRouter = new Hono<OnPremEnv>()
 
 filterOptionsRouter.get('/filter-options', async (c) => {
   try {
-    const db = getLonghaulDb()
+    const db = c.get('longhaulDb')
     const data = await getFilterOptions(db)
     return c.json({ data })
   } catch (err) {
@@ -108,7 +107,7 @@ filterOptionsRouter.get('/shipment-filters', async (c) => {
   }
 
   try {
-    const db = getLonghaulDb()
+    const db = c.get('longhaulDb')
     const rawFilters = await getSavedFiltersForUser(db, user.code)
     const data = rawFilters.map((f) => {
       try {
@@ -141,7 +140,7 @@ filterOptionsRouter.post(
   }),
   async (c) => {
     try {
-      const db = getLonghaulDb()
+      const db = c.get('longhaulDb')
       const body = c.req.valid('json')
       const transformedQuery = transformDatesToTimeDiff(body.query)
 
@@ -185,7 +184,7 @@ filterOptionsRouter.get('/shipment-filters/default', async (c) => {
   }
 
   try {
-    const db = getLonghaulDb()
+    const db = c.get('longhaulDb')
     const filter = await getDefaultFilter(db, user.code)
     if (!filter) return c.json({ data: null })
 
@@ -229,7 +228,7 @@ filterOptionsRouter.put(
     }
 
     try {
-      const db = getLonghaulDb()
+      const db = c.get('longhaulDb')
       const body = c.req.valid('json')
       await setDefaultFilter(db, body.filter_id, user.code)
       return c.json({ data: { success: true } })
@@ -261,7 +260,7 @@ filterOptionsRouter.delete('/shipment-filters/:id', async (c) => {
   }
 
   try {
-    const db = getLonghaulDb()
+    const db = c.get('longhaulDb')
     await deleteFilter(db, filterId)
     return c.json({ data: { success: true } })
   } catch (err) {

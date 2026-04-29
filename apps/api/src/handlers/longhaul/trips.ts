@@ -6,7 +6,7 @@ import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
 import type { OnPremEnv } from '../../types.onprem'
-import { getLonghaulDb } from '../../lib/longhaul-db'
+import type { Knex } from 'knex'
 import {
   findTripsWithQuery,
   findTripById,
@@ -195,7 +195,7 @@ async function computeTripSummary(
 
 tripsRouter.get('/trips', async (c) => {
   try {
-    const db = getLonghaulDb()
+    const db = c.get('longhaulDb')
 
     let query: Record<string, unknown> = {}
     const rawFilters = c.req.query('filters')
@@ -239,7 +239,7 @@ tripsRouter.get('/trips/:id', async (c) => {
   }
 
   try {
-    const db = getLonghaulDb()
+    const db = c.get('longhaulDb')
     const trip = await findTripById(db, id)
     if (!trip) {
       return c.json(
@@ -303,7 +303,7 @@ tripsRouter.post(
     }
 
     try {
-      const db = getLonghaulDb()
+      const db = c.get('longhaulDb')
       const result = await saveTripLogic(db, body as Record<string, unknown>, user)
       if (result && typeof result === 'object' && 'error' in result) {
         return c.json(result, 403)
@@ -358,7 +358,7 @@ tripsRouter.put(
     }
 
     try {
-      const db = getLonghaulDb()
+      const db = c.get('longhaulDb')
       const result = await saveTripLogic(db, { ...body, id } as Record<string, unknown>, user)
       if (result && typeof result === 'object' && 'error' in result) {
         return c.json(result, 403)
@@ -401,7 +401,7 @@ tripsRouter.patch(
     const user = c.get('longhaulUser')
 
     try {
-      const db = getLonghaulDb()
+      const db = c.get('longhaulDb')
       const body = c.req.valid('json')
       const trip = await findTripById(db, tripId)
 
@@ -472,7 +472,7 @@ tripsRouter.post('/trips/:id/cancel', async (c) => {
   const user = c.get('longhaulUser')
 
   try {
-    const db = getLonghaulDb()
+    const db = c.get('longhaulDb')
     const trip = await findTripById(db, tripId)
 
     if (!trip) {
@@ -531,7 +531,7 @@ tripsRouter.patch(
     }
 
     try {
-      const db = getLonghaulDb()
+      const db = c.get('longhaulDb')
       const body = c.req.valid('json')
       await updateTripSummary(db, tripId, body)
       return c.json({ data: { success: true } })
@@ -551,7 +551,7 @@ tripsRouter.patch(
 
 tripsRouter.get('/trip-statuses', async (c) => {
   try {
-    const db = getLonghaulDb()
+    const db = c.get('longhaulDb')
     const data = await getTripStatuses(db)
     return c.json({ data })
   } catch (err) {
@@ -590,7 +590,7 @@ tripsRouter.post(
     const user = c.get('longhaulUser')
 
     try {
-      const db = getLonghaulDb()
+      const db = c.get('longhaulDb')
       const body = c.req.valid('json')
       await createNote(db, {
         tripId,
@@ -634,7 +634,7 @@ tripsRouter.patch(
     }
 
     try {
-      const db = getLonghaulDb()
+      const db = c.get('longhaulDb')
       const body = c.req.valid('json')
       await patchNote(db, body.tripId ?? 0, noteId, body.note)
       return c.json({ data: { success: true } })
@@ -657,7 +657,7 @@ tripsRouter.patch(
 // ---------------------------------------------------------------------------
 
 async function saveTripLogic(
-  db: ReturnType<typeof getLonghaulDb>,
+  db: Knex,
   tripDto: Record<string, unknown>,
   _user: { code: number; [key: string]: unknown } | undefined,
 ): Promise<Record<string, unknown>> {

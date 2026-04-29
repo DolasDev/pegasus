@@ -20,6 +20,7 @@ import { app } from './app.server'
 import { logger } from './lib/logger'
 import { validateEnv } from './lib/env'
 import { closeAllPools } from './lib/mssql'
+import { closeAllLonghaulPools } from './lib/longhaul-db'
 import { db } from './db'
 
 /**
@@ -44,6 +45,7 @@ export function startServer() {
 export async function shutdown(): Promise<void> {
   logger.info('Shutting down gracefully...')
   await closeAllPools()
+  await closeAllLonghaulPools()
   await db.$disconnect()
   logger.info('Shutdown complete')
 }

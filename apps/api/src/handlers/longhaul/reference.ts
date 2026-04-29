@@ -5,7 +5,6 @@
 
 import { Hono } from 'hono'
 import type { OnPremEnv } from '../../types.onprem'
-import { getLonghaulDb } from '../../lib/longhaul-db'
 import {
   getDrivers,
   getStates,
@@ -21,7 +20,7 @@ export const referenceRouter = new Hono<OnPremEnv>()
 
 referenceRouter.get('/drivers', async (c) => {
   try {
-    const db = getLonghaulDb()
+    const db = c.get('longhaulDb')
     const data = await getDrivers(db)
     return c.json({ data })
   } catch (err) {
@@ -44,7 +43,7 @@ referenceRouter.get('/users/me', async (c) => {
 
 referenceRouter.get('/version', async (c) => {
   try {
-    const db = getLonghaulDb()
+    const db = c.get('longhaulDb')
     const data = await getVersion(db)
     return c.json({ data })
   } catch (err) {
@@ -62,7 +61,7 @@ referenceRouter.get('/version', async (c) => {
 
 referenceRouter.get('/states', async (c) => {
   try {
-    const db = getLonghaulDb()
+    const db = c.get('longhaulDb')
     const data = await getStates(db)
     return c.json({ data })
   } catch (err) {
@@ -80,7 +79,7 @@ referenceRouter.get('/states', async (c) => {
 
 referenceRouter.get('/zones', async (c) => {
   try {
-    const db = getLonghaulDb()
+    const db = c.get('longhaulDb')
     const data = await getZones(db)
     return c.json({ data })
   } catch (err) {
@@ -98,7 +97,7 @@ referenceRouter.get('/zones', async (c) => {
 
 referenceRouter.get('/planners', async (c) => {
   try {
-    const db = getLonghaulDb()
+    const db = c.get('longhaulDb')
     const data = await getPlanners(db)
     return c.json({ data })
   } catch (err) {
@@ -116,7 +115,7 @@ referenceRouter.get('/planners', async (c) => {
 
 referenceRouter.get('/dispatchers', async (c) => {
   try {
-    const db = getLonghaulDb()
+    const db = c.get('longhaulDb')
     const data = await getDispatchers(db)
     return c.json({ data })
   } catch (err) {
@@ -134,7 +133,7 @@ referenceRouter.get('/dispatchers', async (c) => {
 
 referenceRouter.get('/activity-types', async (c) => {
   try {
-    const db = getLonghaulDb()
+    const db = c.get('longhaulDb')
     const data = await getActivityTypes(db)
     return c.json({ data })
   } catch (err) {

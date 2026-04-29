@@ -15,30 +15,55 @@
 //    - Requires the 'longhaul:read' scope (handlers can additionally check
 //      'longhaul:write' for mutating operations).
 //
-// In both modes: returns 503 if the longhaul MSSQL connection is not
-// configured (env vars missing).
+// In both modes: looks up the tenant's mssqlConnectionString from the Neon
+// tenants table and creates a per-tenant Knex instance stored in context.
+// Returns 422 if the connection string is not configured for the tenant.
 // ---------------------------------------------------------------------------
 
 import type { MiddlewareHandler } from 'hono'
 import type { OnPremEnv } from '../types.onprem'
-import { longhaulDbConfigured, getLonghaulDb } from '../lib/longhaul-db'
+import { getLonghaulDb } from '../lib/longhaul-db'
 import { getUserByWindowsUsername } from '../repositories/longhaul/reference.repository'
 import { hasScope } from '../lib/scopes'
 import { logger } from '../lib/logger'
+import { db as prisma } from '../db'
 
 export const longhaulUserMiddleware: MiddlewareHandler<OnPremEnv> = async (c, next) => {
-  // Check MSSQL availability first — applies to both auth modes
-  if (!longhaulDbConfigured()) {
-    logger.warn('Longhaul MSSQL not configured — returning 503')
+  // Look up the tenant's MSSQL connection string from the Neon tenants table
+  const tenantId = c.get('tenantId')
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { mssqlConnectionString: true },
+  })
+
+  if (!tenant?.mssqlConnectionString) {
+    logger.warn('Tenant has no mssqlConnectionString configured', { tenantId })
     return c.json(
       {
-        error: 'MSSQL not configured',
+        error: 'Legacy database not configured for this tenant',
+        code: 'MSSQL_NOT_CONFIGURED',
+        correlationId: c.get('correlationId'),
+      },
+      422,
+    )
+  }
+
+  let longhaulDb
+  try {
+    longhaulDb = getLonghaulDb(tenant.mssqlConnectionString)
+  } catch (err) {
+    logger.error('Failed to create longhaul DB connection', { error: String(err), tenantId })
+    return c.json(
+      {
+        error: 'MSSQL connection failed',
         code: 'MSSQL_UNAVAILABLE',
         correlationId: c.get('correlationId'),
       },
       503,
     )
   }
+
+  c.set('longhaulDb', longhaulDb)
 
   if (process.env['SKIP_AUTH'] === 'true') {
     // On-prem mode: authenticate via Windows username header
@@ -56,8 +81,9 @@ export const longhaulUserMiddleware: MiddlewareHandler<OnPremEnv> = async (c, ne
 
     let user: Record<string, unknown> | undefined
     try {
-      const db = getLonghaulDb()
-      user = (await getUserByWindowsUsername(db, winUser)) as Record<string, unknown> | undefined
+      user = (await getUserByWindowsUsername(longhaulDb, winUser)) as
+        | Record<string, unknown>
+        | undefined
     } catch (err) {
       logger.error('Failed to look up longhaul user', { error: String(err) })
       return c.json(

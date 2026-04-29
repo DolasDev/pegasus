@@ -6,13 +6,10 @@ import { describe, it, expect, vi } from 'vitest'
 import { Hono } from 'hono'
 import type { OnPremEnv } from '../../types.onprem'
 import type { ConnectionPool } from 'mssql'
+import type { Knex } from 'knex'
 import type { PrismaClient } from '@prisma/client'
 
-const mockDb = {}
-vi.mock('../../lib/longhaul-db', () => ({
-  getLonghaulDb: vi.fn(() => mockDb),
-  longhaulDbConfigured: vi.fn(() => true),
-}))
+const mockDb = {} as unknown as Knex
 
 vi.mock('../../repositories/longhaul/activities.repository', () => ({
   saveActivity: vi.fn(),
@@ -34,6 +31,7 @@ function buildApp() {
   app.use('*', async (c, next) => {
     c.set('tenantId', 'test-tenant')
     c.set('longhaulUser', MOCK_USER)
+    c.set('longhaulDb', mockDb)
     c.set('db', {} as unknown as PrismaClient)
     c.set('mssqlPool', {} as unknown as ConnectionPool)
     c.set('apiClient', undefined)
