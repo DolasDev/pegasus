@@ -63,7 +63,7 @@ describe('tunnel proxy', () => {
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
-  it('aborts fetch when timeoutMs elapses', async () => {
+  it('returns a 504 ProxyResponse when timeoutMs elapses', async () => {
     vi.useFakeTimers()
     const fetchImpl = vi.fn((_url: string, init?: RequestInit) => {
       return new Promise<Response>((_resolve, reject) => {
@@ -77,7 +77,29 @@ describe('tunnel proxy', () => {
       fetchImpl as unknown as typeof fetch,
     )
     vi.advanceTimersByTime(1000)
-    await expect(p).rejects.toThrow(/abort/i)
+    const res = await p
     vi.useRealTimers()
+    expect(res.status).toBe(504)
+    expect(res.headers['x-tunnel-proxy-error']).toBe('TUNNEL_TIMEOUT')
+    const parsed = JSON.parse(res.body) as { code: string; url: string }
+    expect(parsed.code).toBe('TUNNEL_TIMEOUT')
+    expect(parsed.url).toBe('https://10.200.7.1/slow')
+  })
+
+  it('returns a 502 ProxyResponse on a non-timeout fetch failure', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValue(
+        Object.assign(new Error('connect ECONNREFUSED 10.200.7.1:3000'), { name: 'TypeError' }),
+      )
+    const res = await proxy(
+      { method: 'GET', url: 'http://10.200.7.1:3000/ping' },
+      fetchImpl as unknown as typeof fetch,
+    )
+    expect(res.status).toBe(502)
+    expect(res.headers['x-tunnel-proxy-error']).toBe('TUNNEL_NETWORK_ERROR')
+    const parsed = JSON.parse(res.body) as { code: string; error: string }
+    expect(parsed.code).toBe('TUNNEL_NETWORK_ERROR')
+    expect(parsed.error).toContain('ECONNREFUSED')
   })
 })

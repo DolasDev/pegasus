@@ -22,9 +22,11 @@
 //     body:    string
 //   }
 //
-// On network failure the proxy throws — the caller sees the invoke as a
-// Lambda function error (FunctionError: "Unhandled") and can translate that
-// to whatever upstream shape it wants.
+// On network failure the proxy returns a synthetic response (504 for timeout,
+// 502 for other fetch errors) with a JSON body and `x-tunnel-proxy-error`
+// header, so the caller sees a normal ProxyResponse instead of a Lambda
+// FunctionError. Argument-validation errors still throw — those are bugs in
+// the caller, not transient network conditions.
 // ---------------------------------------------------------------------------
 
 export interface ProxyRequest {
@@ -59,7 +61,11 @@ export async function proxy(event: ProxyRequest, fetchImpl: typeof fetch): Promi
 
   const controller = new AbortController()
   const timeoutMs = event.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, timeoutMs)
 
   try {
     const res = await fetchImpl(event.url, {
@@ -81,7 +87,35 @@ export async function proxy(event: ProxyRequest, fetchImpl: typeof fetch): Promi
       headers: responseHeaders,
       body,
     }
+  } catch (err) {
+    if (timedOut || (err instanceof Error && err.name === 'AbortError')) {
+      return synthError(504, 'TUNNEL_TIMEOUT', `tunnel proxy timed out after ${timeoutMs}ms`, {
+        url: event.url,
+        method: event.method,
+      })
+    }
+    const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+    return synthError(502, 'TUNNEL_NETWORK_ERROR', `tunnel proxy fetch failed — ${message}`, {
+      url: event.url,
+      method: event.method,
+    })
   } finally {
     clearTimeout(timer)
+  }
+}
+
+function synthError(
+  status: number,
+  code: string,
+  message: string,
+  detail: Record<string, unknown>,
+): ProxyResponse {
+  return {
+    status,
+    headers: {
+      'content-type': 'application/json',
+      'x-tunnel-proxy-error': code,
+    },
+    body: JSON.stringify({ error: message, code, ...detail }),
   }
 }
