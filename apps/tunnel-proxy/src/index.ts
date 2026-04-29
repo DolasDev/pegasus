@@ -67,6 +67,15 @@ export async function proxy(event: ProxyRequest, fetchImpl: typeof fetch): Promi
     controller.abort()
   }, timeoutMs)
 
+  const startedAt = Date.now()
+  log('info', 'tunnel_proxy_request_start', {
+    method: event.method,
+    url: event.url,
+    timeoutMs,
+    headerKeys: Object.keys(event.headers ?? {}),
+    bodyBytes: event.body != null ? event.body.length : 0,
+  })
+
   try {
     const res = await fetchImpl(event.url, {
       method: event.method,
@@ -82,25 +91,64 @@ export async function proxy(event: ProxyRequest, fetchImpl: typeof fetch): Promi
 
     const body = await res.text()
 
+    log('info', 'tunnel_proxy_request_ok', {
+      method: event.method,
+      url: event.url,
+      status: res.status,
+      durationMs: Date.now() - startedAt,
+      bodyBytes: body.length,
+    })
+
     return {
       status: res.status,
       headers: responseHeaders,
       body,
     }
   } catch (err) {
+    const durationMs = Date.now() - startedAt
     if (timedOut || (err instanceof Error && err.name === 'AbortError')) {
+      log('error', 'tunnel_proxy_request_timeout', {
+        method: event.method,
+        url: event.url,
+        timeoutMs,
+        durationMs,
+      })
       return synthError(504, 'TUNNEL_TIMEOUT', `tunnel proxy timed out after ${timeoutMs}ms`, {
         url: event.url,
         method: event.method,
       })
     }
-    const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
-    return synthError(502, 'TUNNEL_NETWORK_ERROR', `tunnel proxy fetch failed — ${message}`, {
-      url: event.url,
+    const errName = err instanceof Error ? err.name : 'UnknownError'
+    const errMessage = err instanceof Error ? err.message : String(err)
+    const errCause =
+      err instanceof Error && 'cause' in err && err.cause instanceof Error
+        ? `${err.cause.name}: ${err.cause.message}`
+        : undefined
+    log('error', 'tunnel_proxy_request_failed', {
       method: event.method,
+      url: event.url,
+      durationMs,
+      errName,
+      errMessage,
+      ...(errCause !== undefined ? { errCause } : {}),
     })
+    return synthError(
+      502,
+      'TUNNEL_NETWORK_ERROR',
+      `tunnel proxy fetch failed — ${errName}: ${errMessage}`,
+      { url: event.url, method: event.method },
+    )
   } finally {
     clearTimeout(timer)
+  }
+}
+
+function log(level: 'info' | 'error', event: string, fields: Record<string, unknown>): void {
+  const line = JSON.stringify({ level, event, ...fields })
+  if (level === 'error') {
+    console.error(line)
+  } else {
+    console.log(line)
   }
 }
 
