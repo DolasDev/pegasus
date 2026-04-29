@@ -185,6 +185,7 @@ jobs:
               stacks+=( \
                 "${STACK_PREFIX}-CognitoStack" \
                 "${STACK_PREFIX}-DocumentsStack" \
+                "${STACK_PREFIX}-WireGuardStack" \
                 "${STACK_PREFIX}-ApiStack" \
                 "${STACK_PREFIX}-MonitoringStack" \
               )

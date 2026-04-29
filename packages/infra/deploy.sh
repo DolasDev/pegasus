@@ -64,7 +64,7 @@ fi
 
 # ── 2. Resolve TARGET (mirror deploy.yml's mapping) ───────────────────────────
 if [[ "$API_ONLY" == "true" ]]; then
-  TARGET="PegasusDev-FrontendStack PegasusDev-AdminFrontendStack PegasusDev-CognitoStack PegasusDev-DocumentsStack PegasusDev-ApiStack PegasusDev-MonitoringStack"
+  TARGET="PegasusDev-FrontendStack PegasusDev-AdminFrontendStack PegasusDev-CognitoStack PegasusDev-DocumentsStack PegasusDev-WireGuardStack PegasusDev-ApiStack PegasusDev-MonitoringStack"
   echo "▶  [2/2] Deploying API stacks..."
 elif [[ "$ADMIN_ONLY" == "true" ]]; then
   TARGET="PegasusDev-AdminFrontendStack PegasusDev-CognitoStack PegasusDev-ApiStack PegasusDev-AdminFrontendAssetsStack"
