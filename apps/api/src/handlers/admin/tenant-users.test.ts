@@ -102,7 +102,7 @@ function buildApp() {
 
 const now = new Date('2024-01-15T12:00:00Z')
 
-const mockTenant = { id: 'tenant-1', name: 'Acme' }
+const mockTenant = { id: 'tenant-1', name: 'Acme', slug: 'acme' }
 
 const mockUserRow = {
   id: 'user-1',
@@ -221,6 +221,23 @@ describe('admin tenant-users handler', () => {
 
       const res = await buildApp().request(BASE, post({ email: 'new@acme.com' }))
       expect(res.status).toBe(201)
+    })
+
+    it('passes tenant ClientMetadata to AdminCreateUserCommand for the custom-message trigger', async () => {
+      mockDb.tenant.findUnique.mockResolvedValue(mockTenant)
+      mockRepo.findByEmail.mockResolvedValue(null)
+      mockRepo.invite.mockResolvedValue(mockUserRow)
+
+      await buildApp().request(BASE, post({ email: 'new@acme.com' }))
+
+      expect(mockSend).toHaveBeenCalled()
+      const command = mockSend.mock.calls[0]![0] as { ClientMetadata?: Record<string, string> }
+      expect(command.ClientMetadata).toEqual({
+        source: 'tenant',
+        tenantId: 'tenant-1',
+        tenantName: 'Acme',
+        tenantSlug: 'acme',
+      })
     })
   })
 

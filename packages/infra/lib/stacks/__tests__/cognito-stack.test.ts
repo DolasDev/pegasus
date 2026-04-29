@@ -105,6 +105,14 @@ describe('CognitoStack — User Pool', () => {
       }),
     })
   })
+
+  it('wires the custom-message Lambda trigger', () => {
+    template.hasResourceProperties('AWS::Cognito::UserPool', {
+      LambdaConfig: Match.objectLike({
+        CustomMessage: Match.anyValue(),
+      }),
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -220,8 +228,8 @@ describe('CognitoStack — Tenant app client', () => {
 // ---------------------------------------------------------------------------
 
 describe('CognitoStack — Lambda triggers', () => {
-  it('creates exactly two Lambda functions (pre-auth and pre-token)', () => {
-    template.resourceCountIs('AWS::Lambda::Function', 2)
+  it('creates exactly three Lambda functions (pre-auth, pre-token, custom-message)', () => {
+    template.resourceCountIs('AWS::Lambda::Function', 3)
   })
 
   it('pre-auth Lambda uses Node.js 20.x runtime', () => {
@@ -273,6 +281,26 @@ describe('CognitoStack — Lambda triggers', () => {
       }),
     })
   })
+
+  it('custom-message Lambda has TENANT_LOGIN_URL_FALLBACK env var', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: Match.objectLike({
+        Variables: Match.objectLike({
+          TENANT_LOGIN_URL_FALLBACK: 'http://localhost:5173',
+        }),
+      }),
+    })
+  })
+
+  it('custom-message Lambda has ADMIN_LOGIN_URL_FALLBACK env var', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: Match.objectLike({
+        Variables: Match.objectLike({
+          ADMIN_LOGIN_URL_FALLBACK: 'http://localhost:5174',
+        }),
+      }),
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -300,6 +328,52 @@ describe('CognitoStack — IAM permissions', () => {
           Match.objectLike({
             Action: Match.arrayWith(['cognito-idp:AdminListGroupsForUser']),
             Effect: 'Allow',
+          }),
+        ]),
+      },
+    })
+  })
+
+  it('grants ssm:GetParameter on the tenant domain-name parameter to the custom-message function', () => {
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'ssm:GetParameter',
+            Effect: 'Allow',
+            Resource: Match.arrayWith([
+              {
+                'Fn::Join': [
+                  '',
+                  Match.arrayWith([
+                    Match.stringLikeRegexp('parameter/dolas/pegasus/web/domain-name'),
+                  ]),
+                ],
+              },
+            ]),
+          }),
+        ]),
+      },
+    })
+  })
+
+  it('grants ssm:GetParameter on the admin domain-name parameter to the custom-message function', () => {
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'ssm:GetParameter',
+            Effect: 'Allow',
+            Resource: Match.arrayWith([
+              {
+                'Fn::Join': [
+                  '',
+                  Match.arrayWith([
+                    Match.stringLikeRegexp('parameter/dolas/pegasus/admin/domain-name'),
+                  ]),
+                ],
+              },
+            ]),
           }),
         ]),
       },
@@ -494,8 +568,8 @@ describe('CognitoStack — Mobile app client', () => {
     expect(mobileClientOutput).toBeDefined()
   })
 
-  it('does not change the Lambda function count (still 2: pre-auth + pre-token)', () => {
+  it('does not change the Lambda function count (still 3: pre-auth + pre-token + custom-message)', () => {
     // Mobile app client addition must not add any Lambda functions
-    template.resourceCountIs('AWS::Lambda::Function', 2)
+    template.resourceCountIs('AWS::Lambda::Function', 3)
   })
 })

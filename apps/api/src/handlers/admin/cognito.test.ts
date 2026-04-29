@@ -50,6 +50,12 @@ describe('getCognito', () => {
 })
 
 describe('provisionCognitoUser', () => {
+  const tenantContext = {
+    tenantId: 'tenant-uuid-1',
+    tenantName: 'Acme Movers',
+    tenantSlug: 'acme',
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -57,7 +63,7 @@ describe('provisionCognitoUser', () => {
   it('calls Cognito AdminCreateUser with the given email', async () => {
     mockSend.mockResolvedValue({})
 
-    await provisionCognitoUser('new@acme.com')
+    await provisionCognitoUser('new@acme.com', tenantContext)
 
     expect(mockSend).toHaveBeenCalledOnce()
     const sentCommand = mockSend.mock.calls[0]![0] as Record<string, unknown>
@@ -71,12 +77,26 @@ describe('provisionCognitoUser', () => {
     )
   })
 
+  it('forwards tenant context as ClientMetadata for the CustomMessage Lambda trigger', async () => {
+    mockSend.mockResolvedValue({})
+
+    await provisionCognitoUser('new@acme.com', tenantContext)
+
+    const sentCommand = mockSend.mock.calls[0]![0] as { ClientMetadata?: Record<string, string> }
+    expect(sentCommand.ClientMetadata).toEqual({
+      source: 'tenant',
+      tenantId: 'tenant-uuid-1',
+      tenantName: 'Acme Movers',
+      tenantSlug: 'acme',
+    })
+  })
+
   it('resolves without throwing when Cognito returns UsernameExistsException', async () => {
     mockSend.mockRejectedValue(
       Object.assign(new Error('User already exists'), { name: 'UsernameExistsException' }),
     )
 
-    await expect(provisionCognitoUser('existing@acme.com')).resolves.toBeUndefined()
+    await expect(provisionCognitoUser('existing@acme.com', tenantContext)).resolves.toBeUndefined()
     expect(mockSend).toHaveBeenCalledOnce()
   })
 
@@ -85,13 +105,17 @@ describe('provisionCognitoUser', () => {
       Object.assign(new Error('Service unavailable'), { name: 'ServiceFailureException' }),
     )
 
-    await expect(provisionCognitoUser('new@acme.com')).rejects.toThrow('Service unavailable')
+    await expect(provisionCognitoUser('new@acme.com', tenantContext)).rejects.toThrow(
+      'Service unavailable',
+    )
   })
 
   it('rethrows generic errors (no name property)', async () => {
     mockSend.mockRejectedValue(new Error('Network timeout'))
 
-    await expect(provisionCognitoUser('new@acme.com')).rejects.toThrow('Network timeout')
+    await expect(provisionCognitoUser('new@acme.com', tenantContext)).rejects.toThrow(
+      'Network timeout',
+    )
   })
 })
 

@@ -22,6 +22,12 @@ export function getCognito(): CognitoIdentityProviderClient {
   return (_cognito ??= new CognitoIdentityProviderClient({}))
 }
 
+export interface ProvisionTenantContext {
+  tenantId: string
+  tenantName: string
+  tenantSlug: string
+}
+
 /**
  * Provisions a Cognito user (AdminCreateUser).
  *
@@ -29,10 +35,16 @@ export function getCognito(): CognitoIdentityProviderClient {
  * invite email with a temporary password unless the runtime is non-production,
  * in which case the email is suppressed.
  *
+ * `tenant` is forwarded to the CustomMessage Lambda trigger via ClientMetadata
+ * so the invite email can name the tenant and link to the right login page.
+ *
  * Idempotent: UsernameExistsException is silently ignored so callers can retry
  * without side effects after a previous partial failure.
  */
-export async function provisionCognitoUser(email: string): Promise<void> {
+export async function provisionCognitoUser(
+  email: string,
+  tenant: ProvisionTenantContext,
+): Promise<void> {
   const userPoolId = process.env['COGNITO_USER_POOL_ID'] ?? ''
 
   try {
@@ -44,6 +56,12 @@ export async function provisionCognitoUser(email: string): Promise<void> {
           { Name: 'email', Value: email },
           { Name: 'email_verified', Value: 'true' },
         ],
+        ClientMetadata: {
+          source: 'tenant',
+          tenantId: tenant.tenantId,
+          tenantName: tenant.tenantName,
+          tenantSlug: tenant.tenantSlug,
+        },
         ...(process.env['NODE_ENV'] !== 'production' ? { MessageAction: 'SUPPRESS' as const } : {}),
       }),
     )

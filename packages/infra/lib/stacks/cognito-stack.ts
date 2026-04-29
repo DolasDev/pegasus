@@ -159,6 +159,53 @@ export class CognitoStack extends cdk.Stack {
 
     dbSecret.grantRead(preTokenFn)
 
+    // -------------------------------------------------------------------------
+    // Custom-Message Lambda trigger
+    //
+    // Rewrites the AdminCreateUser invite email so the recipient gets a
+    // tenant-aware subject + body and a link to the correct login page.
+    // Other CustomMessage_* sources (forgot password, resend code, etc.) pass
+    // through untouched so Cognito's default emails still go out.
+    //
+    // Tenant context is supplied by the calling API handler via ClientMetadata.
+    // The trigger reads its login URL bases from SSM (cold-start cached) and
+    // falls back to env-var URLs in dev where SSM may be empty.
+    // -------------------------------------------------------------------------
+    const customMessageFn = new nodejs.NodejsFunction(this, 'CustomMessageFunction', {
+      functionName: `pegasus-cognito-custom-message-${this.stackName}`,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../../../../apps/api/src/cognito/custom-message.ts'),
+      handler: 'handler',
+      environment: {
+        NODE_ENV: 'production',
+        // Dev/CI fallback values used when the SSM parameters are empty.
+        // Production deploys overwrite the SSM values, so these fallbacks
+        // never appear in real invite emails.
+        TENANT_LOGIN_URL_FALLBACK: 'http://localhost:5173',
+        ADMIN_LOGIN_URL_FALLBACK: 'http://localhost:5174',
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        externalModules: ['@aws-sdk/*'],
+      },
+      memorySize: 128,
+      timeout: cdk.Duration.seconds(5),
+    })
+
+    // Grant the trigger read access to the front-end domain-name SSM parameters.
+    // String-literal ARNs (no construct refs) preserve the no-circular-dependency
+    // rule, mirroring the pre-token Lambda's IAM grant above.
+    customMessageFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ssm:GetParameter'],
+        resources: [
+          `arn:aws:ssm:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:parameter/dolas/pegasus/web/domain-name`,
+          `arn:aws:ssm:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:parameter/dolas/pegasus/admin/domain-name`,
+        ],
+      }),
+    )
+
     // Grant the pre-token Lambda read access to the admin client ID SSM parameter.
     // The Lambda reads this at cold start to distinguish admin-app from tenant-app
     // token requests via callerContext.clientId.
@@ -200,6 +247,7 @@ export class CognitoStack extends cdk.Stack {
       lambdaTriggers: {
         preAuthentication: preAuthFn,
         preTokenGeneration: preTokenFn,
+        customMessage: customMessageFn,
       },
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
       // RETAIN: user accounts must survive stack updates and accidental

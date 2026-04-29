@@ -21,7 +21,7 @@ import { registerTestErrorHandler } from '../test-helpers'
 // Cognito SDK mock
 // ---------------------------------------------------------------------------
 
-const { mockSend, mockRepo } = vi.hoisted(() => ({
+const { mockSend, mockRepo, mockTenantFindUnique } = vi.hoisted(() => ({
   mockSend: vi.fn(),
   mockRepo: {
     listByTenant: vi.fn(),
@@ -32,6 +32,7 @@ const { mockSend, mockRepo } = vi.hoisted(() => ({
     deactivate: vi.fn(),
     countAdmins: vi.fn(),
   },
+  mockTenantFindUnique: vi.fn(),
 }))
 
 vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
@@ -83,7 +84,9 @@ function buildApp(role: string | null = 'tenant_admin') {
   registerTestErrorHandler(app)
   app.use('*', async (c, next) => {
     c.set('tenantId', 'test-tenant-id')
-    c.set('db', {} as unknown as PrismaClient)
+    c.set('db', {
+      tenant: { findUnique: mockTenantFindUnique },
+    } as unknown as PrismaClient)
     if (role !== null) c.set('role', role)
     await next()
   })
@@ -124,6 +127,11 @@ describe('users handler', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockSend.mockResolvedValue({})
+    mockTenantFindUnique.mockResolvedValue({
+      id: 'test-tenant-id',
+      name: 'Acme Movers',
+      slug: 'acme',
+    })
   })
 
   // ── RBAC ──────────────────────────────────────────────────────────────────
@@ -206,6 +214,23 @@ describe('users handler', () => {
       expect(res.status).toBe(201)
       const body = await json(res)
       expect((body.data as JsonBody)['email']).toBe('user@example.com')
+    })
+
+    it('passes tenant ClientMetadata to AdminCreateUserCommand for the custom-message trigger', async () => {
+      mockRepo.findByEmail.mockResolvedValue(null)
+      mockSend.mockResolvedValue({})
+      mockRepo.invite.mockResolvedValue(mockUserRow)
+
+      await buildApp().request('/invite', post({ email: 'new@example.com' }))
+
+      expect(mockSend).toHaveBeenCalled()
+      const command = mockSend.mock.calls[0]![0] as { ClientMetadata?: Record<string, string> }
+      expect(command.ClientMetadata).toEqual({
+        source: 'tenant',
+        tenantId: 'test-tenant-id',
+        tenantName: 'Acme Movers',
+        tenantSlug: 'acme',
+      })
     })
 
     it('returns 409 CONFLICT on race condition (P2002 from invite)', async () => {

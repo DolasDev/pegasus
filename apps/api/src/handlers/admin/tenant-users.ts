@@ -124,11 +124,16 @@ adminTenantUsersRouter.post(
     const ipAddress = c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip')
     const userAgent = c.req.header('user-agent')
 
+    let tenantContext: { name: string; slug: string }
     try {
-      const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { id: true } })
+      const tenant = await db.tenant.findUnique({
+        where: { id: tenantId },
+        select: { id: true, name: true, slug: true },
+      })
       if (!tenant) {
         return c.json({ error: 'Tenant not found', code: 'NOT_FOUND' }, 404)
       }
+      tenantContext = { name: tenant.name, slug: tenant.slug }
     } catch (err) {
       logger.error('POST admin/tenants/:tenantId/users: tenant lookup failed', {
         error: String(err),
@@ -151,7 +156,11 @@ adminTenantUsersRouter.post(
     }
 
     try {
-      await provisionCognitoUser(body.email)
+      await provisionCognitoUser(body.email, {
+        tenantId,
+        tenantName: tenantContext.name,
+        tenantSlug: tenantContext.slug,
+      })
     } catch (err) {
       logger.error('POST admin/tenants/:tenantId/users: Cognito AdminCreateUser failed', {
         error: String(err),

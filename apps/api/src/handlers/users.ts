@@ -139,6 +139,13 @@ usersHandler.post(
       )
     }
 
+    // Look up tenant name + slug so the CustomMessage Lambda trigger can
+    // render a tenant-aware invite email and link to the right login page.
+    const tenant = await db.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true, slug: true },
+    })
+
     // Provision in Cognito
     try {
       await getCognito().send(
@@ -149,6 +156,12 @@ usersHandler.post(
             { Name: 'email', Value: email },
             { Name: 'email_verified', Value: 'true' },
           ],
+          ClientMetadata: {
+            source: 'tenant',
+            tenantId,
+            tenantName: tenant?.name ?? '',
+            tenantSlug: tenant?.slug ?? '',
+          },
           ...(process.env['NODE_ENV'] !== 'production'
             ? { MessageAction: 'SUPPRESS' as const }
             : {}),

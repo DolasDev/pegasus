@@ -202,7 +202,14 @@ adminTenantsRouter.post(
     // retrying after a DB failure is safe. If Cognito fails, we abort early
     // so no orphaned DB record is created.
     try {
-      await provisionCognitoUser(body.adminEmail)
+      await provisionCognitoUser(body.adminEmail, {
+        // The tenant row is created in the transaction below, so its UUID is
+        // not yet known. The CustomMessage Lambda renders from name + slug
+        // and uses tenantId only for logging.
+        tenantId: '',
+        tenantName: body.name,
+        tenantSlug: body.slug,
+      })
     } catch (err) {
       logger.error('Failed to provision Cognito admin user', { error: String(err) })
       return c.json(
