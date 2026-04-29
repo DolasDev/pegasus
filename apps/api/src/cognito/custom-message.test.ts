@@ -199,7 +199,7 @@ describe('custom-message trigger', () => {
   // ── Missing / malformed clientMetadata ────────────────────────────────────
 
   it('falls back to a generic body when clientMetadata is missing', async () => {
-    const event = makeEvent({ clientMetadata: undefined })
+    const event = makeEvent({})
     const result = await handler(event, fakeContext, fakeCallback)
 
     const body = result.response.emailMessage
