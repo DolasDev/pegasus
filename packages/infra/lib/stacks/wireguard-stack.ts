@@ -459,6 +459,14 @@ export class WireGuardStack extends cdk.Stack {
       "echo 'net.ipv4.ip_forward = 1' > /etc/sysctl.d/99-wireguard.conf",
       'sysctl -p /etc/sysctl.d/99-wireguard.conf',
       'systemctl enable --now wg-quick@wg0',
+      // Verify the cross-subnet kernel route landed. The wg0.conf PostUp
+      // installs `10.200.0.0/16 dev wg0` so the hub can reach tenant
+      // overlay IPs (which live in a different /16 from the hub's /24).
+      // Without this route the kernel falls through to the VPC default
+      // gateway and silently leaks tenant-bound packets out ens5. We hit
+      // exactly that bug in prod once already; fail boot loudly if the
+      // route didn't take so we never inherit the same blackhole again.
+      'ip route show 10.200.0.0/16 2>/dev/null | grep -q wg0 || { echo "FATAL: wg-quick did not install the 10.200.0.0/16 → wg0 route — check wg0.conf PostUp" >&2; exit 1; }',
       // Reconcile agent - install and start. Missing apikey or missing
       // tarball URI is fatal: an instance without the agent silently drifts
       // from the desired peer set, which is exactly the failure mode that
@@ -595,6 +603,24 @@ export class WireGuardStack extends cdk.Stack {
       minCapacity: 1,
       maxCapacity: 1,
       desiredCapacity: 1,
+      // Roll the instance whenever the LaunchTemplate version changes (i.e.
+      // any userdata edit). Without this, CDK updates the LT but leaves the
+      // running instance on the old version — userdata fixes silently sit
+      // dormant until something else replaces the box. minInstancesInService
+      // is 0 because the hub owns the EIP exclusively: AWS won't let two
+      // instances hold the same EIP, so we must fully terminate the old
+      // hub before launching the new one. Outage is ~2–3 min while the new
+      // instance boots, runs userdata, and the on-prem peers re-handshake
+      // (PersistentKeepalive=25 in the tenant config drives that).
+      // pauseTime is the upper bound CFN waits for the instance to reach
+      // InService before continuing — userdata typically finishes in <3 min;
+      // 10 min is a safe ceiling for cold dnf installs.
+      updatePolicy: autoscaling.UpdatePolicy.rollingUpdate({
+        maxBatchSize: 1,
+        minInstancesInService: 0,
+        pauseTime: cdk.Duration.minutes(10),
+        waitOnResourceSignals: false,
+      }),
     })
     cdk.Tags.of(asg).add('Name', 'pegasus-wireguard-hub')
     this.hubAsgName = asg.autoScalingGroupName
