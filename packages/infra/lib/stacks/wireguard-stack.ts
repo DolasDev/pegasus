@@ -426,7 +426,13 @@ export class WireGuardStack extends cdk.Stack {
     userData.addCommands(
       'set -euxo pipefail',
       'dnf update -y',
-      'dnf install -y wireguard-tools chrony aws-cli nodejs20 tar',
+      // iptables-nft + iptables-services are NOT installed by default on
+      // Amazon Linux 2023 — the bare `iptables` command is absent. Without
+      // these, the MASQUERADE rule below silently no-ops because cloud-init
+      // logs a WARNING for "command not found" but doesn't fail the boot,
+      // so the ASG considers the instance healthy and the bug surfaces only
+      // at first traffic.
+      'dnf install -y wireguard-tools chrony aws-cli nodejs20 tar iptables-nft iptables-services',
       'systemctl enable --now chronyd',
       // Resolve hub privkey. Bash's `set -e` does NOT abort on a failed
       // command substitution in an assignment, so we read into a variable
@@ -478,10 +484,8 @@ export class WireGuardStack extends cdk.Stack {
       // hub-originated traffic — which the tenant accepts. -C/-A pattern
       // makes the line idempotent across reboots / userdata re-runs.
       'iptables -t nat -C POSTROUTING -o wg0 -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE',
-      // Persist the iptables rule across reboots. Amazon Linux 2023 ships
-      // iptables-services; install if missing and enable the save-on-stop
-      // path so the rule survives instance lifecycle events.
-      'dnf install -y iptables-services',
+      // Persist the rule across reboots via iptables-services
+      // (installed in the early dnf install).
       'iptables-save > /etc/sysconfig/iptables',
       'systemctl enable iptables',
       // Verify the MASQUERADE rule is actually in the kernel. Same
