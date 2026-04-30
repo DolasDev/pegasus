@@ -477,6 +477,29 @@ export class CognitoStack extends cdk.Stack {
       exportName: 'PegasusCognitoAdminClientId',
     })
 
+    // ---------------------------------------------------------------------------
+    // Pinned cross-stack export for AdminFrontendAssetsStack.
+    //
+    // Background: the consumer originally took the admin client ID via a
+    // construct-level cross-stack reference (cognitoStack.adminAppClient
+    // .userPoolClientId), which made CDK auto-generate the output logical ID
+    // ExportsOutputRefUserPoolAdminAppClientCD59D22143082BED. That auto ID
+    // empirically drifted across CDK minor versions, which CFN reports as
+    // "Cannot delete export … as it is in use by pegasus-…-admin-frontend-
+    // assets" and blocks every cognito-stack update.
+    //
+    // Same fix as b88d9c3 for the frontend pair: declare an explicit CfnOutput,
+    // pin its logical ID + export name to the previously auto-generated value,
+    // and switch the consumer to cdk.Fn.importValue against the same string.
+    // CFN sees the export name unchanged, so the next update is a no-op for
+    // the export contract.
+    // ---------------------------------------------------------------------------
+    const adminClientRefExport = new cdk.CfnOutput(this, 'AssetsAdminClientRefExport', {
+      value: this.adminAppClient.userPoolClientId,
+      exportName: `${this.stackName}:ExportsOutputRefUserPoolAdminAppClientCD59D22143082BED`,
+    })
+    adminClientRefExport.overrideLogicalId('ExportsOutputRefUserPoolAdminAppClientCD59D22143082BED')
+
     new cdk.CfnOutput(this, 'TenantClientId', {
       value: this.tenantAppClient.userPoolClientId,
       exportName: 'PegasusCognitoTenantClientId',

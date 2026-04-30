@@ -7,9 +7,9 @@ function synthAdminAssetsStack() {
   const app = new cdk.App()
   const stack = new AdminFrontendAssetsStack(app, 'TestAdminFrontendAssets', {
     adminFrontendStackName: 'pegasus-test-admin-frontend',
+    cognitoStackName: 'pegasus-test-cognito',
     apiUrl: 'https://api.example.com',
     cognitoDomain: 'https://pegasus-test.auth.us-east-1.amazoncognito.com',
-    cognitoAdminClientId: 'test-admin-client-id',
   })
   return Template.fromStack(stack)
 }
