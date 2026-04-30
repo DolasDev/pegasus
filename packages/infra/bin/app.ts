@@ -160,13 +160,14 @@ const frontendAssetsStack = new FrontendAssetsStack(app, `${stackIdPrefix}-Front
   stackName: `${stackNamePrefix}-frontend-assets`,
   description: `${descPrefix} — tenant web app assets + config.json`,
   frontendStackName: frontendStack.stackName,
-  apiUrl: apiStack.apiUrl,
+  apiStackName: apiStack.stackName,
   cognitoRegion: env.region ?? 'us-east-1',
   cognitoUserPoolId: cognitoStack.userPool.userPoolId,
   cognitoTenantClientId: cognitoStack.tenantAppClient.userPoolClientId,
   cognitoDomain: cognitoStack.hostedUiBaseUrl,
 })
 frontendAssetsStack.addDependency(frontendStack)
+frontendAssetsStack.addDependency(apiStack)
 
 const adminFrontendAssetsStack = new AdminFrontendAssetsStack(
   app,
@@ -177,9 +178,10 @@ const adminFrontendAssetsStack = new AdminFrontendAssetsStack(
     description: `${descPrefix} — admin portal assets + config.json`,
     adminFrontendStackName: adminFrontendStack.stackName,
     cognitoStackName: cognitoStack.stackName,
-    apiUrl: apiStack.apiUrl,
+    apiStackName: apiStack.stackName,
     cognitoDomain: cognitoStack.hostedUiBaseUrl,
   },
 )
 adminFrontendAssetsStack.addDependency(adminFrontendStack)
 adminFrontendAssetsStack.addDependency(cognitoStack)
+adminFrontendAssetsStack.addDependency(apiStack)

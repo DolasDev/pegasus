@@ -320,6 +320,30 @@ export class ApiStack extends cdk.Stack {
       exportName: 'PegasusApiUrl',
     })
 
+    // ---------------------------------------------------------------------------
+    // Pinned cross-stack export for the asset stacks.
+    //
+    // Same drift problem as b88d9c3 (frontend bucket/distribution refs) and
+    // dbda2dd (cognito admin client ref): both FrontendAssetsStack and
+    // AdminFrontendAssetsStack consume `apiStack.apiUrl` as a construct-level
+    // cross-stack token, which makes CDK auto-generate the output logical ID
+    // ExportsOutputFnGetAttPegasusHttpApiF652FECBApiEndpointFD99A5D1. That auto
+    // ID is not a stable contract — when it drifts CFN reports
+    // "Cannot delete export … as it is in use by …-frontend-assets and
+    // …-admin-frontend-assets" and blocks every api-stack update.
+    //
+    // Fix: own the export name explicitly. Consumers switch to
+    // cdk.Fn.importValue against this same string so CDK no longer
+    // auto-generates a colliding output and the export contract stays put.
+    // ---------------------------------------------------------------------------
+    const apiEndpointExport = new cdk.CfnOutput(this, 'AssetsApiEndpointExport', {
+      value: httpApi.apiEndpoint,
+      exportName: `${this.stackName}:ExportsOutputFnGetAttPegasusHttpApiF652FECBApiEndpointFD99A5D1`,
+    })
+    apiEndpointExport.overrideLogicalId(
+      'ExportsOutputFnGetAttPegasusHttpApiF652FECBApiEndpointFD99A5D1',
+    )
+
     // Publish the API URL to the SSM path the WireGuard hub user-data reads
     // at boot. WireGuardStack must deploy before ApiStack (it owns the hub
     // public key + endpoint that ApiStack consumes), so we cannot pass this

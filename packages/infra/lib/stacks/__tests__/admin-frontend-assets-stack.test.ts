@@ -8,7 +8,7 @@ function synthAdminAssetsStack() {
   const stack = new AdminFrontendAssetsStack(app, 'TestAdminFrontendAssets', {
     adminFrontendStackName: 'pegasus-test-admin-frontend',
     cognitoStackName: 'pegasus-test-cognito',
-    apiUrl: 'https://api.example.com',
+    apiStackName: 'pegasus-test-api',
     cognitoDomain: 'https://pegasus-test.auth.us-east-1.amazoncognito.com',
   })
   return Template.fromStack(stack)

@@ -7,7 +7,7 @@ function synthAssetsStack() {
   const app = new cdk.App()
   const stack = new FrontendAssetsStack(app, 'TestFrontendAssets', {
     frontendStackName: 'pegasus-test-frontend',
-    apiUrl: 'https://api.example.com',
+    apiStackName: 'pegasus-test-api',
     cognitoRegion: 'us-east-1',
     cognitoUserPoolId: 'us-east-1_TestPool',
     cognitoTenantClientId: 'test-client-id',

@@ -15,8 +15,15 @@ export interface FrontendAssetsStackProps extends cdk.StackProps {
    * live in FrontendStack and are pinned via overrideLogicalId there.
    */
   readonly frontendStackName: string
-  /** API Gateway URL — resolved CDK token from ApiStack. */
-  readonly apiUrl: string
+  /**
+   * Name of the upstream ApiStack — used to build a stable Fn::ImportValue
+   * for the API Gateway endpoint. Same drift-immunity rationale as
+   * frontendStackName: passing the construct ref directly lets CDK
+   * auto-generate the export logical ID, and that ID has empirically drifted
+   * across CDK minor versions, blocking api-stack updates with
+   * "Cannot delete export … as it is in use by …-frontend-assets …".
+   */
+  readonly apiStackName: string
   /** AWS region of the Cognito User Pool. Defaults to us-east-1. */
   readonly cognitoRegion?: string
   /** Cognito User Pool ID — resolved CDK token from CognitoStack. */
@@ -70,13 +77,17 @@ export class FrontendAssetsStack extends cdk.Stack {
       },
     )
 
+    const apiUrl = cdk.Fn.importValue(
+      `${props.apiStackName}:ExportsOutputFnGetAttPegasusHttpApiF652FECBApiEndpointFD99A5D1`,
+    )
+
     const distPath = path.join(__dirname, '../../../../apps/tenant-web/dist')
     if (fs.existsSync(distPath)) {
       new s3deploy.BucketDeployment(this, 'DeployWebsite', {
         sources: [
           s3deploy.Source.asset(distPath),
           s3deploy.Source.jsonData('config.json', {
-            apiUrl: props.apiUrl,
+            apiUrl,
             cognito: {
               region: props.cognitoRegion ?? 'us-east-1',
               userPoolId: props.cognitoUserPoolId,

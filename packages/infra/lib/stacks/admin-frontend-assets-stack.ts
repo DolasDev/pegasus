@@ -22,8 +22,12 @@ export interface AdminFrontendAssetsStackProps extends cdk.StackProps {
    * "Cannot delete export … as it is in use by …".
    */
   readonly cognitoStackName: string
-  /** API Gateway URL — resolved CDK token from ApiStack. */
-  readonly apiUrl: string
+  /**
+   * Name of the upstream ApiStack — used to build a stable Fn::ImportValue
+   * for the API Gateway endpoint. Same drift-immunity rationale as
+   * adminFrontendStackName / cognitoStackName.
+   */
+  readonly apiStackName: string
   /** Cognito Hosted UI base URL — resolved CDK token from CognitoStack. */
   readonly cognitoDomain: string
 }
@@ -69,13 +73,17 @@ export class AdminFrontendAssetsStack extends cdk.Stack {
       `${props.cognitoStackName}:ExportsOutputRefUserPoolAdminAppClientCD59D22143082BED`,
     )
 
+    const apiUrl = cdk.Fn.importValue(
+      `${props.apiStackName}:ExportsOutputFnGetAttPegasusHttpApiF652FECBApiEndpointFD99A5D1`,
+    )
+
     const distPath = path.join(__dirname, '../../../../apps/admin-web/dist')
     if (fs.existsSync(distPath)) {
       new s3deploy.BucketDeployment(this, 'DeployAdmin', {
         sources: [
           s3deploy.Source.asset(distPath),
           s3deploy.Source.jsonData('config.json', {
-            apiUrl: props.apiUrl,
+            apiUrl,
             cognito: {
               domain: props.cognitoDomain,
               clientId: cognitoAdminClientId,

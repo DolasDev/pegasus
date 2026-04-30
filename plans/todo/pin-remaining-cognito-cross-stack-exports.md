@@ -16,13 +16,17 @@ Cannot delete export pegasus-<env>-cognito:ExportsOutputRef… as it is
 in use by pegasus-<env>-<consumer>.
 ```
 
-We have already hit this twice and applied the same fix both times:
+We have already hit this three times and applied the same fix each
+time:
 
 - `b88d9c3` — pinned the FrontendStack ↔ FrontendAssetsStack and
   AdminFrontendStack ↔ AdminFrontendAssetsStack exports for bucket
   arn / bucket ref / distribution ref.
 - `dbda2dd` — pinned the CognitoStack → AdminFrontendAssetsStack
   export for `adminAppClient.userPoolClientId`.
+- (this branch) — pinned the ApiStack → both asset stacks export for
+  `httpApi.apiEndpoint` (`ExportsOutputFnGetAttPegasusHttpApi…`),
+  which had drifted next.
 
 Four CognitoStack auto-exports are still construct-ref-based and
 equally fragile. The next CDK bump (or any change that nudges the
@@ -81,7 +85,7 @@ must do the same so the rendered URL is unchanged.
 
 - [ ] **2. Switch consumers to `Fn::ImportValue`.** In each consumer
       stack, replace the construct-ref prop with a `cognitoStackName:
-    string` prop and resolve the value via `cdk.Fn.importValue`.
+  string` prop and resolve the value via `cdk.Fn.importValue`.
       Files: - `apps/.../frontend-assets-stack.ts` — userPoolId,
       tenantClientId, hostedUiDomain. - `apps/.../admin-frontend-assets-stack.ts` — hostedUiDomain
       (admin client already pinned). - `apps/.../api-stack.ts` — userPoolId, tenantClientId,
@@ -91,8 +95,8 @@ must do the same so the rendered URL is unchanged.
 - [ ] **3. Reconstruct hostedUi URL on the consumer side.** Wherever
       a consumer used the `hostedUiBaseUrl` string token, replace
       with `cdk.Fn.join('', ['https://', cdk.Fn.importValue(
-    '<cognito-stack>:Exports…HostedUiDomain…'),
-    `.auth.${region}.amazoncognito.com`])`. Same for `jwksUrl`
+  '<cognito-stack>:Exports…HostedUiDomain…'),
+  `.auth.${region}.amazoncognito.com`])`. Same for `jwksUrl`
       built from the imported userPoolId.
 
 - [ ] **4. Wire `cognitoStackName` from `bin/app.ts`.** Pass
@@ -102,7 +106,7 @@ must do the same so the rendered URL is unchanged.
       deploy ordering is preserved.
 
 - [ ] **5. Verify byte-identical synth.** Run `cdk synth -c
-    env=staging` before/after and diff the Outputs section of
+  env=staging` before/after and diff the Outputs section of
       `PegasusStaging-CognitoStack.template.json` plus the rendered
       `Fn::ImportValue` strings in the consumer templates. Target:
       Outputs section sorted-JSON-equal to the current synth, and
