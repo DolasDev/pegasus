@@ -16,6 +16,9 @@ const { mockDb } = vi.hoisted(() => ({
     vpnPeer: {
       findUnique: vi.fn(),
     },
+    tenantUser: {
+      findUnique: vi.fn(),
+    },
   },
 }))
 
@@ -228,6 +231,9 @@ describe('wildcard /api/v1/onprem/longhaul/* proxy', () => {
       assignedOctet2: 8,
       status: 'ACTIVE',
     })
+    mockDb.tenantUser.findUnique.mockResolvedValue({
+      legacyWindowsUsername: 'jdoe',
+    })
   }
 
   function lastInvokePayload(send: ReturnType<typeof vi.fn>): Record<string, unknown> {
@@ -387,5 +393,55 @@ describe('wildcard /api/v1/onprem/longhaul/* proxy', () => {
 
     const payload = lastInvokePayload(send) as { headers: Record<string, string> }
     expect(payload.headers['authorization']).toBe('Bearer k_post_test')
+  })
+
+  it('forwards TenantUser.legacyWindowsUsername as X-Windows-User on non-version paths', async () => {
+    activePeer()
+    mockDb.tenantUser.findUnique.mockResolvedValue({ legacyWindowsUsername: 'asmith' })
+    const send = vi.fn().mockResolvedValue({
+      Payload: fakeInvokePayload({ status: 200, headers: {}, body: '{}' }),
+    })
+    setTunnelLambdaClient({ send } as unknown as LambdaClient)
+
+    await buildApp().request('/api/v1/onprem/longhaul/driver-planning')
+
+    expect(mockDb.tenantUser.findUnique).toHaveBeenCalledWith({
+      where: { id: 'user-test' },
+      select: { legacyWindowsUsername: true },
+    })
+    const payload = lastInvokePayload(send) as { headers: Record<string, string> }
+    expect(payload.headers['x-windows-user']).toBe('asmith')
+  })
+
+  it('returns 422 LONGHAUL_USER_NOT_MAPPED when TenantUser has no legacyWindowsUsername', async () => {
+    activePeer()
+    mockDb.tenantUser.findUnique.mockResolvedValue({ legacyWindowsUsername: null })
+    const send = vi.fn()
+    setTunnelLambdaClient({ send } as unknown as LambdaClient)
+
+    const res = await buildApp().request('/api/v1/onprem/longhaul/driver-planning')
+
+    expect(res.status).toBe(422)
+    const body = (await res.json()) as { code: string }
+    expect(body.code).toBe('LONGHAUL_USER_NOT_MAPPED')
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('does NOT forward X-Windows-User or look up the TenantUser on /longhaul/version', async () => {
+    mockDb.vpnPeer.findUnique.mockResolvedValue({
+      assignedOctet1: 5,
+      assignedOctet2: 8,
+      status: 'ACTIVE',
+    })
+    const send = vi.fn().mockResolvedValue({
+      Payload: fakeInvokePayload({ status: 200, headers: {}, body: '{}' }),
+    })
+    setTunnelLambdaClient({ send } as unknown as LambdaClient)
+
+    await buildApp().request('/api/v1/onprem/longhaul/version')
+
+    expect(mockDb.tenantUser.findUnique).not.toHaveBeenCalled()
+    const payload = lastInvokePayload(send) as { headers: Record<string, string> }
+    expect(payload.headers['x-windows-user']).toBeUndefined()
   })
 })

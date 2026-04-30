@@ -25,6 +25,12 @@
 // (does not forward the caller's auth). The on-prem server treats this as
 // an M2M apiClient. If ONPREM_API_KEY is unset, no auth header is sent —
 // useful for connectivity-only checks against unauthenticated routes.
+//
+// User identity: the on-prem longhaul middleware runs with SKIP_AUTH=true and
+// authenticates via X-Windows-User. The proxy looks up the calling
+// TenantUser.legacyWindowsUsername (populated from the Users settings page)
+// and forwards it as X-Windows-User. /longhaul/version is exempt from the
+// lookup since the on-prem server skips auth for that connectivity probe.
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
@@ -38,15 +44,23 @@ interface OverlayTarget {
   base: string
 }
 
+type OnpremDb = {
+  vpnPeer: {
+    findUnique: (args: {
+      where: { tenantId: string }
+      select: { assignedOctet1: true; assignedOctet2: true; status: true }
+    }) => Promise<{ assignedOctet1: number; assignedOctet2: number; status: string } | null>
+  }
+  tenantUser: {
+    findUnique: (args: {
+      where: { id: string }
+      select: { legacyWindowsUsername: true }
+    }) => Promise<{ legacyWindowsUsername: string | null } | null>
+  }
+}
+
 async function resolveOverlayTarget(
-  db: ReturnType<(c: { get: (k: 'db') => unknown }) => unknown> & {
-    vpnPeer: {
-      findUnique: (args: {
-        where: { tenantId: string }
-        select: { assignedOctet1: true; assignedOctet2: true; status: true }
-      }) => Promise<{ assignedOctet1: number; assignedOctet2: number; status: string } | null>
-    }
-  },
+  db: OnpremDb,
   tenantId: string,
 ): Promise<{ ok: true; target: OverlayTarget } | { ok: false; code: string; message: string }> {
   const override = process.env['ONPREM_TUNNEL_BASE_OVERRIDE']
@@ -81,8 +95,9 @@ async function resolveOverlayTarget(
 
 onpremHandler.all('/longhaul/*', async (c) => {
   const tenantId = c.get('tenantId')
+  const userId = c.get('userId')
   const correlationId = c.get('correlationId')
-  const db = c.get('db') as unknown as Parameters<typeof resolveOverlayTarget>[0]
+  const db = c.get('db') as unknown as OnpremDb
 
   const resolved = await resolveOverlayTarget(db, tenantId)
   if (!resolved.ok) {
@@ -101,6 +116,33 @@ onpremHandler.all('/longhaul/*', async (c) => {
   const onpremPath = incoming.pathname.replace(/^.*?\/onprem/, '')
   const url = `${resolved.target.base}/api/v1${onpremPath}${incoming.search}`
 
+  // /longhaul/version is a connectivity probe the on-prem server allows
+  // anonymously — skip the legacy-user lookup so it works before a user has
+  // their Windows username mapped.
+  const isVersionProbe = onpremPath === '/longhaul/version'
+
+  let legacyWindowsUsername: string | null = null
+  if (!isVersionProbe) {
+    const tenantUser = userId
+      ? await db.tenantUser.findUnique({
+          where: { id: userId },
+          select: { legacyWindowsUsername: true },
+        })
+      : null
+    legacyWindowsUsername = tenantUser?.legacyWindowsUsername ?? null
+    if (!legacyWindowsUsername) {
+      return c.json(
+        {
+          error:
+            'No legacy user mapping configured for this account. Ask a tenant administrator to set the Windows username on the Users settings page.',
+          code: 'LONGHAUL_USER_NOT_MAPPED',
+          correlationId,
+        },
+        422,
+      )
+    }
+  }
+
   // Whitelist headers we forward. We intentionally do NOT forward the
   // caller's Authorization, Cookie, X-Forwarded-*, or Host headers — the
   // bridge synthesises its own bearer token below, and inbound headers
@@ -115,6 +157,9 @@ onpremHandler.all('/longhaul/*', async (c) => {
   const apiKey = process.env['ONPREM_API_KEY']
   if (apiKey) {
     headers['authorization'] = `Bearer ${apiKey}`
+  }
+  if (legacyWindowsUsername) {
+    headers['x-windows-user'] = legacyWindowsUsername
   }
 
   const method = c.req.method.toUpperCase()

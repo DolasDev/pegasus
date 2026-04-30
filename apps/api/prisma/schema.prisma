@@ -319,10 +319,11 @@ model TenantUser {
   /// Cognito sub claim — null until first successful login.
   cognitoSub    String?          @map("cognito_sub")
 
-  /// Legacy SQL Server user identifier (v_longhaul_salesman.code). Populated
-  /// by tenant admins via the user management UI so longhaul handlers can
-  /// resolve the cloud user → legacy user without a per-request MSSQL lookup.
-  legacyUserId  Int?             @map("legacy_user_id")
+  /// Legacy SQL Server Windows username (v_longhaul_salesman.win_username).
+  /// Populated by tenant admins via the user management UI so the cloud →
+  /// on-prem proxy can forward an X-Windows-User header that the on-prem
+  /// longhaul middleware uses to resolve the legacy user identity.
+  legacyWindowsUsername String?  @map("legacy_windows_username")
 
   role          TenantUserRole   @default(USER)
   status        TenantUserStatus @default(PENDING)
@@ -336,7 +337,7 @@ model TenantUser {
   @@unique([tenantId, email])
   @@index([tenantId])
   @@index([cognitoSub])
-  @@index([legacyUserId])
+  @@index([legacyWindowsUsername])
   @@schema("public")
   @@map("tenant_users")
 }

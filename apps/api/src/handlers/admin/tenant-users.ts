@@ -37,10 +37,10 @@ const InviteUserBody = z.object({
 const PatchUserBody = z
   .object({
     role: z.enum(['ADMIN', 'USER']).optional(),
-    legacyUserId: z.number().int().positive().nullable().optional(),
+    legacyWindowsUsername: z.string().min(1).max(255).nullable().optional(),
   })
-  .refine((d) => d.role !== undefined || d.legacyUserId !== undefined, {
-    message: 'At least one of role or legacyUserId must be provided',
+  .refine((d) => d.role !== undefined || d.legacyWindowsUsername !== undefined, {
+    message: 'At least one of role or legacyWindowsUsername must be provided',
   })
 
 // ---------------------------------------------------------------------------
@@ -51,7 +51,7 @@ type TenantUserResponse = {
   id: string
   email: string
   cognitoSub: string | null
-  legacyUserId: number | null
+  legacyWindowsUsername: string | null
   role: 'ADMIN' | 'USER'
   status: 'PENDING' | 'ACTIVE' | 'DEACTIVATED'
   invitedAt: string
@@ -64,7 +64,7 @@ function toResponse(row: TenantUserRow): TenantUserResponse {
     id: row.id,
     email: row.email,
     cognitoSub: row.cognitoSub,
-    legacyUserId: row.legacyUserId,
+    legacyWindowsUsername: row.legacyWindowsUsername,
     role: row.role,
     status: row.status,
     invitedAt: row.invitedAt.toISOString(),
@@ -227,7 +227,7 @@ adminTenantUsersRouter.patch(
   async (c) => {
     const tenantId = c.req.param('tenantId')!
     const userId = c.req.param('userId')!
-    const { role, legacyUserId } = c.req.valid('json')
+    const { role, legacyWindowsUsername } = c.req.valid('json')
     const adminSub = c.get('adminSub')
     const adminEmail = c.get('adminEmail')
     const ipAddress = c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip')
@@ -259,17 +259,17 @@ adminTenantUsersRouter.patch(
             userAgent,
           )
         }
-        if (legacyUserId !== undefined) {
-          current = await txRepo.updateLegacyUserId(userId, legacyUserId)
+        if (legacyWindowsUsername !== undefined) {
+          current = await txRepo.updateLegacyWindowsUsername(userId, legacyWindowsUsername)
           await writeAuditLog(
             tx as Prisma.TransactionClient,
             adminSub,
             adminEmail,
-            'ADMIN_UPDATE_TENANT_USER_LEGACY_ID',
+            'ADMIN_UPDATE_TENANT_USER_LEGACY_WINDOWS_USERNAME',
             'TENANT_USER',
             userId,
-            { legacyUserId: existing.legacyUserId },
-            { legacyUserId },
+            { legacyWindowsUsername: existing.legacyWindowsUsername },
+            { legacyWindowsUsername },
             ipAddress,
             userAgent,
           )

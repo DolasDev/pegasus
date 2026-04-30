@@ -23,7 +23,7 @@ import {
   usersQueryOptions,
   useInviteUser,
   useUpdateUserRole,
-  useUpdateUserLegacyId,
+  useUpdateUserLegacyWindowsUsername,
   useDeactivateUser,
   type TenantUser,
 } from '@/api/queries/users'
@@ -194,36 +194,28 @@ function RoleBadge({ role }: { role: TenantUser['role'] }) {
 // User row
 // ---------------------------------------------------------------------------
 
-type LegacyIdEditorProps = {
+type LegacyWindowsUsernameEditorProps = {
   user: TenantUser
-  onSave: (legacyUserId: number | null) => Promise<void>
+  onSave: (legacyWindowsUsername: string | null) => Promise<void>
 }
 
-function LegacyIdEditor({ user, onSave }: LegacyIdEditorProps) {
+function LegacyWindowsUsernameEditor({ user, onSave }: LegacyWindowsUsernameEditorProps) {
   const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState(user.legacyUserId?.toString() ?? '')
+  const [value, setValue] = useState(user.legacyWindowsUsername ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!editing) setValue(user.legacyUserId?.toString() ?? '')
-  }, [user.legacyUserId, editing])
+    if (!editing) setValue(user.legacyWindowsUsername ?? '')
+  }, [user.legacyWindowsUsername, editing])
 
   async function handleSave() {
     setError(null)
     const trimmed = value.trim()
-    let parsed: number | null = null
-    if (trimmed !== '') {
-      const n = Number(trimmed)
-      if (!Number.isInteger(n) || n <= 0) {
-        setError('Must be a positive integer')
-        return
-      }
-      parsed = n
-    }
+    const next: string | null = trimmed === '' ? null : trimmed
     setSaving(true)
     try {
-      await onSave(parsed)
+      await onSave(next)
       setEditing(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save')
@@ -239,9 +231,9 @@ function LegacyIdEditor({ user, onSave }: LegacyIdEditorProps) {
         onClick={() => setEditing(true)}
         className="inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground"
       >
-        Legacy ID:{' '}
+        Windows user:{' '}
         <span className="font-mono">
-          {user.legacyUserId ?? <span className="italic">unset</span>}
+          {user.legacyWindowsUsername ?? <span className="italic">unset</span>}
         </span>
         <Pencil size={11} />
       </button>
@@ -250,10 +242,9 @@ function LegacyIdEditor({ user, onSave }: LegacyIdEditorProps) {
 
   return (
     <div className="flex items-center gap-1">
-      <span className="text-xs text-muted-foreground">Legacy ID:</span>
+      <span className="text-xs text-muted-foreground">Windows user:</span>
       <Input
-        type="number"
-        min={1}
+        type="text"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => {
@@ -262,7 +253,7 @@ function LegacyIdEditor({ user, onSave }: LegacyIdEditorProps) {
         }}
         disabled={saving}
         autoFocus
-        className="h-6 w-24 px-2 py-0 text-xs"
+        className="h-6 w-32 px-2 py-0 text-xs"
         placeholder="—"
       />
       <Button
@@ -295,7 +286,10 @@ type UserRowProps = {
   currentUserEmail: string
   onDeactivate: (user: TenantUser) => void
   onToggleRole: (user: TenantUser) => void
-  onSaveLegacyId: (user: TenantUser, legacyUserId: number | null) => Promise<void>
+  onSaveLegacyWindowsUsername: (
+    user: TenantUser,
+    legacyWindowsUsername: string | null,
+  ) => Promise<void>
 }
 
 function UserRow({
@@ -303,7 +297,7 @@ function UserRow({
   currentUserEmail,
   onDeactivate,
   onToggleRole,
-  onSaveLegacyId,
+  onSaveLegacyWindowsUsername,
 }: UserRowProps) {
   const isSelf = user.email === currentUserEmail
   const isDeactivated = user.status === 'DEACTIVATED'
@@ -332,7 +326,10 @@ function UserRow({
                 ` · Active since ${new Date(user.activatedAt).toLocaleDateString()}`}
             </span>
             {!isDeactivated && (
-              <LegacyIdEditor user={user} onSave={(v) => onSaveLegacyId(user, v)} />
+              <LegacyWindowsUsernameEditor
+                user={user}
+                onSave={(v) => onSaveLegacyWindowsUsername(user, v)}
+              />
             )}
           </div>
         </div>
@@ -375,7 +372,7 @@ export function UsersPage() {
   const users = usersData ?? []
   const deactivateMutation = useDeactivateUser()
   const roleMutation = useUpdateUserRole()
-  const legacyIdMutation = useUpdateUserLegacyId()
+  const legacyWindowsUsernameMutation = useUpdateUserLegacyWindowsUsername()
   const [panel, setPanel] = useState<PanelState>({ kind: 'none' })
 
   // Client-side guard — page only accessible to tenant_admin.
@@ -433,8 +430,11 @@ export function UsersPage() {
     }
   }
 
-  async function handleSaveLegacyId(user: TenantUser, legacyUserId: number | null) {
-    await legacyIdMutation.mutateAsync({ id: user.id, legacyUserId })
+  async function handleSaveLegacyWindowsUsername(
+    user: TenantUser,
+    legacyWindowsUsername: string | null,
+  ) {
+    await legacyWindowsUsernameMutation.mutateAsync({ id: user.id, legacyWindowsUsername })
   }
 
   return (
@@ -469,7 +469,7 @@ export function UsersPage() {
                   currentUserEmail={session?.email ?? ''}
                   onDeactivate={(u) => setPanel({ kind: 'deactivate', user: u })}
                   onToggleRole={(u) => void handleToggleRole(u)}
-                  onSaveLegacyId={handleSaveLegacyId}
+                  onSaveLegacyWindowsUsername={handleSaveLegacyWindowsUsername}
                 />
                 <DeactivateConfirm
                   user={user}
@@ -488,7 +488,7 @@ export function UsersPage() {
               currentUserEmail={session?.email ?? ''}
               onDeactivate={(u) => setPanel({ kind: 'deactivate', user: u })}
               onToggleRole={(u) => void handleToggleRole(u)}
-              onSaveLegacyId={handleSaveLegacyId}
+              onSaveLegacyWindowsUsername={handleSaveLegacyWindowsUsername}
             />
           )
         })}

@@ -25,7 +25,7 @@ export type OnPremVariables = AppVariables & {
    * The authenticated longhaul user (from v_longhaul_salesman).
    * Set by longhaulUserMiddleware in two cases:
    *   - SKIP_AUTH=true: resolved from the X-Windows-User header.
-   *   - Cognito-authenticated: resolved from TenantUser.legacyUserId.
+   *   - Cognito-authenticated: resolved from TenantUser.legacyWindowsUsername.
    * Undefined for M2M-authenticated requests.
    */
   longhaulUser:

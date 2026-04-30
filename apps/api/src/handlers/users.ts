@@ -51,10 +51,10 @@ const InviteUserBody = z.object({
 const PatchUserBody = z
   .object({
     role: z.enum(['ADMIN', 'USER']).optional(),
-    legacyUserId: z.number().int().positive().nullable().optional(),
+    legacyWindowsUsername: z.string().min(1).max(255).nullable().optional(),
   })
-  .refine((d) => d.role !== undefined || d.legacyUserId !== undefined, {
-    message: 'At least one of role or legacyUserId must be provided',
+  .refine((d) => d.role !== undefined || d.legacyWindowsUsername !== undefined, {
+    message: 'At least one of role or legacyWindowsUsername must be provided',
   })
 
 // ---------------------------------------------------------------------------
@@ -65,7 +65,7 @@ type TenantUserResponse = {
   id: string
   email: string
   cognitoSub: string | null
-  legacyUserId: number | null
+  legacyWindowsUsername: string | null
   role: 'ADMIN' | 'USER'
   status: 'PENDING' | 'ACTIVE' | 'DEACTIVATED'
   invitedAt: string
@@ -78,7 +78,7 @@ function toResponse(row: TenantUserRow): TenantUserResponse {
     id: row.id,
     email: row.email,
     cognitoSub: row.cognitoSub,
-    legacyUserId: row.legacyUserId,
+    legacyWindowsUsername: row.legacyWindowsUsername,
     role: row.role,
     status: row.status,
     invitedAt: row.invitedAt.toISOString(),
@@ -236,7 +236,7 @@ usersHandler.patch(
     const tenantId = c.get('tenantId')
     const repo = createUsersRepository(db)
     const id = c.req.param('id')
-    const { role, legacyUserId } = c.req.valid('json')
+    const { role, legacyWindowsUsername } = c.req.valid('json')
 
     const existing = await repo.findById(id, tenantId)
     if (!existing) {
@@ -247,8 +247,8 @@ usersHandler.patch(
     if (role !== undefined) {
       current = await repo.updateRole(id, role)
     }
-    if (legacyUserId !== undefined) {
-      current = await repo.updateLegacyUserId(id, legacyUserId)
+    if (legacyWindowsUsername !== undefined) {
+      current = await repo.updateLegacyWindowsUsername(id, legacyWindowsUsername)
     }
     return c.json({ data: toResponse(current) })
   },

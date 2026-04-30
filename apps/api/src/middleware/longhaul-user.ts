@@ -10,10 +10,11 @@
 //    - Returns 403 if the user is not found or is inactive.
 //
 // 2. Cognito-authenticated user (userId set by tenantMiddleware):
-//    - Looks up TenantUser.legacyUserId and queries v_longhaul_salesman by
-//      that code, then sets c.set('longhaulUser', user).
-//    - Returns 422 if the TenantUser has no legacyUserId mapped (the tenant
-//      admin must populate it from the Users settings page).
+//    - Looks up TenantUser.legacyWindowsUsername and queries
+//      v_longhaul_salesman by win_username, then sets
+//      c.set('longhaulUser', user).
+//    - Returns 422 if the TenantUser has no legacyWindowsUsername mapped (the
+//      tenant admin must populate it from the Users settings page).
 //    - Returns 403 if the legacy user is missing or inactive.
 //
 // 3. M2M API key:
@@ -30,10 +31,7 @@
 import type { MiddlewareHandler } from 'hono'
 import type { OnPremEnv } from '../types.onprem'
 import { getLonghaulDb } from '../lib/longhaul-db'
-import {
-  getUserByWindowsUsername,
-  getUserByCode,
-} from '../repositories/longhaul/reference.repository'
+import { getUserByWindowsUsername } from '../repositories/longhaul/reference.repository'
 import { hasScope } from '../lib/scopes'
 import { logger } from '../lib/logger'
 import { db as prisma } from '../db'
@@ -147,17 +145,18 @@ export const longhaulUserMiddleware: MiddlewareHandler<OnPremEnv> = async (c, ne
       ...user,
     })
   } else if (userId) {
-    // Cognito user mode: resolve longhaul identity via TenantUser.legacyUserId
+    // Cognito user mode: resolve longhaul identity via
+    // TenantUser.legacyWindowsUsername.
     const tenantUser = await prisma.tenantUser.findUnique({
       where: { id: userId },
-      select: { legacyUserId: true },
+      select: { legacyWindowsUsername: true },
     })
 
-    if (tenantUser?.legacyUserId == null) {
+    if (tenantUser?.legacyWindowsUsername == null) {
       return c.json(
         {
           error:
-            'No legacy user mapping configured for this account. Ask a tenant administrator to set the Legacy ID on the Users settings page.',
+            'No legacy user mapping configured for this account. Ask a tenant administrator to set the Windows username on the Users settings page.',
           code: 'LONGHAUL_USER_NOT_MAPPED',
           correlationId: c.get('correlationId'),
         },
@@ -167,13 +166,13 @@ export const longhaulUserMiddleware: MiddlewareHandler<OnPremEnv> = async (c, ne
 
     let user: Record<string, unknown> | undefined
     try {
-      user = (await getUserByCode(longhaulDb, tenantUser.legacyUserId)) as
+      user = (await getUserByWindowsUsername(longhaulDb, tenantUser.legacyWindowsUsername)) as
         | Record<string, unknown>
         | undefined
     } catch (err) {
-      logger.error('Failed to look up longhaul user by code', {
+      logger.error('Failed to look up longhaul user by windows username', {
         error: String(err),
-        legacyUserId: tenantUser.legacyUserId,
+        legacyWindowsUsername: tenantUser.legacyWindowsUsername,
       })
       return c.json(
         {
