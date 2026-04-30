@@ -8,9 +8,9 @@
 // RBAC enforcement on every API call).
 // ---------------------------------------------------------------------------
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { UserPlus, UserX, ShieldAlert, Loader2, AlertCircle } from 'lucide-react'
+import { UserPlus, UserX, ShieldAlert, Loader2, AlertCircle, Pencil, Check, X } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -23,6 +23,7 @@ import {
   usersQueryOptions,
   useInviteUser,
   useUpdateUserRole,
+  useUpdateUserLegacyId,
   useDeactivateUser,
   type TenantUser,
 } from '@/api/queries/users'
@@ -193,14 +194,117 @@ function RoleBadge({ role }: { role: TenantUser['role'] }) {
 // User row
 // ---------------------------------------------------------------------------
 
+type LegacyIdEditorProps = {
+  user: TenantUser
+  onSave: (legacyUserId: number | null) => Promise<void>
+}
+
+function LegacyIdEditor({ user, onSave }: LegacyIdEditorProps) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(user.legacyUserId?.toString() ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!editing) setValue(user.legacyUserId?.toString() ?? '')
+  }, [user.legacyUserId, editing])
+
+  async function handleSave() {
+    setError(null)
+    const trimmed = value.trim()
+    let parsed: number | null = null
+    if (trimmed !== '') {
+      const n = Number(trimmed)
+      if (!Number.isInteger(n) || n <= 0) {
+        setError('Must be a positive integer')
+        return
+      }
+      parsed = n
+    }
+    setSaving(true)
+    try {
+      await onSave(parsed)
+      setEditing(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground"
+      >
+        Legacy ID:{' '}
+        <span className="font-mono">
+          {user.legacyUserId ?? <span className="italic">unset</span>}
+        </span>
+        <Pencil size={11} />
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-xs text-muted-foreground">Legacy ID:</span>
+      <Input
+        type="number"
+        min={1}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') void handleSave()
+          if (e.key === 'Escape') setEditing(false)
+        }}
+        disabled={saving}
+        autoFocus
+        className="h-6 w-24 px-2 py-0 text-xs"
+        placeholder="—"
+      />
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-6 w-6 p-0"
+        onClick={() => void handleSave()}
+        disabled={saving}
+      >
+        {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-6 w-6 p-0"
+        onClick={() => setEditing(false)}
+        disabled={saving}
+      >
+        <X size={12} />
+      </Button>
+      {error && <span className="ml-1 text-xs text-destructive">{error}</span>}
+    </div>
+  )
+}
+
 type UserRowProps = {
   user: TenantUser
   currentUserEmail: string
   onDeactivate: (user: TenantUser) => void
   onToggleRole: (user: TenantUser) => void
+  onSaveLegacyId: (user: TenantUser, legacyUserId: number | null) => Promise<void>
 }
 
-function UserRow({ user, currentUserEmail, onDeactivate, onToggleRole }: UserRowProps) {
+function UserRow({
+  user,
+  currentUserEmail,
+  onDeactivate,
+  onToggleRole,
+  onSaveLegacyId,
+}: UserRowProps) {
   const isSelf = user.email === currentUserEmail
   const isDeactivated = user.status === 'DEACTIVATED'
 
@@ -221,11 +325,16 @@ function UserRow({ user, currentUserEmail, onDeactivate, onToggleRole }: UserRow
             <StatusBadge status={user.status} />
             {isSelf && <span className="text-xs text-muted-foreground">(you)</span>}
           </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Invited {new Date(user.invitedAt).toLocaleDateString()}
-            {user.activatedAt &&
-              ` · Active since ${new Date(user.activatedAt).toLocaleDateString()}`}
-          </p>
+          <div className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
+            <span>
+              Invited {new Date(user.invitedAt).toLocaleDateString()}
+              {user.activatedAt &&
+                ` · Active since ${new Date(user.activatedAt).toLocaleDateString()}`}
+            </span>
+            {!isDeactivated && (
+              <LegacyIdEditor user={user} onSave={(v) => onSaveLegacyId(user, v)} />
+            )}
+          </div>
         </div>
       </div>
       {!isDeactivated && !isSelf && (
@@ -266,6 +375,7 @@ export function UsersPage() {
   const users = usersData ?? []
   const deactivateMutation = useDeactivateUser()
   const roleMutation = useUpdateUserRole()
+  const legacyIdMutation = useUpdateUserLegacyId()
   const [panel, setPanel] = useState<PanelState>({ kind: 'none' })
 
   // Client-side guard — page only accessible to tenant_admin.
@@ -323,6 +433,10 @@ export function UsersPage() {
     }
   }
 
+  async function handleSaveLegacyId(user: TenantUser, legacyUserId: number | null) {
+    await legacyIdMutation.mutateAsync({ id: user.id, legacyUserId })
+  }
+
   return (
     <div>
       <PageHeader
@@ -355,6 +469,7 @@ export function UsersPage() {
                   currentUserEmail={session?.email ?? ''}
                   onDeactivate={(u) => setPanel({ kind: 'deactivate', user: u })}
                   onToggleRole={(u) => void handleToggleRole(u)}
+                  onSaveLegacyId={handleSaveLegacyId}
                 />
                 <DeactivateConfirm
                   user={user}
@@ -373,6 +488,7 @@ export function UsersPage() {
               currentUserEmail={session?.email ?? ''}
               onDeactivate={(u) => setPanel({ kind: 'deactivate', user: u })}
               onToggleRole={(u) => void handleToggleRole(u)}
+              onSaveLegacyId={handleSaveLegacyId}
             />
           )
         })}

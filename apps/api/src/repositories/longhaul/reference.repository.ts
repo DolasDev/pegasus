@@ -57,3 +57,8 @@ export async function getActivityTypes(db: Knex) {
 export async function getUserByWindowsUsername(db: Knex, username: string) {
   return db('v_longhaul_salesman').whereRaw('LOWER(win_username) = LOWER(?)', [username]).first()
 }
+
+/** Look up a user by legacy salesman code from v_longhaul_salesman. */
+export async function getUserByCode(db: Knex, code: number) {
+  return db('v_longhaul_salesman').where({ code }).first()
+}

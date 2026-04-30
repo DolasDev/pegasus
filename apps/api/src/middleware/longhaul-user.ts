@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Longhaul user authentication middleware
 //
-// Two auth modes:
+// Three auth modes (in priority order):
 //
 // 1. SKIP_AUTH=true (on-prem / Windows deployment):
 //    - Reads the X-Windows-User header and looks up the user in
@@ -9,13 +9,20 @@
 //    - Sets c.set('longhaulUser', user) on success.
 //    - Returns 403 if the user is not found or is inactive.
 //
-// 2. Normal mode (API key / M2M):
+// 2. Cognito-authenticated user (userId set by tenantMiddleware):
+//    - Looks up TenantUser.legacyUserId and queries v_longhaul_salesman by
+//      that code, then sets c.set('longhaulUser', user).
+//    - Returns 422 if the TenantUser has no legacyUserId mapped (the tenant
+//      admin must populate it from the Users settings page).
+//    - Returns 403 if the legacy user is missing or inactive.
+//
+// 3. M2M API key:
 //    - Requires a valid API client key already set in context by
 //      apiClientAuthMiddleware (called upstream on the m2mV1 router).
 //    - Requires the 'longhaul:read' scope (handlers can additionally check
 //      'longhaul:write' for mutating operations).
 //
-// In both modes: looks up the tenant's mssqlConnectionString from the Neon
+// In all modes: looks up the tenant's mssqlConnectionString from the Neon
 // tenants table and creates a per-tenant Knex instance stored in context.
 // Returns 422 if the connection string is not configured for the tenant.
 // ---------------------------------------------------------------------------
@@ -23,7 +30,10 @@
 import type { MiddlewareHandler } from 'hono'
 import type { OnPremEnv } from '../types.onprem'
 import { getLonghaulDb } from '../lib/longhaul-db'
-import { getUserByWindowsUsername } from '../repositories/longhaul/reference.repository'
+import {
+  getUserByWindowsUsername,
+  getUserByCode,
+} from '../repositories/longhaul/reference.repository'
 import { hasScope } from '../lib/scopes'
 import { logger } from '../lib/logger'
 import { db as prisma } from '../db'
@@ -75,6 +85,8 @@ export const longhaulUserMiddleware: MiddlewareHandler<OnPremEnv> = async (c, ne
     return
   }
 
+  const userId = c.get('userId')
+
   if (process.env['SKIP_AUTH'] === 'true') {
     // On-prem mode: authenticate via Windows username header
     const winUser = c.req.header('X-Windows-User')
@@ -121,6 +133,62 @@ export const longhaulUserMiddleware: MiddlewareHandler<OnPremEnv> = async (c, ne
       return c.json(
         {
           error: 'User not authorized',
+          code: 'LONGHAUL_USER_NOT_FOUND',
+          correlationId: c.get('correlationId'),
+        },
+        403,
+      )
+    }
+
+    c.set('longhaulUser', {
+      code: user['code'] as number,
+      first_name: user['first_name'] as string,
+      last_name: user['last_name'] as string,
+      ...user,
+    })
+  } else if (userId) {
+    // Cognito user mode: resolve longhaul identity via TenantUser.legacyUserId
+    const tenantUser = await prisma.tenantUser.findUnique({
+      where: { id: userId },
+      select: { legacyUserId: true },
+    })
+
+    if (tenantUser?.legacyUserId == null) {
+      return c.json(
+        {
+          error:
+            'No legacy user mapping configured for this account. Ask a tenant administrator to set the Legacy ID on the Users settings page.',
+          code: 'LONGHAUL_USER_NOT_MAPPED',
+          correlationId: c.get('correlationId'),
+        },
+        422,
+      )
+    }
+
+    let user: Record<string, unknown> | undefined
+    try {
+      user = (await getUserByCode(longhaulDb, tenantUser.legacyUserId)) as
+        | Record<string, unknown>
+        | undefined
+    } catch (err) {
+      logger.error('Failed to look up longhaul user by code', {
+        error: String(err),
+        legacyUserId: tenantUser.legacyUserId,
+      })
+      return c.json(
+        {
+          error: 'MSSQL query failed',
+          code: 'MSSQL_UNAVAILABLE',
+          correlationId: c.get('correlationId'),
+        },
+        503,
+      )
+    }
+
+    if (!user || (user['active'] as string | undefined)?.toLowerCase() !== 'y') {
+      return c.json(
+        {
+          error: 'Legacy user is inactive or no longer exists',
           code: 'LONGHAUL_USER_NOT_FOUND',
           correlationId: c.get('correlationId'),
         },

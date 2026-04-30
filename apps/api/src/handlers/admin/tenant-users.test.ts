@@ -27,7 +27,9 @@ const { mockSend, mockRepo, mockDb } = vi.hoisted(() => ({
     findByEmail: vi.fn(),
     invite: vi.fn(),
     updateRole: vi.fn(),
+    updateLegacyUserId: vi.fn(),
     deactivate: vi.fn(),
+    reactivate: vi.fn(),
     countAdmins: vi.fn(),
   },
   mockDb: {
@@ -109,6 +111,7 @@ const mockUserRow = {
   tenantId: 'tenant-1',
   email: 'user@acme.com',
   cognitoSub: null,
+  legacyUserId: null,
   role: 'USER' as const,
   status: 'PENDING' as const,
   invitedAt: now,

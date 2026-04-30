@@ -48,9 +48,14 @@ const InviteUserBody = z.object({
   role: z.enum(['ADMIN', 'USER']).default('USER'),
 })
 
-const PatchUserBody = z.object({
-  role: z.enum(['ADMIN', 'USER']),
-})
+const PatchUserBody = z
+  .object({
+    role: z.enum(['ADMIN', 'USER']).optional(),
+    legacyUserId: z.number().int().positive().nullable().optional(),
+  })
+  .refine((d) => d.role !== undefined || d.legacyUserId !== undefined, {
+    message: 'At least one of role or legacyUserId must be provided',
+  })
 
 // ---------------------------------------------------------------------------
 // Response shape
@@ -60,6 +65,7 @@ type TenantUserResponse = {
   id: string
   email: string
   cognitoSub: string | null
+  legacyUserId: number | null
   role: 'ADMIN' | 'USER'
   status: 'PENDING' | 'ACTIVE' | 'DEACTIVATED'
   invitedAt: string
@@ -72,6 +78,7 @@ function toResponse(row: TenantUserRow): TenantUserResponse {
     id: row.id,
     email: row.email,
     cognitoSub: row.cognitoSub,
+    legacyUserId: row.legacyUserId,
     role: row.role,
     status: row.status,
     invitedAt: row.invitedAt.toISOString(),
@@ -229,15 +236,21 @@ usersHandler.patch(
     const tenantId = c.get('tenantId')
     const repo = createUsersRepository(db)
     const id = c.req.param('id')
-    const { role } = c.req.valid('json')
+    const { role, legacyUserId } = c.req.valid('json')
 
     const existing = await repo.findById(id, tenantId)
     if (!existing) {
       return c.json({ error: 'User not found', code: 'NOT_FOUND' }, 404)
     }
 
-    const updated = await repo.updateRole(id, role)
-    return c.json({ data: toResponse(updated) })
+    let current = existing
+    if (role !== undefined) {
+      current = await repo.updateRole(id, role)
+    }
+    if (legacyUserId !== undefined) {
+      current = await repo.updateLegacyUserId(id, legacyUserId)
+    }
+    return c.json({ data: toResponse(current) })
   },
 )
 

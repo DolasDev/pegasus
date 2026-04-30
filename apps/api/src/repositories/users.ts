@@ -17,6 +17,7 @@ export type TenantUserRow = {
   tenantId: string
   email: string
   cognitoSub: string | null
+  legacyUserId: number | null
   role: 'ADMIN' | 'USER'
   status: 'PENDING' | 'ACTIVE' | 'DEACTIVATED'
   invitedAt: Date
@@ -29,6 +30,7 @@ const USER_SELECT = {
   tenantId: true,
   email: true,
   cognitoSub: true,
+  legacyUserId: true,
   role: true,
   status: true,
   invitedAt: true,
@@ -80,6 +82,15 @@ export function createUsersRepository(db: PrismaClient) {
       return db.tenantUser.update({
         where: { id },
         data: { role },
+        select: USER_SELECT,
+      })
+    },
+
+    /** Set or clear the legacy SQL Server user id for a TenantUser. */
+    updateLegacyUserId(id: string, legacyUserId: number | null): Promise<TenantUserRow> {
+      return db.tenantUser.update({
+        where: { id },
+        data: { legacyUserId },
         select: USER_SELECT,
       })
     },

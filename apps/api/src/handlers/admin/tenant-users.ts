@@ -34,9 +34,14 @@ const InviteUserBody = z.object({
   role: z.enum(['ADMIN', 'USER']).default('USER'),
 })
 
-const PatchUserBody = z.object({
-  role: z.enum(['ADMIN', 'USER']),
-})
+const PatchUserBody = z
+  .object({
+    role: z.enum(['ADMIN', 'USER']).optional(),
+    legacyUserId: z.number().int().positive().nullable().optional(),
+  })
+  .refine((d) => d.role !== undefined || d.legacyUserId !== undefined, {
+    message: 'At least one of role or legacyUserId must be provided',
+  })
 
 // ---------------------------------------------------------------------------
 // Response shape
@@ -46,6 +51,7 @@ type TenantUserResponse = {
   id: string
   email: string
   cognitoSub: string | null
+  legacyUserId: number | null
   role: 'ADMIN' | 'USER'
   status: 'PENDING' | 'ACTIVE' | 'DEACTIVATED'
   invitedAt: string
@@ -58,6 +64,7 @@ function toResponse(row: TenantUserRow): TenantUserResponse {
     id: row.id,
     email: row.email,
     cognitoSub: row.cognitoSub,
+    legacyUserId: row.legacyUserId,
     role: row.role,
     status: row.status,
     invitedAt: row.invitedAt.toISOString(),
@@ -220,7 +227,7 @@ adminTenantUsersRouter.patch(
   async (c) => {
     const tenantId = c.req.param('tenantId')!
     const userId = c.req.param('userId')!
-    const { role } = c.req.valid('json')
+    const { role, legacyUserId } = c.req.valid('json')
     const adminSub = c.get('adminSub')
     const adminEmail = c.get('adminEmail')
     const ipAddress = c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip')
@@ -236,20 +243,38 @@ adminTenantUsersRouter.patch(
     try {
       const updated = await db.$transaction(async (tx) => {
         const txRepo = createUsersRepository(tx as PrismaClient)
-        const u = await txRepo.updateRole(userId, role)
-        await writeAuditLog(
-          tx as Prisma.TransactionClient,
-          adminSub,
-          adminEmail,
-          'ADMIN_UPDATE_TENANT_USER_ROLE',
-          'TENANT_USER',
-          userId,
-          { role: existing.role },
-          { role },
-          ipAddress,
-          userAgent,
-        )
-        return u
+        let current = existing
+        if (role !== undefined) {
+          current = await txRepo.updateRole(userId, role)
+          await writeAuditLog(
+            tx as Prisma.TransactionClient,
+            adminSub,
+            adminEmail,
+            'ADMIN_UPDATE_TENANT_USER_ROLE',
+            'TENANT_USER',
+            userId,
+            { role: existing.role },
+            { role },
+            ipAddress,
+            userAgent,
+          )
+        }
+        if (legacyUserId !== undefined) {
+          current = await txRepo.updateLegacyUserId(userId, legacyUserId)
+          await writeAuditLog(
+            tx as Prisma.TransactionClient,
+            adminSub,
+            adminEmail,
+            'ADMIN_UPDATE_TENANT_USER_LEGACY_ID',
+            'TENANT_USER',
+            userId,
+            { legacyUserId: existing.legacyUserId },
+            { legacyUserId },
+            ipAddress,
+            userAgent,
+          )
+        }
+        return current
       })
 
       return c.json({ data: toResponse(updated) })

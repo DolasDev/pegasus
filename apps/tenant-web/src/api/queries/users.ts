@@ -9,6 +9,7 @@ export type TenantUser = {
   id: string
   email: string
   cognitoSub: string | null
+  legacyUserId: number | null
   role: 'ADMIN' | 'USER'
   status: 'PENDING' | 'ACTIVE' | 'DEACTIVATED'
   invitedAt: string
@@ -22,7 +23,8 @@ export type InviteUserInput = {
 }
 
 export type PatchUserInput = {
-  role: 'ADMIN' | 'USER'
+  role?: 'ADMIN' | 'USER'
+  legacyUserId?: number | null
 }
 
 // ---------------------------------------------------------------------------
@@ -68,6 +70,20 @@ export function useUpdateUserRole() {
       apiFetch<TenantUser>(`/api/v1/users/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: usersKeys.list() })
+    },
+  })
+}
+
+export function useUpdateUserLegacyId() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, legacyUserId }: { id: string; legacyUserId: number | null }) =>
+      apiFetch<TenantUser>(`/api/v1/users/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ legacyUserId }),
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: usersKeys.list() })

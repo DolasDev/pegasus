@@ -23,8 +23,10 @@ export type OnPremVariables = AppVariables & {
   longhaulDb: Knex
   /**
    * The authenticated longhaul user (from v_longhaul_salesman).
-   * Set by longhaulUserMiddleware when SKIP_AUTH=true and X-Windows-User header
-   * is provided. Undefined for M2M-authenticated requests.
+   * Set by longhaulUserMiddleware in two cases:
+   *   - SKIP_AUTH=true: resolved from the X-Windows-User header.
+   *   - Cognito-authenticated: resolved from TenantUser.legacyUserId.
+   * Undefined for M2M-authenticated requests.
    */
   longhaulUser:
     | { code: number; first_name: string; last_name: string; [key: string]: unknown }
