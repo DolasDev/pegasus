@@ -1,0 +1,12 @@
+export enum ActivityType {
+  PACKING = 'PACK',
+  PICKUP = 'LOAD',
+  DELIVERY = 'RDEL',
+  AGENTPICKUP = 'R19I',
+  DOCKPICKUP = 'WHSE',
+  EXTRAPICKUP = 'XPU',
+  EXTRADELIVERY = 'XDEL',
+  UNPACK = 'UNPK',
+  SITIN = 'SITIN',
+  SITOUT = 'SITOUT',
+}

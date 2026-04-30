@@ -1,0 +1,116 @@
+.dateHeader {
+  width: 80px;
+  border-right: 1px solid var(--light-30);
+  padding: 0 10px;
+  position: relative;
+  flex: none;
+}
+
+.activityGantt {
+  overflow-x: auto;
+  z-index: 0;
+}
+
+.activityRow {
+  display: flex;
+  position: relative;
+  min-height: 60px;
+}
+
+.eta {
+  height: 50px;
+  display: flex;
+  justify-content: center;
+  align-items: left;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.7rem;
+  z-index: 2;
+  align-self: center;
+  background-color: rgba(207, 188, 134, 0.5);
+  color: var(--grey);
+  font-weight: 1000;
+
+  position: absolute;
+  flex-direction: column;
+  opacity: 1;
+  padding-left: 5px;
+}
+
+.green {
+  color: darkgreen;
+}
+
+.dateColumn {
+  width: 80px;
+  border-right: 1px solid var(--light-30);
+  border-bottom: 1px solid var(--light-30);
+  padding: 0 10px;
+  position: relative;
+  flex: none;
+}
+
+.fakeRow {
+  width: 100%;
+  display: flex;
+}
+
+.activity {
+  position: absolute;
+  height: 50px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.7rem;
+  z-index: 2;
+  align-self: center;
+  opacity: 1;
+}
+
+.activity.date-change {
+  border-style: solid;
+  border-radius: 5px;
+  border-color: orange;
+  align-items: center;
+}
+
+.activity:hover {
+  opacity: 1;
+}
+
+.activity.not-selected {
+  opacity: 0.4;
+}
+
+.header {
+  display: flex;
+}
+
+.formField {
+  margin-bottom: 6px;
+}
+
+.editTripButton {
+  background-color: green;
+}
+
+.confirmDateButton {
+  background-color: orange;
+  display: inline-block;
+  height: 100%;
+  padding: 4px;
+  margin: 2px;
+  border: 0;
+  font-size: 14px;
+  font-family: 'Open Sans', Tinos, serif, sans-serif;
+}
+
+.confirmDateButton:hover {
+  background-color: green;
+}
+
+.confirmDateButton.confirmed {
+  background-color: green;
+}

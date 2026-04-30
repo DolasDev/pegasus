@@ -1,3 +1,4 @@
+import { lazy } from 'react'
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 
 import { RootLayout } from '@/routes/__root'
@@ -19,6 +20,28 @@ import { SsoConfigPage } from '@/routes/sso-config'
 import { UsersPage } from '@/routes/users'
 import { DeveloperSettingsPage } from '@/routes/settings.developer'
 import { DriverPlanningPage } from '@/routes/driver-planning.index'
+import { DriverPlanningLayout } from '@/features/driver-planning/DriverPlanningLayout'
+
+// Lazy-loaded sub-pages — the longhaul Redux/react-datepicker/react-select
+// bundle only loads when a user navigates to one of these.
+const PlanningModuleLazy = lazy(() =>
+  import('@/features/driver-planning/routes/PlanningModule').then((m) => ({
+    default: m.PlanningModule,
+  })),
+)
+const TripsModuleLazy = lazy(() =>
+  import('@/features/driver-planning/routes/TripsModule').then((m) => ({
+    default: m.TripsModule,
+  })),
+)
+const ShipmentModuleLazy = lazy(() =>
+  import('@/features/driver-planning/routes/ShipmentModule').then((m) => ({
+    default: m.ShipmentModule,
+  })),
+)
+const TripDetailLazy = lazy(() =>
+  import('@/features/driver-planning/containers/Trip').then((m) => ({ default: m.Trip })),
+)
 
 // ---------------------------------------------------------------------------
 // Root
@@ -134,7 +157,37 @@ const developerSettingsRoute = createRoute({
 const driverPlanningRoute = createRoute({
   getParentRoute: () => authLayout,
   path: '/driver-planning',
+  component: DriverPlanningLayout,
+})
+
+const dpAvailabilityRoute = createRoute({
+  getParentRoute: () => driverPlanningRoute,
+  path: '/',
   component: DriverPlanningPage,
+})
+
+const dpPlanningRoute = createRoute({
+  getParentRoute: () => driverPlanningRoute,
+  path: 'planning',
+  component: PlanningModuleLazy,
+})
+
+const dpTripsIndexRoute = createRoute({
+  getParentRoute: () => driverPlanningRoute,
+  path: 'trips',
+  component: TripsModuleLazy,
+})
+
+const dpTripDetailRoute = createRoute({
+  getParentRoute: () => driverPlanningRoute,
+  path: 'trips/$tripId',
+  component: TripDetailLazy,
+})
+
+const dpShipmentsRoute = createRoute({
+  getParentRoute: () => driverPlanningRoute,
+  path: 'shipments',
+  component: ShipmentModuleLazy,
 })
 
 // ---------------------------------------------------------------------------
@@ -154,7 +207,13 @@ const routeTree = rootRoute.addChildren([
     customersDetailRoute,
     dispatchRoute,
     invoicesRoute,
-    driverPlanningRoute,
+    driverPlanningRoute.addChildren([
+      dpAvailabilityRoute,
+      dpPlanningRoute,
+      dpTripsIndexRoute,
+      dpTripDetailRoute,
+      dpShipmentsRoute,
+    ]),
     ssoConfigRoute,
     usersRoute,
     developerSettingsRoute,

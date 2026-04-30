@@ -1,0 +1,136 @@
+.shipmentCard:hover .tripButtonContainer {
+  opacity: 1;
+}
+
+.shipmentCard {
+  padding: 1px 2px;
+  margin-left: -5px !important;
+}
+
+.VIP {
+  border-left: 20px solid;
+  border-color: rgb(47, 2, 47);
+}
+
+.S-VIP {
+  border-left: 20px solid;
+  border-color: rgb(3, 97, 3);
+}
+
+.S-WGS {
+  border-left: 20px solid;
+  border-color:red;
+}
+
+.V-WGS {
+  border-left: 20px solid;
+  border-color: red;
+}
+
+.WGS {
+  border-left: 20px solid;
+  border-color: red;
+}
+
+.NONE {
+  border-left: 20px solid;
+  border-color: rgba(255, 255, 255, 0.315);
+}
+
+.tripButtonContainer {
+  width: fit-content;
+  flex: none !important;
+  height: fit-content;
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 200ms;
+}
+
+.disabled .row {
+  color: rgba(0, 0, 0, 0.5);
+  font-style: italic;
+}
+
+.detailButton {
+  margin-top: 5px;
+  background-color: var(--blue-700);
+  display: block;
+  width: 90px;
+}
+
+.detailButton:hover {
+  background-color: var(--blue-dark);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  margin: 2px;
+  font-size: 13px;
+}
+
+.bold {
+  font-weight: bold;
+}
+
+.avl {
+  color: green;
+}
+.undecided {
+  color: red;
+}
+.self {
+  color: rgb(0, 153, 255);
+}
+
+.other {
+  color: orange;
+}
+
+.row > div {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.offered .row {
+  background-color: rgba(243, 208, 175, 0.57);
+  font-style: italic;
+}
+
+.accepted .row {
+  background-color: rgba(255, 242, 189, 0.912);
+  font-style: italic;
+}
+
+.inprogress .row {
+  background-color: rgba(204, 247, 206, 0.713);
+  font-style: italic;
+  border-top-left-radius: 2px;
+  border-bottom-left-radius: 2px;
+}
+
+.indicator {
+  position: absolute;
+  left: 0;
+  top: 5px;
+  transform-origin: 0 0;
+  transform: rotate(270deg);
+  margin-left: -20px;
+  margin-top: 35px;
+  color: white;
+  font-weight: bold;
+  font-style: normal;
+}
+
+.row > div .icon {
+  overflow: visible;
+  z-index: 100;
+}
+
+.vip {
+  color: green;
+}

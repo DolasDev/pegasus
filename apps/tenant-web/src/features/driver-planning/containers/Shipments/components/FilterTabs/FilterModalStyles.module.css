@@ -1,0 +1,62 @@
+.tabGroup {
+    display: flex;
+    position: absolute;
+    right: 20px;
+    overflow: hidden;
+    left: 20px;
+    bottom: 110px;
+    top: 90px;
+}
+
+.tabContainer {
+    padding-right: 10px;
+}
+
+.tab {
+    cursor: pointer;
+    padding: 5px;
+    font-size: 12px;
+}
+
+.tab.selectedTab {
+    border-right: 2px solid blue;
+    font-weight: bold;
+}
+
+.tabGroupBody {
+    flex: 1;
+    overflow: auto;
+}
+
+.filterCard {
+    border-radius: 2px;
+    padding: 5px;
+    margin: 5px;
+    display: flex;
+    cursor: pointer;
+    background-color: rgba(213, 212, 212, 0.352);
+}
+
+.filterCardActive {
+    background-color:rgba(182, 182, 228, 0.83)
+}
+
+.filterCardDefault {
+    background-color:rgba(182, 226, 228, 0.83)
+}
+
+.filterCard:hover {
+    background-color: rgba(0, 0, 0, .2);
+    box-shadow: 0 2px 4px 0 rgba(0,0,0,0.2);
+}
+
+.filterListHeaders {
+    display: flex;
+    padding-right: 5px;
+    margin: 5px;
+    font-weight: bold;
+}
+
+.nameColumn {
+    flex: 1;
+}

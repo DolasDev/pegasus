@@ -1,0 +1,103 @@
+/* ----------------------------------------------------------------------------
+ * Driver Planning feature styles — ported from apps/longhaul.
+ * Selectors are scoped to .driver-planning-root so they don't leak into the
+ * rest of tenant-web. CSS variables on :root remain global (their names are
+ * specific enough not to clash).
+ * ------------------------------------------------------------------------- */
+
+:root {
+  --smoke: #f5f5f5;
+  --grey-light: #e6e6e6;
+  --grey: #eee;
+  --dark-grey: #cccccc;
+  --light-30: rgba(162, 170, 195, 0.3);
+  --light-50: rgba(162, 170, 195, 0.5);
+  --light: #a2aac3;
+  --blue-light: #858ab0;
+  --blue-300: #5d6dbf;
+  --blue: #081ad3;
+  --blue-500: #0917a9;
+  --blue-700: #0c145c;
+  --blue-dark: #040823;
+  --green: rgb(60, 156, 60);
+  --green-500: rgb(46, 122, 46);
+  --red: rgb(172, 67, 67);
+}
+
+.driver-planning-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.driver-planning-root h1 {
+  font-weight: 100;
+  font-size: 30px;
+}
+
+.driver-planning-root label {
+  margin-top: 5px;
+  font-weight: bold;
+}
+
+.driver-planning-root .pegasus-link {
+  color: var(--blue);
+  outline: none;
+  background: none;
+  padding: none;
+  border: none;
+  cursor: pointer;
+}
+
+.driver-planning-root .pegasus-link:hover {
+  text-decoration: underline;
+}
+
+.driver-planning-root .App-inner-container {
+  padding: 0 10px;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  flex: 1;
+  overflow: auto;
+}
+
+.driver-planning-root .PlanningModule__container {
+  display: flex;
+  flex: 1;
+  margin: 10px 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+.driver-planning-root .TripsModule__container {
+  margin: 10px 0;
+  overflow: auto;
+  height: 100%;
+}
+
+.driver-planning-root .App__right-column {
+  flex: 1;
+  height: 100%;
+  box-sizing: border-box;
+  flex-direction: column;
+  margin-left: 10px;
+  overflow: auto;
+  display: flex;
+}
+
+.driver-planning-root .App__left-column {
+  flex: 3;
+  height: 100%;
+  box-sizing: border-box;
+  flex-direction: column;
+  overflow: auto;
+  display: flex;
+}
+
+.driver-planning-root .App_planning-button {
+  position: relative;
+  top: 25%;
+  margin-top: -12px;
+}

@@ -42,4 +42,21 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': 'off',
     },
   },
+
+  // Ported longhaul code inside tenant-web — same relaxed rules until the
+  // follow-up phase rewrites it to match tenant-web conventions.
+  {
+    files: ['apps/tenant-web/src/features/driver-planning/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+      '@typescript-eslint/consistent-type-imports': 'off',
+      '@typescript-eslint/no-wrapper-object-types': 'off',
+      '@typescript-eslint/no-unsafe-function-type': 'off',
+      'prefer-const': 'off',
+      'no-useless-assignment': 'off',
+      'no-prototype-builtins': 'off',
+      'no-var': 'off',
+    },
+  },
 )

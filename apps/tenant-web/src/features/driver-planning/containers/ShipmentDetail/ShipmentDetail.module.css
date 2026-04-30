@@ -1,0 +1,48 @@
+.detail-container {
+  border-left: 1px solid var(--grey);
+  border-top: 1px solid var(--grey);
+  position: absolute;
+  width: 400px;
+  margin: -20px 0 0 0;
+  padding: 20px;
+  padding-top: 45px;
+  right: -100px;
+  margin-right: 100px;
+  background: #fff;
+  transform-origin: 0% 0%;
+  transform: translate(100%, 0);
+  z-index: 10;
+  transition: transform 0.5s cubic-bezier(0.77, 0.2, 0.05, 1);
+  overflow: auto;
+  height: calc(100vh - 45px);
+}
+
+.closeIcon {
+  position: absolute;
+  top: 20px;
+  right: 30px;
+  font-size: 20px;
+}
+
+.closeIcon i {
+  color: var(--dark-grey);
+}
+
+.closeIcon:hover i {
+  color: #000;
+}
+
+.detail-container.show {
+  transform: scale(1, 1);
+  opacity: 1;
+}
+
+.shipment-detail {
+  line-height: 1.6;
+  font-size: 12px;
+}
+
+.shipment-detail > *:first-child {
+  font-size: 14px;
+  margin-right: 5px;
+}

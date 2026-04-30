@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { PageHeader } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import {
   Table,
@@ -234,7 +233,6 @@ export function DriverPlanningPage() {
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Driver Planning" breadcrumbs={[{ label: 'Driver Planning' }]} />
         <OnpremVersionStatus />
         <p className="text-sm text-muted-foreground">Loading...</p>
       </div>
@@ -243,7 +241,6 @@ export function DriverPlanningPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Driver Planning" breadcrumbs={[{ label: 'Driver Planning' }]} />
       <OnpremVersionStatus />
       {(drivers ?? []).length === 0 ? (
         <EmptyState

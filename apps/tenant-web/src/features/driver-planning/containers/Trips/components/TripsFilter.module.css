@@ -1,0 +1,53 @@
+.container {
+  margin: 10px 0;
+}
+
+.header {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.caret {
+  margin-right: 5px;
+  transition: transform 300ms;
+}
+
+.caret.rotate {
+  transform: rotate(90deg);
+}
+
+.link {
+  color: var(--blue);
+  margin-left: 15px;
+}
+
+.body {
+  height: initial;
+  opacity: 100;
+  visibility: visible;
+}
+
+.column * {
+  font-size: 10px;
+}
+
+.column:first-child {
+  margin-right: 20px;
+}
+
+.filterRow {
+  font-size: 12px;
+  margin-top: 5px;
+  align-items: center;
+}
+
+.filterRow > label {
+  flex: none;
+  width: 60px;
+  font-weight: bold;
+}
+
+.filterContainer {
+  flex: 1;
+}

@@ -1,0 +1,128 @@
+.shipmentCard:hover .tripButtonContainer {
+  opacity: 1;
+}
+
+.shipmentCard {
+  padding: 1px 2px;
+}
+
+.tripButtonContainer {
+  width: fit-content;
+  flex: none !important;
+  height: fit-content;
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 200ms;
+}
+
+.disabled .row {
+  color: rgba(0, 0, 0, 0.5);
+  font-style: italic;
+}
+
+.canceled {
+  color: currentColor;
+  pointer-events: all;
+  text-decoration: none;
+}
+
+.canceled div {
+  cursor: not-allowed;
+  color: rgba(0, 0, 0, 0.5);
+  font-style: italic;
+}
+
+.detailButton {
+  margin-top: 5px;
+  background-color: var(--blue-700);
+  display: block;
+  width: 90px;
+}
+
+.detailButton:hover {
+  background-color: var(--blue-dark);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  margin: 1px;
+  font-size: 11px;
+}
+
+.bold {
+  font-weight: 600;
+}
+
+.row > div {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.trip-container {
+  display: flex;
+}
+
+.filter-container {
+  width: 300px;
+}
+
+.trips-card-container {
+  flex: 1;
+  padding: 0 20px;
+  margin-top: 35px;
+}
+
+.trip-container * {
+  text-decoration: none;
+}
+
+.trip-card {
+  margin: 6px 2px;
+  padding: 12px;
+  position: relative;
+}
+
+.trip-card-header {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.trip-card-children {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.status {
+  color: #fff;
+  padding: 5px;
+  border-radius: 3px;
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background-color: var(--blue-light);
+}
+
+.status.Pending {
+  background-color: var(--grey-light);
+  color: #000;
+}
+
+.status.Accepted {
+  background-color: var(--blue-light);
+  color: #000;
+}
+
+.status.completed {
+  background-color: var(--green);
+  color: #fff;
+}
+
+.card-data {
+  margin-right: 5px;
+}
