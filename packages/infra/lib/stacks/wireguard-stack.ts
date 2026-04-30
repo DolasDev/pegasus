@@ -467,6 +467,26 @@ export class WireGuardStack extends cdk.Stack {
       // exactly that bug in prod once already; fail boot loudly if the
       // route didn't take so we never inherit the same blackhole again.
       'ip route show 10.200.0.0/16 2>/dev/null | grep -q wg0 || { echo "FATAL: wg-quick did not install the 10.200.0.0/16 → wg0 route — check wg0.conf PostUp" >&2; exit 1; }',
+      // SNAT all forwarded traffic going out wg0 to the hub overlay IP
+      // (10.10.200.1). Reason: when the tunnel-proxy Lambda invokes the
+      // hub, the inner packet keeps the Lambda's private-subnet source
+      // (10.10.3.x). The tenant's wg client is configured with
+      // `AllowedIPs = 10.10.200.1/32` (see wireguard-config.ts), so it
+      // silently drops any packet whose decrypted source isn't 10.10.200.1.
+      // MASQUERADE rewrites the source to the hub's wg0 address before
+      // encryption, making forwarded traffic indistinguishable from
+      // hub-originated traffic — which the tenant accepts. -C/-A pattern
+      // makes the line idempotent across reboots / userdata re-runs.
+      'iptables -t nat -C POSTROUTING -o wg0 -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE',
+      // Persist the iptables rule across reboots. Amazon Linux 2023 ships
+      // iptables-services; install if missing and enable the save-on-stop
+      // path so the rule survives instance lifecycle events.
+      'dnf install -y iptables-services',
+      'iptables-save > /etc/sysconfig/iptables',
+      'systemctl enable iptables',
+      // Verify the MASQUERADE rule is actually in the kernel. Same
+      // fail-loudly philosophy as the route check above.
+      'iptables -t nat -C POSTROUTING -o wg0 -j MASQUERADE 2>/dev/null || { echo "FATAL: MASQUERADE rule missing from POSTROUTING on wg0 — Lambda-forwarded traffic will be dropped at tenant AllowedIPs check" >&2; exit 1; }',
       // Reconcile agent - install and start. Missing apikey or missing
       // tarball URI is fatal: an instance without the agent silently drifts
       // from the desired peer set, which is exactly the failure mode that
