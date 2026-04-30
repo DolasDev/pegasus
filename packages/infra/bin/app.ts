@@ -176,9 +176,10 @@ const adminFrontendAssetsStack = new AdminFrontendAssetsStack(
     stackName: `${stackNamePrefix}-admin-frontend-assets`,
     description: `${descPrefix} — admin portal assets + config.json`,
     adminFrontendStackName: adminFrontendStack.stackName,
+    cognitoStackName: cognitoStack.stackName,
     apiUrl: apiStack.apiUrl,
     cognitoDomain: cognitoStack.hostedUiBaseUrl,
-    cognitoAdminClientId: cognitoStack.adminAppClient.userPoolClientId,
   },
 )
 adminFrontendAssetsStack.addDependency(adminFrontendStack)
+adminFrontendAssetsStack.addDependency(cognitoStack)
