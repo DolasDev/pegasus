@@ -12,13 +12,13 @@
     "deploy:ci": "cdk deploy ${TARGET:---all} -c env=${ENV_NAME:-dev} --require-approval never --outputs-file /tmp/pegasus-cdk-outputs.json --app \"npx tsx bin/app.ts\""
   },
   "dependencies": {
-    "aws-cdk-lib": "^2.250.0",
+    "aws-cdk-lib": "^2.251.0",
     "constructs": "^10.4.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^4.0.0",
-    "aws-cdk": "^2.1118.4",
+    "aws-cdk": "^2.1120.0",
     "typescript": "*",
     "vitest": "^4.1.5"
   }
