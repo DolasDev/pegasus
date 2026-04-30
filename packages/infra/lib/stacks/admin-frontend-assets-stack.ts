@@ -13,12 +13,19 @@ export interface AdminFrontendAssetsStackProps extends cdk.StackProps {
    * the rationale (decouples this stack from CDK's auto-export logical IDs).
    */
   readonly adminFrontendStackName: string
+  /**
+   * Name of the upstream CognitoStack — used to build a stable Fn::ImportValue
+   * for the admin app client ID. Same drift-immunity rationale as
+   * adminFrontendStackName: passing the construct ref directly lets CDK
+   * auto-generate the export logical ID, and that ID has empirically drifted
+   * across CDK minor versions, blocking cognito-stack updates with
+   * "Cannot delete export … as it is in use by …".
+   */
+  readonly cognitoStackName: string
   /** API Gateway URL — resolved CDK token from ApiStack. */
   readonly apiUrl: string
   /** Cognito Hosted UI base URL — resolved CDK token from CognitoStack. */
   readonly cognitoDomain: string
-  /** Admin app client ID — resolved CDK token from CognitoStack. */
-  readonly cognitoAdminClientId: string
 }
 
 /**
@@ -58,6 +65,10 @@ export class AdminFrontendAssetsStack extends cdk.Stack {
       },
     )
 
+    const cognitoAdminClientId = cdk.Fn.importValue(
+      `${props.cognitoStackName}:ExportsOutputRefUserPoolAdminAppClientCD59D22143082BED`,
+    )
+
     const distPath = path.join(__dirname, '../../../../apps/admin-web/dist')
     if (fs.existsSync(distPath)) {
       new s3deploy.BucketDeployment(this, 'DeployAdmin', {
@@ -67,7 +78,7 @@ export class AdminFrontendAssetsStack extends cdk.Stack {
             apiUrl: props.apiUrl,
             cognito: {
               domain: props.cognitoDomain,
-              clientId: props.cognitoAdminClientId,
+              clientId: cognitoAdminClientId,
               redirectUri: `https://${distributionDomainName}/auth/callback`,
             },
           }),

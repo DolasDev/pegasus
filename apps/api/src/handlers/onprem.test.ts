@@ -220,3 +220,172 @@ describe('GET /api/v1/onprem/longhaul/version', () => {
     expect(await res.text()).toBe('{"error":"nope"}')
   })
 })
+
+describe('wildcard /api/v1/onprem/longhaul/* proxy', () => {
+  function activePeer() {
+    mockDb.vpnPeer.findUnique.mockResolvedValue({
+      assignedOctet1: 5,
+      assignedOctet2: 8,
+      status: 'ACTIVE',
+    })
+  }
+
+  function lastInvokePayload(send: ReturnType<typeof vi.fn>): Record<string, unknown> {
+    const cmd = send.mock.calls[0]![0] as { input: { Payload: Uint8Array } }
+    return JSON.parse(new TextDecoder().decode(cmd.input.Payload)) as Record<string, unknown>
+  }
+
+  it('forwards GET with query string preserved on a non-/version path', async () => {
+    activePeer()
+    const send = vi.fn().mockResolvedValue({
+      Payload: fakeInvokePayload({
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+        body: '[]',
+      }),
+    })
+    setTunnelLambdaClient({ send } as unknown as LambdaClient)
+
+    const res = await buildApp().request(
+      '/api/v1/onprem/longhaul/trips?filters=%7B%22a%22%3A1%7D&searchTerm=foo',
+    )
+
+    expect(res.status).toBe(200)
+    const payload = lastInvokePayload(send)
+    expect(payload['method']).toBe('GET')
+    expect(payload['url']).toBe(
+      'http://10.200.5.8:3000/api/v1/longhaul/trips?filters=%7B%22a%22%3A1%7D&searchTerm=foo',
+    )
+  })
+
+  it('forwards reference-data GETs without trailing query string', async () => {
+    activePeer()
+    const send = vi.fn().mockResolvedValue({
+      Payload: fakeInvokePayload({ status: 200, headers: {}, body: '[]' }),
+    })
+    setTunnelLambdaClient({ send } as unknown as LambdaClient)
+
+    await buildApp().request('/api/v1/onprem/longhaul/states')
+
+    const payload = lastInvokePayload(send)
+    expect(payload['method']).toBe('GET')
+    expect(payload['url']).toBe('http://10.200.5.8:3000/api/v1/longhaul/states')
+  })
+
+  it('forwards POST body, method, and content-type on a nested path', async () => {
+    activePeer()
+    const send = vi.fn().mockResolvedValue({
+      Payload: fakeInvokePayload({
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+        body: '{"id":99}',
+      }),
+    })
+    setTunnelLambdaClient({ send } as unknown as LambdaClient)
+
+    const res = await buildApp().request('/api/v1/onprem/longhaul/trips/42/notes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ note: 'hello', type: 'driver' }),
+    })
+
+    expect(res.status).toBe(201)
+    expect(await res.json()).toEqual({ id: 99 })
+
+    const payload = lastInvokePayload(send) as {
+      method: string
+      url: string
+      body: string
+      headers: Record<string, string>
+    }
+    expect(payload.method).toBe('POST')
+    expect(payload.url).toBe('http://10.200.5.8:3000/api/v1/longhaul/trips/42/notes')
+    expect(payload.body).toBe('{"note":"hello","type":"driver"}')
+    expect(payload.headers['content-type']).toBe('application/json')
+  })
+
+  it('forwards PATCH on a deep nested path', async () => {
+    activePeer()
+    const send = vi.fn().mockResolvedValue({
+      Payload: fakeInvokePayload({ status: 200, headers: {}, body: '{}' }),
+    })
+    setTunnelLambdaClient({ send } as unknown as LambdaClient)
+
+    await buildApp().request('/api/v1/onprem/longhaul/trips/42/status', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ statusId: 3 }),
+    })
+
+    const payload = lastInvokePayload(send) as {
+      method: string
+      url: string
+      body: string
+    }
+    expect(payload.method).toBe('PATCH')
+    expect(payload.url).toBe('http://10.200.5.8:3000/api/v1/longhaul/trips/42/status')
+    expect(payload.body).toBe('{"statusId":3}')
+  })
+
+  it('forwards DELETE without a body', async () => {
+    activePeer()
+    const send = vi.fn().mockResolvedValue({
+      Payload: fakeInvokePayload({ status: 204, headers: {}, body: '' }),
+    })
+    setTunnelLambdaClient({ send } as unknown as LambdaClient)
+
+    const res = await buildApp().request('/api/v1/onprem/longhaul/shipment-filters/7', {
+      method: 'DELETE',
+    })
+
+    expect(res.status).toBe(204)
+    const payload = lastInvokePayload(send) as {
+      method: string
+      url: string
+      body: string
+    }
+    expect(payload.method).toBe('DELETE')
+    expect(payload.url).toBe('http://10.200.5.8:3000/api/v1/longhaul/shipment-filters/7')
+    expect(payload.body).toBe('')
+  })
+
+  it('does NOT forward inbound cookie / x-forwarded-for / authorization headers', async () => {
+    activePeer()
+    const send = vi.fn().mockResolvedValue({
+      Payload: fakeInvokePayload({ status: 200, headers: {}, body: '{}' }),
+    })
+    setTunnelLambdaClient({ send } as unknown as LambdaClient)
+
+    await buildApp().request('/api/v1/onprem/longhaul/drivers', {
+      headers: {
+        cookie: 'session=leak-me',
+        'x-forwarded-for': '203.0.113.7',
+        authorization: 'Bearer caller-token-should-not-be-forwarded',
+      },
+    })
+
+    const payload = lastInvokePayload(send) as { headers: Record<string, string> }
+    expect(payload.headers['cookie']).toBeUndefined()
+    expect(payload.headers['x-forwarded-for']).toBeUndefined()
+    // Authorization is only present when ONPREM_API_KEY is set; here it isn't.
+    expect(payload.headers['authorization']).toBeUndefined()
+  })
+
+  it('synthesises the bearer token on non-GET methods when ONPREM_API_KEY is set', async () => {
+    process.env['ONPREM_API_KEY'] = 'k_post_test'
+    activePeer()
+    const send = vi.fn().mockResolvedValue({
+      Payload: fakeInvokePayload({ status: 200, headers: {}, body: '{}' }),
+    })
+    setTunnelLambdaClient({ send } as unknown as LambdaClient)
+
+    await buildApp().request('/api/v1/onprem/longhaul/activities/9', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    })
+
+    const payload = lastInvokePayload(send) as { headers: Record<string, string> }
+    expect(payload.headers['authorization']).toBe('Bearer k_post_test')
+  })
+})
