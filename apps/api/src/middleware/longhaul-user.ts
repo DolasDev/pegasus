@@ -65,6 +65,16 @@ export const longhaulUserMiddleware: MiddlewareHandler<OnPremEnv> = async (c, ne
 
   c.set('longhaulDb', longhaulDb)
 
+  // /version is a system connectivity smoke test invoked by the cloud-side
+  // tunnel-proxy (apps/api/src/handlers/onprem.ts), not a user-facing
+  // endpoint — it has no user/identity context to require, so skip the
+  // auth check after the DB is wired up. Any handler that actually reads
+  // identity (c.get('longhaulUser')) lives behind the auth check below.
+  if (c.req.path.endsWith('/longhaul/version')) {
+    await next()
+    return
+  }
+
   if (process.env['SKIP_AUTH'] === 'true') {
     // On-prem mode: authenticate via Windows username header
     const winUser = c.req.header('X-Windows-User')
