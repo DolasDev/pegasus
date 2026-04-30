@@ -250,6 +250,49 @@ export class ApiStack extends cdk.Stack {
     }
 
     // ---------------------------------------------------------------------------
+    // IAM: read-only EC2 + SSM RunShellScript on the WG hub for the admin
+    // VPN diagnose endpoint (apps/api/src/handlers/admin/vpn-diagnose.ts).
+    //
+    // Describe* are read-only and broadly scoped because EC2 doesn't support
+    // resource-level perms on most Describe APIs (AWS limitation, not laziness).
+    // SSM SendCommand is scoped to:
+    //   - the AWS-RunShellScript document (so we can't run other documents)
+    //   - instances tagged Name=pegasus-wireguard-hub (so we can't run on
+    //     anything else, even if a tenant ID gets passed in by mistake)
+    // GetCommandInvocation has no resource-level scoping in IAM but is a
+    // read-only call that returns only commands the role itself initiated.
+    // ---------------------------------------------------------------------------
+    apiFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          'ec2:DescribeInstances',
+          'ec2:DescribeInstanceAttribute',
+          'ec2:DescribeSecurityGroups',
+          'ec2:DescribeRouteTables',
+        ],
+        resources: ['*'],
+      }),
+    )
+    apiFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ssm:SendCommand'],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:document/AWS-RunShellScript`,
+          `arn:aws:ec2:${this.region}:${this.account}:instance/*`,
+        ],
+        conditions: {
+          StringEquals: { 'ssm:resourceTag/Name': 'pegasus-wireguard-hub' },
+        },
+      }),
+    )
+    apiFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ssm:GetCommandInvocation'],
+        resources: ['*'],
+      }),
+    )
+
+    // ---------------------------------------------------------------------------
     // API Gateway v2 HTTP API
     // ---------------------------------------------------------------------------
     const httpApi = new apigwv2.HttpApi(this, 'PegasusHttpApi', {

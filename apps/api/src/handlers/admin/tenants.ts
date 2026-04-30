@@ -17,6 +17,7 @@ import { provisionCognitoUser } from './cognito'
 import { logger } from '../../lib/logger'
 import { adminTenantUsersRouter } from './tenant-users'
 import { adminVpnRouter } from './vpn'
+import { adminVpnDiagnoseRouter } from './vpn-diagnose'
 
 const TenantStatusSchema = z.enum(['ACTIVE', 'SUSPENDED', 'OFFBOARDED'])
 
@@ -550,5 +551,7 @@ adminTenantsRouter.route('/:tenantId/users', adminTenantUsersRouter)
 //         POST            /api/admin/tenants/:tenantId/vpn/rotate
 //         POST            /api/admin/tenants/:tenantId/vpn/suspend
 //         POST            /api/admin/tenants/:tenantId/vpn/resume
+//         GET             /api/admin/tenants/:tenantId/vpn/diagnose
 // ---------------------------------------------------------------------------
 adminTenantsRouter.route('/:tenantId/vpn', adminVpnRouter)
+adminTenantsRouter.route('/:tenantId/vpn', adminVpnDiagnoseRouter)
