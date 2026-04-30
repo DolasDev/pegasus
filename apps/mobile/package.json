@@ -44,7 +44,7 @@
   "devDependencies": {
     "@babel/plugin-proposal-export-default-from": "^7.27.1",
     "@babel/plugin-transform-react-display-name": "^7.28.0",
-    "@babel/preset-env": "^7.28.5",
+    "@babel/preset-env": "^7.29.3",
     "@babel/preset-typescript": "^7.28.5",
     "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^30.0.0",
