@@ -432,7 +432,12 @@ export class WireGuardStack extends cdk.Stack {
       // logs a WARNING for "command not found" but doesn't fail the boot,
       // so the ASG considers the instance healthy and the bug surfaces only
       // at first traffic.
-      'dnf install -y wireguard-tools chrony aws-cli nodejs20 tar iptables-nft iptables-services',
+      // aws-cfn-bootstrap provides cfn-signal — required so userdata
+      // failures actually fail the deploy (see signals/updatePolicy on
+      // the ASG below). Without cfn-signal in $PATH, the trap installed
+      // by addSignalOnExitCommand() silently no-ops, defeating the
+      // whole point of waitOnResourceSignals=true.
+      'dnf install -y wireguard-tools chrony aws-cli nodejs20 tar iptables-nft iptables-services aws-cfn-bootstrap',
       'systemctl enable --now chronyd',
       // Resolve hub privkey. Bash's `set -e` does NOT abort on a failed
       // command substitution in an assignment, so we read into a variable
@@ -627,6 +632,16 @@ export class WireGuardStack extends cdk.Stack {
       minCapacity: 1,
       maxCapacity: 1,
       desiredCapacity: 1,
+      // Wait for cfn-signal from userdata before considering the instance
+      // healthy on first creation. Combined with addSignalOnExitCommand()
+      // below and waitOnResourceSignals=true on the rolling update, this
+      // means userdata failures (missing package, broken script, failed
+      // assertion) fail the deploy instead of silently producing a hub
+      // that boots "running" but doesn't actually work. We hit this in
+      // prod once when iptables-nft wasn't installed and the MASQUERADE
+      // rule never landed — the hub came up healthy from CFN's view and
+      // the bug surfaced only at first traffic.
+      signals: autoscaling.Signals.waitForAll({ timeout: cdk.Duration.minutes(10) }),
       // Roll the instance whenever the LaunchTemplate version changes (i.e.
       // any userdata edit). Without this, CDK updates the LT but leaves the
       // running instance on the old version — userdata fixes silently sit
@@ -639,13 +654,20 @@ export class WireGuardStack extends cdk.Stack {
       // pauseTime is the upper bound CFN waits for the instance to reach
       // InService before continuing — userdata typically finishes in <3 min;
       // 10 min is a safe ceiling for cold dnf installs.
+      // waitOnResourceSignals=true makes rolling updates honour cfn-signal
+      // (matches the create-time signals contract above).
       updatePolicy: autoscaling.UpdatePolicy.rollingUpdate({
         maxBatchSize: 1,
         minInstancesInService: 0,
         pauseTime: cdk.Duration.minutes(10),
-        waitOnResourceSignals: false,
+        waitOnResourceSignals: true,
       }),
     })
+    // Trap script exit (any code) and call cfn-signal with the exit code.
+    // Combined with `set -e` at the top of userdata, any failed command
+    // bubbles up here and rolls back the deploy. CDK injects the right
+    // --stack / --resource / --region tokens at synth time.
+    userData.addSignalOnExitCommand(asg)
     cdk.Tags.of(asg).add('Name', 'pegasus-wireguard-hub')
     this.hubAsgName = asg.autoScalingGroupName
 
