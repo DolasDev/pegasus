@@ -164,6 +164,21 @@ onpremHandler.all('/longhaul/*', async (c) => {
   const method = c.req.method.toUpperCase()
   const body = method === 'GET' || method === 'HEAD' ? null : await c.req.text()
 
+  // Pre-forward log so cloud-side observability matches what tunnel-proxy
+  // and on-prem report. Pairs with the on-prem logger.warn in
+  // longhaul-user.ts when X-Windows-User is missing or unmapped — so a 403
+  // on the browser can be traced from cloud → tunnel → on-prem on a single
+  // correlationId.
+  logger.info('onprem proxy forward', {
+    tenantId,
+    userId,
+    method,
+    onpremPath,
+    forwardedHeaderKeys: Object.keys(headers),
+    hasWindowsUser: 'x-windows-user' in headers,
+    correlationId,
+  })
+
   try {
     const upstream = await tunnelFetch(url, { method, headers, body })
     const contentType = upstream.headers['content-type'] ?? 'application/json'

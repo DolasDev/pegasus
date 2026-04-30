@@ -89,6 +89,17 @@ export const longhaulUserMiddleware: MiddlewareHandler<OnPremEnv> = async (c, ne
     // On-prem mode: authenticate via Windows username header
     const winUser = c.req.header('X-Windows-User')
     if (!winUser) {
+      // Log header keys (not values) so the operator can see what arrived
+      // versus what the cloud proxy claims to have sent. Common cause of
+      // this rejection is the cloud proxy not setting x-windows-user, or
+      // an intermediary (legacy IIS rewrite, reverse proxy) stripping it.
+      logger.warn('longhaul auth rejected — missing X-Windows-User', {
+        path: c.req.path,
+        method: c.req.method,
+        code: 'LONGHAUL_USER_NOT_FOUND',
+        headerKeys: Object.keys(c.req.header()),
+        correlationId: c.get('correlationId'),
+      })
       return c.json(
         {
           error: 'Missing X-Windows-User header',
@@ -117,6 +128,12 @@ export const longhaulUserMiddleware: MiddlewareHandler<OnPremEnv> = async (c, ne
     }
 
     if (!user) {
+      logger.warn('longhaul auth rejected — user not found in v_longhaul_salesman', {
+        path: c.req.path,
+        winUser,
+        code: 'LONGHAUL_USER_NOT_FOUND',
+        correlationId: c.get('correlationId'),
+      })
       return c.json(
         {
           error: 'User not authorized',
@@ -128,6 +145,13 @@ export const longhaulUserMiddleware: MiddlewareHandler<OnPremEnv> = async (c, ne
     }
 
     if ((user['active'] as string | undefined)?.toLowerCase() !== 'y') {
+      logger.warn('longhaul auth rejected — user inactive', {
+        path: c.req.path,
+        winUser,
+        active: user['active'],
+        code: 'LONGHAUL_USER_NOT_FOUND',
+        correlationId: c.get('correlationId'),
+      })
       return c.json(
         {
           error: 'User not authorized',
@@ -153,6 +177,12 @@ export const longhaulUserMiddleware: MiddlewareHandler<OnPremEnv> = async (c, ne
     })
 
     if (tenantUser?.legacyWindowsUsername == null) {
+      logger.warn('longhaul auth rejected — TenantUser has no legacyWindowsUsername', {
+        path: c.req.path,
+        userId,
+        code: 'LONGHAUL_USER_NOT_MAPPED',
+        correlationId: c.get('correlationId'),
+      })
       return c.json(
         {
           error:
@@ -185,6 +215,14 @@ export const longhaulUserMiddleware: MiddlewareHandler<OnPremEnv> = async (c, ne
     }
 
     if (!user || (user['active'] as string | undefined)?.toLowerCase() !== 'y') {
+      logger.warn('longhaul auth rejected — legacy user inactive or missing', {
+        path: c.req.path,
+        userId,
+        legacyWindowsUsername: tenantUser.legacyWindowsUsername,
+        active: user?.['active'],
+        code: 'LONGHAUL_USER_NOT_FOUND',
+        correlationId: c.get('correlationId'),
+      })
       return c.json(
         {
           error: 'Legacy user is inactive or no longer exists',
