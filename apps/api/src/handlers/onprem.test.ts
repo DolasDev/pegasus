@@ -50,6 +50,9 @@ beforeEach(() => {
   delete process.env['ONPREM_TUNNEL_PORT']
   delete process.env['ONPREM_TUNNEL_SCHEME']
   delete process.env['ONPREM_API_KEY']
+  // Default: the calling user has a mapped Windows username so the proxy
+  // forwards the request. Tests that exercise the unmapped path override this.
+  mockDb.tenantUser.findUnique.mockResolvedValue({ legacyWindowsUsername: 'testuser' })
 })
 
 afterEach(() => {
@@ -427,12 +430,9 @@ describe('wildcard /api/v1/onprem/longhaul/* proxy', () => {
     expect(send).not.toHaveBeenCalled()
   })
 
-  it('does NOT forward X-Windows-User or look up the TenantUser on /longhaul/version', async () => {
-    mockDb.vpnPeer.findUnique.mockResolvedValue({
-      assignedOctet1: 5,
-      assignedOctet2: 8,
-      status: 'ACTIVE',
-    })
+  it('forwards X-Windows-User on /longhaul/version too (older on-prem builds gate it on the header)', async () => {
+    activePeer()
+    mockDb.tenantUser.findUnique.mockResolvedValue({ legacyWindowsUsername: 'jdoe' })
     const send = vi.fn().mockResolvedValue({
       Payload: fakeInvokePayload({ status: 200, headers: {}, body: '{}' }),
     })
@@ -440,8 +440,8 @@ describe('wildcard /api/v1/onprem/longhaul/* proxy', () => {
 
     await buildApp().request('/api/v1/onprem/longhaul/version')
 
-    expect(mockDb.tenantUser.findUnique).not.toHaveBeenCalled()
+    expect(mockDb.tenantUser.findUnique).toHaveBeenCalledOnce()
     const payload = lastInvokePayload(send) as { headers: Record<string, string> }
-    expect(payload.headers['x-windows-user']).toBeUndefined()
+    expect(payload.headers['x-windows-user']).toBe('jdoe')
   })
 })

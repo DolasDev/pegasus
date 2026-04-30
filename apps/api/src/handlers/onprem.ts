@@ -29,8 +29,10 @@
 // User identity: the on-prem longhaul middleware runs with SKIP_AUTH=true and
 // authenticates via X-Windows-User. The proxy looks up the calling
 // TenantUser.legacyWindowsUsername (populated from the Users settings page)
-// and forwards it as X-Windows-User. /longhaul/version is exempt from the
-// lookup since the on-prem server skips auth for that connectivity probe.
+// and forwards it as X-Windows-User on every longhaul path, including
+// /longhaul/version (older on-prem builds gate that endpoint on the header).
+// Returns 422 LONGHAUL_USER_NOT_MAPPED if the caller has no Windows username
+// set, so we don't burn a tunnel hop.
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
@@ -116,31 +118,28 @@ onpremHandler.all('/longhaul/*', async (c) => {
   const onpremPath = incoming.pathname.replace(/^.*?\/onprem/, '')
   const url = `${resolved.target.base}/api/v1${onpremPath}${incoming.search}`
 
-  // /longhaul/version is a connectivity probe the on-prem server allows
-  // anonymously — skip the legacy-user lookup so it works before a user has
-  // their Windows username mapped.
-  const isVersionProbe = onpremPath === '/longhaul/version'
-
-  let legacyWindowsUsername: string | null = null
-  if (!isVersionProbe) {
-    const tenantUser = userId
-      ? await db.tenantUser.findUnique({
-          where: { id: userId },
-          select: { legacyWindowsUsername: true },
-        })
-      : null
-    legacyWindowsUsername = tenantUser?.legacyWindowsUsername ?? null
-    if (!legacyWindowsUsername) {
-      return c.json(
-        {
-          error:
-            'No legacy user mapping configured for this account. Ask a tenant administrator to set the Windows username on the Users settings page.',
-          code: 'LONGHAUL_USER_NOT_MAPPED',
-          correlationId,
-        },
-        422,
-      )
-    }
+  // Resolve the calling user's Windows username and forward it to on-prem on
+  // every longhaul path — including /longhaul/version, which older on-prem
+  // builds (pre-7c5e1c7) still gate behind X-Windows-User. The on-prem
+  // longhaul middleware looks up v_longhaul_salesman.win_username from this
+  // header.
+  const tenantUser = userId
+    ? await db.tenantUser.findUnique({
+        where: { id: userId },
+        select: { legacyWindowsUsername: true },
+      })
+    : null
+  const legacyWindowsUsername = tenantUser?.legacyWindowsUsername ?? null
+  if (!legacyWindowsUsername) {
+    return c.json(
+      {
+        error:
+          'No legacy user mapping configured for this account. Ask a tenant administrator to set the Windows username on the Users settings page.',
+        code: 'LONGHAUL_USER_NOT_MAPPED',
+        correlationId,
+      },
+      422,
+    )
   }
 
   // Whitelist headers we forward. We intentionally do NOT forward the
