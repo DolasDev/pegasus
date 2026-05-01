@@ -138,17 +138,83 @@ jobs:
       contents: read
 
   # ---------------------------------------------------------------------------
-  # Prod deploy. Auto-runs after staging succeeds, but the `prod` GitHub
-  # environment carries a required-reviewer rule, so the job pauses for
-  # approval before the underlying deploy steps execute.
+  # E2E gate. After staging deploys, run the Playwright suite in remote mode
+  # against the just-deployed staging URLs (extracted from the
+  # `cdk-outputs-staging` artifact). Specs tagged `@local-only` (DB-seeded or
+  # auth-required) are filtered out by `playwright.config.ts`. See
+  # `apps/e2e/REMOTE.md` for the contract.
   #
-  # When the E2E gate (sibling plan `gate-prod-deploy-on-staging-e2e.md`)
-  # lands, an `e2e-staging` job slots between this and `deploy-staging`,
-  # and `needs:` flips to `[changes, e2e-staging]`.
+  # The gate intentionally runs a small smoke (health + landing today) — its
+  # job is to catch a broken deploy before prod, not to validate every flow.
+  # If it fails, `deploy-prod` is skipped and the run is marked failed.
+  # ---------------------------------------------------------------------------
+  e2e-staging:
+    name: E2E gate against staging
+    needs: [changes, deploy-staging]
+    if: needs.changes.outputs.any == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fix binary permissions
+        run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
+
+      - name: Install Playwright browsers
+        working-directory: apps/e2e
+        run: npm run install:browsers
+
+      - name: Download CDK outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: cdk-outputs-staging
+          path: /tmp
+
+      - name: Extract staging URLs
+        id: outs
+        run: |
+          set -euo pipefail
+          F=/tmp/pegasus-cdk-outputs.json
+          echo "API_URL=$(jq -r '.["pegasus-staging-api"].ApiUrl' "$F")" >> "$GITHUB_OUTPUT"
+          echo "WEB_URL=$(jq -r '.["pegasus-staging-frontend"].DistributionUrl' "$F")" >> "$GITHUB_OUTPUT"
+          echo "USER_POOL_ID=$(jq -r '.["pegasus-staging-cognito"].UserPoolId' "$F")" >> "$GITHUB_OUTPUT"
+          echo "CLIENT_ID=$(jq -r '.["pegasus-staging-cognito"].MobileClientId // empty' "$F")" >> "$GITHUB_OUTPUT"
+
+      - name: Run E2E (remote)
+        working-directory: apps/e2e
+        env:
+          E2E_TARGET: remote
+          E2E_API_BASE_URL: ${{ steps.outs.outputs.API_URL }}
+          WEB_URL: ${{ steps.outs.outputs.WEB_URL }}
+          E2E_COGNITO_USER_POOL_ID: ${{ steps.outs.outputs.USER_POOL_ID }}
+          E2E_COGNITO_CLIENT_ID: ${{ steps.outs.outputs.CLIENT_ID }}
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-staging
+          path: apps/e2e/playwright-report
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Prod deploy. Auto-runs after the staging E2E gate succeeds, but the `prod`
+  # GitHub environment carries a required-reviewer rule, so the job pauses for
+  # approval before the underlying deploy steps execute.
   # ---------------------------------------------------------------------------
   deploy-prod:
     name: Deploy to prod
-    needs: [changes, deploy-staging]
+    needs: [changes, e2e-staging]
     if: needs.changes.outputs.any == 'true' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/_deploy.yml
     with:

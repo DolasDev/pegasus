@@ -115,7 +115,8 @@ function agentFetch(plainKey: string) {
 // Tests
 // ---------------------------------------------------------------------------
 
-test.describe.serial('VPN hub agent feed', () => {
+// Requires local DB seeding (ApiClient + VpnPeer); excluded from remote staging gate.
+test.describe.serial('VPN hub agent feed @local-only', () => {
   let seeded: Seeded
 
   test.beforeAll(async () => {

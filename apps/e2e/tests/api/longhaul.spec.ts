@@ -19,6 +19,8 @@ function longhaulFetch(apiFetch: (path: string, init?: RequestInit) => Promise<R
     })
 }
 
+// Requires MSSQL + SKIP_AUTH; excluded from remote staging gate.
+test.describe('longhaul @local-only', () => {
 test('GET /api/v1/longhaul/users/me returns the authenticated user', async ({ apiFetch }) => {
   const fetch = longhaulFetch(apiFetch)
   const res = await fetch('/api/v1/longhaul/users/me')
@@ -129,4 +131,5 @@ test('longhaul routes return 403 when X-Windows-User is missing (SKIP_AUTH mode)
   const res = await apiFetch('/api/v1/longhaul/users/me')
   // In SKIP_AUTH mode: 403. In MSSQL_UNAVAILABLE: 503. Either means auth is enforced.
   expect([403, 503]).toContain(res.status)
+})
 })
