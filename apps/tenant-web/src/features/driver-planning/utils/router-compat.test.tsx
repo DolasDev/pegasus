@@ -19,6 +19,7 @@ const tanstackNavigateSpy = vi.fn()
 const tanstackParamsSpy = vi.fn()
 const tanstackLocationSpy = vi.fn()
 const tanstackLinkSpy = vi.fn()
+const tanstackBlockerSpy = vi.fn()
 
 vi.mock('@tanstack/react-router', () => ({
   Link: (props: any) => {
@@ -29,6 +30,7 @@ vi.mock('@tanstack/react-router', () => ({
   useLocation: () => tanstackLocationSpy(),
   useNavigate: () => tanstackNavigateSpy,
   useParams: (opts: any) => tanstackParamsSpy(opts),
+  useBlocker: (opts: any) => tanstackBlockerSpy(opts),
 }))
 
 // Import after the mock is registered.
@@ -46,6 +48,7 @@ beforeEach(() => {
   tanstackParamsSpy.mockReset()
   tanstackLocationSpy.mockReset()
   tanstackLinkSpy.mockReset()
+  tanstackBlockerSpy.mockReset()
 })
 
 // ---- translatePath ----------------------------------------------------------
@@ -254,18 +257,55 @@ describe('useNavigate', () => {
 // ---- useBlocker -------------------------------------------------------------
 
 describe('useBlocker', () => {
-  it('does not throw when called', () => {
-    expect(() => useBlocker(true)).not.toThrow()
-    expect(() => useBlocker(false)).not.toThrow()
+  it('delegates to TanStack useBlocker with withResolver:true', () => {
+    tanstackBlockerSpy.mockReturnValue({
+      status: 'idle',
+      current: undefined,
+      next: undefined,
+      action: undefined,
+      proceed: undefined,
+      reset: undefined,
+    })
+    renderHook(() => useBlocker(true))
+    expect(tanstackBlockerSpy).toHaveBeenCalledTimes(1)
+    const opts = tanstackBlockerSpy.mock.calls[0][0]
+    expect(opts.withResolver).toBe(true)
+    expect(typeof opts.shouldBlockFn).toBe('function')
   })
 
-  it('returns a permanently-unblocked state', () => {
-    const blocker = useBlocker(true)
-    expect(blocker.state).toBe('unblocked')
-    expect(typeof blocker.proceed).toBe('function')
-    expect(typeof blocker.reset).toBe('function')
-    // proceed/reset are no-ops; calling them must not throw.
-    expect(() => blocker.proceed()).not.toThrow()
-    expect(() => blocker.reset()).not.toThrow()
+  it("passes shouldBlock through to TanStack's shouldBlockFn", () => {
+    tanstackBlockerSpy.mockReturnValue({ status: 'idle' })
+    renderHook(() => useBlocker(true))
+    const opts = tanstackBlockerSpy.mock.calls[0][0]
+    expect(opts.shouldBlockFn()).toBe(true)
+
+    tanstackBlockerSpy.mockReset()
+    tanstackBlockerSpy.mockReturnValue({ status: 'idle' })
+    renderHook(() => useBlocker(false))
+    expect(tanstackBlockerSpy.mock.calls[0][0].shouldBlockFn()).toBe(false)
+  })
+
+  it("maps TanStack 'idle' status to 'unblocked' state with no-op proceed/reset", () => {
+    tanstackBlockerSpy.mockReturnValue({ status: 'idle' })
+    const { result } = renderHook(() => useBlocker(false))
+    expect(result.current.state).toBe('unblocked')
+    expect(() => result.current.proceed()).not.toThrow()
+    expect(() => result.current.reset()).not.toThrow()
+  })
+
+  it("maps TanStack 'blocked' status to 'blocked' state and forwards proceed/reset", () => {
+    const proceed = vi.fn()
+    const reset = vi.fn()
+    tanstackBlockerSpy.mockReturnValue({
+      status: 'blocked',
+      proceed,
+      reset,
+    })
+    const { result } = renderHook(() => useBlocker(true))
+    expect(result.current.state).toBe('blocked')
+    result.current.proceed()
+    result.current.reset()
+    expect(proceed).toHaveBeenCalledTimes(1)
+    expect(reset).toHaveBeenCalledTimes(1)
   })
 })

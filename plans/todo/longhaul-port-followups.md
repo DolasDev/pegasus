@@ -13,13 +13,12 @@ Each item is searchable in the codebase via `TODO(longhaul-port)`.
       either a tenant-web move/order detail route or a cloud-side deeplink
       protocol the legacy app can register against.
 
-- [ ] **Unsaved-changes navigation prompt in `PlanningModule`** —
+- [x] **Unsaved-changes navigation prompt in `PlanningModule`** —
       `apps/tenant-web/src/features/driver-planning/utils/router-compat.tsx`
-      `useBlocker`. The legacy code prompted with `window.confirm` when the
-      user tried to navigate away from the Planning page with unsaved trip
-      edits. The shim is a no-op because react-router's blocker can't see
-      TanStack Router navigations. Reimplement with TanStack Router's own
-      `useBlocker` hook so cross-app nav (e.g. tenant sidebar) is also caught.
+      `useBlocker` now delegates to TanStack Router's `useBlocker` with
+      `withResolver: true`, mapping its `idle` / `blocked` status onto the
+      legacy `BlockerState` shape. Cross-app navigations (tenant sidebar) and
+      `beforeunload` are caught when there are unsaved trip edits.
 
 - [ ] **Redux → React Query migration** — out of scope for this phase per
       user direction. The whole `features/driver-planning/redux/` tree is
@@ -35,11 +34,11 @@ Each item is searchable in the codebase via `TODO(longhaul-port)`.
       window. Once the cloud port is confirmed working in production, remove
       the standalone Vite app and its CI/deploy entries.
 
-- [ ] **`redux/nav` slice cleanup** — the legacy top-nav was replaced by
-      `DriverPlanningTabs`, but the `nav` reducer is still wired into the
-      store. Drop it once any lingering selectors are removed.
+- [x] **`redux/nav` slice cleanup** — `redux/nav/` directory removed and
+      its reducer dropped from `redux/store.ts` and the test-only
+      `__test-utils__/render-with-store.tsx`. No remaining references.
 
-- [ ] **`vendor.d.ts` shims** — `redux-logger` and `react-modal` are
-      declared but not actually used in the ported code. Trim the shim file
-      in `apps/tenant-web/src/features/driver-planning/types/vendor.d.ts`
-      once the rest of the cleanup lands.
+- [x] **`vendor.d.ts` shims** — `redux-logger` declaration removed from
+      `types/vendor.d.ts`. Unused `react-modal` declarations also dropped
+      (`types/react-modal.d.ts` deleted; `react-modal` augmentation removed
+      from `types/react-compat.d.ts`).

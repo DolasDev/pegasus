@@ -12,11 +12,6 @@ declare module 'react-select' {
   export default ReactSelect
 }
 
-declare module 'redux-logger' {
-  const logger: any
-  export default logger
-}
-
 declare module '*.module.css' {
   const classes: Record<string, string>
   export default classes

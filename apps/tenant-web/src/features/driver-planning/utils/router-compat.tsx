@@ -8,10 +8,6 @@
 //
 //   - Translates legacy paths to their /driver-planning/* equivalents
 //   - Bridges the two routers' hook shapes
-//
-// useBlocker is stubbed (no-op) — TanStack Router's blocker has a different
-// API and react-router's `useBlocker` only works inside its own router.
-// Cross-router unsaved-changes prompts will be addressed in a follow-up phase.
 // ---------------------------------------------------------------------------
 
 import { type ReactNode, type CSSProperties } from 'react'
@@ -20,6 +16,7 @@ import {
   useLocation as useTanstackLocation,
   useNavigate as useTanstackNavigate,
   useParams as useTanstackParams,
+  useBlocker as useTanstackBlocker,
 } from '@tanstack/react-router'
 
 const PREFIX = '/driver-planning'
@@ -103,14 +100,24 @@ export interface BlockerState {
 }
 
 /**
- * Stubbed `useBlocker` — react-router's blocker only works inside its own
- * router context, so it cannot intercept TanStack Router navigations or
- * top-level browser navigations. Returns a permanently-unblocked state.
- *
- * TODO(longhaul-port): replace with TanStack Router's `useBlocker` so the
- * Planning module can prompt before discarding unsaved trip changes.
+ * react-router-shaped `useBlocker` backed by TanStack Router's blocker.
+ * Catches in-router navigations (including the tenant-web sidebar) and the
+ * browser `beforeunload` event when `shouldBlock` is true.
  */
-export function useBlocker(_shouldBlock: boolean): BlockerState {
+export function useBlocker(shouldBlock: boolean): BlockerState {
+  const blocker = useTanstackBlocker({
+    shouldBlockFn: () => shouldBlock,
+    withResolver: true,
+  })
+
+  if (blocker.status === 'blocked') {
+    return {
+      state: 'blocked',
+      proceed: blocker.proceed,
+      reset: blocker.reset,
+    }
+  }
+
   return {
     state: 'unblocked',
     proceed: () => {},

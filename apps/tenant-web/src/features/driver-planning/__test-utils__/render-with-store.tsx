@@ -8,7 +8,6 @@ import pendingTripsReducer from '../redux/pending-trips'
 import shipmentReducer from '../redux/shipments'
 import commonReducer from '../redux/common'
 import tripReducer from '../redux/trips'
-import navReducer from '../redux/nav'
 import userReducer from '../redux/user'
 import versionReducer from '../redux/version'
 
@@ -17,7 +16,6 @@ const reducers = {
   shipments: shipmentReducer,
   common: commonReducer,
   trips: tripReducer,
-  nav: navReducer,
   user: userReducer,
   version: versionReducer,
 } as const
@@ -64,7 +62,6 @@ export interface RenderWithStoreOptions extends Omit<RenderOptions, 'wrapper'> {
   tripPlanning?: PartialTestRootState['tripPlanning']
   user?: PartialTestRootState['user']
   version?: PartialTestRootState['version']
-  nav?: PartialTestRootState['nav']
   store?: TestStore
   queryClient?: QueryClient
 }
@@ -102,7 +99,6 @@ export function renderWithStore(
     tripPlanning,
     user,
     version,
-    nav,
     store,
     queryClient,
     ...options
@@ -121,7 +117,6 @@ export function renderWithStore(
     ...(tripPlanning ? { tripPlanning } : {}),
     ...(user ? { user } : {}),
     ...(version ? { version } : {}),
-    ...(nav ? { nav } : {}),
   }
   const testStore = store ?? makeTestStore(mergedSlices)
   const qc = queryClient ?? makeTestQueryClient()

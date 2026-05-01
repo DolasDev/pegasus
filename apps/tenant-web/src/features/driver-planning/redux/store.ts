@@ -5,7 +5,6 @@ import pendingTripsReducer from './pending-trips'
 import shipmentReducer from './shipments'
 import commonReducer from './common'
 import tripReducer from './trips'
-import navReducer from './nav'
 import userReducer from './user'
 import versionReducer from './version'
 
@@ -14,14 +13,12 @@ export type { TripPlanningState } from './pending-trips'
 export type { ShipmentsState } from './shipments'
 export type { CommonState } from './common'
 export type { TripsState } from './trips'
-export type { NavState } from './nav'
 
 const reducer = {
   tripPlanning: pendingTripsReducer,
   shipments: shipmentReducer,
   common: commonReducer,
   trips: tripReducer,
-  nav: navReducer,
   user: userReducer,
   version: versionReducer,
 }
