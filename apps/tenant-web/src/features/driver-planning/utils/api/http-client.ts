@@ -14,7 +14,7 @@ export async function fetchData(routeName: string, ...args: unknown[]): Promise<
   const { method, path, body } = resolveRoute(routeName, args)
 
   try {
-    const data = await apiFetch<unknown>(`/api/v1/longhaul${path}`, {
+    const data = await apiFetch<unknown>(`/api/v1/onprem/longhaul${path}`, {
       method,
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     })

@@ -31,7 +31,7 @@ export const driverPlanningKeys = {
 // ---------------------------------------------------------------------------
 export const driverPlanningQueryOptions = queryOptions({
   queryKey: driverPlanningKeys.list(),
-  queryFn: () => apiFetch<DriverPlanningRow[]>('/api/v1/longhaul/driver-planning'),
+  queryFn: () => apiFetch<DriverPlanningRow[]>('/api/v1/onprem/longhaul/driver-planning'),
 })
 
 // ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ export function useUpdateConfirmedAvailability() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ driverId, ...body }: UpdateConfirmedInput) =>
-      apiFetch<{ success: boolean }>(`/api/v1/longhaul/driver-planning/${driverId}`, {
+      apiFetch<{ success: boolean }>(`/api/v1/onprem/longhaul/driver-planning/${driverId}`, {
         method: 'PATCH',
         body: JSON.stringify(body),
       }),

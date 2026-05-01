@@ -47,18 +47,19 @@ export function AppGuard({ children }: { children: ReactNode }) {
     return <div>Loading...</div>
   }
 
-  const messages: string[] = []
-  if (!userStore.user) {
-    messages.push('Your Cognito user is not mapped to a Long Haul user record.')
-  }
+  const errorMessage = userStore.errorMessage as string | null
 
   return (
     <div className={styles['error-container']}>
       <div>
         <h3>There is a problem with your Driver Planning session</h3>
-        {messages.map((message, index) => (
-          <p key={index}>{message}</p>
-        ))}
+        {errorMessage ? (
+          <p>
+            <strong>Server response:</strong> {errorMessage}
+          </p>
+        ) : (
+          <p>Your Cognito user is not mapped to a Long Haul user record.</p>
+        )}
         <p>If this issue persists, please contact your admin or email support@dolas.dev</p>
       </div>
     </div>
