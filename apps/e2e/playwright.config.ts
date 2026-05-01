@@ -28,8 +28,36 @@ function loadDotEnv(filePath: string): void {
 
 loadDotEnv(resolve(__dirname, '.env.test'))
 
+// ---------------------------------------------------------------------------
+// Target mode
+// ---------------------------------------------------------------------------
+// `local`  (default): spin up the API via `webServer` and run `globalSetup`
+//                     (Prisma migrate + tenant seed) against local Postgres.
+// `remote`          : skip `webServer` + `globalSetup`. Hits the API at
+//                     `E2E_API_BASE_URL` (required) and excludes specs tagged
+//                     `@local-only` (DB-seeded or auth-required). Used by the
+//                     staging E2E gate in `.github/workflows/deploy.yml`.
+// See `apps/e2e/REMOTE.md` for the full remote contract.
+// ---------------------------------------------------------------------------
+const E2E_TARGET = process.env['E2E_TARGET'] ?? 'local'
+const isRemote = E2E_TARGET === 'remote'
+
 const API_PORT = parseInt(process.env['PORT'] ?? '3001', 10)
-const API_BASE_URL = `http://localhost:${API_PORT}`
+const LOCAL_API_BASE_URL = `http://localhost:${API_PORT}`
+
+let baseURL: string
+if (isRemote) {
+  const remoteUrl = process.env['E2E_API_BASE_URL']
+  if (!remoteUrl) {
+    throw new Error('E2E_TARGET=remote requires E2E_API_BASE_URL to be set')
+  }
+  baseURL = remoteUrl
+  // The `apiFetch` fixture reads API_BASE_URL directly; mirror E2E_API_BASE_URL
+  // into it so existing specs work unchanged in remote mode.
+  process.env['API_BASE_URL'] = remoteUrl
+} else {
+  baseURL = LOCAL_API_BASE_URL
+}
 
 export default defineConfig({
   testDir: './tests',
@@ -40,12 +68,37 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   outputDir: 'test-results',
 
+  // In remote mode, skip specs that depend on local DB seeding or SKIP_AUTH.
+  // See REMOTE.md for the tagging contract.
+  ...(isRemote ? { grepInvert: /@local-only/ } : {}),
+
   use: {
-    baseURL: API_BASE_URL,
+    baseURL,
     trace: 'on-first-retry',
   },
 
-  globalSetup: './global-setup.ts',
+  // Local mode runs Prisma migrate + tenant seed; remote mode hits a live env.
+  ...(isRemote
+    ? {}
+    : {
+        globalSetup: './global-setup.ts',
+        webServer: {
+          command: `node ../../node_modules/.bin/tsx ../api/src/server.ts`,
+          url: `${LOCAL_API_BASE_URL}/health`,
+          reuseExistingServer: !process.env['CI'],
+          timeout: 30000,
+          env: {
+            DATABASE_URL: process.env['DATABASE_URL'] ?? '',
+            DIRECT_URL: process.env['DIRECT_URL'] ?? process.env['DATABASE_URL'] ?? '',
+            DEFAULT_TENANT_ID:
+              process.env['DEFAULT_TENANT_ID'] ?? 'e2e00000-0000-0000-0000-000000000001',
+            SKIP_AUTH: process.env['SKIP_AUTH'] ?? 'true',
+            PORT: String(API_PORT),
+            HOST: process.env['HOST'] ?? '0.0.0.0',
+            NODE_ENV: 'test',
+          },
+        },
+      }),
 
   projects: [
     {
@@ -64,20 +117,4 @@ export default defineConfig({
       },
     },
   ],
-
-  webServer: {
-    command: `node ../../node_modules/.bin/tsx ../api/src/server.ts`,
-    url: `${API_BASE_URL}/health`,
-    reuseExistingServer: !process.env['CI'],
-    timeout: 30000,
-    env: {
-      DATABASE_URL: process.env['DATABASE_URL'] ?? '',
-      DIRECT_URL: process.env['DIRECT_URL'] ?? process.env['DATABASE_URL'] ?? '',
-      DEFAULT_TENANT_ID: process.env['DEFAULT_TENANT_ID'] ?? 'e2e00000-0000-0000-0000-000000000001',
-      SKIP_AUTH: process.env['SKIP_AUTH'] ?? 'true',
-      PORT: String(API_PORT),
-      HOST: process.env['HOST'] ?? '0.0.0.0',
-      NODE_ENV: 'test',
-    },
-  },
 })

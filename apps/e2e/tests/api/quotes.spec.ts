@@ -2,6 +2,8 @@ import { test, expect } from '../../fixtures'
 
 test.skip(!!process.env['E2E_SKIP'], 'Postgres unavailable — skipping E2E tests')
 
+// Requires local DB seeding + SKIP_AUTH; excluded from remote staging gate.
+test.describe('quotes @local-only', () => {
 test('POST /api/v1/quotes creates a quote for a move', async ({ apiFetch }) => {
   // First create a move to attach the quote to
   const moveRes = await apiFetch('/api/v1/moves', {
@@ -58,4 +60,5 @@ test('GET /api/v1/quotes returns a list', async ({ apiFetch }) => {
   const body = await res.json()
   expect(Array.isArray(body.data)).toBe(true)
   expect(typeof body.meta.count).toBe('number')
+})
 })

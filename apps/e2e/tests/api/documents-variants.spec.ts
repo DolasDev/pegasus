@@ -2,7 +2,8 @@ import { test, expect } from '../../fixtures'
 
 test.skip(!!process.env['E2E_SKIP'], 'Postgres unavailable — skipping E2E tests')
 
-test.describe('Document variant endpoints', () => {
+// Requires local DB seeding + SKIP_AUTH; excluded from remote staging gate.
+test.describe('Document variant endpoints @local-only', () => {
   test('download-url rejects invalid variant param', async ({ apiFetch }) => {
     // Use a random UUID — we only need to exercise validation, not a real doc
     const res = await apiFetch(
