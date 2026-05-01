@@ -24,14 +24,17 @@ export interface FrontendAssetsStackProps extends cdk.StackProps {
    * "Cannot delete export … as it is in use by …-frontend-assets …".
    */
   readonly apiStackName: string
+  /**
+   * Name of the upstream CognitoStack — used to build stable Fn::ImportValue
+   * strings for the user pool ID, tenant client ID, and Hosted UI domain.
+   * Same drift-immunity rationale as frontendStackName / apiStackName: passing
+   * the construct refs directly lets CDK auto-generate the export logical IDs,
+   * and those IDs have empirically drifted across CDK minor versions, blocking
+   * cognito-stack updates with "Cannot delete export … as it is in use by …".
+   */
+  readonly cognitoStackName: string
   /** AWS region of the Cognito User Pool. Defaults to us-east-1. */
   readonly cognitoRegion?: string
-  /** Cognito User Pool ID — resolved CDK token from CognitoStack. */
-  readonly cognitoUserPoolId: string
-  /** Tenant app client ID — resolved CDK token from CognitoStack. */
-  readonly cognitoTenantClientId: string
-  /** Cognito Hosted UI base URL — resolved CDK token from CognitoStack. */
-  readonly cognitoDomain: string
 }
 
 /**
@@ -81,6 +84,27 @@ export class FrontendAssetsStack extends cdk.Stack {
       `${props.apiStackName}:ExportsOutputFnGetAttPegasusHttpApiF652FECBApiEndpointFD99A5D1`,
     )
 
+    // Cognito values via stable named imports — see CognitoStack for the
+    // pinned CfnOutput declarations and the rationale.
+    const cognitoRegion = props.cognitoRegion ?? 'us-east-1'
+    const cognitoUserPoolId = cdk.Fn.importValue(
+      `${props.cognitoStackName}:ExportsOutputRefUserPool6BA7E5F296FD7236`,
+    )
+    const cognitoTenantClientId = cdk.Fn.importValue(
+      `${props.cognitoStackName}:ExportsOutputRefUserPoolTenantAppClientA86A3129C4F3A42A`,
+    )
+    // The pinned export holds the UserPoolDomain Ref (the prefix). Reconstruct
+    // the full https://…amazoncognito.com URL on the consumer side so the
+    // rendered config.json is byte-identical to what the construct-token path
+    // produced via UserPoolDomain.baseUrl().
+    const cognitoDomain = cdk.Fn.join('', [
+      'https://',
+      cdk.Fn.importValue(
+        `${props.cognitoStackName}:ExportsOutputRefUserPoolHostedUiDomainE021B0B644BA1D58`,
+      ),
+      `.auth.${cognitoRegion}.amazoncognito.com`,
+    ])
+
     const distPath = path.join(__dirname, '../../../../apps/tenant-web/dist')
     if (fs.existsSync(distPath)) {
       new s3deploy.BucketDeployment(this, 'DeployWebsite', {
@@ -89,10 +113,10 @@ export class FrontendAssetsStack extends cdk.Stack {
           s3deploy.Source.jsonData('config.json', {
             apiUrl,
             cognito: {
-              region: props.cognitoRegion ?? 'us-east-1',
-              userPoolId: props.cognitoUserPoolId,
-              clientId: props.cognitoTenantClientId,
-              domain: props.cognitoDomain,
+              region: cognitoRegion,
+              userPoolId: cognitoUserPoolId,
+              clientId: cognitoTenantClientId,
+              domain: cognitoDomain,
               redirectUri: `https://${distributionDomainName}/login/callback`,
             },
           }),

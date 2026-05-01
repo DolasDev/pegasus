@@ -28,8 +28,8 @@ export interface AdminFrontendAssetsStackProps extends cdk.StackProps {
    * adminFrontendStackName / cognitoStackName.
    */
   readonly apiStackName: string
-  /** Cognito Hosted UI base URL — resolved CDK token from CognitoStack. */
-  readonly cognitoDomain: string
+  /** AWS region of the Cognito User Pool. Defaults to us-east-1. */
+  readonly cognitoRegion?: string
 }
 
 /**
@@ -73,6 +73,19 @@ export class AdminFrontendAssetsStack extends cdk.Stack {
       `${props.cognitoStackName}:ExportsOutputRefUserPoolAdminAppClientCD59D22143082BED`,
     )
 
+    // Reconstruct the Cognito Hosted UI URL on the consumer side from the
+    // pinned UserPoolDomain Ref export. See frontend-assets-stack.ts for the
+    // rationale — short version: keeps the export contract owned by us
+    // instead of derived from a CDK-generated logical-ID hash.
+    const cognitoRegion = props.cognitoRegion ?? 'us-east-1'
+    const cognitoDomain = cdk.Fn.join('', [
+      'https://',
+      cdk.Fn.importValue(
+        `${props.cognitoStackName}:ExportsOutputRefUserPoolHostedUiDomainE021B0B644BA1D58`,
+      ),
+      `.auth.${cognitoRegion}.amazoncognito.com`,
+    ])
+
     const apiUrl = cdk.Fn.importValue(
       `${props.apiStackName}:ExportsOutputFnGetAttPegasusHttpApiF652FECBApiEndpointFD99A5D1`,
     )
@@ -85,7 +98,7 @@ export class AdminFrontendAssetsStack extends cdk.Stack {
           s3deploy.Source.jsonData('config.json', {
             apiUrl,
             cognito: {
-              domain: props.cognitoDomain,
+              domain: cognitoDomain,
               clientId: cognitoAdminClientId,
               redirectUri: `https://${distributionDomainName}/auth/callback`,
             },

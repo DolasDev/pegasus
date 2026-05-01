@@ -8,10 +8,8 @@ function synthAssetsStack() {
   const stack = new FrontendAssetsStack(app, 'TestFrontendAssets', {
     frontendStackName: 'pegasus-test-frontend',
     apiStackName: 'pegasus-test-api',
+    cognitoStackName: 'pegasus-test-cognito',
     cognitoRegion: 'us-east-1',
-    cognitoUserPoolId: 'us-east-1_TestPool',
-    cognitoTenantClientId: 'test-client-id',
-    cognitoDomain: 'https://pegasus-test.auth.us-east-1.amazoncognito.com',
   })
   return Template.fromStack(stack)
 }
