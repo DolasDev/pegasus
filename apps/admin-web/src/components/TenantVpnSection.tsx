@@ -1,15 +1,22 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getVpnStatus,
   provisionVpn,
   rotateVpn,
+  runVpnDiagnose,
   suspendVpn,
   resumeVpn,
   deleteVpn,
   downloadClientConfig,
 } from '@/api/vpn'
-import type { VpnPeerStatus, VpnStatus } from '@/api/vpn'
+import type {
+  DiagnoseCheck,
+  DiagnoseCheckStatus,
+  DiagnoseReport,
+  VpnPeerStatus,
+  VpnStatus,
+} from '@/api/vpn'
 import { ApiError } from '@/api/client'
 
 // ---------------------------------------------------------------------------
@@ -82,6 +89,207 @@ function EmptyState({ tenantId, onProvisioned }: { tenantId: string; onProvision
         {mutation.isPending ? 'Enabling…' : 'Enable VPN'}
       </button>
       {error && <p className="text-sm text-destructive">{error}</p>}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Diagnose panel — runs the 10-check cloud → hub → tenant report
+// ---------------------------------------------------------------------------
+
+function DiagnoseStatusPill({ status }: { status: DiagnoseCheckStatus }) {
+  const styles: Record<DiagnoseCheckStatus, string> = {
+    pass: 'bg-green-100 text-green-800',
+    fail: 'bg-red-100 text-red-800',
+    skip: 'bg-neutral-200 text-neutral-700',
+  }
+  return (
+    <span
+      className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium uppercase ${styles[status]}`}
+    >
+      {status}
+    </span>
+  )
+}
+
+const CHECK_ROW_CLASS: Record<DiagnoseCheckStatus, string> = {
+  pass: 'border-border',
+  fail: 'border-destructive',
+  skip: 'border-border opacity-60',
+}
+
+function CheckRow({ check }: { check: DiagnoseCheck }) {
+  const [showEvidence, setShowEvidence] = useState(false)
+  const hasEvidence = !!check.evidence && Object.keys(check.evidence).length > 0
+  return (
+    <li
+      className={`rounded-md border ${CHECK_ROW_CLASS[check.status]} bg-card p-3 space-y-2`}
+      data-testid={`vpn-diagnose-check-${check.id}`}
+      data-status={check.status}
+    >
+      <div className="flex items-start gap-3">
+        <DiagnoseStatusPill status={check.status} />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium">{check.label}</p>
+          <p className="text-xs text-muted-foreground break-words">{check.detail}</p>
+        </div>
+        <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+          {check.elapsedMs} ms
+        </span>
+      </div>
+      {hasEvidence && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowEvidence((v) => !v)}
+            className="text-xs text-primary hover:underline"
+          >
+            {showEvidence ? 'Hide details' : 'Show details'}
+          </button>
+          {showEvidence && (
+            <pre className="mt-1 max-h-64 overflow-auto rounded bg-muted/40 p-2 text-xs">
+              {JSON.stringify(check.evidence, null, 2)}
+            </pre>
+          )}
+        </div>
+      )}
+    </li>
+  )
+}
+
+function DiagnosePanel({ tenantId, disabled }: { tenantId: string; disabled: boolean }) {
+  const [report, setReport] = useState<DiagnoseReport | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [generatedAt, setGeneratedAt] = useState<Date | null>(null)
+  const [elapsedSec, setElapsedSec] = useState(0)
+
+  const mutation = useMutation({
+    mutationFn: () => runVpnDiagnose(tenantId),
+    onMutate: () => {
+      setError(null)
+      setReport(null)
+      setGeneratedAt(null)
+      setElapsedSec(0)
+      setStartedAt(Date.now())
+    },
+    onSuccess: (res) => {
+      setReport(res)
+      setGeneratedAt(new Date())
+    },
+    onError: (err) => {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : 'Diagnose failed — check network and try again.',
+      )
+    },
+  })
+
+  // Tick a per-second elapsed counter while the request is in flight.
+  useEffect(() => {
+    if (!mutation.isPending || startedAt === null) return
+    const id = setInterval(() => {
+      setElapsedSec(Math.floor((Date.now() - startedAt) / 1000))
+    }, 1000)
+    return () => clearInterval(id)
+  }, [mutation.isPending, startedAt])
+
+  const buttonDisabled = disabled || mutation.isPending
+
+  return (
+    <div className="space-y-3 pt-3 border-t border-border" data-testid="vpn-diagnose-panel">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => mutation.mutate()}
+          disabled={buttonDisabled}
+          className="rounded-md border border-primary bg-primary/5 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/10 disabled:opacity-40 disabled:cursor-not-allowed"
+          data-testid="vpn-diagnose-run"
+        >
+          {mutation.isPending ? `Running… ${elapsedSec}s` : 'Run Diagnose'}
+        </button>
+        <p className="text-xs text-muted-foreground">
+          Runs ~10 checks against cloud → hub → tenant. Takes 10–30 seconds.
+        </p>
+      </div>
+
+      {mutation.isPending && (
+        <div className="space-y-1" data-testid="vpn-diagnose-progress">
+          <p className="text-sm text-muted-foreground">
+            Running 10 checks (~30 s elapsed {elapsedSec}s)…
+          </p>
+          <div
+            className="h-1.5 w-full overflow-hidden rounded bg-muted"
+            role="progressbar"
+            aria-label="Running VPN diagnose"
+          >
+            <div className="h-full w-1/3 animate-pulse bg-primary/60" />
+          </div>
+        </div>
+      )}
+
+      {error && !mutation.isPending && (
+        <div
+          className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive flex items-start gap-3"
+          data-testid="vpn-diagnose-error"
+        >
+          <span className="flex-1">{error}</span>
+          <button
+            type="button"
+            onClick={() => mutation.mutate()}
+            disabled={disabled}
+            className="rounded-md border border-destructive/50 px-2 py-1 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-40"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {report && !mutation.isPending && (
+        <div className="space-y-3" data-testid="vpn-diagnose-report">
+          <div className="flex items-center gap-3">
+            <span
+              data-testid="vpn-diagnose-summary"
+              className={`inline-flex items-center rounded px-2.5 py-1 text-sm font-semibold uppercase ${
+                report.summary === 'pass'
+                  ? 'bg-green-100 text-green-800'
+                  : 'bg-red-100 text-red-800'
+              }`}
+            >
+              {report.summary}
+            </span>
+            <span className="text-sm text-muted-foreground">
+              {report.checks.length} checks
+            </span>
+          </div>
+
+          {report.firstFailure !== null && (() => {
+            const failed = report.checks.find((c) => c.id === report.firstFailure)
+            return (
+              <div
+                className="rounded-md border-l-4 border-destructive bg-destructive/5 p-3 text-base font-semibold text-destructive"
+                data-testid="vpn-diagnose-first-failure"
+              >
+                First failure: {report.firstFailure}
+                {failed && <> — {failed.detail}</>}
+              </div>
+            )
+          })()}
+
+          <ul className="space-y-2">
+            {report.checks.map((check) => (
+              <CheckRow key={check.id} check={check} />
+            ))}
+          </ul>
+
+          {generatedAt && (
+            <p className="text-xs text-muted-foreground" data-testid="vpn-diagnose-generated-at">
+              Generated {generatedAt.toLocaleString()}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -228,6 +436,8 @@ function PeerPanel({
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+
+      <DiagnosePanel tenantId={tenantId} disabled={busy} />
     </div>
   )
 }

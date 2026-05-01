@@ -41,7 +41,7 @@ This guide walks through installing the WireGuard client on your existing Window
       -RemoteAddress 10.10.200.0/24 -Action Allow
     ```
 
-11. Troubleshooting: if **Latest handshake** stays at **Never**, the most common cause is outbound UDP 51820 being blocked by your corporate or perimeter firewall. Verify with your network team that egress on UDP 51820 to the Pegasus hub endpoint is permitted. If the handshake is fresh but the cloud `/longhaul/version` ping still fails, run the platform diagnose endpoint (`GET /api/admin/tenants/:tenantId/vpn/diagnose`) — it identifies which layer of the cloud → hub → tenant path is blocking traffic.
+11. Troubleshooting: if **Latest handshake** stays at **Never**, the most common cause is outbound UDP 51820 being blocked by your corporate or perimeter firewall. Verify with your network team that egress on UDP 51820 to the Pegasus hub endpoint is permitted. If the handshake is fresh but the cloud `/longhaul/version` ping still fails, run the platform diagnose endpoint (`GET /api/admin/tenants/:tenantId/vpn/diagnose`) — it identifies which layer of the cloud → hub → tenant path is blocking traffic. Pegasus support can also run this from the tenant detail page via the **Run Diagnose** button — keep this in mind when escalating an outage.
 
 ## Security Note
 
