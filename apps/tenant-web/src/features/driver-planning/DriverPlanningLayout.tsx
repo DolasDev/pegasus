@@ -1,7 +1,6 @@
 import { Suspense } from 'react'
 import { Provider } from 'react-redux'
 import { Link, Outlet, useRouter } from '@tanstack/react-router'
-import { PageHeader } from '@/components/PageHeader'
 import { cn } from '@/lib/utils'
 import store from './redux/store'
 import { AppGuard } from './containers/AppGuard'
@@ -47,7 +46,6 @@ export function DriverPlanningLayout() {
   return (
     <Provider store={store}>
       <div className="driver-planning-root space-y-4">
-        <PageHeader title="Driver Planning" breadcrumbs={[{ label: 'Driver Planning' }]} />
         <DriverPlanningTabs />
         <AppGuard>
           <Suspense fallback={<div className="text-sm text-muted-foreground">Loading…</div>}>
