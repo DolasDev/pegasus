@@ -95,6 +95,39 @@ export async function getVpnStatus(tenantId: string): Promise<VpnPeerStatus> {
   return adminFetch<VpnPeerStatus>(`/api/admin/tenants/${tenantId}/vpn/status`)
 }
 
+// ---------------------------------------------------------------------------
+// VPN diagnose — mirrors apps/api/src/handlers/admin/vpn-diagnose.ts:44-60
+// Re-declared rather than imported to keep the workspace boundary clean
+// (admin-web does not import from apps/api).
+// ---------------------------------------------------------------------------
+
+export type DiagnoseCheckStatus = 'pass' | 'fail' | 'skip'
+
+export interface DiagnoseCheck {
+  id: string
+  label: string
+  status: DiagnoseCheckStatus
+  detail: string
+  evidence?: Record<string, unknown>
+  elapsedMs: number
+}
+
+export interface DiagnoseReport {
+  tenantId: string
+  summary: 'pass' | 'fail'
+  firstFailure: string | null
+  checks: DiagnoseCheck[]
+}
+
+/**
+ * Run the layered cloud → hub → tenant diagnose. ~10–30 s round-trip because
+ * the handler issues SSM commands against the hub. Should only be invoked on
+ * explicit user action — never via TanStack `refetchInterval` or auto-retry.
+ */
+export async function runVpnDiagnose(tenantId: string): Promise<DiagnoseReport> {
+  return adminFetch<DiagnoseReport>(`/api/admin/tenants/${tenantId}/vpn/diagnose`)
+}
+
 export async function suspendVpn(tenantId: string): Promise<VpnPeer> {
   return adminFetch<VpnPeer>(`/api/admin/tenants/${tenantId}/vpn/suspend`, { method: 'POST' })
 }
