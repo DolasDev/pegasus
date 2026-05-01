@@ -58,8 +58,13 @@ export type TestStore = ReturnType<typeof makeTestStore>
 
 export interface RenderWithStoreOptions extends Omit<RenderOptions, 'wrapper'> {
   preloadedState?: PartialTestRootState
+  common?: PartialTestRootState['common']
   store?: TestStore
   queryClient?: QueryClient
+}
+
+export function makeStore(common?: PartialTestRootState['common']): TestStore {
+  return makeTestStore(common ? { common } : {})
 }
 
 export function makeTestQueryClient() {
@@ -73,9 +78,10 @@ export function makeTestQueryClient() {
 
 export function renderWithStore(
   ui: ReactElement,
-  { preloadedState, store, queryClient, ...options }: RenderWithStoreOptions = {},
+  { preloadedState, common, store, queryClient, ...options }: RenderWithStoreOptions = {},
 ): RenderResult & { store: TestStore; queryClient: QueryClient } {
-  const testStore = store ?? makeTestStore(preloadedState)
+  const mergedSlices = common ? { ...(preloadedState ?? {}), common } : preloadedState
+  const testStore = store ?? makeTestStore(mergedSlices)
   const qc = queryClient ?? makeTestQueryClient()
   function Wrapper({ children }: { children: ReactNode }) {
     return (
