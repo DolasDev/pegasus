@@ -123,17 +123,19 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   env,
   stackName: `${stackNamePrefix}-api`,
   description: `${descPrefix} — Hono Lambda + HTTP API Gateway v2`,
-  cognitoJwksUrl: cognitoStack.jwksUrl,
-  cognitoTenantClientId: cognitoStack.tenantAppClient.userPoolClientId,
-  cognitoUserPoolId: cognitoStack.userPool.userPoolId,
-  cognitoMobileClientId: cognitoStack.mobileAppClient.userPoolClientId,
-  cognitoHostedUiDomain: cognitoStack.hostedUiBaseUrl,
+  // Pass cognitoStack.stackName by string (not construct refs) so CDK's
+  // auto-export mechanism doesn't generate cross-stack exports whose logical
+  // IDs drift across CDK versions. ApiStack resolves the user pool / client
+  // IDs / Hosted UI domain / JWKS URL via Fn::ImportValue against stable,
+  // hand-pinned export names declared in CognitoStack.
+  cognitoStackName: cognitoStack.stackName,
   documentsBucket: documentsStack.bucket,
   wireguardHubPublicKey: wireguardStack.hubPublicKey,
   wireguardHubEndpoint: wireguardStack.hubEndpoint,
   wireguardAgentApiKeyHashParameterName: wireguardStack.agentApiKeyHashParameterName,
   tunnelProxyFunction: wireguardStack.tunnelProxyFunction,
 })
+apiStack.addDependency(cognitoStack)
 
 // ── MonitoringStack ───────────────────────────────────────────────────────────
 // CDK deployment order: ApiStack → MonitoringStack.
@@ -161,13 +163,12 @@ const frontendAssetsStack = new FrontendAssetsStack(app, `${stackIdPrefix}-Front
   description: `${descPrefix} — tenant web app assets + config.json`,
   frontendStackName: frontendStack.stackName,
   apiStackName: apiStack.stackName,
+  cognitoStackName: cognitoStack.stackName,
   cognitoRegion: env.region ?? 'us-east-1',
-  cognitoUserPoolId: cognitoStack.userPool.userPoolId,
-  cognitoTenantClientId: cognitoStack.tenantAppClient.userPoolClientId,
-  cognitoDomain: cognitoStack.hostedUiBaseUrl,
 })
 frontendAssetsStack.addDependency(frontendStack)
 frontendAssetsStack.addDependency(apiStack)
+frontendAssetsStack.addDependency(cognitoStack)
 
 const adminFrontendAssetsStack = new AdminFrontendAssetsStack(
   app,
@@ -179,7 +180,7 @@ const adminFrontendAssetsStack = new AdminFrontendAssetsStack(
     adminFrontendStackName: adminFrontendStack.stackName,
     cognitoStackName: cognitoStack.stackName,
     apiStackName: apiStack.stackName,
-    cognitoDomain: cognitoStack.hostedUiBaseUrl,
+    cognitoRegion: env.region ?? 'us-east-1',
   },
 )
 adminFrontendAssetsStack.addDependency(adminFrontendStack)

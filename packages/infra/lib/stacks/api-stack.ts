@@ -13,50 +13,19 @@ import { type Construct } from 'constructs'
 
 export interface ApiStackProps extends cdk.StackProps {
   /**
-   * Cognito User Pool JWKS URL injected into the Lambda so the admin auth
-   * middleware and the validate-token endpoint can verify JWTs without a
-   * shared secret.
+   * Name of the upstream CognitoStack — used to build stable Fn::ImportValue
+   * strings for the user pool ID, tenant + mobile client IDs, and Hosted UI
+   * domain. Same drift-immunity rationale as the frontend-assets / admin-
+   * frontend-assets pinning: passing the construct refs directly (e.g.
+   * cognitoStack.userPool.userPoolId) makes CDK auto-generate the export
+   * logical IDs, and those IDs have empirically drifted across CDK minor
+   * versions, blocking cognito-stack updates with "Cannot delete export …".
    *
-   * Format: https://cognito-idp.<region>.amazonaws.com/<poolId>/.well-known/jwks.json
-   *
-   * Provided by CognitoStack.jwksUrl. Optional so the stack can still be
-   * synthesised in isolation (e.g. during CI typechecks without Cognito).
+   * Optional so the stack can still be synthesised in isolation (e.g. during
+   * CI typechecks without Cognito). When absent the COGNITO_* env vars
+   * default to empty strings and AdminCreateUser IAM grants are skipped.
    */
-  readonly cognitoJwksUrl?: string
-
-  /**
-   * Cognito tenant app client ID.
-   * Used by the /api/auth/validate-token endpoint to validate the `aud` claim
-   * on Cognito ID tokens, ensuring tokens issued to other app clients (e.g.
-   * the admin client) are rejected.
-   *
-   * Provided by CognitoStack.tenantAppClient.userPoolClientId.
-   */
-  readonly cognitoTenantClientId?: string
-
-  /**
-   * Cognito User Pool ID.
-   * Used by the POST /api/admin/tenants endpoint to provision the initial
-   * tenant administrator account via AdminCreateUser.
-   *
-   * Provided by CognitoStack.userPool.userPoolId.
-   */
-  readonly cognitoUserPoolId?: string
-
-  /**
-   * Cognito mobile app client ID.
-   * Used by GET /api/auth/mobile-config to return the client ID to the mobile app.
-   * Provided by CognitoStack.mobileAppClient.userPoolClientId.
-   */
-  readonly cognitoMobileClientId?: string
-
-  /**
-   * Cognito Hosted UI base URL (e.g. https://pegasus-123.auth.us-east-1.amazoncognito.com).
-   * Used by GET /api/auth/mobile-config to return the OAuth domain to the mobile app
-   * for SSO login flows.
-   * Provided by CognitoStack.hostedUiBaseUrl.
-   */
-  readonly cognitoHostedUiDomain?: string
+  readonly cognitoStackName?: string
 
   /**
    * S3 bucket for document uploads. Provided by DocumentsStack.
@@ -136,6 +105,38 @@ export class ApiStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     })
 
+    // Cognito values via stable named imports — see CognitoStack for the
+    // pinned CfnOutput declarations and the rationale. The COGNITO_* env vars
+    // default to empty strings when no cognitoStackName is supplied so the
+    // stack stays synthesisable in isolation (CI typechecks without Cognito).
+    const cognitoStackName = props.cognitoStackName
+    const importCognito = (logicalId: string): string =>
+      cognitoStackName ? cdk.Fn.importValue(`${cognitoStackName}:${logicalId}`) : ''
+    const cognitoUserPoolId = importCognito('ExportsOutputRefUserPool6BA7E5F296FD7236')
+    const cognitoTenantClientId = importCognito(
+      'ExportsOutputRefUserPoolTenantAppClientA86A3129C4F3A42A',
+    )
+    const cognitoMobileClientId = importCognito(
+      'ExportsOutputRefUserPoolMobileAppClient2650C7F34B844422',
+    )
+    // jwksUrl reuses the pinned UserPool ref — no separate export.
+    const cognitoJwksUrl = cognitoStackName
+      ? cdk.Fn.join('', [
+          `https://cognito-idp.${this.region}.amazonaws.com/`,
+          cognitoUserPoolId,
+          '/.well-known/jwks.json',
+        ])
+      : ''
+    // Reconstruct the full Hosted UI URL from the pinned domain Ref export so
+    // the rendered env var matches the prior construct-token shape byte-for-byte.
+    const cognitoHostedUiDomain = cognitoStackName
+      ? cdk.Fn.join('', [
+          'https://',
+          importCognito('ExportsOutputRefUserPoolHostedUiDomainE021B0B644BA1D58'),
+          `.auth.${this.region}.amazoncognito.com`,
+        ])
+      : ''
+
     const apiFunction = new nodejs.NodejsFunction(this, 'ApiFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
       // Entry resolved relative to this file at deploy time by esbuild
@@ -151,21 +152,21 @@ export class ApiStack extends cdk.Stack {
         //   - adminAuthMiddleware: verifies admin access tokens
         //   - /api/auth/validate-token: verifies tenant ID tokens
         // Keys are cached in-process after the first fetch (jose handles this).
-        COGNITO_JWKS_URL: props.cognitoJwksUrl ?? '',
+        COGNITO_JWKS_URL: cognitoJwksUrl,
         // Tenant app client ID. Used by /api/auth/validate-token to validate
         // the `aud` claim on Cognito ID tokens. Prevents tokens issued to the
         // admin app client from being accepted as tenant credentials.
-        COGNITO_TENANT_CLIENT_ID: props.cognitoTenantClientId ?? '',
+        COGNITO_TENANT_CLIENT_ID: cognitoTenantClientId,
         // User Pool ID. Used by POST /api/admin/tenants to provision the
         // initial tenant administrator via Cognito AdminCreateUser.
-        COGNITO_USER_POOL_ID: props.cognitoUserPoolId ?? '',
+        COGNITO_USER_POOL_ID: cognitoUserPoolId,
         // Mobile app client ID. Returned by GET /api/auth/mobile-config so the
         // mobile app can authenticate against Cognito without baking credentials
         // into the app bundle.
-        COGNITO_MOBILE_CLIENT_ID: props.cognitoMobileClientId ?? '',
+        COGNITO_MOBILE_CLIENT_ID: cognitoMobileClientId,
         // Cognito Hosted UI domain. Returned by GET /api/auth/mobile-config so
         // the mobile app can build OAuth authorize URLs for SSO login flows.
-        COGNITO_HOSTED_UI_DOMAIN: props.cognitoHostedUiDomain ?? '',
+        COGNITO_HOSTED_UI_DOMAIN: cognitoHostedUiDomain,
         // WireGuard hub identity — consumed by apps/api/src/handlers/admin/vpn.ts
         // to render client.conf. Absent in environments without WireGuardStack;
         // the handler returns 503 VPN_HUB_UNCONFIGURED.
@@ -226,11 +227,11 @@ export class ApiStack extends cdk.Stack {
     // ---------------------------------------------------------------------------
     // IAM: cognito-idp:AdminCreateUser to provision tenant admin accounts
     //
-    // Scoped to the specific user pool when cognitoUserPoolId is provided.
-    // Falls back to a wildcard scoped to account + region when synthesising
-    // without the Cognito stack (e.g. CI runs that only synthesise this stack).
+    // Scoped to the specific user pool when cognitoStackName is provided.
+    // Skipped entirely when synthesising without the Cognito stack (e.g. CI
+    // runs that only synthesise this stack).
     // ---------------------------------------------------------------------------
-    if (props.cognitoUserPoolId) {
+    if (props.cognitoStackName) {
       apiFunction.addToRolePolicy(
         new iam.PolicyStatement({
           actions: [
@@ -243,7 +244,7 @@ export class ApiStack extends cdk.Stack {
             'cognito-idp:DeleteIdentityProvider',
           ],
           resources: [
-            `arn:aws:cognito-idp:${this.region}:${this.account}:userpool/${props.cognitoUserPoolId}`,
+            `arn:aws:cognito-idp:${this.region}:${this.account}:userpool/${cognitoUserPoolId}`,
           ],
         }),
       )

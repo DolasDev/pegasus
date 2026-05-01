@@ -519,5 +519,65 @@ export class CognitoStack extends cdk.Stack {
       value: this.jwksUrl,
       exportName: 'PegasusCognitoJwksUrl',
     })
+
+    // ---------------------------------------------------------------------------
+    // Pinned cross-stack exports for ApiStack + FrontendAssetsStack +
+    // AdminFrontendAssetsStack.
+    //
+    // Same drift problem b88d9c3 / dbda2dd / the apiEndpoint pin already fixed
+    // on adjacent edges: every consumer that holds a construct-level reference
+    // into CognitoStack (e.g. cognitoStack.userPool.userPoolId) makes CDK
+    // auto-generate an output logical ID like
+    // ExportsOutputRefUserPool6BA7E5F296FD7236. That ID is not a stable
+    // contract — it's a hash of the construct path that has empirically
+    // drifted across CDK minor versions, and once it drifts CFN refuses to
+    // delete the old export while the consuming stack still imports it,
+    // blocking every cognito-stack update.
+    //
+    // Fix: declare explicit CfnOutputs whose logicalId + exportName are pinned
+    // to the previously auto-generated values, and switch every consumer to
+    // cdk.Fn.importValue against the same strings. CFN sees the export
+    // contract as unchanged, so the next deploy is a no-op for these exports.
+    //
+    // The four pinned refs:
+    //   - UserPool (consumed by api-stack, frontend-assets-stack)
+    //   - TenantAppClient (api-stack, frontend-assets-stack)
+    //   - MobileAppClient (api-stack)
+    //   - HostedUiDomain (api-stack, frontend-assets-stack,
+    //                     admin-frontend-assets-stack — Refs the
+    //                     UserPoolDomain only; consumers reconstruct the
+    //                     full https://…amazoncognito.com URL via Fn::Join)
+    //
+    // jwksUrl reuses the UserPool ref above — no separate export needed.
+    // ---------------------------------------------------------------------------
+    const userPoolRefExport = new cdk.CfnOutput(this, 'AssetsUserPoolRefExport', {
+      value: this.userPool.userPoolId,
+      exportName: `${this.stackName}:ExportsOutputRefUserPool6BA7E5F296FD7236`,
+    })
+    userPoolRefExport.overrideLogicalId('ExportsOutputRefUserPool6BA7E5F296FD7236')
+
+    const tenantClientRefExport = new cdk.CfnOutput(this, 'AssetsTenantClientRefExport', {
+      value: this.tenantAppClient.userPoolClientId,
+      exportName: `${this.stackName}:ExportsOutputRefUserPoolTenantAppClientA86A3129C4F3A42A`,
+    })
+    tenantClientRefExport.overrideLogicalId(
+      'ExportsOutputRefUserPoolTenantAppClientA86A3129C4F3A42A',
+    )
+
+    const mobileClientRefExport = new cdk.CfnOutput(this, 'AssetsMobileClientRefExport', {
+      value: this.mobileAppClient.userPoolClientId,
+      exportName: `${this.stackName}:ExportsOutputRefUserPoolMobileAppClient2650C7F34B844422`,
+    })
+    mobileClientRefExport.overrideLogicalId(
+      'ExportsOutputRefUserPoolMobileAppClient2650C7F34B844422',
+    )
+
+    const hostedUiDomainRefExport = new cdk.CfnOutput(this, 'AssetsHostedUiDomainRefExport', {
+      value: hostedUiDomain.domainName,
+      exportName: `${this.stackName}:ExportsOutputRefUserPoolHostedUiDomainE021B0B644BA1D58`,
+    })
+    hostedUiDomainRefExport.overrideLogicalId(
+      'ExportsOutputRefUserPoolHostedUiDomainE021B0B644BA1D58',
+    )
   }
 }
