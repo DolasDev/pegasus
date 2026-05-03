@@ -10,6 +10,8 @@ import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../types'
 import { registerTestErrorHandler } from '../test-helpers'
+import { seedPrincipalForRole } from '../__tests__/_principal'
+import { _clearAuthzCache } from '../lib/authz'
 
 // ---------------------------------------------------------------------------
 // Mock the db module
@@ -51,10 +53,9 @@ function patchReq(body: unknown): RequestInit {
 function buildApp(role: string | null = 'tenant_admin', userId = 'user-1') {
   const app = new Hono<AppEnv>()
   registerTestErrorHandler(app)
+  app.use('*', seedPrincipalForRole(role))
   app.use('*', async (c, next) => {
-    c.set('tenantId', 'test-tenant-id')
     c.set('db', {} as unknown as PrismaClient)
-    if (role !== null) c.set('role', role)
     c.set('userId', userId)
     await next()
   })
@@ -69,6 +70,8 @@ function buildApp(role: string | null = 'tenant_admin', userId = 'user-1') {
 describe('settings handler', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    process.env['AUTHZ_OFFLINE'] = 'true'
+    _clearAuthzCache()
   })
 
   // ── GET /mssql ────────────────────────────────────────────────────────────
@@ -133,9 +136,7 @@ describe('settings handler', () => {
       expect(res.status).toBe(200)
       const body = await json(res)
       const data = body.data as JsonBody
-      expect(data['mssqlConnectionString']).toBe(
-        'Server=newhost;Database=db;Password=****;',
-      )
+      expect(data['mssqlConnectionString']).toBe('Server=newhost;Database=db;Password=****;')
       expect(mockDb.tenant.update).toHaveBeenCalledWith({
         where: { id: 'test-tenant-id' },
         data: { mssqlConnectionString: 'Server=newhost;Database=db;Password=newsecret;' },
@@ -145,10 +146,7 @@ describe('settings handler', () => {
 
     it('with null clears the connection string', async () => {
       mockDb.tenant.update.mockResolvedValue({ mssqlConnectionString: null })
-      const res = await buildApp().request(
-        '/mssql',
-        patchReq({ mssqlConnectionString: null }),
-      )
+      const res = await buildApp().request('/mssql', patchReq({ mssqlConnectionString: null }))
       expect(res.status).toBe(200)
       const body = await json(res)
       const data = body.data as JsonBody
@@ -162,10 +160,7 @@ describe('settings handler', () => {
     })
 
     it('with empty string returns 400', async () => {
-      const res = await buildApp().request(
-        '/mssql',
-        patchReq({ mssqlConnectionString: '' }),
-      )
+      const res = await buildApp().request('/mssql', patchReq({ mssqlConnectionString: '' }))
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')
     })

@@ -19,6 +19,7 @@ export type TenantUserRow = {
   cognitoSub: string | null
   legacyWindowsUsername: string | null
   role: 'ADMIN' | 'USER'
+  roleNames: string[]
   status: 'PENDING' | 'ACTIVE' | 'DEACTIVATED'
   invitedAt: Date
   activatedAt: Date | null
@@ -32,6 +33,7 @@ const USER_SELECT = {
   cognitoSub: true,
   legacyWindowsUsername: true,
   role: true,
+  roleNames: true,
   status: true,
   invitedAt: true,
   activatedAt: true,
@@ -71,8 +73,11 @@ export function createUsersRepository(db: PrismaClient) {
 
     /** Create a new invited TenantUser with PENDING status. */
     invite(tenantId: string, email: string, role: 'ADMIN' | 'USER'): Promise<TenantUserRow> {
+      // Mirror the legacy enum into roleNames so newly invited users carry
+      // the Cedar group membership immediately, without an extra admin step.
+      const roleNames = role === 'ADMIN' ? ['tenant_admin'] : ['tenant_user']
       return db.tenantUser.create({
-        data: { tenantId, email: email.toLowerCase(), role },
+        data: { tenantId, email: email.toLowerCase(), role, roleNames },
         select: USER_SELECT,
       })
     },
@@ -82,6 +87,23 @@ export function createUsersRepository(db: PrismaClient) {
       return db.tenantUser.update({
         where: { id },
         data: { role },
+        select: USER_SELECT,
+      })
+    },
+
+    /**
+     * Update the Cedar role-group memberships and (write-through) the legacy
+     * `role` enum. The enum is derived by the caller so the repository doesn't
+     * need to know the persona naming convention.
+     */
+    updateRoleNames(
+      id: string,
+      roleNames: string[],
+      derivedLegacyRole: 'ADMIN' | 'USER',
+    ): Promise<TenantUserRow> {
+      return db.tenantUser.update({
+        where: { id },
+        data: { roleNames, role: derivedLegacyRole },
         select: USER_SELECT,
       })
     },

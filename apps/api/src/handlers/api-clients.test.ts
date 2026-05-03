@@ -10,6 +10,8 @@ import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../types'
 import { registerTestErrorHandler } from '../test-helpers'
+import { seedPrincipalForRole } from '../__tests__/_principal'
+import { _clearAuthzCache } from '../lib/authz'
 
 // ---------------------------------------------------------------------------
 // Mock the repository
@@ -62,10 +64,9 @@ function patch(body: unknown): RequestInit {
 function buildApp(role: string | null = 'tenant_admin', userId = 'user-1') {
   const app = new Hono<AppEnv>()
   registerTestErrorHandler(app)
+  app.use('*', seedPrincipalForRole(role))
   app.use('*', async (c, next) => {
-    c.set('tenantId', 'test-tenant-id')
     c.set('db', {} as unknown as PrismaClient)
-    if (role !== null) c.set('role', role)
     c.set('userId', userId)
     await next()
   })
@@ -99,6 +100,8 @@ const mockRow = {
 describe('api-clients handler', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    process.env['AUTHZ_OFFLINE'] = 'true'
+    _clearAuthzCache()
   })
 
   // ── RBAC ──────────────────────────────────────────────────────────────────

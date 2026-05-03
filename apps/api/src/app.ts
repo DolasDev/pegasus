@@ -20,6 +20,7 @@ import { eventsHandler } from './handlers/events'
 import { ordersHandler } from './handlers/orders'
 import { vpnAgentHandler } from './handlers/vpn-agent'
 import { onpremHandler } from './handlers/onprem'
+import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
 import { DomainError } from '@pegasus/domain'
@@ -160,9 +161,21 @@ const v1 = new Hono<AppEnv>()
 
 if (process.env['SKIP_AUTH'] === 'true') {
   logger.warn('SKIP_AUTH is enabled — all authentication is bypassed. Do NOT use in production.')
+  // Force the offline (wasm) authz backend so synthesised principals never
+  // attempt to call AVP without an ID token. Setting the env var here keeps
+  // the per-request path branch-free.
+  process.env['AUTHZ_OFFLINE'] = 'true'
   v1.use('*', async (c, next) => {
-    c.set('tenantId', process.env['DEFAULT_TENANT_ID'] ?? 'default-tenant')
+    const tenantId = process.env['DEFAULT_TENANT_ID'] ?? 'default-tenant'
+    c.set('tenantId', tenantId)
     c.set('role', 'tenant_admin')
+    c.set('principal', {
+      sub: 'skip-auth-user',
+      tenantId,
+      roleNames: ['tenant_admin'],
+    })
+    c.set('idToken', undefined)
+    c.set('policyStoreId', undefined)
     c.set('userId', 'skip-auth-user')
     c.set('db', basePrisma as unknown as PrismaClient)
     await next()
@@ -172,6 +185,7 @@ if (process.env['SKIP_AUTH'] === 'true') {
 }
 
 // Bounded-context routers
+v1.route('/me', meHandler)
 v1.route('/sso', ssoHandler)
 v1.route('/users', usersHandler)
 v1.route('/customers', customersHandler)

@@ -4,6 +4,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import type { ApiClientRow } from './repositories/api-client.repository'
+import type { Principal } from './lib/authz.types'
 
 /**
  * API client record without the keyHash — set for M2M-authenticated requests.
@@ -39,6 +40,25 @@ export type AppVariables = {
   tenantId: string
   /** The specific role the authenticated user holds in this tenant. */
   role: string
+  /**
+   * Authorization principal — Cognito sub plus Cedar role-group memberships.
+   * Set by tenantMiddleware (or synthesised by the SKIP_AUTH branch). Read by
+   * `requirePermission` and the /me/permissions handler.
+   */
+  principal: Principal
+  /**
+   * The raw Cognito ID token forwarded by the request, used by the AVP
+   * backend's IsAuthorizedWithToken call. Undefined under SKIP_AUTH and in
+   * tests — the authorize() function falls back to the offline wasm backend
+   * in that case.
+   */
+  idToken: string | undefined
+  /**
+   * AVP policy store ID for the resolved tenant, or undefined for tenants
+   * that have not been provisioned (legacy) or under SKIP_AUTH. The authorize()
+   * function uses the offline wasm backend when this is undefined.
+   */
+  policyStoreId: string | undefined
   /**
    * The TenantUser.id of the authenticated Cognito user. Set by tenantMiddleware
    * after resolving the TenantUser record by cognitoSub. Used for audit trails

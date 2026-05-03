@@ -59,14 +59,20 @@ function buildApp() {
   const app = new Hono<AppEnv>()
   app.use('*', tenantMiddleware)
   app.get('/probe', (c) =>
-    c.json({ tenantId: c.get('tenantId'), role: c.get('role'), userId: c.get('userId') }),
+    c.json({
+      tenantId: c.get('tenantId'),
+      role: c.get('role'),
+      userId: c.get('userId'),
+      principal: c.get('principal'),
+      policyStoreId: c.get('policyStoreId'),
+    }),
   )
   return app
 }
 
 type TenantStatus = 'ACTIVE' | 'SUSPENDED' | 'OFFBOARDED'
 
-function mockTenant(status: TenantStatus) {
+function mockTenant(status: TenantStatus, policyStoreId: string | null = null) {
   vi.mocked(db.tenant.findUnique).mockResolvedValue({
     id: 'tenant-uuid',
     name: 'Acme Moving',
@@ -76,6 +82,7 @@ function mockTenant(status: TenantStatus) {
     contactName: null,
     contactEmail: null,
     ssoProviderConfig: null,
+    policyStoreId,
     createdAt: new Date(),
     updatedAt: new Date(),
     deletedAt: null,
@@ -88,10 +95,20 @@ function bearerRequest(opts: RequestInit = {}): RequestInit {
 }
 
 /** Configures mockJwtVerify to resolve with valid tenant claims. */
-function mockValidToken(tenantId = 'tenant-uuid', role = 'tenant_user', sub = 'cognito-sub-xyz') {
-  mockJwtVerify.mockResolvedValueOnce({
-    payload: { token_use: 'id', 'custom:tenantId': tenantId, 'custom:role': role, sub },
-  })
+function mockValidToken(
+  tenantId = 'tenant-uuid',
+  role = 'tenant_user',
+  sub = 'cognito-sub-xyz',
+  rolesJson?: string,
+) {
+  const payload: Record<string, unknown> = {
+    token_use: 'id',
+    'custom:tenantId': tenantId,
+    'custom:role': role,
+    sub,
+  }
+  if (rolesJson !== undefined) payload['custom:roles'] = rolesJson
+  mockJwtVerify.mockResolvedValueOnce({ payload })
 }
 
 // ---------------------------------------------------------------------------
@@ -271,5 +288,48 @@ describe('tenantMiddleware', () => {
     const body = (await res.json()) as Record<string, unknown>
     // userId should be undefined/absent, not set
     expect(body['userId']).toBeUndefined()
+  })
+
+  // ── Principal + AVP context wiring ─────────────────────────────────────────
+
+  it('populates principal.roleNames from custom:roles when present', async () => {
+    mockValidToken(
+      'tenant-uuid',
+      'tenant_user',
+      'cognito-sub-xyz',
+      JSON.stringify(['dispatcher', 'auditor']),
+    )
+    mockTenant('ACTIVE', 'ps-123')
+
+    const res = await buildApp().request('/probe', bearerRequest())
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    const principal = body['principal'] as { roleNames: string[]; sub: string; tenantId: string }
+    expect(principal.roleNames).toEqual(['dispatcher', 'auditor'])
+    expect(principal.sub).toBe('cognito-sub-xyz')
+    expect(principal.tenantId).toBe('tenant-uuid')
+    expect(body['policyStoreId']).toBe('ps-123')
+  })
+
+  it('falls back to [custom:role] for principal.roleNames when custom:roles is absent', async () => {
+    mockValidToken('tenant-uuid', 'tenant_admin', 'cognito-sub-xyz')
+    mockTenant('ACTIVE')
+
+    const res = await buildApp().request('/probe', bearerRequest())
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    const principal = body['principal'] as { roleNames: string[] }
+    expect(principal.roleNames).toEqual(['tenant_admin'])
+  })
+
+  it('falls back to [custom:role] when custom:roles is malformed JSON', async () => {
+    mockValidToken('tenant-uuid', 'tenant_user', 'cognito-sub-xyz', 'not-json')
+    mockTenant('ACTIVE')
+
+    const res = await buildApp().request('/probe', bearerRequest())
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    const principal = body['principal'] as { roleNames: string[] }
+    expect(principal.roleNames).toEqual(['tenant_user'])
   })
 })

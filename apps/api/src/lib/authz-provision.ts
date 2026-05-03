@@ -1,0 +1,123 @@
+// ---------------------------------------------------------------------------
+// AVP per-tenant policy-store provisioning.
+//
+// Called from POST /api/admin/tenants before opening the DB transaction.
+// If anything after CreatePolicyStore fails we attempt a best-effort
+// DeletePolicyStore so the AVP account doesn't leak orphan stores.
+//
+// Why runtime (not CDK custom resource): tenant lifecycle is owned by the API
+// (create / suspend / offboard). Putting policy-store provisioning here keeps
+// the lifecycle in one place and lets us evolve the schema without a CDK
+// deploy per change.
+// ---------------------------------------------------------------------------
+
+import {
+  VerifiedPermissionsClient,
+  CreatePolicyStoreCommand,
+  PutSchemaCommand,
+  CreatePolicyCommand,
+  CreateIdentitySourceCommand,
+  DeletePolicyStoreCommand,
+} from '@aws-sdk/client-verifiedpermissions'
+import { loadPolicies, loadSchemaJson } from '../authz/load'
+import { createLogger } from './logger'
+
+const logger = createLogger('pegasus-authz-provision')
+
+let _avp: VerifiedPermissionsClient | null = null
+function getAvp(): VerifiedPermissionsClient {
+  return (_avp ??= new VerifiedPermissionsClient({}))
+}
+
+export interface ProvisionInput {
+  /** Tenant slug — used in the policy-store description so AVP listings are searchable. */
+  readonly tenantSlug: string
+  /**
+   * Cognito User Pool ARN. Required to attach the pool as the AVP
+   * IdentitySource so deployed traffic can use IsAuthorizedWithToken.
+   */
+  readonly userPoolArn: string
+  /** Tenant app client ID — added to the IdentitySource clientIds list. */
+  readonly tenantAppClientId: string
+}
+
+export interface ProvisionResult {
+  readonly policyStoreId: string
+}
+
+export async function provisionTenantPolicyStore(input: ProvisionInput): Promise<ProvisionResult> {
+  const avp = getAvp()
+
+  // 1) Create the policy store. STRICT validation mode so any future schema
+  //    bug surfaces here (rather than at runtime IsAuthorizedWithToken).
+  const created = await avp.send(
+    new CreatePolicyStoreCommand({
+      validationSettings: { mode: 'STRICT' },
+      description: `pegasus tenant: ${input.tenantSlug}`,
+    }),
+  )
+  const policyStoreId = created.policyStoreId
+  if (!policyStoreId) {
+    throw new Error('CreatePolicyStore returned no policyStoreId')
+  }
+
+  try {
+    // 2) Push the Cedar schema.
+    await avp.send(
+      new PutSchemaCommand({
+        policyStoreId,
+        definition: { cedarJson: loadSchemaJson() },
+      }),
+    )
+
+    // 3) Push every .cedar policy file. Run in parallel — policy creation
+    //    is independent and provisioning latency matters at tenant-create time.
+    await Promise.all(
+      loadPolicies().map((p) =>
+        avp.send(
+          new CreatePolicyCommand({
+            policyStoreId,
+            definition: {
+              static: { description: p.name, statement: p.statement },
+            },
+          }),
+        ),
+      ),
+    )
+
+    // 4) Wire up the Cognito User Pool as the identity source so deployed
+    //    traffic can use IsAuthorizedWithToken without us building a Cedar
+    //    entity store from claims.
+    await avp.send(
+      new CreateIdentitySourceCommand({
+        policyStoreId,
+        principalEntityType: 'Pegasus::User',
+        configuration: {
+          cognitoUserPoolConfiguration: {
+            userPoolArn: input.userPoolArn,
+            clientIds: [input.tenantAppClientId],
+          },
+        },
+      }),
+    )
+  } catch (err) {
+    logger.error('AVP provisioning failed mid-flight, deleting policy store', {
+      policyStoreId,
+      tenantSlug: input.tenantSlug,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    // Best-effort cleanup so we don't leak orphan stores in AVP. Swallow
+    // delete failures — the original error is what the caller needs.
+    try {
+      await avp.send(new DeletePolicyStoreCommand({ policyStoreId }))
+    } catch (cleanupErr) {
+      logger.error('Failed to clean up partially-provisioned AVP store', {
+        policyStoreId,
+        error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+      })
+    }
+    throw err
+  }
+
+  return { policyStoreId }
+}

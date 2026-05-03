@@ -232,6 +232,22 @@ export class CognitoStack extends cdk.Stack {
       selfSignUpEnabled: false,
       signInAliases: { email: true },
       autoVerify: { email: true },
+      // -----------------------------------------------------------------------
+      // Custom attributes
+      //
+      // `custom:roles` carries the JSON-encoded Cedar role-group memberships
+      // emitted by the pre-token Lambda. AVP IsAuthorizedWithToken reads it
+      // directly via the IdentitySource cognitoUserPoolConfiguration mapping.
+      //
+      // `custom:tenantId` and `custom:role` are intentionally NOT declared
+      // here — they are written exclusively as pre-token claim overrides
+      // (Cognito allows undeclared `custom:*` claim names in
+      // claimsOverrideDetails). We declare `custom:roles` to make its
+      // contract explicit and bound the maximum length at the pool level.
+      // -----------------------------------------------------------------------
+      customAttributes: {
+        roles: new cognito.StringAttribute({ minLen: 0, maxLen: 2048, mutable: true }),
+      },
       // TOTP MFA is optional at the pool level. The pre-auth trigger enforces
       // it for PLATFORM_ADMIN users. SMS is disabled — no SNS setup required.
       mfa: cognito.Mfa.OPTIONAL,

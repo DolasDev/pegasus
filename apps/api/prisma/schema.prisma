@@ -219,6 +219,13 @@ model Tenant {
   /// excluded from all default queries. Null means not offboarded.
   deletedAt DateTime? @map("deleted_at")
 
+  /// AWS Verified Permissions (Cedar) policy store ID for this tenant.
+  /// One AVP store per tenant — Cedar policies and identity-source
+  /// configuration are scoped here. Provisioned at tenant-create time
+  /// (apps/api/src/lib/authz-provision.ts). Null for legacy tenants
+  /// created before this column existed; backfilled out-of-band.
+  policyStoreId String? @map("policy_store_id")
+
   // -------------------------------------------------------------------------
   // Relations
   // -------------------------------------------------------------------------
@@ -326,6 +333,11 @@ model TenantUser {
   legacyWindowsUsername String?  @map("legacy_windows_username")
 
   role          TenantUserRole   @default(USER)
+  /// Cedar role-group memberships. Authoritative source for the
+  /// `custom:roles` Cognito claim emitted by the pre-token Lambda.
+  /// During the transition `role` (enum) is kept as a write-through
+  /// shadow: tenant_admin ↔ role=ADMIN, otherwise role=USER.
+  roleNames     String[]         @default([]) @map("role_names")
   status        TenantUserStatus @default(PENDING)
   invitedAt     DateTime         @default(now()) @map("invited_at")
   activatedAt   DateTime?        @map("activated_at")

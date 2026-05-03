@@ -16,6 +16,8 @@ import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../types'
 import { registerTestErrorHandler } from '../test-helpers'
+import { seedPrincipalForRole } from '../__tests__/_principal'
+import { _clearAuthzCache } from '../lib/authz'
 
 // ---------------------------------------------------------------------------
 // Cognito SDK mock
@@ -29,6 +31,7 @@ const { mockSend, mockRepo, mockTenantFindUnique } = vi.hoisted(() => ({
     findByEmail: vi.fn(),
     invite: vi.fn(),
     updateRole: vi.fn(),
+    updateRoleNames: vi.fn(),
     updateLegacyWindowsUsername: vi.fn(),
     deactivate: vi.fn(),
     reactivate: vi.fn(),
@@ -84,12 +87,11 @@ function patch(body: unknown): RequestInit {
 function buildApp(role: string | null = 'tenant_admin') {
   const app = new Hono<AppEnv>()
   registerTestErrorHandler(app)
+  app.use('*', seedPrincipalForRole(role))
   app.use('*', async (c, next) => {
-    c.set('tenantId', 'test-tenant-id')
     c.set('db', {
       tenant: { findUnique: mockTenantFindUnique },
     } as unknown as PrismaClient)
-    if (role !== null) c.set('role', role)
     await next()
   })
   app.route('/', usersHandler)
@@ -109,6 +111,7 @@ const mockUserRow = {
   cognitoSub: null,
   legacyWindowsUsername: null,
   role: 'USER' as const,
+  roleNames: ['tenant_user'],
   status: 'PENDING' as const,
   invitedAt: now,
   activatedAt: null,
@@ -129,6 +132,8 @@ const mockAdminRow = {
 describe('users handler', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    process.env['AUTHZ_OFFLINE'] = 'true'
+    _clearAuthzCache()
     mockSend.mockResolvedValue({})
     mockTenantFindUnique.mockResolvedValue({
       id: 'test-tenant-id',

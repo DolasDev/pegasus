@@ -23,7 +23,8 @@
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
-import { requireRole } from '../middleware/rbac'
+import { requirePermission } from '../middleware/rbac'
+import { Actions } from '../authz/actions'
 import { createApiClientRepository } from '../repositories/api-client.repository'
 import type { ApiClientRow } from '../repositories/api-client.repository'
 import type { AppEnv } from '../types'
@@ -84,9 +85,6 @@ function toResponse(row: ApiClientRow): ApiClientResponse {
 
 export const apiClientsHandler = new Hono<AppEnv>()
 
-// All endpoints require tenant_admin.
-apiClientsHandler.use('*', requireRole(['tenant_admin']))
-
 // ---------------------------------------------------------------------------
 // POST /
 //
@@ -98,6 +96,7 @@ apiClientsHandler.use('*', requireRole(['tenant_admin']))
 // ---------------------------------------------------------------------------
 apiClientsHandler.post(
   '/',
+  requirePermission(Actions.CreateApiClient),
   validator('json', (value, c) => {
     const r = CreateApiClientBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
@@ -123,7 +122,7 @@ apiClientsHandler.post(
 //
 // Response: { data: ApiClientResponse[], meta: { count } }
 // ---------------------------------------------------------------------------
-apiClientsHandler.get('/', async (c) => {
+apiClientsHandler.get('/', requirePermission(Actions.ListApiClients), async (c) => {
   const tenantId = c.get('tenantId')
   const repo = createApiClientRepository(c.get('db'))
 
@@ -139,9 +138,11 @@ apiClientsHandler.get('/', async (c) => {
 //
 // Response: { data: ApiClientResponse } (200) | 404
 // ---------------------------------------------------------------------------
-apiClientsHandler.get('/:id', async (c) => {
+apiClientsHandler.get('/:id', requirePermission(Actions.ListApiClients), async (c) => {
   const tenantId = c.get('tenantId')
-  const id = c.req.param('id')
+  // The route is `/:id` so `id` is always present at runtime; the `?? ''`
+  // satisfies the looser middleware-chained Hono typing.
+  const id = c.req.param('id') ?? ''
   const repo = createApiClientRepository(c.get('db'))
 
   const row = await repo.findById(id, tenantId)
@@ -159,6 +160,7 @@ apiClientsHandler.get('/:id', async (c) => {
 // ---------------------------------------------------------------------------
 apiClientsHandler.patch(
   '/:id',
+  requirePermission(Actions.CreateApiClient),
   validator('json', (value, c) => {
     const r = PatchApiClientBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
@@ -191,9 +193,9 @@ apiClientsHandler.patch(
 //
 // Response: { data: ApiClientResponse } (200) | 404 | 409 (already revoked)
 // ---------------------------------------------------------------------------
-apiClientsHandler.post('/:id/revoke', async (c) => {
+apiClientsHandler.post('/:id/revoke', requirePermission(Actions.RevokeApiClient), async (c) => {
   const tenantId = c.get('tenantId')
-  const id = c.req.param('id')
+  const id = c.req.param('id') ?? ''
   const repo = createApiClientRepository(c.get('db'))
 
   const existing = await repo.findById(id, tenantId)
@@ -216,9 +218,9 @@ apiClientsHandler.post('/:id/revoke', async (c) => {
 //
 // Response: { data: ApiClientResponse & { plainKey } } (200) | 404
 // ---------------------------------------------------------------------------
-apiClientsHandler.post('/:id/rotate', async (c) => {
+apiClientsHandler.post('/:id/rotate', requirePermission(Actions.RotateApiClient), async (c) => {
   const tenantId = c.get('tenantId')
-  const id = c.req.param('id')
+  const id = c.req.param('id') ?? ''
   const repo = createApiClientRepository(c.get('db'))
 
   const existing = await repo.findById(id, tenantId)
