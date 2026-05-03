@@ -1,0 +1,149 @@
+{
+  "Pegasus": {
+    "entityTypes": {
+      "User": {
+        "memberOfTypes": ["Group"],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
+      "Group": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
+      "Tenant": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
+      "Quote": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
+      "Move": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
+      "Invoice": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
+      "Customer": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
+      "ApiClient": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
+      "Setting": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      }
+    },
+    "actions": {
+      "ListUsers": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["User"] }
+      },
+      "InviteUser": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["User"] }
+      },
+      "UpdateUser": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["User"] }
+      },
+      "DeactivateUser": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["User"] }
+      },
+      "ReadSettings": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Setting"] }
+      },
+      "UpdateSettings": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Setting"] }
+      },
+      "ListApiClients": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["ApiClient"] }
+      },
+      "CreateApiClient": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["ApiClient"] }
+      },
+      "RotateApiClient": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["ApiClient"] }
+      },
+      "RevokeApiClient": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["ApiClient"] }
+      },
+      "ReadQuote": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Quote"] }
+      },
+      "CreateQuote": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Quote"] }
+      },
+      "UpdateQuote": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Quote"] }
+      },
+      "DeleteQuote": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Quote"] }
+      },
+      "ReadMove": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Move"] }
+      },
+      "CreateMove": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Move"] }
+      },
+      "UpdateMove": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Move"] }
+      },
+      "DeleteMove": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Move"] }
+      },
+      "ReadInvoice": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Invoice"] }
+      },
+      "CreateInvoice": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Invoice"] }
+      },
+      "UpdateInvoice": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Invoice"] }
+      },
+      "DeleteInvoice": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Invoice"] }
+      },
+      "ReadCustomer": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Customer"] }
+      },
+      "CreateCustomer": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Customer"] }
+      },
+      "UpdateCustomer": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Customer"] }
+      },
+      "DeleteCustomer": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Customer"] }
+      }
+    }
+  }
+}

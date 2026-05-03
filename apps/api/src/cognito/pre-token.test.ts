@@ -116,8 +116,16 @@ function makeEvent({
 }
 
 /** A resolved ACTIVE TenantUser with USER role. */
-function activeTenantUser(overrides?: Partial<{ role: string; status: string }>) {
-  return { id: 'user-uuid', role: 'USER', status: 'ACTIVE', ...overrides }
+function activeTenantUser(
+  overrides?: Partial<{ role: string; status: string; roleNames: string[] }>,
+) {
+  return {
+    id: 'user-uuid',
+    role: 'USER',
+    roleNames: ['tenant_user'],
+    status: 'ACTIVE',
+    ...overrides,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -306,6 +314,7 @@ describe('pre-token trigger', () => {
     mockTenantUserFindFirst.mockResolvedValue({
       id: 'user-uuid',
       role: 'ADMIN',
+      roleNames: ['tenant_admin'],
       status: 'PENDING',
     })
     mockTenantUserUpdate.mockResolvedValue({})
@@ -456,6 +465,35 @@ describe('pre-token trigger', () => {
         },
       }),
     )
+  })
+
+  // ── custom:roles emission (Cedar role-group memberships) ─────────────────
+
+  it('emits custom:roles JSON-encoded from tenantUser.roleNames when populated', async () => {
+    mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
+    mockTenantUserFindFirst.mockResolvedValue(
+      activeTenantUser({ role: 'USER', roleNames: ['dispatcher', 'auditor'] }),
+    )
+
+    const result = await handler(
+      makeEvent({ email: 'dispatch@acme.com' }),
+      fakeContext,
+      fakeCallback,
+    )
+
+    const claims = result.response.claimsOverrideDetails?.claimsToAddOrOverride
+    expect(claims?.['custom:roles']).toBe(JSON.stringify(['dispatcher', 'auditor']))
+  })
+
+  it('falls back to [legacyRoleClaim] for custom:roles when roleNames is empty', async () => {
+    mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
+    mockTenantUserFindFirst.mockResolvedValue(activeTenantUser({ role: 'ADMIN', roleNames: [] }))
+
+    const result = await handler(makeEvent({ email: 'admin@acme.com' }), fakeContext, fakeCallback)
+
+    const claims = result.response.claimsOverrideDetails?.claimsToAddOrOverride
+    expect(claims?.['custom:role']).toBe('tenant_admin')
+    expect(claims?.['custom:roles']).toBe(JSON.stringify(['tenant_admin']))
   })
 
   it('still blocks DEACTIVATED users even when AuthSession is present', async () => {

@@ -186,7 +186,7 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
       tenantId,
       email: { equals: normalizedEmail, mode: 'insensitive' },
     },
-    select: { id: true, role: true, status: true },
+    select: { id: true, role: true, roleNames: true, status: true },
   })
 
   if (!tenantUser) {
@@ -224,11 +224,17 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
     })
   }
 
+  // Cedar role-group memberships for AVP. Authoritative source is
+  // tenantUser.roleNames; fall back to the legacy single role claim so
+  // tenants whose roleNames column is empty still authenticate cleanly.
+  const cedarRoles = tenantUser.roleNames.length > 0 ? tenantUser.roleNames : [roleClaimValue]
+
   event.response = {
     claimsOverrideDetails: {
       claimsToAddOrOverride: {
         'custom:tenantId': tenantId,
         'custom:role': roleClaimValue,
+        'custom:roles': JSON.stringify(cedarRoles),
       },
     },
   }

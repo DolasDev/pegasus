@@ -24,7 +24,8 @@ import {
   AdminCreateUserCommand,
   AdminDisableUserCommand,
 } from '@aws-sdk/client-cognito-identity-provider'
-import { requireRole } from '../middleware/rbac'
+import { requirePermission } from '../middleware/rbac'
+import { Actions } from '../authz/actions'
 import { createUsersRepository, type TenantUserRow } from '../repositories/users'
 import type { AppEnv } from '../types'
 import { logger } from '../lib/logger'
@@ -51,11 +52,16 @@ const InviteUserBody = z.object({
 const PatchUserBody = z
   .object({
     role: z.enum(['ADMIN', 'USER']).optional(),
+    roleNames: z.array(z.string().min(1)).optional(),
     legacyWindowsUsername: z.string().min(1).max(255).nullable().optional(),
   })
-  .refine((d) => d.role !== undefined || d.legacyWindowsUsername !== undefined, {
-    message: 'At least one of role or legacyWindowsUsername must be provided',
-  })
+  .refine(
+    (d) =>
+      d.role !== undefined || d.roleNames !== undefined || d.legacyWindowsUsername !== undefined,
+    {
+      message: 'At least one of role, roleNames, or legacyWindowsUsername must be provided',
+    },
+  )
 
 // ---------------------------------------------------------------------------
 // Response shape
@@ -67,6 +73,7 @@ type TenantUserResponse = {
   cognitoSub: string | null
   legacyWindowsUsername: string | null
   role: 'ADMIN' | 'USER'
+  roleNames: string[]
   status: 'PENDING' | 'ACTIVE' | 'DEACTIVATED'
   invitedAt: string
   activatedAt: string | null
@@ -80,6 +87,7 @@ function toResponse(row: TenantUserRow): TenantUserResponse {
     cognitoSub: row.cognitoSub,
     legacyWindowsUsername: row.legacyWindowsUsername,
     role: row.role,
+    roleNames: row.roleNames,
     status: row.status,
     invitedAt: row.invitedAt.toISOString(),
     activatedAt: row.activatedAt?.toISOString() ?? null,
@@ -92,9 +100,6 @@ function toResponse(row: TenantUserRow): TenantUserResponse {
 // ---------------------------------------------------------------------------
 export const usersHandler = new Hono<AppEnv>()
 
-// All endpoints in this handler require tenant_admin.
-usersHandler.use('*', requireRole(['tenant_admin']))
-
 // ---------------------------------------------------------------------------
 // GET /
 //
@@ -102,7 +107,7 @@ usersHandler.use('*', requireRole(['tenant_admin']))
 //
 // Response: { data: TenantUserResponse[], meta: { count } }
 // ---------------------------------------------------------------------------
-usersHandler.get('/', async (c) => {
+usersHandler.get('/', requirePermission(Actions.ListUsers), async (c) => {
   const db = c.get('db')
   const repo = createUsersRepository(db)
 
@@ -126,6 +131,7 @@ usersHandler.get('/', async (c) => {
 // ---------------------------------------------------------------------------
 usersHandler.post(
   '/invite',
+  requirePermission(Actions.InviteUser),
   validator('json', (value, c) => {
     const r = InviteUserBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
@@ -226,6 +232,7 @@ usersHandler.post(
 // ---------------------------------------------------------------------------
 usersHandler.patch(
   '/:id',
+  requirePermission(Actions.UpdateUser),
   validator('json', (value, c) => {
     const r = PatchUserBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
@@ -235,8 +242,8 @@ usersHandler.patch(
     const db = c.get('db')
     const tenantId = c.get('tenantId')
     const repo = createUsersRepository(db)
-    const id = c.req.param('id')
-    const { role, legacyWindowsUsername } = c.req.valid('json')
+    const id = c.req.param('id') ?? ''
+    const { role, roleNames, legacyWindowsUsername } = c.req.valid('json')
 
     const existing = await repo.findById(id, tenantId)
     if (!existing) {
@@ -244,7 +251,12 @@ usersHandler.patch(
     }
 
     let current = existing
-    if (role !== undefined) {
+    // roleNames is the new authoritative source. When it is provided we also
+    // derive the legacy enum so any reader still using `role` stays consistent.
+    if (roleNames !== undefined) {
+      const derivedLegacy: 'ADMIN' | 'USER' = roleNames.includes('tenant_admin') ? 'ADMIN' : 'USER'
+      current = await repo.updateRoleNames(id, roleNames, derivedLegacy)
+    } else if (role !== undefined) {
       current = await repo.updateRole(id, role)
     }
     if (legacyWindowsUsername !== undefined) {
@@ -266,11 +278,11 @@ usersHandler.patch(
 //           { error, code: NOT_FOUND }        (404)
 //           { error, code: LAST_ADMIN }       (422) — cannot remove last admin
 // ---------------------------------------------------------------------------
-usersHandler.delete('/:id', async (c) => {
+usersHandler.delete('/:id', requirePermission(Actions.DeactivateUser), async (c) => {
   const db = c.get('db')
   const tenantId = c.get('tenantId')
   const repo = createUsersRepository(db)
-  const id = c.req.param('id')
+  const id = c.req.param('id') ?? ''
 
   const existing = await repo.findById(id, tenantId)
   if (!existing) {

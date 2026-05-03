@@ -12,7 +12,8 @@
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
-import { requireRole } from '../middleware/rbac'
+import { requirePermission } from '../middleware/rbac'
+import { Actions } from '../authz/actions'
 import { db } from '../db'
 import type { AppEnv } from '../types'
 import { logger } from '../lib/logger'
@@ -40,9 +41,6 @@ function maskConnectionString(str: string | null): string | null {
 
 export const settingsHandler = new Hono<AppEnv>()
 
-// All endpoints require tenant_admin.
-settingsHandler.use('*', requireRole(['tenant_admin']))
-
 // ---------------------------------------------------------------------------
 // GET /mssql
 //
@@ -50,7 +48,7 @@ settingsHandler.use('*', requireRole(['tenant_admin']))
 //
 // Response: { data: { mssqlConnectionString: string | null } }
 // ---------------------------------------------------------------------------
-settingsHandler.get('/mssql', async (c) => {
+settingsHandler.get('/mssql', requirePermission(Actions.ReadSettings), async (c) => {
   const tenantId = c.get('tenantId')
 
   const tenant = await db.tenant.findUnique({
@@ -62,7 +60,9 @@ settingsHandler.get('/mssql', async (c) => {
     return c.json({ error: 'Tenant not found', code: 'NOT_FOUND' }, 404)
   }
 
-  return c.json({ data: { mssqlConnectionString: maskConnectionString(tenant.mssqlConnectionString) } })
+  return c.json({
+    data: { mssqlConnectionString: maskConnectionString(tenant.mssqlConnectionString) },
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -75,6 +75,7 @@ settingsHandler.get('/mssql', async (c) => {
 // ---------------------------------------------------------------------------
 settingsHandler.patch(
   '/mssql',
+  requirePermission(Actions.UpdateSettings),
   validator('json', (value, c) => {
     const r = PatchMssqlBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
@@ -91,6 +92,8 @@ settingsHandler.patch(
     })
 
     logger.info('MSSQL connection string updated', { tenantId })
-    return c.json({ data: { mssqlConnectionString: maskConnectionString(tenant.mssqlConnectionString) } })
+    return c.json({
+      data: { mssqlConnectionString: maskConnectionString(tenant.mssqlConnectionString) },
+    })
   },
 )

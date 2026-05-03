@@ -21,9 +21,18 @@ const onprem = new Hono<AppEnv>()
 
 if (process.env['SKIP_AUTH'] === 'true') {
   logger.warn('SKIP_AUTH is enabled — all authentication is bypassed. Do NOT use in production.')
+  process.env['AUTHZ_OFFLINE'] = 'true'
   onprem.use('*', async (c, next) => {
-    c.set('tenantId', process.env['DEFAULT_TENANT_ID'] ?? 'default-tenant')
+    const tenantId = process.env['DEFAULT_TENANT_ID'] ?? 'default-tenant'
+    c.set('tenantId', tenantId)
     c.set('role', 'tenant_admin')
+    c.set('principal', {
+      sub: 'skip-auth-user',
+      tenantId,
+      roleNames: ['tenant_admin'],
+    })
+    c.set('idToken', undefined)
+    c.set('policyStoreId', undefined)
     c.set('userId', 'skip-auth-user')
     c.set('db', basePrisma as unknown as PrismaClient)
     await next()

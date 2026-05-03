@@ -73,6 +73,7 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
 
   const customTenantId = payload['custom:tenantId'] as string | undefined
   const customRole = payload['custom:role'] as string | undefined
+  const customRolesRaw = payload['custom:roles'] as string | undefined
   const cognitoSub = payload['sub'] as string | undefined
 
   if (!customTenantId || !customRole) {
@@ -82,6 +83,24 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
   const tenant = await basePrisma.tenant.findUnique({ where: { id: customTenantId } })
   if (!tenant) {
     return c.json({ error: 'Tenant not found', code: 'TENANT_NOT_FOUND' }, 404)
+  }
+
+  // -------------------------------------------------------------------------
+  // Parse the Cedar role-group memberships claim. The pre-token Lambda emits
+  // it as a JSON-encoded string; fall back to [customRole] for tokens minted
+  // before the claim was added so existing sessions keep working.
+  // -------------------------------------------------------------------------
+  let roleNames: string[] = [customRole]
+  if (customRolesRaw) {
+    try {
+      const parsed = JSON.parse(customRolesRaw) as unknown
+      if (Array.isArray(parsed) && parsed.every((s) => typeof s === 'string')) {
+        roleNames = parsed as string[]
+      }
+    } catch {
+      // Malformed claim — keep the legacy fallback rather than failing closed
+      // on a token from a tenant whose pre-token Lambda is older.
+    }
   }
 
   // Enforce tenant lifecycle status before routing the request any further.
@@ -99,6 +118,13 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
 
   c.set('tenantId', tenant.id)
   c.set('role', customRole)
+  c.set('principal', {
+    sub: cognitoSub ?? '',
+    tenantId: tenant.id,
+    roleNames,
+  })
+  c.set('idToken', token)
+  c.set('policyStoreId', tenant.policyStoreId ?? undefined)
   // Cast required because TenantDb is a Prisma extension subtype of PrismaClient.
   // The runtime instance IS the extension; the type annotation in AppVariables
   // uses PrismaClient for ergonomics across handler and repository code.

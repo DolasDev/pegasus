@@ -14,6 +14,7 @@ import type { AdminEnv } from '../../types'
 import { db } from '../../db'
 import { writeAuditLog } from './audit'
 import { provisionCognitoUser } from './cognito'
+import { provisionTenantPolicyStore } from '../../lib/authz-provision'
 import { logger } from '../../lib/logger'
 import { adminTenantUsersRouter } from './tenant-users'
 import { adminVpnRouter } from './vpn'
@@ -222,6 +223,35 @@ adminTenantsRouter.post(
       )
     }
 
+    // Provision the per-tenant AVP policy store before opening the DB
+    // transaction. If this fails the tenant row is never written, so we
+    // never end up with a tenant whose authz cannot be evaluated.
+    // Both env vars are surfaced from CDK (api-stack.ts). When either is
+    // empty we skip provisioning entirely — relevant for local stacks (`tsx
+    // src/server.ts`) where the API runs without Cognito or AVP.
+    let policyStoreId: string | null = null
+    const userPoolArn = process.env['COGNITO_USER_POOL_ARN'] ?? ''
+    const tenantAppClientId = process.env['COGNITO_TENANT_CLIENT_ID'] ?? ''
+    if (userPoolArn && tenantAppClientId) {
+      try {
+        const result = await provisionTenantPolicyStore({
+          tenantSlug: body.slug,
+          userPoolArn,
+          tenantAppClientId,
+        })
+        policyStoreId = result.policyStoreId
+      } catch (err) {
+        logger.error('Failed to provision AVP policy store', { error: String(err) })
+        return c.json(
+          {
+            error: 'Failed to provision the tenant authorization store. Please try again.',
+            code: 'AUTHZ_ERROR',
+          },
+          500,
+        )
+      }
+    }
+
     try {
       const tenant = await db.$transaction(async (tx) => {
         const created = await tx.tenant.create({
@@ -232,6 +262,7 @@ adminTenantsRouter.post(
             ...(body.plan !== undefined ? { plan: body.plan } : {}),
             ...(body.contactName !== undefined ? { contactName: body.contactName } : {}),
             ...(body.contactEmail !== undefined ? { contactEmail: body.contactEmail } : {}),
+            ...(policyStoreId !== null ? { policyStoreId } : {}),
           },
           select: DETAIL_SELECT,
         })
@@ -243,6 +274,7 @@ adminTenantsRouter.post(
             tenantId: created.id,
             email: body.adminEmail.toLowerCase(),
             role: 'ADMIN',
+            roleNames: ['tenant_admin'],
             status: 'PENDING',
           },
         })

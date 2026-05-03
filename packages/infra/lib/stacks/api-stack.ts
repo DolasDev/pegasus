@@ -160,6 +160,16 @@ export class ApiStack extends cdk.Stack {
         // User Pool ID. Used by POST /api/admin/tenants to provision the
         // initial tenant administrator via Cognito AdminCreateUser.
         COGNITO_USER_POOL_ID: cognitoUserPoolId,
+        // User Pool ARN — required by AVP CreateIdentitySource when the API
+        // provisions a per-tenant policy store (apps/api/src/lib/authz-provision.ts).
+        // Built from the imported pool ID + this stack's account/region so it
+        // matches whatever pool the rest of this stack is wired against.
+        COGNITO_USER_POOL_ARN: cognitoStackName
+          ? cdk.Fn.join('', [
+              `arn:aws:cognito-idp:${this.region}:${this.account}:userpool/`,
+              cognitoUserPoolId,
+            ])
+          : '',
         // Mobile app client ID. Returned by GET /api/auth/mobile-config so the
         // mobile app can authenticate against Cognito without baking credentials
         // into the app bundle.
@@ -249,6 +259,41 @@ export class ApiStack extends cdk.Stack {
         }),
       )
     }
+
+    // ---------------------------------------------------------------------------
+    // IAM: AWS Verified Permissions (Cedar/AVP).
+    //
+    // Two statements:
+    //   1. Per-store ops (IsAuthorized*, BatchIsAuthorized*, lifecycle calls
+    //      we use during tenant provisioning) — scoped to any policy-store ARN
+    //      in this account because store IDs are minted at runtime by
+    //      CreatePolicyStore. AVP doesn't support resource-level conditions on
+    //      CreatePolicy / PutSchema / CreateIdentitySource that would let us
+    //      tighten this further at IAM time.
+    //   2. CreatePolicyStore — account-scoped action (no ARN), so we list it
+    //      separately against `*`.
+    // ---------------------------------------------------------------------------
+    apiFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          'verifiedpermissions:IsAuthorized',
+          'verifiedpermissions:IsAuthorizedWithToken',
+          'verifiedpermissions:BatchIsAuthorized',
+          'verifiedpermissions:BatchIsAuthorizedWithToken',
+          'verifiedpermissions:DeletePolicyStore',
+          'verifiedpermissions:PutSchema',
+          'verifiedpermissions:CreatePolicy',
+          'verifiedpermissions:CreateIdentitySource',
+        ],
+        resources: [`arn:aws:verifiedpermissions::${this.account}:policy-store/*`],
+      }),
+    )
+    apiFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['verifiedpermissions:CreatePolicyStore'],
+        resources: ['*'],
+      }),
+    )
 
     // ---------------------------------------------------------------------------
     // IAM: read-only EC2 + SSM RunShellScript on the WG hub for the admin
