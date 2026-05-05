@@ -323,7 +323,12 @@ export class ApiStack extends cdk.Stack {
       new iam.PolicyStatement({
         actions: ['ssm:SendCommand'],
         resources: [
-          `arn:aws:ssm:${this.region}:${this.account}:document/AWS-RunShellScript`,
+          // AWS-RunShellScript is an AWS-managed document; its ARN has an
+          // empty account portion (`arn:aws:ssm:<region>::document/...`).
+          // Templating in `${this.account}` here produces an ARN that no
+          // SendCommand call ever matches, so the IAM check fails closed and
+          // the diagnose handler returns 500.
+          `arn:aws:ssm:${this.region}::document/AWS-RunShellScript`,
           `arn:aws:ec2:${this.region}:${this.account}:instance/*`,
         ],
         conditions: {

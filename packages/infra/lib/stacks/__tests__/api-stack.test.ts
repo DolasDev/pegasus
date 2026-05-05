@@ -130,6 +130,35 @@ describe('ApiStack — IAM permissions', () => {
       },
     })
   })
+
+  // Regression: the AWS-RunShellScript document is AWS-managed and its ARN
+  // has an empty account portion. Templating in `this.account` here makes the
+  // policy resource never match, and SendCommand fails closed at runtime.
+  it('grants ssm:SendCommand on AWS-RunShellScript with an empty-account ARN', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'ssm:SendCommand',
+            Effect: 'Allow',
+            Resource: Match.arrayWith([
+              Match.objectLike({
+                'Fn::Join': [
+                  '',
+                  Match.arrayWith([
+                    'arn:aws:ssm:',
+                    Match.objectLike({ Ref: 'AWS::Region' }),
+                    '::document/AWS-RunShellScript',
+                  ]),
+                ],
+              }),
+            ]),
+          }),
+        ]),
+      },
+    })
+  })
 })
 
 describe('ApiStack — HTTP API Gateway', () => {
