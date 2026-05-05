@@ -328,21 +328,30 @@ export class ApiStack extends cdk.Stack {
         resources: ['*'],
       }),
     )
+    // ssm:SendCommand authorizes against BOTH the document and the instance
+    // resource. We can't put them in the same PolicyStatement: the
+    // `ssm:resourceTag/Name` condition is evaluated per-resource, and the
+    // AWS-managed AWS-RunShellScript document doesn't carry customer tags,
+    // so the condition fails for the document and the whole statement gets
+    // filtered out. Splitting keeps the tag condition where it matters
+    // (instance scope = the safety guarantee) and lets the document be
+    // referenced unconditionally. Without this split, the diagnose handler
+    // 500s with `ssm:SendCommand on resource: arn:aws:ssm:<region>::document/
+    // AWS-RunShellScript` AccessDenied even though both ARNs are listed.
     apiFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['ssm:SendCommand'],
-        resources: [
-          // AWS-RunShellScript is an AWS-managed document; its ARN has an
-          // empty account portion (`arn:aws:ssm:<region>::document/...`).
-          // Templating in `${this.account}` here produces an ARN that no
-          // SendCommand call ever matches, so the IAM check fails closed and
-          // the diagnose handler returns 500.
-          `arn:aws:ssm:${this.region}::document/AWS-RunShellScript`,
-          `arn:aws:ec2:${this.region}:${this.account}:instance/*`,
-        ],
+        resources: [`arn:aws:ec2:${this.region}:${this.account}:instance/*`],
         conditions: {
           StringEquals: { 'ssm:resourceTag/Name': 'pegasus-wireguard-hub' },
         },
+      }),
+    )
+    apiFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ssm:SendCommand'],
+        // AWS-managed document ARN — empty account portion is mandatory.
+        resources: [`arn:aws:ssm:${this.region}::document/AWS-RunShellScript`],
       }),
     )
     apiFunction.addToRolePolicy(

@@ -142,18 +142,47 @@ describe('ApiStack — IAM permissions', () => {
           Match.objectLike({
             Action: 'ssm:SendCommand',
             Effect: 'Allow',
-            Resource: Match.arrayWith([
-              Match.objectLike({
-                'Fn::Join': [
-                  '',
-                  Match.arrayWith([
-                    'arn:aws:ssm:',
-                    Match.objectLike({ Ref: 'AWS::Region' }),
-                    '::document/AWS-RunShellScript',
-                  ]),
-                ],
-              }),
-            ]),
+            Resource: {
+              'Fn::Join': [
+                '',
+                Match.arrayWith([
+                  'arn:aws:ssm:',
+                  Match.objectLike({ Ref: 'AWS::Region' }),
+                  '::document/AWS-RunShellScript',
+                ]),
+              ],
+            },
+          }),
+        ]),
+      },
+    })
+  })
+
+  // Regression: ssm:resourceTag/* conditions evaluate per-resource. AWS-managed
+  // documents don't carry customer tags, so combining the document and the
+  // instance scope in one statement under a tag condition filters the whole
+  // statement out for the document resource, and SendCommand fails closed.
+  // The document statement must be unconditional; the tag condition belongs
+  // only on the instance statement.
+  it('does not gate the AWS-RunShellScript ssm:SendCommand statement on a resource tag', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'ssm:SendCommand',
+            Effect: 'Allow',
+            Resource: {
+              'Fn::Join': [
+                '',
+                Match.arrayWith([
+                  'arn:aws:ssm:',
+                  Match.objectLike({ Ref: 'AWS::Region' }),
+                  '::document/AWS-RunShellScript',
+                ]),
+              ],
+            },
+            Condition: Match.absent(),
           }),
         ]),
       },
