@@ -197,6 +197,15 @@ export class ApiStack extends cdk.Stack {
         minify: true,
         sourceMap: true,
         externalModules: ['@aws-sdk/*'],
+        // @cedar-policy/cedar-wasm/nodejs loads `${__dirname}/cedar_wasm_bg.wasm`
+        // synchronously at module init via require('fs').readFileSync. esbuild
+        // can't bundle that — the .wasm asset must live next to the JS file at
+        // runtime. Listing the package under `nodeModules` (not externalModules)
+        // tells CDK to skip bundling it AND install it as a real node_modules
+        // dependency in the Lambda asset, preserving the package layout. Without
+        // this, init throws ENOENT on `/var/task/cedar_wasm_bg.wasm` and the
+        // Lambda returns a bare API Gateway 500 before our onError sees it.
+        nodeModules: ['@cedar-policy/cedar-wasm'],
       },
       memorySize: 512,
       timeout: cdk.Duration.seconds(29),
