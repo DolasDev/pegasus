@@ -22,37 +22,26 @@ against a real staging tenant.
 
 ## Plan
 
-- [ ] **1. Authenticated browser-spec helper, then un-skip the VPN
-      diagnose spec.**
-      `apps/e2e/tests/browser/admin-vpn-diagnose.spec.ts` ships
-      `test.skip`-gated with a TODO. The blocker: no helper exists to
-      log a Playwright session into admin-web's `_auth` routes. Two
-      paths:
+- [x] **1. Authenticated browser-spec helper, then un-skip the VPN
+      diagnose spec.** Done via path (a) — admin-web's `authGuard`
+      (`apps/admin-web/src/routes/_auth.tsx`) is still a synchronous
+      `sessionStorage` check post-AVP merge (#91), so the new
+      Cedar/AVP contract is server-only and the spec mocks every API
+      call anyway. Implementation: - `apps/e2e/fixtures/auth.ts` exports `seedAdminAuth(page)`,
+      which uses `page.addInitScript` to prime the three
+      `pegasus_admin_*_token` keys before any page script runs. - `apps/e2e/tests/browser/admin-vpn-diagnose.spec.ts` is
+      un-skipped, wrapped in `test.describe('@local-only ...', ...)`
+      so `playwright.config.ts` `grepInvert: /@local-only/` excludes
+      it from the staging gate, mocks `GET
+      /api/admin/tenants/:id` + `/vpn/status` alongside the
+      existing diagnose route, and seeds auth in `beforeEach`. - Verified locally: `WEB_URL=http://localhost:5174 npm
+      --prefix apps/e2e run e2e -- --project=browser
+      admin-vpn-diagnose` → 2/2 passing. Confirmed
+      `E2E_TARGET=remote` skips both tests ("No tests found").
 
-      a. **Local-only path** (cheaper, ships sooner): use
-         `SKIP_AUTH=true` against the local API (matches what most
-         existing API specs assume) and add a thin `loginAsAdmin()`
-         fixture that seeds a session cookie. Tag the spec
-         `@local-only` so the staging gate still excludes it. This
-         un-skips the spec for local CI but keeps the gate scope
-         narrow.
-
-      b. **Remote-capable path** (eventually needed): wire a Cognito
-         hosted-UI login fixture using
-         `E2E_COGNITO_USER_POOL_ID` / `E2E_COGNITO_CLIENT_ID` (both
-         already plumbed by PR #88, currently unused). This is its own
-         plan — sketch it but don't build it here.
-
-      Recommend (a) for this follow-up. Verify by removing
-      `test.skip` and running
-      `npm --prefix apps/e2e run e2e -- admin-vpn-diagnose` locally.
-
-      **Re-evaluate after AuthZ lands**: if the new model gates admin
-      routes through Cedar policies rather than a simple `SKIP_AUTH`
-      bypass, path (a) may need to seed a Cedar entity/policy instead
-      of (or in addition to) the cookie. Check
-      `apps/api/src/lib/authz.ts` and `apps/api/src/handlers/me.ts`
-      for the new contract before writing the fixture.
+      Path (b) — Cognito hosted-UI login fixture — remains its own
+      future plan; not needed until the staging E2E gate expands
+      beyond `health` + `landing`.
 
 - [ ] **2. Manual smoke of the diagnose button against a real
       tenant.** Once (1) is in, run `npm run dev -w apps/admin-web`

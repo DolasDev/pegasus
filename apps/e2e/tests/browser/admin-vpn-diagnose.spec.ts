@@ -1,18 +1,13 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page, type Route } from '@playwright/test'
+import { seedAdminAuth } from '../../fixtures/auth'
 
 // ---------------------------------------------------------------------------
 // Admin-web VPN Diagnose button — Playwright browser spec.
 //
-// This test mocks the diagnose API via `page.route` and asserts the rendered
-// report markup matches expectations for both pass and fail summaries.
-//
-// TODO: This spec is currently skipped because admin-web's tenant detail page
-// lives behind the Cognito-auth-guarded `_auth` layout, and the e2e suite
-// does not yet have a browser-spec login helper. `landing.spec.ts` is the
-// only existing browser spec and only covers the unauthenticated landing
-// page. Re-enable this spec when authenticated browser-spec scaffolding
-// (login helper or storage-state fixture) lands. See plan
-// `plans/in-progress/admin-web-vpn-diagnose-button.md` step 5.
+// Tagged `@local-only`: every backend call is mocked via `page.route` and the
+// Cognito session is faked via `seedAdminAuth`, so this spec is meaningless
+// against a real staging API. The remote E2E gate excludes it via
+// `grepInvert: /@local-only/` (see apps/e2e/playwright.config.ts).
 // ---------------------------------------------------------------------------
 
 test.skip(!!process.env['E2E_SKIP'], 'Postgres unavailable — skipping E2E tests')
@@ -20,9 +15,36 @@ test.skip(
   !process.env['WEB_URL'],
   'WEB_URL not set — skipping browser tests (start admin-web dev server first)',
 )
-test.skip(true, 'TODO: needs authenticated browser-spec scaffolding (see file header)')
 
 const TENANT_ID = process.env['TEST_TENANT_ID'] ?? 'e2e00000-0000-0000-0000-000000000001'
+
+const TENANT_FIXTURE = {
+  id: TENANT_ID,
+  name: 'E2E Tenant',
+  slug: 'e2e-tenant',
+  status: 'ACTIVE' as const,
+  plan: 'GROWTH' as const,
+  contactName: 'E2E Operator',
+  contactEmail: 'ops@e2e.example',
+  emailDomains: ['e2e.example'],
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+  deletedAt: null,
+}
+
+const VPN_STATUS_FIXTURE = {
+  id: 'peer-e2e',
+  tenantId: TENANT_ID,
+  assignedIp: '10.200.7.1',
+  publicKey: 'AAAA1111BBBB2222CCCC3333DDDD4444EEEE5555FFFF6666GGGG7777=',
+  status: 'ACTIVE' as const,
+  lastHandshakeAt: '2026-05-05T11:59:00.000Z',
+  handshakeAgeSec: 42,
+  rxBytes: '1048576',
+  txBytes: '524288',
+  createdAt: '2026-04-01T00:00:00.000Z',
+  updatedAt: '2026-05-05T12:00:00.000Z',
+}
 
 const PASS_FIXTURE = {
   tenantId: TENANT_ID,
@@ -67,40 +89,56 @@ const FAIL_FIXTURE = {
   ],
 }
 
-async function loadTenantDetail(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  page: any,
-  fixture: typeof PASS_FIXTURE | typeof FAIL_FIXTURE,
-) {
-  await page.route(`**/api/admin/tenants/*/vpn/diagnose`, (route: { fulfill: (r: object) => Promise<void> }) =>
+function jsonRoute(payload: unknown) {
+  return (route: Route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: fixture }),
-    }),
+      body: JSON.stringify(payload),
+    })
+}
+
+async function loadTenantDetail(
+  page: Page,
+  diagnoseFixture: typeof PASS_FIXTURE | typeof FAIL_FIXTURE,
+) {
+  await page.route(`**/api/admin/tenants/${TENANT_ID}`, jsonRoute({ data: TENANT_FIXTURE }))
+  await page.route(
+    `**/api/admin/tenants/${TENANT_ID}/vpn/status`,
+    jsonRoute({ data: VPN_STATUS_FIXTURE }),
+  )
+  await page.route(
+    `**/api/admin/tenants/${TENANT_ID}/vpn/diagnose`,
+    jsonRoute({ data: diagnoseFixture }),
   )
   const webUrl = process.env['WEB_URL'] ?? 'http://localhost:5174'
   await page.goto(`${webUrl}/tenants/${TENANT_ID}`)
   await page.getByTestId('vpn-diagnose-run').click()
 }
 
-test('diagnose pass renders green summary and 10 check rows', async ({ page }) => {
-  await loadTenantDetail(page, PASS_FIXTURE)
-  await expect(page.getByTestId('vpn-diagnose-summary')).toHaveText(/pass/i)
-  await expect(page.getByTestId('vpn-diagnose-first-failure')).toHaveCount(0)
-  for (let i = 1; i <= 10; i += 1) {
-    await expect(page.getByTestId(`vpn-diagnose-check-check-${i}`)).toBeVisible()
-  }
-  await expect(page.getByTestId('vpn-diagnose-generated-at')).toBeVisible()
-})
+test.describe('@local-only admin-web VPN diagnose', () => {
+  test.beforeEach(async ({ page }) => {
+    await seedAdminAuth(page)
+  })
 
-test('diagnose fail renders first-failure callout and reveals evidence', async ({ page }) => {
-  await loadTenantDetail(page, FAIL_FIXTURE)
-  await expect(page.getByTestId('vpn-diagnose-summary')).toHaveText(/fail/i)
-  await expect(page.getByTestId('vpn-diagnose-first-failure')).toContainText('hub-wg-handshake')
-  const failingRow = page.getByTestId('vpn-diagnose-check-hub-wg-handshake')
-  await expect(failingRow).toHaveAttribute('data-status', 'fail')
-  await expect(failingRow).toHaveClass(/border-destructive/)
-  await failingRow.getByRole('button', { name: 'Show details' }).click()
-  await expect(failingRow.locator('pre')).toContainText('lastHandshakeAt')
+  test('diagnose pass renders green summary and 10 check rows', async ({ page }) => {
+    await loadTenantDetail(page, PASS_FIXTURE)
+    await expect(page.getByTestId('vpn-diagnose-summary')).toHaveText(/pass/i)
+    await expect(page.getByTestId('vpn-diagnose-first-failure')).toHaveCount(0)
+    for (let i = 1; i <= 10; i += 1) {
+      await expect(page.getByTestId(`vpn-diagnose-check-check-${i}`)).toBeVisible()
+    }
+    await expect(page.getByTestId('vpn-diagnose-generated-at')).toBeVisible()
+  })
+
+  test('diagnose fail renders first-failure callout and reveals evidence', async ({ page }) => {
+    await loadTenantDetail(page, FAIL_FIXTURE)
+    await expect(page.getByTestId('vpn-diagnose-summary')).toHaveText(/fail/i)
+    await expect(page.getByTestId('vpn-diagnose-first-failure')).toContainText('hub-wg-handshake')
+    const failingRow = page.getByTestId('vpn-diagnose-check-hub-wg-handshake')
+    await expect(failingRow).toHaveAttribute('data-status', 'fail')
+    await expect(failingRow).toHaveClass(/border-destructive/)
+    await failingRow.getByRole('button', { name: 'Show details' }).click()
+    await expect(failingRow.locator('pre')).toContainText('lastHandshakeAt')
+  })
 })
