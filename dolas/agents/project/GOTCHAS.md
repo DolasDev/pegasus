@@ -46,6 +46,23 @@ Re-audit periodically with `npm audit` and `npm ls <pkg> --all`. Remove override
 
 The converter Lambda uses `sharp` for image transcoding. Sharp ships a platform-specific prebuilt binary (~30MB). In the CDK `NodejsFunction` bundling config, sharp must be listed in `nodeModules` (not `externalModules`) so esbuild installs it into the bundle with its native binary. Using `externalModules: ['sharp']` would strip it entirely.
 
+## Cedar-WASM Bundling for Lambda
+
+`@cedar-policy/cedar-wasm/nodejs` reads `${__dirname}/cedar_wasm_bg.wasm` synchronously at module init via `require('fs').readFileSync`. esbuild bundles the JS but doesn't carry the `.wasm` asset — Lambda init then crashes with `ENOENT: no such file or directory, open '/var/task/cedar_wasm_bg.wasm'` and API Gateway returns a bare `{"message":"Internal Server Error"}` 500 (no `correlationId` envelope, because Hono's `onError` never gets to run).
+
+In the CDK `NodejsFunction` bundling config, list the package under `nodeModules` (not `externalModules`) so CDK installs it as a real `node_modules` dep alongside the bundle, preserving the package layout the runtime read expects. Same shape as the sharp gotcha above. See `packages/infra/lib/stacks/api-stack.ts:196-205`.
+
+Failure mode is silent against the staging E2E gate's path filter — if the next pushes to `main` only touch paths excluded from the api filter (e.g. `plans/`, `dolas/`), no fresh deploy fires and the gate doesn't re-run, so a red staging Lambda can sit broken indefinitely. PR #91 (cedar/AVP foundation) shipped broken on 2026-05-03 and was only caught two days later when a `packages/infra/**` change forced a full rebuild.
+
+## ssm:SendCommand IAM Statement Shape
+
+`ssm:SendCommand` authorizes against **both** the document and the instance resource in the same call. Two pitfalls when scoping:
+
+1. **AWS-managed documents have an empty account portion.** `AWS-RunShellScript`'s ARN is `arn:aws:ssm:<region>::document/AWS-RunShellScript` (note the `::`). Templating `${this.account}` into that ARN in CDK produces `arn:aws:ssm:<region>:<acct>:document/...` — a string IAM never sees on real calls — so the policy never matches and SendCommand fails closed with "no identity-based policy allows the ssm:SendCommand action".
+2. **Tag conditions are evaluated per-resource.** Putting the document and the instance in the same `PolicyStatement` with `StringEquals: ssm:resourceTag/Name = ...` filters the statement out for the document side of the call (AWS-managed documents don't carry customer tags), so the call is denied even when the ARN is listed.
+
+Correct shape — two statements: instance with the tag condition (the actual safety guarantee — restricts which target instance is allowed), document unconditionally. See `packages/infra/lib/stacks/api-stack.ts` `ssm:SendCommand` block, with a regression test in `__tests__/api-stack.test.ts` asserting the document statement has no `Condition`.
+
 ## pdfjs-dist in Node.js (Server-Side)
 
 `pdfjs-dist` requires a canvas polyfill for server-side rendering. The converter Lambda uses `@napi-rs/canvas` for this. Import the legacy build (`pdfjs-dist/legacy/build/pdf.mjs`) — the standard build assumes browser APIs. The `page.render()` TypeScript types require a `canvas` property in `RenderParameters` but the server-side render works with just `canvasContext` + `viewport` — use `as any` on the render call.
