@@ -206,6 +206,22 @@ export class ApiStack extends cdk.Stack {
         // this, init throws ENOENT on `/var/task/cedar_wasm_bg.wasm` and the
         // Lambda returns a bare API Gateway 500 before our onError sees it.
         nodeModules: ['@cedar-policy/cedar-wasm'],
+        // apps/api/src/authz/load.ts reads `cedar.schema.json` and the
+        // `policies/` tree from `__dirname` at runtime to push them into AVP
+        // (POST /api/admin/tenants → provisionTenantPolicyStore) and to feed
+        // the offline cedar-wasm backend. esbuild can't see those reads, so
+        // the files have to be copied next to the bundled `index.js` in the
+        // Lambda asset; without this, tenant provisioning fails with
+        // `ENOENT: /var/task/cedar.schema.json` and the offline /me/permissions
+        // path breaks the same way.
+        commandHooks: {
+          beforeBundling: () => [],
+          beforeInstall: () => [],
+          afterBundling: (_inputDir, outputDir) => [
+            `cp ${path.join(__dirname, '../../../../apps/api/src/authz/cedar.schema.json')} ${outputDir}/`,
+            `cp -R ${path.join(__dirname, '../../../../apps/api/src/authz/policies')} ${outputDir}/`,
+          ],
+        },
       },
       memorySize: 512,
       timeout: cdk.Duration.seconds(29),
