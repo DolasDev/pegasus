@@ -45,6 +45,32 @@ export interface ProvisionResult {
   readonly policyStoreId: string
 }
 
+/**
+ * Retry helper for AVP eventual-consistency. CreatePolicyStore returns a
+ * policyStoreId before the store is universally addressable, so the next
+ * write (PutSchema, CreatePolicy, CreateIdentitySource) commonly sees
+ * `ResourceNotFoundException: Policy Store does not exist.` for a few
+ * hundred milliseconds. Backoff: 100ms, 200ms, 400ms, 800ms, 1600ms
+ * (~3.1s total before the final attempt). Other AccessDenied / validation
+ * errors propagate immediately — no point burning the timeout on those.
+ */
+async function withConsistencyRetry<T>(fn: () => Promise<T>, maxAttempts = 6): Promise<T> {
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastErr = err
+      const name = (err as { name?: string }).name
+      if (name !== 'ResourceNotFoundException' || attempt === maxAttempts) {
+        throw err
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100 * 2 ** (attempt - 1)))
+    }
+  }
+  throw lastErr
+}
+
 export async function provisionTenantPolicyStore(input: ProvisionInput): Promise<ProvisionResult> {
   const avp = getAvp()
 
@@ -62,25 +88,34 @@ export async function provisionTenantPolicyStore(input: ProvisionInput): Promise
   }
 
   try {
-    // 2) Push the Cedar schema.
-    await avp.send(
-      new PutSchemaCommand({
-        policyStoreId,
-        definition: { cedarJson: loadSchemaJson() },
-      }),
+    // 2) Push the Cedar schema. Wrapped in withConsistencyRetry because
+    //    PutSchema racing CreatePolicyStore is the most common AVP
+    //    eventual-consistency miss.
+    await withConsistencyRetry(() =>
+      avp.send(
+        new PutSchemaCommand({
+          policyStoreId,
+          definition: { cedarJson: loadSchemaJson() },
+        }),
+      ),
     )
 
     // 3) Push every .cedar policy file. Run in parallel — policy creation
     //    is independent and provisioning latency matters at tenant-create time.
+    //    Retry-wrapped per-call: typically PutSchema's wait already covered
+    //    the consistency window, but defending against partial visibility
+    //    is cheap.
     await Promise.all(
       loadPolicies().map((p) =>
-        avp.send(
-          new CreatePolicyCommand({
-            policyStoreId,
-            definition: {
-              static: { description: p.name, statement: p.statement },
-            },
-          }),
+        withConsistencyRetry(() =>
+          avp.send(
+            new CreatePolicyCommand({
+              policyStoreId,
+              definition: {
+                static: { description: p.name, statement: p.statement },
+              },
+            }),
+          ),
         ),
       ),
     )
@@ -88,17 +123,19 @@ export async function provisionTenantPolicyStore(input: ProvisionInput): Promise
     // 4) Wire up the Cognito User Pool as the identity source so deployed
     //    traffic can use IsAuthorizedWithToken without us building a Cedar
     //    entity store from claims.
-    await avp.send(
-      new CreateIdentitySourceCommand({
-        policyStoreId,
-        principalEntityType: 'Pegasus::User',
-        configuration: {
-          cognitoUserPoolConfiguration: {
-            userPoolArn: input.userPoolArn,
-            clientIds: [input.tenantAppClientId],
+    await withConsistencyRetry(() =>
+      avp.send(
+        new CreateIdentitySourceCommand({
+          policyStoreId,
+          principalEntityType: 'Pegasus::User',
+          configuration: {
+            cognitoUserPoolConfiguration: {
+              userPoolArn: input.userPoolArn,
+              clientIds: [input.tenantAppClientId],
+            },
           },
-        },
-      }),
+        }),
+      ),
     )
   } catch (err) {
     logger.error('AVP provisioning failed mid-flight, deleting policy store', {
