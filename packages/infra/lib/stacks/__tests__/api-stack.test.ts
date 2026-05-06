@@ -25,6 +25,20 @@ function synthApiStackWithDocuments() {
   return Template.fromStack(apiStack)
 }
 
+// Synth with `cognitoStackName` set so the conditional cognito-idp IAM block
+// in api-stack.ts:269-286 actually fires. The pegasus-{env}-cognito stack
+// name doesn't have to exist as a real construct — api-stack only uses it as
+// a string prefix for `cdk.Fn.importValue` lookups, which CFN resolves at
+// deploy time, not synth time.
+function synthApiStackWithCognito() {
+  const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+  const apiStack = new ApiStack(app, 'TestApiWithCognito', {
+    env: { account: '111111111111', region: 'us-east-1' },
+    cognitoStackName: 'TestCognitoStack',
+  })
+  return Template.fromStack(apiStack)
+}
+
 describe('ApiStack — Lambda function', () => {
   it('creates exactly one Lambda function', () => {
     const template = synthApiStack()
@@ -295,5 +309,146 @@ describe('ApiStack — CloudFormation Outputs', () => {
     template.hasOutput('ApiUrl', {
       Export: { Name: 'PegasusApiUrl' },
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AVP / Cognito IAM — regression suite for AVP per-tenant policy-store
+// provisioning (`apps/api/src/lib/authz-provision.ts`,
+// `POST /api/admin/tenants`).
+//
+// Between 2026-05-03 and 2026-05-06 four separate provisioning regressions
+// reached staging, each manifesting as a generic `AUTHZ_ERROR` response and
+// distinguishable only by reading CloudWatch:
+//
+//   - 5588b18: Lambda asset missing cedar.schema.json + policies/ (bundling).
+//   - 46fb673: cognito-idp:DescribeUserPool not granted to the API role.
+//   - cf36796: cognito-idp:ListUserPoolClients + DescribeUserPoolClient not granted.
+//   - 02a2961: PutSchema racing CreatePolicyStore eventual consistency.
+//
+// This block pins the IAM permission sets that AVP requires from the *caller*
+// when provisioning a new policy store. AVP itself is the SDK target, but
+// `CreateIdentitySource` validates the attached Cognito User Pool by issuing
+// a sequence of cognito-idp introspection calls under the caller's
+// credentials — see
+// https://docs.aws.amazon.com/verifiedpermissions/latest/userguide/identity-providers-cognito.html.
+//
+// What this catches:
+//   - Someone tightening IAM and dropping a pinned action.
+//   - A future api-stack refactor that breaks one of these statements.
+//
+// What this misses:
+//   - AWS adding a new requirement we don't yet know about (see the live
+//     integration test in plans/todo/avp-provisioning-regression-tests.md
+//     item #3).
+//   - Actual AVP runtime errors (eventual consistency, malformed schema, etc).
+// ---------------------------------------------------------------------------
+
+const AVP_PER_STORE_ACTIONS = [
+  'verifiedpermissions:IsAuthorized',
+  'verifiedpermissions:IsAuthorizedWithToken',
+  'verifiedpermissions:BatchIsAuthorized',
+  'verifiedpermissions:BatchIsAuthorizedWithToken',
+  'verifiedpermissions:DeletePolicyStore',
+  'verifiedpermissions:PutSchema',
+  'verifiedpermissions:CreatePolicy',
+  'verifiedpermissions:CreateIdentitySource',
+] as const
+
+const COGNITO_INTROSPECTION_ACTIONS = [
+  // Direct calls from apps/api code paths.
+  'cognito-idp:AdminCreateUser',
+  'cognito-idp:AdminDisableUser',
+  'cognito-idp:AdminEnableUser',
+  'cognito-idp:AdminGetUser',
+  'cognito-idp:CreateIdentityProvider',
+  'cognito-idp:UpdateIdentityProvider',
+  'cognito-idp:DeleteIdentityProvider',
+  // Required indirectly by AVP CreateIdentitySource.
+  'cognito-idp:DescribeUserPool',
+  'cognito-idp:ListUserPoolClients',
+  'cognito-idp:DescribeUserPoolClient',
+] as const
+
+describe('ApiStack — AVP / Cognito IAM', () => {
+  // ---------------- AVP per-store actions ----------------
+  // One assertion per action so a missing entry names exactly which action
+  // was dropped, instead of a vague "policy doesn't match" failure.
+  for (const action of AVP_PER_STORE_ACTIONS) {
+    it(`grants ${action} on policy-store ARNs`, () => {
+      const template = synthApiStack()
+      template.hasResourceProperties('AWS::IAM::Policy', {
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Action: Match.arrayWith([action]),
+              Effect: 'Allow',
+            }),
+          ]),
+        },
+      })
+    })
+  }
+
+  it('grants verifiedpermissions:CreatePolicyStore as an account-scoped action', () => {
+    // CreatePolicyStore has no resource ARN (the store doesn't exist yet),
+    // so it must be on its own statement against `*`. Splitting it from the
+    // per-store statement was the correct shape from the original
+    // foundation merge — this test pins it so a future "consolidate the IAM"
+    // refactor doesn't accidentally re-merge the statements and break
+    // CreatePolicyStore at runtime.
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'verifiedpermissions:CreatePolicyStore',
+            Effect: 'Allow',
+            Resource: '*',
+          }),
+        ]),
+      },
+    })
+  })
+
+  // ---------------- Cognito introspection actions ----------------
+  // These only appear when cognitoStackName is supplied, so synth with the
+  // helper that wires it up.
+  for (const action of COGNITO_INTROSPECTION_ACTIONS) {
+    it(`grants ${action} on the user pool when cognitoStackName is set`, () => {
+      const template = synthApiStackWithCognito()
+      template.hasResourceProperties('AWS::IAM::Policy', {
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Action: Match.arrayWith([action]),
+              Effect: 'Allow',
+            }),
+          ]),
+        },
+      })
+    })
+  }
+
+  it('does NOT emit the cognito-idp policy statement when cognitoStackName is absent', () => {
+    // Confirms the conditional in api-stack.ts:269 still gates the block
+    // correctly — the synth-without-cognito case (used by all other tests
+    // and by CI runs that synthesise without a Cognito stack) must not
+    // fail with a missing-import error.
+    const template = synthApiStack()
+    // None of the cognito-idp introspection actions should be present.
+    for (const action of COGNITO_INTROSPECTION_ACTIONS) {
+      template.hasResourceProperties('AWS::IAM::Policy', {
+        PolicyDocument: {
+          Statement: Match.not(
+            Match.arrayWith([
+              Match.objectLike({
+                Action: Match.arrayWith([action]),
+              }),
+            ]),
+          ),
+        },
+      })
+    }
   })
 })
