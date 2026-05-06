@@ -15,11 +15,17 @@ export const test = base.extend<{
   authedApiFetch: ApiFetch
   tenantId: string
 }>({
-  tenantId: async (_, use) => {
+  // Playwright introspects the first arg's destructured properties to infer
+  // dependencies on other fixtures, so it must be an object pattern even when
+  // the fixture has no deps. Empty `{}` triggers eslint's no-empty-pattern;
+  // disabled per-line because that's the canonical Playwright shape.
+  // eslint-disable-next-line no-empty-pattern
+  tenantId: async ({}, use) => {
     await use(TENANT_ID)
   },
 
-  apiFetch: async (_, use) => {
+  // eslint-disable-next-line no-empty-pattern
+  apiFetch: async ({}, use) => {
     const fetch_ = (path: string, init: RequestInit = {}): Promise<Response> => {
       const url = `${API_BASE}${path}`
       const headers: Record<string, string> = {
@@ -36,7 +42,8 @@ export const test = base.extend<{
   // authedApiFetch — like apiFetch but injects a real Cognito ID token and
   // the tenant ID provisioned for the staging E2E admin. Used by the
   // authenticated AVP smoke spec; throws clearly if env is missing.
-  authedApiFetch: async (_, use) => {
+  // eslint-disable-next-line no-empty-pattern
+  authedApiFetch: async ({}, use) => {
     const token = await getAdminIdToken()
     const stagingTenantId = process.env['E2E_STAGING_TENANT_ID']
     if (!stagingTenantId) {
