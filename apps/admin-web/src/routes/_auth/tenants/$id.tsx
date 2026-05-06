@@ -51,6 +51,33 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   )
 }
 
+function CopyableId({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false)
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Clipboard API may be unavailable in non-secure contexts; the user can
+      // still select the visible text manually.
+    }
+  }
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className="font-mono text-xs select-all">{value}</span>
+      <button
+        type="button"
+        onClick={handleCopy}
+        aria-label={copied ? 'Copied' : 'Copy ID'}
+        className="rounded border border-border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
+      >
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+    </span>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Offboard confirmation dialog
 // ---------------------------------------------------------------------------
@@ -272,6 +299,9 @@ export function TenantDetailPage() {
         {/* Info grid */}
         <div className="rounded-md border border-border bg-card px-4">
           <dl>
+            <Row label="Tenant ID">
+              <CopyableId value={tenant.id} />
+            </Row>
             <Row label="Slug">
               <span className="font-mono text-xs">{tenant.slug}</span>
             </Row>

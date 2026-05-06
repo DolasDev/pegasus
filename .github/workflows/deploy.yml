@@ -187,6 +187,7 @@ jobs:
           echo "WEB_URL=$(jq -r '.["pegasus-staging-frontend"].DistributionUrl' "$F")" >> "$GITHUB_OUTPUT"
           echo "USER_POOL_ID=$(jq -r '.["pegasus-staging-cognito"].UserPoolId' "$F")" >> "$GITHUB_OUTPUT"
           echo "CLIENT_ID=$(jq -r '.["pegasus-staging-cognito"].MobileClientId // empty' "$F")" >> "$GITHUB_OUTPUT"
+          echo "TENANT_CLIENT_ID=$(jq -r '.["pegasus-staging-cognito"].TenantClientId // empty' "$F")" >> "$GITHUB_OUTPUT"
 
       - name: Run E2E (remote)
         working-directory: apps/e2e
@@ -196,6 +197,10 @@ jobs:
           WEB_URL: ${{ steps.outs.outputs.WEB_URL }}
           E2E_COGNITO_USER_POOL_ID: ${{ steps.outs.outputs.USER_POOL_ID }}
           E2E_COGNITO_CLIENT_ID: ${{ steps.outs.outputs.CLIENT_ID }}
+          E2E_COGNITO_TENANT_CLIENT_ID: ${{ steps.outs.outputs.TENANT_CLIENT_ID }}
+          E2E_STAGING_ADMIN_USERNAME: ${{ vars.E2E_STAGING_ADMIN_USERNAME }}
+          E2E_STAGING_ADMIN_PASSWORD: ${{ secrets.E2E_STAGING_ADMIN_PASSWORD }}
+          E2E_STAGING_TENANT_ID: ${{ vars.E2E_STAGING_TENANT_ID }}
         run: npx playwright test
 
       - name: Upload Playwright report
