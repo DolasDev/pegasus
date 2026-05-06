@@ -1,10 +1,15 @@
 # Catch AVP-provisioning regressions in CI before they hit a deploy
 
-> **Status (2026-05-06):** items #1, #2, #4 landed in commit `28292d9`
-> (bundle-contract test, IAM permission pin, GOTCHAS diagnostic note).
-> Item #3 (live AVP integration test) is the remaining work; it's a
-> meaningfully larger change (CI job, OIDC role, AVP cost considerations)
-> so it's been split out for a separate session.
+> **Status (2026-05-06):** Closed. Items #1, #2, #4 landed in commit
+> `28292d9` (bundle-contract test + IAM permission pin + GOTCHAS
+> diagnostic note). Item #3 (live AVP integration test) was reviewed
+> and explicitly deferred — the cost (new OIDC IAM, deploy-chain
+> wiring, AVP quota monitoring) was judged not worth the
+> insurance-policy-shaped marginal benefit on top of #1/#2 right now,
+> so it's been split into its own standalone plan to revisit later:
+> `plans/todo/avp-live-provisioning-integration-test.md`. The original
+> #3 section below is preserved in this plan as historical record;
+> the standalone plan is the live source of truth.
 
 ## Context
 
