@@ -277,16 +277,20 @@ export class ApiStack extends cdk.Stack {
             'cognito-idp:CreateIdentityProvider',
             'cognito-idp:UpdateIdentityProvider',
             'cognito-idp:DeleteIdentityProvider',
-            // DescribeUserPool: required by AVP CreateIdentitySource. AVP
-            // calls cognito-idp:DescribeUserPool with the *caller's*
-            // credentials when validating the user-pool ARN attached to a
-            // new identity source, so the API Lambda role itself needs
-            // this permission even though we never call it directly. Without
-            // this, POST /api/admin/tenants fails with AccessDeniedException
-            // on cognito-idp:DescribeUserPool *after* CreatePolicyStore +
-            // PutSchema + CreatePolicy succeed; the catch block then
-            // best-effort-deletes the half-built store.
+            // The next three (DescribeUserPool, ListUserPoolClients,
+            // DescribeUserPoolClient) are required by AVP CreateIdentitySource
+            // when attaching a Cognito User Pool. AVP issues these calls
+            // against the user pool with the *caller's* credentials to
+            // validate that (a) the pool ARN exists, (b) the supplied
+            // clientIds are part of that pool, (c) each client's settings
+            // are compatible with token-based authorization. The API Lambda
+            // never calls them directly, but its role still needs them or
+            // POST /api/admin/tenants fails with AccessDeniedException
+            // *after* CreatePolicyStore + PutSchema + CreatePolicy succeed —
+            // distinguishable only by reading CloudWatch.
             'cognito-idp:DescribeUserPool',
+            'cognito-idp:ListUserPoolClients',
+            'cognito-idp:DescribeUserPoolClient',
           ],
           resources: [
             `arn:aws:cognito-idp:${this.region}:${this.account}:userpool/${cognitoUserPoolId}`,
