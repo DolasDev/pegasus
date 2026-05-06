@@ -1,11 +1,10 @@
 # Catch AVP-provisioning regressions in CI before they hit a deploy
 
-> **Status (2026-05-06):** items #1, #2, #4 landed — bundle-contract test
->
-> - IAM permission pin + GOTCHAS diagnostic note. Item #3 (live AVP
->   integration test) is the remaining work; it's a meaningfully larger
->   change (CI job, OIDC role, AVP cost considerations) so split into a
->   separate session.
+> **Status (2026-05-06):** items #1, #2, #4 landed in commit `28292d9`
+> (bundle-contract test, IAM permission pin, GOTCHAS diagnostic note).
+> Item #3 (live AVP integration test) is the remaining work; it's a
+> meaningfully larger change (CI job, OIDC role, AVP cost considerations)
+> so it's been split out for a separate session.
 
 ## Context
 
