@@ -41,15 +41,30 @@ import { ApiStack } from '../api-stack'
 // gate on PEGASUS_SKIP_BUNDLE_TESTS=1 so local watch-mode runs can opt out.
 // ---------------------------------------------------------------------------
 
-const skip = process.env['PEGASUS_SKIP_BUNDLE_TESTS'] === '1'
+const REPO_ROOT = path.join(__dirname, '../../../../..')
+const AUTHZ_SRC = path.join(REPO_ROOT, 'apps/api/src/authz')
 
 // Source paths the bundling config copies into the asset. Pinned in this
 // test as the contract — if either of these moves, the test breaks AND the
 // bundling config in `api-stack.ts` needs the matching update.
-const REPO_ROOT = path.join(__dirname, '../../../../..')
-const AUTHZ_SRC = path.join(REPO_ROOT, 'apps/api/src/authz')
 
-describe.skipIf(skip)('ApiStack — bundled asset contract', () => {
+const explicitSkip = process.env['PEGASUS_SKIP_BUNDLE_TESTS'] === '1'
+
+// esbuild's bundling step resolves `import { ... } from '@pegasus/domain'`
+// references in the API source against the package's `main: dist/index.js`.
+// On a fresh clone where the workspace deps haven't been built, that file
+// doesn't exist and esbuild errors with a not-actionable "Could not resolve
+// '@pegasus/domain'" message. Detect the missing dist and skip with a clear
+// hint instead. CI's `turbo run test` covers this via the per-package
+// `dependsOn: ['^build']` override in `packages/infra/turbo.json`.
+const domainDistExists = fs.existsSync(path.join(REPO_ROOT, 'packages/domain/dist/index.js'))
+const skipReason = explicitSkip
+  ? 'skipped via PEGASUS_SKIP_BUNDLE_TESTS=1'
+  : !domainDistExists
+    ? 'packages/domain/dist not built — run `npx turbo run build --filter=@pegasus/domain` first (or run via `turbo run test` which auto-builds it)'
+    : null
+
+describe.skipIf(skipReason !== null)(`ApiStack — bundled asset contract`, () => {
   let assetDir: string
 
   beforeAll(() => {
