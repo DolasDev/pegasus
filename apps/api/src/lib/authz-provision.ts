@@ -20,7 +20,6 @@ import {
   DeletePolicyStoreCommand,
 } from '@aws-sdk/client-verifiedpermissions'
 import { loadPolicies, loadSchemaJson } from '../authz/load'
-import { PEGASUS_NS } from '../authz/actions'
 import { createLogger } from './logger'
 
 const logger = createLogger('pegasus-authz-provision')
@@ -125,12 +124,14 @@ export async function provisionTenantPolicyStore(input: ProvisionInput): Promise
     //    traffic can use IsAuthorizedWithToken without us building a Cedar
     //    entity store from claims.
     //
-    //    `groupConfiguration.groupEntityType` is what makes AVP synthesize
-    //    `principal in Pegasus::Group::"X"` memberships from the
-    //    `cognito:groups` claim — required for every persona policy to
-    //    evaluate. Without it AVP sees the principal as a bare User with no
-    //    parents and every group-gated permit evaluates to false (empty
-    //    /me/permissions, blanket 403 on requirePermission-guarded routes).
+    //    No `groupConfiguration`: with it set, AVP synthesises Group entities
+    //    with user-pool-prefixed IDs (`Pegasus::Group::"<poolId>|tenant_admin"`)
+    //    that don't match our bare-named policy references, AND it forbids
+    //    the API caller from supplying corrective `entities` of the
+    //    registered Group type via IsAuthorizedWithToken. Without it, AVP
+    //    auto-projects the `cognito:groups` token claim onto the principal
+    //    as a Set<String> attribute — which is exactly what the
+    //    attribute-based policies in apps/api/src/authz/policies/ check.
     //    The pre-token Lambda emits the role names into `cognito:groups` so
     //    this mapping closes the loop end-to-end.
     await withConsistencyRetry(() =>
@@ -142,9 +143,6 @@ export async function provisionTenantPolicyStore(input: ProvisionInput): Promise
             cognitoUserPoolConfiguration: {
               userPoolArn: input.userPoolArn,
               clientIds: [input.tenantAppClientId],
-              groupConfiguration: {
-                groupEntityType: `${PEGASUS_NS}::Group`,
-              },
             },
           },
         }),

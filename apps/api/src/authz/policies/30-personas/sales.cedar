@@ -1,7 +1,7 @@
 // sales: owns the lead-to-quote pipeline. Full quote and customer authoring,
 // read-only on the downstream operational moves.
 permit (
-  principal in Pegasus::Group::"sales",
+  principal,
   action in [
     Pegasus::Action::"ReadQuote",
     Pegasus::Action::"CreateQuote",
@@ -12,4 +12,7 @@ permit (
     Pegasus::Action::"ReadMove"
   ],
   resource
-);
+) when {
+  principal has "cognito:groups" &&
+  principal["cognito:groups"].contains("sales")
+};

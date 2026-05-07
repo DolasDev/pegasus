@@ -1,7 +1,7 @@
 // accountant: full control over invoices, read access to the moves and quotes
 // the invoices are derived from.
 permit (
-  principal in Pegasus::Group::"accountant",
+  principal,
   action in [
     Pegasus::Action::"ReadInvoice",
     Pegasus::Action::"CreateInvoice",
@@ -12,4 +12,7 @@ permit (
     Pegasus::Action::"ReadCustomer"
   ],
   resource
-);
+) when {
+  principal has "cognito:groups" &&
+  principal["cognito:groups"].contains("accountant")
+};
