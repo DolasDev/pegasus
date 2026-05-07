@@ -76,12 +76,24 @@ work down the deferred cleanup items in safest-first order.
 
 ### Existing-tenant backfill
 
-- [ ] **5. Backfill `tenants.policy_store_id` for all pre-existing tenants.**
+- [x] **5. Backfill `tenants.policy_store_id` for all pre-existing tenants.**
       _Unblocked 2026-05-07 by
       `plans/completed/2026-05-07T2102-avp-attribute-based-policies.md`._
       Provisioning is now correct end-to-end (the AVP backend uses
       `IsAuthorized` with manually-built entities), so backfill no
       longer risks broken stores.
+
+      **Done 2026-05-07.** Script
+      `apps/api/src/scripts/backfill-policy-stores.ts` runs idempotently
+      and dry-runs by default. Staging executed cleanly: 1 legacy
+      tenant (`default-tenant`) provisioned to policy store
+      `GwJsDZrH6knT6pWrG6muoS`; post-run
+      `count(*) FROM tenants WHERE policy_store_id IS NULL` = 0.
+      Verified the new store carries the right shape: User
+      `memberOfTypes=["Group"]`, 7 policies, IdentitySource with no
+      `groupConfiguration`. Prod will pick up legacy tenants when
+      run there with `AWS_PROFILE=pegasus-prod` and the prod
+      DATABASE_URL secret.
 
       Until backfilled, their requests fall through `pickBackend()` to
       the offline wasm path — functionally correct but:
@@ -112,9 +124,13 @@ work down the deferred cleanup items in safest-first order.
 
       _Verify:_ after the script runs,
       `SELECT count(*) FROM tenants WHERE policy_store_id IS NULL` is 0.
-      Spot-check 2–3 backfilled tenants by logging in and confirming
-      `IsAuthorizedWithToken` calls in CloudWatch (not the offline
-      path).
+      Spot-check by inspecting the new policy store(s) via
+      `aws verifiedpermissions get-schema` and `list-policies` (expect
+      User `memberOfTypes=["Group"]` and 7 policies). Logging in as a
+      backfilled tenant and watching `verifiedpermissions:IsAuthorized`
+      calls in CloudTrail confirms the AVP path is selected (the
+      backend uses no-token `IsAuthorized`, not `IsAuthorizedWithToken`
+      — see `plans/completed/2026-05-07T2102-avp-attribute-based-policies.md`).
 
 ### Deferred cleanup (no urgency)
 
