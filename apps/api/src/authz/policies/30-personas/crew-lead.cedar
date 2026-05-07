@@ -2,14 +2,11 @@
 // detail so the crew leader can confirm logistics; update moves to record
 // arrival/departure progress.
 permit (
-  principal,
+  principal in Pegasus::Group::"crew_lead",
   action in [
     Pegasus::Action::"ReadMove",
     Pegasus::Action::"UpdateMove",
     Pegasus::Action::"ReadCustomer"
   ],
   resource
-) when {
-  principal has "cognito:groups" &&
-  principal["cognito:groups"].contains("crew_lead")
-};
+);

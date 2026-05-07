@@ -2,17 +2,35 @@
 // Cedar/AVP authorization engine.
 //
 // Two backends with the same input shape:
-//   - 'avp'     : AWS Verified Permissions IsAuthorizedWithToken — used in
-//                 deployed environments where the request carries a Cognito
-//                 ID token and the tenant has a provisioned policy store.
+//   - 'avp'     : AWS Verified Permissions IsAuthorized / BatchIsAuthorized —
+//                 used in deployed environments where the tenant has a
+//                 provisioned policy store. We construct the principal +
+//                 Group hierarchy ourselves from the request's
+//                 already-validated `roleNames`, then call the no-token
+//                 IsAuthorized API.
 //   - 'offline' : @cedar-policy/cedar-wasm/nodejs — used by tests, local dev
 //                 (SKIP_AUTH), and any tenant that has not yet been migrated
 //                 to AVP. Evaluates the same .cedar policy text on the same
 //                 schema so behaviour matches the deployed path.
 //
-// Backend selection: `pickBackend(policyStoreId)` returns 'avp' when the
-// tenant has a policy store ID and AUTHZ_OFFLINE/SKIP_AUTH are not set,
-// otherwise 'offline'.
+// Why not IsAuthorizedWithToken: AVP's Cognito identity source treats
+// `cognito:groups` as a special claim — it can ONLY be projected into
+// principal parent entities (when groupConfiguration is set), and never
+// onto the principal as a regular attribute. With groupConfiguration set
+// AVP synthesises Group entities with user-pool-prefixed IDs that don't
+// match our bare-named policy references, AND it forbids the caller from
+// supplying corrective `entities` of the principal type or any registered
+// Group type via IsAuthorizedWithToken. The clean alternative — the one
+// AVP itself documents for RBAC-by-groups — is to call IsAuthorized
+// directly, build the principal + Group entities ourselves, and skip
+// AVP's token-derived projection entirely. The request has already been
+// authenticated by the JWT verifier in middleware/jwt-auth.ts, so AVP's
+// ID-token signature check would be redundant anyway. See
+// dolas/agents/project/GOTCHAS.md AUTHZ_ERROR table for detail.
+//
+// Both backends build the same Cedar entity store: a User entity with
+// Group parents (one per role name). Identical input → identical Cedar
+// evaluation → identical decisions across local tests and deployed AVP.
 //
 // Cache: 60-second TTL keyed by (sub, action, resourceType, resourceId,
 // policyStoreId). Authorisation calls in tight loops (e.g. /me/permissions
@@ -21,10 +39,10 @@
 
 import {
   VerifiedPermissionsClient,
-  IsAuthorizedWithTokenCommand,
-  BatchIsAuthorizedWithTokenCommand,
+  IsAuthorizedCommand,
+  BatchIsAuthorizedCommand,
 } from '@aws-sdk/client-verifiedpermissions'
-import type { BatchIsAuthorizedWithTokenInputItem } from '@aws-sdk/client-verifiedpermissions'
+import type { BatchIsAuthorizedInputItem, EntityItem } from '@aws-sdk/client-verifiedpermissions'
 import * as cedar from '@cedar-policy/cedar-wasm/nodejs'
 import { ALL_ACTIONS, PEGASUS_NS } from '../authz/actions'
 import { loadPolicyText, loadSchema } from '../authz/load'
@@ -71,21 +89,53 @@ export function _clearAuthzCache(): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Build the entity store for an offline authorisation call: a single User
- * entity carrying its role memberships as a `cognito:groups` Set<String>
- * attribute. Mirrors what AVP auto-projects from the ID token's
- * `cognito:groups` claim onto the principal — both backends evaluate the
- * same policy text against the same attribute shape.
+ * Build the entity store for an authorisation call: the principal plus one
+ * Group entity per role membership. The principal is the child of each
+ * Group (parents=[Group::"tenant_admin", …]). Same shape on both backends —
+ * the AVP path passes this list via `entities`, the offline path hands it
+ * to cedar-wasm directly.
  */
 function buildEntities(principal: Principal): cedar.Entities {
-  return [
+  const groupParents = principal.roleNames.map((g) => ({
+    __entity: { type: `${PEGASUS_NS}::Group`, id: g },
+  }))
+
+  const entities: cedar.Entities = [
     {
       uid: { __entity: { type: `${PEGASUS_NS}::User`, id: principal.sub } },
-      attrs: {
-        'cognito:groups': [...principal.roleNames],
-      },
-      parents: [],
+      attrs: {},
+      parents: groupParents,
     },
+  ]
+
+  for (const groupName of principal.roleNames) {
+    entities.push({
+      uid: { __entity: { type: `${PEGASUS_NS}::Group`, id: groupName } },
+      attrs: {},
+      parents: [],
+    })
+  }
+
+  return entities
+}
+
+/**
+ * Map the offline (cedar-wasm) entity shape onto the shape AVP's
+ * IsAuthorized API accepts. Mechanical translation: `__entity.type` → `entityType`,
+ * `__entity.id` → `entityId`. Attributes stay empty (we don't use any).
+ */
+function buildAvpEntityList(principal: Principal): EntityItem[] {
+  return [
+    {
+      identifier: { entityType: `${PEGASUS_NS}::User`, entityId: principal.sub },
+      parents: principal.roleNames.map((g) => ({
+        entityType: `${PEGASUS_NS}::Group`,
+        entityId: g,
+      })),
+    },
+    ...principal.roleNames.map((g) => ({
+      identifier: { entityType: `${PEGASUS_NS}::Group`, entityId: g },
+    })),
   ]
 }
 
@@ -118,7 +168,7 @@ function authorizeOffline(input: AuthorizeInput): Decision {
 }
 
 // ---------------------------------------------------------------------------
-// AVP backend — IsAuthorizedWithToken / BatchIsAuthorizedWithToken
+// AVP backend — IsAuthorized / BatchIsAuthorized (no-token)
 // ---------------------------------------------------------------------------
 
 let _avp: VerifiedPermissionsClient | null = null
@@ -127,9 +177,6 @@ function getAvp(): VerifiedPermissionsClient {
 }
 
 async function authorizeAvp(input: AuthorizeInput): Promise<Decision> {
-  if (!input.idToken) {
-    throw new Error('AVP backend requires idToken — none was provided')
-  }
   if (!input.policyStoreId) {
     throw new Error('AVP backend requires policyStoreId — none was provided')
   }
@@ -138,17 +185,13 @@ async function authorizeAvp(input: AuthorizeInput): Promise<Decision> {
   const resourceType = r?.type ?? input.action.resourceType
   const resourceId = r?.id ?? `__tenant__:${input.principal.tenantId}`
 
-  // No `entities` argument: AVP's Cognito identity source projects the
-  // `cognito:groups` token claim onto the principal as a Set<String>
-  // attribute, and our policies check that attribute directly. Passing
-  // additional entities of types registered in the identity source is
-  // rejected by AVP — see plan and GOTCHAS.md AUTHZ_ERROR table for detail.
   const result = await getAvp().send(
-    new IsAuthorizedWithTokenCommand({
+    new IsAuthorizedCommand({
       policyStoreId: input.policyStoreId,
-      identityToken: input.idToken,
+      principal: { entityType: `${PEGASUS_NS}::User`, entityId: input.principal.sub },
       action: { actionType: `${PEGASUS_NS}::Action`, actionId: input.action.id },
       resource: { entityType: `${PEGASUS_NS}::${resourceType}`, entityId: resourceId },
+      entities: { entityList: buildAvpEntityList(input.principal) },
     }),
   )
 
@@ -181,17 +224,19 @@ export async function authorize(input: AuthorizeInput): Promise<Decision> {
  */
 export async function listAllowedPermissions(
   principal: Principal,
-  idToken: string | undefined,
+  _idToken: string | undefined,
   policyStoreId: string | undefined,
 ): Promise<string[]> {
   const backend = pickBackend(policyStoreId)
 
   if (backend === 'avp') {
-    if (!idToken || !policyStoreId) {
-      throw new Error('AVP backend requires both idToken and policyStoreId')
+    if (!policyStoreId) {
+      throw new Error('AVP backend requires policyStoreId')
     }
 
-    const requests: BatchIsAuthorizedWithTokenInputItem[] = ALL_ACTIONS.map((a) => ({
+    const principalId = { entityType: `${PEGASUS_NS}::User`, entityId: principal.sub }
+    const requests: BatchIsAuthorizedInputItem[] = ALL_ACTIONS.map((a) => ({
+      principal: principalId,
       action: { actionType: `${PEGASUS_NS}::Action`, actionId: a.id },
       resource: {
         entityType: `${PEGASUS_NS}::${a.resourceType}`,
@@ -200,9 +245,9 @@ export async function listAllowedPermissions(
     }))
 
     const result = await getAvp().send(
-      new BatchIsAuthorizedWithTokenCommand({
+      new BatchIsAuthorizedCommand({
         policyStoreId,
-        identityToken: idToken,
+        entities: { entityList: buildAvpEntityList(principal) },
         requests,
       }),
     )
@@ -218,7 +263,7 @@ export async function listAllowedPermissions(
   // Offline — iterate. The cache flattens the cost on repeat calls within TTL.
   const allowed: string[] = []
   for (const action of ALL_ACTIONS) {
-    const decision = await authorize({ principal, action, idToken, policyStoreId })
+    const decision = await authorize({ principal, action, policyStoreId })
     if (decision.allowed) allowed.push(action.permission)
   }
   return allowed

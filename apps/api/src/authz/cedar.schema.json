@@ -2,16 +2,10 @@
   "Pegasus": {
     "entityTypes": {
       "User": {
-        "memberOfTypes": [],
+        "memberOfTypes": ["Group"],
         "shape": {
           "type": "Record",
-          "attributes": {
-            "cognito:groups": {
-              "required": false,
-              "type": "Set",
-              "element": { "type": "String" }
-            }
-          }
+          "attributes": {}
         }
       },
       "Group": {

@@ -167,20 +167,24 @@ async function main(): Promise<void> {
     `  updated ${identitySourceCount} identity source${identitySourceCount === 1 ? '' : 's'}`,
   )
 
-  // 5) Verify: pull the schema back and confirm cognito:groups is on User.
+  // 5) Verify: pull the schema back and confirm User.memberOfTypes includes
+  //    Group — this is the entity-hierarchy contract the IsAuthorized path
+  //    relies on. Both backends construct User entities with Group parents
+  //    from principal.roleNames; the schema must permit that parenthood.
   const schemaResult = await avp.send(new GetSchemaCommand({ policyStoreId }))
-  const schemaText = schemaResult.schema ?? ''
-  const hasCognitoGroups =
-    schemaText.includes('"cognito:groups"') || schemaText.includes("'cognito:groups'")
-  if (!hasCognitoGroups) {
-    throw new Error('Post-migration schema does not contain User.cognito:groups attribute')
+  const schema = JSON.parse(schemaResult.schema ?? '{}')
+  const userMemberOf = schema?.Pegasus?.entityTypes?.User?.memberOfTypes
+  if (!Array.isArray(userMemberOf) || !userMemberOf.includes('Group')) {
+    throw new Error(
+      `Post-migration schema does not have User.memberOfTypes=["Group"]: ${JSON.stringify(userMemberOf)}`,
+    )
   }
 
   console.log('=== Migration complete ===')
   console.log(`  policyStoreId:    ${policyStoreId}`)
   console.log(`  policies:         ${policies.length}`)
   console.log(`  identity sources: ${identitySourceCount}`)
-  console.log('  schema cognito:groups attribute: present')
+  console.log(`  schema User.memberOfTypes: ${JSON.stringify(userMemberOf)}`)
 }
 
 main().catch((err) => {

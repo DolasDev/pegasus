@@ -2,7 +2,7 @@
 // write action requires a more specific persona group (dispatcher, sales, …)
 // or tenant_admin.
 permit (
-  principal,
+  principal in Pegasus::Group::"tenant_user",
   action in [
     Pegasus::Action::"ReadQuote",
     Pegasus::Action::"ReadMove",
@@ -10,7 +10,4 @@ permit (
     Pegasus::Action::"ReadCustomer"
   ],
   resource
-) when {
-  principal has "cognito:groups" &&
-  principal["cognito:groups"].contains("tenant_user")
-};
+);
