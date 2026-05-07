@@ -11,6 +11,9 @@ export interface TenantUser {
   id: string
   email: string
   cognitoSub: string | null
+  /** Cedar role-group memberships — authoritative source for permission gating. */
+  roleNames: string[]
+  /** Coarse-grained role string derived from roleNames for display. */
   role: TenantUserRole
   status: TenantUserStatus
   invitedAt: string
@@ -30,7 +33,7 @@ export async function listTenantUsers(
 
 export async function inviteTenantUser(
   tenantId: string,
-  body: { email: string; role?: TenantUserRole },
+  body: { email: string; roleNames?: string[] },
 ): Promise<TenantUser> {
   return adminFetch<TenantUser>(`/api/admin/tenants/${tenantId}/users`, {
     method: 'POST',
@@ -41,11 +44,11 @@ export async function inviteTenantUser(
 export async function updateTenantUserRole(
   tenantId: string,
   userId: string,
-  role: TenantUserRole,
+  roleNames: string[],
 ): Promise<TenantUser> {
   return adminFetch<TenantUser>(`/api/admin/tenants/${tenantId}/users/${userId}`, {
     method: 'PATCH',
-    body: JSON.stringify({ role }),
+    body: JSON.stringify({ roleNames }),
   })
 }
 

@@ -273,7 +273,6 @@ adminTenantsRouter.post(
           data: {
             tenantId: created.id,
             email: body.adminEmail.toLowerCase(),
-            role: 'ADMIN',
             roleNames: ['tenant_admin'],
             status: 'PENDING',
           },

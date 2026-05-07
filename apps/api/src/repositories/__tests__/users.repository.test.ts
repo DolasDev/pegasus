@@ -48,9 +48,9 @@ describe.skipIf(!hasDb)('UsersRepository (integration)', () => {
   it('invite creates a TenantUser with status PENDING and correct fields', async () => {
     const repo = createUsersRepository(testDb)
     const email = `invite+${Date.now()}@example.com`
-    const user = await repo.invite(testTenantId, email, 'USER')
+    const user = await repo.invite(testTenantId, email, ['tenant_user'])
     expect(user.email).toBe(email)
-    expect(user.role).toBe('USER')
+    expect(user.roleNames).toEqual(['tenant_user'])
     expect(user.status).toBe('PENDING')
     expect(user.invitedAt).toBeInstanceOf(Date)
     expect(user.activatedAt).toBeNull()
@@ -72,7 +72,7 @@ describe.skipIf(!hasDb)('UsersRepository (integration)', () => {
   it('findByEmail returns the user for a known email', async () => {
     const repo = createUsersRepository(testDb)
     const email = `find+${Date.now()}@example.com`
-    const invited = await repo.invite(testTenantId, email, 'USER')
+    const invited = await repo.invite(testTenantId, email, ['tenant_user'])
     const found = await repo.findByEmail(email, testTenantId)
     expect(found?.id).toBe(invited.id)
     expect(found?.email).toBe(email)
@@ -87,7 +87,7 @@ describe.skipIf(!hasDb)('UsersRepository (integration)', () => {
   it('findById returns null for an id belonging to a different tenant', async () => {
     const repo = createUsersRepository(testDb)
     const email = `crosscheck+${Date.now()}@example.com`
-    const invited = await repo.invite(testTenantId, email, 'USER')
+    const invited = await repo.invite(testTenantId, email, ['tenant_user'])
     const result = await repo.findById(invited.id, 'different-tenant-id')
     expect(result).toBeNull()
   })
@@ -95,23 +95,23 @@ describe.skipIf(!hasDb)('UsersRepository (integration)', () => {
   it('findById returns the user for the correct (id, tenantId) pair', async () => {
     const repo = createUsersRepository(testDb)
     const email = `findbyid+${Date.now()}@example.com`
-    const invited = await repo.invite(testTenantId, email, 'USER')
+    const invited = await repo.invite(testTenantId, email, ['tenant_user'])
     const found = await repo.findById(invited.id, testTenantId)
     expect(found?.id).toBe(invited.id)
   })
 
-  it('updateRole changes the role from USER to ADMIN', async () => {
+  it('updateRoleNames promotes a tenant_user to tenant_admin', async () => {
     const repo = createUsersRepository(testDb)
-    const email = `updaterole+${Date.now()}@example.com`
-    const invited = await repo.invite(testTenantId, email, 'USER')
-    const updated = await repo.updateRole(invited.id, 'ADMIN')
-    expect(updated.role).toBe('ADMIN')
+    const email = `updaterolenames+${Date.now()}@example.com`
+    const invited = await repo.invite(testTenantId, email, ['tenant_user'])
+    const updated = await repo.updateRoleNames(invited.id, ['tenant_admin'])
+    expect(updated.roleNames).toEqual(['tenant_admin'])
   })
 
   it('deactivate sets status to DEACTIVATED and populates deactivatedAt', async () => {
     const repo = createUsersRepository(testDb)
     const email = `deactivate+${Date.now()}@example.com`
-    const invited = await repo.invite(testTenantId, email, 'USER')
+    const invited = await repo.invite(testTenantId, email, ['tenant_user'])
     const deactivated = await repo.deactivate(invited.id)
     expect(deactivated.status).toBe('DEACTIVATED')
     expect(deactivated.deactivatedAt).toBeInstanceOf(Date)
@@ -135,7 +135,7 @@ describe.skipIf(!hasDb)('UsersRepository (integration)', () => {
   it('countAdmins returns 1 after inviting an ADMIN user', async () => {
     const repo = createUsersRepository(testDb)
     const email = `countadmin+${Date.now()}@example.com`
-    await repo.invite(testTenantId, email, 'ADMIN')
+    await repo.invite(testTenantId, email, ['tenant_admin'])
     const count = await repo.countAdmins(testTenantId)
     expect(count).toBeGreaterThanOrEqual(1)
   })
@@ -143,13 +143,13 @@ describe.skipIf(!hasDb)('UsersRepository (integration)', () => {
   it('countAdmins excludes DEACTIVATED admins', async () => {
     const repo = createUsersRepository(testDb)
     const email = `deactivatedadmin+${Date.now()}@example.com`
-    const admin = await repo.invite(testTenantId, email, 'ADMIN')
+    const admin = await repo.invite(testTenantId, email, ['tenant_admin'])
     await repo.deactivate(admin.id)
     // Re-check count — deactivated admin should not be counted
     const countBefore = await repo.countAdmins(testTenantId)
     // Invite and deactivate one more admin, count should not change
     const email2 = `deactivatedadmin2+${Date.now()}@example.com`
-    const admin2 = await repo.invite(testTenantId, email2, 'ADMIN')
+    const admin2 = await repo.invite(testTenantId, email2, ['tenant_admin'])
     const countAfterInvite = await repo.countAdmins(testTenantId)
     await repo.deactivate(admin2.id)
     const countAfterDeactivate = await repo.countAdmins(testTenantId)

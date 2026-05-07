@@ -39,7 +39,7 @@ type InviteFormProps = {
 
 function InviteForm({ onDone }: InviteFormProps) {
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState<'ADMIN' | 'USER'>('USER')
+  const [roleNames, setRoleNames] = useState<string[]>(['tenant_user'])
   const [formError, setFormError] = useState<string | null>(null)
   const inviteMutation = useInviteUser()
 
@@ -47,7 +47,7 @@ function InviteForm({ onDone }: InviteFormProps) {
     e.preventDefault()
     setFormError(null)
     try {
-      await inviteMutation.mutateAsync({ email, role })
+      await inviteMutation.mutateAsync({ email, roleNames })
       onDone()
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'An unexpected error occurred.')
@@ -80,19 +80,24 @@ function InviteForm({ onDone }: InviteFormProps) {
           <div className="space-y-1.5">
             <Label>Role</Label>
             <div className="flex gap-3">
-              {(['USER', 'ADMIN'] as const).map((r) => (
+              {(
+                [
+                  { value: 'tenant_user', label: 'User' },
+                  { value: 'tenant_admin', label: 'Admin' },
+                ] as const
+              ).map((r) => (
                 <button
-                  key={r}
+                  key={r.value}
                   type="button"
-                  onClick={() => setRole(r)}
+                  onClick={() => setRoleNames([r.value])}
                   className={[
                     'flex-1 rounded-md border px-4 py-2 text-sm font-medium transition-colors',
-                    role === r
+                    roleNames[0] === r.value
                       ? 'border-primary bg-primary/10 text-primary'
                       : 'border-border text-muted-foreground hover:bg-accent/50',
                   ].join(' ')}
                 >
-                  {r === 'ADMIN' ? 'Admin' : 'User'}
+                  {r.label}
                 </button>
               ))}
             </div>
@@ -182,10 +187,11 @@ function StatusBadge({ status }: { status: TenantUser['status'] }) {
   )
 }
 
-function RoleBadge({ role }: { role: TenantUser['role'] }) {
+function RoleBadge({ roleNames }: { roleNames: TenantUser['roleNames'] }) {
+  const isAdmin = roleNames.includes('tenant_admin')
   return (
-    <Badge variant={role === 'ADMIN' ? 'default' : 'secondary'} className="text-xs">
-      {role === 'ADMIN' ? 'Admin' : 'User'}
+    <Badge variant={isAdmin ? 'default' : 'secondary'} className="text-xs">
+      {isAdmin ? 'Admin' : 'User'}
     </Badge>
   )
 }
@@ -315,7 +321,7 @@ function UserRow({
             >
               {user.email}
             </span>
-            <RoleBadge role={user.role} />
+            <RoleBadge roleNames={user.roleNames} />
             <StatusBadge status={user.status} />
             {isSelf && <span className="text-xs text-muted-foreground">(you)</span>}
           </div>
@@ -343,7 +349,7 @@ function UserRow({
             onClick={() => onToggleRole(user)}
           >
             <ShieldAlert size={13} />
-            {user.role === 'ADMIN' ? 'Make user' : 'Make admin'}
+            {user.roleNames.includes('tenant_admin') ? 'Make user' : 'Make admin'}
           </Button>
           <Button
             variant="ghost"
@@ -376,7 +382,7 @@ export function UsersPage() {
   const [panel, setPanel] = useState<PanelState>({ kind: 'none' })
 
   // Client-side guard — page only accessible to tenant_admin.
-  if (session?.role !== 'tenant_admin') {
+  if (!session?.roleNames.includes('tenant_admin')) {
     return (
       <div>
         <PageHeader title="Users" breadcrumbs={[{ label: 'Settings' }, { label: 'Users' }]} />
@@ -422,9 +428,11 @@ export function UsersPage() {
   }
 
   async function handleToggleRole(user: TenantUser) {
-    const newRole = user.role === 'ADMIN' ? 'USER' : 'ADMIN'
+    const newRoleNames = user.roleNames.includes('tenant_admin')
+      ? ['tenant_user']
+      : ['tenant_admin']
     try {
-      await roleMutation.mutateAsync({ id: user.id, input: { role: newRole } })
+      await roleMutation.mutateAsync({ id: user.id, input: { roleNames: newRoleNames } })
     } catch {
       // Error surfaces via roleMutation.error
     }

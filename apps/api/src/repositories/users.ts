@@ -18,7 +18,6 @@ export type TenantUserRow = {
   email: string
   cognitoSub: string | null
   legacyWindowsUsername: string | null
-  role: 'ADMIN' | 'USER'
   roleNames: string[]
   status: 'PENDING' | 'ACTIVE' | 'DEACTIVATED'
   invitedAt: Date
@@ -32,7 +31,6 @@ const USER_SELECT = {
   email: true,
   cognitoSub: true,
   legacyWindowsUsername: true,
-  role: true,
   roleNames: true,
   status: true,
   invitedAt: true,
@@ -71,39 +69,24 @@ export function createUsersRepository(db: PrismaClient) {
       })
     },
 
-    /** Create a new invited TenantUser with PENDING status. */
-    invite(tenantId: string, email: string, role: 'ADMIN' | 'USER'): Promise<TenantUserRow> {
-      // Mirror the legacy enum into roleNames so newly invited users carry
-      // the Cedar group membership immediately, without an extra admin step.
-      const roleNames = role === 'ADMIN' ? ['tenant_admin'] : ['tenant_user']
-      return db.tenantUser.create({
-        data: { tenantId, email: email.toLowerCase(), role, roleNames },
-        select: USER_SELECT,
-      })
-    },
-
-    /** Update the role of a TenantUser. */
-    updateRole(id: string, role: 'ADMIN' | 'USER'): Promise<TenantUserRow> {
-      return db.tenantUser.update({
-        where: { id },
-        data: { role },
-        select: USER_SELECT,
-      })
-    },
-
     /**
-     * Update the Cedar role-group memberships and (write-through) the legacy
-     * `role` enum. The enum is derived by the caller so the repository doesn't
-     * need to know the persona naming convention.
+     * Create a new invited TenantUser with PENDING status. The legacy `role`
+     * enum is left at its column default (`USER`) — it's no longer read by
+     * any API code path; final removal is gated on the migration in
+     * plans/in-progress/authz-cedar-avp-followups.md item #6.
      */
-    updateRoleNames(
-      id: string,
-      roleNames: string[],
-      derivedLegacyRole: 'ADMIN' | 'USER',
-    ): Promise<TenantUserRow> {
+    invite(tenantId: string, email: string, roleNames: string[]): Promise<TenantUserRow> {
+      return db.tenantUser.create({
+        data: { tenantId, email: email.toLowerCase(), roleNames },
+        select: USER_SELECT,
+      })
+    },
+
+    /** Update the Cedar role-group memberships of a TenantUser. */
+    updateRoleNames(id: string, roleNames: string[]): Promise<TenantUserRow> {
       return db.tenantUser.update({
         where: { id },
-        data: { roleNames, role: derivedLegacyRole },
+        data: { roleNames },
         select: USER_SELECT,
       })
     },
@@ -138,10 +121,14 @@ export function createUsersRepository(db: PrismaClient) {
       })
     },
 
-    /** Count ADMIN users for the tenant — used to prevent last-admin lockout. */
+    /** Count tenant_admin users for the tenant — used to prevent last-admin lockout. */
     countAdmins(tenantId: string): Promise<number> {
       return db.tenantUser.count({
-        where: { tenantId, role: 'ADMIN', status: { not: 'DEACTIVATED' } },
+        where: {
+          tenantId,
+          roleNames: { has: 'tenant_admin' },
+          status: { not: 'DEACTIVATED' },
+        },
       })
     },
   }

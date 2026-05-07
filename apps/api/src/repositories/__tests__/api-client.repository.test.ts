@@ -41,7 +41,7 @@ describe.skipIf(!hasDb)('ApiClientRepository (integration)', () => {
       data: {
         tenantId: testTenantId,
         email: `admin+${Date.now()}@example.com`,
-        role: 'ADMIN',
+        roleNames: ['tenant_admin'],
         status: 'ACTIVE',
       },
     })

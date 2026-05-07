@@ -26,7 +26,7 @@ const { mockSend, mockRepo, mockDb } = vi.hoisted(() => ({
     findById: vi.fn(),
     findByEmail: vi.fn(),
     invite: vi.fn(),
-    updateRole: vi.fn(),
+    updateRoleNames: vi.fn(),
     updateLegacyWindowsUsername: vi.fn(),
     deactivate: vi.fn(),
     reactivate: vi.fn(),
@@ -112,7 +112,7 @@ const mockUserRow = {
   email: 'user@acme.com',
   cognitoSub: null,
   legacyWindowsUsername: null,
-  role: 'USER' as const,
+  roleNames: ['tenant_user'],
   status: 'PENDING' as const,
   invitedAt: now,
   activatedAt: null,
@@ -123,7 +123,7 @@ const mockAdminRow = {
   ...mockUserRow,
   id: 'admin-1',
   email: 'admin@acme.com',
-  role: 'ADMIN' as const,
+  roleNames: ['tenant_admin'],
 }
 
 const BASE = '/tenants/tenant-1/users'
@@ -249,24 +249,27 @@ describe('admin tenant-users handler', () => {
   describe('PATCH /:userId', () => {
     it('returns 200 with updated user on success', async () => {
       mockRepo.findById.mockResolvedValue(mockUserRow)
-      mockRepo.updateRole.mockResolvedValue({ ...mockUserRow, role: 'ADMIN' })
+      mockRepo.updateRoleNames.mockResolvedValue({
+        ...mockUserRow,
+        roleNames: ['tenant_admin'],
+      })
 
-      const res = await buildApp().request(`${BASE}/user-1`, patch({ role: 'ADMIN' }))
+      const res = await buildApp().request(`${BASE}/user-1`, patch({ roleNames: ['tenant_admin'] }))
       expect(res.status).toBe(200)
       const body = await json(res)
-      expect((body.data as JsonBody)['role']).toBe('ADMIN')
+      expect((body.data as JsonBody)['roleNames']).toEqual(['tenant_admin'])
     })
 
     it('returns 404 NOT_FOUND when user does not exist in this tenant', async () => {
       mockRepo.findById.mockResolvedValue(null)
 
-      const res = await buildApp().request(`${BASE}/user-1`, patch({ role: 'ADMIN' }))
+      const res = await buildApp().request(`${BASE}/user-1`, patch({ roleNames: ['tenant_admin'] }))
       expect(res.status).toBe(404)
       expect((await json(res)).code).toBe('NOT_FOUND')
     })
 
-    it('returns 400 VALIDATION_ERROR when role is invalid', async () => {
-      const res = await buildApp().request(`${BASE}/user-1`, patch({ role: 'SUPERUSER' }))
+    it('returns 400 VALIDATION_ERROR when neither roleNames nor legacyWindowsUsername is provided', async () => {
+      const res = await buildApp().request(`${BASE}/user-1`, patch({}))
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')
     })

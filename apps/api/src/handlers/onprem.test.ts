@@ -30,7 +30,6 @@ function buildApp() {
     c.set('correlationId', 'corr-test')
     c.set('tenantId', 'tnt_smoke')
     c.set('userId', 'user-test')
-    c.set('role', 'tenant_admin')
     // @ts-expect-error mocked Prisma client — only vpnPeer.findUnique is exercised
     c.set('db', mockDb)
     await next()

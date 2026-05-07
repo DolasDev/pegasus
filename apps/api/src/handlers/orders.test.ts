@@ -106,7 +106,6 @@ function buildApp(apiClient: ApiClientContext | null = mockApiClient) {
     if (apiClient.tenantId === null) throw new Error('test fixture must have tenantId')
     c.set('tenantId', apiClient.tenantId)
     c.set('db', {} as unknown as PrismaClient)
-    c.set('role', 'api_client')
     c.set('userId', undefined)
     c.set('apiClient', apiClient)
     await next()

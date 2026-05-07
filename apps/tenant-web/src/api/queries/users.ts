@@ -10,6 +10,7 @@ export type TenantUser = {
   email: string
   cognitoSub: string | null
   legacyWindowsUsername: string | null
+  roleNames: string[]
   role: 'ADMIN' | 'USER'
   status: 'PENDING' | 'ACTIVE' | 'DEACTIVATED'
   invitedAt: string
@@ -19,11 +20,13 @@ export type TenantUser = {
 
 export type InviteUserInput = {
   email: string
-  role: 'ADMIN' | 'USER'
+  /** Cedar role-group memberships (e.g. ['tenant_user'], ['dispatcher']). */
+  roleNames: string[]
 }
 
 export type PatchUserInput = {
-  role?: 'ADMIN' | 'USER'
+  /** Cedar role-group memberships. */
+  roleNames?: string[]
   legacyWindowsUsername?: string | null
 }
 

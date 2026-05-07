@@ -7,12 +7,12 @@
 // Endpoints:
 //   GET    /                — list all TenantUsers for this tenant
 //   POST   /invite          — invite a user (AdminCreateUser + TenantUser PENDING)
-//   PATCH  /:id             — update role (ADMIN ↔ USER)
+//   PATCH  /:id             — update Cedar role-group memberships (roleNames)
 //   DELETE /:id             — deactivate (AdminDisableUser + TenantUser DEACTIVATED)
 //
 // Security invariants:
-//   - requireRole(['tenant_admin']) enforced on all routes
-//   - Deactivating the last active ADMIN is rejected (lockout guard)
+//   - requirePermission(Actions.X) enforced on all routes (Cedar/AVP)
+//   - Deactivating the last active tenant_admin is rejected (lockout guard)
 //   - Inviting an already-existing user email returns 409 CONFLICT
 // ---------------------------------------------------------------------------
 
@@ -46,22 +46,19 @@ const USER_POOL_ID = process.env['COGNITO_USER_POOL_ID'] ?? ''
 
 const InviteUserBody = z.object({
   email: z.string().email(),
-  role: z.enum(['ADMIN', 'USER']).default('USER'),
+  /** Cedar role-group memberships. Defaults to ['tenant_user'] for the
+   *  read-only baseline persona. */
+  roleNames: z.array(z.string().min(1)).default(['tenant_user']),
 })
 
 const PatchUserBody = z
   .object({
-    role: z.enum(['ADMIN', 'USER']).optional(),
     roleNames: z.array(z.string().min(1)).optional(),
     legacyWindowsUsername: z.string().min(1).max(255).nullable().optional(),
   })
-  .refine(
-    (d) =>
-      d.role !== undefined || d.roleNames !== undefined || d.legacyWindowsUsername !== undefined,
-    {
-      message: 'At least one of role, roleNames, or legacyWindowsUsername must be provided',
-    },
-  )
+  .refine((d) => d.roleNames !== undefined || d.legacyWindowsUsername !== undefined, {
+    message: 'At least one of roleNames or legacyWindowsUsername must be provided',
+  })
 
 // ---------------------------------------------------------------------------
 // Response shape
@@ -72,12 +69,18 @@ type TenantUserResponse = {
   email: string
   cognitoSub: string | null
   legacyWindowsUsername: string | null
-  role: 'ADMIN' | 'USER'
+  /** Cedar role-group memberships — authoritative source for permission gating. */
   roleNames: string[]
+  /** Coarse-grained role string derived from `roleNames` for display. */
+  role: 'ADMIN' | 'USER'
   status: 'PENDING' | 'ACTIVE' | 'DEACTIVATED'
   invitedAt: string
   activatedAt: string | null
   deactivatedAt: string | null
+}
+
+function deriveLegacyRole(roleNames: readonly string[]): 'ADMIN' | 'USER' {
+  return roleNames.includes('tenant_admin') ? 'ADMIN' : 'USER'
 }
 
 function toResponse(row: TenantUserRow): TenantUserResponse {
@@ -86,8 +89,8 @@ function toResponse(row: TenantUserRow): TenantUserResponse {
     email: row.email,
     cognitoSub: row.cognitoSub,
     legacyWindowsUsername: row.legacyWindowsUsername,
-    role: row.role,
     roleNames: row.roleNames,
+    role: deriveLegacyRole(row.roleNames),
     status: row.status,
     invitedAt: row.invitedAt.toISOString(),
     activatedAt: row.activatedAt?.toISOString() ?? null,
@@ -123,7 +126,7 @@ usersHandler.get('/', requirePermission(Actions.ListUsers), async (c) => {
 //   2. Call cognito-idp:AdminCreateUser (sends invite email with temp password)
 //   3. Create TenantUser record with status=PENDING
 //
-// Request:  { email: string, role?: 'ADMIN' | 'USER' }
+// Request:  { email: string, roleNames?: string[] }
 // Response: { data: TenantUserResponse } (201)
 //           { error, code: CONFLICT }             (409) — email already invited
 //           { error, code: VALIDATION_ERROR }     (400)
@@ -141,7 +144,7 @@ usersHandler.post(
     const db = c.get('db')
     const tenantId = c.get('tenantId')
     const repo = createUsersRepository(db)
-    const { email, role } = c.req.valid('json')
+    const { email, roleNames } = c.req.valid('json')
 
     // Check for existing user with this email
     const existing = await repo.findByEmail(email, tenantId)
@@ -197,7 +200,7 @@ usersHandler.post(
 
     // Create TenantUser record
     try {
-      const user = await repo.invite(tenantId, email, role)
+      const user = await repo.invite(tenantId, email, roleNames)
       return c.json({ data: toResponse(user) }, 201)
     } catch (err) {
       // P2002 = unique constraint — race condition (concurrent invite)
@@ -223,9 +226,9 @@ usersHandler.post(
 // ---------------------------------------------------------------------------
 // PATCH /:id
 //
-// Updates the role of a TenantUser (ADMIN ↔ USER).
+// Updates the Cedar role-group memberships of a TenantUser.
 //
-// Request:  { role: 'ADMIN' | 'USER' }
+// Request:  { roleNames?: string[], legacyWindowsUsername?: string | null }
 // Response: { data: TenantUserResponse } (200)
 //           { error, code: NOT_FOUND }        (404)
 //           { error, code: VALIDATION_ERROR } (400)
@@ -243,7 +246,7 @@ usersHandler.patch(
     const tenantId = c.get('tenantId')
     const repo = createUsersRepository(db)
     const id = c.req.param('id') ?? ''
-    const { role, roleNames, legacyWindowsUsername } = c.req.valid('json')
+    const { roleNames, legacyWindowsUsername } = c.req.valid('json')
 
     const existing = await repo.findById(id, tenantId)
     if (!existing) {
@@ -251,13 +254,8 @@ usersHandler.patch(
     }
 
     let current = existing
-    // roleNames is the new authoritative source. When it is provided we also
-    // derive the legacy enum so any reader still using `role` stays consistent.
     if (roleNames !== undefined) {
-      const derivedLegacy: 'ADMIN' | 'USER' = roleNames.includes('tenant_admin') ? 'ADMIN' : 'USER'
-      current = await repo.updateRoleNames(id, roleNames, derivedLegacy)
-    } else if (role !== undefined) {
-      current = await repo.updateRole(id, role)
+      current = await repo.updateRoleNames(id, roleNames)
     }
     if (legacyWindowsUsername !== undefined) {
       current = await repo.updateLegacyWindowsUsername(id, legacyWindowsUsername)
@@ -294,7 +292,7 @@ usersHandler.delete('/:id', requirePermission(Actions.DeactivateUser), async (c)
   }
 
   // Prevent removing the last active admin — lockout guard.
-  if (existing.role === 'ADMIN') {
+  if (existing.roleNames.includes('tenant_admin')) {
     const adminCount = await repo.countAdmins(tenantId)
     if (adminCount <= 1) {
       return c.json(

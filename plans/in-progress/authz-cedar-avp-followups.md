@@ -134,7 +134,7 @@ work down the deferred cleanup items in safest-first order.
 
 ### Deferred cleanup (no urgency)
 
-- [ ] **6. Drop the legacy `tenant_users.role` enum + `custom:role` claim.**
+- [x] **6. Drop the legacy `tenant_users.role` enum + `custom:role` claim.**
       The original plan deliberately kept both as write-through shadows
       so in-flight tokens (≤1h Cognito TTL) don't break on deploy.
       After 24h post-deploy:

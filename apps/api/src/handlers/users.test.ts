@@ -30,7 +30,6 @@ const { mockSend, mockRepo, mockTenantFindUnique } = vi.hoisted(() => ({
     findById: vi.fn(),
     findByEmail: vi.fn(),
     invite: vi.fn(),
-    updateRole: vi.fn(),
     updateRoleNames: vi.fn(),
     updateLegacyWindowsUsername: vi.fn(),
     deactivate: vi.fn(),
@@ -122,6 +121,7 @@ const mockAdminRow = {
   ...mockUserRow,
   id: 'admin-1',
   email: 'admin@example.com',
+  roleNames: ['tenant_admin'],
   role: 'ADMIN' as const,
 }
 
@@ -263,25 +263,29 @@ describe('users handler', () => {
   // ── PATCH /:id ────────────────────────────────────────────────────────────
 
   describe('PATCH /:id', () => {
-    it('returns 400 VALIDATION_ERROR when role is not in enum', async () => {
-      const res = await buildApp().request('/user-1', patch({ role: 'SUPERUSER' }))
+    it('returns 400 VALIDATION_ERROR when neither roleNames nor legacyWindowsUsername is provided', async () => {
+      const res = await buildApp().request('/user-1', patch({}))
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')
     })
 
     it('returns 404 NOT_FOUND when user does not exist', async () => {
       mockRepo.findById.mockResolvedValue(null)
-      const res = await buildApp().request('/user-1', patch({ role: 'ADMIN' }))
+      const res = await buildApp().request('/user-1', patch({ roleNames: ['tenant_admin'] }))
       expect(res.status).toBe(404)
       expect((await json(res)).code).toBe('NOT_FOUND')
     })
 
     it('returns 200 with updated user on success', async () => {
       mockRepo.findById.mockResolvedValue(mockUserRow)
-      mockRepo.updateRole.mockResolvedValue({ ...mockUserRow, role: 'ADMIN' })
-      const res = await buildApp().request('/user-1', patch({ role: 'ADMIN' }))
+      mockRepo.updateRoleNames.mockResolvedValue({
+        ...mockUserRow,
+        roleNames: ['tenant_admin'],
+      })
+      const res = await buildApp().request('/user-1', patch({ roleNames: ['tenant_admin'] }))
       expect(res.status).toBe(200)
       const body = await json(res)
+      expect((body.data as JsonBody)['roleNames']).toEqual(['tenant_admin'])
       expect((body.data as JsonBody)['role']).toBe('ADMIN')
     })
   })

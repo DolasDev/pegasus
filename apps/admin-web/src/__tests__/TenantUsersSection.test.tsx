@@ -49,6 +49,7 @@ function makeUser(overrides: Partial<TenantUser> = {}): TenantUser {
     id: 'user-1',
     email: 'user@acme.com',
     cognitoSub: null,
+    roleNames: ['tenant_user'],
     role: 'USER',
     status: 'PENDING',
     invitedAt: '2024-01-15T12:00:00.000Z',
@@ -106,10 +107,10 @@ describe('TenantUsersSection', () => {
       expect(screen.getByPlaceholderText(/email/i)).toBeInTheDocument()
     })
 
-    it('submit calls inviteTenantUser with the entered email and selected role', async () => {
+    it('submit calls inviteTenantUser with the entered email and selected roleNames', async () => {
       vi.mocked(listTenantUsers).mockResolvedValue({ data: [], meta: { count: 0 } })
       vi.mocked(inviteTenantUser).mockResolvedValue(
-        makeUser({ email: 'new@acme.com', role: 'ADMIN' }),
+        makeUser({ email: 'new@acme.com', roleNames: ['tenant_admin'], role: 'ADMIN' }),
       )
       renderSection()
       await screen.findByText(/no users/i)
@@ -118,13 +119,13 @@ describe('TenantUsersSection', () => {
       fireEvent.change(screen.getByPlaceholderText(/email/i), {
         target: { value: 'new@acme.com' },
       })
-      fireEvent.change(screen.getByRole('combobox'), { target: { value: 'ADMIN' } })
+      fireEvent.change(screen.getByRole('combobox'), { target: { value: 'tenant_admin' } })
       fireEvent.click(screen.getByRole('button', { name: /^invite$/i }))
 
       await waitFor(() => {
         expect(vi.mocked(inviteTenantUser)).toHaveBeenCalledWith('tenant-1', {
           email: 'new@acme.com',
-          role: 'ADMIN',
+          roleNames: ['tenant_admin'],
         })
       })
     })
@@ -167,33 +168,41 @@ describe('TenantUsersSection', () => {
   // ── Role toggle ───────────────────────────────────────────────────────────
 
   describe('Role toggle', () => {
-    it('"Make admin" button calls updateTenantUserRole with ADMIN', async () => {
+    it('"Make admin" button calls updateTenantUserRole with [tenant_admin]', async () => {
       vi.mocked(listTenantUsers).mockResolvedValue({
-        data: [makeUser({ id: 'user-1', role: 'USER' })],
+        data: [makeUser({ id: 'user-1', roleNames: ['tenant_user'], role: 'USER' })],
         meta: { count: 1 },
       })
-      vi.mocked(updateTenantUserRole).mockResolvedValue(makeUser({ role: 'ADMIN' }))
+      vi.mocked(updateTenantUserRole).mockResolvedValue(
+        makeUser({ roleNames: ['tenant_admin'], role: 'ADMIN' }),
+      )
       renderSection()
       await screen.findByText('user@acme.com')
 
       fireEvent.click(screen.getByRole('button', { name: /make admin/i }))
       await waitFor(() => {
-        expect(vi.mocked(updateTenantUserRole)).toHaveBeenCalledWith('tenant-1', 'user-1', 'ADMIN')
+        expect(vi.mocked(updateTenantUserRole)).toHaveBeenCalledWith('tenant-1', 'user-1', [
+          'tenant_admin',
+        ])
       })
     })
 
-    it('"Make user" button calls updateTenantUserRole with USER', async () => {
+    it('"Make user" button calls updateTenantUserRole with [tenant_user]', async () => {
       vi.mocked(listTenantUsers).mockResolvedValue({
-        data: [makeUser({ id: 'admin-1', role: 'ADMIN' })],
+        data: [makeUser({ id: 'admin-1', roleNames: ['tenant_admin'], role: 'ADMIN' })],
         meta: { count: 1 },
       })
-      vi.mocked(updateTenantUserRole).mockResolvedValue(makeUser({ id: 'admin-1', role: 'USER' }))
+      vi.mocked(updateTenantUserRole).mockResolvedValue(
+        makeUser({ id: 'admin-1', roleNames: ['tenant_user'], role: 'USER' }),
+      )
       renderSection()
       await screen.findByText('user@acme.com')
 
       fireEvent.click(screen.getByRole('button', { name: /make user/i }))
       await waitFor(() => {
-        expect(vi.mocked(updateTenantUserRole)).toHaveBeenCalledWith('tenant-1', 'admin-1', 'USER')
+        expect(vi.mocked(updateTenantUserRole)).toHaveBeenCalledWith('tenant-1', 'admin-1', [
+          'tenant_user',
+        ])
       })
     })
 

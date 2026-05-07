@@ -60,27 +60,27 @@ describe('tenant-users API', () => {
 
       const result = await inviteTenantUser('tenant-123', {
         email: 'test@example.com',
-        role: 'USER',
+        roleNames: ['tenant_user'],
       })
 
       expect(adminFetch).toHaveBeenCalledWith('/api/admin/tenants/tenant-123/users', {
         method: 'POST',
-        body: JSON.stringify({ email: 'test@example.com', role: 'USER' }),
+        body: JSON.stringify({ email: 'test@example.com', roleNames: ['tenant_user'] }),
       })
       expect(result).toEqual(user)
     })
   })
 
   describe('updateTenantUserRole', () => {
-    it('calls adminFetch with PATCH and role body', async () => {
-      const user = { id: 'u1', role: 'ADMIN' }
+    it('calls adminFetch with PATCH and roleNames body', async () => {
+      const user = { id: 'u1', roleNames: ['tenant_admin'] }
       vi.mocked(adminFetch).mockResolvedValue(user)
 
-      const result = await updateTenantUserRole('tenant-123', 'user-456', 'ADMIN')
+      const result = await updateTenantUserRole('tenant-123', 'user-456', ['tenant_admin'])
 
       expect(adminFetch).toHaveBeenCalledWith('/api/admin/tenants/tenant-123/users/user-456', {
         method: 'PATCH',
-        body: JSON.stringify({ role: 'ADMIN' }),
+        body: JSON.stringify({ roleNames: ['tenant_admin'] }),
       })
       expect(result).toEqual(user)
     })

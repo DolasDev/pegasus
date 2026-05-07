@@ -53,7 +53,6 @@ function buildApp() {
   app.get('/test', (c) => {
     return c.json({
       tenantId: c.get('tenantId'),
-      role: c.get('role'),
       userId: c.get('userId'),
       hasDb: c.get('db') !== undefined,
       hasApiClient: c.get('apiClient') !== undefined,
@@ -226,7 +225,6 @@ describe('m2mAppAuthMiddleware', () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
     expect(body['tenantId']).toBe('tenant-uuid')
-    expect(body['role']).toBe('api_client')
     expect(body['userId']).toBeUndefined()
     expect(body['hasDb']).toBe(true)
     expect(body['hasApiClient']).toBe(true)

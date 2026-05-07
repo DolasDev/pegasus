@@ -96,14 +96,6 @@ enum SsoProviderType {
   @@schema("public")
 }
 
-/// Role of a user within a tenant — controls access to admin-only features.
-enum TenantUserRole {
-  ADMIN
-  USER
-
-  @@schema("public")
-}
-
 /// Lifecycle status of an invited tenant user.
 enum TenantUserStatus {
   /// Invited but has not yet completed first login.
@@ -332,11 +324,8 @@ model TenantUser {
   /// longhaul middleware uses to resolve the legacy user identity.
   legacyWindowsUsername String?  @map("legacy_windows_username")
 
-  role          TenantUserRole   @default(USER)
   /// Cedar role-group memberships. Authoritative source for the
   /// `custom:roles` Cognito claim emitted by the pre-token Lambda.
-  /// During the transition `role` (enum) is kept as a write-through
-  /// shadow: tenant_admin ↔ role=ADMIN, otherwise role=USER.
   roleNames     String[]         @default([]) @map("role_names")
   status        TenantUserStatus @default(PENDING)
   invitedAt     DateTime         @default(now()) @map("invited_at")

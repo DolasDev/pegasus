@@ -461,9 +461,9 @@ authHandler.post(
     // We now rely on the custom claims injected by the Pre-Token-Generation Lambda.
     // The Lambda has already authoritative resolved the tenant and injected these claims.
     const customTenantId = payload['custom:tenantId'] as string | undefined
-    const customRole = payload['custom:role'] as string | undefined
+    const customRolesRaw = payload['custom:roles'] as string | undefined
 
-    if (!customTenantId || !customRole) {
+    if (!customTenantId || !customRolesRaw) {
       // Pre-token Lambda blocks generation if there is no active tenant. Wait, it could be
       // an admin or another type of user? Tenant mapping happens for all users signing into
       // the tenant client.
@@ -477,12 +477,32 @@ authHandler.post(
       )
     }
 
+    // Parse the Cedar role-group memberships. Pre-token emits a JSON-encoded
+    // string array. A malformed/empty claim is treated as a no-roles session
+    // (login proceeds; permission checks later return DENY).
+    let roleNames: string[] = []
+    try {
+      const parsed = JSON.parse(customRolesRaw) as unknown
+      if (Array.isArray(parsed) && parsed.every((s) => typeof s === 'string')) {
+        roleNames = parsed as string[]
+      }
+    } catch {
+      // Keep roleNames = [] on malformed input.
+    }
+
+    // Derived `role` string for backward-compat consumers (mobile UI badge,
+    // legacy tenant-web guards). Authoritative source is `roleNames`.
+    const derivedRole = roleNames.includes('tenant_admin')
+      ? 'tenant_admin'
+      : (roleNames[0] ?? 'tenant_user')
+
     const expiresAt = payload['exp'] as number
 
     const session = {
       sub,
       tenantId: customTenantId,
-      role: customRole, // 'tenant_user' or other roles
+      roleNames,
+      role: derivedRole,
       email,
       expiresAt,
       // The Cognito identity provider used to authenticate. Cognito stores the

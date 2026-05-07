@@ -31,6 +31,7 @@ describe('authGuard', () => {
     mockedGetSession.mockReturnValue({
       sub: 'user-1',
       tenantId: 'tenant-1',
+      roleNames: ['tenant_admin'],
       role: 'tenant_admin',
       email: 'admin@example.com',
       expiresAt: Math.floor(Date.now() / 1000) + 3600,

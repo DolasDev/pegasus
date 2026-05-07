@@ -467,7 +467,7 @@ describe('POST /api/auth/validate-token', () => {
         exp: 9999999999,
         token_use: 'id',
         'custom:tenantId': 'tenant-abc',
-        'custom:role': 'tenant_user',
+        'custom:roles': JSON.stringify(['tenant_user']),
       },
     })
 
@@ -477,6 +477,7 @@ describe('POST /api/auth/validate-token', () => {
     const data = body['data'] as Record<string, unknown>
     expect(data['sub']).toBe('user-sub-123')
     expect(data['tenantId']).toBe('tenant-abc')
+    expect(data['roleNames']).toEqual(['tenant_user'])
     expect(data['role']).toBe('tenant_user')
     expect(data['email']).toBe('user@acme.com')
     expect(data['expiresAt']).toBe(9999999999)
@@ -492,7 +493,7 @@ describe('POST /api/auth/validate-token', () => {
         exp: 9999999999,
         token_use: 'id',
         'custom:tenantId': 'tenant-abc',
-        'custom:role': 'tenant_user',
+        'custom:roles': JSON.stringify(['tenant_user']),
         identities: [{ providerName: 'acme-okta' }],
       },
     })
@@ -541,7 +542,7 @@ describe('POST /api/auth/validate-token', () => {
         exp: 9999999999,
         token_use: 'access',
         'custom:tenantId': 'tenant-abc',
-        'custom:role': 'tenant_user',
+        'custom:roles': JSON.stringify(['tenant_user']),
       },
     })
 
@@ -560,7 +561,7 @@ describe('POST /api/auth/validate-token', () => {
         exp: 9999999999,
         token_use: 'id',
         'custom:tenantId': 'tenant-abc',
-        'custom:role': 'tenant_user',
+        'custom:roles': JSON.stringify(['tenant_user']),
       },
     })
 
@@ -570,15 +571,15 @@ describe('POST /api/auth/validate-token', () => {
     expect(body['code']).toBe('UNAUTHORIZED')
   })
 
-  // Case 7: Missing custom:tenantId or custom:role — pre-token Lambda did not inject claims
-  it('returns 403 FORBIDDEN when custom:tenantId or custom:role claims are missing', async () => {
+  // Case 7: Missing custom:tenantId or custom:roles — pre-token Lambda did not inject claims
+  it('returns 403 FORBIDDEN when custom:tenantId or custom:roles claims are missing', async () => {
     mockJwtVerify.mockResolvedValueOnce({
       payload: {
         sub: 'user-sub-123',
         email: 'user@acme.com',
         exp: 9999999999,
         token_use: 'id',
-        // custom:tenantId and custom:role deliberately absent
+        // custom:tenantId and custom:roles deliberately absent
       },
     })
 

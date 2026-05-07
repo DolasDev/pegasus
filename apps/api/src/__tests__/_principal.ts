@@ -22,11 +22,6 @@ export interface PrincipalSeedOptions {
   readonly sub?: string
   /** Tenant UUID. Defaults to 'test-tenant-id'. */
   readonly tenantId?: string
-  /**
-   * Pass `null` to omit the role context variable (probes the FORBIDDEN
-   * fallback paths). Defaults to the first roleName, or 'tenant_user'.
-   */
-  readonly role?: string | null
 }
 
 /**
@@ -38,14 +33,12 @@ export function seedPrincipal(opts: PrincipalSeedOptions = {}) {
   const roleNames = opts.roleNames ?? ['tenant_admin']
   const sub = opts.sub ?? 'test-sub'
   const tenantId = opts.tenantId ?? 'test-tenant-id'
-  const role = opts.role === undefined ? (roleNames[0] ?? 'tenant_user') : opts.role
 
   return async (c: Context<AppEnv>, next: Next): Promise<void> => {
     c.set('tenantId', tenantId)
     c.set('principal', { sub, tenantId, roleNames: [...roleNames] })
     c.set('idToken', undefined)
     c.set('policyStoreId', undefined)
-    if (role !== null) c.set('role', role)
     await next()
   }
 }
@@ -58,5 +51,5 @@ export function seedPrincipal(opts: PrincipalSeedOptions = {}) {
 export function seedPrincipalForRole(role: string | null, tenantId = 'test-tenant-id') {
   const roleNames =
     role === null ? [] : role === 'tenant_admin' ? ['tenant_admin'] : ['tenant_user']
-  return seedPrincipal({ tenantId, roleNames, role })
+  return seedPrincipal({ tenantId, roleNames })
 }

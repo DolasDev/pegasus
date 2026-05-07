@@ -16,7 +16,18 @@ export type Session = {
   sub: string
   /** Tenant the user belongs to. */
   tenantId: string
-  /** The user's role within their tenant. */
+  /**
+   * Cedar role-group memberships. Authoritative source for permission gating.
+   * The pre-token Lambda emits this as `custom:roles`; `/api/auth/validate-token`
+   * surfaces it here.
+   */
+  roleNames: string[]
+  /**
+   * Coarse-grained role string. Derived from `roleNames` (set to `tenant_admin`
+   * when `roleNames` includes it, otherwise the first roleName). Kept for
+   * backward compatibility with display-only consumers (e.g. the mobile
+   * `UserMenuButton`). New permission gating MUST read `roleNames` instead.
+   */
   role: string
   /** User's email address. Display only — not an identity key. */
   email: string

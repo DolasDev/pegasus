@@ -31,16 +31,18 @@ import { logger } from '../../lib/logger'
 
 const InviteUserBody = z.object({
   email: z.string().email(),
-  role: z.enum(['ADMIN', 'USER']).default('USER'),
+  /** Cedar role-group memberships. Defaults to ['tenant_user'] for the
+   *  read-only baseline persona. */
+  roleNames: z.array(z.string().min(1)).default(['tenant_user']),
 })
 
 const PatchUserBody = z
   .object({
-    role: z.enum(['ADMIN', 'USER']).optional(),
+    roleNames: z.array(z.string().min(1)).optional(),
     legacyWindowsUsername: z.string().min(1).max(255).nullable().optional(),
   })
-  .refine((d) => d.role !== undefined || d.legacyWindowsUsername !== undefined, {
-    message: 'At least one of role or legacyWindowsUsername must be provided',
+  .refine((d) => d.roleNames !== undefined || d.legacyWindowsUsername !== undefined, {
+    message: 'At least one of roleNames or legacyWindowsUsername must be provided',
   })
 
 // ---------------------------------------------------------------------------
@@ -52,11 +54,18 @@ type TenantUserResponse = {
   email: string
   cognitoSub: string | null
   legacyWindowsUsername: string | null
+  /** Cedar role-group memberships — authoritative source for permission gating. */
+  roleNames: string[]
+  /** Coarse-grained role string derived from `roleNames` for display. */
   role: 'ADMIN' | 'USER'
   status: 'PENDING' | 'ACTIVE' | 'DEACTIVATED'
   invitedAt: string
   activatedAt: string | null
   deactivatedAt: string | null
+}
+
+function deriveLegacyRole(roleNames: readonly string[]): 'ADMIN' | 'USER' {
+  return roleNames.includes('tenant_admin') ? 'ADMIN' : 'USER'
 }
 
 function toResponse(row: TenantUserRow): TenantUserResponse {
@@ -65,7 +74,8 @@ function toResponse(row: TenantUserRow): TenantUserResponse {
     email: row.email,
     cognitoSub: row.cognitoSub,
     legacyWindowsUsername: row.legacyWindowsUsername,
-    role: row.role,
+    roleNames: row.roleNames,
+    role: deriveLegacyRole(row.roleNames),
     status: row.status,
     invitedAt: row.invitedAt.toISOString(),
     activatedAt: row.activatedAt?.toISOString() ?? null,
@@ -182,7 +192,7 @@ adminTenantUsersRouter.post(
     try {
       const user = await db.$transaction(async (tx) => {
         const txRepo = createUsersRepository(tx as PrismaClient)
-        const created = await txRepo.invite(tenantId, body.email, body.role)
+        const created = await txRepo.invite(tenantId, body.email, body.roleNames)
         await writeAuditLog(
           tx as Prisma.TransactionClient,
           adminSub,
@@ -191,7 +201,7 @@ adminTenantUsersRouter.post(
           'TENANT_USER',
           created.id,
           null,
-          { tenantId, email: body.email, role: body.role },
+          { tenantId, email: body.email, roleNames: body.roleNames },
           ipAddress,
           userAgent,
         )
@@ -227,7 +237,7 @@ adminTenantUsersRouter.patch(
   async (c) => {
     const tenantId = c.req.param('tenantId')!
     const userId = c.req.param('userId')!
-    const { role, legacyWindowsUsername } = c.req.valid('json')
+    const { roleNames, legacyWindowsUsername } = c.req.valid('json')
     const adminSub = c.get('adminSub')
     const adminEmail = c.get('adminEmail')
     const ipAddress = c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip')
@@ -244,8 +254,8 @@ adminTenantUsersRouter.patch(
       const updated = await db.$transaction(async (tx) => {
         const txRepo = createUsersRepository(tx as PrismaClient)
         let current = existing
-        if (role !== undefined) {
-          current = await txRepo.updateRole(userId, role)
+        if (roleNames !== undefined) {
+          current = await txRepo.updateRoleNames(userId, roleNames)
           await writeAuditLog(
             tx as Prisma.TransactionClient,
             adminSub,
@@ -253,8 +263,8 @@ adminTenantUsersRouter.patch(
             'ADMIN_UPDATE_TENANT_USER_ROLE',
             'TENANT_USER',
             userId,
-            { role: existing.role },
-            { role },
+            { roleNames: existing.roleNames },
+            { roleNames },
             ipAddress,
             userAgent,
           )
@@ -392,7 +402,7 @@ adminTenantUsersRouter.delete('/:userId', async (c) => {
     return c.json({ error: 'User is already deactivated', code: 'INVALID_STATE' }, 422)
   }
 
-  if (existing.role === 'ADMIN') {
+  if (existing.roleNames.includes('tenant_admin')) {
     const adminCount = await repo.countAdmins(tenantId)
     if (adminCount <= 1) {
       return c.json(

@@ -3,6 +3,7 @@ import { setSession, getSession, clearSession, type Session } from '../auth/sess
 const makeSession = (overrides?: Partial<Session>): Session => ({
   sub: 'user-123',
   tenantId: 'tenant-456',
+  roleNames: ['tenant_admin'],
   role: 'tenant_admin',
   email: 'test@example.com',
   expiresAt: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now

@@ -38,8 +38,6 @@ export type AppVariables = {
   correlationId: string
   /** The UUID of the resolved tenant for this request. */
   tenantId: string
-  /** The specific role the authenticated user holds in this tenant. */
-  role: string
   /**
    * Authorization principal — Cognito sub plus Cedar role-group memberships.
    * Set by tenantMiddleware (or synthesised by the SKIP_AUTH branch). Read by

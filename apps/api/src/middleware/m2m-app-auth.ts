@@ -87,7 +87,6 @@ export const m2mAppAuthMiddleware: MiddlewareHandler<AppEnv> = async (c, next) =
 
   c.set('tenantId', tenant.id)
   c.set('db', tenantDb as unknown as PrismaClient)
-  c.set('role', 'api_client')
   c.set('userId', undefined)
   c.set('apiClient', clientRow)
 

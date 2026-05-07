@@ -35,7 +35,6 @@ function buildApp() {
     c.set('mssqlPool' as never, {} as never)
     c.set('db', {} as never)
     c.set('correlationId', 'test-corr')
-    c.set('role', 'tenant_admin')
     c.set('userId', 'test-user')
     await next()
   })

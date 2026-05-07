@@ -146,7 +146,7 @@ describe('pre-token trigger', () => {
 
   // ── Admin app client path ─────────────────────────────────────────────────
 
-  it('injects custom:role=platform_admin for admin app client', async () => {
+  it('emits no custom claims for admin app client (admin gating uses cognito:groups directly)', async () => {
     const event = makeEvent({
       email: 'admin@pegasus.com',
       groups: ['PLATFORM_ADMIN'],
@@ -154,22 +154,7 @@ describe('pre-token trigger', () => {
     })
     const result = await handler(event, fakeContext, fakeCallback)
 
-    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride?.['custom:role']).toBe(
-      'platform_admin',
-    )
-  })
-
-  it('does not inject custom:tenantId for admin app client', async () => {
-    const event = makeEvent({
-      email: 'admin@pegasus.com',
-      groups: ['PLATFORM_ADMIN'],
-      clientId: ADMIN_CLIENT_ID,
-    })
-    const result = await handler(event, fakeContext, fakeCallback)
-
-    expect(
-      result.response.claimsOverrideDetails?.claimsToAddOrOverride?.['custom:tenantId'],
-    ).toBeUndefined()
+    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toBeUndefined()
   })
 
   it('skips all DB lookups for admin app client', async () => {
@@ -185,8 +170,7 @@ describe('pre-token trigger', () => {
     expect(mockAuthSessionFindFirst).not.toHaveBeenCalled()
   })
 
-  it('issues platform_admin token via admin client even without PLATFORM_ADMIN group', async () => {
-    // Edge case: admin client always gets platform_admin regardless of groups
+  it('admin client emits no claims regardless of group membership', async () => {
     const event = makeEvent({
       email: 'admin@pegasus.com',
       groups: [TENANT_GROUP],
@@ -194,16 +178,16 @@ describe('pre-token trigger', () => {
     })
     const result = await handler(event, fakeContext, fakeCallback)
 
-    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride?.['custom:role']).toBe(
-      'platform_admin',
-    )
+    expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toBeUndefined()
   })
 
   // ── Platform admin logging into tenant app ────────────────────────────────
 
   it('resolves tenant claims when platform admin uses tenant app client', async () => {
     mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
-    mockTenantUserFindFirst.mockResolvedValue(activeTenantUser({ role: 'ADMIN', status: 'ACTIVE' }))
+    mockTenantUserFindFirst.mockResolvedValue(
+      activeTenantUser({ roleNames: ['tenant_admin'], status: 'ACTIVE' }),
+    )
 
     const event = makeEvent({
       email: 'admin@acme.com',
@@ -214,7 +198,7 @@ describe('pre-token trigger', () => {
 
     const claims = result.response.claimsOverrideDetails?.claimsToAddOrOverride
     expect(claims?.['custom:tenantId']).toBe('tenant-uuid-123')
-    expect(claims?.['custom:role']).toBe('tenant_admin')
+    expect(claims?.['custom:roles']).toBe(JSON.stringify(['tenant_admin']))
   })
 
   // ── No-group admin users (admin setup flow) ────────────────────────────────
@@ -252,30 +236,34 @@ describe('pre-token trigger', () => {
 
     const claims = result.response.claimsOverrideDetails?.claimsToAddOrOverride
     expect(claims?.['custom:tenantId']).toBe('tenant-uuid-123')
-    expect(claims?.['custom:role']).toBe('tenant_user')
+    expect(claims?.['custom:roles']).toBe(JSON.stringify(['tenant_user']))
   })
 
   // ── Tenant app client — happy path (ACTIVE user) ─────────────────────────
 
-  it('injects custom:tenantId and custom:role=tenant_user for an ACTIVE USER', async () => {
+  it('injects custom:tenantId and custom:roles for an ACTIVE tenant_user', async () => {
     mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
-    mockTenantUserFindFirst.mockResolvedValue(activeTenantUser({ role: 'USER', status: 'ACTIVE' }))
+    mockTenantUserFindFirst.mockResolvedValue(
+      activeTenantUser({ roleNames: ['tenant_user'], status: 'ACTIVE' }),
+    )
 
     const result = await handler(makeEvent({ email: 'user@acme.com' }), fakeContext, fakeCallback)
 
     const claims = result.response.claimsOverrideDetails?.claimsToAddOrOverride
     expect(claims?.['custom:tenantId']).toBe('tenant-uuid-123')
-    expect(claims?.['custom:role']).toBe('tenant_user')
+    expect(claims?.['custom:roles']).toBe(JSON.stringify(['tenant_user']))
   })
 
-  it('injects custom:role=tenant_admin for an ACTIVE ADMIN', async () => {
+  it('injects custom:roles=[tenant_admin] for an ACTIVE tenant_admin', async () => {
     mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
-    mockTenantUserFindFirst.mockResolvedValue(activeTenantUser({ role: 'ADMIN', status: 'ACTIVE' }))
+    mockTenantUserFindFirst.mockResolvedValue(
+      activeTenantUser({ roleNames: ['tenant_admin'], status: 'ACTIVE' }),
+    )
 
     const result = await handler(makeEvent({ email: 'admin@acme.com' }), fakeContext, fakeCallback)
 
     const claims = result.response.claimsOverrideDetails?.claimsToAddOrOverride
-    expect(claims?.['custom:role']).toBe('tenant_admin')
+    expect(claims?.['custom:roles']).toBe(JSON.stringify(['tenant_admin']))
   })
 
   it('queries the DB with the email domain and status ACTIVE', async () => {
@@ -309,11 +297,10 @@ describe('pre-token trigger', () => {
 
   // ── PENDING user — first login ─────────────────────────────────────────────
 
-  it('activates a PENDING user on first login and injects their role', async () => {
+  it('activates a PENDING user on first login and injects their roleNames', async () => {
     mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
     mockTenantUserFindFirst.mockResolvedValue({
       id: 'user-uuid',
-      role: 'ADMIN',
       roleNames: ['tenant_admin'],
       status: 'PENDING',
     })
@@ -326,7 +313,7 @@ describe('pre-token trigger', () => {
     )
 
     const claims = result.response.claimsOverrideDetails?.claimsToAddOrOverride
-    expect(claims?.['custom:role']).toBe('tenant_admin')
+    expect(claims?.['custom:roles']).toBe(JSON.stringify(['tenant_admin']))
     expect(mockTenantUserUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'user-uuid' },
@@ -507,20 +494,16 @@ describe('pre-token trigger', () => {
     expect(groupOverride?.groupsToOverride).toEqual(['dispatcher', 'auditor'])
   })
 
-  it('falls back to [legacyRoleClaim] for custom:roles when roleNames is empty', async () => {
+  it('emits empty custom:roles when roleNames is empty (fail-closed at permission layer)', async () => {
     mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
-    mockTenantUserFindFirst.mockResolvedValue(activeTenantUser({ role: 'ADMIN', roleNames: [] }))
+    mockTenantUserFindFirst.mockResolvedValue(activeTenantUser({ roleNames: [] }))
 
     const result = await handler(makeEvent({ email: 'admin@acme.com' }), fakeContext, fakeCallback)
 
     const claims = result.response.claimsOverrideDetails?.claimsToAddOrOverride
-    expect(claims?.['custom:role']).toBe('tenant_admin')
-    expect(claims?.['custom:roles']).toBe(JSON.stringify(['tenant_admin']))
-    // The fallback path also has to populate cognito:groups, otherwise
-    // tenant admins whose roleNames column hasn't been backfilled yet would
-    // keep hitting the empty-permissions / blanket-403 problem.
+    expect(claims?.['custom:roles']).toBe(JSON.stringify([]))
     const groupOverride = result.response.claimsOverrideDetails?.groupOverrideDetails
-    expect(groupOverride?.groupsToOverride).toEqual(['tenant_admin'])
+    expect(groupOverride?.groupsToOverride).toEqual([])
   })
 
   it('still blocks DEACTIVATED users even when AuthSession is present', async () => {

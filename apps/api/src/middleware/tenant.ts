@@ -72,11 +72,10 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
   }
 
   const customTenantId = payload['custom:tenantId'] as string | undefined
-  const customRole = payload['custom:role'] as string | undefined
   const customRolesRaw = payload['custom:roles'] as string | undefined
   const cognitoSub = payload['sub'] as string | undefined
 
-  if (!customTenantId || !customRole) {
+  if (!customTenantId || !customRolesRaw) {
     return c.json({ error: 'Forbidden: incomplete tenant configuration', code: 'FORBIDDEN' }, 403)
   }
 
@@ -87,20 +86,19 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
 
   // -------------------------------------------------------------------------
   // Parse the Cedar role-group memberships claim. The pre-token Lambda emits
-  // it as a JSON-encoded string; fall back to [customRole] for tokens minted
-  // before the claim was added so existing sessions keep working.
+  // it as a JSON-encoded string array. Empty/malformed claims fail closed at
+  // the permission layer (they yield no Cedar groups, so every group-gated
+  // permit evaluates to false). The legacy single-role `custom:role` claim is
+  // no longer read — see plans/in-progress/authz-cedar-avp-followups.md item #6.
   // -------------------------------------------------------------------------
-  let roleNames: string[] = [customRole]
-  if (customRolesRaw) {
-    try {
-      const parsed = JSON.parse(customRolesRaw) as unknown
-      if (Array.isArray(parsed) && parsed.every((s) => typeof s === 'string')) {
-        roleNames = parsed as string[]
-      }
-    } catch {
-      // Malformed claim — keep the legacy fallback rather than failing closed
-      // on a token from a tenant whose pre-token Lambda is older.
+  let roleNames: string[] = []
+  try {
+    const parsed = JSON.parse(customRolesRaw) as unknown
+    if (Array.isArray(parsed) && parsed.every((s) => typeof s === 'string')) {
+      roleNames = parsed as string[]
     }
+  } catch {
+    // Malformed claim — leave roleNames empty; permission checks will deny.
   }
 
   // Enforce tenant lifecycle status before routing the request any further.
@@ -117,7 +115,6 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
   const tenantDb = createTenantDb(basePrisma, tenant.id)
 
   c.set('tenantId', tenant.id)
-  c.set('role', customRole)
   c.set('principal', {
     sub: cognitoSub ?? '',
     tenantId: tenant.id,

@@ -10,15 +10,16 @@
 // admin and tenant login flows:
 //
 // ADMIN APP CLIENT:
-//   Inject custom:role = 'platform_admin'. No tenant lookup.
+//   No custom claims — admin gating uses the cognito:groups PLATFORM_ADMIN
+//   membership directly via adminAuthMiddleware.
 //
 // TENANT / MOBILE APP CLIENT:
 //   Resolve the active tenant from an AuthSession (multi-tenant picker)
 //   or fall back to email domain lookup, then look up the TenantUser
-//   record to determine role and status:
+//   record to determine roleNames and status:
 //
-//   ACTIVE      → inject custom:tenantId + custom:role from TenantUser.role
-//   PENDING     → first login: inject role, set status=ACTIVE + activatedAt + cognitoSub
+//   ACTIVE      → inject custom:tenantId + custom:roles (Cedar groups)
+//   PENDING     → first login: inject claims, set status=ACTIVE + activatedAt + cognitoSub
 //   DEACTIVATED → block token generation (fail-closed)
 //   Not found   → block token generation (strict invite-only)
 //
@@ -79,35 +80,18 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
 
   if (clientId === adminClientId) {
     // -----------------------------------------------------------------------
-    // No-group admin users — allow token issuance with no custom claims.
+    // Admin client — no custom claims at all.
     //
-    // This covers the admin setup flow: the create-admin-user script must
-    // authenticate to obtain an access token for TOTP enrollment *before*
-    // the user is added to PLATFORM_ADMIN. Without any group membership the
-    // user receives an empty token (no custom:role, no custom:tenantId)
-    // which is useless for API access but sufficient for Cognito TOTP
-    // association.
+    // Admin gating is enforced downstream by adminAuthMiddleware via the
+    // PLATFORM_ADMIN cognito:groups membership (which Cognito injects into
+    // the token automatically from the user's group memberships). Emitting
+    // an additional `custom:role` claim was historically used for routing
+    // but no production code reads it any more.
     // -----------------------------------------------------------------------
-    if (groups.length === 0) {
-      logger.info(
-        'Pre-Token trigger: Admin user has no groups — issuing token without custom claims',
-        {
-          userName: event.userName,
-        },
-      )
-      return event
-    }
-
-    // -----------------------------------------------------------------------
-    // ADMIN APP CLIENT — inject platform_admin role, no tenant resolution.
-    // -----------------------------------------------------------------------
-    event.response = {
-      claimsOverrideDetails: {
-        claimsToAddOrOverride: {
-          'custom:role': 'platform_admin',
-        },
-      },
-    }
+    logger.info('Pre-Token trigger: Admin client — no custom claims', {
+      userName: event.userName,
+      groupCount: groups.length,
+    })
     return event
   }
 
@@ -186,7 +170,7 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
       tenantId,
       email: { equals: normalizedEmail, mode: 'insensitive' },
     },
-    select: { id: true, role: true, roleNames: true, status: true },
+    select: { id: true, roleNames: true, status: true },
   })
 
   if (!tenantUser) {
@@ -201,9 +185,6 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
     })
     throw new Error('Your account has been deactivated. Contact your administrator.')
   }
-
-  // Map TenantUserRole to the claim string used throughout the API.
-  const roleClaimValue = tenantUser.role === 'ADMIN' ? 'tenant_admin' : 'tenant_user'
 
   // -------------------------------------------------------------------------
   // PENDING → first login: activate the account.
@@ -220,31 +201,29 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
     logger.info('Pre-Token trigger: First login — tenant user activated', {
       email,
       tenantId,
-      role: tenantUser.role,
+      roleNames: tenantUser.roleNames,
     })
   }
 
   // Cedar role-group memberships for AVP. Authoritative source is
-  // tenantUser.roleNames; fall back to the legacy single role claim so
-  // tenants whose roleNames column is empty still authenticate cleanly.
-  const cedarRoles = tenantUser.roleNames.length > 0 ? tenantUser.roleNames : [roleClaimValue]
+  // tenantUser.roleNames. Empty roleNames yield no Cedar groups, which makes
+  // every group-gated permit evaluate to false (empty /me/permissions and
+  // 403 on requirePermission-guarded routes) — the correct fail-closed
+  // outcome for a misconfigured user, surfaced loudly enough that an admin
+  // can fix it via PATCH /users/:id.
+  const cedarRoles = tenantUser.roleNames
 
   event.response = {
     claimsOverrideDetails: {
       claimsToAddOrOverride: {
         'custom:tenantId': tenantId,
-        'custom:role': roleClaimValue,
         'custom:roles': JSON.stringify(cedarRoles),
       },
-      // Mirror the Cedar role names into `cognito:groups` so AVP's Cognito
-      // identity source (configured with groupConfiguration.groupEntityType =
-      // Pegasus::Group) can synthesize `principal in Pegasus::Group::"X"`
-      // memberships automatically. Without this, AVP IsAuthorizedWithToken
-      // sees the principal as a bare User with no parents and every
-      // `principal in Group` policy evaluates to false (empty
-      // /me/permissions, 403 on every requirePermission-guarded endpoint).
-      // The offline backend doesn't read this — it builds the entity
-      // hierarchy from `custom:roles` directly via lib/authz.ts:buildEntities.
+      // Mirror the Cedar role names into `cognito:groups` so the token shape
+      // matches what AVP's Cognito identity source records expect. The API's
+      // AVP backend doesn't read the claim (it builds the entity hierarchy
+      // from custom:roles via lib/authz.ts), but keeping it lets future
+      // groupConfiguration-based IdPs work without a pre-token Lambda change.
       groupOverrideDetails: {
         groupsToOverride: cedarRoles,
       },

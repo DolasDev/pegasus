@@ -7,7 +7,7 @@ import {
   deactivateTenantUser,
   reactivateTenantUser,
 } from '@/api/tenant-users'
-import type { TenantUser, TenantUserRole } from '@/api/tenant-users'
+import type { TenantUser } from '@/api/tenant-users'
 import { ApiError } from '@/api/client'
 
 // ---------------------------------------------------------------------------
@@ -22,11 +22,12 @@ function formatDate(iso: string) {
   })
 }
 
-function RoleBadge({ role }: { role: TenantUser['role'] }) {
-  const cls = role === 'ADMIN' ? 'bg-blue-100 text-blue-800' : 'bg-neutral-100 text-neutral-700'
+function RoleBadge({ roleNames }: { roleNames: TenantUser['roleNames'] }) {
+  const isAdmin = roleNames.includes('tenant_admin')
+  const cls = isAdmin ? 'bg-blue-100 text-blue-800' : 'bg-neutral-100 text-neutral-700'
   return (
     <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${cls}`}>
-      {role === 'ADMIN' ? 'Admin' : 'User'}
+      {isAdmin ? 'Admin' : 'User'}
     </span>
   )
 }
@@ -61,11 +62,11 @@ function InviteForm({
   onCancel: () => void
 }) {
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState<TenantUserRole>('USER')
+  const [roleNames, setRoleNames] = useState<string[]>(['tenant_user'])
   const [error, setError] = useState<string | null>(null)
 
   const mutation = useMutation({
-    mutationFn: () => inviteTenantUser(tenantId, { email, role }),
+    mutationFn: () => inviteTenantUser(tenantId, { email, roleNames }),
     onSuccess: () => {
       onSuccess()
     },
@@ -97,13 +98,13 @@ function InviteForm({
         <div className="space-y-1">
           <label className="block text-xs font-medium text-muted-foreground">Role</label>
           <select
-            value={role}
-            onChange={(e) => setRole(e.target.value as TenantUserRole)}
+            value={roleNames[0] ?? 'tenant_user'}
+            onChange={(e) => setRoleNames([e.target.value])}
             disabled={mutation.isPending}
             className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
           >
-            <option value="USER">User</option>
-            <option value="ADMIN">Admin</option>
+            <option value="tenant_user">User</option>
+            <option value="tenant_admin">Admin</option>
           </select>
         </div>
         <button
@@ -141,7 +142,7 @@ function UserRow({
   const [rowError, setRowError] = useState<string | null>(null)
 
   const roleMutation = useMutation({
-    mutationFn: (role: TenantUserRole) => updateTenantUserRole(tenantId, user.id, role),
+    mutationFn: (roleNames: string[]) => updateTenantUserRole(tenantId, user.id, roleNames),
     onSuccess: () => {
       setRowError(null)
       onMutated()
@@ -181,7 +182,7 @@ function UserRow({
       <tr className="border-b border-border last:border-0">
         <td className="py-3 pr-4 text-sm text-foreground">{user.email}</td>
         <td className="py-3 pr-4">
-          <RoleBadge role={user.role} />
+          <RoleBadge roleNames={user.roleNames} />
         </td>
         <td className="py-3 pr-4">
           <StatusBadge status={user.status} />
@@ -189,21 +190,21 @@ function UserRow({
         <td className="py-3 pr-4 text-sm text-muted-foreground">{formatDate(user.invitedAt)}</td>
         <td className="py-3">
           <div className="flex items-center gap-2">
-            {user.role === 'USER' ? (
+            {user.roleNames.includes('tenant_admin') ? (
               <button
-                onClick={() => roleMutation.mutate('ADMIN')}
-                disabled={isPending}
-                className="text-xs text-primary hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Make admin
-              </button>
-            ) : (
-              <button
-                onClick={() => roleMutation.mutate('USER')}
+                onClick={() => roleMutation.mutate(['tenant_user'])}
                 disabled={isPending}
                 className="text-xs text-primary hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Make user
+              </button>
+            ) : (
+              <button
+                onClick={() => roleMutation.mutate(['tenant_admin'])}
+                disabled={isPending}
+                className="text-xs text-primary hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Make admin
               </button>
             )}
             {user.status === 'DEACTIVATED' ? (

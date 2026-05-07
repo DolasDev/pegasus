@@ -77,17 +77,14 @@ async function json(res: Response): Promise<JsonBody> {
 
 /**
  * Builds a minimal app that seeds context variables then delegates to
- * ssoHandler. Pass role=null to simulate a request where no role claim has
- * been injected into context (e.g. unauthenticated or token missing the
- * claim). Cannot use undefined because JS default params trigger on undefined.
+ * ssoHandler.
  */
-function buildApp(role: string | null = 'tenant_admin') {
+function buildApp() {
   const app = new Hono<AppEnv>()
 
   app.use('*', async (c, next) => {
     c.set('tenantId', 'test-tenant-id')
     c.set('db', mockDb as unknown as PrismaClient)
-    if (role !== null) c.set('role', role)
     await next()
   })
 
@@ -185,15 +182,9 @@ describe('SSO handler', () => {
   // manage providers. The RBAC check is intentionally absent here.
 
   describe('role access', () => {
-    it('allows access for role tenant_user', async () => {
+    it('allows access regardless of role (RBAC will tighten in a later phase)', async () => {
       mockDb.tenantSsoProvider.findMany.mockResolvedValue([])
-      const res = await buildApp('tenant_user').request('/providers')
-      expect(res.status).toBe(200)
-    })
-
-    it('allows access when no role is set in context', async () => {
-      mockDb.tenantSsoProvider.findMany.mockResolvedValue([])
-      const res = await buildApp(null).request('/providers')
+      const res = await buildApp().request('/providers')
       expect(res.status).toBe(200)
     })
   })

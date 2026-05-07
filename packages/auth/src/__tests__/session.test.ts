@@ -9,6 +9,7 @@ function makeSession(overrides: Partial<Session> = {}): Session {
   return {
     sub: 'user-sub-123',
     tenantId: 'tenant-1',
+    roleNames: ['tenant_user'],
     role: 'tenant_user',
     email: 'user@example.com',
     expiresAt: Math.floor(Date.now() / 1000) + 3600,

@@ -168,7 +168,6 @@ if (process.env['SKIP_AUTH'] === 'true') {
   v1.use('*', async (c, next) => {
     const tenantId = process.env['DEFAULT_TENANT_ID'] ?? 'default-tenant'
     c.set('tenantId', tenantId)
-    c.set('role', 'tenant_admin')
     c.set('principal', {
       sub: 'skip-auth-user',
       tenantId,
