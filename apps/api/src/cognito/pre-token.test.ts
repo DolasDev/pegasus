@@ -485,6 +485,28 @@ describe('pre-token trigger', () => {
     expect(claims?.['custom:roles']).toBe(JSON.stringify(['dispatcher', 'auditor']))
   })
 
+  // Mirrors `custom:roles` into `cognito:groups` so AVP's Cognito identity
+  // source (configured with groupConfiguration.groupEntityType =
+  // Pegasus::Group) can synthesize `principal in Pegasus::Group::"X"`
+  // memberships automatically. Without the override, AVP sees the principal
+  // as a bare User with no parents and every group-gated permit evaluates
+  // to false (empty /me/permissions, blanket 403).
+  it('emits cognito:groups via groupOverrideDetails matching Cedar roles', async () => {
+    mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
+    mockTenantUserFindFirst.mockResolvedValue(
+      activeTenantUser({ role: 'USER', roleNames: ['dispatcher', 'auditor'] }),
+    )
+
+    const result = await handler(
+      makeEvent({ email: 'dispatch@acme.com' }),
+      fakeContext,
+      fakeCallback,
+    )
+
+    const groupOverride = result.response.claimsOverrideDetails?.groupOverrideDetails
+    expect(groupOverride?.groupsToOverride).toEqual(['dispatcher', 'auditor'])
+  })
+
   it('falls back to [legacyRoleClaim] for custom:roles when roleNames is empty', async () => {
     mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
     mockTenantUserFindFirst.mockResolvedValue(activeTenantUser({ role: 'ADMIN', roleNames: [] }))
@@ -494,6 +516,11 @@ describe('pre-token trigger', () => {
     const claims = result.response.claimsOverrideDetails?.claimsToAddOrOverride
     expect(claims?.['custom:role']).toBe('tenant_admin')
     expect(claims?.['custom:roles']).toBe(JSON.stringify(['tenant_admin']))
+    // The fallback path also has to populate cognito:groups, otherwise
+    // tenant admins whose roleNames column hasn't been backfilled yet would
+    // keep hitting the empty-permissions / blanket-403 problem.
+    const groupOverride = result.response.claimsOverrideDetails?.groupOverrideDetails
+    expect(groupOverride?.groupsToOverride).toEqual(['tenant_admin'])
   })
 
   it('still blocks DEACTIVATED users even when AuthSession is present', async () => {

@@ -236,6 +236,18 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
         'custom:role': roleClaimValue,
         'custom:roles': JSON.stringify(cedarRoles),
       },
+      // Mirror the Cedar role names into `cognito:groups` so AVP's Cognito
+      // identity source (configured with groupConfiguration.groupEntityType =
+      // Pegasus::Group) can synthesize `principal in Pegasus::Group::"X"`
+      // memberships automatically. Without this, AVP IsAuthorizedWithToken
+      // sees the principal as a bare User with no parents and every
+      // `principal in Group` policy evaluates to false (empty
+      // /me/permissions, 403 on every requirePermission-guarded endpoint).
+      // The offline backend doesn't read this — it builds the entity
+      // hierarchy from `custom:roles` directly via lib/authz.ts:buildEntities.
+      groupOverrideDetails: {
+        groupsToOverride: cedarRoles,
+      },
     },
   }
 

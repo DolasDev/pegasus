@@ -20,6 +20,7 @@ import {
   DeletePolicyStoreCommand,
 } from '@aws-sdk/client-verifiedpermissions'
 import { loadPolicies, loadSchemaJson } from '../authz/load'
+import { PEGASUS_NS } from '../authz/actions'
 import { createLogger } from './logger'
 
 const logger = createLogger('pegasus-authz-provision')
@@ -123,6 +124,15 @@ export async function provisionTenantPolicyStore(input: ProvisionInput): Promise
     // 4) Wire up the Cognito User Pool as the identity source so deployed
     //    traffic can use IsAuthorizedWithToken without us building a Cedar
     //    entity store from claims.
+    //
+    //    `groupConfiguration.groupEntityType` is what makes AVP synthesize
+    //    `principal in Pegasus::Group::"X"` memberships from the
+    //    `cognito:groups` claim — required for every persona policy to
+    //    evaluate. Without it AVP sees the principal as a bare User with no
+    //    parents and every group-gated permit evaluates to false (empty
+    //    /me/permissions, blanket 403 on requirePermission-guarded routes).
+    //    The pre-token Lambda emits the role names into `cognito:groups` so
+    //    this mapping closes the loop end-to-end.
     await withConsistencyRetry(() =>
       avp.send(
         new CreateIdentitySourceCommand({
@@ -132,6 +142,9 @@ export async function provisionTenantPolicyStore(input: ProvisionInput): Promise
             cognitoUserPoolConfiguration: {
               userPoolArn: input.userPoolArn,
               clientIds: [input.tenantAppClientId],
+              groupConfiguration: {
+                groupEntityType: `${PEGASUS_NS}::Group`,
+              },
             },
           },
         }),
