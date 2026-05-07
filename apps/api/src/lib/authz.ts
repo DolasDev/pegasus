@@ -212,6 +212,26 @@ export async function listAllowedPermissions(
       }),
     )
 
+    // TEMP DEBUG (revert in next commit): log AVP's principal + per-request
+    // shape so we can see exactly which entity ID AVP synthesises from the
+    // token and which determining policies (if any) fired. Hypothesis: the
+    // synthesised principal/group entity IDs are user-pool-prefixed,
+    // turning the bare `Pegasus::Group::"tenant_admin"` policy reference
+    // into a no-match.
+    console.log(
+      JSON.stringify({
+        marker: 'TEMP authz-debug AVP response',
+        policyStoreId,
+        principal: result.principal,
+        sample: (result.results ?? []).slice(0, 3).map((r) => ({
+          decision: r.decision,
+          determining: r.determiningPolicies?.length ?? 0,
+          errors: r.errors,
+          request: r.request,
+        })),
+      }),
+    )
+
     const allowed: string[] = []
     for (const [i, r] of (result.results ?? []).entries()) {
       const action = ALL_ACTIONS[i]
