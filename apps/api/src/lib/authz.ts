@@ -24,7 +24,10 @@ import {
   IsAuthorizedWithTokenCommand,
   BatchIsAuthorizedWithTokenCommand,
 } from '@aws-sdk/client-verifiedpermissions'
-import type { BatchIsAuthorizedWithTokenInputItem } from '@aws-sdk/client-verifiedpermissions'
+import type {
+  BatchIsAuthorizedWithTokenInputItem,
+  EntitiesDefinition,
+} from '@aws-sdk/client-verifiedpermissions'
 import * as cedar from '@cedar-policy/cedar-wasm/nodejs'
 import { ALL_ACTIONS, PEGASUS_NS } from '../authz/actions'
 import { loadPolicyText, loadSchema } from '../authz/load'
@@ -136,6 +139,47 @@ function getAvp(): VerifiedPermissionsClient {
   return (_avp ??= new VerifiedPermissionsClient({}))
 }
 
+/**
+ * Build the AVP `entities` argument so the principal's Group memberships are
+ * declared with the bare role names our policies reference (`tenant_admin`,
+ * `dispatcher`, …).
+ *
+ * Why this is necessary: AVP's Cognito identity source synthesises the
+ * principal entity with a user-pool-prefixed ID
+ * (`Pegasus::User::"<userPoolId>|<sub>"`) and, when groupConfiguration is
+ * set, the same prefix on every Group entity it derives from
+ * `cognito:groups`. Our Cedar policies reference bare names
+ * (`principal in Pegasus::Group::"tenant_admin"`) so they wouldn't match
+ * the prefixed Group entities AVP synthesises.
+ *
+ * AVP merges the entity we pass with the principal it derives from the
+ * token: the resulting principal has both the prefixed parents (from the
+ * token-derived synthesis) and the bare-named parents (from this list).
+ * Bare names are what the policies match against, so the merge plus the
+ * bare hierarchy is exactly enough to make the policies fire end-to-end.
+ *
+ * Without this, every group-gated permit evaluates to false → empty
+ * /me/permissions and blanket 403 on every requirePermission-guarded route.
+ */
+function buildAvpEntities(principal: Principal): NonNullable<EntitiesDefinition['entityList']> {
+  const userPoolId = process.env['COGNITO_USER_POOL_ID'] ?? ''
+  const userEntityId = userPoolId ? `${userPoolId}|${principal.sub}` : principal.sub
+
+  const principalEntity = {
+    identifier: { entityType: `${PEGASUS_NS}::User`, entityId: userEntityId },
+    parents: principal.roleNames.map((g) => ({
+      entityType: `${PEGASUS_NS}::Group`,
+      entityId: g,
+    })),
+  }
+
+  const groupEntities = principal.roleNames.map((g) => ({
+    identifier: { entityType: `${PEGASUS_NS}::Group`, entityId: g },
+  }))
+
+  return [principalEntity, ...groupEntities]
+}
+
 async function authorizeAvp(input: AuthorizeInput): Promise<Decision> {
   if (!input.idToken) {
     throw new Error('AVP backend requires idToken — none was provided')
@@ -154,6 +198,7 @@ async function authorizeAvp(input: AuthorizeInput): Promise<Decision> {
       identityToken: input.idToken,
       action: { actionType: `${PEGASUS_NS}::Action`, actionId: input.action.id },
       resource: { entityType: `${PEGASUS_NS}::${resourceType}`, entityId: resourceId },
+      entities: { entityList: buildAvpEntities(input.principal) },
     }),
   )
 
@@ -209,26 +254,7 @@ export async function listAllowedPermissions(
         policyStoreId,
         identityToken: idToken,
         requests,
-      }),
-    )
-
-    // TEMP DEBUG (revert in next commit): log AVP's principal + per-request
-    // shape so we can see exactly which entity ID AVP synthesises from the
-    // token and which determining policies (if any) fired. Hypothesis: the
-    // synthesised principal/group entity IDs are user-pool-prefixed,
-    // turning the bare `Pegasus::Group::"tenant_admin"` policy reference
-    // into a no-match.
-    console.log(
-      JSON.stringify({
-        marker: 'TEMP authz-debug AVP response',
-        policyStoreId,
-        principal: result.principal,
-        sample: (result.results ?? []).slice(0, 3).map((r) => ({
-          decision: r.decision,
-          determining: r.determiningPolicies?.length ?? 0,
-          errors: r.errors,
-          request: r.request,
-        })),
+        entities: { entityList: buildAvpEntities(principal) },
       }),
     )
 
