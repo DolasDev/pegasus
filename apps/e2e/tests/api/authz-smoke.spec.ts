@@ -28,8 +28,12 @@ test.describe('authenticated AVP smoke', () => {
 
   test('GET /api/v1/me/permissions answers for tenant_admin', async ({ authedApiFetch }) => {
     const res = await authedApiFetch('/api/v1/me/permissions')
-    expect(res.status, await res.text().catch(() => '')).toBe(200)
-    const body = (await res.json()) as { roles: string[]; permissions: string[] }
+    // Read the body exactly once; reusing it for both the failure-context
+    // message and the JSON parse below avoids "Body is unusable" — expect's
+    // message argument is evaluated eagerly regardless of pass/fail.
+    const text = await res.text()
+    expect(res.status, text).toBe(200)
+    const body = JSON.parse(text) as { roles: string[]; permissions: string[] }
 
     expect(Array.isArray(body.roles)).toBe(true)
     expect(body.roles).toContain('tenant_admin')
