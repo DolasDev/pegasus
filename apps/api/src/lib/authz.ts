@@ -140,44 +140,58 @@ function getAvp(): VerifiedPermissionsClient {
 }
 
 /**
- * Build the AVP `entities` argument so the principal's Group memberships are
- * declared with the bare role names our policies reference (`tenant_admin`,
- * `dispatcher`, …).
+ * Build the AVP `entities` argument so the principal's Group memberships
+ * resolve against the bare role names our policies reference
+ * (`tenant_admin`, `dispatcher`, …).
  *
- * Why this is necessary: AVP's Cognito identity source synthesises the
- * principal entity with a user-pool-prefixed ID
- * (`Pegasus::User::"<userPoolId>|<sub>"`) and, when groupConfiguration is
- * set, the same prefix on every Group entity it derives from
- * `cognito:groups`. Our Cedar policies reference bare names
- * (`principal in Pegasus::Group::"tenant_admin"`) so they wouldn't match
- * the prefixed Group entities AVP synthesises.
+ * Why this is non-obvious: AVP's Cognito identity source synthesises both
+ * the principal and (when groupConfiguration is set) every Group entity it
+ * derives from `cognito:groups` with a user-pool-prefixed ID
+ * (`Pegasus::Group::"<userPoolId>|tenant_admin"`). Our Cedar policies use
+ * bare names, so the prefixed Group parents AVP creates don't match.
  *
- * AVP merges the entity we pass with the principal it derives from the
- * token: the resulting principal has both the prefixed parents (from the
- * token-derived synthesis) and the bare-named parents (from this list).
- * Bare names are what the policies match against, so the merge plus the
- * bare hierarchy is exactly enough to make the policies fire end-to-end.
+ * AVP forbids passing the principal entity in `entities` for
+ * IsAuthorizedWithToken (the principal must come from the token), but it
+ * accepts non-principal entities and merges them with the token-derived
+ * hierarchy. So instead of trying to retag the principal we re-parent the
+ * prefixed Group AVP synthesised under a bare-named Group — Cedar's `in`
+ * is transitive, so `principal in Pegasus::Group::"tenant_admin"` matches
+ * via prefixed Group → bare Group → policy reference. Verified against
+ * staging via `is-authorized` direct call before this refactor.
+ *
+ * Requires `Group.memberOfTypes = ["Group"]` in the Cedar schema so
+ * Group→Group parenthood is allowed; that change ships alongside this
+ * function and propagates to existing stores via PutSchema migration.
  *
  * Without this, every group-gated permit evaluates to false → empty
  * /me/permissions and blanket 403 on every requirePermission-guarded route.
  */
 function buildAvpEntities(principal: Principal): NonNullable<EntitiesDefinition['entityList']> {
   const userPoolId = process.env['COGNITO_USER_POOL_ID'] ?? ''
-  const userEntityId = userPoolId ? `${userPoolId}|${principal.sub}` : principal.sub
+  const out: NonNullable<EntitiesDefinition['entityList']> = []
 
-  const principalEntity = {
-    identifier: { entityType: `${PEGASUS_NS}::User`, entityId: userEntityId },
-    parents: principal.roleNames.map((g) => ({
-      entityType: `${PEGASUS_NS}::Group`,
-      entityId: g,
-    })),
+  for (const role of principal.roleNames) {
+    // Bare-named Group entity (matches policy references like
+    // `Pegasus::Group::"tenant_admin"`).
+    out.push({
+      identifier: { entityType: `${PEGASUS_NS}::Group`, entityId: role },
+    })
+    // Prefixed-Group entity (matching what AVP auto-synthesises) reparented
+    // under the bare Group so policy matching works via Cedar's transitive
+    // `in`. Skip when COGNITO_USER_POOL_ID is empty — that's the offline /
+    // SKIP_AUTH path, which doesn't reach here anyway via pickBackend.
+    if (userPoolId) {
+      out.push({
+        identifier: {
+          entityType: `${PEGASUS_NS}::Group`,
+          entityId: `${userPoolId}|${role}`,
+        },
+        parents: [{ entityType: `${PEGASUS_NS}::Group`, entityId: role }],
+      })
+    }
   }
 
-  const groupEntities = principal.roleNames.map((g) => ({
-    identifier: { entityType: `${PEGASUS_NS}::Group`, entityId: g },
-  }))
-
-  return [principalEntity, ...groupEntities]
+  return out
 }
 
 async function authorizeAvp(input: AuthorizeInput): Promise<Decision> {

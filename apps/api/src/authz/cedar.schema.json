@@ -9,7 +9,7 @@
         }
       },
       "Group": {
-        "memberOfTypes": [],
+        "memberOfTypes": ["Group"],
         "shape": {
           "type": "Record",
           "attributes": {}
