@@ -77,6 +77,12 @@ work down the deferred cleanup items in safest-first order.
 ### Existing-tenant backfill
 
 - [ ] **5. Backfill `tenants.policy_store_id` for all pre-existing tenants.**
+      _Unblocked 2026-05-07 by
+      `plans/completed/2026-05-07T2102-avp-attribute-based-policies.md`._
+      Provisioning is now correct end-to-end (the AVP backend uses
+      `IsAuthorized` with manually-built entities), so backfill no
+      longer risks broken stores.
+
       Until backfilled, their requests fall through `pickBackend()` to
       the offline wasm path — functionally correct but:
 

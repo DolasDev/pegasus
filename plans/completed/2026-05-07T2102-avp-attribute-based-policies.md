@@ -1,6 +1,53 @@
 # Make Cedar/AVP authorization actually work via attribute-based policies
 
-## Status (paused 2026-05-07)
+## Status — COMPLETE (2026-05-07)
+
+**End state: AVP backend is no longer attribute-based — it uses
+`IsAuthorized` (no-token) with manually-built `User + Group` entities,
+matching the offline cedar-wasm path's entity shape.** The
+attribute-based approach this plan was named for did not work: AWS docs
+make explicit (see
+https://docs.aws.amazon.com/verifiedpermissions/latest/userguide/cognito-map-token-to-schema.html
+"The roles claim `cognito:groups` is an exception to this rule") that
+AVP treats `cognito:groups` specially and never projects it as a
+principal attribute, regardless of `groupConfiguration` state. The
+clean fix-forward — switching `IsAuthorizedWithToken` → `IsAuthorized`
+and constructing the principal hierarchy in code from
+`principal.roleNames` — is the AWS-documented path for RBAC-by-groups
+and is what landed.
+
+**Successful staging+prod run:** GitHub Actions
+[run 25521612203](https://github.com/DolasDev/pegasus/actions/runs/25521612203).
+
+- Staging deploy job 74907021829 ✓
+- E2E gate against staging job 74907369365 ✓
+- Prod deploy job 74907814730 ✓
+
+**Commits delivered:**
+
+- `a4bb03c` (failed attempt — attribute-based; staging gate caught it)
+- `b544caa` (the working fix — `IsAuthorized` + manual entity hierarchy)
+
+**Cleanup performed:**
+
+- 7 speculative Cognito groups (`tenant_admin`, `tenant_user`,
+  `dispatcher`, `sales`, `accountant`, `auditor`, `crew_lead`) deleted
+  from the staging user pool `us-east-1_0LoW8JGgK`. Only `PLATFORM_ADMIN`
+  remains.
+- `steve@dolas.dev` removed from the `tenant_admin` group before
+  deletion.
+
+**Migration script (`apps/api/src/scripts/migrate-policy-store.ts`)
+applied twice to `KRzp8Jrxxkvy3YGnkeYQBP`:** once with the
+attribute-based schema (failed approach) and once with the final
+group-hierarchy schema (verified post-migration via `GetSchema`).
+
+**GOTCHAS.md AUTHZ_ERROR table** updated with the AVP token-RBAC
+unsupported entry and the fix reference.
+
+---
+
+## Original status (paused 2026-05-07)
 
 **The AVP backend has never worked end-to-end.** Every tenant with
 `policy_store_id` set has been failing with empty `/me/permissions`
@@ -85,7 +132,7 @@ verbatim into each tenant's AVP store.
 
 ## Plan
 
-- [ ] **1. Schema: declare `cognito:groups` as a User attribute.**
+- [x] **1. Schema: declare `cognito:groups` as a User attribute.**
 
       Edit `apps/api/src/authz/cedar.schema.json`:
 
@@ -126,7 +173,7 @@ verbatim into each tenant's AVP store.
       schema-validation is the only thing that exercises the schema
       shape locally.
 
-- [ ] **2. Policies: rewrite all 7 from group-hierarchy to attribute-check.**
+- [x] **2. Policies: rewrite all 7 from group-hierarchy to attribute-check.**
 
       Files: `apps/api/src/authz/policies/{10-tenant-admin,20-tenant-user,30-personas/{dispatcher,sales,accountant,auditor,crew-lead}}.cedar`.
 
@@ -181,7 +228,7 @@ verbatim into each tenant's AVP store.
       Adapt failing tests if necessary, but the policy semantics
       should be identical (same role → same actions allowed).
 
-- [ ] **3. `apps/api/src/lib/authz.ts`: rip out the entity-hierarchy
+- [x] **3. `apps/api/src/lib/authz.ts`: rip out the entity-hierarchy
       machinery and rebuild the offline path on the new attribute.**
 
       Concretely:
@@ -221,7 +268,7 @@ verbatim into each tenant's AVP store.
       `buildEntities`'s output, update them — the attribute shape is
       the new contract.
 
-- [ ] **4. `apps/api/src/lib/authz-provision.ts`: drop `groupConfiguration`.**
+- [x] **4. `apps/api/src/lib/authz-provision.ts`: drop `groupConfiguration`.**
 
       Revert the `groupConfiguration: { groupEntityType: ... }` block
       added in `2e74355`. The `CreateIdentitySourceCommand` should be:
@@ -246,7 +293,7 @@ verbatim into each tenant's AVP store.
       Drop the `import { PEGASUS_NS } from '../authz/actions'` if it
       becomes unused after the `groupEntityType` removal.
 
-- [ ] **5. `apps/api/src/cognito/pre-token.ts`: leave `groupOverrideDetails` in place.**
+- [x] **5. `apps/api/src/cognito/pre-token.ts`: leave `groupOverrideDetails` in place.**
 
       No code change. Confirm the file still emits both `custom:roles`
       and `groupOverrideDetails.groupsToOverride`. Both are needed:
@@ -260,7 +307,7 @@ verbatim into each tenant's AVP store.
       The `pre-token.test.ts` assertions added in `2e74355` for both
       claim shapes still apply — they're correct.
 
-- [ ] **6. Migration script for existing AVP stores.**
+- [x] **6. Migration script for existing AVP stores.**
 
       The dolios staging store (`KRzp8Jrxxkvy3YGnkeYQBP`) was
       provisioned with the old schema and old policies. The
@@ -296,7 +343,7 @@ verbatim into each tenant's AVP store.
 
       Expected: `decision: ALLOW`. To mint the token: `aws cognito-idp admin-initiate-auth --profile pegasus-staging --region us-east-1 --user-pool-id us-east-1_0LoW8JGgK --client-id 1rcruiremqqtovtmpp3nr7b7th --auth-flow ADMIN_NO_SRP_AUTH --auth-parameters USERNAME=<E2E_STAGING_ADMIN_USERNAME>,PASSWORD='<E2E_STAGING_ADMIN_PASSWORD>' --query 'AuthenticationResult.IdToken' --output text`.
 
-- [ ] **7. Update the regression tests in `packages/infra/lib/stacks/__tests__/api-stack.test.ts`.**
+- [x] **7. Update the regression tests in `packages/infra/lib/stacks/__tests__/api-stack.test.ts`.**
 
       The IAM permission pin currently asserts on the full set of
       AVP and Cognito introspection actions, including the three
@@ -317,7 +364,7 @@ verbatim into each tenant's AVP store.
       Fall-back: leave all three pinned + granted. The cost is one
       stale permission, not broken auth.
 
-- [ ] **8. Cleanup: remove speculative resources from staging.**
+- [x] **8. Cleanup: remove speculative resources from staging.**
 
       During debugging, two pieces of state were added to staging
       Cognito for hypotheses that didn't pan out:
@@ -358,7 +405,7 @@ verbatim into each tenant's AVP store.
       aws cognito-idp admin-remove-user-from-group --profile pegasus-staging --region us-east-1 --user-pool-id us-east-1_0LoW8JGgK --username steve@dolas.dev --group-name tenant_admin
       ```
 
-- [ ] **9. Update `dolas/agents/project/GOTCHAS.md`.**
+- [x] **9. Update `dolas/agents/project/GOTCHAS.md`.**
 
       The existing `AUTHZ_ERROR` diagnostic table covers bundling, IAM,
       and consistency. Add a fourth entry for the AVP-entity-rejection
@@ -372,7 +419,7 @@ verbatim into each tenant's AVP store.
       Future AVP work should use attribute-based policies + token
       claim projection, not entity hierarchy passing.
 
-- [ ] **10. Push, watch the staging gate, confirm prod deploy.**
+- [x] **10. Push, watch the staging gate, confirm prod deploy.**
 
       Sequence:
 
@@ -420,7 +467,7 @@ verbatim into each tenant's AVP store.
               policies, or vice versa. Re-run the migration; the
               script is idempotent.
 
-- [ ] **11. Archive the plan.**
+- [x] **11. Archive the plan.**
 
       Move `plans/in-progress/avp-attribute-based-policies.md` to
       `plans/completed/2026-05-XX-avp-attribute-based-policies.md`
