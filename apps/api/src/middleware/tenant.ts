@@ -16,6 +16,10 @@ import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../types'
 import { db as basePrisma } from '../db'
 import { createTenantDb } from '../lib/prisma'
+import { createLogger } from '../lib/logger'
+
+// TEMP (revert in next commit): debug logger for JWT claim shape diagnosis.
+const logger = createLogger('pegasus-tenant-middleware')
 
 let _jwks: ReturnType<typeof createRemoteJWKSet> | null = null
 
@@ -75,6 +79,21 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
   const customRole = payload['custom:role'] as string | undefined
   const customRolesRaw = payload['custom:roles'] as string | undefined
   const cognitoSub = payload['sub'] as string | undefined
+
+  // TEMP DEBUG (revert in next commit): log the JWT claim shape so we can
+  // verify cognito:groups is being emitted by the pre-token Lambda. The
+  // staging gate is failing with empty AVP permissions despite both ends of
+  // the chain (token-side override + IdentitySource groupConfiguration)
+  // appearing wired correctly.
+  logger.info('TEMP authz-debug: JWT claim shape', {
+    sub: cognitoSub,
+    tokenUse: payload['token_use'],
+    cognitoGroups: payload['cognito:groups'],
+    customRoles: customRolesRaw,
+    customRole,
+    customTenantId,
+    payloadKeys: Object.keys(payload).sort(),
+  })
 
   if (!customTenantId || !customRole) {
     return c.json({ error: 'Forbidden: incomplete tenant configuration', code: 'FORBIDDEN' }, 403)
