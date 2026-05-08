@@ -3,6 +3,7 @@ import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch'
 import * as cloudwatch_actions from 'aws-cdk-lib/aws-cloudwatch-actions'
 import * as sns from 'aws-cdk-lib/aws-sns'
 import { type Construct } from 'constructs'
+import { AVP_POLICY_STORE_COUNT_METRIC_NAME, PEGASUS_AUTHZ_METRIC_NAMESPACE } from '../metrics'
 
 export interface MonitoringStackProps extends cdk.StackProps {
   /**
@@ -118,6 +119,56 @@ export class MonitoringStack extends cdk.Stack {
 
     lambdaDurationAlarm.addAlarmAction(snsAction)
 
+    // ── AVP policy-store count alarms ─────────────────────────────────────────
+    // AWS Verified Permissions has a soft quota of ~100 policy stores per
+    // Region per AWS account. Pegasus provisions one store per tenant via
+    // POST /api/admin/tenants, so this metric is also our active-tenant count
+    // in the AVP plane. The hourly emitter lives in ApiStack
+    // (AvpStoreCountFunction → lambda-avp-store-count.ts).
+    //
+    // Two thresholds:
+    //   - 60 → informational; start tracking onboarding velocity in the
+    //          ops cadence
+    //   - 80 → critical; file an AWS support ticket to raise the quota
+    //          BEFORE provisioning more tenants, otherwise CreatePolicyStore
+    //          will start failing with QuotaExceededException
+    //
+    // Period is 1 hour to match the emitter cadence; treatMissingData uses
+    // BREACHING so a stuck publisher (which would otherwise mask an
+    // over-quota state) trips the alarm instead of silently coasting.
+    const avpStoreCountMetric = new cloudwatch.Metric({
+      namespace: PEGASUS_AUTHZ_METRIC_NAMESPACE,
+      metricName: AVP_POLICY_STORE_COUNT_METRIC_NAME,
+      statistic: 'Maximum',
+      period: cdk.Duration.hours(1),
+    })
+
+    const avpStoreCountWarnAlarm = new cloudwatch.Alarm(this, 'AvpStoreCountWarnAlarm', {
+      alarmName: 'pegasus-avp-store-count-warn',
+      alarmDescription:
+        'AVP policy-store count crossed 60 (informational). Plan ahead — ' +
+        'the AWS Verified Permissions soft quota is ~100 stores per Region per account.',
+      metric: avpStoreCountMetric,
+      threshold: 60,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.BREACHING,
+    })
+    avpStoreCountWarnAlarm.addAlarmAction(snsAction)
+
+    const avpStoreCountCriticalAlarm = new cloudwatch.Alarm(this, 'AvpStoreCountCriticalAlarm', {
+      alarmName: 'pegasus-avp-store-count-critical',
+      alarmDescription:
+        'AVP policy-store count crossed 80. File an AWS support ticket NOW to raise the ' +
+        'Verified Permissions per-account policy-store quota before provisioning more tenants.',
+      metric: avpStoreCountMetric,
+      threshold: 80,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.BREACHING,
+    })
+    avpStoreCountCriticalAlarm.addAlarmAction(snsAction)
+
     // ── CloudWatch dashboard ───────────────────────────────────────────────────
     new cloudwatch.Dashboard(this, 'OperationsDashboard', {
       dashboardName: 'Pegasus-Operations',
@@ -137,6 +188,24 @@ export class MonitoringStack extends cdk.Stack {
             title: 'Lambda Duration p99',
             left: [lambdaDurationMetric],
             width: 8,
+          }),
+        ],
+        [
+          new cloudwatch.SingleValueWidget({
+            title: 'AVP Policy Stores (current)',
+            metrics: [avpStoreCountMetric],
+            width: 8,
+          }),
+          new cloudwatch.GraphWidget({
+            title: 'AVP Policy Store Count (trend)',
+            left: [avpStoreCountMetric],
+            // Annotate the soft-quota-warning thresholds inline so the chart
+            // shows where 60 / 80 sit relative to the current count.
+            leftAnnotations: [
+              { value: 60, label: 'Warn (60)', color: cloudwatch.Color.ORANGE },
+              { value: 80, label: 'Critical (80)', color: cloudwatch.Color.RED },
+            ],
+            width: 16,
           }),
         ],
       ],

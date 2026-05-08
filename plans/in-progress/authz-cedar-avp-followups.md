@@ -179,10 +179,25 @@ work down the deferred cleanup items in safest-first order.
 
 ### Operational watch-items
 
-- [ ] **9. AVP store count.** Soft limit ~100 stores per AWS account.
-      Add a CloudWatch metric or ops dashboard: count of Pegasus
-      tenants with non-null `policy_store_id`. Alert at 80; ticket-raise
-      threshold at 60.
+- [x] **9. AVP store count.** _Done 2026-05-08._ Hourly EventBridge
+      schedule fires `apps/api/src/lambda-avp-store-count.ts`, which
+      counts tenants with a non-null `policy_store_id` and publishes
+      to CloudWatch (`Pegasus/Authorization/PolicyStoreCount`,
+      `Unit=Count`). MonitoringStack adds two SNS-wired alarms on the
+      metric — `pegasus-avp-store-count-warn` at >= 60 (informational,
+      "plan ahead") and `pegasus-avp-store-count-critical` at >= 80
+      ("file an AWS support ticket NOW to raise the quota"). Both use
+      `treatMissingData: BREACHING` so a stuck publisher trips the
+      alarm instead of silently coasting. The Operations dashboard
+      gains a `SingleValueWidget` (current count) and a `GraphWidget`
+      (trend with 60/80 threshold annotations). Metric namespace +
+      name are pinned in `packages/infra/lib/metrics.ts`; the
+      publisher repeats the same strings literally so apps/api stays
+      free of any reverse dep on @pegasus/infra. IAM scopes
+      `cloudwatch:PutMetricData` to the namespace via the
+      `cloudwatch:namespace` condition key. Coverage: handler unit
+      tests + ApiStack synth tests (Lambda shape, EventBridge cadence,
+      IAM scoping) + MonitoringStack alarm tests.
 
 - [x] **10. Empty `principal.sub` in `tenantMiddleware`.** _Done
       2026-05-08._ `apps/api/src/middleware/tenant.ts` now hard-rejects

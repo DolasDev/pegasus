@@ -1,5 +1,7 @@
 import * as path from 'path'
 import * as cdk from 'aws-cdk-lib'
+import * as events from 'aws-cdk-lib/aws-events'
+import * as eventsTargets from 'aws-cdk-lib/aws-events-targets'
 import * as iam from 'aws-cdk-lib/aws-iam'
 import * as lambda from 'aws-cdk-lib/aws-lambda'
 import * as logs from 'aws-cdk-lib/aws-logs'
@@ -10,6 +12,7 @@ import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
 import * as ssm from 'aws-cdk-lib/aws-ssm'
 import type * as s3 from 'aws-cdk-lib/aws-s3'
 import { type Construct } from 'constructs'
+import { PEGASUS_AUTHZ_METRIC_NAMESPACE } from '../metrics'
 
 export interface ApiStackProps extends cdk.StackProps {
   /**
@@ -390,6 +393,65 @@ export class ApiStack extends cdk.Stack {
         resources: ['*'],
       }),
     )
+
+    // ---------------------------------------------------------------------------
+    // AVP policy-store count — scheduled metric emitter
+    //
+    // Hourly Lambda that counts tenants with a non-null policy_store_id and
+    // publishes the value to CloudWatch under Pegasus/Authorization /
+    // PolicyStoreCount. Drives the warn/critical alarms in MonitoringStack
+    // for the AVP soft quota (~100 stores per Region per AWS account).
+    //
+    // Bundled separately from the API Lambda so a misbehaving handler can't
+    // crash the metric job (and vice-versa). Same DB secret + same external
+    // @aws-sdk/* + sourcemaps for parity.
+    // ---------------------------------------------------------------------------
+    const avpStoreCountLogGroup = new logs.LogGroup(this, 'AvpStoreCountLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+
+    const avpStoreCountFunction = new nodejs.NodejsFunction(this, 'AvpStoreCountFunction', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../../../../apps/api/src/lambda-avp-store-count.ts'),
+      handler: 'handler',
+      environment: {
+        NODE_ENV: 'production',
+        DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+        LOG_LEVEL: 'INFO',
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        externalModules: ['@aws-sdk/*'],
+      },
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(30),
+      logGroup: avpStoreCountLogGroup,
+    })
+
+    dbSecret.grantRead(avpStoreCountFunction)
+
+    // PutMetricData has no resource-level scoping in IAM (the Resource field
+    // must be `*`); we narrow blast radius with the cloudwatch:namespace
+    // condition key so this role can only publish to the Pegasus/Authorization
+    // namespace, not to arbitrary customer namespaces.
+    avpStoreCountFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['cloudwatch:PutMetricData'],
+        resources: ['*'],
+        conditions: {
+          StringEquals: { 'cloudwatch:namespace': PEGASUS_AUTHZ_METRIC_NAMESPACE },
+        },
+      }),
+    )
+
+    new events.Rule(this, 'AvpStoreCountSchedule', {
+      schedule: events.Schedule.rate(cdk.Duration.hours(1)),
+      description:
+        'Hourly trigger for the AVP policy-store count metric emitter (Pegasus/Authorization/PolicyStoreCount).',
+      targets: [new eventsTargets.LambdaFunction(avpStoreCountFunction)],
+    })
 
     // ---------------------------------------------------------------------------
     // API Gateway v2 HTTP API

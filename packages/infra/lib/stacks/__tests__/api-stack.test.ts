@@ -40,9 +40,9 @@ function synthApiStackWithCognito() {
 }
 
 describe('ApiStack — Lambda function', () => {
-  it('creates exactly one Lambda function', () => {
+  it('creates two Lambda functions (HTTP API + AVP store-count metric emitter)', () => {
     const template = synthApiStack()
-    template.resourceCountIs('AWS::Lambda::Function', 1)
+    template.resourceCountIs('AWS::Lambda::Function', 2)
   })
 
   it('uses Node.js 20.x runtime', () => {
@@ -450,5 +450,57 @@ describe('ApiStack — AVP / Cognito IAM', () => {
         },
       })
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AVP policy-store count metric emitter — see plans/in-progress/
+// authz-cedar-avp-followups.md item #9.
+//
+// Hourly Lambda + EventBridge schedule that publishes the count of tenants
+// with a non-null policy_store_id to CloudWatch. The metric drives the
+// MonitoringStack alarms for the AVP soft quota (~100 stores per Region per
+// account). Pinned here because:
+//   - the metric is NOT a CFN-tracked resource (it appears when published),
+//     so a silent regression in this Lambda wouldn't show up at synth time
+//     unless the Lambda construct itself disappears
+//   - the IAM policy must scope cloudwatch:PutMetricData to the
+//     `Pegasus/Authorization` namespace; tightening the role to `*` resource
+//     without the namespace condition would let it write to any namespace,
+//     defeating the blast-radius bound
+// ---------------------------------------------------------------------------
+describe('ApiStack — AVP store-count metric emitter', () => {
+  it('creates the AVP store-count Lambda with 256 MB / 30s timeout', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      MemorySize: 256,
+      Timeout: 30,
+    })
+  })
+
+  it('schedules the AVP store-count Lambda hourly via EventBridge', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::Events::Rule', {
+      ScheduleExpression: 'rate(1 hour)',
+      State: 'ENABLED',
+    })
+  })
+
+  it('grants cloudwatch:PutMetricData scoped to the Pegasus/Authorization namespace', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'cloudwatch:PutMetricData',
+            Effect: 'Allow',
+            Resource: '*',
+            Condition: {
+              StringEquals: { 'cloudwatch:namespace': 'Pegasus/Authorization' },
+            },
+          }),
+        ]),
+      },
+    })
   })
 })
