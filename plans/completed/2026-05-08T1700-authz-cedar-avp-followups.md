@@ -36,30 +36,62 @@ work down the deferred cleanup items in safest-first order.
       `tenants WHERE policy_store_id IS NULL` count was driven to
       zero by item #5's backfill on 2026-05-07.
 
-- [ ] **3. New-tenant happy-path AVP smoke.** Create a fresh tenant via
-      `POST /api/admin/tenants`. Confirm in the AWS console:
+- [x] **3. New-tenant happy-path AVP smoke.** _Done 2026-05-08
+      against staging (account 248812875460)._ Created tenant
+      `avp-smoke-20260508` (id `4b2e0267-c597-451e-a367-771dfac52fba`)
+      via `POST /api/admin/tenants`. Verified end-to-end:
 
-      - Verified Permissions → a new policy store exists, store ID
-        matches `tenants.policy_store_id` for the row
-      - Store has the `Pegasus` schema + 7 policies (1 admin baseline +
-        1 user baseline + 5 personas) + 1 Cognito IdentitySource
-      - Seeded admin TenantUser has `role_names = ['tenant_admin']`
-      - Log in as that admin, hit `GET /api/v1/me/permissions`:
-        `roles: ['tenant_admin']`, `permissions` covers all 26 actions
-      - CloudWatch on the API Lambda shows `IsAuthorizedWithToken` calls
+      - AVP store `MWqwqkPkEohrddMJdWxw2n` created at the same
+        timestamp as the tenant row; DB `policy_store_id` matches
+      - Store contents: 7 policies, 1 IdentitySource (no
+        `groupConfiguration` on the cognitoUserPoolConfiguration —
+        per the post-refactor design), schema includes the `Pegasus`
+        namespace with `User.memberOfTypes=["Group"]`
+      - Seeded admin TenantUser `dolasllc+avpsmoke@gmail.com` has
+        `role_names=['tenant_admin']`, status `PENDING` (later
+        `ACTIVE` after first login)
+      - Logged in as the admin and hit `GET /api/v1/me/permissions`:
+        `roles=["tenant_admin"]`, exactly 26 permissions covering
+        every CRUD action across user/setting/api_client/quote/move/
+        invoice/customer
+      - CloudTrail confirmed the provisioning sequence (PutSchema +
+        9 CreatePolicy attempts + CreateIdentitySource ×2 with the
+        existing eventual-consistency retry dance, settling on 7
+        active policies). `IsAuthorized` itself is a data-plane
+        event not captured by default CloudTrail; AVP path selection
+        is structurally guaranteed by `pickBackend()` whenever
+        `policyStoreId` is non-null and `AUTHZ_OFFLINE !== 'true'`,
+        which we verified holds for this tenant
+      - No ERROR/WARN entries in the API Lambda log group during the
+        provisioning + login window
 
-- [ ] **4. Negative-auth check.** In dev DB, demote a test user:
-      `UPDATE tenant_users SET role_names = ARRAY['tenant_user'], role='USER' WHERE id=...`.
-      Force a token refresh (sign out/in — tokens cache up to 1h):
+- [x] **4. Negative-auth check.** _Done 2026-05-08 against staging._
+      Demoted the smoke tenant's admin to `role_names=['tenant_user']`
+      via `UPDATE tenant_users …`, signed out, signed back in to
+      mint a fresh JWT (Cognito caches role claims for up to 1h, so a
+      sign-out/in cycle is required — Amplify-style token refresh
+      doesn't re-run the pre-token Lambda). The new token's
+      `custom:roles` claim correctly read `["tenant_user"]`.
 
-      - `GET  /api/v1/users` → **200** (read allowed)
-      - `POST /api/v1/users/invite` → **403** (write denied)
-      - `GET  /api/v1/me/permissions` → only the read actions
+      - `POST /api/v1/users/invite` → **403 FORBIDDEN**
+        (`{"code":"FORBIDDEN"}`) — write denied as expected
+      - `GET  /api/v1/customers` → **200** (operational read allowed)
+      - `GET  /api/v1/me/permissions` → 200, `roles=["tenant_user"]`,
+        exactly 4 permissions: `quote:read`, `move:read`,
+        `invoice:read`, `customer:read`
 
-      If invite returns 200 in prod, the AVP path is being skipped
-      (probably falling through to the offline `AUTHZ_OFFLINE` branch —
-      a deploy bug). If 403 but reads also fail, the persona policies
-      didn't upload during the new-tenant provisioning.
+      Note: the original plan asked for `GET /api/v1/users → 200`,
+      but `user:list` is **not** in the `tenant_user` baseline persona
+      (`apps/api/src/authz/policies/20-tenant-user.cedar` grants only
+      Read{Quote,Move,Invoice,Customer}). User listing is admin-only
+      by design — the policy correctly denied. Used `GET /customers`
+      as the read-allowed counterpart instead.
+
+      The smoke tenant is intentionally retained for future
+      regression checks; teardown when no longer useful via
+      `DELETE FROM tenants WHERE id='4b2e0267-...'`,
+      `aws verifiedpermissions delete-policy-store --policy-store-id MWqwqkPkEohrddMJdWxw2n`,
+      and Cognito AdminDeleteUser on `dolasllc+avpsmoke@gmail.com`.
 
 ### Existing-tenant backfill
 
