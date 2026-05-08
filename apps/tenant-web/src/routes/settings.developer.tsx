@@ -11,6 +11,8 @@ import {
   Copy,
   Check,
   Database,
+  Terminal,
+  ExternalLink,
 } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
@@ -36,6 +38,7 @@ import {
 } from '@/api/queries/api-clients'
 import { mssqlSettingsQueryOptions, useUpdateMssqlSettings } from '@/api/queries/settings'
 import type { ApiClient, ApiClientWithKey } from '@/api/api-clients'
+import { getConfig } from '@/config'
 
 // ---------------------------------------------------------------------------
 // Add / Edit form
@@ -241,6 +244,89 @@ function KeyDisplayModal({
 }
 
 // ---------------------------------------------------------------------------
+// Usage instructions (shared)
+// ---------------------------------------------------------------------------
+
+function ApiUsageCard() {
+  const apiUrl = getConfig().apiUrl.replace(/\/$/, '')
+  const openApiUrl = `${apiUrl}/openapi.json`
+  const curlExample = `curl -H "Authorization: Bearer <your-key>" \\
+  ${apiUrl}/api/v1/orders`
+
+  const [copied, setCopied] = useState(false)
+
+  async function copyCurl() {
+    try {
+      await navigator.clipboard.writeText(curlExample)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Ignore
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Terminal size={18} className="text-muted-foreground" />
+          <CardTitle>How to use your API key</CardTitle>
+        </div>
+        <CardDescription>
+          Authenticate with the <code className="font-mono">Authorization</code> header. Keys
+          created here only work on the M2M endpoints below — the rest of{' '}
+          <code className="font-mono">/api/v1</code> requires a user session.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-4 sm:gap-y-2">
+          <span className="text-muted-foreground">Base URL</span>
+          <code className="font-mono break-all">{apiUrl}</code>
+
+          <span className="text-muted-foreground">Header</span>
+          <code className="font-mono break-all">Authorization: Bearer &lt;your-key&gt;</code>
+
+          <span className="text-muted-foreground">Endpoints</span>
+          <span className="font-mono text-xs">
+            <code>POST /api/v1/events</code>, <code>GET /api/v1/events/:eventType</code>,{' '}
+            <code>GET /api/v1/orders</code>, <code>POST /api/v1/orders</code>
+          </span>
+        </div>
+
+        <div className="relative">
+          <pre className="overflow-x-auto rounded-md border bg-muted/50 p-3 pr-12 text-xs font-mono">
+            {curlExample}
+          </pre>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-1.5 top-1.5 h-7 w-7"
+            onClick={() => void copyCurl()}
+            title="Copy to clipboard"
+          >
+            {copied ? (
+              <Check className="h-3.5 w-3.5 text-green-500" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+          </Button>
+        </div>
+
+        <a
+          href={openApiUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+        >
+          <ExternalLink size={14} />
+          View OpenAPI spec
+        </a>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // ApiClient row
 // ---------------------------------------------------------------------------
 
@@ -280,6 +366,10 @@ function ApiClientRowItem({ client, onEdit, onRevoke, onRotate }: ApiClientRowPr
             {client.lastUsedAt && (
               <span>Last Used: {new Date(client.lastUsedAt).toLocaleDateString()}</span>
             )}
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground/70">
+            Authenticate with <code className="font-mono">Authorization: Bearer …</code> — see usage
+            instructions above.
           </p>
         </div>
       </div>
@@ -638,6 +728,8 @@ export function DeveloperSettingsPage() {
         />
 
         <div className="space-y-3">
+          <ApiUsageCard />
+
           {(!clients || clients.length === 0) && panel.kind === 'none' && (
             <EmptyState
               title="No API Clients"

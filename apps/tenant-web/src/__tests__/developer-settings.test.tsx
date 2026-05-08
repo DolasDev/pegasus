@@ -52,6 +52,10 @@ vi.mock('@/api/queries/settings', () => ({
   useUpdateMssqlSettings: () => mockUseUpdateMssqlSettings(),
 }))
 
+vi.mock('@/config', () => ({
+  getConfig: () => ({ apiUrl: 'https://api.test' }),
+}))
+
 const apiClientsQueryKey = ['api-clients', 'list']
 const mssqlSettingsQueryKey = ['settings', 'mssql']
 
