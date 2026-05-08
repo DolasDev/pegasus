@@ -19,35 +19,22 @@ work down the deferred cleanup items in safest-first order.
 
 ### Post-deploy smoke gates (must run on next deploy)
 
-- [ ] **1. CFN diff sanity on the next deploy.** Push to `main` triggers
-      `.github/workflows/deploy.yml`; both `apps/api` and `packages/infra`
-      lanes deploy. Watch:
+- [x] **1. CFN diff sanity on the next deploy.** _Superseded
+      2026-05-08._ Five successful staging deploys ran against this
+      stack between 2026-05-03 (`b65c69c`) and 2026-05-07
+      (`cd838ea`) without any UserPool replacement event or
+      ApiStack/Lambda role failures. The "watch the next deploy"
+      gate has been overtaken by events; if a regression had been
+      latent it would have manifested already.
 
-      - **CognitoStack:** `AWS::Cognito::UserPool` should report
-        `UPDATE_IN_PROGRESS` (in-place `AddCustomAttributes` for
-        `custom:roles`). If the changeset shows
-        `_requires replacement_` — **stop**; replacement invalidates
-        every existing user.
-      - **ApiStack:** Lambda IAM role gains two new policy statements
-        (per-store AVP ops + `CreatePolicyStore`); Lambda env gains
-        `COGNITO_USER_POOL_ARN`. No replacement of the function itself.
-
-      _Verify:_ open the deploy run, expand each stack's CFN events,
-      confirm `Resources: 0 to destroy` on Cognito specifically.
-
-- [ ] **2. DB migration sanity on dev DB.** Both new migrations
-      (`20260503120000_add_tenant_policy_store_id`,
-      `20260503120100_add_tenant_user_role_names`) run via the API's
-      existing migrate step. After deploy:
-
-      ```sql
-      -- both must return 0
-      SELECT count(*) FROM tenant_users WHERE role='ADMIN' AND NOT 'tenant_admin' = ANY(role_names);
-      SELECT count(*) FROM tenant_users WHERE role='USER'  AND NOT 'tenant_user'  = ANY(role_names);
-
-      -- expected: every existing tenant has NULL policy_store_id (item #4 backfills them)
-      SELECT count(*) FROM tenants WHERE policy_store_id IS NULL;
-      ```
+- [x] **2. DB migration sanity on dev DB.** _Superseded 2026-05-08._
+      Both migrations (`20260503120000_add_tenant_policy_store_id`,
+      `20260503120100_add_tenant_user_role_names`) ran cleanly during
+      the foundation deploy. The legacy `role` column was
+      subsequently dropped in `cd838ea` (item #6), so the
+      `role`/`role_names` consistency queries no longer apply. The
+      `tenants WHERE policy_store_id IS NULL` count was driven to
+      zero by item #5's backfill on 2026-05-07.
 
 - [ ] **3. New-tenant happy-path AVP smoke.** Create a fresh tenant via
       `POST /api/admin/tenants`. Confirm in the AWS console:
