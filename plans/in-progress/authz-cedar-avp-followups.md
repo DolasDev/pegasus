@@ -184,17 +184,16 @@ work down the deferred cleanup items in safest-first order.
       tenants with non-null `policy_store_id`. Alert at 80; ticket-raise
       threshold at 60.
 
-- [ ] **10. Empty `principal.sub` in `tenantMiddleware`.** Defensive
-      fallback at `apps/api/src/middleware/tenant.ts` sets
-      `sub: cognitoSub ?? ''`. Real Cognito tokens always carry `sub`,
-      and SKIP_AUTH synthesizes the principal in `app.ts`, so this
-      branch is unreachable in practice — but `''` would be a malformed
-      AVP entity ID if ever hit. Either:
-
-      - tighten to `if (!cognitoSub) return c.json({ error: 'INVALID_TOKEN' }, 401)`, or
-      - leave as-is and document the invariant in a comment.
-
-      Trivial; bundle into the next authz-area PR.
+- [x] **10. Empty `principal.sub` in `tenantMiddleware`.** _Done
+      2026-05-08._ `apps/api/src/middleware/tenant.ts` now hard-rejects
+      tokens missing the `sub` claim with `401 UNAUTHORIZED` /
+      `Invalid token: missing subject`, before any tenant lookup runs.
+      The downstream `?? ''` fallback on `principal.sub` and the
+      `if (cognitoSub)` guard around the `TenantUser` lookup were
+      dropped — both are now statically unreachable. Tests added in
+      `apps/api/src/__tests__/tenant-middleware.test.ts` cover the new
+      401 path and the existing 403/missing-claims tests were updated
+      to include a `sub` so they still exercise the intended branches.
 
 ## Out of scope (and staying that way)
 

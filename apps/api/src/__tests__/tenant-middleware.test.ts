@@ -194,11 +194,30 @@ describe('tenantMiddleware', () => {
     expect(body['code']).toBe('UNAUTHORIZED')
   })
 
+  it('returns 401 UNAUTHORIZED when sub claim is absent (malformed token)', async () => {
+    mockJwtVerify.mockResolvedValueOnce({
+      payload: {
+        token_use: 'id',
+        'custom:tenantId': 'tenant-uuid',
+        'custom:roles': JSON.stringify(['tenant_user']),
+      },
+    })
+
+    const res = await buildApp().request('/probe', bearerRequest())
+    expect(res.status).toBe(401)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['code']).toBe('UNAUTHORIZED')
+  })
+
   // ── Missing claims ─────────────────────────────────────────────────────────
 
   it('returns 403 FORBIDDEN when custom:tenantId claim is absent', async () => {
     mockJwtVerify.mockResolvedValueOnce({
-      payload: { token_use: 'id', 'custom:roles': JSON.stringify(['tenant_user']) },
+      payload: {
+        token_use: 'id',
+        'custom:roles': JSON.stringify(['tenant_user']),
+        sub: 'cognito-sub-xyz',
+      },
     })
 
     const res = await buildApp().request('/probe', bearerRequest())
@@ -209,7 +228,11 @@ describe('tenantMiddleware', () => {
 
   it('returns 403 FORBIDDEN when custom:roles claim is absent', async () => {
     mockJwtVerify.mockResolvedValueOnce({
-      payload: { token_use: 'id', 'custom:tenantId': 'tenant-uuid' },
+      payload: {
+        token_use: 'id',
+        'custom:tenantId': 'tenant-uuid',
+        sub: 'cognito-sub-xyz',
+      },
     })
 
     const res = await buildApp().request('/probe', bearerRequest())
