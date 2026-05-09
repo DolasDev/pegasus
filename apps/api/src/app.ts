@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { swaggerUI } from '@hono/swagger-ui'
 import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from './types'
 import { correlationMiddleware } from './middleware/correlation'
@@ -63,6 +64,7 @@ app.onError((err, c) => {
 })
 
 app.get('/openapi.json', (c) => c.json(getOpenApiSpec()))
+app.get('/docs', swaggerUI({ url: '/openapi.json' }))
 
 // ---------------------------------------------------------------------------
 // Public routes — no tenant required

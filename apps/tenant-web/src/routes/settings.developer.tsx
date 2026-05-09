@@ -250,6 +250,7 @@ function KeyDisplayModal({
 
 function ApiUsageCard() {
   const apiUrl = getConfig().apiUrl.replace(/\/$/, '')
+  const docsUrl = `${apiUrl}/docs`
   const openApiUrl = `${apiUrl}/openapi.json`
   const curlExample = `curl -H "Authorization: Bearer <your-key>" \\
   ${apiUrl}/api/v1/orders`
@@ -313,15 +314,26 @@ function ApiUsageCard() {
           </Button>
         </div>
 
-        <a
-          href={openApiUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-        >
-          <ExternalLink size={14} />
-          View OpenAPI spec
-        </a>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <a
+            href={docsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+          >
+            <ExternalLink size={14} />
+            Browse API docs (Swagger UI)
+          </a>
+          <a
+            href={openApiUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary hover:underline"
+          >
+            <ExternalLink size={14} />
+            OpenAPI spec (JSON)
+          </a>
+        </div>
       </CardContent>
     </Card>
   )

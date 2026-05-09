@@ -85,3 +85,21 @@ describe('GET /openapi.json', () => {
     expect(res.headers.get('content-type')).toContain('application/json')
   })
 })
+
+describe('GET /docs', () => {
+  it('returns 200 HTML for Swagger UI', async () => {
+    process.env['SKIP_AUTH'] = 'true'
+    const { app } = await import('../app')
+    const res = await app.request('/docs')
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('text/html')
+  })
+
+  it('references /openapi.json as the spec source', async () => {
+    process.env['SKIP_AUTH'] = 'true'
+    const { app } = await import('../app')
+    const res = await app.request('/docs')
+    const html = await res.text()
+    expect(html).toContain('/openapi.json')
+  })
+})
