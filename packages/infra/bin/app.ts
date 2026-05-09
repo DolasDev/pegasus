@@ -9,6 +9,7 @@ import { AdminFrontendAssetsStack } from '../lib/stacks/admin-frontend-assets-st
 import { MonitoringStack } from '../lib/stacks/monitoring-stack'
 import { DocumentsStack } from '../lib/stacks/documents-stack'
 import { WireGuardStack } from '../lib/stacks/wireguard-stack'
+import { E2EStagingRoleStack } from '../lib/stacks/e2e-staging-role-stack'
 
 const app = new cdk.App()
 
@@ -93,6 +94,19 @@ const cognitoStack = new CognitoStack(app, `${stackIdPrefix}-CognitoStack`, {
   tenantDistributionDomain: frontendStack.distribution.distributionDomainName,
   adminDistributionDomain: adminFrontendStack.distribution.distributionDomainName,
 })
+
+// ── E2EStagingRoleStack ──────────────────────────────────────────────────────
+// Staging-only narrow IAM role assumed by the GH Actions e2e gate over OIDC.
+// See lib/stacks/e2e-staging-role-stack.ts for context.
+if (envName === 'staging') {
+  new E2EStagingRoleStack(app, `${stackIdPrefix}-E2EStagingRoleStack`, {
+    env,
+    stackName: `${stackNamePrefix}-e2e-role`,
+    description: `${descPrefix} — narrow IAM role for the e2e gate's Cognito admin calls`,
+    userPoolArn: cognitoStack.userPool.userPoolArn,
+    githubRepo: 'DolasDev/pegasus',
+  })
+}
 
 // ── DocumentsStack ────────────────────────────────────────────────────────────
 // Provisions the S3 bucket used by the document management system. Deployed
