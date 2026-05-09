@@ -41,6 +41,19 @@ vi.mock('@/api/queries/api-clients', () => ({
   useRotateApiClient: () => mockUseRotateApiClient(),
 }))
 
+// Mock the permissions hook — these tests assume an admin who has every
+// `api_client:*` permission. Permission gating is exercised separately.
+vi.mock('@/auth/permissions', () => ({
+  usePermissions: () => ({
+    isLoading: false,
+    has: () => true,
+    allOf: () => true,
+    anyOf: () => true,
+    permissions: new Set<string>(),
+    roles: ['tenant_admin'],
+  }),
+}))
+
 // Mock the MSSQL settings query module
 const mockUseUpdateMssqlSettings = vi.fn()
 

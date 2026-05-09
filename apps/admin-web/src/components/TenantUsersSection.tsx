@@ -1,14 +1,20 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   listTenantUsers,
+  listTenantUserRoleOptions,
   inviteTenantUser,
   updateTenantUserRole,
   deactivateTenantUser,
   reactivateTenantUser,
 } from '@/api/tenant-users'
-import type { TenantUser } from '@/api/tenant-users'
+import type { RoleOption, TenantUser } from '@/api/tenant-users'
 import { ApiError } from '@/api/client'
+
+// Same copy as the server-side last-admin guard so the experience matches
+// regardless of which side trips first.
+const LAST_ADMIN_MESSAGE =
+  'Cannot remove the last administrator. Promote another user to admin first.'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -22,12 +28,52 @@ function formatDate(iso: string) {
   })
 }
 
-function RoleBadge({ roleNames }: { roleNames: TenantUser['roleNames'] }) {
-  const isAdmin = roleNames.includes('tenant_admin')
-  const cls = isAdmin ? 'bg-blue-100 text-blue-800' : 'bg-neutral-100 text-neutral-700'
+function RoleBadges({
+  roleNames,
+  roleOptions,
+}: {
+  roleNames: TenantUser['roleNames']
+  roleOptions: RoleOption[]
+}) {
+  if (roleNames.length === 0) {
+    return (
+      <span className="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-neutral-100 text-neutral-500">
+        No roles
+      </span>
+    )
+  }
+
+  const labelFor = (name: string) => roleOptions.find((o) => o.name === name)?.label ?? name
+  const sorted = [...roleNames].sort((a, b) => {
+    if (a === 'tenant_admin') return -1
+    if (b === 'tenant_admin') return 1
+    return a.localeCompare(b)
+  })
+  const visible = sorted.slice(0, 3)
+  const overflow = sorted.length - visible.length
+
   return (
-    <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${cls}`}>
-      {isAdmin ? 'Admin' : 'User'}
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {visible.map((name) => {
+        const cls =
+          name === 'tenant_admin' ? 'bg-blue-100 text-blue-800' : 'bg-neutral-100 text-neutral-700'
+        return (
+          <span
+            key={name}
+            className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${cls}`}
+          >
+            {labelFor(name)}
+          </span>
+        )
+      })}
+      {overflow > 0 && (
+        <span
+          className="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-neutral-50 text-neutral-600 border border-neutral-200"
+          title={sorted.slice(3).map(labelFor).join(', ')}
+        >
+          +{overflow}
+        </span>
+      )}
     </span>
   )
 }
@@ -49,15 +95,69 @@ function StatusBadge({ status }: { status: TenantUser['status'] }) {
 }
 
 // ---------------------------------------------------------------------------
+// Reusable role-checkbox list
+// ---------------------------------------------------------------------------
+
+function RoleCheckboxList({
+  options,
+  selected,
+  onChange,
+  disabled,
+  idPrefix,
+}: {
+  options: RoleOption[]
+  selected: string[]
+  onChange: (next: string[]) => void
+  disabled?: boolean
+  idPrefix: string
+}) {
+  function toggle(name: string) {
+    if (selected.includes(name)) onChange(selected.filter((n) => n !== name))
+    else onChange([...selected, name])
+  }
+
+  return (
+    <div className="space-y-2">
+      {options.map((opt) => {
+        const id = `${idPrefix}-${opt.name}`
+        const checked = selected.includes(opt.name)
+        return (
+          <label
+            key={opt.name}
+            htmlFor={id}
+            className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-background px-3 py-2 hover:bg-muted/40"
+          >
+            <input
+              id={id}
+              type="checkbox"
+              checked={checked}
+              disabled={disabled}
+              onChange={() => toggle(opt.name)}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-border"
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-foreground">{opt.label}</span>
+              <span className="block text-xs text-muted-foreground">{opt.description}</span>
+            </span>
+          </label>
+        )
+      })}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Invite form
 // ---------------------------------------------------------------------------
 
 function InviteForm({
   tenantId,
+  roleOptions,
   onSuccess,
   onCancel,
 }: {
   tenantId: string
+  roleOptions: RoleOption[]
   onSuccess: () => void
   onCancel: () => void
 }) {
@@ -75,6 +175,15 @@ function InviteForm({
     },
   })
 
+  function handleSubmit() {
+    setError(null)
+    if (roleNames.length === 0) {
+      setError('Pick at least one role.')
+      return
+    }
+    mutation.mutate()
+  }
+
   return (
     <div className="rounded-md border border-border bg-muted/30 p-4 space-y-3">
       <h3 className="text-sm font-medium text-foreground">Invite user</h3>
@@ -83,43 +192,115 @@ function InviteForm({
           {error}
         </div>
       )}
-      <div className="flex items-end gap-2">
-        <div className="flex-1 space-y-1">
-          <label className="block text-xs font-medium text-muted-foreground">Email</label>
-          <input
-            type="email"
-            placeholder="email@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={mutation.isPending}
-            className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="block text-xs font-medium text-muted-foreground">Role</label>
-          <select
-            value={roleNames[0] ?? 'tenant_user'}
-            onChange={(e) => setRoleNames([e.target.value])}
-            disabled={mutation.isPending}
-            className="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-          >
-            <option value="tenant_user">User</option>
-            <option value="tenant_admin">Admin</option>
-          </select>
-        </div>
-        <button
-          onClick={() => mutation.mutate()}
-          disabled={mutation.isPending || !email.trim()}
-          className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {mutation.isPending ? 'Inviting…' : 'Invite'}
-        </button>
+      <div className="space-y-1">
+        <label className="block text-xs font-medium text-muted-foreground">Email</label>
+        <input
+          type="email"
+          placeholder="email@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={mutation.isPending}
+          className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+        />
+      </div>
+      <div className="space-y-1">
+        <label className="block text-xs font-medium text-muted-foreground">Roles</label>
+        <RoleCheckboxList
+          options={roleOptions}
+          selected={roleNames}
+          onChange={setRoleNames}
+          disabled={mutation.isPending}
+          idPrefix="invite-role"
+        />
+      </div>
+      <div className="flex justify-end gap-2 pt-1">
         <button
           onClick={onCancel}
           disabled={mutation.isPending}
           className="rounded-md border border-border px-4 py-1.5 text-sm font-medium text-muted-foreground hover:bg-muted disabled:opacity-40"
         >
           Cancel
+        </button>
+        <button
+          onClick={handleSubmit}
+          disabled={mutation.isPending || !email.trim()}
+          className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {mutation.isPending ? 'Inviting…' : 'Invite'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Manage roles editor (inline)
+// ---------------------------------------------------------------------------
+
+function ManageRolesEditor({
+  user,
+  roleOptions,
+  isLastActiveAdmin,
+  onSave,
+  onCancel,
+  isPending,
+}: {
+  user: TenantUser
+  roleOptions: RoleOption[]
+  isLastActiveAdmin: boolean
+  onSave: (roleNames: string[]) => void
+  onCancel: () => void
+  isPending: boolean
+}) {
+  const [selected, setSelected] = useState<string[]>(user.roleNames)
+  const [error, setError] = useState<string | null>(null)
+
+  const wouldRemoveLastAdmin = isLastActiveAdmin && !selected.includes('tenant_admin')
+
+  function handleSave() {
+    setError(null)
+    if (selected.length === 0) {
+      setError('Pick at least one role.')
+      return
+    }
+    if (wouldRemoveLastAdmin) {
+      setError(LAST_ADMIN_MESSAGE)
+      return
+    }
+    onSave(selected)
+  }
+
+  return (
+    <div className="rounded-md border border-border bg-muted/30 p-4 space-y-3">
+      <div className="text-sm font-medium text-foreground">
+        Manage roles for <span className="font-mono">{user.email}</span>
+      </div>
+      <RoleCheckboxList
+        options={roleOptions}
+        selected={selected}
+        onChange={setSelected}
+        disabled={isPending}
+        idPrefix={`manage-role-${user.id}`}
+      />
+      {(error ?? (wouldRemoveLastAdmin ? LAST_ADMIN_MESSAGE : null)) && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error ?? LAST_ADMIN_MESSAGE}
+        </div>
+      )}
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={onCancel}
+          disabled={isPending}
+          className="rounded-md border border-border px-4 py-1.5 text-sm font-medium text-muted-foreground hover:bg-muted disabled:opacity-40"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={isPending || wouldRemoveLastAdmin || selected.length === 0}
+          className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {isPending ? 'Saving…' : 'Save roles'}
         </button>
       </div>
     </div>
@@ -133,10 +314,20 @@ function InviteForm({
 function UserRow({
   user,
   tenantId,
+  roleOptions,
+  isLastActiveAdmin,
+  isManaging,
+  onStartManage,
+  onStopManage,
   onMutated,
 }: {
   user: TenantUser
   tenantId: string
+  roleOptions: RoleOption[]
+  isLastActiveAdmin: boolean
+  isManaging: boolean
+  onStartManage: () => void
+  onStopManage: () => void
   onMutated: () => void
 }) {
   const [rowError, setRowError] = useState<string | null>(null)
@@ -145,6 +336,7 @@ function UserRow({
     mutationFn: (roleNames: string[]) => updateTenantUserRole(tenantId, user.id, roleNames),
     onSuccess: () => {
       setRowError(null)
+      onStopManage()
       onMutated()
     },
     onError: (err) => {
@@ -182,7 +374,7 @@ function UserRow({
       <tr className="border-b border-border last:border-0">
         <td className="py-3 pr-4 text-sm text-foreground">{user.email}</td>
         <td className="py-3 pr-4">
-          <RoleBadge roleNames={user.roleNames} />
+          <RoleBadges roleNames={user.roleNames} roleOptions={roleOptions} />
         </td>
         <td className="py-3 pr-4">
           <StatusBadge status={user.status} />
@@ -190,21 +382,13 @@ function UserRow({
         <td className="py-3 pr-4 text-sm text-muted-foreground">{formatDate(user.invitedAt)}</td>
         <td className="py-3">
           <div className="flex items-center gap-2">
-            {user.roleNames.includes('tenant_admin') ? (
+            {user.status !== 'DEACTIVATED' && (
               <button
-                onClick={() => roleMutation.mutate(['tenant_user'])}
+                onClick={onStartManage}
                 disabled={isPending}
                 className="text-xs text-primary hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Make user
-              </button>
-            ) : (
-              <button
-                onClick={() => roleMutation.mutate(['tenant_admin'])}
-                disabled={isPending}
-                className="text-xs text-primary hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Make admin
+                Manage roles
               </button>
             )}
             {user.status === 'DEACTIVATED' ? (
@@ -227,12 +411,24 @@ function UserRow({
           </div>
         </td>
       </tr>
-      {rowError && (
+      {(rowError ?? isManaging) && (
         <tr>
           <td colSpan={5} className="pb-3">
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {rowError}
-            </div>
+            {rowError && (
+              <div className="mb-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {rowError}
+              </div>
+            )}
+            {isManaging && (
+              <ManageRolesEditor
+                user={user}
+                roleOptions={roleOptions}
+                isLastActiveAdmin={isLastActiveAdmin}
+                onSave={(roleNames) => roleMutation.mutate(roleNames)}
+                onCancel={onStopManage}
+                isPending={roleMutation.isPending}
+              />
+            )}
           </td>
         </tr>
       )}
@@ -247,15 +443,28 @@ function UserRow({
 export function TenantUsersSection({ tenantId }: { tenantId: string }) {
   const queryClient = useQueryClient()
   const [showInvite, setShowInvite] = useState(false)
+  const [managingUserId, setManagingUserId] = useState<string | null>(null)
 
   const { data, isPending, isError } = useQuery({
     queryKey: ['tenant-users', tenantId],
     queryFn: () => listTenantUsers(tenantId),
   })
 
+  const { data: roleOptions } = useQuery({
+    queryKey: ['tenant-users-role-options', tenantId],
+    queryFn: () => listTenantUserRoleOptions(tenantId),
+    staleTime: Infinity,
+  })
+
   function refetch() {
     void queryClient.invalidateQueries({ queryKey: ['tenant-users', tenantId] })
   }
+
+  const users = data?.data ?? []
+  const activeAdminCount = useMemo(
+    () => users.filter((u) => u.status === 'ACTIVE' && u.roleNames.includes('tenant_admin')).length,
+    [users],
+  )
 
   if (isPending) {
     return <div className="py-4 text-sm text-muted-foreground">Loading…</div>
@@ -269,13 +478,12 @@ export function TenantUsersSection({ tenantId }: { tenantId: string }) {
     )
   }
 
-  const users = data.data
-
   return (
     <div className="space-y-4">
       {showInvite ? (
         <InviteForm
           tenantId={tenantId}
+          roleOptions={roleOptions ?? []}
           onSuccess={() => {
             setShowInvite(false)
             refetch()
@@ -302,7 +510,7 @@ export function TenantUsersSection({ tenantId }: { tenantId: string }) {
                   Email
                 </th>
                 <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">
-                  Role
+                  Roles
                 </th>
                 <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">
                   Status
@@ -316,9 +524,25 @@ export function TenantUsersSection({ tenantId }: { tenantId: string }) {
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
-                <UserRow key={user.id} user={user} tenantId={tenantId} onMutated={refetch} />
-              ))}
+              {users.map((user) => {
+                const isLastActiveAdmin =
+                  user.status === 'ACTIVE' &&
+                  user.roleNames.includes('tenant_admin') &&
+                  activeAdminCount <= 1
+                return (
+                  <UserRow
+                    key={user.id}
+                    user={user}
+                    tenantId={tenantId}
+                    roleOptions={roleOptions ?? []}
+                    isLastActiveAdmin={isLastActiveAdmin}
+                    isManaging={managingUserId === user.id}
+                    onStartManage={() => setManagingUserId(user.id)}
+                    onStopManage={() => setManagingUserId(null)}
+                    onMutated={refetch}
+                  />
+                )
+              })}
             </tbody>
           </table>
         </div>

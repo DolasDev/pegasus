@@ -30,6 +30,13 @@ export type PatchUserInput = {
   legacyWindowsUsername?: string | null
 }
 
+/** A single Cedar role group as advertised by GET /role-options. */
+export type RoleOption = {
+  name: string
+  label: string
+  description: string
+}
+
 // ---------------------------------------------------------------------------
 // Query keys
 // ---------------------------------------------------------------------------
@@ -37,6 +44,7 @@ export type PatchUserInput = {
 export const usersKeys = {
   all: ['users'] as const,
   list: () => [...usersKeys.all, 'list'] as const,
+  roleOptions: () => [...usersKeys.all, 'role-options'] as const,
 }
 
 // ---------------------------------------------------------------------------
@@ -46,6 +54,12 @@ export const usersKeys = {
 export const usersQueryOptions = queryOptions({
   queryKey: usersKeys.list(),
   queryFn: () => apiFetch<TenantUser[]>('/api/v1/users'),
+})
+
+export const roleOptionsQueryOptions = queryOptions({
+  queryKey: usersKeys.roleOptions(),
+  queryFn: () => apiFetch<RoleOption[]>('/api/v1/users/role-options'),
+  staleTime: Infinity,
 })
 
 // ---------------------------------------------------------------------------
