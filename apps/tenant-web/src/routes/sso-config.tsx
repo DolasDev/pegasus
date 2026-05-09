@@ -39,6 +39,7 @@ import {
   type CreateSsoProviderInput,
   type UpdateSsoProviderInput,
 } from '@/api/queries/sso'
+import { usePermissions } from '@/auth/permissions'
 
 // ---------------------------------------------------------------------------
 // Add / Edit form
@@ -277,11 +278,12 @@ function ProviderForm({ mode, onDone }: ProviderFormProps) {
 
 type ProviderRowProps = {
   provider: SsoProvider
+  canMutate: boolean
   onEdit: (provider: SsoProvider) => void
   onDelete: (provider: SsoProvider) => void
 }
 
-function ProviderRow({ provider, onEdit, onDelete }: ProviderRowProps) {
+function ProviderRow({ provider, canMutate, onEdit, onDelete }: ProviderRowProps) {
   return (
     <div className="flex items-center gap-4 rounded-lg border bg-card px-4 py-3">
       <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -303,26 +305,28 @@ function ProviderRow({ provider, onEdit, onDelete }: ProviderRowProps) {
           </p>
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-1.5 text-xs"
-          onClick={() => onEdit(provider)}
-        >
-          <Pencil size={13} />
-          Edit
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-1.5 text-xs text-destructive hover:text-destructive"
-          onClick={() => onDelete(provider)}
-        >
-          <Trash2 size={13} />
-          Delete
-        </Button>
-      </div>
+      {canMutate && (
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-xs"
+            onClick={() => onEdit(provider)}
+          >
+            <Pencil size={13} />
+            Edit
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-xs text-destructive hover:text-destructive"
+            onClick={() => onDelete(provider)}
+          >
+            <Trash2 size={13} />
+            Delete
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
@@ -444,6 +448,8 @@ export function SsoConfigPage() {
   const cognitoAuthEnabled = data?.cognitoAuthEnabled ?? true
   const deleteMutation = useDeleteSsoProvider()
   const [panel, setPanel] = useState<PanelState>({ kind: 'none' })
+  const perms = usePermissions()
+  const canMutateSettings = perms.has('setting:update')
 
   function closePanel() {
     setPanel({ kind: 'none' })
@@ -496,7 +502,15 @@ export function SsoConfigPage() {
         breadcrumbs={[{ label: 'Settings' }, { label: 'SSO Providers' }]}
         action={
           panel.kind !== 'add' && (
-            <Button size="sm" className="gap-2" onClick={() => setPanel({ kind: 'add' })}>
+            <Button
+              size="sm"
+              className="gap-2"
+              disabled={!canMutateSettings}
+              title={
+                canMutateSettings ? undefined : 'You do not have permission to modify SSO settings.'
+              }
+              onClick={() => setPanel({ kind: 'add' })}
+            >
               <Plus size={14} />
               Add provider
             </Button>
@@ -525,6 +539,7 @@ export function SsoConfigPage() {
               <div key={provider.id} className="space-y-2">
                 <ProviderRow
                   provider={provider}
+                  canMutate={canMutateSettings}
                   onEdit={() => setPanel({ kind: 'edit', provider })}
                   onDelete={() => setPanel({ kind: 'delete', provider })}
                 />
@@ -538,6 +553,7 @@ export function SsoConfigPage() {
               <div key={provider.id} className="space-y-2">
                 <ProviderRow
                   provider={provider}
+                  canMutate={canMutateSettings}
                   onEdit={() => setPanel({ kind: 'edit', provider })}
                   onDelete={() => setPanel({ kind: 'delete', provider })}
                 />
@@ -555,6 +571,7 @@ export function SsoConfigPage() {
             <ProviderRow
               key={provider.id}
               provider={provider}
+              canMutate={canMutateSettings}
               onEdit={(p) => setPanel({ kind: 'edit', provider: p })}
               onDelete={(p) => setPanel({ kind: 'delete', provider: p })}
             />

@@ -20,6 +20,7 @@ import type { PrismaClient } from '@prisma/client'
 import type { Prisma } from '@prisma/client'
 import type { AdminEnv } from '../../types'
 import { db } from '../../db'
+import { ROLE_OPTIONS } from '../../authz/role-options'
 import { createUsersRepository, type TenantUserRow } from '../../repositories/users'
 import { provisionCognitoUser, disableCognitoUser, enableCognitoUser } from './cognito'
 import { writeAuditLog } from './audit'
@@ -88,6 +89,17 @@ function toResponse(row: TenantUserRow): TenantUserResponse {
 // ---------------------------------------------------------------------------
 
 export const adminTenantUsersRouter = new Hono<AdminEnv>()
+
+// ---------------------------------------------------------------------------
+// GET /role-options
+//
+// Pass-through to the canonical role-name catalog. No tenant lookup — the
+// catalog is platform-wide. adminAuthMiddleware on the parent router gates
+// this endpoint.
+// ---------------------------------------------------------------------------
+adminTenantUsersRouter.get('/role-options', (c) => {
+  return c.json({ data: ROLE_OPTIONS })
+})
 
 // ---------------------------------------------------------------------------
 // GET /

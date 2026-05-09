@@ -26,6 +26,7 @@ import {
 } from '@aws-sdk/client-cognito-identity-provider'
 import { requirePermission } from '../middleware/rbac'
 import { Actions } from '../authz/actions'
+import { ROLE_OPTIONS } from '../authz/role-options'
 import { createUsersRepository, type TenantUserRow } from '../repositories/users'
 import type { AppEnv } from '../types'
 import { logger } from '../lib/logger'
@@ -116,6 +117,19 @@ usersHandler.get('/', requirePermission(Actions.ListUsers), async (c) => {
 
   const users = await repo.listByTenant(c.get('tenantId'))
   return c.json({ data: users.map(toResponse), meta: { count: users.length } })
+})
+
+// ---------------------------------------------------------------------------
+// GET /role-options
+//
+// Returns the catalog of Cedar role-groups a tenant admin may assign. The UI
+// uses this to render the "Manage roles" multi-select. Names must match the
+// `.cedar` policy files; see `authz/role-options.ts`.
+//
+// Response: { data: RoleOption[] }
+// ---------------------------------------------------------------------------
+usersHandler.get('/role-options', requirePermission(Actions.ListUsers), (c) => {
+  return c.json({ data: ROLE_OPTIONS })
 })
 
 // ---------------------------------------------------------------------------

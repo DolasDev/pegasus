@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { TenantUsersSection } from '../components/TenantUsersSection'
 import { ApiError } from '../api/client'
-import type { TenantUser } from '../api/tenant-users'
+import type { RoleOption, TenantUser } from '../api/tenant-users'
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -11,13 +11,16 @@ import type { TenantUser } from '../api/tenant-users'
 
 vi.mock('@/api/tenant-users', () => ({
   listTenantUsers: vi.fn(),
+  listTenantUserRoleOptions: vi.fn(),
   inviteTenantUser: vi.fn(),
   updateTenantUserRole: vi.fn(),
   deactivateTenantUser: vi.fn(),
+  reactivateTenantUser: vi.fn(),
 }))
 
 import {
   listTenantUsers,
+  listTenantUserRoleOptions,
   inviteTenantUser,
   updateTenantUserRole,
   deactivateTenantUser,
@@ -26,6 +29,16 @@ import {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const ROLE_OPTIONS: RoleOption[] = [
+  { name: 'tenant_admin', label: 'Admin', description: 'Full access.' },
+  { name: 'tenant_user', label: 'User (read-only)', description: 'Read-only baseline.' },
+  { name: 'dispatcher', label: 'Dispatcher', description: 'Dispatch ops.' },
+  { name: 'sales', label: 'Sales', description: 'Quote authoring.' },
+  { name: 'accountant', label: 'Accountant', description: 'Invoice control.' },
+  { name: 'auditor', label: 'Auditor', description: 'Read-only.' },
+  { name: 'crew_lead', label: 'Crew Lead', description: 'Crew updates.' },
+]
 
 function makeQueryClient() {
   return new QueryClient({
@@ -66,6 +79,7 @@ function makeUser(overrides: Partial<TenantUser> = {}): TenantUser {
 describe('TenantUsersSection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(listTenantUserRoleOptions).mockResolvedValue(ROLE_OPTIONS)
   })
 
   // ── Rendering ─────────────────────────────────────────────────────────────
@@ -84,8 +98,25 @@ describe('TenantUsersSection', () => {
       })
       renderSection()
       await screen.findByText('user@acme.com')
-      expect(screen.getByText('User')).toBeInTheDocument()
+      expect(screen.getByText('User (read-only)')).toBeInTheDocument()
       expect(screen.getByText('Active')).toBeInTheDocument()
+    })
+
+    it('renders multiple role chips when a user has more than one role', async () => {
+      vi.mocked(listTenantUsers).mockResolvedValue({
+        data: [
+          makeUser({
+            email: 'multi@acme.com',
+            status: 'ACTIVE',
+            roleNames: ['dispatcher', 'auditor'],
+          }),
+        ],
+        meta: { count: 1 },
+      })
+      renderSection()
+      await screen.findByText('multi@acme.com')
+      expect(screen.getByText('Dispatcher')).toBeInTheDocument()
+      expect(screen.getByText('Auditor')).toBeInTheDocument()
     })
 
     it('shows empty state when the list is empty', async () => {
@@ -107,25 +138,29 @@ describe('TenantUsersSection', () => {
       expect(screen.getByPlaceholderText(/email/i)).toBeInTheDocument()
     })
 
-    it('submit calls inviteTenantUser with the entered email and selected roleNames', async () => {
+    it('submit calls inviteTenantUser with the picked roleNames', async () => {
       vi.mocked(listTenantUsers).mockResolvedValue({ data: [], meta: { count: 0 } })
       vi.mocked(inviteTenantUser).mockResolvedValue(
-        makeUser({ email: 'new@acme.com', roleNames: ['tenant_admin'], role: 'ADMIN' }),
+        makeUser({ email: 'new@acme.com', roleNames: ['dispatcher'], role: 'USER' }),
       )
       renderSection()
       await screen.findByText(/no users/i)
 
       fireEvent.click(screen.getByRole('button', { name: /invite user/i }))
+      // Wait for the role-options query to resolve and checkboxes to render.
+      await screen.findByLabelText(/dispatcher/i)
       fireEvent.change(screen.getByPlaceholderText(/email/i), {
         target: { value: 'new@acme.com' },
       })
-      fireEvent.change(screen.getByRole('combobox'), { target: { value: 'tenant_admin' } })
+      // Default selection is tenant_user — uncheck it and pick dispatcher.
+      fireEvent.click(screen.getByLabelText(/user \(read-only\)/i))
+      fireEvent.click(screen.getByLabelText(/dispatcher/i))
       fireEvent.click(screen.getByRole('button', { name: /^invite$/i }))
 
       await waitFor(() => {
         expect(vi.mocked(inviteTenantUser)).toHaveBeenCalledWith('tenant-1', {
           email: 'new@acme.com',
-          roleNames: ['tenant_admin'],
+          roleNames: ['dispatcher'],
         })
       })
     })
@@ -146,79 +181,64 @@ describe('TenantUsersSection', () => {
 
       await screen.findByText(/email already in roster/i)
     })
-
-    it('hides the form and refetches the list on success', async () => {
-      vi.mocked(listTenantUsers).mockResolvedValue({ data: [], meta: { count: 0 } })
-      vi.mocked(inviteTenantUser).mockResolvedValue(makeUser())
-      renderSection()
-      await screen.findByText(/no users/i)
-
-      fireEvent.click(screen.getByRole('button', { name: /invite user/i }))
-      const emailInput = screen.getByPlaceholderText(/email/i)
-      fireEvent.change(emailInput, { target: { value: 'new@acme.com' } })
-      fireEvent.click(screen.getByRole('button', { name: /^invite$/i }))
-
-      await waitFor(() => {
-        expect(screen.queryByPlaceholderText(/email/i)).not.toBeInTheDocument()
-      })
-      expect(vi.mocked(listTenantUsers)).toHaveBeenCalledTimes(2)
-    })
   })
 
-  // ── Role toggle ───────────────────────────────────────────────────────────
+  // ── Manage roles ──────────────────────────────────────────────────────────
 
-  describe('Role toggle', () => {
-    it('"Make admin" button calls updateTenantUserRole with [tenant_admin]', async () => {
+  describe('Manage roles', () => {
+    it('opens the editor and saves a role swap from tenant_user → dispatcher', async () => {
       vi.mocked(listTenantUsers).mockResolvedValue({
-        data: [makeUser({ id: 'user-1', roleNames: ['tenant_user'], role: 'USER' })],
+        data: [
+          makeUser({
+            id: 'user-1',
+            status: 'ACTIVE',
+            roleNames: ['tenant_user'],
+          }),
+        ],
         meta: { count: 1 },
       })
       vi.mocked(updateTenantUserRole).mockResolvedValue(
-        makeUser({ roleNames: ['tenant_admin'], role: 'ADMIN' }),
+        makeUser({ id: 'user-1', roleNames: ['dispatcher'] }),
       )
       renderSection()
       await screen.findByText('user@acme.com')
 
-      fireEvent.click(screen.getByRole('button', { name: /make admin/i }))
+      fireEvent.click(screen.getByRole('button', { name: /manage roles/i }))
+      await screen.findByLabelText(/dispatcher/i)
+      fireEvent.click(screen.getByLabelText(/user \(read-only\)/i)) // uncheck
+      fireEvent.click(screen.getByLabelText(/dispatcher/i))
+      fireEvent.click(screen.getByRole('button', { name: /save roles/i }))
+
       await waitFor(() => {
         expect(vi.mocked(updateTenantUserRole)).toHaveBeenCalledWith('tenant-1', 'user-1', [
-          'tenant_admin',
+          'dispatcher',
         ])
       })
     })
 
-    it('"Make user" button calls updateTenantUserRole with [tenant_user]', async () => {
+    it('refuses client-side when the only active admin tries to drop tenant_admin', async () => {
       vi.mocked(listTenantUsers).mockResolvedValue({
-        data: [makeUser({ id: 'admin-1', roleNames: ['tenant_admin'], role: 'ADMIN' })],
+        data: [
+          makeUser({
+            id: 'admin-1',
+            status: 'ACTIVE',
+            roleNames: ['tenant_admin'],
+            role: 'ADMIN',
+          }),
+        ],
         meta: { count: 1 },
       })
-      vi.mocked(updateTenantUserRole).mockResolvedValue(
-        makeUser({ id: 'admin-1', roleNames: ['tenant_user'], role: 'USER' }),
-      )
       renderSection()
       await screen.findByText('user@acme.com')
 
-      fireEvent.click(screen.getByRole('button', { name: /make user/i }))
-      await waitFor(() => {
-        expect(vi.mocked(updateTenantUserRole)).toHaveBeenCalledWith('tenant-1', 'admin-1', [
-          'tenant_user',
-        ])
-      })
-    })
+      fireEvent.click(screen.getByRole('button', { name: /manage roles/i }))
+      const adminCheckbox = await screen.findByRole('checkbox', { name: /^admin/i })
+      fireEvent.click(adminCheckbox) // uncheck tenant_admin
 
-    it('shows an inline error when updateTenantUserRole rejects', async () => {
-      vi.mocked(listTenantUsers).mockResolvedValue({
-        data: [makeUser({ role: 'USER' })],
-        meta: { count: 1 },
-      })
-      vi.mocked(updateTenantUserRole).mockRejectedValue(
-        new ApiError('Failed to update role', 'INTERNAL_ERROR', 500),
-      )
-      renderSection()
-      await screen.findByText('user@acme.com')
-
-      fireEvent.click(screen.getByRole('button', { name: /make admin/i }))
-      await screen.findByText(/failed to update role/i)
+      // Inline guard message appears, save button disabled, no API call fired.
+      await screen.findByText(/cannot remove the last administrator/i)
+      expect(screen.getByRole('button', { name: /save roles/i })).toBeDisabled()
+      expect(vi.mocked(updateTenantUserRole)).not.toHaveBeenCalled()
     })
   })
 

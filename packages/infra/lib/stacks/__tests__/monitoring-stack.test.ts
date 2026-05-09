@@ -124,6 +124,44 @@ describe('MonitoringStack — Lambda p99 duration alarm', () => {
   })
 })
 
+describe('MonitoringStack — AVP policy-store count alarms', () => {
+  it('creates a warn alarm at 60 stores on the Pegasus/Authorization namespace', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      Namespace: 'Pegasus/Authorization',
+      MetricName: 'PolicyStoreCount',
+      Threshold: 60,
+      ComparisonOperator: 'GreaterThanOrEqualToThreshold',
+      TreatMissingData: 'breaching',
+    })
+  })
+
+  it('creates a critical alarm at 80 stores on the Pegasus/Authorization namespace', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      Namespace: 'Pegasus/Authorization',
+      MetricName: 'PolicyStoreCount',
+      Threshold: 80,
+      ComparisonOperator: 'GreaterThanOrEqualToThreshold',
+      TreatMissingData: 'breaching',
+    })
+  })
+
+  it('wires both AVP alarms to the SNS topic', () => {
+    const template = synthMonitoringStack()
+    // Both alarms register an action — assert by alarm name to disambiguate
+    // from the AWS/Lambda + AWS/ApiGateway alarms that share the topic.
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-avp-store-count-warn',
+      AlarmActions: Match.arrayWith([Match.objectLike({})]),
+    })
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-avp-store-count-critical',
+      AlarmActions: Match.arrayWith([Match.objectLike({})]),
+    })
+  })
+})
+
 describe('MonitoringStack — CloudWatch dashboard', () => {
   it('creates exactly one CloudWatch dashboard', () => {
     const template = synthMonitoringStack()
@@ -139,8 +177,8 @@ describe('MonitoringStack — CloudWatch dashboard', () => {
 })
 
 describe('MonitoringStack — alarm count', () => {
-  it('creates exactly three CloudWatch alarms', () => {
+  it('creates exactly five CloudWatch alarms (3 service alarms + 2 AVP store-count alarms)', () => {
     const template = synthMonitoringStack()
-    template.resourceCountIs('AWS::CloudWatch::Alarm', 3)
+    template.resourceCountIs('AWS::CloudWatch::Alarm', 5)
   })
 })

@@ -8,9 +8,9 @@
 // RBAC enforcement on every API call).
 // ---------------------------------------------------------------------------
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { UserPlus, UserX, ShieldAlert, Loader2, AlertCircle, Pencil, Check, X } from 'lucide-react'
+import { UserPlus, UserX, ShieldCheck, Loader2, AlertCircle, Pencil, Check, X } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -21,23 +21,89 @@ import { Separator } from '@/components/ui/separator'
 import { EmptyState } from '@/components/EmptyState'
 import {
   usersQueryOptions,
+  roleOptionsQueryOptions,
   useInviteUser,
   useUpdateUserRole,
   useUpdateUserLegacyWindowsUsername,
   useDeactivateUser,
   type TenantUser,
+  type RoleOption,
 } from '@/api/queries/users'
 import { getSession } from '@/auth/session'
+import { usePermissions } from '@/auth/permissions'
+
+// Same copy as the server-side DELETE last-admin guard so the experience is
+// consistent whether the rule trips client- or server-side.
+const LAST_ADMIN_MESSAGE =
+  'Cannot remove the last administrator. Promote another user to admin first.'
 
 // ---------------------------------------------------------------------------
 // Invite form
 // ---------------------------------------------------------------------------
 
-type InviteFormProps = {
-  onDone: () => void
+type RoleCheckboxListProps = {
+  options: RoleOption[]
+  selected: string[]
+  onChange: (next: string[]) => void
+  disabled?: boolean
+  idPrefix: string
 }
 
-function InviteForm({ onDone }: InviteFormProps) {
+/**
+ * Reusable checkbox list of Cedar role groups. Used by both the invite form
+ * and the per-row role editor.
+ */
+function RoleCheckboxList({
+  options,
+  selected,
+  onChange,
+  disabled,
+  idPrefix,
+}: RoleCheckboxListProps) {
+  function toggle(name: string) {
+    if (selected.includes(name)) {
+      onChange(selected.filter((n) => n !== name))
+    } else {
+      onChange([...selected, name])
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {options.map((opt) => {
+        const id = `${idPrefix}-${opt.name}`
+        const checked = selected.includes(opt.name)
+        return (
+          <label
+            key={opt.name}
+            htmlFor={id}
+            className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-background px-3 py-2 hover:bg-accent/40"
+          >
+            <input
+              id={id}
+              type="checkbox"
+              checked={checked}
+              disabled={disabled}
+              onChange={() => toggle(opt.name)}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-border"
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-foreground">{opt.label}</span>
+              <span className="block text-xs text-muted-foreground">{opt.description}</span>
+            </span>
+          </label>
+        )
+      })}
+    </div>
+  )
+}
+
+type InviteFormProps = {
+  onDone: () => void
+  roleOptions: RoleOption[]
+}
+
+function InviteForm({ onDone, roleOptions }: InviteFormProps) {
   const [email, setEmail] = useState('')
   const [roleNames, setRoleNames] = useState<string[]>(['tenant_user'])
   const [formError, setFormError] = useState<string | null>(null)
@@ -46,6 +112,10 @@ function InviteForm({ onDone }: InviteFormProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setFormError(null)
+    if (roleNames.length === 0) {
+      setFormError('Pick at least one role.')
+      return
+    }
     try {
       await inviteMutation.mutateAsync({ email, roleNames })
       onDone()
@@ -78,31 +148,16 @@ function InviteForm({ onDone }: InviteFormProps) {
           </div>
 
           <div className="space-y-1.5">
-            <Label>Role</Label>
-            <div className="flex gap-3">
-              {(
-                [
-                  { value: 'tenant_user', label: 'User' },
-                  { value: 'tenant_admin', label: 'Admin' },
-                ] as const
-              ).map((r) => (
-                <button
-                  key={r.value}
-                  type="button"
-                  onClick={() => setRoleNames([r.value])}
-                  className={[
-                    'flex-1 rounded-md border px-4 py-2 text-sm font-medium transition-colors',
-                    roleNames[0] === r.value
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border text-muted-foreground hover:bg-accent/50',
-                  ].join(' ')}
-                >
-                  {r.label}
-                </button>
-              ))}
-            </div>
+            <Label>Roles</Label>
+            <RoleCheckboxList
+              options={roleOptions}
+              selected={roleNames}
+              onChange={setRoleNames}
+              disabled={inviteMutation.isPending}
+              idPrefix="invite-role"
+            />
             <p className="text-xs text-muted-foreground">
-              Admins can manage users and SSO settings. Users have standard access.
+              Pick one or more roles. Permissions are the union of every role assigned.
             </p>
           </div>
 
@@ -130,6 +185,96 @@ function InviteForm({ onDone }: InviteFormProps) {
             </Button>
           </div>
         </form>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Manage roles panel
+// ---------------------------------------------------------------------------
+
+type ManageRolesPanelProps = {
+  user: TenantUser
+  roleOptions: RoleOption[]
+  onSave: (roleNames: string[]) => Promise<void>
+  onCancel: () => void
+  isPending: boolean
+  /** True if `user` is the only active tenant_admin — used for the
+   *  client-side last-admin guard. */
+  isLastActiveAdmin: boolean
+}
+
+function ManageRolesPanel({
+  user,
+  roleOptions,
+  onSave,
+  onCancel,
+  isPending,
+  isLastActiveAdmin,
+}: ManageRolesPanelProps) {
+  const [selected, setSelected] = useState<string[]>(user.roleNames)
+  const [error, setError] = useState<string | null>(null)
+
+  const wouldRemoveLastAdmin = isLastActiveAdmin && !selected.includes('tenant_admin')
+
+  async function handleSubmit() {
+    setError(null)
+    if (selected.length === 0) {
+      setError('Pick at least one role.')
+      return
+    }
+    if (wouldRemoveLastAdmin) {
+      setError(LAST_ADMIN_MESSAGE)
+      return
+    }
+    try {
+      await onSave(selected)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred.')
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Manage roles</CardTitle>
+        <CardDescription>
+          Update the roles assigned to <strong>{user.email}</strong>.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <RoleCheckboxList
+          options={roleOptions}
+          selected={selected}
+          onChange={setSelected}
+          disabled={isPending}
+          idPrefix={`manage-role-${user.id}`}
+        />
+
+        {(error ?? (wouldRemoveLastAdmin ? LAST_ADMIN_MESSAGE : null)) && (
+          <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <AlertCircle size={14} className="shrink-0" />
+            {error ?? LAST_ADMIN_MESSAGE}
+          </div>
+        )}
+
+        <Separator />
+
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void handleSubmit()}
+            disabled={isPending || wouldRemoveLastAdmin || selected.length === 0}
+            className="gap-2"
+          >
+            {isPending && <Loader2 size={14} className="animate-spin" />}
+            Save roles
+          </Button>
+        </div>
       </CardContent>
     </Card>
   )
@@ -187,12 +332,53 @@ function StatusBadge({ status }: { status: TenantUser['status'] }) {
   )
 }
 
-function RoleBadge({ roleNames }: { roleNames: TenantUser['roleNames'] }) {
-  const isAdmin = roleNames.includes('tenant_admin')
+function RoleBadge({
+  roleNames,
+  roleOptions,
+}: {
+  roleNames: TenantUser['roleNames']
+  roleOptions: RoleOption[]
+}) {
+  if (roleNames.length === 0) {
+    return (
+      <Badge variant="outline" className="text-xs">
+        No roles
+      </Badge>
+    )
+  }
+
+  // Render up to 3 chips. Sort tenant_admin first so the most-privileged
+  // role is always visible even when truncated.
+  const labelFor = (name: string) => roleOptions.find((o) => o.name === name)?.label ?? name
+  const sorted = [...roleNames].sort((a, b) => {
+    if (a === 'tenant_admin') return -1
+    if (b === 'tenant_admin') return 1
+    return a.localeCompare(b)
+  })
+  const visible = sorted.slice(0, 3)
+  const overflow = sorted.length - visible.length
+
   return (
-    <Badge variant={isAdmin ? 'default' : 'secondary'} className="text-xs">
-      {isAdmin ? 'Admin' : 'User'}
-    </Badge>
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {visible.map((name) => (
+        <Badge
+          key={name}
+          variant={name === 'tenant_admin' ? 'default' : 'secondary'}
+          className="text-xs"
+        >
+          {labelFor(name)}
+        </Badge>
+      ))}
+      {overflow > 0 && (
+        <Badge
+          variant="outline"
+          className="text-xs"
+          title={sorted.slice(3).map(labelFor).join(', ')}
+        >
+          +{overflow}
+        </Badge>
+      )}
+    </span>
   )
 }
 
@@ -290,8 +476,11 @@ function LegacyWindowsUsernameEditor({ user, onSave }: LegacyWindowsUsernameEdit
 type UserRowProps = {
   user: TenantUser
   currentUserEmail: string
+  roleOptions: RoleOption[]
+  canManageRoles: boolean
+  canDeactivate: boolean
   onDeactivate: (user: TenantUser) => void
-  onToggleRole: (user: TenantUser) => void
+  onManageRoles: (user: TenantUser) => void
   onSaveLegacyWindowsUsername: (
     user: TenantUser,
     legacyWindowsUsername: string | null,
@@ -301,8 +490,11 @@ type UserRowProps = {
 function UserRow({
   user,
   currentUserEmail,
+  roleOptions,
+  canManageRoles,
+  canDeactivate,
   onDeactivate,
-  onToggleRole,
+  onManageRoles,
   onSaveLegacyWindowsUsername,
 }: UserRowProps) {
   const isSelf = user.email === currentUserEmail
@@ -321,7 +513,7 @@ function UserRow({
             >
               {user.email}
             </span>
-            <RoleBadge roleNames={user.roleNames} />
+            <RoleBadge roleNames={user.roleNames} roleOptions={roleOptions} />
             <StatusBadge status={user.status} />
             {isSelf && <span className="text-xs text-muted-foreground">(you)</span>}
           </div>
@@ -340,26 +532,30 @@ function UserRow({
           </div>
         </div>
       </div>
-      {!isDeactivated && !isSelf && (
+      {!isDeactivated && (canManageRoles || (!isSelf && canDeactivate)) && (
         <div className="flex shrink-0 items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 text-xs"
-            onClick={() => onToggleRole(user)}
-          >
-            <ShieldAlert size={13} />
-            {user.roleNames.includes('tenant_admin') ? 'Make user' : 'Make admin'}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 text-xs text-destructive hover:text-destructive"
-            onClick={() => onDeactivate(user)}
-          >
-            <UserX size={13} />
-            Deactivate
-          </Button>
+          {canManageRoles && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={() => onManageRoles(user)}
+            >
+              <ShieldCheck size={13} />
+              Manage roles
+            </Button>
+          )}
+          {!isSelf && canDeactivate && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-xs text-destructive hover:text-destructive"
+              onClick={() => onDeactivate(user)}
+            >
+              <UserX size={13} />
+              Deactivate
+            </Button>
+          )}
         </div>
       )}
     </div>
@@ -370,19 +566,46 @@ function UserRow({
 // UsersPage
 // ---------------------------------------------------------------------------
 
-type PanelState = { kind: 'none' } | { kind: 'invite' } | { kind: 'deactivate'; user: TenantUser }
+type PanelState =
+  | { kind: 'none' }
+  | { kind: 'invite' }
+  | { kind: 'deactivate'; user: TenantUser }
+  | { kind: 'manage'; user: TenantUser }
 
 export function UsersPage() {
   const session = getSession()
-  const { data: usersData, isLoading, isError } = useQuery(usersQueryOptions)
+  const perms = usePermissions()
+  const canList = perms.has('user:list')
+  const {
+    data: usersData,
+    isLoading,
+    isError,
+  } = useQuery({
+    ...usersQueryOptions,
+    enabled: canList,
+  })
+  const { data: roleOptions } = useQuery({
+    ...roleOptionsQueryOptions,
+    enabled: canList,
+  })
   const users = usersData ?? []
   const deactivateMutation = useDeactivateUser()
   const roleMutation = useUpdateUserRole()
   const legacyWindowsUsernameMutation = useUpdateUserLegacyWindowsUsername()
   const [panel, setPanel] = useState<PanelState>({ kind: 'none' })
 
-  // Client-side guard — page only accessible to tenant_admin.
-  if (!session?.roleNames.includes('tenant_admin')) {
+  // Count of currently-active tenant_admins. Used by ManageRolesPanel to
+  // refuse client-side when the admin tries to remove tenant_admin from the
+  // last remaining admin (mirrors the server-side guard on DELETE).
+  const activeAdminCount = useMemo(
+    () => users.filter((u) => u.status === 'ACTIVE' && u.roleNames.includes('tenant_admin')).length,
+    [users],
+  )
+
+  // Client-side guard — page only accessible to principals with `user:list`.
+  // Wait for the permission query to resolve before deciding (prevents a
+  // permission-denied flash on first paint).
+  if (!perms.isLoading && !canList) {
     return (
       <div>
         <PageHeader title="Users" breadcrumbs={[{ label: 'Settings' }, { label: 'Users' }]} />
@@ -394,7 +617,7 @@ export function UsersPage() {
     )
   }
 
-  if (isLoading) {
+  if (perms.isLoading || isLoading) {
     return (
       <div>
         <PageHeader title="Users" breadcrumbs={[{ label: 'Settings' }, { label: 'Users' }]} />
@@ -427,15 +650,9 @@ export function UsersPage() {
     }
   }
 
-  async function handleToggleRole(user: TenantUser) {
-    const newRoleNames = user.roleNames.includes('tenant_admin')
-      ? ['tenant_user']
-      : ['tenant_admin']
-    try {
-      await roleMutation.mutateAsync({ id: user.id, input: { roleNames: newRoleNames } })
-    } catch {
-      // Error surfaces via roleMutation.error
-    }
+  async function handleSaveRoles(user: TenantUser, roleNames: string[]) {
+    await roleMutation.mutateAsync({ id: user.id, input: { roleNames } })
+    setPanel({ kind: 'none' })
   }
 
   async function handleSaveLegacyWindowsUsername(
@@ -452,7 +669,15 @@ export function UsersPage() {
         breadcrumbs={[{ label: 'Settings' }, { label: 'Users' }]}
         action={
           panel.kind !== 'invite' && (
-            <Button size="sm" className="gap-2" onClick={() => setPanel({ kind: 'invite' })}>
+            <Button
+              size="sm"
+              className="gap-2"
+              disabled={!perms.has('user:invite')}
+              title={
+                perms.has('user:invite') ? undefined : 'You do not have permission to invite users.'
+              }
+              onClick={() => setPanel({ kind: 'invite' })}
+            >
               <UserPlus size={14} />
               Invite user
             </Button>
@@ -469,16 +694,23 @@ export function UsersPage() {
         )}
 
         {users.map((user) => {
+          const row = (
+            <UserRow
+              user={user}
+              currentUserEmail={session?.email ?? ''}
+              roleOptions={roleOptions ?? []}
+              canManageRoles={perms.has('user:update')}
+              canDeactivate={perms.has('user:deactivate')}
+              onDeactivate={(u) => setPanel({ kind: 'deactivate', user: u })}
+              onManageRoles={(u) => setPanel({ kind: 'manage', user: u })}
+              onSaveLegacyWindowsUsername={handleSaveLegacyWindowsUsername}
+            />
+          )
+
           if (panel.kind === 'deactivate' && panel.user.id === user.id) {
             return (
               <div key={user.id} className="space-y-2">
-                <UserRow
-                  user={user}
-                  currentUserEmail={session?.email ?? ''}
-                  onDeactivate={(u) => setPanel({ kind: 'deactivate', user: u })}
-                  onToggleRole={(u) => void handleToggleRole(u)}
-                  onSaveLegacyWindowsUsername={handleSaveLegacyWindowsUsername}
-                />
+                {row}
                 <DeactivateConfirm
                   user={user}
                   onConfirm={() => void handleDeactivate(user)}
@@ -489,19 +721,32 @@ export function UsersPage() {
             )
           }
 
-          return (
-            <UserRow
-              key={user.id}
-              user={user}
-              currentUserEmail={session?.email ?? ''}
-              onDeactivate={(u) => setPanel({ kind: 'deactivate', user: u })}
-              onToggleRole={(u) => void handleToggleRole(u)}
-              onSaveLegacyWindowsUsername={handleSaveLegacyWindowsUsername}
-            />
-          )
+          if (panel.kind === 'manage' && panel.user.id === user.id) {
+            const isLastActiveAdmin =
+              user.status === 'ACTIVE' &&
+              user.roleNames.includes('tenant_admin') &&
+              activeAdminCount <= 1
+            return (
+              <div key={user.id} className="space-y-2">
+                {row}
+                <ManageRolesPanel
+                  user={user}
+                  roleOptions={roleOptions ?? []}
+                  isLastActiveAdmin={isLastActiveAdmin}
+                  onSave={(roleNames) => handleSaveRoles(user, roleNames)}
+                  onCancel={() => setPanel({ kind: 'none' })}
+                  isPending={roleMutation.isPending}
+                />
+              </div>
+            )
+          }
+
+          return <div key={user.id}>{row}</div>
         })}
 
-        {panel.kind === 'invite' && <InviteForm onDone={() => setPanel({ kind: 'none' })} />}
+        {panel.kind === 'invite' && (
+          <InviteForm onDone={() => setPanel({ kind: 'none' })} roleOptions={roleOptions ?? []} />
+        )}
       </div>
     </div>
   )

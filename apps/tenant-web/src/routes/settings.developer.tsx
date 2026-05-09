@@ -39,6 +39,7 @@ import {
 import { mssqlSettingsQueryOptions, useUpdateMssqlSettings } from '@/api/queries/settings'
 import type { ApiClient, ApiClientWithKey } from '@/api/api-clients'
 import { getConfig } from '@/config'
+import { usePermissions } from '@/auth/permissions'
 
 // ---------------------------------------------------------------------------
 // Add / Edit form
@@ -332,12 +333,23 @@ function ApiUsageCard() {
 
 type ApiClientRowProps = {
   client: ApiClient
+  canEdit: boolean
+  canRotate: boolean
+  canRevoke: boolean
   onEdit: (client: ApiClient) => void
   onRevoke: (client: ApiClient) => void
   onRotate: (client: ApiClient) => void
 }
 
-function ApiClientRowItem({ client, onEdit, onRevoke, onRotate }: ApiClientRowProps) {
+function ApiClientRowItem({
+  client,
+  canEdit,
+  canRotate,
+  canRevoke,
+  onEdit,
+  onRevoke,
+  onRotate,
+}: ApiClientRowProps) {
   const isRevoked = client.revokedAt !== null
 
   return (
@@ -376,33 +388,39 @@ function ApiClientRowItem({ client, onEdit, onRevoke, onRotate }: ApiClientRowPr
       <div className="flex shrink-0 items-center gap-1">
         {!isRevoked && (
           <>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5 text-xs"
-              onClick={() => onEdit(client)}
-            >
-              <Pencil size={13} />
-              Edit
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-100"
-              onClick={() => onRotate(client)}
-            >
-              <RefreshCw size={13} />
-              Rotate
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-              onClick={() => onRevoke(client)}
-            >
-              <Trash2 size={13} />
-              Revoke
-            </Button>
+            {canEdit && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-xs"
+                onClick={() => onEdit(client)}
+              >
+                <Pencil size={13} />
+                Edit
+              </Button>
+            )}
+            {canRotate && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-100"
+                onClick={() => onRotate(client)}
+              >
+                <RefreshCw size={13} />
+                Rotate
+              </Button>
+            )}
+            {canRevoke && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={() => onRevoke(client)}
+              >
+                <Trash2 size={13} />
+                Revoke
+              </Button>
+            )}
           </>
         )}
       </div>
@@ -654,6 +672,10 @@ export function DeveloperSettingsPage() {
   const { data: clients, isLoading, isError } = useQuery(apiClientsQueryOptions)
   const revokeMutation = useRevokeApiClient()
   const rotateMutation = useRotateApiClient()
+  const perms = usePermissions()
+  const canCreate = perms.has('api_client:create')
+  const canRotate = perms.has('api_client:rotate')
+  const canRevoke = perms.has('api_client:revoke')
 
   const [panel, setPanel] = useState<PanelState>({ kind: 'none' })
   const [newKey, setNewKey] = useState<ApiClientWithKey | null>(null)
@@ -719,7 +741,13 @@ export function DeveloperSettingsPage() {
           breadcrumbs={[{ label: 'Settings' }, { label: 'Developer Settings' }]}
           action={
             panel.kind !== 'add' && (
-              <Button size="sm" className="gap-2" onClick={() => setPanel({ kind: 'add' })}>
+              <Button
+                size="sm"
+                className="gap-2"
+                disabled={!canCreate}
+                title={canCreate ? undefined : 'You do not have permission to create API clients.'}
+                onClick={() => setPanel({ kind: 'add' })}
+              >
                 <Plus size={14} />
                 Create API Client
               </Button>
@@ -743,6 +771,9 @@ export function DeveloperSettingsPage() {
                 <div key={client.id} className="space-y-2">
                   <ApiClientRowItem
                     client={client}
+                    canEdit={canCreate}
+                    canRotate={canRotate}
+                    canRevoke={canRevoke}
                     onEdit={() => setPanel({ kind: 'edit', client })}
                     onRevoke={() => setPanel({ kind: 'revoke', client })}
                     onRotate={() => setPanel({ kind: 'rotate', client })}
@@ -761,6 +792,9 @@ export function DeveloperSettingsPage() {
                 <div key={client.id} className="space-y-2">
                   <ApiClientRowItem
                     client={client}
+                    canEdit={canCreate}
+                    canRotate={canRotate}
+                    canRevoke={canRevoke}
                     onEdit={() => setPanel({ kind: 'edit', client })}
                     onRevoke={() => setPanel({ kind: 'revoke', client })}
                     onRotate={() => setPanel({ kind: 'rotate', client })}
@@ -780,6 +814,9 @@ export function DeveloperSettingsPage() {
                 <div key={client.id} className="space-y-2">
                   <ApiClientRowItem
                     client={client}
+                    canEdit={canCreate}
+                    canRotate={canRotate}
+                    canRevoke={canRevoke}
                     onEdit={() => setPanel({ kind: 'edit', client })}
                     onRevoke={() => setPanel({ kind: 'revoke', client })}
                     onRotate={() => setPanel({ kind: 'rotate', client })}
@@ -798,6 +835,9 @@ export function DeveloperSettingsPage() {
               <ApiClientRowItem
                 key={client.id}
                 client={client}
+                canEdit={canCreate}
+                canRotate={canRotate}
+                canRevoke={canRevoke}
                 onEdit={(c) => setPanel({ kind: 'edit', client: c })}
                 onRevoke={(c) => setPanel({ kind: 'revoke', client: c })}
                 onRotate={(c) => setPanel({ kind: 'rotate', client: c })}

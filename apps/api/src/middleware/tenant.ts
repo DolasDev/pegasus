@@ -75,6 +75,15 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
   const customRolesRaw = payload['custom:roles'] as string | undefined
   const cognitoSub = payload['sub'] as string | undefined
 
+  // `sub` is a required JWT claim per RFC 7519 and Cognito always emits it for
+  // both ID and access tokens. Treat a missing/empty value as a malformed token
+  // rather than silently degrading: an empty string would produce a malformed
+  // AVP entity ID downstream and skip the TenantUser lookup that powers audit
+  // trails.
+  if (!cognitoSub) {
+    return c.json({ error: 'Invalid token: missing subject', code: 'UNAUTHORIZED' }, 401)
+  }
+
   if (!customTenantId || !customRolesRaw) {
     return c.json({ error: 'Forbidden: incomplete tenant configuration', code: 'FORBIDDEN' }, 403)
   }
@@ -116,7 +125,7 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
 
   c.set('tenantId', tenant.id)
   c.set('principal', {
-    sub: cognitoSub ?? '',
+    sub: cognitoSub,
     tenantId: tenant.id,
     roleNames,
   })
@@ -130,14 +139,12 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
   // Resolve the TenantUser.id so handlers can use it for audit trails (e.g.
   // recording who created an API client). Fail-open: if the user record is not
   // found (shouldn't happen for valid authenticated sessions), userId is unset.
-  if (cognitoSub) {
-    const tenantUser = await basePrisma.tenantUser.findFirst({
-      where: { tenantId: tenant.id, cognitoSub },
-      select: { id: true },
-    })
-    if (tenantUser) {
-      c.set('userId', tenantUser.id)
-    }
+  const tenantUser = await basePrisma.tenantUser.findFirst({
+    where: { tenantId: tenant.id, cognitoSub },
+    select: { id: true },
+  })
+  if (tenantUser) {
+    c.set('userId', tenantUser.id)
   }
 
   await next()

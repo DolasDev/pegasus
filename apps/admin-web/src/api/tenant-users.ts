@@ -21,9 +21,20 @@ export interface TenantUser {
   deactivatedAt: string | null
 }
 
+/** A single Cedar role group as advertised by GET /role-options. */
+export interface RoleOption {
+  name: string
+  label: string
+  description: string
+}
+
 // ---------------------------------------------------------------------------
 // API calls
 // ---------------------------------------------------------------------------
+
+export async function listTenantUserRoleOptions(tenantId: string): Promise<RoleOption[]> {
+  return adminFetch<RoleOption[]>(`/api/admin/tenants/${tenantId}/users/role-options`)
+}
 
 export async function listTenantUsers(
   tenantId: string,
