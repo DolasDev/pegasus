@@ -64,7 +64,8 @@
     "react-test-renderer": "Pinned to match react exactly (the package requires react ^<its own>).",
     "@babel/plugin-transform-modules-systemjs": "GHSA-fv7c-fp4j-7gwp arbitrary code on malicious input",
     "fast-uri": "GHSA-q3j6-qgpj-74h6 / GHSA-v39h-62p7-jpjc path traversal + host confusion",
-    "fast-xml-builder": "GHSA-5wm8-gmm8-39j9 / GHSA-45c6-75p6-83cc attribute / comment regex bypass"
+    "fast-xml-builder": "GHSA-5wm8-gmm8-39j9 / GHSA-45c6-75p6-83cc attribute / comment regex bypass",
+    "jest-runtime": "30.4.0/.1/.2 call jest-mock.clearMocksOnScope() but no published jest-mock has that method; pin to 30.3.0 (last good) until jest ships a matching jest-mock"
   },
   "overrides": {
     "handlebars": ">=4.7.9",
@@ -98,7 +99,8 @@
     "react-test-renderer": "19.2.0",
     "@babel/plugin-transform-modules-systemjs": ">=7.29.1",
     "fast-uri": ">=3.1.2",
-    "fast-xml-builder": ">=1.1.7"
+    "fast-xml-builder": ">=1.1.7",
+    "jest-runtime": "30.3.0"
   },
   "engines": {
     "node": ">=18.0.0",
