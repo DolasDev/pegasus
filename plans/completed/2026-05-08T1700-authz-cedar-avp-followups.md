@@ -93,6 +93,15 @@ work down the deferred cleanup items in safest-first order.
       `aws verifiedpermissions delete-policy-store --policy-store-id MWqwqkPkEohrddMJdWxw2n`,
       and Cognito AdminDeleteUser on `dolasllc+avpsmoke@gmail.com`.
 
+      _Follow-up 2026-05-08 (permissions-usability phase C1):_ the
+      one-off staging walk-through above is now backed by a recurring
+      gate. `apps/e2e/tests/api/authz-smoke.spec.ts` runs on every
+      remote staging E2E and provisions a fresh `tenant_user` persona
+      user per run, asserting `GET /api/v1/users` and
+      `POST /api/v1/users/invite` both 403. A regression that broke
+      the negative-auth path would now fail the deploy gate, not just
+      a manual smoke.
+
 ### Existing-tenant backfill
 
 - [x] **5. Backfill `tenants.policy_store_id` for all pre-existing tenants.**
