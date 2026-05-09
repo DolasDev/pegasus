@@ -126,7 +126,7 @@ jobs:
         run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
 
       - name: Audit dependencies
-        run: npm audit --audit-level=high
+        run: npx --no-install audit-ci --config ./audit-ci.jsonc
 
       - name: Initialise database schema and extensions
         run: |
