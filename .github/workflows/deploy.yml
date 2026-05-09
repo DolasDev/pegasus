@@ -154,6 +154,9 @@ jobs:
     if: needs.changes.outputs.any == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: staging
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -189,6 +192,15 @@ jobs:
           echo "CLIENT_ID=$(jq -r '.["pegasus-staging-cognito"].MobileClientId // empty' "$F")" >> "$GITHUB_OUTPUT"
           echo "TENANT_CLIENT_ID=$(jq -r '.["pegasus-staging-cognito"].TenantClientId // empty' "$F")" >> "$GITHUB_OUTPUT"
 
+      # Persona-coverage tests in authz-smoke.spec.ts call AdminSetUserPassword
+      # against the staging Cognito user pool, so the runner needs AWS creds.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+          role-session-name: pegasus-e2e-staging-${{ github.run_id }}
+
       - name: Run E2E (remote)
         working-directory: apps/e2e
         env:
@@ -201,6 +213,7 @@ jobs:
           E2E_STAGING_ADMIN_USERNAME: ${{ vars.E2E_STAGING_ADMIN_USERNAME }}
           E2E_STAGING_ADMIN_PASSWORD: ${{ secrets.E2E_STAGING_ADMIN_PASSWORD }}
           E2E_STAGING_TENANT_ID: ${{ vars.E2E_STAGING_TENANT_ID }}
+          AWS_REGION: us-east-1
         run: npx playwright test
 
       - name: Upload Playwright report
