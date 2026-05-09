@@ -191,13 +191,16 @@ jobs:
           echo "USER_POOL_ID=$(jq -r '.["pegasus-staging-cognito"].UserPoolId' "$F")" >> "$GITHUB_OUTPUT"
           echo "CLIENT_ID=$(jq -r '.["pegasus-staging-cognito"].MobileClientId // empty' "$F")" >> "$GITHUB_OUTPUT"
           echo "TENANT_CLIENT_ID=$(jq -r '.["pegasus-staging-cognito"].TenantClientId // empty' "$F")" >> "$GITHUB_OUTPUT"
+          echo "E2E_ROLE_ARN=$(jq -r '.["pegasus-staging-e2e-role"].E2ERoleArn' "$F")" >> "$GITHUB_OUTPUT"
 
       # Persona-coverage tests in authz-smoke.spec.ts call AdminSetUserPassword
-      # against the staging Cognito user pool, so the runner needs AWS creds.
+      # against the staging Cognito user pool. We assume a narrow, e2e-only
+      # role provisioned by PegasusStaging-E2EStagingRoleStack — see
+      # packages/infra/lib/stacks/e2e-staging-role-stack.ts.
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ steps.outs.outputs.E2E_ROLE_ARN }}
           aws-region: us-east-1
           role-session-name: pegasus-e2e-staging-${{ github.run_id }}
 
