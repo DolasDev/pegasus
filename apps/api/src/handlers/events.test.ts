@@ -1,9 +1,11 @@
 // ---------------------------------------------------------------------------
 // Unit tests for the events handler (/api/v1/events)
 //
-// m2mAppAuthMiddleware is mocked to inject context without real key verification.
-// Repository functions are mocked so no DB is required.
-// Scope enforcement (requireScope) is tested via the mocked apiClient.
+// m2mAppAuthMiddleware is mocked to inject AppEnv context without real key
+// verification. Repository functions are mocked so no DB is required.
+// Permission enforcement runs through the real Cedar wasm backend against the
+// service-account TenantUser's roleNames — buildApp(roles) selects the role
+// set and the test asserts the resulting allow/deny.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -11,20 +13,26 @@ import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
 import type { AppEnv, ApiClientContext } from '../types'
 import { registerTestErrorHandler } from '../test-helpers'
+import { _clearAuthzCache } from '../lib/authz'
 
 // ---------------------------------------------------------------------------
 // Mock m2mAppAuthMiddleware — replaced with a context-injecting stub
 // ---------------------------------------------------------------------------
 
+const TENANT_ID = 'test-tenant-id'
+const SVC_USER_ID = 'svc-events'
+
 const mockApiClient: ApiClientContext = {
   id: 'client-1',
-  tenantId: 'test-tenant-id',
+  tenantId: TENANT_ID,
   name: 'Test Integration',
   keyPrefix: 'vnd_test000000',
-  scopes: ['events:read', 'events:write'],
+  scopes: [],
   lastUsedAt: null,
   revokedAt: null,
   createdById: 'user-1',
+  actsAsUserId: SVC_USER_ID,
+  roleNames: ['integrations'],
   createdAt: new Date('2024-01-01T00:00:00Z'),
   updatedAt: new Date('2024-01-01T00:00:00Z'),
 }
@@ -83,22 +91,24 @@ function post(body: unknown): RequestInit {
 
 /**
  * Builds a test app wrapping eventsHandler.
- * The mocked m2mAppAuthMiddleware is overridden to inject context
- * based on the provided apiClient (null = unauthenticated/wrong key).
+ * The mocked m2mAppAuthMiddleware injects AppEnv context with the requested
+ * roleNames; permission enforcement runs through the real Cedar wasm backend.
  */
-function buildApp(apiClient: ApiClientContext | null = mockApiClient) {
-  // Override the mock to inject context
+type BuildAppOpts = { roles?: readonly string[]; authenticated?: boolean }
+
+function buildApp(opts: BuildAppOpts = {}) {
+  const { roles = ['integrations'], authenticated = true } = opts
   vi.mocked(m2mAppAuthMiddleware).mockImplementation(async (c, next) => {
-    if (apiClient === null) {
+    if (!authenticated) {
       return c.json({ error: 'Missing or invalid API key', code: 'UNAUTHORIZED' }, 401)
     }
-    // m2mAppAuth always operates on tenant-scoped clients in this test —
-    // assert non-null to satisfy the AppEnv tenantId: string contract.
-    if (apiClient.tenantId === null) throw new Error('test fixture must have tenantId')
-    c.set('tenantId', apiClient.tenantId)
+    c.set('tenantId', TENANT_ID)
     c.set('db', {} as unknown as PrismaClient)
-    c.set('userId', undefined)
-    c.set('apiClient', apiClient)
+    c.set('userId', SVC_USER_ID)
+    c.set('principal', { sub: SVC_USER_ID, tenantId: TENANT_ID, roleNames: [...roles] })
+    c.set('idToken', undefined)
+    c.set('policyStoreId', undefined)
+    c.set('apiClient', mockApiClient)
     await next()
   })
 
@@ -134,13 +144,15 @@ const mockEventRow = {
 describe('events handler', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    _clearAuthzCache()
+    process.env['AUTHZ_OFFLINE'] = 'true'
   })
 
   // ── Auth ──────────────────────────────────────────────────────────────────
 
   describe('auth (m2mAppAuthMiddleware)', () => {
     it('returns 401 when no valid API key is present', async () => {
-      const app = buildApp(null)
+      const app = buildApp({ authenticated: false })
       const res = await app.request('/', { method: 'GET' })
       // The eventsHandler doesn't have a route at /, but auth runs first
       expect(res.status).toBe(401)
@@ -148,12 +160,12 @@ describe('events handler', () => {
     })
   })
 
-  // ── Scope enforcement ─────────────────────────────────────────────────────
+  // ── Permission enforcement (Cedar against principal.roleNames) ────────────
 
-  describe('scope enforcement', () => {
-    it('returns 403 FORBIDDEN when apiClient lacks events:write scope on POST', async () => {
-      const readOnlyClient: ApiClientContext = { ...mockApiClient, scopes: ['events:read'] }
-      const app = buildApp(readOnlyClient)
+  describe('permission enforcement', () => {
+    it('returns 403 FORBIDDEN when reporting role attempts POST /', async () => {
+      // reporting permits ReadEvent but not CreateEvent
+      const app = buildApp({ roles: ['reporting'] })
       const res = await app.request(
         '/',
         post({
@@ -165,20 +177,26 @@ describe('events handler', () => {
       expect((await json(res)).code).toBe('FORBIDDEN')
     })
 
-    it('returns 403 FORBIDDEN when apiClient lacks events:read scope on GET', async () => {
-      const writeOnlyClient: ApiClientContext = { ...mockApiClient, scopes: ['events:write'] }
-      const app = buildApp(writeOnlyClient)
+    it('returns 403 FORBIDDEN when principal has no roles on GET /:eventType', async () => {
+      const app = buildApp({ roles: [] })
       const res = await app.request('/LEAD_CREATED')
       expect(res.status).toBe(403)
       expect((await json(res)).code).toBe('FORBIDDEN')
     })
 
-    it('returns 403 FORBIDDEN when apiClient lacks events:write scope on DELETE', async () => {
-      const readOnlyClient: ApiClientContext = { ...mockApiClient, scopes: ['events:read'] }
-      const app = buildApp(readOnlyClient)
+    it('returns 403 FORBIDDEN when reporting role attempts DELETE /:eventId', async () => {
+      // reporting is read-only; DeleteEvent is denied
+      const app = buildApp({ roles: ['reporting'] })
       const res = await app.request('/evt-cuid-1', { method: 'DELETE' })
       expect(res.status).toBe(403)
       expect((await json(res)).code).toBe('FORBIDDEN')
+    })
+
+    it('allows GET /:eventType for the reporting role', async () => {
+      mockEventsRepo.listEventsByType.mockResolvedValue([])
+      const app = buildApp({ roles: ['reporting'] })
+      const res = await app.request('/LEAD_CREATED')
+      expect(res.status).toBe(200)
     })
   })
 
@@ -337,9 +355,9 @@ describe('events handler', () => {
       }
     }
 
-    it('returns 403 FORBIDDEN when apiClient lacks events:write scope', async () => {
-      const readOnlyClient: ApiClientContext = { ...mockApiClient, scopes: ['events:read'] }
-      const app = buildApp(readOnlyClient)
+    it('returns 403 FORBIDDEN when reporting role attempts PATCH', async () => {
+      // reporting permits ReadEvent but not UpdateEvent
+      const app = buildApp({ roles: ['reporting'] })
       const res = await app.request('/evt-cuid-1', patch({ eventStatus: 'PROCESSING' }))
       expect(res.status).toBe(403)
       expect((await json(res)).code).toBe('FORBIDDEN')

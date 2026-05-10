@@ -17,7 +17,7 @@ import { _clearAuthzCache } from '../lib/authz'
 // Mock the repository
 // ---------------------------------------------------------------------------
 
-const { mockRepo } = vi.hoisted(() => ({
+const { mockRepo, mockTx } = vi.hoisted(() => ({
   mockRepo: {
     create: vi.fn(),
     listByTenant: vi.fn(),
@@ -26,6 +26,12 @@ const { mockRepo } = vi.hoisted(() => ({
     revoke: vi.fn(),
     rotate: vi.fn(),
     touchLastUsed: vi.fn(),
+  },
+  mockTx: {
+    tenantUser: {
+      create: vi.fn(),
+      update: vi.fn(),
+    },
   },
 }))
 
@@ -62,11 +68,14 @@ function patch(body: unknown): RequestInit {
 }
 
 function buildApp(role: string | null = 'tenant_admin', userId = 'user-1') {
+  const fakeDb = {
+    $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(mockTx),
+  } as unknown as PrismaClient
   const app = new Hono<AppEnv>()
   registerTestErrorHandler(app)
   app.use('*', seedPrincipalForRole(role))
   app.use('*', async (c, next) => {
-    c.set('db', {} as unknown as PrismaClient)
+    c.set('db', fakeDb)
     c.set('userId', userId)
     await next()
   })
@@ -85,10 +94,12 @@ const mockRow = {
   tenantId: 'test-tenant-id',
   name: 'Test Client',
   keyPrefix: 'vnd_a1b2c3d4',
-  scopes: ['orders:read'],
+  scopes: [] as string[],
   lastUsedAt: null,
   revokedAt: null,
   createdById: 'user-1',
+  actsAsUserId: 'svc-user-1',
+  roleNames: ['integrations'],
   createdAt: now,
   updatedAt: now,
 }
@@ -124,57 +135,72 @@ describe('api-clients handler', () => {
 
   describe('POST /', () => {
     it('returns 400 VALIDATION_ERROR when name is missing', async () => {
-      const res = await buildApp().request('/', post({ scopes: ['orders:read'] }))
+      const res = await buildApp().request('/', post({ roleNames: ['integrations'] }))
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')
     })
 
-    it('returns 400 VALIDATION_ERROR when scopes is missing', async () => {
+    it('returns 400 VALIDATION_ERROR when roleNames is missing', async () => {
       const res = await buildApp().request('/', post({ name: 'My Client' }))
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')
     })
 
-    it('returns 400 VALIDATION_ERROR when scopes is empty array', async () => {
-      const res = await buildApp().request('/', post({ name: 'My Client', scopes: [] }))
+    it('returns 400 VALIDATION_ERROR when roleNames is empty array', async () => {
+      const res = await buildApp().request('/', post({ name: 'My Client', roleNames: [] }))
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')
     })
 
     it('returns 201 with data and plainKey on success', async () => {
+      mockTx.tenantUser.create.mockResolvedValue({})
       mockRepo.create.mockResolvedValue({ row: mockRow, plainKey: 'vnd_theplainkey' })
       const res = await buildApp().request(
         '/',
-        post({ name: 'My Client', scopes: ['orders:read'] }),
+        post({ name: 'My Client', roleNames: ['integrations'] }),
       )
       expect(res.status).toBe(201)
       const body = await json(res)
       const data = body.data as JsonBody
       expect(data['name']).toBe('Test Client')
       expect(data['plainKey']).toBe('vnd_theplainkey')
-      // keyHash must never appear in response
+      expect(data['roleNames']).toEqual(['integrations'])
+      expect(data['actsAsUserId']).toBe('svc-user-1')
+      // keyHash and freeform scopes must never appear in response
       expect('keyHash' in data).toBe(false)
+      expect('scopes' in data).toBe(false)
     })
 
-    it('passes tenantId, name, scopes, userId to repo.create', async () => {
+    it('provisions a service-account TenantUser with isServiceAccount=true', async () => {
+      mockTx.tenantUser.create.mockResolvedValue({})
       mockRepo.create.mockResolvedValue({ row: mockRow, plainKey: 'vnd_key' })
       await buildApp('tenant_admin', 'user-42').request(
         '/',
-        post({ name: 'Vendor Bot', scopes: ['invoices:read'] }),
+        post({ name: 'Vendor Bot', roleNames: ['reporting'] }),
       )
+      expect(mockTx.tenantUser.create).toHaveBeenCalledOnce()
+      const args = mockTx.tenantUser.create.mock.calls[0]![0] as { data: Record<string, unknown> }
+      expect(args.data['tenantId']).toBe('test-tenant-id')
+      expect(args.data['isServiceAccount']).toBe(true)
+      expect(args.data['cognitoSub']).toBeNull()
+      expect(args.data['status']).toBe('ACTIVE')
+      expect(args.data['roleNames']).toEqual(['reporting'])
+      // The api-client is bound to the same id minted for the service account
       expect(mockRepo.create).toHaveBeenCalledWith(
         'test-tenant-id',
         'Vendor Bot',
-        ['invoices:read'],
+        [],
         'user-42',
+        args.data['id'],
       )
     })
 
-    it('returns 500 INTERNAL_ERROR when repo.create throws', async () => {
+    it('returns 500 INTERNAL_ERROR when repo.create throws inside the tx', async () => {
+      mockTx.tenantUser.create.mockResolvedValue({})
       mockRepo.create.mockRejectedValue(new Error('db error'))
       const res = await buildApp().request(
         '/',
-        post({ name: 'My Client', scopes: ['orders:read'] }),
+        post({ name: 'My Client', roleNames: ['integrations'] }),
       )
       expect(res.status).toBe(500)
       expect((await json(res)).code).toBe('INTERNAL_ERROR')
@@ -239,7 +265,7 @@ describe('api-clients handler', () => {
   // ── PATCH /:id ────────────────────────────────────────────────────────────
 
   describe('PATCH /:id', () => {
-    it('returns 400 VALIDATION_ERROR when neither name nor scopes is provided', async () => {
+    it('returns 400 VALIDATION_ERROR when neither name nor roleNames is provided', async () => {
       const res = await buildApp().request('/client-1', patch({}))
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')
@@ -258,21 +284,30 @@ describe('api-clients handler', () => {
       expect(res.status).toBe(200)
       const body = await json(res)
       expect((body.data as JsonBody)['name']).toBe('Updated Name')
+      expect(mockTx.tenantUser.update).not.toHaveBeenCalled()
     })
 
-    it('returns 200 with updated client on scopes update', async () => {
-      mockRepo.findById.mockResolvedValue(mockRow)
-      mockRepo.update.mockResolvedValue({
-        ...mockRow,
-        scopes: ['orders:read', 'orders:write'],
-      })
-      const res = await buildApp().request(
-        '/client-1',
-        patch({ scopes: ['orders:read', 'orders:write'] }),
-      )
+    it('returns 200 with updated client on roleNames update', async () => {
+      mockRepo.findById
+        .mockResolvedValueOnce(mockRow) // initial lookup
+        .mockResolvedValueOnce({ ...mockRow, roleNames: ['reporting'] }) // re-read inside tx
+      mockTx.tenantUser.update.mockResolvedValue({})
+      const res = await buildApp().request('/client-1', patch({ roleNames: ['reporting'] }))
       expect(res.status).toBe(200)
       const body = await json(res)
-      expect((body.data as JsonBody)['scopes']).toEqual(['orders:read', 'orders:write'])
+      expect((body.data as JsonBody)['roleNames']).toEqual(['reporting'])
+      expect(mockTx.tenantUser.update).toHaveBeenCalledWith({
+        where: { id: 'svc-user-1' },
+        data: { roleNames: ['reporting'] },
+      })
+      expect(mockRepo.update).not.toHaveBeenCalled()
+    })
+
+    it('returns 409 STALE_API_CLIENT when patching roleNames on a stale row', async () => {
+      mockRepo.findById.mockResolvedValue({ ...mockRow, actsAsUserId: null, roleNames: [] })
+      const res = await buildApp().request('/client-1', patch({ roleNames: ['reporting'] }))
+      expect(res.status).toBe(409)
+      expect((await json(res)).code).toBe('STALE_API_CLIENT')
     })
   })
 

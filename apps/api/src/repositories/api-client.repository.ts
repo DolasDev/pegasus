@@ -17,6 +17,11 @@ import { logger } from '../lib/logger'
 /**
  * A safe projection of the api_clients row — keyHash is intentionally excluded
  * at the Prisma select level so it can never leak into an API response.
+ *
+ * `roleNames` is resolved from the joined service-account TenantUser; an empty
+ * array means the row is stale (no service-account principal bound, e.g. rows
+ * created before the service-account migration). The auth middleware rejects
+ * such rows.
  */
 export type ApiClientRow = {
   id: string
@@ -27,8 +32,38 @@ export type ApiClientRow = {
   lastUsedAt: Date | null
   revokedAt: Date | null
   createdById: string
+  /**
+   * Service-account TenantUser this key acts as. Cedar/AVP authorization runs
+   * against this user's roleNames. Nullable at the column level but the API
+   * enforces non-null on create; rows with null here are stale.
+   */
+  actsAsUserId: string | null
+  /** Resolved from the bound service-account TenantUser. `[]` for stale rows. */
+  roleNames: string[]
   createdAt: Date
   updatedAt: Date
+}
+
+/**
+ * Slim TenantUser projection joined onto the auth lookup so a single query
+ * returns everything the middleware needs to construct the principal.
+ */
+export type ApiClientActsAsUser = {
+  id: string
+  tenantId: string
+  isServiceAccount: boolean
+  status: 'PENDING' | 'ACTIVE' | 'DEACTIVATED'
+  roleNames: string[]
+}
+
+/**
+ * Auth-path row shape — like ApiClientRow but with the keyHash retained for
+ * timing-safe comparison and the full service-account user join (rather than a
+ * flattened roleNames). Never use this in API responses.
+ */
+export type ApiClientAuthRow = Omit<ApiClientRow, 'roleNames'> & {
+  keyHash: string
+  actsAsUser: ApiClientActsAsUser | null
 }
 
 /** Returned only from create() and rotate() — shown to the caller once, never logged or stored. */
@@ -69,8 +104,42 @@ const API_CLIENT_SELECT = {
   lastUsedAt: true,
   revokedAt: true,
   createdById: true,
+  actsAsUserId: true,
   createdAt: true,
   updatedAt: true,
+  actsAsUser: {
+    select: { roleNames: true },
+  },
+} as const
+
+/** Row shape returned by Prisma against API_CLIENT_SELECT (with the join). */
+type ApiClientSelectRow = Omit<ApiClientRow, 'roleNames'> & {
+  actsAsUser: { roleNames: string[] } | null
+}
+
+/** Flatten the joined actsAsUser.roleNames onto the public ApiClientRow shape. */
+function mapRow(row: ApiClientSelectRow): ApiClientRow {
+  const { actsAsUser, ...rest } = row
+  return { ...rest, roleNames: actsAsUser?.roleNames ?? [] }
+}
+
+/**
+ * Auth-path projection — adds the joined service-account TenantUser slice and
+ * the keyHash so the middleware can do a single query and timing-safe compare.
+ * Never use this result in an API response.
+ */
+const API_CLIENT_AUTH_SELECT = {
+  ...API_CLIENT_SELECT,
+  keyHash: true,
+  actsAsUser: {
+    select: {
+      id: true,
+      tenantId: true,
+      isServiceAccount: true,
+      status: true,
+      roleNames: true,
+    },
+  },
 } as const
 
 // ---------------------------------------------------------------------------
@@ -85,64 +154,70 @@ export function createApiClientRepository(db: PrismaClient) {
       name: string,
       scopes: string[],
       createdById: string,
+      actsAsUserId: string | null = null,
     ): Promise<CreateApiClientResult> {
       const { plainKey, keyPrefix, keyHash } = generateApiKey()
       const row = await db.apiClient.create({
-        data: { tenantId, name, keyPrefix, keyHash, scopes, createdById },
+        data: { tenantId, name, keyPrefix, keyHash, scopes, createdById, actsAsUserId },
         select: API_CLIENT_SELECT,
       })
-      return { row, plainKey }
+      return { row: mapRow(row), plainKey }
     },
 
     /**
-     * Look up by key prefix. Returns the row INCLUDING keyHash so the
-     * middleware can perform a timing-safe comparison. Never use this
-     * result in an API response.
+     * Look up by key prefix. Returns the row INCLUDING keyHash and the joined
+     * service-account TenantUser so the middleware can do a single query,
+     * timing-safe compare the hash, and construct the Cedar principal. Never
+     * use this result in an API response.
      */
-    findByPrefix(keyPrefix: string): Promise<(ApiClientRow & { keyHash: string }) | null> {
+    findByPrefix(keyPrefix: string): Promise<ApiClientAuthRow | null> {
       return db.apiClient.findFirst({
         where: { keyPrefix },
-        select: { ...API_CLIENT_SELECT, keyHash: true },
+        select: API_CLIENT_AUTH_SELECT,
       })
     },
 
     /** Find a single client by id within a tenant (ownership check). */
-    findById(id: string, tenantId: string): Promise<ApiClientRow | null> {
-      return db.apiClient.findFirst({
+    async findById(id: string, tenantId: string): Promise<ApiClientRow | null> {
+      const row = await db.apiClient.findFirst({
         where: { id, tenantId },
         select: API_CLIENT_SELECT,
       })
+      return row ? mapRow(row) : null
     },
 
     /** List all clients for a tenant — no keyHash, no plainKey. */
-    listByTenant(tenantId: string): Promise<ApiClientRow[]> {
-      return db.apiClient.findMany({
+    async listByTenant(tenantId: string): Promise<ApiClientRow[]> {
+      const rows = await db.apiClient.findMany({
         where: { tenantId },
         select: API_CLIENT_SELECT,
         orderBy: { createdAt: 'desc' },
       })
+      return rows.map(mapRow)
     },
 
-    /** Patch name and/or scopes. Caller must verify ownership via findById first. */
-    update(
+    /** Patch name, scopes, and/or actsAsUserId. Caller must verify ownership via findById first. */
+    async update(
       id: string,
       _tenantId: string,
-      patch: { name?: string; scopes?: string[] },
+      patch: { name?: string; scopes?: string[]; actsAsUserId?: string | null },
     ): Promise<ApiClientRow> {
-      return db.apiClient.update({
+      const row = await db.apiClient.update({
         where: { id },
         data: patch,
         select: API_CLIENT_SELECT,
       })
+      return mapRow(row)
     },
 
     /** Soft-revoke: set revokedAt to now. Caller must verify ownership via findById first. */
-    revoke(id: string, _tenantId: string): Promise<ApiClientRow> {
-      return db.apiClient.update({
+    async revoke(id: string, _tenantId: string): Promise<ApiClientRow> {
+      const row = await db.apiClient.update({
         where: { id },
         data: { revokedAt: new Date() },
         select: API_CLIENT_SELECT,
       })
+      return mapRow(row)
     },
 
     /**
@@ -156,7 +231,7 @@ export function createApiClientRepository(db: PrismaClient) {
         data: { keyPrefix, keyHash, revokedAt: null },
         select: API_CLIENT_SELECT,
       })
-      return { row, plainKey }
+      return { row: mapRow(row), plainKey }
     },
 
     /**

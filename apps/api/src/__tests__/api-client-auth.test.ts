@@ -54,9 +54,9 @@ function makeKey(): { plainKey: string; keyPrefix: string; keyHash: string } {
   return { plainKey, keyPrefix, keyHash }
 }
 
-function makeRow(overrides: Partial<ApiClientRow & { keyHash: string }> = {}): ApiClientRow & {
-  keyHash: string
-} {
+function makeRow(
+  overrides: Partial<ApiClientRow & { keyHash: string; actsAsUser: unknown }> = {},
+): ApiClientRow & { keyHash: string; actsAsUser: null } {
   const { keyHash } = makeKey()
   return {
     id: 'client-1',
@@ -67,11 +67,13 @@ function makeRow(overrides: Partial<ApiClientRow & { keyHash: string }> = {}): A
     lastUsedAt: null,
     revokedAt: null,
     createdById: 'user-1',
+    actsAsUserId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     keyHash,
+    actsAsUser: null,
     ...overrides,
-  }
+  } as ApiClientRow & { keyHash: string; actsAsUser: null }
 }
 
 function bearer(token: string): RequestInit {

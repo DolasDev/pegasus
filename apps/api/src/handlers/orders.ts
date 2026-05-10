@@ -10,9 +10,10 @@
 //   POST /orders/create                   → POST /api/v1/orders
 //   POST /orders/create/{customer_app_id} → POST /api/v1/orders (customerId in body)
 //
-// Scopes:
-//   orders:read  — list orders (GET /)
-//   orders:write — create orders (POST /)
+// Permissions (Cedar/AVP, against the service-account TenantUser the API key
+// acts as):
+//   ReadOrder   — list orders (GET /, GET /:orderId)
+//   CreateOrder — create orders (POST /)
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
@@ -20,26 +21,11 @@ import { XMLParser } from 'fast-xml-parser'
 import { z } from 'zod'
 import type { AppEnv } from '../types'
 import { m2mAppAuthMiddleware } from '../middleware/m2m-app-auth'
+import { requirePermission } from '../middleware/rbac'
+import { Actions } from '../authz/actions'
 import { createMove, listMoves, findMoveById } from '../repositories'
 import type { Move } from '@pegasus/domain'
 import { logger } from '../lib/logger'
-
-// ---------------------------------------------------------------------------
-// Scope helper
-// ---------------------------------------------------------------------------
-
-function requireScope(required: string) {
-  return async (c: Parameters<typeof m2mAppAuthMiddleware>[0], next: () => Promise<void>) => {
-    const apiClient = c.get('apiClient')
-    if (!apiClient || !apiClient.scopes.includes(required)) {
-      return c.json(
-        { error: `Forbidden: missing required scope "${required}"`, code: 'FORBIDDEN' },
-        403,
-      )
-    }
-    await next()
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -100,7 +86,7 @@ ordersHandler.use('*', m2mAppAuthMiddleware)
 // Query params: limit (max 100, default 50), offset (default 0)
 // Response: { data: OrderResponse[], meta: { count, limit, offset } }
 // ---------------------------------------------------------------------------
-ordersHandler.get('/', requireScope('orders:read'), async (c) => {
+ordersHandler.get('/', requirePermission(Actions.ReadOrder), async (c) => {
   const db = c.get('db')
   const tenantId = c.get('tenantId')
   const limit = Math.min(Number(c.req.query('limit') ?? '50'), 100)
@@ -121,9 +107,9 @@ ordersHandler.get('/', requireScope('orders:read'), async (c) => {
 //
 // Response: { data: OrderResponse } (200) | 404
 // ---------------------------------------------------------------------------
-ordersHandler.get('/:orderId', requireScope('orders:read'), async (c) => {
+ordersHandler.get('/:orderId', requirePermission(Actions.ReadOrder), async (c) => {
   const db = c.get('db')
-  const orderId = c.req.param('orderId')
+  const orderId = c.req.param('orderId') ?? ''
 
   const move = await findMoveById(db, orderId)
   if (!move) {
@@ -144,7 +130,7 @@ ordersHandler.get('/:orderId', requireScope('orders:read'), async (c) => {
 // ---------------------------------------------------------------------------
 const xmlParser = new XMLParser({ parseTagValue: false })
 
-ordersHandler.post('/', requireScope('orders:write'), async (c) => {
+ordersHandler.post('/', requirePermission(Actions.CreateOrder), async (c) => {
   const db = c.get('db')
   const tenantId = c.get('tenantId')
   const contentType = c.req.header('content-type') ?? ''

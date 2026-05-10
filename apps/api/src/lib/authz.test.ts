@@ -175,3 +175,47 @@ describe('listAllowedPermissions — offline', () => {
     expect(perms).toEqual([])
   })
 })
+
+describe('authorize — cache invalidation on roleNames change', () => {
+  // Regression: the cache used to key on (sub, action, ...) only. Reassigning
+  // roles to the same sub then returned the previous decision until the 60s
+  // TTL expired — silently masking demotions for up to a minute. The cache
+  // now includes a sorted roleNames hash so role flips invalidate immediately.
+  it('serves a fresh decision when the same sub flips from no-roles to tenant_admin', async () => {
+    const sub = 'sub-cache-flip'
+    const noRoles = principal([], sub)
+    const adminRoles = principal(['tenant_admin'], sub)
+
+    const denied = await authorize({ principal: noRoles, action: Actions.CreateMove })
+    expect(denied.allowed).toBe(false)
+
+    const allowed = await authorize({ principal: adminRoles, action: Actions.CreateMove })
+    expect(allowed.allowed).toBe(true)
+  })
+
+  it('serves a fresh decision when the same sub flips from tenant_admin back to no-roles', async () => {
+    const sub = 'sub-cache-demote'
+    const adminRoles = principal(['tenant_admin'], sub)
+    const noRoles = principal([], sub)
+
+    const allowed = await authorize({ principal: adminRoles, action: Actions.CreateMove })
+    expect(allowed.allowed).toBe(true)
+
+    // The demotion. With the old key the cache would have returned `allowed`
+    // for up to 60s — the bug this regression test pins.
+    const denied = await authorize({ principal: noRoles, action: Actions.CreateMove })
+    expect(denied.allowed).toBe(false)
+  })
+
+  it('treats roleNames as a set — order does not change the cache key', async () => {
+    const sub = 'sub-role-order'
+    // Same set, different order → same logical principal → same cache slot.
+    const a = principal(['dispatcher', 'sales'], sub)
+    const b = principal(['sales', 'dispatcher'], sub)
+
+    const first = await authorize({ principal: a, action: Actions.ReadMove })
+    const second = await authorize({ principal: b, action: Actions.ReadMove })
+    expect(first.allowed).toBe(true)
+    expect(second.allowed).toBe(true)
+  })
+})

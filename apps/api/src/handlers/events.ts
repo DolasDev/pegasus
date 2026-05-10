@@ -5,19 +5,21 @@
 // AWS Lambda API (apps/services/api). The Python integration service polls
 // these endpoints to receive events and delete them once processed.
 //
-// All endpoints require a valid API client key (vnd_ prefix) and the
-// appropriate scope. Authentication is handled by m2mAppAuthMiddleware,
-// which must be applied before this router is reached.
+// All endpoints require a valid API client key (vnd_ prefix). Authentication
+// runs through m2mAppAuthMiddleware, which resolves the service-account
+// TenantUser the key acts as and populates the Cedar principal. Per-route
+// authorization runs through requirePermission against the action catalog.
 //
 // URL mapping from legacy API:
 //   POST /EventEndpointHandler          → POST /api/v1/events
 //   GET  /events/{eventType}            → GET  /api/v1/events/:eventType
 //   DELETE /events/{eventId}            → DELETE /api/v1/events/:eventId
 //
-// Scopes:
-//   events:write — create events (POST /)
-//   events:read  — read events (GET /:eventType)
-//   events:write — delete/acknowledge events (DELETE /:eventId)
+// Permissions:
+//   CreateEvent — POST /
+//   ReadEvent   — GET /:eventType
+//   UpdateEvent — PATCH /:eventId
+//   DeleteEvent — DELETE /:eventId
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
@@ -25,6 +27,8 @@ import { validator } from 'hono/validator'
 import { z } from 'zod'
 import type { AppEnv } from '../types'
 import { m2mAppAuthMiddleware } from '../middleware/m2m-app-auth'
+import { requirePermission } from '../middleware/rbac'
+import { Actions } from '../authz/actions'
 import {
   createEvent,
   listEventsByType,
@@ -34,23 +38,6 @@ import {
 } from '../repositories/events.repository'
 import type { PegasusEventRow } from '../repositories/events.repository'
 import { logger } from '../lib/logger'
-
-// ---------------------------------------------------------------------------
-// Scope helper
-// ---------------------------------------------------------------------------
-
-function requireScope(required: string) {
-  return async (c: Parameters<typeof m2mAppAuthMiddleware>[0], next: () => Promise<void>) => {
-    const apiClient = c.get('apiClient')
-    if (!apiClient || !apiClient.scopes.includes(required)) {
-      return c.json(
-        { error: `Forbidden: missing required scope "${required}"`, code: 'FORBIDDEN' },
-        403,
-      )
-    }
-    await next()
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -110,7 +97,7 @@ eventsHandler.use('*', m2mAppAuthMiddleware)
 // ---------------------------------------------------------------------------
 eventsHandler.post(
   '/',
-  requireScope('events:write'),
+  requirePermission(Actions.CreateEvent),
   validator('json', (value, c) => {
     const r = CreateEventBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
@@ -152,10 +139,10 @@ eventsHandler.post(
 // Query params: limit (max 500, default 100), offset (default 0)
 // Response: { data: EventResponse[], meta: { count, limit, offset } }
 // ---------------------------------------------------------------------------
-eventsHandler.get('/:eventType', requireScope('events:read'), async (c) => {
+eventsHandler.get('/:eventType', requirePermission(Actions.ReadEvent), async (c) => {
   const db = c.get('db')
   const tenantId = c.get('tenantId')
-  const eventType = c.req.param('eventType')
+  const eventType = c.req.param('eventType') ?? ''
   const limit = Math.min(Number(c.req.query('limit') ?? '100'), 500)
   const offset = Number(c.req.query('offset') ?? '0')
 
@@ -181,7 +168,7 @@ eventsHandler.get('/:eventType', requireScope('events:read'), async (c) => {
 // ---------------------------------------------------------------------------
 eventsHandler.patch(
   '/:eventId',
-  requireScope('events:write'),
+  requirePermission(Actions.UpdateEvent),
   validator('json', (value, c) => {
     const r = UpdateEventBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
@@ -190,7 +177,7 @@ eventsHandler.patch(
   async (c) => {
     const db = c.get('db')
     const tenantId = c.get('tenantId')
-    const eventId = c.req.param('eventId')
+    const eventId = c.req.param('eventId') ?? ''
     const body = c.req.valid('json')
 
     const existing = await findEventById(db, eventId)
@@ -217,10 +204,10 @@ eventsHandler.patch(
 //
 // Response: 204 No Content | 404 Not Found
 // ---------------------------------------------------------------------------
-eventsHandler.delete('/:eventId', requireScope('events:write'), async (c) => {
+eventsHandler.delete('/:eventId', requirePermission(Actions.DeleteEvent), async (c) => {
   const db = c.get('db')
   const tenantId = c.get('tenantId')
-  const eventId = c.req.param('eventId')
+  const eventId = c.req.param('eventId') ?? ''
 
   const existing = await findEventById(db, eventId)
   if (!existing) {

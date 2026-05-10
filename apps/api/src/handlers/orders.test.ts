@@ -1,9 +1,11 @@
 // ---------------------------------------------------------------------------
 // Unit tests for the orders handler (/api/v1/orders)
 //
-// m2mAppAuthMiddleware is mocked to inject context without real key verification.
-// Move repository functions are mocked so no DB is required.
-// Scope enforcement is tested via the mocked apiClient.scopes.
+// m2mAppAuthMiddleware is mocked to inject AppEnv context without real key
+// verification. Move repository functions are mocked so no DB is required.
+// Permission enforcement runs through the real Cedar wasm backend against the
+// service-account TenantUser's roleNames — buildApp(roles) selects the role
+// set and the test asserts the resulting allow/deny.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -13,20 +15,26 @@ import type { AppEnv, ApiClientContext } from '../types'
 import type { Move } from '@pegasus/domain'
 import { DomainError, toMoveId, toUserId, toAddressId } from '@pegasus/domain'
 import { registerTestErrorHandler } from '../test-helpers'
+import { _clearAuthzCache } from '../lib/authz'
 
 // ---------------------------------------------------------------------------
 // Mock m2mAppAuthMiddleware
 // ---------------------------------------------------------------------------
 
+const TENANT_ID = 'test-tenant-id'
+const SVC_USER_ID = 'svc-orders'
+
 const mockApiClient: ApiClientContext = {
   id: 'client-2',
-  tenantId: 'test-tenant-id',
+  tenantId: TENANT_ID,
   name: 'Orders Integration',
   keyPrefix: 'vnd_orders0000',
-  scopes: ['orders:read', 'orders:write'],
+  scopes: [],
   lastUsedAt: null,
   revokedAt: null,
   createdById: 'user-1',
+  actsAsUserId: SVC_USER_ID,
+  roleNames: ['integrations'],
   createdAt: new Date('2024-01-01T00:00:00Z'),
   updatedAt: new Date('2024-01-01T00:00:00Z'),
 }
@@ -96,18 +104,21 @@ function xmlPost(body: Record<string, unknown>): RequestInit {
   }
 }
 
-function buildApp(apiClient: ApiClientContext | null = mockApiClient) {
+type BuildAppOpts = { roles?: readonly string[]; authenticated?: boolean }
+
+function buildApp(opts: BuildAppOpts = {}) {
+  const { roles = ['integrations'], authenticated = true } = opts
   vi.mocked(m2mAppAuthMiddleware).mockImplementation(async (c, next) => {
-    if (apiClient === null) {
+    if (!authenticated) {
       return c.json({ error: 'Missing or invalid API key', code: 'UNAUTHORIZED' }, 401)
     }
-    // m2mAppAuth always operates on tenant-scoped clients in this test —
-    // assert non-null to satisfy the AppEnv tenantId: string contract.
-    if (apiClient.tenantId === null) throw new Error('test fixture must have tenantId')
-    c.set('tenantId', apiClient.tenantId)
+    c.set('tenantId', TENANT_ID)
     c.set('db', {} as unknown as PrismaClient)
-    c.set('userId', undefined)
-    c.set('apiClient', apiClient)
+    c.set('userId', SVC_USER_ID)
+    c.set('principal', { sub: SVC_USER_ID, tenantId: TENANT_ID, roleNames: [...roles] })
+    c.set('idToken', undefined)
+    c.set('policyStoreId', undefined)
+    c.set('apiClient', mockApiClient)
     await next()
   })
 
@@ -180,44 +191,51 @@ const validOrderBody = {
 describe('orders handler', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    _clearAuthzCache()
+    process.env['AUTHZ_OFFLINE'] = 'true'
   })
 
   // ── Auth ──────────────────────────────────────────────────────────────────
 
   describe('auth (m2mAppAuthMiddleware)', () => {
     it('returns 401 when no valid API key is present', async () => {
-      const app = buildApp(null)
+      const app = buildApp({ authenticated: false })
       const res = await app.request('/')
       expect(res.status).toBe(401)
       expect((await json(res)).code).toBe('UNAUTHORIZED')
     })
   })
 
-  // ── Scope enforcement ─────────────────────────────────────────────────────
+  // ── Permission enforcement (Cedar against principal.roleNames) ────────────
 
-  describe('scope enforcement', () => {
-    it('returns 403 FORBIDDEN when apiClient lacks orders:read scope on GET /', async () => {
-      const writeOnly: ApiClientContext = { ...mockApiClient, scopes: ['orders:write'] }
-      const app = buildApp(writeOnly)
+  describe('permission enforcement', () => {
+    it('returns 403 FORBIDDEN when principal has no roles on GET /', async () => {
+      const app = buildApp({ roles: [] })
       const res = await app.request('/')
       expect(res.status).toBe(403)
       expect((await json(res)).code).toBe('FORBIDDEN')
     })
 
-    it('returns 403 FORBIDDEN when apiClient lacks orders:read scope on GET /:id', async () => {
-      const writeOnly: ApiClientContext = { ...mockApiClient, scopes: ['orders:write'] }
-      const app = buildApp(writeOnly)
+    it('returns 403 FORBIDDEN when principal has no roles on GET /:id', async () => {
+      const app = buildApp({ roles: [] })
       const res = await app.request('/move-id-1')
       expect(res.status).toBe(403)
       expect((await json(res)).code).toBe('FORBIDDEN')
     })
 
-    it('returns 403 FORBIDDEN when apiClient lacks orders:write scope on POST /', async () => {
-      const readOnly: ApiClientContext = { ...mockApiClient, scopes: ['orders:read'] }
-      const app = buildApp(readOnly)
+    it('returns 403 FORBIDDEN when principal has only reporting role on POST /', async () => {
+      // reporting permits ReadOrder but not CreateOrder
+      const app = buildApp({ roles: ['reporting'] })
       const res = await app.request('/', post(validOrderBody))
       expect(res.status).toBe(403)
       expect((await json(res)).code).toBe('FORBIDDEN')
+    })
+
+    it('allows GET / for the reporting role', async () => {
+      mockMovesRepo.listMoves.mockResolvedValue([])
+      const app = buildApp({ roles: ['reporting'] })
+      const res = await app.request('/')
+      expect(res.status).toBe(200)
     })
   })
 

@@ -29,7 +29,7 @@ export const apiClientsQueryOptions = queryOptions({
 export function useCreateApiClient() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { name: string; scopes: string[] }) => createApiClient(data),
+    mutationFn: (data: { name: string; roleNames: string[] }) => createApiClient(data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: apiClientKeys.list() })
     },
@@ -39,7 +39,7 @@ export function useCreateApiClient() {
 export function useUpdateApiClient() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { name?: string; scopes?: string[] } }) =>
+    mutationFn: ({ id, data }: { id: string; data: { name?: string; roleNames?: string[] } }) =>
       updateApiClient(id, data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: apiClientKeys.list() })

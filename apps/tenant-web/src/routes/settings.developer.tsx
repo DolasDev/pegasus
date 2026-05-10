@@ -37,9 +37,11 @@ import {
   useRotateApiClient,
 } from '@/api/queries/api-clients'
 import { mssqlSettingsQueryOptions, useUpdateMssqlSettings } from '@/api/queries/settings'
+import { roleOptionsQueryOptions, type RoleOption } from '@/api/queries/users'
 import type { ApiClient, ApiClientWithKey } from '@/api/api-clients'
 import { getConfig } from '@/config'
 import { usePermissions } from '@/auth/permissions'
+import { RoleCheckboxList } from '@/components/RoleCheckboxList'
 
 // ---------------------------------------------------------------------------
 // Add / Edit form
@@ -49,16 +51,26 @@ type FormMode = { kind: 'add' } | { kind: 'edit'; client: ApiClient }
 
 type ApiClientFormProps = {
   mode: FormMode
+  roleOptions: RoleOption[]
   onDone: () => void
   onCreated: (clientWithKey: ApiClientWithKey) => void
 }
 
-function ApiClientForm({ mode, onDone, onCreated }: ApiClientFormProps) {
+/** Default role pre-selected when creating a new key. Tweak if the team
+ *  decides a different role is the safer starting point. */
+const DEFAULT_NEW_CLIENT_ROLES = ['integrations']
+
+function ApiClientForm({ mode, roleOptions, onDone, onCreated }: ApiClientFormProps) {
   const isEdit = mode.kind === 'edit'
   const existing = isEdit ? mode.client : null
+  const isStale = isEdit && existing !== null && existing.actsAsUserId === null
 
   const [name, setName] = useState(existing?.name ?? '')
-  const [scopesStr, setScopesStr] = useState(existing?.scopes?.join(', ') ?? '*')
+  const [roleNames, setRoleNames] = useState<string[]>(
+    existing?.roleNames && existing.roleNames.length > 0
+      ? existing.roleNames
+      : DEFAULT_NEW_CLIENT_ROLES,
+  )
   const [formError, setFormError] = useState<string | null>(null)
 
   const createMutation = useCreateApiClient()
@@ -69,33 +81,26 @@ function ApiClientForm({ mode, onDone, onCreated }: ApiClientFormProps) {
     e.preventDefault()
     setFormError(null)
 
-    const scopes = scopesStr
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-    if (scopes.length === 0) {
-      setFormError('At least one scope is required.')
+    if (roleNames.length === 0) {
+      setFormError('Pick at least one role — without one the key cannot do anything.')
       return
     }
 
     try {
       if (isEdit && existing) {
-        const data: { name?: string; scopes?: string[] } = {}
+        const data: { name?: string; roleNames?: string[] } = {}
         if (name !== existing.name) data.name = name
 
-        // Simple array comparison, might not be perfect if unordered but good enough for this
-        const existingScopes = [...existing.scopes].sort().join(',')
-        const newScopes = [...scopes].sort().join(',')
-
-        if (newScopes !== existingScopes) data.scopes = scopes
+        const existingSorted = [...existing.roleNames].sort().join(',')
+        const nextSorted = [...roleNames].sort().join(',')
+        if (existingSorted !== nextSorted) data.roleNames = roleNames
 
         if (Object.keys(data).length > 0) {
           await updateMutation.mutateAsync({ id: existing.id, data })
         }
         onDone()
       } else {
-        const data = { name, scopes }
-        const created = await createMutation.mutateAsync(data)
+        const created = await createMutation.mutateAsync({ name, roleNames })
         onCreated(created)
       }
     } catch (err) {
@@ -111,7 +116,7 @@ function ApiClientForm({ mode, onDone, onCreated }: ApiClientFormProps) {
         <CardTitle>{isEdit ? 'Edit API Client' : 'Create API Client'}</CardTitle>
         <CardDescription>
           {isEdit
-            ? 'Update the name and scopes for this API client.'
+            ? 'Update the name and assigned roles for this API client. Roles control what the key can do.'
             : 'Create a new backend API key. The key will only be shown once.'}
         </CardDescription>
       </CardHeader>
@@ -135,18 +140,29 @@ function ApiClientForm({ mode, onDone, onCreated }: ApiClientFormProps) {
             />
           </div>
 
-          {/* Scopes */}
+          {/* Roles */}
           <div className="space-y-1.5">
-            <Label htmlFor="scopes">Scopes</Label>
-            <Input
-              id="scopes"
-              placeholder="e.g. *, read:moves, write:moves"
-              value={scopesStr}
-              onChange={(e) => setScopesStr(e.target.value)}
-              required
-            />
+            <Label>Roles</Label>
+            {isStale ? (
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+                <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                <span>
+                  This key was created before role-based access control was rolled out. Revoke it
+                  and create a replacement to assign roles.
+                </span>
+              </div>
+            ) : (
+              <RoleCheckboxList
+                options={roleOptions}
+                selected={roleNames}
+                onChange={setRoleNames}
+                disabled={isPending}
+                idPrefix="api-client-role"
+              />
+            )}
             <p className="text-xs text-muted-foreground">
-              Comma separated list of scopes. Use `*` for wildcard access.
+              Permissions are the union of every role assigned. The key acts as a service-account
+              user with these roles when it authenticates.
             </p>
           </div>
 
@@ -164,7 +180,14 @@ function ApiClientForm({ mode, onDone, onCreated }: ApiClientFormProps) {
             <Button type="button" variant="outline" onClick={onDone} disabled={isPending}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isPending} className="gap-2">
+            <Button
+              type="submit"
+              disabled={isPending || isStale}
+              className="gap-2"
+              title={
+                isStale ? 'Stale key — revoke and create a new one to assign roles.' : undefined
+              }
+            >
               {isPending && <Loader2 size={14} className="animate-spin" />}
               {isEdit ? 'Save changes' : 'Create API Client'}
             </Button>
@@ -345,6 +368,7 @@ function ApiUsageCard() {
 
 type ApiClientRowProps = {
   client: ApiClient
+  roleOptions: RoleOption[]
   canEdit: boolean
   canRotate: boolean
   canRevoke: boolean
@@ -355,6 +379,7 @@ type ApiClientRowProps = {
 
 function ApiClientRowItem({
   client,
+  roleOptions,
   canEdit,
   canRotate,
   canRevoke,
@@ -363,6 +388,8 @@ function ApiClientRowItem({
   onRotate,
 }: ApiClientRowProps) {
   const isRevoked = client.revokedAt !== null
+  const isStale = client.actsAsUserId === null
+  const labelFor = (name: string) => roleOptions.find((o) => o.name === name)?.label ?? name
 
   return (
     <div
@@ -371,7 +398,7 @@ function ApiClientRowItem({
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <Key size={18} className="shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-medium">{client.name}</span>
             <Badge variant="outline" className="text-xs font-mono">
               {client.keyPrefix}****
@@ -381,11 +408,22 @@ function ApiClientRowItem({
                 Revoked
               </Badge>
             )}
+            {isStale && !isRevoked && (
+              <Badge variant="destructive" className="text-xs">
+                Stale — revoke and recreate
+              </Badge>
+            )}
+            {client.roleNames.length > 0 ? (
+              client.roleNames.map((r) => (
+                <Badge key={r} variant="secondary" className="text-xs">
+                  {labelFor(r)}
+                </Badge>
+              ))
+            ) : (
+              <span className="text-xs text-muted-foreground italic">No roles</span>
+            )}
           </div>
           <p className="mt-0.5 truncate text-xs text-muted-foreground flex gap-4">
-            <span>
-              Scopes: <code className="font-mono ml-1">{client.scopes.join(', ')}</code>
-            </span>
             <span>Created: {new Date(client.createdAt).toLocaleDateString()}</span>
             {client.lastUsedAt && (
               <span>Last Used: {new Date(client.lastUsedAt).toLocaleDateString()}</span>
@@ -682,12 +720,14 @@ type PanelState =
 
 export function DeveloperSettingsPage() {
   const { data: clients, isLoading, isError } = useQuery(apiClientsQueryOptions)
+  const { data: roleOptions } = useQuery(roleOptionsQueryOptions)
   const revokeMutation = useRevokeApiClient()
   const rotateMutation = useRotateApiClient()
   const perms = usePermissions()
   const canCreate = perms.has('api_client:create')
   const canRotate = perms.has('api_client:rotate')
   const canRevoke = perms.has('api_client:revoke')
+  const safeRoleOptions = roleOptions ?? []
 
   const [panel, setPanel] = useState<PanelState>({ kind: 'none' })
   const [newKey, setNewKey] = useState<ApiClientWithKey | null>(null)
@@ -783,6 +823,7 @@ export function DeveloperSettingsPage() {
                 <div key={client.id} className="space-y-2">
                   <ApiClientRowItem
                     client={client}
+                    roleOptions={safeRoleOptions}
                     canEdit={canCreate}
                     canRotate={canRotate}
                     canRevoke={canRevoke}
@@ -792,6 +833,7 @@ export function DeveloperSettingsPage() {
                   />
                   <ApiClientForm
                     mode={{ kind: 'edit', client }}
+                    roleOptions={safeRoleOptions}
                     onDone={closePanel}
                     onCreated={() => {}}
                   />
@@ -804,6 +846,7 @@ export function DeveloperSettingsPage() {
                 <div key={client.id} className="space-y-2">
                   <ApiClientRowItem
                     client={client}
+                    roleOptions={safeRoleOptions}
                     canEdit={canCreate}
                     canRotate={canRotate}
                     canRevoke={canRevoke}
@@ -826,6 +869,7 @@ export function DeveloperSettingsPage() {
                 <div key={client.id} className="space-y-2">
                   <ApiClientRowItem
                     client={client}
+                    roleOptions={safeRoleOptions}
                     canEdit={canCreate}
                     canRotate={canRotate}
                     canRevoke={canRevoke}
@@ -847,6 +891,7 @@ export function DeveloperSettingsPage() {
               <ApiClientRowItem
                 key={client.id}
                 client={client}
+                roleOptions={safeRoleOptions}
                 canEdit={canCreate}
                 canRotate={canRotate}
                 canRevoke={canRevoke}
@@ -860,6 +905,7 @@ export function DeveloperSettingsPage() {
           {panel.kind === 'add' && (
             <ApiClientForm
               mode={{ kind: 'add' }}
+              roleOptions={safeRoleOptions}
               onDone={closePanel}
               onCreated={(c) => {
                 closePanel()

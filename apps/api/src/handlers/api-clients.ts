@@ -2,27 +2,33 @@
 // API client management handler — /api/v1/api-clients
 //
 // Lets tenant administrators create, list, update, revoke, and rotate vendor
-// API keys for M2M (machine-to-machine) integrations. All endpoints require
-// the tenant_admin role. The plaintext key is returned only on create/rotate
-// and must never be logged or stored.
+// API keys for M2M (machine-to-machine) integrations. The plaintext key is
+// returned only on create/rotate and must never be logged or stored.
+//
+// Each ApiClient is bound to a service-account TenantUser (cognitoSub=null,
+// isServiceAccount=true) — that user's roleNames drive Cedar/AVP authorization
+// when the key is used. Create and patch take roleNames directly; the handler
+// transparently provisions/updates the service-account user.
 //
 // Endpoints:
 //   POST   /                    — create new API client; returns plainKey once
 //   GET    /                    — list all clients (no keyHash, no plainKey)
 //   GET    /:id                 — get single client
-//   PATCH  /:id                 — update name or scopes
+//   PATCH  /:id                 — update name and/or roleNames
 //   POST   /:id/revoke          — soft-revoke (sets revokedAt)
 //   POST   /:id/rotate          — issue new key; returns plainKey once
 //
 // Security invariants:
 //   - keyHash is NEVER in any response (excluded at repository select level)
 //   - plainKey is NEVER logged; only logged fields: id, keyPrefix
-//   - requireRole(['tenant_admin']) enforced on all routes
+//   - permission gating via Actions.{Create,List,Rotate,Revoke}ApiClient
 // ---------------------------------------------------------------------------
 
+import crypto from 'node:crypto'
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
+import type { PrismaClient } from '@prisma/client'
 import { requirePermission } from '../middleware/rbac'
 import { Actions } from '../authz/actions'
 import { createApiClientRepository } from '../repositories/api-client.repository'
@@ -36,16 +42,21 @@ import { logger } from '../lib/logger'
 
 const CreateApiClientBody = z.object({
   name: z.string().min(1),
-  scopes: z.array(z.string()).min(1),
+  /**
+   * Cedar role-group names assigned to the service-account TenantUser this
+   * key acts as. At least one role is required so the key has some authority
+   * (an empty array would deny every action).
+   */
+  roleNames: z.array(z.string().min(1)).min(1),
 })
 
 const PatchApiClientBody = z
   .object({
     name: z.string().min(1).optional(),
-    scopes: z.array(z.string()).optional(),
+    roleNames: z.array(z.string().min(1)).min(1).optional(),
   })
-  .refine((v) => v.name !== undefined || v.scopes !== undefined, {
-    message: 'At least one of name or scopes must be provided',
+  .refine((v) => v.name !== undefined || v.roleNames !== undefined, {
+    message: 'At least one of name or roleNames must be provided',
   })
 
 // ---------------------------------------------------------------------------
@@ -54,7 +65,7 @@ const PatchApiClientBody = z
 
 type ApiClientResponse = Omit<
   ApiClientRow,
-  'createdAt' | 'updatedAt' | 'lastUsedAt' | 'revokedAt'
+  'createdAt' | 'updatedAt' | 'lastUsedAt' | 'revokedAt' | 'scopes'
 > & {
   createdAt: string
   updatedAt: string
@@ -70,10 +81,11 @@ function toResponse(row: ApiClientRow): ApiClientResponse {
     tenantId: row.tenantId,
     name: row.name,
     keyPrefix: row.keyPrefix,
-    scopes: row.scopes,
+    roleNames: row.roleNames,
     lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
     revokedAt: row.revokedAt?.toISOString() ?? null,
     createdById: row.createdById,
+    actsAsUserId: row.actsAsUserId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }
@@ -88,10 +100,12 @@ export const apiClientsHandler = new Hono<AppEnv>()
 // ---------------------------------------------------------------------------
 // POST /
 //
-// Creates a new API client. Returns the plainKey once — it will not be shown
-// again. The caller must store it securely.
+// Creates a new API client. Atomically provisions a service-account TenantUser
+// with the requested roleNames and binds the new key to it; the user has
+// cognitoSub=null and is unable to sign in via Cognito. Returns the plainKey
+// once — it will not be shown again.
 //
-// Request:  { name: string, scopes: string[] }
+// Request:  { name: string, roleNames: string[] }
 // Response: { data: ApiClientResponse & { plainKey } } (201)
 // ---------------------------------------------------------------------------
 apiClientsHandler.post(
@@ -104,12 +118,42 @@ apiClientsHandler.post(
   }),
   async (c) => {
     const tenantId = c.get('tenantId')
-    const userId = c.get('userId') ?? ''
-    const { name, scopes } = c.req.valid('json')
-    const repo = createApiClientRepository(c.get('db'))
+    const createdById = c.get('userId') ?? ''
+    const { name, roleNames } = c.req.valid('json')
+    const db = c.get('db')
 
-    const { row, plainKey } = await repo.create(tenantId, name, scopes, userId)
-    logger.info('API client created', { id: row.id, keyPrefix: row.keyPrefix, tenantId })
+    // Pre-generate the service-account user id so we can use it in the
+    // synthetic email (which has a per-tenant unique constraint) without an
+    // extra round-trip after insert.
+    const serviceAccountId = crypto.randomUUID()
+    const now = new Date()
+
+    const { row, plainKey } = await db.$transaction(async (tx) => {
+      await tx.tenantUser.create({
+        data: {
+          id: serviceAccountId,
+          tenantId,
+          email: `svc-${serviceAccountId}@svc.invalid`,
+          cognitoSub: null,
+          isServiceAccount: true,
+          status: 'ACTIVE',
+          activatedAt: now,
+          roleNames,
+        },
+      })
+      const repo = createApiClientRepository(tx as PrismaClient)
+      // Tenant-scoped clients no longer use the freeform `scopes` column —
+      // pass [] and let the bound service-account user's roleNames drive
+      // Cedar authorization.
+      return repo.create(tenantId, name, [], createdById, serviceAccountId)
+    })
+
+    logger.info('API client created', {
+      id: row.id,
+      keyPrefix: row.keyPrefix,
+      tenantId,
+      serviceAccountId,
+    })
     const response: ApiClientCreateResponse = { ...toResponse(row), plainKey }
     return c.json({ data: response }, 201)
   },
@@ -153,10 +197,12 @@ apiClientsHandler.get('/:id', requirePermission(Actions.ListApiClients), async (
 // ---------------------------------------------------------------------------
 // PATCH /:id
 //
-// Updates name and/or scopes. At least one field must be provided.
+// Updates the ApiClient's name and/or the bound service-account user's
+// roleNames. At least one field must be provided. roleNames updates require
+// a non-stale row (actsAsUserId set); stale rows must be deleted and recreated.
 //
-// Request:  { name?: string, scopes?: string[] }
-// Response: { data: ApiClientResponse } (200) | 400 | 404
+// Request:  { name?: string, roleNames?: string[] }
+// Response: { data: ApiClientResponse } (200) | 400 | 404 | 409
 // ---------------------------------------------------------------------------
 apiClientsHandler.patch(
   '/:id',
@@ -168,19 +214,41 @@ apiClientsHandler.patch(
   }),
   async (c) => {
     const tenantId = c.get('tenantId')
-    const id = c.req.param('id')
+    const id = c.req.param('id') ?? ''
     const patch = c.req.valid('json')
-    const repo = createApiClientRepository(c.get('db'))
+    const db = c.get('db')
 
+    const repo = createApiClientRepository(db)
     const existing = await repo.findById(id, tenantId)
     if (!existing) return c.json({ error: 'API client not found', code: 'NOT_FOUND' }, 404)
 
-    // Build patch with only defined fields to satisfy exactOptionalPropertyTypes.
-    const cleanPatch: { name?: string; scopes?: string[] } = {}
-    if (patch.name !== undefined) cleanPatch.name = patch.name
-    if (patch.scopes !== undefined) cleanPatch.scopes = patch.scopes
+    if (patch.roleNames !== undefined && existing.actsAsUserId === null) {
+      return c.json(
+        {
+          error: 'Cannot update roles on a stale API client. Revoke this key and create a new one.',
+          code: 'STALE_API_CLIENT',
+        },
+        409,
+      )
+    }
 
-    const updated = await repo.update(id, tenantId, cleanPatch)
+    const updated = await db.$transaction(async (tx) => {
+      if (patch.roleNames !== undefined && existing.actsAsUserId !== null) {
+        await tx.tenantUser.update({
+          where: { id: existing.actsAsUserId },
+          data: { roleNames: patch.roleNames },
+        })
+      }
+      const txRepo = createApiClientRepository(tx as PrismaClient)
+      if (patch.name !== undefined) {
+        return txRepo.update(id, tenantId, { name: patch.name })
+      }
+      // No name change — re-read so the response reflects the updated roleNames.
+      const reread = await txRepo.findById(id, tenantId)
+      if (!reread) throw new Error('api-client disappeared mid-transaction')
+      return reread
+    })
+
     return c.json({ data: toResponse(updated) })
   },
 )

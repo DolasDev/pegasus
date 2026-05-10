@@ -94,8 +94,10 @@ export async function apiClientAuthMiddleware(
     })
   })
 
-  // Exclude keyHash from context — strip it before setting.
-  const { keyHash, ...clientRow } = candidate
+  // Exclude keyHash and the joined actsAsUser from context — flatten the
+  // user's roleNames into the context shape (empty if no service account).
+  const { keyHash: _keyHash, actsAsUser, ...rest } = candidate
+  const clientRow = { ...rest, roleNames: actsAsUser?.roleNames ?? [] }
   c.set('apiClient', clientRow)
   c.set('tenantId', candidate.tenantId)
 
@@ -136,6 +138,8 @@ function matchPlatformKey(incomingHash: string, token: string): ApiClientContext
     lastUsedAt: null,
     revokedAt: null,
     createdById: null,
+    actsAsUserId: null,
+    roleNames: [],
     createdAt: now,
     updatedAt: now,
   }
