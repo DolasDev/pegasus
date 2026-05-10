@@ -5,7 +5,13 @@ export type ApiClient = {
   tenantId: string
   name: string
   keyPrefix: string
-  scopes: string[]
+  /**
+   * Cedar role-group memberships of the bound service-account TenantUser.
+   * Drives Cedar/AVP authorization when the key authenticates a request.
+   */
+  roleNames: string[]
+  /** TenantUser.id this key acts as. Null for stale rows pre-migration. */
+  actsAsUserId: string | null
   lastUsedAt: string | null
   revokedAt: string | null
   createdById: string
@@ -27,7 +33,7 @@ export async function getApiClient(id: string): Promise<ApiClient> {
 
 export async function createApiClient(data: {
   name: string
-  scopes: string[]
+  roleNames: string[]
 }): Promise<ApiClientWithKey> {
   return apiFetch<ApiClientWithKey>('/api/v1/api-clients', {
     method: 'POST',
@@ -37,7 +43,7 @@ export async function createApiClient(data: {
 
 export async function updateApiClient(
   id: string,
-  data: { name?: string; scopes?: string[] },
+  data: { name?: string; roleNames?: string[] },
 ): Promise<ApiClient> {
   return apiFetch<ApiClient>(`/api/v1/api-clients/${id}`, {
     method: 'PATCH',

@@ -59,4 +59,15 @@ export const ROLE_OPTIONS: readonly RoleOption[] = [
     label: 'Crew Lead',
     description: 'Read assigned moves and customers; update moves to record progress.',
   },
+  {
+    name: 'reporting',
+    label: 'Reporting',
+    description:
+      'Service-account read-only access across moves, quotes, invoices, customers, orders, and events.',
+  },
+  {
+    name: 'integrations',
+    label: 'Integrations',
+    description: 'Service-account read/write on the orders and events M2M surfaces.',
+  },
 ] as const

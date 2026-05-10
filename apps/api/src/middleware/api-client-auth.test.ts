@@ -97,6 +97,8 @@ describe('apiClientAuthMiddleware — platform-key path', () => {
       scopes: ['orders:read'],
       revokedAt: null,
       createdById: 'usr_1',
+      actsAsUserId: null,
+      actsAsUser: null,
       name: 'Acme integration',
       lastUsedAt: null,
       createdAt: new Date(),

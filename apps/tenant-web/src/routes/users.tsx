@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { EmptyState } from '@/components/EmptyState'
+import { RoleCheckboxList } from '@/components/RoleCheckboxList'
 import {
   usersQueryOptions,
   roleOptionsQueryOptions,
@@ -40,63 +41,6 @@ const LAST_ADMIN_MESSAGE =
 // ---------------------------------------------------------------------------
 // Invite form
 // ---------------------------------------------------------------------------
-
-type RoleCheckboxListProps = {
-  options: RoleOption[]
-  selected: string[]
-  onChange: (next: string[]) => void
-  disabled?: boolean
-  idPrefix: string
-}
-
-/**
- * Reusable checkbox list of Cedar role groups. Used by both the invite form
- * and the per-row role editor.
- */
-function RoleCheckboxList({
-  options,
-  selected,
-  onChange,
-  disabled,
-  idPrefix,
-}: RoleCheckboxListProps) {
-  function toggle(name: string) {
-    if (selected.includes(name)) {
-      onChange(selected.filter((n) => n !== name))
-    } else {
-      onChange([...selected, name])
-    }
-  }
-
-  return (
-    <div className="space-y-2">
-      {options.map((opt) => {
-        const id = `${idPrefix}-${opt.name}`
-        const checked = selected.includes(opt.name)
-        return (
-          <label
-            key={opt.name}
-            htmlFor={id}
-            className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-background px-3 py-2 hover:bg-accent/40"
-          >
-            <input
-              id={id}
-              type="checkbox"
-              checked={checked}
-              disabled={disabled}
-              onChange={() => toggle(opt.name)}
-              className="mt-0.5 h-4 w-4 shrink-0 rounded border-border"
-            />
-            <span className="min-w-0">
-              <span className="block text-sm font-medium text-foreground">{opt.label}</span>
-              <span className="block text-xs text-muted-foreground">{opt.description}</span>
-            </span>
-          </label>
-        )
-      })}
-    </div>
-  )
-}
 
 type InviteFormProps = {
   onDone: () => void

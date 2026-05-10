@@ -95,8 +95,10 @@ export default async function globalSetup() {
       TEST_TENANT_ID,
     )
     await prisma.$executeRawUnsafe(
-      `INSERT INTO public.tenant_users (id, tenant_id, email, role, status, invited_at)
-       VALUES ($1, $2, 'e2e-admin@example.com', 'ADMIN', 'ACTIVE', NOW())
+      `INSERT INTO public.tenant_users
+         (id, tenant_id, email, role_names, status, invited_at, activated_at)
+       VALUES ($1, $2, 'e2e-admin@example.com', ARRAY['tenant_admin'],
+               'ACTIVE'::"TenantUserStatus", NOW(), NOW())
        ON CONFLICT (id) DO NOTHING`,
       TEST_TENANT_USER_ID,
       TEST_TENANT_ID,

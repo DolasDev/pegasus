@@ -63,6 +63,20 @@
           "type": "Record",
           "attributes": {}
         }
+      },
+      "Order": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
+      "Event": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
       }
     },
     "actions": {
@@ -143,6 +157,24 @@
       },
       "DeleteCustomer": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Customer"] }
+      },
+      "ReadOrder": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Order"] }
+      },
+      "CreateOrder": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Order"] }
+      },
+      "ReadEvent": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Event"] }
+      },
+      "CreateEvent": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Event"] }
+      },
+      "UpdateEvent": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Event"] }
+      },
+      "DeleteEvent": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Event"] }
       }
     }
   }

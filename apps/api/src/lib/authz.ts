@@ -32,9 +32,15 @@
 // Group parents (one per role name). Identical input → identical Cedar
 // evaluation → identical decisions across local tests and deployed AVP.
 //
-// Cache: 60-second TTL keyed by (sub, action, resourceType, resourceId,
-// policyStoreId). Authorisation calls in tight loops (e.g. /me/permissions
-// fanning out across the catalog) hit the cache after the first miss.
+// Cache: 60-second TTL keyed by (sub, sorted roleNames, action, resourceType,
+// resourceId, policyStoreId). roleNames are part of the key because Cedar's
+// decision is a function of the principal's group memberships — omitting them
+// would let role changes (PATCH /api/v1/users/:id, PATCH /api/v1/api-clients/:id)
+// serve stale cached decisions for up to TTL_MS, which is both a correctness
+// gap (demotions don't take effect immediately) and a UX papercut (promotions
+// look broken for ~1m). Authorisation calls in tight loops (e.g. /me/permissions
+// fanning out across the catalog) still hit the cache after the first miss
+// because the principal's role set is identical across that batch.
 // ---------------------------------------------------------------------------
 
 import {
@@ -70,8 +76,13 @@ const _cache = new Map<string, { decision: Decision; expiresAt: number }>()
 
 function cacheKey(input: AuthorizeInput): string {
   const r = input.resource
+  // Sort + join roleNames so order-only differences hit the same entry. Use
+  // a delimiter that can't appear inside a Cedar group name (group names are
+  // [A-Za-z0-9_]) to avoid ambiguity.
+  const roles = [...input.principal.roleNames].sort().join(',')
   return [
     input.principal.sub,
+    roles,
     input.action.id,
     r?.type ?? '',
     r?.id ?? '',

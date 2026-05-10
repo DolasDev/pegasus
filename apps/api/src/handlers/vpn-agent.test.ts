@@ -41,6 +41,8 @@ vi.mock('../middleware/api-client-auth', () => ({
       lastUsedAt: null,
       revokedAt: null,
       createdById: 'platform',
+      actsAsUserId: null,
+      roleNames: [],
       createdAt: new Date(),
       updatedAt: new Date(),
     })

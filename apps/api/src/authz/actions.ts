@@ -27,6 +27,8 @@ export type ResourceType =
   | 'Customer'
   | 'ApiClient'
   | 'Setting'
+  | 'Order'
+  | 'Event'
 
 export interface ActionDef {
   /** Cedar action identifier (without namespace prefix). */
@@ -130,6 +132,14 @@ export const Actions = {
     resourceType: 'Customer',
     permission: 'customer:delete',
   },
+  // ── Orders (legacy on-prem orders integration; M2M-only surface) ────────
+  ReadOrder: { id: 'ReadOrder', resourceType: 'Order', permission: 'order:read' },
+  CreateOrder: { id: 'CreateOrder', resourceType: 'Order', permission: 'order:create' },
+  // ── Events (inbound platform event queue; M2M-only surface) ─────────────
+  ReadEvent: { id: 'ReadEvent', resourceType: 'Event', permission: 'event:read' },
+  CreateEvent: { id: 'CreateEvent', resourceType: 'Event', permission: 'event:create' },
+  UpdateEvent: { id: 'UpdateEvent', resourceType: 'Event', permission: 'event:update' },
+  DeleteEvent: { id: 'DeleteEvent', resourceType: 'Event', permission: 'event:delete' },
 } as const satisfies Record<string, ActionDef>
 
 export type ActionKey = keyof typeof Actions

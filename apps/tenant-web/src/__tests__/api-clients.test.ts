@@ -39,10 +39,10 @@ describe('api-clients', () => {
   it('createApiClient calls POST /api/v1/api-clients with body', async () => {
     const created = { id: 'c-2', name: 'New', plainKey: 'pk_live_abc' }
     mockApiFetch.mockResolvedValueOnce(created)
-    const result = await createApiClient({ name: 'New', scopes: ['*'] })
+    const result = await createApiClient({ name: 'New', roleNames: ['integrations'] })
     expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/api-clients', {
       method: 'POST',
-      body: JSON.stringify({ name: 'New', scopes: ['*'] }),
+      body: JSON.stringify({ name: 'New', roleNames: ['integrations'] }),
     })
     expect(result).toEqual(created)
   })
@@ -58,12 +58,12 @@ describe('api-clients', () => {
     expect(result).toEqual(updated)
   })
 
-  it('updateApiClient sends scopes in the PATCH body', async () => {
+  it('updateApiClient sends roleNames in the PATCH body', async () => {
     mockApiFetch.mockResolvedValueOnce({})
-    await updateApiClient('c-1', { scopes: ['read:moves'] })
+    await updateApiClient('c-1', { roleNames: ['reporting'] })
     expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/api-clients/c-1', {
       method: 'PATCH',
-      body: JSON.stringify({ scopes: ['read:moves'] }),
+      body: JSON.stringify({ roleNames: ['reporting'] }),
     })
   })
 

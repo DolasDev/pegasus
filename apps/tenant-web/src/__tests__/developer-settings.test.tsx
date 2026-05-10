@@ -65,16 +65,35 @@ vi.mock('@/api/queries/settings', () => ({
   useUpdateMssqlSettings: () => mockUseUpdateMssqlSettings(),
 }))
 
+// Stub the role-options query so the form's RoleCheckboxList has fixtures.
+vi.mock('@/api/queries/users', () => ({
+  roleOptionsQueryOptions: {
+    queryKey: ['users', 'role-options'],
+    queryFn: vi.fn(),
+  },
+}))
+
 vi.mock('@/config', () => ({
   getConfig: () => ({ apiUrl: 'https://api.test' }),
 }))
 
 const apiClientsQueryKey = ['api-clients', 'list']
 const mssqlSettingsQueryKey = ['settings', 'mssql']
+const roleOptionsQueryKey = ['users', 'role-options']
+
+const defaultRoleOptions = [
+  { name: 'reporting', label: 'Reporting', description: 'Read-only across resources.' },
+  { name: 'integrations', label: 'Integrations', description: 'Read/write on orders + events.' },
+]
 
 let apiClientsReturn: Record<string, unknown> = { data: [], isLoading: false, isError: false }
 let mssqlSettingsReturn: Record<string, unknown> = {
   data: { mssqlConnectionString: null },
+  isLoading: false,
+  isError: false,
+}
+let roleOptionsReturn: Record<string, unknown> = {
+  data: defaultRoleOptions,
   isLoading: false,
   isError: false,
 }
@@ -95,6 +114,12 @@ vi.mock('@tanstack/react-query', async () => {
         options.queryKey[1] === mssqlSettingsQueryKey[1]
       ) {
         return mssqlSettingsReturn
+      }
+      if (
+        options.queryKey[0] === roleOptionsQueryKey[0] &&
+        options.queryKey[1] === roleOptionsQueryKey[1]
+      ) {
+        return roleOptionsReturn
       }
       return { data: undefined, isLoading: false, isError: false }
     },
@@ -119,7 +144,8 @@ function makeClient(overrides?: Partial<ApiClient>): ApiClient {
     tenantId: 't-1',
     name: 'Zapier Integration',
     keyPrefix: 'pk_live_abc',
-    scopes: ['*'],
+    roleNames: ['integrations'],
+    actsAsUserId: 'svc-user-1',
     lastUsedAt: null,
     revokedAt: null,
     createdById: 'u-1',
@@ -158,6 +184,7 @@ describe('DeveloperSettingsPage', () => {
       isLoading: false,
       isError: false,
     }
+    roleOptionsReturn = { data: defaultRoleOptions, isLoading: false, isError: false }
   })
 
   it('shows loading state', () => {
@@ -223,7 +250,12 @@ describe('DeveloperSettingsPage', () => {
     fireEvent.click(screen.getByText('Create API Client'))
     expect(screen.getByText('Create API Client', { selector: 'h3,div' })).toBeInTheDocument()
     expect(screen.getByLabelText('Name')).toBeInTheDocument()
-    expect(screen.getByLabelText('Scopes')).toBeInTheDocument()
+    // The Roles label is rendered alongside the role checkbox list — the
+    // checkboxes themselves are labelled by `<label>` blocks containing the
+    // role title plus description, so query by the label text directly.
+    expect(screen.getByText('Roles')).toBeInTheDocument()
+    expect(screen.getByText('Reporting')).toBeInTheDocument()
+    expect(screen.getByText('Integrations')).toBeInTheDocument()
   })
 
   it('opens the edit form when "Edit" is clicked', () => {
@@ -296,15 +328,27 @@ describe('DeveloperSettingsPage', () => {
     expect(screen.queryByText('Rotate API Key?')).not.toBeInTheDocument()
   })
 
-  it('displays scopes in the client row', () => {
+  it('displays role labels in the client row', () => {
     apiClientsReturn = {
-      data: [makeClient({ scopes: ['read:moves', 'write:moves'] })],
+      data: [makeClient({ roleNames: ['reporting', 'integrations'] })],
       isLoading: false,
       isError: false,
     }
     renderPage()
 
-    expect(screen.getByText('read:moves, write:moves')).toBeInTheDocument()
+    // The row renders one Badge per role using the label from the role catalog.
+    expect(screen.getByText('Reporting')).toBeInTheDocument()
+    expect(screen.getByText('Integrations')).toBeInTheDocument()
+  })
+
+  it('marks rows with no bound service account as Stale', () => {
+    apiClientsReturn = {
+      data: [makeClient({ actsAsUserId: null, roleNames: [] })],
+      isLoading: false,
+      isError: false,
+    }
+    renderPage()
+    expect(screen.getByText(/Stale/i)).toBeInTheDocument()
   })
 
   it('renders the page header with correct title', () => {

@@ -245,8 +245,8 @@ model Tenant {
 
   @@index([status])
   @@index([deletedAt])
-  @@schema("public")
   @@map("tenants")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -259,7 +259,7 @@ model Tenant {
 // ---------------------------------------------------------------------------
 
 model TenantSsoProvider {
-  id      String @id @default(uuid())
+  id       String @id @default(uuid())
   tenantId String @map("tenant_id")
 
   /// Display name shown in the login page provider picker (e.g. "Acme Okta").
@@ -294,8 +294,8 @@ model TenantSsoProvider {
 
   @@unique([tenantId, cognitoProviderName])
   @@index([tenantId])
-  @@schema("public")
   @@map("tenant_sso_providers")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -311,18 +311,18 @@ model TenantSsoProvider {
 // ---------------------------------------------------------------------------
 
 model TenantUser {
-  id            String           @id @default(uuid())
-  tenantId      String           @map("tenant_id")
-  email         String
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  email    String
 
   /// Cognito sub claim — null until first successful login.
-  cognitoSub    String?          @map("cognito_sub")
+  cognitoSub String? @map("cognito_sub")
 
   /// Legacy SQL Server Windows username (v_longhaul_salesman.win_username).
   /// Populated by tenant admins via the user management UI so the cloud →
   /// on-prem proxy can forward an X-Windows-User header that the on-prem
   /// longhaul middleware uses to resolve the legacy user identity.
-  legacyWindowsUsername String?  @map("legacy_windows_username")
+  legacyWindowsUsername String? @map("legacy_windows_username")
 
   /// Cedar role-group memberships. Authoritative source for the
   /// `custom:roles` Cognito claim emitted by the pre-token Lambda.
@@ -332,15 +332,22 @@ model TenantUser {
   activatedAt   DateTime?        @map("activated_at")
   deactivatedAt DateTime?        @map("deactivated_at")
 
-  tenant             Tenant      @relation(fields: [tenantId], references: [id])
-  createdApiClients  ApiClient[]
+  /// Service-account flag — true for non-human principals owned by API clients.
+  /// Service accounts have `cognitoSub = null` and are unable to sign in via
+  /// Cognito; they exist solely as the principal an `ApiClient` acts as so
+  /// Cedar/AVP authorisation runs through the same code path as human users.
+  isServiceAccount Boolean @default(false) @map("is_service_account")
+
+  tenant            Tenant      @relation(fields: [tenantId], references: [id])
+  createdApiClients ApiClient[] @relation("ApiClientCreatedBy")
+  apiClientsActedAs ApiClient[] @relation("ApiClientActsAs")
 
   @@unique([tenantId, email])
   @@index([tenantId])
   @@index([cognitoSub])
   @@index([legacyWindowsUsername])
-  @@schema("public")
   @@map("tenant_users")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -357,8 +364,8 @@ model AuthSession {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([email])
-  @@schema("public")
   @@map("auth_sessions")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -369,38 +376,47 @@ model AuthSession {
 /// Only a SHA-256 hash of the key is stored — the plaintext is shown once on
 /// creation or rotation and never persisted.
 model ApiClient {
-  id          String    @id @default(uuid())
-  tenantId    String    @map("tenant_id")
-  name        String
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  name     String
 
   /// First 12 chars of the full key (e.g. "vnd_a1b2c3d4") — stored plain for
   /// fast prefix-based lookup without a full-table scan.
-  keyPrefix   String    @map("key_prefix")
+  keyPrefix String @map("key_prefix")
 
   /// SHA-256 hex digest of the full key — compared with timing-safe equality.
-  keyHash     String    @unique @map("key_hash")
+  keyHash String @unique @map("key_hash")
 
   /// Granted permission scopes (e.g. ["orders:read", "invoices:write"]).
-  scopes      String[]
+  scopes String[]
 
-  lastUsedAt  DateTime? @map("last_used_at")
+  lastUsedAt DateTime? @map("last_used_at")
 
   /// Set when the key is revoked. Revoked keys return 403 after hash match.
-  revokedAt   DateTime? @map("revoked_at")
+  revokedAt DateTime? @map("revoked_at")
 
   /// TenantUser who created this key.
-  createdById String    @map("created_by")
+  createdById String @map("created_by")
 
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  /// Service-account TenantUser this key acts as. Cedar/AVP authorisation
+  /// runs against this user's roleNames — there is no separate scope set.
+  /// Nullable at the column level so the migration is non-destructive; the
+  /// API enforces non-null on create/update and validates that the target is
+  /// a service account in the same tenant.
+  actsAsUserId String? @map("acts_as_user_id")
 
-  tenant    Tenant     @relation(fields: [tenantId], references: [id])
-  createdBy TenantUser @relation(fields: [createdById], references: [id])
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  createdBy  TenantUser  @relation("ApiClientCreatedBy", fields: [createdById], references: [id])
+  actsAsUser TenantUser? @relation("ApiClientActsAs", fields: [actsAsUserId], references: [id], onDelete: Restrict)
 
   @@index([keyPrefix])
   @@index([tenantId])
-  @@schema("public")
+  @@index([actsAsUserId])
   @@map("api_clients")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -408,8 +424,8 @@ model ApiClient {
 // ---------------------------------------------------------------------------
 
 model LeadSource {
-  id          String @id @default(uuid())
-  tenantId    String @map("tenant_id")
+  id          String  @id @default(uuid())
+  tenantId    String  @map("tenant_id")
   name        String
   description String?
 
@@ -421,8 +437,8 @@ model LeadSource {
 
   @@unique([tenantId, name])
   @@index([tenantId])
-  @@schema("public")
   @@map("lead_sources")
+  @@schema("public")
 }
 
 model Account {
@@ -438,8 +454,8 @@ model Account {
 
   @@unique([tenantId, name])
   @@index([tenantId])
-  @@schema("public")
   @@map("accounts")
+  @@schema("public")
 }
 
 model Customer {
@@ -465,8 +481,8 @@ model Customer {
   @@unique([tenantId, email])
   @@index([tenantId])
   @@index([userId])
-  @@schema("public")
   @@map("customers")
+  @@schema("public")
 }
 
 model Contact {
@@ -484,8 +500,8 @@ model Contact {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([customerId])
-  @@schema("public")
   @@map("contacts")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -508,8 +524,8 @@ model Address {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@schema("public")
   @@map("addresses")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -545,8 +561,8 @@ model Move {
   @@index([customerId])
   @@index([status])
   @@index([scheduledDate])
-  @@schema("public")
   @@map("moves")
+  @@schema("public")
 }
 
 model Stop {
@@ -567,8 +583,8 @@ model Stop {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([moveId])
-  @@schema("public")
   @@map("stops")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -591,8 +607,8 @@ model CrewMember {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([tenantId])
-  @@schema("public")
   @@map("crew_members")
+  @@schema("public")
 }
 
 model Vehicle {
@@ -614,8 +630,8 @@ model Vehicle {
 
   @@unique([tenantId, registrationPlate])
   @@index([tenantId])
-  @@schema("public")
   @@map("vehicles")
+  @@schema("public")
 }
 
 model Availability {
@@ -638,8 +654,8 @@ model Availability {
   @@index([crewMemberId])
   @@index([vehicleId])
   @@index([windowStart, windowEnd])
-  @@schema("public")
   @@map("availabilities")
+  @@schema("public")
 }
 
 model MoveCrewAssignment {
@@ -651,8 +667,8 @@ model MoveCrewAssignment {
   crewMember CrewMember @relation(fields: [crewMemberId], references: [id])
 
   @@id([moveId, crewMemberId])
-  @@schema("public")
   @@map("move_crew_assignments")
+  @@schema("public")
 }
 
 model MoveVehicleAssignment {
@@ -664,8 +680,8 @@ model MoveVehicleAssignment {
   vehicle Vehicle @relation(fields: [vehicleId], references: [id])
 
   @@id([moveId, vehicleId])
-  @@schema("public")
   @@map("move_vehicle_assignments")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -689,8 +705,8 @@ model RateTable {
 
   @@unique([tenantId, name])
   @@index([tenantId])
-  @@schema("public")
   @@map("rate_tables")
+  @@schema("public")
 }
 
 model Rate {
@@ -706,10 +722,10 @@ model Rate {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@index([rateTableId])
   @@unique([rateTableId, serviceCode])
-  @@schema("public")
+  @@index([rateTableId])
   @@map("rates")
+  @@schema("public")
 }
 
 model Quote {
@@ -733,8 +749,8 @@ model Quote {
   @@index([tenantId])
   @@index([moveId])
   @@index([status])
-  @@schema("public")
   @@map("quotes")
+  @@schema("public")
 }
 
 model QuoteLineItem {
@@ -751,8 +767,8 @@ model QuoteLineItem {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([quoteId])
-  @@schema("public")
   @@map("quote_line_items")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -774,8 +790,8 @@ model InventoryRoom {
 
   @@index([tenantId])
   @@index([moveId])
-  @@schema("public")
   @@map("inventory_rooms")
+  @@schema("public")
 }
 
 model InventoryItem {
@@ -795,8 +811,8 @@ model InventoryItem {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([roomId])
-  @@schema("public")
   @@map("inventory_items")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -824,8 +840,8 @@ model Invoice {
   @@index([tenantId])
   @@index([moveId])
   @@index([status])
-  @@schema("public")
   @@map("invoices")
+  @@schema("public")
 }
 
 model Payment {
@@ -843,8 +859,8 @@ model Payment {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([invoiceId])
-  @@schema("public")
   @@map("payments")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -869,8 +885,8 @@ model AdminUser {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@schema("platform")
   @@map("admin_users")
+  @@schema("platform")
 }
 
 /// Append-only audit trail for every action taken by a platform administrator.
@@ -903,8 +919,8 @@ model AuditLog {
   @@index([resourceId])
   @@index([adminSub])
   @@index([createdAt])
-  @@schema("platform")
   @@map("audit_logs")
+  @@schema("platform")
 }
 
 // ---------------------------------------------------------------------------
@@ -917,37 +933,37 @@ model AuditLog {
 /// An inbound integration event received from an external system or vendor.
 /// After the consumer reads and processes the event it is deleted (DELETE /events/:id).
 model PegasusEvent {
-  id             String    @id @default(cuid())
-  tenantId       String    @map("tenant_id")
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
 
   /// External event identifier assigned by the publisher. Unique globally.
-  eventApiId     String    @unique @map("event_api_id")
+  eventApiId String @unique @map("event_api_id")
 
   /// Logical event type used for routing (e.g. "LEAD_CREATED", "MOVE_UPDATED").
-  eventType      String    @map("event_type")
+  eventType String @map("event_type")
 
   /// Original timestamp from the publisher.
-  eventDatetime  DateTime? @map("event_datetime")
+  eventDatetime DateTime? @map("event_datetime")
 
   /// Processing state: NEW → IN_PROGRESS → PROCESSED | ERROR.
-  eventStatus    String    @default("NEW") @map("event_status")
+  eventStatus String @default("NEW") @map("event_status")
 
   /// Name or identifier of the system that published this event.
-  eventPublisher String?   @map("event_publisher")
+  eventPublisher String? @map("event_publisher")
 
   /// Arbitrary JSON payload from the publisher — schema varies by event type.
-  eventData      Json?     @map("event_data")
+  eventData Json? @map("event_data")
 
-  receivedAt     DateTime  @default(now()) @map("received_at")
-  processedAt    DateTime? @map("processed_at")
+  receivedAt  DateTime  @default(now()) @map("received_at")
+  processedAt DateTime? @map("processed_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
   @@index([tenantId, eventType])
   @@index([tenantId, eventStatus])
-  @@schema("public")
   @@map("pegasus_events")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -994,8 +1010,8 @@ model Document {
   @@index([tenantId, entityType, entityId])
   @@index([tenantId, documentType])
   @@index([tenantId, status])
-  @@schema("public")
   @@map("documents")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -1023,8 +1039,8 @@ model DocumentVariant {
 
   @@unique([documentId, variant])
   @@index([status])
-  @@schema("public")
   @@map("document_variants")
+  @@schema("public")
 }
 
 // ---------------------------------------------------------------------------
@@ -1089,6 +1105,6 @@ model FeatureFlag {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@schema("platform")
   @@map("feature_flags")
+  @@schema("platform")
 }
