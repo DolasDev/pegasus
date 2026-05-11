@@ -12,6 +12,12 @@ import {
   patchWeight,
   patchShipmentShadow,
 } from '../../repositories/longhaul/shipments.repository'
+import {
+  enrichShipmentWithTripInfo,
+  buildExtraShipmentActivities,
+  loadActivityTypesMap,
+  type ShipmentRow,
+} from '../../lib/longhaul-shipment-enrich'
 import { logger } from '../../lib/logger'
 
 const CoverageBody = z.object({
@@ -39,44 +45,86 @@ const ShadowBody = z.object({
 
 export const shipmentsRouter = new Hono<OnPremEnv>()
 
+// Maximum number of shipments returned after enrichment + post-fetch filters.
+// Mirrors the legacy guard in shipment.service.ts:57-58.
+const SHIPMENT_RESULT_LIMIT = 1000
+
 shipmentsRouter.get('/shipments', async (c) => {
-  try {
-    const db = c.get('longhaulDb')
+  const db = c.get('longhaulDb')
 
-    // Accept filters as a JSON-encoded query param or body
-    let query: Record<string, unknown> = {}
-    const rawFilters = c.req.query('filters')
-    if (rawFilters) {
-      try {
-        query = JSON.parse(rawFilters)
-      } catch {
-        return c.json(
-          {
-            error: 'Invalid filters JSON',
-            code: 'VALIDATION_ERROR',
-            correlationId: c.get('correlationId'),
-          },
-          400,
-        )
-      }
+  // Accept filters as a JSON-encoded query param or body
+  let query: Record<string, unknown> = {}
+  const rawFilters = c.req.query('filters')
+  if (rawFilters) {
+    try {
+      query = JSON.parse(rawFilters)
+    } catch {
+      return c.json(
+        {
+          error: 'Invalid filters JSON',
+          code: 'VALIDATION_ERROR',
+          correlationId: c.get('correlationId'),
+        },
+        400,
+      )
     }
+  }
 
-    const searchTerm = c.req.query('searchTerm')
-    if (searchTerm) query['searchTerm'] = searchTerm
+  const searchTerm = c.req.query('searchTerm')
+  if (searchTerm) query['searchTerm'] = searchTerm
 
-    const data = await findShipmentsWithQuery(db, query)
-    return c.json({ data, meta: { count: data.length } })
-  } catch (err) {
-    logger.error('fetchShipments failed', { error: String(err) })
+  // Fetch + enrich. The activityTypes map is fetched in parallel so the
+  // extra-activity templates can attach the full ActivityType row (legacy
+  // behaviour — see ActivityService constructor in activity.service.ts).
+  const [rawShipments, activityTypesMap] = await Promise.all([
+    findShipmentsWithQuery(db, query),
+    loadActivityTypesMap(db).catch((err) => {
+      // Non-fatal: extras still attach without the activityType row, matching
+      // legacy behaviour when the catalogue is empty.
+      logger.warn('loadActivityTypesMap failed; extras will lack activityType', {
+        error: String(err),
+      })
+      return {}
+    }),
+  ])
+
+  // Post-fetch TripStatus_id filter — legacy shipment.service.ts:47-54.
+  // The shipment view doesn't carry TripStatus_id directly; it comes from the
+  // most-recent activity via getTripInfo, so the filter must run after merge.
+  const filters = (query['filters'] as Record<string, unknown> | undefined) ?? {}
+  const tripStatusIds = filters['TripStatus_id'] as Array<{ value: string | number }> | undefined
+  const wantedTripStatusIds =
+    tripStatusIds && tripStatusIds.length > 0
+      ? new Set(tripStatusIds.map((v) => String(v.value)))
+      : null
+
+  const enriched: ShipmentRow[] = []
+  for (const raw of rawShipments as ShipmentRow[]) {
+    enrichShipmentWithTripInfo(raw)
+    if (wantedTripStatusIds && !wantedTripStatusIds.has(String(raw['TripStatus_id'] ?? ''))) {
+      continue
+    }
+    raw.extraActivities = buildExtraShipmentActivities(raw, activityTypesMap)
+    enriched.push(raw)
+  }
+
+  if (enriched.length > SHIPMENT_RESULT_LIMIT) {
     return c.json(
       {
-        error: 'Failed to fetch shipments',
-        code: 'INTERNAL_ERROR',
+        error: 'Too many results — please narrow your filters.',
+        code: 'RESULT_LIMIT_EXCEEDED',
         correlationId: c.get('correlationId'),
       },
-      500,
+      400,
     )
   }
+
+  // TODO(longhaul-port-audit): Port `buildShipmentActivities` (required
+  // activity templates) from legacy activity.service.ts:142-237 — it appends
+  // default PACK/LOAD/RDEL/R19O activity rows to shipments missing them so the
+  // UI can render the planning grid even when the trip hasn't been built yet.
+  // Tracked separately from this unit's scope (extras + filter + cap only).
+  return c.json({ data: enriched, meta: { count: enriched.length } })
 })
 
 shipmentsRouter.post(
