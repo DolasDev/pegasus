@@ -9,13 +9,7 @@ const SHIPMENTS_TABLE = 'v_dispatch_planning'
 const ACTIVITIES_TABLE = 'LongDistanceDispatchActivity'
 const COVERAGE_TABLE = 'longhaul_shipmentcoverage'
 const SALES_TABLE = 'sales'
-// Legacy entity (server/modules/activities/model/extraLocation.pegasusShadow.entity.ts)
-// declares @Entity({name:'shipperaddresses'}) with FK column `order_number`
-// joining to the shipment's `order_num`. The pegasus port originally used
-// 'pegasus_extra_location' / 'order_num' with no migration or comment
-// explaining the divergence, so the join silently produced empty results.
-const EXTRA_LOCATIONS_TABLE = 'shipperaddresses'
-const EXTRA_LOCATIONS_FK = 'order_number'
+const EXTRA_LOCATIONS_TABLE = 'pegasus_extra_location'
 
 export interface ShipmentQuery {
   searchTerm?: string
@@ -221,7 +215,7 @@ export async function findShipmentsWithQuery(db: Knex, query: ShipmentQuery) {
       .whereIn(`${ACTIVITIES_TABLE}.order_num`, orderNums),
     db(COVERAGE_TABLE).whereIn('order_num', orderNums),
     db(EXTRA_LOCATIONS_TABLE)
-      .whereIn(EXTRA_LOCATIONS_FK, orderNums)
+      .whereIn('order_num', orderNums)
       .catch(() => [] as unknown[]),
   ])
 
@@ -239,7 +233,7 @@ export async function findShipmentsWithQuery(db: Knex, query: ShipmentQuery) {
 
   const extraByOrder: Record<number, unknown[]> = {}
   for (const e of extraLocations as Array<Record<string, unknown>>) {
-    const on = e[EXTRA_LOCATIONS_FK] as number
+    const on = e['order_num'] as number
     if (!extraByOrder[on]) extraByOrder[on] = []
     extraByOrder[on].push(e)
   }
@@ -273,7 +267,7 @@ export async function findShipmentsByIds(db: Knex, orderNums: number[]) {
       .whereIn(`${ACTIVITIES_TABLE}.order_num`, orderNums),
     db(COVERAGE_TABLE).whereIn('order_num', orderNums),
     db(EXTRA_LOCATIONS_TABLE)
-      .whereIn(EXTRA_LOCATIONS_FK, orderNums)
+      .whereIn('order_num', orderNums)
       .catch(() => [] as unknown[]),
   ])
 
@@ -291,7 +285,7 @@ export async function findShipmentsByIds(db: Knex, orderNums: number[]) {
 
   const extraByOrder: Record<number, unknown[]> = {}
   for (const e of extraLocations as Array<Record<string, unknown>>) {
-    const on = e[EXTRA_LOCATIONS_FK] as number
+    const on = e['order_num'] as number
     if (!extraByOrder[on]) extraByOrder[on] = []
     extraByOrder[on].push(e)
   }
