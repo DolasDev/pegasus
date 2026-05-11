@@ -175,6 +175,7 @@ jobs:
           API: ${{ inputs.deploy-api }}
           TENANT: ${{ inputs.deploy-tenant }}
           ADMIN: ${{ inputs.deploy-admin }}
+          ENV_NAME: ${{ inputs.env-name }}
         run: |
           set -euo pipefail
           if [[ "$API" == "true" && "$TENANT" == "true" && "$ADMIN" == "true" ]]; then
@@ -201,6 +202,14 @@ jobs:
                 "${STACK_PREFIX}-AdminFrontendStack" \
                 "${STACK_PREFIX}-AdminFrontendAssetsStack" \
               )
+            fi
+            # The staging-only E2E role stack is read by the post-deploy
+            # gate via the cdk-outputs artifact. `cdk deploy <subset>` only
+            # writes outputs for the named stacks, so include it on every
+            # partial staging deploy or the gate fails with an empty
+            # E2E_ROLE_ARN.
+            if [[ "$ENV_NAME" == "staging" ]]; then
+              stacks+=( "${STACK_PREFIX}-E2EStagingRoleStack" )
             fi
             target="${stacks[*]}"
           fi

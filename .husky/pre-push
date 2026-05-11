@@ -1,1 +1,6 @@
-node node_modules/.bin/turbo run typecheck test
+zero=0000000000000000000000000000000000000000
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+  if [ "$local_sha" != "$zero" ]; then
+    exec node node_modules/.bin/turbo run typecheck test
+  fi
+done
