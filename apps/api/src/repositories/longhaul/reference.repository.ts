@@ -4,6 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Knex } from 'knex'
+import { getLonghaulClientConfig } from '../../lib/longhaul-client-config'
 
 /** Fetch all active drivers from v_longhaul_drivers. */
 export async function getDrivers(db: Knex) {
@@ -36,11 +37,13 @@ export async function getPlanners(db: Knex, plannerCodes?: string[]) {
 
 /**
  * Fetch dispatcher users.
- * Uses DISPATCHER_QUERY env var (default: active='Y').
+ *
+ * The dispatcher WHERE clause varies per longhaul client (NWI vs QMM) and is
+ * resolved via getLonghaulClientConfig() — see apps/api/src/lib/longhaul-client-config.ts.
  */
 export async function getDispatchers(db: Knex) {
-  const args = process.env['DISPATCHER_QUERY'] ?? "active='Y'"
-  return db('v_longhaul_salesman').whereRaw(args).select('*')
+  const { dispatcherQuery } = getLonghaulClientConfig()
+  return db('v_longhaul_salesman').whereRaw(dispatcherQuery).select('*')
 }
 
 /** Fetch the latest schema version from longhaul_versions. */

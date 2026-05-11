@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Knex } from 'knex'
+import { getLonghaulClientConfig } from '../../lib/longhaul-client-config'
 
 const SHIPMENTS_TABLE = 'v_dispatch_planning'
 const ACTIVITIES_TABLE = 'LongDistanceDispatchActivity'
@@ -175,7 +176,7 @@ export async function findShipmentsWithQuery(db: Knex, query: ShipmentQuery) {
     }
 
     if (f.Is_Trip_Planning) {
-      const importExportTypes = process.env['IMPORT_EXPORT_TYPES']?.split(',') ?? ['H']
+      const { importExportTypes } = getLonghaulClientConfig()
       qb = qb
         .where(`${SHIPMENTS_TABLE}.shipment_status`, 'A')
         .whereIn(`${SHIPMENTS_TABLE}.import_export`, importExportTypes)
