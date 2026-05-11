@@ -187,4 +187,83 @@ describe('AppGuard', () => {
       screen.queryByText('There is a problem with your Driver Planning session'),
     ).not.toBeInTheDocument()
   })
+
+  it('renders children when the fetched client version is in the supported list', async () => {
+    renderWithStore(
+      <AppGuard>
+        <div data-testid="children">child content</div>
+      </AppGuard>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('children')).toBeInTheDocument()
+    })
+    expect(
+      screen.queryByText('There is a problem with your Driver Planning session'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('renders the version-mismatch error UI when client version is not supported', async () => {
+    ;(API.fetchVersion as any).mockResolvedValue({
+      clientVersion: '0.9.0',
+      release_channel: 'stable',
+      supportedVersions: [
+        { database_version: 'db-2', supported_client_version: '2.0.0' },
+        { database_version: 'db-2', supported_client_version: '2.1.0' },
+      ],
+    })
+
+    renderWithStore(
+      <AppGuard>
+        <div data-testid="children">should not render</div>
+      </AppGuard>,
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('There is a problem with your Driver Planning session'),
+      ).toBeInTheDocument()
+    })
+    expect(screen.getByText(/0\.9\.0/)).toBeInTheDocument()
+    expect(screen.getByText(/db-2/)).toBeInTheDocument()
+    expect(screen.getByText(/Supported Application Versions: 2\.0\.0,2\.1\.0/)).toBeInTheDocument()
+    expect(screen.queryByTestId('children')).not.toBeInTheDocument()
+  })
+
+  it('renders the loading state while version is still loading even after user resolves', async () => {
+    ;(API.fetchVersion as any).mockImplementation(() => new Promise(() => {}))
+
+    renderWithStore(
+      <AppGuard>
+        <div data-testid="children">eventual content</div>
+      </AppGuard>,
+    )
+
+    await waitFor(() => {
+      expect(API.fetchUser).toHaveBeenCalled()
+    })
+    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(screen.queryByTestId('children')).not.toBeInTheDocument()
+  })
+
+  it('still renders children but surfaces a snackbar when a reference-data fetch rejects', async () => {
+    // fetchDrivers thunk catches its own errors and dispatches a failure
+    // action that sets `common.error`. AppGuard observes that slice and pops
+    // the snackbar. Children should still render because fetchUser +
+    // fetchVersion succeed.
+    ;(API.fetchDrivers as any).mockRejectedValue(new Error('drivers blew up'))
+
+    renderWithStore(
+      <AppGuard>
+        <div data-testid="children">child content</div>
+      </AppGuard>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('children')).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(screen.getByText(/Failed to load reference data: drivers blew up/)).toBeInTheDocument()
+    })
+  })
 })
