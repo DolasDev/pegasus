@@ -40,19 +40,25 @@ export function getLonghaulDb(connectionString: string): Knex {
   if (existing) return existing
 
   const parsed = parseConnectionString(connectionString)
-  const server = parsed['server'] ?? parsed['data source'] ?? parsed['host']
+  const rawServer = parsed['server'] ?? parsed['data source'] ?? parsed['host']
   const database = parsed['database'] ?? parsed['initial catalog']
   const user = parsed['user id'] ?? parsed['uid'] ?? parsed['user']
   const password = parsed['password'] ?? parsed['pwd']
   const port = parseInt(parsed['port'] ?? '1433', 10)
 
-  if (!server || !database || !user || !password) {
+  if (!rawServer || !database || !user || !password) {
     throw new Error(
       'Invalid MSSQL connection string — must contain Server, Database, User Id, and Password.',
     )
   }
 
-  logger.info('Opening longhaul Knex pool', { server, database })
+  // Named instances use the format "HOST\INSTANCE". Tedious requires the
+  // instance name in options.instanceName, not appended to the server host.
+  const backslashIdx = rawServer.indexOf('\\')
+  const server = backslashIdx >= 0 ? rawServer.slice(0, backslashIdx) : rawServer
+  const instanceName = backslashIdx >= 0 ? rawServer.slice(backslashIdx + 1) : undefined
+
+  logger.info('Opening longhaul Knex pool', { server, database, instanceName })
 
   const instance = knex({
     client: 'mssql',
@@ -65,6 +71,7 @@ export function getLonghaulDb(connectionString: string): Knex {
       options: {
         encrypt: parsed['encrypt']?.toLowerCase() !== 'false',
         trustServerCertificate: parsed['trustservercertificate']?.toLowerCase() !== 'false',
+        ...(instanceName ? { instanceName } : {}),
       },
     },
     pool: { min: 0, max: 10 },
