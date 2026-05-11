@@ -3,6 +3,7 @@ import { setSession, getSession, clearSession, type Session } from '../auth/sess
 const makeSession = (overrides?: Partial<Session>): Session => ({
   sub: 'user-123',
   tenantId: 'tenant-456',
+  tenantName: 'Tenant Four-Five-Six',
   roleNames: ['tenant_admin'],
   role: 'tenant_admin',
   email: 'test@example.com',

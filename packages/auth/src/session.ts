@@ -16,6 +16,8 @@ export type Session = {
   sub: string
   /** Tenant the user belongs to. */
   tenantId: string
+  /** Display name of the tenant (e.g. "Acme Moving Co"). Display only. */
+  tenantName: string
   /**
    * Cedar role-group memberships. Authoritative source for permission gating.
    * The pre-token Lambda emits this as `custom:roles`; `/api/auth/validate-token`

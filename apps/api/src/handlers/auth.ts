@@ -498,9 +498,26 @@ authHandler.post(
 
     const expiresAt = payload['exp'] as number
 
+    const tenantRow = await db.tenant.findUnique({
+      where: { id: customTenantId },
+      select: { name: true },
+    })
+
+    if (!tenantRow) {
+      return c.json(
+        {
+          error:
+            'Your account is not fully configured for this tenant. Contact your administrator.',
+          code: 'FORBIDDEN',
+        },
+        403,
+      )
+    }
+
     const session = {
       sub,
       tenantId: customTenantId,
+      tenantName: tenantRow.name,
       roleNames,
       role: derivedRole,
       email,

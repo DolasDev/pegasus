@@ -167,7 +167,7 @@ export function AppShell({ children }: AppShellProps) {
       {/* Main area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         <header className="flex h-14 items-center justify-between border-b px-6">
-          <span className="text-sm text-muted-foreground">Move Management Platform</span>
+          <span className="text-sm text-muted-foreground">{session?.tenantName ?? ''}</span>
           {session && (
             <div className="flex items-center gap-3">
               <span className="text-sm text-muted-foreground">{session.email}</span>

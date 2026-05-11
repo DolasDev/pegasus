@@ -452,6 +452,7 @@ describe('POST /api/auth/validate-token', () => {
     )
     vi.stubEnv('COGNITO_TENANT_CLIENT_ID', 'tenant-client-id')
     vi.stubEnv('COGNITO_MOBILE_CLIENT_ID', 'mobile-client-id')
+    mockTenantFindUnique.mockResolvedValue({ name: 'Acme Corp' })
   })
 
   afterEach(() => {
@@ -477,6 +478,7 @@ describe('POST /api/auth/validate-token', () => {
     const data = body['data'] as Record<string, unknown>
     expect(data['sub']).toBe('user-sub-123')
     expect(data['tenantId']).toBe('tenant-abc')
+    expect(data['tenantName']).toBe('Acme Corp')
     expect(data['roleNames']).toEqual(['tenant_user'])
     expect(data['role']).toBe('tenant_user')
     expect(data['email']).toBe('user@acme.com')
