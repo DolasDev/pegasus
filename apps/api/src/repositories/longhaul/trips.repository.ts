@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Knex } from 'knex'
+import { findShipmentsByIds } from './shipments.repository'
 
 const TRIPS_TABLE = 'TripMaster'
 const NOTES_TABLE = 'TripNotes'
@@ -269,6 +270,128 @@ export async function updateTripSummary(
   return db(TRIPS_TABLE)
     .where('id', tripId)
     .update({ ...summaryData, updated_date: new Date() })
+}
+
+// ---------------------------------------------------------------------------
+// updateTripSummaryInfo — port of legacy TripService.updateTripSummaryInfo.
+// Reads the trip's current activities, joins them with shipment data, and
+// writes derived summary fields (weights, linehaul, dates, counts, state ids)
+// back to the TripMaster row. Idempotent.
+// ---------------------------------------------------------------------------
+
+const LOAD_ACTIVITY_CODES = ['LOAD', 'R19O']
+const ONE_DAY_MS = 1000 * 60 * 60 * 24
+
+function daysBetween(date1: unknown, date2: unknown): number {
+  if (!date1 || !date2) return 0
+  const ms = Math.abs(new Date(date1 as string).getTime() - new Date(date2 as string).getTime())
+  return Math.round(ms / ONE_DAY_MS) + 1
+}
+
+function sumShipmentField(
+  activities: Array<Record<string, unknown>>,
+  shipmentsMap: Record<number, Record<string, unknown>>,
+  field: string,
+): number {
+  return activities.reduce((acc, a) => {
+    const shipment = shipmentsMap[a['order_num'] as number]
+    return acc + (Number(shipment?.[field]) || 0)
+  }, 0)
+}
+
+function effectiveStart(a: Record<string, unknown>): number {
+  const v = (a['actual_date'] || a['estimated_date'] || a['planned_start']) as string | undefined
+  return v ? new Date(v).getTime() : 0
+}
+
+function effectiveEnd(a: Record<string, unknown>): number {
+  const v = (a['actual_date'] || a['estimated_date'] || a['planned_end']) as string | undefined
+  return v ? new Date(v).getTime() : 0
+}
+
+/**
+ * Recompute and persist trip-level summary fields from the activities currently
+ * assigned to the trip. No-op (returns 0 updated rows) if the trip has no
+ * activities — matches legacy behavior of leaving stale values in place.
+ */
+export async function updateTripSummaryInfo(db: Knex, tripId: number): Promise<number> {
+  const activities: Array<Record<string, unknown>> = await db(ACTIVITIES_TABLE)
+    .select(
+      `${ACTIVITIES_TABLE}.*`,
+      'at.code as activityType_code',
+      'at.name as activityType_name',
+      'at.abbreviation as activityType_abbreviation',
+    )
+    .leftJoin('Longhaul_ActivityType as at', `${ACTIVITIES_TABLE}.ActivityType_code`, 'at.code')
+    .where(`${ACTIVITIES_TABLE}.TripMaster_id`, tripId)
+
+  if (activities.length === 0) return 0
+
+  const orderNums = [...new Set(activities.map((a) => a['order_num'] as number).filter(Boolean))]
+  const shipments = orderNums.length ? await findShipmentsByIds(db, orderNums) : []
+  const shipmentsMap: Record<number, Record<string, unknown>> = {}
+  for (const s of shipments) {
+    shipmentsMap[s.order_num as number] = s as Record<string, unknown>
+  }
+
+  const loads = activities.filter((a) => {
+    const code = (a['activityType_code'] || a['ActivityType_code']) as string | undefined
+    return code != null && LOAD_ACTIVITY_CODES.includes(code)
+  })
+
+  const vipCount = new Set(
+    orderNums.filter((n) => {
+      const s = shipmentsMap[n]
+      return s?.['vip'] === 'Y' && s?.['supervip'] !== 'Y'
+    }),
+  ).size
+  const supervipCount = new Set(
+    orderNums.filter((n) => shipmentsMap[n]?.['supervip'] === 'Y'),
+  ).size
+
+  const originActivity = [...activities].sort((a, b) => effectiveStart(a) - effectiveStart(b))[0]
+  const destinationActivity = [...activities].sort((a, b) => effectiveEnd(b) - effectiveEnd(a))[0]
+
+  const originShipment = originActivity
+    ? (shipmentsMap[originActivity['order_num'] as number] ?? {})
+    : {}
+  const destinationShipment = destinationActivity
+    ? (shipmentsMap[destinationActivity['order_num'] as number] ?? {})
+    : {}
+
+  const plannedFirstDay =
+    originActivity?.['actual_date'] ||
+    originActivity?.['estimated_date'] ||
+    originActivity?.['planned_start'] ||
+    null
+  const plannedLastDay =
+    destinationActivity?.['actual_date'] ||
+    destinationActivity?.['estimated_date'] ||
+    destinationActivity?.['planned_end'] ||
+    null
+
+  const summary: Record<string, unknown> = {
+    origin_state_id:
+      (originShipment['origin_state'] as Record<string, unknown> | undefined)?.['state_id'] ?? null,
+    destination_state_id:
+      (destinationShipment['destination_state'] as Record<string, unknown> | undefined)?.[
+        'state_id'
+      ] ?? null,
+    total_estimated_lbs: sumShipmentField(loads, shipmentsMap, 'total_est_wt'),
+    total_actual_lbs: sumShipmentField(loads, shipmentsMap, 'total_actual_wt'),
+    total_estimated_linehaul_usd: sumShipmentField(loads, shipmentsMap, 'line_haul'),
+    total_actual_linehaul_usd: sumShipmentField(loads, shipmentsMap, 'line_haul'),
+    total_days: daysBetween(plannedFirstDay, plannedLastDay),
+    planned_first_day: plannedFirstDay,
+    planned_last_day: plannedLastDay,
+    load_activity_count: loads.length,
+    vip_count: vipCount,
+    supervip_count: supervipCount,
+  }
+
+  return db(TRIPS_TABLE)
+    .where('id', tripId)
+    .update({ ...summary, updated_date: new Date() })
 }
 
 /** Return all rows from MasterTripStatus. */
