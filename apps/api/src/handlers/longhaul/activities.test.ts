@@ -2,7 +2,7 @@
 // Unit tests for the longhaul activities handler
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import type { OnPremEnv } from '../../types.onprem'
 import type { ConnectionPool } from 'mssql'
@@ -13,9 +13,20 @@ const mockDb = {} as unknown as Knex
 
 vi.mock('../../repositories/longhaul/activities.repository', () => ({
   saveActivity: vi.fn(),
+  insertActivity: vi.fn(),
+  findActivityById: vi.fn(),
 }))
 
-import { saveActivity } from '../../repositories/longhaul/activities.repository'
+vi.mock('../../repositories/longhaul/trips.repository', () => ({
+  updateTripSummaryInfo: vi.fn(),
+}))
+
+import {
+  saveActivity,
+  insertActivity,
+  findActivityById,
+} from '../../repositories/longhaul/activities.repository'
+import { updateTripSummaryInfo } from '../../repositories/longhaul/trips.repository'
 import { activitiesRouter } from './activities'
 
 const MOCK_USER = {
@@ -41,13 +52,21 @@ function buildApp() {
   return app
 }
 
+beforeEach(() => {
+  vi.mocked(saveActivity).mockReset()
+  vi.mocked(insertActivity).mockReset()
+  vi.mocked(findActivityById).mockReset()
+  vi.mocked(updateTripSummaryInfo).mockReset()
+})
+
 // ---------------------------------------------------------------------------
-// POST /activities/:id
+// POST /activities/:id  (update)
 // ---------------------------------------------------------------------------
 
 describe('POST /activities/:id', () => {
   it('returns 200 on successful activity save', async () => {
     vi.mocked(saveActivity).mockResolvedValue(1)
+    vi.mocked(findActivityById).mockResolvedValue({ id: 10, TripMaster_id: null })
     const app = buildApp()
     const res = await app.request('/activities/10', {
       method: 'POST',
@@ -69,6 +88,126 @@ describe('POST /activities/:id', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'Completed' }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('recomputes trip summary when activity has a TripMaster_id', async () => {
+    vi.mocked(saveActivity).mockResolvedValue(1)
+    vi.mocked(findActivityById).mockResolvedValue({ id: 10, TripMaster_id: 77 })
+    vi.mocked(updateTripSummaryInfo).mockResolvedValue(1)
+
+    const app = buildApp()
+    const res = await app.request('/activities/10', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actual_date: '2026-04-01' }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(updateTripSummaryInfo).toHaveBeenCalledTimes(1)
+    expect(updateTripSummaryInfo).toHaveBeenCalledWith(expect.anything(), 77)
+  })
+
+  it('recomputes both trips when TripMaster_id changes', async () => {
+    vi.mocked(saveActivity).mockResolvedValue(1)
+    vi.mocked(findActivityById).mockResolvedValue({ id: 10, TripMaster_id: 77 })
+    vi.mocked(updateTripSummaryInfo).mockResolvedValue(1)
+
+    const app = buildApp()
+    const res = await app.request('/activities/10', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ TripMaster_id: 88 }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(updateTripSummaryInfo).toHaveBeenCalledTimes(2)
+    const calls = vi.mocked(updateTripSummaryInfo).mock.calls.map((c) => c[1])
+    expect(calls).toEqual(expect.arrayContaining([77, 88]))
+  })
+
+  it('does NOT recompute when activity is not on any trip and TripMaster_id is not set', async () => {
+    vi.mocked(saveActivity).mockResolvedValue(1)
+    vi.mocked(findActivityById).mockResolvedValue({ id: 10, TripMaster_id: null })
+
+    const app = buildApp()
+    const res = await app.request('/activities/10', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'Pending' }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(updateTripSummaryInfo).not.toHaveBeenCalled()
+  })
+
+  it('recomputes only the old trip when TripMaster_id is cleared to null', async () => {
+    vi.mocked(saveActivity).mockResolvedValue(1)
+    vi.mocked(findActivityById).mockResolvedValue({ id: 10, TripMaster_id: 77 })
+    vi.mocked(updateTripSummaryInfo).mockResolvedValue(1)
+
+    const app = buildApp()
+    const res = await app.request('/activities/10', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ TripMaster_id: null }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(updateTripSummaryInfo).toHaveBeenCalledTimes(1)
+    expect(updateTripSummaryInfo).toHaveBeenCalledWith(expect.anything(), 77)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// POST /activities  (create)
+// ---------------------------------------------------------------------------
+
+describe('POST /activities', () => {
+  it('creates an activity and recomputes the trip summary when TripMaster_id is set', async () => {
+    vi.mocked(insertActivity).mockResolvedValue(123)
+    vi.mocked(updateTripSummaryInfo).mockResolvedValue(1)
+
+    const app = buildApp()
+    const res = await app.request('/activities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        order_num: 5001,
+        ActivityType_code: 'LOAD',
+        TripMaster_id: 77,
+      }),
+    })
+
+    expect(res.status).toBe(201)
+    expect(insertActivity).toHaveBeenCalledTimes(1)
+    expect(updateTripSummaryInfo).toHaveBeenCalledWith(expect.anything(), 77)
+  })
+
+  it('does NOT recompute trip summary when TripMaster_id is null', async () => {
+    vi.mocked(insertActivity).mockResolvedValue(124)
+
+    const app = buildApp()
+    const res = await app.request('/activities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        order_num: 5001,
+        ActivityType_code: 'LOAD',
+      }),
+    })
+
+    expect(res.status).toBe(201)
+    expect(updateTripSummaryInfo).not.toHaveBeenCalled()
+  })
+
+  it('returns 400 when required fields are missing', async () => {
+    const app = buildApp()
+    const res = await app.request('/activities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'Pending' }),
     })
     expect(res.status).toBe(400)
   })

@@ -34,6 +34,14 @@ export async function saveActivity(
     .update({ ...patch, modified_by: userId ?? null, updated_at: new Date() })
 }
 
+/** Fetch a single activity by id. Used to detect TripMaster_id transitions. */
+export async function findActivityById(
+  db: Knex,
+  activityId: number,
+): Promise<Record<string, unknown> | undefined> {
+  return db(ACTIVITIES_TABLE).where('id', activityId).first()
+}
+
 /** Insert a new activity row. Returns the new row's id. */
 export async function insertActivity(db: Knex, activity: Record<string, unknown>) {
   const result = await db(ACTIVITIES_TABLE).insert({
