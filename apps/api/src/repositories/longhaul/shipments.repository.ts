@@ -209,8 +209,14 @@ export async function findShipmentsWithQuery(db: Knex, query: ShipmentQuery) {
         'at.code as activityType_code',
         'at.name as activityType_name',
         'at.abbreviation as activityType_abbreviation',
+        'drv.driver_name as driver_name',
       )
       .leftJoin('Longhaul_ActivityType as at', `${ACTIVITIES_TABLE}.ActivityType_code`, 'at.code')
+      .leftJoin(
+        'v_longhaul_drivers as drv',
+        `${ACTIVITIES_TABLE}.assigned_driver_id`,
+        'drv.driver_id',
+      )
       .whereIn(`${ACTIVITIES_TABLE}.order_num`, orderNums),
     db(COVERAGE_TABLE).whereIn('order_num', orderNums),
     db(EXTRA_LOCATIONS_TABLE)
@@ -261,8 +267,14 @@ export async function findShipmentsByIds(db: Knex, orderNums: number[]) {
         'at.code as activityType_code',
         'at.name as activityType_name',
         'at.abbreviation as activityType_abbreviation',
+        'drv.driver_name as driver_name',
       )
       .leftJoin('Longhaul_ActivityType as at', `${ACTIVITIES_TABLE}.ActivityType_code`, 'at.code')
+      .leftJoin(
+        'v_longhaul_drivers as drv',
+        `${ACTIVITIES_TABLE}.assigned_driver_id`,
+        'drv.driver_id',
+      )
       .whereIn(`${ACTIVITIES_TABLE}.order_num`, orderNums),
     db(COVERAGE_TABLE).whereIn('order_num', orderNums),
     db(EXTRA_LOCATIONS_TABLE)
