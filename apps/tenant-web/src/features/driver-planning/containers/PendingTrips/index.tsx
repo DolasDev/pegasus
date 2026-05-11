@@ -21,6 +21,7 @@ import { Card } from '../../components/Card'
 import { TripDetail, DriverTripDetail, NameTripDetail, DispatcherTripDetail } from './TripDetail'
 import { InputField } from '../../components/InputField'
 import { Snackbar } from '../../components/Snackbar'
+import { useConfirm } from '../../components/ConfirmDialog'
 import { DriverTypeahead } from '../DriverTypeahead'
 import { formatDate } from '../../utils/format-date'
 import { AddActivity } from './components/AddActivity'
@@ -120,17 +121,24 @@ const MoreTripActions: React.FC<{ tripId: any }> = ({ tripId }) => {
   const { user: planner } = useSelector((state: RootState) => state.user)
   const [isOpen, setOpen] = useState(false)
   const dispatch = useAppDispatch()
+  const confirm = useConfirm()
   const { refs, floatingStyles } = useFloating({
     middleware: [offset(5)],
   })
 
   const cancelTrip = async () => {
-    const confirm = window.confirm('Are you sure you want to cancel the trip')
-    if (confirm === true) {
+    setOpen(false)
+    const ok = await confirm({
+      title: 'Cancel trip?',
+      description: 'Are you sure you want to cancel the trip?',
+      confirmLabel: 'Cancel trip',
+      cancelLabel: 'Keep trip',
+      destructive: true,
+    })
+    if (ok) {
       dispatch(cancelTripAction(tripId, planner) as any)
       dispatch(reloadShipmentsAction({}))
     }
-    setOpen(false)
   }
 
   return (
@@ -161,6 +169,7 @@ const PendingTripsInternal = (_props: any) => {
   const { trip: currentTrip } = useSelector((state: RootState) => state.tripPlanning)
   const { user: planner } = useSelector((state: RootState) => state.user)
   const [saveDisabled, setSaveDisabled] = useState(false)
+  const confirm = useConfirm()
 
   const [snackBarConfig, setShowSnackbar] = useState<any>({
     show: false,
@@ -228,11 +237,13 @@ const PendingTripsInternal = (_props: any) => {
     setSaveDisabled(false)
   }
 
-  const clearCurrentTrip = (_trip: any) => {
-    const prompt = window.confirm(
-      'Are you sure you want to clear the current trip and start a new one?',
-    )
-    if (prompt) {
+  const clearCurrentTrip = async (_trip: any) => {
+    const ok = await confirm({
+      title: 'Start a new trip?',
+      description: 'Are you sure you want to clear the current trip and start a new one?',
+      confirmLabel: 'Start new trip',
+    })
+    if (ok) {
       dispatch(clearCurrentTripAction(null, planner) as any)
     }
   }

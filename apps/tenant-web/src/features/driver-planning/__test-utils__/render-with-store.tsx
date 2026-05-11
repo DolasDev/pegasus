@@ -10,6 +10,8 @@ import commonReducer from '../redux/common'
 import tripReducer from '../redux/trips'
 import userReducer from '../redux/user'
 import versionReducer from '../redux/version'
+import { SnackbarProvider } from '../components/Snackbar/SnackbarProvider'
+import { ConfirmProvider } from '../components/ConfirmDialog'
 
 const reducers = {
   tripPlanning: pendingTripsReducer,
@@ -132,7 +134,11 @@ export function renderWithStore(
   function Wrapper({ children }: { children: ReactNode }) {
     return (
       <Provider store={testStore}>
-        <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+        <QueryClientProvider client={qc}>
+          <SnackbarProvider>
+            <ConfirmProvider>{children}</ConfirmProvider>
+          </SnackbarProvider>
+        </QueryClientProvider>
       </Provider>
     )
   }
