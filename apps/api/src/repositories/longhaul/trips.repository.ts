@@ -276,6 +276,17 @@ export async function getTripStatuses(db: Knex) {
   return db('MasterTripStatus').select('*')
 }
 
+/**
+ * Look up a single trip-status row by its `status_id`.
+ *
+ * The `status` column holds the human-readable name (e.g. "Pending",
+ * "Dispatched", "In Transit"); `PATCH /trips/:id/status` uses this name to
+ * cascade onto activity rows so dispatch UIs show consistent text.
+ */
+export async function getTripStatusById(db: Knex, statusId: number) {
+  return db('MasterTripStatus').where('status_id', statusId).first()
+}
+
 /** Insert a new note into TripNotes. */
 export async function createNote(
   db: Knex,
