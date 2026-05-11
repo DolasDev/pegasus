@@ -177,8 +177,7 @@ describe('PendingTrips container', () => {
     expect(apiModule.API.saveTrip as any).toHaveBeenCalled()
   })
 
-  it('clicking New Trip prompts and dispatches when confirmed', () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  it('clicking New Trip opens the ConfirmDialog with the legacy prompt copy', async () => {
     const ship = seedShipment()
     renderWithStore(<PendingTrips />, {
       preloadedState: {
@@ -191,8 +190,13 @@ describe('PendingTrips container', () => {
       },
     })
     fireEvent.click(screen.getByText('New Trip'))
-    expect(confirmSpy).toHaveBeenCalled()
-    confirmSpy.mockRestore()
+    // ConfirmDialog now opens instead of the native window.confirm.
+    expect(
+      await screen.findByText(
+        'Are you sure you want to clear the current trip and start a new one?',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Start new trip' })).toBeInTheDocument()
   })
 
   it('clicking + on AddActivity opens menu with extra activity options', () => {

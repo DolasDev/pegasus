@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import { notify } from '../../../components/Snackbar/notify'
 
-export function promptForStatusUpdate(status: any, cb: any) {
-  window.alert(`Dates have changed on one or more activities!\nPlease review and adjust itinerary`)
+export function promptForStatusUpdate(_status: any, _cb: any) {
+  notify(`Dates have changed on one or more activities! Please review and adjust itinerary`, {
+    type: 'error',
+  })
 }
 
 export const useDateChangePrompt = ({ trip, hasDateChange, updateActivityDates }: any) => {

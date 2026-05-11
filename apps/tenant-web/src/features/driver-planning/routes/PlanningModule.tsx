@@ -6,6 +6,7 @@ import qs from 'query-string'
 import { SearchDashboard } from '../containers/Shipments'
 import { PendingTrips } from '../containers/PendingTrips'
 import { ShipmentDetail } from '../containers/ShipmentDetail'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { initializeTripPage as resetPageAction } from '@/features/driver-planning/redux/pending-trips'
 import { useAppDispatch } from '../redux/hooks'
 import type { RootState } from '../redux/store'
@@ -44,16 +45,7 @@ function PromptWrapper() {
   const dispatch = useAppDispatch()
 
   const blocker = useBlocker(shouldBlockNavigation)
-
-  useEffect(() => {
-    if (blocker.state === 'blocked') {
-      if (window.confirm('You have unsaved changes, are you sure you want to leave?')) {
-        blocker.proceed()
-      } else {
-        blocker.reset()
-      }
-    }
-  }, [blocker])
+  const isBlocked = blocker.state === 'blocked'
 
   useEffect(() => {
     return () => {
@@ -61,5 +53,20 @@ function PromptWrapper() {
     }
   }, [dispatch, planner])
 
-  return null
+  return (
+    <ConfirmDialog
+      open={isBlocked}
+      title="Leave page?"
+      description="You have unsaved changes, are you sure you want to leave?"
+      confirmLabel="Discard changes"
+      cancelLabel="Stay on page"
+      destructive
+      onConfirm={() => {
+        if (isBlocked) blocker.proceed()
+      }}
+      onCancel={() => {
+        if (isBlocked) blocker.reset()
+      }}
+    />
+  )
 }
