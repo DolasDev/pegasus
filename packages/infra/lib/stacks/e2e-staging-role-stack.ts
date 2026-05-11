@@ -7,11 +7,12 @@
 // The persona-coverage tests in apps/e2e/tests/api/authz-smoke.spec.ts call
 // AdminSetUserPassword directly against the user pool to bypass the Cognito
 // FORCE_CHANGE_PASSWORD challenge that AdminCreateUser leaves on invitee
-// accounts. That admin API requires AWS credentials, which the e2e runner
-// previously did not have. Reusing the deploy role would have worked but
-// widens that role's blast radius to a whole class of admin Cognito calls;
-// instead this stack ships a single-purpose role scoped to one action on
-// one user pool.
+// accounts, then AdminDisableUser in afterAll to deactivate the persona so
+// staging doesn't accumulate live test accounts. Both admin APIs require
+// AWS credentials, which the e2e runner previously did not have. Reusing
+// the deploy role would have worked but widens that role's blast radius to
+// a whole class of admin Cognito calls; instead this stack ships a
+// single-purpose role scoped to those two actions on one user pool.
 //
 // Only instantiated for the staging env — see bin/app.ts.
 // ---------------------------------------------------------------------------
@@ -57,7 +58,7 @@ export class E2EStagingRoleStack extends cdk.Stack {
 
     role.addToPolicy(
       new iam.PolicyStatement({
-        actions: ['cognito-idp:AdminSetUserPassword'],
+        actions: ['cognito-idp:AdminSetUserPassword', 'cognito-idp:AdminDisableUser'],
         resources: [props.userPoolArn],
       }),
     )

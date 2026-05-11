@@ -255,16 +255,27 @@ export async function listAllowedPermissions(
       },
     }))
 
-    const result = await getAvp().send(
-      new BatchIsAuthorizedCommand({
-        policyStoreId,
-        entities: { entityList: buildAvpEntityList(principal) },
-        requests,
-      }),
+    // AVP caps BatchIsAuthorized at 30 requests per call (ValidationException
+    // above that). The catalog crossed 30 when Order + Event actions landed,
+    // so a single call now 400s and the endpoint 500s with INTERNAL_ERROR.
+    // Chunk and fan out — chunks are mutually independent, so Promise.all
+    // keeps the round-trip flat.
+    const AVP_BATCH_LIMIT = 30
+    const avp = getAvp()
+    const entities = { entityList: buildAvpEntityList(principal) }
+    const chunks: BatchIsAuthorizedInputItem[][] = []
+    for (let i = 0; i < requests.length; i += AVP_BATCH_LIMIT) {
+      chunks.push(requests.slice(i, i + AVP_BATCH_LIMIT))
+    }
+    const responses = await Promise.all(
+      chunks.map((slice) =>
+        avp.send(new BatchIsAuthorizedCommand({ policyStoreId, entities, requests: slice })),
+      ),
     )
+    const results = responses.flatMap((r) => r.results ?? [])
 
     const allowed: string[] = []
-    for (const [i, r] of (result.results ?? []).entries()) {
+    for (const [i, r] of results.entries()) {
       const action = ALL_ACTIONS[i]
       if (action && r.decision === 'ALLOW') allowed.push(action.permission)
     }
