@@ -3,15 +3,16 @@
 // ---------------------------------------------------------------------------
 
 import type { Knex } from 'knex'
+import { getLonghaulClientConfig } from '../../lib/longhaul-client-config'
 
 const FILTER_TABLE = 'longhaul_shipment_filter'
 const USER_PREFERENCES_TABLE = 'longhaul_user_preferences'
 
 /** Query filter options (move types). */
 export async function getFilterOptions(db: Knex) {
-  const args = process.env['MOVE_TYPES_WHERE'] ?? '1=1'
+  const { moveTypesWhere } = getLonghaulClientConfig()
   const moveTypes = await db('MoveType')
-    .whereRaw(args)
+    .whereRaw(moveTypesWhere)
     .orderBy('move_type_desc', 'asc')
     .select('move_type_desc', 'move_type')
 
