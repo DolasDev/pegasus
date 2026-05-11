@@ -23,9 +23,25 @@ export async function getFilterOptions(db: Knex) {
   }
 }
 
-/** Return all saved filters owned by the given user code. */
-export async function getSavedFiltersForUser(db: Knex, userCode: string | number) {
-  return db(FILTER_TABLE).where('owner_code', userCode).orderBy('name', 'asc').select('*')
+/**
+ * Return saved filters scoped to the requesting user.
+ *
+ * - `self`: the user's own private filters (`owner_code = userCode AND is_public = false`).
+ * - `public`: every public filter (`is_public = true`), regardless of owner.
+ *
+ * The two scopes are mutually exclusive in their default cases, which prevents
+ * another user's private filters from ever leaking into either response.
+ */
+export async function getSavedFiltersForUser(
+  db: Knex,
+  userCode: string | number,
+  type: 'self' | 'public' = 'self',
+) {
+  const query = db(FILTER_TABLE).orderBy('name', 'asc').select('*')
+  if (type === 'public') {
+    return query.where('is_public', true)
+  }
+  return query.where('owner_code', userCode).andWhere('is_public', false)
 }
 
 /** Insert or update a filter record. */

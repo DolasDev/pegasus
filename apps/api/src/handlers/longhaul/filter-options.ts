@@ -106,9 +106,12 @@ filterOptionsRouter.get('/shipment-filters', async (c) => {
     )
   }
 
+  const typeParam = c.req.query('type')
+  const type: 'self' | 'public' = typeParam === 'public' ? 'public' : 'self'
+
   try {
     const db = c.get('longhaulDb')
-    const rawFilters = await getSavedFiltersForUser(db, user.code)
+    const rawFilters = await getSavedFiltersForUser(db, user.code, type)
     const data = rawFilters.map((f) => {
       try {
         const parsed = JSON.parse(f.query as string)
