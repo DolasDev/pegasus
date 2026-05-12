@@ -2,17 +2,18 @@
 
 Captured 2026-05-11 during the longhaul-port audit-and-remediation sweep.
 Updated 2026-05-12 with findings + the first fix (lazy Prisma client).
+Updated 2026-05-12: the `@pegasus/infra` `PathNotUnderRoot` item closed — could not reproduce; was transient local cruft, not a code bug (see below).
 
 ## Status
 
-- ✅ **Fixed: `@pegasus/api` handler tests failing at module load** — `apps/api/src/db.ts` now exports a lazy Proxy instead of eagerly calling `new PrismaClient()` at import time. Importing `./db` is now side-effect-free w.r.t. `DATABASE_URL`; the client is created on first *use*. Handler tests that mock the repos (quotes/users/events/orders/settings/api-clients/…) no longer collapse at collection when `DATABASE_URL` is unset. (PR: see below.)
-- ✅ **Not a real bug: missing `@aws-sdk/*` / `@hono/swagger-ui` modules** — these *are* declared in `apps/api/package.json` (and `@aws-sdk/client-cloudwatch` / `@aws-sdk/client-ec2` in `apps/vpn-agent/package.json`). The local `node_modules` was just stale; `npm install` (or `npm ci`) materialises them. Worker reports of "package.json missing the dep" were a misdiagnosis. CI (`npm ci`) was never affected.
-- ✅ **Not a real bug: `users.repository` "Prisma schema drift"** — the *generated* client under `node_modules/@prisma/client` was stale (missing `legacyWindowsUsername`, `roleNames`, `policyStoreId`). `cd apps/api && prisma generate` regenerates it; the schema itself is fine. CI runs `prisma generate` in the Test job, so it was never affected.
-- ⚠️ **Newly found, separate issue: `@pegasus/infra` tests fail locally with `PathNotUnderRoot`** — `lib/stacks/__tests__/api-stack.test.ts` (and the bundle/cognito stack tests) fail with `PathNotUnderRoot: entryPath (.../apps/api/src/lambda.ts) should be under projectRoot (.../packages/infra)` when synthesising the `NodejsFunction`. This reproduces on a clean `main` checkout locally but CI's Test job is green, so it's a local-only quirk (likely `aws-cdk-lib`'s `NodejsFunction` project-root auto-detection picking `packages/infra` as the root when run via vitest with cwd = `packages/infra`). Needs its own investigation — pass an explicit `projectRoot` / `depsLockFilePath` to the `NodejsFunction` in `api-stack.ts` so the tests don't depend on cwd. **This is the remaining blocker for a clean local `git push`.**
+- ✅ **Fixed: `@pegasus/api` handler tests failing at module load** — `apps/api/src/db.ts` now exports a lazy Proxy instead of eagerly calling `new PrismaClient()` at import time. Importing `./db` is now side-effect-free w.r.t. `DATABASE_URL`; the client is created on first _use_. Handler tests that mock the repos (quotes/users/events/orders/settings/api-clients/…) no longer collapse at collection when `DATABASE_URL` is unset. (PR: see below.)
+- ✅ **Not a real bug: missing `@aws-sdk/*` / `@hono/swagger-ui` modules** — these _are_ declared in `apps/api/package.json` (and `@aws-sdk/client-cloudwatch` / `@aws-sdk/client-ec2` in `apps/vpn-agent/package.json`). The local `node_modules` was just stale; `npm install` (or `npm ci`) materialises them. Worker reports of "package.json missing the dep" were a misdiagnosis. CI (`npm ci`) was never affected.
+- ✅ **Not a real bug: `users.repository` "Prisma schema drift"** — the _generated_ client under `node_modules/@prisma/client` was stale (missing `legacyWindowsUsername`, `roleNames`, `policyStoreId`). `cd apps/api && prisma generate` regenerates it; the schema itself is fine. CI runs `prisma generate` in the Test job, so it was never affected.
+- ✅ **Closed (could not reproduce): `@pegasus/infra` `PathNotUnderRoot`** — on a clean `main` (HEAD `b08726b`) the infra suite passes (10 files / 203 tests) both via `cd packages/infra && vitest run` and `turbo run test --filter=@pegasus/infra`. `aws-cdk-lib@2.253.1`'s `NodejsFunction` resolves `depsLockFilePath` by walking up from `process.cwd()` (= `packages/infra`); with no lockfile under `packages/infra/` it lands on the repo-root `package-lock.json`, so `projectRoot` = repo root and `apps/api/src/lambda.ts` is under it — fine. `PathNotUnderRoot` only fires if a stray lockfile (`package-lock.json` / `pnpm-lock.yaml` / `yarn.lock` / `bun.lock*`) exists _inside_ `packages/infra/` at run time — transient local cruft, not a code bug (same class as the `@aws-sdk/*` and `users.repository` items above). Investigation plan archived to `plans/completed/infra-nodejsfunction-pathnotunderroot.md`. Optional hardening — explicit `depsLockFilePath` on the 9 `NodejsFunction` constructs in `packages/infra/lib/stacks/*` — left undone (churns the infra snapshot/byte-level tests; do it as its own PR if wanted, not reactively).
 
 ## Original problem statement
 
-The repo's pre-push hook runs `turbo run typecheck test`, which on a stale or worktree checkout consistently failed. Root causes turned out to be (in order of impact): stale local `node_modules`, stale generated Prisma client, the eager `new PrismaClient()` in `db.ts`, and the `@pegasus/infra` cwd-sensitivity above.
+The repo's pre-push hook runs `turbo run typecheck test`, which on a stale or worktree checkout consistently failed. Root causes turned out to be (in order of impact): stale local `node_modules`, stale generated Prisma client, the eager `new PrismaClient()` in `db.ts`, and (a one-off, not a code bug) a stray lockfile under `packages/infra/` tripping CDK's `NodejsFunction` project-root resolution.
 
 ## Why this matters
 
@@ -24,15 +25,14 @@ Every one of the seven longhaul-port PRs (#97–#103) ended up pushed with `git 
 
 ## Remaining work
 
-### 1. Fix the `@pegasus/infra` `PathNotUnderRoot` failure (the actual blocker)
+### 1. ~~Fix the `@pegasus/infra` `PathNotUnderRoot` failure~~ — CLOSED (could not reproduce; transient local cruft, see Status above)
 
-`packages/infra/lib/stacks/api-stack.ts:143` constructs `new nodejs.NodejsFunction(this, 'ApiFunction', { entry: path.join(__dirname, '../../../../apps/api/src/lambda.ts'), ... })` with no explicit `projectRoot` / `depsLockFilePath`. Newer `aws-cdk-lib` auto-detects the project root in a way that, when the tests run under vitest with cwd = `packages/infra`, resolves to `packages/infra` — and then rejects the `apps/api/...` entry as "not under root". CI happens not to hit it (different cwd / build ordering), but it breaks every local `turbo run test`.
-
-Fix: pass an explicit `projectRoot` (or `depsLockFilePath: path.join(__dirname, '../../../../package-lock.json')`) to the `NodejsFunction` so root resolution is deterministic and cwd-independent. Re-run `packages/infra` tests locally to confirm.
+Optional follow-up only: pass an explicit `depsLockFilePath: path.join(__dirname, '../../../../package-lock.json')` to the 9 `NodejsFunction` constructs in `packages/infra/lib/stacks/*` so root resolution is cwd-independent regardless of stray files. Will churn the infra snapshot / byte-level tests (`api-stack.bundle.test.ts`, AVP/Cognito IAM pins) — re-baseline and review the template diff. Do it as its own PR if the team wants the determinism; not a blocker.
 
 ### 2. Audit remaining `apps/api` DB tests for clean skips (lower priority now)
 
-With the lazy `db.ts` in place, importing handlers no longer throws. The repository integration tests under `apps/api/src/repositories/__tests__/` mostly already wrap themselves in `describe.skipIf(!process.env['DATABASE_URL'])`. A few handler tests are still "unguarded" but they mock the repos so they don't actually touch the DB — leave them. If any test is found that *does* hit the DB without a guard, wrap it:
+With the lazy `db.ts` in place, importing handlers no longer throws. The repository integration tests under `apps/api/src/repositories/__tests__/` mostly already wrap themselves in `describe.skipIf(!process.env['DATABASE_URL'])`. A few handler tests are still "unguarded" but they mock the repos so they don't actually touch the DB — leave them. If any test is found that _does_ hit the DB without a guard, wrap it:
+
 ```ts
 const hasDb = !!process.env['DATABASE_URL']
 describe.skipIf(!hasDb)('...', () => { ... })
