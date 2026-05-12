@@ -18,6 +18,7 @@ import {
   loadActivityTypesMap,
   type ShipmentRow,
 } from '../../lib/longhaul-shipment-enrich'
+import { buildShipmentActivities } from '../../lib/longhaul-build-activities'
 import { logger } from '../../lib/logger'
 
 const CoverageBody = z.object({
@@ -100,10 +101,16 @@ shipmentsRouter.get('/shipments', async (c) => {
 
   const enriched: ShipmentRow[] = []
   for (const raw of rawShipments as ShipmentRow[]) {
+    // getTripInfo enrichment must run before buildShipmentActivities, which
+    // replaces `activities` with the untripped subset + generated templates.
     enrichShipmentWithTripInfo(raw)
     if (wantedTripStatusIds && !wantedTripStatusIds.has(String(raw['TripStatus_id'] ?? ''))) {
       continue
     }
+    // Legacy shipment.service.ts:mapActivitiesToUnplannedShipments — fill in the
+    // required PACK/LOAD-or-R19O/RDEL activity templates so the planning grid
+    // renders even before the trip is built.
+    raw.activities = buildShipmentActivities(raw)
     raw.extraActivities = buildExtraShipmentActivities(raw, activityTypesMap)
     enriched.push(raw)
   }
@@ -119,11 +126,6 @@ shipmentsRouter.get('/shipments', async (c) => {
     )
   }
 
-  // TODO(longhaul-port-audit): Port `buildShipmentActivities` (required
-  // activity templates) from legacy activity.service.ts:142-237 — it appends
-  // default PACK/LOAD/RDEL/R19O activity rows to shipments missing them so the
-  // UI can render the planning grid even when the trip hasn't been built yet.
-  // Tracked separately from this unit's scope (extras + filter + cap only).
   return c.json({ data: enriched, meta: { count: enriched.length } })
 })
 

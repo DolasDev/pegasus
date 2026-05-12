@@ -185,8 +185,46 @@ describe('GET /shipments', () => {
     const data = body['data'] as Array<Record<string, unknown>>
     const extras = data[0]!['extraActivities'] as Array<{ ActivityType_code: string }>
     const codes = extras.map((e) => e.ActivityType_code)
-    // Required core extras (no existing activities → all suggested)
-    expect(codes).toEqual(expect.arrayContaining(['PACK', 'LOAD', 'RDEL']))
+    // buildShipmentActivities runs first and fills the core PACK/LOAD/RDEL into
+    // `activities`, so extraActivities only carries the optional add-ons
+    // (R19*, UNPK, SIT in/out, etc.) — matching legacy ordering.
+    expect(codes).toEqual(expect.arrayContaining(['SITIN', 'SITOUT', 'UNPK']))
+    expect(codes).not.toContain('PACK')
+  })
+
+  it('replaces activities with required templates via buildShipmentActivities', async () => {
+    vi.mocked(findShipmentsWithQuery).mockResolvedValue([
+      {
+        order_num: 303,
+        pack_date2: '2026-05-01',
+        load_date2: '2026-05-02',
+        del_date2: '2026-05-03',
+        shipper_add1: '1 A St',
+        shipper_city: 'Origin',
+        shipper_state: 'OR',
+        shipper_zip: '00000',
+        del_address1: '2 B St',
+        consignee_city: 'Dest',
+        consignee_state: 'DE',
+        consignee_zip: '11111',
+        // A tripped activity that buildShipmentActivities must drop, plus an
+        // untripped one it must preserve.
+        activities: [
+          { id: 1, TripMaster_id: 99, ActivityType_code: 'PACK', planned_start: '2026-05-01' },
+          { id: 2, TripMaster_id: null, ActivityType_code: 'XPU', planned_start: '2026-05-01' },
+        ],
+        extra_locations: [],
+      },
+    ])
+    const app = buildApp()
+    const res = await app.request('/shipments')
+    const body = await json(res)
+    const data = body['data'] as Array<Record<string, unknown>>
+    const activities = data[0]!['activities'] as Array<Record<string, unknown>>
+    const codes = activities.map((a) => a['ActivityType_code'])
+    // Untripped XPU preserved; tripped PACK dropped; required PACK/LOAD/RDEL added.
+    expect(codes).toEqual(expect.arrayContaining(['XPU', 'PACK', 'LOAD', 'RDEL']))
+    expect(activities.some((a) => a['TripMaster_id'] === 99)).toBe(false)
   })
 
   // ----- post-fetch TripStatus_id filter -----
