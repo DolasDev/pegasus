@@ -77,6 +77,10 @@ lerna-debug.log*
 Thumbs.db
 settings.local.json
 
+# Claude Code runtime artifacts (the rest of .claude/ — agents, commands, GSD — is tracked)
+.claude/scheduled_tasks.lock
+.claude/worktrees/
+
 # Local AWS CLI installer artifacts — downloaded via curl/unzip for ad-hoc use.
 awscliv2.zip
 /aws/
