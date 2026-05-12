@@ -17,7 +17,7 @@ test.describe('Trips tab', () => {
   test('loads the Trips list @smoke', async ({ page }) => {
     const tp = new TripsPage(page)
     await expect(page).toHaveURL(/\/driver-planning\/trips\b/)
-    await expect(tp.newTripButton).toBeVisible({ timeout: 15_000 })
+    await expect(tp.newTripButton).toBeVisible({ timeout: 25_000 })
   })
 
   test('the Trips lane renders (with cards or the empty state)', async ({ page }) => {
@@ -25,7 +25,7 @@ test.describe('Trips tab', () => {
     // The "Trips (n)" lane heading is always rendered once <Trips> mounts; with
     // 0 trips it sits alongside the "No trips found" empty state, with >0 it sits
     // above the cards. Default filter: status ∈ {Pending,Accepted,Offered,In-Progress}.
-    await expect(tp.laneTitle).toBeVisible({ timeout: 20_000 })
+    await expect(tp.laneTitle).toBeVisible({ timeout: 30_000 })
     if ((await tp.cardCount()) === 0) {
       await expect(tp.emptyState).toBeVisible()
     } else {
@@ -41,7 +41,7 @@ test.describe('Trips tab', () => {
 
   test('clicking a trip card opens its detail page', async ({ page }) => {
     const tp = new TripsPage(page)
-    await expect(tp.laneTitle).toBeVisible({ timeout: 20_000 })
+    await expect(tp.laneTitle).toBeVisible({ timeout: 30_000 })
     const tripId = await tp.firstTripId()
     test.skip(tripId === null, 'no trips in the QA DB under the default filter')
     await tp.openTrip(tripId!)

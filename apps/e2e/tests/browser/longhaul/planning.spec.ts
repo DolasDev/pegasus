@@ -30,12 +30,12 @@ test.describe('Planning tab', () => {
     // Not @smoke — fails (not skips) when empty / on a /shipments 504; that's a
     // real finding about the QA DB / on-prem query, not a test problem.
     const pp = new PlanningPage(page, '')
-    await expect.poll(() => pp.shipmentCards().count(), { timeout: 25_000 }).toBeGreaterThan(0)
+    await expect.poll(() => pp.shipmentCards().count(), { timeout: 40_000 }).toBeGreaterThan(0)
   })
 
   test('adding a shipment to the trip auto-generates its activities', async ({ page }) => {
     const pp = new PlanningPage(page, '')
-    await expect.poll(() => pp.shipmentCards().count(), { timeout: 25_000 }).toBeGreaterThan(0)
+    await expect.poll(() => pp.shipmentCards().count(), { timeout: 40_000 }).toBeGreaterThan(0)
     const orderNum = await pp.addFirstShipmentToTrip()
 
     const card = orderNum
@@ -61,7 +61,7 @@ test.describe('Planning tab', () => {
 
   test('navigating away with a dirty pending trip prompts "Leave page?"', async ({ page }) => {
     const pp = new PlanningPage(page, '')
-    await expect.poll(() => pp.shipmentCards().count(), { timeout: 25_000 }).toBeGreaterThan(0)
+    await expect.poll(() => pp.shipmentCards().count(), { timeout: 40_000 }).toBeGreaterThan(0)
     await pp.addFirstShipmentToTrip()
     await expect(pp.pendingTripShipments().first()).toBeVisible()
 

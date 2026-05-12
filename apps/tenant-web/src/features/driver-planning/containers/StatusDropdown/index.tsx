@@ -8,7 +8,7 @@ export const StatusDropdown = (props: any) => {
 
   return (
     <Select
-      options={common.tripStatuses.map((status: any) => ({
+      options={(common.tripStatuses || []).map((status: any) => ({
         value: status.status_id,
         label: status.status,
       }))}

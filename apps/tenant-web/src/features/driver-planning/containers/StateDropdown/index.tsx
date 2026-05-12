@@ -8,7 +8,7 @@ export const StateDropdown = (props: any) => {
 
   return (
     <Select
-      options={common.stateList.map((state: any) => ({
+      options={(common.stateList || []).map((state: any) => ({
         value: state,
         label: `${state.geo_name} (${state.geo_code})`,
       }))}

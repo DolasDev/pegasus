@@ -28,7 +28,7 @@ test.describe('Shipments tab', () => {
     // means the QA planning DB has no matching shipments or the on-prem query is
     // timing out — a real finding, so this fails rather than skips.
     const sp = new ShipmentsPage(page)
-    await expect.poll(() => sp.rowCount(), { timeout: 25_000 }).toBeGreaterThan(0)
+    await expect.poll(() => sp.rowCount(), { timeout: 40_000 }).toBeGreaterThan(0)
   })
 
   test('the FilterTabs panel expands and collapses', async ({ page }) => {

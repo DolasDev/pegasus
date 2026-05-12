@@ -2,6 +2,8 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { API } from '../../utils/api'
 import type { AppDispatch } from '../store'
 
+const asArray = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : [])
+
 export interface CommonState {
   loading: boolean
   driversList: any[]
@@ -31,7 +33,11 @@ const commonSlice = createSlice({
       state.loading = true
     },
     fetchDriversSuccess(state, action: PayloadAction<any[]>) {
-      state.driversList = action.payload
+      // Defensive: the ported on-prem bridge can hand back null on some error
+      // shapes; an undefined reference list crashes the dropdown containers
+      // (StatusDropdown / StateDropdown / DriverTypeahead .map straight off it)
+      // → app error boundary, which is what was making the Trips list flake.
+      state.driversList = asArray(action.payload)
         .map(({ driver_name, ...rest }: any) => ({
           driver_name: (driver_name || '').trim(),
           ...rest,
@@ -44,22 +50,22 @@ const commonSlice = createSlice({
       state.error = action.payload
     },
     fetchStatusesSuccess(state, action: PayloadAction<any[]>) {
-      state.tripStatuses = action.payload
+      state.tripStatuses = asArray(action.payload)
     },
     fetchStatesSuccess(state, action: PayloadAction<any[]>) {
-      state.stateList = action.payload
+      state.stateList = asArray(action.payload)
     },
     fetchZoneSuccess(state, action: PayloadAction<any[]>) {
-      state.zoneList = action.payload
+      state.zoneList = asArray(action.payload)
     },
     fetchPlannersSuccess(state, action: PayloadAction<any[]>) {
-      state.plannersList = action.payload
+      state.plannersList = asArray(action.payload)
     },
     fetchDispatcherSuccess(state, action: PayloadAction<any[]>) {
-      state.dispatcherList = action.payload
+      state.dispatcherList = asArray(action.payload)
     },
     fetchFilterOptionsSuccess(state, action: PayloadAction<any>) {
-      state.filterOptions = action.payload
+      state.filterOptions = action.payload ?? {}
     },
   },
 })

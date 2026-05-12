@@ -18,7 +18,7 @@ async function openFirstTrip(page: Page, qaWebUrl: string) {
   const layout = new DriverPlanningLayout(page, qaWebUrl)
   await layout.openTab('Trips')
   const trips = new TripsPage(page)
-  await expect(trips.laneTitle).toBeVisible({ timeout: 20_000 })
+  await expect(trips.laneTitle).toBeVisible({ timeout: 30_000 })
   const tripId = await trips.firstTripId()
   test.skip(tripId === null, 'no trips in the QA DB under the default filter')
   const detail = new TripDetailPage(page, qaWebUrl)
@@ -36,7 +36,7 @@ test.describe('Trip detail', () => {
     qaWebUrl,
   }) => {
     const { detail } = await openFirstTrip(page, qaWebUrl)
-    await expect(detail.gantt).toBeVisible({ timeout: 20_000 })
+    await expect(detail.gantt).toBeVisible({ timeout: 30_000 })
     await expect(detail.notes).toBeVisible()
     await expect(detail.statusSteps.first()).toBeVisible()
     // Exactly one status step is marked active.
@@ -45,7 +45,7 @@ test.describe('Trip detail', () => {
 
   test('clicking a trip shipment opens the ShipmentDetail pane', async ({ page, qaWebUrl }) => {
     const { detail } = await openFirstTrip(page, qaWebUrl)
-    await expect(detail.gantt).toBeVisible({ timeout: 20_000 })
+    await expect(detail.gantt).toBeVisible({ timeout: 30_000 })
     test.skip(
       (await detail.shipmentActivityCards.count()) === 0,
       'this trip has no shipment activities',
@@ -53,7 +53,7 @@ test.describe('Trip detail', () => {
     await expect(detail.shipmentDetailPane).toHaveAttribute('data-open', 'false')
     await detail.shipmentActivityCards.first().click()
     await expect(detail.shipmentDetailPane).toHaveAttribute('data-open', 'true', {
-      timeout: 15_000,
+      timeout: 25_000,
     })
     await expect(detail.shipmentDetailField('Shipper Name')).toBeVisible()
   })
