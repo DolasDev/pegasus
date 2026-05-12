@@ -75,6 +75,24 @@ export function getLonghaulDb(connectionString: string): Knex {
 }
 
 /**
+ * Lowercase the top-level keys of each row.
+ *
+ * Some Dolios SQL Server views (notably v_longhaul_drivers) return UPPERCASE
+ * column names, but the ported longhaul code (and the legacy app it came from)
+ * expects lowercase `driver_id` / `driver_name` / etc. Normalise such reads
+ * with this helper rather than scattering `?? row.DRIVER_ID` fallbacks.
+ */
+export function lowercaseRowKeys<T = Record<string, unknown>>(
+  rows: Array<Record<string, unknown>>,
+): T[] {
+  return rows.map((row) => {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(row)) out[k.toLowerCase()] = v
+    return out as T
+  })
+}
+
+/**
  * Closes all cached Knex pools. Called during graceful shutdown.
  */
 export async function closeAllLonghaulPools(): Promise<void> {

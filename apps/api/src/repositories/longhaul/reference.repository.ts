@@ -5,10 +5,19 @@
 
 import type { Knex } from 'knex'
 import { getLonghaulClientConfig } from '../../lib/longhaul-client-config'
+import { lowercaseRowKeys } from '../../lib/longhaul-db'
 
-/** Fetch all active drivers from v_longhaul_drivers. */
+/**
+ * Fetch all active drivers from v_longhaul_drivers.
+ *
+ * The Dolios SQL Server's v_longhaul_drivers view returns UPPERCASE column
+ * names (DRIVER_ID, DRIVER_NAME, AGENT_CODE, ACTIVE, TYPE), unlike the other
+ * longhaul views. The ported longhaul UI (DriverTypeahead, common.driversList)
+ * — like the legacy app it was ported from — expects lowercase `driver_id` /
+ * `driver_name`, so normalise here.
+ */
 export async function getDrivers(db: Knex) {
-  return db('v_longhaul_drivers').select('*')
+  return lowercaseRowKeys(await db('v_longhaul_drivers').select('*'))
 }
 
 /** Fetch all states from v_longhaul_states. */
