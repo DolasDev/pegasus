@@ -1,12 +1,13 @@
 # Remote E2E mode
 
-The Playwright suite under `apps/e2e/` supports two execution targets, selected
+The Playwright suite under `apps/e2e/` supports three execution targets, selected
 via the `E2E_TARGET` env var:
 
-| Mode              | When                      | What runs                                                                                                                             |
-| ----------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `local` (default) | Developer laptop, default | Spins up the API via `webServer`, runs `globalSetup` (Prisma migrate + tenant seed), points specs at `http://localhost:3001`.         |
-| `remote`          | Staging E2E gate (CI)     | No `webServer`, no `globalSetup`. Hits the API at `E2E_API_BASE_URL` and excludes specs tagged `@local-only` (DB-seeded / auth-only). |
+| Mode              | When                      | What runs                                                                                                                                                                              |
+| ----------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `local` (default) | Developer laptop, default | Spins up the API via `webServer`, runs `globalSetup` (Prisma migrate + tenant seed), points specs at `http://localhost:3001`.                                                          |
+| `remote`          | Staging E2E gate (CI)     | No `webServer`, no `globalSetup`. Hits the API at `E2E_API_BASE_URL` and excludes specs tagged `@local-only` (DB-seeded / auth-only).                                                  |
+| `qa`              | On-demand / nightly       | No `webServer`, no `globalSetup`. Real Cognito login → the `/driver-planning` (longhaul) browser + API suite against a QA tenant with a live on-prem tunnel. See **`apps/e2e/QA.md`**. |
 
 ## Running remote mode locally (rare)
 
@@ -46,6 +47,16 @@ on `process.env['E2E_TARGET'] === 'remote'`) when the spec requires:
 
 The remote config sets `grepInvert: /@local-only/`, so tagged specs are filtered
 out of the staging gate. Untagged specs run against the deployed staging stack.
+The `qa` config also sets `grepInvert: /@local-only/` (it never spins up the
+local DB / API either).
+
+### `@qa-mutating` (qa target only)
+
+Tag specs that write to the on-prem MSSQL DB (create a trip, change a status,
+edit an activity, patch driver availability, etc.) with `@qa-mutating`. The QA
+planning DB is disposable — re-seed it from the known-good snapshot before a
+full run. To run only the safe read-only subset: `playwright test --grep-invert "@qa-mutating"`.
+See `apps/e2e/QA.md`.
 
 ## What the staging gate runs today
 
