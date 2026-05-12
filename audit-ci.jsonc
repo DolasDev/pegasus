@@ -12,6 +12,19 @@
     // the bundled copy — must wait for an upstream CDK release that rebundles a patched
     // fast-uri. Re-check after each aws-cdk-lib bump and remove these entries when clean.
     "GHSA-q3j6-qgpj-74h6",
-    "GHSA-v39h-62p7-jpjc"
+    "GHSA-v39h-62p7-jpjc",
+
+    // "Malware in @tanstack/history" (GHSA-rmmr-r34h-pfm5). On 2026-05-11 an attacker
+    // published malicious patch versions @tanstack/history@1.161.9 and 1.161.12; both have
+    // since been unpublished (404 in the registry). The advisory carries range "*" /
+    // fixAvailable:false while the incident is hot, so it flags every version including the
+    // legitimate one. Our lockfile pins @tanstack/history@1.161.6 (published 2026-03-15,
+    // pre-incident, still live in the registry), and @tanstack/react-router@1.169.2 +
+    // @tanstack/router-core@1.169.2 both pin history to *exactly* 1.161.6 — so resolution
+    // cannot drift to a malicious version. We do not ship the malware.
+    // Remove this entry once the advisory is narrowed to exclude 1.161.6, or once TanStack
+    // ships a clean react-router that the advisory marks as fixed. Re-verify the lockfile
+    // still resolves history to 1.161.6 (or a later registry-published version) before then.
+    "GHSA-rmmr-r34h-pfm5"
   ]
 }
