@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test'
 import { test, expect, gateOnOnpremHealth } from './_shared'
 import { DriverPlanningLayout } from './pages/DriverPlanningLayout'
 import { TripDetailPage } from './pages/TripDetailPage'
@@ -7,10 +8,23 @@ import { TripsPage } from './pages/TripsPage'
 // /driver-planning/trips/:tripId — the legacy Trip detail / itinerary view
 // (ActivityGantt + Notes + status changes + activity-date edits + ShipmentDetail).
 //
-// A smoke check (open the first trip from the list, the Gantt renders) runs
-// normally; the deeper interactions are `test.fixme`'d until Phase A confirms
-// the ActivityGantt / Notes / status-dropdown DOM. Write flows are @qa-mutating.
+// Smoke + read-only interactions run normally. Write flows (notes, status, date
+// edits) are @qa-mutating and stay `test.fixme`'d until the QA-app walkthrough
+// confirms the popover/prompt behaviour against the live app.
 // ---------------------------------------------------------------------------
+
+/** Open the first trip from the Trips list and return its detail PO + id. */
+async function openFirstTrip(page: Page, qaWebUrl: string) {
+  const layout = new DriverPlanningLayout(page, qaWebUrl)
+  await layout.openTab('Trips')
+  const trips = new TripsPage(page)
+  await expect(trips.laneTitle.or(trips.emptyState)).toBeVisible({ timeout: 20_000 })
+  const tripId = await trips.firstTripId()
+  test.skip(tripId === null, 'no trips in the QA DB under the default filter')
+  const detail = new TripDetailPage(page, qaWebUrl)
+  await detail.goto(tripId!)
+  return { detail, tripId: tripId! }
+}
 
 test.describe('Trip detail', () => {
   test.beforeEach(async ({ page, qaWebUrl, qaApiFetch }) => {
@@ -21,41 +35,42 @@ test.describe('Trip detail', () => {
     page,
     qaWebUrl,
   }) => {
-    // Find a trip id from the list, then deep-link to its detail page.
-    const layout = new DriverPlanningLayout(page, qaWebUrl)
-    await layout.openTab('Trips')
-    const trips = new TripsPage(page)
-    test.skip((await trips.cardCount()) === 0, 'no trips in the QA DB to open')
+    const { detail } = await openFirstTrip(page, qaWebUrl)
+    await expect(detail.gantt).toBeVisible({ timeout: 20_000 })
+    await expect(detail.notes).toBeVisible()
+    await expect(detail.statusSteps.first()).toBeVisible()
+    // Exactly one status step is marked active.
+    await expect(detail.activeStatusStep).toHaveCount(1)
+  })
 
-    const href = await trips.cards.first().getAttribute('href')
-    const tripId = href?.match(/\/trips?\/(\d+)/)?.[1]
+  test('clicking a trip shipment opens the ShipmentDetail pane', async ({ page, qaWebUrl }) => {
+    const { detail } = await openFirstTrip(page, qaWebUrl)
+    await expect(detail.gantt).toBeVisible({ timeout: 20_000 })
     test.skip(
-      !tripId,
-      'could not derive a trip id from the first card; confirm TripCard href in Phase A',
+      (await detail.shipmentActivityCards.count()) === 0,
+      'this trip has no shipment activities',
     )
-
-    const detail = new TripDetailPage(page, qaWebUrl)
-    await detail.goto(tripId!)
-    await expect(detail.gantt).toBeVisible({ timeout: 15_000 })
+    await expect(detail.shipmentDetailPane).toHaveAttribute('data-open', 'false')
+    await detail.shipmentActivityCards.first().click()
+    await expect(detail.shipmentDetailPane).toHaveAttribute('data-open', 'true', {
+      timeout: 15_000,
+    })
+    await expect(detail.shipmentDetailField('Shipper Name')).toBeVisible()
   })
 
   test('trip notes: existing render, add a note, edit it @qa-mutating', async () => {
-    test.fixme(true, 'confirm Notes component DOM in Phase A')
+    test.fixme(true, 'walkthrough: Notes is an Expandable; confirm expand + the add/edit modal')
   })
 
   test('editing an activity date persists @qa-mutating', async () => {
-    test.fixme(true, 'confirm ActivityGantt activity rows + date-change prompt in Phase A')
+    test.fixme(true, 'walkthrough: confirm the ActivityGantt date-change popover + reload-persists')
   })
 
   test('changing trip status persists; an illegal transition is rejected @qa-mutating', async () => {
-    test.fixme(true, 'confirm the status dropdown + status-prediction prompt in Phase A')
+    test.fixme(true, 'walkthrough: confirm the status-prediction prompt before the change commits')
   })
 
   test('driver field is read-only once the trip is In-Progress', async () => {
-    test.fixme(true, 'needs a trip in In-Progress status; confirm the driver-field lock in Phase A')
-  })
-
-  test('clicking a shipment opens ShipmentDetail with a linked order number', async () => {
-    test.fixme(true, 'confirm ShipmentDetail pane + order# link target in Phase A')
+    test.fixme(true, 'needs a trip in In-Progress status; confirm the driver-field lock')
   })
 })

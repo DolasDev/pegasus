@@ -2,12 +2,12 @@ import { test, expect, gateOnOnpremHealth } from './_shared'
 import { ShipmentsPage } from './pages/ShipmentsPage'
 
 // ---------------------------------------------------------------------------
-// /driver-planning/shipments — the legacy Shipments search dashboard.
+// /driver-planning/shipments — the legacy Shipments table (ShipmentModule).
 //
-// Confident smoke assertions run normally. Interactions whose selectors depend
-// on the ported `FilterTabs` / `ShipmentsTable` / `ShipmentCard` DOM are
-// `test.fixme`'d until the Phase A exploratory pass confirms them (and, ideally,
-// adds data-testids to those components). See plans/.../i-ve-placed-... and QA.md.
+// Note: the standalone /shipments route renders the plain <ShipmentsTable>, not
+// the search-dashboard variant — so its column headers aren't sortable and there
+// is no "Shipments (n)" count. The sortable/card UI lives in the /planning left
+// pane (SearchDashboard). FilterTabs is shared between both.
 // ---------------------------------------------------------------------------
 
 test.describe('Shipments tab', () => {
@@ -19,43 +19,42 @@ test.describe('Shipments tab', () => {
   test('loads the Shipments module @smoke', async ({ page }) => {
     const sp = new ShipmentsPage(page)
     await expect(sp.heading).toBeVisible()
+    await expect(sp.searchInput).toBeVisible()
   })
 
   test('the known-good DB yields shipment rows under the default filter', async ({ page }) => {
-    // Fails (rather than skips) when empty — the QA planning DB not being loaded
-    // with shipment data, or the on-prem /shipments query timing out (504), is a
-    // real finding. Default filter: Is_Trip_Planning=true, load_date ±30d, assigned=No.
+    // The ShipmentModule route now fetches on mount (default filter:
+    // Is_Trip_Planning=true, load_date ±30d, assigned=No). An empty table here
+    // means the QA planning DB has no matching shipments or the on-prem query is
+    // timing out — a real finding, so this fails rather than skips.
     const sp = new ShipmentsPage(page)
-    await expect.poll(() => sp.rowCount(), { timeout: 20_000 }).toBeGreaterThan(0)
+    await expect.poll(() => sp.rowCount(), { timeout: 25_000 }).toBeGreaterThan(0)
   })
 
-  test('shows a shipment count in the lane title', async ({ page }) => {
-    // Legacy "Shipments (n)" — present on the search dashboard variant. The
-    // module page renders <Lane title="Shipments"> without a count, so this is
-    // exercised via the /planning left pane instead. Confirm in Phase A.
-    test.fixme(true, 'confirm whether the Shipments module shows a count; see Phase A')
-    await expect(page.getByText(/^Shipments \(\d+\)$/)).toBeVisible()
-  })
-
-  test('column sort toggles ascending/descending', async ({ page }) => {
-    test.fixme(true, 'confirm sortable-header DOM + a sort indicator in Phase A')
+  test('the FilterTabs panel expands and collapses', async ({ page }) => {
     const sp = new ShipmentsPage(page)
-    await sp.sortBy('Weight')
-    // TODO: assert order changed (read first/last row weights) once selectors known.
+    await expect(sp.filtersBody).toHaveAttribute('data-open', 'false')
+    // The 15 filter rows are always in the DOM (collapsed via CSS) — assert the
+    // "assigned" one exists; the default filter (Assigned=No) sets a count > 0.
+    await expect(sp.filterRow('assigned')).toBeAttached()
+    await sp.toggleFilters.click()
+    await expect(sp.filtersBody).toHaveAttribute('data-open', 'true')
+    await sp.toggleFilters.click()
+    await expect(sp.filtersBody).toHaveAttribute('data-open', 'false')
   })
 
-  test('FilterTabs: Assigned=Yes narrows the list', async ({ page }) => {
-    test.fixme(true, 'confirm FilterTabs control DOM in Phase A')
-    void page
+  test('FilterTabs: changing the Assigned filter narrows / widens the list', async () => {
+    test.fixme(true, 'walkthrough: drive the react-select "assigned" control + assert row count')
   })
 
-  test('saving and re-applying a personal filter @qa-mutating', async ({ page }) => {
-    test.fixme(true, 'confirm saved-filter UI in Phase A')
-    void page
+  test('saving and re-applying a personal filter @qa-mutating', async () => {
+    test.fixme(true, 'walkthrough: confirm the Save-filter modal + the saved-filters list')
   })
 
-  test('clicking a shipment row opens the ShipmentDetail pane', async ({ page }) => {
-    test.fixme(true, 'confirm ShipmentDetail pane DOM in Phase A')
-    void page
+  test('clicking a shipment row opens the ShipmentDetail pane', async () => {
+    test.fixme(
+      true,
+      'walkthrough: ShipmentsTable rows are not wired to selectShipment yet — confirm',
+    )
   })
 })

@@ -4,17 +4,10 @@ import type { Page, Locator } from '@playwright/test'
 // ShipmentsPage — /driver-planning/shipments
 // Source: apps/tenant-web/src/features/driver-planning/routes/ShipmentModule.tsx
 //   → <h1>Shipments Module</h1>, <Lane title="Shipments">, <FilterTabs/>,
-//     <ShipmentsTable/> (columns: Shipper, Origin City, O St, D City, D St,
-//     Est Wt, Pack/Load/Del Range).
+//     <ShipmentsTable/> (one <tr data-target="shipment-table-row">/row).
 //
-// The legacy `Shipments` search dashboard (the left pane of /planning) uses the
-// same `FilterTabs` plus sortable headers: Origin, Destination, Weight, Pack
-// Date, Load Date, Del Date, Mode, Account, Driver — see
-//   apps/tenant-web/src/features/driver-planning/containers/Shipments/index.tsx
-//
-// NOTE: these locators are derived from source, not yet from the running QA app.
-// Phase A (exploratory browse) should confirm them and add data-testids to the
-// ported components where role/text proves brittle.
+// Selectors use the `data-target` hooks added to the ported FilterTabs /
+// Table / ShipmentCard components.
 // ---------------------------------------------------------------------------
 
 export class ShipmentsPage {
@@ -23,28 +16,47 @@ export class ShipmentsPage {
   get heading(): Locator {
     return this.page.getByRole('heading', { name: 'Shipments Module' })
   }
-  get lane(): Locator {
-    // Lane component renders its `title` ("Shipments") — count is in the search
-    // dashboard variant ("Shipments (n)"), not this module.
-    return this.page.getByText('Shipments', { exact: true })
-  }
   get table(): Locator {
     return this.page.locator('table')
   }
   get rows(): Locator {
-    return this.table.locator('tbody tr')
+    return this.page.locator('[data-target="shipment-table-row"]')
+  }
+  rowByOrderNum(orderNum: string | number): Locator {
+    return this.page.locator(`[data-target="shipment-table-row"][data-id="${orderNum}"]`)
   }
 
-  /** A sortable column header in the legacy search dashboard / table. */
-  columnHeader(label: string): Locator {
-    return this.page.getByText(label, { exact: true })
+  // -- FilterTabs -----------------------------------------------------------
+  get searchInput(): Locator {
+    return this.page.locator('[data-target="shipment-search"]')
+  }
+  get toggleFilters(): Locator {
+    return this.page.locator('[data-target="toggle-filters"]')
+  }
+  get clearFilters(): Locator {
+    return this.page.locator('[data-target="clear-filters"]')
+  }
+  get saveFilterLink(): Locator {
+    return this.page.locator('[data-target="save-filter"]')
+  }
+  get openFiltersModal(): Locator {
+    return this.page.locator('[data-target="open-filters-modal"]')
+  }
+  get filtersBody(): Locator {
+    return this.page.locator('[data-target="filters-body"]')
+  }
+  /** A filter row by its `data-filter` property name (e.g. "assigned", "origin"). */
+  filterRow(property: string): Locator {
+    return this.page.locator(`[data-target="filter-row"][data-filter="${property}"]`)
+  }
+
+  // -- sort headers (search-dashboard variant) ------------------------------
+  /** A sortable column header by its sort key (e.g. "total_est_wt"). */
+  sortHeader(sortKey: string): Locator {
+    return this.page.locator(`[data-target="shipment-sort-header"][data-sort="${sortKey}"]`)
   }
 
   async rowCount(): Promise<number> {
     return this.rows.count()
-  }
-
-  async sortBy(label: string): Promise<void> {
-    await this.columnHeader(label).click()
   }
 }

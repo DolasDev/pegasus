@@ -3,14 +3,10 @@ import type { Page, Locator } from '@playwright/test'
 // ---------------------------------------------------------------------------
 // TripDetailPage — /driver-planning/trips/:tripId
 // Source: apps/tenant-web/src/features/driver-planning/containers/Trip/index.tsx
-//   → <Lane title>, <ActivityGantt/> (activities grouped by shipment, planned
-//     vs actual dates, mismatch highlighting), <Notes/> (add/edit/delete),
-//     trip-status dropdown (TripStatusOptions) with a status-prediction prompt,
-//     date-change prompt on activity edit, and <ShipmentDetail/> on click
-//     (order# is a <Clickable/> → API.jumpToOrder).
+//   + components/ActivityGantt/ActivityGantt.tsx + components/Notes/Notes.tsx.
 //
-// NOTE: locators derived from source; confirm in Phase A and add data-testids
-// to ActivityGantt / Notes / the status dropdown where role/text is brittle.
+// Selectors use the `data-target` hooks added to Trip / ActivityGantt / Notes /
+// ShipmentDetail.
 // ---------------------------------------------------------------------------
 
 export class TripDetailPage {
@@ -25,39 +21,85 @@ export class TripDetailPage {
     })
   }
 
+  // -- header / navigation --------------------------------------------------
+  get backToTripsButton(): Locator {
+    return this.page.locator('[data-target="trip-back-to-trips"]')
+  }
+  get editPlanningButton(): Locator {
+    return this.page.locator('[data-target="trip-edit-planning"]')
+  }
+
+  // -- activity gantt -------------------------------------------------------
   get gantt(): Locator {
-    return this.page.locator('[class*="ActivityGantt"], [class*="Gantt"]')
+    return this.page.locator('[data-target="activity-gantt"]')
   }
   get activityRows(): Locator {
-    // TODO Phase A: confirm a per-activity selector / add data-testid.
-    return this.gantt.locator('[class*="activity"], [class*="Activity"]')
+    return this.page.locator('[data-target="gantt-activity-row"]')
   }
-  get notes(): Locator {
-    return this.page.locator('[class*="Notes"]')
+  activityRowById(activityId: string | number): Locator {
+    return this.page.locator(`[data-target="gantt-activity-row"][data-activity-id="${activityId}"]`)
   }
-  addNoteButton(): Locator {
-    return this.notes.getByRole('button', { name: /add note/i })
-  }
-
-  /** Trip-status control (dropdown). */
-  get statusControl(): Locator {
-    // react-select-based — TODO Phase A: confirm.
-    return this.page.locator('[class*="StatusDropdown"], [class*="status"]').first()
+  /** Activity rows for a given shipment order number. */
+  activityRowsForOrder(orderNum: string | number): Locator {
+    return this.page.locator(`[data-target="gantt-activity-row"][data-order-num="${orderNum}"]`)
   }
 
-  /** Status-prediction prompt shown before committing a status change. */
+  // -- left-column shipment list (clickable → ShipmentDetail) ---------------
+  get shipmentActivityCards(): Locator {
+    return this.page.locator('[data-target="trip-shipment-activity"]')
+  }
+
+  // -- status ---------------------------------------------------------------
+  get statusSteps(): Locator {
+    return this.page.locator('[data-target="trip-status-step"]')
+  }
+  statusStep(status: string): Locator {
+    return this.page.locator(`[data-target="trip-status-step"][data-status="${status}"]`)
+  }
+  /** The currently-active status step (`data-active="true"`). */
+  get activeStatusStep(): Locator {
+    return this.page.locator('[data-target="trip-status-step"][data-active="true"]')
+  }
+  /** Status-prediction / confirm prompt shown before committing a status change. */
   get statusPrompt(): Locator {
-    return this.page.getByText(/status/i).filter({ hasText: /confirm|update|predict/i })
-  }
-  /** Date-change prompt shown when editing an activity's planned dates. */
-  get dateChangePrompt(): Locator {
     return this.page.getByRole('dialog')
   }
 
-  shipmentDetailPane(): Locator {
-    return this.page.locator('[class*="ShipmentDetail"]')
+  // -- notes ----------------------------------------------------------------
+  get notes(): Locator {
+    return this.page.locator('[data-target="trip-notes"]')
   }
-  orderNumberLink(): Locator {
-    return this.shipmentDetailPane().getByRole('link').first()
+  get addNoteButton(): Locator {
+    return this.page.locator('[data-target="add-note"]')
+  }
+  get noteCards(): Locator {
+    return this.page.locator('[data-target="trip-note"]')
+  }
+  noteCardById(noteId: string): Locator {
+    return this.page.locator(`[data-target="trip-note"][data-note-id="${noteId}"]`)
+  }
+  editNoteButton(noteCard: Locator): Locator {
+    return noteCard.locator('[data-target="edit-note"]')
+  }
+  get noteInput(): Locator {
+    return this.page.locator('[data-target="note-input"]')
+  }
+  get saveNoteButton(): Locator {
+    return this.page.locator('[data-target="save-note"]')
+  }
+  get cancelNoteButton(): Locator {
+    return this.page.locator('[data-target="cancel-note"]')
+  }
+
+  // -- shipment detail pane -------------------------------------------------
+  get shipmentDetailPane(): Locator {
+    return this.page.locator('[data-target="shipment-detail"]')
+  }
+  shipmentDetailField(label: string): Locator {
+    return this.page.locator(`[data-target="shipment-detail-field"][data-field="${label}"]`)
+  }
+  get orderNumberLink(): Locator {
+    // "Order Number" row renders a <Clickable> button; "Trip Id" renders a <Link>.
+    return this.shipmentDetailField('Trip Id').getByRole('link').first()
   }
 }

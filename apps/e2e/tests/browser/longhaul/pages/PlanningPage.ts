@@ -8,14 +8,10 @@ import type { Page, Locator } from '@playwright/test'
 //   The unsaved-changes guard is a ConfirmDialog: title "Leave page?",
 //   description "You have unsaved changes...", confirm "Discard changes",
 //   cancel "Stay on page".
-// PendingTrips: apps/tenant-web/src/features/driver-planning/containers/PendingTrips/index.tsx
-//   → trip name InputField, DriverTypeahead, Dispatcher dropdown, "New Trip" /
-//     "Save" buttons, AddActivity / EditActivity popovers, per-shipment Card +
-//     activity rows, "Cancel Trip" in the More-actions (⋮) menu.
 //
-// NOTE: locators derived from source, to be confirmed in Phase A. Anything that
-// can't be pinned down reliably yet is left as a TODO and the corresponding
-// spec step is `test.fixme`'d.
+// Selectors target the `data-target` hooks added to the ported components
+// (see the `test(tenant-web): add data-target hooks…` commit) — they don't
+// depend on hashed CSS-module class names.
 // ---------------------------------------------------------------------------
 
 export class PlanningPage {
@@ -33,41 +29,74 @@ export class PlanningPage {
   get rightColumn(): Locator {
     return this.page.locator('.App__right-column')
   }
+  /** The SearchDashboard pane (left). */
+  get searchDashboard(): Locator {
+    return this.page.locator('[data-target="search-dashboard"]')
+  }
+  /** The PendingTrips pane (right). */
+  get pendingTrips(): Locator {
+    return this.page.locator('[data-target="pending-trips"]')
+  }
   /** "No shipments for trip" empty state in the pending-trip pane. */
   get emptyPendingTrip(): Locator {
-    return this.rightColumn.getByText(/no shipments for trip/i)
+    return this.pendingTrips.getByText(/no shipments for trip/i)
   }
 
   get saveButton(): Locator {
-    return this.rightColumn.getByRole('button', { name: 'Save', exact: true })
+    return this.pendingTrips.locator('[data-target="save-trip"]')
   }
   get newTripButton(): Locator {
-    return this.rightColumn.getByRole('button', { name: 'New Trip' })
+    return this.pendingTrips.locator('[data-target="pending-new-trip"]')
   }
+  /** Trip-title input — rendered by NameTripDetail's edit component. */
   get tripNameInput(): Locator {
-    // InputField for trip title — TODO Phase A: confirm label/placeholder.
-    return this.rightColumn.getByRole('textbox').first()
+    return this.pendingTrips.locator('[data-target="trip-name-input"]')
   }
+  /** DriverTypeahead wrapper; `.locator('input')` for the actual <input>. */
   get driverTypeahead(): Locator {
-    // DriverTypeahead — TODO Phase A: confirm the input selector.
-    return this.rightColumn.getByPlaceholder(/driver/i)
+    return this.pendingTrips.locator('[data-target="driver-typeahead"]')
+  }
+  get driverTypeaheadInput(): Locator {
+    return this.driverTypeahead.locator('input')
   }
   get viewItineraryLink(): Locator {
-    return this.rightColumn.getByRole('link', { name: /itinerary/i })
+    return this.pendingTrips.locator('[data-target="view-itinerary"]')
+  }
+  get moreTripActions(): Locator {
+    return this.pendingTrips.locator('[data-target="more-trip-actions"]')
+  }
+  get cancelTripMenuItem(): Locator {
+    return this.page.locator('[data-target="cancel-trip"]')
   }
 
-  /** A shipment card inside the SearchDashboard (left pane). */
+  /** Shipment cards in the SearchDashboard (left pane). */
   shipmentCards(): Locator {
-    return this.leftColumn.locator('[class*="Card"]')
+    return this.searchDashboard.locator('[data-target="shipment-card"]')
   }
-  /** The "+" / add-to-trip control on a shipment card. */
+  shipmentCardByOrderNum(orderNum: string | number): Locator {
+    return this.searchDashboard.locator(
+      `[data-target="shipment-card"][data-order-num="${orderNum}"]`,
+    )
+  }
+  /** The "+" add-to-trip control on a shipment card. */
   addToTripButton(card: Locator): Locator {
-    return card.getByRole('button')
+    return card.locator('[data-target="add-shipment-to-trip"]')
   }
 
   /** Shipment cards currently in the pending trip (right pane). */
   pendingTripShipments(): Locator {
-    return this.rightColumn.locator('[class*="Card"]')
+    return this.pendingTrips.locator('[data-target="pending-trip-shipment"]')
+  }
+  /** Activity rows within a pending-trip shipment card. */
+  pendingActivities(card?: Locator): Locator {
+    return (card ?? this.pendingTrips).locator('[data-target="trip-activity"]')
+  }
+  /** "+" add-activity control within a pending-trip shipment card. */
+  addActivityButton(card: Locator): Locator {
+    return card.locator('[data-target="add-activity"]')
+  }
+  addActivityOptions(): Locator {
+    return this.page.locator('[data-target="add-activity-option"]')
   }
 
   // -- unsaved-changes guard -------------------------------------------------
@@ -83,13 +112,15 @@ export class PlanningPage {
 
   // -- snackbar (save feedback) ---------------------------------------------
   get snackbar(): Locator {
-    return this.page.locator('[class*="Snackbar"]')
+    return this.page.locator('[class*="Snackbar"], [class*="snackbar"]')
   }
 
-  async addFirstShipmentToTrip(): Promise<void> {
+  async addFirstShipmentToTrip(): Promise<string> {
     const card = this.shipmentCards().first()
     await card.waitFor({ state: 'visible' })
+    const orderNum = (await card.getAttribute('data-order-num')) ?? ''
     await this.addToTripButton(card).click()
+    return orderNum
   }
 
   async openWithTripId(tripId: string | number): Promise<void> {
