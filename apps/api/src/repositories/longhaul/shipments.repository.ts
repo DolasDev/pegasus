@@ -1,11 +1,11 @@
 // ---------------------------------------------------------------------------
-// Longhaul shipments repository — Knex queries against v_dispatch_planning
+// Longhaul shipments repository — Knex queries against v_longhaul_shipments_v2
 // ---------------------------------------------------------------------------
 
 import type { Knex } from 'knex'
 import { getLonghaulClientConfig } from '../../lib/longhaul-client-config'
 
-const SHIPMENTS_TABLE = 'v_dispatch_planning'
+const SHIPMENTS_TABLE = 'v_longhaul_shipments_v2'
 const ACTIVITIES_TABLE = 'LongDistanceDispatchActivity'
 const COVERAGE_TABLE = 'longhaul_shipmentcoverage'
 const SALES_TABLE = 'sales'
