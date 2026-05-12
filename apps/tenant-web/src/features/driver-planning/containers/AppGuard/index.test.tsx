@@ -203,7 +203,11 @@ describe('AppGuard', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('renders the version-mismatch error UI when client version is not supported', async () => {
+  it('renders children even when the fetched client version is not in the supported list', async () => {
+    // The legacy Electron client-version gate doesn't apply to this web port —
+    // it's always the latest deployed build — so a version mismatch (or a
+    // /version response that doesn't match the legacy shape) must not wall the
+    // module. Only the user lookup gates rendering.
     ;(API.fetchVersion as any).mockResolvedValue({
       clientVersion: '0.9.0',
       release_channel: 'stable',
@@ -215,22 +219,33 @@ describe('AppGuard', () => {
 
     renderWithStore(
       <AppGuard>
-        <div data-testid="children">should not render</div>
+        <div data-testid="children">child content</div>
       </AppGuard>,
     )
 
     await waitFor(() => {
-      expect(
-        screen.getByText('There is a problem with your Driver Planning session'),
-      ).toBeInTheDocument()
+      expect(screen.getByTestId('children')).toBeInTheDocument()
     })
-    expect(screen.getByText(/0\.9\.0/)).toBeInTheDocument()
-    expect(screen.getByText(/db-2/)).toBeInTheDocument()
-    expect(screen.getByText(/Supported Application Versions: 2\.0\.0,2\.1\.0/)).toBeInTheDocument()
-    expect(screen.queryByTestId('children')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('There is a problem with your Driver Planning session'),
+    ).not.toBeInTheDocument()
   })
 
-  it('renders the loading state while version is still loading even after user resolves', async () => {
+  it('renders children even when /version errors / returns an unexpected shape', async () => {
+    ;(API.fetchVersion as any).mockResolvedValue({ max: '2.1.1' }) // not the legacy shape
+
+    renderWithStore(
+      <AppGuard>
+        <div data-testid="children">child content</div>
+      </AppGuard>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('children')).toBeInTheDocument()
+    })
+  })
+
+  it('renders children once the user resolves, without waiting on the version fetch', async () => {
     ;(API.fetchVersion as any).mockImplementation(() => new Promise(() => {}))
 
     renderWithStore(
@@ -240,10 +255,8 @@ describe('AppGuard', () => {
     )
 
     await waitFor(() => {
-      expect(API.fetchUser).toHaveBeenCalled()
+      expect(screen.getByTestId('children')).toBeInTheDocument()
     })
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
-    expect(screen.queryByTestId('children')).not.toBeInTheDocument()
   })
 
   it('still renders children but surfaces a snackbar when a reference-data fetch rejects', async () => {

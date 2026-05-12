@@ -31,12 +31,13 @@ const REFERENCE_DATA_THUNKS = [
 export function AppGuard({ children }: { children: ReactNode }) {
   const dispatch = useDispatch<any>()
   const userStore = useSelector((state: any) => state.user)
-  const versionStore = useSelector((state: any) => state.version)
   const commonError = useSelector((state: any) => state.common?.error)
   const [snackbarMessage, setSnackbarMessage] = useState<string | null>(null)
 
   useEffect(() => {
     dispatch(fetchUser())
+    // Still fetched so the version slice is populated for diagnostics, but the
+    // render gate below no longer depends on it — see the note by the gate.
     dispatch(fetchVersion())
 
     for (const [label, thunk] of REFERENCE_DATA_THUNKS) {
@@ -64,16 +65,6 @@ export function AppGuard({ children }: { children: ReactNode }) {
   }, [dispatch, userStore])
 
   const { user, loading: userLoading, errorMessage: userErrorMessage } = userStore
-  const {
-    loading: versionLoading,
-    clientVersion,
-    serverVersion,
-    supportedVersions,
-    errorMessage: versionErrorMessage,
-  } = versionStore
-
-  const versionsLoaded = !!clientVersion && Array.isArray(supportedVersions)
-  const versionsMatch = versionsLoaded && supportedVersions.includes(clientVersion)
 
   const snackbar = (
     <Snackbar
@@ -85,7 +76,19 @@ export function AppGuard({ children }: { children: ReactNode }) {
     />
   )
 
-  if (user && versionsMatch) {
+  // ---------------------------------------------------------------------------
+  // Gate.
+  //
+  // The legacy app additionally gated on a client-version handshake (the on-prem
+  // `longhaul_versions` table vs the running Electron app's version) — that
+  // existed because auto-updating desktop clients could lag the database schema.
+  // This is a web SPA: it's always the latest deployed build, and the on-prem
+  // `/version` endpoint doesn't return the legacy `{ clientVersion,
+  // supportedVersions: [...] }` shape it expected anyway — so the only
+  // meaningful precondition here is "the signed-in user maps to a Long Haul user
+  // record" (looked up by `legacyWindowsUsername` → `v_longhaul_salesman`).
+  // ---------------------------------------------------------------------------
+  if (user) {
     return (
       <>
         {children}
@@ -94,7 +97,9 @@ export function AppGuard({ children }: { children: ReactNode }) {
     )
   }
 
-  if (userLoading || versionLoading || (user && !versionsLoaded)) {
+  if (userLoading || userErrorMessage == null) {
+    // Loading, or the lookup hasn't started yet (errorMessage is still its
+    // initial `null`; a failed lookup sets it to a — possibly empty — string).
     return (
       <>
         <div>Loading...</div>
@@ -103,31 +108,15 @@ export function AppGuard({ children }: { children: ReactNode }) {
     )
   }
 
-  const messages: string[] = []
-  if (!user) {
-    messages.push(
-      userErrorMessage
-        ? `Server response: ${userErrorMessage}`
-        : 'Your Cognito user is not mapped to a Long Haul user record.',
-    )
-  }
-  if (versionsLoaded && !versionsMatch) {
-    messages.push(
-      `Your application version (${clientVersion}) is not compatible with the current version of the database (${serverVersion}).`,
-    )
-    messages.push('If there is an available update for your app, please accept it now.')
-    messages.push(`Supported Application Versions: ${supportedVersions.join(',')}`)
-  } else if (!versionsLoaded && versionErrorMessage) {
-    messages.push(`Unable to verify application version: ${versionErrorMessage}`)
-  }
-
   return (
     <div className={styles['error-container']}>
       <div>
         <h3>There is a problem with your Driver Planning session</h3>
-        {messages.map((message, index) => (
-          <p key={index}>{message}</p>
-        ))}
+        {userErrorMessage ? (
+          <p>{`Server response: ${userErrorMessage}`}</p>
+        ) : (
+          <p>Your Cognito user is not mapped to a Long Haul user record.</p>
+        )}
         <p>If this issue persists, please contact your admin or email support@dolas.dev</p>
       </div>
       {snackbar}
