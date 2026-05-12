@@ -1,6 +1,7 @@
 import logger from '../logger'
 import { notifyError, notifySuccess } from '../../components/Snackbar/notify'
 import { fetchData } from './transport'
+import { reshapeTrip, reshapeTripList } from './reshape-trip'
 
 export async function fetchHelper(name: string, ...rest: unknown[]) {
   const result = (await fetchData(name, ...rest)) as any
@@ -35,8 +36,11 @@ export const API = {
       return []
     }
   },
-  fetchTrips: (query: any) => fetchHelper('fetchTrips', query),
-  fetchTrip: (tripId: number) => fetchHelper('fetchTrip', tripId),
+  // The on-prem bridge returns trips with relations flattened into aliased
+  // columns; reshape them back into the nested shape the ported components
+  // (TripCard, the trip-detail Gantt, PendingTrips) were written against.
+  fetchTrips: async (query: any) => reshapeTripList(await fetchHelper('fetchTrips', query)),
+  fetchTrip: async (tripId: number) => reshapeTrip(await fetchHelper('fetchTrip', tripId)),
   saveTrip: (trip: any) => fetchHelper('saveTrip', trip),
   updateTripSummaryInfo: (tripId: number) => fetchHelper('updateTripSummaryInfo', tripId),
   changeTripStatus: async (tripId: string, statusId: number, status: string) => {
