@@ -13,8 +13,8 @@ import { TripsPage } from './pages/TripsPage'
 // ---------------------------------------------------------------------------
 
 test.describe('Trip detail', () => {
-  test.beforeEach(async ({ page, qaWebUrl }) => {
-    await gateOnOnpremHealth(page, qaWebUrl)
+  test.beforeEach(async ({ page, qaWebUrl, qaApiFetch }) => {
+    await gateOnOnpremHealth(page, qaWebUrl, qaApiFetch)
   })
 
   test('opens a known-good trip and renders the activity Gantt @smoke', async ({

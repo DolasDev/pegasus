@@ -11,17 +11,22 @@ import { ShipmentsPage } from './pages/ShipmentsPage'
 // ---------------------------------------------------------------------------
 
 test.describe('Shipments tab', () => {
-  test.beforeEach(async ({ page, qaWebUrl }) => {
-    const layout = await gateOnOnpremHealth(page, qaWebUrl)
+  test.beforeEach(async ({ page, qaWebUrl, qaApiFetch }) => {
+    const layout = await gateOnOnpremHealth(page, qaWebUrl, qaApiFetch)
     await layout.openTab('Shipments')
   })
 
   test('loads the Shipments module @smoke', async ({ page }) => {
     const sp = new ShipmentsPage(page)
     await expect(sp.heading).toBeVisible()
-    // The known-good DB should yield at least one shipment row under the
-    // default filter (Is_Trip_Planning=true, load_date ±30d, assigned=No).
-    await expect.poll(() => sp.rowCount(), { timeout: 15_000 }).toBeGreaterThan(0)
+  })
+
+  test('the known-good DB yields shipment rows under the default filter', async ({ page }) => {
+    // Fails (rather than skips) when empty — the QA planning DB not being loaded
+    // with shipment data, or the on-prem /shipments query timing out (504), is a
+    // real finding. Default filter: Is_Trip_Planning=true, load_date ±30d, assigned=No.
+    const sp = new ShipmentsPage(page)
+    await expect.poll(() => sp.rowCount(), { timeout: 20_000 }).toBeGreaterThan(0)
   })
 
   test('shows a shipment count in the lane title', async ({ page }) => {

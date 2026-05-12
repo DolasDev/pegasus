@@ -141,18 +141,22 @@ export default defineConfig({
           use: { ...devices['Desktop Chrome'] },
         },
         // qa-api: HTTP-level checks of /api/v1/longhaul/* against QA. Reuses the
-        // ID token captured by qa-setup; no browser needed.
+        // ID token captured by qa-setup; no browser needed. Generous timeout —
+        // the on-prem queries go cloud → WireGuard → Dolios → MSSQL.
         {
           name: 'qa-api',
           testMatch: 'tests/api/longhaul-qa.spec.ts',
           dependencies: ['qa-setup'],
+          timeout: 60_000,
           use: { ...devices['Desktop Chrome'] },
         },
         // qa-browser: drives the /driver-planning UI as the logged-in QA user.
+        // Generous timeout — pages wait on the same slow on-prem round-trips.
         {
           name: 'qa-browser',
           testMatch: 'tests/browser/longhaul/**/*.spec.ts',
           dependencies: ['qa-setup'],
+          timeout: 60_000,
           use: { ...devices['Desktop Chrome'] },
         },
       ]

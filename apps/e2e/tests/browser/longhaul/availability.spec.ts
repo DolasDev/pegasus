@@ -9,8 +9,8 @@ import { AvailabilityPage } from './pages/AvailabilityPage'
 // ---------------------------------------------------------------------------
 
 test.describe('Availability tab', () => {
-  test.beforeEach(async ({ page, qaWebUrl }) => {
-    await gateOnOnpremHealth(page, qaWebUrl)
+  test.beforeEach(async ({ page, qaWebUrl, qaApiFetch }) => {
+    await gateOnOnpremHealth(page, qaWebUrl, qaApiFetch)
     // gateOnOnpremHealth already navigated to /driver-planning.
   })
 

@@ -4,45 +4,40 @@ import { DriverPlanningLayout } from './pages/DriverPlanningLayout'
 
 export { qaTest as test, expect }
 
+type ApiFetch = (path: string, init?: RequestInit) => Promise<Response>
+
+const ONPREM_VERSION = '/api/v1/onprem/longhaul/version'
+
 /**
- * Navigates to /driver-planning, waits for the on-prem version-ping banner to
- * resolve, and `test.skip()`s the suite if the tunnel/Dolios/MSSQL path is down
- * — surfacing the on-prem error so the run output explains *why*. Returns the
- * layout PO once the canary is green.
+ * Canary + navigation for the longhaul browser specs. Probes the on-prem
+ * `/version` endpoint directly (cloud → WireGuard → Dolios → MSSQL — cheap and
+ * deterministic, unlike waiting for React Query + the UI banner, which the slow
+ * on-prem side makes flaky), `test.skip()`s the whole spec when it's unhealthy,
+ * then navigates to `/driver-planning` and confirms the shell mounted (i.e. the
+ * captured session was injected). Returns the layout PO.
  *
- * Detection is by the banner's *text* ("On-prem ping OK" / "On-prem ping
- * failed"), not its `data-testid` — so this works against the currently
- * deployed QA build as well as builds that include the `data-testid`/`data-status`
- * hooks added to `driver-planning.index.tsx` (those are only needed for the
- * finer-grained selectors elsewhere in the suite).
- *
- * Call from a `test.beforeEach`. Subsequent `await layout.goto(...)` navigations
- * are cheap (the SPA stays mounted between same-origin navigations).
+ * Call from a `test.beforeEach`, passing the spec's `qaApiFetch` fixture.
  */
 export async function gateOnOnpremHealth(
   page: Page,
   webUrl: string,
+  qaApiFetch: ApiFetch,
 ): Promise<DriverPlanningLayout> {
+  let status: number
+  try {
+    status = (await qaApiFetch(ONPREM_VERSION)).status
+  } catch {
+    status = 0
+  }
+  qaTest.skip(
+    status !== 200,
+    `On-prem /version returned ${status || 'a network error'} — the QA tunnel → Dolios → MSSQL ` +
+      `path must be up for the longhaul UI suite.`,
+  )
+
   const layout = new DriverPlanningLayout(page, webUrl)
   await layout.goto()
-
-  const okBanner = page.getByText('On-prem ping OK', { exact: false })
-  const failBanner = page.getByText('On-prem ping failed', { exact: false })
-  // The banner is "Pinging on-prem API…" until the request settles — wait for
-  // either terminal state. Keep this well under the 30s test timeout so a real
-  // failure surfaces as a skip rather than a timeout.
-  await expect(okBanner.or(failBanner)).toBeVisible({ timeout: 20_000 })
-
-  if (await failBanner.isVisible()) {
-    const detail = await failBanner
-      .locator('xpath=..')
-      .innerText()
-      .catch(() => '')
-    qaTest.skip(
-      true,
-      `On-prem ping not OK. The QA tunnel → Dolios → MSSQL path must be up for the longhaul ` +
-        `suite. Banner said:\n${detail.trim() || '(no detail)'}`,
-    )
-  }
+  // The /driver-planning shell rendered → session injection worked, auth guard passed.
+  await expect(layout.tab('Availability')).toBeVisible({ timeout: 15_000 })
   return layout
 }

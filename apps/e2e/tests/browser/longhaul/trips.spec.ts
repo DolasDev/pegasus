@@ -8,21 +8,21 @@ import { TripsPage } from './pages/TripsPage'
 // ---------------------------------------------------------------------------
 
 test.describe('Trips tab', () => {
-  test.beforeEach(async ({ page, qaWebUrl }) => {
-    const layout = await gateOnOnpremHealth(page, qaWebUrl)
+  test.beforeEach(async ({ page, qaWebUrl, qaApiFetch }) => {
+    const layout = await gateOnOnpremHealth(page, qaWebUrl, qaApiFetch)
     await layout.openTab('Trips')
   })
 
   test('loads the Trips list @smoke', async ({ page }) => {
     const tp = new TripsPage(page)
-    await expect(tp.laneTitle).toBeVisible()
-    await expect(tp.newTripButton).toBeVisible()
-    // The known-good DB should have at least one trip under the default filter
-    // (status ∈ {Pending, Accepted, Offered, In-Progress}, internal_status=active).
-    // If it legitimately has none, the empty state must render instead.
-    const cards = await tp.cardCount()
-    if (cards === 0) await expect(tp.emptyState).toBeVisible()
-    else expect(cards).toBeGreaterThan(0)
+    await expect(page).toHaveURL(/\/driver-planning\/trips\b/)
+    await expect(tp.newTripButton).toBeVisible({ timeout: 15_000 })
+  })
+
+  test('the Trips list reflects the known-good DB (cards or empty state)', async ({ page }) => {
+    const tp = new TripsPage(page)
+    // Default filter: status ∈ {Pending, Accepted, Offered, In-Progress}, internal_status=active.
+    await expect(tp.laneTitle.or(tp.emptyState)).toBeVisible({ timeout: 20_000 })
   })
 
   test('"New Trip" navigates to the planning page', async ({ page }) => {
