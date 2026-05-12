@@ -59,19 +59,20 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     if (body.meta) expect(typeof body.meta.count).toBe('number')
   })
 
-  test('GET /shipments unfiltered — known robustness gap on large DBs', async ({ qaApiFetch }) => {
-    // On a large planning DB the longhaul shipments query builds a SQL statement
-    // with hundreds of thousands of bind parameters (observed @p193800+ in the
-    // on-prem log → "Maximum call stack size exceeded" in tedious), well past
-    // SQL Server's 2100-parameter limit. The endpoint should clamp/chunk before
-    // building the query rather than 500. Tracked as a Phase-A/longhaul finding;
-    // unmark when the repo is fixed.
-    test.fixme(
-      true,
-      'longhaul shipments repo: parameter explosion on unfiltered scan — see findings',
-    )
+  test('GET /shipments unfiltered does not 500 on a large DB', async ({ qaApiFetch }) => {
+    // Regression guard: previously an unfiltered scan pulled the whole shipments
+    // view and fed tens of thousands of order_nums into `.whereIn(...)`, blowing
+    // SQL Server's 2100-parameter limit (observed @p193800+ → tedious "Maximum
+    // call stack size exceeded" → 500). The repo now caps the base query, so a
+    // too-broad query yields the handler's 400 "narrow your filters" (on a DB
+    // with >1000 matching shipments) or 200 with the rows (on a small DB) — never
+    // a 500. NOTE: passes against QA only once the on-prem server is redeployed
+    // with the shipments-repo cap.
     const res = await qaApiFetch(`${LH}/shipments`)
-    expect(res.status).toBe(200)
+    expect(
+      [200, 400],
+      `unexpected status ${res.status}: ${await res.text().catch(() => '')}`,
+    ).toContain(res.status)
   })
 
   test('GET /trips returns a trips list', async ({ qaApiFetch }) => {

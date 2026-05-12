@@ -11,6 +11,16 @@ const COVERAGE_TABLE = 'longhaul_shipmentcoverage'
 const SALES_TABLE = 'sales'
 const EXTRA_LOCATIONS_TABLE = 'pegasus_extra_location'
 
+// The planning grid never displays more than a few hundred shipments — the
+// legacy app always sends a filter (Is_Trip_Planning + a date window + assigned).
+// Cap the base query so an accidental unfiltered/over-broad query can't (a) pull
+// the entire shipments view over the tunnel and (b) feed tens of thousands of
+// order_nums into the activities/coverage `.whereIn(...)` below, which blows
+// SQL Server's 2100-parameter limit (observed @p193800+ → tedious "Maximum call
+// stack size exceeded"). One more than the handler's `SHIPMENT_RESULT_LIMIT`
+// (1000) so the handler still returns its 400 "narrow your filters" response.
+const BASE_QUERY_ROW_CAP = 1001
+
 export interface ShipmentQuery {
   searchTerm?: string
   filters?: {
@@ -197,7 +207,7 @@ export async function findShipmentsWithQuery(db: Knex, query: ShipmentQuery) {
       .orderBy(`${SHIPMENTS_TABLE}.shipper_name`, 'asc')
   }
 
-  const shipments = await qb
+  const shipments = await qb.limit(BASE_QUERY_ROW_CAP)
 
   // Attach activities and coverage
   const orderNums = shipments.map((s) => s.order_num as number)
