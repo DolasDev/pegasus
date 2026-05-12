@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Knex } from 'knex'
+import { lowercaseRowKeys } from '../../lib/longhaul-db'
 
 const TRIPS_TABLE = 'TripMaster'
 const ACTIVITIES_TABLE = 'LongDistanceDispatchActivity'
@@ -51,7 +52,14 @@ export interface DriverPlanningRow {
  * availability overrides.
  */
 export async function getDriverPlanning(db: Knex): Promise<DriverPlanningRow[]> {
-  const drivers: DriverRow[] = await db('v_longhaul_drivers').select('*')
+  // v_longhaul_drivers comes back with UPPERCASE column names on the Dolios
+  // SQL Server (DRIVER_ID, DRIVER_NAME, AGENT_CODE, ...). Normalise to the
+  // lowercase keys the rest of this function (and DriverRow) expects, so
+  // `d.driver_id` is the actual id rather than `undefined` (which produced
+  // "Undefined binding(s) detected" when fed to `.whereIn('TripMaster.driver_id', ...)`).
+  const drivers: DriverRow[] = lowercaseRowKeys<DriverRow>(
+    await db('v_longhaul_drivers').select('*'),
+  )
 
   if (drivers.length === 0) return []
 

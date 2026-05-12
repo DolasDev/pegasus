@@ -1,0 +1,83 @@
+name: E2E — QA longhaul
+
+# Browser + API E2E for the /driver-planning (longhaul) module against the QA
+# tenant with a live WireGuard tunnel to the on-prem Dolios server and a
+# known-good (disposable) planning database. See apps/e2e/QA.md.
+#
+# This is intentionally NOT part of the blocking deploy gate (deploy.yml): it
+# depends on external state (the tunnel + on-prem DB) that isn't guaranteed up.
+# Run it on demand, or nightly. The suite self-skips cleanly if the on-prem
+# version ping is unhealthy.
+
+on:
+  workflow_dispatch:
+    inputs:
+      reseed_note:
+        description: 'Reminder: re-seed the QA planning DB from the known-good snapshot before a full @qa-mutating run.'
+        required: false
+        default: ''
+  schedule:
+    # 07:00 UTC daily — adjust/remove as desired.
+    - cron: '0 7 * * *'
+
+concurrency:
+  group: e2e-qa-longhaul
+  cancel-in-progress: true
+
+jobs:
+  e2e-qa-longhaul:
+    name: E2E — QA longhaul
+    runs-on: ubuntu-latest
+    # The `qa` GitHub Environment should hold the QA_* secrets/vars below.
+    environment: qa
+    env:
+      E2E_TARGET: qa
+      CI: 'true'
+      # --- QA target (see apps/e2e/QA.md) ---
+      QA_WEB_URL: ${{ vars.QA_WEB_URL }}
+      QA_API_BASE_URL: ${{ vars.QA_API_BASE_URL }}
+      QA_TENANT_ID: ${{ vars.QA_TENANT_ID }}
+      QA_TENANT_NAME: ${{ vars.QA_TENANT_NAME }}
+      QA_USER_USERNAME: ${{ vars.QA_USER_USERNAME }}
+      QA_USER_PASSWORD: ${{ secrets.QA_USER_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fix binary permissions
+        run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
+
+      - name: Install Playwright browsers
+        working-directory: apps/e2e
+        run: node ../../node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Sanity-check QA config is present
+        run: |
+          missing=""
+          for v in QA_WEB_URL QA_API_BASE_URL QA_TENANT_ID QA_USER_USERNAME QA_USER_PASSWORD; do
+            if [ -z "${!v}" ]; then missing="$missing $v"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing QA config:$missing — configure the 'qa' GitHub Environment (see apps/e2e/QA.md)."
+            exit 1
+          fi
+
+      - name: Run QA longhaul E2E
+        working-directory: apps/e2e
+        run: node ../../node_modules/.bin/playwright test
+
+      - name: Upload Playwright report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-qa-longhaul
+          path: apps/e2e/playwright-report/
+          retention-days: 14

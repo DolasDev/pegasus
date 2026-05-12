@@ -3,7 +3,15 @@ import { readFileSync } from 'fs'
 import { resolve } from 'path'
 
 // ---------------------------------------------------------------------------
-// Load .env.test before defineConfig so webServer.env picks up the values.
+// Load env files before defineConfig so webServer.env / config logic see them.
+//
+//   .env.test.local — gitignored; per-developer overrides + secrets (e.g. the
+//                     QA_* vars, E2E_STAGING_ADMIN_PASSWORD). Loaded first so it
+//                     wins (loadDotEnv is first-write-wins; values already in
+//                     process.env from the CLI win over both files).
+//   .env.test       — tracked; committed defaults for the `local` target.
+//
+// See apps/e2e/.env.test.example.
 // ---------------------------------------------------------------------------
 function loadDotEnv(filePath: string): void {
   try {
@@ -26,6 +34,7 @@ function loadDotEnv(filePath: string): void {
   }
 }
 
+loadDotEnv(resolve(__dirname, '.env.test.local'))
 loadDotEnv(resolve(__dirname, '.env.test'))
 
 // ---------------------------------------------------------------------------
@@ -37,16 +46,38 @@ loadDotEnv(resolve(__dirname, '.env.test'))
 //                     `E2E_API_BASE_URL` (required) and excludes specs tagged
 //                     `@local-only` (DB-seeded or auth-required). Used by the
 //                     staging E2E gate in `.github/workflows/deploy.yml`.
-// See `apps/e2e/REMOTE.md` for the full remote contract.
+// `qa`              : skip `webServer` + `globalSetup`. Browser-driven suite for
+//                     the `/driver-planning` (longhaul) module against a real QA
+//                     tenant with a live on-prem tunnel. Authenticates via a real
+//                     Cognito login (see `fixtures/hosted-ui-login.ts`) captured by
+//                     the `qa-setup` project. Runs only the `tests/**/longhaul/**`
+//                     specs. See `apps/e2e/QA.md` for the full contract.
+// See `apps/e2e/REMOTE.md` for the remote/qa contract.
 // ---------------------------------------------------------------------------
 const E2E_TARGET = process.env['E2E_TARGET'] ?? 'local'
 const isRemote = E2E_TARGET === 'remote'
+const isQa = E2E_TARGET === 'qa'
+const isDeployed = isRemote || isQa
 
 const API_PORT = parseInt(process.env['PORT'] ?? '3001', 10)
 const LOCAL_API_BASE_URL = `http://localhost:${API_PORT}`
 
+// QA_SESSION_PATH (where the qa-setup project writes the captured browser
+// session) is imported from ./fixtures/qa-session-path so config + fixtures + the
+// qa-setup spec all agree on the location. Re-exported here for backwards-compat.
+export { QA_SESSION_PATH } from './fixtures/qa-session-path'
+
 let baseURL: string
-if (isRemote) {
+if (isQa) {
+  const webUrl = process.env['QA_WEB_URL']
+  const apiUrl = process.env['QA_API_BASE_URL']
+  if (!webUrl) throw new Error('E2E_TARGET=qa requires QA_WEB_URL to be set')
+  if (!apiUrl) throw new Error('E2E_TARGET=qa requires QA_API_BASE_URL to be set')
+  // Browser specs navigate against the web app; the `apiFetch`/`qaApiFetch`
+  // fixtures read API_BASE_URL for HTTP calls.
+  baseURL = webUrl
+  process.env['API_BASE_URL'] = apiUrl
+} else if (isRemote) {
   const remoteUrl = process.env['E2E_API_BASE_URL']
   if (!remoteUrl) {
     throw new Error('E2E_TARGET=remote requires E2E_API_BASE_URL to be set')
@@ -68,17 +99,17 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   outputDir: 'test-results',
 
-  // In remote mode, skip specs that depend on local DB seeding or SKIP_AUTH.
+  // In remote/qa mode, skip specs that depend on local DB seeding or SKIP_AUTH.
   // See REMOTE.md for the tagging contract.
-  ...(isRemote ? { grepInvert: /@local-only/ } : {}),
+  ...(isDeployed ? { grepInvert: /@local-only/ } : {}),
 
   use: {
     baseURL,
     trace: 'on-first-retry',
   },
 
-  // Local mode runs Prisma migrate + tenant seed; remote mode hits a live env.
-  ...(isRemote
+  // Local mode runs Prisma migrate + tenant seed; remote/qa modes hit a live env.
+  ...(isDeployed
     ? {}
     : {
         globalSetup: './global-setup.ts',
@@ -100,21 +131,55 @@ export default defineConfig({
         },
       }),
 
-  projects: [
-    {
-      name: 'api',
-      testMatch: 'tests/api/**/*.spec.ts',
-      use: {
-        // API tests don't need a browser
-        ...devices['Desktop Chrome'],
-      },
-    },
-    {
-      name: 'browser',
-      testMatch: 'tests/browser/**/*.spec.ts',
-      use: {
-        ...devices['Desktop Chrome'],
-      },
-    },
-  ],
+  projects: isQa
+    ? [
+        // qa-setup performs a real Cognito login once and writes the captured
+        // browser session (cookies + sessionStorage) to QA_SESSION_PATH.
+        {
+          name: 'qa-setup',
+          testMatch: /tests\/qa-setup\.ts$/,
+          use: { ...devices['Desktop Chrome'] },
+        },
+        // qa-api: HTTP-level checks of /api/v1/longhaul/* against QA. Reuses the
+        // ID token captured by qa-setup; no browser needed. Generous timeout —
+        // the on-prem queries go cloud → WireGuard → Dolios → MSSQL.
+        {
+          name: 'qa-api',
+          testMatch: 'tests/api/longhaul-qa.spec.ts',
+          dependencies: ['qa-setup'],
+          timeout: 60_000,
+          use: { ...devices['Desktop Chrome'] },
+        },
+        // qa-browser: drives the /driver-planning UI as the logged-in QA user.
+        // Generous timeout — pages wait on the same slow on-prem round-trips.
+        {
+          name: 'qa-browser',
+          testMatch: 'tests/browser/longhaul/**/*.spec.ts',
+          dependencies: ['qa-setup'],
+          timeout: 60_000,
+          use: { ...devices['Desktop Chrome'] },
+        },
+      ]
+    : [
+        {
+          name: 'api',
+          testMatch: 'tests/api/**/*.spec.ts',
+          // longhaul-qa.spec.ts only runs under E2E_TARGET=qa (needs a live QA
+          // tenant + on-prem tunnel + a real login). Excluded from local/remote.
+          testIgnore: '**/longhaul-qa.spec.ts',
+          use: {
+            // API tests don't need a browser
+            ...devices['Desktop Chrome'],
+          },
+        },
+        {
+          name: 'browser',
+          testMatch: 'tests/browser/**/*.spec.ts',
+          // tests/browser/longhaul/** only runs under E2E_TARGET=qa.
+          testIgnore: 'tests/browser/longhaul/**',
+          use: {
+            ...devices['Desktop Chrome'],
+          },
+        },
+      ],
 })

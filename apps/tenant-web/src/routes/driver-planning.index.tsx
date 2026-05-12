@@ -75,9 +75,11 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
   }
 
   return (
-    <TableRow>
-      <TableCell className="font-medium">{driver.driverName}</TableCell>
-      <TableCell>
+    <TableRow data-testid="driver-row" data-driver-id={driver.driverId}>
+      <TableCell className="font-medium" data-testid="driver-name">
+        {driver.driverName}
+      </TableCell>
+      <TableCell data-testid="driver-current-trip">
         {driver.currentTripId ? (
           <Badge variant="secondary">
             #{driver.currentTripId}
@@ -93,12 +95,17 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
         {editing ? (
           <Input
             type="date"
+            data-testid="confirmed-date-input"
             value={form.confirmedDate}
             onChange={(e) => setForm((f) => ({ ...f, confirmedDate: e.target.value }))}
             className="w-40"
           />
         ) : (
-          <span className="cursor-pointer hover:underline" onClick={() => setEditing(true)}>
+          <span
+            className="cursor-pointer hover:underline"
+            data-testid="confirmed-date-cell"
+            onClick={() => setEditing(true)}
+          >
             {driver.confirmedAvailableDate ? formatDate(driver.confirmedAvailableDate) : '-'}
           </span>
         )}
@@ -107,6 +114,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
         {editing ? (
           <Input
             type="text"
+            data-testid="confirmed-location-input"
             value={form.confirmedLocation}
             onChange={(e) => setForm((f) => ({ ...f, confirmedLocation: e.target.value }))}
             placeholder="City, State"
@@ -122,6 +130,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
         {editing ? (
           <Input
             type="text"
+            data-testid="confirmed-notes-input"
             value={form.notes}
             onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
             placeholder="Notes"
@@ -143,6 +152,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
               variant="ghost"
               size="icon"
               className="h-7 w-7"
+              data-testid="confirmed-save"
               onClick={handleSave}
               disabled={mutation.isPending}
             >
@@ -152,6 +162,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
               variant="ghost"
               size="icon"
               className="h-7 w-7"
+              data-testid="confirmed-cancel"
               onClick={handleCancel}
               disabled={mutation.isPending}
             >
@@ -159,7 +170,12 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
             </Button>
           </div>
         ) : (
-          <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            data-testid="confirmed-edit"
+            onClick={() => setEditing(true)}
+          >
             Edit
           </Button>
         )}
@@ -201,21 +217,33 @@ function OnpremVersionStatus() {
 
   if (isLoading) {
     return (
-      <div className="rounded-md border p-3 text-sm text-muted-foreground">
+      <div
+        data-testid="onprem-ping"
+        data-status="loading"
+        className="rounded-md border p-3 text-sm text-muted-foreground"
+      >
         Pinging on-prem API…
       </div>
     )
   }
   if (isError) {
     return (
-      <div className="rounded-md border border-destructive bg-destructive/10 p-3 text-sm space-y-2">
+      <div
+        data-testid="onprem-ping"
+        data-status="error"
+        className="rounded-md border border-destructive bg-destructive/10 p-3 text-sm space-y-2"
+      >
         <div className="font-semibold text-destructive">On-prem ping failed</div>
         <pre className="whitespace-pre-wrap break-all text-xs">{formatOnpremError(error)}</pre>
       </div>
     )
   }
   return (
-    <div className="rounded-md border border-green-500/40 bg-green-500/10 p-3 text-sm space-y-2">
+    <div
+      data-testid="onprem-ping"
+      data-status="ok"
+      className="rounded-md border border-green-500/40 bg-green-500/10 p-3 text-sm space-y-2"
+    >
       <div className="font-semibold">On-prem ping OK</div>
       <pre className="whitespace-pre-wrap break-all text-xs">{JSON.stringify(data, null, 2)}</pre>
     </div>
@@ -251,12 +279,13 @@ export function DriverPlanningPage() {
         <div className="space-y-3">
           <Input
             placeholder="Filter by driver name..."
+            data-testid="driver-filter"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             className="max-w-sm"
           />
           <div className="rounded-md border">
-            <Table>
+            <Table data-testid="driver-table">
               <TableHeader>
                 <TableRow>
                   <TableHead>Driver</TableHead>
