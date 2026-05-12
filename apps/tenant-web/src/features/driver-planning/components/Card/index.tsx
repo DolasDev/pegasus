@@ -9,7 +9,9 @@ interface CardProps {
   style?: React.CSSProperties
   className?: string
   onClick?: React.MouseEventHandler<HTMLDivElement>
-  'data-target'?: string
+  // Test hooks / data attributes are forwarded to the root element so the E2E
+  // suite can target ported cards (ShipmentCard, TripCard, pending-trip rows).
+  [dataAttr: `data-${string}`]: string | undefined
 }
 
 export const Card: React.FC<CardProps> = ({
@@ -19,13 +21,20 @@ export const Card: React.FC<CardProps> = ({
   style,
   className,
   onClick,
-}) => (
-  <div
-    className={`${styles.container} ${active ? styles.active : ''} ${className}`}
-    onClick={onClick}
-    style={style}
-  >
-    <div className={styles.title}>{title}</div>
-    <div className={styles.children}>{children}</div>
-  </div>
-)
+  ...rest
+}) => {
+  const dataProps = Object.fromEntries(
+    Object.entries(rest).filter(([key]) => key.startsWith('data-')),
+  )
+  return (
+    <div
+      className={`${styles.container} ${active ? styles.active : ''} ${className}`}
+      onClick={onClick}
+      style={style}
+      {...dataProps}
+    >
+      <div className={styles.title}>{title}</div>
+      <div className={styles.children}>{children}</div>
+    </div>
+  )
+}

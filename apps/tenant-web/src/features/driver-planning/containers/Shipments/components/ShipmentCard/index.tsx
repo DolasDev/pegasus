@@ -300,6 +300,7 @@ export function ShipmentCard({
                   : ''
       }`}
       data-target="shipment-card"
+      data-order-num={shipment.order_num}
     >
       <div className={`${styles.row}`}>
         <div className={styles.indicator}>{getShipmentIndicator()}</div>
@@ -336,6 +337,7 @@ export function ShipmentCard({
           <CircularButton
             disabled={isDisabled}
             className={styles.addTripButton}
+            data-target="add-shipment-to-trip"
             onClick={(e: any) => {
               e.stopPropagation()
               addShipmentToTrip(shipment)

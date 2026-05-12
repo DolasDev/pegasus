@@ -274,11 +274,12 @@ function TripInternal() {
                 <Notes notes={trip.notes} tripId={trip.id} reloadTrip={reloadTrip} />
               </div>
               <div className={styles.buttonContainer}>
-                <Button onClick={() => navigate('/trips')}>
+                <Button data-target="trip-back-to-trips" onClick={() => navigate('/trips')}>
                   <i className="fa fa-arrow-left"></i> All trips
                 </Button>
                 <Button
                   className={styles.editTripButton}
+                  data-target="trip-edit-planning"
                   onClick={() => navigate(`/planning?tripId=${tripId}`)}
                 >
                   <i className="fa fa-pencil"></i> &nbsp;Edit planning
@@ -311,12 +312,17 @@ function TripInternal() {
               </div>
               <div className={styles.summaryContainer}>
                 <b>Status</b>
-                <div className={styles.statusContainer}>
+                <div className={styles.statusContainer} data-target="trip-status">
                   {TripStatusOptions.map(({ status, status_id }: any, i: number) => (
                     <div key={i}>
                       <div
                         key={status_id}
                         className={styles.statusStep}
+                        data-target="trip-status-step"
+                        data-status={status}
+                        data-active={
+                          trip.status && trip.status.status === status ? 'true' : 'false'
+                        }
                         onClick={() => promptAndChangeStatus(status, status_id)}
                       >
                         <div
@@ -356,6 +362,8 @@ function TripInternal() {
                       <div
                         className={styles.activityCard}
                         key={activity.activityId}
+                        data-target="trip-shipment-activity"
+                        data-order-num={String(activity.shipment?.order_num)}
                         onClick={(e: React.MouseEvent) => {
                           e.stopPropagation()
                           const shipment = activity.shipment

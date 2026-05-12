@@ -52,6 +52,8 @@ interface CompatLinkProps {
   style?: CSSProperties
   onClick?: (e: React.MouseEvent) => void
   children?: ReactNode
+  // Forwarded to the underlying <a> so the E2E suite can target ported links.
+  [dataAttr: `data-${string}`]: unknown
 }
 
 export function Link({ to, ...rest }: CompatLinkProps) {

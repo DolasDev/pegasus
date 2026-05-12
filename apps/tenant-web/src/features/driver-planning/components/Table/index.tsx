@@ -11,9 +11,11 @@ interface TableColumn {
 interface TableProps {
   rows: any[]
   tableConfig: TableColumn[]
+  /** Optional `data-target` stamped on each body row, for E2E selectors. */
+  rowTarget?: string
 }
 
-export function Table({ rows, tableConfig }: TableProps) {
+export function Table({ rows, tableConfig, rowTarget }: TableProps) {
   return (
     <div>
       <table className={styles.table}>
@@ -28,7 +30,7 @@ export function Table({ rows, tableConfig }: TableProps) {
         </thead>
         <tbody className={styles.tbody}>
           {rows.map((row: any, i: number) => (
-            <tr key={i} data-id={row['order_num']} className={styles.tr}>
+            <tr key={i} data-id={row['order_num']} data-target={rowTarget} className={styles.tr}>
               {tableConfig.map(({ property, accessor }: TableColumn, index: number) => (
                 <td className={styles.td} key={`${i}-${index}`}>
                   {accessor ? accessor(row) : row[property as string]}

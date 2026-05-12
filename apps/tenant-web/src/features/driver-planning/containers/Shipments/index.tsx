@@ -126,7 +126,10 @@ export const SearchDashboard = () => {
 
   const [isTableMode, changeMode] = useState(false)
   return (
-    <div className={`${styles.container} ${isTableMode ? styles.large : ''}`}>
+    <div
+      className={`${styles.container} ${isTableMode ? styles.large : ''}`}
+      data-target="search-dashboard"
+    >
       <Lane key="Shipments" title={`Shipments ${countShipments()}`}>
         {/*
                 Commenting this out because not sure how necessary this feature is
@@ -141,6 +144,8 @@ export const SearchDashboard = () => {
               {headers.map(({ label, value, sortable }) => (
                 <b
                   className={styles.header}
+                  data-target="shipment-sort-header"
+                  data-sort={value}
                   onClick={() => {
                     if (sortable) changeSortBy(value)
                   }}

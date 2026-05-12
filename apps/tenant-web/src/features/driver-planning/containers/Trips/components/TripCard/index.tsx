@@ -69,6 +69,10 @@ export function TripCard({ trip }: { trip: any }) {
       <Card
         key={trip.id}
         className={styles['trip-card']}
+        data-target="trip-card"
+        data-trip-id={String(trip.id)}
+        data-trip-status={status}
+        data-canceled={isCanceled ? 'true' : 'false'}
         title={
           <>
             <span>{`Trip 

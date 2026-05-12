@@ -267,10 +267,11 @@ export function FilterTabs() {
     (key: any) => query.filters[key] && query.filters[key].length,
   ).length
   return (
-    <div>
+    <div data-target="filter-tabs">
       <div className={styles.inputWrapper}>
         <InputField
           placeholder="Search (Name Order Reg)"
+          data-target="shipment-search"
           onChange={(e: any) => {
             if (!e.target.value || e.target.value.length >= 3) {
               changeQuery({ searchTerm: e.target.value })
@@ -283,6 +284,7 @@ export function FilterTabs() {
       <div className={styles.container}>
         <div className={styles.header}>
           <span
+            data-target="toggle-filters"
             onClick={() => {
               setOpen((state) => !state)
             }}
@@ -293,27 +295,44 @@ export function FilterTabs() {
           {filterLength > 0 && (
             <>
               ({filterLength})
-              <a className={styles.link} onClick={clearFilters}>
+              <a className={styles.link} data-target="clear-filters" onClick={clearFilters}>
                 Clear
               </a>
             </>
           )}
           {filterLength > 0 && (
-            <a className={styles.link} onClick={() => setShowSaveFilterModal(true)}>
+            <a
+              className={styles.link}
+              data-target="save-filter"
+              onClick={() => setShowSaveFilterModal(true)}
+            >
               Save
             </a>
           )}
           {
-            <a className={styles.link} onClick={() => setShowFiltersModal(true)}>
+            <a
+              className={styles.link}
+              data-target="open-filters-modal"
+              onClick={() => setShowFiltersModal(true)}
+            >
               Filters
             </a>
           }
         </div>
-        <div className={`${styles.body} ${isOpen ? styles.open : ''}`}>
+        <div
+          className={`${styles.body} ${isOpen ? styles.open : ''}`}
+          data-target="filters-body"
+          data-open={isOpen ? 'true' : 'false'}
+        >
           {chunkedFields.map((fields, i) => (
             <div key={i} className={styles.column}>
               {fields.map((field, i) => (
-                <div className={styles.filterRow} key={i}>
+                <div
+                  className={styles.filterRow}
+                  key={i}
+                  data-target="filter-row"
+                  data-filter={field.property}
+                >
                   <label>{field.label}</label>
                   <div className={styles.filterContainer}>
                     {renderFilterComponentByType(

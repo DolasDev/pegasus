@@ -64,12 +64,13 @@ export const Notes: React.FC<NotesProps> = ({ notes, tripId, reloadTrip }) => {
   }
 
   return (
-    <div className={styles.notesContainer}>
+    <div className={styles.notesContainer} data-target="trip-notes">
       <Expandable
         title={
           <>
             <span className={styles.noteTitle}>Notes ({notes.length})</span>
             <Button
+              data-target="add-note"
               onClick={(e: any) => {
                 e.stopPropagation()
                 openNoteModal()
@@ -82,7 +83,7 @@ export const Notes: React.FC<NotesProps> = ({ notes, tripId, reloadTrip }) => {
       >
         <div>
           {notes.map(({ id, note, createdAt, createdByUser, updatedAt }, i) => (
-            <div className={styles.noteCard} key={i}>
+            <div className={styles.noteCard} key={i} data-target="trip-note" data-note-id={id}>
               <p>{note}</p>
               <span className={styles.noteMeta}>
                 {`-${getName(createdByUser)} : ${new Date(createdAt).toLocaleDateString()}
@@ -93,7 +94,11 @@ export const Notes: React.FC<NotesProps> = ({ notes, tripId, reloadTrip }) => {
                        : ''
                    }`}
               </span>
-              <Button className={styles.editButton} onClick={() => editNote({ id, note })}>
+              <Button
+                className={styles.editButton}
+                data-target="edit-note"
+                onClick={() => editNote({ id, note })}
+              >
                 Edit
               </Button>
             </div>
@@ -198,14 +203,15 @@ const NoteModal: React.FC<NoteModalProps> = ({
             }}
             className={styles.noteModalTextArea}
             name="note"
+            data-target="note-input"
           />
           <div className={styles.noteModalButtonContainer}>
             <Dialog.Close asChild>
-              <Button type="button" inverted color="rgb(172, 67, 67)">
+              <Button type="button" inverted color="rgb(172, 67, 67)" data-target="cancel-note">
                 Cancel
               </Button>
             </Dialog.Close>
-            <Button onClick={saveNote} type="submit">
+            <Button onClick={saveNote} type="submit" data-target="save-note">
               Save Note
             </Button>
           </div>

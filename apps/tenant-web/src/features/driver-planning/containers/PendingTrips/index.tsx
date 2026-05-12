@@ -92,10 +92,17 @@ const Activity: React.FC<ActivityProps> = ({ activity, onDelete, editActivityDat
 
   return (
     <>
-      <div className={styles.activityCard} ref={setEditElement} onClick={openActivityDates}>
+      <div
+        className={styles.activityCard}
+        ref={setEditElement}
+        onClick={openActivityDates}
+        data-target="trip-activity"
+        data-activity-abbr={activity.activityType?.abbreviation}
+      >
         <span>{`${activity.activityType?.abbreviation} ${createFromToDateString(activity.planned_start, activity.planned_end)}`}</span>
         <button
           className={`${styles.iconButton} ${styles.floatingDeleteButton}`}
+          data-target="remove-activity"
           onClick={() => {
             onDelete()
           }}
@@ -143,7 +150,11 @@ const MoreTripActions: React.FC<{ tripId: any }> = ({ tripId }) => {
 
   return (
     <>
-      <Button ref={refs.setReference} onClick={() => setOpen((state) => !state)}>
+      <Button
+        ref={refs.setReference}
+        data-target="more-trip-actions"
+        onClick={() => setOpen((state) => !state)}
+      >
         <i className="fa fa-ellipsis-v" />
       </Button>
       {isOpen && (
@@ -155,7 +166,7 @@ const MoreTripActions: React.FC<{ tripId: any }> = ({ tripId }) => {
           }}
         >
           <div className={styles.menu}>
-            <div className={styles.menuItem} onClick={cancelTrip}>
+            <div className={styles.menuItem} data-target="cancel-trip" onClick={cancelTrip}>
               Cancel Trip
             </div>
           </div>
@@ -249,7 +260,7 @@ const PendingTripsInternal = (_props: any) => {
   }
 
   return (
-    <div className={styles.container}>
+    <div className={styles.container} data-target="pending-trips">
       <Lane key="Pending Trips" title="Pending Trips">
         <div>
           <div className={styles.content}>
@@ -317,6 +328,7 @@ const PendingTripsInternal = (_props: any) => {
                 <Button
                   color="green"
                   inverted
+                  data-target="pending-new-trip"
                   onClick={() => {
                     clearCurrentTrip(currentTrip)
                   }}
@@ -326,6 +338,7 @@ const PendingTripsInternal = (_props: any) => {
               ) : null}
               <Button
                 disabled={saveDisabled}
+                data-target="save-trip"
                 onClick={() => {
                   setSaveDisabled(true)
                   console.log('saving...')
@@ -338,7 +351,11 @@ const PendingTripsInternal = (_props: any) => {
             </div>
             <div className={styles['trip-card-container']}>
               {currentTrip.id && (
-                <Link to={`/trip/${currentTrip.id}`} className={styles['title']}>
+                <Link
+                  to={`/trip/${currentTrip.id}`}
+                  className={styles['title']}
+                  data-target="view-itinerary"
+                >
                   View Itinerary #{currentTrip.id}
                 </Link>
               )}
@@ -361,7 +378,12 @@ const PendingTripsInternal = (_props: any) => {
                   return aDate < bDate ? -1 : aDate > bDate ? 1 : 0
                 })
                 .map((shipment: any) => (
-                  <Card key={shipment.order_num} title={dashboardSettings.title(shipment)}>
+                  <Card
+                    key={shipment.order_num}
+                    title={dashboardSettings.title(shipment)}
+                    data-target="pending-trip-shipment"
+                    data-order-num={String(shipment.order_num)}
+                  >
                     {dashboardSettings.children(shipment)}
                     <div className={styles.activityCreationContainer}>
                       <h3>Activities</h3>
@@ -379,6 +401,7 @@ const PendingTripsInternal = (_props: any) => {
                     ))}
                     <button
                       className={`${styles.iconButton} ${styles.floatingDeleteButton}`}
+                      data-target="remove-shipment-from-trip"
                       onClick={() => {
                         removeShipment(shipment.stateIdx)
                       }}
@@ -406,6 +429,7 @@ const nameEdit = (props: any) => (
   <div className={styles['driver-select-container']}>
     <InputField
       {...props}
+      data-target="trip-name-input"
       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
         props.onChange(e.target.value)
       }}
@@ -414,7 +438,7 @@ const nameEdit = (props: any) => (
 )
 
 const TypeAheadEdit = (props: any) => (
-  <div className={styles['driver-select-container']}>
+  <div className={styles['driver-select-container']} data-target="driver-typeahead">
     <DriverTypeahead onChange={(value: any) => props.onChange(value?.value)} value={props.value} />
   </div>
 )

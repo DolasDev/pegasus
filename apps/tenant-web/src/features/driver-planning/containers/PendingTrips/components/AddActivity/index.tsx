@@ -52,6 +52,7 @@ export const AddActivity: React.FC<AddActivityProps> = ({ shipment, shipmentInde
       <CircularButton
         ref={refs.setReference}
         onClick={toggleMenu}
+        data-target="add-activity"
         className={clsx(
           styles.addActivityButton,
           menuIsOpen ? styles.closeAddActivityButton : null,
@@ -72,6 +73,8 @@ export const AddActivity: React.FC<AddActivityProps> = ({ shipment, shipmentInde
               <div
                 onClick={() => addActivity(activity, idx)}
                 className={styles.menuItem}
+                data-target="add-activity-option"
+                data-activity-abbr={activity.activityType?.abbreviation}
                 key={activity.ActivityType_code}
               >
                 {activity.activityType?.abbreviation}

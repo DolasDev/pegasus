@@ -39,5 +39,5 @@ interface ShipmentsTableProps {
 }
 
 export const ShipmentsTable: React.FC<ShipmentsTableProps> = ({ shipments }) => {
-  return <Table rows={shipments} tableConfig={tableConfig} />
+  return <Table rows={shipments} tableConfig={tableConfig} rowTarget="shipment-table-row" />
 }

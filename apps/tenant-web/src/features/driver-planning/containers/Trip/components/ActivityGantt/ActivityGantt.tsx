@@ -96,7 +96,7 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip }: 
 
   return (
     <>
-      <div className={styles.activityGantt}>
+      <div className={styles.activityGantt} data-target="activity-gantt">
         <div className={styles.header}>
           {days.map((day: any, i: any) => (
             <ActivityHeader
@@ -111,7 +111,14 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip }: 
           const isSelectedActivity =
             selectedActivity && selectedActivity.activityId === activity.activityId
           return (
-            <div className={styles.activityRow} key={activity.activityId}>
+            <div
+              className={styles.activityRow}
+              key={activity.activityId}
+              data-target="gantt-activity-row"
+              data-activity-id={String(activity.activityId)}
+              data-order-num={String(activity.order_num)}
+              data-activity-abbr={activity.activityType?.abbreviation}
+            >
               <div className={styles.fakeRow}>
                 {days.map((day: any, i: any) => (
                   <div key={i} className={styles.dateColumn} />

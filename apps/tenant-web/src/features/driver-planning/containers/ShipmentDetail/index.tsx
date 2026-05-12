@@ -339,15 +339,26 @@ export function ShipmentDetail({
   }, [selectedShipment])
 
   return (
-    <div ref={wrapperRef} className={`${styles['detail-container']} ${show ? styles.show : ''}`}>
+    <div
+      ref={wrapperRef}
+      className={`${styles['detail-container']} ${show ? styles.show : ''}`}
+      data-target="shipment-detail"
+      data-open={show ? 'true' : 'false'}
+    >
       <IconButton
         className={styles.closeIcon}
+        data-target="close-shipment-detail"
         onClick={() => selectShipment(null)}
         Icon={<i className="fa fa-close"></i>}
       />
       {selectedShipment &&
         fields.map(({ label, accessor }: any, index: number) => (
-          <div key={index} className={styles['shipment-detail']}>
+          <div
+            key={index}
+            className={styles['shipment-detail']}
+            data-target="shipment-detail-field"
+            data-field={label || undefined}
+          >
             <b>{label}</b>
             {typeof accessor === 'string'
               ? (selectedShipment as any)[accessor]
