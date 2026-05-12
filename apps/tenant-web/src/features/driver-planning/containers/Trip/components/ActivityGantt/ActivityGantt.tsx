@@ -117,7 +117,11 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip }: 
               data-target="gantt-activity-row"
               data-activity-id={String(activity.activityId)}
               data-order-num={String(activity.order_num)}
-              data-activity-abbr={activity.activityType?.abbreviation}
+              data-activity-abbr={
+                activity.activityType?.abbreviation ??
+                activity.activityType?.code ??
+                activity.ActivityType_code
+              }
             >
               <div className={styles.fakeRow}>
                 {days.map((day: any, i: any) => (

@@ -97,7 +97,11 @@ const Activity: React.FC<ActivityProps> = ({ activity, onDelete, editActivityDat
         ref={setEditElement}
         onClick={openActivityDates}
         data-target="trip-activity"
-        data-activity-abbr={activity.activityType?.abbreviation}
+        data-activity-abbr={
+          activity.activityType?.abbreviation ??
+          activity.activityType?.code ??
+          activity.ActivityType_code
+        }
       >
         <span>{`${activity.activityType?.abbreviation} ${createFromToDateString(activity.planned_start, activity.planned_end)}`}</span>
         <button

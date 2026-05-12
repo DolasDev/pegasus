@@ -33,9 +33,7 @@ test.describe('Planning tab', () => {
     await expect.poll(() => pp.shipmentCards().count(), { timeout: 25_000 }).toBeGreaterThan(0)
   })
 
-  test('adding a shipment to the trip auto-generates its PACK/LOAD/DELIVERY activities', async ({
-    page,
-  }) => {
+  test('adding a shipment to the trip auto-generates its activities', async ({ page }) => {
     const pp = new PlanningPage(page, '')
     await expect.poll(() => pp.shipmentCards().count(), { timeout: 25_000 }).toBeGreaterThan(0)
     const orderNum = await pp.addFirstShipmentToTrip()
@@ -49,16 +47,16 @@ test.describe('Planning tab', () => {
     await expect(pp.emptyPendingTrip).toBeHidden()
 
     // The on-prem /shipments response carries the required activity templates
-    // (apps/api/src/lib/longhaul-build-activities.ts: PACK + LOAD-or-R19O + RDEL);
-    // they render as activity rows the moment the shipment lands in the trip.
+    // (apps/api/src/lib/longhaul-build-activities.ts: PACK + LOAD-or-R19O + RDEL —
+    // PACK/LOAD are suppressed for rule19 dock-pickup shipments). They render as
+    // activity rows the instant the shipment lands in the trip; RDEL is always one.
     const activities = pp.pendingActivities(card)
     await expect.poll(() => activities.count()).toBeGreaterThan(0)
     const abbrs = await activities.evaluateAll((els) =>
-      els.map((e) => e.getAttribute('data-activity-abbr') ?? ''),
+      els.map((e) => (e.getAttribute('data-activity-abbr') ?? '').toUpperCase()),
     )
-    expect(abbrs.some((a) => /PACK/i.test(a))).toBeTruthy()
-    expect(abbrs.some((a) => /LOAD|R19O/i.test(a))).toBeTruthy()
-    expect(abbrs.some((a) => /RDEL|DEL/i.test(a))).toBeTruthy()
+    expect(abbrs.some((a) => /RDEL|DEL/.test(a))).toBeTruthy()
+    expect(abbrs.some((a) => /PACK|LOAD|R19O|R19I/.test(a))).toBeTruthy()
   })
 
   test('navigating away with a dirty pending trip prompts "Leave page?"', async ({ page }) => {
