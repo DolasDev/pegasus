@@ -2,11 +2,16 @@ import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 
 // ---------------------------------------------------------------------------
-// Prisma client singleton
+// Prisma client singleton (lazy)
+//
+// The client is created on first *use*, not on import. This keeps `import
+// { db } from './db'` side-effect-free with respect to DATABASE_URL: code
+// paths and tests that never touch the database don't need it set. DB-dependent
+// tests still guard themselves with `describe.skipIf(!process.env['DATABASE_URL'])`.
 //
 // In production, one PrismaClient instance is created per Lambda cold start.
-// In development/test, we re-use the same instance across hot reloads by
-// attaching it to `globalThis`, preventing "too many clients" warnings.
+// In development/test, the instance is reused across hot reloads via
+// `globalThis`, preventing "too many clients" warnings.
 //
 // Prisma 7 requires an explicit driver adapter. PrismaPg handles connection
 // pooling internally; the pool settings come from the underlying pg driver.
@@ -26,8 +31,23 @@ function createPrismaClient(): PrismaClient {
   })
 }
 
-export const db: PrismaClient = globalForPrisma.prisma ?? createPrismaClient()
-
-if (process.env['NODE_ENV'] !== 'production') {
-  globalForPrisma.prisma = db
+function getPrismaClient(): PrismaClient {
+  if (!globalForPrisma.prisma) {
+    globalForPrisma.prisma = createPrismaClient()
+  }
+  return globalForPrisma.prisma
 }
+
+// Lazy proxy: every access resolves the real client on demand. Functions are
+// bound to the real client so `this` stays correct for `$transaction`,
+// `$extends`, `$disconnect`, etc.
+export const db: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    const client = getPrismaClient()
+    const value = Reflect.get(client, prop, client) as unknown
+    return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(client) : value
+  },
+  has(_target, prop) {
+    return Reflect.has(getPrismaClient(), prop)
+  },
+})
