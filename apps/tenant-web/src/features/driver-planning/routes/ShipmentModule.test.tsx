@@ -19,6 +19,13 @@ vi.mock('../containers/Shipments/components/FilterTabs', () => ({
   FilterTabs: () => <div data-testid="mock-filter-tabs" />,
 }))
 
+// shipments slice exports `fetchShipments` as a thunk; replace with a no-op so
+// the mount-time fetch effect doesn't touch the network.
+vi.mock('../redux/shipments', async () => {
+  const actual = await vi.importActual<any>('../redux/shipments')
+  return { ...actual, fetchShipments: () => () => Promise.resolve() }
+})
+
 import { ShipmentModule } from './ShipmentModule'
 import { renderWithStore } from '../__test-utils__/render-with-store'
 
