@@ -18,7 +18,7 @@ async function openFirstTrip(page: Page, qaWebUrl: string) {
   const layout = new DriverPlanningLayout(page, qaWebUrl)
   await layout.openTab('Trips')
   const trips = new TripsPage(page)
-  await expect(trips.laneTitle.or(trips.emptyState)).toBeVisible({ timeout: 20_000 })
+  await expect(trips.laneTitle).toBeVisible({ timeout: 20_000 })
   const tripId = await trips.firstTripId()
   test.skip(tripId === null, 'no trips in the QA DB under the default filter')
   const detail = new TripDetailPage(page, qaWebUrl)

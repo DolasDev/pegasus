@@ -90,7 +90,9 @@ const shipmentsSlice = createSlice({
       state.loading = true
     },
     fetchShipmentsSuccess(state, action: PayloadAction<any[]>) {
-      state.shipmentList = action.payload
+      // Defensive (see fetchTripsSuccess): keep shipmentList an array so the
+      // SearchDashboard / ShipmentsTable `.map`s can't crash the module.
+      state.shipmentList = Array.isArray(action.payload) ? action.payload : []
       state.loading = false
     },
     fetchShipmentsFailure(state, action: PayloadAction<string>) {

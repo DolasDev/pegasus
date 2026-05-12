@@ -40,7 +40,10 @@ const tripsSlice = createSlice({
       state.loading = true
     },
     fetchTripsSuccess(state, action: PayloadAction<any[]>) {
-      state.tripList = action.payload
+      // Defensive: the ported on-prem bridge can hand back null / a non-array on
+      // some error shapes; keep tripList an array so the <Trips> grid (which does
+      // `tripList.map`) can't crash the whole module into the error boundary.
+      state.tripList = Array.isArray(action.payload) ? action.payload : []
       state.loading = false
     },
     fetchTripsFailure(state, action: PayloadAction<string>) {
