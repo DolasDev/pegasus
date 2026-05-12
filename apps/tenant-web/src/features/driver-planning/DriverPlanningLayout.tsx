@@ -4,6 +4,8 @@ import { Link, Outlet, useRouter } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 import store from './redux/store'
 import { AppGuard } from './containers/AppGuard'
+import { SnackbarProvider } from './components/Snackbar/SnackbarProvider'
+import { ConfirmProvider } from './components/ConfirmDialog'
 import './styles.css'
 
 const TABS = [
@@ -45,14 +47,18 @@ function DriverPlanningTabs() {
 export function DriverPlanningLayout() {
   return (
     <Provider store={store}>
-      <div className="driver-planning-root space-y-4">
-        <DriverPlanningTabs />
-        <AppGuard>
-          <Suspense fallback={<div className="text-sm text-muted-foreground">Loading…</div>}>
-            <Outlet />
-          </Suspense>
-        </AppGuard>
-      </div>
+      <SnackbarProvider>
+        <ConfirmProvider>
+          <div className="driver-planning-root space-y-4">
+            <DriverPlanningTabs />
+            <AppGuard>
+              <Suspense fallback={<div className="text-sm text-muted-foreground">Loading…</div>}>
+                <Outlet />
+              </Suspense>
+            </AppGuard>
+          </div>
+        </ConfirmProvider>
+      </SnackbarProvider>
     </Provider>
   )
 }

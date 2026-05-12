@@ -10,6 +10,19 @@ vi.mock('../logger', () => ({
   default: { error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }))
 
+// Mock the Snackbar bridge — production code now surfaces user-facing messages
+// via notify/notifyError/notifySuccess instead of window.alert.
+const { notifyMock, notifyErrorMock, notifySuccessMock } = vi.hoisted(() => ({
+  notifyMock: vi.fn(),
+  notifyErrorMock: vi.fn(),
+  notifySuccessMock: vi.fn(),
+}))
+vi.mock('../../components/Snackbar/notify', () => ({
+  notify: notifyMock,
+  notifyError: notifyErrorMock,
+  notifySuccess: notifySuccessMock,
+}))
+
 import { fetchData } from './transport'
 import { API } from './index'
 
@@ -18,7 +31,6 @@ const fetchDataMock = vi.mocked(fetchData)
 const okEnvelope = (data: unknown) => ({ status: 200, data, error: undefined })
 
 describe('API surface', () => {
-  let alertSpy: ReturnType<typeof vi.spyOn>
   let consoleWarnSpy: ReturnType<typeof vi.spyOn>
   // Silence noise from production error paths: cancelTrip uses console.log, saveShipmentsFilter uses console.error.
   let consoleLogSpy: ReturnType<typeof vi.spyOn>
@@ -26,14 +38,15 @@ describe('API surface', () => {
 
   beforeEach(() => {
     fetchDataMock.mockReset()
-    alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined)
+    notifyMock.mockReset()
+    notifyErrorMock.mockReset()
+    notifySuccessMock.mockReset()
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
   })
 
   afterEach(() => {
-    alertSpy.mockRestore()
     consoleLogSpy.mockRestore()
     consoleErrorSpy.mockRestore()
     consoleWarnSpy.mockRestore()
@@ -87,21 +100,21 @@ describe('API surface', () => {
   })
 
   describe('cancelTrip', () => {
-    it('alerts "Trip Cancelled" on success', async () => {
+    it('pushes a "Trip Cancelled" success snackbar on success', async () => {
       fetchDataMock.mockResolvedValue(okEnvelope(null))
       await API.cancelTrip('t1')
       expect(fetchDataMock).toHaveBeenCalledWith('cancelTrip', 't1')
-      expect(alertSpy).toHaveBeenCalledWith('Trip Cancelled')
+      expect(notifySuccessMock).toHaveBeenCalledWith('Trip Cancelled')
     })
 
-    it('alerts the error message and swallows on failure', async () => {
+    it('pushes an error snackbar and swallows on failure', async () => {
       fetchDataMock.mockResolvedValue({
         status: 500,
         data: undefined,
         error: { message: 'boom' },
       })
       await expect(API.cancelTrip('t1')).resolves.toBeUndefined()
-      expect(alertSpy).toHaveBeenCalledWith('boom')
+      expect(notifyErrorMock).toHaveBeenCalledWith('boom')
     })
   })
 
@@ -116,14 +129,14 @@ describe('API surface', () => {
       })
     })
 
-    it('alerts on failure and does not throw', async () => {
+    it('pushes an error snackbar on failure and does not throw', async () => {
       fetchDataMock.mockResolvedValue({
         status: 500,
         data: undefined,
         error: { message: 'nope' },
       })
       await expect(API.changeTripStatus('t1', 3, 'X')).resolves.toBeUndefined()
-      expect(alertSpy).toHaveBeenCalledWith('nope')
+      expect(notifyErrorMock).toHaveBeenCalledWith('nope')
     })
   })
 
@@ -136,7 +149,7 @@ describe('API surface', () => {
       expect(result).toEqual([{ id: 1 }])
     })
 
-    it('returns [] and alerts on failure', async () => {
+    it('returns [] and pushes an error snackbar on failure', async () => {
       fetchDataMock.mockResolvedValue({
         status: 500,
         data: undefined,
@@ -144,7 +157,7 @@ describe('API surface', () => {
       })
       const result = await API.fetchShipments({})
       expect(result).toEqual([])
-      expect(alertSpy).toHaveBeenCalledWith('fail')
+      expect(notifyErrorMock).toHaveBeenCalledWith('fail')
     })
   })
 
@@ -241,14 +254,14 @@ describe('API surface', () => {
       expect(fetchDataMock).toHaveBeenCalledWith('saveShipmentsFilter', payload)
     })
 
-    it('saveShipmentsFilter alerts on failure and does not throw', async () => {
+    it('saveShipmentsFilter pushes an error snackbar on failure and does not throw', async () => {
       fetchDataMock.mockResolvedValue({
         status: 500,
         data: undefined,
         error: { message: 'nope' },
       })
       await expect(API.saveShipmentsFilter({})).resolves.toBeUndefined()
-      expect(alertSpy).toHaveBeenCalledWith('nope')
+      expect(notifyErrorMock).toHaveBeenCalledWith('nope')
     })
 
     it('setDefaultShipmentFilter forwards the filter id', async () => {
@@ -280,8 +293,8 @@ describe('API surface', () => {
         '[longhaul-port] jumpToOrder stubbed; args:',
         { orderId: 1 },
       )
-      expect(alertSpy).toHaveBeenCalledTimes(1)
-      expect(alertSpy.mock.calls[0]![0]).toMatch(/legacy desktop app/i)
+      expect(notifyErrorMock).toHaveBeenCalledTimes(1)
+      expect(notifyErrorMock.mock.calls[0]![0]).toMatch(/legacy desktop app/i)
     })
   })
 })

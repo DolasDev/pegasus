@@ -9,7 +9,7 @@ import styles from './Trip.module.css'
 import { Button } from '../../components/Button'
 
 import { API } from '@/features/driver-planning/utils/api'
-import { useStatusPredictionPrompt, promptForStatusUpdate } from './utils/status-prompt'
+import { useStatusPredictionPrompt, usePromptForStatusUpdate } from './utils/status-prompt'
 import { useDateChangePrompt } from './utils/date-prompt'
 import { TripStatusOptions } from '../../common/trip-status'
 import { ShipmentDetail } from '../ShipmentDetail'
@@ -228,6 +228,7 @@ function TripInternal() {
     reloadTrip()
   }
 
+  const promptForStatusUpdate = usePromptForStatusUpdate()
   const promptAndChangeStatus = (status: any, status_id: any) => {
     promptForStatusUpdate(status, () => changeStatus(status_id, status))
   }

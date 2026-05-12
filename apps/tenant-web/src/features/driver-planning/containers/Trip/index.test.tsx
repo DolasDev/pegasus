@@ -36,7 +36,7 @@ vi.mock('../ShipmentDetail', () => ({
 
 vi.mock('./utils/status-prompt', () => ({
   useStatusPredictionPrompt: () => {},
-  promptForStatusUpdate: vi.fn(),
+  usePromptForStatusUpdate: () => vi.fn(),
 }))
 
 vi.mock('./utils/date-prompt', () => ({

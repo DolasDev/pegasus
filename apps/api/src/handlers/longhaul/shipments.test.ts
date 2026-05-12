@@ -8,6 +8,7 @@ import type { OnPremEnv } from '../../types.onprem'
 import type { ConnectionPool } from 'mssql'
 import type { Knex } from 'knex'
 import type { PrismaClient } from '@prisma/client'
+import type * as EnrichModule from '../../lib/longhaul-shipment-enrich'
 
 const mockDb = {} as unknown as Knex
 
@@ -18,6 +19,14 @@ vi.mock('../../repositories/longhaul/shipments.repository', () => ({
   patchWeight: vi.fn(),
   patchShipmentShadow: vi.fn(),
 }))
+
+vi.mock('../../lib/longhaul-shipment-enrich', async () => {
+  const actual = await vi.importActual<typeof EnrichModule>('../../lib/longhaul-shipment-enrich')
+  return {
+    ...actual,
+    loadActivityTypesMap: vi.fn().mockResolvedValue({}),
+  }
+})
 
 import {
   findShipmentsWithQuery,
@@ -89,6 +98,164 @@ describe('GET /shipments', () => {
       expect.anything(),
       expect.objectContaining({ filters: expect.objectContaining({ Is_Trip_Planning: true }) }),
     )
+  })
+
+  // ----- enrichment -----
+
+  it('enriches shipments with trip info from their latest unfinished activity', async () => {
+    vi.mocked(findShipmentsWithQuery).mockResolvedValue([
+      {
+        order_num: 200,
+        driver_name: 'fallback-driver',
+        activities: [
+          {
+            id: 1,
+            TripMaster_id: 77,
+            trip_status_id: 3,
+            actual_date: null,
+            planned_start: '2026-05-10T09:00:00Z',
+            driver_name: 'Alice',
+            activityType_abbreviation: 'PK',
+          },
+          {
+            id: 2,
+            TripMaster_id: 77,
+            trip_status_id: 3,
+            actual_date: null,
+            planned_start: '2026-05-12T09:00:00Z',
+            driver_name: 'Alice',
+            activityType_abbreviation: 'LD',
+          },
+        ],
+      },
+    ])
+    const app = buildApp()
+    const res = await app.request('/shipments')
+    expect(res.status).toBe(200)
+    const body = await json(res)
+    const data = body['data'] as Array<Record<string, unknown>>
+    expect(data).toHaveLength(1)
+    expect(data[0]!['driver_name']).toBe('Alice')
+    expect(data[0]!['TripMaster_id']).toBe(77)
+    expect(data[0]!['TripStatus_id']).toBe(3)
+    expect(data[0]!['latest_activity_abbr']).toBe('PK')
+    expect(new Date(data[0]!['latest_activity_date'] as string).toISOString()).toBe(
+      '2026-05-10T09:00:00.000Z',
+    )
+  })
+
+  it('falls back to shipment driver_name when no activity has a driver', async () => {
+    vi.mocked(findShipmentsWithQuery).mockResolvedValue([
+      {
+        order_num: 201,
+        driver_name: 'fallback-driver',
+        activities: [],
+      },
+    ])
+    const app = buildApp()
+    const res = await app.request('/shipments')
+    const body = await json(res)
+    const data = body['data'] as Array<Record<string, unknown>>
+    expect(data[0]!['driver_name']).toBe('fallback-driver')
+    expect(data[0]!['TripMaster_id']).toBeNull()
+  })
+
+  it('attaches extraActivities templates derived from shipment dates', async () => {
+    vi.mocked(findShipmentsWithQuery).mockResolvedValue([
+      {
+        order_num: 202,
+        pack_date2: '2026-05-01',
+        load_date2: '2026-05-02',
+        del_date2: '2026-05-03',
+        shipper_add1: '1 A St',
+        shipper_city: 'Origin',
+        shipper_state: 'OR',
+        shipper_zip: '00000',
+        del_address1: '2 B St',
+        consignee_city: 'Dest',
+        consignee_state: 'DE',
+        consignee_zip: '11111',
+        activities: [],
+        extra_locations: [],
+      },
+    ])
+    const app = buildApp()
+    const res = await app.request('/shipments')
+    const body = await json(res)
+    const data = body['data'] as Array<Record<string, unknown>>
+    const extras = data[0]!['extraActivities'] as Array<{ ActivityType_code: string }>
+    const codes = extras.map((e) => e.ActivityType_code)
+    // buildShipmentActivities runs first and fills the core PACK/LOAD/RDEL into
+    // `activities`, so extraActivities only carries the optional add-ons
+    // (R19*, UNPK, SIT in/out, etc.) — matching legacy ordering.
+    expect(codes).toEqual(expect.arrayContaining(['SITIN', 'SITOUT', 'UNPK']))
+    expect(codes).not.toContain('PACK')
+  })
+
+  it('replaces activities with required templates via buildShipmentActivities', async () => {
+    vi.mocked(findShipmentsWithQuery).mockResolvedValue([
+      {
+        order_num: 303,
+        pack_date2: '2026-05-01',
+        load_date2: '2026-05-02',
+        del_date2: '2026-05-03',
+        shipper_add1: '1 A St',
+        shipper_city: 'Origin',
+        shipper_state: 'OR',
+        shipper_zip: '00000',
+        del_address1: '2 B St',
+        consignee_city: 'Dest',
+        consignee_state: 'DE',
+        consignee_zip: '11111',
+        // A tripped activity that buildShipmentActivities must drop, plus an
+        // untripped one it must preserve.
+        activities: [
+          { id: 1, TripMaster_id: 99, ActivityType_code: 'PACK', planned_start: '2026-05-01' },
+          { id: 2, TripMaster_id: null, ActivityType_code: 'XPU', planned_start: '2026-05-01' },
+        ],
+        extra_locations: [],
+      },
+    ])
+    const app = buildApp()
+    const res = await app.request('/shipments')
+    const body = await json(res)
+    const data = body['data'] as Array<Record<string, unknown>>
+    const activities = data[0]!['activities'] as Array<Record<string, unknown>>
+    const codes = activities.map((a) => a['ActivityType_code'])
+    // Untripped XPU preserved; tripped PACK dropped; required PACK/LOAD/RDEL added.
+    expect(codes).toEqual(expect.arrayContaining(['XPU', 'PACK', 'LOAD', 'RDEL']))
+    expect(activities.some((a) => a['TripMaster_id'] === 99)).toBe(false)
+  })
+
+  // ----- post-fetch TripStatus_id filter -----
+
+  it('filters shipments by TripStatus_id after enrichment', async () => {
+    vi.mocked(findShipmentsWithQuery).mockResolvedValue([
+      { order_num: 1, activities: [{ id: 1, trip_status_id: 1, planned_start: '2026-05-01' }] },
+      { order_num: 2, activities: [{ id: 2, trip_status_id: 2, planned_start: '2026-05-01' }] },
+      { order_num: 3, activities: [{ id: 3, trip_status_id: 3, planned_start: '2026-05-01' }] },
+    ])
+    const app = buildApp()
+    const filters = JSON.stringify({
+      filters: { TripStatus_id: [{ value: '2' }, { value: 3 }] },
+    })
+    const res = await app.request(`/shipments?filters=${encodeURIComponent(filters)}`)
+    expect(res.status).toBe(200)
+    const body = await json(res)
+    const data = body['data'] as Array<Record<string, unknown>>
+    expect(data.map((d) => d['order_num']).sort()).toEqual([2, 3])
+  })
+
+  // ----- 1000-result cap -----
+
+  it('returns 400 RESULT_LIMIT_EXCEEDED when enriched count exceeds 1000', async () => {
+    const big = Array.from({ length: 1001 }, (_, i) => ({ order_num: i, activities: [] }))
+    vi.mocked(findShipmentsWithQuery).mockResolvedValue(big)
+    const app = buildApp()
+    const res = await app.request('/shipments')
+    expect(res.status).toBe(400)
+    const body = await json(res)
+    expect(body['code']).toBe('RESULT_LIMIT_EXCEEDED')
   })
 })
 

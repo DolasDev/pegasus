@@ -1,4 +1,5 @@
 import logger from '../logger'
+import { notifyError, notifySuccess } from '../../components/Snackbar/notify'
 import { fetchData } from './transport'
 
 export async function fetchHelper(name: string, ...rest: unknown[]) {
@@ -20,17 +21,17 @@ export const API = {
   cancelTrip: async (tripId: string) => {
     try {
       await fetchHelper('cancelTrip', tripId)
-      window.alert('Trip Cancelled')
+      notifySuccess('Trip Cancelled')
     } catch (e) {
       console.log(e)
-      window.alert((e as any).message)
+      notifyError((e as any).message)
     }
   },
   fetchShipments: async (query: any) => {
     try {
       return await fetchHelper('fetchShipments', query)
     } catch (e) {
-      window.alert((e as any).message)
+      notifyError((e as any).message)
       return []
     }
   },
@@ -42,7 +43,7 @@ export const API = {
     try {
       await fetchHelper('changeTripStatus', { tripId, statusId, status })
     } catch (e) {
-      window.alert((e as any).message)
+      notifyError((e as any).message)
     }
   },
   fetchDrivers: () => fetchHelper('fetchDrivers'),
@@ -76,7 +77,7 @@ export const API = {
     // requires the on-prem-only `pegasusRemoteFunctionCall` shell-out. There
     // is no cloud equivalent yet — surface a notice instead of a stack trace.
     console.warn('[longhaul-port] jumpToOrder stubbed; args:', args)
-    window.alert(
+    notifyError(
       'Opening an order in the legacy desktop app is not yet supported in the cloud. This will be wired up in a future phase.',
     )
   },
@@ -86,7 +87,7 @@ export const API = {
       await fetchHelper('saveShipmentsFilter', payload)
     } catch (e) {
       console.error(e)
-      window.alert((e as any).message)
+      notifyError((e as any).message)
     }
   },
   fetchShipmentDefaultFilterForUser: (_userCode?: any) => {

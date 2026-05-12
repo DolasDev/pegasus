@@ -3,15 +3,16 @@
 // ---------------------------------------------------------------------------
 
 import type { Knex } from 'knex'
+import { getLonghaulClientConfig } from '../../lib/longhaul-client-config'
 
 const FILTER_TABLE = 'longhaul_shipment_filter'
 const USER_PREFERENCES_TABLE = 'longhaul_user_preferences'
 
 /** Query filter options (move types). */
 export async function getFilterOptions(db: Knex) {
-  const args = process.env['MOVE_TYPES_WHERE'] ?? '1=1'
+  const { moveTypesWhere } = getLonghaulClientConfig()
   const moveTypes = await db('MoveType')
-    .whereRaw(args)
+    .whereRaw(moveTypesWhere)
     .orderBy('move_type_desc', 'asc')
     .select('move_type_desc', 'move_type')
 
@@ -23,9 +24,25 @@ export async function getFilterOptions(db: Knex) {
   }
 }
 
-/** Return all saved filters owned by the given user code. */
-export async function getSavedFiltersForUser(db: Knex, userCode: string | number) {
-  return db(FILTER_TABLE).where('owner_code', userCode).orderBy('name', 'asc').select('*')
+/**
+ * Return saved filters scoped to the requesting user.
+ *
+ * - `self`: the user's own private filters (`owner_code = userCode AND is_public = false`).
+ * - `public`: every public filter (`is_public = true`), regardless of owner.
+ *
+ * The two scopes are mutually exclusive in their default cases, which prevents
+ * another user's private filters from ever leaking into either response.
+ */
+export async function getSavedFiltersForUser(
+  db: Knex,
+  userCode: string | number,
+  type: 'self' | 'public' = 'self',
+) {
+  const query = db(FILTER_TABLE).orderBy('name', 'asc').select('*')
+  if (type === 'public') {
+    return query.where('is_public', true)
+  }
+  return query.where('owner_code', userCode).andWhere('is_public', false)
 }
 
 /** Insert or update a filter record. */

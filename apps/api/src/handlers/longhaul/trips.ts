@@ -15,6 +15,7 @@ import {
   cancelTrip as cancelTripRepo,
   updateTripSummary,
   getTripStatuses,
+  getTripStatusById,
   createNote,
   patchNote,
 } from '../../repositories/longhaul/trips.repository'
@@ -30,6 +31,7 @@ import {
   findShipmentsByIds,
   patchShipmentShadow,
 } from '../../repositories/longhaul/shipments.repository'
+import { buildShipmentActivities } from '../../lib/longhaul-build-activities'
 import { logger } from '../../lib/logger'
 
 // ---------------------------------------------------------------------------
@@ -442,10 +444,23 @@ tripsRouter.patch(
         )
       }
 
-      await updateTripStatus(db, tripId, body.statusId)
-      await updateActivitiesStatus(db, tripId, body.statusId, body.status ?? '', user?.code)
+      // Resolve the human-readable status name from MasterTripStatus so the
+      // status column on each LongDistanceDispatchActivity row stays in sync
+      // with the trip's new TripStatus_id (legacy behaviour). Fall back to
+      // the client-supplied label or '' if the lookup row is missing.
+      const statusRow = await getTripStatusById(db, body.statusId)
+      const statusName =
+        ((statusRow as Record<string, unknown> | undefined)?.['status'] as string | undefined) ??
+        body.status ??
+        ''
 
-      return c.json({ data: { success: true } })
+      await db.transaction(async (trx) => {
+        await updateTripStatus(trx, tripId, body.statusId)
+        await updateActivitiesStatus(trx, tripId, body.statusId, statusName, user?.code)
+      })
+
+      const updatedTrip = await findTripById(db, tripId)
+      return c.json({ data: updatedTrip })
     } catch (err) {
       logger.error('changeTripStatus failed', { error: String(err) })
       return c.json(
@@ -493,8 +508,14 @@ tripsRouter.post('/trips/:id/cancel', async (c) => {
       )
     }
 
-    await cancelTripActivities(db, tripId, user?.code)
-    await cancelTripRepo(db, tripId, user?.code)
+    // Wrap activity deletion + trip internal_status update in a single
+    // transaction so a failure on either side leaves no half-cancelled trip
+    // (legacy ran these sequentially without rollback). The repository call
+    // sets `internal_status = 'canceled'` (matches legacy InternalStatus.CANCELED).
+    await db.transaction(async (trx) => {
+      await cancelTripActivities(trx, tripId, user?.code)
+      await cancelTripRepo(trx, tripId, user?.code)
+    })
 
     return c.json({ data: { success: true } })
   } catch (err) {
@@ -686,21 +707,6 @@ async function saveTripLogic(
     (tripDto['dispatcher'] as Record<string, unknown> | null)?.['last_name'] ?? ''
   const dispatcherName = `${dispatcherFirstName} ${dispatcherLastName}`.trim()
 
-  // If dispatcher changed, cascade to shipments shadow
-  if (existingTrip && existingTrip['dispatcher_id'] !== dispatcherCode) {
-    const existingActivities = (existingTrip['activities'] as Activity[]) ?? []
-    const orderNums = [
-      ...new Set(existingActivities.map((a) => a['order_num'] as number).filter(Boolean)),
-    ]
-    for (const orderNum of orderNums) {
-      await patchShipmentShadow(db, {
-        order_num: orderNum,
-        operations_id: dispatcherCode as string,
-        operations_name: dispatcherName,
-      })
-    }
-  }
-
   const driverId =
     (tripDto['driver'] as Record<string, unknown> | null)?.['id'] ?? tripDto['driver_id'] ?? null
   const driverAgentCode =
@@ -709,25 +715,28 @@ async function saveTripLogic(
     (tripDto['status'] as Record<string, unknown> | null)?.['status'] ?? 'Pending'
   const currentStatusTripId = (tripDto['status'] as Record<string, unknown> | null)?.['id'] ?? 1
 
-  // Collect all activities from all shipments in the DTO
+  // Auto-fill required activity templates (PACK, LOAD/R19O, RDEL) for any
+  // shipment that doesn't already have them. Mirrors the legacy NestJS
+  // ActivityService.buildShipmentActivities. We do this BEFORE diffing
+  // against existingActivities so missing-required-activities get inserted.
   const dtoShipments = (tripDto['shipments'] as Shipment[]) ?? []
   const dtoActivities: Activity[] = []
   for (const shipment of dtoShipments) {
-    dtoActivities.push(...((shipment['activities'] as Activity[]) ?? []))
+    dtoActivities.push(...buildShipmentActivities(shipment))
   }
 
   const existingActivities = existingTrip ? ((existingTrip['activities'] as Activity[]) ?? []) : []
 
-  // Activities to remove (in existing but not in DTO, matched by order_num + activityType.code)
+  // Activity-matching key: (order_num + activityType.code) on the same trip.
+  const sameSlot = (dto: Activity, dbo: Activity): boolean =>
+    dto['order_num'] === dbo['order_num'] &&
+    (dto['activityType'] as Record<string, unknown> | null | undefined)?.['code'] ===
+      dbo['activityType_code'] &&
+    tripDto['id'] === dbo['TripMaster_id']
+
+  // Activities to remove: present in DB but not in DTO.
   const activitiesToRemove = existingActivities.filter(
-    (dbo) =>
-      !dtoActivities.some(
-        (dto) =>
-          dto['order_num'] === dbo['order_num'] &&
-          (dto['activityType'] as Record<string, unknown> | null)?.['code'] ===
-            dbo['activityType_code'] &&
-          tripDto['id'] === dbo['TripMaster_id'],
-      ),
+    (dbo) => !dtoActivities.some((dto) => sameSlot(dto, dbo)),
   )
 
   if (activitiesToRemove.some((a) => a['actual_date'] != null)) {
@@ -737,26 +746,13 @@ async function saveTripLogic(
     }
   }
 
-  // Activities to update
+  // Activities to update: present in both DB and DTO. We carry the DTO patch
+  // forward, stripping relation fields that aren't real columns.
   const activitiesToUpdate = existingActivities
-    .filter((dbo) =>
-      dtoActivities.some(
-        (dto) =>
-          dto['order_num'] === dbo['order_num'] &&
-          (dto['activityType'] as Record<string, unknown> | null)?.['code'] ===
-            dbo['activityType_code'] &&
-          tripDto['id'] === dbo['TripMaster_id'],
-      ),
-    )
+    .filter((dbo) => dtoActivities.some((dto) => sameSlot(dto, dbo)))
     .map((dbo) => {
-      const matching = dtoActivities.find(
-        (dto) =>
-          dto['order_num'] === dbo['order_num'] &&
-          (dto['activityType'] as Record<string, unknown> | null)?.['code'] ===
-            dbo['activityType_code'],
-      )
+      const matching = dtoActivities.find((dto) => sameSlot(dto, dbo))
       if (!matching) return dbo
-      // Merge dto into dbo, stripping relation fields
       const stripped = { ...matching } as Record<string, unknown>
       delete stripped['TripMaster_id']
       delete stripped['shipment']
@@ -774,18 +770,9 @@ async function saveTripLogic(
       }
     })
 
-  // Activities to add (in DTO but not in existing)
+  // Activities to add: present in DTO but not in DB.
   const activitiesToAdd = dtoActivities
-    .filter(
-      (dto) =>
-        !existingActivities.some(
-          (dbo) =>
-            dto['order_num'] === dbo['order_num'] &&
-            (dto['activityType'] as Record<string, unknown> | null)?.['code'] ===
-              dbo['activityType_code'] &&
-            tripDto['id'] === dbo['TripMaster_id'],
-        ),
-    )
+    .filter((dto) => !existingActivities.some((dbo) => sameSlot(dto, dbo)))
     .map((dto) => ({
       ...dto,
       assigned_driver_id: driverId,
@@ -827,33 +814,54 @@ async function saveTripLogic(
     tripRow['id'] = tripDto['id']
   }
 
-  const savedTrip = await saveTrip(db, tripRow)
-  const newTripId = (savedTrip?.['id'] ?? tripDto['id']) as number
+  // Wrap the trip header save + dispatcher-cascade + activity diff
+  // (remove/add/update) + summary recompute in a single transaction so a
+  // failure on any step rolls back the entire save. Legacy ran these
+  // sequentially without atomicity, which could leave half-written trips.
+  const newTripId = await db.transaction(async (trx) => {
+    // Cascade dispatcher change to shipment shadows, if the dispatcher_id
+    // actually changed on an existing trip.
+    if (existingTrip && existingTrip['dispatcher_id'] !== dispatcherCode) {
+      const prevActivities = (existingTrip['activities'] as Activity[]) ?? []
+      const orderNums = [
+        ...new Set(prevActivities.map((a) => a['order_num'] as number).filter(Boolean)),
+      ]
+      for (const orderNum of orderNums) {
+        await patchShipmentShadow(trx, {
+          order_num: orderNum,
+          operations_id: dispatcherCode as string,
+          operations_name: dispatcherName,
+        })
+      }
+    }
 
-  // Remove, add, and update activities
-  const removeIds = activitiesToRemove.map((a) => a['id'] as number).filter(Boolean)
-  if (removeIds.length) {
-    await removeActivities(db, removeIds, tripDto['updated_by_id'] as number | undefined)
-  }
+    const savedTrip = await saveTrip(trx, tripRow)
+    const tripId = (savedTrip?.['id'] ?? tripDto['id']) as number
 
-  for (const activity of activitiesToAdd) {
-    const act = { ...activity } as Record<string, unknown>
-    const activityTypeCode =
-      (act['activityType'] as Record<string, unknown> | null)?.['code'] ?? act['ActivityType_code']
-    delete act['activityType']
-    delete act['shipment']
-    delete act['pegasus_shadow']
-    delete act['trip']
-    await insertActivity(db, {
-      ...act,
-      TripMaster_id: newTripId,
-      ActivityType_code: activityTypeCode,
-    })
-  }
+    const removeIds = activitiesToRemove.map((a) => a['id'] as number).filter(Boolean)
+    if (removeIds.length) {
+      await removeActivities(trx, removeIds, tripDto['updated_by_id'] as number | undefined)
+    }
 
-  for (const activity of activitiesToUpdate) {
-    const activityId = (activity['id'] ?? activity['activityId']) as number | undefined
-    if (activityId) {
+    for (const activity of activitiesToAdd) {
+      const act = { ...activity } as Record<string, unknown>
+      const activityTypeCode =
+        (act['activityType'] as Record<string, unknown> | null)?.['code'] ??
+        act['ActivityType_code']
+      delete act['activityType']
+      delete act['shipment']
+      delete act['pegasus_shadow']
+      delete act['trip']
+      await insertActivity(trx, {
+        ...act,
+        TripMaster_id: tripId,
+        ActivityType_code: activityTypeCode,
+      })
+    }
+
+    for (const activity of activitiesToUpdate) {
+      const activityId = (activity['id'] ?? activity['activityId']) as number | undefined
+      if (!activityId) continue
       const fields = { ...activity } as Record<string, unknown>
       delete fields['activityType']
       delete fields['shipment']
@@ -861,25 +869,26 @@ async function saveTripLogic(
       delete fields['trip']
       delete fields['id']
       delete fields['activityId']
-      await saveActivity(db, activityId, fields, tripDto['updated_by_id'] as number | undefined)
+      await saveActivity(trx, activityId, fields, tripDto['updated_by_id'] as number | undefined)
     }
-  }
 
-  // Recompute trip summary from activities
-  const updatedActivities = await findActivitiesByTripId(db, newTripId)
-  const orderNums = [
-    ...new Set(updatedActivities.map((a) => a['order_num'] as number).filter(Boolean)),
-  ]
-  const shipmentsForSummary = orderNums.length ? await findShipmentsByIds(db, orderNums) : []
-  const shipmentsMap: Record<number, Shipment> = {}
-  for (const s of shipmentsForSummary) {
-    shipmentsMap[s['order_num'] as number] = s
-  }
+    // Recompute trip summary inside the same transaction.
+    const updatedActivities = await findActivitiesByTripId(trx, tripId)
+    if (updatedActivities.length > 0) {
+      const orderNums = [
+        ...new Set(updatedActivities.map((a) => a['order_num'] as number).filter(Boolean)),
+      ]
+      const shipmentsForSummary = orderNums.length ? await findShipmentsByIds(trx, orderNums) : []
+      const shipmentsMap: Record<number, Shipment> = {}
+      for (const s of shipmentsForSummary) {
+        shipmentsMap[s['order_num'] as number] = s
+      }
+      const summary = await computeTripSummary(tripId, updatedActivities, shipmentsMap)
+      await updateTripSummary(trx, tripId, summary)
+    }
 
-  if (updatedActivities.length > 0) {
-    const summary = await computeTripSummary(newTripId, updatedActivities, shipmentsMap)
-    await updateTripSummary(db, newTripId, summary)
-  }
+    return tripId
+  })
 
   return (await findTripById(db, newTripId)) ?? {}
 }

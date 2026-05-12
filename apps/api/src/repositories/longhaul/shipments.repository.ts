@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Knex } from 'knex'
+import { getLonghaulClientConfig } from '../../lib/longhaul-client-config'
 
 const SHIPMENTS_TABLE = 'v_dispatch_planning'
 const ACTIVITIES_TABLE = 'LongDistanceDispatchActivity'
@@ -175,7 +176,7 @@ export async function findShipmentsWithQuery(db: Knex, query: ShipmentQuery) {
     }
 
     if (f.Is_Trip_Planning) {
-      const importExportTypes = process.env['IMPORT_EXPORT_TYPES']?.split(',') ?? ['H']
+      const { importExportTypes } = getLonghaulClientConfig()
       qb = qb
         .where(`${SHIPMENTS_TABLE}.shipment_status`, 'A')
         .whereIn(`${SHIPMENTS_TABLE}.import_export`, importExportTypes)
@@ -209,8 +210,14 @@ export async function findShipmentsWithQuery(db: Knex, query: ShipmentQuery) {
         'at.code as activityType_code',
         'at.name as activityType_name',
         'at.abbreviation as activityType_abbreviation',
+        'drv.driver_name as driver_name',
       )
       .leftJoin('Longhaul_ActivityType as at', `${ACTIVITIES_TABLE}.ActivityType_code`, 'at.code')
+      .leftJoin(
+        'v_longhaul_drivers as drv',
+        `${ACTIVITIES_TABLE}.assigned_driver_id`,
+        'drv.driver_id',
+      )
       .whereIn(`${ACTIVITIES_TABLE}.order_num`, orderNums),
     db(COVERAGE_TABLE).whereIn('order_num', orderNums),
     db(EXTRA_LOCATIONS_TABLE)
@@ -261,8 +268,14 @@ export async function findShipmentsByIds(db: Knex, orderNums: number[]) {
         'at.code as activityType_code',
         'at.name as activityType_name',
         'at.abbreviation as activityType_abbreviation',
+        'drv.driver_name as driver_name',
       )
       .leftJoin('Longhaul_ActivityType as at', `${ACTIVITIES_TABLE}.ActivityType_code`, 'at.code')
+      .leftJoin(
+        'v_longhaul_drivers as drv',
+        `${ACTIVITIES_TABLE}.assigned_driver_id`,
+        'drv.driver_id',
+      )
       .whereIn(`${ACTIVITIES_TABLE}.order_num`, orderNums),
     db(COVERAGE_TABLE).whereIn('order_num', orderNums),
     db(EXTRA_LOCATIONS_TABLE)

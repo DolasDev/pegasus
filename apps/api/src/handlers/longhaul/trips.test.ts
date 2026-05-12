@@ -10,7 +10,13 @@ import type { ConnectionPool } from 'mssql'
 import type { Knex } from 'knex'
 import type { PrismaClient } from '@prisma/client'
 
-const mockDb = {} as unknown as Knex
+// `db.transaction(cb)` just runs the callback with the same mock instance —
+// the repository functions are all mocked so the transactional guarantees
+// don't matter here; what we want to verify is that the handler invokes
+// `transaction` (we can spy on it) and that any throw aborts the work.
+type TxFn = (cb: (trx: Knex) => Promise<unknown>) => Promise<unknown>
+const transactionMock = vi.fn<TxFn>(async (cb) => cb(mockDb))
+const mockDb = { transaction: transactionMock } as unknown as Knex
 
 vi.mock('../../repositories/longhaul/trips.repository', () => ({
   findTripsWithQuery: vi.fn(),
@@ -20,6 +26,7 @@ vi.mock('../../repositories/longhaul/trips.repository', () => ({
   cancelTrip: vi.fn(),
   updateTripSummary: vi.fn(),
   getTripStatuses: vi.fn(),
+  getTripStatusById: vi.fn(),
   createNote: vi.fn(),
   patchNote: vi.fn(),
 }))
@@ -45,16 +52,19 @@ import {
   updateTripStatus,
   cancelTrip as cancelTripRepo,
   getTripStatuses,
+  getTripStatusById,
   createNote,
   patchNote,
   updateTripSummary,
 } from '../../repositories/longhaul/trips.repository'
 import {
   findActivitiesByTripId,
+  insertActivity,
   updateActivitiesStatus,
   cancelTripActivities,
 } from '../../repositories/longhaul/activities.repository'
 import { findShipmentsByIds } from '../../repositories/longhaul/shipments.repository'
+import { buildShipmentActivities } from '../../lib/longhaul-build-activities'
 import { tripsRouter } from './trips'
 
 // ---------------------------------------------------------------------------
@@ -214,18 +224,57 @@ describe('PATCH /trips/:id/status', () => {
     expect(res.status).toBe(404)
   })
 
-  it('returns 200 on successful status update', async () => {
-    vi.mocked(findTripById).mockResolvedValue({
+  it('returns 200 with updated trip and looks up TripStatus name', async () => {
+    const updatedTrip = {
       id: 1,
-      TripStatus_id: 1,
+      TripStatus_id: 2,
       driver_id: 5,
       activities: [],
-    })
+    }
+    vi.mocked(findTripById)
+      // first call inside handler (load trip)
+      .mockResolvedValueOnce({ id: 1, TripStatus_id: 1, driver_id: 5, activities: [] })
+      // second call (re-fetch after update)
+      .mockResolvedValueOnce(updatedTrip)
+    vi.mocked(getTripStatusById).mockResolvedValue({ status_id: 2, status: 'Dispatched' })
     vi.mocked(updateTripStatus).mockResolvedValue(1)
     vi.mocked(updateActivitiesStatus).mockResolvedValue(1)
     const app = buildApp()
-    const res = await app.request('/trips/1/status', patch({ statusId: 2, status: 'In Transit' }))
+    const res = await app.request('/trips/1/status', patch({ statusId: 2 }))
     expect(res.status).toBe(200)
+    const body = await json(res)
+    expect(body['data']).toEqual(updatedTrip)
+    // Status name from the lookup table should be passed to updateActivitiesStatus,
+    // NOT the empty fallback or the client-supplied label.
+    expect(updateActivitiesStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      2,
+      'Dispatched',
+      MOCK_USER.code,
+    )
+  })
+
+  it('falls back to client-supplied status name when lookup row missing', async () => {
+    vi.mocked(findTripById)
+      .mockResolvedValueOnce({ id: 1, TripStatus_id: 1, driver_id: 5, activities: [] })
+      .mockResolvedValueOnce({ id: 1, TripStatus_id: 99, driver_id: 5, activities: [] })
+    vi.mocked(getTripStatusById).mockResolvedValue(undefined)
+    vi.mocked(updateTripStatus).mockResolvedValue(1)
+    vi.mocked(updateActivitiesStatus).mockResolvedValue(1)
+    const app = buildApp()
+    const res = await app.request(
+      '/trips/1/status',
+      patch({ statusId: 99, status: 'Client-Provided' }),
+    )
+    expect(res.status).toBe(200)
+    expect(updateActivitiesStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      1,
+      99,
+      'Client-Provided',
+      MOCK_USER.code,
+    )
   })
 
   it('rejects advancing past pending without a driver', async () => {
@@ -326,5 +375,251 @@ describe('PATCH /notes/:id', () => {
     const app = buildApp()
     const res = await app.request('/notes/5', patch({ note: 'Updated note', tripId: 1 }))
     expect(res.status).toBe(200)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Transaction wrapping — POST /trips, PATCH /trips/:id/status, /cancel
+// ---------------------------------------------------------------------------
+
+describe('save/status/cancel run inside a db.transaction', () => {
+  it('POST /trips wraps the save in db.transaction', async () => {
+    transactionMock.mockClear()
+    vi.mocked(findTripById).mockResolvedValue(null)
+    vi.mocked(saveTrip).mockResolvedValue({ id: 5, TripStatus_id: 1 })
+    vi.mocked(findActivitiesByTripId).mockResolvedValue([])
+    vi.mocked(findShipmentsByIds).mockResolvedValue([])
+    vi.mocked(updateTripSummary).mockResolvedValue(1)
+    const app = buildApp()
+    const res = await app.request(
+      '/trips',
+      post({ TripStatus_id: 1, shipments: [{ order_num: 100, activities: [] }] }),
+    )
+    expect(res.status).toBe(201)
+    expect(transactionMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('rolls back when an inner activity insert throws', async () => {
+    transactionMock.mockClear()
+    vi.mocked(findTripById).mockResolvedValue(null)
+    vi.mocked(saveTrip).mockResolvedValue({ id: 5, TripStatus_id: 1 })
+    vi.mocked(insertActivity).mockRejectedValueOnce(new Error('boom'))
+    const app = buildApp()
+    const res = await app.request(
+      '/trips',
+      post({
+        TripStatus_id: 1,
+        // Shipment has no activities + no dates, so buildShipmentActivities will
+        // emit at least a delivery activity that triggers insertActivity.
+        shipments: [{ order_num: 100, activities: [] }],
+      }),
+    )
+    expect(res.status).toBe(500)
+    // transaction() was invoked; the rejection from insertActivity propagates
+    // out and the catch block converts it into a 500.
+    expect(transactionMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('POST /trips/:id/cancel wraps activity-delete + trip-update in db.transaction', async () => {
+    transactionMock.mockClear()
+    vi.mocked(findTripById).mockResolvedValue({
+      id: 1,
+      TripStatus_id: 1,
+      status_id: 1,
+      driver_id: 1,
+      activities: [],
+    })
+    vi.mocked(cancelTripActivities).mockResolvedValue(1)
+    vi.mocked(cancelTripRepo).mockResolvedValue(1)
+    const app = buildApp()
+    const res = await app.request('/trips/1/cancel', { method: 'POST' })
+    expect(res.status).toBe(200)
+    expect(transactionMock).toHaveBeenCalledTimes(1)
+    // cancelTrip repo sets internal_status='canceled' — verify it was called.
+    expect(cancelTripRepo).toHaveBeenCalledWith(expect.anything(), 1, MOCK_USER.code)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildShipmentActivities — auto-fills required activity templates
+// ---------------------------------------------------------------------------
+
+describe('POST /trips auto-creates missing required activities (buildShipmentActivities)', () => {
+  beforeEach(() => {
+    // Clear .mock.calls accumulated by earlier tests so per-test assertions
+    // about insertActivity invocation count are accurate.
+    vi.mocked(insertActivity).mockClear()
+  })
+
+  it('inserts a delivery activity when shipment has none', async () => {
+    vi.mocked(findTripById).mockResolvedValue(null)
+    vi.mocked(saveTrip).mockResolvedValue({ id: 10, TripStatus_id: 1 })
+    vi.mocked(findActivitiesByTripId).mockResolvedValue([])
+    vi.mocked(findShipmentsByIds).mockResolvedValue([])
+    vi.mocked(updateTripSummary).mockResolvedValue(1)
+    vi.mocked(insertActivity).mockResolvedValue(1)
+    const app = buildApp()
+    const res = await app.request(
+      '/trips',
+      post({
+        TripStatus_id: 1,
+        shipments: [
+          {
+            order_num: 100,
+            del_date2: '2026-05-01',
+            consignee_city: 'Boston',
+            activities: [],
+          },
+        ],
+      }),
+    )
+    expect(res.status).toBe(201)
+    // A delivery (RDEL) activity should have been inserted for the shipment.
+    const inserted = vi.mocked(insertActivity).mock.calls.map(([, act]) => act)
+    expect(inserted.some((a) => a['ActivityType_code'] === 'RDEL')).toBe(true)
+  })
+
+  it('inserts R19O instead of LOAD when rule19_id is set', async () => {
+    vi.mocked(findTripById).mockResolvedValue(null)
+    vi.mocked(saveTrip).mockResolvedValue({ id: 11, TripStatus_id: 1 })
+    vi.mocked(findActivitiesByTripId).mockResolvedValue([])
+    vi.mocked(findShipmentsByIds).mockResolvedValue([])
+    vi.mocked(updateTripSummary).mockResolvedValue(1)
+    vi.mocked(insertActivity).mockResolvedValue(1)
+    const app = buildApp()
+    const res = await app.request(
+      '/trips',
+      post({
+        TripStatus_id: 1,
+        shipments: [
+          {
+            order_num: 101,
+            rule19_id: 7,
+            load_date2: '2026-05-02',
+            del_date2: '2026-05-04',
+            activities: [],
+          },
+        ],
+      }),
+    )
+    expect(res.status).toBe(201)
+    const inserted = vi.mocked(insertActivity).mock.calls.map(([, act]) => act)
+    const codes = inserted.map((a) => a['ActivityType_code'])
+    expect(codes).toContain('R19O')
+    expect(codes).not.toContain('LOAD')
+    expect(codes).toContain('RDEL')
+  })
+
+  it('skips a required activity that the shipment already contains', async () => {
+    vi.mocked(findTripById).mockResolvedValue(null)
+    vi.mocked(saveTrip).mockResolvedValue({ id: 12, TripStatus_id: 1 })
+    vi.mocked(findActivitiesByTripId).mockResolvedValue([])
+    vi.mocked(findShipmentsByIds).mockResolvedValue([])
+    vi.mocked(updateTripSummary).mockResolvedValue(1)
+    vi.mocked(insertActivity).mockResolvedValue(1)
+    const app = buildApp()
+    const res = await app.request(
+      '/trips',
+      post({
+        TripStatus_id: 1,
+        shipments: [
+          {
+            order_num: 102,
+            del_date2: '2026-05-05',
+            activities: [
+              {
+                order_num: 102,
+                activityType: { code: 'RDEL' },
+                planned_start: '2026-05-05',
+              },
+            ],
+          },
+        ],
+      }),
+    )
+    expect(res.status).toBe(201)
+    // The provided delivery activity should be inserted, but only once
+    // (buildShipmentActivities sees the existing RDEL and skips auto-creating
+    // a second one).
+    const inserted = vi.mocked(insertActivity).mock.calls.map(([, act]) => act)
+    const rdelCount = inserted.filter((a) => a['ActivityType_code'] === 'RDEL').length
+    expect(rdelCount).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildShipmentActivities — pure unit tests
+// ---------------------------------------------------------------------------
+
+describe('buildShipmentActivities (unit)', () => {
+  it('generates PACK, LOAD, RDEL when shipment has all dates and no rule19', () => {
+    const activities = buildShipmentActivities({
+      order_num: 1,
+      pack_date2: '2026-05-01',
+      load_date2: '2026-05-02',
+      del_date2: '2026-05-04',
+      activities: [],
+    })
+    const codes = activities.map((a) => a['ActivityType_code'])
+    expect(codes).toEqual(['PACK', 'LOAD', 'RDEL'])
+  })
+
+  it('substitutes R19O for LOAD/PACK when rule19_id is set', () => {
+    const activities = buildShipmentActivities({
+      order_num: 2,
+      pack_date2: '2026-05-01',
+      load_date2: '2026-05-02',
+      del_date2: '2026-05-04',
+      rule19_id: 99,
+      activities: [],
+    })
+    const codes = activities.map((a) => a['ActivityType_code'])
+    expect(codes).toContain('R19O')
+    expect(codes).not.toContain('LOAD')
+    expect(codes).not.toContain('PACK')
+    expect(codes).toContain('RDEL')
+  })
+
+  it('preserves untripped existing activities and skips duplicates', () => {
+    const existing = {
+      order_num: 3,
+      activityType: { code: 'PACK' },
+      TripMaster_id: null,
+      planned_start: '2026-05-01',
+    }
+    const activities = buildShipmentActivities({
+      order_num: 3,
+      pack_date2: '2026-05-01',
+      del_date2: '2026-05-04',
+      activities: [existing],
+    })
+    // Existing activities use the nested `activityType.code` shape; auto-
+    // generated ones use the flat `ActivityType_code` column. Normalise both
+    // when counting so we exercise the same key buildShipmentActivities uses.
+    const codes = activities.map(
+      (a) =>
+        (a['activityType'] as Record<string, unknown> | undefined)?.['code'] ??
+        a['ActivityType_code'],
+    )
+    expect(codes.filter((c) => c === 'PACK').length).toBe(1)
+    expect(codes).toContain('RDEL')
+  })
+
+  it('drops existing activities that are already on a trip', () => {
+    const onAnotherTrip = {
+      order_num: 4,
+      activityType: { code: 'RDEL' },
+      TripMaster_id: 42,
+    }
+    const activities = buildShipmentActivities({
+      order_num: 4,
+      del_date2: '2026-05-04',
+      activities: [onAnotherTrip],
+    })
+    // The on-another-trip RDEL should be filtered out, and a fresh untripped
+    // RDEL re-generated for this trip.
+    expect(activities.length).toBe(1)
+    expect(activities[0]?.['ActivityType_code']).toBe('RDEL')
+    expect(activities[0]?.['TripMaster_id']).toBeNull()
   })
 })
