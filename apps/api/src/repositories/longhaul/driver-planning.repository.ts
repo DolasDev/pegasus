@@ -51,7 +51,17 @@ export interface DriverPlanningRow {
  * availability overrides.
  */
 export async function getDriverPlanning(db: Knex): Promise<DriverPlanningRow[]> {
-  const drivers: DriverRow[] = await db('v_longhaul_drivers').select('*')
+  // v_longhaul_drivers comes back with UPPERCASE column names on the Dolios
+  // SQL Server (DRIVER_ID, DRIVER_NAME, AGENT_CODE, ...). Normalise to the
+  // lowercase keys the rest of this function (and DriverRow) expects, so
+  // `d.driver_id` is the actual id rather than `undefined` (which produced
+  // "Undefined binding(s) detected" when fed to `.whereIn('TripMaster.driver_id', ...)`).
+  const rawDrivers: Array<Record<string, unknown>> = await db('v_longhaul_drivers').select('*')
+  const drivers: DriverRow[] = rawDrivers.map((row) => {
+    const lc: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(row)) lc[k.toLowerCase()] = v
+    return lc as DriverRow
+  })
 
   if (drivers.length === 0) return []
 
