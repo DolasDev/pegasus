@@ -22,6 +22,19 @@ import { qaTest as test, expect } from '../../fixtures/qa'
 
 const LH = '/api/v1/onprem/longhaul'
 
+// Mirror the UI's default planning-window filter (see redux/shipments/index.ts):
+// the unbounded /shipments query trips RESULT_LIMIT_EXCEEDED on the real QA DB,
+// so any spec that fetches "an unassigned shipment" must scope to the same
+// ±30-day load_date window the UI uses.
+const dateOffset = (days: number): string => {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+const planningWindow = (): { load_date: [string, string] } => ({
+  load_date: [dateOffset(-30), dateOffset(30)],
+})
+
 test.describe('longhaul on-prem bridge (QA)', () => {
   // Canary: if the version ping fails, the tunnel/Dolios/MSSQL path is down —
   // skip the rest so the run output explains why rather than spewing failures.
@@ -185,7 +198,8 @@ test.describe('longhaul on-prem bridge (QA)', () => {
         `${LH}/shipments?filters=${encodeURIComponent(
           JSON.stringify({
             Is_Trip_Planning: true,
-            assigned: [{ value: 'No' }],
+            ...planningWindow(),
+            assigned: [{ label: 'No', value: 'No' }],
           }),
         )}`,
       )
@@ -228,7 +242,9 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     // to a known marker, verify the read-back picks up the change, then revert.
     const sList = await (
       await qaApiFetch(
-        `${LH}/shipments?filters=${encodeURIComponent(JSON.stringify({ Is_Trip_Planning: true }))}`,
+        `${LH}/shipments?filters=${encodeURIComponent(
+          JSON.stringify({ Is_Trip_Planning: true, ...planningWindow() }),
+        )}`,
       )
     ).json()
     const shipments: Array<{ order_num: number; pegasus_shadow?: { lng_dis_comments?: string } }> =
@@ -316,7 +332,8 @@ test.describe('longhaul on-prem bridge (QA)', () => {
         `${LH}/shipments?filters=${encodeURIComponent(
           JSON.stringify({
             Is_Trip_Planning: true,
-            assigned: [{ value: 'No' }],
+            ...planningWindow(),
+            assigned: [{ label: 'No', value: 'No' }],
           }),
         )}`,
       )

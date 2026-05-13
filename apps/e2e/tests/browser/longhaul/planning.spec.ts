@@ -176,17 +176,23 @@ test.describe('Planning tab', () => {
 
   test('saves a trip and navigates to its itinerary @qa-mutating', async ({ page, qaWebUrl }) => {
     const pp = new PlanningPage(page, qaWebUrl)
-    // 1. Add a shipment from the search dashboard to the pending trip.
+    // 1. Wait for the search dashboard to hydrate (matches the precondition
+    //    used by other planning specs — the on-prem /shipments fetch is cold
+    //    here and can take >15s).
+    await expect.poll(() => pp.shipmentCards().count(), { timeout: 40_000 }).toBeGreaterThan(0)
     const orderNum = await pp.addFirstShipmentToTrip()
     expect(orderNum, 'first shipment in search dashboard has an order_num').toBeTruthy()
     // The shipment shows up in the pending-trip pane.
     await expect(pp.pendingTripShipments()).toHaveCount(1, { timeout: 15_000 })
 
     // 2. Assign a driver: focus the Downshift input, pick the first option.
+    //    The /drivers fetch is also cold and can take longer than the default;
+    //    poll the option count instead of waitFor to avoid a one-shot timeout.
     await pp.driverTypeaheadInput.click()
-    const firstOption = pp.driverTypeaheadOptions().first()
-    await firstOption.waitFor({ state: 'visible', timeout: 15_000 })
-    await firstOption.click()
+    await expect
+      .poll(() => pp.driverTypeaheadOptions().count(), { timeout: 30_000 })
+      .toBeGreaterThan(0)
+    await pp.driverTypeaheadOptions().first().click()
 
     // 3. Save. The trip POSTs and the redux thunk on success triggers a
     // snackbar containing "saved" (matches the case-insensitive pattern below).
