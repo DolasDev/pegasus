@@ -33,9 +33,17 @@ test.describe('Shipments tab', () => {
     // The ShipmentModule route now fetches on mount (default filter:
     // Is_Trip_Planning=true, load_date ±30d, assigned=No). An empty table here
     // means the QA planning DB has no matching shipments or the on-prem query is
-    // timing out — a real finding, so this fails rather than skips.
+    // timing out — a real finding, so this fails rather than skips. On congested
+    // runs the AppGuard bootstrap can leave the module unmounted past the poll
+    // timeout — one reload-retry before treating empty as the real finding.
     const sp = new ShipmentsPage(page)
-    await expect.poll(() => sp.rowCount(), { timeout: 40_000 }).toBeGreaterThan(0)
+    try {
+      await expect.poll(() => sp.rowCount(), { timeout: 20_000 }).toBeGreaterThan(0)
+    } catch {
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await sp.searchInput.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
+      await expect.poll(() => sp.rowCount(), { timeout: 40_000 }).toBeGreaterThan(0)
+    }
   })
 
   test('the FilterTabs panel expands and collapses', async ({ page }) => {

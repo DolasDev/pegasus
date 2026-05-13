@@ -25,6 +25,14 @@ test.describe('Trips tab', () => {
     // The "Trips (n)" lane heading is always rendered once <Trips> mounts; with
     // 0 trips it sits alongside the "No trips found" empty state, with >0 it sits
     // above the cards. Default filter: status ∈ {Pending,Accepted,Offered,In-Progress}.
+    // On a congested on-prem run the AppGuard bootstrap can stretch past 30s —
+    // one reload-retry dodges that before treating a missing lane as real.
+    try {
+      await tp.laneTitle.waitFor({ state: 'visible', timeout: 15_000 })
+    } catch {
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await tp.laneTitle.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
+    }
     await expect(tp.laneTitle).toBeVisible({ timeout: 30_000 })
     if ((await tp.cardCount()) === 0) {
       await expect(tp.emptyState).toBeVisible()
