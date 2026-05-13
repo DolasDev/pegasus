@@ -31,6 +31,7 @@ export const TENANT_SCOPED_MODELS = new Set([
   'TenantSsoProvider',
   'PegasusEvent',
   'Document',
+  'Workflow',
 ])
 
 /**
