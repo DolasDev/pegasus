@@ -47,8 +47,36 @@ test.describe('Shipments tab', () => {
     await expect(sp.filtersBody).toHaveAttribute('data-open', 'false')
   })
 
-  test('FilterTabs: changing the Assigned filter narrows / widens the list', async () => {
-    test.fixme(true, 'walkthrough: drive the react-select "assigned" control + assert row count')
+  test('FilterTabs: the Assigned react-select takes a selection and re-queries', async ({
+    page,
+  }) => {
+    const sp = new ShipmentsPage(page)
+    // Default filter is Assigned=["No"] → unassigned shipments only.
+    await expect.poll(() => sp.rowCount(), { timeout: 40_000 }).toBeGreaterThan(0)
+    const before = await sp.rowOrderNums()
+    expect(before.length).toBeGreaterThan(0)
+
+    await sp.toggleFilters.click()
+    await expect(sp.filtersBody).toHaveAttribute('data-open', 'true')
+    // Add "Yes" → selection is ["No","Yes"]. The on-prem only applies the
+    // `assigned` filter when exactly one value is selected, so two values drops
+    // it → "all shipments in the ±30d window" (a superset of unassigned-only).
+    await sp.addSelectFilterOption('assigned', 'Yes')
+    expect(await sp.selectFilterChips('assigned')).toEqual(expect.arrayContaining(['No', 'Yes']))
+
+    // The list re-fetches (debounced ~1s). Expect it to settle to a superset of
+    // the unassigned-only list (the table never empties: dropping `assigned`
+    // only widens, and an over-broad window would 400 → []; if that ever bites
+    // here it's a real finding about the QA snapshot, not a test problem).
+    await expect
+      .poll(
+        async () => {
+          const after = await sp.rowOrderNums()
+          return after.length >= before.length && before.every((n) => after.includes(n))
+        },
+        { timeout: 40_000 },
+      )
+      .toBe(true)
   })
 
   test('saving and re-applying a personal filter @qa-mutating', async () => {

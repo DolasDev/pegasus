@@ -59,4 +59,39 @@ export class ShipmentsPage {
   async rowCount(): Promise<number> {
     return this.rows.count()
   }
+
+  /** The `data-id` (order number) of every currently-rendered table row. */
+  async rowOrderNums(): Promise<string[]> {
+    return (
+      await this.rows.evaluateAll((els) => els.map((e) => e.getAttribute('data-id') ?? ''))
+    ).filter(Boolean)
+  }
+
+  /**
+   * Add an option to a FilterTabs react-select filter row (e.g. property
+   * "assigned", label "Yes"): click the row's input to open the menu, type the
+   * label, press Enter to pick the highlighted option. Returns once the chip
+   * (`.rs__multi-value__label`, from the `classNamePrefix="rs"` on `Select`) is
+   * visible.
+   */
+  async addSelectFilterOption(property: string, label: string): Promise<void> {
+    const row = this.filterRow(property)
+    const input = row.locator('input').first()
+    await input.click()
+    await input.fill(label)
+    await input.press('Enter')
+    await row
+      .locator('.rs__multi-value__label', { hasText: label })
+      .first()
+      .waitFor({ state: 'visible' })
+  }
+
+  /** The selected react-select chip labels on a FilterTabs filter row. */
+  async selectFilterChips(property: string): Promise<string[]> {
+    return (
+      await this.filterRow(property)
+        .locator('.rs__multi-value__label')
+        .evaluateAll((els) => els.map((e) => e.textContent ?? ''))
+    ).map((s) => s.trim())
+  }
 }

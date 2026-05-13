@@ -48,7 +48,46 @@ export class TripsPage {
     return this.cards.first().getAttribute('data-trip-id')
   }
 
+  /** The `data-trip-id` of every currently-rendered trip card. */
+  async cardTripIds(): Promise<string[]> {
+    return (
+      await this.cards.evaluateAll((els) => els.map((e) => e.getAttribute('data-trip-id') ?? ''))
+    ).filter(Boolean)
+  }
+
   async openTrip(tripId: string | number): Promise<void> {
     await this.cardLink(tripId).first().click()
+  }
+
+  // -- TripsFilter (data-target hooks added to the ported component) ---------
+  get filter(): Locator {
+    return this.page.locator('[data-target="trips-filter"]')
+  }
+  /** A TripsFilter row by its query-key (e.g. "id", "TripStatus_id"). */
+  filterRow(property: string): Locator {
+    return this.page.locator(`[data-target="trip-filter-row"][data-filter="${property}"]`)
+  }
+  get clearFiltersLink(): Locator {
+    return this.page.locator('[data-target="clear-trip-filters"]')
+  }
+  /** The plain text `<input>` of the "Trip Id" filter row. */
+  get tripIdInput(): Locator {
+    return this.filterRow('id').locator('input')
+  }
+
+  /**
+   * Pick the first option offered by a react-select TripsFilter row (e.g. the
+   * "TripStatus_id" status dropdown): focus its input to open the menu, then
+   * click the first `.rs__option` (from `classNamePrefix="rs"` on `Select`).
+   * Returns the picked option's label. Throws if the menu has no options.
+   */
+  async pickFirstFilterOption(property: string): Promise<string> {
+    const row = this.filterRow(property)
+    await row.locator('input').first().click()
+    const option = row.locator('.rs__option').first()
+    await option.waitFor({ state: 'visible', timeout: 10_000 })
+    const label = (await option.innerText()).trim()
+    await option.click()
+    return label
   }
 }

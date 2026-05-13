@@ -48,11 +48,43 @@ test.describe('Trips tab', () => {
     await expect(page).toHaveURL(new RegExp(`/driver-planning/trips/${tripId}\\b`))
   })
 
-  test('changing the status filter updates the list', async () => {
-    test.fixme(true, 'walkthrough: drive the TripsFilter react-select status control')
+  test('adding a status to the filter widens the trip list', async ({ page }) => {
+    const tp = new TripsPage(page)
+    await expect(tp.laneTitle).toBeVisible({ timeout: 30_000 })
+    await expect.poll(() => tp.cardCount(), { timeout: 30_000 }).toBeGreaterThan(0)
+    const before = await tp.cardTripIds()
+
+    // The default status filter is [Pending, Accepted, Offered, In-Progress];
+    // pick the first not-yet-selected status the dropdown offers (e.g.
+    // Completed/Finalized) — react-select hides selected options, so the menu
+    // only lists statuses that would widen the list.
+    await tp.pickFirstFilterOption('TripStatus_id')
+
+    // The list re-fetches (debounced ~300ms) to a superset.
+    await expect
+      .poll(
+        async () => {
+          const after = await tp.cardTripIds()
+          return after.length >= before.length && before.every((id) => after.includes(id))
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true)
   })
 
-  test('searching by trip title / number filters the list', async () => {
-    test.fixme(true, 'walkthrough: confirm the trips search input + debounce')
+  test('filtering by Trip Id narrows the list to that one trip', async ({ page }) => {
+    const tp = new TripsPage(page)
+    await expect(tp.laneTitle).toBeVisible({ timeout: 30_000 })
+    await expect.poll(() => tp.cardCount(), { timeout: 30_000 }).toBeGreaterThan(0)
+    const total = await tp.cardCount()
+    const tripId = await tp.firstTripId()
+
+    await tp.tripIdInput.fill(tripId!)
+    // Debounced ~300ms → fetchTrips with an exact `id=` filter → one trip.
+    await expect.poll(() => tp.cardCount(), { timeout: 30_000 }).toBe(1)
+    expect(await tp.firstTripId()).toBe(tripId)
+
+    await tp.tripIdInput.fill('')
+    await expect.poll(() => tp.cardCount(), { timeout: 30_000 }).toBe(total)
   })
 })
