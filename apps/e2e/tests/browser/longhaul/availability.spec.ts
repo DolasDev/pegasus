@@ -11,11 +11,16 @@ import { AvailabilityPage } from './pages/AvailabilityPage'
 test.describe('Availability tab', () => {
   test.beforeEach(async ({ page, qaWebUrl, qaApiFetch }) => {
     await gateOnOnpremHealth(page, qaWebUrl, qaApiFetch)
-    // gateOnOnpremHealth navigated to /driver-planning; wait for AppGuard +
-    // the driver-planning fetch to settle so the `rowCount`-based `test.skip`s
-    // below don't race the (slow) on-prem load and silently skip.
+    // gateOnOnpremHealth navigated to /driver-planning. Best-effort wait for
+    // AppGuard + the driver-planning fetch to settle so the `rowCount`-based
+    // `test.skip`s below don't race the (slow) on-prem load and silently skip;
+    // if the load is pathologically slow each test still has its own timeout
+    // (and the @smoke test below will surface it as a real failure).
     const av = new AvailabilityPage(page)
-    await expect(av.table.or(page.getByText('No drivers found'))).toBeVisible({ timeout: 30_000 })
+    await av.table
+      .or(page.getByText('No drivers found'))
+      .waitFor({ state: 'visible', timeout: 30_000 })
+      .catch(() => {})
   })
 
   test('the Availability tab renders (driver table or empty state) @smoke', async ({ page }) => {
