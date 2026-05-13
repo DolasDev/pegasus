@@ -15,163 +15,14 @@ import { TripStatusOptions } from '../../common/trip-status'
 import { ShipmentDetail } from '../ShipmentDetail'
 
 import { selectShipment as selectShipmentAction } from '../../redux/shipments'
-import { startCase } from '@/features/driver-planning/utils/string'
+import { lastCommaFirst, startCase } from '@/features/driver-planning/utils/string'
+import { parseActivities } from './utils/parse-activities'
 
 import { HoverToolTip } from '@/features/driver-planning/containers/ToolTips'
 import { useAppDispatch } from '../../redux/hooks'
 
-const ACTIVITY_TYPE_CODE: Record<string, string> = {
-  PACKING: 'PACK',
-  PICKUP: 'LOAD',
-  DELIVERY: 'RDEL',
-  AGENTPICKUP: 'R19I',
-  DOCKPICKUP: 'R19O',
-  WAREHOUSE: 'WHSE',
-  EXTRAPICKUP: 'XPU',
-  EXTRADELIVERY: 'XDEL',
-  UNPACK: 'UNPK',
-  SITIN: 'SITIN',
-  SITOUT: 'SITOUT',
-}
-
-const lastCommaFirst = (first: any, last: any): string => {
-  const first_name = startCase(String(first ?? '').toLowerCase())
-  const last_name = startCase(String(last ?? '').toLowerCase())
-  return !!first || !!last ? `${last_name} , ${first_name}` : 'N/A'
-}
-
-const sameDayCheck = (_dayA: any, _dayB: any): boolean => {
-  const dayA = new Date(_dayA)
-  const dayB = new Date(_dayB)
-  const dayAsecs = new Date(dayA.getFullYear(), dayA.getMonth(), dayA.getDate(), 0, 0, 0).getTime()
-  const dayBsecs = new Date(dayB.getFullYear(), dayB.getMonth(), dayB.getDate(), 0, 0, 0).getTime()
-  return dayAsecs === dayBsecs
-}
-
-const getPegDates = (activity: any) => {
-  const shipment = activity.shipment
-  let mismatched = false
-  const activityPlannedStart = activity.planned_start
-  const activityPlannedEnd = activity.planned_end
-  let plannedStart = activity.planned_start
-  let plannedEnd = activity.planned_end
-  const code = activity.activityType?.code
-  switch (code) {
-    case ACTIVITY_TYPE_CODE.PACKING:
-      plannedStart = shipment.pack_date2 || shipment.plan_pack
-      plannedEnd = shipment.plan_pack || shipment.pack_date2
-      mismatched = !(
-        sameDayCheck(activityPlannedStart, plannedStart) &&
-        sameDayCheck(activityPlannedEnd, plannedEnd)
-      )
-      break
-    case ACTIVITY_TYPE_CODE.PICKUP:
-      plannedStart = shipment.load_date2 || shipment.plan_load
-      plannedEnd = shipment.plan_load || shipment.load_date2
-      mismatched = !(
-        sameDayCheck(activityPlannedStart, plannedStart) &&
-        sameDayCheck(activityPlannedEnd, plannedEnd)
-      )
-      break
-    case ACTIVITY_TYPE_CODE.DELIVERY:
-      plannedStart = shipment.del_date2 || shipment.plan_del
-      plannedEnd = shipment.plan_del || shipment.del_date2
-      mismatched = !(
-        sameDayCheck(activityPlannedStart, plannedStart) &&
-        sameDayCheck(activityPlannedEnd, plannedEnd)
-      )
-      break
-    default:
-      mismatched = false
-  }
-  return { mismatched: mismatched, plannedStart: plannedStart, plannedEnd: plannedEnd }
-}
-
-function datediff(first: any, second: any): number {
-  return Math.round((+new Date(second) - +new Date(first)) / (1000 * 60 * 60 * 24))
-}
-
 function getColor(index: number): string {
   return styles[`color${index + 1}00`]
-}
-
-function addDays(date: any, days: number): Date {
-  const result = new Date(date)
-  result.setDate(result.getDate() + days)
-  return result
-}
-
-function sortActivities(activities: any[]): any[] {
-  return activities.slice(0).sort((first: any, second: any) => {
-    if (!first.planned_end) {
-      return 1
-    } else if (!second.planned_end) {
-      return -1
-    }
-    const diff =
-      +new Date(first.actual_date || first.estimated_date || first.planned_start) -
-      +new Date(second.actual_date || second.estimated_date || second.planned_start)
-    if (diff !== 0) {
-      return diff
-    }
-    return +new Date(first.planned_end) - +new Date(second.planned_end)
-  })
-}
-
-function parseActivities(activities: any[] = []) {
-  const days = new Set<any>()
-  const orderIds = new Set<any>()
-  const pushToDays = (unFormatttedDate: any) => {
-    if (unFormatttedDate) {
-      const date = new Date(unFormatttedDate).toISOString()
-      days.add(date)
-    } else {
-      days.add(null)
-    }
-  }
-  let hasDateChange = false
-
-  activities.forEach((activity: any) => {
-    const startDate = new Date(activity.planned_start)
-    const etaDate = activity.estimated_date
-    const actualDate = activity.actual_date
-    const plannedEnd = activity.planned_end ? new Date(activity.planned_end) : startDate
-    const dayCount = datediff(startDate, plannedEnd) || 0
-    const pegDates = getPegDates(activity)
-    orderIds.add(activity.order_num)
-    pushToDays(activity.planned_start)
-    if (etaDate) {
-      pushToDays(etaDate)
-    }
-    if (actualDate) {
-      pushToDays(actualDate)
-    }
-    if (pegDates.mismatched) {
-      activity.hasDateChange = true
-      hasDateChange = true
-      activity.newStart = pegDates.plannedStart
-      activity.newEnd = pegDates.plannedEnd
-      const changedDays = datediff(pegDates.plannedStart, pegDates.plannedEnd) || 0
-      pushToDays(pegDates.plannedStart)
-      for (let i = 0; i < changedDays; i++) {
-        const nextDay = addDays(pegDates.plannedStart, i + 1)
-        pushToDays(nextDay)
-      }
-    }
-    for (let i = 0; i < dayCount; i++) {
-      const nextDay = addDays(startDate, i + 1)
-      pushToDays(nextDay)
-    }
-  })
-  return {
-    days: [...days],
-    sortedActivities: sortActivities(activities),
-    orderIdToColor: [...orderIds].reduce(
-      (accum: any, orderId: any, i: number) => ({ ...accum, [orderId]: getColor(i) }),
-      {},
-    ),
-    hasDateChange: hasDateChange,
-  }
 }
 
 function TripInternal() {
@@ -204,7 +55,7 @@ function TripInternal() {
   let orderIdToColor: any = null
   let hasDateChange = false
   if (trip) {
-    const groups = parseActivities(trip.activities)
+    const groups = parseActivities(trip.activities, getColor)
     days = groups.days
     sortedActivities = groups.sortedActivities
     orderIdToColor = groups.orderIdToColor

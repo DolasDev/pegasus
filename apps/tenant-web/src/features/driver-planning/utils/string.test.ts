@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { startCase } from './string'
+import { startCase, lastCommaFirst } from './string'
 
 describe('startCase', () => {
   it('capitalises a simple lowercase word', () => {
@@ -32,5 +32,30 @@ describe('startCase', () => {
 
   it('returns empty string for empty input', () => {
     expect(startCase('')).toBe('')
+  })
+})
+
+describe('lastCommaFirst', () => {
+  it('joins last and first names with the legacy comma-space-space format', () => {
+    expect(lastCommaFirst('alice', 'smith')).toBe('Smith , Alice')
+  })
+
+  it('start-cases input regardless of original casing', () => {
+    expect(lastCommaFirst('ALICE', 'SMITH')).toBe('Smith , Alice')
+    expect(lastCommaFirst('mARy ANNE', 'O CONNOR')).toBe('O Connor , Mary Anne')
+  })
+
+  it('returns "N/A" when both parts are missing', () => {
+    expect(lastCommaFirst(null, undefined)).toBe('N/A')
+    expect(lastCommaFirst('', '')).toBe('N/A')
+  })
+
+  it('renders a single side when only one part is present', () => {
+    expect(lastCommaFirst('alice', null)).toBe(' , Alice')
+    expect(lastCommaFirst(undefined, 'smith')).toBe('Smith , ')
+  })
+
+  it('coerces non-string inputs to strings', () => {
+    expect(lastCommaFirst(1, 2)).toBe('2 , 1')
   })
 })
