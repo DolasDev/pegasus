@@ -73,7 +73,7 @@ const Activity: React.FC<ActivityProps> = ({ activity, onDelete, editActivityDat
   const dispatch = useAppDispatch()
 
   const openActivityDates = () => {
-    if (activity.activityType.isCanEditDates) {
+    if (activity.activityType?.isCanEditDates) {
       setEditActivity(true)
     }
   }
@@ -107,7 +107,9 @@ const Activity: React.FC<ActivityProps> = ({ activity, onDelete, editActivityDat
         <button
           className={`${styles.iconButton} ${styles.floatingDeleteButton}`}
           data-target="remove-activity"
-          onClick={() => {
+          onClick={(e) => {
+            // Don't let the click bubble to the card's openActivityDates handler.
+            e.stopPropagation()
             onDelete()
           }}
         >
