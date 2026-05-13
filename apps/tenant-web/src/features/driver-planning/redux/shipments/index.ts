@@ -1,6 +1,7 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit'
 import { API } from '../../utils/api'
 import type { AppDispatch } from '../store'
+import { coerceListPayload } from '../lib/coerce-list-payload'
 
 const getDateOffset = (offsetDays: number): string => {
   const today = new Date()
@@ -90,9 +91,10 @@ const shipmentsSlice = createSlice({
       state.loading = true
     },
     fetchShipmentsSuccess(state, action: PayloadAction<any[]>) {
-      // Defensive (see fetchTripsSuccess): keep shipmentList an array so the
-      // SearchDashboard / ShipmentsTable `.map`s can't crash the module.
-      state.shipmentList = Array.isArray(action.payload) ? action.payload : []
+      // Defensive (see fetchTripsSuccess): coerceListPayload keeps shipmentList
+      // an array so the SearchDashboard / ShipmentsTable `.map`s can't crash
+      // the module.
+      state.shipmentList = coerceListPayload(action.payload)
       state.loading = false
     },
     fetchShipmentsFailure(state, action: PayloadAction<string>) {

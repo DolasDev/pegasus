@@ -1,8 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import { API } from '../../utils/api'
 import type { AppDispatch } from '../store'
-
-const asArray = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : [])
+import { coerceListPayload as asArray } from '../lib/coerce-list-payload'
 
 export interface CommonState {
   loading: boolean
