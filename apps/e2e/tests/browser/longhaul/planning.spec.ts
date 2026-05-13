@@ -74,8 +74,42 @@ test.describe('Planning tab', () => {
     await expect(pp.pendingTripShipments().first()).toBeVisible()
   })
 
-  test('assigns a driver via the typeahead and a dispatcher via the dropdown', async () => {
-    test.fixme(true, 'walkthrough: confirm DriverTypeahead option list + dispatcher react-select')
+  test('assigns a driver via the typeahead and a dispatcher via the dropdown', async ({ page }) => {
+    const pp = new PlanningPage(page, '')
+    await expect(pp.pendingTrips).toBeVisible({ timeout: 30_000 })
+
+    // -- driver typeahead (Downshift) --
+    await pp.driverTypeaheadInput.click()
+    await pp.driverTypeaheadInput.fill('a') // a common letter — matches many driver names
+    // Downshift opens the menu on the input change; if the on-prem returned no
+    // drivers there's nothing to pick (AppGuard's fetchDrivers thunk failed).
+    await pp
+      .driverTypeaheadOptions()
+      .first()
+      .waitFor({ state: 'visible', timeout: 8_000 })
+      .catch(() => {})
+    test.skip(
+      (await pp.driverTypeaheadOptions().count()) === 0,
+      'no drivers loaded (on-prem /drivers empty?)',
+    )
+    await pp.driverTypeaheadOptions().first().click()
+    // The typeahead re-populates with the picked driver's name.
+    await expect.poll(() => pp.driverTypeaheadInput.inputValue(), { timeout: 10_000 }).not.toBe('')
+
+    // -- dispatcher react-select --
+    await pp.dispatcherSelectInput.click()
+    await pp
+      .dispatcherSelectOptions()
+      .first()
+      .waitFor({ state: 'visible', timeout: 8_000 })
+      .catch(() => {})
+    test.skip(
+      (await pp.dispatcherSelectOptions().count()) === 0,
+      'no dispatchers loaded (on-prem /dispatchers empty?)',
+    )
+    await pp.dispatcherSelectOptions().first().click()
+    await expect(pp.dispatcherSelectValue).toBeVisible()
+    expect((await pp.dispatcherSelectValue.innerText()).trim().length).toBeGreaterThan(0)
   })
 
   test('add / edit-dates / delete activity; deleting the last removes the shipment', async () => {

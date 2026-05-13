@@ -52,12 +52,29 @@ export class PlanningPage {
   get tripNameInput(): Locator {
     return this.pendingTrips.locator('[data-target="trip-name-input"]')
   }
-  /** DriverTypeahead wrapper; `.locator('input')` for the actual <input>. */
+  /** DriverTypeahead wrapper (Downshift); `.locator('input')` for the actual <input>. */
   get driverTypeahead(): Locator {
     return this.pendingTrips.locator('[data-target="driver-typeahead"]')
   }
   get driverTypeaheadInput(): Locator {
     return this.driverTypeahead.locator('input')
+  }
+  /** Downshift renders the menu items as `role="option"` <li>s. */
+  driverTypeaheadOptions(): Locator {
+    return this.driverTypeahead.getByRole('option')
+  }
+  /** Dispatcher react-select wrapper (`classNamePrefix="rs"`). */
+  get dispatcherSelect(): Locator {
+    return this.pendingTrips.locator('[data-target="dispatcher-select"]')
+  }
+  get dispatcherSelectInput(): Locator {
+    return this.dispatcherSelect.locator('input').first()
+  }
+  dispatcherSelectOptions(): Locator {
+    return this.dispatcherSelect.locator('.rs__option')
+  }
+  get dispatcherSelectValue(): Locator {
+    return this.dispatcherSelect.locator('.rs__single-value')
   }
   get viewItineraryLink(): Locator {
     return this.pendingTrips.locator('[data-target="view-itinerary"]')
