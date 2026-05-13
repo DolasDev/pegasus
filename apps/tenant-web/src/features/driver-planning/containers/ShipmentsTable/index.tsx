@@ -36,8 +36,17 @@ const tableConfig = [
 
 interface ShipmentsTableProps {
   shipments: any[]
+  /** When provided, clicking a row calls this with the shipment. */
+  onRowClick?: (shipment: any) => void
 }
 
-export const ShipmentsTable: React.FC<ShipmentsTableProps> = ({ shipments }) => {
-  return <Table rows={shipments} tableConfig={tableConfig} rowTarget="shipment-table-row" />
+export const ShipmentsTable: React.FC<ShipmentsTableProps> = ({ shipments, onRowClick }) => {
+  return (
+    <Table
+      rows={shipments}
+      tableConfig={tableConfig}
+      rowTarget="shipment-table-row"
+      onRowClick={onRowClick}
+    />
+  )
 }

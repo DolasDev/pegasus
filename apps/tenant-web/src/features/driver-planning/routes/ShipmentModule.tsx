@@ -3,7 +3,8 @@ import { ShipmentsTable } from '../containers/ShipmentsTable'
 import { useSelector } from 'react-redux'
 import { FilterTabs } from '../containers/Shipments/components/FilterTabs'
 import { Lane } from '../components/Lane'
-import { fetchShipments } from '../redux/shipments'
+import { fetchShipments, selectShipment } from '../redux/shipments'
+import { ShipmentDetail } from '../containers/ShipmentDetail'
 import { useAppDispatch } from '../redux/hooks'
 import { useDebounce } from '../utils/hooks/use-debounce'
 import type { RootState } from '../redux/store'
@@ -24,10 +25,17 @@ export function ShipmentModule() {
 
   return (
     <>
+      {/* Selecting a row populates `shipments.selectedShipment`, which the
+          ShipmentDetail pane reads (same flow as the /planning + trip-detail
+          surfaces). */}
+      <ShipmentDetail />
       <h1>Shipments Module</h1>
       <Lane key="Shipments" title="Shipments">
         <FilterTabs />
-        <ShipmentsTable shipments={shipments} />
+        <ShipmentsTable
+          shipments={shipments}
+          onRowClick={(shipment) => dispatch(selectShipment(shipment) as any)}
+        />
       </Lane>
     </>
   )
