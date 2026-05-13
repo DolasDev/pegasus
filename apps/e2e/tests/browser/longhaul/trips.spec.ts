@@ -12,6 +12,16 @@ test.describe('Trips tab', () => {
   test.beforeEach(async ({ page, qaWebUrl, qaApiFetch }) => {
     const layout = await gateOnOnpremHealth(page, qaWebUrl, qaApiFetch)
     await layout.openTab('Trips')
+    // Best-effort module-mount wait with one reload-retry. On a congested
+    // AppGuard bootstrap the lane title / new-trip button can take 30+ s to
+    // appear; one reload dodges it before any test asserts.
+    const tp = new TripsPage(page)
+    try {
+      await tp.newTripButton.waitFor({ state: 'visible', timeout: 15_000 })
+    } catch {
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await tp.newTripButton.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
+    }
   })
 
   test('loads the Trips list @smoke', async ({ page }) => {
@@ -25,14 +35,7 @@ test.describe('Trips tab', () => {
     // The "Trips (n)" lane heading is always rendered once <Trips> mounts; with
     // 0 trips it sits alongside the "No trips found" empty state, with >0 it sits
     // above the cards. Default filter: status ∈ {Pending,Accepted,Offered,In-Progress}.
-    // On a congested on-prem run the AppGuard bootstrap can stretch past 30s —
-    // one reload-retry dodges that before treating a missing lane as real.
-    try {
-      await tp.laneTitle.waitFor({ state: 'visible', timeout: 15_000 })
-    } catch {
-      await page.reload({ waitUntil: 'domcontentloaded' })
-      await tp.laneTitle.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
-    }
+    // (beforeEach already waited for the module to mount, with one reload-retry.)
     await expect(tp.laneTitle).toBeVisible({ timeout: 30_000 })
     if ((await tp.cardCount()) === 0) {
       await expect(tp.emptyState).toBeVisible()
@@ -59,7 +62,16 @@ test.describe('Trips tab', () => {
   test('adding a status to the filter widens the trip list', async ({ page }) => {
     const tp = new TripsPage(page)
     await expect(tp.laneTitle).toBeVisible({ timeout: 30_000 })
-    await expect.poll(() => tp.cardCount(), { timeout: 30_000 }).toBeGreaterThan(0)
+    // The module is mounted (beforeEach), but the trips fetch can still be
+    // slow on a congested on-prem path. One reload-retry on the card-count
+    // poll keeps this from flaking when the first fetch never returns.
+    try {
+      await expect.poll(() => tp.cardCount(), { timeout: 15_000 }).toBeGreaterThan(0)
+    } catch {
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await tp.laneTitle.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
+      await expect.poll(() => tp.cardCount(), { timeout: 30_000 }).toBeGreaterThan(0)
+    }
     const before = await tp.cardTripIds()
 
     // The default status filter is [Pending, Accepted, Offered, In-Progress];
@@ -83,7 +95,14 @@ test.describe('Trips tab', () => {
   test('filtering by Trip Id narrows the list to that one trip', async ({ page }) => {
     const tp = new TripsPage(page)
     await expect(tp.laneTitle).toBeVisible({ timeout: 30_000 })
-    await expect.poll(() => tp.cardCount(), { timeout: 30_000 }).toBeGreaterThan(0)
+    // Reload-retry on the fetch (see "adding a status" above).
+    try {
+      await expect.poll(() => tp.cardCount(), { timeout: 15_000 }).toBeGreaterThan(0)
+    } catch {
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await tp.laneTitle.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
+      await expect.poll(() => tp.cardCount(), { timeout: 30_000 }).toBeGreaterThan(0)
+    }
     const total = await tp.cardCount()
     const tripId = await tp.firstTripId()
 

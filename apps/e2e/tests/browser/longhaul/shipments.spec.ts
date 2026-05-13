@@ -14,13 +14,17 @@ test.describe('Shipments tab', () => {
   test.beforeEach(async ({ page, qaWebUrl, qaApiFetch }) => {
     const layout = await gateOnOnpremHealth(page, qaWebUrl, qaApiFetch)
     await layout.openTab('Shipments')
-    // Best-effort: wait for AppGuard to clear "Loading…" and the module to mount
-    // (the on-prem `/users/me` lookup AppGuard gates on can be slow). Don't
-    // hard-fail here — each test has its own (longer) wait, and a `test.fixme`'d
-    // test below shouldn't fail in `beforeEach` on a slow on-prem moment.
-    await new ShipmentsPage(page).searchInput
-      .waitFor({ state: 'visible', timeout: 30_000 })
-      .catch(() => {})
+    // Best-effort module-mount wait with one reload-retry. The on-prem
+    // `/users/me` lookup AppGuard gates on can stretch past 15 s; one reload
+    // dodges it before any test asserts. Always best-effort — a `test.fixme`'d
+    // test below shouldn't hard-fail in beforeEach on a slow on-prem moment.
+    const sp = new ShipmentsPage(page)
+    try {
+      await sp.searchInput.waitFor({ state: 'visible', timeout: 15_000 })
+    } catch {
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await sp.searchInput.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
+    }
   })
 
   test('loads the Shipments module @smoke', async ({ page }) => {
@@ -60,7 +64,16 @@ test.describe('Shipments tab', () => {
 
   test('the Assigned react-select takes a selection and re-queries', async ({ page }) => {
     const sp = new ShipmentsPage(page)
-    await expect.poll(() => sp.rowCount(), { timeout: 40_000 }).toBeGreaterThan(0)
+    // Reload-retry on the initial-load poll (see shipments:32 / trips:23).
+    // The post-filter-change poll below stays as a hard assertion — that one
+    // is "did the re-fetch return", not "did the module ever mount".
+    try {
+      await expect.poll(() => sp.rowCount(), { timeout: 20_000 }).toBeGreaterThan(0)
+    } catch {
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await sp.searchInput.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
+      await expect.poll(() => sp.rowCount(), { timeout: 40_000 }).toBeGreaterThan(0)
+    }
 
     await sp.toggleFilters.click()
     await expect(sp.filtersBody).toHaveAttribute('data-open', 'true')
@@ -85,7 +98,14 @@ test.describe('Shipments tab', () => {
 
   test('clicking a shipment row opens the ShipmentDetail pane', async ({ page }) => {
     const sp = new ShipmentsPage(page)
-    await expect.poll(() => sp.rowCount(), { timeout: 40_000 }).toBeGreaterThan(0)
+    // Reload-retry on the initial-load poll (see shipments:32 / trips:23).
+    try {
+      await expect.poll(() => sp.rowCount(), { timeout: 20_000 }).toBeGreaterThan(0)
+    } catch {
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await sp.searchInput.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
+      await expect.poll(() => sp.rowCount(), { timeout: 40_000 }).toBeGreaterThan(0)
+    }
     await expect(sp.shipmentDetailPane).toHaveAttribute('data-open', 'false')
     // selectShipment(row) → API.fetchShipments({searchTerm: order_num}) →
     // selectedShipment → the pane opens.
