@@ -7,7 +7,8 @@ permit (
     Pegasus::Action::"ReadQuote",
     Pegasus::Action::"ReadMove",
     Pegasus::Action::"ReadInvoice",
-    Pegasus::Action::"ReadCustomer"
+    Pegasus::Action::"ReadCustomer",
+    Pegasus::Action::"ReadWorkflow"
   ],
   resource
 );

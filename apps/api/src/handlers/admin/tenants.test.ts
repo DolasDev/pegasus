@@ -24,6 +24,7 @@ const { mockDb, mockProvision } = vi.hoisted(() => ({
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     tenantUser: {
       create: vi.fn(),
@@ -101,6 +102,7 @@ const mockTenant = {
   contactEmail: 'jane@acme.com',
   emailDomains: ['acme.com'],
   cognitoAuthEnabled: true,
+  isPlatformTenant: false,
   createdAt: now,
   updatedAt: now,
   deletedAt: null,
@@ -410,6 +412,108 @@ describe('admin tenants handler', () => {
       const res = await buildApp().request(`${BASE}/tenant-1/offboard`, { method: 'POST' })
       expect(res.status).toBe(422)
       expect((await json(res)).code).toBe('INVALID_STATE')
+    })
+  })
+
+  // ── POST /:id/promote-to-platform ─────────────────────────────────────────
+
+  describe('POST /:id/promote-to-platform', () => {
+    it('returns 200 with isPlatformTenant=true and demotes every other tenant', async () => {
+      const promoted = { ...mockTenant, isPlatformTenant: true }
+      mockDb.tenant.findUnique.mockResolvedValue(mockTenant)
+      mockDb.tenant.updateMany.mockResolvedValue({ count: 1 })
+      mockDb.tenant.update.mockResolvedValue(promoted)
+
+      const res = await buildApp().request(`${BASE}/tenant-1/promote-to-platform`, {
+        method: 'POST',
+      })
+      expect(res.status).toBe(200)
+      const body = await json(res)
+      expect((body.data as JsonBody)['isPlatformTenant']).toBe(true)
+
+      // Demotion of every OTHER tenant must run inside the same transaction
+      // BEFORE the target is promoted — invariant: at most one platform tenant.
+      expect(mockDb.tenant.updateMany).toHaveBeenCalledWith({
+        where: { isPlatformTenant: true, id: { not: 'tenant-1' } },
+        data: { isPlatformTenant: false },
+      })
+      expect(mockDb.tenant.update).toHaveBeenCalledWith({
+        where: { id: 'tenant-1' },
+        data: { isPlatformTenant: true },
+        select: expect.any(Object),
+      })
+    })
+
+    it('is idempotent when promoting an already-platform tenant', async () => {
+      const already = { ...mockTenant, isPlatformTenant: true }
+      mockDb.tenant.findUnique.mockResolvedValue(already)
+      mockDb.tenant.updateMany.mockResolvedValue({ count: 0 })
+      mockDb.tenant.update.mockResolvedValue(already)
+
+      const res = await buildApp().request(`${BASE}/tenant-1/promote-to-platform`, {
+        method: 'POST',
+      })
+      expect(res.status).toBe(200)
+      expect(((await json(res)).data as JsonBody)['isPlatformTenant']).toBe(true)
+    })
+
+    it('returns 404 NOT_FOUND when tenant does not exist', async () => {
+      mockDb.tenant.findUnique.mockResolvedValue(null)
+      const res = await buildApp().request(`${BASE}/unknown-id/promote-to-platform`, {
+        method: 'POST',
+      })
+      expect(res.status).toBe(404)
+      expect((await json(res)).code).toBe('NOT_FOUND')
+    })
+
+    it('returns 422 INVALID_STATE when tenant is OFFBOARDED', async () => {
+      mockDb.tenant.findUnique.mockResolvedValue({ ...mockTenant, status: 'OFFBOARDED' })
+      const res = await buildApp().request(`${BASE}/tenant-1/promote-to-platform`, {
+        method: 'POST',
+      })
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('INVALID_STATE')
+    })
+  })
+
+  // ── POST /:id/demote-from-platform ────────────────────────────────────────
+
+  describe('POST /:id/demote-from-platform', () => {
+    it('returns 200 with isPlatformTenant=false on success', async () => {
+      const before = { ...mockTenant, isPlatformTenant: true }
+      const after = { ...mockTenant, isPlatformTenant: false }
+      mockDb.tenant.findUnique.mockResolvedValue(before)
+      mockDb.tenant.update.mockResolvedValue(after)
+
+      const res = await buildApp().request(`${BASE}/tenant-1/demote-from-platform`, {
+        method: 'POST',
+      })
+      expect(res.status).toBe(200)
+      expect(((await json(res)).data as JsonBody)['isPlatformTenant']).toBe(false)
+      expect(mockDb.tenant.update).toHaveBeenCalledWith({
+        where: { id: 'tenant-1' },
+        data: { isPlatformTenant: false },
+        select: expect.any(Object),
+      })
+    })
+
+    it('is idempotent when demoting a non-platform tenant (no update, no audit)', async () => {
+      mockDb.tenant.findUnique.mockResolvedValue(mockTenant)
+      const res = await buildApp().request(`${BASE}/tenant-1/demote-from-platform`, {
+        method: 'POST',
+      })
+      expect(res.status).toBe(200)
+      expect(((await json(res)).data as JsonBody)['isPlatformTenant']).toBe(false)
+      expect(mockDb.tenant.update).not.toHaveBeenCalled()
+    })
+
+    it('returns 404 NOT_FOUND when tenant does not exist', async () => {
+      mockDb.tenant.findUnique.mockResolvedValue(null)
+      const res = await buildApp().request(`${BASE}/unknown-id/demote-from-platform`, {
+        method: 'POST',
+      })
+      expect(res.status).toBe(404)
+      expect((await json(res)).code).toBe('NOT_FOUND')
     })
   })
 })

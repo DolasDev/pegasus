@@ -104,6 +104,7 @@ const LIST_SELECT = {
   contactEmail: true,
   emailDomains: true,
   cognitoAuthEnabled: true,
+  isPlatformTenant: true,
   createdAt: true,
   updatedAt: true,
   deletedAt: true,
@@ -550,6 +551,126 @@ adminTenantsRouter.post('/:id/offboard', async (c) => {
         adminSub,
         adminEmail,
         'OFFBOARD_TENANT',
+        'TENANT',
+        id,
+        toSnapshot(current),
+        toSnapshot(t),
+        ipAddress,
+        userAgent,
+      )
+      return t
+    })
+
+    return c.json({ data: updated })
+  } catch {
+    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+  }
+})
+
+// ---------------------------------------------------------------------------
+// POST /api/admin/tenants/:id/promote-to-platform
+//
+// Promotes a tenant to "platform tenant" — the singleton whose uploads to the
+// workflow store become the GLOBAL library visible to every other tenant.
+//
+// To enforce the singleton invariant the operation is transactional: it sets
+// is_platform_tenant=true on the target row AND is_platform_tenant=false on
+// every other row in the same transaction. The previous platform tenant (if
+// any) is demoted as a side effect.
+//
+// Idempotent: promoting the tenant that's already flagged is a no-op other
+// than the audit log entry.
+// ---------------------------------------------------------------------------
+adminTenantsRouter.post('/:id/promote-to-platform', async (c) => {
+  const id = c.req.param('id')
+  const adminSub = c.get('adminSub')
+  const adminEmail = c.get('adminEmail')
+  const ipAddress = c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip')
+  const userAgent = c.req.header('user-agent')
+
+  const current = await db.tenant.findUnique({ where: { id }, select: DETAIL_SELECT })
+  if (!current) return c.json({ error: 'Tenant not found', code: 'NOT_FOUND' }, 404)
+  if (current.status === 'OFFBOARDED') {
+    return c.json(
+      {
+        error: 'Cannot promote an offboarded tenant',
+        code: 'INVALID_STATE',
+      },
+      422,
+    )
+  }
+
+  try {
+    const updated = await db.$transaction(async (tx) => {
+      // Demote every OTHER tenant first. updateMany with `id: { not }` keeps
+      // this idempotent — re-running on the already-flagged tenant just
+      // touches zero other rows (or whatever stale rows exist).
+      await tx.tenant.updateMany({
+        where: { isPlatformTenant: true, id: { not: id } },
+        data: { isPlatformTenant: false },
+      })
+      const t = await tx.tenant.update({
+        where: { id },
+        data: { isPlatformTenant: true },
+        select: DETAIL_SELECT,
+      })
+      await writeAuditLog(
+        tx,
+        adminSub,
+        adminEmail,
+        'PROMOTE_PLATFORM_TENANT',
+        'TENANT',
+        id,
+        toSnapshot(current),
+        toSnapshot(t),
+        ipAddress,
+        userAgent,
+      )
+      return t
+    })
+
+    return c.json({ data: updated })
+  } catch {
+    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+  }
+})
+
+// ---------------------------------------------------------------------------
+// POST /api/admin/tenants/:id/demote-from-platform
+//
+// Clears the platform-tenant flag on this tenant. After this call no tenant
+// is flagged as platform — uploads continue working but visibility=GLOBAL
+// becomes unreachable until another tenant is promoted.
+//
+// Idempotent: demoting a tenant that isn't flagged returns the row unchanged
+// and writes no audit log entry.
+// ---------------------------------------------------------------------------
+adminTenantsRouter.post('/:id/demote-from-platform', async (c) => {
+  const id = c.req.param('id')
+  const adminSub = c.get('adminSub')
+  const adminEmail = c.get('adminEmail')
+  const ipAddress = c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip')
+  const userAgent = c.req.header('user-agent')
+
+  const current = await db.tenant.findUnique({ where: { id }, select: DETAIL_SELECT })
+  if (!current) return c.json({ error: 'Tenant not found', code: 'NOT_FOUND' }, 404)
+
+  if (!current.isPlatformTenant) {
+    return c.json({ data: current })
+  }
+
+  try {
+    const updated = await db.$transaction(async (tx) => {
+      const t = await tx.tenant.update({
+        where: { id },
+        data: { isPlatformTenant: false },
+        select: DETAIL_SELECT,
+      })
+      await writeAuditLog(
+        tx,
+        adminSub,
+        adminEmail,
+        'DEMOTE_PLATFORM_TENANT',
         'TENANT',
         id,
         toSnapshot(current),

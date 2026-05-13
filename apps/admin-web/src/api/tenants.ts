@@ -18,6 +18,13 @@ export interface Tenant {
   contactEmail: string | null
   /** Email domains that map to this tenant (e.g. ["acme.com"]). Used for SSO domain resolution. */
   emailDomains: string[]
+  /**
+   * Singleton flag — when true, this tenant's workflow uploads populate the
+   * GLOBAL library visible to every other tenant. Promoting/demoting is
+   * handled via the dedicated /promote-to-platform and /demote-from-platform
+   * routes (not via the generic edit form).
+   */
+  isPlatformTenant: boolean
   /** ISO 8601 string — Date fields are serialised by Prisma/JSON.stringify. */
   createdAt: string
   updatedAt: string
@@ -129,4 +136,22 @@ export async function reactivateTenant(id: string): Promise<TenantDetail> {
 
 export async function offboardTenant(id: string): Promise<TenantDetail> {
   return adminFetch<TenantDetail>(`/api/admin/tenants/${id}/offboard`, { method: 'POST' })
+}
+
+/**
+ * Promotes the target tenant to the singleton "platform tenant" role. Any
+ * other tenant currently flagged is demoted as a side effect of the same
+ * server-side transaction.
+ */
+export async function promoteToPlatform(id: string): Promise<TenantDetail> {
+  return adminFetch<TenantDetail>(`/api/admin/tenants/${id}/promote-to-platform`, {
+    method: 'POST',
+  })
+}
+
+/** Clears the platform-tenant flag. Idempotent: returns the row unchanged if already off. */
+export async function demoteFromPlatform(id: string): Promise<TenantDetail> {
+  return adminFetch<TenantDetail>(`/api/admin/tenants/${id}/demote-from-platform`, {
+    method: 'POST',
+  })
 }

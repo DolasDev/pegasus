@@ -70,4 +70,9 @@ export const ROLE_OPTIONS: readonly RoleOption[] = [
     label: 'Integrations',
     description: 'Service-account read/write on the orders and events M2M surfaces.',
   },
+  {
+    name: 'workflow_developer',
+    label: 'Workflow Dev',
+    description: 'Upload Python workflow artifacts via the SDK. Read access included.',
+  },
 ] as const

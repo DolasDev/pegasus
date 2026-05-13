@@ -29,6 +29,7 @@ export type ResourceType =
   | 'Setting'
   | 'Order'
   | 'Event'
+  | 'Workflow'
 
 export interface ActionDef {
   /** Cedar action identifier (without namespace prefix). */
@@ -140,6 +141,17 @@ export const Actions = {
   CreateEvent: { id: 'CreateEvent', resourceType: 'Event', permission: 'event:create' },
   UpdateEvent: { id: 'UpdateEvent', resourceType: 'Event', permission: 'event:update' },
   DeleteEvent: { id: 'DeleteEvent', resourceType: 'Event', permission: 'event:delete' },
+  // ── Workflows (Python workflow artifacts; SDK upload + tenant listing) ──
+  ReadWorkflow: {
+    id: 'ReadWorkflow',
+    resourceType: 'Workflow',
+    permission: 'workflow:read',
+  },
+  UploadWorkflow: {
+    id: 'UploadWorkflow',
+    resourceType: 'Workflow',
+    permission: 'workflow:upload',
+  },
 } as const satisfies Record<string, ActionDef>
 
 export type ActionKey = keyof typeof Actions
@@ -155,4 +167,5 @@ export const READ_ACTION_IDS: ReadonlySet<string> = new Set([
   Actions.ReadMove.id,
   Actions.ReadInvoice.id,
   Actions.ReadCustomer.id,
+  Actions.ReadWorkflow.id,
 ])

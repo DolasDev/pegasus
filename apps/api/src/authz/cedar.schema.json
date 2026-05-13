@@ -77,6 +77,13 @@
           "type": "Record",
           "attributes": {}
         }
+      },
+      "Workflow": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
       }
     },
     "actions": {
@@ -175,6 +182,12 @@
       },
       "DeleteEvent": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Event"] }
+      },
+      "ReadWorkflow": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
+      },
+      "UploadWorkflow": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
       }
     }
   }

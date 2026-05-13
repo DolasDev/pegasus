@@ -218,6 +218,11 @@ model Tenant {
   /// created before this column existed; backfilled out-of-band.
   policyStoreId String? @map("policy_store_id")
 
+  /// True for the single platform-owned tenant whose uploads populate the
+  /// GLOBAL workflow library visible to every other tenant. Set manually via
+  /// an admin update; no API mutation. See handlers/workflows.ts.
+  isPlatformTenant Boolean @default(false) @map("is_platform_tenant")
+
   // -------------------------------------------------------------------------
   // Relations
   // -------------------------------------------------------------------------
@@ -238,6 +243,7 @@ model Tenant {
   apiClients     ApiClient[]
   pegasusEvents  PegasusEvent[]
   documents      Document[]
+  workflows      Workflow[]
   vpnPeer        VpnPeer?
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -1040,6 +1046,67 @@ model DocumentVariant {
   @@unique([documentId, variant])
   @@index([status])
   @@map("document_variants")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Workflows — uploaded Python workflow artifacts.
+//
+// Each row represents one immutable (name, version) tuple owned by a tenant.
+// Visibility=GLOBAL workflows belong to the platform tenant and are readable
+// by every tenant; visibility=TENANT workflows are readable only by the
+// owning tenant. The artifact itself is a zip stored in the documents bucket
+// at `workflows/{tenantId}/{workflowId}/{version}.zip`.
+//
+// Not included in TENANT_SCOPED_MODELS (see lib/prisma.ts) because the GLOBAL
+// case requires reading rows owned by a different tenant. The repository
+// scopes manually.
+// ---------------------------------------------------------------------------
+
+enum WorkflowVisibility {
+  /// Owned by the platform tenant; readable by every tenant.
+  GLOBAL
+  /// Owned by a single tenant; readable only by that tenant.
+  TENANT
+
+  @@schema("public")
+}
+
+model Workflow {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// Workflow name (matches the SDK manifest `name` field).
+  name String
+
+  /// Workflow version (matches the SDK manifest `version` field). Together
+  /// with (tenantId, name) this forms a unique tuple — uploads are immutable.
+  version String
+
+  /// Derived server-side from the uploading principal's tenant — GLOBAL if
+  /// the tenant has isPlatformTenant=true, TENANT otherwise.
+  visibility WorkflowVisibility @default(TENANT)
+
+  /// S3 key inside the documents bucket. Never returned in API responses.
+  artifactKey String @map("artifact_key")
+
+  /// Validated manifest payload from the upload, kept for display
+  /// (entry-point listing, activity declarations) without re-reading S3.
+  manifest Json
+
+  /// TenantUser.id of the uploader (the principal that called finalize).
+  /// Denormalised; not an FK so the row survives user deletion.
+  createdByUserId String @map("created_by_user_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, name, version])
+  @@index([tenantId])
+  @@index([visibility])
+  @@map("workflows")
   @@schema("public")
 }
 

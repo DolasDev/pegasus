@@ -46,6 +46,7 @@ describe('GET /permissions', () => {
         Actions.ReadMove.permission,
         Actions.ReadInvoice.permission,
         Actions.ReadCustomer.permission,
+        Actions.ReadWorkflow.permission,
       ]),
     )
   })

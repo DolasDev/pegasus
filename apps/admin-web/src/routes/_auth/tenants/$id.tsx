@@ -1,7 +1,14 @@
 import { useState } from 'react'
 import { useParams, Link, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getTenant, suspendTenant, reactivateTenant, offboardTenant } from '@/api/tenants'
+import {
+  getTenant,
+  suspendTenant,
+  reactivateTenant,
+  offboardTenant,
+  promoteToPlatform,
+  demoteFromPlatform,
+} from '@/api/tenants'
 import type { TenantDetail } from '@/api/tenants'
 import { TenantFormDialog } from '@/components/TenantFormDialog'
 import { TenantUsersSection } from '@/components/TenantUsersSection'
@@ -225,6 +232,167 @@ function StatusActions({ tenant }: { tenant: TenantDetail }) {
 }
 
 // ---------------------------------------------------------------------------
+// Platform tenant — promote/demote
+//
+// Singleton flag: at most one tenant is ever flagged. Promoting auto-demotes
+// the previous holder on the server (single transaction), but we surface that
+// in the confirm dialog so the operator is never surprised.
+// ---------------------------------------------------------------------------
+
+function PromotePlatformDialog({ tenant, onClose }: { tenant: TenantDetail; onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const [apiError, setApiError] = useState<string | null>(null)
+
+  const mutation = useMutation({
+    mutationFn: () => promoteToPlatform(tenant.id),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['tenant', tenant.id], updated)
+      void queryClient.invalidateQueries({ queryKey: ['tenants'] })
+      onClose()
+    },
+    onError: (err) => {
+      setApiError(err instanceof ApiError ? err.message : 'An unexpected error occurred.')
+    },
+  })
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => {
+        if (e.currentTarget === e.target) onClose()
+      }}
+    >
+      <div className="w-full max-w-md rounded-lg border border-border bg-card shadow-xl">
+        <div className="px-6 py-4 border-b border-border">
+          <h2 className="text-base font-semibold text-foreground">Promote to platform tenant</h2>
+        </div>
+        <div className="px-6 py-4 space-y-3">
+          <p className="text-sm text-foreground">
+            Promote <span className="font-semibold">{tenant.name}</span> to the platform tenant?
+            This will:
+          </p>
+          <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
+            <li>
+              Mark this tenant&rsquo;s workflow uploads as <span className="font-mono">GLOBAL</span>
+              , making them visible to every other tenant&rsquo;s workflow library.
+            </li>
+            <li>
+              Demote any other tenant currently flagged as the platform tenant. At most one tenant
+              can hold this role at a time.
+            </li>
+          </ul>
+          <p className="text-sm text-muted-foreground">
+            Existing workflows already uploaded by this tenant keep their original visibility — only
+            new uploads inherit the change.
+          </p>
+          {apiError && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {apiError}
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-border">
+          <button
+            onClick={onClose}
+            disabled={mutation.isPending}
+            className="rounded-md border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => mutation.mutate()}
+            disabled={mutation.isPending}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {mutation.isPending ? 'Promoting…' : 'Promote'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PlatformTenantSection({ tenant }: { tenant: TenantDetail }) {
+  const queryClient = useQueryClient()
+  const [promoteOpen, setPromoteOpen] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const demoteMutation = useMutation({
+    mutationFn: () => demoteFromPlatform(tenant.id),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['tenant', tenant.id], updated)
+      void queryClient.invalidateQueries({ queryKey: ['tenants'] })
+      setActionError(null)
+    },
+    onError: (err) => {
+      setActionError(err instanceof ApiError ? err.message : 'An unexpected error occurred.')
+    },
+  })
+
+  return (
+    <>
+      <section className="space-y-3">
+        <div className="flex items-center gap-3">
+          <h2 className="text-sm font-semibold text-foreground">Platform tenant</h2>
+          <span
+            className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
+              tenant.isPlatformTenant
+                ? 'bg-violet-100 text-violet-800'
+                : 'bg-neutral-100 text-neutral-600'
+            }`}
+            data-testid="platform-tenant-badge"
+          >
+            {tenant.isPlatformTenant ? 'Platform tenant' : 'Not platform tenant'}
+          </span>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          The platform tenant owns the <span className="font-mono">GLOBAL</span> workflow library
+          shown to every other tenant. Anything this tenant uploads via{' '}
+          <span className="font-mono">/api/v1/workflows</span> becomes visible platform-wide. At
+          most one tenant can hold this role; promoting another tenant automatically demotes the
+          current holder.
+        </p>
+        {tenant.isPlatformTenant ? (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => demoteMutation.mutate()}
+              disabled={demoteMutation.isPending}
+              className="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {demoteMutation.isPending ? 'Demoting…' : 'Demote'}
+            </button>
+            <p className="text-sm text-muted-foreground">
+              Stops new uploads from this tenant being marked{' '}
+              <span className="font-mono">GLOBAL</span>. Existing GLOBAL rows are unaffected.
+            </p>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setPromoteOpen(true)}
+              disabled={tenant.status !== 'ACTIVE'}
+              className="rounded-md border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Promote to platform tenant
+            </button>
+            <p className="text-sm text-muted-foreground">
+              {tenant.status === 'ACTIVE'
+                ? 'Future workflow uploads from this tenant become GLOBAL.'
+                : 'Tenant must be ACTIVE to be promoted.'}
+            </p>
+          </div>
+        )}
+        {actionError && <p className="text-sm text-destructive">{actionError}</p>}
+      </section>
+
+      {promoteOpen && (
+        <PromotePlatformDialog tenant={tenant} onClose={() => setPromoteOpen(false)} />
+      )}
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -339,6 +507,9 @@ export function TenantDetailPage() {
           <h2 className="text-sm font-semibold text-foreground">Status management</h2>
           <StatusActions tenant={tenant} />
         </section>
+
+        {/* Platform tenant */}
+        {tenant.status !== 'OFFBOARDED' && <PlatformTenantSection tenant={tenant} />}
 
         {/* Users */}
         {tenant.status !== 'OFFBOARDED' && (
