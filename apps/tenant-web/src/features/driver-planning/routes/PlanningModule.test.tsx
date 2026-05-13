@@ -8,12 +8,20 @@
 // ---------------------------------------------------------------------------
 
 import React from 'react'
-import { describe, it, expect, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
 
-// Router shim mocks
+const locationMock = vi.hoisted(() => ({
+  current: { pathname: '/planning', search: '', hash: '' } as {
+    pathname: string
+    search: string
+    hash: string
+  },
+}))
+
+// Router shim mocks — `useLocation` returns whatever the test set on locationMock.
 vi.mock('@/features/driver-planning/utils/router-compat', () => ({
-  useLocation: () => ({ pathname: '/planning', search: '', hash: '' }),
+  useLocation: () => locationMock.current,
   useBlocker: () => ({ state: 'unblocked', proceed: vi.fn(), reset: vi.fn() }),
 }))
 
@@ -28,12 +36,14 @@ vi.mock('../containers/ShipmentDetail', () => ({
   ShipmentDetail: () => <div data-testid="mock-shipment-detail" />,
 }))
 
-// pending-trips slice exports `initializeTripPage` as a thunk; replace with no-op.
+// pending-trips slice exports `initializeTripPage` as a thunk; replace with a
+// spy thunk-factory so we can assert on the args the module hands it.
+const initializeTripPageMock = vi.hoisted(() => vi.fn(() => () => Promise.resolve()))
 vi.mock('@/features/driver-planning/redux/pending-trips', async () => {
   const actual = await vi.importActual<any>('@/features/driver-planning/redux/pending-trips')
   return {
     ...actual,
-    initializeTripPage: () => () => Promise.resolve(),
+    initializeTripPage: initializeTripPageMock,
   }
 })
 
@@ -45,6 +55,11 @@ const userPreloaded = {
 } as any
 
 describe('PlanningModule', () => {
+  beforeEach(() => {
+    initializeTripPageMock.mockClear()
+    locationMock.current = { pathname: '/planning', search: '', hash: '' }
+  })
+
   it('renders the three composed containers', () => {
     renderWithStore(<PlanningModule />, { preloadedState: userPreloaded })
     expect(screen.getByTestId('mock-search-dashboard')).toBeInTheDocument()
@@ -57,5 +72,26 @@ describe('PlanningModule', () => {
     expect(container.querySelector('.PlanningModule__container')).toBeTruthy()
     expect(container.querySelector('.App__left-column')).toBeTruthy()
     expect(container.querySelector('.App__right-column')).toBeTruthy()
+  })
+
+  it('dispatches initializeTripPage with no tripId when the URL has no ?tripId= param', async () => {
+    renderWithStore(<PlanningModule />, { preloadedState: userPreloaded })
+    await waitFor(() => expect(initializeTripPageMock).toHaveBeenCalled())
+    // First arg: tripId — undefined when the search param is absent.
+    expect(initializeTripPageMock).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ id: 1, code: 'X' }),
+    )
+  })
+
+  it('dispatches initializeTripPage with the parsed tripId when the URL has ?tripId=42', async () => {
+    locationMock.current = { pathname: '/planning', search: '?tripId=42', hash: '' }
+    renderWithStore(<PlanningModule />, { preloadedState: userPreloaded })
+    await waitFor(() => expect(initializeTripPageMock).toHaveBeenCalled())
+    // qs.parse returns a string for a single key.
+    expect(initializeTripPageMock).toHaveBeenCalledWith(
+      '42',
+      expect.objectContaining({ id: 1, code: 'X' }),
+    )
   })
 })

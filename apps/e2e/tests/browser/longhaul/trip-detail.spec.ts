@@ -66,9 +66,12 @@ test.describe('Trip detail', () => {
     test.fixme(true, 'walkthrough: confirm the ActivityGantt date-change popover + reload-persists')
   })
 
-  test('changing trip status persists; an illegal transition is rejected @qa-mutating', async () => {
-    test.fixme(true, 'walkthrough: confirm the status-prediction prompt before the change commits')
-  })
+  // Dropped: "changing trip status persists; an illegal transition is rejected"
+  // — handler tests in apps/api/src/handlers/longhaul/trips.test.ts cover
+  // PATCH /trips/:id/status (happy + 404); longhaul-qa.spec.ts:143 covers the
+  // 404 reject end-to-end. Trip/index.test.tsx covers the step-rail render.
+  // Triple-covered already; a browser spec adds no signal. See
+  // plans/todo/longhaul-qa-mutating-triage.md.
 
   // Dropped: the legacy app gated driver-edit on In-Progress status; the port
   // doesn't carry that lock — `DriverTripDetail` (Planning) has no `isInProgress`

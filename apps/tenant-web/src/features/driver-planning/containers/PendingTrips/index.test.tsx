@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 
 vi.mock('../../utils/api', () => ({
   API: {
@@ -197,6 +197,33 @@ describe('PendingTrips container', () => {
       ),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Start new trip' })).toBeInTheDocument()
+  })
+
+  it('confirming "Start new trip" resets the pending trip via clearCurrentTripAction', async () => {
+    const ship = seedShipment()
+    const { store } = renderWithStore(<PendingTrips />, {
+      preloadedState: {
+        tripPlanning: {
+          trip: seedTrip({ id: 7, shipments: [ship] }),
+          unsavedTrip: null,
+          shipmentToTrips: {},
+        } as any,
+        user: { user: { code: 'U1' }, loading: false, errorMessage: null } as any,
+      },
+    })
+    fireEvent.click(screen.getByText('New Trip'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Start new trip' }))
+    // The clearCurrentTripAction = initializeTripPage(null, planner) thunk runs,
+    // dispatches setTrip(freshPendingTrip). Verify the OUTCOME in store state:
+    // the seeded trip (id=7, shipments=[ship]) is replaced with a fresh one
+    // (no id, no shipments, dispatcher=planner).
+    await waitFor(() => {
+      const trip = (store.getState() as any).tripPlanning.trip
+      expect(trip.id).toBeUndefined()
+      expect(trip.trip_title).toBe('Pending Trip')
+      expect(trip.shipments).toEqual([])
+      expect(trip.dispatcher).toMatchObject({ code: 'U1' })
+    })
   })
 
   it('clicking + on AddActivity opens menu with extra activity options', () => {
