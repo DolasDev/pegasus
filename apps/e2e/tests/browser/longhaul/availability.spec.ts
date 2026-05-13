@@ -11,7 +11,11 @@ import { AvailabilityPage } from './pages/AvailabilityPage'
 test.describe('Availability tab', () => {
   test.beforeEach(async ({ page, qaWebUrl, qaApiFetch }) => {
     await gateOnOnpremHealth(page, qaWebUrl, qaApiFetch)
-    // gateOnOnpremHealth already navigated to /driver-planning.
+    // gateOnOnpremHealth navigated to /driver-planning; wait for AppGuard +
+    // the driver-planning fetch to settle so the `rowCount`-based `test.skip`s
+    // below don't race the (slow) on-prem load and silently skip.
+    const av = new AvailabilityPage(page)
+    await expect(av.table.or(page.getByText('No drivers found'))).toBeVisible({ timeout: 30_000 })
   })
 
   test('the Availability tab renders (driver table or empty state) @smoke', async ({ page }) => {

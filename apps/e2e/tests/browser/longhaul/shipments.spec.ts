@@ -14,6 +14,10 @@ test.describe('Shipments tab', () => {
   test.beforeEach(async ({ page, qaWebUrl, qaApiFetch }) => {
     const layout = await gateOnOnpremHealth(page, qaWebUrl, qaApiFetch)
     await layout.openTab('Shipments')
+    // Wait for AppGuard to clear "Loading…" and the module to mount before any
+    // assertion runs — the on-prem `/users/me` lookup AppGuard gates on can be
+    // slow, and the FilterTabs `data-target`s only exist once it has.
+    await expect(new ShipmentsPage(page).searchInput).toBeVisible({ timeout: 30_000 })
   })
 
   test('loads the Shipments module @smoke', async ({ page }) => {
