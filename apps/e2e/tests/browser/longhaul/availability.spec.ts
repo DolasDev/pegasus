@@ -33,8 +33,17 @@ test.describe('Availability tab', () => {
 
   test('the known-good DB has driver rows with the expected columns', async ({ page }) => {
     const av = new AvailabilityPage(page)
-    // Fails (rather than skips) when empty — the QA planning DB not being loaded
-    // with driver-planning data is a real finding, not a test problem.
+    // The on-prem `GET /driver-planning` and the AppGuard bootstrap both flake
+    // intermittently (empty/slow) even though the qa-api probe passes in the
+    // same run — one reload-retry before treating an empty table as a real "QA
+    // planning DB not loaded" finding.
+    if (!(await av.table.isVisible())) {
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await av.table
+        .or(page.getByText('No drivers found'))
+        .waitFor({ state: 'visible', timeout: 30_000 })
+        .catch(() => {})
+    }
     await expect(av.table, 'QA planning DB should have ≥1 driver row').toBeVisible({
       timeout: 15_000,
     })
