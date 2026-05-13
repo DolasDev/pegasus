@@ -128,6 +128,13 @@ test.describe('Planning tab', () => {
     await expect.poll(() => pp.pendingActivities(card).count()).toBeGreaterThan(0)
     const n = await pp.pendingActivities(card).count()
 
+    // The trash buttons are `display:none` until the shipment card is hovered
+    // (.floatingDeleteButton), so hover the card before each remove-activity click.
+    const removeFirstActivity = async () => {
+      await card.hover()
+      await pp.pendingActivities(card).first().locator('[data-target="remove-activity"]').click()
+    }
+
     // -- add an activity from the AddActivity popover (the shipment's extras) --
     await pp.addActivityButton(card).click()
     await pp
@@ -139,13 +146,13 @@ test.describe('Planning tab', () => {
       await pp.addActivityOptions().first().click()
       await expect.poll(() => pp.pendingActivities(card).count()).toBe(n + 1)
       // …and remove it again.
-      await pp.pendingActivities(card).first().locator('[data-target="remove-activity"]').click()
+      await removeFirstActivity()
       await expect.poll(() => pp.pendingActivities(card).count()).toBe(n)
     }
 
     // -- delete every remaining activity; removing the last one drops the shipment --
     for (let remaining = await pp.pendingActivities(card).count(); remaining > 0; remaining--) {
-      await pp.pendingActivities(card).first().locator('[data-target="remove-activity"]').click()
+      await removeFirstActivity()
     }
     await expect(card).toBeHidden()
     await expect(pp.emptyPendingTrip).toBeVisible()
