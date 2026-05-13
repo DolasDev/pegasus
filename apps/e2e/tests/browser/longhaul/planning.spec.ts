@@ -128,11 +128,16 @@ test.describe('Planning tab', () => {
     await expect.poll(() => pp.pendingActivities(card).count()).toBeGreaterThan(0)
     const n = await pp.pendingActivities(card).count()
 
-    // The trash buttons are `display:none` until the shipment card is hovered
-    // (.floatingDeleteButton), so hover the card before each remove-activity click.
+    // The `.floatingDeleteButton` trash buttons are `display:none` except while
+    // the shipment card is hovered (a CSS `:hover` rule Playwright's auto-hover
+    // doesn't reliably hold across the click's actionability checks), so fire
+    // the React onClick directly instead.
     const removeFirstActivity = async () => {
-      await card.hover()
-      await pp.pendingActivities(card).first().locator('[data-target="remove-activity"]').click()
+      await pp
+        .pendingActivities(card)
+        .first()
+        .locator('[data-target="remove-activity"]')
+        .dispatchEvent('click')
     }
 
     // -- add an activity from the AddActivity popover (the shipment's extras) --
