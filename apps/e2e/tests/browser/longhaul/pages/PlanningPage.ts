@@ -112,7 +112,7 @@ export class PlanningPage {
 
   // -- snackbar (save feedback) ---------------------------------------------
   get snackbar(): Locator {
-    return this.page.locator('[class*="Snackbar"], [class*="snackbar"]')
+    return this.page.locator('[data-target="snackbar"]')
   }
 
   async addFirstShipmentToTrip(): Promise<string> {

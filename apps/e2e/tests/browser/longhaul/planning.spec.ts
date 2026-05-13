@@ -83,9 +83,13 @@ test.describe('Planning tab', () => {
   })
 
   test('saving a trip with no shipments shows an error', async ({ page }) => {
-    test.fixme(true, 'walkthrough: confirm the legacy 403 "trip without shipments" snackbar copy')
     const pp = new PlanningPage(page, '')
+    // An empty pending trip is the default state; confirm it, then Save → the
+    // bridge rejects a shipment-less trip with 403 "Trip must have shipments",
+    // which PendingTrips surfaces via the error Snackbar.
+    await expect(pp.emptyPendingTrip).toBeVisible({ timeout: 30_000 })
     await pp.saveButton.click()
+    await expect(pp.snackbar).toBeVisible({ timeout: 25_000 })
     await expect(pp.snackbar).toContainText(/shipment/i)
   })
 

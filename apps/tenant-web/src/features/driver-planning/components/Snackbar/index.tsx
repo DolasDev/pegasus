@@ -31,10 +31,12 @@ export const Snackbar: React.FC<any> = ({
   return (
     (open || isOpen) && (
       <div
+        data-target="snackbar"
+        data-snackbar-type={type || undefined}
         className={`
-          ${styles.root} 
-          ${isOpen && open ? styles.transition : ''} 
-          ${styles[type]} 
+          ${styles.root}
+          ${isOpen && open ? styles.transition : ''}
+          ${styles[type]}
           ${className}`}
       >
         {message}
