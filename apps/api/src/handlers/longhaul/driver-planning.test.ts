@@ -41,11 +41,11 @@ const MOCK_USER = {
   win_username: 'dispatcher',
 }
 
-function buildApp(opts: { user?: typeof MOCK_USER | null } = {}) {
+function buildApp(opts: { user?: typeof MOCK_USER | undefined } = {}) {
   const app = new Hono<OnPremEnv>()
   app.use('*', async (c, next) => {
     c.set('tenantId', 'test-tenant')
-    c.set('longhaulUser', opts.user === undefined ? MOCK_USER : opts.user)
+    c.set('longhaulUser', 'user' in opts ? opts.user : MOCK_USER)
     c.set('longhaulDb', mockDb)
     c.set('db', {} as unknown as PrismaClient)
     c.set('mssqlPool', {} as unknown as ConnectionPool)
@@ -145,7 +145,7 @@ describe('PATCH /driver-planning/:driverId', () => {
   })
 
   it('passes user.code as null when no longhaulUser is set', async () => {
-    const res = await buildApp({ user: null }).request(
+    const res = await buildApp({ user: undefined }).request(
       '/driver-planning/7',
       patch({ confirmedDate: null, confirmedLocation: null }),
     )
