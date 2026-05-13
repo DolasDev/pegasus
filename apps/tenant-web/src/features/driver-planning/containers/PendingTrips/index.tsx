@@ -288,7 +288,7 @@ const PendingTripsInternal = (_props: any) => {
               editTrip={editTrip}
               EditComponent={TypeAheadEdit}
             />
-            <div className={styles['driver-select-container']}>
+            <div className={styles['driver-select-container']} data-target="dispatcher-select">
               <DispatcherTripDetail
                 currentTrip={currentTrip}
                 label="Dispatcher"

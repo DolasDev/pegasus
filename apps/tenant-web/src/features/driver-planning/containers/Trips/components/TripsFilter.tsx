@@ -194,21 +194,26 @@ export function TripsFilter() {
   }).length
 
   return (
-    <div className={styles.container}>
+    <div className={styles.container} data-target="trips-filter">
       <div className={styles.header}>
         Filters{' '}
         {filterLength > 0 && (
           <>
             ({filterLength})
-            <a className={styles.link} onClick={clearFilters}>
+            <a className={styles.link} data-target="clear-trip-filters" onClick={clearFilters}>
               Clear
             </a>
           </>
         )}
       </div>
-      <div className={`${styles.body}`}>
+      <div className={`${styles.body}`} data-target="trips-filter-body">
         {FIELDS.map((field, i) => (
-          <div className={styles.filterRow} key={i}>
+          <div
+            className={styles.filterRow}
+            key={i}
+            data-target="trip-filter-row"
+            data-filter={field.property}
+          >
             <label>{field.label}</label>
             <div className={styles.filterContainer}>
               {renderFilterComponentByType(
