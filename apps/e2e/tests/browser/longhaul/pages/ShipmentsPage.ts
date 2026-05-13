@@ -56,6 +56,14 @@ export class ShipmentsPage {
     return this.page.locator(`[data-target="shipment-sort-header"][data-sort="${sortKey}"]`)
   }
 
+  // -- ShipmentDetail pane (mounted by ShipmentModule; opened by a row click) --
+  get shipmentDetailPane(): Locator {
+    return this.page.locator('[data-target="shipment-detail"]')
+  }
+  shipmentDetailField(label: string): Locator {
+    return this.page.locator(`[data-target="shipment-detail-field"][data-field="${label}"]`)
+  }
+
   async rowCount(): Promise<number> {
     return this.rows.count()
   }

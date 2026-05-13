@@ -75,10 +75,14 @@ test.describe('Shipments tab', () => {
     test.fixme(true, 'walkthrough: confirm the Save-filter modal + the saved-filters list')
   })
 
-  test('clicking a shipment row opens the ShipmentDetail pane', async () => {
-    test.fixme(
-      true,
-      'walkthrough: ShipmentsTable rows are not wired to selectShipment yet — confirm',
-    )
+  test('clicking a shipment row opens the ShipmentDetail pane', async ({ page }) => {
+    const sp = new ShipmentsPage(page)
+    await expect.poll(() => sp.rowCount(), { timeout: 40_000 }).toBeGreaterThan(0)
+    await expect(sp.shipmentDetailPane).toHaveAttribute('data-open', 'false')
+    // selectShipment(row) → API.fetchShipments({searchTerm: order_num}) →
+    // selectedShipment → the pane opens.
+    await sp.rows.first().click()
+    await expect(sp.shipmentDetailPane).toHaveAttribute('data-open', 'true', { timeout: 25_000 })
+    await expect(sp.shipmentDetailField('Shipper Name')).toBeVisible()
   })
 })

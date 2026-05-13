@@ -112,8 +112,43 @@ test.describe('Planning tab', () => {
     expect((await pp.dispatcherSelectValue.innerText()).trim().length).toBeGreaterThan(0)
   })
 
-  test('add / edit-dates / delete activity; deleting the last removes the shipment', async () => {
-    test.fixme(true, 'walkthrough: confirm AddActivity options + EditActivity popover behaviour')
+  test('add an activity, delete one, and deleting the last removes the shipment from the trip', async ({
+    page,
+  }) => {
+    const pp = new PlanningPage(page, '')
+    await expect.poll(() => pp.shipmentCards().count(), { timeout: 40_000 }).toBeGreaterThan(0)
+    const orderNum = await pp.addFirstShipmentToTrip()
+    const card = orderNum
+      ? pp.pendingTrips.locator(
+          `[data-target="pending-trip-shipment"][data-order-num="${orderNum}"]`,
+        )
+      : pp.pendingTripShipments().first()
+    await expect(card).toBeVisible()
+    // The shipment lands with its auto-generated activities (RDEL is always one).
+    await expect.poll(() => pp.pendingActivities(card).count()).toBeGreaterThan(0)
+    const n = await pp.pendingActivities(card).count()
+
+    // -- add an activity from the AddActivity popover (the shipment's extras) --
+    await pp.addActivityButton(card).click()
+    await pp
+      .addActivityOptions()
+      .first()
+      .waitFor({ state: 'visible', timeout: 5_000 })
+      .catch(() => {})
+    if ((await pp.addActivityOptions().count()) > 0) {
+      await pp.addActivityOptions().first().click()
+      await expect.poll(() => pp.pendingActivities(card).count()).toBe(n + 1)
+      // …and remove it again.
+      await pp.pendingActivities(card).first().locator('[data-target="remove-activity"]').click()
+      await expect.poll(() => pp.pendingActivities(card).count()).toBe(n)
+    }
+
+    // -- delete every remaining activity; removing the last one drops the shipment --
+    for (let remaining = await pp.pendingActivities(card).count(); remaining > 0; remaining--) {
+      await pp.pendingActivities(card).first().locator('[data-target="remove-activity"]').click()
+    }
+    await expect(card).toBeHidden()
+    await expect(pp.emptyPendingTrip).toBeVisible()
   })
 
   test('saving a trip with no shipments shows an error', async ({ page }) => {
