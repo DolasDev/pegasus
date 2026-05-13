@@ -70,7 +70,9 @@ test.describe('Trip detail', () => {
     test.fixme(true, 'walkthrough: confirm the status-prediction prompt before the change commits')
   })
 
-  test('driver field is read-only once the trip is In-Progress', async () => {
-    test.fixme(true, 'needs a trip in In-Progress status; confirm the driver-field lock')
-  })
+  // Dropped: the legacy app gated driver-edit on In-Progress status; the port
+  // doesn't carry that lock — `DriverTripDetail` (Planning) has no `isInProgress`
+  // check, and the trip-detail page never renders a driver-edit affordance to
+  // begin with. Tracking as a missing-feature-parity backlog item rather than a
+  // test gap. See plans/todo/longhaul-in-progress-driver-lock.md.
 })
