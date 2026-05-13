@@ -54,9 +54,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.env-name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
@@ -101,9 +101,9 @@ jobs:
       ENV_NAME: ${{ inputs.env-name }}
       STACK_PREFIX: ${{ inputs.stack-prefix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
@@ -262,7 +262,7 @@ jobs:
 
       - name: Upload CDK outputs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cdk-outputs-${{ inputs.env-name }}
           path: /tmp/pegasus-cdk-outputs.json
@@ -271,7 +271,7 @@ jobs:
 
       - name: Upload mobile env
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mobile-env-${{ inputs.env-name }}
           path: artifacts/mobile.env.deploy
