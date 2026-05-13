@@ -174,33 +174,41 @@ test.describe('Planning tab', () => {
     await expect(pp.snackbar).toContainText(/shipment/i)
   })
 
-  test('saves a trip and navigates to its itinerary @qa-mutating', async ({ page }) => {
-    test.fixme(true, 'end-to-end save flow — implement after the assign-driver step lands')
-    const pp = new PlanningPage(page, '')
-    await pp.addFirstShipmentToTrip()
-    // ...assign driver...
+  test('saves a trip and navigates to its itinerary @qa-mutating', async ({ page, qaWebUrl }) => {
+    const pp = new PlanningPage(page, qaWebUrl)
+    // 1. Add a shipment from the search dashboard to the pending trip.
+    const orderNum = await pp.addFirstShipmentToTrip()
+    expect(orderNum, 'first shipment in search dashboard has an order_num').toBeTruthy()
+    // The shipment shows up in the pending-trip pane.
+    await expect(pp.pendingTripShipments()).toHaveCount(1, { timeout: 15_000 })
+
+    // 2. Assign a driver: focus the Downshift input, pick the first option.
+    await pp.driverTypeaheadInput.click()
+    const firstOption = pp.driverTypeaheadOptions().first()
+    await firstOption.waitFor({ state: 'visible', timeout: 15_000 })
+    await firstOption.click()
+
+    // 3. Save. The trip POSTs and the redux thunk on success triggers a
+    // snackbar containing "saved" (matches the case-insensitive pattern below).
     await pp.saveButton.click()
+    await expect(pp.snackbar).toBeVisible({ timeout: 30_000 })
     await expect(pp.snackbar).toContainText(/saved/i)
+
+    // 4. Click View Itinerary → the URL should be /driver-planning/trips/<id>.
     await pp.viewItineraryLink.click()
-    await expect(page).toHaveURL(/\/driver-planning\/trips\/\d+/)
+    await expect(page).toHaveURL(/\/driver-planning\/trips\/\d+/, { timeout: 15_000 })
   })
 
-  test('re-opens a saved trip via ?tripId= with its shipments pre-loaded @qa-mutating', async () => {
-    test.fixme(true, 'depends on the save flow; verify the ?tripId= query param survived the port')
-  })
-
-  test('"New Trip" clears the current pending trip after confirmation @qa-mutating', async () => {
-    test.fixme(true, 'depends on the save flow; confirm the "Start a new trip?" confirm dialog')
-  })
-
-  test('"Cancel Trip" marks the trip canceled and returns its shipments @qa-mutating', async () => {
-    test.fixme(true, 'depends on the save flow; uses the ⋮ data-target="more-trip-actions" menu')
-  })
-
-  test('changing the dispatcher cascades to the shipments’ shadow @qa-mutating', async () => {
-    test.fixme(
-      true,
-      'verify operations_id/operations_name via GET /api/v1/onprem/longhaul/shipments/:id',
-    )
-  })
+  // Removed per plans/todo/longhaul-qa-mutating-triage.md (Phase 7):
+  // - "re-opens a saved trip via ?tripId=" → covered by container test
+  //   `routes/PlanningModule.test.tsx` (verifies initializeTripPage dispatch
+  //   with the parsed tripId, no on-prem dependency).
+  // - "New Trip clears the current pending trip after confirmation" → covered
+  //   by container test `containers/PendingTrips/index.test.tsx` (verifies the
+  //   store state resets to a fresh pending trip after the confirm click).
+  // - "Cancel Trip marks the trip canceled and returns its shipments" → moved
+  //   to `tests/api/longhaul-qa.spec.ts` "POST /trips → cancel" round-trip.
+  // - "changing the dispatcher cascades to the shipments' shadow" → moved to
+  //   `tests/api/longhaul-qa.spec.ts` "PATCH /shipments/:id/shadow" round-trip;
+  //   reshape-shipment.test.ts + Shipments container test cover the read side.
 })

@@ -92,9 +92,9 @@ test.describe('Shipments tab', () => {
     await expect.poll(() => sp.rowCount(), { timeout: 40_000 }).toBeGreaterThan(0)
   })
 
-  test('saving and re-applying a personal filter @qa-mutating', async () => {
-    test.fixme(true, 'walkthrough: confirm the Save-filter modal + the saved-filters list')
-  })
+  // Removed: "saving and re-applying a personal filter" — covered by
+  // `containers/Shipments/components/FilterTabs/SaveFilterModal.test.tsx`.
+  // See plans/todo/longhaul-qa-mutating-triage.md.
 
   test('clicking a shipment row opens the ShipmentDetail pane', async ({ page }) => {
     const sp = new ShipmentsPage(page)

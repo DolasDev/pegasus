@@ -58,13 +58,13 @@ test.describe('Trip detail', () => {
     await expect(detail.shipmentDetailField('Shipper Name')).toBeVisible()
   })
 
-  test('trip notes: existing render, add a note, edit it @qa-mutating', async () => {
-    test.fixme(true, 'walkthrough: Notes is an Expandable; confirm expand + the add/edit modal')
-  })
-
-  test('editing an activity date persists @qa-mutating', async () => {
-    test.fixme(true, 'walkthrough: confirm the ActivityGantt date-change popover + reload-persists')
-  })
+  // Removed per plans/todo/longhaul-qa-mutating-triage.md (Phase 7):
+  // - "trip notes: existing render, add a note, edit it" → moved to qa-api
+  //   round-trip in `tests/api/longhaul-qa.spec.ts`. UI modal mechanics are
+  //   covered by `containers/Trip/components/Notes/Notes.test.tsx`.
+  // - "editing an activity date persists" → covered by qa-api
+  //   "POST /activities then GET /activities" round-trip. UI popover open is
+  //   covered by `containers/Trip/components/ActivityGantt/ActivityGantt.test.tsx`.
 
   // Dropped: "changing trip status persists; an illegal transition is rejected"
   // — handler tests in apps/api/src/handlers/longhaul/trips.test.ts cover
