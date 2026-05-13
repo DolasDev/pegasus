@@ -2,6 +2,7 @@ import logger from '../logger'
 import { notifyError, notifySuccess } from '../../components/Snackbar/notify'
 import { fetchData } from './transport'
 import { reshapeTrip, reshapeTripList } from './reshape-trip'
+import { reshapeShipmentList } from './reshape-shipment'
 
 export async function fetchHelper(name: string, ...rest: unknown[]) {
   const result = (await fetchData(name, ...rest)) as any
@@ -28,9 +29,13 @@ export const API = {
       notifyError((e as any).message)
     }
   },
+  // The on-prem bridge left-joins the `sales` shadow columns flat
+  // (`shadow_weight`, `shadow_comments`, `operations_*`); reshape them back into
+  // the nested `pegasus_shadow` object the ported components (ShipmentDetail,
+  // DispatchNote, Weight) were written against.
   fetchShipments: async (query: any) => {
     try {
-      return await fetchHelper('fetchShipments', query)
+      return reshapeShipmentList(await fetchHelper('fetchShipments', query))
     } catch (e) {
       notifyError((e as any).message)
       return []

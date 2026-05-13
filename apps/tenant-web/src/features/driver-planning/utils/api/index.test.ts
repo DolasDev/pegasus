@@ -141,12 +141,12 @@ describe('API surface', () => {
   })
 
   describe('fetchShipments', () => {
-    it('forwards the query', async () => {
+    it('forwards the query and reshapes the flat shadow columns', async () => {
       const query = { searchTerm: 'foo' }
-      fetchDataMock.mockResolvedValue(okEnvelope([{ id: 1 }]))
+      fetchDataMock.mockResolvedValue(okEnvelope([{ order_num: 1, shadow_weight: 8200 }]))
       const result = await API.fetchShipments(query)
       expect(fetchDataMock).toHaveBeenCalledWith('fetchShipments', query)
-      expect(result).toEqual([{ id: 1 }])
+      expect(result[0]).toMatchObject({ order_num: 1, pegasus_shadow: { weight: 8200 } })
     })
 
     it('returns [] and pushes an error snackbar on failure', async () => {
@@ -224,9 +224,7 @@ describe('API surface', () => {
       const result = await API.fetchVersion()
       expect(result).toEqual({
         clientVersion: '1.3.10',
-        supportedVersions: [
-          { database_version: 'N/A', supported_client_version: '1.3.10' },
-        ],
+        supportedVersions: [{ database_version: 'N/A', supported_client_version: '1.3.10' }],
       })
     })
   })
@@ -289,10 +287,9 @@ describe('API surface', () => {
 
     it('warns and surfaces a user-facing notice', async () => {
       await API.jumpToOrder({ orderId: 1 })
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        '[longhaul-port] jumpToOrder stubbed; args:',
-        { orderId: 1 },
-      )
+      expect(consoleWarnSpy).toHaveBeenCalledWith('[longhaul-port] jumpToOrder stubbed; args:', {
+        orderId: 1,
+      })
       expect(notifyErrorMock).toHaveBeenCalledTimes(1)
       expect(notifyErrorMock.mock.calls[0]![0]).toMatch(/legacy desktop app/i)
     })

@@ -23,7 +23,9 @@ export const DispatchNote = ({ onUpdate }: { onUpdate: any }) => {
     middleware: [offset(5)],
   })
 
-  const [dispatchNote, setDispatchNote] = useState(selectedShipment.pegasus_shadow.lng_dis_comments)
+  const [dispatchNote, setDispatchNote] = useState(
+    selectedShipment?.pegasus_shadow?.lng_dis_comments ?? '',
+  )
 
   const onButtonClick = () => {
     setEditMode(!editMode)

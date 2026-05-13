@@ -240,30 +240,34 @@ export function ShipmentDetail({
     { accessor: '', label: '' },
 
     {
-      accessor: (shipment: any) => (
-        <>
-          <span>
-            <DispatchNote onUpdate={onUpdateDispatchInstructions} />
-          </span>
-          <div>
+      accessor: (shipment: any) => {
+        const lngDisComments = shipment.pegasus_shadow?.lng_dis_comments ?? ''
+        const firstName = (user?.first_name ?? '').toLowerCase()
+        return (
+          <>
             <span>
-              {(dispatchInstructions || `${shipment.pegasus_shadow.lng_dis_comments}`)
-                .toLowerCase()
-                .indexOf('@' + user.first_name.toLowerCase()) !== -1 ? (
-                <b style={{ color: 'green' }}>{'@' + user.first_name.toLowerCase()}</b>
-              ) : null}
+              <DispatchNote onUpdate={onUpdateDispatchInstructions} />
             </span>
-            <span>
-              {(dispatchInstructions || `${shipment.pegasus_shadow.lng_dis_comments}`)
-                .toLowerCase()
-                .indexOf('@all') !== -1 ? (
-                <b style={{ color: 'green' }}>{'@all '}</b>
-              ) : null}
-            </span>
-            <span>{dispatchInstructions || `${shipment.pegasus_shadow.lng_dis_comments}`}</span>
-          </div>
-        </>
-      ),
+            <div>
+              <span>
+                {firstName &&
+                (dispatchInstructions || `${lngDisComments}`)
+                  .toLowerCase()
+                  .indexOf('@' + firstName) !== -1 ? (
+                  <b style={{ color: 'green' }}>{'@' + firstName}</b>
+                ) : null}
+              </span>
+              <span>
+                {(dispatchInstructions || `${lngDisComments}`).toLowerCase().indexOf('@all') !==
+                -1 ? (
+                  <b style={{ color: 'green' }}>{'@all '}</b>
+                ) : null}
+              </span>
+              <span>{dispatchInstructions || `${lngDisComments}`}</span>
+            </div>
+          </>
+        )
+      },
       label: 'Long Distance Instructions',
     },
     { accessor: '', label: '' },
