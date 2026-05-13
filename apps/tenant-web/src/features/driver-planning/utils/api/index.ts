@@ -3,6 +3,7 @@ import { notifyError, notifySuccess } from '../../components/Snackbar/notify'
 import { fetchData } from './transport'
 import { reshapeTrip, reshapeTripList } from './reshape-trip'
 import { reshapeShipmentList } from './reshape-shipment'
+import { fetchAndReshape } from './fetch-and-reshape'
 
 export async function fetchHelper(name: string, ...rest: unknown[]) {
   const result = (await fetchData(name, ...rest)) as any
@@ -32,15 +33,11 @@ export const API = {
   // The on-prem bridge left-joins the `sales` shadow columns flat
   // (`shadow_weight`, `shadow_comments`, `operations_*`); reshape them back into
   // the nested `pegasus_shadow` object the ported components (ShipmentDetail,
-  // DispatchNote, Weight) were written against.
-  fetchShipments: async (query: any) => {
-    try {
-      return reshapeShipmentList(await fetchHelper('fetchShipments', query))
-    } catch (e) {
-      notifyError((e as any).message)
-      return []
-    }
-  },
+  // DispatchNote, Weight) were written against. fetchAndReshape contains the
+  // error→snackbar→empty-list fallback so the module doesn't error-boundary on
+  // a transient bridge hiccup.
+  fetchShipments: async (query: any) =>
+    fetchAndReshape(fetchHelper, 'fetchShipments', [query], reshapeShipmentList, []),
   // The on-prem bridge returns trips with relations flattened into aliased
   // columns; reshape them back into the nested shape the ported components
   // (TripCard, the trip-detail Gantt, PendingTrips) were written against.
