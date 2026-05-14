@@ -22,18 +22,26 @@ async function openFirstTrip(page: Page, qaWebUrl: string) {
   const layout = new DriverPlanningLayout(page, qaWebUrl)
   await layout.openTab('Trips')
   const trips = new TripsPage(page)
-  // Same reload-retry recipe trips.spec.ts beforeEach uses — on-prem `/trips`
-  // is intermittently slow on cold-start; one reload usually shakes it loose.
+  // Same reload-retry recipe trips.spec.ts beforeEach uses — wait on the
+  // newTripButton (shell-mount sentinel) rather than the laneTitle (which
+  // requires the data fetch to resolve and the count to render). On a
+  // congested AppGuard bootstrap the data fetch can lag the shell by 30+ s.
   try {
-    await trips.laneTitle.waitFor({ state: 'visible', timeout: 15_000 })
+    await trips.newTripButton.waitFor({ state: 'visible', timeout: 15_000 })
   } catch {
     await page.reload({ waitUntil: 'domcontentloaded' })
-    await trips.laneTitle.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
+    await trips.newTripButton.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
   }
   test.skip(
-    !(await trips.laneTitle.isVisible()),
-    'Trips list did not load (on-prem /longhaul/trips slow or 5xx after retry)',
+    !(await trips.newTripButton.isVisible()),
+    'Trips module did not mount (on-prem AppGuard bootstrap slow or 5xx after retry)',
   )
+  // Give the cards a fair chance to stream in after the shell mounts before
+  // skip-on-no-cards fires below.
+  await trips.cards
+    .first()
+    .waitFor({ state: 'visible', timeout: 30_000 })
+    .catch(() => {})
   const tripId = await trips.firstTripId()
   test.skip(tripId === null, 'no trips in the QA DB under the default filter')
   const detail = new TripDetailPage(page, qaWebUrl)
