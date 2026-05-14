@@ -3,13 +3,24 @@
 **Status (2026-05-13): executed.** All 9 specs have been triaged and the
 corresponding coverage moved to the right layer. Specifics below.
 
-**Status (2026-05-14): PARTIALLY verified.** After a reseed, run
+**Status (2026-05-14, second pass): on-prem defect FIXED, all 5 specs un-fixme'd
+locally.** Reproduced the trip-save 500 on the Dolios on-prem service
+(`DOLAB-M70Q-1`), found two latent Knex+mssql bugs in the longhaul repos:
+
+1. `saveTrip`, `insertActivity`, `saveSearchFilter`, `insertOrUpdateShipmentCoverage`:
+   bare `.insert()` returns rowsAffected, not IDENTITY → `newId` was undefined
+   → read-back `.where('id', undefined).first()` threw "Undefined binding(s)".
+   Fix: pass the column list (`['id']`/`['filter_id']`) as the 2nd arg.
+2. `LongDistanceDispatchActivity` has enabled triggers, so OUTPUT INSERTED.id
+   alone fails. Fix: `{ includeTriggerModifications: true }` for that insert.
+
+Verified locally end-to-end: POST /trips → 201, POST /activities (via trip-
+create) succeeds, POST /trips/:id/cancel → 200. All 1041 api unit tests still
+pass. Specs un-fixme'd: `longhaul-qa.spec.ts:199`, `:354`; `planning.spec.ts:177`.
+
+**Status (2026-05-14, first pass): PARTIALLY verified.** After a reseed, run
 `25839871338` exit-status'd green (41 pass / 6 skip / 0 fail), but 3 of
-those skips are `test.fixme` on a real unresolved on-prem trip-save 500.
-Verified-passing: notes round-trip, shadow round-trip. Pending: POST
-/trips, POST /activities (via trip-create), browser save→itinerary.
-`test.fixme` here is a CI workaround, NOT verification — A is incomplete
-until those specs run or the underlying defect is filed separately.
+those skips were `test.fixme` on a real unresolved on-prem trip-save 500.
 
 **Context:** the original QA E2E plan parked 9 browser specs as `test.fixme`
 because they each need a QA-DB reseed to exercise the on-prem MSSQL write
@@ -100,42 +111,54 @@ the 3 fixme'd trip-write specs.
    nesting is a client-side reshape only (`reshape-shipment.ts`). The shadow
    round-trip read-back now checks the flat key.
 
-### Open — the on-prem trip-save 500 (blocks 3 specs)
+### Resolved (2026-05-14) — the on-prem trip-save 500
 
-Legacy on-prem `/longhaul/trips` POST returns `500 "Failed to save trip /
-INTERNAL_ERROR"` even when the request body mirrors what the legacy UI sends:
-full shipment row from the planning-window query (with server-built activities),
-non-null driver from `/drivers`, dispatcher from `/users/me`, `status: {id:1,
-status_id:1, status:'Pending'}`.
+Reproduced locally on Dolios (`DOLAB-M70Q-1`) by POSTing a trip body identical
+to the qa-api spec's. The on-prem service err log (`logs/pegasusapi.err.log`)
+showed the real Knex error:
 
-Cloud `/api/v1/onprem/longhaul/*` is a **wildcard proxy** to legacy Dolios
-MSSQL (`apps/api/src/handlers/onprem.ts`) — the local `saveTripLogic` in
-`apps/api/src/handlers/longhaul/trips.ts` is mounted only in `app.server.ts`
-(dev), not in `app.ts` (prod/QA). So the actual save runs on the Dolios box;
-the cloud Lambda's CloudWatch only shows `"onprem proxy forward"`. The 500 is
-opaque from this side.
+```
+Error: Undefined binding(s) detected when compiling FIRST.
+Undefined column(s): [id]
+query: select top (?) * from [TripMaster] where [id] = ?
+```
 
-3 specs are `test.fixme`'d on this:
+— meaning the read-back after the trip INSERT was binding `undefined` for the
+id. Root cause: bare `.insert(data)` on Knex+mssql returns rowsAffected, not
+IDENTITY, so `result[0]` was 1 (the row count), then on subsequent inserts
+became undefined under the transaction. Patched the 4 affected repository
+inserts to pass `['id']` (or `['filter_id']`) as the 2nd arg.
+
+After that fix, a second error appeared:
+
+```
+Error: insert into [LongDistanceDispatchActivity] ... output inserted.[id] ...
+- The target table 'LongDistanceDispatchActivity' of the DML statement cannot
+  have any enabled triggers if the statement contains an OUTPUT clause without
+  INTO clause.
+```
+
+Patched `insertActivity` with `{ includeTriggerModifications: true }`, which
+makes Knex rewrite the OUTPUT to use a table variable. After both fixes:
+
+- POST /trips → 201 with auto-generated LOAD + RDEL activities.
+- POST /trips/:id/cancel → 200, `internal_status = 'canceled'`, activities
+  cleared.
+
+Both diagnostic paths from the original "open defect" note are now unnecessary
+(the server-side log path is what was used — the err log was actually local
+to the on-prem Windows host all along).
+
+3 specs un-fixme'd:
 
 - `longhaul-qa.spec.ts:199` — POST /trips → GET → cancel
-- `longhaul-qa.spec.ts:359` — POST /activities (creates a parent trip first)
-- `planning.spec.ts:177` — browser save→itinerary (same save → snackbar shows
-  error instead of "saved")
-
-**To lift the fixmes** (either path works):
-
-- **Server-side**: SSH into the Dolios MSSQL box and look at the Node service's
-  logs for one of the failing correlation IDs to find the missing field /
-  validation gap.
-- **Client-side**: Instrument the passing browser save→itinerary spec
-  (`planning.spec.ts:177`, currently fixme'd; un-fixme temporarily) with
-  `page.on('request')` to capture the exact JSON body sent on a successful UI
-  save in a manually-driven session, then diff against the qa-api spec's body.
-
-Once the missing piece is identified, lift all 3 fixmes together.
+- `longhaul-qa.spec.ts:354` — POST /activities (via trip-create)
+- `planning.spec.ts:177` — browser save→itinerary
 
 ## When to action follow-up
 
-Nothing required immediately — the QA workflow is green. The 3 fixme'd specs
-should be revisited next time someone has a window of Dolios on-prem access
-(or is willing to instrument the browser spec).
+Push the repo fix + un-fixme'd specs, then trigger an `e2e-qa-longhaul.yml`
+workflow_dispatch run to verify all 3 specs pass (not skip) on a freshly
+reseeded QA. The cloud Lambda needs no behavioural change — onprem.ts is a
+transparent proxy; the fix lives entirely in the on-prem Windows Service
+(rebuilt + restarted in this session).

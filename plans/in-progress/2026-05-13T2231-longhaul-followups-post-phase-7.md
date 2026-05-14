@@ -40,12 +40,41 @@ Test counts: driver-planning vitest **604** (was 528 at session start). All 8 lo
 
 ## What's left
 
-### A — Verify the new `@qa-mutating` round-trips on a reseed pass _— PARTIAL 2026-05-14; ON-PREM DIAGNOSIS PENDING_
+### A — Verify the new `@qa-mutating` round-trips on a reseed pass _— RESOLVED 2026-05-14; QA WORKFLOW RE-RUN PENDING_
 
-**Status: 2 of 5 new specs verified passing on QA; 3 are `test.fixme` blocked
-on an unresolved on-prem defect.** The acceptance criterion called for
-`test.skip` only on unmet preconditions; `test.fixme` does NOT satisfy that.
-A is **not** done — the underlying issue is unfinished business.
+**Status: on-prem defect diagnosed and fixed.** Reproduced locally against the
+Dolios MSSQL host (DOLAB-M70Q-1), grepped the actual service err log, found
+two Knex+mssql bugs in the longhaul repository inserts:
+
+1. `saveTrip`, `insertActivity`, `saveSearchFilter`, and `insertOrUpdateShipmentCoverage`
+   used bare `.insert(data)` and read `result[0]` for the new IDENTITY. Knex's
+   mssql driver returns rowsAffected from bare `.insert()`, not the IDENTITY —
+   so `newId` was `undefined` and the read-back `.where('id', undefined).first()`
+   threw `Undefined binding(s) detected when compiling FIRST. Undefined column(s): [id]`.
+   Fix: pass `['id']` (or `['filter_id']`) as the 2nd arg so Knex emits
+   `OUTPUT INSERTED.id` and resolves to `[{id: <new>}]`.
+2. `LongDistanceDispatchActivity` has enabled INSERT/UPDATE/DELETE triggers, so
+   even with the `OUTPUT INSERTED.id` clause it failed with "the target table
+   cannot have any enabled triggers if the statement contains an OUTPUT clause
+   without INTO clause." Fix: `{ includeTriggerModifications: true }` as the
+   3rd arg to `insertActivity`, which rewrites OUTPUT to use a table variable.
+
+Local verification (commit pending): POST /trips → 201 with trip id 15645,
+auto-generated LOAD + RDEL activities; POST /trips/:id/cancel → 200, trip
+`internal_status` flips to `canceled`, activities cleared. All 1041 api unit
+tests still pass. Specs un-fixme'd:
+
+- `longhaul-qa.spec.ts:199` POST /trips → GET → cancel
+- `longhaul-qa.spec.ts:354` POST /activities (via trip-create)
+- `planning.spec.ts:177` browser save→itinerary
+
+**Acceptance still pending:** a fresh `e2e-qa-longhaul.yml workflow_dispatch`
+run that exits green with the 3 un-fixme'd specs PASSING (not just skipped).
+The on-prem service on `DOLAB-M70Q-1` has already been restarted with the new
+dist (the cloud Lambda needs no behavioural change — onprem.ts is a pass-through
+proxy).
+
+#### Original "ON-PREM DIAGNOSIS PENDING" notes — kept for context
 
 Workflow run `25839871338` (commit `cda3a82`) on the reseeded QA exit-status'd
 green (41 pass / 6 skip / 0 fail), but 3 of those "skips" are `test.fixme`'d
@@ -298,14 +327,16 @@ Move to `plans/completed/` once:
   Plan acknowledges the SDK/CLI as a separate follow-up.
 - D and E remain in their own backlog files; this plan doesn't track them.
 
-## Session boundary: 2026-05-14 → next
+## Session boundary: 2026-05-14 (second pass) → next
 
 Pause point for handoff:
 
-- A: 2/5 new specs verified passing; 3 fixme'd pending on-prem diagnosis.
-  **Real product flow is unverified.** Resume from one of the two diagnostic
-  paths above. Next session has SSH to the Dolios box (user statement) — use
-  path 1.
+- A: on-prem defect (Knex+mssql `.insert()` IDENTITY return + trigger output
+  clause) diagnosed and fixed in the longhaul repos; all 3 specs un-fixme'd;
+  local end-to-end save+cancel verified. **Remaining:** push, trigger the
+  `e2e-qa-longhaul.yml workflow_dispatch` on a reseeded QA, confirm 0
+  unexpected failures + 3 specs now PASS (not skip). The on-prem Windows
+  Service on `DOLAB-M70Q-1` was rebuilt + restarted this session.
 - B: closed.
 - C: static audit clean; manual UAT click-through pending user driving the
   dev server.

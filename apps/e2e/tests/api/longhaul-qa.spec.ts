@@ -196,18 +196,9 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     expect(updated?.confirmedNotes).toBe(notes)
   })
 
-  test.fixme('POST /trips → GET /trips/:id → POST /trips/:id/cancel @qa-mutating', async ({
+  test('POST /trips → GET /trips/:id → POST /trips/:id/cancel @qa-mutating', async ({
     qaApiFetch,
   }) => {
-    // FIXME: legacy on-prem /longhaul/trips returns 500 "Failed to save trip /
-    // INTERNAL_ERROR" despite mirroring the UI body shape (full shipment with
-    // server-built activities + non-null driver + dispatcher from /users/me +
-    // status: {id:1, status_id:1, status:'Pending'}). The cloud /onprem/* is a
-    // wildcard proxy (apps/api/src/handlers/onprem.ts), so the actual save runs
-    // on the Dolios MSSQL box and the error response is opaque from the API
-    // Lambda's CloudWatch (only "onprem proxy forward" is logged). Diagnosis
-    // needs either server-side Dolios logs OR a Playwright page.on('request')
-    // capture of the browser save→itinerary POST body to find the missing piece.
     const [meRes, driversRes, shipmentsRes] = await Promise.all([
       qaApiFetch(`${LH}/users/me`).then((r) => r.json()),
       qaApiFetch(`${LH}/drivers`).then((r) => r.json()),
@@ -351,11 +342,7 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     expect(reNote?.note).toBe(updatedMarker)
   })
 
-  test.fixme('POST /activities then GET /activities reflects it @qa-mutating', async ({
-    qaApiFetch,
-  }) => {
-    // FIXME: same legacy-on-prem 500 as the POST /trips spec above — this test
-    // creates a trip first to anchor the activity, so it inherits that gap.
+  test('POST /activities then GET /activities reflects it @qa-mutating', async ({ qaApiFetch }) => {
     const sList = await (
       await qaApiFetch(
         `${LH}/shipments?filters=${encodeURIComponent(
