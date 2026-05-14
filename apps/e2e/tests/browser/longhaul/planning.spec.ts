@@ -16,6 +16,18 @@ test.describe('Planning tab', () => {
   test.beforeEach(async ({ page, qaWebUrl, qaApiFetch }) => {
     const layout = await gateOnOnpremHealth(page, qaWebUrl, qaApiFetch)
     await layout.openTab('Planning')
+    // Same reload-retry recipe trips.spec.ts beforeEach uses — the Planning
+    // module's AppGuard fan-out (/drivers, /dispatchers, /users/me, etc.) can
+    // stall 30+ s on a cold-start tunnel, leaving the page stuck on
+    // "Loading…" so every assertion times out. The SearchDashboard pane is
+    // the shell-mount sentinel (renders before any /shipments data resolves).
+    const pp = new PlanningPage(page, '')
+    try {
+      await pp.searchDashboard.waitFor({ state: 'visible', timeout: 15_000 })
+    } catch {
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await pp.searchDashboard.waitFor({ state: 'visible', timeout: 45_000 }).catch(() => {})
+    }
   })
 
   test('loads the three-pane trip builder with an empty pending trip @smoke', async ({ page }) => {
@@ -176,13 +188,8 @@ test.describe('Planning tab', () => {
 
   test('saves a trip and navigates to its itinerary @qa-mutating', async ({ page, qaWebUrl }) => {
     const pp = new PlanningPage(page, qaWebUrl)
-    // Running last in the file, AppGuard occasionally stays stuck on "Loading…"
-    // when one of /drivers, /dispatchers, /shipments is slow on a tunnel blip.
-    // Reload once to force a fresh cold-start of every on-prem fetch, then
-    // gate on the dashboard container (not its inner cards) so we skip cleanly
-    // if the module never mounts.
-    await page.reload({ waitUntil: 'domcontentloaded' })
-    await pp.searchDashboard.waitFor({ state: 'visible', timeout: 45_000 }).catch(() => {})
+    // beforeEach already did the reload-retry and waited on searchDashboard;
+    // skip cleanly if it ultimately never mounted (rare on-prem outage).
     test.skip(
       !(await pp.searchDashboard.isVisible()),
       'planning module did not mount (AppGuard still loading — on-prem fetch slow)',
