@@ -30,5 +30,10 @@ export default defineConfig({
     url:
       pickEnv(['DIRECT_URL', 'DATABASE_URL']) ??
       'postgresql://placeholder:placeholder@localhost:5432/placeholder',
+    // Optional shadow DB for `prisma migrate dev` drift detection. Picked up
+    // from SHADOW_DATABASE_URL; unset in CI (only `migrate deploy` runs there).
+    // For local drift checks: point at a throwaway local Postgres, e.g.
+    //   SHADOW_DATABASE_URL=postgresql://pegasus:pegasus@localhost:5432/prisma_shadow
+    shadowDatabaseUrl: pickEnv(['SHADOW_DATABASE_URL']),
   },
 })
