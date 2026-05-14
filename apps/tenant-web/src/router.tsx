@@ -19,6 +19,7 @@ import { InvoicesPage } from '@/routes/invoices.index'
 import { SsoConfigPage } from '@/routes/sso-config'
 import { UsersPage } from '@/routes/users'
 import { DeveloperSettingsPage } from '@/routes/settings.developer'
+import { WorkflowsSettingsPage } from '@/routes/settings.workflows'
 import { DriverPlanningPage } from '@/routes/driver-planning.index'
 import { DriverPlanningLayout } from '@/features/driver-planning/DriverPlanningLayout'
 
@@ -154,6 +155,12 @@ const developerSettingsRoute = createRoute({
   component: DeveloperSettingsPage,
 })
 
+const workflowsSettingsRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/settings/workflows',
+  component: WorkflowsSettingsPage,
+})
+
 const driverPlanningRoute = createRoute({
   getParentRoute: () => authLayout,
   path: '/driver-planning',
@@ -217,6 +224,7 @@ const routeTree = rootRoute.addChildren([
     ssoConfigRoute,
     usersRoute,
     developerSettingsRoute,
+    workflowsSettingsRoute,
   ]),
 ])
 

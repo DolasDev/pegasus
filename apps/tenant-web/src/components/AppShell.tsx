@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   UserCog,
   Key,
+  Workflow,
   ChevronLeft,
   ChevronRight,
   type LucideIcon,
@@ -39,6 +40,7 @@ const SETTINGS_NAV_ITEMS = [
   { to: '/settings/users' as const, label: 'Users', icon: UserCog, exact: false },
   { to: '/settings/sso' as const, label: 'SSO Providers', icon: ShieldCheck, exact: false },
   { to: '/settings/developer' as const, label: 'Developer Settings', icon: Key, exact: false },
+  { to: '/settings/workflows' as const, label: 'Workflows', icon: Workflow, exact: false },
 ] as const
 
 type NavItemProps = {

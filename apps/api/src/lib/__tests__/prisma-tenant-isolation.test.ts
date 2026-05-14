@@ -839,6 +839,7 @@ describe.skipIf(!hasDb)('createTenantDb — cross-tenant isolation (integration)
         'AuthSession', // short-lived auth handshake record — no tenant-API reads
         'ApiClient', // M2M auth — accessed by api-client-auth middleware, not tenant handlers
         'VpnPeer', // admin/platform-only — accessed by platform_admin routes and the hub reconcile agent (scope vpn:sync), never by tenant handlers
+        'Workflow', // visibility=GLOBAL requires reading rows owned by another tenant; the repo scopes manually via OR [{tenantId}, {visibility: 'GLOBAL'}]
       ])
 
       // Extract model names that contain a tenantId field declaration.

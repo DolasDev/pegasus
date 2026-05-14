@@ -14,6 +14,7 @@ import { Hono } from 'hono'
 import type { AdminEnv } from '../../types'
 import { adminAuthMiddleware } from '../../middleware/admin-auth'
 import { adminTenantsRouter } from './tenants'
+import { adminWorkflowsRouter } from './workflows'
 
 export const adminRouter = new Hono<AdminEnv>()
 
@@ -22,6 +23,7 @@ adminRouter.use('*', adminAuthMiddleware)
 
 // Mount bounded-context routers.
 adminRouter.route('/tenants', adminTenantsRouter)
+adminRouter.route('/workflows', adminWorkflowsRouter)
 
 // ---------------------------------------------------------------------------
 // GET /api/admin/me

@@ -6,6 +6,7 @@ import { AuthCallbackPage } from '@/routes/auth/callback'
 import { authGuard, AuthLayout } from '@/routes/_auth'
 import { TenantsPage } from '@/routes/_auth/tenants/index'
 import { TenantDetailPage } from '@/routes/_auth/tenants/$id'
+import { WorkflowsPage } from '@/routes/_auth/workflows/index'
 import { getAccessToken } from '@/auth/cognito'
 
 // ---------------------------------------------------------------------------
@@ -68,13 +69,19 @@ const tenantDetailRoute = createRoute({
   component: TenantDetailPage,
 })
 
+const workflowsRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/workflows',
+  component: WorkflowsPage,
+})
+
 // ---------------------------------------------------------------------------
 // Route tree + router
 // ---------------------------------------------------------------------------
 const routeTree = rootRoute.addChildren([
   loginRoute,
   authCallbackRoute,
-  authLayout.addChildren([indexRoute, tenantsRoute, tenantDetailRoute]),
+  authLayout.addChildren([indexRoute, tenantsRoute, tenantDetailRoute, workflowsRoute]),
 ])
 
 export const router = createRouter({ routeTree })

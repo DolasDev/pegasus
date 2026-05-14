@@ -31,7 +31,11 @@ export const TENANT_SCOPED_MODELS = new Set([
   'TenantSsoProvider',
   'PegasusEvent',
   'Document',
-  'Workflow',
+  // Workflow is intentionally NOT scoped here — the GLOBAL visibility case
+  // requires reading rows owned by a different tenant (the platform tenant).
+  // The extension's top-level `tenantId = current` merge would neutralise the
+  // `OR: [{tenantId}, {visibility: 'GLOBAL'}]` predicate in the repository.
+  // Workflow is in INTENTIONALLY_UNSCOPED in prisma-tenant-isolation.test.ts.
 ])
 
 /**
