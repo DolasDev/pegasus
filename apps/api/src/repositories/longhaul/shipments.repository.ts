@@ -347,8 +347,13 @@ export async function saveCoverage(
       .where('id', existing.id as number)
       .first()
   } else {
-    const result = await db(COVERAGE_TABLE).insert({ ...coverageData, created_date: new Date() })
-    const newId = Array.isArray(result) ? result[0] : result
+    // Knex + mssql: see trips.repository saveTrip — bare .insert() returns
+    // rowsAffected, not IDENTITY. Pass ['id'] to get [{id: <new>}] back.
+    const inserted = await db(COVERAGE_TABLE).insert(
+      { ...coverageData, created_date: new Date() },
+      ['id'],
+    )
+    const newId = (inserted?.[0] as { id?: number } | undefined)?.id
     return db(COVERAGE_TABLE).where('id', newId).first()
   }
 }

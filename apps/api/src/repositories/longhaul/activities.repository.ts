@@ -44,12 +44,24 @@ export async function findActivityById(
 
 /** Insert a new activity row. Returns the new row's id. */
 export async function insertActivity(db: Knex, activity: Record<string, unknown>) {
-  const result = await db(ACTIVITIES_TABLE).insert({
-    ...activity,
-    created_at: new Date(),
-    updated_at: new Date(),
-  })
-  return Array.isArray(result) ? result[0] : result
+  // Knex + mssql: bare .insert() returns rowsAffected, not the IDENTITY. Use
+  // .insert(data, ['id']) so the resolved value is [{id: <new>}].
+  //
+  // LongDistanceDispatchActivity has enabled INSERT/UPDATE/DELETE triggers, so
+  // a plain OUTPUT INSERTED.id clause fails with "the DML statement cannot have
+  // any enabled triggers if the statement contains an OUTPUT clause without INTO
+  // clause". `includeTriggerModifications: true` rewrites OUTPUT to use a table
+  // variable, which SQL Server accepts in the presence of triggers.
+  const inserted = await db(ACTIVITIES_TABLE).insert(
+    {
+      ...activity,
+      created_at: new Date(),
+      updated_at: new Date(),
+    },
+    ['id'],
+    { includeTriggerModifications: true },
+  )
+  return (inserted?.[0] as { id?: number } | undefined)?.id
 }
 
 /** Bulk-update status fields for all activities on a trip. */

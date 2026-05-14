@@ -55,11 +55,16 @@ export async function saveFilter(
     is_public?: boolean
   },
 ) {
-  const result = await db(FILTER_TABLE).insert({
-    ...filterData,
-    is_public: filterData.is_public ?? false,
-  })
-  const newId = Array.isArray(result) ? result[0] : result
+  // Knex + mssql: see trips.repository saveTrip — bare .insert() returns
+  // rowsAffected, not IDENTITY. Pass ['filter_id'] to get [{filter_id: <new>}].
+  const inserted = await db(FILTER_TABLE).insert(
+    {
+      ...filterData,
+      is_public: filterData.is_public ?? false,
+    },
+    ['filter_id'],
+  )
+  const newId = (inserted?.[0] as { filter_id?: number } | undefined)?.filter_id
   return db(FILTER_TABLE).where('filter_id', newId).first()
 }
 

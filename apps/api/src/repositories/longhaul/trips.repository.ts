@@ -234,13 +234,19 @@ export async function saveTrip(db: Knex, tripData: Record<string, unknown>) {
       .update({ ...fields, updated_date: new Date() })
     return db(TRIPS_TABLE).where('id', id).first()
   } else {
-    const result = await db(TRIPS_TABLE).insert({
-      ...fields,
-      created_date: new Date(),
-      updated_date: new Date(),
-    })
-    // mssql returns identity value in result[0]
-    const newId = Array.isArray(result) ? result[0] : result
+    // Knex + mssql: bare .insert() returns rowsAffected, NOT the IDENTITY value.
+    // Use .insert(data, ['id']) so Knex emits OUTPUT INSERTED.id and resolves to
+    // [{id: <new>}]. Without it, newId is undefined and the read-back below
+    // throws "Undefined binding(s) detected when compiling FIRST".
+    const inserted = await db(TRIPS_TABLE).insert(
+      {
+        ...fields,
+        created_date: new Date(),
+        updated_date: new Date(),
+      },
+      ['id'],
+    )
+    const newId = (inserted?.[0] as { id?: number } | undefined)?.id
     return db(TRIPS_TABLE).where('id', newId).first()
   }
 }
@@ -345,9 +351,7 @@ export async function updateTripSummaryInfo(db: Knex, tripId: number): Promise<n
       return s?.['vip'] === 'Y' && s?.['supervip'] !== 'Y'
     }),
   ).size
-  const supervipCount = new Set(
-    orderNums.filter((n) => shipmentsMap[n]?.['supervip'] === 'Y'),
-  ).size
+  const supervipCount = new Set(orderNums.filter((n) => shipmentsMap[n]?.['supervip'] === 'Y')).size
 
   const originActivity = [...activities].sort((a, b) => effectiveStart(a) - effectiveStart(b))[0]
   const destinationActivity = [...activities].sort((a, b) => effectiveEnd(b) - effectiveEnd(a))[0]
