@@ -22,10 +22,17 @@ async function openFirstTrip(page: Page, qaWebUrl: string) {
   const layout = new DriverPlanningLayout(page, qaWebUrl)
   await layout.openTab('Trips')
   const trips = new TripsPage(page)
-  await trips.laneTitle.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
+  // Same reload-retry recipe trips.spec.ts beforeEach uses — on-prem `/trips`
+  // is intermittently slow on cold-start; one reload usually shakes it loose.
+  try {
+    await trips.laneTitle.waitFor({ state: 'visible', timeout: 15_000 })
+  } catch {
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await trips.laneTitle.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
+  }
   test.skip(
     !(await trips.laneTitle.isVisible()),
-    'Trips list did not load (on-prem /longhaul/trips slow or 5xx)',
+    'Trips list did not load (on-prem /longhaul/trips slow or 5xx after retry)',
   )
   const tripId = await trips.firstTripId()
   test.skip(tripId === null, 'no trips in the QA DB under the default filter')
