@@ -37,6 +37,9 @@ Everything from the 2026-05-13 staged pivot and Phase 7 triage is merged and pus
 | `65ae35f` | test(longhaul-qa): un-fixme the 3 trip-save specs unblocked by `5cfea00`    |
 | `caf7830` | fix(e2e): stop double-reading response body in longhaul-qa trip tests       |
 | `397eb5d` | fix(e2e): un-fixme'd browser specs — type-to-open + on-prem skip-gate       |
+| `1db2fd5` | fix(e2e): also soft-skip openFirstTrip when the Trips list never mounts     |
+| `282d671` | fix(e2e): add reload-retry to openFirstTrip — mirror trips.spec.ts pattern  |
+| `22f6c74` | fix(e2e): wait on Trips shell sentinel, not the data-dependent laneTitle    |
 
 Test counts: driver-planning vitest **604** (was 528 at session start). All 8 longhaul handlers tested (80 cases). E2E `--grep-invert "@qa-mutating"` verified clean on QA (11/0, 1.2 min). `e2e-qa-longhaul.yml` ran green via `workflow_dispatch` (run `25823001497`, 4m26s).
 
@@ -261,22 +264,46 @@ The feature commit (`8a14977`) bundled ~1300 lines: prisma model + migration, ha
 
 **Acceptance:** quick UAT pass produces a "yes, this ships" or a concrete punch list of follow-ups.
 
-### F — `trip-detail.spec.ts:34` gantt flake — partial coverage, real investigation pending _NEW 2026-05-14_
+### F — `trip-detail.spec.ts:34` gantt flake _— DONE 2026-05-14 (5 consecutive runs green)_
 
-**Status: gated, not solved.** On run `25886270089` the smoke test failed first attempt (gantt invisible after 30s despite the back-to-trips button rendering — so the trip detail body DID partially mount) and the retry was skipped via the new `openFirstTrip()` gate. CI is green because flaky-skip ≠ fail, but the underlying race is real:
+**Root cause: test was waiting on the wrong sentinel.** The audit (`Trip/index.tsx` + `ActivityGantt.tsx`) showed the back-to-trips button and the `[data-target="activity-gantt"]` div live in the same `{trip && (...)}` block — they render or don't together. The flake wasn't a gantt-render race; it was upstream in `openFirstTrip()`:
 
-- Trace (run `25885361077`, before the gate landed) shows `/longhaul/trips/:id` was **never requested** at all — the Trip detail component's `useEffect(() => fetchTrip(), [tripId])` either never fired or fired with an unresolved `tripId` from `useParams`. Other on-prem calls in the same session 5xx'd (`/drivers` → 503, `/filter-options` → 500), suggesting a wider tunnel/Dolios stall window around the same time.
-- The current gate uses the back-to-trips button (only renders inside `{trip && (...)}`) as the "trip loaded" sentinel. Run `25886270089` shows that sentinel can render WITHOUT the gantt rendering — meaning either the gate flips too eagerly or the gantt has its own conditional/data-loading race.
+1. `await expect(trips.laneTitle).toBeVisible({ timeout: 30_000 })` was a hard assertion on `<h5>Trips (N)</h5>` — but the lane title depends on the `/longhaul/trips` data fetch resolving (the count is in the text). On a slow AppGuard bootstrap the data fetch lags the shell mount by 30+ s, so the assertion threw before reaching the trip-detail goto. (Matches the pattern: trace from run `25885361077` showed `/longhaul/trips/:id` **never** fired — we hadn't reached `detail.goto()` yet.)
+2. Other specs in this suite already solve this — `trips.spec.ts` beforeEach waits on `newTripButton` (which renders with the `<Trips>` shell, before the data fetch), with a one-shot reload-retry on stall.
 
-**To resolve:**
+**Fix landed in commits `1db2fd5` + `282d671` + `22f6c74`:**
 
-1. Reproduce locally against QA (`cd apps/e2e && E2E_TARGET=qa npx playwright test tests/browser/longhaul/trip-detail.spec.ts:34 --reporter=line --headed`). May need multiple attempts to hit the race.
-2. Capture the network log for the failing case. Is `/longhaul/trips/:id` actually fired? If so, what does it return? If not, is `tripId` undefined from `useParams`?
-3. Check `apps/tenant-web/src/features/driver-planning/containers/Trip/index.tsx:43` — confirm `ActivityGantt` renders unconditionally when `trip` is set (it does today; verify the `days`/`activities`/`orderIdToColor` props from `parseActivities` aren't an empty-state that suppresses the `[data-target="activity-gantt"]` div). Spoiler: that div is unconditional, so an empty trip should still render the gantt shell — confirming an empty gantt would point at a partial-trip-load (trip set, but `activities` array empty/undefined → still a fail, not a skip).
-4. If the issue is partial trip data (trip object set but `activities` undefined), tighten `Trip/index.tsx` to render the gantt only when `trip.activities` is an array, and surface a clearer loading state. Update the gate's sentinel to gate on the gantt itself (or on a `data-trip-loaded="true"` attribute added to the Lane wrapper once `parseActivities` succeeds).
-5. If the issue is a missed `useEffect` cycle (tripId undefined on first render), add a `key={tripId}` to force remount, or guard the effect against `!tripId`.
+- Convert the laneTitle hard-expect into a `waitFor + skip` pattern (caught run `25886270089`'s alternate flake mode).
+- Switch the sentinel from `laneTitle` to `newTripButton` (shell-mount, not data-bound).
+- Add a one-shot `page.reload({ waitUntil: 'domcontentloaded' })` retry on stall.
+- Add a cards-streamed-in wait before the `firstTripId()` empty-check.
+- Keep the existing back-to-trips button gate as the second-tier guard for genuine `/trips/:id` outages.
 
-**Acceptance:** trip-detail `@smoke` runs cleanly on 5 consecutive `workflow_dispatch` runs with 0 first-attempt fails on the gantt assertion. Then the on-prem-stall skip-gate inside `openFirstTrip()` can be tightened back to a hard fail (or removed entirely).
+**Acceptance met:** 5 consecutive `workflow_dispatch` runs after `22f6c74`, trip-detail `@smoke` PASSED every time (durations 3.0s / 4.6s / 3.7s / 20.9s / 2.9s):
+
+| Run           | trip-detail @smoke | Workflow conclusion            |
+| ------------- | ------------------ | ------------------------------ |
+| `25888283080` | ✓ 3.0s             | success                        |
+| `25888590173` | ✓ 4.6s             | failure (planning.spec.ts:115) |
+| `25888866950` | ✓ 3.7s             | success                        |
+| `25889060544` | ✓ 20.9s            | success                        |
+| `25889275199` | ✓ 2.9s             | failure (planning.spec.ts:115) |
+
+The on-prem-stall skip-gate inside `openFirstTrip()` stays — the upstream `/longhaul/trips` fetch genuinely flakes and the gate gives honest "skipped because infra, not product" signal. Don't tighten it back to a hard fail until the on-prem proxy is stabilised.
+
+### G — `planning.spec.ts:115` flake — NEW follow-up 2026-05-14
+
+Surfaced during the F-acceptance runs. The "add an activity, delete one, and deleting the last removes the shipment from the trip" spec failed both first attempt and retry on runs `25888590173` and `25889275199` (~40s timeout each, same 40s on retry — not a momentary stall). Other planning specs in the same runs passed. The test sequence is heavy: add-shipment, add-activity, delete-activity ×2, verify shipment removal — all hitting on-prem write paths.
+
+**Likely candidates:**
+
+- One of the activity-mutation calls (POST / DELETE `/activities`) takes >30s under load, blowing a per-step timeout inside the spec.
+- A redux-thunk / optimistic-update race where the UI's "last activity deleted → shipment removed" reconciliation doesn't fire on the on-prem latency profile.
+- A selector that worked on the local Dolios reseed but is flake-prone against the real QA box.
+
+**To investigate:** download the trace from `25888590173` (Playwright report artefact `playwright-report-qa-longhaul`); look at the network panel for slow on-prem writes and the action panel for which step hit the 40s wall. If it's the same pattern as F (wrong sentinel + on-prem-data race), the fix shape is the same.
+
+**Acceptance:** 5 consecutive `workflow_dispatch` runs with 0 first-attempt fails of `planning.spec.ts:115`.
 
 ### D — _Optional_ — Phase 6 (repository integration tests)
 
@@ -361,6 +388,11 @@ Move to `plans/completed/` once:
   `workflow_dispatch` runs with 0 first-attempt fails on the gantt assertion,
   OR the spec is split (fast-path keeps the `@smoke` tag; flake-prone path
   moved to a separate spec gated explicitly on on-prem stability).
+  **(Closed 2026-05-14 — runs `25888283080` / `25888590173` / `25888866950`
+  / `25889060544` / `25889275199` all pass.)**
+- G is closed — `planning.spec.ts:115` runs cleanly on 5 consecutive
+  `workflow_dispatch` runs OR the on-prem activity-mutation latency is
+  characterised + the spec's timeouts adjusted accordingly.
 - D and E remain in their own backlog files; this plan doesn't track them.
 
 ## Session boundary: 2026-05-14 (second pass) → next
@@ -384,7 +416,11 @@ Pause point for handoff:
   Body-already-read double-`.json()` in qa-api trip specs, Downshift
   type-to-open in `planning.spec.ts:177`, and an `openFirstTrip()`
   on-prem-stall skip-gate for `trip-detail.spec.ts:34`.
-- F: **new follow-up.** `trip-detail.spec.ts:34` `@smoke` still flakes — first
-  attempt failed with gantt invisible despite the trip-loaded sentinel
-  flipping; retry skipped via the new gate so CI is green but the underlying
-  race is unresolved. See item F for the investigation plan.
+- F: **closed 2026-05-14.** Root cause was the wrong wait sentinel in
+  `openFirstTrip()` (`laneTitle` is data-bound; `newTripButton` is shell-
+  bound). Fix landed in `1db2fd5` + `282d671` + `22f6c74`; 5 consecutive
+  `workflow_dispatch` runs after the fix had trip-detail `@smoke` PASSING
+  every time. See item F for the run table.
+- G: **new follow-up.** `planning.spec.ts:115` ("add an activity, delete
+  one") failed first attempt AND retry on 2 of the 5 F-acceptance runs.
+  Same on-prem latency profile, different surface. See item G.
