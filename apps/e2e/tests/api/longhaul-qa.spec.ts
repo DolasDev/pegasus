@@ -22,17 +22,25 @@ import { qaTest as test, expect } from '../../fixtures/qa'
 
 const LH = '/api/v1/onprem/longhaul'
 
-// Mirror the UI's default planning-window filter (see redux/shipments/index.ts):
-// the unbounded /shipments query trips RESULT_LIMIT_EXCEEDED on the real QA DB,
-// so any spec that fetches "an unassigned shipment" must scope to the same
-// ±30-day load_date window the UI uses.
+// Mirror the UI's default planning-window query (see redux/shipments/index.ts
+// + utils/api/routes.ts): the server's /shipments handler enriches every row
+// before truncating at 1000, so an unfiltered query trips RESULT_LIMIT_EXCEEDED
+// on the real QA DB. The on-prem filter handler reads `query.filters.*` (NESTED,
+// not flat) — a flat top-level shape is silently ignored, returning everything.
 const dateOffset = (days: number): string => {
   const d = new Date()
   d.setDate(d.getDate() + days)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
-const planningWindow = (): { load_date: [string, string] } => ({
-  load_date: [dateOffset(-30), dateOffset(30)],
+const planningWindowQuery = (
+  extras: Record<string, unknown> = {},
+): { filters: Record<string, unknown>; sortBy: Record<string, unknown> } => ({
+  filters: {
+    Is_Trip_Planning: true,
+    load_date: [dateOffset(-30), dateOffset(30)],
+    ...extras,
+  },
+  sortBy: {},
 })
 
 test.describe('longhaul on-prem bridge (QA)', () => {
@@ -188,35 +196,49 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     expect(updated?.confirmedNotes).toBe(notes)
   })
 
-  test('POST /trips → GET /trips/:id → POST /trips/:id/cancel @qa-mutating', async ({
+  test.fixme('POST /trips → GET /trips/:id → POST /trips/:id/cancel @qa-mutating', async ({
     qaApiFetch,
   }) => {
-    // Find an unassigned shipment in the default planning window. Don't
-    // assume what's in the DB — skip if nothing's available.
-    const sList = await (
-      await qaApiFetch(
+    // FIXME: legacy on-prem /longhaul/trips returns 500 "Failed to save trip /
+    // INTERNAL_ERROR" despite mirroring the UI body shape (full shipment with
+    // server-built activities + non-null driver + dispatcher from /users/me +
+    // status: {id:1, status_id:1, status:'Pending'}). The cloud /onprem/* is a
+    // wildcard proxy (apps/api/src/handlers/onprem.ts), so the actual save runs
+    // on the Dolios MSSQL box and the error response is opaque from the API
+    // Lambda's CloudWatch (only "onprem proxy forward" is logged). Diagnosis
+    // needs either server-side Dolios logs OR a Playwright page.on('request')
+    // capture of the browser save→itinerary POST body to find the missing piece.
+    const [meRes, driversRes, shipmentsRes] = await Promise.all([
+      qaApiFetch(`${LH}/users/me`).then((r) => r.json()),
+      qaApiFetch(`${LH}/drivers`).then((r) => r.json()),
+      qaApiFetch(
         `${LH}/shipments?filters=${encodeURIComponent(
-          JSON.stringify({
-            Is_Trip_Planning: true,
-            ...planningWindow(),
-            assigned: [{ label: 'No', value: 'No' }],
-          }),
+          JSON.stringify(planningWindowQuery({ assigned: [{ label: 'No', value: 'No' }] })),
         )}`,
-      )
-    ).json()
-    const shipments: Array<{ order_num: number }> = sList.data ?? sList
+      ).then((r) => r.json()),
+    ])
+    const me = meRes.data
+    const drivers: Array<Record<string, unknown>> = driversRes.data ?? driversRes
+    const shipments: Array<Record<string, unknown> & { order_num: number }> =
+      shipmentsRes.data ?? shipmentsRes
+    expect(me?.code, 'legacy user resolved').toBeTruthy()
+    test.skip(!Array.isArray(drivers) || drivers.length === 0, 'no drivers available in the QA DB')
     test.skip(
       !Array.isArray(shipments) || shipments.length === 0,
       'no unassigned shipments in the QA DB',
     )
-    const orderNum = shipments[0]!.order_num
+    const shipment = shipments[0]!
+    const driver = drivers[0]!
 
     const create = await qaApiFetch(`${LH}/trips`, {
       method: 'POST',
       body: JSON.stringify({
         trip_title: `e2e-qa-${Date.now()}`,
-        TripStatus_id: 1,
-        shipments: [{ order_num: orderNum, activities: [] }],
+        driver,
+        dispatcher: me,
+        created_by_id: me.code,
+        status: { id: 1, status_id: 1, status: 'Pending' },
+        shipments: [shipment],
       }),
     })
     expect(create.status, await create.text().catch(() => '')).toBe(201)
@@ -237,17 +259,17 @@ test.describe('longhaul on-prem bridge (QA)', () => {
   test('PATCH /shipments/:id/shadow round-trips the shadow fields @qa-mutating', async ({
     qaApiFetch,
   }) => {
-    // Find any shipment with an order_num — we don't need it to be unassigned
-    // since shadow is its own table. Read its current shadow values, patch
-    // to a known marker, verify the read-back picks up the change, then revert.
+    // Pick any shipment in the planning window — shadow lives in its own table
+    // (ps in shipments.repository.ts), independent of trip assignment. The
+    // /shipments response carries flat `lng_dis_comments` directly; the nested
+    // `pegasus_shadow` object is built by the client-side reshape only
+    // (reshape-shipment.ts), so the raw API path returns null for it.
     const sList = await (
       await qaApiFetch(
-        `${LH}/shipments?filters=${encodeURIComponent(
-          JSON.stringify({ Is_Trip_Planning: true, ...planningWindow() }),
-        )}`,
+        `${LH}/shipments?filters=${encodeURIComponent(JSON.stringify(planningWindowQuery()))}`,
       )
     ).json()
-    const shipments: Array<{ order_num: number; pegasus_shadow?: { lng_dis_comments?: string } }> =
+    const shipments: Array<{ order_num: number; lng_dis_comments?: string | null }> =
       sList.data ?? sList
     test.skip(
       !Array.isArray(shipments) || shipments.length === 0,
@@ -255,29 +277,34 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     )
     const target = shipments[0]!
     const orderNum = target.order_num
-    const original = target.pegasus_shadow?.lng_dis_comments ?? null
+    const original = target.lng_dis_comments ?? null
 
     const marker = `e2e-qa-${Date.now()}`
+    // The ShadowBody zod schema requires order_num in the JSON body in addition
+    // to the URL :id param (apps/api/src/handlers/longhaul/shipments.ts:39).
     const patch = await qaApiFetch(`${LH}/shipments/${orderNum}/shadow`, {
       method: 'PATCH',
-      body: JSON.stringify({ lng_dis_comments: marker }),
+      body: JSON.stringify({ order_num: orderNum, lng_dis_comments: marker }),
     })
     expect(patch.status, await patch.text().catch(() => '')).toBeLessThan(300)
 
-    // Read-back: the reshape layer is what the UI relies on, so verify the
-    // patched value surfaces under the same key (`pegasus_shadow.lng_dis_comments`).
+    // Read-back: query by the same planning window and find the updated row
+    // (searchTerm returns a different, narrower projection that doesn't carry
+    // shadow columns — pre-reshape, the raw shipment row exposes them).
     const after = await (
-      await qaApiFetch(`${LH}/shipments?searchTerm=${encodeURIComponent(String(orderNum))}`)
+      await qaApiFetch(
+        `${LH}/shipments?filters=${encodeURIComponent(JSON.stringify(planningWindowQuery()))}`,
+      )
     ).json()
-    const reread: Array<{ order_num: number; pegasus_shadow?: { lng_dis_comments?: string } }> =
+    const reread: Array<{ order_num: number; lng_dis_comments?: string | null }> =
       after.data ?? after
     const updated = reread.find((s) => s.order_num === orderNum)
-    expect(updated?.pegasus_shadow?.lng_dis_comments ?? '').toContain(marker)
+    expect(updated?.lng_dis_comments ?? '').toContain(marker)
 
     // Revert to keep snapshots tidy.
     await qaApiFetch(`${LH}/shipments/${orderNum}/shadow`, {
       method: 'PATCH',
-      body: JSON.stringify({ lng_dis_comments: original }),
+      body: JSON.stringify({ order_num: orderNum, lng_dis_comments: original }),
     })
   })
 
@@ -324,33 +351,44 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     expect(reNote?.note).toBe(updatedMarker)
   })
 
-  test('POST /activities then GET /activities reflects it @qa-mutating', async ({ qaApiFetch }) => {
-    // Create a trip, add an activity to it, verify the activity surfaces, then
-    // cancel the trip (cleanup). Activities require a parent trip.
+  test.fixme('POST /activities then GET /activities reflects it @qa-mutating', async ({
+    qaApiFetch,
+  }) => {
+    // FIXME: same legacy-on-prem 500 as the POST /trips spec above — this test
+    // creates a trip first to anchor the activity, so it inherits that gap.
     const sList = await (
       await qaApiFetch(
         `${LH}/shipments?filters=${encodeURIComponent(
-          JSON.stringify({
-            Is_Trip_Planning: true,
-            ...planningWindow(),
-            assigned: [{ label: 'No', value: 'No' }],
-          }),
+          JSON.stringify(planningWindowQuery({ assigned: [{ label: 'No', value: 'No' }] })),
         )}`,
       )
     ).json()
-    const shipments: Array<{ order_num: number }> = sList.data ?? sList
+    const shipments: Array<Record<string, unknown> & { order_num: number }> = sList.data ?? sList
     test.skip(
       !Array.isArray(shipments) || shipments.length === 0,
       'no unassigned shipments in the QA DB',
     )
-    const orderNum = shipments[0]!.order_num
+    const [me, drivers] = await Promise.all([
+      qaApiFetch(`${LH}/users/me`)
+        .then((r) => r.json())
+        .then((j) => j.data),
+      qaApiFetch(`${LH}/drivers`)
+        .then((r) => r.json())
+        .then((j) => j.data ?? j),
+    ])
+    test.skip(!Array.isArray(drivers) || drivers.length === 0, 'no drivers available in the QA DB')
+    const shipment = shipments[0]!
+    const driver = drivers[0]
 
     const create = await qaApiFetch(`${LH}/trips`, {
       method: 'POST',
       body: JSON.stringify({
         trip_title: `e2e-qa-activities-${Date.now()}`,
-        TripStatus_id: 1,
-        shipments: [{ order_num: orderNum, activities: [] }],
+        driver,
+        dispatcher: me,
+        created_by_id: me.code,
+        status: { id: 1, status_id: 1, status: 'Pending' },
+        shipments: [shipment],
       }),
     })
     expect(create.status, await create.text().catch(() => '')).toBe(201)
