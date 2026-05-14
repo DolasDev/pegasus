@@ -90,7 +90,21 @@ The 1 new browser spec:
 
 **Acceptance:** the `e2e-qa-longhaul.yml` `workflow_dispatch` run after the reseed shows 0 unexpected failures across the @qa-mutating specs; only `test.skip` for unmet preconditions is acceptable.
 
-### B — Reconcile Prisma migration drift _(medium priority; one-time fix)_
+### B — Reconcile Prisma migration drift _~~medium priority~~ — DONE 2026-05-14_
+
+**Status: complete** (commit `c7d44c9`). `prisma migrate dev` runs clean now —
+`prisma migrate diff --from-config-datasource --to-schema` returns empty, and
+a `--create-only` probe yields no drift warnings. All 1041 API tests pass.
+
+What landed: schema edits to declare what the DB already has (GIN index on
+`Tenant.emailDomains`, `onDelete: Cascade` on `TenantSsoProvider.tenant`,
+`@db.Timestamptz(6)` on its createdAt/updatedAt); a new migration
+`20260514052310_drop_redundant_customers_email_idx` (IF EXISTS so it's a
+no-op on the dev DB); shadow-DB support in `prisma.config.ts`. Plus a
+metadata-only update to `_prisma_migrations` to fix the historic 0001_init
+checksum mismatch and remove the rolled-back 0004 row.
+
+#### Original detail (kept for next time something drifts)
 
 During Phase 7's pre-push, `prisma migrate dev` flagged drift on the Neon dev DB:
 
