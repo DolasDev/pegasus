@@ -232,14 +232,17 @@ test.describe('longhaul on-prem bridge (QA)', () => {
         shipments: [shipment],
       }),
     })
-    expect(create.status, await create.text().catch(() => '')).toBe(201)
-    const createdRaw = (await create.json()).data ?? (await create.json())
+    const createText = await create.text()
+    expect(create.status, createText).toBe(201)
+    const createBody = createText ? JSON.parse(createText) : {}
+    const createdRaw = createBody?.data ?? createBody
     const tripId = createdRaw?.id ?? createdRaw?.trip?.id
     expect(tripId, 'POST /trips returned an id').toBeTruthy()
 
     const fetched = await qaApiFetch(`${LH}/trips/${tripId}`)
     expect(fetched.status).toBe(200)
-    const trip = (await fetched.json()).data ?? (await fetched.json())
+    const fetchedBody = await fetched.json()
+    const trip = fetchedBody?.data ?? fetchedBody
     // Trip is in a cancellable state (status < 4).
     expect(Number(trip?.TripStatus_id ?? trip?.status_id)).toBeLessThan(4)
 
@@ -378,8 +381,10 @@ test.describe('longhaul on-prem bridge (QA)', () => {
         shipments: [shipment],
       }),
     })
-    expect(create.status, await create.text().catch(() => '')).toBe(201)
-    const created = (await create.json()).data ?? (await create.json())
+    const createText = await create.text()
+    expect(create.status, createText).toBe(201)
+    const createBody = createText ? JSON.parse(createText) : {}
+    const created = createBody?.data ?? createBody
     const tripId = created?.id ?? created?.trip?.id
     expect(tripId).toBeTruthy()
 
@@ -388,7 +393,8 @@ test.describe('longhaul on-prem bridge (QA)', () => {
       // activities for the shipment via buildShipmentActivities. Confirm GET
       // sees them.
       const fetched = await qaApiFetch(`${LH}/trips/${tripId}`)
-      const trip = (await fetched.json()).data ?? (await fetched.json())
+      const fetchedBody = await fetched.json()
+      const trip = fetchedBody?.data ?? fetchedBody
       const activities = (trip?.activities as unknown[]) ?? []
       expect(activities.length, 'auto-generated activities present').toBeGreaterThan(0)
     } finally {
