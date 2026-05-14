@@ -2,6 +2,7 @@
 import * as cdk from 'aws-cdk-lib'
 import { CognitoStack } from '../lib/stacks/cognito-stack'
 import { ApiStack } from '../lib/stacks/api-stack'
+import { ApiCdnStack } from '../lib/stacks/api-cdn-stack'
 import { FrontendStack } from '../lib/stacks/frontend-stack'
 import { AdminFrontendStack } from '../lib/stacks/admin-frontend-stack'
 import { FrontendAssetsStack } from '../lib/stacks/frontend-assets-stack'
@@ -150,6 +151,25 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   tunnelProxyFunction: wireguardStack.tunnelProxyFunction,
 })
 apiStack.addDependency(cognitoStack)
+
+// ── ApiCdnStack ───────────────────────────────────────────────────────────────
+// CloudFront in front of the HTTP API, with the api.pegasus[-qa].dolas.dev
+// custom domain attached in staging/prod (cert + SSM contract owned by
+// dolas-infra, see lib/stacks/api-cdn-stack.ts). Dev gets a *.cloudfront.net
+// distribution without the custom domain, matching the FrontendStack pattern.
+// CDK deployment order: ApiStack → ApiCdnStack.
+
+const apiCdnStack = new ApiCdnStack(app, `${stackIdPrefix}-ApiCdnStack`, {
+  env,
+  stackName: `${stackNamePrefix}-api-cdn`,
+  description: `${descPrefix} — CloudFront in front of the HTTP API (custom domain api.pegasus[-qa].dolas.dev)`,
+  httpApiId: apiStack.httpApiId,
+  httpApiRegion: env.region ?? 'us-east-1',
+  // staging → api.pegasus-qa.dolas.dev, prod → api.pegasus.dolas.dev. Cert +
+  // domain come from SSM published by dolas-infra. dev stays at *.cloudfront.net.
+  attachCustomDomain: envName === 'staging' || envName === 'prod',
+})
+apiCdnStack.addDependency(apiStack)
 
 // ── MonitoringStack ───────────────────────────────────────────────────────────
 // CDK deployment order: ApiStack → MonitoringStack.
