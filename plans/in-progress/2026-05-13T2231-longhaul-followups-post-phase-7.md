@@ -40,7 +40,16 @@ Test counts: driver-planning vitest **604** (was 528 at session start). All 8 lo
 
 ## What's left
 
-### A — Verify the new `@qa-mutating` round-trips on a reseed pass _(highest priority)_
+### A — Verify the new `@qa-mutating` round-trips on a reseed pass _~~highest priority~~ — DONE 2026-05-14_
+
+**Status: complete.** Run `25839871338` (commit `cda3a82`) green on QA after the
+reseed: 41 passed, 6 fixme, 0 failed, 0 flaky. Findings + the remaining
+on-prem-trip-save gap are documented in `plans/todo/longhaul-qa-mutating-triage.md`
+under the 2026-05-14 section. 3 specs are now `test.fixme` pending Dolios-side
+diagnosis of the legacy trip-save 500 — lift them together once the missing
+body field or validation gap is identified.
+
+#### Original verification recipe (kept for the next reseed cycle)
 
 The Phase 7c+d+e specs (commit `180ae63`) have NOT been exercised against a clean QA snapshot. Each was written defensively — self-skips when its precondition isn't met, cleans up after itself where possible — but their happy-path assertions are unverified.
 
