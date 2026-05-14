@@ -128,7 +128,40 @@ We worked around it with `prisma migrate deploy` (non-destructive — only appli
 
 **Acceptance:** `prisma migrate dev` runs clean (no drift complaint) against the Neon dev DB.
 
-### C — Workflow feature follow-ups _(verify scope, then close out)_
+### C — Workflow feature follow-ups _~~verify scope~~ — static audit DONE 2026-05-14_
+
+**Status: static audit clean.** All test suites green (api 1041, admin-web 26,
+tenant-web 713) and typechecks pass. Coverage breakdown:
+
+- `workflows.test.ts` — 23 cases (RBAC 5 / `POST /upload-url` 5 / `POST /` 7 /
+  GET 6). Happy + sad paths comprehensive.
+- `admin/workflows.test.ts` — 4 cases for the cross-tenant admin browse
+  endpoint added in `e70d61a`.
+- `workflow-developer.cedar` — clean; loaded via `authz/load.ts` 30-personas
+  glob. `role-options.ts` declares the persona; `cedar.schema.json` declares
+  the `Workflow` resource + `ReadWorkflow`/`UploadWorkflow` actions.
+- `admin-web /tenants/$id.tsx` surfaces the GLOBAL-tenant toggle; `/workflows`
+  cross-tenant browse table mounts cleanly.
+- `tenant-web /settings/workflows` Platform-library + Your-workflows sections
+  with download buttons.
+- `TENANT_SCOPED_MODELS` story: `1619e94` added Workflow, `e70d61a` removed it
+  (GLOBAL needs cross-tenant visibility) + acknowledged in `INTENTIONALLY_UNSCOPED`.
+
+**Remaining for manual UAT (needs the dev server + your hands):**
+
+1. Admin-web tenant detail → Promote to platform tenant → Demote; verify
+   `isPlatformTenant` flips and the GLOBAL banner appears.
+2. Admin-web `/workflows` route loads (empty table is fine — verifies auth).
+3. Tenant-web `/settings/workflows` renders both sections under auth.
+4. (Optional) Run `POST /api/v1/workflows/upload-url` as a user with the
+   `workflow_developer` role; confirm 201 + `{workflowId,uploadUrl}`; commit
+   via `POST /api/v1/workflows`; verify the row appears in /settings/workflows.
+
+**Open follow-up surfaced by the audit (non-blocking):** the Workflow SDK/CLI
+for actually uploading isn't in this commit set — the UI renders an empty list
+until the SDK ships. Plan already called this out.
+
+#### Original spec (kept for the manual UAT)
 
 The feature commit (`8a14977`) bundled ~1300 lines: prisma model + migration, handler/repo, cedar policies + workflow-developer persona, admin-web tenants UI/API. Worth a quick audit pass:
 
