@@ -40,14 +40,60 @@ Test counts: driver-planning vitest **604** (was 528 at session start). All 8 lo
 
 ## What's left
 
-### A — Verify the new `@qa-mutating` round-trips on a reseed pass _~~highest priority~~ — DONE 2026-05-14_
+### A — Verify the new `@qa-mutating` round-trips on a reseed pass _— PARTIAL 2026-05-14; ON-PREM DIAGNOSIS PENDING_
 
-**Status: complete.** Run `25839871338` (commit `cda3a82`) green on QA after the
-reseed: 41 passed, 6 fixme, 0 failed, 0 flaky. Findings + the remaining
-on-prem-trip-save gap are documented in `plans/todo/longhaul-qa-mutating-triage.md`
-under the 2026-05-14 section. 3 specs are now `test.fixme` pending Dolios-side
-diagnosis of the legacy trip-save 500 — lift them together once the missing
-body field or validation gap is identified.
+**Status: 2 of 5 new specs verified passing on QA; 3 are `test.fixme` blocked
+on an unresolved on-prem defect.** The acceptance criterion called for
+`test.skip` only on unmet preconditions; `test.fixme` does NOT satisfy that.
+A is **not** done — the underlying issue is unfinished business.
+
+Workflow run `25839871338` (commit `cda3a82`) on the reseeded QA exit-status'd
+green (41 pass / 6 skip / 0 fail), but 3 of those "skips" are `test.fixme`'d
+specs covering real product flows:
+
+| Spec                                                           | State                                                                   | Reason                                                                   |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `longhaul-qa.spec.ts` POST /trips/:id/notes → PATCH /notes/:id | ✓ PASS                                                                  | —                                                                        |
+| `longhaul-qa.spec.ts` PATCH /shipments/:id/shadow round-trip   | ✓ PASS (after the `lng_dis_comments` flat-key + body `order_num` fixes) | —                                                                        |
+| `longhaul-qa.spec.ts:199` POST /trips → GET → cancel           | ✘ fixme                                                                 | Legacy Dolios POST `/longhaul/trips` returns opaque `500 INTERNAL_ERROR` |
+| `longhaul-qa.spec.ts:359` POST /activities                     | ✘ fixme                                                                 | Inherits the trip-create 500 (creates a parent trip first)               |
+| `planning.spec.ts:177` browser save→itinerary                  | ✘ fixme                                                                 | UI's save POST hits the same 500; snackbar shows error                   |
+
+**Real fixes that landed during this pass (commit `8ca341e`):**
+
+1. `/shipments` filter must be NESTED `{filters:{...},sortBy:{}}` — flat shape
+   silently returned the whole DB → `RESULT_LIMIT_EXCEEDED`. Three specs were
+   skipping for the wrong reason (now caught by the `planningWindowQuery`
+   helper).
+2. `PATCH /shipments/:id/shadow` requires `order_num` in the BODY, not just
+   the URL `:id` (zod `ShadowBody` at `handlers/longhaul/shipments.ts:39`).
+3. `pegasus_shadow` is a client-side reshape only — raw `/shipments` carries
+   flat `lng_dis_comments`. Read-back now checks the flat key.
+
+**Open defect — POST /onprem/longhaul/trips returns 500 on the QA path.** Even
+with the body mirroring what the UI sends (full shipment from the planning-
+window query with server-built activities; non-null driver from `/drivers`;
+dispatcher from `/users/me`; `status:{id:1,status_id:1,status:'Pending'}`),
+Dolios rejects. The cloud Lambda is a wildcard proxy
+(`apps/api/src/handlers/onprem.ts`); CloudWatch only shows
+`"onprem proxy forward"` — the actual error is opaque from outside the
+on-prem box. May be a real product regression or a missing body field.
+
+**Two viable diagnostic paths (pick one to lift the fixmes):**
+
+1. **Server-side (Dolios logs).** SSH to the Dolios MSSQL host, tail the Node
+   service's logs for one of the captured correlation IDs (e.g. the most
+   recent: `5aafaeab-ef98-4766-a904-26bdf81cf484`, `97252827-49da-4e41-82fd-17e3efc1d936`).
+   Find the actual validation/INSERT error; fix the request body in the
+   qa-api spec + the UI if needed; un-fixme.
+2. **Client-side (browser request capture).** Temporarily un-fixme
+   `planning.spec.ts:177`; replace its body with a `page.on('request')`
+   interceptor that logs the JSON the UI POSTs on a successful (manual or
+   browser-spec-driven) save. Diff against the qa-api spec body; restore.
+
+The next session should pick up at one of these paths. Triage doc has the
+same details in machine-readable form under "2026-05-14 verification pass":
+`plans/todo/longhaul-qa-mutating-triage.md`.
 
 #### Original verification recipe (kept for the next reseed cycle)
 
@@ -242,7 +288,24 @@ curl -sS -w "status=%{http_code}\n" -H "Authorization: Bearer $TOK" \
 
 Move to `plans/completed/` once:
 
-- A is done (the @qa-mutating round-trips run green on a reseeded QA — preferably with the GH Actions artifact preserved).
-- B is done (no Prisma drift on the dev DB) OR explicitly punted with a one-line note here saying so.
-- C is done (Workflow feature has had a UAT pass and either ships or has a concrete follow-up list).
+- A is **actually** done — the 3 `test.fixme`'d trip-write specs are
+  un-fixme'd and passing on QA, OR the underlying on-prem 500 is filed as a
+  separate tracked defect and the plan acknowledges those specs were deferred
+  to that issue (not merely marked fixme as a CI workaround).
+- B is done (no Prisma drift on the dev DB) OR explicitly punted with a
+  one-line note here saying so. **(Closed 2026-05-14 in `c7d44c9`.)**
+- C is done — static audit clean (2026-05-14); manual click-through pending.
+  Plan acknowledges the SDK/CLI as a separate follow-up.
 - D and E remain in their own backlog files; this plan doesn't track them.
+
+## Session boundary: 2026-05-14 → next
+
+Pause point for handoff:
+
+- A: 2/5 new specs verified passing; 3 fixme'd pending on-prem diagnosis.
+  **Real product flow is unverified.** Resume from one of the two diagnostic
+  paths above. Next session has SSH to the Dolios box (user statement) — use
+  path 1.
+- B: closed.
+- C: static audit clean; manual UAT click-through pending user driving the
+  dev server.

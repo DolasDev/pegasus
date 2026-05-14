@@ -3,10 +3,13 @@
 **Status (2026-05-13): executed.** All 9 specs have been triaged and the
 corresponding coverage moved to the right layer. Specifics below.
 
-**Status (2026-05-14): executed + verified-on-QA.** After a fresh reseed,
-`e2e-qa-longhaul.yml` run `25839871338` ran the full @qa-mutating set
-green: 41 passed, 6 test.fixme, 0 failed, 0 flaky. Three specs are
-intentionally fixme'd pending an on-prem-side gap documented below.
+**Status (2026-05-14): PARTIALLY verified.** After a reseed, run
+`25839871338` exit-status'd green (41 pass / 6 skip / 0 fail), but 3 of
+those skips are `test.fixme` on a real unresolved on-prem trip-save 500.
+Verified-passing: notes round-trip, shadow round-trip. Pending: POST
+/trips, POST /activities (via trip-create), browser save→itinerary.
+`test.fixme` here is a CI workaround, NOT verification — A is incomplete
+until those specs run or the underlying defect is filed separately.
 
 **Context:** the original QA E2E plan parked 9 browser specs as `test.fixme`
 because they each need a QA-DB reseed to exercise the on-prem MSSQL write
