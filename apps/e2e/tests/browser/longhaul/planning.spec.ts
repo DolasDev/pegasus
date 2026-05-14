@@ -174,7 +174,15 @@ test.describe('Planning tab', () => {
     await expect(pp.snackbar).toContainText(/shipment/i)
   })
 
-  test('saves a trip and navigates to its itinerary @qa-mutating', async ({ page, qaWebUrl }) => {
+  test.fixme('saves a trip and navigates to its itinerary @qa-mutating', async ({
+    page,
+    qaWebUrl,
+  }) => {
+    // FIXME: blocked on the same legacy-on-prem 500 documented in
+    // tests/api/longhaul-qa.spec.ts:199 (test.fixme on POST /trips). The save
+    // POST returns 500 "Failed to save trip / INTERNAL_ERROR" → the snackbar
+    // shows the error → this test times out waiting for "saved". Lift the
+    // fixme once the Dolios-side save accepts our body shape.
     const pp = new PlanningPage(page, qaWebUrl)
     // Running last in the file, AppGuard occasionally stays stuck on "Loading…"
     // when one of /drivers, /dispatchers, /shipments is slow on a tunnel blip.
