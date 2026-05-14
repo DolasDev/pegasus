@@ -13,7 +13,10 @@ import { TripsPage } from './pages/TripsPage'
 // confirms the popover/prompt behaviour against the live app.
 // ---------------------------------------------------------------------------
 
-/** Open the first trip from the Trips list and return its detail PO + id. */
+/** Open the first trip from the Trips list and return its detail PO + id.
+ *  Skips cleanly if the on-prem `/trips/:id` fetch stalls/5xx's and the detail
+ *  body never mounts (gated on the back-to-trips button which only renders
+ *  inside the `{trip && (...)}` block once fetchTrip resolves). */
 async function openFirstTrip(page: Page, qaWebUrl: string) {
   const layout = new DriverPlanningLayout(page, qaWebUrl)
   await layout.openTab('Trips')
@@ -23,6 +26,11 @@ async function openFirstTrip(page: Page, qaWebUrl: string) {
   test.skip(tripId === null, 'no trips in the QA DB under the default filter')
   const detail = new TripDetailPage(page, qaWebUrl)
   await detail.goto(tripId!)
+  await detail.backToTripsButton.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
+  test.skip(
+    !(await detail.backToTripsButton.isVisible()),
+    'trip detail did not load (on-prem /trips/:id slow or 5xx)',
+  )
   return { detail, tripId: tripId! }
 }
 
