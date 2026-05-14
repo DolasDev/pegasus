@@ -40,6 +40,7 @@ Everything from the 2026-05-13 staged pivot and Phase 7 triage is merged and pus
 | `1db2fd5` | fix(e2e): also soft-skip openFirstTrip when the Trips list never mounts     |
 | `282d671` | fix(e2e): add reload-retry to openFirstTrip — mirror trips.spec.ts pattern  |
 | `22f6c74` | fix(e2e): wait on Trips shell sentinel, not the data-dependent laneTitle    |
+| `617d98b` | fix(e2e): lift reload-retry + shell-mount wait into planning beforeEach     |
 
 Test counts: driver-planning vitest **604** (was 528 at session start). All 8 longhaul handlers tested (80 cases). E2E `--grep-invert "@qa-mutating"` verified clean on QA (11/0, 1.2 min). `e2e-qa-longhaul.yml` ran green via `workflow_dispatch` (run `25823001497`, 4m26s).
 
@@ -291,19 +292,26 @@ The feature commit (`8a14977`) bundled ~1300 lines: prisma model + migration, ha
 
 The on-prem-stall skip-gate inside `openFirstTrip()` stays — the upstream `/longhaul/trips` fetch genuinely flakes and the gate gives honest "skipped because infra, not product" signal. Don't tighten it back to a hard fail until the on-prem proxy is stabilised.
 
-### G — `planning.spec.ts:115` flake — NEW follow-up 2026-05-14
+### G — `planning.spec.ts:115` flake _— DONE 2026-05-14 (same root cause as F)_
 
-Surfaced during the F-acceptance runs. The "add an activity, delete one, and deleting the last removes the shipment from the trip" spec failed both first attempt and retry on runs `25888590173` and `25889275199` (~40s timeout each, same 40s on retry — not a momentary stall). Other planning specs in the same runs passed. The test sequence is heavy: add-shipment, add-activity, delete-activity ×2, verify shipment removal — all hitting on-prem write paths.
+**Root cause: planning.spec.ts beforeEach had no shell-mount wait or reload-retry.** Same shape as F. Error-context snapshot from run `25888590173` shows the Planning module stuck on `generic: "Loading…"` — AppGuard's bootstrap fan-out hadn't finished. The test then polls `shipmentCards().count() > 0` with a 40s timeout; on a normal run the data streams in well before 40s, on a stalled-bootstrap run it never does. The original `:177` test had an inline reload-retry to dodge this, but the other planning tests didn't.
 
-**Likely candidates:**
+**Fix landed in commit `617d98b`:**
 
-- One of the activity-mutation calls (POST / DELETE `/activities`) takes >30s under load, blowing a per-step timeout inside the spec.
-- A redux-thunk / optimistic-update race where the UI's "last activity deleted → shipment removed" reconciliation doesn't fire on the on-prem latency profile.
-- A selector that worked on the local Dolios reseed but is flake-prone against the real QA box.
+- Lift the reload-retry into the planning.spec.ts beforeEach. Gate on `searchDashboard` (shell-mount, data-independent) with a 15s try + 45s reload-retry — same pattern `trips.spec.ts` beforeEach uses.
+- Drop the now-redundant inline reload-retry from `:177` (the beforeEach covers it).
 
-**To investigate:** download the trace from `25888590173` (Playwright report artefact `playwright-report-qa-longhaul`); look at the network panel for slow on-prem writes and the action panel for which step hit the 40s wall. If it's the same pattern as F (wrong sentinel + on-prem-data race), the fix shape is the same.
+**Acceptance met:** 5 consecutive `workflow_dispatch` runs after `617d98b`, planning.spec.ts:127 (was :115) PASSED every time, all runs green:
 
-**Acceptance:** 5 consecutive `workflow_dispatch` runs with 0 first-attempt fails of `planning.spec.ts:115`.
+| Run           | planning:127 | Workflow conclusion  |
+| ------------- | ------------ | -------------------- |
+| `25891077009` | ✓ 7.0s       | success (46 / 0 / 0) |
+| `25891263715` | ✓ 22.6s      | success (43 / 2 / 0) |
+| `25891482074` | ✓ 8.1s       | success (45 / 1 / 0) |
+| `25891668226` | ✓ 7.8s       | success (45 / 2 / 0) |
+| `25891831799` | ✓ 6.4s       | success (46 / 1 / 0) |
+
+The 7-22.6s spread shows on-prem write paths can take 20+ s on a slow run — comfortably handled now that the AppGuard bootstrap completes _before_ the test starts instead of competing with it.
 
 ### D — _Optional_ — Phase 6 (repository integration tests)
 
@@ -393,6 +401,8 @@ Move to `plans/completed/` once:
 - G is closed — `planning.spec.ts:115` runs cleanly on 5 consecutive
   `workflow_dispatch` runs OR the on-prem activity-mutation latency is
   characterised + the spec's timeouts adjusted accordingly.
+  **(Closed 2026-05-14 — runs `25891077009` / `25891263715` / `25891482074`
+  / `25891668226` / `25891831799` all pass.)**
 - D and E remain in their own backlog files; this plan doesn't track them.
 
 ## Session boundary: 2026-05-14 (second pass) → next
@@ -421,6 +431,7 @@ Pause point for handoff:
   bound). Fix landed in `1db2fd5` + `282d671` + `22f6c74`; 5 consecutive
   `workflow_dispatch` runs after the fix had trip-detail `@smoke` PASSING
   every time. See item F for the run table.
-- G: **new follow-up.** `planning.spec.ts:115` ("add an activity, delete
-  one") failed first attempt AND retry on 2 of the 5 F-acceptance runs.
-  Same on-prem latency profile, different surface. See item G.
+- G: **closed 2026-05-14.** Same root cause as F (no shell-mount wait /
+  reload-retry in planning.spec.ts beforeEach). Fix landed in `617d98b`;
+  5 consecutive `workflow_dispatch` runs after the fix had planning:127
+  PASSING every time. See item G for the run table.
