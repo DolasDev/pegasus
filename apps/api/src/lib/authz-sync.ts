@@ -74,33 +74,57 @@ async function listAllStaticPolicies(policyStoreId: string): Promise<readonly Po
   return out
 }
 
+/** Wraps an AVP SDK error so the per-tenant aggregate identifies which AVP
+ *  call (and which policy file, when relevant) caused the failure. AWS SDK
+ *  error messages are typically generic ("Invalid input") without naming the
+ *  offending call, which hides the root cause behind a uniform aggregate. */
+function annotate(err: unknown, context: string): Error {
+  const name = (err as { name?: string }).name ?? 'Error'
+  const message = err instanceof Error ? err.message : String(err)
+  return new Error(`${context}: ${name}: ${message}`)
+}
+
 /**
  * Reconciles one tenant's AVP policy store to the current `.cedar` files.
  * Deletes every existing static policy, then recreates from disk. Idempotent.
  */
 export async function syncTenantPolicies(policyStoreId: string): Promise<SyncTenantResult> {
   const avp = getAvp()
-  const existing = await listAllStaticPolicies(policyStoreId)
+
+  let existing: readonly PolicyItem[]
+  try {
+    existing = await listAllStaticPolicies(policyStoreId)
+  } catch (err) {
+    throw annotate(err, 'ListPolicies')
+  }
 
   // Delete sequentially to stay well under AVP's per-store throttle. The
   // catalog is ~15 policies; ~15 × 50ms ≈ 0.75s — fine for a deploy hook.
   for (const p of existing) {
     if (!p.policyId) continue
-    await avp.send(new DeletePolicyCommand({ policyStoreId, policyId: p.policyId }))
+    try {
+      await avp.send(new DeletePolicyCommand({ policyStoreId, policyId: p.policyId }))
+    } catch (err) {
+      throw annotate(err, `DeletePolicy(${p.policyId})`)
+    }
   }
 
   // Recreate from current files. Parallel — these calls are independent and
   // we want the gap-without-policies window to close as fast as possible.
   const files = loadPolicies()
   await Promise.all(
-    files.map((f) =>
-      avp.send(
-        new CreatePolicyCommand({
-          policyStoreId,
-          definition: { static: { description: f.name, statement: f.statement } },
-        }),
-      ),
-    ),
+    files.map(async (f) => {
+      try {
+        await avp.send(
+          new CreatePolicyCommand({
+            policyStoreId,
+            definition: { static: { description: f.name, statement: f.statement } },
+          }),
+        )
+      } catch (err) {
+        throw annotate(err, `CreatePolicy(${f.name})`)
+      }
+    }),
   )
 
   return { policyStoreId, deleted: existing.length, created: files.length }
