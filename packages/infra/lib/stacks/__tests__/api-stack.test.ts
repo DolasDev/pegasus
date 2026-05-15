@@ -40,9 +40,11 @@ function synthApiStackWithCognito() {
 }
 
 describe('ApiStack — Lambda function', () => {
-  it('creates two Lambda functions (HTTP API + AVP store-count metric emitter)', () => {
+  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + Trigger invoker)', () => {
+    // HTTP API handler + AvpStoreCountFunction + SyncAvpPoliciesFunction +
+    // the CDK Triggers framework's invoker Lambda (one per Trigger).
     const template = synthApiStack()
-    template.resourceCountIs('AWS::Lambda::Function', 2)
+    template.resourceCountIs('AWS::Lambda::Function', 4)
   })
 
   it('uses Node.js 20.x runtime', () => {

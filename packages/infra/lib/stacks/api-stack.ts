@@ -10,6 +10,7 @@ import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2'
 import * as apigwv2i from 'aws-cdk-lib/aws-apigatewayv2-integrations'
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
 import * as ssm from 'aws-cdk-lib/aws-ssm'
+import * as triggers from 'aws-cdk-lib/triggers'
 import type * as s3 from 'aws-cdk-lib/aws-s3'
 import { type Construct } from 'constructs'
 import { PEGASUS_AUTHZ_METRIC_NAMESPACE } from '../metrics'
@@ -451,6 +452,96 @@ export class ApiStack extends cdk.Stack {
       description:
         'Hourly trigger for the AVP policy-store count metric emitter (Pegasus/Authorization/PolicyStoreCount).',
       targets: [new eventsTargets.LambdaFunction(avpStoreCountFunction)],
+    })
+
+    // ---------------------------------------------------------------------------
+    // AVP policy reconciliation — deploy-time Trigger
+    //
+    // Tenant policy stores are provisioned at tenant-create time
+    // (provisionTenantPolicyStore in apps/api/src/lib/authz-provision.ts), which
+    // means policy-file changes in the repo only land for tenants created
+    // AFTER the change. Pre-existing tenants would silently keep their stale
+    // Cedar policies — and a renamed or removed group leaves their users with
+    // no matching permit clause (this is what bit CI when 20-tenant-user.cedar
+    // became 20-viewer.cedar).
+    //
+    // The Trigger here invokes a Lambda after the API function is updated; the
+    // Lambda enumerates every tenant with a non-null policyStoreId and
+    // reconciles their AVP store onto the current `.cedar` files (delete all
+    // static policies, recreate from disk). Idempotent — safe to re-run.
+    //
+    // Why a Trigger (not a CustomResource with content-hash keying): the
+    // operation is fast and idempotent, and we WANT a no-op deploy to verify
+    // policies still match what's on disk rather than trust a hash. Trigger
+    // runs every deploy; the Lambda completes in single-digit seconds for the
+    // current tenant count and fails the deploy loudly if any tenant's
+    // reconciliation breaks.
+    // ---------------------------------------------------------------------------
+    const syncAvpPoliciesLogGroup = new logs.LogGroup(this, 'SyncAvpPoliciesLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+
+    const syncAvpPoliciesFunction = new nodejs.NodejsFunction(this, 'SyncAvpPoliciesFunction', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../../../../apps/api/src/lambda-sync-avp-policies.ts'),
+      handler: 'handler',
+      environment: {
+        NODE_ENV: 'production',
+        DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+        LOG_LEVEL: 'INFO',
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        externalModules: ['@aws-sdk/*'],
+        // The reconciliation function reads `apps/api/src/authz/policies/`
+        // at runtime via loadPolicies() — same packaging trick as the main
+        // API Lambda. Without these copies the handler crashes with ENOENT
+        // before it can list any tenant.
+        commandHooks: {
+          beforeBundling: () => [],
+          beforeInstall: () => [],
+          afterBundling: (_inputDir, outputDir) => [
+            `cp -R ${path.join(__dirname, '../../../../apps/api/src/authz/policies')} ${outputDir}/`,
+          ],
+        },
+      },
+      memorySize: 256,
+      // Reconciliation is bounded by tenant count × ~15 policies × ~2 AVP
+      // calls each. At staging scale (~7 tenants) this finishes in <10s; the
+      // 5-minute budget gives plenty of slack for AVP throttling on a larger
+      // production tenant base.
+      timeout: cdk.Duration.minutes(5),
+      logGroup: syncAvpPoliciesLogGroup,
+    })
+
+    dbSecret.grantRead(syncAvpPoliciesFunction)
+
+    // IAM: ListPolicies + DeletePolicy + CreatePolicy across any policy store
+    // in this account. Store IDs are minted at runtime by CreatePolicyStore so
+    // we can't tighten the resource ARN beyond the wildcard the rest of the
+    // AVP IAM block uses.
+    syncAvpPoliciesFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          'verifiedpermissions:ListPolicies',
+          'verifiedpermissions:CreatePolicy',
+          'verifiedpermissions:DeletePolicy',
+        ],
+        resources: [`arn:aws:verifiedpermissions::${this.account}:policy-store/*`],
+      }),
+    )
+
+    new triggers.Trigger(this, 'SyncAvpPoliciesTrigger', {
+      handler: syncAvpPoliciesFunction,
+      // Run AFTER the main API Lambda is updated so any new code that depends
+      // on freshly-reconciled policies (e.g. handlers referencing a new
+      // persona group) sees them in place from the first invocation.
+      executeAfter: [apiFunction],
+      // REQUEST_RESPONSE so a failure here surfaces as a CFN deploy failure
+      // instead of fire-and-forget.
+      invocationType: triggers.InvocationType.REQUEST_RESPONSE,
     })
 
     // ---------------------------------------------------------------------------
