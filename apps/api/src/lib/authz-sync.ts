@@ -77,11 +77,19 @@ async function listAllStaticPolicies(policyStoreId: string): Promise<readonly Po
 /** Wraps an AVP SDK error so the per-tenant aggregate identifies which AVP
  *  call (and which policy file, when relevant) caused the failure. AWS SDK
  *  error messages are typically generic ("Invalid input") without naming the
- *  offending call, which hides the root cause behind a uniform aggregate. */
+ *  offending call. AVP's ValidationException additionally carries a
+ *  `fieldList` of {path, message} pairs telling us exactly which field of
+ *  the request was rejected — surfaced here because "Invalid input" alone
+ *  hides the root cause behind a uniform aggregate. */
 function annotate(err: unknown, context: string): Error {
   const name = (err as { name?: string }).name ?? 'Error'
   const message = err instanceof Error ? err.message : String(err)
-  return new Error(`${context}: ${name}: ${message}`)
+  const fieldList = (err as { fieldList?: Array<{ path?: string; message?: string }> }).fieldList
+  const fieldDetail =
+    fieldList && fieldList.length > 0
+      ? ` fields=[${fieldList.map((f) => `${f.path ?? '?'}:${f.message ?? '?'}`).join(' | ')}]`
+      : ''
+  return new Error(`${context}: ${name}: ${message}${fieldDetail}`)
 }
 
 /**
