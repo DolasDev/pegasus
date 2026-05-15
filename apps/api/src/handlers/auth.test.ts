@@ -468,7 +468,7 @@ describe('POST /api/auth/validate-token', () => {
         exp: 9999999999,
         token_use: 'id',
         'custom:tenantId': 'tenant-abc',
-        'custom:roles': JSON.stringify(['tenant_user']),
+        'custom:roles': JSON.stringify(['viewer']),
       },
     })
 
@@ -479,8 +479,8 @@ describe('POST /api/auth/validate-token', () => {
     expect(data['sub']).toBe('user-sub-123')
     expect(data['tenantId']).toBe('tenant-abc')
     expect(data['tenantName']).toBe('Acme Corp')
-    expect(data['roleNames']).toEqual(['tenant_user'])
-    expect(data['role']).toBe('tenant_user')
+    expect(data['roleNames']).toEqual(['viewer'])
+    expect(data['role']).toBe('viewer')
     expect(data['email']).toBe('user@acme.com')
     expect(data['expiresAt']).toBe(9999999999)
     expect(data['ssoProvider']).toBeNull()
@@ -495,7 +495,7 @@ describe('POST /api/auth/validate-token', () => {
         exp: 9999999999,
         token_use: 'id',
         'custom:tenantId': 'tenant-abc',
-        'custom:roles': JSON.stringify(['tenant_user']),
+        'custom:roles': JSON.stringify(['viewer']),
         identities: [{ providerName: 'acme-okta' }],
       },
     })
@@ -544,7 +544,7 @@ describe('POST /api/auth/validate-token', () => {
         exp: 9999999999,
         token_use: 'access',
         'custom:tenantId': 'tenant-abc',
-        'custom:roles': JSON.stringify(['tenant_user']),
+        'custom:roles': JSON.stringify(['viewer']),
       },
     })
 
@@ -563,7 +563,7 @@ describe('POST /api/auth/validate-token', () => {
         exp: 9999999999,
         token_use: 'id',
         'custom:tenantId': 'tenant-abc',
-        'custom:roles': JSON.stringify(['tenant_user']),
+        'custom:roles': JSON.stringify(['viewer']),
       },
     })
 

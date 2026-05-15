@@ -16,8 +16,10 @@ const SESSION_KEY = 'pegasus.session'
  * Tenant-web session extends the shared Session with the raw Cognito ID token.
  */
 export type Session = BaseSession & {
-  /** Narrows role to the tenant-specific union. */
-  role: 'tenant_admin' | 'tenant_user'
+  /** Coarse-grained role string carried from the base Session. Authoritative
+   *  permission gating MUST read `roleNames` — this is display-only and may
+   *  hold any value from the role catalog (tenant_admin, viewer, sales, …). */
+  role: string
   /** The Cognito ID token used to authenticate API requests. */
   token: string
 }

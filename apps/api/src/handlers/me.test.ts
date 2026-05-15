@@ -36,10 +36,10 @@ describe('GET /permissions', () => {
   })
 
   it('returns only read permissions for tenant_user', async () => {
-    const res = await buildApp(['tenant_user']).request('/permissions')
+    const res = await buildApp(['viewer']).request('/permissions')
     expect(res.status).toBe(200)
     const body = (await res.json()) as { roles: string[]; permissions: string[] }
-    expect(body.roles).toEqual(['tenant_user'])
+    expect(body.roles).toEqual(['viewer'])
     expect(new Set(body.permissions)).toEqual(
       new Set([
         Actions.ReadQuote.permission,

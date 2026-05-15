@@ -47,9 +47,10 @@ export function seedPrincipal(opts: PrincipalSeedOptions = {}) {
  * Convenience for handler tests that still drive their fixtures off the
  * legacy `'tenant_admin' | 'tenant_user' | null` shape. Translates that
  * string into Cedar role-group memberships and delegates to seedPrincipal.
+ * The legacy `'tenant_user'` token is translated to `'viewer'` — the new
+ * read-only baseline group that replaced it.
  */
 export function seedPrincipalForRole(role: string | null, tenantId = 'test-tenant-id') {
-  const roleNames =
-    role === null ? [] : role === 'tenant_admin' ? ['tenant_admin'] : ['tenant_user']
+  const roleNames = role === null ? [] : role === 'tenant_admin' ? ['tenant_admin'] : ['viewer']
   return seedPrincipal({ tenantId, roleNames })
 }

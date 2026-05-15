@@ -4,10 +4,12 @@
 // Exercises the offline path against the same .cedar files that production
 // pushes into AVP. Required invariants per the plan:
 //   (a) tenant_admin allowed every action in ALL_ACTIONS
-//   (b) tenant_user allowed reads, denied writes
-//   (c) personas (dispatcher, sales, accountant, auditor) match their files
+//   (b) viewer allowed reads, denied writes
+//   (c) personas with full policies (sales, accountant) match their files
 //   (d) empty-roles principal denied everything
 //   (e) listAllowedPermissions returns the full catalog for tenant_admin
+//   (f) stub personas (legacy-derived placeholders without permit clauses)
+//       grant zero permissions until their policy is authored
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, beforeEach } from 'vitest'
@@ -44,8 +46,8 @@ describe('authorize — offline (cedar-wasm)', () => {
     expect(allowed.length).toBe(ALL_ACTIONS.length)
   })
 
-  it('tenant_user is allowed every read action (invariant b — allow side)', async () => {
-    const p = principal(['tenant_user'])
+  it('viewer is allowed every read action (invariant b — allow side)', async () => {
+    const p = principal(['viewer'])
     const reads: ActionDef[] = [
       Actions.ReadQuote,
       Actions.ReadMove,
@@ -53,12 +55,12 @@ describe('authorize — offline (cedar-wasm)', () => {
       Actions.ReadCustomer,
     ]
     for (const a of reads) {
-      expect(await isAllowed(p, a), `tenant_user should be allowed ${a.id}`).toBe(true)
+      expect(await isAllowed(p, a), `viewer should be allowed ${a.id}`).toBe(true)
     }
   })
 
-  it('tenant_user is denied every write action (invariant b — deny side)', async () => {
-    const p = principal(['tenant_user'])
+  it('viewer is denied every write action (invariant b — deny side)', async () => {
+    const p = principal(['viewer'])
     const writes: ActionDef[] = [
       Actions.CreateQuote,
       Actions.UpdateQuote,
@@ -81,22 +83,8 @@ describe('authorize — offline (cedar-wasm)', () => {
       Actions.RevokeApiClient,
     ]
     for (const a of writes) {
-      expect(await isAllowed(p, a), `tenant_user should be denied ${a.id}`).toBe(false)
+      expect(await isAllowed(p, a), `viewer should be denied ${a.id}`).toBe(false)
     }
-  })
-
-  it('dispatcher matches its persona policy (invariant c)', async () => {
-    const ids = new Set(await allowedActionIds(principal(['dispatcher'])))
-    expect(ids).toEqual(
-      new Set([
-        Actions.ReadMove.id,
-        Actions.CreateMove.id,
-        Actions.UpdateMove.id,
-        Actions.ReadCustomer.id,
-        Actions.UpdateCustomer.id,
-        Actions.ReadQuote.id,
-      ]),
-    )
   })
 
   it('sales matches its persona policy (invariant c)', async () => {
@@ -129,16 +117,13 @@ describe('authorize — offline (cedar-wasm)', () => {
     )
   })
 
-  it('auditor matches its persona policy (invariant c)', async () => {
-    const ids = new Set(await allowedActionIds(principal(['auditor'])))
-    expect(ids).toEqual(
-      new Set([
-        Actions.ReadQuote.id,
-        Actions.ReadMove.id,
-        Actions.ReadInvoice.id,
-        Actions.ReadCustomer.id,
-      ]),
-    )
+  it('stub legacy persona grants zero permissions until its policy is authored (invariant f)', async () => {
+    // Sanity-check that the placeholder Cedar files for the legacy-derived
+    // personas (billing_manager, operations_admin, coordinator, …) are inert:
+    // assigning the role today must grant nothing, otherwise we have either a
+    // stray permit clause leaking through or a misconfigured group hierarchy.
+    const allowed = await allowedActionIds(principal(['billing_manager']))
+    expect(allowed).toEqual([])
   })
 
   it('empty-roles principal is denied everything (invariant d)', async () => {
@@ -158,8 +143,8 @@ describe('listAllowedPermissions — offline', () => {
     expect(new Set(perms)).toEqual(new Set(ALL_ACTIONS.map((a) => a.permission)))
   })
 
-  it('returns only read permissions for tenant_user', async () => {
-    const perms = await listAllowedPermissions(principal(['tenant_user']), undefined, undefined)
+  it('returns only read permissions for viewer', async () => {
+    const perms = await listAllowedPermissions(principal(['viewer']), undefined, undefined)
     expect(new Set(perms)).toEqual(
       new Set([
         Actions.ReadQuote.permission,
@@ -211,8 +196,8 @@ describe('authorize — cache invalidation on roleNames change', () => {
   it('treats roleNames as a set — order does not change the cache key', async () => {
     const sub = 'sub-role-order'
     // Same set, different order → same logical principal → same cache slot.
-    const a = principal(['dispatcher', 'sales'], sub)
-    const b = principal(['sales', 'dispatcher'], sub)
+    const a = principal(['local_dispatch', 'sales'], sub)
+    const b = principal(['sales', 'local_dispatch'], sub)
 
     const first = await authorize({ principal: a, action: Actions.ReadMove })
     const second = await authorize({ principal: b, action: Actions.ReadMove })

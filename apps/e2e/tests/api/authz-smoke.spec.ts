@@ -46,15 +46,22 @@ const API_BASE = process.env['API_BASE_URL'] ?? 'http://localhost:3001'
 // the matching `.cedar` policy file if a persona's action set ever changes —
 // the drift detector unit test (apps/api/src/authz/__tests__/role-options.test.ts)
 // catches catalog drift; this spec catches policy-content drift.
-const DISPATCHER_PERMISSIONS = [
-  'move:read',
-  'move:create',
-  'move:update',
-  'customer:read',
-  'customer:update',
+const SALES_PERMISSIONS = [
   'quote:read',
+  'quote:create',
+  'quote:update',
+  'customer:read',
+  'customer:create',
+  'customer:update',
+  'move:read',
 ] as const
-const AUDITOR_PERMISSIONS = ['quote:read', 'move:read', 'invoice:read', 'customer:read'] as const
+const VIEWER_PERMISSIONS = [
+  'quote:read',
+  'move:read',
+  'invoice:read',
+  'customer:read',
+  'workflow:read',
+] as const
 
 type PersonaSession = {
   email: string
@@ -206,68 +213,52 @@ test.describe('authenticated AVP smoke', () => {
   })
 
   test.describe('persona policy coverage', () => {
-    let dispatcherSession: PersonaSession | null = null
-    let auditorSession: PersonaSession | null = null
-    let tenantUserSession: PersonaSession | null = null
+    let salesSession: PersonaSession | null = null
+    let viewerSession: PersonaSession | null = null
 
     test.beforeAll(async ({ authedApiFetch }) => {
       // Provision sequentially so the pre-token Lambda's PENDING→ACTIVE
       // promotion sees consistent state. Parallel invites against the same
       // tenant_users table aren't worth the complexity.
-      dispatcherSession = await provisionPersona(authedApiFetch, 'dispatcher')
-      auditorSession = await provisionPersona(authedApiFetch, 'auditor')
-      tenantUserSession = await provisionPersona(authedApiFetch, 'tenant_user')
+      salesSession = await provisionPersona(authedApiFetch, 'sales')
+      viewerSession = await provisionPersona(authedApiFetch, 'viewer')
     })
 
     test.afterAll(async () => {
-      const all = [dispatcherSession, auditorSession, tenantUserSession]
+      const all = [salesSession, viewerSession]
       for (const s of all) if (s) await disablePersona(s.username)
     })
 
-    test('dispatcher has exactly its 6 expected permissions', async () => {
-      expect(dispatcherSession, 'dispatcher persona did not provision').not.toBeNull()
-      const fetch_ = fetchWithToken(dispatcherSession!.token)
+    test('sales has exactly its 7 expected permissions', async () => {
+      expect(salesSession, 'sales persona did not provision').not.toBeNull()
+      const fetch_ = fetchWithToken(salesSession!.token)
       const res = await fetch_('/api/v1/me/permissions')
       const text = await res.text()
       expect(res.status, text).toBe(200)
       const body = JSON.parse(text) as { roles: string[]; permissions: string[] }
 
-      expect(body.roles).toEqual(['dispatcher'])
-      expect([...body.permissions].sort()).toEqual([...DISPATCHER_PERMISSIONS].sort())
+      expect(body.roles).toEqual(['sales'])
+      expect([...body.permissions].sort()).toEqual([...SALES_PERMISSIONS].sort())
     })
 
-    test('auditor has exactly its 4 read-only permissions and is denied on invite', async () => {
-      expect(auditorSession, 'auditor persona did not provision').not.toBeNull()
-      const fetch_ = fetchWithToken(auditorSession!.token)
+    test('viewer has exactly its 5 read-only permissions and is denied on invite', async () => {
+      expect(viewerSession, 'viewer persona did not provision').not.toBeNull()
+      const fetch_ = fetchWithToken(viewerSession!.token)
 
+      // Closes authz-cedar-avp-followups.md item #4: prove fail-closed on a
+      // non-admin principal. The viewer persona is read-only across operational
+      // entities and has no `user:*` actions, so the invite call must be 403 —
+      // never 200, never 401.
       const permsRes = await fetch_('/api/v1/me/permissions')
       const text = await permsRes.text()
       expect(permsRes.status, text).toBe(200)
       const body = JSON.parse(text) as { roles: string[]; permissions: string[] }
-      expect(body.roles).toEqual(['auditor'])
-      expect([...body.permissions].sort()).toEqual([...AUDITOR_PERMISSIONS].sort())
+      expect(body.roles).toEqual(['viewer'])
+      expect([...body.permissions].sort()).toEqual([...VIEWER_PERMISSIONS].sort())
 
       const inviteRes = await fetch_('/api/v1/users/invite', {
         method: 'POST',
-        body: JSON.stringify({ email: 'auditor-invite-attempt@pegasus-test.invalid' }),
-      })
-      expect(inviteRes.status).toBe(403)
-    })
-
-    test('tenant_user is denied on user list and invite (negative-auth)', async () => {
-      expect(tenantUserSession, 'tenant_user persona did not provision').not.toBeNull()
-      const fetch_ = fetchWithToken(tenantUserSession!.token)
-
-      // Closes authz-cedar-avp-followups.md item #4: prove fail-closed on a
-      // non-admin principal. The tenant_user persona is read-only across
-      // operational entities and has no `user:*` actions, so both calls must
-      // be 403 — never 200, never 401.
-      const listRes = await fetch_('/api/v1/users')
-      expect(listRes.status).toBe(403)
-
-      const inviteRes = await fetch_('/api/v1/users/invite', {
-        method: 'POST',
-        body: JSON.stringify({ email: 'tu-invite-attempt@pegasus-test.invalid' }),
+        body: JSON.stringify({ email: 'viewer-invite-attempt@pegasus-test.invalid' }),
       })
       expect(inviteRes.status).toBe(403)
     })

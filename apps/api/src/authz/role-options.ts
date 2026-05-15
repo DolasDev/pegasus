@@ -4,13 +4,26 @@
 // GET /api/admin/tenants/:tenantId/users/role-options.
 //
 // Each `name` MUST match a Cedar role group used in either:
-//   - policies/10-tenant-admin.cedar / policies/20-tenant-user.cedar
+//   - policies/10-tenant-admin.cedar / policies/20-viewer.cedar
 //   - one of policies/30-personas/*.cedar (filename matches the persona name
-//     once `-` is converted to `_`, e.g. crew-lead.cedar → "crew_lead")
+//     once `-` is converted to `_`, e.g. local-dispatch.cedar → "local_dispatch")
 //
 // The drift detector test in __tests__/role-options.test.ts asserts the names
 // here line up with the policy files. If you add a persona policy, add it
 // here; if you remove a policy, remove the entry — otherwise the test fails.
+//
+// The catalog is modelled on the legacy VB.NET Pegasus role set so existing
+// customers carry their vocabulary forward. Two legacy roles are deliberately
+// NOT ported:
+//   - Wizard (WZ): combined a role flag with hardcoded usernames to enable
+//     SQL Commands — out of scope for tenant authz; any cross-tenant superuser
+//     capability belongs on the admin-web platform surface.
+//   - Salesman (SM): had no UI gates in the legacy system — it is a data-
+//     classification attribute (commission attribution), not a feature gate.
+// Viewer (VW) is included but is NEVER assigned implicitly: empty
+// `roleNames[]` evaluates to deny in Cedar; Viewer must be assigned by an
+// admin. This closes the legacy fallback hole where missing roles silently
+// granted read access.
 // ---------------------------------------------------------------------------
 
 export type RoleOption = {
@@ -30,14 +43,54 @@ export const ROLE_OPTIONS: readonly RoleOption[] = [
     description: 'Full access to every tenant feature.',
   },
   {
-    name: 'tenant_user',
-    label: 'User (read-only)',
-    description: 'Read-only baseline across moves, quotes, customers, invoices.',
+    name: 'billing_manager',
+    label: 'Billing Manager',
+    description: 'Payroll, driver debits, budgets, invoice key dates, currency rates.',
   },
   {
-    name: 'dispatcher',
-    label: 'Dispatcher',
-    description: 'Read everything operational; write moves and customer detail at dispatch.',
+    name: 'accountant',
+    label: 'Accountant',
+    description: 'Invoices, payments, driver settlements, storage billing.',
+  },
+  {
+    name: 'operations_admin',
+    label: 'Operations Admin',
+    description: 'Driver debits and settlements, vehicle records, local dispatch status.',
+  },
+  {
+    name: 'senior_management',
+    label: 'Senior Management',
+    description: 'High-trust read and sign-off across operations; texting toggle.',
+  },
+  {
+    name: 'coordinator',
+    label: 'Coordinator',
+    description: 'Quotes, employees, vehicles, timesheets, survey results.',
+  },
+  {
+    name: 'customer_service_manager',
+    label: 'CS Manager',
+    description: 'Survey results, service authorizations, employee benefits, timesheets.',
+  },
+  {
+    name: 'local_dispatch',
+    label: 'Local Dispatch',
+    description: 'Local dispatch jobs, vehicles, paperwork logging on sales.',
+  },
+  {
+    name: 'long_distance_dispatch',
+    label: 'LD Dispatch',
+    description: 'Long-distance driver records and budgets (narrow scope).',
+  },
+  {
+    name: 'central_planning_dispatch',
+    label: 'Central Planning',
+    description: 'Driver records, premium service details, budgets.',
+  },
+  {
+    name: 'warehouse',
+    label: 'Warehouse',
+    description: 'Household goods in storage, budgets (narrow scope).',
   },
   {
     name: 'sales',
@@ -45,19 +98,9 @@ export const ROLE_OPTIONS: readonly RoleOption[] = [
     description: 'Full quote and customer authoring; read-only on moves.',
   },
   {
-    name: 'accountant',
-    label: 'Accountant',
-    description: 'Full invoice control; read-only on derived moves and quotes.',
-  },
-  {
-    name: 'auditor',
-    label: 'Auditor',
-    description: 'Read-only across every operational entity.',
-  },
-  {
-    name: 'crew_lead',
-    label: 'Crew Lead',
-    description: 'Read assigned moves and customers; update moves to record progress.',
+    name: 'viewer',
+    label: 'Viewer',
+    description: 'Explicit read-only across operational entities. Not a default fallback.',
   },
   {
     name: 'reporting',

@@ -49,7 +49,7 @@ type InviteFormProps = {
 
 function InviteForm({ onDone, roleOptions }: InviteFormProps) {
   const [email, setEmail] = useState('')
-  const [roleNames, setRoleNames] = useState<string[]>(['tenant_user'])
+  const [roleNames, setRoleNames] = useState<string[]>(['viewer'])
   const [formError, setFormError] = useState<string | null>(null)
   const inviteMutation = useInviteUser()
 

@@ -43,14 +43,14 @@ describe('requirePermission', () => {
     expect(res.status).toBe(200)
   })
 
-  it('returns 403 FORBIDDEN when tenant_user invokes a write action', async () => {
-    const res = await buildPermissionApp(['tenant_user']).request('/probe')
+  it('returns 403 FORBIDDEN when viewer invokes a write action', async () => {
+    const res = await buildPermissionApp(['viewer']).request('/probe')
     expect(res.status).toBe(403)
     expect((await json(res)).code).toBe('FORBIDDEN')
   })
 
-  it('returns 200 when tenant_user invokes a read action they have access to', async () => {
-    const res = await buildPermissionApp(['tenant_user'], Actions.ReadQuote).request('/probe')
+  it('returns 200 when viewer invokes a read action they have access to', async () => {
+    const res = await buildPermissionApp(['viewer'], Actions.ReadQuote).request('/probe')
     expect(res.status).toBe(200)
   })
 

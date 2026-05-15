@@ -494,7 +494,7 @@ authHandler.post(
     // legacy tenant-web guards). Authoritative source is `roleNames`.
     const derivedRole = roleNames.includes('tenant_admin')
       ? 'tenant_admin'
-      : (roleNames[0] ?? 'tenant_user')
+      : (roleNames[0] ?? 'viewer')
 
     const expiresAt = payload['exp'] as number
 

@@ -20,7 +20,7 @@ export type TenantUser = {
 
 export type InviteUserInput = {
   email: string
-  /** Cedar role-group memberships (e.g. ['tenant_user'], ['dispatcher']). */
+  /** Cedar role-group memberships (e.g. ['viewer'], ['local_dispatch']). */
   roleNames: string[]
 }
 

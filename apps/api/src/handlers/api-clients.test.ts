@@ -119,7 +119,7 @@ describe('api-clients handler', () => {
 
   describe('RBAC', () => {
     it('returns 403 FORBIDDEN when role is tenant_user', async () => {
-      const res = await buildApp('tenant_user').request('/')
+      const res = await buildApp('viewer').request('/')
       expect(res.status).toBe(403)
       expect((await json(res)).code).toBe('FORBIDDEN')
     })
@@ -224,7 +224,7 @@ describe('api-clients handler', () => {
     })
 
     it('returns 403 when role is not tenant_admin', async () => {
-      const res = await buildApp('tenant_user').request('/')
+      const res = await buildApp('viewer').request('/')
       expect(res.status).toBe(403)
     })
 

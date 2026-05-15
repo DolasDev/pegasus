@@ -32,12 +32,12 @@ import {
 
 const ROLE_OPTIONS: RoleOption[] = [
   { name: 'tenant_admin', label: 'Admin', description: 'Full access.' },
-  { name: 'tenant_user', label: 'User (read-only)', description: 'Read-only baseline.' },
-  { name: 'dispatcher', label: 'Dispatcher', description: 'Dispatch ops.' },
+  { name: 'viewer', label: 'Viewer', description: 'Read-only baseline.' },
+  { name: 'local_dispatch', label: 'Local Dispatch', description: 'Local dispatch ops.' },
   { name: 'sales', label: 'Sales', description: 'Quote authoring.' },
   { name: 'accountant', label: 'Accountant', description: 'Invoice control.' },
-  { name: 'auditor', label: 'Auditor', description: 'Read-only.' },
-  { name: 'crew_lead', label: 'Crew Lead', description: 'Crew updates.' },
+  { name: 'warehouse', label: 'Warehouse', description: 'Storage and crew handoff.' },
+  { name: 'coordinator', label: 'Coordinator', description: 'Broad operational authoring.' },
 ]
 
 function makeQueryClient() {
@@ -62,7 +62,7 @@ function makeUser(overrides: Partial<TenantUser> = {}): TenantUser {
     id: 'user-1',
     email: 'user@acme.com',
     cognitoSub: null,
-    roleNames: ['tenant_user'],
+    roleNames: ['viewer'],
     role: 'USER',
     status: 'PENDING',
     invitedAt: '2024-01-15T12:00:00.000Z',
@@ -98,7 +98,7 @@ describe('TenantUsersSection', () => {
       })
       renderSection()
       await screen.findByText('user@acme.com')
-      expect(screen.getByText('User (read-only)')).toBeInTheDocument()
+      expect(screen.getByText('Viewer')).toBeInTheDocument()
       expect(screen.getByText('Active')).toBeInTheDocument()
     })
 
@@ -108,15 +108,15 @@ describe('TenantUsersSection', () => {
           makeUser({
             email: 'multi@acme.com',
             status: 'ACTIVE',
-            roleNames: ['dispatcher', 'auditor'],
+            roleNames: ['local_dispatch', 'sales'],
           }),
         ],
         meta: { count: 1 },
       })
       renderSection()
       await screen.findByText('multi@acme.com')
-      expect(screen.getByText('Dispatcher')).toBeInTheDocument()
-      expect(screen.getByText('Auditor')).toBeInTheDocument()
+      expect(screen.getByText('Local Dispatch')).toBeInTheDocument()
+      expect(screen.getByText('Sales')).toBeInTheDocument()
     })
 
     it('shows empty state when the list is empty', async () => {
@@ -141,26 +141,26 @@ describe('TenantUsersSection', () => {
     it('submit calls inviteTenantUser with the picked roleNames', async () => {
       vi.mocked(listTenantUsers).mockResolvedValue({ data: [], meta: { count: 0 } })
       vi.mocked(inviteTenantUser).mockResolvedValue(
-        makeUser({ email: 'new@acme.com', roleNames: ['dispatcher'], role: 'USER' }),
+        makeUser({ email: 'new@acme.com', roleNames: ['local_dispatch'], role: 'USER' }),
       )
       renderSection()
       await screen.findByText(/no users/i)
 
       fireEvent.click(screen.getByRole('button', { name: /invite user/i }))
       // Wait for the role-options query to resolve and checkboxes to render.
-      await screen.findByLabelText(/dispatcher/i)
+      await screen.findByLabelText(/local dispatch/i)
       fireEvent.change(screen.getByPlaceholderText(/email/i), {
         target: { value: 'new@acme.com' },
       })
-      // Default selection is tenant_user — uncheck it and pick dispatcher.
-      fireEvent.click(screen.getByLabelText(/user \(read-only\)/i))
-      fireEvent.click(screen.getByLabelText(/dispatcher/i))
+      // Default selection is viewer — uncheck it and pick local_dispatch.
+      fireEvent.click(screen.getByLabelText(/viewer/i))
+      fireEvent.click(screen.getByLabelText(/local dispatch/i))
       fireEvent.click(screen.getByRole('button', { name: /^invite$/i }))
 
       await waitFor(() => {
         expect(vi.mocked(inviteTenantUser)).toHaveBeenCalledWith('tenant-1', {
           email: 'new@acme.com',
-          roleNames: ['dispatcher'],
+          roleNames: ['local_dispatch'],
         })
       })
     })
@@ -186,32 +186,32 @@ describe('TenantUsersSection', () => {
   // ── Manage roles ──────────────────────────────────────────────────────────
 
   describe('Manage roles', () => {
-    it('opens the editor and saves a role swap from tenant_user → dispatcher', async () => {
+    it('opens the editor and saves a role swap from viewer → local_dispatch', async () => {
       vi.mocked(listTenantUsers).mockResolvedValue({
         data: [
           makeUser({
             id: 'user-1',
             status: 'ACTIVE',
-            roleNames: ['tenant_user'],
+            roleNames: ['viewer'],
           }),
         ],
         meta: { count: 1 },
       })
       vi.mocked(updateTenantUserRole).mockResolvedValue(
-        makeUser({ id: 'user-1', roleNames: ['dispatcher'] }),
+        makeUser({ id: 'user-1', roleNames: ['local_dispatch'] }),
       )
       renderSection()
       await screen.findByText('user@acme.com')
 
       fireEvent.click(screen.getByRole('button', { name: /manage roles/i }))
-      await screen.findByLabelText(/dispatcher/i)
-      fireEvent.click(screen.getByLabelText(/user \(read-only\)/i)) // uncheck
-      fireEvent.click(screen.getByLabelText(/dispatcher/i))
+      await screen.findByLabelText(/local dispatch/i)
+      fireEvent.click(screen.getByLabelText(/viewer/i)) // uncheck
+      fireEvent.click(screen.getByLabelText(/local dispatch/i))
       fireEvent.click(screen.getByRole('button', { name: /save roles/i }))
 
       await waitFor(() => {
         expect(vi.mocked(updateTenantUserRole)).toHaveBeenCalledWith('tenant-1', 'user-1', [
-          'dispatcher',
+          'local_dispatch',
         ])
       })
     })

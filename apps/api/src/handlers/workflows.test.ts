@@ -123,7 +123,7 @@ describe('workflows handler', () => {
 
   describe('RBAC', () => {
     it('returns 403 when uploading without workflow_developer role', async () => {
-      const res = await buildApp(['tenant_user']).request(
+      const res = await buildApp(['viewer']).request(
         '/upload-url',
         post({ name: 'x', version: '1.0.0', sizeBytes: 1024 }),
       )
@@ -132,7 +132,7 @@ describe('workflows handler', () => {
     })
 
     it('returns 403 on POST / without workflow_developer role', async () => {
-      const res = await buildApp(['tenant_user']).request(
+      const res = await buildApp(['viewer']).request(
         '/',
         post({ workflowId: '00000000-0000-0000-0000-000000000001', manifest: validManifest }),
       )
@@ -146,7 +146,7 @@ describe('workflows handler', () => {
 
     it('allows tenant_user to list (read baseline includes workflow:read)', async () => {
       mockRepo.listForTenant.mockResolvedValue([mockRow])
-      const res = await buildApp(['tenant_user']).request('/')
+      const res = await buildApp(['viewer']).request('/')
       expect(res.status).toBe(200)
     })
 

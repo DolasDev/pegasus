@@ -48,9 +48,9 @@ describe.skipIf(!hasDb)('UsersRepository (integration)', () => {
   it('invite creates a TenantUser with status PENDING and correct fields', async () => {
     const repo = createUsersRepository(testDb)
     const email = `invite+${Date.now()}@example.com`
-    const user = await repo.invite(testTenantId, email, ['tenant_user'])
+    const user = await repo.invite(testTenantId, email, ['viewer'])
     expect(user.email).toBe(email)
-    expect(user.roleNames).toEqual(['tenant_user'])
+    expect(user.roleNames).toEqual(['viewer'])
     expect(user.status).toBe('PENDING')
     expect(user.invitedAt).toBeInstanceOf(Date)
     expect(user.activatedAt).toBeNull()
@@ -72,7 +72,7 @@ describe.skipIf(!hasDb)('UsersRepository (integration)', () => {
   it('findByEmail returns the user for a known email', async () => {
     const repo = createUsersRepository(testDb)
     const email = `find+${Date.now()}@example.com`
-    const invited = await repo.invite(testTenantId, email, ['tenant_user'])
+    const invited = await repo.invite(testTenantId, email, ['viewer'])
     const found = await repo.findByEmail(email, testTenantId)
     expect(found?.id).toBe(invited.id)
     expect(found?.email).toBe(email)
@@ -87,7 +87,7 @@ describe.skipIf(!hasDb)('UsersRepository (integration)', () => {
   it('findById returns null for an id belonging to a different tenant', async () => {
     const repo = createUsersRepository(testDb)
     const email = `crosscheck+${Date.now()}@example.com`
-    const invited = await repo.invite(testTenantId, email, ['tenant_user'])
+    const invited = await repo.invite(testTenantId, email, ['viewer'])
     const result = await repo.findById(invited.id, 'different-tenant-id')
     expect(result).toBeNull()
   })
@@ -95,7 +95,7 @@ describe.skipIf(!hasDb)('UsersRepository (integration)', () => {
   it('findById returns the user for the correct (id, tenantId) pair', async () => {
     const repo = createUsersRepository(testDb)
     const email = `findbyid+${Date.now()}@example.com`
-    const invited = await repo.invite(testTenantId, email, ['tenant_user'])
+    const invited = await repo.invite(testTenantId, email, ['viewer'])
     const found = await repo.findById(invited.id, testTenantId)
     expect(found?.id).toBe(invited.id)
   })
@@ -103,7 +103,7 @@ describe.skipIf(!hasDb)('UsersRepository (integration)', () => {
   it('updateRoleNames promotes a tenant_user to tenant_admin', async () => {
     const repo = createUsersRepository(testDb)
     const email = `updaterolenames+${Date.now()}@example.com`
-    const invited = await repo.invite(testTenantId, email, ['tenant_user'])
+    const invited = await repo.invite(testTenantId, email, ['viewer'])
     const updated = await repo.updateRoleNames(invited.id, ['tenant_admin'])
     expect(updated.roleNames).toEqual(['tenant_admin'])
   })
@@ -111,7 +111,7 @@ describe.skipIf(!hasDb)('UsersRepository (integration)', () => {
   it('deactivate sets status to DEACTIVATED and populates deactivatedAt', async () => {
     const repo = createUsersRepository(testDb)
     const email = `deactivate+${Date.now()}@example.com`
-    const invited = await repo.invite(testTenantId, email, ['tenant_user'])
+    const invited = await repo.invite(testTenantId, email, ['viewer'])
     const deactivated = await repo.deactivate(invited.id)
     expect(deactivated.status).toBe('DEACTIVATED')
     expect(deactivated.deactivatedAt).toBeInstanceOf(Date)

@@ -96,7 +96,7 @@ function bearerRequest(opts: RequestInit = {}): RequestInit {
 /** Configures mockJwtVerify to resolve with valid tenant claims. */
 function mockValidToken(
   tenantId = 'tenant-uuid',
-  roleNames: readonly string[] = ['tenant_user'],
+  roleNames: readonly string[] = ['viewer'],
   sub = 'cognito-sub-xyz',
 ) {
   const payload: Record<string, unknown> = {
@@ -184,7 +184,7 @@ describe('tenantMiddleware', () => {
       payload: {
         token_use: 'access',
         'custom:tenantId': 'tenant-uuid',
-        'custom:roles': JSON.stringify(['tenant_user']),
+        'custom:roles': JSON.stringify(['viewer']),
       },
     })
 
@@ -199,7 +199,7 @@ describe('tenantMiddleware', () => {
       payload: {
         token_use: 'id',
         'custom:tenantId': 'tenant-uuid',
-        'custom:roles': JSON.stringify(['tenant_user']),
+        'custom:roles': JSON.stringify(['viewer']),
       },
     })
 
@@ -215,7 +215,7 @@ describe('tenantMiddleware', () => {
     mockJwtVerify.mockResolvedValueOnce({
       payload: {
         token_use: 'id',
-        'custom:roles': JSON.stringify(['tenant_user']),
+        'custom:roles': JSON.stringify(['viewer']),
         sub: 'cognito-sub-xyz',
       },
     })
@@ -300,7 +300,7 @@ describe('tenantMiddleware', () => {
   // ── userId resolution ──────────────────────────────────────────────────────
 
   it('sets userId when TenantUser is found by cognitoSub', async () => {
-    mockValidToken('tenant-uuid', ['tenant_user'], 'cognito-sub-abc')
+    mockValidToken('tenant-uuid', ['viewer'], 'cognito-sub-abc')
     mockTenant('ACTIVE')
     vi.mocked(db.tenantUser.findFirst).mockResolvedValue({ id: 'tenant-user-uuid' } as never)
 
@@ -311,7 +311,7 @@ describe('tenantMiddleware', () => {
   })
 
   it('does not set userId when TenantUser is not found (fail-open)', async () => {
-    mockValidToken('tenant-uuid', ['tenant_user'], 'cognito-sub-unknown')
+    mockValidToken('tenant-uuid', ['viewer'], 'cognito-sub-unknown')
     mockTenant('ACTIVE')
     vi.mocked(db.tenantUser.findFirst).mockResolvedValue(null)
 
@@ -325,14 +325,14 @@ describe('tenantMiddleware', () => {
   // ── Principal + AVP context wiring ─────────────────────────────────────────
 
   it('populates principal.roleNames from custom:roles', async () => {
-    mockValidToken('tenant-uuid', ['dispatcher', 'auditor'], 'cognito-sub-xyz')
+    mockValidToken('tenant-uuid', ['local_dispatch', 'viewer'], 'cognito-sub-xyz')
     mockTenant('ACTIVE', 'ps-123')
 
     const res = await buildApp().request('/probe', bearerRequest())
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
     const principal = body['principal'] as { roleNames: string[]; sub: string; tenantId: string }
-    expect(principal.roleNames).toEqual(['dispatcher', 'auditor'])
+    expect(principal.roleNames).toEqual(['local_dispatch', 'viewer'])
     expect(principal.sub).toBe('cognito-sub-xyz')
     expect(principal.tenantId).toBe('tenant-uuid')
     expect(body['policyStoreId']).toBe('ps-123')

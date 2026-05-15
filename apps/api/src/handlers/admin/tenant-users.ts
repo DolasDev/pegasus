@@ -32,9 +32,10 @@ import { logger } from '../../lib/logger'
 
 const InviteUserBody = z.object({
   email: z.string().email(),
-  /** Cedar role-group memberships. Defaults to ['tenant_user'] for the
-   *  read-only baseline persona. */
-  roleNames: z.array(z.string().min(1)).default(['tenant_user']),
+  /** Cedar role-group memberships. Defaults to ['viewer'] for the read-only
+   *  baseline persona. Viewer is only ever granted by explicit assignment —
+   *  no implicit role assignment when roleNames is empty (Cedar denies). */
+  roleNames: z.array(z.string().min(1)).default(['viewer']),
 })
 
 const PatchUserBody = z

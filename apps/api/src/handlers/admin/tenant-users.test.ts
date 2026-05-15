@@ -112,7 +112,7 @@ const mockUserRow = {
   email: 'user@acme.com',
   cognitoSub: null,
   legacyWindowsUsername: null,
-  roleNames: ['tenant_user'],
+  roleNames: ['viewer'],
   status: 'PENDING' as const,
   invitedAt: now,
   activatedAt: null,

@@ -5,7 +5,7 @@
 // Cedar policy files on disk:
 //
 //   - `tenant_admin`               → policies/10-tenant-admin.cedar
-//   - `tenant_user`                → policies/20-tenant-user.cedar
+//   - `viewer`                     → policies/20-viewer.cedar
 //   - every persona in 30-personas → an entry in ROLE_OPTIONS
 //
 // Catches the "I added sales-manager.cedar but forgot to expose it" class of
@@ -29,21 +29,21 @@ function fileToPersonaName(file: string): string {
 }
 
 describe('role-options catalog ↔ Cedar policy files', () => {
-  it('contains tenant_admin and tenant_user with their policy files present', () => {
+  it('contains tenant_admin and viewer with their policy files present', () => {
     expect(ROLE_OPTIONS.find((r) => r.name === 'tenant_admin')).toBeDefined()
-    expect(ROLE_OPTIONS.find((r) => r.name === 'tenant_user')).toBeDefined()
+    expect(ROLE_OPTIONS.find((r) => r.name === 'viewer')).toBeDefined()
 
     const tenantAdminPolicy = readFileSync(join(POLICIES_DIR, '10-tenant-admin.cedar'), 'utf8')
-    const tenantUserPolicy = readFileSync(join(POLICIES_DIR, '20-tenant-user.cedar'), 'utf8')
+    const viewerPolicy = readFileSync(join(POLICIES_DIR, '20-viewer.cedar'), 'utf8')
     expect(tenantAdminPolicy).toMatch(/Pegasus::Group::"tenant_admin"/)
-    expect(tenantUserPolicy).toMatch(/Pegasus::Group::"tenant_user"/)
+    expect(viewerPolicy).toMatch(/Pegasus::Group::"viewer"/)
   })
 
   it('every persona policy has a matching role-options entry', () => {
     const personaFiles = readdirSync(PERSONAS_DIR).filter((f) => f.endsWith('.cedar'))
     const expectedNames = personaFiles.map(fileToPersonaName).sort()
     const catalogPersonaNames = ROLE_OPTIONS.map((r) => r.name)
-      .filter((n) => n !== 'tenant_admin' && n !== 'tenant_user')
+      .filter((n) => n !== 'tenant_admin' && n !== 'viewer')
       .sort()
     expect(catalogPersonaNames).toEqual(expectedNames)
   })
@@ -51,7 +51,7 @@ describe('role-options catalog ↔ Cedar policy files', () => {
   it('every persona role-options entry references the persona group in its policy', () => {
     const personaFiles = readdirSync(PERSONAS_DIR).filter((f) => f.endsWith('.cedar'))
     const personasInCatalog = ROLE_OPTIONS.filter(
-      (r) => r.name !== 'tenant_admin' && r.name !== 'tenant_user',
+      (r) => r.name !== 'tenant_admin' && r.name !== 'viewer',
     )
     for (const opt of personasInCatalog) {
       const file = personaFiles.find((f) => fileToPersonaName(f) === opt.name)

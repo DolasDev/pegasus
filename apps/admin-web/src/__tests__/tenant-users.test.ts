@@ -60,12 +60,12 @@ describe('tenant-users API', () => {
 
       const result = await inviteTenantUser('tenant-123', {
         email: 'test@example.com',
-        roleNames: ['tenant_user'],
+        roleNames: ['viewer'],
       })
 
       expect(adminFetch).toHaveBeenCalledWith('/api/admin/tenants/tenant-123/users', {
         method: 'POST',
-        body: JSON.stringify({ email: 'test@example.com', roleNames: ['tenant_user'] }),
+        body: JSON.stringify({ email: 'test@example.com', roleNames: ['viewer'] }),
       })
       expect(result).toEqual(user)
     })

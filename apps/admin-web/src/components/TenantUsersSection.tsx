@@ -162,7 +162,7 @@ function InviteForm({
   onCancel: () => void
 }) {
   const [email, setEmail] = useState('')
-  const [roleNames, setRoleNames] = useState<string[]>(['tenant_user'])
+  const [roleNames, setRoleNames] = useState<string[]>(['viewer'])
   const [error, setError] = useState<string | null>(null)
 
   const mutation = useMutation({

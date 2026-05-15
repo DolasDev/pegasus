@@ -78,7 +78,7 @@ describe('settings handler', () => {
 
   describe('GET /mssql', () => {
     it('returns 403 for non-admin role', async () => {
-      const res = await buildApp('tenant_user').request('/mssql')
+      const res = await buildApp('viewer').request('/mssql')
       expect(res.status).toBe(403)
       expect((await json(res)).code).toBe('FORBIDDEN')
     })
@@ -117,7 +117,7 @@ describe('settings handler', () => {
 
   describe('PATCH /mssql', () => {
     it('returns 403 for non-admin role', async () => {
-      const res = await buildApp('tenant_user').request(
+      const res = await buildApp('viewer').request(
         '/mssql',
         patchReq({ mssqlConnectionString: 'Server=x;Password=y;' }),
       )

@@ -122,7 +122,7 @@ function activeTenantUser(
   return {
     id: 'user-uuid',
     role: 'USER',
-    roleNames: ['tenant_user'],
+    roleNames: ['viewer'],
     status: 'ACTIVE',
     ...overrides,
   }
@@ -236,7 +236,7 @@ describe('pre-token trigger', () => {
 
     const claims = result.response.claimsOverrideDetails?.claimsToAddOrOverride
     expect(claims?.['custom:tenantId']).toBe('tenant-uuid-123')
-    expect(claims?.['custom:roles']).toBe(JSON.stringify(['tenant_user']))
+    expect(claims?.['custom:roles']).toBe(JSON.stringify(['viewer']))
   })
 
   // ── Tenant app client — happy path (ACTIVE user) ─────────────────────────
@@ -244,14 +244,14 @@ describe('pre-token trigger', () => {
   it('injects custom:tenantId and custom:roles for an ACTIVE tenant_user', async () => {
     mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
     mockTenantUserFindFirst.mockResolvedValue(
-      activeTenantUser({ roleNames: ['tenant_user'], status: 'ACTIVE' }),
+      activeTenantUser({ roleNames: ['viewer'], status: 'ACTIVE' }),
     )
 
     const result = await handler(makeEvent({ email: 'user@acme.com' }), fakeContext, fakeCallback)
 
     const claims = result.response.claimsOverrideDetails?.claimsToAddOrOverride
     expect(claims?.['custom:tenantId']).toBe('tenant-uuid-123')
-    expect(claims?.['custom:roles']).toBe(JSON.stringify(['tenant_user']))
+    expect(claims?.['custom:roles']).toBe(JSON.stringify(['viewer']))
   })
 
   it('injects custom:roles=[tenant_admin] for an ACTIVE tenant_admin', async () => {
@@ -459,7 +459,7 @@ describe('pre-token trigger', () => {
   it('emits custom:roles JSON-encoded from tenantUser.roleNames when populated', async () => {
     mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
     mockTenantUserFindFirst.mockResolvedValue(
-      activeTenantUser({ role: 'USER', roleNames: ['dispatcher', 'auditor'] }),
+      activeTenantUser({ role: 'USER', roleNames: ['local_dispatch', 'viewer'] }),
     )
 
     const result = await handler(
@@ -469,7 +469,7 @@ describe('pre-token trigger', () => {
     )
 
     const claims = result.response.claimsOverrideDetails?.claimsToAddOrOverride
-    expect(claims?.['custom:roles']).toBe(JSON.stringify(['dispatcher', 'auditor']))
+    expect(claims?.['custom:roles']).toBe(JSON.stringify(['local_dispatch', 'viewer']))
   })
 
   // Mirrors `custom:roles` into `cognito:groups` so AVP's Cognito identity
@@ -481,7 +481,7 @@ describe('pre-token trigger', () => {
   it('emits cognito:groups via groupOverrideDetails matching Cedar roles', async () => {
     mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
     mockTenantUserFindFirst.mockResolvedValue(
-      activeTenantUser({ role: 'USER', roleNames: ['dispatcher', 'auditor'] }),
+      activeTenantUser({ role: 'USER', roleNames: ['local_dispatch', 'viewer'] }),
     )
 
     const result = await handler(
@@ -491,7 +491,7 @@ describe('pre-token trigger', () => {
     )
 
     const groupOverride = result.response.claimsOverrideDetails?.groupOverrideDetails
-    expect(groupOverride?.groupsToOverride).toEqual(['dispatcher', 'auditor'])
+    expect(groupOverride?.groupsToOverride).toEqual(['local_dispatch', 'viewer'])
   })
 
   it('emits empty custom:roles when roleNames is empty (fail-closed at permission layer)', async () => {

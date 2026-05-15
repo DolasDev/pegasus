@@ -8,7 +8,7 @@
 // methods so database calls never touch a real DB.
 //
 // requireRole is NOT mocked — the real implementation is used. Tests that
-// need 403 responses set role='tenant_user' in buildApp.
+// need 403 responses set role='viewer' in buildApp.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -110,7 +110,7 @@ const mockUserRow = {
   cognitoSub: null,
   legacyWindowsUsername: null,
   role: 'USER' as const,
-  roleNames: ['tenant_user'],
+  roleNames: ['viewer'],
   status: 'PENDING' as const,
   invitedAt: now,
   activatedAt: null,
@@ -146,7 +146,7 @@ describe('users handler', () => {
 
   describe('RBAC', () => {
     it('returns 403 FORBIDDEN when role is tenant_user', async () => {
-      const res = await buildApp('tenant_user').request('/')
+      const res = await buildApp('viewer').request('/')
       expect(res.status).toBe(403)
       expect((await json(res)).code).toBe('FORBIDDEN')
     })
