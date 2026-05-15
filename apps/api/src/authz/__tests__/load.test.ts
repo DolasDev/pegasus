@@ -34,6 +34,31 @@ function allCedarFiles(): string[] {
   return out
 }
 
+describe('Cedar policy files — ASCII-only invariant', () => {
+  // AVP's CreatePolicy returned `ValidationException: Invalid input` on the
+  // first reconciliation deploy because 20-viewer.cedar contained `--` and
+  // `...` typographic characters (U+2014, U+2026) in its comment block.
+  // Strict-mode validation rejects non-ASCII bytes in the policy statement.
+  // This test pins every `.cedar` file to 7-bit ASCII so the failure can't
+  // recur via comment prose.
+  it('every .cedar file is pure 7-bit ASCII', () => {
+    const offenders: Array<{ file: string; line: number; preview: string }> = []
+    for (const file of allCedarFiles()) {
+      const body = readFileSync(join(POLICIES_DIR, file), 'utf8')
+      body.split('\n').forEach((line, i) => {
+        // eslint-disable-next-line no-control-regex
+        if (/[^\x00-\x7F]/.test(line)) {
+          offenders.push({ file, line: i + 1, preview: line.trim().slice(0, 80) })
+        }
+      })
+    }
+    expect(
+      offenders,
+      `non-ASCII bytes found:\n${offenders.map((o) => `  ${o.file}:${o.line}  ${o.preview}`).join('\n')}`,
+    ).toEqual([])
+  })
+})
+
 describe('loadPolicies — placeholder filtering', () => {
   it('skips files with no permit/forbid clause (comment-only placeholders)', () => {
     const onDisk = allCedarFiles()
