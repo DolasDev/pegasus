@@ -496,13 +496,17 @@ export class ApiStack extends cdk.Stack {
         sourceMap: true,
         externalModules: ['@aws-sdk/*'],
         // The reconciliation function reads `apps/api/src/authz/policies/`
-        // at runtime via loadPolicies() — same packaging trick as the main
-        // API Lambda. Without these copies the handler crashes with ENOENT
-        // before it can list any tenant.
+        // (via loadPolicies) and `cedar.schema.json` (via loadSchemaJson) at
+        // runtime — same packaging trick as the main API Lambda. Without
+        // these copies the handler crashes with ENOENT before it can list
+        // any tenant. Schema is needed because PutSchema runs first on every
+        // reconcile to bring stale tenant stores up to date with any new
+        // actions added since their original provisioning.
         commandHooks: {
           beforeBundling: () => [],
           beforeInstall: () => [],
           afterBundling: (_inputDir, outputDir) => [
+            `cp ${path.join(__dirname, '../../../../apps/api/src/authz/cedar.schema.json')} ${outputDir}/`,
             `cp -R ${path.join(__dirname, '../../../../apps/api/src/authz/policies')} ${outputDir}/`,
           ],
         },
@@ -528,6 +532,7 @@ export class ApiStack extends cdk.Stack {
           'verifiedpermissions:ListPolicies',
           'verifiedpermissions:CreatePolicy',
           'verifiedpermissions:DeletePolicy',
+          'verifiedpermissions:PutSchema',
         ],
         resources: [`arn:aws:verifiedpermissions::${this.account}:policy-store/*`],
       }),

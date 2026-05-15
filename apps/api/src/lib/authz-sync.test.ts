@@ -39,6 +39,7 @@ import {
   ListPoliciesCommand,
   CreatePolicyCommand,
   DeletePolicyCommand,
+  PutSchemaCommand,
 } from '@aws-sdk/client-verifiedpermissions'
 import { syncTenantPolicies, syncAllTenantPolicies } from './authz-sync'
 import { loadPolicies } from '../authz/load'
@@ -50,9 +51,10 @@ beforeEach(() => {
 })
 
 describe('syncTenantPolicies', () => {
-  it('deletes every existing static policy and recreates one per .cedar file', async () => {
+  it('puts the schema, deletes every existing static policy, and recreates one per .cedar file', async () => {
     const existingPolicyIds = ['pol-1', 'pol-2', 'pol-3']
     sendMock.mockImplementation((cmd: unknown) => {
+      if (cmd instanceof PutSchemaCommand) return Promise.resolve({})
       if (cmd instanceof ListPoliciesCommand) {
         return Promise.resolve({
           policies: existingPolicyIds.map((id) => ({
@@ -71,6 +73,14 @@ describe('syncTenantPolicies', () => {
 
     const fileCount = loadPolicies().length
     expect(result).toEqual({ policyStoreId: 'ps-A', deleted: 3, created: fileCount })
+
+    // PutSchema must be the first call so subsequent CreatePolicy invocations
+    // can reference any actions introduced since the store was provisioned.
+    const putSchemaCalls = sendMock.mock.calls.filter((c) => c[0] instanceof PutSchemaCommand)
+    expect(putSchemaCalls).toHaveLength(1)
+    const putSchemaIdx = sendMock.mock.calls.findIndex((c) => c[0] instanceof PutSchemaCommand)
+    const firstDeleteIdx = sendMock.mock.calls.findIndex((c) => c[0] instanceof DeletePolicyCommand)
+    expect(putSchemaIdx).toBeLessThan(firstDeleteIdx)
 
     const deletes = sendMock.mock.calls.filter((c) => c[0] instanceof DeletePolicyCommand)
     expect(deletes).toHaveLength(3)
@@ -98,6 +108,7 @@ describe('syncTenantPolicies', () => {
     const pageTwo = [{ policyId: 'b', policyStoreId: 'ps-B', policyType: 'STATIC' }]
     let listCallCount = 0
     sendMock.mockImplementation((cmd: unknown) => {
+      if (cmd instanceof PutSchemaCommand) return Promise.resolve({})
       if (cmd instanceof ListPoliciesCommand) {
         listCallCount += 1
         if (listCallCount === 1) return Promise.resolve({ policies: pageOne, nextToken: 'TOKEN' })
@@ -118,6 +129,7 @@ describe('syncTenantPolicies', () => {
 
   it('handles an empty store (no deletes, just creates)', async () => {
     sendMock.mockImplementation((cmd: unknown) => {
+      if (cmd instanceof PutSchemaCommand) return Promise.resolve({})
       if (cmd instanceof ListPoliciesCommand) return Promise.resolve({ policies: [] })
       if (cmd instanceof CreatePolicyCommand) return Promise.resolve({ policyId: 'x' })
       throw new Error(`Unexpected command for empty-store case: ${cmd?.constructor.name}`)
@@ -137,6 +149,7 @@ describe('syncAllTenantPolicies', () => {
     ] as Awaited<ReturnType<typeof db.tenant.findMany>>)
 
     sendMock.mockImplementation((cmd: unknown) => {
+      if (cmd instanceof PutSchemaCommand) return Promise.resolve({})
       if (cmd instanceof ListPoliciesCommand) return Promise.resolve({ policies: [] })
       if (cmd instanceof CreatePolicyCommand) return Promise.resolve({ policyId: 'x' })
       throw new Error(`Unexpected command: ${cmd?.constructor.name}`)
@@ -160,14 +173,17 @@ describe('syncAllTenantPolicies', () => {
 
     sendMock.mockImplementation((cmd: unknown) => {
       const storeId =
-        cmd instanceof ListPoliciesCommand
+        cmd instanceof PutSchemaCommand
           ? cmd.input.policyStoreId
-          : cmd instanceof CreatePolicyCommand
+          : cmd instanceof ListPoliciesCommand
             ? cmd.input.policyStoreId
-            : undefined
-      if (storeId === 'ps-bad' && cmd instanceof ListPoliciesCommand) {
+            : cmd instanceof CreatePolicyCommand
+              ? cmd.input.policyStoreId
+              : undefined
+      if (storeId === 'ps-bad' && cmd instanceof PutSchemaCommand) {
         return Promise.reject(new Error('AccessDeniedException'))
       }
+      if (cmd instanceof PutSchemaCommand) return Promise.resolve({})
       if (cmd instanceof ListPoliciesCommand) return Promise.resolve({ policies: [] })
       if (cmd instanceof CreatePolicyCommand) return Promise.resolve({ policyId: 'x' })
       throw new Error(`Unexpected command: ${cmd?.constructor.name}`)

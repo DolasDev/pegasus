@@ -29,9 +29,10 @@ import {
   ListPoliciesCommand,
   CreatePolicyCommand,
   DeletePolicyCommand,
+  PutSchemaCommand,
 } from '@aws-sdk/client-verifiedpermissions'
 import type { PolicyItem } from '@aws-sdk/client-verifiedpermissions'
-import { loadPolicies } from '../authz/load'
+import { loadPolicies, loadSchemaJson } from '../authz/load'
 import { db } from '../db'
 import { createLogger } from './logger'
 
@@ -93,11 +94,30 @@ function annotate(err: unknown, context: string): Error {
 }
 
 /**
- * Reconciles one tenant's AVP policy store to the current `.cedar` files.
- * Deletes every existing static policy, then recreates from disk. Idempotent.
+ * Reconciles one tenant's AVP policy store to the current `.cedar` files
+ * AND `cedar.schema.json`. Order matters:
+ *   1. PutSchema — the schema must be up-to-date before we can push policies
+ *      that reference new actions (e.g. ReadWorkflow / ReadEvent were added
+ *      after the staging tenants were originally provisioned, so their AVP
+ *      stores were rejecting any policy that referenced those actions with
+ *      `unrecognized action` under STRICT-mode validation).
+ *   2. ListPolicies + DeletePolicy — clear out the previous policy set.
+ *   3. CreatePolicy — push every current `.cedar` file.
+ * Idempotent. Safe to re-run on every deploy.
  */
 export async function syncTenantPolicies(policyStoreId: string): Promise<SyncTenantResult> {
   const avp = getAvp()
+
+  try {
+    await avp.send(
+      new PutSchemaCommand({
+        policyStoreId,
+        definition: { cedarJson: loadSchemaJson() },
+      }),
+    )
+  } catch (err) {
+    throw annotate(err, 'PutSchema')
+  }
 
   let existing: readonly PolicyItem[]
   try {
