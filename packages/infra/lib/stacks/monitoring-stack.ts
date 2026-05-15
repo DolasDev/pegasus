@@ -30,7 +30,7 @@ export interface MonitoringStackProps extends cdk.StackProps {
  *
  * Resources created:
  *   - SNS topic: pegasus-alarms  (alarm notifications)
- *   - Alarm: Lambda Errors > 5 per minute
+ *   - Alarm: Lambda Errors > 0 in 3 of the last 5 minutes
  *   - Alarm: API Gateway 5XXError > 1 per minute
  *   - Alarm: Lambda Duration p99 > 10 000 ms over 5 minutes
  *   - Dashboard: Pegasus-Operations
@@ -57,12 +57,22 @@ export class MonitoringStack extends cdk.Stack {
       period: cdk.Duration.minutes(1),
     })
 
+    // Tuned to catch a sustained-failure regression — an api Lambda that
+    // errors on every invocation (e.g. the cedar-wasm init crash from PR #91)
+    // rather than a single bad request. On a low-traffic stage that broken
+    // Lambda may never exceed a few errors per minute, so the trigger is
+    // "any error" held for 3 of 5 minutes, not a per-minute count threshold.
+    // This makes the alarm a deploy-cadence-independent safety net: a stage
+    // left broken by a path-filtered deploy trips it within ~5 minutes.
     const lambdaErrorsAlarm = new cloudwatch.Alarm(this, 'LambdaErrorsAlarm', {
       alarmName: 'pegasus-lambda-errors',
-      alarmDescription: 'Lambda function errors exceed 5 per minute.',
+      alarmDescription:
+        'Lambda function reported errors in 3 of the last 5 minutes — likely a ' +
+        'sustained regression (init crash, broken dependency) rather than a transient fault.',
       metric: lambdaErrorsMetric,
-      threshold: 5,
-      evaluationPeriods: 1,
+      threshold: 0,
+      evaluationPeriods: 5,
+      datapointsToAlarm: 3,
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     })

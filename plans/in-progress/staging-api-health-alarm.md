@@ -27,13 +27,18 @@ Lambda inside ~5 minutes of it starting, regardless of deploy cadence.
 
 ## Plan
 
-- [ ] **1. CloudWatch alarm on Lambda errors — staging api function.**
+- [x] **1. CloudWatch alarm on Lambda errors — staging api function.**
       Add an alarm in `MonitoringStack` (or wherever per-stage alarms
       live) on the `Errors` metric for the staging api Lambda, with a
       window short enough to catch a stuck-broken Lambda but long
       enough not to false-alarm on a single bad request: - Metric: `AWS/Lambda` `Errors` - Dimension: `FunctionName = pegasus-staging-api-...` - Statistic: Sum - Period: 60 s - Evaluation: ≥ 3 of 5 minutes with `Errors > 0` - Action: existing SNS topic / chatbot wiring used by the other
       Pegasus alarms (find the topic in
       `packages/infra/lib/stacks/monitoring-stack.ts`)
+      DONE: retuned the existing `pegasus-lambda-errors` alarm rather
+      than adding a new one — `threshold: 0`, `evaluationPeriods: 5`,
+      `datapointsToAlarm: 3`, already wired to the `pegasus-alarms`
+      SNS topic. `MonitoringStack` is instantiated per stage in
+      `bin/app.ts`, so staging picks this up automatically.
 
 - [ ] **2. Init-failure detection.** When Lambda crashes during init
       (the cedar-wasm case), the failure shows up in Lambda init
@@ -42,14 +47,23 @@ Lambda inside ~5 minutes of it starting, regardless of deploy cadence.
       CloudWatch metrics from 2026-05-03–05 to confirm `Errors` was
       non-zero on the staging api Lambda during the outage window
       before committing to the metric choice.
+      OPEN: needs AWS CLI access to the staging account, e.g.
+      `aws cloudwatch get-metric-statistics --profile pegasus-staging
+    --region us-east-1 --namespace AWS/Lambda --metric-name Errors
+    --dimensions Name=FunctionName,Value=<staging-api-fn>
+    --start-time 2026-05-03T00:00:00Z --end-time 2026-05-05T23:59:59Z
+    --period 300 --statistics Sum`. Not run in this session.
 
-- [ ] **3. Prod alarm parity.** Add the same alarm shape against the
+- [x] **3. Prod alarm parity.** Add the same alarm shape against the
       prod Lambda. Threshold can be the same — prod Errors > 0 for
       3+ minutes is always actionable.
+      DONE: covered by the same change — `MonitoringStack` is
+      per-stage, so the retuned alarm applies identically to prod.
 
-- [ ] **4. Document in `dolas/agents/project/GOTCHAS.md`.** A short
+- [x] **4. Document in `dolas/agents/project/GOTCHAS.md`.** A short
       note that path-filtered deploys can leave a broken stage
       undetected and that the alarm above is the safety net.
+      DONE: appended to the existing cedar-wasm path-filter note.
 
 ## Out of scope
 

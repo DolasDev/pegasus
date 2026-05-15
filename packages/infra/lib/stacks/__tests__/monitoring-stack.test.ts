@@ -34,18 +34,19 @@ describe('MonitoringStack — Lambda error alarm', () => {
       Namespace: 'AWS/Lambda',
       MetricName: 'Errors',
       Statistic: 'Sum',
-      Threshold: 5,
+      Threshold: 0,
       ComparisonOperator: 'GreaterThanThreshold',
     })
   })
 
-  it('evaluates the Lambda errors alarm over a 1-minute period', () => {
+  it('trips the Lambda errors alarm on any error sustained 3 of 5 minutes', () => {
     const template = synthMonitoringStack()
     template.hasResourceProperties('AWS::CloudWatch::Alarm', {
       Namespace: 'AWS/Lambda',
       MetricName: 'Errors',
       Period: 60,
-      EvaluationPeriods: 1,
+      EvaluationPeriods: 5,
+      DatapointsToAlarm: 3,
     })
   })
 

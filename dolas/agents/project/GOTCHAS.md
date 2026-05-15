@@ -74,6 +74,8 @@ In the CDK `NodejsFunction` bundling config, list the package under `nodeModules
 
 Failure mode is silent against the staging E2E gate's path filter — if the next pushes to `main` only touch paths excluded from the api filter (e.g. `plans/`, `dolas/`), no fresh deploy fires and the gate doesn't re-run, so a red staging Lambda can sit broken indefinitely. PR #91 (cedar/AVP foundation) shipped broken on 2026-05-03 and was only caught two days later when a `packages/infra/**` change forced a full rebuild.
 
+The safety net for this is the `pegasus-lambda-errors` CloudWatch alarm in `MonitoringStack` (per stage). It's deliberately tuned to "any error in 3 of the last 5 minutes" (`threshold: 0`, `evaluationPeriods: 5`, `datapointsToAlarm: 3`) rather than a per-minute count, so a low-traffic stage left broken by a path-filtered deploy still trips it within ~5 minutes regardless of deploy cadence.
+
 ## ssm:SendCommand IAM Statement Shape
 
 `ssm:SendCommand` authorizes against **both** the document and the instance resource in the same call. Two pitfalls when scoping:
