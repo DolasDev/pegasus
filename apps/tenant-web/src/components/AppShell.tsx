@@ -23,17 +23,38 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { getSession, clearSession } from '@/auth/session'
 import { getCognitoConfig, buildLogoutUrl } from '@/auth/cognito'
+import { usePermissions } from '@/auth/permissions'
 
 const SIDEBAR_COLLAPSED_KEY = 'pegasus.sidebar.collapsed'
 
+const ADMIN_ONLY = ['tenant_admin'] as const
+const OPERATIONS_PLANNING_ROLES = [
+  'tenant_admin',
+  'operations_admin',
+  'long_distance_dispatch',
+  'central_planning_dispatch',
+] as const
+
 const NAV_ITEMS = [
-  { to: '/dashboard' as const, label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { to: '/moves' as const, label: 'Moves', icon: Truck, exact: false },
-  { to: '/quotes' as const, label: 'Quotes', icon: FileText, exact: false },
-  { to: '/customers' as const, label: 'Customers', icon: Users, exact: false },
-  { to: '/dispatch' as const, label: 'Dispatch', icon: Calendar, exact: false },
-  { to: '/invoices' as const, label: 'Billing', icon: Receipt, exact: false },
-  { to: '/driver-planning' as const, label: 'Operations', icon: MapPinned, exact: false },
+  {
+    to: '/dashboard' as const,
+    label: 'Dashboard',
+    icon: LayoutDashboard,
+    exact: true,
+    roles: null,
+  },
+  { to: '/moves' as const, label: 'Moves', icon: Truck, exact: false, roles: ADMIN_ONLY },
+  { to: '/quotes' as const, label: 'Quotes', icon: FileText, exact: false, roles: ADMIN_ONLY },
+  { to: '/customers' as const, label: 'Customers', icon: Users, exact: false, roles: ADMIN_ONLY },
+  { to: '/dispatch' as const, label: 'Dispatch', icon: Calendar, exact: false, roles: ADMIN_ONLY },
+  { to: '/invoices' as const, label: 'Billing', icon: Receipt, exact: false, roles: ADMIN_ONLY },
+  {
+    to: '/driver-planning' as const,
+    label: 'Operations',
+    icon: MapPinned,
+    exact: false,
+    roles: OPERATIONS_PLANNING_ROLES,
+  },
 ] as const
 
 const SETTINGS_NAV_ITEMS = [
@@ -81,6 +102,11 @@ type AppShellProps = {
 
 export function AppShell({ children }: AppShellProps) {
   const session = getSession()
+  const perms = usePermissions()
+  const userRoles = new Set(perms.roles)
+  const visibleNavItems = perms.isLoading
+    ? []
+    : NAV_ITEMS.filter((item) => item.roles === null || item.roles.some((r) => userRoles.has(r)))
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false
     return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'
@@ -143,8 +169,15 @@ export function AppShell({ children }: AppShellProps) {
         <Separator />
         <ScrollArea className="flex-1 py-2">
           <nav className={cn('space-y-1', collapsed ? 'px-1' : 'px-2')}>
-            {NAV_ITEMS.map((item) => (
-              <NavItem key={item.to} {...item} collapsed={collapsed} />
+            {visibleNavItems.map((item) => (
+              <NavItem
+                key={item.to}
+                to={item.to}
+                label={item.label}
+                icon={item.icon}
+                exact={item.exact}
+                collapsed={collapsed}
+              />
             ))}
           </nav>
           {collapsed ? (
