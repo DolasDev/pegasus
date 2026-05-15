@@ -221,7 +221,7 @@ We worked around it with `prisma migrate deploy` (non-destructive — only appli
 
 **Acceptance:** `prisma migrate dev` runs clean (no drift complaint) against the Neon dev DB.
 
-### C — Workflow feature follow-ups _~~verify scope~~ — static audit DONE 2026-05-14_
+### C — Workflow feature follow-ups _— DONE 2026-05-15 (UAT clean, all 4 items pass)_
 
 **Status: static audit clean.** All test suites green (api 1041, admin-web 26,
 tenant-web 713) and typechecks pass. Coverage breakdown:
@@ -240,15 +240,23 @@ tenant-web 713) and typechecks pass. Coverage breakdown:
 - `TENANT_SCOPED_MODELS` story: `1619e94` added Workflow, `e70d61a` removed it
   (GLOBAL needs cross-tenant visibility) + acknowledged in `INTENTIONALLY_UNSCOPED`.
 
-**Remaining for manual UAT (needs the dev server + your hands):**
+**UAT executed against QA 2026-05-15 — all 4 items pass:**
 
-1. Admin-web tenant detail → Promote to platform tenant → Demote; verify
-   `isPlatformTenant` flips and the GLOBAL banner appears.
-2. Admin-web `/workflows` route loads (empty table is fine — verifies auth).
-3. Tenant-web `/settings/workflows` renders both sections under auth.
-4. (Optional) Run `POST /api/v1/workflows/upload-url` as a user with the
-   `workflow_developer` role; confirm 201 + `{workflowId,uploadUrl}`; commit
-   via `POST /api/v1/workflows`; verify the row appears in /settings/workflows.
+1. ✅ Admin-web tenant detail → Promote → Demote; `isPlatformTenant` flips and the GLOBAL banner appears.
+2. ✅ Admin-web `/workflows` route loads (empty table, authz wired).
+3. ✅ Tenant-web `/settings/workflows` renders both `Platform library` and `Your workflows` sections.
+4. ✅ Upload-URL → S3 PUT → finalize round-trip end-to-end against `api.pegasus-qa.dolas.dev`:
+   - `POST /api/v1/workflows/upload-url` → 201, returned `workflowId` + presigned PUT.
+   - `PUT` 1024-byte zip with `content-type: application/zip` → S3 200.
+   - `POST /api/v1/workflows` (finalize) → 201, row created with `visibility: TENANT`,
+     `createdByUserId` resolved from the Cognito sub.
+   - `GET /api/v1/workflows` → 200, the row appears in `data[]` with `meta.count: 1`.
+   - Verified visually in `/settings/workflows` under **Your workflows**.
+
+The resulting `uat-smoke@0.0.1` row (id `7dc205df-cadf-4790-9b17-4b9f99605947`) sits in the
+Dolios E2E tenant's workflow list. No DELETE endpoint exists yet, so it's left in place as
+harmless test data; the longhaul E2E suite doesn't touch `/settings/workflows` so there's no
+regression risk.
 
 **Open follow-up surfaced by the audit (non-blocking):** the Workflow SDK/CLI
 for actually uploading isn't in this commit set — the UI renders an empty list
@@ -390,7 +398,7 @@ Move to `plans/completed/` once:
   **(Closed 2026-05-14 — workflow run `25886270089` green; 3 specs PASS.)**
 - B is done (no Prisma drift on the dev DB) OR explicitly punted with a
   one-line note here saying so. **(Closed 2026-05-14 in `c7d44c9`.)**
-- C is done — static audit clean (2026-05-14); manual click-through pending.
+- C is done — static audit clean (2026-05-14); UAT clean against QA 2026-05-15.
   Plan acknowledges the SDK/CLI as a separate follow-up.
 - F is closed — `trip-detail.spec.ts:34` runs cleanly on 5 consecutive
   `workflow_dispatch` runs with 0 first-attempt fails on the gantt assertion,
