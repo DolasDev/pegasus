@@ -199,6 +199,9 @@ const frontendAssetsStack = new FrontendAssetsStack(app, `${stackIdPrefix}-Front
   apiStackName: apiStack.stackName,
   cognitoStackName: cognitoStack.stackName,
   cognitoRegion: env.region ?? 'us-east-1',
+  // staging/prod → https://api.pegasus[-qa].dolas.dev (via CloudFront).
+  // dev keeps the raw execute-api URL — no custom API domain there.
+  useApiCustomDomain: envName === 'staging' || envName === 'prod',
 })
 frontendAssetsStack.addDependency(frontendStack)
 frontendAssetsStack.addDependency(apiStack)
@@ -215,6 +218,9 @@ const adminFrontendAssetsStack = new AdminFrontendAssetsStack(
     cognitoStackName: cognitoStack.stackName,
     apiStackName: apiStack.stackName,
     cognitoRegion: env.region ?? 'us-east-1',
+    // staging/prod → https://api.pegasus[-qa].dolas.dev (via CloudFront).
+    // dev keeps the raw execute-api URL — no custom API domain there.
+    useApiCustomDomain: envName === 'staging' || envName === 'prod',
   },
 )
 adminFrontendAssetsStack.addDependency(adminFrontendStack)

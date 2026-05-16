@@ -4,7 +4,13 @@ import * as cdk from 'aws-cdk-lib'
 import * as s3 from 'aws-cdk-lib/aws-s3'
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront'
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment'
+import * as ssm from 'aws-cdk-lib/aws-ssm'
 import { type Construct } from 'constructs'
+
+// SSM parameter published by dolas-infra's PegasusApiDnsBootstrapStack —
+// the branded API domain (api.pegasus[-qa].dolas.dev). Read at deploy time
+// when useApiCustomDomain is set.
+const API_DOMAIN_NAME_PARAM = '/dolas/pegasus/api/domain-name'
 
 export interface AdminFrontendAssetsStackProps extends cdk.StackProps {
   /**
@@ -30,6 +36,16 @@ export interface AdminFrontendAssetsStackProps extends cdk.StackProps {
   readonly apiStackName: string
   /** AWS region of the Cognito User Pool. Defaults to us-east-1. */
   readonly cognitoRegion?: string
+  /**
+   * When true, config.json's apiUrl points at the branded API domain
+   * (https://api.pegasus[-qa].dolas.dev, read from SSM) instead of the raw
+   * API Gateway execute-api URL. Set for staging/prod; leave false for dev,
+   * which has no custom API domain and keeps the execute-api URL.
+   *
+   * The branded URL is stable across API Gateway replacements and routes
+   * through CloudFront (WAF/Shield); the execute-api URL has neither property.
+   */
+  readonly useApiCustomDomain?: boolean
 }
 
 /**
@@ -86,9 +102,14 @@ export class AdminFrontendAssetsStack extends cdk.Stack {
       `.auth.${cognitoRegion}.amazoncognito.com`,
     ])
 
-    const apiUrl = cdk.Fn.importValue(
-      `${props.apiStackName}:ExportsOutputFnGetAttPegasusHttpApiF652FECBApiEndpointFD99A5D1`,
-    )
+    const apiUrl = props.useApiCustomDomain
+      ? cdk.Fn.join('', [
+          'https://',
+          ssm.StringParameter.valueForStringParameter(this, API_DOMAIN_NAME_PARAM),
+        ])
+      : cdk.Fn.importValue(
+          `${props.apiStackName}:ExportsOutputFnGetAttPegasusHttpApiF652FECBApiEndpointFD99A5D1`,
+        )
 
     const distPath = path.join(__dirname, '../../../../apps/admin-web/dist')
     if (fs.existsSync(distPath)) {
