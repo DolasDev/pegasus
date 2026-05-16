@@ -40,19 +40,19 @@ Lambda inside ~5 minutes of it starting, regardless of deploy cadence.
       SNS topic. `MonitoringStack` is instantiated per stage in
       `bin/app.ts`, so staging picks this up automatically.
 
-- [ ] **2. Init-failure detection.** When Lambda crashes during init
+- [x] **2. Init-failure detection.** When Lambda crashes during init
       (the cedar-wasm case), the failure shows up in Lambda init
       reports but `Errors` does still tick because every invocation
       fails. So (1) covers it. **Verify** by checking historical
       CloudWatch metrics from 2026-05-03–05 to confirm `Errors` was
       non-zero on the staging api Lambda during the outage window
       before committing to the metric choice.
-      OPEN: needs AWS CLI access to the staging account, e.g.
-      `aws cloudwatch get-metric-statistics --profile pegasus-staging
-    --region us-east-1 --namespace AWS/Lambda --metric-name Errors
-    --dimensions Name=FunctionName,Value=<staging-api-fn>
-    --start-time 2026-05-03T00:00:00Z --end-time 2026-05-05T23:59:59Z
-    --period 300 --statistics Sum`. Not run in this session.
+      DONE: verified against `pegasus-staging-api-ApiFunctionCE271BD4`.
+      `Errors` held steady at ~120/hour from 2026-05-03 22:00 UTC
+      through 2026-05-05 21:00 UTC, then dropped to 0 when the fix
+      landed. Confirms the metric ticks on an init crash. Note: ~2/min
+      is _below_ the old 5/min threshold — the original alarm would
+      not have fired, which vindicates the `>0` / 3-of-5-min retune.
 
 - [x] **3. Prod alarm parity.** Add the same alarm shape against the
       prod Lambda. Threshold can be the same — prod Errors > 0 for
