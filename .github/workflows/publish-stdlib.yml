@@ -5,7 +5,7 @@ name: Publish workflows stdlib
 #
 # This is the platform team dogfooding the tenant upload path: it installs the
 # published SDK and runs `pegasus-workflows push` exactly as a tenant CI would.
-# The push runs under the PLATFORM tENANT identity, so every workflow resolves
+# The push runs under the platform-tenant identity, so every workflow resolves
 # to GLOBAL visibility server-side and lands in every tenant's Platform Library.
 #
 # ── OPERATOR STEP (one-time, before the first tag) ──────────────────────────

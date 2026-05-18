@@ -21,11 +21,12 @@ _EXCLUDE_DIRS = {"__pycache__", ".git", "dist", ".venv", "venv", ".pytest_cache"
 _EXCLUDE_SUFFIXES = {".pyc", ".pyo"}
 
 
-def _should_include(path: Path) -> bool:
-    """Return whether *path* belongs in an artifact zip."""
-    if any(part in _EXCLUDE_DIRS for part in path.parts):
+def _should_include(rel_path: Path) -> bool:
+    """Return whether a file at *rel_path* (relative to the project) belongs
+    in an artifact zip."""
+    if any(part in _EXCLUDE_DIRS for part in rel_path.parts):
         return False
-    return path.suffix not in _EXCLUDE_SUFFIXES
+    return rel_path.suffix not in _EXCLUDE_SUFFIXES
 
 
 def package_workflow(project_dir: Path, manifest: Manifest, dist_dir: Path) -> Path:
@@ -53,9 +54,12 @@ def package_workflow(project_dir: Path, manifest: Manifest, dist_dir: Path) -> P
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
         for file in sorted(source_dir.rglob("*")):
-            if not file.is_file() or not _should_include(file):
+            if not file.is_file():
                 continue
-            archive.write(file, file.relative_to(project_dir))
+            rel = file.relative_to(project_dir)
+            if not _should_include(rel):
+                continue
+            archive.write(file, rel)
         # Include the manifest so the artifact is self-describing.
         manifest_file = project_dir / MANIFEST_FILENAME
         if manifest_file.is_file():

@@ -22,12 +22,13 @@ Example
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from temporalio import activity, workflow
 
-from .api import PegasusApiError, PegasusClient
-from .manifest import Manifest, ManifestError, load_manifest
+if TYPE_CHECKING:
+    from .api import PegasusApiError, PegasusClient
+    from .manifest import Manifest, ManifestError, load_manifest
 
 __all__ = [
     "activity",
@@ -40,6 +41,31 @@ __all__ = [
     "load_manifest",
     "WORKFLOW_META_ATTR",
 ]
+
+# api.py pulls in httpx (and transitively urllib), which Temporal's workflow
+# sandbox restricts. Workflow files import the authoring primitives from this
+# package, so importing the package must NOT eagerly import api/manifest —
+# otherwise httpx lands in the sandboxed workflow module graph and validation
+# fails. PegasusClient/Manifest/etc. are therefore exposed lazily and only
+# resolved when actually referenced (i.e. inside activities or the CLI).
+_LAZY_EXPORTS = {
+    "PegasusClient": "api",
+    "PegasusApiError": "api",
+    "Manifest": "manifest",
+    "ManifestError": "manifest",
+    "load_manifest": "manifest",
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily resolve API/manifest exports (PEP 562 module __getattr__)."""
+    module_name = _LAZY_EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    import importlib
+
+    module = importlib.import_module(f".{module_name}", __name__)
+    return getattr(module, name)
 
 #: Attribute name under which :func:`pegasus_workflow` stores its metadata
 #: dict on the decorated class.

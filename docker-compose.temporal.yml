@@ -20,15 +20,17 @@ name: pegasus-temporal-dev
 services:
   # Single-binary Temporal dev server with an in-memory database. No
   # persistence between restarts — exactly what local workflow testing needs.
+  # The temporalio/temporal image's entrypoint is the `temporal` CLI itself,
+  # so the command is just its arguments.
   temporal:
-    image: temporalio/admin-tools:1.25
+    image: temporalio/temporal:1.4.1
     container_name: pegasus-temporal
-    command: ["temporal", "server", "start-dev", "--ip", "0.0.0.0", "--ui-port", "8080"]
+    command: ['server', 'start-dev', '--ip', '0.0.0.0', '--ui-port', '8080']
     ports:
-      - "7233:7233"
-      - "8080:8080"
+      - '7233:7233'
+      - '8080:8080'
     healthcheck:
-      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "127.0.0.1:7233"]
+      test: ['CMD', 'temporal', 'operator', 'cluster', 'health', '--address', '127.0.0.1:7233']
       interval: 5s
       timeout: 5s
       retries: 20
