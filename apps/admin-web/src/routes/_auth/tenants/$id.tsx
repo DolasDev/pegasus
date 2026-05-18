@@ -489,13 +489,6 @@ export function TenantDetailPage() {
                 <em className="text-muted-foreground">—</em>
               )}
             </Row>
-            <Row label="Email domains">
-              {tenant.emailDomains.length > 0 ? (
-                <span className="font-mono text-xs">{tenant.emailDomains.join(', ')}</span>
-              ) : (
-                <em className="text-muted-foreground">—</em>
-              )}
-            </Row>
             <Row label="Created">{formatDate(tenant.createdAt)}</Row>
             <Row label="Last updated">{formatDate(tenant.updatedAt)}</Row>
             {tenant.deletedAt && <Row label="Offboarded">{formatDate(tenant.deletedAt)}</Row>}

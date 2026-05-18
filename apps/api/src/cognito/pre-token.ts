@@ -15,8 +15,8 @@
 //
 // TENANT / MOBILE APP CLIENT:
 //   Resolve the active tenant from an AuthSession (multi-tenant picker)
-//   or fall back to email domain lookup, then look up the TenantUser
-//   record to determine roleNames and status:
+//   or fall back to the user's tenant_users roster, then look up the
+//   TenantUser record to determine roleNames and status:
 //
 //   ACTIVE      → inject custom:tenantId + custom:roles (Cedar groups)
 //   PENDING     → first login: inject claims, set status=ACTIVE + activatedAt + cognitoSub
@@ -107,22 +107,29 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
   }
 
   const normalizedEmail = email.toLowerCase()
+  const now = new Date()
 
-  const domain = normalizedEmail.split('@')[1]
-  if (!domain) {
-    logger.error('Pre-Token trigger: Invalid email format', { email })
-    throw new Error('Authentication failed: Invalid email format')
-  }
+  // Best-effort sweep of expired AuthSession rows. Sessions are no longer
+  // deleted on read (they must survive the multi-invocation login burst —
+  // initial auth + token refresh), so they are cleaned up by expiry here
+  // instead. Fire-and-forget: never block token issuance on this.
+  db.authSession.deleteMany({ where: { expiresAt: { lt: now } } }).catch((err: unknown) => {
+    logger.warn('Pre-Token trigger: Failed to sweep expired AuthSessions', {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  })
 
   // -------------------------------------------------------------------------
   // Step 1: Check for a pending AuthSession (created by POST /api/auth/select-tenant).
-  // If found, use its tenantId — this bypasses the email domain restriction,
-  // enabling cross-org users (contractors, invited users with different domains).
+  // If found, use its tenantId — this carries the user's explicit tenant pick
+  // through the login, enabling multi-tenant users to land in the right org.
   // -------------------------------------------------------------------------
   // AuthSession.email is stored lowercase by select-tenant, so match with
-  // the normalised email to avoid case-mismatch misses.
+  // the normalised email to avoid case-mismatch misses. The session is NOT
+  // consumed on read: one login fires several PreTokenGeneration invocations
+  // and they must all resolve consistently — it expires naturally instead.
   const authSession = await db.authSession.findFirst({
-    where: { email: normalizedEmail, expiresAt: { gt: new Date() } },
+    where: { email: normalizedEmail, expiresAt: { gt: now } },
     orderBy: { createdAt: 'desc' },
     select: { id: true, tenantId: true },
   })
@@ -132,33 +139,37 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
   if (authSession) {
     // Use the session-selected tenant.
     tenantId = authSession.tenantId
-
-    // Consume the session — fire-and-forget so it does not block token issuance.
-    db.authSession.deleteMany({ where: { id: authSession.id } }).catch((err: unknown) => {
-      logger.warn('Pre-Token trigger: Failed to delete consumed AuthSession', {
-        sessionId: authSession.id,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    })
-
     logger.info('Pre-Token trigger: Resolved tenant via AuthSession', { email, tenantId })
   } else {
     // -----------------------------------------------------------------------
-    // Step 2: No pending session — fall back to email domain resolution.
+    // Step 2: No pending session (e.g. a token refresh, which never carries
+    // one) — resolve the tenant from the user's tenant_users roster.
     // -----------------------------------------------------------------------
-    const tenant = await db.tenant.findFirst({
-      where: { emailDomains: { has: domain }, status: 'ACTIVE' },
-      select: { id: true },
+    const rosterRows = await db.tenantUser.findMany({
+      where: {
+        email: { equals: normalizedEmail, mode: 'insensitive' },
+        status: { not: 'DEACTIVATED' },
+        tenant: { status: 'ACTIVE' },
+      },
+      select: { tenantId: true },
     })
 
-    if (!tenant) {
-      logger.warn('Pre-Token trigger: No active tenant for domain', { domain })
-      throw new Error(
-        'Your email domain is not associated with any active Pegasus tenant. Contact your administrator.',
-      )
+    if (rosterRows.length === 0) {
+      logger.warn('Pre-Token trigger: No tenant roster row for email', { email })
+      throw new Error('Your account has not been granted access. Contact your administrator.')
     }
 
-    tenantId = tenant.id
+    if (rosterRows.length > 1) {
+      // Cannot disambiguate without the tenant picker — force a fresh login.
+      logger.warn('Pre-Token trigger: Multiple roster rows, no AuthSession', {
+        email,
+        count: rosterRows.length,
+      })
+      throw new Error('Your session has expired. Please sign in again.')
+    }
+
+    tenantId = rosterRows[0]!.tenantId
+    logger.info('Pre-Token trigger: Resolved tenant via roster', { email, tenantId })
   }
 
   // -------------------------------------------------------------------------

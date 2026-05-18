@@ -171,7 +171,6 @@ describe('POST /api/auth/resolve-tenants', () => {
 
   it('queries TenantUser with status not DEACTIVATED and tenant status ACTIVE', async () => {
     mockTenantUserFindMany.mockResolvedValue([])
-    mockTenantFindFirst.mockResolvedValue(null)
 
     await authHandler.request('/resolve-tenants', post({ email: 'user@acme.com' }))
 
@@ -186,22 +185,8 @@ describe('POST /api/auth/resolve-tenants', () => {
     )
   })
 
-  it('falls back to domain lookup when no TenantUser records found', async () => {
+  it('returns 200 with an empty array when the email has no roster rows', async () => {
     mockTenantUserFindMany.mockResolvedValue([])
-    mockTenantFindFirst.mockResolvedValue(
-      makeTenantRow({ id: 'domain-tenant', name: 'Domain Corp' }),
-    )
-
-    const res = await authHandler.request('/resolve-tenants', post({ email: 'user@domain.com' }))
-    expect(res.status).toBe(200)
-    const data = (await json(res)).data as JsonBody[]
-    expect(data).toHaveLength(1)
-    expect(data[0]!['tenantId']).toBe('domain-tenant')
-  })
-
-  it('returns 200 with empty array when neither TenantUser nor domain lookup finds anything', async () => {
-    mockTenantUserFindMany.mockResolvedValue([])
-    mockTenantFindFirst.mockResolvedValue(null)
 
     const res = await authHandler.request('/resolve-tenants', post({ email: 'user@unknown.com' }))
     expect(res.status).toBe(200)

@@ -16,8 +16,6 @@ export interface Tenant {
   plan: TenantPlan
   contactName: string | null
   contactEmail: string | null
-  /** Email domains that map to this tenant (e.g. ["acme.com"]). Used for SSO domain resolution. */
-  emailDomains: string[]
   /**
    * Singleton flag — when true, this tenant's workflow uploads populate the
    * GLOBAL library visible to every other tenant. Promoting/demoting is
@@ -87,8 +85,6 @@ export interface CreateTenantBody {
   plan?: TenantPlan
   contactName?: string
   contactEmail?: string
-  /** Email domains for SSO resolution (e.g. ["acme.com"]). At least one required. */
-  emailDomains: string[]
   /** Email address for the initial tenant administrator. Cognito account is provisioned on creation. */
   adminEmail: string
 }
@@ -100,8 +96,6 @@ export interface UpdateTenantBody {
   contactName?: string | null
   /** Pass null to clear. */
   contactEmail?: string | null
-  /** Replace the full set of email domains. Must contain at least one domain if provided. */
-  emailDomains?: string[]
 }
 
 // ---------------------------------------------------------------------------

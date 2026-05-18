@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { cognitoApiRequest, CognitoError } from '../cognito-client'
+import { cognitoApiRequest, CognitoError, unwrapPreTokenMessage } from '../cognito-client'
 
 beforeEach(() => {
   vi.restoreAllMocks()
@@ -90,6 +90,32 @@ describe('cognitoApiRequest', () => {
     }
   })
 
+  it('strips the PreTokenGeneration wrapper from a CognitoError message', async () => {
+    // Cognito wraps the Lambda message and appends its own period — so an
+    // inner sentence ending in "." arrives doubled ("administrator..").
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            __type: 'UserLambdaValidationException',
+            message:
+              'PreTokenGeneration failed with error Your account has not been granted access. Contact your administrator..',
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    )
+
+    try {
+      await cognitoApiRequest('us-east-1', 'InitiateAuth', {})
+      expect.fail('Should have thrown')
+    } catch (err) {
+      expect((err as CognitoError).message).toBe(
+        'Your account has not been granted access. Contact your administrator.',
+      )
+    }
+  })
+
   it('uses the correct region in the URL', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
       Promise.resolve(
@@ -105,6 +131,24 @@ describe('cognitoApiRequest', () => {
     expect(globalThis.fetch).toHaveBeenCalledWith(
       'https://cognito-idp.ap-southeast-2.amazonaws.com/',
       expect.anything(),
+    )
+  })
+})
+
+describe('unwrapPreTokenMessage', () => {
+  it('strips the wrapper prefix and the single period Cognito appends', () => {
+    // Inner sentence already ends in "." — Cognito appends another, so the
+    // wrapped message ends in "..". Only Cognito's period should be removed.
+    expect(
+      unwrapPreTokenMessage(
+        'PreTokenGeneration failed with error Your session has expired. Please sign in again..',
+      ),
+    ).toBe('Your session has expired. Please sign in again.')
+  })
+
+  it('returns non-wrapped messages unchanged', () => {
+    expect(unwrapPreTokenMessage('Incorrect username or password.')).toBe(
+      'Incorrect username or password.',
     )
   })
 })

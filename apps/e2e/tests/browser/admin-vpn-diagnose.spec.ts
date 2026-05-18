@@ -26,7 +26,6 @@ const TENANT_FIXTURE = {
   plan: 'GROWTH' as const,
   contactName: 'E2E Operator',
   contactEmail: 'ops@e2e.example',
-  emailDomains: ['e2e.example'],
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
   deletedAt: null,

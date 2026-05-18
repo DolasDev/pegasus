@@ -6,18 +6,19 @@
 // exists). They are mounted BEFORE the /api/v1 tenant block in app.ts.
 //
 // Endpoints:
-//   POST /api/auth/resolve-tenant  — domain → tenant + configured SSO providers
+//   POST /api/auth/resolve-tenants — email → all tenants the user is invited to
+//   POST /api/auth/select-tenant   — record the user's tenant pick (AuthSession)
 //   POST /api/auth/validate-token  — Cognito ID token → validated session claims
 //
 // Security posture:
-//   - resolve-tenant returns only non-sensitive display metadata. Client IDs
-//     and secrets are never included. An attacker who knows a tenant's domain
-//     learns only the provider name and type — not enough to impersonate.
+//   - resolve-tenants returns only non-sensitive display metadata. Client IDs
+//     and secrets are never included.
 //   - validate-token accepts only ID tokens (token_use = "id") and validates
 //     signature (JWKS), iss, aud (tenant client ID), exp, and token_use.
 //     The raw token is never returned or stored — only the extracted claims.
-//   - tenantId is resolved server-side from the token's email claim and the
-//     emailDomains column. The frontend cannot inject a different tenantId.
+//   - tenantId is taken from the custom:tenantId claim that the Pre-Token
+//     Lambda injects after resolving the tenant from the user's roster. The
+//     frontend cannot inject a different tenantId.
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
@@ -55,19 +56,8 @@ function deriveIssuer(jwksUrl: string): string {
 // ---------------------------------------------------------------------------
 // Zod schemas
 // ---------------------------------------------------------------------------
-const ResolveTenantBody = z.object({
-  /** The email domain to look up (e.g. "acme.com"). Not the full email address. */
-  domain: z
-    .string()
-    .min(1)
-    .max(253)
-    .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/, {
-      message: 'domain must be a valid DNS domain (e.g. acme.com)',
-    }),
-})
-
 const ResolveTenantsBody = z.object({
-  /** Full email address — backend extracts domain for fallback lookup. */
+  /** Full email address — the backend looks up the user's tenant roster. */
   email: z.string().email(),
 })
 
@@ -90,7 +80,7 @@ const MobileConfigQuery = z.object({
 // ---------------------------------------------------------------------------
 // Shared Prisma select fragment and mapper for login-facing SSO provider data.
 //
-// Used by all three endpoints that return provider lists to the login UI.
+// Used by the endpoints that return provider lists to the login UI.
 // Secrets, client IDs, and metadata URLs are intentionally excluded.
 // ---------------------------------------------------------------------------
 const enabledSsoProvidersSelect = {
@@ -115,88 +105,15 @@ function mapProviders(
 export const authHandler = new Hono()
 
 // ---------------------------------------------------------------------------
-// POST /api/auth/resolve-tenant
-//
-// Resolves the tenant and its configured SSO providers for a given email domain.
-//
-// Used by the login page to determine which IdP(s) to offer the user.
-// Called before any session exists — no authentication required.
-//
-// Request:  { domain: string }               (the email domain, not full address)
-// Response: { data: TenantResolution }       on success (200) — always includes cognitoAuthEnabled
-//           { error, code: NOT_FOUND }       if domain is not registered (404)
-//           { error, code: VALIDATION_ERROR} if domain is malformed (400)
-//
-// Security: returns only id, name, and type for each provider — no secrets,
-// client IDs, or metadata URLs are exposed.
-// ---------------------------------------------------------------------------
-authHandler.post(
-  '/resolve-tenant',
-  validator('json', (value, c) => {
-    const r = ResolveTenantBody.safeParse(value)
-    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
-    return r.data
-  }),
-  async (c) => {
-    const { domain } = c.req.valid('json')
-
-    let tenant: {
-      id: string
-      name: string
-      status: string
-      cognitoAuthEnabled: boolean
-      ssoProviders: Array<{ cognitoProviderName: string; name: string; type: 'OIDC' | 'SAML' }>
-    } | null
-
-    try {
-      // Find the first ACTIVE tenant whose emailDomains array contains this domain.
-      // Prisma array-contains translates to: WHERE email_domains @> ARRAY['domain']
-      tenant = await db.tenant.findFirst({
-        where: {
-          emailDomains: { has: domain },
-          status: 'ACTIVE',
-        },
-        select: {
-          id: true,
-          name: true,
-          status: true,
-          cognitoAuthEnabled: true,
-          ssoProviders: enabledSsoProvidersSelect,
-        },
-      })
-    } catch {
-      return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-    }
-
-    if (!tenant) {
-      return c.json({ error: 'Domain not registered with Pegasus', code: 'TENANT_NOT_FOUND' }, 404)
-    }
-
-    return c.json({
-      data: {
-        tenantId: tenant.id,
-        tenantName: tenant.name,
-        cognitoAuthEnabled: tenant.cognitoAuthEnabled,
-        // cognitoProviderName is used as the provider ID — it is passed as
-        // `identity_provider` in the Cognito authorization URL.
-        providers: mapProviders(tenant.ssoProviders),
-      },
-    })
-  },
-)
-
-// ---------------------------------------------------------------------------
 // POST /api/auth/resolve-tenants
 //
 // Returns ALL tenants the given email address is invited to, for use in the
 // multi-tenant login picker. Called before any session exists.
 //
-// Resolution order:
-//   1. Find TenantUser records for email where status != DEACTIVATED and
-//      tenant.status = ACTIVE. If found, return as array.
-//   2. If none found, fall back to domain-based lookup (backward compat for
-//      domain-only tenants who have no TenantUser records for this email).
-//   3. If still nothing, return empty array — UI shows "not registered".
+// Resolution: find TenantUser roster rows for the email where status !=
+// DEACTIVATED and tenant.status = ACTIVE. Roster membership is the only
+// source of truth — there is no domain-based fallback. No rows → empty
+// array, and the UI shows "not registered".
 //
 // Request:  { email: string }
 // Response: { data: TenantResolution[] }   always 200; empty array = unknown
@@ -214,7 +131,7 @@ authHandler.post(
     const normalizedEmail = email.toLowerCase()
 
     try {
-      // Step 1: look up all TenantUser entries for this email.
+      // Look up all TenantUser roster entries for this email.
       // Use case-insensitive matching so "John@Acme.com" matches "john@acme.com".
       const tenantUsers = await db.tenantUser.findMany({
         where: {
@@ -234,42 +151,13 @@ authHandler.post(
         },
       })
 
-      if (tenantUsers.length > 0) {
-        return c.json({
-          data: tenantUsers.map((tu) => ({
-            tenantId: tu.tenant.id,
-            tenantName: tu.tenant.name,
-            cognitoAuthEnabled: tu.tenant.cognitoAuthEnabled,
-            providers: mapProviders(tu.tenant.ssoProviders),
-          })),
-        })
-      }
-
-      // Step 2: domain-based fallback for tenants not using the TenantUser roster flow.
-      const domain = normalizedEmail.split('@')[1]
-      const tenant = domain
-        ? await db.tenant.findFirst({
-            where: { emailDomains: { has: domain }, status: 'ACTIVE' },
-            select: {
-              id: true,
-              name: true,
-              cognitoAuthEnabled: true,
-              ssoProviders: enabledSsoProvidersSelect,
-            },
-          })
-        : null
-
       return c.json({
-        data: tenant
-          ? [
-              {
-                tenantId: tenant.id,
-                tenantName: tenant.name,
-                cognitoAuthEnabled: tenant.cognitoAuthEnabled,
-                providers: mapProviders(tenant.ssoProviders),
-              },
-            ]
-          : [],
+        data: tenantUsers.map((tu) => ({
+          tenantId: tu.tenant.id,
+          tenantName: tu.tenant.name,
+          cognitoAuthEnabled: tu.tenant.cognitoAuthEnabled,
+          providers: mapProviders(tu.tenant.ssoProviders),
+        })),
       })
     } catch {
       return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
@@ -281,8 +169,9 @@ authHandler.post(
 // POST /api/auth/select-tenant
 //
 // Records the tenant the user has chosen so the pre-token Lambda can use it
-// during Cognito authentication. Creates a short-lived AuthSession that the
-// Lambda reads and deletes in one step.
+// during Cognito authentication. Creates a short-lived AuthSession (10-minute
+// window) that the Lambda reads; it expires naturally rather than being
+// consumed, so it survives the multiple invocations of one login.
 //
 // Validation:
 //   - TenantUser must exist for (tenantId, email) with status != DEACTIVATED
@@ -367,8 +256,8 @@ authHandler.post(
 //
 // The frontend calls this after exchanging the authorization code for tokens
 // at the Cognito token endpoint. The backend validates the token server-side
-// and resolves tenantId from the email domain, so the frontend cannot forge
-// or inject identity claims.
+// and reads tenantId from the custom:tenantId claim, so the frontend cannot
+// forge or inject identity claims.
 //
 // Validation steps:
 //   1. Verify RS256 signature via JWKS (jose handles key caching + rotation).
@@ -377,17 +266,14 @@ authHandler.post(
 //      to other app clients from being used here).
 //   4. Validate exp (token not expired).
 //   5. Validate token_use = "id" (reject access tokens — different purpose).
-//   6. Extract email, derive domain, resolve tenantId from emailDomains.
+//   6. Extract email/sub and read tenantId + roles from the custom claims
+//      that the Pre-Token-Generation Lambda injected.
 //   7. Return validated claims only — raw token is never stored or returned.
-//
-// Phase 5 adds custom Cognito claims (custom:tenantId, custom:role) via a
-// Pre-Token-Generation Lambda. Until then, tenantId comes from the domain
-// lookup and role defaults to tenant_user.
 //
 // Request:  { idToken: string }
 // Response: { data: Session }              on success (200)
 //           { error, code: UNAUTHORIZED }  on invalid/expired token (401)
-//           { error, code: FORBIDDEN }     on domain not registered (403)
+//           { error, code: FORBIDDEN }     when the token carries no tenant claim (403)
 // ---------------------------------------------------------------------------
 authHandler.post(
   '/validate-token',
@@ -441,7 +327,8 @@ authHandler.post(
     }
 
     // -----------------------------------------------------------------------
-    // Step 6: Extract claims and resolve tenantId from email domain
+    // Step 6: Extract identity claims and read the tenant/roles the
+    // Pre-Token-Generation Lambda resolved from the user's roster.
     // -----------------------------------------------------------------------
     const sub = payload['sub'] as string | undefined
     const email = payload['email'] as string | undefined
@@ -450,23 +337,13 @@ authHandler.post(
       return c.json({ error: 'Invalid token: missing required claims', code: 'UNAUTHORIZED' }, 401)
     }
 
-    const domain = email.split('@')[1]?.toLowerCase()
-    if (!domain) {
-      return c.json(
-        { error: 'Invalid token: could not extract domain from email', code: 'UNAUTHORIZED' },
-        401,
-      )
-    }
-
-    // We now rely on the custom claims injected by the Pre-Token-Generation Lambda.
-    // The Lambda has already authoritative resolved the tenant and injected these claims.
+    // tenantId and roles come from the custom claims the Pre-Token Lambda
+    // injects after resolving the tenant. They are absent only for tokens
+    // issued to a non-tenant client (e.g. the admin app).
     const customTenantId = payload['custom:tenantId'] as string | undefined
     const customRolesRaw = payload['custom:roles'] as string | undefined
 
     if (!customTenantId || !customRolesRaw) {
-      // Pre-token Lambda blocks generation if there is no active tenant. Wait, it could be
-      // an admin or another type of user? Tenant mapping happens for all users signing into
-      // the tenant client.
       return c.json(
         {
           error:

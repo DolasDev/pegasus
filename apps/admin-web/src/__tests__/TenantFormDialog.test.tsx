@@ -41,7 +41,6 @@ function makeTenant(overrides: Partial<TenantDetail> = {}): TenantDetail {
     plan: 'STARTER',
     contactName: null,
     contactEmail: null,
-    emailDomains: ['acme.com'],
     isPlatformTenant: false,
     createdAt: '2025-01-01T00:00:00.000Z',
     updatedAt: '2025-01-01T00:00:00.000Z',
@@ -89,9 +88,6 @@ describe('TenantFormDialog (create mode)', () => {
     fireEvent.change(screen.getByPlaceholderText('admin@acme.com'), {
       target: { value: 'admin@acme.com' },
     })
-    fireEvent.change(screen.getByPlaceholderText('acme.com, acme.co.uk'), {
-      target: { value: 'acme.com' },
-    })
 
     fireEvent.submit(screen.getByRole('button', { name: 'Create tenant' }).closest('form')!)
 
@@ -101,7 +97,6 @@ describe('TenantFormDialog (create mode)', () => {
           name: 'Acme Moving Co.',
           slug: 'acme-moving',
           adminEmail: 'admin@acme.com',
-          emailDomains: ['acme.com'],
         }),
       )
     })
@@ -124,9 +119,6 @@ describe('TenantFormDialog (create mode)', () => {
     })
     fireEvent.change(screen.getByPlaceholderText('admin@acme.com'), {
       target: { value: 'admin@acme.com' },
-    })
-    fireEvent.change(screen.getByPlaceholderText('acme.com, acme.co.uk'), {
-      target: { value: 'acme.com' },
     })
 
     fireEvent.submit(screen.getByRole('button', { name: 'Create tenant' }).closest('form')!)

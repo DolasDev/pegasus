@@ -144,3 +144,29 @@ Caveats:
 - **Non-persistent.** ASG instance replacement wipes this. Fix the agent before the next refresh.
 - **Diagnose, don't paper over.** Check `journalctl -u pegasus-vpn-agent` and the `pegasus-wireguard-agent-down` / `pegasus-wireguard-eip-detached` / `pegasus-wireguard-peer-drift` alarms before reaching for this. Manual `wg set` is the _exception_, not the steady state.
 - **Drop the manual entry once the agent is back.** It will already have re-added the peer from the database; remove your manual entry with `sudo wg set wg0 peer <pubkey> remove` if it's still there alongside the agent's version.
+
+## Login: one Cognito login fires multiple PreTokenGeneration invocations
+
+A single Cognito login is not one PreTokenGeneration call — it is several
+(initial auth + silent token refresh + extra SPA token calls). Two consequences
+that caused an intermittent "account has not been granted access" failure:
+
+- **`AuthSession` must not be consumed on read.** `select-tenant` creates a
+  short-lived `AuthSession` carrying the user's tenant pick. Pre-token previously
+  `deleteMany`'d it on first read — so the second invocation (token refresh,
+  which never has its own AuthSession) lost the pick. Sessions now expire only
+  via their 10-minute `expiresAt`; pre-token sweeps expired rows but never
+  deletes the one it just read. If you touch `pre-token.ts`, do not re-introduce
+  a read-time delete.
+- **Resolution is roster-only.** When there is no live AuthSession (every token
+  refresh), pre-token resolves the tenant from the user's `tenant_users` roster
+  (exactly one active row → use it; multiple → throw "session expired"; zero →
+  "not granted access"). There is no email-domain fallback — the `email_domains`
+  column was removed. A user belonging to multiple tenants cannot be auto-resolved
+  on a bare token refresh and is told to sign in again rather than guessed at.
+
+Cognito wraps any pre-token `throw` as `UserLambdaValidationException` with the
+message `PreTokenGeneration failed with error <msg>.`. `unwrapPreTokenMessage`
+in `packages/auth/src/cognito-client.ts` strips that wrapper (and Cognito's
+appended period) so only the Lambda's own sentence reaches the login UI — keep
+pre-token error strings user-ready.

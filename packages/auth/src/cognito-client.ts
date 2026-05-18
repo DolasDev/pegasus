@@ -6,13 +6,29 @@
 // React Native).
 // ---------------------------------------------------------------------------
 
+/**
+ * Unwraps the Cognito PreTokenGeneration wrapper from a Lambda-thrown message.
+ *
+ * When a Pre-Token-Generation Lambda throws, Cognito surfaces it as
+ * `UserLambdaValidationException` with a message of the form:
+ *   "PreTokenGeneration failed with error <the Lambda's own message>."
+ *
+ * The pre-token Lambda already emits user-ready sentences, so we strip the
+ * wrapper (and the single trailing period Cognito appends) and surface only
+ * the inner sentence. Messages without the wrapper pass through unchanged.
+ */
+export function unwrapPreTokenMessage(message: string): string {
+  const match = /^PreTokenGeneration failed with error (.+?)\.?$/.exec(message)
+  return match ? match[1]! : message
+}
+
 /** Typed error carrying the Cognito error code (e.g. NotAuthorizedException). */
 export class CognitoError extends Error {
   constructor(
     public readonly code: string,
     message: string,
   ) {
-    super(message)
+    super(unwrapPreTokenMessage(message))
     this.name = code
   }
 }

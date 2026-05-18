@@ -100,7 +100,6 @@ const mockTenant = {
   plan: 'STARTER',
   contactName: 'Jane Doe',
   contactEmail: 'jane@acme.com',
-  emailDomains: ['acme.com'],
   cognitoAuthEnabled: true,
   isPlatformTenant: false,
   createdAt: now,
@@ -111,7 +110,6 @@ const mockTenant = {
 const validCreateBody = {
   name: 'Acme Moving',
   slug: 'acme',
-  emailDomains: ['acme.com'],
   adminEmail: 'admin@acme.com',
 }
 
@@ -236,12 +234,6 @@ describe('admin tenants handler', () => {
         BASE,
         post({ ...validCreateBody, slug: 'INVALID SLUG!' }),
       )
-      expect(res.status).toBe(400)
-      expect((await json(res)).code).toBe('VALIDATION_ERROR')
-    })
-
-    it('returns 400 VALIDATION_ERROR when emailDomains is empty', async () => {
-      const res = await buildApp().request(BASE, post({ ...validCreateBody, emailDomains: [] }))
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')
     })

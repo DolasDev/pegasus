@@ -191,13 +191,6 @@ model Tenant {
   /// Primary contact email for this tenant account.
   contactEmail String? @map("contact_email")
 
-  /// Email domains that belong to this tenant (e.g. ["acme.com", "acme.co.uk"]).
-  /// During SSO login the backend resolves the tenant from the user's email domain
-  /// by querying this array. Phase 4 (tenant creation) populates this field;
-  /// Phase 3 (SSO config UI) may surface it alongside provider settings.
-  /// Indexed with GIN for fast array-containment lookups.
-  emailDomains String[] @default([]) @map("email_domains")
-
   /// When true, Cognito built-in email+password authentication is available as
   /// a login option in addition to (or instead of) configured SSO providers.
   /// When false, only configured SSO providers may be used to log in.
@@ -251,7 +244,6 @@ model Tenant {
 
   @@index([status])
   @@index([deletedAt])
-  @@index([emailDomains(ops: ArrayOps)], type: Gin, map: "tenants_email_domains_gin")
   @@map("tenants")
   @@schema("public")
 }

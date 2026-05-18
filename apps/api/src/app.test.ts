@@ -1110,7 +1110,6 @@ const mockCreatedTenant = {
   plan: 'STARTER' as const,
   contactName: null,
   contactEmail: null,
-  emailDomains: ['beta.com'],
   ssoProviderConfig: null,
   createdAt: new Date('2025-06-01T00:00:00Z'),
   updatedAt: new Date('2025-06-01T00:00:00Z'),
@@ -1155,7 +1154,6 @@ describe('POST /api/admin/tenants', () => {
         name: 'Beta Movers',
         slug: 'beta',
         adminEmail: 'admin@beta.com',
-        emailDomains: ['beta.com'],
       }),
     })
     expect(res.status).toBe(201)
@@ -1221,7 +1219,6 @@ describe('POST /api/admin/tenants', () => {
         name: 'Duplicate',
         slug: 'acme',
         adminEmail: 'admin@acme.com',
-        emailDomains: ['acme.com'],
       }),
     })
     expect(res.status).toBe(409)

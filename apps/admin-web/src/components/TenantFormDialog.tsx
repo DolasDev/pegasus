@@ -10,19 +10,6 @@ import { ApiError } from '@/api/client'
 
 const SLUG_RE = /^[a-z][a-z0-9-]*[a-z0-9]$/
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/
-
-/** Parses a comma-separated domain string into a trimmed, deduplicated array. */
-function parseDomains(raw: string): string[] {
-  return [
-    ...new Set(
-      raw
-        .split(',')
-        .map((d) => d.trim().toLowerCase())
-        .filter(Boolean),
-    ),
-  ]
-}
 
 function validateCreate(fields: CreateFields): Partial<Record<keyof CreateFields, string>> {
   const errors: Partial<Record<keyof CreateFields, string>> = {}
@@ -43,13 +30,6 @@ function validateCreate(fields: CreateFields): Partial<Record<keyof CreateFields
   } else if (!EMAIL_RE.test(fields.adminEmail)) {
     errors.adminEmail = 'Must be a valid email address.'
   }
-  const domains = parseDomains(fields.emailDomains)
-  if (domains.length === 0) {
-    errors.emailDomains = 'At least one email domain is required.'
-  } else {
-    const invalid = domains.find((d) => !DOMAIN_RE.test(d))
-    if (invalid) errors.emailDomains = `"${invalid}" is not a valid domain.`
-  }
   return errors
 }
 
@@ -58,15 +38,6 @@ function validateEdit(fields: EditFields): Partial<Record<keyof EditFields, stri
   if (!fields.name.trim()) errors.name = 'Name is required.'
   if (fields.contactEmail && !EMAIL_RE.test(fields.contactEmail)) {
     errors.contactEmail = 'Must be a valid email address.'
-  }
-  if (fields.emailDomains.trim()) {
-    const domains = parseDomains(fields.emailDomains)
-    if (domains.length === 0) {
-      errors.emailDomains = 'At least one email domain is required.'
-    } else {
-      const invalid = domains.find((d) => !DOMAIN_RE.test(d))
-      if (invalid) errors.emailDomains = `"${invalid}" is not a valid domain.`
-    }
   }
   return errors
 }
@@ -83,8 +54,6 @@ interface CreateFields {
   contactEmail: string
   /** Initial tenant administrator email. A Cognito account is provisioned on submit. */
   adminEmail: string
-  /** Comma-separated email domains, e.g. "acme.com, acme.co.uk". */
-  emailDomains: string
 }
 
 interface EditFields {
@@ -92,8 +61,6 @@ interface EditFields {
   plan: TenantPlan | ''
   contactName: string
   contactEmail: string
-  /** Comma-separated email domains. Leave blank to keep existing domains unchanged. */
-  emailDomains: string
 }
 
 // ---------------------------------------------------------------------------
@@ -148,7 +115,6 @@ export function TenantFormDialog(props: TenantFormDialogProps) {
     contactName: '',
     contactEmail: '',
     adminEmail: '',
-    emailDomains: '',
   })
 
   // --- Edit-mode state (initialised from tenant prop) ---
@@ -160,10 +126,9 @@ export function TenantFormDialog(props: TenantFormDialogProps) {
         plan: t.plan,
         contactName: t.contactName ?? '',
         contactEmail: t.contactEmail ?? '',
-        emailDomains: t.emailDomains.join(', '),
       }
     }
-    return { name: '', plan: '', contactName: '', contactEmail: '', emailDomains: '' }
+    return { name: '', plan: '', contactName: '', contactEmail: '' }
   })
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -205,10 +170,7 @@ export function TenantFormDialog(props: TenantFormDialogProps) {
 
   const isFormValid =
     mode === 'create'
-      ? create.name.trim() !== '' &&
-        create.slug.trim() !== '' &&
-        create.adminEmail.trim() !== '' &&
-        parseDomains(create.emailDomains).length > 0
+      ? create.name.trim() !== '' && create.slug.trim() !== '' && create.adminEmail.trim() !== ''
       : edit.name.trim() !== ''
 
   // --- Submit ---
@@ -227,7 +189,6 @@ export function TenantFormDialog(props: TenantFormDialogProps) {
         name: create.name.trim(),
         slug: create.slug.trim(),
         adminEmail: create.adminEmail.trim(),
-        emailDomains: parseDomains(create.emailDomains),
         ...(create.plan ? { plan: create.plan } : {}),
         ...(create.contactName.trim() ? { contactName: create.contactName.trim() } : {}),
         ...(create.contactEmail.trim() ? { contactEmail: create.contactEmail.trim() } : {}),
@@ -246,8 +207,6 @@ export function TenantFormDialog(props: TenantFormDialogProps) {
         ...(edit.plan ? { plan: edit.plan } : {}),
         contactName: edit.contactName.trim() || null,
         contactEmail: edit.contactEmail.trim() || null,
-        // Only send emailDomains if the field is non-empty; empty means no change.
-        ...(edit.emailDomains.trim() ? { emailDomains: parseDomains(edit.emailDomains) } : {}),
       }
       editMutation.mutate({ id: props.tenant.id, body })
     }
@@ -427,30 +386,6 @@ export function TenantFormDialog(props: TenantFormDialogProps) {
                   disabled={isPending}
                 />
               )}
-            </Field>
-
-            <Field label="Email domains *" error={fieldErrors['emailDomains']}>
-              {mode === 'create' ? (
-                <input
-                  className={inputCls + ' font-mono'}
-                  value={create.emailDomains}
-                  onChange={(e) => setCreate((p) => ({ ...p, emailDomains: e.target.value }))}
-                  placeholder="acme.com, acme.co.uk"
-                  disabled={isPending}
-                />
-              ) : (
-                <input
-                  className={inputCls + ' font-mono'}
-                  value={edit.emailDomains}
-                  onChange={(e) => setEdit((p) => ({ ...p, emailDomains: e.target.value }))}
-                  placeholder="acme.com, acme.co.uk"
-                  disabled={isPending}
-                />
-              )}
-              <p className="text-xs text-muted-foreground">
-                Comma-separated list. Used to resolve the tenant from the user&apos;s work email at
-                login.
-              </p>
             </Field>
 
             {mode === 'create' && (

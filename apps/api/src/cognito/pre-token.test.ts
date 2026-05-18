@@ -15,7 +15,7 @@ import type { Context } from 'aws-lambda'
 const {
   ADMIN_CLIENT_ID,
   TENANT_CLIENT_ID,
-  mockTenantFindFirst,
+  mockTenantUserFindMany,
   mockTenantUserFindFirst,
   mockTenantUserUpdate,
   mockAuthSessionFindFirst,
@@ -23,7 +23,7 @@ const {
 } = vi.hoisted(() => ({
   ADMIN_CLIENT_ID: 'admin-client-id-test',
   TENANT_CLIENT_ID: 'tenant-client-id-test',
-  mockTenantFindFirst: vi.fn(),
+  mockTenantUserFindMany: vi.fn(),
   mockTenantUserFindFirst: vi.fn(),
   mockTenantUserUpdate: vi.fn(),
   mockAuthSessionFindFirst: vi.fn(),
@@ -39,8 +39,8 @@ vi.mock('@prisma/adapter-pg', () => ({
 vi.mock('@prisma/client', () => ({
   PrismaClient: vi.fn().mockImplementation(function () {
     return {
-      tenant: { findFirst: mockTenantFindFirst },
       tenantUser: {
+        findMany: mockTenantUserFindMany,
         findFirst: mockTenantUserFindFirst,
         update: mockTenantUserUpdate,
       },
@@ -134,14 +134,16 @@ function activeTenantUser(
 
 describe('pre-token trigger', () => {
   beforeEach(() => {
-    mockTenantFindFirst.mockReset()
+    mockTenantUserFindMany.mockReset()
     mockTenantUserFindFirst.mockReset()
     mockTenantUserUpdate.mockReset()
     mockAuthSessionFindFirst.mockReset()
     mockAuthSessionDeleteMany.mockReset()
-    // Default: no auth session pending (most tests use domain-based flow)
+    // Default: no auth session pending (most tests use the roster flow).
     mockAuthSessionFindFirst.mockResolvedValue(null)
     mockAuthSessionDeleteMany.mockResolvedValue({ count: 0 })
+    // Default: a single roster row resolving to tenant-uuid-123.
+    mockTenantUserFindMany.mockResolvedValue([{ tenantId: 'tenant-uuid-123' }])
   })
 
   // ── Admin app client path ─────────────────────────────────────────────────
@@ -165,7 +167,7 @@ describe('pre-token trigger', () => {
     })
     await handler(event, fakeContext, fakeCallback)
 
-    expect(mockTenantFindFirst).not.toHaveBeenCalled()
+    expect(mockTenantUserFindMany).not.toHaveBeenCalled()
     expect(mockTenantUserFindFirst).not.toHaveBeenCalled()
     expect(mockAuthSessionFindFirst).not.toHaveBeenCalled()
   })
@@ -184,7 +186,6 @@ describe('pre-token trigger', () => {
   // ── Platform admin logging into tenant app ────────────────────────────────
 
   it('resolves tenant claims when platform admin uses tenant app client', async () => {
-    mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
     mockTenantUserFindFirst.mockResolvedValue(
       activeTenantUser({ roleNames: ['tenant_admin'], status: 'ACTIVE' }),
     )
@@ -212,7 +213,7 @@ describe('pre-token trigger', () => {
     const result = await handler(event, fakeContext, fakeCallback)
 
     expect(result.response.claimsOverrideDetails?.claimsToAddOrOverride).toBeUndefined()
-    expect(mockTenantFindFirst).not.toHaveBeenCalled()
+    expect(mockTenantUserFindMany).not.toHaveBeenCalled()
     expect(mockTenantUserFindFirst).not.toHaveBeenCalled()
   })
 
@@ -228,7 +229,6 @@ describe('pre-token trigger', () => {
   // ── Tenant user with no groups proceeds to tenant resolution ──────────────
 
   it('resolves tenant claims for tenant user with no groups', async () => {
-    mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
     mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
 
     const event = makeEvent({ email: 'user@acme.com', groups: [] })
@@ -242,7 +242,6 @@ describe('pre-token trigger', () => {
   // ── Tenant app client — happy path (ACTIVE user) ─────────────────────────
 
   it('injects custom:tenantId and custom:roles for an ACTIVE tenant_user', async () => {
-    mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
     mockTenantUserFindFirst.mockResolvedValue(
       activeTenantUser({ roleNames: ['viewer'], status: 'ACTIVE' }),
     )
@@ -255,7 +254,6 @@ describe('pre-token trigger', () => {
   })
 
   it('injects custom:roles=[tenant_admin] for an ACTIVE tenant_admin', async () => {
-    mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
     mockTenantUserFindFirst.mockResolvedValue(
       activeTenantUser({ roleNames: ['tenant_admin'], status: 'ACTIVE' }),
     )
@@ -266,39 +264,67 @@ describe('pre-token trigger', () => {
     expect(claims?.['custom:roles']).toBe(JSON.stringify(['tenant_admin']))
   })
 
-  it('queries the DB with the email domain and status ACTIVE', async () => {
-    mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
+  // ── Roster-based tenant resolution (no AuthSession) ───────────────────────
+
+  it('resolves the tenant from a single roster row when there is no AuthSession', async () => {
+    mockTenantUserFindMany.mockResolvedValue([{ tenantId: 'roster-tenant-id' }])
+    mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
+
+    const result = await handler(makeEvent({ email: 'user@acme.com' }), fakeContext, fakeCallback)
+
+    const claims = result.response.claimsOverrideDetails?.claimsToAddOrOverride
+    expect(claims?.['custom:tenantId']).toBe('roster-tenant-id')
+  })
+
+  it('queries the roster by email, excluding DEACTIVATED rows and inactive tenants', async () => {
     mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
 
     await handler(makeEvent({ email: 'user@acme.com' }), fakeContext, fakeCallback)
 
-    expect(mockTenantFindFirst).toHaveBeenCalledWith(
+    expect(mockTenantUserFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          emailDomains: { has: 'acme.com' },
-          status: 'ACTIVE',
+          email: { equals: 'user@acme.com', mode: 'insensitive' },
+          status: { not: 'DEACTIVATED' },
+          tenant: { status: 'ACTIVE' },
         }),
       }),
     )
   })
 
-  it('lowercases the email domain before querying', async () => {
-    mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
+  it('lowercases the email before the roster lookup', async () => {
     mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
 
     await handler(makeEvent({ email: 'User@ACME.COM' }), fakeContext, fakeCallback)
 
-    expect(mockTenantFindFirst).toHaveBeenCalledWith(
+    expect(mockTenantUserFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ emailDomains: { has: 'acme.com' } }),
+        where: expect.objectContaining({
+          email: { equals: 'user@acme.com', mode: 'insensitive' },
+        }),
       }),
     )
+  })
+
+  it('throws session-expired when the roster has multiple rows and there is no AuthSession', async () => {
+    mockTenantUserFindMany.mockResolvedValue([{ tenantId: 'tenant-a' }, { tenantId: 'tenant-b' }])
+
+    await expect(
+      handler(makeEvent({ email: 'multi@acme.com' }), fakeContext, fakeCallback),
+    ).rejects.toThrow('Your session has expired. Please sign in again.')
+  })
+
+  it('throws not-granted-access when there is no roster row and no AuthSession', async () => {
+    mockTenantUserFindMany.mockResolvedValue([])
+
+    await expect(
+      handler(makeEvent({ email: 'user@unknown.com' }), fakeContext, fakeCallback),
+    ).rejects.toThrow('not been granted access')
   })
 
   // ── PENDING user — first login ─────────────────────────────────────────────
 
   it('activates a PENDING user on first login and injects their roleNames', async () => {
-    mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
     mockTenantUserFindFirst.mockResolvedValue({
       id: 'user-uuid',
       roleNames: ['tenant_admin'],
@@ -325,7 +351,6 @@ describe('pre-token trigger', () => {
   // ── DEACTIVATED user ───────────────────────────────────────────────────────
 
   it('throws for a DEACTIVATED user', async () => {
-    mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
     mockTenantUserFindFirst.mockResolvedValue(activeTenantUser({ status: 'DEACTIVATED' }))
 
     await expect(
@@ -333,10 +358,13 @@ describe('pre-token trigger', () => {
     ).rejects.toThrow('deactivated')
   })
 
-  // ── User not in roster ─────────────────────────────────────────────────────
+  // ── User resolved a tenant but has no roster entry ────────────────────────
 
-  it('throws when user is not in the tenant roster', async () => {
-    mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
+  it('throws when the resolved tenant has no roster entry for the user', async () => {
+    mockAuthSessionFindFirst.mockResolvedValue({
+      id: 'session-uuid',
+      tenantId: 'tenant-uuid-123',
+    })
     mockTenantUserFindFirst.mockResolvedValue(null)
 
     await expect(
@@ -344,30 +372,10 @@ describe('pre-token trigger', () => {
     ).rejects.toThrow('not been granted access')
   })
 
-  // ── Tenant app client — failure cases ─────────────────────────────────────
-
-  it('throws when no active tenant matches the email domain', async () => {
-    mockTenantFindFirst.mockResolvedValue(null)
-
-    await expect(
-      handler(makeEvent({ email: 'user@unknown.com' }), fakeContext, fakeCallback),
-    ).rejects.toThrow('not associated with any active Pegasus tenant')
-  })
-
   it('throws when the email attribute is missing', async () => {
     await expect(
       handler(makeEvent({ groups: [TENANT_GROUP] }), fakeContext, fakeCallback),
     ).rejects.toThrow('No email associated with identity')
-  })
-
-  it('throws when the email has no @ character (invalid format)', async () => {
-    await expect(
-      handler(
-        makeEvent({ email: 'notanemail', groups: [TENANT_GROUP] }),
-        fakeContext,
-        fakeCallback,
-      ),
-    ).rejects.toThrow('Invalid email format')
   })
 
   // ── AuthSession-based path ─────────────────────────────────────────────────
@@ -385,8 +393,8 @@ describe('pre-token trigger', () => {
 
     const claims = result.response.claimsOverrideDetails?.claimsToAddOrOverride
     expect(claims?.['custom:tenantId']).toBe('session-tenant-id')
-    // Domain lookup should NOT be called when AuthSession resolves the tenant
-    expect(mockTenantFindFirst).not.toHaveBeenCalled()
+    // The roster lookup should NOT run when an AuthSession resolves the tenant.
+    expect(mockTenantUserFindMany).not.toHaveBeenCalled()
   })
 
   it('queries AuthSession by email with expiresAt > now', async () => {
@@ -408,34 +416,47 @@ describe('pre-token trigger', () => {
     )
   })
 
-  it('deletes the consumed AuthSession after use (fire-and-forget)', async () => {
+  it('does NOT delete the AuthSession on read — it must survive the multi-invocation login burst', async () => {
     mockAuthSessionFindFirst.mockResolvedValue({
       id: 'session-uuid',
       tenantId: 'session-tenant-id',
     })
     mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
-    mockAuthSessionDeleteMany.mockResolvedValue({ count: 1 })
 
     await handler(makeEvent({ email: 'user@acme.com' }), fakeContext, fakeCallback)
 
-    expect(mockAuthSessionDeleteMany).toHaveBeenCalledWith({
+    // deleteMany is only ever called to sweep expired rows (expiresAt < now),
+    // never to consume the session that was just read by id.
+    expect(mockAuthSessionDeleteMany).not.toHaveBeenCalledWith({
       where: { id: 'session-uuid' },
     })
   })
 
-  it('falls back to domain lookup when no valid AuthSession found', async () => {
+  it('sweeps expired AuthSession rows on every tenant-client invocation', async () => {
+    mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
+
+    await handler(makeEvent({ email: 'user@acme.com' }), fakeContext, fakeCallback)
+
+    expect(mockAuthSessionDeleteMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { expiresAt: { lt: expect.any(Date) } },
+      }),
+    )
+  })
+
+  it('falls back to the roster lookup when no valid AuthSession is found', async () => {
     mockAuthSessionFindFirst.mockResolvedValue(null)
-    mockTenantFindFirst.mockResolvedValue({ id: 'domain-tenant-id' })
+    mockTenantUserFindMany.mockResolvedValue([{ tenantId: 'roster-tenant-id' }])
     mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
 
     const result = await handler(makeEvent({ email: 'user@acme.com' }), fakeContext, fakeCallback)
 
-    expect(mockTenantFindFirst).toHaveBeenCalled()
+    expect(mockTenantUserFindMany).toHaveBeenCalled()
     const claims = result.response.claimsOverrideDetails?.claimsToAddOrOverride
-    expect(claims?.['custom:tenantId']).toBe('domain-tenant-id')
+    expect(claims?.['custom:tenantId']).toBe('roster-tenant-id')
   })
 
-  it('looks up TenantUser using AuthSession tenantId (not domain)', async () => {
+  it('looks up TenantUser using AuthSession tenantId (not the roster resolution)', async () => {
     mockAuthSessionFindFirst.mockResolvedValue({
       id: 'session-uuid',
       tenantId: 'cross-org-tenant-id',
@@ -457,7 +478,6 @@ describe('pre-token trigger', () => {
   // ── custom:roles emission (Cedar role-group memberships) ─────────────────
 
   it('emits custom:roles JSON-encoded from tenantUser.roleNames when populated', async () => {
-    mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
     mockTenantUserFindFirst.mockResolvedValue(
       activeTenantUser({ role: 'USER', roleNames: ['local_dispatch', 'viewer'] }),
     )
@@ -479,7 +499,6 @@ describe('pre-token trigger', () => {
   // as a bare User with no parents and every group-gated permit evaluates
   // to false (empty /me/permissions, blanket 403).
   it('emits cognito:groups via groupOverrideDetails matching Cedar roles', async () => {
-    mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
     mockTenantUserFindFirst.mockResolvedValue(
       activeTenantUser({ role: 'USER', roleNames: ['local_dispatch', 'viewer'] }),
     )
@@ -495,7 +514,6 @@ describe('pre-token trigger', () => {
   })
 
   it('emits empty custom:roles when roleNames is empty (fail-closed at permission layer)', async () => {
-    mockTenantFindFirst.mockResolvedValue({ id: 'tenant-uuid-123' })
     mockTenantUserFindFirst.mockResolvedValue(activeTenantUser({ roleNames: [] }))
 
     const result = await handler(makeEvent({ email: 'admin@acme.com' }), fakeContext, fakeCallback)

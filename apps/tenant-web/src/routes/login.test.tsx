@@ -19,7 +19,6 @@ import { LoginPage } from './login'
 // ---------------------------------------------------------------------------
 
 vi.mock('@/auth/tenant-resolver', () => ({
-  resolveTenantByDomain: vi.fn(),
   resolveTenantsForEmail: vi.fn(),
   selectTenant: vi.fn(),
 }))

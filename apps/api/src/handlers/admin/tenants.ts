@@ -26,13 +26,6 @@ const TenantStatusSchema = z.enum(['ACTIVE', 'SUSPENDED', 'OFFBOARDED'])
 // Zod schemas
 // ---------------------------------------------------------------------------
 
-/** Validates a DNS domain label: lowercase letters, digits, optional hyphens. */
-const DomainSchema = z
-  .string()
-  .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/, {
-    message: 'Each domain must be a valid DNS domain (e.g. acme.com)',
-  })
-
 const CreateTenantBody = z.object({
   /** Display name of the moving company. */
   name: z.string().min(1).max(255),
@@ -53,12 +46,6 @@ const CreateTenantBody = z.object({
   contactName: z.string().min(1).max(255).optional(),
   contactEmail: z.string().email().optional(),
   /**
-   * Email domains belonging to this tenant (e.g. ["acme.com"]).
-   * At least one domain is required so the SSO login flow can resolve the
-   * tenant from the user's email address.
-   */
-  emailDomains: z.array(DomainSchema).min(1),
-  /**
    * Email address for the initial tenant administrator account.
    * A Cognito user is created with FORCE_CHANGE_PASSWORD status and an invite
    * email is sent so the administrator can set their password and configure SSO.
@@ -75,11 +62,6 @@ const PatchTenantBody = z.object({
   contactName: z.string().min(1).max(255).nullable().optional(),
   /** Primary contact email. Pass null to clear. */
   contactEmail: z.string().email().nullable().optional(),
-  /**
-   * Email domains belonging to this tenant. Replaces the full array.
-   * Must contain at least one valid domain if provided.
-   */
-  emailDomains: z.array(DomainSchema).min(1).optional(),
   /** When true, Cognito built-in email+password login is available. */
   cognitoAuthEnabled: z.boolean().optional(),
 })
@@ -102,7 +84,6 @@ const LIST_SELECT = {
   plan: true,
   contactName: true,
   contactEmail: true,
-  emailDomains: true,
   cognitoAuthEnabled: true,
   isPlatformTenant: true,
   createdAt: true,
@@ -184,7 +165,7 @@ adminTenantsRouter.get('/', async (c) => {
 // The creation and its audit log entry are committed in a single Prisma
 // interactive transaction so they are always consistent.
 //
-// Response: 201 { data: Tenant } — includes emailDomains; see LIST_SELECT for all fields.
+// Response: 201 { data: Tenant } — see LIST_SELECT for all fields.
 // ---------------------------------------------------------------------------
 adminTenantsRouter.post(
   '/',
@@ -259,7 +240,6 @@ adminTenantsRouter.post(
           data: {
             name: body.name,
             slug: body.slug,
-            emailDomains: body.emailDomains,
             ...(body.plan !== undefined ? { plan: body.plan } : {}),
             ...(body.contactName !== undefined ? { contactName: body.contactName } : {}),
             ...(body.contactEmail !== undefined ? { contactEmail: body.contactEmail } : {}),
@@ -347,8 +327,6 @@ adminTenantsRouter.patch(
             // null clears the nullable fields; undefined is a no-op.
             ...(body.contactName !== undefined ? { contactName: body.contactName } : {}),
             ...(body.contactEmail !== undefined ? { contactEmail: body.contactEmail } : {}),
-            // emailDomains replaces the whole array when provided.
-            ...(body.emailDomains !== undefined ? { emailDomains: body.emailDomains } : {}),
             ...(body.cognitoAuthEnabled !== undefined
               ? { cognitoAuthEnabled: body.cognitoAuthEnabled }
               : {}),
@@ -383,7 +361,7 @@ adminTenantsRouter.patch(
 // ---------------------------------------------------------------------------
 // GET /api/admin/tenants/:id
 //
-// Returns a single tenant record including emailDomains.
+// Returns a single tenant record.
 // Returns 404 for unknown IDs including offboarded tenants (admins must use
 // ?status=OFFBOARDED on the list endpoint to find them).
 // ---------------------------------------------------------------------------
