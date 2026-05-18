@@ -74,6 +74,14 @@ export interface ApiStackProps extends cdk.StackProps {
    * application code can build the InvokeCommand.
    */
   readonly tunnelProxyFunction?: lambda.IFunction
+
+  /**
+   * MSSQL-executor Lambda — lives inside the WireGuard VPC and runs SQL
+   * against tenant MSSQL servers on overlay IPs. When supplied, the API
+   * Lambda's role is granted `lambda:InvokeFunction` and the function name
+   * is injected as MSSQL_EXECUTOR_FUNCTION_NAME for mssql-executor-client.ts.
+   */
+  readonly mssqlExecutorFunction?: lambda.IFunction
 }
 
 export class ApiStack extends cdk.Stack {
@@ -260,6 +268,20 @@ export class ApiStack extends cdk.Stack {
       apiFunction.addEnvironment(
         'TUNNEL_PROXY_FUNCTION_NAME',
         props.tunnelProxyFunction.functionName,
+      )
+    }
+
+    // ---------------------------------------------------------------------------
+    // MSSQL executor — grant invoke + surface function name as env var.
+    // apps/api/src/lib/mssql-executor-client.ts reads MSSQL_EXECUTOR_FUNCTION_NAME
+    // and throws EXECUTOR_NOT_CONFIGURED if unset, so ApiStack stays
+    // synthesizable in environments without WireGuardStack.
+    // ---------------------------------------------------------------------------
+    if (props.mssqlExecutorFunction) {
+      props.mssqlExecutorFunction.grantInvoke(apiFunction)
+      apiFunction.addEnvironment(
+        'MSSQL_EXECUTOR_FUNCTION_NAME',
+        props.mssqlExecutorFunction.functionName,
       )
     }
 

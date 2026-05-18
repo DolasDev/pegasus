@@ -114,6 +114,14 @@ export class WireGuardStack extends cdk.Stack {
    */
   public readonly tunnelProxyFunction: lambda.IFunction
 
+  /**
+   * MSSQL-executor Lambda. Main API Lambda invokes this synchronously when a
+   * migrated longhaul handler runs SQL against a tenant's MSSQL server over
+   * the WireGuard overlay. Same VPC-placement rationale as tunnelProxyFunction
+   * — it keeps the main API Lambda out of the VPC.
+   */
+  public readonly mssqlExecutorFunction: lambda.IFunction
+
   constructor(scope: Construct, id: string, props: WireGuardStackProps = {}) {
     super(scope, id, props)
 
@@ -724,6 +732,31 @@ export class WireGuardStack extends cdk.Stack {
     this.tunnelProxyFunction = tunnelProxyFn
 
     // -----------------------------------------------------------------------
+    // MSSQL-executor Lambda. The main API Lambda invokes this synchronously
+    // when a migrated longhaul handler needs to run SQL against a tenant's
+    // MSSQL server. Like the tunnel-proxy it lives in the private-lambda
+    // subnet with the `10.200.0.0/16 → hub` route and reuses proxySg, so it
+    // reaches tenant MSSQL over the WireGuard overlay without VPC-attaching
+    // the main API Lambda. See apps/mssql-executor.
+    // -----------------------------------------------------------------------
+    const mssqlExecutorFn = new nodejs.NodejsFunction(this, 'MssqlExecutorFn', {
+      entry: path.join(__dirname, '../../../../apps/mssql-executor/src/index.ts'),
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(30),
+      vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      securityGroups: [proxySg],
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        externalModules: ['@aws-sdk/*'],
+      },
+    })
+    this.mssqlExecutorFunction = mssqlExecutorFn
+
+    // -----------------------------------------------------------------------
     // SNS topic for alarms + CloudWatch alarms
     // -----------------------------------------------------------------------
     const alertsTopic = new sns.Topic(this, 'AlertsTopic', {
@@ -928,6 +961,12 @@ export class WireGuardStack extends cdk.Stack {
       description:
         'Tunnel-proxy Lambda ARN - the main API Lambda invokes this to reach tenant overlay IPs.',
       exportName: 'PegasusWireGuardTunnelProxyFnArn',
+    })
+    new cdk.CfnOutput(this, 'MssqlExecutorFunctionArn', {
+      value: mssqlExecutorFn.functionArn,
+      description:
+        'MSSQL-executor Lambda ARN - the main API Lambda invokes this to run SQL against tenant MSSQL.',
+      exportName: 'PegasusWireGuardMssqlExecutorFnArn',
     })
   }
 }

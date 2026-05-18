@@ -22,6 +22,7 @@ import { eventsHandler } from './handlers/events'
 import { ordersHandler } from './handlers/orders'
 import { vpnAgentHandler } from './handlers/vpn-agent'
 import { onpremHandler } from './handlers/onprem'
+import { longhaulVersionHandler } from './handlers/longhaul-cloud/version'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -197,6 +198,11 @@ v1.route('/settings', settingsHandler)
 v1.route('/documents', documentsHandler)
 // Note: /workflows is mounted on the m2mV1 router above (dual-auth: Cognito
 // sessions + vnd_ vendor keys) — it must be matched before tenantMiddleware.
+// Longhaul strangler-fig migration (Phase 1): /version is served cloud-direct
+// via the in-VPC mssql-executor Lambda. Registered before the /onprem mount so
+// this specific route wins over the /onprem/longhaul/* wildcard proxy; every
+// un-migrated longhaul endpoint still falls through to the on-prem server.
+v1.get('/onprem/longhaul/version', longhaulVersionHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.
