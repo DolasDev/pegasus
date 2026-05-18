@@ -1,0 +1,13 @@
+# Pegasus workflows standard library.
+#
+# Curated workflows the platform team maintains. This project is dogfood:
+# it uses the SDK exactly as a tenant project would. CI publishes it under
+# the platform tenant (see .github/workflows/publish-stdlib.yml) so every
+# row resolves to GLOBAL visibility server-side.
+
+[[workflow]]
+name = "send_quote_followup"
+version = "0.1.0"
+entry_points = ["send_quote_followup.workflow:SendQuoteFollowup"]
+source_dir = "send_quote_followup"
+description = "Follow up on a quote that has not been accepted."
