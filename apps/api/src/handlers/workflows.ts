@@ -24,6 +24,7 @@ import { validator } from 'hono/validator'
 import { z } from 'zod'
 import { DomainError } from '@pegasus/domain'
 import { requirePermission } from '../middleware/rbac'
+import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { Actions } from '../authz/actions'
 import { createWorkflowRepository } from '../repositories/workflow.repository'
 import type { WorkflowRow, WorkflowVisibility } from '../repositories/workflow.repository'
@@ -113,6 +114,13 @@ function buildArtifactKey(tenantId: string, workflowId: string, version: string)
 // ---------------------------------------------------------------------------
 
 export const workflowsHandler = new Hono<AppEnv>()
+
+// Authenticate every workflows route through dualAuthMiddleware: the tenant
+// SPA reaches the GET endpoints with a Cognito session, while the Python SDK
+// CLI uploads with a vnd_ workflow_developer vendor key. Both resolve to the
+// same AppEnv context, so the per-route requirePermission checks below are
+// agnostic to which credential authenticated the request.
+workflowsHandler.use('*', dualAuthMiddleware)
 
 // ---------------------------------------------------------------------------
 // POST /upload-url

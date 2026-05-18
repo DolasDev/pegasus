@@ -1,10 +1,10 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { swaggerUI } from '@hono/swagger-ui'
-import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from './types'
 import { correlationMiddleware } from './middleware/correlation'
 import { tenantMiddleware } from './middleware/tenant'
+import { skipAuthMiddleware } from './middleware/skip-auth'
 import { adminRouter } from './handlers/admin'
 import { authHandler } from './handlers/auth'
 import { ssoHandler } from './handlers/sso'
@@ -120,25 +120,32 @@ app.route('/api/admin', adminRouter)
 app.route('/api/vpn', vpnAgentHandler)
 
 // ---------------------------------------------------------------------------
-// M2M API — routes accessible only by authenticated API clients (vnd_ keys).
+// Pre-tenant-middleware /api/v1 routes — mounted BEFORE the Cognito v1 block
+// so that requests NOT carrying a Cognito ID token reach their handler without
+// first hitting tenantMiddleware (which would reject them as unauthorized).
+// Each handler applies its own auth middleware internally (not as a wildcard
+// on this router) so that non-matching paths fall through cleanly to the
+// Cognito v1 block below.
 //
-// These are mounted BEFORE the Cognito v1 block so that requests carrying a
-// vendor API key reach their handler without first hitting tenantMiddleware.
-// Each handler applies m2mAppAuthMiddleware internally (not as a wildcard on
-// this router) so that non-matching paths fall through cleanly to the Cognito
-// v1 block below.
-//
-// URL mapping from the legacy standalone AWS Lambda API (apps/services/api):
+// M2M-only routes — authenticated API clients (vnd_ keys). URL mapping from
+// the legacy standalone AWS Lambda API (apps/services/api):
 //   POST   /api/v1/events              ← POST /EventEndpointHandler
 //   GET    /api/v1/events/:eventType   ← GET  /events/{eventType}
 //   DELETE /api/v1/events/:eventId     ← DELETE /events/{eventId}
 //   GET    /api/v1/orders              ← GET  /orders
 //   POST   /api/v1/orders              ← POST /orders/create[/{customer_app_id}]
 //   GET    /api/v1/orders/:orderId     ← (new — single order lookup)
+//
+// Dual-auth routes — reached by BOTH Cognito sessions and vnd_ keys:
+//   /api/v1/workflows  — tenant SPA reads + Python SDK CLI uploads. The handler
+//                        applies dualAuthMiddleware, which dispatches a vnd_
+//                        token to m2mAppAuthMiddleware and everything else to
+//                        tenantMiddleware (see middleware/dual-auth.ts).
 // ---------------------------------------------------------------------------
 const m2mV1 = new Hono<AppEnv>()
 m2mV1.route('/events', eventsHandler)
 m2mV1.route('/orders', ordersHandler)
+m2mV1.route('/workflows', workflowsHandler)
 
 app.route('/api/v1', m2mV1)
 
@@ -168,20 +175,9 @@ if (process.env['SKIP_AUTH'] === 'true') {
   // attempt to call AVP without an ID token. Setting the env var here keeps
   // the per-request path branch-free.
   process.env['AUTHZ_OFFLINE'] = 'true'
-  v1.use('*', async (c, next) => {
-    const tenantId = process.env['DEFAULT_TENANT_ID'] ?? 'default-tenant'
-    c.set('tenantId', tenantId)
-    c.set('principal', {
-      sub: 'skip-auth-user',
-      tenantId,
-      roleNames: ['tenant_admin'],
-    })
-    c.set('idToken', undefined)
-    c.set('policyStoreId', undefined)
-    c.set('userId', 'skip-auth-user')
-    c.set('db', basePrisma as unknown as PrismaClient)
-    await next()
-  })
+  // skipAuthMiddleware is shared with dualAuthMiddleware so the bypass behaves
+  // identically on the pre-tenant-middleware routes mounted above.
+  v1.use('*', skipAuthMiddleware)
 } else {
   v1.use('*', tenantMiddleware)
 }
@@ -199,7 +195,8 @@ v1.route('/invoices', billingHandler)
 v1.route('/api-clients', apiClientsHandler)
 v1.route('/settings', settingsHandler)
 v1.route('/documents', documentsHandler)
-v1.route('/workflows', workflowsHandler)
+// Note: /workflows is mounted on the m2mV1 router above (dual-auth: Cognito
+// sessions + vnd_ vendor keys) — it must be matched before tenantMiddleware.
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.
