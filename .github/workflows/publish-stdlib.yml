@@ -1,0 +1,76 @@
+name: Publish workflows stdlib
+
+# Publishes the curated workflow standard library (packages/workflows-stdlib)
+# to a Pegasus environment on `stdlib-v*` tags.
+#
+# This is the platform team dogfooding the tenant upload path: it installs the
+# published SDK and runs `pegasus-workflows push` exactly as a tenant CI would.
+# The push runs under the PLATFORM tENANT identity, so every workflow resolves
+# to GLOBAL visibility server-side and lands in every tenant's Platform Library.
+#
+# ── OPERATOR STEP (one-time, before the first tag) ──────────────────────────
+# The publish job needs, on the `stdlib-publish` environment:
+#   Secret  PLATFORM_WORKFLOW_TOKEN — a `vnd_*` API key bound to a
+#           service-account TenantUser with the `workflow_developer` role in
+#           the platform tenant (the tenant flagged isPlatformTenant=true).
+#   Var     API_BASE_URL — the target Pegasus API origin, e.g.
+#           https://api.pegasus.dolas.dev
+# Create the key via POST /api/v1/api-clients with
+# { name, roleNames: ["workflow_developer"] } as a platform-tenant admin and
+# capture the returned plainKey once.
+# ----------------------------------------------------------------------------
+
+on:
+  push:
+    tags:
+      - 'stdlib-v*'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-stdlib-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Push stdlib to Pegasus
+    runs-on: ubuntu-latest
+    environment: stdlib-publish
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the Pegasus Workflows SDK
+        # Installs the published SDK from PyPI — the same package tenants use.
+        run: python -m pip install --upgrade pip pegasus-workflows-sdk
+
+      - name: Push the standard library
+        working-directory: packages/workflows-stdlib
+        env:
+          PEGASUS_WORKFLOW_TOKEN: ${{ secrets.PLATFORM_WORKFLOW_TOKEN }}
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PEGASUS_WORKFLOW_TOKEN:-}" ]]; then
+            echo "::error::PLATFORM_WORKFLOW_TOKEN secret is not set on the stdlib-publish environment"
+            exit 1
+          fi
+          if [[ -z "${API_BASE_URL:-}" ]]; then
+            echo "::error::API_BASE_URL variable is not set on the stdlib-publish environment"
+            exit 1
+          fi
+          pegasus-workflows push --base-url "$API_BASE_URL"
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### Workflows stdlib published"
+            echo "- Tag: \`${{ github.ref_name }}\`"
+            echo "- Target: \`${{ vars.API_BASE_URL }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
