@@ -1,11 +1,15 @@
 # Pegasus Workflows — Author, Upload, Browse (Phase 1)
 
-**Status (2026-05-15): in progress.** Backend foundation, both web UIs, and
-the admin promote/demote control are shipped on `main`. Python SDK,
-`workflows-stdlib`, and the local Temporal docker-compose remain.
+**Status (2026-05-18): in progress.** Backend foundation, both web UIs, and
+the admin promote/demote control are shipped on `main`. The Python SDK,
+`workflows-stdlib`, and the local Temporal docker-compose are built on
+branch `feat/workflows-sdk-python` (commits `7b8e670`, `fc42e75`, `e66cd4f`,
+`0b8add1`) — all three remaining sections below are now ✅. Left in
+`in-progress/` pending full live verification + merge.
 
 **Started:** 2026-05-13
-**Commits:** `8a14977`, `1619e94`, `e70d61a` (on `main`)
+**Commits:** `8a14977`, `1619e94`, `e70d61a` (on `main`);
+`7b8e670`, `fc42e75`, `e66cd4f`, `0b8add1` (on `feat/workflows-sdk-python`)
 
 ---
 
@@ -94,7 +98,7 @@ a worked example we can point tenants at.
   page; empty state nudges to promote a tenant.
 - Header nav strip added in `_auth.tsx` with Tenants / Workflows links.
 
-### 🟡 Python SDK — not started
+### ✅ Python SDK — done (commits `7b8e670`, `0b8add1`)
 
 `packages/workflows-sdk-python/`, published to PyPI as
 `pegasus-workflows-sdk`.
@@ -126,7 +130,7 @@ compose up`) and run the workflow with stub inputs.
 Released to PyPI via a new `.github/workflows/release-sdk-python.yml` that
 publishes on `sdk-python-v*` tags.
 
-### 🟡 `packages/workflows-stdlib/` — not started
+### ✅ `packages/workflows-stdlib/` — done (commits `fc42e75`, `e66cd4f`)
 
 A regular Python project that _uses_ the SDK like any tenant project
 would. Dogfooded so the platform team uses the exact same upload path as a
@@ -143,12 +147,13 @@ tenant CI.
 - One real working workflow to start, even if trivial, so we exercise the
   path end-to-end.
 
-### 🟡 Local dev story — not started
+### ✅ Local dev story — done (commits `fc42e75`, `0b8add1`)
 
-- `docker-compose.temporal.yml` at the repo root (or inside
-  `packages/workflows-sdk-python/`) running Temporal + Temporal UI on
-  standard ports. Documented in the SDK README; `pegasus-workflows test`
-  invokes it via `docker compose -f … up -d` if not already running.
+- `docker-compose.temporal.yml` at the repo root runs the
+  `temporalio/temporal` single-binary dev server + Temporal UI on the
+  standard ports (7233 / 8080). Documented in the SDK README;
+  `pegasus-workflows test` invokes it via `docker compose -f … up -d` if
+  Temporal is not already reachable.
 - No prod Temporal connection. The API does not connect to any Temporal
   endpoint in Phase 1.
 

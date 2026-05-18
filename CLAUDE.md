@@ -21,6 +21,8 @@ Pegasus is a cloud-native move management SaaS platform replacing a legacy VB.NE
 packages/
 ├── domain/   Pure TypeScript domain model. Zero runtime dependencies. The heart of the system.
 ├── infra/    AWS CDK stacks that provision Lambda, API Gateway, S3, CloudFront.
+├── workflows-sdk-python/  Python SDK + `pegasus-workflows` CLI for authoring/packaging/publishing workflows. Not an npm workspace (no package.json) — invisible to Turbo/tsc.
+├── workflows-stdlib/      Curated Python workflow library; dogfoods the SDK and is published under the platform tenant.
 apps/
 ├── api/          Hono HTTP handlers. Calls domain logic, reads/writes via Prisma.
 ├── tenant-web/   React SPA for tenants. Consumes the API; no direct DB imports.
