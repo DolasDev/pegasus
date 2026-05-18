@@ -724,34 +724,6 @@ export class WireGuardStack extends cdk.Stack {
     this.tunnelProxyFunction = tunnelProxyFn
 
     // -----------------------------------------------------------------------
-    // Phase 0 feasibility diagnostic — TEMPORARY.
-    //
-    // A one-shot Lambda that opens a raw `mssql` TCP connection to a tenant's
-    // MSSQL over the WG overlay and runs SELECT 1, proving Phase 0 of the
-    // longhaul strangler-fig migration. It has no event source and stays
-    // dormant until invoked by hand (`aws lambda invoke`). It reuses proxySg,
-    // so the hub-ingress allTraffic rule above already covers TCP 1433 — no
-    // new security-group rule is needed. Remove this construct and
-    // apps/api/src/longhaul-mssql-diagnostic.ts once the Phase 0 latency
-    // numbers are recorded.
-    // -----------------------------------------------------------------------
-    const mssqlDiagnosticFn = new nodejs.NodejsFunction(this, 'MssqlDiagnosticFn', {
-      entry: path.join(__dirname, '../../../../apps/api/src/longhaul-mssql-diagnostic.ts'),
-      handler: 'handler',
-      runtime: lambda.Runtime.NODEJS_20_X,
-      memorySize: 256,
-      timeout: cdk.Duration.seconds(30),
-      vpc,
-      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
-      securityGroups: [proxySg],
-      bundling: {
-        minify: true,
-        sourceMap: true,
-        externalModules: ['@aws-sdk/*'],
-      },
-    })
-
-    // -----------------------------------------------------------------------
     // SNS topic for alarms + CloudWatch alarms
     // -----------------------------------------------------------------------
     const alertsTopic = new sns.Topic(this, 'AlertsTopic', {
@@ -956,12 +928,6 @@ export class WireGuardStack extends cdk.Stack {
       description:
         'Tunnel-proxy Lambda ARN - the main API Lambda invokes this to reach tenant overlay IPs.',
       exportName: 'PegasusWireGuardTunnelProxyFnArn',
-    })
-    new cdk.CfnOutput(this, 'MssqlDiagnosticFnName', {
-      value: mssqlDiagnosticFn.functionName,
-      description:
-        'Phase 0 longhaul MSSQL feasibility diagnostic Lambda - invoke by hand with ' +
-        '`aws lambda invoke`. Temporary; removed once Phase 0 numbers are recorded.',
     })
   }
 }
