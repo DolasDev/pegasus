@@ -137,6 +137,24 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     ).toBe(true)
   })
 
+  // Since Phase 3 of the longhaul strangler-fig migration, /filter-options is
+  // served cloud-direct (apps/api/src/handlers/longhaul-cloud/filter-options.ts):
+  // the cloud Hono Lambda queries the MoveType table in Dolios MSSQL through the
+  // mssql-executor Lambda instead of proxying to the on-prem server. The response
+  // shape must stay identical to the on-prem handler —
+  // `{ data: { moveType: [{ value, label }, ...] } }`.
+  test('GET /filter-options returns move type options @smoke', async ({ qaApiFetch }) => {
+    const res = await qaApiFetch(`${LH}/filter-options`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.data, 'cloud-direct /filter-options returns { data }').toBeDefined()
+    expect(Array.isArray(body.data.moveType), 'data.moveType is an array').toBe(true)
+    for (const opt of body.data.moveType) {
+      expect(opt).toHaveProperty('value')
+      expect(opt).toHaveProperty('label')
+    }
+  })
+
   test('GET /users/me returns the mapped legacy user @smoke', async ({ qaApiFetch }) => {
     const res = await qaApiFetch(`${LH}/users/me`)
     expect(res.status).toBe(200)
