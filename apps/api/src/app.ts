@@ -23,6 +23,7 @@ import { ordersHandler } from './handlers/orders'
 import { vpnAgentHandler } from './handlers/vpn-agent'
 import { onpremHandler } from './handlers/onprem'
 import { longhaulVersionHandler } from './handlers/longhaul-cloud/version'
+import { longhaulStatesHandler } from './handlers/longhaul-cloud/states'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -203,6 +204,8 @@ v1.route('/documents', documentsHandler)
 // this specific route wins over the /onprem/longhaul/* wildcard proxy; every
 // un-migrated longhaul endpoint still falls through to the on-prem server.
 v1.get('/onprem/longhaul/version', longhaulVersionHandler)
+// Phase 3: /states is served cloud-direct alongside /version.
+v1.get('/onprem/longhaul/states', longhaulStatesHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.

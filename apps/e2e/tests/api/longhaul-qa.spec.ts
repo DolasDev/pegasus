@@ -67,6 +67,18 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     expect(body.data).toHaveProperty('max')
   })
 
+  // Since Phase 3 of the longhaul strangler-fig migration, /states is served
+  // cloud-direct (apps/api/src/handlers/longhaul-cloud/states.ts): the cloud
+  // Hono Lambda queries Dolios MSSQL through the mssql-executor Lambda instead
+  // of proxying to the on-prem server. The response shape must stay identical
+  // to the on-prem handler — `{ data: [...] }`.
+  test('GET /states returns the states list @smoke', async ({ qaApiFetch }) => {
+    const res = await qaApiFetch(`${LH}/states`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(Array.isArray(body.data), 'cloud-direct /states returns { data: [...] }').toBe(true)
+  })
+
   test('GET /users/me returns the mapped legacy user @smoke', async ({ qaApiFetch }) => {
     const res = await qaApiFetch(`${LH}/users/me`)
     expect(res.status).toBe(200)
