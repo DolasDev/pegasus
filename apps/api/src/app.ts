@@ -32,6 +32,7 @@ import { longhaulFilterOptionsHandler } from './handlers/longhaul-cloud/filter-o
 import { longhaulUsersMeHandler } from './handlers/longhaul-cloud/users-me'
 import { longhaulShipmentFiltersDefaultHandler } from './handlers/longhaul-cloud/shipment-filters-default'
 import { longhaulShipmentFiltersHandler } from './handlers/longhaul-cloud/shipment-filters'
+import { longhaulTripsListHandler } from './handlers/longhaul-cloud/trips-list'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -241,6 +242,10 @@ v1.get('/onprem/longhaul/shipment-filters/default', longhaulShipmentFiltersDefau
 // pattern as /version, but user-scoped (resolves the caller's legacy longhaul
 // identity and filters saved filters by that user's owner code).
 v1.get('/onprem/longhaul/shipment-filters', longhaulShipmentFiltersHandler)
+// Phase 3: GET /trips (LIST) is served cloud-direct. The on-prem repo made two
+// MSSQL round trips (trips list + a separate TripNotes fetch); this handler
+// collapses the notes fetch into the main query, so it makes just one.
+v1.get('/onprem/longhaul/trips', longhaulTripsListHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.
