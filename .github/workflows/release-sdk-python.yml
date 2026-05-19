@@ -1,0 +1,89 @@
+name: Release SDK (Python)
+
+# Builds and publishes the Pegasus Workflows SDK (packages/workflows-sdk-python)
+# to PyPI on `sdk-python-v*` tags.
+#
+# Publishing uses PyPI **trusted publishing** (OIDC) — no API token secret.
+# This mirrors the OIDC convention used by _deploy.yml / _publish-vpn-agent.yml
+# (`permissions: id-token: write`), just pointed at PyPI instead of AWS STS.
+#
+# ── OPERATOR STEP (one-time, before the first tag) ──────────────────────────
+# Trusted publishing must be configured once on PyPI by a project owner:
+#   PyPI  ->  pegasus-workflows-sdk  ->  Publishing  ->  Add a pending publisher
+#     Owner:            <github-org>
+#     Repository:       <repo name>
+#     Workflow name:    release-sdk-python.yml
+#     Environment:      pypi
+# Until that publisher exists, the `publish` job below will fail at the
+# upload step. No secret needs to be added to GitHub.
+# ----------------------------------------------------------------------------
+
+on:
+  push:
+    tags:
+      - 'sdk-python-v*'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-sdk-python-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build sdist + wheel
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/workflows-sdk-python
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build + test tooling
+        run: python -m pip install --upgrade pip build pytest ruff temporalio httpx typer
+
+      - name: Lint
+        run: python -m ruff check .
+
+      - name: Install package (for tests)
+        run: python -m pip install -e .
+
+      - name: Unit tests
+        run: python -m pytest -q
+
+      - name: Build distributions
+        run: python -m build
+
+      - name: Upload distributions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-python-dist
+          path: packages/workflows-sdk-python/dist/*
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    # `pypi` environment scopes the trusted-publisher claim — must match the
+    # environment configured in the PyPI pending publisher (see header).
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Download distributions artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sdk-python-dist
+          path: dist
+
+      - name: Publish to PyPI (trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist

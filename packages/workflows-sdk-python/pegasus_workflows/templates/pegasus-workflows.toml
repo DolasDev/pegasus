@@ -1,0 +1,18 @@
+# Pegasus workflow manifest.
+#
+# Each [[workflow]] table is packaged into its own artifact zip and uploaded
+# as a distinct (name, version) row. Field rules mirror the Pegasus API and
+# are validated locally before any upload.
+#
+#   name         lowercase letters/digits/_/-, 1-64 chars
+#   version      semver, e.g. 1.2.3 or 1.2.3-beta.1
+#   entry_points non-empty list of "module.path:ClassName" references
+#   source_dir   optional; directory holding the workflow source (default: name)
+#   description  optional human-readable summary
+
+[[workflow]]
+name = "__WORKFLOW_NAME__"
+version = "0.1.0"
+entry_points = ["__WORKFLOW_NAME__.workflow:HelloWorkflow"]
+source_dir = "__WORKFLOW_NAME__"
+description = "Scaffolded Pegasus workflow — say hello."
