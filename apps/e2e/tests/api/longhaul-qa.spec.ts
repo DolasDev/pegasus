@@ -263,6 +263,32 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     expect(res.status).toBe(404)
   })
 
+  // Since Phase 3 of the longhaul strangler-fig migration, GET /trips/:id is
+  // served cloud-direct (apps/api/src/handlers/longhaul-cloud/trip-detail.ts):
+  // the cloud Hono Lambda queries Dolios MSSQL through the mssql-executor
+  // Lambda in 1-2 batched round trips instead of proxying to the on-prem
+  // server (which fanned the trip+shipment load out into ~8 queries). The
+  // response shape must stay identical to the on-prem handler — `{ data }`
+  // with embedded `activities`, `notes`, and `shipments`.
+  test('GET /trips/:id returns a trip detail in { data } shape (cloud-direct)', async ({
+    qaApiFetch,
+  }) => {
+    const list = await (await qaApiFetch(`${LH}/trips`)).json()
+    const trips: Array<{ id: number }> = list.data ?? list
+    test.skip(!Array.isArray(trips) || trips.length === 0, 'no trips in the QA DB')
+    const tripId = trips[0]!.id
+
+    const res = await qaApiFetch(`${LH}/trips/${tripId}`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    const trip = body.data ?? body
+    expect(trip, 'cloud-direct /trips/:id returns { data: <trip> }').toBeDefined()
+    expect(Number(trip.id)).toBe(tripId)
+    expect(Array.isArray(trip.activities), 'trip carries an activities array').toBe(true)
+    expect(Array.isArray(trip.notes), 'trip carries a notes array').toBe(true)
+    expect(Array.isArray(trip.shipments), 'trip carries a shipments array').toBe(true)
+  })
+
   test('GET /trip-statuses returns statuses', async ({ qaApiFetch }) => {
     const res = await qaApiFetch(`${LH}/trip-statuses`)
     expect(res.status).toBe(200)
