@@ -97,6 +97,7 @@ describe('authorize — offline (cedar-wasm)', () => {
         Actions.ReadCustomer.id,
         Actions.CreateCustomer.id,
         Actions.UpdateCustomer.id,
+        Actions.ListMoves.id,
         Actions.ReadMove.id,
       ]),
     )
@@ -111,6 +112,7 @@ describe('authorize — offline (cedar-wasm)', () => {
         Actions.UpdateInvoice.id,
         Actions.DeleteInvoice.id,
         Actions.ReadQuote.id,
+        Actions.ListMoves.id,
         Actions.ReadMove.id,
         Actions.ReadCustomer.id,
       ]),
@@ -137,6 +139,65 @@ describe('authorize — offline (cedar-wasm)', () => {
   })
 })
 
+describe('authorize — driver crew-scoped ABAC', () => {
+  const CREW = 'crew-member-1'
+  const driver = (): Principal => ({ ...principal(['driver']), crewMemberId: CREW })
+
+  it('allows ListMoves — the coarse feature gate', async () => {
+    expect(await isAllowed(driver(), Actions.ListMoves)).toBe(true)
+  })
+
+  it('allows ReadMove when the move is assigned to the driver crew member', async () => {
+    const d = await authorize({
+      principal: driver(),
+      action: Actions.ReadMove,
+      resource: { type: 'Move', id: 'move-1', attrs: { assignedCrewMembers: [CREW, 'crew-x'] } },
+    })
+    expect(d.allowed).toBe(true)
+  })
+
+  it('denies ReadMove when the move is not assigned to the driver crew member', async () => {
+    const d = await authorize({
+      principal: driver(),
+      action: Actions.ReadMove,
+      resource: { type: 'Move', id: 'move-2', attrs: { assignedCrewMembers: ['crew-x'] } },
+    })
+    expect(d.allowed).toBe(false)
+  })
+
+  it('denies ReadMove when the move has no assigned crew (empty attrs)', async () => {
+    const d = await authorize({
+      principal: driver(),
+      action: Actions.ReadMove,
+      resource: { type: 'Move', id: 'move-3', attrs: {} },
+    })
+    expect(d.allowed).toBe(false)
+  })
+
+  it('denies ReadMove when the driver principal has no crewMemberId', async () => {
+    const d = await authorize({
+      principal: principal(['driver']),
+      action: Actions.ReadMove,
+      resource: { type: 'Move', id: 'move-4', attrs: { assignedCrewMembers: [CREW] } },
+    })
+    expect(d.allowed).toBe(false)
+  })
+
+  it('denies move writes — a driver holds neither CreateMove nor UpdateMove', async () => {
+    expect(await isAllowed(driver(), Actions.CreateMove)).toBe(false)
+    expect(await isAllowed(driver(), Actions.UpdateMove)).toBe(false)
+  })
+
+  it('still allows tenant_admin to read a move regardless of crew assignment', async () => {
+    const d = await authorize({
+      principal: principal(['tenant_admin']),
+      action: Actions.ReadMove,
+      resource: { type: 'Move', id: 'move-5', attrs: { assignedCrewMembers: ['crew-x'] } },
+    })
+    expect(d.allowed).toBe(true)
+  })
+})
+
 describe('listAllowedPermissions — offline', () => {
   it('returns the full permission catalog for tenant_admin (invariant e)', async () => {
     const perms = await listAllowedPermissions(principal(['tenant_admin']), undefined, undefined)
@@ -148,6 +209,7 @@ describe('listAllowedPermissions — offline', () => {
     expect(new Set(perms)).toEqual(
       new Set([
         Actions.ReadQuote.permission,
+        Actions.ListMoves.permission,
         Actions.ReadMove.permission,
         Actions.ReadInvoice.permission,
         Actions.ReadCustomer.permission,

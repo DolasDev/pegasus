@@ -8,6 +8,7 @@ permit (
     Pegasus::Action::"UpdateInvoice",
     Pegasus::Action::"DeleteInvoice",
     Pegasus::Action::"ReadQuote",
+    Pegasus::Action::"ListMoves",
     Pegasus::Action::"ReadMove",
     Pegasus::Action::"ReadCustomer"
   ],

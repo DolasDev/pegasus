@@ -3,10 +3,15 @@
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
 import { canDispatch, canTransition } from '@pegasus/domain'
+import type { Move } from '@pegasus/domain'
 import type { AppEnv } from '../types'
+import { requirePermission } from '../middleware/rbac'
+import { Actions } from '../authz/actions'
+import { authorize } from '../lib/authz'
 import {
   createMove,
   findMoveById,
@@ -17,6 +22,45 @@ import {
   assignVehicle,
   listQuotesByMoveId,
 } from '../repositories'
+
+// A driver with no linked CrewMember must see an empty Moves list rather than
+// every tenant move. This sentinel is passed as the crew filter so the query
+// matches no rows — fail-closed when a driver login is left unlinked.
+const NO_CREW_MEMBER = '__none__'
+
+/**
+ * Per-record `ReadMove` ABAC check. Admin/viewer/sales/etc. pass via their
+ * unconditional Cedar policies; a `driver` passes only when their linked crew
+ * member is assigned to the move. Returns true iff the principal may read it.
+ */
+async function canReadMove(c: Context<AppEnv>, move: Move): Promise<boolean> {
+  const principal = c.get('principal')
+  if (!principal) return false
+  const decision = await authorize({
+    principal,
+    action: Actions.ReadMove,
+    resource: {
+      type: 'Move',
+      id: move.id,
+      attrs: { assignedCrewMembers: move.assignedCrewIds ?? [] },
+    },
+    idToken: c.get('idToken'),
+    policyStoreId: c.get('policyStoreId'),
+  })
+  return decision.allowed
+}
+
+/**
+ * Fetch a move and apply the per-record `ReadMove` gate in one step. Returns
+ * the move when the principal may read it, or null when it is missing OR the
+ * principal is denied — callers map both to a 404 so a driver cannot tell a
+ * foreign trip apart from a non-existent one.
+ */
+async function loadReadableMove(c: Context<AppEnv>, id: string): Promise<Move | null> {
+  const move = await findMoveById(c.get('db'), id)
+  if (!move || !(await canReadMove(c, move))) return null
+  return move
+}
 
 const AddressSchema = z.object({
   line1: z.string().min(1),
@@ -51,6 +95,7 @@ export const movesHandler = new Hono<AppEnv>()
 
 movesHandler.post(
   '/',
+  requirePermission(Actions.CreateMove),
   validator('json', (value, c) => {
     const r = CreateMoveBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
@@ -85,24 +130,32 @@ movesHandler.post(
   },
 )
 
-movesHandler.get('/', async (c) => {
+movesHandler.get('/', requirePermission(Actions.ListMoves), async (c) => {
   const db = c.get('db')
+  const principal = c.get('principal')
   const limit = Math.min(Number(c.req.query('limit') ?? '50'), 100)
   const offset = Number(c.req.query('offset') ?? '0')
-  const [data, total] = await Promise.all([listMoves(db, { limit, offset }), countMoves(db)])
+  // Drivers see only the trips their linked crew member is assigned to. An
+  // unlinked driver gets the sentinel ⇒ an empty list (fail-closed).
+  const crewMemberId = principal?.roleNames.includes('driver')
+    ? (principal.crewMemberId ?? NO_CREW_MEMBER)
+    : undefined
+  const [data, total] = await Promise.all([
+    listMoves(db, { limit, offset, ...(crewMemberId ? { crewMemberId } : {}) }),
+    countMoves(db, crewMemberId),
+  ])
   return c.json({ data, meta: { total, count: data.length, limit, offset } })
 })
 
-movesHandler.get('/:id', async (c) => {
-  const db = c.get('db')
-  const id = c.req.param('id')
-  const data = await findMoveById(db, id)
+movesHandler.get('/:id', requirePermission(Actions.ListMoves), async (c) => {
+  const data = await loadReadableMove(c, c.req.param('id') ?? '')
   if (!data) return c.json({ error: 'Move not found', code: 'NOT_FOUND' }, 404)
   return c.json({ data })
 })
 
 movesHandler.put(
   '/:id/status',
+  requirePermission(Actions.UpdateMove),
   validator('json', (value, c) => {
     const r = UpdateStatusBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
@@ -140,6 +193,7 @@ movesHandler.put(
 
 movesHandler.post(
   '/:id/crew',
+  requirePermission(Actions.UpdateMove),
   validator('json', (value, c) => {
     const r = AssignCrewBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
@@ -157,6 +211,7 @@ movesHandler.post(
 
 movesHandler.post(
   '/:id/vehicles',
+  requirePermission(Actions.UpdateMove),
   validator('json', (value, c) => {
     const r = AssignVehicleBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
@@ -172,11 +227,10 @@ movesHandler.post(
   },
 )
 
-movesHandler.get('/:moveId/quotes', async (c) => {
-  const db = c.get('db')
-  const moveId = c.req.param('moveId')
-  const move = await findMoveById(db, moveId)
+movesHandler.get('/:moveId/quotes', requirePermission(Actions.ListMoves), async (c) => {
+  const moveId = c.req.param('moveId') ?? ''
+  const move = await loadReadableMove(c, moveId)
   if (!move) return c.json({ error: 'Move not found', code: 'NOT_FOUND' }, 404)
-  const data = await listQuotesByMoveId(db, moveId)
+  const data = await listQuotesByMoveId(c.get('db'), moveId)
   return c.json({ data, meta: { count: data.length } })
 })

@@ -17,6 +17,13 @@ vi.mock('./middleware/tenant', () => ({
   tenantMiddleware: async (c: any, next: () => Promise<void>) => {
     c.set('tenantId', 'test-tenant-id')
     c.set('db', {})
+    // A tenant_admin principal so requirePermission-gated routes (incl. the
+    // moves routes) pass via the offline Cedar backend.
+    c.set('principal', {
+      sub: 'test-sub',
+      tenantId: 'test-tenant-id',
+      roleNames: ['tenant_admin'],
+    })
     await next()
   },
 }))
