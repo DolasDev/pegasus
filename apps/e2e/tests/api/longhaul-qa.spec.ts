@@ -122,6 +122,20 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     )
   })
 
+  // Since Phase 3 of the longhaul strangler-fig migration, /dispatchers is
+  // served cloud-direct (apps/api/src/handlers/longhaul-cloud/dispatchers.ts):
+  // the cloud Hono Lambda queries v_longhaul_salesman through the
+  // mssql-executor Lambda instead of proxying to the on-prem server. The
+  // response shape must stay identical to the on-prem handler — `{ data: [] }`.
+  test('GET /dispatchers returns the dispatcher list @smoke', async ({ qaApiFetch }) => {
+    const res = await qaApiFetch(`${LH}/dispatchers`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(Array.isArray(body.data ?? body), 'cloud-direct /dispatchers returns { data: [] }').toBe(
+      true,
+    )
+  })
+
   // Since Phase 3 of the longhaul strangler-fig migration, /activity-types is
   // served cloud-direct (apps/api/src/handlers/longhaul-cloud/activity-types.ts):
   // the cloud Hono Lambda queries Dolios MSSQL through the mssql-executor Lambda

@@ -33,6 +33,7 @@ import { longhaulUsersMeHandler } from './handlers/longhaul-cloud/users-me'
 import { longhaulShipmentFiltersDefaultHandler } from './handlers/longhaul-cloud/shipment-filters-default'
 import { longhaulShipmentFiltersHandler } from './handlers/longhaul-cloud/shipment-filters'
 import { longhaulTripsListHandler } from './handlers/longhaul-cloud/trips-list'
+import { longhaulDispatchersHandler } from './handlers/longhaul-cloud/dispatchers'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -246,6 +247,10 @@ v1.get('/onprem/longhaul/shipment-filters', longhaulShipmentFiltersHandler)
 // MSSQL round trips (trips list + a separate TripNotes fetch); this handler
 // collapses the notes fetch into the main query, so it makes just one.
 v1.get('/onprem/longhaul/trips', longhaulTripsListHandler)
+// Longhaul strangler-fig migration (Phase 3): /dispatchers is served
+// cloud-direct via the in-VPC mssql-executor Lambda. Same precedence reasoning
+// as /version above — registered before the /onprem wildcard proxy.
+v1.get('/onprem/longhaul/dispatchers', longhaulDispatchersHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.
