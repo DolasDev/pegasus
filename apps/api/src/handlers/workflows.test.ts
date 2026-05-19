@@ -3,6 +3,8 @@
 //
 // createWorkflowRepository is mocked so no DB is required.
 // presignUpload / presignDownload are mocked so no AWS SDK is called.
+// dualAuthMiddleware is mocked with a context-injecting stub — buildApp picks
+// the roleNames/userId per test (the real dispatch is covered by dual-auth.test.ts).
 // requirePermission is NOT mocked — the real implementation enforces RBAC.
 // ---------------------------------------------------------------------------
 
@@ -11,7 +13,6 @@ import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../types'
 import { registerTestErrorHandler } from '../test-helpers'
-import { seedPrincipal } from '../__tests__/_principal'
 import { _clearAuthzCache } from '../lib/authz'
 
 // ---------------------------------------------------------------------------
@@ -41,7 +42,16 @@ vi.mock('../lib/documents-s3', () => ({
   presignDownload: mockPresignDownload,
 }))
 
+// dualAuthMiddleware is replaced with a context-injecting stub — its real
+// dispatch (Cognito vs vnd_ vs SKIP_AUTH) is covered by dual-auth.test.ts.
+vi.mock('../middleware/dual-auth', () => ({
+  dualAuthMiddleware: vi.fn(async (_c, next) => {
+    await next()
+  }),
+}))
+
 import { workflowsHandler } from './workflows'
+import { dualAuthMiddleware } from '../middleware/dual-auth'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -68,14 +78,19 @@ function buildApp(
   const fakeDb = {
     tenant: { findUnique: mockTenantFindUnique },
   } as unknown as PrismaClient
-  const app = new Hono<AppEnv>()
-  registerTestErrorHandler(app)
-  app.use('*', seedPrincipal({ roleNames }))
-  app.use('*', async (c, next) => {
+  // Stub dualAuthMiddleware to inject the AppEnv context both tenantMiddleware
+  // and m2mAppAuthMiddleware would populate in production.
+  vi.mocked(dualAuthMiddleware).mockImplementation(async (c, next) => {
+    c.set('tenantId', 'test-tenant-id')
+    c.set('principal', { sub: 'test-sub', tenantId: 'test-tenant-id', roleNames: [...roleNames] })
+    c.set('idToken', undefined)
+    c.set('policyStoreId', undefined)
     c.set('db', fakeDb)
     c.set('userId', userId ?? undefined)
     await next()
   })
+  const app = new Hono<AppEnv>()
+  registerTestErrorHandler(app)
   app.route('/', workflowsHandler)
   return app
 }
