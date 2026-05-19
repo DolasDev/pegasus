@@ -25,6 +25,16 @@ import { logger } from '../../lib/logger'
 
 // ---------------------------------------------------------------------------
 // Filter / sort query shapes — mirror TripQuery in trips.repository.ts.
+//
+// IMPORTANT (Phase 3.1): the UI puts the WHOLE TripQuery into the
+// `?filters=...` URL param. See
+// apps/tenant-web/src/features/driver-planning/utils/api/routes.ts which does
+// `?filters=${encodeURIComponent(JSON.stringify(query))}` where `query` is
+// `{ searchTerm, filters: {...}, sortBy: {...} }`. So the parsed JSON's
+// `filters` is NESTED — not the top-level object. Reading it flat (as a
+// previous version of this handler did) silently disabled every filter
+// including `id`. The handler does NOT read a separate `?sortBy=` param —
+// `sortBy` is nested inside the same JSON.
 // ---------------------------------------------------------------------------
 
 interface TripFilters {
@@ -47,6 +57,17 @@ interface TripFilters {
 interface TripSortBy {
   value?: string
   order?: string
+}
+
+/**
+ * The actual JSON shape the UI URL-encodes into `?filters=`. Matches
+ * `TripQuery` in repositories/longhaul/trips.repository.ts (which the on-prem
+ * handler passes to findTripsWithQuery verbatim).
+ */
+interface TripQuery {
+  searchTerm?: string
+  filters?: TripFilters
+  sortBy?: TripSortBy
 }
 
 // Columns that may be sorted on — whitelisted so `sortBy` can never inject
@@ -271,13 +292,14 @@ export const longhaulTripsListHandler: Handler<AppEnv> = async (c) => {
     )
   }
 
-  // Parse `filters` (JSON) and `sortBy` query params — matches the on-prem
-  // handler, which JSON.parses the `filters` param and 400s on malformed JSON.
-  let filters: TripFilters | undefined
+  // The UI URL-encodes the whole TripQuery into `?filters=` — see header
+  // comment. We JSON.parse it once and read `.filters` / `.sortBy` from
+  // there. The on-prem handler does the same thing via findTripsWithQuery.
+  let query: TripQuery = {}
   const rawFilters = c.req.query('filters')
   if (rawFilters) {
     try {
-      filters = JSON.parse(rawFilters) as TripFilters
+      query = JSON.parse(rawFilters) as TripQuery
     } catch {
       return c.json(
         {
@@ -290,25 +312,8 @@ export const longhaulTripsListHandler: Handler<AppEnv> = async (c) => {
     }
   }
 
-  let sortBy: TripSortBy | undefined
-  const rawSortBy = c.req.query('sortBy')
-  if (rawSortBy) {
-    try {
-      sortBy = JSON.parse(rawSortBy) as TripSortBy
-    } catch {
-      return c.json(
-        {
-          error: 'Invalid sortBy JSON',
-          code: 'VALIDATION_ERROR',
-          correlationId: c.get('correlationId'),
-        },
-        400,
-      )
-    }
-  }
-
-  const { clause, params } = buildWhere(filters)
-  const orderBy = buildOrderBy(sortBy)
+  const { clause, params } = buildWhere(query.filters)
+  const orderBy = buildOrderBy(query.sortBy)
   const sql = `${SELECT_AND_JOINS}${clause}${orderBy}`
 
   try {
