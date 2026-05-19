@@ -29,6 +29,7 @@ import { longhaulZonesHandler } from './handlers/longhaul-cloud/zones'
 import { longhaulPlannersHandler } from './handlers/longhaul-cloud/planners'
 import { longhaulActivityTypesHandler } from './handlers/longhaul-cloud/activity-types'
 import { longhaulFilterOptionsHandler } from './handlers/longhaul-cloud/filter-options'
+import { longhaulUsersMeHandler } from './handlers/longhaul-cloud/users-me'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -226,6 +227,10 @@ v1.get('/onprem/longhaul/planners', longhaulPlannersHandler)
 v1.get('/onprem/longhaul/activity-types', longhaulActivityTypesHandler)
 // Phase 3: /filter-options is served cloud-direct — same pattern as /version.
 v1.get('/onprem/longhaul/filter-options', longhaulFilterOptionsHandler)
+// Phase 3: /users/me is served cloud-direct — the cloud Hono Lambda resolves
+// the caller's legacy identity (TenantUser.legacyWindowsUsername →
+// v_longhaul_salesman) via the mssql-executor Lambda. Same `{ data }` shape.
+v1.get('/onprem/longhaul/users/me', longhaulUsersMeHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.
