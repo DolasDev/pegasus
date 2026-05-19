@@ -10,7 +10,17 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { UserPlus, UserX, ShieldCheck, Loader2, AlertCircle, Pencil, Check, X } from 'lucide-react'
+import {
+  UserPlus,
+  UserX,
+  ShieldCheck,
+  Loader2,
+  AlertCircle,
+  Pencil,
+  Check,
+  X,
+  Truck,
+} from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -26,10 +36,12 @@ import {
   useInviteUser,
   useUpdateUserRole,
   useUpdateUserLegacyWindowsUsername,
+  useLinkCrewMember,
   useDeactivateUser,
   type TenantUser,
   type RoleOption,
 } from '@/api/queries/users'
+import { crewMembersQueryOptions, type CrewMember } from '@/api/queries/crew'
 import { getSession } from '@/auth/session'
 import { usePermissions } from '@/auth/permissions'
 
@@ -417,10 +429,119 @@ function LegacyWindowsUsernameEditor({ user, onSave }: LegacyWindowsUsernameEdit
   )
 }
 
+// ---------------------------------------------------------------------------
+// Crew-member linker — shown only for users with the `driver` role. A driver
+// login must be linked to a CrewMember or it sees no trips at all, so an
+// unlinked driver gets a prominent warning badge.
+// ---------------------------------------------------------------------------
+
+type CrewMemberLinkerProps = {
+  user: TenantUser
+  crewMembers: CrewMember[]
+  onSave: (crewMemberId: string | null) => Promise<void>
+}
+
+function CrewMemberLinker({ user, crewMembers, onSave }: CrewMemberLinkerProps) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(user.crewMemberId ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!editing) setValue(user.crewMemberId ?? '')
+  }, [user.crewMemberId, editing])
+
+  async function handleSave() {
+    setError(null)
+    setSaving(true)
+    try {
+      await onSave(value === '' ? null : value)
+      setEditing(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!editing) {
+    return user.crewMemberId ? (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground"
+      >
+        <Truck size={11} />
+        Crew: <span className="font-medium">{user.crewMemberName}</span>
+        <Pencil size={11} />
+      </button>
+    ) : (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="inline-flex items-center gap-1"
+        title="This driver has no crew member linked — they will see no trips."
+      >
+        <Badge variant="outline" className="gap-1 border-amber-500/50 text-xs text-amber-600">
+          <AlertCircle size={11} />
+          No crew member linked
+        </Badge>
+        <Pencil size={11} className="text-muted-foreground" />
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-xs text-muted-foreground">Crew:</span>
+      <select
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        disabled={saving}
+        autoFocus
+        className="h-6 rounded-md border border-input bg-background px-2 py-0 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <option value="">— Not linked —</option>
+        {crewMembers.map((cm) => {
+          const takenByOther = cm.tenantUserId !== null && cm.tenantUserId !== user.id
+          return (
+            <option key={cm.id} value={cm.id} disabled={takenByOther}>
+              {cm.name}
+              {takenByOther ? ' (already linked)' : ''}
+            </option>
+          )
+        })}
+      </select>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-6 w-6 p-0"
+        onClick={() => void handleSave()}
+        disabled={saving}
+      >
+        {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-6 w-6 p-0"
+        onClick={() => setEditing(false)}
+        disabled={saving}
+      >
+        <X size={12} />
+      </Button>
+      {error && <span className="ml-1 text-xs text-destructive">{error}</span>}
+    </div>
+  )
+}
+
 type UserRowProps = {
   user: TenantUser
   currentUserEmail: string
   roleOptions: RoleOption[]
+  crewMembers: CrewMember[]
   canManageRoles: boolean
   canDeactivate: boolean
   onDeactivate: (user: TenantUser) => void
@@ -429,20 +550,24 @@ type UserRowProps = {
     user: TenantUser,
     legacyWindowsUsername: string | null,
   ) => Promise<void>
+  onLinkCrewMember: (user: TenantUser, crewMemberId: string | null) => Promise<void>
 }
 
 function UserRow({
   user,
   currentUserEmail,
   roleOptions,
+  crewMembers,
   canManageRoles,
   canDeactivate,
   onDeactivate,
   onManageRoles,
   onSaveLegacyWindowsUsername,
+  onLinkCrewMember,
 }: UserRowProps) {
   const isSelf = user.email === currentUserEmail
   const isDeactivated = user.status === 'DEACTIVATED'
+  const isDriver = user.roleNames.includes('driver')
 
   return (
     <div className="flex items-center gap-4 rounded-lg border bg-card px-4 py-3">
@@ -471,6 +596,13 @@ function UserRow({
               <LegacyWindowsUsernameEditor
                 user={user}
                 onSave={(v) => onSaveLegacyWindowsUsername(user, v)}
+              />
+            )}
+            {!isDeactivated && isDriver && (
+              <CrewMemberLinker
+                user={user}
+                crewMembers={crewMembers}
+                onSave={(crewMemberId) => onLinkCrewMember(user, crewMemberId)}
               />
             )}
           </div>
@@ -532,10 +664,15 @@ export function UsersPage() {
     ...roleOptionsQueryOptions,
     enabled: canList,
   })
+  const { data: crewMembers } = useQuery({
+    ...crewMembersQueryOptions,
+    enabled: canList,
+  })
   const users = usersData ?? []
   const deactivateMutation = useDeactivateUser()
   const roleMutation = useUpdateUserRole()
   const legacyWindowsUsernameMutation = useUpdateUserLegacyWindowsUsername()
+  const linkCrewMutation = useLinkCrewMember()
   const [panel, setPanel] = useState<PanelState>({ kind: 'none' })
 
   // Count of currently-active tenant_admins. Used by ManageRolesPanel to
@@ -606,6 +743,10 @@ export function UsersPage() {
     await legacyWindowsUsernameMutation.mutateAsync({ id: user.id, legacyWindowsUsername })
   }
 
+  async function handleLinkCrewMember(user: TenantUser, crewMemberId: string | null) {
+    await linkCrewMutation.mutateAsync({ id: user.id, crewMemberId })
+  }
+
   return (
     <div>
       <PageHeader
@@ -643,11 +784,13 @@ export function UsersPage() {
               user={user}
               currentUserEmail={session?.email ?? ''}
               roleOptions={roleOptions ?? []}
+              crewMembers={crewMembers ?? []}
               canManageRoles={perms.has('user:update')}
               canDeactivate={perms.has('user:deactivate')}
               onDeactivate={(u) => setPanel({ kind: 'deactivate', user: u })}
               onManageRoles={(u) => setPanel({ kind: 'manage', user: u })}
               onSaveLegacyWindowsUsername={handleSaveLegacyWindowsUsername}
+              onLinkCrewMember={handleLinkCrewMember}
             />
           )
 

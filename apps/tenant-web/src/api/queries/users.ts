@@ -16,6 +16,10 @@ export type TenantUser = {
   invitedAt: string
   activatedAt: string | null
   deactivatedAt: string | null
+  /** The CrewMember.id linked to this login (driver persona), or null. */
+  crewMemberId: string | null
+  /** The linked CrewMember's display name, or null. */
+  crewMemberName: string | null
 }
 
 export type InviteUserInput = {
@@ -28,6 +32,8 @@ export type PatchUserInput = {
   /** Cedar role-group memberships. */
   roleNames?: string[]
   legacyWindowsUsername?: string | null
+  /** CrewMember to link this login to (driver persona); null unlinks. */
+  crewMemberId?: string | null
 }
 
 /** A single Cedar role group as advertised by GET /role-options. */
@@ -107,6 +113,20 @@ export function useUpdateUserLegacyWindowsUsername() {
       apiFetch<TenantUser>(`/api/v1/users/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ legacyWindowsUsername }),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: usersKeys.list() })
+    },
+  })
+}
+
+export function useLinkCrewMember() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, crewMemberId }: { id: string; crewMemberId: string | null }) =>
+      apiFetch<TenantUser>(`/api/v1/users/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ crewMemberId }),
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: usersKeys.list() })

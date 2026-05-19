@@ -28,6 +28,9 @@ import { usePermissions } from '@/auth/permissions'
 const SIDEBAR_COLLAPSED_KEY = 'pegasus.sidebar.collapsed'
 
 const ADMIN_ONLY = ['tenant_admin'] as const
+// Drivers get the Moves nav alongside admins — the list and detail screens are
+// read-only and the API scopes a driver to their own assigned trips.
+const MOVES_VIEW_ROLES = ['tenant_admin', 'driver'] as const
 const OPERATIONS_PLANNING_ROLES = [
   'tenant_admin',
   'operations_admin',
@@ -43,7 +46,7 @@ const NAV_ITEMS = [
     exact: true,
     roles: null,
   },
-  { to: '/moves' as const, label: 'Moves', icon: Truck, exact: false, roles: ADMIN_ONLY },
+  { to: '/moves' as const, label: 'Moves', icon: Truck, exact: false, roles: MOVES_VIEW_ROLES },
   { to: '/quotes' as const, label: 'Quotes', icon: FileText, exact: false, roles: ADMIN_ONLY },
   { to: '/customers' as const, label: 'Customers', icon: Users, exact: false, roles: ADMIN_ONLY },
   { to: '/dispatch' as const, label: 'Dispatch', icon: Calendar, exact: false, roles: ADMIN_ONLY },
