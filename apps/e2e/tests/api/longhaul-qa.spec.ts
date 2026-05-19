@@ -155,11 +155,17 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     }
   })
 
+  // Since Phase 3 of the longhaul strangler-fig migration, /users/me is served
+  // cloud-direct (apps/api/src/handlers/longhaul-cloud/users-me.ts): the cloud
+  // Hono Lambda resolves the caller's legacy identity (TenantUser →
+  // v_longhaul_salesman) through the mssql-executor Lambda instead of proxying
+  // to the on-prem server. Response shape stays `{ data: <longhaul user> }`.
   test('GET /users/me returns the mapped legacy user @smoke', async ({ qaApiFetch }) => {
     const res = await qaApiFetch(`${LH}/users/me`)
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body.data ?? body, 'legacyWindowsUsername should resolve to a Dolios user').toBeTruthy()
+    expect(body.data, 'cloud-direct /users/me returns { data: <longhaul user> }').toBeTruthy()
+    expect(body.data).toHaveProperty('code')
   })
 
   test('GET /shipments (bounded query) returns the {data,meta} shape', async ({ qaApiFetch }) => {
