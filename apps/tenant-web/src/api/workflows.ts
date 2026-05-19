@@ -21,6 +21,10 @@ export interface Workflow {
   visibility: WorkflowVisibility
   manifest: WorkflowManifest
   createdByUserId: string
+  /** Set when this workflow was created by forking another; the source id. */
+  forkedFromWorkflowId?: string
+  /** The source workflow's version at fork time. */
+  forkedFromVersion?: string
   createdAt: string
   updatedAt: string
 }
@@ -44,4 +48,12 @@ export async function getWorkflow(id: string): Promise<Workflow> {
 
 export async function getWorkflowDownloadUrl(id: string): Promise<WorkflowDownload> {
   return apiFetch<WorkflowDownload>(`/api/v1/workflows/${id}/download-url`)
+}
+
+/**
+ * Fork a GLOBAL platform-library workflow into the caller's own tenant store.
+ * Returns the newly-created TENANT-visibility workflow.
+ */
+export async function forkWorkflow(id: string): Promise<Workflow> {
+  return apiFetch<Workflow>(`/api/v1/workflows/${id}/fork`, { method: 'POST' })
 }

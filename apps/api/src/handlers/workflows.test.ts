@@ -19,19 +19,20 @@ import { _clearAuthzCache } from '../lib/authz'
 // Mocks
 // ---------------------------------------------------------------------------
 
-const { mockRepo, mockTenantFindUnique, mockPresignUpload, mockPresignDownload } = vi.hoisted(
-  () => ({
+const { mockRepo, mockTenantFindUnique, mockPresignUpload, mockPresignDownload, mockCopyObject } =
+  vi.hoisted(() => ({
     mockRepo: {
       create: vi.fn(),
       findByIdForTenant: vi.fn(),
       listForTenant: vi.fn(),
       findByNaturalKey: vi.fn(),
+      forkGlobalToTenant: vi.fn(),
     },
     mockTenantFindUnique: vi.fn(),
     mockPresignUpload: vi.fn(),
     mockPresignDownload: vi.fn(),
-  }),
-)
+    mockCopyObject: vi.fn(),
+  }))
 
 vi.mock('../repositories/workflow.repository', () => ({
   createWorkflowRepository: vi.fn(() => mockRepo),
@@ -40,6 +41,7 @@ vi.mock('../repositories/workflow.repository', () => ({
 vi.mock('../lib/documents-s3', () => ({
   presignUpload: mockPresignUpload,
   presignDownload: mockPresignDownload,
+  copyObject: mockCopyObject,
 }))
 
 // dualAuthMiddleware is replaced with a context-injecting stub — its real
@@ -117,8 +119,18 @@ const mockRow = {
   artifactKey: 'workflows/test-tenant-id/wf-1/1.0.0.zip',
   manifest: validManifest,
   createdByUserId: 'user-1',
+  forkedFromWorkflowId: null,
+  forkedFromVersion: null,
   createdAt: now,
   updatedAt: now,
+}
+
+const globalRow = {
+  ...mockRow,
+  id: 'global-wf-1',
+  tenantId: 'platform-tenant-id',
+  visibility: 'GLOBAL' as const,
+  artifactKey: 'workflows/platform-tenant-id/global-wf-1/1.0.0.zip',
 }
 
 // ---------------------------------------------------------------------------
@@ -389,6 +401,77 @@ describe('workflows handler', () => {
       })
       const res = await buildApp().request('/wf-1/download-url')
       expect(res.status).toBe(200)
+    })
+  })
+
+  // ── POST /:id/fork ────────────────────────────────────────────────────────
+
+  describe('POST /:id/fork', () => {
+    it('returns 403 without workflow_developer role', async () => {
+      const res = await buildApp(['viewer']).request('/global-wf-1/fork', post({}))
+      expect(res.status).toBe(403)
+    })
+
+    it('returns 404 when the source is not visible', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(null)
+      const res = await buildApp().request('/global-wf-1/fork', post({}))
+      expect(res.status).toBe(404)
+      expect((await json(res)).code).toBe('NOT_FOUND')
+    })
+
+    it('returns 404 when the source is visible but not GLOBAL', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(mockRow) // TENANT visibility
+      const res = await buildApp().request('/wf-1/fork', post({}))
+      expect(res.status).toBe(404)
+      expect((await json(res)).code).toBe('NOT_FOUND')
+      expect(mockRepo.forkGlobalToTenant).not.toHaveBeenCalled()
+    })
+
+    it('returns 422 when no authenticated user', async () => {
+      const res = await buildApp(['tenant_admin'], null).request('/global-wf-1/fork', post({}))
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('UNAUTHENTICATED')
+    })
+
+    it('returns 409 on a natural-key clash (P2002)', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(globalRow)
+      mockRepo.forkGlobalToTenant.mockRejectedValue(
+        Object.assign(new Error('Unique'), { code: 'P2002' }),
+      )
+      const res = await buildApp().request('/global-wf-1/fork', post({}))
+      expect(res.status).toBe(409)
+      expect((await json(res)).code).toBe('CONFLICT')
+    })
+
+    it('returns 201 with the new TENANT-visibility row and forked provenance', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(globalRow)
+      mockRepo.forkGlobalToTenant.mockResolvedValue({
+        ...mockRow,
+        id: 'forked-wf-1',
+        visibility: 'TENANT' as const,
+        forkedFromWorkflowId: 'global-wf-1',
+        forkedFromVersion: '1.0.0',
+      })
+      const res = await buildApp().request('/global-wf-1/fork', post({}))
+      expect(res.status).toBe(201)
+      const body = (await json(res)).data as JsonBody
+      expect(body['id']).toBe('forked-wf-1')
+      expect(body['visibility']).toBe('TENANT')
+      expect(body['forkedFromWorkflowId']).toBe('global-wf-1')
+      expect(body['forkedFromVersion']).toBe('1.0.0')
+      expect(mockRepo.forkGlobalToTenant).toHaveBeenCalledWith(
+        globalRow,
+        'test-tenant-id',
+        'user-1',
+      )
+    })
+
+    it('strips artifactKey from the fork response', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(globalRow)
+      mockRepo.forkGlobalToTenant.mockResolvedValue({ ...mockRow, id: 'forked-wf-1' })
+      const res = await buildApp().request('/global-wf-1/fork', post({}))
+      const body = (await json(res)).data as JsonBody
+      expect('artifactKey' in body).toBe(false)
     })
   })
 })

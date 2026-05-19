@@ -12,6 +12,7 @@
 //   GET    /                  — list (caller's tenant ∪ GLOBAL)
 //   GET    /:id               — fetch one (visibility-checked)
 //   GET    /:id/download-url  — presigned GET for the source zip
+//   POST   /:id/fork          — copy a GLOBAL workflow into the caller's store
 //
 // Visibility is derived server-side: tenants flagged isPlatformTenant=true
 // upload as GLOBAL; everyone else uploads as TENANT. There is no client-facing
@@ -102,6 +103,8 @@ type WorkflowResponse = {
   visibility: WorkflowVisibility
   manifest: WorkflowRow['manifest']
   createdByUserId: string
+  forkedFromWorkflowId: string | null
+  forkedFromVersion: string | null
   createdAt: string
   updatedAt: string
 }
@@ -115,6 +118,8 @@ function toResponse(row: WorkflowRow): WorkflowResponse {
     visibility: row.visibility,
     manifest: row.manifest,
     createdByUserId: row.createdByUserId,
+    forkedFromWorkflowId: row.forkedFromWorkflowId,
+    forkedFromVersion: row.forkedFromVersion,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }
@@ -336,4 +341,63 @@ workflowsHandler.get('/:id/download-url', requirePermission(Actions.ReadWorkflow
       expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS,
     },
   })
+})
+
+// ---------------------------------------------------------------------------
+// POST /:id/fork
+//
+// One-click fork: copy a GLOBAL platform-library workflow into the caller's
+// own tenant store. Replaces the Phase-1 download-and-reupload workaround.
+//
+// 404 if the source is not visible to the caller OR is not GLOBAL — only
+// platform-library workflows are forkable (a tenant's own workflows already
+// live in its store). 409 if the caller already has a workflow with the same
+// (name, version). 201 with the new TENANT-visibility row otherwise.
+//
+// Response: { data: WorkflowResponse } (201) | 404 | 409
+// ---------------------------------------------------------------------------
+workflowsHandler.post('/:id/fork', requirePermission(Actions.UploadWorkflow), async (c) => {
+  const tenantId = c.get('tenantId')
+  const userId = c.get('userId')
+  if (!userId) {
+    throw new DomainError('Authenticated user required to fork workflows', 'UNAUTHENTICATED')
+  }
+  const id = c.req.param('id') ?? ''
+  const repo = createWorkflowRepository(c.get('db'))
+
+  const source = await repo.findByIdForTenant(id, tenantId)
+  // Only GLOBAL workflows are forkable. A non-visible source and a visible
+  // non-GLOBAL source both 404 — never leak which is which.
+  if (!source || source.visibility !== 'GLOBAL') {
+    return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
+  }
+
+  const row = await repo
+    .forkGlobalToTenant(source, tenantId, userId)
+    // P2002 = unique-constraint violation; (tenantId, name, version) already used.
+    .catch((err: unknown) => {
+      const code = (err as { code?: string }).code
+      if (code === 'P2002') {
+        return null
+      }
+      throw err
+    })
+
+  if (!row) {
+    return c.json(
+      {
+        error: `A workflow named ${source.name}@${source.version} already exists for this tenant`,
+        code: 'CONFLICT',
+      },
+      409,
+    )
+  }
+
+  logger.info('Workflow forked', {
+    id: row.id,
+    tenantId,
+    forkedFromWorkflowId: source.id,
+    forkedFromVersion: source.version,
+  })
+  return c.json({ data: toResponse(row) }, 201)
 })

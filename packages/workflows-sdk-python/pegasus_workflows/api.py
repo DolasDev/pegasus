@@ -205,6 +205,29 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
+    def fork_workflow(self, workflow_id: str) -> dict[str, Any]:
+        """Fork a GLOBAL platform-library workflow into the caller's tenant.
+
+        Copies the source workflow's artifact and manifest into a new
+        TENANT-visibility row owned by the caller — the one-click replacement
+        for the download-and-reupload workaround.
+
+        Args:
+            workflow_id: The GLOBAL source workflow's id.
+
+        Returns:
+            The created ``WorkflowResponse`` object.
+
+        Raises:
+            PegasusApiError: On 404 (source not found or not GLOBAL),
+                409 (a workflow with the same name@version already exists),
+                or any other non-2xx.
+        """
+        with self._client() as client:
+            response = client.post(f"/api/v1/workflows/{workflow_id}/fork")
+        _raise_for_status(response)
+        return response.json()["data"]
+
     def list_workflows(self) -> list[dict[str, Any]]:
         """List every workflow visible to the caller's tenant (∪ GLOBAL)."""
         return self._get_json("/api/v1/workflows")["data"]
