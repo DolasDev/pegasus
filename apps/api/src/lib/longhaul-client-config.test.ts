@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, afterEach } from 'vitest'
-import { getLonghaulClientConfig } from './longhaul-client-config'
+import { getLonghaulClientConfig, getLonghaulClientConfigFor } from './longhaul-client-config'
 
 const KEY = 'LONGHAUL_CLIENT'
 
@@ -71,7 +71,7 @@ describe('getLonghaulClientConfig', () => {
 
   it('throws when LONGHAUL_CLIENT names an unknown client', () => {
     withEnv('acme', () => {
-      expect(() => getLonghaulClientConfig()).toThrow(/Unknown LONGHAUL_CLIENT/)
+      expect(() => getLonghaulClientConfig()).toThrow(/Unknown longhaul client/)
     })
   })
 
@@ -82,5 +82,28 @@ describe('getLonghaulClientConfig', () => {
       const b = getLonghaulClientConfig()
       expect(b.importExportTypes).not.toContain('X')
     })
+  })
+})
+
+describe('getLonghaulClientConfigFor', () => {
+  it('resolves an explicit client without touching process.env', () => {
+    const nwi = getLonghaulClientConfigFor('nwi')
+    expect(nwi.dispatcherQuery).toBe('managed_by_id = 2021')
+    const qmm = getLonghaulClientConfigFor('qmm')
+    expect(qmm.dispatcherQuery).toBe("roles like ('%cpd%')")
+  })
+
+  it('normalises mixed-case / padded values', () => {
+    expect(getLonghaulClientConfigFor('  NWI ').moveTypesWhere).toBe('1=1')
+  })
+
+  it('throws on an unknown client', () => {
+    expect(() => getLonghaulClientConfigFor('acme')).toThrow(/Unknown longhaul client/)
+  })
+
+  it('returns an independent copy per call (mutation isolation)', () => {
+    const a = getLonghaulClientConfigFor('nwi')
+    a.importExportTypes.push('X')
+    expect(getLonghaulClientConfigFor('nwi').importExportTypes).not.toContain('X')
   })
 })
