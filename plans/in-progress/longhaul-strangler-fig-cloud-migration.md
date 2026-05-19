@@ -160,6 +160,32 @@ one PR and should be mechanical:
 
 One PR per endpoint. Start with low-volume single-query reads, escalate to multi-query reads (trip detail, planning). The order is judgment-based; prioritise endpoints whose on-prem version is slow today or whose query refactor is genuinely valuable independent of the migration.
 
+### Phase 3 results (2026-05-19 — PRs #117–#133)
+
+All 14 longhaul GET endpoints reachable via `/onprem/longhaul/*` were migrated
+cloud-direct (one PR each, #117–#130), then verified against QA via the
+`e2e-qa-longhaul` suite. The suite caught a regression and forced two
+corrections:
+
+- **Multi-tenancy broke `getLonghaulClientConfig()`.** Three handlers
+  (`/dispatchers`, `/filter-options`, `/shipments`) resolved per-client query
+  config from the `LONGHAUL_CLIENT` env var — fine on the single-client on-prem
+  server, but the cloud API Lambda is multi-tenant and has no correct value, so
+  those handlers 500'd (`/shipments` only on the `Is_Trip_Planning` path, which
+  its `@smoke` test didn't exercise — it slipped per-PR review).
+- **Reverted, then re-fixed.** #131 + #132 reverted those three route mounts to
+  the on-prem proxy (the plan's per-endpoint escape hatch). #133 added a
+  per-tenant `Tenant.longhaulClient` column (`'nwi' | 'qmm'`), switched the
+  three handlers to `getLonghaulClientConfigFor(tenant.longhaulClient)`, and
+  re-mounted them cloud-direct. Migration backfills existing longhaul tenants
+  to `'nwi'`; QMM tenants must be set via the admin API.
+
+End state: all 14 read endpoints served cloud-direct. The 11 non-client-config
+endpoints went green immediately; the 3 client-config endpoints went green
+after #133. QA `e2e-qa-longhaul` is the verification of record (run it after a
+known-good DB reseed — the suite's `@qa-mutating` tests pollute the planning DB
+across runs).
+
 ## Phase 4 — migrate writes
 
 Saves are where the WAN-latency math bites hardest. Trip save (16–18 round trips today) is the worst case and the highest-value refactor. Save it for last — by then the pattern is well-rehearsed and the refactor is the whole point.

@@ -7,7 +7,7 @@
 // SQL text passed to executeSql.
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest'
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
 import { Hono } from 'hono'
 import type { AppEnv } from '../../types'
 import { registerTestErrorHandler } from '../../test-helpers'
@@ -71,14 +71,10 @@ function stubExecutor(opts: {
 describe('GET longhaul/shipments (cloud-direct)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    process.env['LONGHAUL_CLIENT'] = 'nwi'
-  })
-  afterEach(() => {
-    delete process.env['LONGHAUL_CLIENT']
   })
 
   it('returns enriched shipments in { data, meta: { count } } shape', async () => {
-    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
     stubExecutor({
       shipments: [
         {
@@ -149,7 +145,7 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
   })
 
   it('makes exactly 3 MSSQL round trips (base + combined enrichment + extra-locations)', async () => {
-    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
     stubExecutor({
       shipments: [{ order_num: 100 }],
       enrichment: [],
@@ -163,7 +159,7 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
   })
 
   it('skips the enrichment round trips when the base query returns no rows', async () => {
-    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
     stubExecutor({ shipments: [] })
 
     const res = await buildApp().request('/onprem/longhaul/shipments')
@@ -175,7 +171,7 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
   })
 
   it('binds searchTerm as a parameter and applies it to the base query', async () => {
-    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
     stubExecutor({ shipments: [] })
 
     await buildApp().request('/onprem/longhaul/shipments?searchTerm=abc')
@@ -188,7 +184,7 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
   })
 
   it('passes filter values as bound params, not concatenated SQL', async () => {
-    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
     stubExecutor({ shipments: [] })
 
     const filters = JSON.stringify({
@@ -208,7 +204,7 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
   })
 
   it('applies the post-fetch TripStatus_id filter', async () => {
-    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
     stubExecutor({
       shipments: [{ order_num: 1 }, { order_num: 2 }],
       enrichment: [
@@ -236,7 +232,7 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
   })
 
   it('soft-fails when the extra_locations table does not exist', async () => {
-    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
     stubExecutor({
       shipments: [{ order_num: 100 }],
       enrichment: [],
@@ -251,7 +247,7 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
   })
 
   it('returns 400 RESULT_LIMIT_EXCEEDED when more than 1000 shipments enrich', async () => {
-    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
     const shipments = Array.from({ length: 1001 }, (_, i) => ({ order_num: i + 1 }))
     stubExecutor({ shipments, enrichment: [], extraLocations: [] })
 
@@ -262,7 +258,7 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
   })
 
   it('returns 400 VALIDATION_ERROR on invalid filters JSON', async () => {
-    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
     stubExecutor({ shipments: [] })
 
     const res = await buildApp().request('/onprem/longhaul/shipments?filters=not-json')
@@ -273,7 +269,7 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
   })
 
   it('returns 422 MSSQL_NOT_CONFIGURED when the tenant has no connection string', async () => {
-    findUnique.mockResolvedValue({ mssqlConnectionString: null })
+    findUnique.mockResolvedValue({ mssqlConnectionString: null, longhaulClient: 'nwi' })
 
     const res = await buildApp().request('/onprem/longhaul/shipments')
 
@@ -282,8 +278,18 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
     expect(executeSqlMock).not.toHaveBeenCalled()
   })
 
+  it('returns 422 LONGHAUL_CLIENT_NOT_CONFIGURED when the tenant has no longhaul client', async () => {
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: null })
+
+    const res = await buildApp().request('/onprem/longhaul/shipments')
+
+    expect(res.status).toBe(422)
+    expect(((await res.json()) as { code: string }).code).toBe('LONGHAUL_CLIENT_NOT_CONFIGURED')
+    expect(executeSqlMock).not.toHaveBeenCalled()
+  })
+
   it('returns 500 when the executor call fails', async () => {
-    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
     executeSqlMock.mockRejectedValue(new Error('executor down'))
 
     const res = await buildApp().request('/onprem/longhaul/shipments')

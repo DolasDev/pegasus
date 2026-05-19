@@ -28,6 +28,9 @@ import { longhaulDriversHandler } from './handlers/longhaul-cloud/drivers'
 import { longhaulZonesHandler } from './handlers/longhaul-cloud/zones'
 import { longhaulPlannersHandler } from './handlers/longhaul-cloud/planners'
 import { longhaulActivityTypesHandler } from './handlers/longhaul-cloud/activity-types'
+import { longhaulFilterOptionsHandler } from './handlers/longhaul-cloud/filter-options'
+import { longhaulDispatchersHandler } from './handlers/longhaul-cloud/dispatchers'
+import { longhaulShipmentsListHandler } from './handlers/longhaul-cloud/shipments-list'
 import { longhaulUsersMeHandler } from './handlers/longhaul-cloud/users-me'
 import { longhaulShipmentFiltersDefaultHandler } from './handlers/longhaul-cloud/shipment-filters-default'
 import { longhaulShipmentFiltersHandler } from './handlers/longhaul-cloud/shipment-filters'
@@ -229,13 +232,11 @@ v1.get('/onprem/longhaul/zones', longhaulZonesHandler)
 v1.get('/onprem/longhaul/planners', longhaulPlannersHandler)
 // Phase 3: /activity-types is served cloud-direct alongside /version.
 v1.get('/onprem/longhaul/activity-types', longhaulActivityTypesHandler)
-// Phase 3: /filter-options and /dispatchers are intentionally NOT mounted
-// cloud-direct — they fall through to the /onprem wildcard proxy below. Their
-// cloud handlers call getLonghaulClientConfig(), which reads process.env
-// LONGHAUL_CLIENT — a per-deployment value with no correct setting in the
-// multi-tenant cloud Lambda (NWI and QMM tenants share it), so the handlers
-// 500. Re-mount once a per-tenant longhaul-client config exists; the handlers
-// stay in longhaul-cloud/ ready for that. See longhaul-strangler-fig plan.
+// Phase 3: /filter-options and /dispatchers are served cloud-direct. Their
+// per-client query config (MoveType filter, dispatcher SQL) is resolved from
+// the tenant's longhaulClient column — see lib/longhaul-client-config.ts.
+v1.get('/onprem/longhaul/filter-options', longhaulFilterOptionsHandler)
+v1.get('/onprem/longhaul/dispatchers', longhaulDispatchersHandler)
 // Phase 3: /users/me is served cloud-direct — the cloud Hono Lambda resolves
 // the caller's legacy identity (TenantUser.legacyWindowsUsername →
 // v_longhaul_salesman) via the mssql-executor Lambda. Same `{ data }` shape.
@@ -258,12 +259,10 @@ v1.get('/onprem/longhaul/driver-planning', longhaulDriverPlanningHandler)
 // Phase 3: GET /trips/:id served cloud-direct — collapses the on-prem handler's
 // ~8-query trip+shipment fan-out into 1-2 batched mssql-executor round trips.
 v1.get('/onprem/longhaul/trips/:id', longhaulTripDetailHandler)
-// Phase 3: GET /shipments is intentionally NOT mounted cloud-direct — like
-// /filter-options and /dispatchers above, its handler calls
-// getLonghaulClientConfig() (for importExportTypes, on the Is_Trip_Planning
-// filter path), which reads process.env LONGHAUL_CLIENT and has no correct
-// value in the multi-tenant cloud Lambda. It falls through to the /onprem
-// proxy. Re-mount once a per-tenant longhaul-client config exists.
+// Phase 3: GET /shipments LIST is served cloud-direct. Its Is_Trip_Planning
+// filter uses per-client import/export codes resolved from the tenant's
+// longhaulClient column. Write routes (POST/PATCH /shipments/*) still proxy.
+v1.get('/onprem/longhaul/shipments', longhaulShipmentsListHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.

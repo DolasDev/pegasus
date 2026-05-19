@@ -70,26 +70,18 @@ const CONFIGS: Record<LonghaulClient, LonghaulClientConfig> = {
 }
 
 /**
- * Resolve the longhaul client configuration from the LONGHAUL_CLIENT env var.
+ * Resolve the longhaul client configuration for an explicit client value.
  *
- * Throws a descriptive Error when the variable is unset or names an unknown
- * client. We intentionally do NOT silently default — silent defaults are what
- * caused the original bug (QMM tenants getting NWI behaviour because each
- * setting independently fell back to an NWI-style hardcoded value).
+ * Used by the cloud-direct longhaul handlers, which read the client per tenant
+ * from `Tenant.longhaulClient` (the multi-tenant cloud API Lambda cannot use a
+ * single process-env value). Throws when `client` is unknown — we intentionally
+ * do NOT silently default, since silent defaults are what caused the original
+ * bug (QMM tenants getting NWI behaviour).
  */
-export function getLonghaulClientConfig(): LonghaulClientConfig {
-  const raw = process.env['LONGHAUL_CLIENT']
-  if (!raw) {
-    throw new Error(
-      '[longhaul] LONGHAUL_CLIENT environment variable is required. ' +
-        'Set it to "nwi" or "qmm" to select the per-client query configuration.',
-    )
-  }
-  const normalised = raw.trim().toLowerCase()
+export function getLonghaulClientConfigFor(client: string): LonghaulClientConfig {
+  const normalised = client.trim().toLowerCase()
   if (normalised !== 'nwi' && normalised !== 'qmm') {
-    throw new Error(
-      `[longhaul] Unknown LONGHAUL_CLIENT value "${raw}". ` + 'Expected "nwi" or "qmm".',
-    )
+    throw new Error(`[longhaul] Unknown longhaul client "${client}". Expected "nwi" or "qmm".`)
   }
   const source = CONFIGS[normalised]
   // Return a fresh copy so callers can't mutate the shared template (e.g.
@@ -99,4 +91,21 @@ export function getLonghaulClientConfig(): LonghaulClientConfig {
     moveTypesWhere: source.moveTypesWhere,
     dispatcherQuery: source.dispatcherQuery,
   }
+}
+
+/**
+ * Resolve the longhaul client configuration from the LONGHAUL_CLIENT env var.
+ *
+ * Used by the legacy on-prem server, which is a single-client deployment.
+ * Throws a descriptive Error when the variable is unset.
+ */
+export function getLonghaulClientConfig(): LonghaulClientConfig {
+  const raw = process.env['LONGHAUL_CLIENT']
+  if (!raw) {
+    throw new Error(
+      '[longhaul] LONGHAUL_CLIENT environment variable is required. ' +
+        'Set it to "nwi" or "qmm" to select the per-client query configuration.',
+    )
+  }
+  return getLonghaulClientConfigFor(raw)
 }

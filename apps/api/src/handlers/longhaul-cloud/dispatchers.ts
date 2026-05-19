@@ -8,18 +8,20 @@
 // while every un-migrated longhaul endpoint still falls through to the proxy.
 //
 // Mirrors the on-prem `getDispatchers` repository: queries v_longhaul_salesman
-// with a per-client WHERE fragment resolved via getLonghaulClientConfig(). The
-// `dispatcherQuery` fragment is a server-side config constant (not user input —
-// same as the on-prem `whereRaw(dispatcherQuery)`), so it is interpolated into
-// the SQL string directly. Runs one query through the in-VPC mssql-executor
-// Lambda and matches the on-prem response shape exactly: `{ data: [...] }`.
+// with a per-client WHERE fragment. The client ('nwi' | 'qmm') is resolved per
+// tenant from `Tenant.longhaulClient` — the multi-tenant cloud Lambda cannot
+// use the on-prem server's LONGHAUL_CLIENT env var. The `dispatcherQuery`
+// fragment is a server-side config constant (not user input — same as the
+// on-prem `whereRaw(dispatcherQuery)`), so it is interpolated into the SQL
+// string directly. Runs one query through the in-VPC mssql-executor Lambda and
+// matches the on-prem response shape exactly: `{ data: [...] }`.
 // ---------------------------------------------------------------------------
 
 import type { Handler } from 'hono'
 import type { AppEnv } from '../../types'
 import { db } from '../../db'
 import { executeSql } from '../../lib/mssql-executor-client'
-import { getLonghaulClientConfig } from '../../lib/longhaul-client-config'
+import { getLonghaulClientConfigFor } from '../../lib/longhaul-client-config'
 import { logger } from '../../lib/logger'
 
 export const longhaulDispatchersHandler: Handler<AppEnv> = async (c) => {
@@ -27,7 +29,7 @@ export const longhaulDispatchersHandler: Handler<AppEnv> = async (c) => {
 
   const tenant = await db.tenant.findUnique({
     where: { id: tenantId },
-    select: { mssqlConnectionString: true },
+    select: { mssqlConnectionString: true, longhaulClient: true },
   })
   if (!tenant?.mssqlConnectionString) {
     logger.warn('Tenant has no mssqlConnectionString configured', { tenantId })
@@ -40,9 +42,20 @@ export const longhaulDispatchersHandler: Handler<AppEnv> = async (c) => {
       422,
     )
   }
+  if (!tenant.longhaulClient) {
+    logger.warn('Tenant has no longhaulClient configured', { tenantId })
+    return c.json(
+      {
+        error: 'Longhaul client not configured for this tenant',
+        code: 'LONGHAUL_CLIENT_NOT_CONFIGURED',
+        correlationId: c.get('correlationId'),
+      },
+      422,
+    )
+  }
 
   try {
-    const { dispatcherQuery } = getLonghaulClientConfig()
+    const { dispatcherQuery } = getLonghaulClientConfigFor(tenant.longhaulClient)
     const sql = `SELECT * FROM v_longhaul_salesman WHERE ${dispatcherQuery}`
     const { recordset } = await executeSql(tenant.mssqlConnectionString, sql)
     return c.json({ data: recordset })

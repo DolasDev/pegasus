@@ -33,7 +33,7 @@ import type { AppEnv } from '../../types'
 import { db } from '../../db'
 import { executeSql, type SqlParam } from '../../lib/mssql-executor-client'
 import { logger } from '../../lib/logger'
-import { getLonghaulClientConfig } from '../../lib/longhaul-client-config'
+import { getLonghaulClientConfigFor } from '../../lib/longhaul-client-config'
 import {
   enrichShipmentWithTripInfo,
   buildExtraShipmentActivities,
@@ -94,7 +94,7 @@ class ParamBag {
 // Base query builder — mirrors findShipmentsWithQuery in the on-prem repo.
 // ---------------------------------------------------------------------------
 
-function buildBaseSql(query: ShipmentQuery, bag: ParamBag): string {
+function buildBaseSql(query: ShipmentQuery, bag: ParamBag, importExportTypes: string[]): string {
   const S = SHIPMENTS_TABLE
   const where: string[] = []
 
@@ -223,7 +223,6 @@ function buildBaseSql(query: ShipmentQuery, bag: ParamBag): string {
     }
 
     if (f.Is_Trip_Planning) {
-      const { importExportTypes } = getLonghaulClientConfig()
       where.push(`${S}.shipment_status = ${bag.bind('A')}`)
       where.push(`${S}.import_export IN (${importExportTypes.map((t) => bag.bind(t)).join(', ')})`)
       where.push(`${S}.del_actual IS NULL`)
@@ -326,7 +325,7 @@ export const longhaulShipmentsListHandler: Handler<AppEnv> = async (c) => {
 
   const tenant = await db.tenant.findUnique({
     where: { id: tenantId },
-    select: { mssqlConnectionString: true },
+    select: { mssqlConnectionString: true, longhaulClient: true },
   })
   if (!tenant?.mssqlConnectionString) {
     logger.warn('Tenant has no mssqlConnectionString configured', { tenantId })
@@ -339,7 +338,21 @@ export const longhaulShipmentsListHandler: Handler<AppEnv> = async (c) => {
       422,
     )
   }
+  if (!tenant.longhaulClient) {
+    logger.warn('Tenant has no longhaulClient configured', { tenantId })
+    return c.json(
+      {
+        error: 'Longhaul client not configured for this tenant',
+        code: 'LONGHAUL_CLIENT_NOT_CONFIGURED',
+        correlationId,
+      },
+      422,
+    )
+  }
   const connectionString = tenant.mssqlConnectionString
+  // Per-client import/export codes for the Is_Trip_Planning filter — resolved
+  // from the tenant's longhaulClient ('nwi' | 'qmm'), not a process-env value.
+  const { importExportTypes } = getLonghaulClientConfigFor(tenant.longhaulClient)
 
   // ----- parse query params (mirror on-prem handler) -----
   let query: ShipmentQuery = {}
@@ -357,7 +370,7 @@ export const longhaulShipmentsListHandler: Handler<AppEnv> = async (c) => {
   try {
     // --- round trip 1: base shipments query ---
     const baseBag = new ParamBag()
-    const baseSql = buildBaseSql(query, baseBag)
+    const baseSql = buildBaseSql(query, baseBag, importExportTypes)
     const baseRes = await executeSql(connectionString, baseSql, { params: baseBag.params })
     const rawShipments = baseRes.recordset as ShipmentRow[]
 

@@ -2,11 +2,11 @@
 // Unit tests for the cloud-direct longhaul /filter-options handler.
 //
 // Prisma and the mssql-executor client are mocked so the test never touches
-// Postgres or the executor Lambda. LONGHAUL_CLIENT is pinned to 'qmm' so the
-// asserted SQL includes a non-trivial moveTypesWhere fragment.
+// Postgres or the executor Lambda. The tenant's longhaulClient is mocked to
+// 'qmm' so the asserted SQL includes a non-trivial moveTypesWhere fragment.
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect, beforeEach, afterAll, vi, type Mock } from 'vitest'
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
 import { Hono } from 'hono'
 import type { AppEnv } from '../../types'
 import { registerTestErrorHandler } from '../../test-helpers'
@@ -30,8 +30,6 @@ const EXPECTED_SQL =
   "WHERE move_type in ('C','S','N','M','U') " +
   'ORDER BY move_type_desc ASC'
 
-const ORIGINAL_CLIENT = process.env['LONGHAUL_CLIENT']
-
 function buildApp() {
   const app = new Hono<AppEnv>()
   registerTestErrorHandler(app)
@@ -47,16 +45,10 @@ function buildApp() {
 describe('GET longhaul/filter-options (cloud-direct)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    process.env['LONGHAUL_CLIENT'] = 'qmm'
-  })
-
-  afterAll(() => {
-    if (ORIGINAL_CLIENT === undefined) delete process.env['LONGHAUL_CLIENT']
-    else process.env['LONGHAUL_CLIENT'] = ORIGINAL_CLIENT
   })
 
   it('returns move types in { data: { moveType: [{ value, label }] } } shape', async () => {
-    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'qmm' })
     executeSqlMock.mockResolvedValue({
       recordset: [
         { move_type_desc: 'Corporate', move_type: 'C' },
@@ -81,7 +73,7 @@ describe('GET longhaul/filter-options (cloud-direct)', () => {
   })
 
   it('returns 422 MSSQL_NOT_CONFIGURED when the tenant has no connection string', async () => {
-    findUnique.mockResolvedValue({ mssqlConnectionString: null })
+    findUnique.mockResolvedValue({ mssqlConnectionString: null, longhaulClient: 'qmm' })
 
     const res = await buildApp().request('/onprem/longhaul/filter-options')
 
@@ -90,8 +82,18 @@ describe('GET longhaul/filter-options (cloud-direct)', () => {
     expect(executeSqlMock).not.toHaveBeenCalled()
   })
 
+  it('returns 422 LONGHAUL_CLIENT_NOT_CONFIGURED when the tenant has no longhaul client', async () => {
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: null })
+
+    const res = await buildApp().request('/onprem/longhaul/filter-options')
+
+    expect(res.status).toBe(422)
+    expect(((await res.json()) as { code: string }).code).toBe('LONGHAUL_CLIENT_NOT_CONFIGURED')
+    expect(executeSqlMock).not.toHaveBeenCalled()
+  })
+
   it('returns 500 when the executor call fails', async () => {
-    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'qmm' })
     executeSqlMock.mockRejectedValue(new Error('executor down'))
 
     const res = await buildApp().request('/onprem/longhaul/filter-options')

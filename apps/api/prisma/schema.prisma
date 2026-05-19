@@ -200,6 +200,13 @@ model Tenant {
   /// Used by mssqlMiddleware to open a connection pool per tenant.
   mssqlConnectionString String? @map("mssql_connection_string")
 
+  /// Per-tenant longhaul client selector — 'nwi' or 'qmm'. Selects the
+  /// dispatcher SQL, MoveType filter, and Is_Trip_Planning import/export codes
+  /// for the cloud-direct longhaul handlers (handlers/longhaul-cloud/*). The
+  /// multi-tenant cloud equivalent of the on-prem server's LONGHAUL_CLIENT env
+  /// var. Null until configured. See lib/longhaul-client-config.ts.
+  longhaulClient String? @map("longhaul_client")
+
   /// Set when the tenant is offboarded. Data is retained; the tenant is
   /// excluded from all default queries. Null means not offboarded.
   deletedAt DateTime? @map("deleted_at")

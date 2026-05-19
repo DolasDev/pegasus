@@ -23,7 +23,7 @@ import type { Handler } from 'hono'
 import type { AppEnv } from '../../types'
 import { db } from '../../db'
 import { executeSql } from '../../lib/mssql-executor-client'
-import { getLonghaulClientConfig } from '../../lib/longhaul-client-config'
+import { getLonghaulClientConfigFor } from '../../lib/longhaul-client-config'
 import { logger } from '../../lib/logger'
 
 /** Single-row shape of the MoveType query — mirrors the on-prem result. */
@@ -37,7 +37,7 @@ export const longhaulFilterOptionsHandler: Handler<AppEnv> = async (c) => {
 
   const tenant = await db.tenant.findUnique({
     where: { id: tenantId },
-    select: { mssqlConnectionString: true },
+    select: { mssqlConnectionString: true, longhaulClient: true },
   })
   if (!tenant?.mssqlConnectionString) {
     logger.warn('Tenant has no mssqlConnectionString configured', { tenantId })
@@ -50,12 +50,23 @@ export const longhaulFilterOptionsHandler: Handler<AppEnv> = async (c) => {
       422,
     )
   }
+  if (!tenant.longhaulClient) {
+    logger.warn('Tenant has no longhaulClient configured', { tenantId })
+    return c.json(
+      {
+        error: 'Longhaul client not configured for this tenant',
+        code: 'LONGHAUL_CLIENT_NOT_CONFIGURED',
+        correlationId: c.get('correlationId'),
+      },
+      422,
+    )
+  }
 
   try {
     // `moveTypesWhere` is a server-side per-client constant (not user input);
     // it is interpolated into the WHERE clause exactly as the on-prem Knex
     // `.whereRaw(moveTypesWhere)` does.
-    const { moveTypesWhere } = getLonghaulClientConfig()
+    const { moveTypesWhere } = getLonghaulClientConfigFor(tenant.longhaulClient)
     const sql =
       'SELECT move_type_desc, move_type FROM MoveType ' +
       `WHERE ${moveTypesWhere} ` +
