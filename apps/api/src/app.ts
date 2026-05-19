@@ -34,7 +34,6 @@ import { longhaulShipmentFiltersHandler } from './handlers/longhaul-cloud/shipme
 import { longhaulTripsListHandler } from './handlers/longhaul-cloud/trips-list'
 import { longhaulDriverPlanningHandler } from './handlers/longhaul-cloud/driver-planning'
 import { longhaulTripDetailHandler } from './handlers/longhaul-cloud/trip-detail'
-import { longhaulShipmentsListHandler } from './handlers/longhaul-cloud/shipments-list'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -259,11 +258,12 @@ v1.get('/onprem/longhaul/driver-planning', longhaulDriverPlanningHandler)
 // Phase 3: GET /trips/:id served cloud-direct — collapses the on-prem handler's
 // ~8-query trip+shipment fan-out into 1-2 batched mssql-executor round trips.
 v1.get('/onprem/longhaul/trips/:id', longhaulTripDetailHandler)
-// Phase 3: GET /shipments LIST is served cloud-direct. Registered before the
-// /onprem mount so this specific route wins over the /onprem/longhaul/*
-// wildcard proxy; the write routes (POST/PATCH /shipments/*) still fall
-// through to the on-prem server.
-v1.get('/onprem/longhaul/shipments', longhaulShipmentsListHandler)
+// Phase 3: GET /shipments is intentionally NOT mounted cloud-direct — like
+// /filter-options and /dispatchers above, its handler calls
+// getLonghaulClientConfig() (for importExportTypes, on the Is_Trip_Planning
+// filter path), which reads process.env LONGHAUL_CLIENT and has no correct
+// value in the multi-tenant cloud Lambda. It falls through to the /onprem
+// proxy. Re-mount once a per-tenant longhaul-client config exists.
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.
