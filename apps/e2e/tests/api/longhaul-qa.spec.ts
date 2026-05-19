@@ -275,15 +275,25 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     expect(Array.isArray((await res.json()).data ?? [])).toBe(true)
   })
 
+  // Since Phase 3 of the longhaul strangler-fig migration, /driver-planning is
+  // served cloud-direct (apps/api/src/handlers/longhaul-cloud/driver-planning.ts):
+  // the cloud Hono Lambda queries Dolios MSSQL through the mssql-executor Lambda
+  // in ONE OUTER APPLY query (collapsing the on-prem repo's ~5 round trips). The
+  // response shape must stay identical to the on-prem handler — `{ data, meta }`.
   test('GET /driver-planning returns driver availability rows', async ({ qaApiFetch }) => {
-    // NOTE: fails against QA until the on-prem server is redeployed with the
-    // getDriverPlanning fix (v_longhaul_drivers returns UPPERCASE columns on
-    // Dolios, so d.driver_id was undefined → "Undefined binding(s)" 500).
     const res = await qaApiFetch(`${LH}/driver-planning`)
     expect(res.status).toBe(200)
     const body = await res.json()
     const rows = Array.isArray(body) ? body : body.data
-    expect(Array.isArray(rows)).toBe(true)
+    expect(Array.isArray(rows), 'cloud-direct /driver-planning returns { data }').toBe(true)
+    if (body.meta) expect(typeof body.meta.count).toBe('number')
+    // Each row carries the estimated/confirmed availability shape the UI expects.
+    if (Array.isArray(rows) && rows.length > 0) {
+      const row = rows[0]
+      expect(row).toHaveProperty('driverId')
+      expect(row).toHaveProperty('estimatedAvailableDate')
+      expect(row).toHaveProperty('confirmedAvailableDate')
+    }
   })
 
   test('GET /filter-options returns filter options', async ({ qaApiFetch }) => {
