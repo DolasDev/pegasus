@@ -1,0 +1,116 @@
+// ---------------------------------------------------------------------------
+// MSSQL-executor client — runs SQL against a tenant's MSSQL by invoking the
+// in-VPC mssql-executor Lambda (apps/mssql-executor).
+//
+// The main API Lambda runs in the public Lambda egress environment with no
+// VPC attachment, so it cannot reach tenant MSSQL on the WireGuard overlay
+// directly. Migrated longhaul handlers look up the tenant's connection string
+// from Prisma, author raw SQL, and call executeSql() — which round-trips
+// through the executor Lambda inside the WG VPC. This mirrors tunnel-client.ts.
+// ---------------------------------------------------------------------------
+
+import { LambdaClient, InvokeCommand, type LambdaClientConfig } from '@aws-sdk/client-lambda'
+
+export class MssqlExecError extends Error {
+  readonly code: 'EXECUTOR_NOT_CONFIGURED' | 'EXECUTOR_INVOKE_FAILED' | 'EXECUTOR_QUERY_ERROR'
+  constructor(
+    code: 'EXECUTOR_NOT_CONFIGURED' | 'EXECUTOR_INVOKE_FAILED' | 'EXECUTOR_QUERY_ERROR',
+    message: string,
+  ) {
+    super(message)
+    this.code = code
+    this.name = 'MssqlExecError'
+  }
+}
+
+export interface SqlParam {
+  name: string
+  value: unknown
+}
+
+interface ExecRequestPayload {
+  connectionString: string
+  sql: string
+  params?: SqlParam[]
+  timeoutMs?: number
+}
+
+type ExecResponsePayload =
+  | { ok: true; recordset: unknown[]; rowsAffected: number[] }
+  | { ok: false; code: 'BAD_REQUEST' | 'QUERY_FAILED'; error: string }
+
+let _client: LambdaClient | null = null
+function getClient(): LambdaClient {
+  if (_client === null) {
+    const config: LambdaClientConfig = {}
+    _client = new LambdaClient(config)
+  }
+  return _client
+}
+
+/** Override the LambdaClient. Tests inject a stub with a mocked `send`. */
+export function setMssqlExecutorLambdaClient(client: LambdaClient | null): void {
+  _client = client
+}
+
+export interface ExecuteSqlOptions {
+  /** Named parameters bound via `request.input(name, value)` in the executor. */
+  params?: SqlParam[]
+  /** Per-query timeout in ms enforced by the executor Lambda. Default 15s. */
+  timeoutMs?: number
+}
+
+export interface ExecuteSqlResult {
+  recordset: unknown[]
+  rowsAffected: number[]
+}
+
+/**
+ * Run SQL against a tenant's MSSQL via the in-VPC executor Lambda. Throws
+ * MssqlExecError on misconfiguration, invoke failure, or a query-level error.
+ */
+export async function executeSql(
+  connectionString: string,
+  sqlText: string,
+  opts: ExecuteSqlOptions = {},
+): Promise<ExecuteSqlResult> {
+  const fnName = process.env['MSSQL_EXECUTOR_FUNCTION_NAME']
+  if (!fnName) {
+    throw new MssqlExecError(
+      'EXECUTOR_NOT_CONFIGURED',
+      'MSSQL_EXECUTOR_FUNCTION_NAME env var is not set — cannot run tenant SQL',
+    )
+  }
+
+  const payload: ExecRequestPayload = {
+    connectionString,
+    sql: sqlText,
+    ...(opts.params !== undefined ? { params: opts.params } : {}),
+    ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+  }
+
+  const res = await getClient().send(
+    new InvokeCommand({
+      FunctionName: fnName,
+      InvocationType: 'RequestResponse',
+      Payload: new TextEncoder().encode(JSON.stringify(payload)),
+    }),
+  )
+
+  if (res.FunctionError) {
+    const errBody = res.Payload ? new TextDecoder().decode(res.Payload) : '<empty>'
+    throw new MssqlExecError(
+      'EXECUTOR_INVOKE_FAILED',
+      `mssql-executor raised ${res.FunctionError}: ${errBody}`,
+    )
+  }
+  if (!res.Payload) {
+    throw new MssqlExecError('EXECUTOR_INVOKE_FAILED', 'mssql-executor returned empty payload')
+  }
+
+  const decoded = JSON.parse(new TextDecoder().decode(res.Payload)) as ExecResponsePayload
+  if (!decoded.ok) {
+    throw new MssqlExecError('EXECUTOR_QUERY_ERROR', `${decoded.code}: ${decoded.error}`)
+  }
+  return { recordset: decoded.recordset, rowsAffected: decoded.rowsAffected }
+}

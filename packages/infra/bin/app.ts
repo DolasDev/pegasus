@@ -149,6 +149,7 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   wireguardHubEndpoint: wireguardStack.hubEndpoint,
   wireguardAgentApiKeyHashParameterName: wireguardStack.agentApiKeyHashParameterName,
   tunnelProxyFunction: wireguardStack.tunnelProxyFunction,
+  mssqlExecutorFunction: wireguardStack.mssqlExecutorFunction,
 })
 apiStack.addDependency(cognitoStack)
 
