@@ -24,6 +24,7 @@ import { vpnAgentHandler } from './handlers/vpn-agent'
 import { onpremHandler } from './handlers/onprem'
 import { longhaulVersionHandler } from './handlers/longhaul-cloud/version'
 import { longhaulStatesHandler } from './handlers/longhaul-cloud/states'
+import { longhaulDriversHandler } from './handlers/longhaul-cloud/drivers'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -206,6 +207,11 @@ v1.route('/documents', documentsHandler)
 v1.get('/onprem/longhaul/version', longhaulVersionHandler)
 // Phase 3: /states is served cloud-direct alongside /version.
 v1.get('/onprem/longhaul/states', longhaulStatesHandler)
+// Longhaul strangler-fig migration (Phase 3): /drivers is served cloud-direct,
+// querying the Dolios `v_longhaul_drivers` view through the mssql-executor
+// Lambda. Registered before the /onprem mount for the same route-precedence
+// reason as /version above.
+v1.get('/onprem/longhaul/drivers', longhaulDriversHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.

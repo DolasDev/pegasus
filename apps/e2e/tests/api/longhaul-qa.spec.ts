@@ -79,6 +79,23 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     expect(Array.isArray(body.data), 'cloud-direct /states returns { data: [...] }').toBe(true)
   })
 
+  // Since Phase 3 of the longhaul strangler-fig migration, /drivers is served
+  // cloud-direct (apps/api/src/handlers/longhaul-cloud/drivers.ts): the cloud
+  // Hono Lambda queries the Dolios `v_longhaul_drivers` view through the
+  // mssql-executor Lambda instead of proxying to the on-prem server. The
+  // response shape must stay identical to the on-prem handler — `{ data: [...] }`
+  // with lowercase `driver_id` / `driver_name` keys.
+  test('GET /drivers returns the cloud-direct driver list @smoke', async ({ qaApiFetch }) => {
+    const res = await qaApiFetch(`${LH}/drivers`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(Array.isArray(body.data), 'cloud-direct /drivers returns { data: [...] }').toBe(true)
+    if (body.data.length > 0) {
+      expect(body.data[0], 'driver rows expose lowercase keys').toHaveProperty('driver_id')
+      expect(body.data[0]).toHaveProperty('driver_name')
+    }
+  })
+
   test('GET /users/me returns the mapped legacy user @smoke', async ({ qaApiFetch }) => {
     const res = await qaApiFetch(`${LH}/users/me`)
     expect(res.status).toBe(200)
