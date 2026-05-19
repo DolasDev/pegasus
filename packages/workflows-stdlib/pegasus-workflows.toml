@@ -11,3 +11,4 @@ version = "0.1.0"
 entry_points = ["send_quote_followup.workflow:SendQuoteFollowup"]
 source_dir = "send_quote_followup"
 description = "Follow up on a quote that has not been accepted."
+required_actions = ["ReadQuote", "ReadCustomer", "CreateEvent"]

@@ -31,6 +31,9 @@ export const TENANT_SCOPED_MODELS = new Set([
   'TenantSsoProvider',
   'PegasusEvent',
   'Document',
+  // WorkflowExecution is always tenant-owned (no GLOBAL case), so it is
+  // auto-scoped here. Contrast with Workflow below.
+  'WorkflowExecution',
   // Workflow is intentionally NOT scoped here — the GLOBAL visibility case
   // requires reading rows owned by a different tenant (the platform tenant).
   // The extension's top-level `tenantId = current` merge would neutralise the

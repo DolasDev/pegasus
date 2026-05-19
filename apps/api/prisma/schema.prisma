@@ -1072,6 +1072,20 @@ enum WorkflowVisibility {
   @@schema("public")
 }
 
+/// Lifecycle status of a single server-side workflow execution. The runtime
+/// state machine is: QUEUED → RUNNING → COMPLETED | FAILED | TIMED_OUT |
+/// CANCELLED.
+enum WorkflowExecutionStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  TIMED_OUT
+  CANCELLED
+
+  @@schema("public")
+}
+
 model Workflow {
   id       String @id @default(uuid())
   tenantId String @map("tenant_id")
@@ -1098,15 +1112,90 @@ model Workflow {
   /// Denormalised; not an FK so the row survives user deletion.
   createdByUserId String @map("created_by_user_id")
 
+  /// Set when this workflow was created by forking another workflow (the
+  /// "fork to my store" flow). Holds the source Workflow.id. Null for
+  /// directly-uploaded workflows. Not an FK so the row survives source
+  /// deletion.
+  forkedFromWorkflowId String? @map("forked_from_workflow_id")
+
+  /// The source workflow's version at the time of the fork. Null for
+  /// directly-uploaded workflows.
+  forkedFromVersion String? @map("forked_from_version")
+
+  /// Encrypted runtime credential (ciphertext) for the per-workflow runtime
+  /// service account. Null until a runtime account is provisioned. Never
+  /// returned in API responses.
+  runtimeTokenCiphertext String? @map("runtime_token_ciphertext")
+
+  /// ApiClient.id of the per-workflow runtime service account. Null until a
+  /// runtime account is provisioned.
+  runtimeApiClientId String? @map("runtime_api_client_id")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant     Tenant              @relation(fields: [tenantId], references: [id])
+  executions WorkflowExecution[]
 
   @@unique([tenantId, name, version])
   @@index([tenantId])
   @@index([visibility])
   @@map("workflows")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Workflow executions — server-side runtime invocations of a workflow.
+//
+// Each row records one execution of a Workflow: the input it was given, its
+// lifecycle status, the eventual result or error, and the Temporal workflow
+// /run identifiers that back the runtime. Always owned by a single tenant —
+// included in TENANT_SCOPED_MODELS (see lib/prisma.ts) so reads/writes are
+// auto-scoped.
+// ---------------------------------------------------------------------------
+
+model WorkflowExecution {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// The workflow this execution runs.
+  workflowId String @map("workflow_id")
+
+  /// Lifecycle status of this execution.
+  status WorkflowExecutionStatus @default(QUEUED)
+
+  /// The input payload the execution was started with.
+  input Json
+
+  /// The result payload on successful completion. Null until COMPLETED.
+  result Json?
+
+  /// Human-readable failure reason. Set for FAILED / TIMED_OUT / CANCELLED.
+  errorMessage String? @map("error_message")
+
+  /// Temporal workflow identifier backing this execution. Null until queued
+  /// onto the runtime.
+  temporalWorkflowId String? @map("temporal_workflow_id")
+
+  /// Temporal run identifier backing this execution. Null until queued.
+  temporalRunId String? @map("temporal_run_id")
+
+  /// TenantUser.id of the principal that triggered this execution.
+  /// Denormalised; not an FK so the row survives user deletion.
+  triggeredByUserId String @map("triggered_by_user_id")
+
+  queuedAt   DateTime  @map("queued_at")
+  startedAt  DateTime? @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  workflow Workflow @relation(fields: [workflowId], references: [id])
+
+  @@index([tenantId, workflowId])
+  @@index([status])
+  @@map("workflow_executions")
   @@schema("public")
 }
 

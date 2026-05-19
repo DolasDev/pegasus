@@ -25,7 +25,7 @@ import { z } from 'zod'
 import { DomainError } from '@pegasus/domain'
 import { requirePermission } from '../middleware/rbac'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
-import { Actions } from '../authz/actions'
+import { Actions, ALL_ACTIONS } from '../authz/actions'
 import { createWorkflowRepository } from '../repositories/workflow.repository'
 import type { WorkflowRow, WorkflowVisibility } from '../repositories/workflow.repository'
 import type { AppEnv } from '../types'
@@ -48,6 +48,9 @@ const DOWNLOAD_URL_TTL_SECONDS = 5 * 60
 const NAME_REGEX = /^[a-z0-9][a-z0-9_-]{0,63}$/
 const VERSION_REGEX = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$/
 
+/** Every valid action id in the Cedar action catalog. */
+const VALID_ACTION_IDS = new Set(ALL_ACTIONS.map((a) => a.id))
+
 const ManifestSchema = z.object({
   name: z.string().regex(NAME_REGEX, {
     message: 'name must be lowercase letters/digits/_/-, 1–64 chars',
@@ -57,6 +60,23 @@ const ManifestSchema = z.object({
   }),
   entryPoints: z.array(z.string().min(1)).min(1),
   description: z.string().optional(),
+  // Action ids the workflow needs at runtime. Each must be a known Cedar
+  // action — an unknown id fails validation here, before any upload row is
+  // written.
+  requiredActions: z
+    .array(z.string())
+    .optional()
+    .default([])
+    .superRefine((ids, ctx) => {
+      for (const id of ids) {
+        if (!VALID_ACTION_IDS.has(id)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `requiredActions contains unknown action id: ${id}`,
+          })
+        }
+      }
+    }),
 })
 
 const UploadUrlBody = z.object({

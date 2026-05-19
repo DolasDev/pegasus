@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 __all__ = [
@@ -49,6 +49,8 @@ class Manifest:
         source_dir: Directory (relative to the manifest) holding the
             workflow's Python source. Defaults to ``name``.
         description: Optional human-readable description.
+        required_actions: Cedar action ids the workflow needs at runtime.
+            Defaults to an empty list.
     """
 
     name: str
@@ -56,6 +58,7 @@ class Manifest:
     entry_points: list[str]
     source_dir: str
     description: str | None = None
+    required_actions: list[str] = field(default_factory=list)
 
     def to_api_manifest(self) -> dict[str, object]:
         """Return the dict shape the finalize endpoint expects.
@@ -67,6 +70,7 @@ class Manifest:
             "name": self.name,
             "version": self.version,
             "entryPoints": list(self.entry_points),
+            "requiredActions": list(self.required_actions),
         }
         if self.description is not None:
             manifest["description"] = self.description
@@ -74,7 +78,11 @@ class Manifest:
 
 
 def validate_manifest_fields(
-    name: object, version: object, entry_points: object, description: object = None
+    name: object,
+    version: object,
+    entry_points: object,
+    description: object = None,
+    required_actions: object = None,
 ) -> None:
     """Validate raw manifest field values, raising :class:`ManifestError`.
 
@@ -86,6 +94,7 @@ def validate_manifest_fields(
         version: Candidate version string.
         entry_points: Candidate entry-point list.
         description: Optional description.
+        required_actions: Optional list of Cedar action ids.
 
     Raises:
         ManifestError: If any field is missing or invalid.
@@ -105,6 +114,14 @@ def validate_manifest_fields(
             raise ManifestError(f"every entry point must be a non-empty string (got {ep!r})")
     if description is not None and not isinstance(description, str):
         raise ManifestError("description must be a string when present")
+    if required_actions is not None:
+        if not isinstance(required_actions, list):
+            raise ManifestError("required_actions must be a list of strings when present")
+        for action in required_actions:
+            if not isinstance(action, str) or action == "":
+                raise ManifestError(
+                    f"every required action must be a non-empty string (got {action!r})"
+                )
 
 
 def load_manifest(path: str | Path) -> list[Manifest]:
@@ -119,6 +136,7 @@ def load_manifest(path: str | Path) -> list[Manifest]:
         entry_points = ["send_quote_followup.workflow:SendQuoteFollowup"]
         source_dir = "send_quote_followup"   # optional, defaults to name
         description = "..."                   # optional
+        required_actions = ["ReadQuote"]      # optional, defaults to []
 
     Args:
         path: Path to a ``pegasus-workflows.toml`` file *or* to a directory
@@ -154,7 +172,8 @@ def load_manifest(path: str | Path) -> list[Manifest]:
         version = entry.get("version")
         entry_points = entry.get("entry_points")
         description = entry.get("description")
-        validate_manifest_fields(name, version, entry_points, description)
+        required_actions = entry.get("required_actions")
+        validate_manifest_fields(name, version, entry_points, description, required_actions)
         source_dir = entry.get("source_dir", name)
         if not isinstance(source_dir, str) or source_dir == "":
             raise ManifestError(f"source_dir must be a non-empty string (got {source_dir!r})")
@@ -165,6 +184,7 @@ def load_manifest(path: str | Path) -> list[Manifest]:
                 entry_points=list(entry_points),  # type: ignore[arg-type]
                 source_dir=source_dir,
                 description=description,
+                required_actions=list(required_actions) if required_actions else [],
             )
         )
 

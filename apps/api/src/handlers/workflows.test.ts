@@ -250,6 +250,31 @@ describe('workflows handler', () => {
       expect(res.status).toBe(400)
     })
 
+    it('accepts a manifest with known requiredActions', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
+      mockRepo.create.mockResolvedValue(mockRow)
+      const res = await buildApp().request(
+        '/',
+        post({
+          workflowId,
+          manifest: { ...validManifest, requiredActions: ['ReadQuote', 'CreateEvent'] },
+        }),
+      )
+      expect(res.status).toBe(201)
+    })
+
+    it('returns 400 VALIDATION_ERROR on a manifest with an unknown requiredActions id', async () => {
+      const res = await buildApp().request(
+        '/',
+        post({
+          workflowId,
+          manifest: { ...validManifest, requiredActions: ['ReadQuote', 'NotARealAction'] },
+        }),
+      )
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
     it('writes a TENANT-visibility row when tenant is not the platform tenant', async () => {
       mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
       mockRepo.create.mockResolvedValue({ ...mockRow, visibility: 'TENANT' })

@@ -71,6 +71,7 @@ def test_load_manifest_from_directory(workflow_project: Path) -> None:
     assert m.entry_points == ["demo.workflow:HelloWorkflow"]
     assert m.source_dir == "demo"
     assert m.description == "A demo workflow."
+    assert m.required_actions == []
 
 
 def test_to_api_manifest_shape(workflow_project: Path) -> None:
@@ -80,6 +81,7 @@ def test_to_api_manifest_shape(workflow_project: Path) -> None:
         "name": "demo",
         "version": "0.1.0",
         "entryPoints": ["demo.workflow:HelloWorkflow"],
+        "requiredActions": [],
         "description": "A demo workflow.",
     }
 
@@ -97,7 +99,50 @@ def test_to_api_manifest_omits_absent_description(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     m = load_manifest(tmp_path)[0]
-    assert "description" not in m.to_api_manifest()
+    api = m.to_api_manifest()
+    assert "description" not in api
+    # requiredActions is always present, even when absent from the TOML.
+    assert api["requiredActions"] == []
+
+
+def test_load_manifest_parses_required_actions(tmp_path: Path) -> None:
+    (tmp_path / "pegasus-workflows.toml").write_text(
+        textwrap.dedent(
+            """
+            [[workflow]]
+            name = "demo"
+            version = "0.1.0"
+            entry_points = ["demo.workflow:Hello"]
+            required_actions = ["ReadQuote", "CreateEvent"]
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    m = load_manifest(tmp_path)[0]
+    assert m.required_actions == ["ReadQuote", "CreateEvent"]
+    assert m.to_api_manifest()["requiredActions"] == ["ReadQuote", "CreateEvent"]
+
+
+def test_load_manifest_rejects_non_string_required_actions(tmp_path: Path) -> None:
+    (tmp_path / "pegasus-workflows.toml").write_text(
+        textwrap.dedent(
+            """
+            [[workflow]]
+            name = "demo"
+            version = "0.1.0"
+            entry_points = ["demo.workflow:Hello"]
+            required_actions = [123]
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ManifestError, match="required action"):
+        load_manifest(tmp_path)
+
+
+def test_validate_manifest_fields_rejects_non_list_required_actions() -> None:
+    with pytest.raises(ManifestError, match="required_actions must be a list"):
+        validate_manifest_fields("demo", "0.1.0", ["a:B"], None, "ReadQuote")
 
 
 def test_load_manifest_missing_file(tmp_path: Path) -> None:
