@@ -34,9 +34,7 @@ import { longhaulShipmentsListHandler } from './handlers/longhaul-cloud/shipment
 import { longhaulUsersMeHandler } from './handlers/longhaul-cloud/users-me'
 import { longhaulShipmentFiltersDefaultHandler } from './handlers/longhaul-cloud/shipment-filters-default'
 import { longhaulShipmentFiltersHandler } from './handlers/longhaul-cloud/shipment-filters'
-import { longhaulTripsListHandler } from './handlers/longhaul-cloud/trips-list'
 import { longhaulDriverPlanningHandler } from './handlers/longhaul-cloud/driver-planning'
-import { longhaulTripDetailHandler } from './handlers/longhaul-cloud/trip-detail'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -249,16 +247,16 @@ v1.get('/onprem/longhaul/shipment-filters/default', longhaulShipmentFiltersDefau
 // pattern as /version, but user-scoped (resolves the caller's legacy longhaul
 // identity and filters saved filters by that user's owner code).
 v1.get('/onprem/longhaul/shipment-filters', longhaulShipmentFiltersHandler)
-// Phase 3: GET /trips (LIST) is served cloud-direct. The on-prem repo made two
-// MSSQL round trips (trips list + a separate TripNotes fetch); this handler
-// collapses the notes fetch into the main query, so it makes just one.
-v1.get('/onprem/longhaul/trips', longhaulTripsListHandler)
+// Phase 3: GET /trips and GET /trips/:id are intentionally NOT mounted
+// cloud-direct — they fall through to the /onprem wildcard proxy below. The
+// /trips handler's `id` filter did not narrow results and the /trips/:id
+// handler dropped the trip's notes/activities/shipments sub-collections (their
+// `@smoke` tests only assert response shape, so the bugs slipped through).
+// Re-mount once the trips-list filter and trip-detail collection-partitioning
+// are fixed; the handlers stay in longhaul-cloud/ ready for that.
 // Phase 3: /driver-planning is served cloud-direct — one OUTER APPLY query
 // collapses the on-prem repo's ~5 MSSQL round trips into 1-2.
 v1.get('/onprem/longhaul/driver-planning', longhaulDriverPlanningHandler)
-// Phase 3: GET /trips/:id served cloud-direct — collapses the on-prem handler's
-// ~8-query trip+shipment fan-out into 1-2 batched mssql-executor round trips.
-v1.get('/onprem/longhaul/trips/:id', longhaulTripDetailHandler)
 // Phase 3: GET /shipments LIST is served cloud-direct. Its Is_Trip_Planning
 // filter uses per-client import/export codes resolved from the tenant's
 // longhaulClient column. Write routes (POST/PATCH /shipments/*) still proxy.
