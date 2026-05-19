@@ -214,11 +214,25 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     ).toContain(res.status)
   })
 
-  test('GET /trips returns a trips list', async ({ qaApiFetch }) => {
+  // Since Phase 3 of the longhaul strangler-fig migration, GET /trips (LIST) is
+  // served cloud-direct (apps/api/src/handlers/longhaul-cloud/trips-list.ts):
+  // the cloud Hono Lambda queries Dolios MSSQL through the mssql-executor
+  // Lambda instead of proxying to the on-prem server. The on-prem repo made
+  // TWO MSSQL round trips (trips list + a separate TripNotes fetch); the
+  // cloud handler collapses the notes fetch into one query. The response shape
+  // must stay identical to the on-prem handler — `{ data: [...], meta }` with
+  // each trip carrying a `notes` array.
+  test('GET /trips returns a trips list (cloud-direct)', async ({ qaApiFetch }) => {
     const res = await qaApiFetch(`${LH}/trips`)
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(Array.isArray(body.data ?? body)).toBe(true)
+    const rows = body.data ?? body
+    expect(Array.isArray(rows), 'cloud-direct /trips returns { data: [...] }').toBe(true)
+    if (body.meta) expect(typeof body.meta.count).toBe('number')
+    if (rows.length > 0) {
+      expect(rows[0]).toHaveProperty('id')
+      expect(Array.isArray(rows[0].notes), 'each trip carries a notes array').toBe(true)
+    }
   })
 
   test('GET /trips with a filters query param returns a (possibly filtered) list', async ({
