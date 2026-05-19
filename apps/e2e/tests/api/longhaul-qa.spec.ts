@@ -200,6 +200,30 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     expect(body.data).toHaveProperty('code')
   })
 
+  // Since Phase 3 of the longhaul strangler-fig migration, GET /shipments is
+  // served cloud-direct (apps/api/src/handlers/longhaul-cloud/shipments-list.ts):
+  // the cloud Hono Lambda queries Dolios MSSQL through the mssql-executor Lambda
+  // in 3 round trips instead of proxying to the on-prem server (which fanned
+  // out into 5). The response shape must stay identical to the on-prem handler
+  // — `{ data, meta: { count } }` — with the same per-row enrichment.
+  test('GET /shipments (cloud-direct) returns the enriched {data,meta} shape @smoke', async ({
+    qaApiFetch,
+  }) => {
+    // searchTerm that matches nothing bounds the result set well under the
+    // 1000-row response cap.
+    const res = await qaApiFetch(`${LH}/shipments?searchTerm=zzz-no-such-shipment-zzz`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(Array.isArray(body.data), 'cloud-direct /shipments returns { data: [...] }').toBe(true)
+    expect(body.meta, 'cloud-direct /shipments returns { meta: { count } }').toBeDefined()
+    expect(typeof body.meta.count).toBe('number')
+    // Every enriched row carries the generated activity templates + extras.
+    for (const shipment of body.data as Array<Record<string, unknown>>) {
+      expect(Array.isArray(shipment['activities'])).toBe(true)
+      expect(Array.isArray(shipment['extraActivities'])).toBe(true)
+    }
+  })
+
   test('GET /shipments (bounded query) returns the {data,meta} shape', async ({ qaApiFetch }) => {
     // Use a searchTerm that matches nothing to bound the result set — the app
     // always sends a filter (Is_Trip_Planning + load_date window + assigned),
