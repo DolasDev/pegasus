@@ -25,6 +25,7 @@ import { onpremHandler } from './handlers/onprem'
 import { longhaulVersionHandler } from './handlers/longhaul-cloud/version'
 import { longhaulStatesHandler } from './handlers/longhaul-cloud/states'
 import { longhaulDriversHandler } from './handlers/longhaul-cloud/drivers'
+import { longhaulZonesHandler } from './handlers/longhaul-cloud/zones'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -212,6 +213,8 @@ v1.get('/onprem/longhaul/states', longhaulStatesHandler)
 // Lambda. Registered before the /onprem mount for the same route-precedence
 // reason as /version above.
 v1.get('/onprem/longhaul/drivers', longhaulDriversHandler)
+// Phase 3: /zones is served cloud-direct, same pattern as /version above.
+v1.get('/onprem/longhaul/zones', longhaulZonesHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.
