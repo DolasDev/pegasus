@@ -113,17 +113,48 @@ The lowest-stakes endpoint. Health-check style, single query, no business logic.
 
 If P95 looks ugly, this is the place to address it — by mitigation choice (provisioned concurrency, connection-pool tuning) or by abandoning the migration before sinking more effort in.
 
+### Phase 1 results (2026-05-19 — PR #113, merged & deployed to staging)
+
+**Gate 1 resolved → Option B.** Phase 0 showed the main API Lambda is not in
+the WG VPC, so the original "use `getPool` directly in the cloud handler" plan
+was unworkable. The chosen architecture (see `dolas/agents/project/DECISIONS.md`):
+migrated handlers stay in the main Hono app and invoke a **dedicated
+`mssql-executor` Lambda** (`apps/mssql-executor`) that lives in the WG VPC and
+runs the raw SQL — mirroring the existing `tunnel-proxy`. The handler does the
+Neon connection-string lookup and passes the string in the invoke payload.
+
+Delivered:
+
+- `apps/mssql-executor` — VPC Lambda, `mssql` driver, module-level pool cache.
+- `apps/api/src/lib/mssql-executor-client.ts` — `executeSql()` invoke client.
+- `apps/api/src/handlers/longhaul-cloud/version.ts` — the migrated handler,
+  mounted in `app.ts` before the `/onprem` wildcard. `onprem.ts` untouched.
+- `MssqlExecutorFn` in WireGuardStack; ApiStack grants invoke + injects
+  `MSSQL_EXECUTOR_FUNCTION_NAME`.
+
+Verified end-to-end: the QA longhaul e2e suite (`e2e-qa-longhaul.yml`) passed
+**47/47** against the deployed QA API — including `GET /version` returning
+`{ data: { max: "2.1.1" } }` cloud-direct — and every un-migrated longhaul
+endpoint still proxies through the tunnel unchanged (no regression). The
+executor leg measured ~80 ms warm per MSSQL round trip (Phase 0 floor holds).
+Per-endpoint P95 to be confirmed from CloudWatch over a day of real traffic.
+
+Identity: `/version` needs none — `middleware/longhaul-user.ts` already exempts
+it as a pure system smoke test. Handlers that _do_ need identity will look up
+`legacyWindowsUsername` from Prisma via `c.get('userId')` (no `X-Windows-User`).
+
 ## Phase 2 — pattern lock-in
 
-After Phase 1 succeeds, write down the per-endpoint migration template so subsequent PRs are mechanical:
+The per-endpoint migration template, locked in from Phase 1. Each migration is
+one PR and should be mechanical:
 
 1. Read the current on-prem implementation in `apps/api/src/handlers/longhaul/<area>.ts` and its Knex repo in `apps/api/src/repositories/longhaul/<area>.repository.ts`. Note the round-trip count.
 2. Author optimized raw SQL: collapse fanouts to JOINs, replace post-write re-reads with `OUTPUT` clauses, batch loops where MSSQL allows. Target the smallest round-trip count that preserves semantics.
-3. Implement the cloud handler under `apps/api/src/handlers/longhaul-cloud/`, using `mssql.Request().input(name, type, value).query(...)` for parameter binding (same pattern as `apps/api/src/handlers/pegii/middleware.ts:7-31` and the generic repo).
-4. Mount the specific path on the cloud Hono app.
-5. Add tests: handler unit tests + e2e spec against real MSSQL. The e2e spec asserts both correctness and the new round-trip count (via MSSQL query log or a counting wrapper).
-6. Verify per-endpoint P95 budget locally and in dev, then deploy.
-7. Log the migration in a checklist file in the PR (which endpoint, old vs new round-trip count, measured P95).
+3. Implement the cloud handler under `apps/api/src/handlers/longhaul-cloud/<area>.ts`. The handler: looks up `tenant.mssqlConnectionString` from Prisma (422 `MSSQL_NOT_CONFIGURED` if absent — see `version.ts`), resolves identity from `c.get('userId')` if the endpoint needs it, then calls `executeSql(connectionString, sql, { params })` from `apps/api/src/lib/mssql-executor-client.ts`. Parameters are bound in the executor via `request.input(name, value)`.
+4. Mount the specific path in `app.ts` before `v1.route('/onprem', onpremHandler)` so Hono precedence routes it cloud-direct. Do not touch `onprem.ts`.
+5. Add tests: handler unit tests (mock `executeSql` + Prisma) + coverage in the QA e2e suite (`apps/e2e/tests/api/longhaul-qa.spec.ts`), asserting correctness and the new round-trip count.
+6. Verify the per-endpoint P95 budget, then deploy via the standard CI path.
+7. Log the migration (endpoint, old vs new round-trip count, measured P95) in the PR description.
 
 ## Phase 3 — migrate reads
 
@@ -196,10 +227,10 @@ Once the last cloud-caller-facing longhaul endpoint migrates and meets its P95 b
 - **Provisioned concurrency** for the cloud API Lambda — cold connect is
   ~330 ms (handshake) + ~295 ms (first query). Tolerable for a warm-dominated
   Lambda; revisit only if cold-start P99 proves unacceptable in Phase 1.
-- **NEW — VPC attachment strategy for migrated handlers.** Phase 0 showed the
-  main API Lambda is not in the WG VPC. Decide before Phase 3: VPC-attach the
-  main Lambda vs. a dedicated VPC-attached query Lambda for longhaul handlers.
-- **NEW — tenant connection-string remediation.** Every active tenant's
+- **VPC attachment strategy for migrated handlers.** ✅ Resolved (Phase 1) —
+  Option B: a dedicated VPC-attached `mssql-executor` Lambda; the main API
+  Lambda stays out of the VPC. See `dolas/agents/project/DECISIONS.md`.
+- **Tenant connection-string remediation.** Every active tenant's
   `mssqlConnectionString` must be rewritten to overlay-IP + explicit `,1433`
-  port + real credentials before its endpoints migrate. Track as Phase 3 entry
-  criteria.
+  port + real credentials before its endpoints migrate. Dolios was remediated
+  in Phase 1; remaining tenants are Phase 3 entry criteria.
