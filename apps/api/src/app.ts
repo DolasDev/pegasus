@@ -35,6 +35,7 @@ import { longhaulShipmentFiltersHandler } from './handlers/longhaul-cloud/shipme
 import { longhaulTripsListHandler } from './handlers/longhaul-cloud/trips-list'
 import { longhaulDispatchersHandler } from './handlers/longhaul-cloud/dispatchers'
 import { longhaulDriverPlanningHandler } from './handlers/longhaul-cloud/driver-planning'
+import { longhaulTripDetailHandler } from './handlers/longhaul-cloud/trip-detail'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -255,6 +256,9 @@ v1.get('/onprem/longhaul/dispatchers', longhaulDispatchersHandler)
 // Phase 3: /driver-planning is served cloud-direct — one OUTER APPLY query
 // collapses the on-prem repo's ~5 MSSQL round trips into 1-2.
 v1.get('/onprem/longhaul/driver-planning', longhaulDriverPlanningHandler)
+// Phase 3: GET /trips/:id served cloud-direct — collapses the on-prem handler's
+// ~8-query trip+shipment fan-out into 1-2 batched mssql-executor round trips.
+v1.get('/onprem/longhaul/trips/:id', longhaulTripDetailHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.
