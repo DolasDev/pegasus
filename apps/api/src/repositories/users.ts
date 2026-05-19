@@ -23,6 +23,8 @@ export type TenantUserRow = {
   invitedAt: Date
   activatedAt: Date | null
   deactivatedAt: Date | null
+  /** The CrewMember linked to this login, when one exists (driver persona). */
+  crewMember: { id: string; name: string } | null
 }
 
 const USER_SELECT = {
@@ -36,6 +38,7 @@ const USER_SELECT = {
   invitedAt: true,
   activatedAt: true,
   deactivatedAt: true,
+  crewMember: { select: { id: true, name: true } },
 } as const
 
 // ---------------------------------------------------------------------------
@@ -101,6 +104,27 @@ export function createUsersRepository(db: PrismaClient) {
         data: { legacyWindowsUsername },
         select: USER_SELECT,
       })
+    },
+
+    /**
+     * Link this TenantUser to a CrewMember, or unlink it when `crewMemberId`
+     * is null. `CrewMember.tenantUserId` is unique, so any prior link is
+     * released first — reassigning a login from one crew member to another
+     * must free the old crew member before the new one can claim it. Both
+     * writes run in one transaction; both are tenant-scoped by the extension.
+     */
+    linkCrewMember(tenantUserId: string, crewMemberId: string | null): Promise<unknown> {
+      const releasePrior = db.crewMember.updateMany({
+        where: { tenantUserId },
+        data: { tenantUserId: null },
+      })
+      if (crewMemberId === null) {
+        return releasePrior
+      }
+      return db.$transaction([
+        releasePrior,
+        db.crewMember.update({ where: { id: crewMemberId }, data: { tenantUserId } }),
+      ])
     },
 
     /** Deactivate a TenantUser — prevents future logins. */

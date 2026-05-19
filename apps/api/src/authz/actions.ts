@@ -107,6 +107,7 @@ export const Actions = {
   UpdateQuote: { id: 'UpdateQuote', resourceType: 'Quote', permission: 'quote:update' },
   DeleteQuote: { id: 'DeleteQuote', resourceType: 'Quote', permission: 'quote:delete' },
   // ── Moves ───────────────────────────────────────────────────────────────
+  ListMoves: { id: 'ListMoves', resourceType: 'Move', permission: 'move:list' },
   ReadMove: { id: 'ReadMove', resourceType: 'Move', permission: 'move:read' },
   CreateMove: { id: 'CreateMove', resourceType: 'Move', permission: 'move:create' },
   UpdateMove: { id: 'UpdateMove', resourceType: 'Move', permission: 'move:update' },

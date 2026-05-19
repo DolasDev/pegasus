@@ -124,11 +124,6 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
   const tenantDb = createTenantDb(basePrisma, tenant.id)
 
   c.set('tenantId', tenant.id)
-  c.set('principal', {
-    sub: cognitoSub,
-    tenantId: tenant.id,
-    roleNames,
-  })
   c.set('idToken', token)
   c.set('policyStoreId', tenant.policyStoreId ?? undefined)
   // Cast required because TenantDb is a Prisma extension subtype of PrismaClient.
@@ -139,13 +134,27 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
   // Resolve the TenantUser.id so handlers can use it for audit trails (e.g.
   // recording who created an API client). Fail-open: if the user record is not
   // found (shouldn't happen for valid authenticated sessions), userId is unset.
+  // The linked CrewMember is fetched in the same query so a `driver` principal
+  // costs no extra round-trip.
   const tenantUser = await basePrisma.tenantUser.findFirst({
     where: { tenantId: tenant.id, cognitoSub },
-    select: { id: true },
+    select: { id: true, crewMember: { select: { id: true } } },
   })
   if (tenantUser) {
     c.set('userId', tenantUser.id)
   }
+
+  // A `driver` principal carries its linked CrewMember id so the Cedar
+  // `User.crewMemberId` attribute can scope per-record `ReadMove` checks and
+  // the Moves handler can filter the list.
+  const crewMemberId = roleNames.includes('driver') ? tenantUser?.crewMember?.id : undefined
+
+  c.set('principal', {
+    sub: cognitoSub,
+    tenantId: tenant.id,
+    roleNames,
+    ...(crewMemberId ? { crewMemberId } : {}),
+  })
 
   await next()
 }

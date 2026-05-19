@@ -48,11 +48,15 @@ import {
   IsAuthorizedCommand,
   BatchIsAuthorizedCommand,
 } from '@aws-sdk/client-verifiedpermissions'
-import type { BatchIsAuthorizedInputItem, EntityItem } from '@aws-sdk/client-verifiedpermissions'
+import type {
+  AttributeValue,
+  BatchIsAuthorizedInputItem,
+  EntityItem,
+} from '@aws-sdk/client-verifiedpermissions'
 import * as cedar from '@cedar-policy/cedar-wasm/nodejs'
 import { ALL_ACTIONS, PEGASUS_NS } from '../authz/actions'
 import { loadPolicyText, loadSchema } from '../authz/load'
-import type { AuthorizeInput, Decision, Principal } from './authz.types'
+import type { AuthorizeInput, Decision, Principal, ResourceRef } from './authz.types'
 
 // ---------------------------------------------------------------------------
 // Backend selection
@@ -100,13 +104,40 @@ export function _clearAuthzCache(): void {
 // ---------------------------------------------------------------------------
 
 /**
+ * Translate a resource's ABAC attribute bag into AVP `AttributeValue`s.
+ *   - string   → `{ string }`
+ *   - string[] → `{ set: [{ string }, …] }`
+ * Empty arrays are omitted entirely: AVP rejects empty sets, and the matching
+ * Cedar policy guards every optional-attribute access with `has`, so an
+ * omitted attribute simply evaluates to a deny — the correct outcome (an
+ * unassigned move has no driver who should see it).
+ */
+function toAvpAttributes(attrs: Record<string, unknown>): Record<string, AttributeValue> {
+  const out: Record<string, AttributeValue> = {}
+  for (const [key, value] of Object.entries(attrs)) {
+    if (typeof value === 'string') {
+      out[key] = { string: value }
+    } else if (Array.isArray(value)) {
+      if (value.length === 0) continue
+      out[key] = { set: value.map((v) => ({ string: String(v) })) }
+    }
+    // Other shapes are intentionally unsupported — no current attribute uses them.
+  }
+  return out
+}
+
+/**
  * Build the entity store for an authorisation call: the principal plus one
  * Group entity per role membership. The principal is the child of each
  * Group (parents=[Group::"tenant_admin", …]). Same shape on both backends —
  * the AVP path passes this list via `entities`, the offline path hands it
  * to cedar-wasm directly.
+ *
+ * When `resource.attrs` is supplied the resource entity is appended too, so
+ * per-record ABAC policies (e.g. driver `ReadMove`) can read its attributes.
+ * Coarse callers pass no `attrs` — behaviour is then unchanged.
  */
-function buildEntities(principal: Principal): cedar.Entities {
+function buildEntities(principal: Principal, resource?: ResourceRef): cedar.Entities {
   const groupParents = principal.roleNames.map((g) => ({
     __entity: { type: `${PEGASUS_NS}::Group`, id: g },
   }))
@@ -114,7 +145,7 @@ function buildEntities(principal: Principal): cedar.Entities {
   const entities: cedar.Entities = [
     {
       uid: { __entity: { type: `${PEGASUS_NS}::User`, id: principal.sub } },
-      attrs: {},
+      attrs: principal.crewMemberId ? { crewMemberId: principal.crewMemberId } : {},
       parents: groupParents,
     },
   ]
@@ -127,27 +158,51 @@ function buildEntities(principal: Principal): cedar.Entities {
     })
   }
 
+  if (resource?.attrs) {
+    // Set-valued attributes are plain JSON arrays in cedar-wasm's entity form.
+    entities.push({
+      uid: { __entity: { type: `${PEGASUS_NS}::${resource.type}`, id: resource.id } },
+      attrs: resource.attrs as Record<string, cedar.CedarValueJson>,
+      parents: [],
+    })
+  }
+
   return entities
 }
 
 /**
  * Map the offline (cedar-wasm) entity shape onto the shape AVP's
  * IsAuthorized API accepts. Mechanical translation: `__entity.type` → `entityType`,
- * `__entity.id` → `entityId`. Attributes stay empty (we don't use any).
+ * `__entity.id` → `entityId`. The principal carries `crewMemberId` when set,
+ * and the resource entity is appended when `resource.attrs` is supplied.
  */
-function buildAvpEntityList(principal: Principal): EntityItem[] {
-  return [
-    {
-      identifier: { entityType: `${PEGASUS_NS}::User`, entityId: principal.sub },
-      parents: principal.roleNames.map((g) => ({
-        entityType: `${PEGASUS_NS}::Group`,
-        entityId: g,
-      })),
-    },
+function buildAvpEntityList(principal: Principal, resource?: ResourceRef): EntityItem[] {
+  const principalEntity: EntityItem = {
+    identifier: { entityType: `${PEGASUS_NS}::User`, entityId: principal.sub },
+    parents: principal.roleNames.map((g) => ({
+      entityType: `${PEGASUS_NS}::Group`,
+      entityId: g,
+    })),
+  }
+  if (principal.crewMemberId) {
+    principalEntity.attributes = { crewMemberId: { string: principal.crewMemberId } }
+  }
+
+  const entities: EntityItem[] = [
+    principalEntity,
     ...principal.roleNames.map((g) => ({
       identifier: { entityType: `${PEGASUS_NS}::Group`, entityId: g },
     })),
   ]
+
+  if (resource?.attrs) {
+    entities.push({
+      identifier: { entityType: `${PEGASUS_NS}::${resource.type}`, entityId: resource.id },
+      attributes: toAvpAttributes(resource.attrs),
+    })
+  }
+
+  return entities
 }
 
 function authorizeOffline(input: AuthorizeInput): Decision {
@@ -163,7 +218,7 @@ function authorizeOffline(input: AuthorizeInput): Decision {
     schema: loadSchema() as cedar.Schema,
     validateRequest: false,
     policies: { staticPolicies: loadPolicyText() },
-    entities: buildEntities(input.principal),
+    entities: buildEntities(input.principal, input.resource),
   }
 
   const answer = cedar.isAuthorized(call)
@@ -202,7 +257,7 @@ async function authorizeAvp(input: AuthorizeInput): Promise<Decision> {
       principal: { entityType: `${PEGASUS_NS}::User`, entityId: input.principal.sub },
       action: { actionType: `${PEGASUS_NS}::Action`, actionId: input.action.id },
       resource: { entityType: `${PEGASUS_NS}::${resourceType}`, entityId: resourceId },
-      entities: { entityList: buildAvpEntityList(input.principal) },
+      entities: { entityList: buildAvpEntityList(input.principal, input.resource) },
     }),
   )
 
@@ -214,15 +269,23 @@ async function authorizeAvp(input: AuthorizeInput): Promise<Decision> {
 // ---------------------------------------------------------------------------
 
 export async function authorize(input: AuthorizeInput): Promise<Decision> {
-  const key = cacheKey(input)
   const now = Date.now()
-  const hit = _cache.get(key)
-  if (hit && hit.expiresAt > now) return hit.decision
+
+  // Per-record ABAC calls (resource.attrs present) bypass the cache: the cache
+  // key does not capture resource.attrs, so caching them would serve a stale
+  // allow/deny for up to the TTL after a crew reassignment — and would also
+  // blow up key cardinality to users x resources. Coarse calls still cache.
+  const cacheable = input.resource?.attrs === undefined
+  const key = cacheKey(input)
+  if (cacheable) {
+    const hit = _cache.get(key)
+    if (hit && hit.expiresAt > now) return hit.decision
+  }
 
   const backend = pickBackend(input.policyStoreId)
   const decision = backend === 'avp' ? await authorizeAvp(input) : authorizeOffline(input)
 
-  _cache.set(key, { decision, expiresAt: now + CACHE_TTL_MS })
+  if (cacheable) _cache.set(key, { decision, expiresAt: now + CACHE_TTL_MS })
   return decision
 }
 

@@ -43,6 +43,7 @@ import {
   listQuotesByMoveId,
 } from '../repositories'
 import { canDispatch, canTransition } from '@pegasus/domain'
+import { _clearAuthzCache } from '../lib/authz'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -70,12 +71,28 @@ function put(body: unknown): RequestInit {
   }
 }
 
-function buildApp() {
+type TestPrincipal = {
+  sub: string
+  tenantId: string
+  roleNames: string[]
+  crewMemberId?: string
+}
+
+const ADMIN_PRINCIPAL: TestPrincipal = {
+  sub: 'test-sub',
+  tenantId: 'test-tenant-id',
+  roleNames: ['tenant_admin'],
+}
+
+function buildApp(principal: TestPrincipal = ADMIN_PRINCIPAL) {
   const app = new Hono<AppEnv>()
   registerTestErrorHandler(app)
   app.use('*', async (c, next) => {
     c.set('tenantId', 'test-tenant-id')
     c.set('db', {} as unknown as PrismaClient)
+    // requirePermission + the in-handler ReadMove ABAC check evaluate via the
+    // offline Cedar backend (no policyStoreId set).
+    c.set('principal', principal)
     await next()
   })
   app.route('/', movesHandler)
@@ -132,7 +149,12 @@ const validCreateBody = {
 // ---------------------------------------------------------------------------
 
 describe('moves handler', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    // The authz decision cache keys on (sub, roles, action, resource) — clear
+    // it between cases so an allow/deny for the same move id never bleeds across.
+    _clearAuthzCache()
+  })
 
   // ── POST / ────────────────────────────────────────────────────────────────
 
@@ -301,6 +323,83 @@ describe('moves handler', () => {
       const res = await buildApp().request('/move-1/quotes')
       expect(res.status).toBe(404)
       expect((await json(res)).code).toBe('NOT_FOUND')
+    })
+  })
+
+  // ── driver persona — crew-scoped access ───────────────────────────────────
+
+  describe('driver persona', () => {
+    const linkedDriver: TestPrincipal = {
+      sub: 'driver-sub',
+      tenantId: 'test-tenant-id',
+      roleNames: ['driver'],
+      crewMemberId: 'crew-1',
+    }
+    const unlinkedDriver: TestPrincipal = {
+      sub: 'driver-sub-2',
+      tenantId: 'test-tenant-id',
+      roleNames: ['driver'],
+    }
+
+    it('GET / scopes the list to the driver crew member', async () => {
+      vi.mocked(listMoves).mockResolvedValue([] as never)
+      vi.mocked(countMoves).mockResolvedValue(0 as never)
+      const res = await buildApp(linkedDriver).request('/')
+      expect(res.status).toBe(200)
+      expect(listMoves).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ crewMemberId: 'crew-1' }),
+      )
+      expect(countMoves).toHaveBeenCalledWith(expect.anything(), 'crew-1')
+    })
+
+    it('GET / fails closed with a sentinel for an unlinked driver', async () => {
+      vi.mocked(listMoves).mockResolvedValue([] as never)
+      vi.mocked(countMoves).mockResolvedValue(0 as never)
+      const res = await buildApp(unlinkedDriver).request('/')
+      expect(res.status).toBe(200)
+      expect(countMoves).toHaveBeenCalledWith(expect.anything(), '__none__')
+    })
+
+    it('GET /:id returns 200 for a move the driver is assigned to', async () => {
+      vi.mocked(findMoveById).mockResolvedValue({
+        ...mockMove,
+        assignedCrewIds: ['crew-1'],
+      } as never)
+      const res = await buildApp(linkedDriver).request('/move-1')
+      expect(res.status).toBe(200)
+    })
+
+    it('GET /:id returns 404 for a move the driver is not assigned to', async () => {
+      vi.mocked(findMoveById).mockResolvedValue({
+        ...mockMove,
+        assignedCrewIds: ['crew-x'],
+      } as never)
+      const res = await buildApp(linkedDriver).request('/move-1')
+      expect(res.status).toBe(404)
+      expect((await json(res)).code).toBe('NOT_FOUND')
+    })
+
+    it('GET /:id returns 404 for an unlinked driver', async () => {
+      vi.mocked(findMoveById).mockResolvedValue({
+        ...mockMove,
+        assignedCrewIds: ['crew-1'],
+      } as never)
+      const res = await buildApp(unlinkedDriver).request('/move-1')
+      expect(res.status).toBe(404)
+    })
+
+    it('POST / is forbidden for a driver (no CreateMove)', async () => {
+      const res = await buildApp(linkedDriver).request('/', post(validCreateBody))
+      expect(res.status).toBe(403)
+    })
+
+    it('PUT /:id/status is forbidden for a driver (no UpdateMove)', async () => {
+      const res = await buildApp(linkedDriver).request(
+        '/move-1/status',
+        put({ status: 'SCHEDULED' }),
+      )
+      expect(res.status).toBe(403)
     })
   })
 })

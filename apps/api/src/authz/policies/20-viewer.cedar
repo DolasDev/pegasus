@@ -6,6 +6,7 @@ permit (
   principal in Pegasus::Group::"viewer",
   action in [
     Pegasus::Action::"ReadQuote",
+    Pegasus::Action::"ListMoves",
     Pegasus::Action::"ReadMove",
     Pegasus::Action::"ReadInvoice",
     Pegasus::Action::"ReadCustomer",

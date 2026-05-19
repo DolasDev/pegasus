@@ -340,6 +340,7 @@ model TenantUser {
   tenant            Tenant      @relation(fields: [tenantId], references: [id])
   createdApiClients ApiClient[] @relation("ApiClientCreatedBy")
   apiClientsActedAs ApiClient[] @relation("ApiClientActsAs")
+  crewMember        CrewMember?
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -598,7 +599,13 @@ model CrewMember {
   licenceClasses String[] @map("licence_classes")
   isActive       Boolean  @default(true) @map("is_active")
 
+  /// Optional link to the tenant login that belongs to this crew member.
+  /// Set when a crew member is given a `driver` persona login so the Moves
+  /// list/detail can be scoped to their own trips. Nullable, no backfill.
+  tenantUserId String? @unique @map("tenant_user_id")
+
   tenant          Tenant               @relation(fields: [tenantId], references: [id])
+  tenantUser      TenantUser?          @relation(fields: [tenantUserId], references: [id], onDelete: SetNull)
   moveAssignments MoveCrewAssignment[]
   availabilities  Availability[]
 

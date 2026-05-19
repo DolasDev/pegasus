@@ -57,10 +57,18 @@ const PatchUserBody = z
   .object({
     roleNames: z.array(z.string().min(1)).optional(),
     legacyWindowsUsername: z.string().min(1).max(255).nullable().optional(),
+    /** CrewMember to link this login to (driver persona); null unlinks. */
+    crewMemberId: z.string().min(1).nullable().optional(),
   })
-  .refine((d) => d.roleNames !== undefined || d.legacyWindowsUsername !== undefined, {
-    message: 'At least one of roleNames or legacyWindowsUsername must be provided',
-  })
+  .refine(
+    (d) =>
+      d.roleNames !== undefined ||
+      d.legacyWindowsUsername !== undefined ||
+      d.crewMemberId !== undefined,
+    {
+      message: 'At least one of roleNames, legacyWindowsUsername or crewMemberId must be provided',
+    },
+  )
 
 // ---------------------------------------------------------------------------
 // Response shape
@@ -79,6 +87,10 @@ type TenantUserResponse = {
   invitedAt: string
   activatedAt: string | null
   deactivatedAt: string | null
+  /** The CrewMember.id linked to this login (driver persona), or null. */
+  crewMemberId: string | null
+  /** The linked CrewMember's display name, or null. */
+  crewMemberName: string | null
 }
 
 function deriveLegacyRole(roleNames: readonly string[]): 'ADMIN' | 'USER' {
@@ -97,6 +109,8 @@ function toResponse(row: TenantUserRow): TenantUserResponse {
     invitedAt: row.invitedAt.toISOString(),
     activatedAt: row.activatedAt?.toISOString() ?? null,
     deactivatedAt: row.deactivatedAt?.toISOString() ?? null,
+    crewMemberId: row.crewMember?.id ?? null,
+    crewMemberName: row.crewMember?.name ?? null,
   }
 }
 
@@ -261,11 +275,23 @@ usersHandler.patch(
     const tenantId = c.get('tenantId')
     const repo = createUsersRepository(db)
     const id = c.req.param('id') ?? ''
-    const { roleNames, legacyWindowsUsername } = c.req.valid('json')
+    const { roleNames, legacyWindowsUsername, crewMemberId } = c.req.valid('json')
 
     const existing = await repo.findById(id, tenantId)
     if (!existing) {
       return c.json({ error: 'User not found', code: 'NOT_FOUND' }, 404)
+    }
+
+    // Validate the crew member belongs to this tenant before linking. The
+    // tenant-scoped `db` filters by tenantId, so a foreign id yields null.
+    if (typeof crewMemberId === 'string') {
+      const crew = await db.crewMember.findFirst({
+        where: { id: crewMemberId },
+        select: { id: true },
+      })
+      if (!crew) {
+        return c.json({ error: 'Crew member not found', code: 'NOT_FOUND' }, 404)
+      }
     }
 
     let current = existing
@@ -274,6 +300,12 @@ usersHandler.patch(
     }
     if (legacyWindowsUsername !== undefined) {
       current = await repo.updateLegacyWindowsUsername(id, legacyWindowsUsername)
+    }
+    if (crewMemberId !== undefined) {
+      await repo.linkCrewMember(id, crewMemberId)
+      // The link is written on the CrewMember side — re-fetch so the response
+      // reflects it alongside any role/legacy changes applied above.
+      current = (await repo.findById(id, tenantId)) ?? current
     }
     return c.json({ data: toResponse(current) })
   },

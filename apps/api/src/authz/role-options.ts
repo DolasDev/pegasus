@@ -98,6 +98,11 @@ export const ROLE_OPTIONS: readonly RoleOption[] = [
     description: 'Full quote and customer authoring; read-only on moves.',
   },
   {
+    name: 'driver',
+    label: 'Driver',
+    description: 'Crew member login — sees only their own assigned trips, read-only.',
+  },
+  {
     name: 'viewer',
     label: 'Viewer',
     description: 'Explicit read-only across operational entities. Not a default fallback.',

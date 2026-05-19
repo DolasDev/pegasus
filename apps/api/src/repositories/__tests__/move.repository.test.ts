@@ -15,6 +15,7 @@ import {
   createMove,
   findMoveById,
   listMoves,
+  countMoves,
   updateMoveStatus,
   assignCrewMember,
   assignVehicle,
@@ -148,6 +149,36 @@ describe.skipIf(!hasDb)('MoveRepository (integration)', () => {
     // Cleanup — remove junction row before deleting the vehicle
     await db.moveVehicleAssignment.deleteMany({ where: { vehicleId } }).catch(() => undefined)
     await db.vehicle.delete({ where: { id: vehicleId } }).catch(() => undefined)
+  })
+
+  it('listMoves / countMoves scope to a crew member when crewMemberId is given', async () => {
+    const crewMemberId = `crew-filter-${Date.now()}`
+    await db.crewMember.upsert({
+      where: { id: crewMemberId },
+      create: {
+        id: crewMemberId,
+        tenantId,
+        name: 'Filter Crew',
+        role: 'DRIVER',
+        licenceClasses: [],
+      },
+      update: {},
+    })
+    await assignCrewMember(testDb, moveId, crewMemberId)
+
+    const scoped = await listMoves(testDb, { limit: 100, crewMemberId })
+    expect(scoped.every((m) => (m.assignedCrewIds ?? []).some((id) => id === crewMemberId))).toBe(
+      true,
+    )
+    expect(scoped.find((m) => m.id === moveId)).toBeDefined()
+    expect(await countMoves(testDb, crewMemberId)).toBe(scoped.length)
+
+    // A crew member with no assignments sees nothing.
+    expect(await listMoves(testDb, { limit: 100, crewMemberId: 'crew-none' })).toEqual([])
+    expect(await countMoves(testDb, 'crew-none')).toBe(0)
+
+    await db.moveCrewAssignment.deleteMany({ where: { crewMemberId } }).catch(() => undefined)
+    await db.crewMember.delete({ where: { id: crewMemberId } }).catch(() => undefined)
   })
 })
 

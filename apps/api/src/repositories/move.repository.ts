@@ -158,12 +158,19 @@ export async function updateMoveStatus(
   return findMoveById(db, id)
 }
 
-/** Lists all moves, ordered by scheduled date ascending, with optional pagination. */
+/**
+ * Lists moves, ordered by scheduled date ascending, with optional pagination.
+ * When `crewMemberId` is supplied, only moves that crew member is assigned to
+ * are returned — used to scope the list for `driver` principals.
+ */
 export async function listMoves(
   db: PrismaClient,
-  opts: { limit?: number; offset?: number } = {},
+  opts: { limit?: number; offset?: number; crewMemberId?: string } = {},
 ): Promise<Move[]> {
   const rows = await db.move.findMany({
+    ...(opts.crewMemberId
+      ? { where: { crewAssignments: { some: { crewMemberId: opts.crewMemberId } } } }
+      : {}),
     include: moveInclude,
     orderBy: { scheduledDate: 'asc' },
     take: opts.limit ?? 50,
@@ -172,9 +179,14 @@ export async function listMoves(
   return rows.map(mapMove)
 }
 
-/** Returns the total number of moves (ignoring pagination). */
-export async function countMoves(db: PrismaClient): Promise<number> {
-  return db.move.count()
+/**
+ * Returns the total number of moves (ignoring pagination). When `crewMemberId`
+ * is supplied, counts only the moves that crew member is assigned to.
+ */
+export async function countMoves(db: PrismaClient, crewMemberId?: string): Promise<number> {
+  return db.move.count(
+    crewMemberId ? { where: { crewAssignments: { some: { crewMemberId } } } } : undefined,
+  )
 }
 
 /** Assigns a crew member to a move. Idempotent — duplicate assignments are ignored. */

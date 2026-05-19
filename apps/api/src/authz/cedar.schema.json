@@ -5,7 +5,9 @@
         "memberOfTypes": ["Group"],
         "shape": {
           "type": "Record",
-          "attributes": {}
+          "attributes": {
+            "crewMemberId": { "type": "String", "required": false }
+          }
         }
       },
       "Group": {
@@ -33,7 +35,13 @@
         "memberOfTypes": [],
         "shape": {
           "type": "Record",
-          "attributes": {}
+          "attributes": {
+            "assignedCrewMembers": {
+              "type": "Set",
+              "element": { "type": "String" },
+              "required": false
+            }
+          }
         }
       },
       "Invoice": {
@@ -128,6 +136,9 @@
       },
       "DeleteQuote": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Quote"] }
+      },
+      "ListMoves": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Move"] }
       },
       "ReadMove": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Move"] }

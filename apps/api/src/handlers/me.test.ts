@@ -43,6 +43,7 @@ describe('GET /permissions', () => {
     expect(new Set(body.permissions)).toEqual(
       new Set([
         Actions.ReadQuote.permission,
+        Actions.ListMoves.permission,
         Actions.ReadMove.permission,
         Actions.ReadInvoice.permission,
         Actions.ReadCustomer.permission,

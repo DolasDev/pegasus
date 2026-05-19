@@ -24,6 +24,13 @@ export interface Principal {
   readonly tenantId: string
   /** Cedar role-group memberships (e.g. ['tenant_admin']). */
   readonly roleNames: readonly string[]
+  /**
+   * The `CrewMember.id` linked to this login, when one exists. Resolved by the
+   * tenant middleware only for `driver` principals. Surfaces as the Cedar
+   * `User.crewMemberId` attribute so per-record `ReadMove` policies can match
+   * a driver against a move's assigned crew.
+   */
+  readonly crewMemberId?: string
 }
 
 /**
