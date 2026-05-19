@@ -28,6 +28,7 @@ import { longhaulDriversHandler } from './handlers/longhaul-cloud/drivers'
 import { longhaulZonesHandler } from './handlers/longhaul-cloud/zones'
 import { longhaulPlannersHandler } from './handlers/longhaul-cloud/planners'
 import { longhaulActivityTypesHandler } from './handlers/longhaul-cloud/activity-types'
+import { longhaulFilterOptionsHandler } from './handlers/longhaul-cloud/filter-options'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -223,6 +224,8 @@ v1.get('/onprem/longhaul/zones', longhaulZonesHandler)
 v1.get('/onprem/longhaul/planners', longhaulPlannersHandler)
 // Phase 3: /activity-types is served cloud-direct alongside /version.
 v1.get('/onprem/longhaul/activity-types', longhaulActivityTypesHandler)
+// Phase 3: /filter-options is served cloud-direct — same pattern as /version.
+v1.get('/onprem/longhaul/filter-options', longhaulFilterOptionsHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.
