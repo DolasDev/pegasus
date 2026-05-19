@@ -160,6 +160,24 @@ test.describe('longhaul on-prem bridge (QA)', () => {
   // Hono Lambda resolves the caller's legacy identity (TenantUser →
   // v_longhaul_salesman) through the mssql-executor Lambda instead of proxying
   // to the on-prem server. Response shape stays `{ data: <longhaul user> }`.
+  // Phase 3 of the longhaul strangler-fig migration: the current user's default
+  // shipment filter is served cloud-direct
+  // (apps/api/src/handlers/longhaul-cloud/shipment-filters-default.ts). The
+  // cloud Hono Lambda resolves the legacy user via the mssql-executor and reads
+  // `longhaul_user_preferences` + `longhaul_shipment_filter` directly. Response
+  // shape must stay identical to the on-prem handler — `{ data: ... }` where
+  // data is null when no default filter is set.
+  test('GET /shipment-filters/default returns the { data } shape', async ({ qaApiFetch }) => {
+    const res = await qaApiFetch(`${LH}/shipment-filters/default`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body, 'cloud-direct /shipment-filters/default returns { data }').toHaveProperty('data')
+    // data is null when no default is set, otherwise the saved filter row.
+    if (body.data !== null) {
+      expect(typeof body.data).toBe('object')
+    }
+  })
+
   test('GET /users/me returns the mapped legacy user @smoke', async ({ qaApiFetch }) => {
     const res = await qaApiFetch(`${LH}/users/me`)
     expect(res.status).toBe(200)

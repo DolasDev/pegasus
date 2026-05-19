@@ -30,6 +30,7 @@ import { longhaulPlannersHandler } from './handlers/longhaul-cloud/planners'
 import { longhaulActivityTypesHandler } from './handlers/longhaul-cloud/activity-types'
 import { longhaulFilterOptionsHandler } from './handlers/longhaul-cloud/filter-options'
 import { longhaulUsersMeHandler } from './handlers/longhaul-cloud/users-me'
+import { longhaulShipmentFiltersDefaultHandler } from './handlers/longhaul-cloud/shipment-filters-default'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -231,6 +232,10 @@ v1.get('/onprem/longhaul/filter-options', longhaulFilterOptionsHandler)
 // the caller's legacy identity (TenantUser.legacyWindowsUsername →
 // v_longhaul_salesman) via the mssql-executor Lambda. Same `{ data }` shape.
 v1.get('/onprem/longhaul/users/me', longhaulUsersMeHandler)
+// Longhaul strangler-fig migration (Phase 3): the current user's default
+// shipment filter is served cloud-direct. Registered before the /onprem mount
+// for the same route-precedence reason as /version above.
+v1.get('/onprem/longhaul/shipment-filters/default', longhaulShipmentFiltersDefaultHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.
