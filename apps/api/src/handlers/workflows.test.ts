@@ -19,29 +19,53 @@ import { _clearAuthzCache } from '../lib/authz'
 // Mocks
 // ---------------------------------------------------------------------------
 
-const { mockRepo, mockTenantFindUnique, mockPresignUpload, mockPresignDownload, mockCopyObject } =
-  vi.hoisted(() => ({
-    mockRepo: {
-      create: vi.fn(),
-      findByIdForTenant: vi.fn(),
-      listForTenant: vi.fn(),
-      findByNaturalKey: vi.fn(),
-      forkGlobalToTenant: vi.fn(),
-    },
-    mockTenantFindUnique: vi.fn(),
-    mockPresignUpload: vi.fn(),
-    mockPresignDownload: vi.fn(),
-    mockCopyObject: vi.fn(),
-  }))
+const {
+  mockRepo,
+  mockApiClientRepo,
+  mockTenantFindUnique,
+  mockTenantUserCreate,
+  mockPresignUpload,
+  mockPresignDownload,
+  mockCopyObject,
+  mockEncryptRuntimeToken,
+} = vi.hoisted(() => ({
+  mockRepo: {
+    create: vi.fn(),
+    findByIdForTenant: vi.fn(),
+    listForTenant: vi.fn(),
+    findByNaturalKey: vi.fn(),
+    forkGlobalToTenant: vi.fn(),
+    attachRuntimeToken: vi.fn(),
+  },
+  mockApiClientRepo: {
+    create: vi.fn(),
+  },
+  mockTenantFindUnique: vi.fn(),
+  mockTenantUserCreate: vi.fn(),
+  mockPresignUpload: vi.fn(),
+  mockPresignDownload: vi.fn(),
+  mockCopyObject: vi.fn(),
+  mockEncryptRuntimeToken: vi.fn(),
+}))
 
 vi.mock('../repositories/workflow.repository', () => ({
   createWorkflowRepository: vi.fn(() => mockRepo),
+}))
+
+vi.mock('../repositories/api-client.repository', () => ({
+  createApiClientRepository: vi.fn(() => mockApiClientRepo),
 }))
 
 vi.mock('../lib/documents-s3', () => ({
   presignUpload: mockPresignUpload,
   presignDownload: mockPresignDownload,
   copyObject: mockCopyObject,
+}))
+
+// KMS crypto is mocked so no real AWS call is made — the handler must still
+// pass the returned ciphertext through to attachRuntimeToken.
+vi.mock('../lib/runtime-token-crypto', () => ({
+  encryptRuntimeToken: mockEncryptRuntimeToken,
 }))
 
 // dualAuthMiddleware is replaced with a context-injecting stub — its real
@@ -77,9 +101,17 @@ function buildApp(
   roleNames: readonly string[] = ['tenant_admin'],
   userId: string | null = 'user-1',
 ) {
+  // `$transaction` runs the callback with `tx === fakeDb` itself, so the
+  // workflow + api-client repos and tenantUser.create resolve against the
+  // same fakeDb mocks regardless of the transaction wrapping.
   const fakeDb = {
     tenant: { findUnique: mockTenantFindUnique },
+    tenantUser: { create: mockTenantUserCreate },
+    workflow: { update: vi.fn() },
   } as unknown as PrismaClient
+  ;(fakeDb as unknown as { $transaction: unknown }).$transaction = vi.fn(
+    (cb: (tx: unknown) => unknown) => cb(fakeDb),
+  )
   // Stub dualAuthMiddleware to inject the AppEnv context both tenantMiddleware
   // and m2mAppAuthMiddleware would populate in production.
   vi.mocked(dualAuthMiddleware).mockImplementation(async (c, next) => {
@@ -121,8 +153,17 @@ const mockRow = {
   createdByUserId: 'user-1',
   forkedFromWorkflowId: null,
   forkedFromVersion: null,
+  runtimeTokenCiphertext: null,
+  runtimeApiClientId: null,
   createdAt: now,
   updatedAt: now,
+}
+
+/** A workflow row as it looks after the runtime service account is provisioned. */
+const provisionedRow = {
+  ...mockRow,
+  runtimeTokenCiphertext: 'BASE64-CIPHERTEXT',
+  runtimeApiClientId: 'api-client-1',
 }
 
 const globalRow = {
@@ -144,6 +185,15 @@ describe('workflows handler', () => {
     _clearAuthzCache()
     mockPresignUpload.mockResolvedValue('https://s3.example/put?sig=abc')
     mockPresignDownload.mockResolvedValue('https://s3.example/get?sig=xyz')
+    // Default runtime-provisioning happy path — the finalize/fork tests that
+    // don't care about provisioning still need these to resolve.
+    mockTenantUserCreate.mockResolvedValue({ id: 'svc-user-1' })
+    mockApiClientRepo.create.mockResolvedValue({
+      row: { id: 'api-client-1', keyPrefix: 'vnd_abcd1234' },
+      plainKey: 'vnd_THIS_IS_THE_PLAINTEXT_KEY',
+    })
+    mockEncryptRuntimeToken.mockResolvedValue('BASE64-CIPHERTEXT')
+    mockRepo.attachRuntimeToken.mockResolvedValue(provisionedRow)
   })
 
   // ── RBAC ──────────────────────────────────────────────────────────────────
@@ -290,6 +340,7 @@ describe('workflows handler', () => {
     it('writes a TENANT-visibility row when tenant is not the platform tenant', async () => {
       mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
       mockRepo.create.mockResolvedValue({ ...mockRow, visibility: 'TENANT' })
+      mockRepo.attachRuntimeToken.mockResolvedValue({ ...provisionedRow, visibility: 'TENANT' })
       const res = await buildApp().request('/', post({ workflowId, manifest: validManifest }))
       expect(res.status).toBe(201)
       const body = (await json(res)).data as JsonBody
@@ -302,6 +353,7 @@ describe('workflows handler', () => {
     it('writes a GLOBAL-visibility row when tenant is flagged isPlatformTenant', async () => {
       mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: true })
       mockRepo.create.mockResolvedValue({ ...mockRow, visibility: 'GLOBAL' })
+      mockRepo.attachRuntimeToken.mockResolvedValue({ ...provisionedRow, visibility: 'GLOBAL' })
       const res = await buildApp().request('/', post({ workflowId, manifest: validManifest }))
       expect(res.status).toBe(201)
       const body = (await json(res)).data as JsonBody
@@ -334,6 +386,54 @@ describe('workflows handler', () => {
       const res = await buildApp().request('/', post({ workflowId, manifest: validManifest }))
       const body = (await json(res)).data as JsonBody
       expect('artifactKey' in body).toBe(false)
+    })
+
+    it('provisions a runtime service account and persists a non-null ciphertext', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
+      mockRepo.create.mockResolvedValue(mockRow)
+      const res = await buildApp().request('/', post({ workflowId, manifest: validManifest }))
+      expect(res.status).toBe(201)
+
+      // Service-account TenantUser created: cognito-less, workflow_runtime role.
+      expect(mockTenantUserCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            cognitoSub: null,
+            isServiceAccount: true,
+            status: 'ACTIVE',
+            roleNames: ['workflow_runtime'],
+          }),
+        }),
+      )
+      // ApiClient minted with the wf-runtime-<id> name, bound to the svc user.
+      expect(mockApiClientRepo.create).toHaveBeenCalledWith(
+        'test-tenant-id',
+        expect.stringMatching(/^wf-runtime-/),
+        [],
+        'user-1',
+        expect.any(String),
+      )
+      // Plaintext key was KMS-encrypted and the ciphertext + client id persisted.
+      expect(mockEncryptRuntimeToken).toHaveBeenCalledWith('vnd_THIS_IS_THE_PLAINTEXT_KEY')
+      // The provisioning step keys off the created row's id (mockRow.id).
+      expect(mockRepo.attachRuntimeToken).toHaveBeenCalledWith(
+        'wf-1',
+        { runtimeTokenCiphertext: 'BASE64-CIPHERTEXT', runtimeApiClientId: 'api-client-1' },
+        expect.anything(),
+      )
+    })
+
+    it('never exposes the runtime plaintext key or ciphertext in the response', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
+      mockRepo.create.mockResolvedValue(mockRow)
+      const res = await buildApp().request('/', post({ workflowId, manifest: validManifest }))
+      const raw = await res.text()
+      expect(raw).not.toContain('vnd_THIS_IS_THE_PLAINTEXT_KEY')
+      expect(raw).not.toContain('BASE64-CIPHERTEXT')
+      const body = JSON.parse(raw).data as JsonBody
+      expect('runtimeTokenCiphertext' in body).toBe(false)
+      expect('runtimeApiClientId' in body).toBe(false)
+      expect('plainKey' in body).toBe(false)
     })
   })
 
@@ -444,14 +544,17 @@ describe('workflows handler', () => {
     })
 
     it('returns 201 with the new TENANT-visibility row and forked provenance', async () => {
-      mockRepo.findByIdForTenant.mockResolvedValue(globalRow)
-      mockRepo.forkGlobalToTenant.mockResolvedValue({
-        ...mockRow,
+      const forkedRow = {
+        ...provisionedRow,
         id: 'forked-wf-1',
         visibility: 'TENANT' as const,
         forkedFromWorkflowId: 'global-wf-1',
         forkedFromVersion: '1.0.0',
-      })
+      }
+      mockRepo.findByIdForTenant.mockResolvedValue(globalRow)
+      mockRepo.forkGlobalToTenant.mockResolvedValue(forkedRow)
+      // The response is built from attachRuntimeToken's updated-row return.
+      mockRepo.attachRuntimeToken.mockResolvedValue(forkedRow)
       const res = await buildApp().request('/global-wf-1/fork', post({}))
       expect(res.status).toBe(201)
       const body = (await json(res)).data as JsonBody
@@ -467,11 +570,55 @@ describe('workflows handler', () => {
     })
 
     it('strips artifactKey from the fork response', async () => {
+      const forkedRow = { ...provisionedRow, id: 'forked-wf-1' }
       mockRepo.findByIdForTenant.mockResolvedValue(globalRow)
-      mockRepo.forkGlobalToTenant.mockResolvedValue({ ...mockRow, id: 'forked-wf-1' })
+      mockRepo.forkGlobalToTenant.mockResolvedValue(forkedRow)
+      mockRepo.attachRuntimeToken.mockResolvedValue(forkedRow)
       const res = await buildApp().request('/global-wf-1/fork', post({}))
       const body = (await json(res)).data as JsonBody
       expect('artifactKey' in body).toBe(false)
+    })
+
+    it('provisions a runtime service account on fork and persists a ciphertext', async () => {
+      const forkedRow = { ...provisionedRow, id: 'forked-wf-1' }
+      mockRepo.findByIdForTenant.mockResolvedValue(globalRow)
+      mockRepo.forkGlobalToTenant.mockResolvedValue(forkedRow)
+      mockRepo.attachRuntimeToken.mockResolvedValue(forkedRow)
+      const res = await buildApp().request('/global-wf-1/fork', post({}))
+      expect(res.status).toBe(201)
+
+      expect(mockTenantUserCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            isServiceAccount: true,
+            roleNames: ['workflow_runtime'],
+          }),
+        }),
+      )
+      expect(mockApiClientRepo.create).toHaveBeenCalledWith(
+        'test-tenant-id',
+        'wf-runtime-forked-wf-1',
+        [],
+        'user-1',
+        expect.any(String),
+      )
+      expect(mockEncryptRuntimeToken).toHaveBeenCalledWith('vnd_THIS_IS_THE_PLAINTEXT_KEY')
+      expect(mockRepo.attachRuntimeToken).toHaveBeenCalledWith(
+        'forked-wf-1',
+        { runtimeTokenCiphertext: 'BASE64-CIPHERTEXT', runtimeApiClientId: 'api-client-1' },
+        expect.anything(),
+      )
+    })
+
+    it('never exposes the runtime plaintext key in the fork response', async () => {
+      const forkedRow = { ...provisionedRow, id: 'forked-wf-1' }
+      mockRepo.findByIdForTenant.mockResolvedValue(globalRow)
+      mockRepo.forkGlobalToTenant.mockResolvedValue(forkedRow)
+      mockRepo.attachRuntimeToken.mockResolvedValue(forkedRow)
+      const res = await buildApp().request('/global-wf-1/fork', post({}))
+      const raw = await res.text()
+      expect(raw).not.toContain('vnd_THIS_IS_THE_PLAINTEXT_KEY')
+      expect(raw).not.toContain('BASE64-CIPHERTEXT')
     })
   })
 })

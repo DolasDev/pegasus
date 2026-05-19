@@ -42,6 +42,13 @@ export type WorkflowRow = {
   forkedFromWorkflowId: string | null
   /** The source workflow's version at fork time. */
   forkedFromVersion: string | null
+  /**
+   * KMS-encrypted runtime credential for the per-workflow runtime service
+   * account. Null until provisioned. MUST NOT be returned in API responses.
+   */
+  runtimeTokenCiphertext: string | null
+  /** ApiClient.id of the per-workflow runtime service account. Null until provisioned. */
+  runtimeApiClientId: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -57,6 +64,8 @@ const WORKFLOW_SELECT = {
   createdByUserId: true,
   forkedFromWorkflowId: true,
   forkedFromVersion: true,
+  runtimeTokenCiphertext: true,
+  runtimeApiClientId: true,
   createdAt: true,
   updatedAt: true,
 } as const
@@ -175,6 +184,31 @@ export function createWorkflowRepository(db: PrismaClient) {
           createdByUserId,
           forkedFromWorkflowId: source.id,
           forkedFromVersion: source.version,
+        },
+        select: WORKFLOW_SELECT,
+      })
+    },
+
+    /**
+     * Persist the per-workflow runtime service-account credential onto an
+     * existing workflow row: the KMS-ciphertext of the scoped `vnd_` key and
+     * the bound ApiClient.id.
+     *
+     * Accepts an optional transaction client so finalize / fork can run this
+     * update inside the same transaction that created the workflow row — if
+     * the outer transaction rolls back, the credential columns roll back too.
+     */
+    async attachRuntimeToken(
+      workflowId: string,
+      input: { runtimeTokenCiphertext: string; runtimeApiClientId: string },
+      tx?: Prisma.TransactionClient,
+    ): Promise<WorkflowRow> {
+      const client = tx ?? db
+      return client.workflow.update({
+        where: { id: workflowId },
+        data: {
+          runtimeTokenCiphertext: input.runtimeTokenCiphertext,
+          runtimeApiClientId: input.runtimeApiClientId,
         },
         select: WORKFLOW_SELECT,
       })

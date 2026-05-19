@@ -3,6 +3,7 @@ import * as cdk from 'aws-cdk-lib'
 import * as events from 'aws-cdk-lib/aws-events'
 import * as eventsTargets from 'aws-cdk-lib/aws-events-targets'
 import * as iam from 'aws-cdk-lib/aws-iam'
+import * as kms from 'aws-cdk-lib/aws-kms'
 import * as lambda from 'aws-cdk-lib/aws-lambda'
 import * as logs from 'aws-cdk-lib/aws-logs'
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs'
@@ -256,6 +257,23 @@ export class ApiStack extends cdk.Stack {
       props.documentsBucket.grantDelete(apiFunction)
       apiFunction.addEnvironment('DOCUMENTS_BUCKET_NAME', props.documentsBucket.bucketName)
     }
+
+    // ---------------------------------------------------------------------------
+    // KMS: workflow runtime token key.
+    //
+    // Each curated workflow, at finalize and at fork, is issued its own scoped
+    // vnd_ runtime API key (apps/api/src/handlers/workflows.ts). The plaintext
+    // key is encrypted with this key and only the ciphertext is persisted on
+    // the workflow row; apps/api/src/lib/runtime-token-crypto.ts reads the key
+    // id from WORKFLOW_TOKEN_KMS_KEY_ID. grantEncryptDecrypt covers both the
+    // finalize/fork encrypt path and the future worker-credential decrypt path.
+    // ---------------------------------------------------------------------------
+    const workflowTokenKey = new kms.Key(this, 'WorkflowTokenKey', {
+      description: 'Encrypts per-workflow runtime service-account API keys.',
+      enableKeyRotation: true,
+    })
+    workflowTokenKey.grantEncryptDecrypt(apiFunction)
+    apiFunction.addEnvironment('WORKFLOW_TOKEN_KMS_KEY_ID', workflowTokenKey.keyId)
 
     // ---------------------------------------------------------------------------
     // Tunnel proxy — grant invoke + surface function name as env var.
@@ -597,6 +615,11 @@ export class ApiStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ApiUrl', {
       value: httpApi.apiEndpoint,
       exportName: 'PegasusApiUrl',
+    })
+
+    new cdk.CfnOutput(this, 'WorkflowTokenKeyArn', {
+      value: workflowTokenKey.keyArn,
+      exportName: 'PegasusWorkflowTokenKeyArn',
     })
 
     // ---------------------------------------------------------------------------
