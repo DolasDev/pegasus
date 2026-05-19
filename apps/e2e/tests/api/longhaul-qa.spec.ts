@@ -265,10 +265,19 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     expect(body.data ?? body).toBeDefined()
   })
 
+  // Since Phase 3 of the longhaul strangler-fig migration, /shipment-filters is
+  // served cloud-direct (apps/api/src/handlers/longhaul-cloud/shipment-filters.ts):
+  // the cloud Hono Lambda resolves the caller's legacy longhaul identity and
+  // queries Dolios MSSQL through the mssql-executor Lambda instead of proxying
+  // to the on-prem server. The response shape must stay identical — `{ data: [] }`.
   test('GET /shipment-filters returns the saved filters for the user', async ({ qaApiFetch }) => {
     const res = await qaApiFetch(`${LH}/shipment-filters`)
     expect(res.status).toBe(200)
-    expect(Array.isArray((await res.json()).data ?? [])).toBe(true)
+    const body = await res.json()
+    expect(
+      Array.isArray(body.data ?? []),
+      'cloud-direct /shipment-filters returns { data: [] }',
+    ).toBe(true)
   })
 
   test('POST /trips with no shipments is rejected (403)', async ({ qaApiFetch }) => {

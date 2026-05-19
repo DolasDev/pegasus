@@ -31,6 +31,7 @@ import { longhaulActivityTypesHandler } from './handlers/longhaul-cloud/activity
 import { longhaulFilterOptionsHandler } from './handlers/longhaul-cloud/filter-options'
 import { longhaulUsersMeHandler } from './handlers/longhaul-cloud/users-me'
 import { longhaulShipmentFiltersDefaultHandler } from './handlers/longhaul-cloud/shipment-filters-default'
+import { longhaulShipmentFiltersHandler } from './handlers/longhaul-cloud/shipment-filters'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -236,6 +237,10 @@ v1.get('/onprem/longhaul/users/me', longhaulUsersMeHandler)
 // shipment filter is served cloud-direct. Registered before the /onprem mount
 // for the same route-precedence reason as /version above.
 v1.get('/onprem/longhaul/shipment-filters/default', longhaulShipmentFiltersDefaultHandler)
+// Phase 3: /shipment-filters is served cloud-direct — same strangler-fig
+// pattern as /version, but user-scoped (resolves the caller's legacy longhaul
+// identity and filters saved filters by that user's owner code).
+v1.get('/onprem/longhaul/shipment-filters', longhaulShipmentFiltersHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.
