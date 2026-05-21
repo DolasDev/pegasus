@@ -5,6 +5,14 @@
 // Postgres or the executor Lambda. The handler issues at most TWO executor
 // round trips (trip bundle, then shipment bundle) — these tests assert the
 // call count alongside the response shape.
+//
+// Regression coverage (Phase 3.1): the handler now reads `recordsets[i]`
+// (per-statement) from the executor instead of partitioning a flattened
+// `recordset` by marker columns. The original implementation relied on
+// `recordset` alone, which mssql populates with only the FIRST statement's
+// rows — so activities, notes, coverage, and extra-locations were silently
+// dropped. The "returns the trip ... with embedded activities, notes,
+// shipments" test below is the contract that would have caught that bug.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
@@ -38,9 +46,6 @@ function buildApp() {
   return app
 }
 
-// A trip-header row carries `TripStatus_id`; an activity row carries
-// `TripMaster_id`; a note row carries `tripId`. The handler partitions the
-// flattened multi-statement recordset by exactly these marker columns.
 const tripRow = {
   id: 42,
   TripStatus_id: 1,
@@ -58,19 +63,26 @@ describe('GET longhaul/trips/:id (cloud-direct)', () => {
 
   it('returns the trip in { data } shape with embedded activities, notes, shipments', async () => {
     findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
-    // RT1: trip header + activities + notes flattened into one recordset.
+    // RT1: 3-statement batch → recordsets[0]=trip, [1]=activities, [2]=notes.
     executeSqlMock.mockResolvedValueOnce({
-      recordset: [tripRow, activityRow, noteRow],
+      recordset: [tripRow],
+      recordsets: [[tripRow], [activityRow], [noteRow]],
       rowsAffected: [],
     })
-    // RT2: shipments + their activities + coverage + extra locations.
+    // RT2: 4-statement batch → recordsets[0..3] = shipments / activities /
+    // coverage / extra-locations.
+    const shipmentRow = { order_num: 1001, shipper_name: 'Acme' }
+    const shipActivityThisTrip = { id: 9, TripMaster_id: 42, order_num: 1001 }
+    const shipActivityOtherTrip = { id: 9, TripMaster_id: 99, order_num: 1001 }
+    const coverageRow = { order_num: 1001, activity_code: 'LOAD', coverage_agent_id: 'X' }
+    const extraLocationRow = { order_num: 1001, location_type: 'EXTRA_STOP' }
     executeSqlMock.mockResolvedValueOnce({
-      recordset: [
-        { order_num: 1001, shipper_name: 'Acme' },
-        { id: 9, TripMaster_id: 42, order_num: 1001 },
-        { id: 9, TripMaster_id: 99, order_num: 1001 }, // a different trip — must be filtered out
-        { order_num: 1001, activity_code: 'LOAD', coverage_agent_id: 'X' },
-        { order_num: 1001, location_type: 'EXTRA_STOP' },
+      recordset: [shipmentRow],
+      recordsets: [
+        [shipmentRow],
+        [shipActivityThisTrip, shipActivityOtherTrip],
+        [coverageRow],
+        [extraLocationRow],
       ],
       rowsAffected: [],
     })
@@ -81,6 +93,9 @@ describe('GET longhaul/trips/:id (cloud-direct)', () => {
     const body = (await res.json()) as { data: Record<string, unknown> }
     expect(body.data.id).toBe(42)
     expect(body.data.trip_title).toBe('Trip 42')
+    // Regression (Phase 3.1): activities + notes were silently dropped because
+    // the executor's `recordset` only carries the first statement's rows. The
+    // handler now reads each child set from `recordsets[i]`.
     expect(body.data.activities).toEqual([activityRow])
     expect(body.data.notes).toEqual([noteRow])
 
@@ -99,7 +114,8 @@ describe('GET longhaul/trips/:id (cloud-direct)', () => {
   it('skips the shipment round trip when the trip has no shipment-bearing activities', async () => {
     findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
     executeSqlMock.mockResolvedValueOnce({
-      recordset: [tripRow, noteRow],
+      recordset: [tripRow],
+      recordsets: [[tripRow], [], [noteRow]],
       rowsAffected: [],
     })
 
@@ -108,6 +124,7 @@ describe('GET longhaul/trips/:id (cloud-direct)', () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as { data: Record<string, unknown> }
     expect(body.data.activities).toEqual([])
+    expect(body.data.notes).toEqual([noteRow])
     expect(body.data.shipments).toEqual([])
     // Only one round trip — no order_nums to fan out on.
     expect(executeSqlMock).toHaveBeenCalledTimes(1)
@@ -115,7 +132,11 @@ describe('GET longhaul/trips/:id (cloud-direct)', () => {
 
   it('returns 404 NOT_FOUND when the trip does not exist', async () => {
     findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
-    executeSqlMock.mockResolvedValueOnce({ recordset: [], rowsAffected: [] })
+    executeSqlMock.mockResolvedValueOnce({
+      recordset: [],
+      recordsets: [[], [], []],
+      rowsAffected: [],
+    })
 
     const res = await buildApp().request('/onprem/longhaul/trips/999999999')
 
