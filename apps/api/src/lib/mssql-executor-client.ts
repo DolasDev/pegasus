@@ -36,7 +36,17 @@ interface ExecRequestPayload {
 }
 
 type ExecResponsePayload =
-  | { ok: true; recordset: unknown[]; rowsAffected: number[] }
+  | {
+      ok: true
+      recordset: unknown[]
+      /**
+       * Per-statement result sets. For a single-statement query this is
+       * `[recordset]`. Multi-statement batches use this to recover each
+       * SELECT's rows individually (see longhaul-cloud/trip-detail).
+       */
+      recordsets?: unknown[][]
+      rowsAffected: number[]
+    }
   | { ok: false; code: 'BAD_REQUEST' | 'QUERY_FAILED'; error: string }
 
 let _client: LambdaClient | null = null
@@ -61,7 +71,14 @@ export interface ExecuteSqlOptions {
 }
 
 export interface ExecuteSqlResult {
+  /** First statement's rows. Convenient for single-statement queries. */
   recordset: unknown[]
+  /**
+   * Every statement's rows, in order. `[recordset]` for single-statement
+   * queries. Multi-statement-batch handlers MUST read this rather than
+   * `recordset` to recover their child collections.
+   */
+  recordsets: unknown[][]
   rowsAffected: number[]
 }
 
@@ -112,5 +129,8 @@ export async function executeSql(
   if (!decoded.ok) {
     throw new MssqlExecError('EXECUTOR_QUERY_ERROR', `${decoded.code}: ${decoded.error}`)
   }
-  return { recordset: decoded.recordset, rowsAffected: decoded.rowsAffected }
+  // Older executor deployments only return `recordset`. During the rollout
+  // window default `recordsets` to `[recordset]` so callers can rely on it.
+  const recordsets = decoded.recordsets ?? (decoded.recordset ? [decoded.recordset] : [])
+  return { recordset: decoded.recordset, recordsets, rowsAffected: decoded.rowsAffected }
 }
