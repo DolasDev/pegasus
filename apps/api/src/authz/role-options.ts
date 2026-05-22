@@ -118,4 +118,10 @@ export const ROLE_OPTIONS: readonly RoleOption[] = [
     label: 'Workflow Dev',
     description: 'Upload Python workflow artifacts via the SDK. Read access included.',
   },
+  {
+    name: 'workflow_runtime',
+    label: 'Workflow Runtime',
+    description:
+      'Service-account persona for the workflow runtime worker: reads operational entities and creates events.',
+  },
 ] as const

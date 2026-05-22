@@ -23,14 +23,17 @@ import { randomUUID } from 'node:crypto'
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
+import type { PrismaClient, Prisma } from '@prisma/client'
 import { DomainError } from '@pegasus/domain'
 import { requirePermission } from '../middleware/rbac'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { Actions, ALL_ACTIONS } from '../authz/actions'
 import { createWorkflowRepository } from '../repositories/workflow.repository'
 import type { WorkflowRow, WorkflowVisibility } from '../repositories/workflow.repository'
+import { createApiClientRepository } from '../repositories/api-client.repository'
 import type { AppEnv } from '../types'
 import { presignDownload, presignUpload } from '../lib/documents-s3'
+import { encryptRuntimeToken } from '../lib/runtime-token-crypto'
 import { logger } from '../lib/logger'
 
 // ---------------------------------------------------------------------------
@@ -132,6 +135,73 @@ function toResponse(row: WorkflowRow): WorkflowResponse {
  */
 function buildArtifactKey(tenantId: string, workflowId: string, version: string): string {
   return `workflows/${tenantId}/${workflowId}/${version}.zip`
+}
+
+/**
+ * Provisions the per-workflow runtime service account inside an open
+ * transaction and persists the KMS-encrypted credential onto the workflow row.
+ *
+ * Mirrors the api-clients POST / pattern: create a cognito-less service-account
+ * TenantUser (it cannot sign in via Cognito), then mint a scoped `vnd_` API key
+ * bound to it. The plaintext key is KMS-encrypted via `encryptRuntimeToken` and
+ * only the ciphertext + ApiClient.id are stored — the plaintext is discarded
+ * here and never logged or returned.
+ *
+ * Runs in the SAME transaction as the workflow-row insert, so a failure
+ * anywhere rolls back the workflow, the service account, and the key together.
+ *
+ * Returns the workflow row with the runtime columns populated.
+ */
+async function provisionRuntimeServiceAccount(
+  tx: Prisma.TransactionClient,
+  opts: { tenantId: string; workflowId: string; createdById: string },
+): Promise<WorkflowRow> {
+  const { tenantId, workflowId, createdById } = opts
+  // Pre-generate the service-account user id so it can seed the synthetic
+  // email (per-tenant unique) without an extra round-trip after insert.
+  const serviceAccountId = randomUUID()
+
+  await tx.tenantUser.create({
+    data: {
+      id: serviceAccountId,
+      tenantId,
+      email: `svc-${serviceAccountId}@svc.invalid`,
+      cognitoSub: null,
+      isServiceAccount: true,
+      status: 'ACTIVE',
+      activatedAt: new Date(),
+      roleNames: ['workflow_runtime'],
+    },
+  })
+
+  const apiClientRepo = createApiClientRepository(tx as PrismaClient)
+  // Tenant-scoped clients leave `scopes` empty — the bound service-account
+  // user's roleNames drive Cedar authorization.
+  const { row, plainKey } = await apiClientRepo.create(
+    tenantId,
+    `wf-runtime-${workflowId}`,
+    [],
+    createdById,
+    serviceAccountId,
+  )
+
+  const ciphertext = await encryptRuntimeToken(plainKey)
+
+  const workflowRepo = createWorkflowRepository(tx as PrismaClient)
+  const updated = await workflowRepo.attachRuntimeToken(
+    workflowId,
+    { runtimeTokenCiphertext: ciphertext, runtimeApiClientId: row.id },
+    tx,
+  )
+
+  logger.info('Workflow runtime service account provisioned', {
+    workflowId,
+    tenantId,
+    runtimeApiClientId: row.id,
+    keyPrefix: row.keyPrefix,
+    serviceAccountId,
+  })
+  return updated
 }
 
 // ---------------------------------------------------------------------------
@@ -247,17 +317,28 @@ workflowsHandler.post(
     }
     const visibility: WorkflowVisibility = tenant.isPlatformTenant ? 'GLOBAL' : 'TENANT'
 
-    const repo = createWorkflowRepository(db)
-    const row = await repo
-      .create({
-        id: workflowId,
-        tenantId,
-        name: manifest.name,
-        version: manifest.version,
-        visibility,
-        artifactKey: buildArtifactKey(tenantId, workflowId, manifest.version),
-        manifest,
-        createdByUserId: userId,
+    // Create the workflow row and provision its runtime service account in one
+    // transaction: the service-account TenantUser, its scoped vnd_ key, and the
+    // KMS-encrypted credential columns all commit together or roll back together.
+    const row = await db
+      .$transaction(async (tx) => {
+        const repo = createWorkflowRepository(tx as PrismaClient)
+        const created = await repo.create({
+          id: workflowId,
+          tenantId,
+          name: manifest.name,
+          version: manifest.version,
+          visibility,
+          artifactKey: buildArtifactKey(tenantId, workflowId, manifest.version),
+          manifest,
+          createdByUserId: userId,
+        })
+        // Returns the row with the runtime columns the provisioning step wrote.
+        return provisionRuntimeServiceAccount(tx, {
+          tenantId,
+          workflowId: created.id,
+          createdById: userId,
+        })
       })
       // P2002 = unique-constraint violation; (tenantId, name, version) already used.
       .catch((err: unknown) => {
@@ -372,8 +453,20 @@ workflowsHandler.post('/:id/fork', requirePermission(Actions.UploadWorkflow), as
     return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
   }
 
-  const row = await repo
-    .forkGlobalToTenant(source, tenantId, userId)
+  const db = c.get('db')
+  // Fork the row and provision its runtime service account in one transaction.
+  // The S3 artifact copy inside forkGlobalToTenant runs before the row insert;
+  // a unique-key clash leaves only an orphan artifact, never a partial row.
+  const row = await db
+    .$transaction(async (tx) => {
+      const txRepo = createWorkflowRepository(tx as PrismaClient)
+      const forked = await txRepo.forkGlobalToTenant(source, tenantId, userId)
+      return provisionRuntimeServiceAccount(tx, {
+        tenantId,
+        workflowId: forked.id,
+        createdById: userId,
+      })
+    })
     // P2002 = unique-constraint violation; (tenantId, name, version) already used.
     .catch((err: unknown) => {
       const code = (err as { code?: string }).code
