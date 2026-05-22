@@ -90,6 +90,55 @@ def test_finalize_sends_workflow_id_and_manifest() -> None:
     assert b'"manifest"' in captured["body"]
 
 
+def test_fork_workflow_posts_to_fork_endpoint() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["method"] = request.method
+        return httpx.Response(
+            201,
+            json={
+                "data": {
+                    "id": "forked-wf-1",
+                    "visibility": "TENANT",
+                    "forkedFromWorkflowId": "global-wf-1",
+                    "forkedFromVersion": "1.0.0",
+                }
+            },
+        )
+
+    client = _client_with(handler)
+    row = client.fork_workflow("global-wf-1")
+
+    assert row["id"] == "forked-wf-1"
+    assert row["forkedFromWorkflowId"] == "global-wf-1"
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/api/v1/workflows/global-wf-1/fork"
+
+
+def test_fork_workflow_conflict_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(409, json={"error": "already exists", "code": "CONFLICT"})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.fork_workflow("global-wf-1")
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.code == "CONFLICT"
+
+
+def test_fork_workflow_not_found_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"error": "Workflow not found", "code": "NOT_FOUND"})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.fork_workflow("missing")
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.code == "NOT_FOUND"
+
+
 def test_upload_artifact_sets_signed_content_headers() -> None:
     captured: dict = {}
 

@@ -13,7 +13,9 @@
 // manually with explicit `tenantId` / `visibility` predicates instead.
 // ---------------------------------------------------------------------------
 
+import { randomUUID } from 'node:crypto'
 import type { PrismaClient, Prisma } from '@prisma/client'
+import { copyObject } from '../lib/documents-s3'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,6 +38,10 @@ export type WorkflowRow = {
   artifactKey: string
   manifest: Prisma.JsonValue
   createdByUserId: string
+  /** Set when this row was created by forking another workflow; the source id. */
+  forkedFromWorkflowId: string | null
+  /** The source workflow's version at fork time. */
+  forkedFromVersion: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -49,6 +55,8 @@ const WORKFLOW_SELECT = {
   artifactKey: true,
   manifest: true,
   createdByUserId: true,
+  forkedFromWorkflowId: true,
+  forkedFromVersion: true,
   createdAt: true,
   updatedAt: true,
 } as const
@@ -127,6 +135,47 @@ export function createWorkflowRepository(db: PrismaClient) {
     ): Promise<WorkflowRow | null> {
       return db.workflow.findUnique({
         where: { tenantId_name_version: { tenantId, name, version } },
+        select: WORKFLOW_SELECT,
+      })
+    },
+
+    /**
+     * One-click fork: copy a GLOBAL source workflow into `targetTenantId`'s
+     * own store. The source artifact is server-side S3-copied to a new
+     * tenant-owned key, then a fresh TENANT-visibility row is inserted with
+     * `forkedFrom*` provenance pointing at the source.
+     *
+     * The caller is responsible for confirming the source is visible and
+     * GLOBAL before calling this (the handler does, via findByIdForTenant).
+     *
+     * The S3 copy runs before the insert so a unique-key clash on
+     * (targetTenantId, name, version) leaves only an orphan artifact, never a
+     * row without its bytes. Prisma throws P2002 on that clash; it propagates
+     * to the caller, which maps it to 409.
+     */
+    async forkGlobalToTenant(
+      source: WorkflowRow,
+      targetTenantId: string,
+      createdByUserId: string,
+    ): Promise<WorkflowRow> {
+      const newWorkflowId = randomUUID()
+      const newArtifactKey = `workflows/${targetTenantId}/${newWorkflowId}/${source.version}.zip`
+
+      await copyObject(source.artifactKey, newArtifactKey)
+
+      return db.workflow.create({
+        data: {
+          id: newWorkflowId,
+          tenantId: targetTenantId,
+          name: source.name,
+          version: source.version,
+          visibility: 'TENANT',
+          artifactKey: newArtifactKey,
+          manifest: source.manifest as Prisma.InputJsonValue,
+          createdByUserId,
+          forkedFromWorkflowId: source.id,
+          forkedFromVersion: source.version,
+        },
         select: WORKFLOW_SELECT,
       })
     },

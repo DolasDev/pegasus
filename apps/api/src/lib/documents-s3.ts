@@ -9,7 +9,12 @@
 // HTTP response body.
 // ---------------------------------------------------------------------------
 
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  CopyObjectCommand,
+} from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 /** Returns the configured documents bucket name, throwing if unset. */
@@ -92,4 +97,21 @@ export async function presignDownload(key: string): Promise<string> {
   return getSignedUrl(client(), new GetObjectCommand({ Bucket: documentsBucketName(), Key: key }), {
     expiresIn: 5 * 60,
   })
+}
+
+/**
+ * Server-side copy of an object within the documents bucket. Used by the
+ * workflow fork flow to duplicate a GLOBAL artifact under a tenant-owned key
+ * without round-tripping the bytes through the API. Both keys live in the
+ * same bucket; `CopySource` is `${bucket}/${srcKey}` per the S3 contract.
+ */
+export async function copyObject(srcKey: string, destKey: string): Promise<void> {
+  const bucket = documentsBucketName()
+  await client().send(
+    new CopyObjectCommand({
+      Bucket: bucket,
+      CopySource: `${bucket}/${srcKey}`,
+      Key: destKey,
+    }),
+  )
 }
