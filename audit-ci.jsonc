@@ -6,25 +6,15 @@
   // Advisories listed here are explicitly accepted. Each entry MUST have a tracking note
   // explaining why it's safe and when it can be removed.
   "allowlist": [
-    // fast-uri path traversal + host confusion. Reachable only via `aws-cdk-lib`'s bundled
-    // `ajv` (used by `table` for CLI output formatting at synth time). Not on any Lambda
-    // runtime path. aws-cdk-lib uses bundleDependencies, so npm `overrides` cannot patch
-    // the bundled copy — must wait for an upstream CDK release that rebundles a patched
-    // fast-uri. Re-check after each aws-cdk-lib bump and remove these entries when clean.
-    "GHSA-q3j6-qgpj-74h6",
-    "GHSA-v39h-62p7-jpjc",
-
-    // "Malware in @tanstack/history" (GHSA-rmmr-r34h-pfm5). On 2026-05-11 an attacker
-    // published malicious patch versions @tanstack/history@1.161.9 and 1.161.12; both have
-    // since been unpublished (404 in the registry). The advisory carries range "*" /
-    // fixAvailable:false while the incident is hot, so it flags every version including the
-    // legitimate one. Our lockfile pins @tanstack/history@1.161.6 (published 2026-03-15,
-    // pre-incident, still live in the registry), and @tanstack/react-router@1.169.2 +
-    // @tanstack/router-core@1.169.2 both pin history to *exactly* 1.161.6 — so resolution
-    // cannot drift to a malicious version. We do not ship the malware.
-    // Remove this entry once the advisory is narrowed to exclude 1.161.6, or once TanStack
-    // ships a clean react-router that the advisory marks as fixed. Re-verify the lockfile
-    // still resolves history to 1.161.6 (or a later registry-published version) before then.
-    "GHSA-rmmr-r34h-pfm5"
+    // GHSA-qjx8-664m-686j — js-cookie@2.2.1, pulled in only via
+    // apps/mobile -> amazon-cognito-identity-js@6.3.16 -> js-cookie (^2.2.1).
+    // Not reachable: the advisory is a browser cookie-parsing/XSS issue, and
+    // apps/mobile is React Native — amazon-cognito-identity-js uses AsyncStorage
+    // there, not document.cookie, so the vulnerable js-cookie path is dead code.
+    // No safe transitive bump exists yet (cognito SDK still pins js-cookie ^2.x).
+    // REMOVE once amazon-cognito-identity-js ships a release using js-cookie >=3,
+    // or replace with an npm `overrides` pin (regenerate the lockfile on the
+    // pinned npm@10.8.2 toolchain).
+    "GHSA-qjx8-664m-686j"
   ]
 }

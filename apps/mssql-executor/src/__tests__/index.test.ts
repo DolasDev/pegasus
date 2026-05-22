@@ -28,13 +28,57 @@ describe('mssql-executor', () => {
   beforeEach(() => {
     queryMock.mockReset()
     inputMock.mockReset()
-    queryMock.mockResolvedValue({ recordset: [{ max: '1.3.7' }], rowsAffected: [1] })
+    queryMock.mockResolvedValue({
+      recordset: [{ max: '1.3.7' }],
+      recordsets: [[{ max: '1.3.7' }]],
+      rowsAffected: [1],
+    })
   })
 
   it('runs the query and returns the recordset', async () => {
     const res = await execute({ connectionString: 'Server=a,1433', sql: 'SELECT 1' })
-    expect(res).toEqual({ ok: true, recordset: [{ max: '1.3.7' }], rowsAffected: [1] })
+    expect(res).toEqual({
+      ok: true,
+      recordset: [{ max: '1.3.7' }],
+      recordsets: [[{ max: '1.3.7' }]],
+      rowsAffected: [1],
+    })
     expect(queryMock).toHaveBeenCalledWith('SELECT 1')
+  })
+
+  it('surfaces all statement result sets for a multi-statement batch', async () => {
+    const tripRow = { id: 42, TripStatus_id: 1 }
+    const activityRow = { id: 9, TripMaster_id: 42 }
+    const noteRow = { id: 7, tripId: 42, note: 'hi' }
+    queryMock.mockResolvedValueOnce({
+      // mssql gives both: recordset = first set; recordsets = full breakdown.
+      recordset: [tripRow],
+      recordsets: [[tripRow], [activityRow], [noteRow]],
+      rowsAffected: [1, 1, 1],
+    })
+
+    const res = await execute({
+      connectionString: 'Server=multi,1433',
+      sql: 'SELECT 1; SELECT 2; SELECT 3;',
+    })
+
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    // `recordset` stays the FIRST set (backward compatibility for the 12
+    // existing single-statement cloud handlers).
+    expect(res.recordset).toEqual([tripRow])
+    // `recordsets` carries every statement's rows in order.
+    expect(res.recordsets).toEqual([[tripRow], [activityRow], [noteRow]])
+  })
+
+  it('falls back to wrapping recordset when the driver does not expose recordsets', async () => {
+    // Defensive: an older mssql build (or a partial mock) may only return
+    // `recordset`. The executor should still populate `recordsets`.
+    queryMock.mockResolvedValueOnce({ recordset: [{ a: 1 }], rowsAffected: [1] })
+    const res = await execute({ connectionString: 'Server=fallback,1433', sql: 'SELECT 1' })
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    expect(res.recordsets).toEqual([[{ a: 1 }]])
   })
 
   it('binds named parameters via request.input', async () => {
