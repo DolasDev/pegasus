@@ -47,13 +47,63 @@ test('GET /api/v1/longhaul/trips returns trips list', async ({ apiFetch }) => {
   expect(typeof body.meta.count).toBe('number')
 })
 
-test('GET /api/v1/longhaul/trips with filters returns filtered results', async ({ apiFetch }) => {
+test('GET /api/v1/longhaul/trips with filters.id narrows the result to that trip', async ({
+  apiFetch,
+}) => {
+  // Regression for Phase 3.1: the UI sends the whole TripQuery in `?filters=`.
+  // Earlier the cloud handler read it flat and silently dropped filters.id,
+  // returning all trips. Pick a real trip id from the unfiltered list, then
+  // refetch with the realistic wire shape and assert we get exactly that row.
   const fetch = longhaulFetch(apiFetch)
-  const filters = JSON.stringify({ TripStatus_id: 1 })
-  const res = await fetch(`/api/v1/longhaul/trips?filters=${encodeURIComponent(filters)}`)
-  expect(res.status).toBe(200)
-  const body = await res.json()
-  expect(Array.isArray(body.data)).toBe(true)
+  const listRes = await fetch('/api/v1/longhaul/trips')
+  expect(listRes.status).toBe(200)
+  const list = await listRes.json()
+  expect(Array.isArray(list.data)).toBe(true)
+  if (list.data.length === 0) {
+    test.skip(true, 'Planning DB has no trips — cannot exercise filters.id')
+    return
+  }
+  const tripId = String(list.data[0].id)
+
+  const wireQuery = JSON.stringify({
+    searchTerm: '',
+    filters: { id: tripId },
+    sortBy: { value: 'planned_first_day', order: 'desc' },
+  })
+  const filteredRes = await fetch(
+    `/api/v1/longhaul/trips?filters=${encodeURIComponent(wireQuery)}`,
+  )
+  expect(filteredRes.status).toBe(200)
+  const filtered = await filteredRes.json()
+  expect(Array.isArray(filtered.data)).toBe(true)
+  expect(filtered.data.length).toBe(1)
+  expect(String(filtered.data[0].id)).toBe(tripId)
+})
+
+test('GET /api/v1/longhaul/trips/:id returns the trip with notes/activities/shipments arrays', async ({
+  apiFetch,
+}) => {
+  // Regression for Phase 3.1: the cloud handler used to read only the first
+  // statement's recordset from a multi-statement batch and silently dropped
+  // the child collections. Assert each is at least an array; the QA suite
+  // covers populated-content assertions against the seeded planning DB.
+  const fetch = longhaulFetch(apiFetch)
+  const listRes = await fetch('/api/v1/longhaul/trips')
+  expect(listRes.status).toBe(200)
+  const list = await listRes.json()
+  if (list.data.length === 0) {
+    test.skip(true, 'Planning DB has no trips — cannot exercise /trips/:id')
+    return
+  }
+  const tripId = list.data[0].id
+  const detailRes = await fetch(`/api/v1/longhaul/trips/${tripId}`)
+  expect(detailRes.status).toBe(200)
+  const detail = await detailRes.json()
+  expect(detail.data).toBeDefined()
+  expect(detail.data.id).toBe(tripId)
+  expect(Array.isArray(detail.data.notes)).toBe(true)
+  expect(Array.isArray(detail.data.activities)).toBe(true)
+  expect(Array.isArray(detail.data.shipments)).toBe(true)
 })
 
 test('GET /api/v1/longhaul/trips/:id returns 404 for non-existent trip', async ({ apiFetch }) => {

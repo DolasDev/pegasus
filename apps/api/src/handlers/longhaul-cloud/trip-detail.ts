@@ -19,6 +19,14 @@
 //         trip's distinct order_nums, also a single multi-statement batch.
 //         Skipped entirely when the trip has no shipment-bearing activities.
 //
+// Multi-statement result handling: the mssql-executor surfaces every statement
+// in the batch via `recordsets[i]`. We slice by index, NOT by marker columns
+// — an earlier version partitioned a flattened single recordset on marker
+// columns (`TripMaster_id`, `tripId`, etc.), but `result.recordset` carries
+// only the FIRST statement's rows under the `mssql` package's API. That
+// silently dropped activities / notes / coverage / extra-locations from the
+// response. Reading `recordsets` by index is the only correct approach.
+//
 // The response shape matches the on-prem handler exactly: `{ data: <trip> }`
 // with embedded `activities`, `notes`, and `shipments` (each shipment carries
 // `activities` filtered to this trip, `packing_coverage`, `extra_locations`).
@@ -34,6 +42,7 @@ import { logger } from '../../lib/logger'
 type Row = Record<string, unknown>
 
 // RT1: trip header (6 LEFT JOINs, mirrors findTripById), activities, notes.
+// Three statements → recordsets[0] = header rows, [1] = activities, [2] = notes.
 const TRIP_BUNDLE_SQL = `
 SELECT t.*,
        ts.status AS status_status,
@@ -68,7 +77,11 @@ WHERE a.TripMaster_id = @id;
 SELECT * FROM TripNotes WHERE tripId = @id;
 `
 
-/** RT2: shipments + their activities + coverage + extra locations, batched by order_num. */
+/**
+ * RT2: shipments + their activities + coverage + extra locations, batched by
+ * order_num. Four statements → recordsets[0] = shipments, [1] = activities,
+ * [2] = packing coverage, [3] = extra locations.
+ */
 function buildShipmentBundleSql(orderNums: number[]): string {
   const inList = orderNums.map((_, i) => `@on${i}`).join(', ')
   return `
@@ -123,13 +136,14 @@ export const longhaulTripDetailHandler: Handler<AppEnv> = async (c) => {
 
   try {
     // RT1 — trip header + activities + notes in one multi-statement batch.
-    // The executor concatenates recordsets in statement order; we slice them
-    // back apart by the row shapes we know each SELECT returns.
-    const bundle = await executeSql(connectionString, TRIP_BUNDLE_SQL, {
+    const tripBundle = await executeSql(connectionString, TRIP_BUNDLE_SQL, {
       params: [{ name: 'id', value: id }],
     })
-    const { trip, activities, notes } = splitTripBundle(bundle.recordset as Row[], id)
+    const tripRows = (tripBundle.recordsets[0] ?? []) as Row[]
+    const activities = (tripBundle.recordsets[1] ?? []) as Row[]
+    const notes = (tripBundle.recordsets[2] ?? []) as Row[]
 
+    const trip = tripRows[0]
     if (!trip) {
       return c.json(
         { error: 'Trip not found', code: 'NOT_FOUND', correlationId: c.get('correlationId') },
@@ -149,7 +163,13 @@ export const longhaulTripDetailHandler: Handler<AppEnv> = async (c) => {
       const shipBundle = await executeSql(connectionString, buildShipmentBundleSql(orderNums), {
         params,
       })
-      shipments = assembleShipments(shipBundle.recordset as Row[], orderNums, id)
+      shipments = assembleShipments(
+        (shipBundle.recordsets[0] ?? []) as Row[],
+        (shipBundle.recordsets[1] ?? []) as Row[],
+        (shipBundle.recordsets[2] ?? []) as Row[],
+        (shipBundle.recordsets[3] ?? []) as Row[],
+        id,
+      )
     }
 
     return c.json({ data: { ...trip, activities, notes, shipments } })
@@ -167,65 +187,21 @@ export const longhaulTripDetailHandler: Handler<AppEnv> = async (c) => {
 }
 
 // ---------------------------------------------------------------------------
-// Recordset splitters
+// Shipment assembly
 //
-// The mssql-executor flattens a multi-statement batch into one `recordset`
-// array. We can't see statement boundaries directly, so we partition rows by
-// the marker columns each SELECT uniquely produces:
-//   - trip row     → carries `TripStatus_id` (a TripMaster column)
-//   - activity row → carries `TripMaster_id`
-//   - note row     → carries `tripId`
-// The shipment bundle is partitioned the same way against its four SELECTs.
+// Each child collection (activities, coverage, extra-locations) arrives as its
+// own recordset. We group by `order_num` and attach to each shipment. A
+// shipment's embedded activities are filtered to those on THIS trip — matching
+// the on-prem handler's behavior.
 // ---------------------------------------------------------------------------
 
-interface SplitTripBundle {
-  trip: Row | null
-  activities: Row[]
-  notes: Row[]
-}
-
-function splitTripBundle(rows: Row[], tripId: number): SplitTripBundle {
-  let trip: Row | null = null
-  const activities: Row[] = []
-  const notes: Row[] = []
-
-  for (const row of rows) {
-    if ('TripMaster_id' in row) {
-      activities.push(row)
-    } else if ('tripId' in row && !('TripStatus_id' in row)) {
-      notes.push(row)
-    } else if (Number(row['id']) === tripId && 'TripStatus_id' in row) {
-      trip = row
-    }
-  }
-
-  return { trip, activities, notes }
-}
-
-function assembleShipments(rows: Row[], orderNums: number[], tripId: number): Row[] {
-  const orderSet = new Set(orderNums)
-
-  // A shipment row is the only one of the four SELECTs that lacks all of the
-  // activity / coverage / extra-location marker columns. Activities carry
-  // `TripMaster_id`; coverage rows carry `activity_code`; extra-location rows
-  // carry `location_type`. Everything else with an `order_num` is a shipment.
-  const shipments: Row[] = []
-  const activities: Row[] = []
-  const coverages: Row[] = []
-  const extraLocations: Row[] = []
-
-  for (const row of rows) {
-    if ('TripMaster_id' in row) {
-      activities.push(row)
-    } else if ('activity_code' in row) {
-      coverages.push(row)
-    } else if ('location_type' in row) {
-      extraLocations.push(row)
-    } else if (orderSet.has(Number(row['order_num']))) {
-      shipments.push(row)
-    }
-  }
-
+function assembleShipments(
+  shipments: Row[],
+  activities: Row[],
+  coverages: Row[],
+  extraLocations: Row[],
+  tripId: number,
+): Row[] {
   const activitiesByOrder = groupBy(activities, 'order_num')
   const extraByOrder = groupBy(extraLocations, 'order_num')
   const coverageByOrder: Record<number, Row> = {}
@@ -237,8 +213,6 @@ function assembleShipments(rows: Row[], orderNums: number[], tripId: number): Ro
     const on = s['order_num'] as number
     return {
       ...s,
-      // Mirror the on-prem handler: a shipment's embedded activities are
-      // filtered down to those on THIS trip.
       activities: (activitiesByOrder[on] ?? []).filter((a) => a['TripMaster_id'] === tripId),
       packing_coverage: coverageByOrder[on] ?? null,
       extra_locations: extraByOrder[on] ?? [],

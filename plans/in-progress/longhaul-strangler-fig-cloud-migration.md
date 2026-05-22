@@ -160,31 +160,132 @@ one PR and should be mechanical:
 
 One PR per endpoint. Start with low-volume single-query reads, escalate to multi-query reads (trip detail, planning). The order is judgment-based; prioritise endpoints whose on-prem version is slow today or whose query refactor is genuinely valuable independent of the migration.
 
-### Phase 3 results (2026-05-19 — PRs #117–#133)
+### Phase 3 results (2026-05-19 — PRs #117–#137)
 
 All 14 longhaul GET endpoints reachable via `/onprem/longhaul/*` were migrated
 cloud-direct (one PR each, #117–#130), then verified against QA via the
-`e2e-qa-longhaul` suite. The suite caught a regression and forced two
-corrections:
+`e2e-qa-longhaul` suite. The suite forced two rounds of corrections:
 
 - **Multi-tenancy broke `getLonghaulClientConfig()`.** Three handlers
   (`/dispatchers`, `/filter-options`, `/shipments`) resolved per-client query
   config from the `LONGHAUL_CLIENT` env var — fine on the single-client on-prem
-  server, but the cloud API Lambda is multi-tenant and has no correct value, so
-  those handlers 500'd (`/shipments` only on the `Is_Trip_Planning` path, which
-  its `@smoke` test didn't exercise — it slipped per-PR review).
-- **Reverted, then re-fixed.** #131 + #132 reverted those three route mounts to
-  the on-prem proxy (the plan's per-endpoint escape hatch). #133 added a
-  per-tenant `Tenant.longhaulClient` column (`'nwi' | 'qmm'`), switched the
-  three handlers to `getLonghaulClientConfigFor(tenant.longhaulClient)`, and
-  re-mounted them cloud-direct. Migration backfills existing longhaul tenants
-  to `'nwi'`; QMM tenants must be set via the admin API.
+  server, but the cloud API Lambda is multi-tenant. They 500'd. #131 + #132
+  reverted; **#133 fixed forward**: added a per-tenant `Tenant.longhaulClient`
+  column (`'nwi' | 'qmm'`), switched the three handlers to
+  `getLonghaulClientConfigFor(tenant.longhaulClient)`, and re-mounted them.
+  Migration `20260519140000_add_tenant_longhaul_client` backfills tenants with
+  an MSSQL connection string to `'nwi'`; QMM tenants must be set via admin.
+- **Two `/trips` handlers had real query bugs.** Caught by the reseeded e2e run
+  (run `26122208543`, 50 pass / 5 fail) — see Phase 3.1 below. Reverted in #137.
 
-End state: all 14 read endpoints served cloud-direct. The 11 non-client-config
-endpoints went green immediately; the 3 client-config endpoints went green
-after #133. QA `e2e-qa-longhaul` is the verification of record (run it after a
-known-good DB reseed — the suite's `@qa-mutating` tests pollute the planning DB
-across runs).
+**End state: 12 of 14 read endpoints cloud-direct; 2 reverted to the proxy.**
+The reverted handler files remain under `apps/api/src/handlers/longhaul-cloud/`
+with their unit tests, ready to re-mount once their bugs are fixed.
+
+QA `e2e-qa-longhaul` is the verification of record. **Reseed the QA planning
+DB from the known-good snapshot before each run, and do not chain runs** — the
+suite's `@qa-mutating` tests (POST /trips, POST /activities, PATCH /shipments,
+POST /trips/:id/notes) pollute the planning DB.
+
+## Phase 3.1 — fix-forward `/trips` and `/trips/:id`
+
+Two migrated read endpoints were reverted in #137 because their cloud-direct
+handlers had real query bugs. Their `@smoke` API tests only checked response
+_shape_ (`{ data }` defined), so the bugs passed per-PR. Fix the handlers,
+tighten the specs, re-mount.
+
+### Bug 1 — `GET /trips/:id` drops trip child collections
+
+**Handler:** `apps/api/src/handlers/longhaul-cloud/trip-detail.ts` (from #129).
+
+**Symptom:** the trip is returned, but `trip.notes`, `trip.activities`, and
+`trip.shipments` are missing/empty even when the underlying tables have rows.
+
+**Evidence (run `26122208543`, against a freshly reseeded QA DB):**
+
+- `apps/e2e/tests/api/longhaul-qa.spec.ts:520` `POST /trips/:id/notes → PATCH /notes/:id` — POSTs a note via the proxied write path, then reads via cloud-direct `/trips/:id`; `trip.notes.find(n => n.note === marker)` is `undefined`.
+- `apps/e2e/tests/api/longhaul-qa.spec.ts:563` `POST /activities then GET /activities reflects it` — POSTs a trip with generated activities, then reads `/trips/:id`; `trip.activities.length === 0`.
+- `apps/e2e/tests/browser/longhaul/trip-detail.spec.ts:62` `renders the activity Gantt @smoke` — Gantt locator is `hidden` (no activities to render).
+- `apps/e2e/tests/browser/longhaul/trip-detail.spec.ts:74` `clicking a trip shipment opens the ShipmentDetail pane` — no shipment on the trip to click.
+
+**Root cause to investigate:** the handler collapses the on-prem ~8-query
+trip+shipment fan-out into "1–2 batched mssql-executor round trips" by issuing
+a multi-statement SELECT and "partitioning rows back apart by each SELECT's
+marker columns" (see the file's header comment and the PR #129 description).
+That partitioning is dropping the child rows. Look at how the batched SQL
+distinguishes the trip row from the notes/activities/shipments rows, and how
+the handler buckets them into the response — that's where the bug lives.
+
+**Re-implementation options to consider:**
+
+- Verify the marker-column scheme: every child row from every SELECT in the
+  batch must be tagged with something the handler reads, and the bucket logic
+  must handle empty collections.
+- Or switch to a simpler model: one query for the trip header (with its JOINs),
+  one for `WHERE TripMaster_id = @id` against each child table, in parallel via
+  the executor (still 2–3 round trips, no partitioning logic).
+- Either way, decide first what shape the response needs (read the on-prem
+  handler in `apps/api/src/handlers/longhaul/trips.ts` for the `GET /trips/:id`
+  route — that's the source of truth — and match the embedded `notes`,
+  `activities`, `shipments` exactly, including each shipment's per-trip
+  filtered `activities` / `coverage` / `extra_locations`).
+
+### Bug 2 — `GET /trips` ignores `filters.id`
+
+**Handler:** `apps/api/src/handlers/longhaul-cloud/trips-list.ts` (from #126).
+
+**Symptom:** the UI's "filter by Trip Id" passes `filters: { id: [...] }` in
+the `filters` query param; the handler returns all matching rows ignoring the
+filter (test `trips.spec.ts:95` got 100 rows where 1 was expected).
+
+**Where to look:** the filter-building section of `trips-list.ts` — confirm
+the `id` branch is present and binds the id value(s) into the WHERE. The
+handler claims to support id/driver_id/origin/destination/zones/etc. per the
+on-prem repo. Compare against the on-prem implementation:
+`apps/api/src/repositories/longhaul/trips.repository.ts` (`findTripsWithQuery`
+or equivalent) for the exact shape of the id filter (single-value? list?
+the query param uses `[{ value: ... }]` shape per the UI).
+
+### Specs to tighten (must catch these bugs going forward)
+
+In `apps/e2e/tests/api/longhaul-qa.spec.ts`:
+
+- The `GET /trips/:id @smoke` test (around line 297) must assert that when the
+  trip has child rows, the response has populated `activities` (and `notes`
+  if the test pre-creates one). Pick a known-good trip id from the seed.
+- The `GET /trips with a filters query param` test (around line 276) must
+  pick a real trip id from `GET /trips` first, then `GET /trips?filters={id:[{value:<id>}]}`
+  and assert the result narrows to that one trip (`data.length === 1` and
+  `data[0].id === <id>`). The current test is documented as "(possibly
+  filtered)" — loosen-by-design — which is precisely what let the bug through.
+
+### Workflow
+
+One PR per endpoint (Phase 3's per-endpoint discipline). For each:
+
+1. Re-implement the handler correctly. Cover the bug with a unit test that
+   would have failed before (mock the executor recordsets so the missing
+   child collections / dropped filter are exposed).
+2. Tighten the `@smoke` spec as above.
+3. Re-mount the route in `apps/api/src/app.ts` (the comment block above
+   `v1.get('/onprem/longhaul/driver-planning', ...)` notes both endpoints are
+   intentionally unmounted; delete it and add the two `v1.get(...)` lines
+   back, alongside their re-imports).
+4. Verify locally: `npm run typecheck`; `npm test -w apps/api`.
+5. Merge → CI deploys → reseed the QA DB → run `e2e-qa-longhaul` once → confirm
+   all five Phase-3.1 failures (`longhaul-qa.spec.ts:520`, `:563`,
+   `trip-detail.spec.ts:62`, `:74`, `trips.spec.ts:95`) pass.
+
+Once both are re-mounted and verified, **all 14 reads are cloud-direct** and
+Phase 3 is fully complete.
+
+### Open items unrelated to /trips
+
+Two `@qa-mutating` write tests that have been failing intermittently —
+`apps/e2e/tests/api/longhaul-qa.spec.ts:520` (notes round-trip) and `:563`
+(activities round-trip) — will _also_ recover once `/trips/:id` is fixed,
+since they assert via the same cloud-direct `GET /trips/:id` response. No
+separate work needed.
 
 ## Phase 4 — migrate writes
 

@@ -12,7 +12,16 @@
 //   { connectionString, sql, params?: { name, value }[], timeoutMs? }
 //
 // Response:
-//   { ok: true, recordset, rowsAffected } | { ok: false, code, error }
+//   { ok: true, recordset, recordsets, rowsAffected } | { ok: false, code, error }
+//
+// `recordset` is the FIRST result set only (preserved for backward
+// compatibility with the 12 single-statement cloud handlers shipped in Phase 3).
+// `recordsets` is the full statement-by-statement breakdown returned by the
+// `mssql` package: `recordsets[i]` is the rows produced by statement `i` of a
+// multi-statement SQL batch. For single-statement queries this is
+// `[recordset]`. Handlers issuing multi-statement batches MUST read
+// `recordsets` (an earlier version of the trip-detail handler relied on
+// `recordset` alone and silently dropped child collections — see Phase 3.1).
 //
 // Connection pools are cached on the execution context keyed by connection
 // string, so warm invocations skip the TDS handshake (Phase 0 measured
@@ -38,7 +47,14 @@ export interface MssqlExecRequest {
 export type MssqlExecErrorCode = 'BAD_REQUEST' | 'QUERY_FAILED'
 
 export type MssqlExecResponse =
-  | { ok: true; recordset: unknown[]; rowsAffected: number[] }
+  | {
+      ok: true
+      /** First result set only — kept for backward compatibility. */
+      recordset: unknown[]
+      /** All result sets in statement order. `[recordset]` for single-statement queries. */
+      recordsets: unknown[][]
+      rowsAffected: number[]
+    }
   | { ok: false; code: MssqlExecErrorCode; error: string }
 
 const DEFAULT_TIMEOUT_MS = 15_000
@@ -77,13 +93,21 @@ export async function execute(event: MssqlExecRequest): Promise<MssqlExecRespons
     for (const p of event.params ?? []) request.input(p.name, p.value)
 
     const result = await request.query(event.sql)
+    // `mssql` exposes `recordsets` (plural) for multi-statement batches; for
+    // a single SELECT, it's `[recordset]`. Some mocks (and a defensive null
+    // path) only expose `recordset` — fall back to wrapping that.
+    const recordset = result.recordset ?? []
+    const recordsets =
+      (result as { recordsets?: unknown[][] }).recordsets ?? (recordset ? [recordset] : [])
     log('info', 'mssql_exec_ok', {
       durationMs: Date.now() - startedAt,
-      rowCount: result.recordset?.length ?? 0,
+      rowCount: recordset.length,
+      statementCount: recordsets.length,
     })
     return {
       ok: true,
-      recordset: result.recordset ?? [],
+      recordset,
+      recordsets,
       rowsAffected: result.rowsAffected ?? [],
     }
   } catch (err) {

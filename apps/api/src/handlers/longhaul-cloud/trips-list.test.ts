@@ -5,6 +5,12 @@
 // Postgres or the executor Lambda. The key round-trip-discipline assertion is
 // that executeSql is called EXACTLY ONCE — the on-prem repo made two calls
 // (trips list + a separate TripNotes fetch); this handler collapses them.
+//
+// Regression coverage (Phase 3.1): the UI sends the entire TripQuery
+// (`{ searchTerm, filters: {...}, sortBy: {...} }`) URL-encoded into the
+// `?filters=` param — NOT a flat filter object. The handler must read
+// `parsed.filters` and `parsed.sortBy`. The filter / sortBy tests below send
+// the realistic wire payload to keep that contract honest.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
@@ -89,15 +95,21 @@ describe('GET longhaul/trips (cloud-direct LIST)', () => {
     findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
     executeSqlMock.mockResolvedValue({ recordset: [], rowsAffected: [] })
 
-    const filters = JSON.stringify({
-      id: '42',
-      driver_id: { label: 'Joe', value: 5 },
-      TripStatus_id: [{ value: 1 }, { value: 2 }],
-      internal_status: [{ value: 'active' }],
-      weight: [1000, 5000],
+    // Realistic wire shape: the UI sends the WHOLE TripQuery (with `filters`
+    // nested) URL-encoded into the `?filters=` param.
+    const query = JSON.stringify({
+      searchTerm: '',
+      filters: {
+        id: '42',
+        driver_id: { label: 'Joe', value: 5 },
+        TripStatus_id: [{ value: 1 }, { value: 2 }],
+        internal_status: [{ value: 'active' }],
+        weight: [1000, 5000],
+      },
+      sortBy: { value: 'planned_first_day', order: 'desc' },
     })
     const res = await buildApp().request(
-      `/onprem/longhaul/trips?filters=${encodeURIComponent(filters)}`,
+      `/onprem/longhaul/trips?filters=${encodeURIComponent(query)}`,
     )
 
     expect(res.status).toBe(200)
@@ -120,6 +132,68 @@ describe('GET longhaul/trips (cloud-direct LIST)', () => {
     expect(values).toContain('active')
     expect(values).toContain(1000)
     expect(values).toContain(5000)
+  })
+
+  it('regression: applies filters.id from the nested wire shape (Phase 3.1)', async () => {
+    // This is the test that would have caught the original bug: the UI sends
+    // `?filters={"filters":{"id":"42"}}`, NOT `?filters={"id":"42"}`. The
+    // handler must drill into `parsed.filters.id`.
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    executeSqlMock.mockResolvedValue({ recordset: [], rowsAffected: [] })
+
+    const query = JSON.stringify({
+      searchTerm: '',
+      filters: { id: '42' },
+      sortBy: { value: 'planned_first_day', order: 'desc' },
+    })
+    const res = await buildApp().request(
+      `/onprem/longhaul/trips?filters=${encodeURIComponent(query)}`,
+    )
+
+    expect(res.status).toBe(200)
+    const [, sql, opts] = executeSqlMock.mock.calls[0] as [
+      string,
+      string,
+      { params: Array<{ name: string; value: unknown }> },
+    ]
+    expect(sql).toContain('TripMaster.id = @p0')
+    expect(opts.params.map((p) => p.value)).toContain('42')
+  })
+
+  it('regression: applies sortBy from the nested wire shape (Phase 3.1)', async () => {
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    executeSqlMock.mockResolvedValue({ recordset: [], rowsAffected: [] })
+
+    const query = JSON.stringify({
+      searchTerm: '',
+      filters: {},
+      sortBy: { value: 'planned_first_day', order: 'desc' },
+    })
+    const res = await buildApp().request(
+      `/onprem/longhaul/trips?filters=${encodeURIComponent(query)}`,
+    )
+
+    expect(res.status).toBe(200)
+    const [, sql] = executeSqlMock.mock.calls[0] as [string, string, unknown]
+    // ORDER BY is built from the whitelisted column + direction.
+    expect(sql).toContain('ORDER BY TripMaster.planned_first_day DESC')
+  })
+
+  it('ignores a sortBy whose column is not in the whitelist', async () => {
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    executeSqlMock.mockResolvedValue({ recordset: [], rowsAffected: [] })
+
+    const query = JSON.stringify({
+      filters: {},
+      sortBy: { value: 'password_hash; DROP TABLE TripMaster--', order: 'desc' },
+    })
+    const res = await buildApp().request(
+      `/onprem/longhaul/trips?filters=${encodeURIComponent(query)}`,
+    )
+
+    expect(res.status).toBe(200)
+    const [, sql] = executeSqlMock.mock.calls[0] as [string, string, unknown]
+    expect(sql).not.toContain('ORDER BY')
   })
 
   it('returns 400 for malformed filters JSON', async () => {
