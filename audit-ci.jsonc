@@ -6,14 +6,6 @@
   // Advisories listed here are explicitly accepted. Each entry MUST have a tracking note
   // explaining why it's safe and when it can be removed.
   "allowlist": [
-    // fast-uri path traversal + host confusion. Reachable only via `aws-cdk-lib`'s bundled
-    // `ajv` (used by `table` for CLI output formatting at synth time). Not on any Lambda
-    // runtime path. aws-cdk-lib uses bundleDependencies, so npm `overrides` cannot patch
-    // the bundled copy — must wait for an upstream CDK release that rebundles a patched
-    // fast-uri. Re-check after each aws-cdk-lib bump and remove these entries when clean.
-    "GHSA-q3j6-qgpj-74h6",
-    "GHSA-v39h-62p7-jpjc",
-
     // "Malware in @tanstack/history" (GHSA-rmmr-r34h-pfm5). On 2026-05-11 an attacker
     // published malicious patch versions @tanstack/history@1.161.9 and 1.161.12; both have
     // since been unpublished (404 in the registry). The advisory carries range "*" /
