@@ -63,6 +63,7 @@ jobs:
             api:
               - 'apps/api/**'
               - 'apps/tunnel-proxy/**'
+              - 'apps/mssql-executor/**'
               - 'packages/domain/**'
             tenant_web:
               - 'apps/tenant-web/**'
