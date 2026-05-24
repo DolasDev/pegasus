@@ -36,6 +36,7 @@ import { longhaulShipmentFiltersDefaultHandler } from './handlers/longhaul-cloud
 import { longhaulShipmentFiltersHandler } from './handlers/longhaul-cloud/shipment-filters'
 import { longhaulTripsListHandler } from './handlers/longhaul-cloud/trips-list'
 import { longhaulDriverPlanningHandler } from './handlers/longhaul-cloud/driver-planning'
+import { longhaulTripDetailHandler } from './handlers/longhaul-cloud/trip-detail'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -260,18 +261,16 @@ v1.get('/onprem/longhaul/trips', longhaulTripsListHandler)
 // Phase 3: /driver-planning is served cloud-direct — one OUTER APPLY query
 // collapses the on-prem repo's ~5 MSSQL round trips into 1-2.
 v1.get('/onprem/longhaul/driver-planning', longhaulDriverPlanningHandler)
-// Phase 3.1: GET /trips/:id is NOT mounted cloud-direct — it falls through to
-// the /onprem wildcard proxy below. The cloud handler depends on the
-// mssql-executor returning per-statement `recordsets`, but the executor Lambda
-// (CDK-bundled in WireGuardStack) was not in deploy.yml's path filter, so the
-// Phase 3.1 push deployed this handler WITHOUT the executor change it needs —
-// `recordsets` was undefined and the handler 500'd on every trip in QA
-// (e2e-qa-longhaul runs 26303282682 + 26303965791, longhaul-qa.spec.ts:297).
-// Reverted to the proxy per the strangler-fig escape hatch (as in #137). The
-// handler stays in longhaul-cloud/ ready to re-mount once the executor deploy
-// is confirmed (deploy filter fixed in the same change) and QA verifies green.
-// GET /trips (LIST) stays cloud-direct above — it is single-statement and
-// unaffected.
+// Phase 3.1: GET /trips/:id served cloud-direct — collapses the on-prem
+// handler's ~8-query trip+shipment fan-out into 1-2 batched mssql-executor
+// round trips. Originally landed in #129, reverted in #137 because the handler
+// partitioned a flattened `recordset` by marker columns — but the executor
+// only returned the FIRST statement's rows, so activities / notes / coverage
+// / extra-locations were silently dropped. Fixed: the executor now exposes
+// `recordsets[i]` (per-statement) and this handler reads each child collection
+// from its own recordset by index. The executor deploy is now guaranteed by
+// deploy.yml's `api` path filter (includes apps/mssql-executor/**, 8cbfafc).
+v1.get('/onprem/longhaul/trips/:id', longhaulTripDetailHandler)
 // Phase 3: GET /shipments LIST is served cloud-direct. Its Is_Trip_Planning
 // filter uses per-client import/export codes resolved from the tenant's
 // longhaulClient column. Write routes (POST/PATCH /shipments/*) still proxy.
