@@ -36,7 +36,6 @@ import { longhaulShipmentFiltersDefaultHandler } from './handlers/longhaul-cloud
 import { longhaulShipmentFiltersHandler } from './handlers/longhaul-cloud/shipment-filters'
 import { longhaulTripsListHandler } from './handlers/longhaul-cloud/trips-list'
 import { longhaulDriverPlanningHandler } from './handlers/longhaul-cloud/driver-planning'
-import { longhaulTripDetailHandler } from './handlers/longhaul-cloud/trip-detail'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -261,16 +260,18 @@ v1.get('/onprem/longhaul/trips', longhaulTripsListHandler)
 // Phase 3: /driver-planning is served cloud-direct — one OUTER APPLY query
 // collapses the on-prem repo's ~5 MSSQL round trips into 1-2.
 v1.get('/onprem/longhaul/driver-planning', longhaulDriverPlanningHandler)
-// Phase 3.1: GET /trips/:id served cloud-direct — collapses the on-prem
-// handler's ~8-query trip+shipment fan-out into 1-2 batched mssql-executor
-// round trips. Originally landed in #129, reverted in #137 because the handler
-// partitioned a flattened `recordset` by marker columns — but the executor
-// only returned the FIRST statement's rows, so activities / notes / coverage
-// / extra-locations were silently dropped. Fixed: the executor now exposes
-// `recordsets[i]` (per-statement) and this handler reads each child collection
-// from its own recordset by index. The executor deploy is now guaranteed by
-// deploy.yml's `api` path filter (includes apps/mssql-executor/**, 8cbfafc).
-v1.get('/onprem/longhaul/trips/:id', longhaulTripDetailHandler)
+// Phase 3.1: GET /trips/:id is NOT mounted cloud-direct — it falls through to
+// the /onprem wildcard proxy below. The re-mount in a79f14e (atop the executor
+// recordsets fix from #139, with the executor confirmed deployed to staging/QA)
+// STILL 500'd on every real trip in QA (e2e-qa-longhaul run 26370258587,
+// longhaul-qa.spec.ts:297/414/520/563 — all expected 200, got 500). So the
+// earlier deploy-skew theory was not the whole story: there is a genuine bug in
+// the cloud trip-detail handler or the executor's per-statement recordsets path
+// that only surfaces against real on-prem data (the unit tests mock the
+// executor and pass). Reverted to the proxy escape hatch again. The handler
+// stays in longhaul-cloud/ for re-mount once the 500 is root-caused against the
+// live QA executor. GET /trips (LIST) stays cloud-direct above — single-
+// statement and verified working.
 // Phase 3: GET /shipments LIST is served cloud-direct. Its Is_Trip_Planning
 // filter uses per-client import/export codes resolved from the tenant's
 // longhaulClient column. Write routes (POST/PATCH /shipments/*) still proxy.
