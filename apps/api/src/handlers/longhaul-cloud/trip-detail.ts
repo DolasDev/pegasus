@@ -15,9 +15,11 @@
 // this handler collapses the fan-out into two batched round trips:
 //
 //   RT1 — trip header + activities + notes in a single multi-statement batch.
-//   RT2 — shipments + their activities + coverage + extra locations for the
-//         trip's distinct order_nums, also a single multi-statement batch.
-//         Skipped entirely when the trip has no shipment-bearing activities.
+//   RT2 — shipments + their activities + coverage for the trip's distinct
+//         order_nums, in a single multi-statement batch. Extra locations are
+//         fetched alongside it as a SEPARATE, soft-failing query (the
+//         `pegasus_extra_location` table is absent on some tenants). Both are
+//         skipped entirely when the trip has no shipment-bearing activities.
 //
 // Multi-statement result handling: the mssql-executor surfaces every statement
 // in the batch via `recordsets[i]`. We slice by index, NOT by marker columns
@@ -78,9 +80,10 @@ SELECT * FROM TripNotes WHERE tripId = @id;
 `
 
 /**
- * RT2: shipments + their activities + coverage + extra locations, batched by
- * order_num. Four statements → recordsets[0] = shipments, [1] = activities,
- * [2] = packing coverage, [3] = extra locations.
+ * RT2: shipments + their activities + coverage, batched by order_num. Three
+ * statements → recordsets[0] = shipments, [1] = activities, [2] = packing
+ * coverage. Extra locations are deliberately NOT in this batch — see
+ * buildExtraLocationsSql.
  */
 function buildShipmentBundleSql(orderNums: number[]): string {
   const inList = orderNums.map((_, i) => `@on${i}`).join(', ')
@@ -101,9 +104,21 @@ LEFT JOIN v_longhaul_drivers drv ON a.assigned_driver_id = drv.driver_id
 WHERE a.order_num IN (${inList});
 
 SELECT * FROM longhaul_shipmentcoverage WHERE order_num IN (${inList});
-
-SELECT * FROM pegasus_extra_location WHERE order_num IN (${inList});
 `
+}
+
+/**
+ * Extra-locations lookup — run as its OWN single statement (not folded into the
+ * RT2 batch) so it can soft-fail. `pegasus_extra_location` does not exist on
+ * every tenant's DB; when absent the executor raises a query error. Batching it
+ * with the mandatory shipment/activity/coverage statements would abort the
+ * whole batch and 500 the trip. The caller catches the error and treats it as
+ * "no extra locations", mirroring the on-prem repo's `.catch(() => [])`
+ * (shipments.repository.ts) and the cloud shipments-list handler.
+ */
+function buildExtraLocationsSql(orderNums: number[]): string {
+  const inList = orderNums.map((_, i) => `@on${i}`).join(', ')
+  return `SELECT * FROM pegasus_extra_location WHERE order_num IN (${inList});`
 }
 
 export const longhaulTripDetailHandler: Handler<AppEnv> = async (c) => {
@@ -158,16 +173,26 @@ export const longhaulTripDetailHandler: Handler<AppEnv> = async (c) => {
 
     let shipments: Row[] = []
     if (orderNums.length > 0) {
-      // RT2 — shipments + their activities/coverage/extra-locations, batched.
+      // RT2 — shipments + their activities/coverage in one batch, with extra
+      // locations fetched in parallel as a separate, soft-failing query.
       const params: SqlParam[] = orderNums.map((on, i) => ({ name: `on${i}`, value: on }))
-      const shipBundle = await executeSql(connectionString, buildShipmentBundleSql(orderNums), {
-        params,
-      })
+      const [shipBundle, extraLocations] = await Promise.all([
+        executeSql(connectionString, buildShipmentBundleSql(orderNums), { params }),
+        executeSql(connectionString, buildExtraLocationsSql(orderNums), { params })
+          .then((r) => (r.recordsets[0] ?? []) as Row[])
+          .catch((err) => {
+            logger.warn('longhaul trip-detail extra_locations lookup failed; treating as empty', {
+              error: String(err),
+              tripId: id,
+            })
+            return [] as Row[]
+          }),
+      ])
       shipments = assembleShipments(
         (shipBundle.recordsets[0] ?? []) as Row[],
         (shipBundle.recordsets[1] ?? []) as Row[],
         (shipBundle.recordsets[2] ?? []) as Row[],
-        (shipBundle.recordsets[3] ?? []) as Row[],
+        extraLocations,
         id,
       )
     }

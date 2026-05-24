@@ -2,9 +2,10 @@
 // Unit tests for the cloud-direct longhaul `GET /trips/:id` handler.
 //
 // Prisma and the mssql-executor client are mocked so the test never touches
-// Postgres or the executor Lambda. The handler issues at most TWO executor
-// round trips (trip bundle, then shipment bundle) — these tests assert the
-// call count alongside the response shape.
+// Postgres or the executor Lambda. The handler issues up to THREE executor
+// round trips — the trip bundle, then (in parallel) the shipment bundle and a
+// separate soft-failing extra-locations query — these tests assert the call
+// count alongside the response shape.
 //
 // Regression coverage (Phase 3.1): the handler now reads `recordsets[i]`
 // (per-statement) from the executor instead of partitioning a flattened
@@ -69,8 +70,8 @@ describe('GET longhaul/trips/:id (cloud-direct)', () => {
       recordsets: [[tripRow], [activityRow], [noteRow]],
       rowsAffected: [],
     })
-    // RT2: 4-statement batch → recordsets[0..3] = shipments / activities /
-    // coverage / extra-locations.
+    // RT2: shipment bundle (3 statements) → recordsets[0..2] = shipments /
+    // activities / coverage. Extra locations come from a SEPARATE query.
     const shipmentRow = { order_num: 1001, shipper_name: 'Acme' }
     const shipActivityThisTrip = { id: 9, TripMaster_id: 42, order_num: 1001 }
     const shipActivityOtherTrip = { id: 9, TripMaster_id: 99, order_num: 1001 }
@@ -78,12 +79,13 @@ describe('GET longhaul/trips/:id (cloud-direct)', () => {
     const extraLocationRow = { order_num: 1001, location_type: 'EXTRA_STOP' }
     executeSqlMock.mockResolvedValueOnce({
       recordset: [shipmentRow],
-      recordsets: [
-        [shipmentRow],
-        [shipActivityThisTrip, shipActivityOtherTrip],
-        [coverageRow],
-        [extraLocationRow],
-      ],
+      recordsets: [[shipmentRow], [shipActivityThisTrip, shipActivityOtherTrip], [coverageRow]],
+      rowsAffected: [],
+    })
+    // Separate extra-locations query → single recordset.
+    executeSqlMock.mockResolvedValueOnce({
+      recordset: [extraLocationRow],
+      recordsets: [[extraLocationRow]],
       rowsAffected: [],
     })
 
@@ -107,8 +109,46 @@ describe('GET longhaul/trips/:id (cloud-direct)', () => {
     expect(shipments[0]!['packing_coverage']).toMatchObject({ coverage_agent_id: 'X' })
     expect(shipments[0]!['extra_locations']).toHaveLength(1)
 
-    // Exactly two round trips: trip bundle + shipment bundle.
-    expect(executeSqlMock).toHaveBeenCalledTimes(2)
+    // Three round trips: trip bundle + shipment bundle + extra-locations.
+    expect(executeSqlMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('soft-fails when pegasus_extra_location is absent — extra_locations is [] and the trip still returns 200', async () => {
+    // Regression (Phase 3.1 re-mount): pegasus_extra_location does not exist on
+    // every tenant's DB. It is queried SEPARATELY from the mandatory
+    // shipment/activity/coverage batch precisely so its absence cannot 500 the
+    // whole trip. The first re-mount batched it in and 500'd on every trip in
+    // QA ("Invalid object name 'pegasus_extra_location'"). The on-prem repo and
+    // the cloud shipments-list handler both soft-fail this same lookup.
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    const shipmentRow = { order_num: 1001, shipper_name: 'Acme' }
+    executeSqlMock.mockResolvedValueOnce({
+      recordset: [tripRow],
+      recordsets: [[tripRow], [activityRow], [noteRow]],
+      rowsAffected: [],
+    })
+    // Shipment bundle succeeds (mandatory data present)…
+    executeSqlMock.mockResolvedValueOnce({
+      recordset: [shipmentRow],
+      recordsets: [[shipmentRow], [], []],
+      rowsAffected: [],
+    })
+    // …but the extra-locations query fails because the table is absent.
+    executeSqlMock.mockRejectedValueOnce(new Error("Invalid object name 'pegasus_extra_location'."))
+
+    const res = await buildApp().request('/onprem/longhaul/trips/42')
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: Record<string, unknown> }
+    const shipments = body.data.shipments as Array<Record<string, unknown>>
+    expect(shipments).toHaveLength(1)
+    expect(shipments[0]!['order_num']).toBe(1001)
+    // The absent optional table degrades to an empty list — not a 500.
+    expect(shipments[0]!['extra_locations']).toEqual([])
+    // Mandatory trip data is unaffected.
+    expect(body.data.activities).toEqual([activityRow])
+    expect(body.data.notes).toEqual([noteRow])
+    expect(executeSqlMock).toHaveBeenCalledTimes(3)
   })
 
   it('skips the shipment round trip when the trip has no shipment-bearing activities', async () => {
