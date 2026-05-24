@@ -60,6 +60,32 @@ const stackNamePrefix = `pegasus-${envName}`
 
 const descPrefix = `Pegasus ${envName}`
 
+// ── SES invite-email sender (opt-in) ─────────────────────────────────────────
+// Cognito sends invite emails from its generic default address unless the user
+// pool is pointed at a verified SES domain identity. dolas-infra's
+// PegasusSesBootstrapStack provisions that identity (no-reply@<webDomain>) and
+// auto-verifies it via DKIM records in the owned subzone.
+//
+// This is OFF by default and gated behind `-c pegasusSesEmail=true`. Reason:
+// Cognito rejects a withSES config whose identity isn't verified yet, which
+// would fail the (already-live) cognito stack update. So the rollout is:
+//   1. deploy dolas-infra SES bootstrap and wait for SES to verify the domain,
+//   2. then deploy here with `-c pegasusSesEmail=true`.
+// dev has no custom domain, so SES is never wired there.
+const sesEmailEnabled =
+  envName !== 'dev' &&
+  (app.node.tryGetContext('pegasusSesEmail') === true ||
+    app.node.tryGetContext('pegasusSesEmail') === 'true')
+
+const SES_SENDER_DOMAIN: Record<Exclude<EnvName, 'dev'>, string> = {
+  staging: 'pegasus-qa.dolas.dev',
+  prod: 'pegasus.dolas.dev',
+}
+
+// Derived only when enabled (sesEmailEnabled already excludes dev).
+// e.g. no-reply@pegasus.dolas.dev.
+const sesFromEmail = sesEmailEnabled ? `no-reply@${SES_SENDER_DOMAIN[envName]}` : undefined
+
 // ── Infra stacks (deployed first — no dependencies) ──────────────────────────
 // CloudFront distribution domain names are CDK tokens. When CognitoStack
 // references them, CDK generates Fn::ImportValue so CloudFormation resolves
@@ -94,6 +120,9 @@ const cognitoStack = new CognitoStack(app, `${stackIdPrefix}-CognitoStack`, {
   description: `${descPrefix} — Cognito User Pool for platform and tenant auth`,
   tenantDistributionDomain: frontendStack.distribution.distributionDomainName,
   adminDistributionDomain: adminFrontendStack.distribution.distributionDomainName,
+  // When set, the user pool sends invite emails via SES from this verified
+  // address instead of Cognito's default sender. undefined → COGNITO_DEFAULT.
+  sesFromEmail,
 })
 
 // ── E2EStagingRoleStack ──────────────────────────────────────────────────────
