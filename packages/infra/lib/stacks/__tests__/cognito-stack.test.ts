@@ -573,3 +573,38 @@ describe('CognitoStack — Mobile app client', () => {
     template.resourceCountIs('AWS::Lambda::Function', 3)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Invite-email sender (SES)
+// ---------------------------------------------------------------------------
+describe('CognitoStack — invite email sender', () => {
+  it('uses Cognito default email when no SES sender is supplied', () => {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const stack = new CognitoStack(app, 'TestCognitoNoSes')
+    const t = Template.fromStack(stack)
+    // No DEVELOPER (SES) sending account → falls back to COGNITO_DEFAULT.
+    t.hasResourceProperties('AWS::Cognito::UserPool', {
+      EmailConfiguration: Match.absent(),
+    })
+  })
+
+  it('sends via SES from the verified domain when sesFromEmail is supplied', () => {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const stack = new CognitoStack(app, 'TestCognitoSes', {
+      env: { account: '111111111111', region: 'us-east-1' },
+      sesFromEmail: 'no-reply@pegasus.dolas.dev',
+    })
+    const t = Template.fromStack(stack)
+    t.hasResourceProperties('AWS::Cognito::UserPool', {
+      EmailConfiguration: Match.objectLike({
+        EmailSendingAccount: 'DEVELOPER',
+        From: 'Pegasus <no-reply@pegasus.dolas.dev>',
+        SourceArn: {
+          'Fn::Join': Match.arrayWith([
+            Match.arrayWith([':ses:us-east-1:111111111111:identity/pegasus.dolas.dev']),
+          ]),
+        },
+      }),
+    })
+  })
+})

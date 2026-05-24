@@ -40,6 +40,16 @@ export interface CognitoStackProps extends cdk.StackProps {
    * localhost. CDK resolves this cross-stack token via Fn::ImportValue at deploy time.
    */
   readonly adminDistributionDomain?: string
+
+  /**
+   * Verified SES sender address for invite emails (e.g. no-reply@pegasus.dolas.dev).
+   * When provided, the user pool sends mail via SES from this address instead of
+   * Cognito's generic default sender. The domain part MUST be a verified SES
+   * domain identity in this account/region (provisioned by dolas-infra's
+   * PegasusSesBootstrapStack) or the pool update fails. When undefined the pool
+   * keeps Cognito's default email behaviour (dev + un-migrated envs).
+   */
+  readonly sesFromEmail?: string
 }
 
 export class CognitoStack extends cdk.Stack {
@@ -225,10 +235,31 @@ export class CognitoStack extends cdk.Stack {
     )
 
     // -------------------------------------------------------------------------
+    // Invite-email sender
+    //
+    // When a verified SES sender is supplied, the pool sends mail via SES from
+    // the Pegasus domain (no-reply@pegasus[-qa].dolas.dev) so invites come from
+    // the same domain as the apps. The from-address's domain must already be a
+    // verified SES domain identity in this account/region (owned by dolas-infra)
+    // — Cognito validates it at deploy time. When undefined the pool falls back
+    // to Cognito's default sender (dev + envs not yet migrated).
+    // -------------------------------------------------------------------------
+    const email = props.sesFromEmail
+      ? cognito.UserPoolEmail.withSES({
+          fromEmail: props.sesFromEmail,
+          fromName: 'Pegasus',
+          sesRegion: this.region,
+          sesVerifiedDomain: props.sesFromEmail.split('@')[1],
+        })
+      : undefined
+
+    // -------------------------------------------------------------------------
     // User Pool
     // -------------------------------------------------------------------------
     this.userPool = new cognito.UserPool(this, 'UserPool', {
       userPoolName: 'pegasus-user-pool',
+      // SES sender when migrated; otherwise Cognito's default email behaviour.
+      ...(email ? { email } : {}),
       selfSignUpEnabled: false,
       signInAliases: { email: true },
       autoVerify: { email: true },
