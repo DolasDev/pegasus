@@ -60,22 +60,22 @@ const stackNamePrefix = `pegasus-${envName}`
 
 const descPrefix = `Pegasus ${envName}`
 
-// ── SES invite-email sender (opt-in) ─────────────────────────────────────────
+// ── SES invite-email sender ──────────────────────────────────────────────────
 // Cognito sends invite emails from its generic default address unless the user
 // pool is pointed at a verified SES domain identity. dolas-infra's
 // PegasusSesBootstrapStack provisions that identity (no-reply@<webDomain>) and
 // auto-verifies it via DKIM records in the owned subzone.
 //
-// This is OFF by default and gated behind `-c pegasusSesEmail=true`. Reason:
-// Cognito rejects a withSES config whose identity isn't verified yet, which
-// would fail the (already-live) cognito stack update. So the rollout is:
-//   1. deploy dolas-infra SES bootstrap and wait for SES to verify the domain,
-//   2. then deploy here with `-c pegasusSesEmail=true`.
-// dev has no custom domain, so SES is never wired there.
+// SES is the steady-state sender for staging/prod now that both domain
+// identities are verified for sending. Opt OUT with `-c pegasusSesEmail=false`
+// only as an escape hatch (e.g. if verification ever breaks) — making it the
+// default (rather than threading a flag through every deploy path) means an
+// emergency/local deploy can't silently revert the sender to the Cognito
+// default. dev has no custom domain, so SES is never wired there.
 const sesEmailEnabled =
   envName !== 'dev' &&
-  (app.node.tryGetContext('pegasusSesEmail') === true ||
-    app.node.tryGetContext('pegasusSesEmail') === 'true')
+  app.node.tryGetContext('pegasusSesEmail') !== false &&
+  app.node.tryGetContext('pegasusSesEmail') !== 'false'
 
 const SES_SENDER_DOMAIN: Record<Exclude<EnvName, 'dev'>, string> = {
   staging: 'pegasus-qa.dolas.dev',
