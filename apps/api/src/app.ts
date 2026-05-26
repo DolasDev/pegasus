@@ -42,6 +42,11 @@ import {
   longhaulShipmentShadowHandler,
   longhaulShipmentCoverageHandler,
 } from './handlers/longhaul-cloud/shipments-write'
+import {
+  longhaulCreateTripNoteHandler,
+  longhaulPatchTripNoteHandler,
+} from './handlers/longhaul-cloud/trip-notes'
+import { longhaulSaveActivityHandler } from './handlers/longhaul-cloud/activities-write'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -292,6 +297,14 @@ v1.get('/onprem/longhaul/shipments', longhaulShipmentsListHandler)
 v1.patch('/onprem/longhaul/driver-planning/:driverId', longhaulDriverPlanningPatchHandler)
 v1.patch('/onprem/longhaul/shipments/:id/shadow', longhaulShipmentShadowHandler)
 v1.post('/onprem/longhaul/shipments/:id/coverage', longhaulShipmentCoverageHandler)
+// Phase 4 (Unit 2): trip notes + activity save served cloud-direct. The
+// activity save recomputes the trip summary (lib/longhaul-cloud-trip-summary).
+// POST /activities (CREATE) is intentionally left on the proxy — no tenant-web
+// caller; trip-save (Unit 5) handles activity inserts. See handlers/
+// longhaul-cloud/{trip-notes,activities-write}.ts.
+v1.post('/onprem/longhaul/trips/:id/notes', longhaulCreateTripNoteHandler)
+v1.patch('/onprem/longhaul/notes/:id', longhaulPatchTripNoteHandler)
+v1.post('/onprem/longhaul/activities/:id', longhaulSaveActivityHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.

@@ -69,6 +69,38 @@ error:"Divide by zero error encountered."}` → `executeSql` throws
   - **Unit 1 final scope:** #1 driver-planning, #2 shadow, #4 coverage migrated;
     #3 weight deferred (dead route).
 
+- **2026-05-26 — Unit 1 COMPLETE ✅ (verified, run 26470971180).**
+  Commit a5f1d9a deployed (26469491200 `success`). Full e2e-qa-longhaul run
+  GREEN — all three migrated specs pass cloud-direct against the real schema:
+  #1 driver-planning (`:389`), #2 shadow (`:468`), #4 coverage (`:524`).
+  Next: Unit 2 — notes + activities (#5-#6).
+
+- **2026-05-26 — Unit 2 code COMPLETE (awaiting verify + E2E).**
+  Notes + activity-save migrated cloud-direct (schemas pre-verified via executor
+  probes to avoid a 500 cycle):
+  - `lib/longhaul-cloud-trip-summary.ts` — `computeTripSummary` (pure) +
+    `recomputeTripSummaryCloud` (read activities → read shipments → UPDATE
+    TripMaster). Reusable by Units 3 + 5. Faithfully replicates on-prem quirks:
+    `v_longhaul_shipments_v2` exposes `vip`/`total_est_wt`/`line_haul` but NOT
+    `total_actual_wt`/`supervip`/state objects, so those roll up to 0/null.
+  - `handlers/longhaul-cloud/trip-notes.ts` — `POST /trips/:id/notes` (INSERT
+    TripNotes, createdBy = resolved code ?? 0) + `PATCH /notes/:id` (UPDATE by
+    tripId+id).
+  - `handlers/longhaul-cloud/activities-write.ts` — `POST /activities/:id`
+    (saveActivity): RT1 read prev TripMaster_id, RT2 dynamic UPDATE + audit,
+    then recompute summary for next+prev trip (Set-dedup). 404 if missing.
+  - **POST /activities (CREATE) NOT migrated** — no tenant-web caller (creation
+    is server-side in trip-save); left on the proxy.
+  - Mounted in app.ts ahead of `/onprem`. Unit tests: summary (3), notes (8),
+    activity-save (5) — all green; tsc + eslint clean.
+  - **E2E:** notes covered by `:589`. Extended the activities spec (`:618`) to
+    exercise `POST /activities/:id` (edit a generated activity's city →
+    recompute → verify via GET /trips/:id).
+  - Triggers note: activity UPDATE has no OUTPUT clause, so the table's enabled
+    triggers don't bite (the OUTPUT-without-INTO constraint only affects the
+    create path, which we didn't migrate).
+  - **Not committed.** Awaiting user verify + reseed → commit/push/deploy/E2E.
+
 ## Goal
 
 Move the longhaul **write** routes off the on-prem proxy

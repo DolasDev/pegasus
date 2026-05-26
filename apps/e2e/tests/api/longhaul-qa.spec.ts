@@ -665,8 +665,24 @@ test.describe('longhaul on-prem bridge (QA)', () => {
       const fetched = await qaApiFetch(`${LH}/trips/${tripId}`)
       const fetchedBody = await fetched.json()
       const trip = fetchedBody?.data ?? fetchedBody
-      const activities = (trip?.activities as unknown[]) ?? []
+      const activities = (trip?.activities as Array<{ id: number; city?: string | null }>) ?? []
       expect(activities.length, 'auto-generated activities present').toBeGreaterThan(0)
+
+      // Exercise the cloud-direct POST /activities/:id (saveActivity): edit one
+      // activity's city, which also recomputes the trip summary. Verify the
+      // edit persists on re-fetch.
+      const activityId = activities[0]!.id
+      const cityMarker = `E2E${Date.now() % 100000}`
+      const saved = await qaApiFetch(`${LH}/activities/${activityId}`, {
+        method: 'POST',
+        body: JSON.stringify({ city: cityMarker }),
+      })
+      expect(saved.status, await saved.text().catch(() => '')).toBeLessThan(300)
+
+      const reread = await (await qaApiFetch(`${LH}/trips/${tripId}`)).json()
+      const reActivities =
+        ((reread?.data ?? reread)?.activities as Array<{ id: number; city?: string | null }>) ?? []
+      expect(reActivities.find((a) => a.id === activityId)?.city).toBe(cityMarker)
     } finally {
       // Cleanup: cancel the trip so the shipment is returned to unassigned.
       await qaApiFetch(`${LH}/trips/${tripId}/cancel`, { method: 'POST' })
