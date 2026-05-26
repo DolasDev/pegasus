@@ -39,7 +39,6 @@ import { longhaulDriverPlanningHandler } from './handlers/longhaul-cloud/driver-
 import { longhaulTripDetailHandler } from './handlers/longhaul-cloud/trip-detail'
 import { longhaulDriverPlanningPatchHandler } from './handlers/longhaul-cloud/driver-planning-patch'
 import {
-  longhaulShipmentWeightHandler,
   longhaulShipmentShadowHandler,
   longhaulShipmentCoverageHandler,
 } from './handlers/longhaul-cloud/shipments-write'
@@ -288,8 +287,9 @@ v1.get('/onprem/longhaul/shipments', longhaulShipmentsListHandler)
 // resolveLonghaulUser enforces the same 401/403/422 auth parity as the proxy's
 // longhaul-user middleware. See handlers/longhaul-cloud/{driver-planning-patch,
 // shipments-write}.ts.
+// (PATCH /shipments/:id/weight is intentionally left on the proxy — dead route
+// against an incompatible schema; see handlers/longhaul-cloud/shipments-write.ts.)
 v1.patch('/onprem/longhaul/driver-planning/:driverId', longhaulDriverPlanningPatchHandler)
-v1.patch('/onprem/longhaul/shipments/:id/weight', longhaulShipmentWeightHandler)
 v1.patch('/onprem/longhaul/shipments/:id/shadow', longhaulShipmentShadowHandler)
 v1.post('/onprem/longhaul/shipments/:id/coverage', longhaulShipmentCoverageHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's

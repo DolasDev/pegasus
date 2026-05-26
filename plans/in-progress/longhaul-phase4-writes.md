@@ -15,17 +15,13 @@ until explicitly instructed (team workflow)._
     tenant `b40b082e-…`, `Server=10.200.0.2,1433 / PegNW`) via direct
     `aws lambda invoke` of the QA executor
     (`pegasus-staging-wireguard-MssqlExecutorFn3A798014-aB7HemkBIwU0`, profile
-    `dolas-pegasus-staging`):
-    - _Commit + trailing SELECT:_ returned `{recordset:[{n:2}], recordsets:[[{n:2}]]}`
-      — the `#spike` temp table survived COMMIT and the trailing SELECT's rows
-      land in `recordset` / `recordsets[last]`. ✓
-    - _Forced error (1/0):_ returned `{ok:false, code:"QUERY_FAILED",
+    `dolas-pegasus-staging`): - _Commit + trailing SELECT:_ returned `{recordset:[{n:2}], recordsets:[[{n:2}]]}`
+    — the `#spike` temp table survived COMMIT and the trailing SELECT's rows
+    land in `recordset` / `recordsets[last]`. ✓ - _Forced error (1/0):_ returned `{ok:false, code:"QUERY_FAILED",
 error:"Divide by zero error encountered."}` → `executeSql` throws
-      `MssqlExecError(EXECUTOR_QUERY_ERROR)` with the real message. ✓
-    - _Rollback proof:_ a follow-up `SELECT @@TRANCOUNT` on the (pooled,
-      reused) connection returned `0` — no partial commit, no dangling TRAN. ✓
-    - **Conclusion:** the in-SQL transaction strategy (§ "The blocking
-      decision") is validated. No executor change needed. Proceed to Unit 1.
+    `MssqlExecError(EXECUTOR_QUERY_ERROR)` with the real message. ✓ - _Rollback proof:_ a follow-up `SELECT @@TRANCOUNT` on the (pooled,
+    reused) connection returned `0` — no partial commit, no dangling TRAN. ✓ - **Conclusion:** the in-SQL transaction strategy (§ "The blocking
+    decision") is validated. No executor change needed. Proceed to Unit 1.
   - **Scaffolding:** `lib/longhaul-cloud-user.ts` (`resolveLonghaulUser`, 422/403/
     401/503 parity with `longhaul-user.ts`, M2M `longhaul:write` scope check)
     - `lib/longhaul-cloud-user.test.ts` (10/10 green, mocked executeSql/prisma)
@@ -49,8 +45,29 @@ error:"Divide by zero error encountered."}` → `executeSql` throws
   - **E2E:** existing `@qa-mutating` specs cover #1 (`:389`) and #2 (`:468`).
     Added specs for #3 (weight — write-only assertion; no read-back projection)
     and #4 (coverage — read-back via `packing_coverage`) to `longhaul-qa.spec.ts`.
-  - **NOT committed/pushed/deployed.** Awaiting user verify + QA reseed; then
-    commit → push (`main` deploy) → wait `completed:success` → run `e2e-qa-longhaul`.
+  - Committed (a2feae5 Unit0, 4495d11 Unit1), pushed → deploy 26468194928
+    `completed:success` → E2E run 26468674886.
+
+- **2026-05-26 — Unit 1 E2E results + fixes (run 26468674886).**
+  - ✅ #1 driver-planning (`:389`) and ✅ #2 shadow (`:468`) PASS cloud-direct
+    against the real QA schema. (Browser flakes #48/#62 passed on retry — the
+    known pre-existing flakes, not ours.)
+  - ✘ #3 weight + ✘ #4 coverage 500'd. CloudWatch (`mssql_exec_failed`) gave the
+    real cause:
+    - **weight:** `Invalid column name 'updated_at'`. Schema check:
+      `longhaul_shipment_weight_link` = (id, order_num, survey_weight_id,
+      initial_weight_id, billable_weight_id, reweight_id) — NO scalar `weight`,
+      NO `updated_at`. The on-prem `patchWeight` is **broken against the real
+      schema** and **no tenant-web caller invokes the route**. → DROPPED from
+      the migration; left on the proxy untouched. Removed handler/route/spec.
+    - **coverage:** `Cannot insert NULL into 'created_by_id'` (NOT NULL, no
+      default). Handler is faithful (on-prem fails identically); the UI always
+      sends `created_by_id` (`…created_by_id || user.code`). → fixed the **E2E
+      spec** to send `created_by_id: me.code`. Handler unchanged.
+  - Re-verify pending: 11 unit tests green, tsc/eslint clean. Re-deploy + re-run
+    e2e for #4 coverage (and #1/#2 regression).
+  - **Unit 1 final scope:** #1 driver-planning, #2 shadow, #4 coverage migrated;
+    #3 weight deferred (dead route).
 
 ## Goal
 

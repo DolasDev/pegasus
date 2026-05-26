@@ -15,11 +15,7 @@ vi.mock('../../lib/mssql-executor-client', async (orig) => ({
   executeSql: vi.fn(),
 }))
 
-import {
-  longhaulShipmentWeightHandler,
-  longhaulShipmentShadowHandler,
-  longhaulShipmentCoverageHandler,
-} from './shipments-write'
+import { longhaulShipmentShadowHandler, longhaulShipmentCoverageHandler } from './shipments-write'
 import { resolveLonghaulUser } from '../../lib/longhaul-cloud-user'
 import { executeSql } from '../../lib/mssql-executor-client'
 
@@ -35,7 +31,6 @@ function buildApp() {
     c.set('userId', 'user-1')
     await next()
   })
-  app.patch('/onprem/longhaul/shipments/:id/weight', longhaulShipmentWeightHandler)
   app.patch('/onprem/longhaul/shipments/:id/shadow', longhaulShipmentShadowHandler)
   app.post('/onprem/longhaul/shipments/:id/coverage', longhaulShipmentCoverageHandler)
   return app
@@ -53,33 +48,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   resolveMock.mockResolvedValue({ ok: true, connectionString: 'Server=a,1433', code: 7, user: {} })
   executeSqlMock.mockResolvedValue({ recordset: [], recordsets: [[]], rowsAffected: [1] })
-})
-
-describe('PATCH /shipments/:id/weight (cloud-direct)', () => {
-  it('updates weight by order_num', async () => {
-    const res = await req('/onprem/longhaul/shipments/100/weight', 'PATCH', { weight: 2500 })
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ data: { success: true } })
-    const [, sql, opts] = executeSqlMock.mock.calls[0]!
-    expect(sql).toContain('UPDATE longhaul_shipment_weight_link')
-    expect(sql).toContain('weight = @weight')
-    expect(sql).toContain('updated_at = GETDATE()')
-    expect(opts.params).toContainEqual({ name: 'weight', value: 2500 })
-    expect(opts.params).toContainEqual({ name: 'order_num', value: 100 })
-  })
-
-  it('omits weight from SET when not provided (only updated_at)', async () => {
-    await req('/onprem/longhaul/shipments/100/weight', 'PATCH', {})
-    const [, sql] = executeSqlMock.mock.calls[0]!
-    expect(sql).not.toContain('weight = @weight')
-    expect(sql).toContain('updated_at = GETDATE()')
-  })
-
-  it('rejects a non-numeric id with 400', async () => {
-    const res = await req('/onprem/longhaul/shipments/x/weight', 'PATCH', { weight: 1 })
-    expect(res.status).toBe(400)
-    expect(executeSqlMock).not.toHaveBeenCalled()
-  })
 })
 
 describe('PATCH /shipments/:id/shadow (cloud-direct)', () => {

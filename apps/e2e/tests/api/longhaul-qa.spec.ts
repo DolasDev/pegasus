@@ -517,40 +517,23 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     })
   })
 
-  test('PATCH /shipments/:id/weight accepts the write @qa-mutating', async ({ qaApiFetch }) => {
-    // longhaul_shipment_weight_link has no read-back projection in the
-    // /shipments response (shadow_weight reads from `sales`, not the link
-    // table), so this proves the cloud write path runs against the real schema
-    // without 500-ing — the risk Phase 3.1 flagged for mock-only coverage.
-    const sList = await (
-      await qaApiFetch(
-        `${LH}/shipments?filters=${encodeURIComponent(JSON.stringify(planningWindowQuery()))}`,
-      )
-    ).json()
-    const shipments: Array<{ order_num: number }> = sList.data ?? sList
-    test.skip(
-      !Array.isArray(shipments) || shipments.length === 0,
-      'no shipments in the QA DB under the default planning window',
-    )
-    const orderNum = shipments[0]!.order_num
-
-    const patch = await qaApiFetch(`${LH}/shipments/${orderNum}/weight`, {
-      method: 'PATCH',
-      body: JSON.stringify({ order_num: orderNum, weight: 4242 }),
-    })
-    expect(patch.status, await patch.text().catch(() => '')).toBeLessThan(300)
-  })
+  // NOTE: PATCH /shipments/:id/weight is intentionally not covered — it is a
+  // dead route left on the proxy (longhaul_shipment_weight_link has no scalar
+  // `weight` column; no tenant-web caller invokes it). See app.ts.
 
   test('POST /shipments/:id/coverage round-trips the coverage row @qa-mutating', async ({
     qaApiFetch,
   }) => {
     // Coverage IS read back: the /shipments response attaches the matching
     // longhaul_shipmentcoverage row as `packing_coverage` per order.
-    const sList = await (
-      await qaApiFetch(
+    const [sList, me] = await Promise.all([
+      qaApiFetch(
         `${LH}/shipments?filters=${encodeURIComponent(JSON.stringify(planningWindowQuery()))}`,
-      )
-    ).json()
+      ).then((r) => r.json()),
+      qaApiFetch(`${LH}/users/me`)
+        .then((r) => r.json())
+        .then((j) => j.data),
+    ])
     const shipments: Array<{ order_num: number }> = sList.data ?? sList
     test.skip(
       !Array.isArray(shipments) || shipments.length === 0,
@@ -567,6 +550,9 @@ test.describe('longhaul on-prem bridge (QA)', () => {
         coverage_agent_id: 'E2E',
         note: marker,
         is_covered: true,
+        // longhaul_shipmentcoverage.created_by_id is NOT NULL; the UI sends the
+        // current user's code (Coverage/index.tsx). Mirror that here.
+        created_by_id: me.code,
       }),
     })
     const postText = await post.text()

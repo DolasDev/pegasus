@@ -2,11 +2,18 @@
 // Cloud-direct longhaul shipment WRITE handlers (Phase 4 #2-#4).
 //
 // On-prem source: handlers/longhaul/shipments.ts + shipments.repository.ts.
-//   #3 PATCH /shipments/:id/weight   → patchWeight   (UPDATE longhaul_shipment_weight_link)
 //   #2 PATCH /shipments/:id/shadow   → patchShipmentShadow (upsert into `sales`)
 //   #4 POST  /shipments/:id/coverage → saveCoverage  (upsert longhaul_shipmentcoverage, returns row)
 //
-// All three mirror knex's "only write provided keys" semantics via pickColumns
+// NOTE: the inventory's #3 PATCH /shipments/:id/weight is intentionally NOT
+// migrated — it is a dead route. No tenant-web caller invokes it, and the
+// on-prem patchWeight writes a scalar `weight`/`updated_at` to
+// longhaul_shipment_weight_link, which has neither column (it is a link table
+// of weight-record ids: survey_weight_id, initial_weight_id, …). It 500s
+// against the real schema on both paths. It stays on the /onprem proxy
+// untouched until the feature is redesigned.
+//
+// Both handlers mirror knex's "only write provided keys" semantics via pickColumns
 // (lib/longhaul-cloud-write) — authoring a fixed column list would null fields
 // the client omitted. The shadow upsert E2E (longhaul-qa.spec.ts:468) sends
 // only `lng_dis_comments` and asserts the rest survive, so this matters.
@@ -23,51 +30,6 @@ import { executeSql, MssqlExecError, type SqlParam } from '../../lib/mssql-execu
 import { resolveLonghaulUser } from '../../lib/longhaul-cloud-user'
 import { pickColumns, assignments, valuePlaceholders } from '../../lib/longhaul-cloud-write'
 import { logger } from '../../lib/logger'
-
-// --- #3 weight ------------------------------------------------------------
-
-const WeightBody = z.object({
-  order_num: z.number().optional(),
-  weight: z.number().nullable().optional(),
-})
-
-export const longhaulShipmentWeightHandler: Handler<AppEnv> = async (c) => {
-  const correlationId = c.get('correlationId')
-
-  const shipmentId = Number.parseInt(c.req.param('id') ?? '', 10)
-  if (Number.isNaN(shipmentId)) {
-    return c.json({ error: 'Invalid shipment id', code: 'VALIDATION_ERROR', correlationId }, 400)
-  }
-  const parsed = WeightBody.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) {
-    return c.json({ error: parsed.error.message, code: 'VALIDATION_ERROR', correlationId }, 400)
-  }
-
-  const resolved = await resolveLonghaulUser({
-    tenantId: c.get('tenantId'),
-    userId: c.get('userId'),
-    apiClient: c.get('apiClient'),
-  })
-  if (!resolved.ok) {
-    return c.json({ error: resolved.error, code: resolved.code, correlationId }, resolved.status)
-  }
-
-  // On-prem patchWeight UPDATEs longhaul_shipment_weight_link by order_num,
-  // spreading the body (only `weight` is meaningful — order_num is the key).
-  const { columns, params } = pickColumns(parsed.data as Record<string, unknown>, ['weight'])
-  const setClause = [assignments(columns), 'updated_at = GETDATE()'].filter(Boolean).join(', ')
-  const sql = `UPDATE longhaul_shipment_weight_link SET ${setClause} WHERE order_num = @order_num`
-
-  try {
-    await executeSql(resolved.connectionString, sql, {
-      params: [...params, { name: 'order_num', value: shipmentId }],
-    })
-    return c.json({ data: { success: true } })
-  } catch (err) {
-    logger.error('longhaul cloud weight PATCH failed', { error: errDetail(err) })
-    return c.json({ error: 'Failed to patch weight', code: 'INTERNAL_ERROR', correlationId }, 500)
-  }
-}
 
 // --- #2 shadow ------------------------------------------------------------
 
