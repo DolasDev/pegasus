@@ -709,12 +709,15 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     test.skip(!Array.isArray(shipments) || shipments.length === 0, 'no unassigned shipments')
 
     // Create a driver-assigned trip (status guard allows advancing past pending
-    // only with a driver).
+    // only with a driver). saveTripLogic derives driver_id from `driver.id` or
+    // top-level `driver_id`; GET /drivers returns `driver_id`, so set both.
+    const driverId = (drivers[0] as { driver_id: number }).driver_id
     const create = await qaApiFetch(`${LH}/trips`, {
       method: 'POST',
       body: JSON.stringify({
         trip_title: `e2e-qa-status-${Date.now()}`,
-        driver: drivers[0],
+        driver: { ...drivers[0], id: driverId },
+        driver_id: driverId,
         dispatcher: me,
         created_by_id: me.code,
         status: { id: 1, status_id: 1, status: 'Pending' },

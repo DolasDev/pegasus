@@ -130,7 +130,13 @@ error:"Divide by zero error encountered."}` → `executeSql` throws
   - **E2E:** cancel (#9) already covered by `:414`. Added a status (#7) +
     summary (#8) spec: create driver-assigned trip → PATCH status 2 → verify
     TripStatus_id → PATCH summary {} → cancel cleanup.
-  - **Not committed.** Awaiting user verify + reseed.
+  - Committed 630c180, deployed `success`, E2E run 26474... → #7/#8 spec failed
+    (403). Root cause: TEST DATA, not the handler — the handler correctly blocked
+    advancing a trip with no driver. saveTripLogic derives driver_id from
+    `driver.id`/top-level `driver_id`, but GET /drivers returns `driver_id`, so
+    the created trip had a null driver. Fixed the spec to send `driver_id` +
+    `driver.id`. Cancel (#9, `:414`) + all Unit 1/2 regressions stayed green.
+  - **E2E spec fix pushed (e2e-only, no redeploy); re-run pending.**
 
 ## Goal
 
