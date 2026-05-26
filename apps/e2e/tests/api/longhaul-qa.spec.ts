@@ -517,6 +517,75 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     })
   })
 
+  test('PATCH /shipments/:id/weight accepts the write @qa-mutating', async ({ qaApiFetch }) => {
+    // longhaul_shipment_weight_link has no read-back projection in the
+    // /shipments response (shadow_weight reads from `sales`, not the link
+    // table), so this proves the cloud write path runs against the real schema
+    // without 500-ing — the risk Phase 3.1 flagged for mock-only coverage.
+    const sList = await (
+      await qaApiFetch(
+        `${LH}/shipments?filters=${encodeURIComponent(JSON.stringify(planningWindowQuery()))}`,
+      )
+    ).json()
+    const shipments: Array<{ order_num: number }> = sList.data ?? sList
+    test.skip(
+      !Array.isArray(shipments) || shipments.length === 0,
+      'no shipments in the QA DB under the default planning window',
+    )
+    const orderNum = shipments[0]!.order_num
+
+    const patch = await qaApiFetch(`${LH}/shipments/${orderNum}/weight`, {
+      method: 'PATCH',
+      body: JSON.stringify({ order_num: orderNum, weight: 4242 }),
+    })
+    expect(patch.status, await patch.text().catch(() => '')).toBeLessThan(300)
+  })
+
+  test('POST /shipments/:id/coverage round-trips the coverage row @qa-mutating', async ({
+    qaApiFetch,
+  }) => {
+    // Coverage IS read back: the /shipments response attaches the matching
+    // longhaul_shipmentcoverage row as `packing_coverage` per order.
+    const sList = await (
+      await qaApiFetch(
+        `${LH}/shipments?filters=${encodeURIComponent(JSON.stringify(planningWindowQuery()))}`,
+      )
+    ).json()
+    const shipments: Array<{ order_num: number }> = sList.data ?? sList
+    test.skip(
+      !Array.isArray(shipments) || shipments.length === 0,
+      'no shipments in the QA DB under the default planning window',
+    )
+    const orderNum = shipments[0]!.order_num
+    const marker = `e2e-qa-cov-${Date.now()}`
+
+    const post = await qaApiFetch(`${LH}/shipments/${orderNum}/coverage`, {
+      method: 'POST',
+      body: JSON.stringify({
+        order_num: orderNum,
+        activity_code: 'PACK',
+        coverage_agent_id: 'E2E',
+        note: marker,
+        is_covered: true,
+      }),
+    })
+    const postText = await post.text()
+    expect(post.status, postText).toBe(201)
+    const saved = (postText ? JSON.parse(postText) : {})?.data
+    expect(saved?.note, 'POST returns the saved coverage row').toBe(marker)
+
+    // Read-back via packing_coverage on the shipments list.
+    const after = await (
+      await qaApiFetch(
+        `${LH}/shipments?filters=${encodeURIComponent(JSON.stringify(planningWindowQuery()))}`,
+      )
+    ).json()
+    const reread: Array<{ order_num: number; packing_coverage?: { note?: string } | null }> =
+      after.data ?? after
+    const updated = reread.find((s) => s.order_num === orderNum)
+    expect(updated?.packing_coverage?.note).toBe(marker)
+  })
+
   test('POST /trips/:id/notes → PATCH /notes/:id round-trips the note body @qa-mutating', async ({
     qaApiFetch,
   }) => {

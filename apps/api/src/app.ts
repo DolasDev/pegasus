@@ -37,6 +37,12 @@ import { longhaulShipmentFiltersHandler } from './handlers/longhaul-cloud/shipme
 import { longhaulTripsListHandler } from './handlers/longhaul-cloud/trips-list'
 import { longhaulDriverPlanningHandler } from './handlers/longhaul-cloud/driver-planning'
 import { longhaulTripDetailHandler } from './handlers/longhaul-cloud/trip-detail'
+import { longhaulDriverPlanningPatchHandler } from './handlers/longhaul-cloud/driver-planning-patch'
+import {
+  longhaulShipmentWeightHandler,
+  longhaulShipmentShadowHandler,
+  longhaulShipmentCoverageHandler,
+} from './handlers/longhaul-cloud/shipments-write'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -275,6 +281,17 @@ v1.get('/onprem/longhaul/trips/:id', longhaulTripDetailHandler)
 // filter uses per-client import/export codes resolved from the tenant's
 // longhaulClient column. Write routes (POST/PATCH /shipments/*) still proxy.
 v1.get('/onprem/longhaul/shipments', longhaulShipmentsListHandler)
+// Phase 4 (write migration, Unit 1): single-row writes served cloud-direct via
+// the mssql-executor Lambda instead of the on-prem proxy. Each is registered
+// before the /onprem mount so it wins over the wildcard; un-migrated write
+// routes (notes, activities, trip status/save) still fall through to the proxy.
+// resolveLonghaulUser enforces the same 401/403/422 auth parity as the proxy's
+// longhaul-user middleware. See handlers/longhaul-cloud/{driver-planning-patch,
+// shipments-write}.ts.
+v1.patch('/onprem/longhaul/driver-planning/:driverId', longhaulDriverPlanningPatchHandler)
+v1.patch('/onprem/longhaul/shipments/:id/weight', longhaulShipmentWeightHandler)
+v1.patch('/onprem/longhaul/shipments/:id/shadow', longhaulShipmentShadowHandler)
+v1.post('/onprem/longhaul/shipments/:id/coverage', longhaulShipmentCoverageHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.
