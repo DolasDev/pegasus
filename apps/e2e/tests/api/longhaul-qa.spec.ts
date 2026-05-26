@@ -688,4 +688,63 @@ test.describe('longhaul on-prem bridge (QA)', () => {
       await qaApiFetch(`${LH}/trips/${tripId}/cancel`, { method: 'POST' })
     }
   })
+
+  test('PATCH /trips/:id/status advances a driver-assigned trip; PATCH /summary touches it @qa-mutating', async ({
+    qaApiFetch,
+  }) => {
+    const [meRes, driversRes, shipmentsRes] = await Promise.all([
+      qaApiFetch(`${LH}/users/me`).then((r) => r.json()),
+      qaApiFetch(`${LH}/drivers`).then((r) => r.json()),
+      qaApiFetch(
+        `${LH}/shipments?filters=${encodeURIComponent(
+          JSON.stringify(planningWindowQuery({ assigned: [{ label: 'No', value: 'No' }] })),
+        )}`,
+      ).then((r) => r.json()),
+    ])
+    const me = meRes.data
+    const drivers: Array<Record<string, unknown>> = driversRes.data ?? driversRes
+    const shipments: Array<Record<string, unknown> & { order_num: number }> =
+      shipmentsRes.data ?? shipmentsRes
+    test.skip(!Array.isArray(drivers) || drivers.length === 0, 'no drivers available in the QA DB')
+    test.skip(!Array.isArray(shipments) || shipments.length === 0, 'no unassigned shipments')
+
+    // Create a driver-assigned trip (status guard allows advancing past pending
+    // only with a driver).
+    const create = await qaApiFetch(`${LH}/trips`, {
+      method: 'POST',
+      body: JSON.stringify({
+        trip_title: `e2e-qa-status-${Date.now()}`,
+        driver: drivers[0],
+        dispatcher: me,
+        created_by_id: me.code,
+        status: { id: 1, status_id: 1, status: 'Pending' },
+        shipments: [shipments[0]],
+      }),
+    })
+    const createText = await create.text()
+    expect(create.status, createText).toBe(201)
+    const tripId = (createText ? JSON.parse(createText) : {})?.data?.id
+
+    try {
+      // #7 — advance to status 2 (stay < 4 so the cleanup cancel is allowed).
+      const status = await qaApiFetch(`${LH}/trips/${tripId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ statusId: 2, status: 'Confirmed' }),
+      })
+      expect(status.status, await status.text().catch(() => '')).toBeLessThan(300)
+
+      const after = await (await qaApiFetch(`${LH}/trips/${tripId}`)).json()
+      const trip = after?.data ?? after
+      expect(Number(trip?.TripStatus_id ?? trip?.status_id)).toBe(2)
+
+      // #8 — summary touch (the UI sends {}; faithful no-op-ish field write).
+      const summary = await qaApiFetch(`${LH}/trips/${tripId}/summary`, {
+        method: 'PATCH',
+        body: JSON.stringify({}),
+      })
+      expect(summary.status, await summary.text().catch(() => '')).toBeLessThan(300)
+    } finally {
+      await qaApiFetch(`${LH}/trips/${tripId}/cancel`, { method: 'POST' })
+    }
+  })
 })

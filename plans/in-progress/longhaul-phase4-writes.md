@@ -101,6 +101,37 @@ error:"Divide by zero error encountered."}` → `executeSql` throws
     create path, which we didn't migrate).
   - **Not committed.** Awaiting user verify + reseed → commit/push/deploy/E2E.
 
+- **2026-05-26 — Unit 2 COMPLETE ✅ (verified, run 26472798306).**
+  Commit 6435b5f deployed (deploy `success`). Full e2e-qa-longhaul GREEN:
+  #5 notes (`:575` POST + PATCH), #6 activity-save (`:618` now exercises
+  `POST /activities/:id` → summary recompute → city verified via GET /trips/:id).
+  `recomputeTripSummaryCloud` proven against the real schema. Next: Unit 3 —
+  trip status / summary / cancel (#7-#9).
+
+- **2026-05-26 — Unit 3 code COMPLETE (awaiting verify + E2E).**
+  `handlers/longhaul-cloud/trips-write.ts` (status/cancel/summary), mounted ahead
+  of `/onprem`. Schemas pre-verified via executor probes.
+  - **#7 PATCH /trips/:id/status** — RT1 reads header + activity actual_dates +
+    status name in one 3-statement batch; ports all 3 guards (404; 403 advance-
+    past-pending-without-driver; 403 finalize-without-actual-dates); RT2 is ONE
+    atomic batch (UPDATE TripMaster.TripStatus_id + UPDATE activities' status,
+    in-SQL TRAN) with a trailing SELECT returning the re-read trip.
+  - **#9 POST /trips/:id/cancel** — 404 + 403 (status_id>=4 == TripStatus_id);
+    atomic batch: touch + DELETE activities, set internal_status='canceled'.
+  - **#8 PATCH /trips/:id/summary** — RECOMPUTES via recomputeTripSummaryCloud.
+    Resolution of the earlier discrepancy: checked the ORIGINAL backend per user
+    direction. The legacy fn is `updateTripSummaryInfo` (the recompute; mapping
+    in dolas-modules-migration.md:185) and the UI calls it on trip-detail load
+    to refresh the roll-up before display (Trip/index.tsx:43 — "await
+    updateTripSummaryInfo(id); fetchTrip(id)"). The on-prem port wired the wrong
+    repo fn (`updateTripSummary`, a direct field write) — a porting bug. We
+    follow the original recompute behavior, not the bug.
+  - Unit tests: trips-write.test.ts (10) green; tsc + eslint clean.
+  - **E2E:** cancel (#9) already covered by `:414`. Added a status (#7) +
+    summary (#8) spec: create driver-assigned trip → PATCH status 2 → verify
+    TripStatus_id → PATCH summary {} → cancel cleanup.
+  - **Not committed.** Awaiting user verify + reseed.
+
 ## Goal
 
 Move the longhaul **write** routes off the on-prem proxy

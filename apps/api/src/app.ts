@@ -47,6 +47,11 @@ import {
   longhaulPatchTripNoteHandler,
 } from './handlers/longhaul-cloud/trip-notes'
 import { longhaulSaveActivityHandler } from './handlers/longhaul-cloud/activities-write'
+import {
+  longhaulTripStatusHandler,
+  longhaulTripCancelHandler,
+  longhaulTripSummaryHandler,
+} from './handlers/longhaul-cloud/trips-write'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -305,6 +310,14 @@ v1.post('/onprem/longhaul/shipments/:id/coverage', longhaulShipmentCoverageHandl
 v1.post('/onprem/longhaul/trips/:id/notes', longhaulCreateTripNoteHandler)
 v1.patch('/onprem/longhaul/notes/:id', longhaulPatchTripNoteHandler)
 v1.post('/onprem/longhaul/activities/:id', longhaulSaveActivityHandler)
+// Phase 4 (Unit 3): trip status / cancel / summary served cloud-direct. status
+// + cancel author the multi-table mutation as one in-SQL transaction (Unit 0
+// pattern); summary is a faithful direct field-touch (NOT a recompute — see
+// handlers/longhaul-cloud/trips-write.ts). Registered before the /onprem mount;
+// POST /trips and PUT /trips/:id (trip save) still fall through to the proxy.
+v1.patch('/onprem/longhaul/trips/:id/status', longhaulTripStatusHandler)
+v1.post('/onprem/longhaul/trips/:id/cancel', longhaulTripCancelHandler)
+v1.patch('/onprem/longhaul/trips/:id/summary', longhaulTripSummaryHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.
