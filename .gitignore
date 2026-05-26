@@ -1,5 +1,6 @@
 # Dependencies
-node_modules/
+# No trailing slash: also ignores a stray `node_modules` symlink/file, not just the directory.
+node_modules
 .pnp
 .pnp.js
 
