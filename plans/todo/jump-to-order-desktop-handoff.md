@@ -17,12 +17,14 @@ pegasus-desktop://order/{order_num}
 - `{order_num}` is always a **positive integer** (validated web-side; only `[0-9]`
   ever reaches the URI — no escaping, no injection vectors).
 - Fire-and-forget. The browser **cannot** tell whether the app opened — it shows an
-  optimistic "Opening order N…" toast and, ~2.5s later, a neutral "if Pegasus didn't
-  open, make sure it's installed and running" hint.
-- The feature is **off by default** per deployment. It activates only when that
-  deployment's `tenant-web` `config.json` sets `features.jumpToOrder.enabled: true`.
-  The scheme is configurable there (`features.jumpToOrder.scheme`, default
-  `"pegasus-desktop"`) — **keep it in sync with whatever you register.**
+  optimistic "Opening order N…" toast and, ~2.5s later, a follow-up: "Could not open
+  Pegasus desktop app. Make sure the Pegasus desktop app is open and try again."
+- **Enabled on QA + prod** (set in CDK `frontend-assets-stack.ts` via
+  `jumpToOrderEnabled: envName === 'staging' || envName === 'prod'`; dev stays off).
+  The scheme is `features.jumpToOrder.scheme` (default `"pegasus-desktop"`) —
+  **whatever the desktop registers must match this.** Until the desktop app
+  registers the scheme, clicks produce the "Could not open…" follow-up (no handler
+  catches the URI), so registering it is the gating work to make this functional.
 
 This replaces the legacy Electron→named-pipe path. The existing named-pipe server is
 still useful — reuse it as the _internal_ redirect target (step 2).

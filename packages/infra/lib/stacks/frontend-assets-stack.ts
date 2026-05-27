@@ -51,6 +51,14 @@ export interface FrontendAssetsStackProps extends cdk.StackProps {
    * through CloudFront (WAF/Shield); the execute-api URL has neither property.
    */
   readonly useApiCustomDomain?: boolean
+  /**
+   * When true, config.json enables the driver-planning "jump to order" desktop
+   * launcher (features.jumpToOrder.enabled). The order-number link then launches
+   * the `pegasus-desktop://` URI scheme, which only does anything on machines
+   * where the Pegasus desktop app has registered that scheme. Set for
+   * staging/prod; left false for dev. Defaults to false.
+   */
+  readonly jumpToOrderEnabled?: boolean
 }
 
 /**
@@ -139,6 +147,12 @@ export class FrontendAssetsStack extends cdk.Stack {
               clientId: cognitoTenantClientId,
               domain: cognitoDomain,
               redirectUri: `https://${distributionDomainName}/login/callback`,
+            },
+            features: {
+              jumpToOrder: {
+                enabled: props.jumpToOrderEnabled ?? false,
+                scheme: 'pegasus-desktop',
+              },
             },
           }),
         ],

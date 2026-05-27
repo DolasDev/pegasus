@@ -79,8 +79,11 @@ export function jumpToOrder(args: { order_num: unknown }): void {
     return
   }
 
-  // Soft, neutral follow-up (NOT an error — we can't detect failure).
+  // Soft follow-up (NOT an error toast — the browser can't tell us whether the
+  // app actually opened, so this stays neutral and guides a retry).
   window.setTimeout(() => {
-    notify('If Pegasus did not open, make sure the desktop app is installed and running.')
+    notify(
+      'Could not open Pegasus desktop app. Make sure the Pegasus desktop app is open and try again.',
+    )
   }, 2500)
 }

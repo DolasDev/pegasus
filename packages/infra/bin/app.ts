@@ -232,6 +232,10 @@ const frontendAssetsStack = new FrontendAssetsStack(app, `${stackIdPrefix}-Front
   // staging/prod → https://api.pegasus[-qa].dolas.dev (via CloudFront).
   // dev keeps the raw execute-api URL — no custom API domain there.
   useApiCustomDomain: envName === 'staging' || envName === 'prod',
+  // Enable the "jump to order" desktop launcher on QA + prod. (Inert until the
+  // Pegasus desktop app registers the pegasus-desktop:// scheme — see
+  // plans/todo/jump-to-order-desktop-handoff.md.)
+  jumpToOrderEnabled: envName === 'staging' || envName === 'prod',
 })
 frontendAssetsStack.addDependency(frontendStack)
 frontendAssetsStack.addDependency(apiStack)
