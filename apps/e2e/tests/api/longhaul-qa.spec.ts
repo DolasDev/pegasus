@@ -750,4 +750,47 @@ test.describe('longhaul on-prem bridge (QA)', () => {
       await qaApiFetch(`${LH}/trips/${tripId}/cancel`, { method: 'POST' })
     }
   })
+
+  test('shipment-filter CRUD: POST → list → set default → DELETE @qa-mutating', async ({
+    qaApiFetch,
+  }) => {
+    const me = await qaApiFetch(`${LH}/users/me`)
+      .then((r) => r.json())
+      .then((j) => j.data)
+    expect(me?.code, 'legacy user resolved').toBeTruthy()
+    const name = `e2e-qa-filter-${Date.now()}`
+
+    const create = await qaApiFetch(`${LH}/shipment-filters`, {
+      method: 'POST',
+      body: JSON.stringify({ name, user_code: me.code, query: { filters: {} }, is_public: false }),
+    })
+    const createText = await create.text()
+    expect(create.status, createText).toBe(201)
+    const filterId = (createText ? JSON.parse(createText) : {})?.data?.filter_id
+    expect(filterId, 'POST returns filter_id').toBeTruthy()
+
+    try {
+      // The new private filter shows up in the user's saved list.
+      const list = await (await qaApiFetch(`${LH}/shipment-filters`)).json()
+      const filters: Array<{ filter_id: number }> = list.data ?? list
+      expect(filters.some((f) => f.filter_id === filterId)).toBe(true)
+
+      // Set it as the user's default, then read it back.
+      const setDefault = await qaApiFetch(`${LH}/shipment-filters/default`, {
+        method: 'PUT',
+        body: JSON.stringify({ filter_id: filterId }),
+      })
+      expect(setDefault.status, await setDefault.text().catch(() => '')).toBeLessThan(300)
+      const def = await (await qaApiFetch(`${LH}/shipment-filters/default`)).json()
+      expect((def.data ?? def)?.filter_id).toBe(filterId)
+    } finally {
+      const del = await qaApiFetch(`${LH}/shipment-filters/${filterId}`, { method: 'DELETE' })
+      expect(del.status, await del.text().catch(() => '')).toBeLessThan(300)
+    }
+
+    // After delete it is gone from the saved list.
+    const after = await (await qaApiFetch(`${LH}/shipment-filters`)).json()
+    const remaining: Array<{ filter_id: number }> = after.data ?? after
+    expect(remaining.some((f) => f.filter_id === filterId)).toBe(false)
+  })
 })

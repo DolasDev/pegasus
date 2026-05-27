@@ -138,6 +138,29 @@ error:"Divide by zero error encountered."}` → `executeSql` throws
     `driver.id`. Cancel (#9, `:414`) + all Unit 1/2 regressions stayed green.
   - **E2E spec fix pushed (e2e-only, no redeploy); re-run pending.**
 
+- **2026-05-26 — Unit 3 COMPLETE ✅ (verified).** Spec fix 4dbeea9; full
+  e2e-qa-longhaul GREEN. #7 status (`:692`), #8 summary-recompute (`:692`), #9
+  cancel (`:414`) all pass cloud-direct. Next: Unit 4 — shipment-filter CRUD.
+
+- **2026-05-26 — Unit 4 code COMPLETE (awaiting verify + E2E).**
+  `handlers/longhaul-cloud/shipment-filters-write.ts` (POST/PUT-default/DELETE),
+  mounted ahead of `/onprem`. Schemas pre-verified (filter table has no triggers
+  → OUTPUT INSERTED.\* safe).
+  - **POST /shipment-filters** — INSERT longhaul_shipment_filter OUTPUT
+    INSERTED.\* (owner_code = BODY user_code, faithful; name trimmed; query date
+    fields → day offsets via new lib/longhaul-filter-query-transform.ts). If
+    is_default, upsert longhaul_user_preferences.
+  - **PUT /shipment-filters/default** — upsert prefs keyed by resolved code;
+    403 when no legacy user (proxy parity).
+  - **DELETE /shipment-filters/:id** — DELETE by filter_id.
+  - lib/longhaul-filter-query-transform.ts holds the forward (dates→offsets)
+    transform, ported verbatim from filter-options.ts. (Read handlers keep their
+    inline inverse copy — left untouched to avoid scope creep.)
+  - Unit tests: shipment-filters-write.test.ts (10) green; tsc + eslint clean.
+  - **E2E:** added a CRUD round-trip spec (POST → appears in list → set default
+    → read-back → DELETE → gone).
+  - **Not committed.** Awaiting user verify + reseed.
+
 ## Goal
 
 Move the longhaul **write** routes off the on-prem proxy

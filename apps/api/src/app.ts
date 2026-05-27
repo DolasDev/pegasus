@@ -52,6 +52,11 @@ import {
   longhaulTripCancelHandler,
   longhaulTripSummaryHandler,
 } from './handlers/longhaul-cloud/trips-write'
+import {
+  longhaulSaveShipmentFilterHandler,
+  longhaulSetDefaultShipmentFilterHandler,
+  longhaulDeleteShipmentFilterHandler,
+} from './handlers/longhaul-cloud/shipment-filters-write'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -318,6 +323,12 @@ v1.post('/onprem/longhaul/activities/:id', longhaulSaveActivityHandler)
 v1.patch('/onprem/longhaul/trips/:id/status', longhaulTripStatusHandler)
 v1.post('/onprem/longhaul/trips/:id/cancel', longhaulTripCancelHandler)
 v1.patch('/onprem/longhaul/trips/:id/summary', longhaulTripSummaryHandler)
+// Phase 4 (Unit 4): saved-shipment-filter CRUD served cloud-direct (user-pref
+// writes). GET /shipment-filters[/default] already cloud-direct above; these
+// add the writes. Registered before the /onprem mount.
+v1.post('/onprem/longhaul/shipment-filters', longhaulSaveShipmentFilterHandler)
+v1.put('/onprem/longhaul/shipment-filters/default', longhaulSetDefaultShipmentFilterHandler)
+v1.delete('/onprem/longhaul/shipment-filters/:id', longhaulDeleteShipmentFilterHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.
