@@ -76,11 +76,23 @@ function effectiveEnd(a: SummaryActivityRow): number {
   return v ? new Date(v).getTime() : 0
 }
 
+export interface ComputeTripSummaryOptions {
+  /**
+   * The shipment column marking a "super VIP". The two on-prem summary code
+   * paths disagree: updateTripSummaryInfo (activity-save, /summary) uses
+   * `supervip`; saveTripLogic (trip save) uses `idc_break`. Default `supervip`.
+   * The super-VIP field is excluded from vip_count and counted in supervip_count.
+   */
+  superVipField?: string
+}
+
 /** Pure roll-up computation — exported for unit testing. */
 export function computeTripSummary(
   activities: SummaryActivityRow[],
   shipments: SummaryShipmentRow[],
+  options: ComputeTripSummaryOptions = {},
 ): TripSummary {
+  const superVipField = options.superVipField ?? 'supervip'
   const shipmentsMap: Record<number, Record<string, unknown>> = {}
   for (const s of shipments) shipmentsMap[s.order_num] = s
 
@@ -93,10 +105,11 @@ export function computeTripSummary(
   const vipCount = new Set(
     orderNums.filter((n) => {
       const s = shipmentsMap[n]
-      return s?.['vip'] === 'Y' && s?.['supervip'] !== 'Y'
+      return s?.['vip'] === 'Y' && s?.[superVipField] !== 'Y'
     }),
   ).size
-  const supervipCount = new Set(orderNums.filter((n) => shipmentsMap[n]?.['supervip'] === 'Y')).size
+  const supervipCount = new Set(orderNums.filter((n) => shipmentsMap[n]?.[superVipField] === 'Y'))
+    .size
 
   const originActivity = [...activities].sort((a, b) => effectiveStart(a) - effectiveStart(b))[0]
   const destinationActivity = [...activities].sort((a, b) => effectiveEnd(b) - effectiveEnd(a))[0]

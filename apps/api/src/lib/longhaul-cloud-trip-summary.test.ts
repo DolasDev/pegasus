@@ -72,6 +72,35 @@ describe('computeTripSummary (pure)', () => {
     expect(s.origin_state_id).toBeNull()
     expect(s.destination_state_id).toBeNull()
   })
+
+  it('counts super-VIPs via the configured field (idc_break for trip-save)', () => {
+    const activities = [
+      act({
+        order_num: 1,
+        ActivityType_code: 'LOAD',
+        planned_start: '2026-06-01',
+        planned_end: '2026-06-01',
+      }),
+      act({
+        order_num: 2,
+        ActivityType_code: 'LOAD',
+        planned_start: '2026-06-02',
+        planned_end: '2026-06-02',
+      }),
+    ]
+    const shipments = [
+      { order_num: 1, vip: 'Y', idc_break: 'N' }, // plain VIP
+      { order_num: 2, vip: 'Y', idc_break: 'Y' }, // super VIP → excluded from vip_count
+    ]
+    const s = computeTripSummary(activities, shipments, { superVipField: 'idc_break' })
+    expect(s.vip_count).toBe(1) // only order 1
+    expect(s.supervip_count).toBe(1) // order 2
+
+    // Default (supervip) field ignores idc_break → both are plain VIPs.
+    const sDefault = computeTripSummary(activities, shipments)
+    expect(sDefault.vip_count).toBe(2)
+    expect(sDefault.supervip_count).toBe(0)
+  })
 })
 
 describe('recomputeTripSummaryCloud', () => {

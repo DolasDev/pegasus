@@ -161,6 +161,42 @@ error:"Divide by zero error encountered."}` → `executeSql` throws
     → read-back → DELETE → gone).
   - **Not committed.** Awaiting user verify + reseed.
 
+- **2026-05-27 — Unit 4 COMPLETE ✅ (verified).** Commit cdd53ea deployed
+  `success`; full e2e-qa-longhaul GREEN incl. the CRUD round-trip (`:754`).
+  POST/PUT-default/DELETE all cloud-direct. Next: Unit 5 — TRIP SAVE (#11), the
+  marquee refactor.
+
+- **2026-05-27 — Unit 5 code COMPLETE (awaiting AWS re-auth + verify + E2E).**
+  TRIP SAVE migrated cloud-direct — 2 round trips (was 16-18 on the WAN):
+  - `lib/longhaul-trip-save.ts` — pure `computeTripSavePlan`: buildShipmentActivities
+    auto-fill + sameSlot add/update/remove diff + guards (driver-change-on-in-
+    progress, remove-with-actual-date) + dispatcher cascade + trip-row upsert.
+    Activity writes restricted to real columns (ACTIVITY_COLUMNS) so joined
+    aliases can't leak (safe refinement over on-prem).
+  - `handlers/longhaul-cloud/trip-save.ts` — POST /trips + PUT /trips/:id.
+    RT1 reads existing trip+activities (update) + shipment summary fields;
+    JS diff + computeTripSummary (reused from Unit 2); RT2 ONE in-SQL
+    transaction (trip upsert via SCOPE_IDENTITY/UPDATE → dispatcher shadow
+    cascade → DELETE removed → INSERT added → UPDATE changed → summary UPDATE →
+    COMMIT → trailing SELECT). Dynamic statement builder (variable activity
+    counts) with indexed params.
+  - Response = re-read TripMaster header (UI only consumes `.id`).
+  - Unit tests: longhaul-trip-save.test.ts (8 pure-diff) + trip-save.test.ts
+    (6 handler) green; tsc + eslint clean.
+  - **E2E:** no new spec needed — existing POST /trips specs (`:414`, `:618`,
+    `:692`) + browser trip-save/edit specs (`:189`, `:127`) will now exercise the
+    CLOUD handler (create + update/remove diff). Strongest possible proof: the
+    same specs that passed on the proxy must pass on cloud.
+  - **Schema verified (post re-auth):** all 24 TripMaster TRIP_COLUMNS present;
+    TripMaster has 1 trigger → we use SCOPE_IDENTITY (not OUTPUT), which is
+    trigger-safe and returns the correct scope's id. **`idc_break` DOES exist on
+    the view** (earlier "absent" reading was the stale-file blip). So the
+    summary is NOT equivalent: saveTripLogic counts super-VIPs via `idc_break`,
+    while updateTripSummaryInfo (Unit 2/3) uses `supervip`. FIXED:
+    `computeTripSummary` now takes `{ superVipField }` (default `supervip`);
+    trip-save passes `idc_break` and selects it in RT1. Units 2/3 unchanged.
+    34 unit tests green, tsc + eslint clean.
+
 ## Goal
 
 Move the longhaul **write** routes off the on-prem proxy

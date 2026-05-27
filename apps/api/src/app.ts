@@ -57,6 +57,10 @@ import {
   longhaulSetDefaultShipmentFilterHandler,
   longhaulDeleteShipmentFilterHandler,
 } from './handlers/longhaul-cloud/shipment-filters-write'
+import {
+  longhaulCreateTripHandler,
+  longhaulUpdateTripHandler,
+} from './handlers/longhaul-cloud/trip-save'
 import { meHandler } from './handlers/me'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -329,6 +333,12 @@ v1.patch('/onprem/longhaul/trips/:id/summary', longhaulTripSummaryHandler)
 v1.post('/onprem/longhaul/shipment-filters', longhaulSaveShipmentFilterHandler)
 v1.put('/onprem/longhaul/shipment-filters/default', longhaulSetDefaultShipmentFilterHandler)
 v1.delete('/onprem/longhaul/shipment-filters/:id', longhaulDeleteShipmentFilterHandler)
+// Phase 4 (Unit 5): TRIP SAVE — POST /trips (create) + PUT /trips/:id (update)
+// served cloud-direct. RT1 reads current state; RT2 is one atomic in-SQL
+// transaction (trip upsert + activity diff + summary). The 16-18-round-trip WAN
+// write the whole phase targets. See handlers/longhaul-cloud/trip-save.ts.
+v1.post('/onprem/longhaul/trips', longhaulCreateTripHandler)
+v1.put('/onprem/longhaul/trips/:id', longhaulUpdateTripHandler)
 // On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
 // on-prem API server. Routes are tenant-scoped; URL is derived from the
 // tenant's VpnPeer overlay IP. See handlers/onprem.ts.
