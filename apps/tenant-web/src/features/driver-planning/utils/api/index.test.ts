@@ -23,6 +23,11 @@ vi.mock('../../components/Snackbar/notify', () => ({
   notifySuccess: notifySuccessMock,
 }))
 
+// jumpToOrder delegates to the launcher module — mock it so the API surface
+// test stays a pure delegation check (the launcher has its own unit tests).
+const { jumpToOrderImplMock } = vi.hoisted(() => ({ jumpToOrderImplMock: vi.fn() }))
+vi.mock('../jump-to-order', () => ({ jumpToOrder: jumpToOrderImplMock }))
+
 import { fetchData } from './transport'
 import { API } from './index'
 
@@ -275,23 +280,17 @@ describe('API surface', () => {
     })
   })
 
-  describe('jumpToOrder (stub)', () => {
-    it('does not call fetchData', async () => {
-      await API.jumpToOrder({ orderId: 1 })
+  describe('jumpToOrder', () => {
+    beforeEach(() => jumpToOrderImplMock.mockReset())
+
+    it('delegates to the launcher with the order_num args', () => {
+      API.jumpToOrder({ order_num: 42 })
+      expect(jumpToOrderImplMock).toHaveBeenCalledWith({ order_num: 42 })
+    })
+
+    it('does not call fetchData', () => {
+      API.jumpToOrder({ order_num: 42 })
       expect(fetchDataMock).not.toHaveBeenCalled()
-    })
-
-    it('does not throw', async () => {
-      await expect(API.jumpToOrder({ orderId: 1 })).resolves.toBeUndefined()
-    })
-
-    it('warns and surfaces a user-facing notice', async () => {
-      await API.jumpToOrder({ orderId: 1 })
-      expect(consoleWarnSpy).toHaveBeenCalledWith('[longhaul-port] jumpToOrder stubbed; args:', {
-        orderId: 1,
-      })
-      expect(notifyErrorMock).toHaveBeenCalledTimes(1)
-      expect(notifyErrorMock.mock.calls[0]![0]).toMatch(/legacy desktop app/i)
     })
   })
 })

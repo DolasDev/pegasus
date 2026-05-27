@@ -225,30 +225,17 @@ describe('resolveRoute', () => {
     })
   })
 
-  describe('remote (Windows-only)', () => {
-    it('pegasusRemoteFunctionCall → POST /remote/jump-to-order with eventData', () => {
-      const arg = { eventData: { orderId: 7 } }
-      expect(resolveRoute('pegasusRemoteFunctionCall', [arg])).toEqual({
-        method: 'POST',
-        path: '/remote/jump-to-order',
-        body: { orderId: 7 },
-      })
-    })
-
-    it('pegasusRemoteFunctionCall with no arg → body undefined', () => {
-      expect(resolveRoute('pegasusRemoteFunctionCall', [])).toEqual({
-        method: 'POST',
-        path: '/remote/jump-to-order',
-        body: undefined,
-      })
-    })
-  })
-
   describe('errors', () => {
     it('throws for unknown route', () => {
       expect(() => resolveRoute('definitelyNotARoute', [])).toThrow(
         /Unknown longhaul route: definitelyNotARoute/,
       )
+    })
+
+    // jump-to-order is no longer a proxied HTTP route — it launches the desktop
+    // app via a custom URI scheme (see utils/jump-to-order.ts).
+    it('no longer resolves the removed pegasusRemoteFunctionCall route', () => {
+      expect(() => resolveRoute('pegasusRemoteFunctionCall', [])).toThrow(/Unknown longhaul route/)
     })
   })
 })

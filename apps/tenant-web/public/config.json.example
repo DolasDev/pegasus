@@ -6,5 +6,11 @@
     "clientId": "xxxxxxxxxxxxxxxxxxxxxxxxxx",
     "domain": "https://pegasus-123456789.auth.us-east-1.amazoncognito.com",
     "redirectUri": "http://localhost:5173/login/callback"
+  },
+  "features": {
+    "jumpToOrder": {
+      "enabled": false,
+      "scheme": "pegasus-desktop"
+    }
   }
 }

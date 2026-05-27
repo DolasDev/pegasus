@@ -33,19 +33,23 @@ a5f1d9a, 6435b5f, 630c180, 4dbeea9, cdd53ea, 45e014f.
 - `POST /activities` (create, no `:id`) — no UI caller; creation happens inside
   trip-save.
 
-### Next: Phase 5 — decommission (separate effort, gated on Phase 4 — now PARTIAL)
+### Next: Phase 5 — decommission (separate effort, gated on Phase 4)
 
-Phase 4 migrated every cloud-reachable longhaul **DB write** off the proxy. But
-`POST /remote/jump-to-order` legitimately stays on the proxy (Windows-only
-desktop navigation, no cloud equivalent), so the on-prem proxy path must stay:
-**the `/onprem` wildcard + `handlers/onprem.ts` + tunnel infra + the on-prem
-server's `handlers/longhaul/remote.ts` CANNOT be removed.** Decommission is
-therefore partial — the cloud Lambda's own longhaul read/write code is fully
-self-sufficient for everything except jump-to-order, but the proxy pipe remains
-for that single feature until a cloud-native order-navigation story exists.
-What _can_ still be retired safely (none of it is hit anymore for migrated
-routes): the unused on-prem write paths the migrated routes superseded. Scope
-this carefully in the Phase 5 plan — don't assume "remove everything."
+Phase 4 migrated every cloud-reachable longhaul **DB write** off the proxy.
+
+**UPDATE 2026-05-27 — the "partial decommission" caveat is being REVERSED.**
+jump-to-order is moving to a **browser-direct custom URI protocol**
+(`pegasus-desktop://order/{id}`) so the SPA launches the locally-installed
+desktop app itself — it no longer needs the on-prem proxy at all. Web-side built
+in `apps/tenant-web` (config-gated, default-off; see plan
+`abundant-meandering-trinket` / the jump-to-order work). Desktop-side (register
+the scheme + activation redirect over the existing named-pipe server) is a
+handoff to the legacy WinForms team. **Consequence:** once the web change ships
+and the desktop registers the scheme, `apps/api/src/handlers/longhaul/remote.ts`
+becomes fully dead and the `/onprem` wildcard + `handlers/onprem.ts` + tunnel
+infra no longer need to stay for this feature — Phase 5 can remove everything.
+(The web change is not yet committed/deployed; until it is, the proxy path still
+nominally backs jump-to-order, though the UI stub never calls it.)
 
 ### How to ship a unit (the established loop)
 

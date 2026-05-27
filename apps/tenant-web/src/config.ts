@@ -1,3 +1,11 @@
+/** Controls the driver-planning "jump to order" desktop launcher. */
+export type JumpToOrderConfig = {
+  /** When false, the order-number link is inert plain text. */
+  enabled: boolean
+  /** Custom URI scheme the desktop app registers, without "://". */
+  scheme: string
+}
+
 export type WebConfig = {
   apiUrl: string
   cognito: {
@@ -8,7 +16,13 @@ export type WebConfig = {
     domain: string
     redirectUri: string
   }
+  features: {
+    jumpToOrder: JumpToOrderConfig
+  }
 }
+
+/** RFC-3986 scheme grammar: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ). */
+const SCHEME_RE = /^[a-z][a-z0-9+.-]*$/i
 
 let _config: WebConfig | null = null
 
@@ -49,6 +63,20 @@ export async function loadConfig(): Promise<void> {
     )
   }
 
+  // Optional feature block — parsed defensively so older config.json files
+  // (without `features`) keep loading. Defaults: jump-to-order off, scheme
+  // "pegasus-desktop". A malformed scheme falls back to the default rather
+  // than launching an arbitrary URI scheme.
+  const features = cfg['features'] as Record<string, unknown> | undefined
+  const jto = features?.['jumpToOrder'] as Record<string, unknown> | undefined
+  const jumpToOrder: JumpToOrderConfig = {
+    enabled: jto?.['enabled'] === true,
+    scheme:
+      typeof jto?.['scheme'] === 'string' && SCHEME_RE.test(jto['scheme'] as string)
+        ? (jto['scheme'] as string)
+        : 'pegasus-desktop',
+  }
+
   _config = {
     apiUrl: cfg['apiUrl'],
     cognito: {
@@ -57,6 +85,9 @@ export async function loadConfig(): Promise<void> {
       clientId: cognito['clientId'],
       domain: (cognito['domain'] as string).replace(/\/$/, ''),
       redirectUri: cognito['redirectUri'],
+    },
+    features: {
+      jumpToOrder,
     },
   }
 }

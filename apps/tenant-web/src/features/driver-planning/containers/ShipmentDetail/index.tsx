@@ -8,6 +8,7 @@ import { formatDate } from '../../utils/format-date'
 import { Link } from '@/features/driver-planning/utils/router-compat'
 import { Clickable } from '../../components/Clickable'
 import { API } from '../../utils/api'
+import { isJumpToOrderEnabled } from '../../utils/jump-to-order'
 import { ShipmentCoverage } from './components/Coverage'
 import { ShipmentWeight } from './components/Weight'
 import { DispatchNote } from './components/DispatchNote'
@@ -33,18 +34,23 @@ export function ShipmentDetail({
     }
   }
 
+  const jumpEnabled = isJumpToOrderEnabled()
+
   const fields = [
     {
       accessor: 'shipper_name',
       label: 'Shipper Name',
     },
     {
-      accessor: (shipment: any) => (
-        <Clickable
-          value={`${shipment.order_num}`}
-          onClick={() => API.jumpToOrder({ order_num: shipment.order_num })}
-        ></Clickable>
-      ),
+      accessor: (shipment: any) =>
+        jumpEnabled ? (
+          <Clickable
+            value={`${shipment.order_num}`}
+            onClick={() => API.jumpToOrder({ order_num: shipment.order_num })}
+          ></Clickable>
+        ) : (
+          <span>{shipment.order_num}</span>
+        ),
       label: 'Order Number',
     },
     {

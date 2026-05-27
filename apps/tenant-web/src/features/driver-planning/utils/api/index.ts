@@ -1,6 +1,7 @@
 import logger from '../logger'
 import { notifyError, notifySuccess } from '../../components/Snackbar/notify'
 import { fetchData } from './transport'
+import { jumpToOrder as jumpToOrderImpl } from '../jump-to-order'
 import { reshapeTrip, reshapeTripList } from './reshape-trip'
 import { reshapeShipmentList } from './reshape-shipment'
 import { fetchAndReshape } from './fetch-and-reshape'
@@ -78,15 +79,9 @@ export const API = {
     fetchHelper('patchTripNote', patchBody),
   patchShipmentShadow: (shipmentShadowDto: any) =>
     fetchHelper('patchShipmentShadow', shipmentShadowDto),
-  jumpToOrder: async (args: any) => {
-    // TODO(longhaul-port): jumping to an order in the legacy WinForms app
-    // requires the on-prem-only `pegasusRemoteFunctionCall` shell-out. There
-    // is no cloud equivalent yet — surface a notice instead of a stack trace.
-    console.warn('[longhaul-port] jumpToOrder stubbed; args:', args)
-    notifyError(
-      'Opening an order in the legacy desktop app is not yet supported in the cloud. This will be wired up in a future phase.',
-    )
-  },
+  // Opens the order in the locally-installed Pegasus desktop app via a custom
+  // URI scheme (see utils/jump-to-order.ts). Fire-and-forget; config-gated.
+  jumpToOrder: (args: { order_num: number }) => jumpToOrderImpl(args),
   fetchFilterOptions: () => fetchHelper('fetchFilterOptions'),
   saveShipmentsFilter: async (payload: any) => {
     try {

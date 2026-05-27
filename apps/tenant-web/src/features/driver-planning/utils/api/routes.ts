@@ -102,10 +102,6 @@ export function resolveRoute(routeName: string, args: unknown[]): HttpRequest {
     case 'deleteShipmentFilter':
       return { method: 'DELETE', path: `/shipment-filters/${arg0}` }
 
-    // ---- Remote (Windows-only) ----
-    case 'pegasusRemoteFunctionCall':
-      return { method: 'POST', path: '/remote/jump-to-order', body: arg0?.eventData }
-
     default:
       throw new Error(`Unknown longhaul route: ${routeName}`)
   }

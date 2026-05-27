@@ -20,6 +20,14 @@ vi.mock('../../utils/api', () => ({
   },
 }))
 
+// Control whether the order-number cell is an interactive launcher.
+const { isJumpToOrderEnabledMock } = vi.hoisted(() => ({
+  isJumpToOrderEnabledMock: vi.fn(() => false),
+}))
+vi.mock('../../utils/jump-to-order', () => ({
+  isJumpToOrderEnabled: isJumpToOrderEnabledMock,
+}))
+
 vi.mock('./components/Coverage', () => ({
   ShipmentCoverage: () => <div data-testid="coverage-mock" />,
 }))
@@ -31,6 +39,7 @@ vi.mock('./components/DispatchNote', () => ({
 }))
 
 import { ShipmentDetail } from './index'
+import { API } from '../../utils/api'
 
 const happyShipment = {
   order_num: '12345',
@@ -120,6 +129,31 @@ describe('ShipmentDetail container', () => {
     const mention = screen.getByText('@sam')
     expect(mention).toBeInTheDocument()
     expect(mention.tagName.toLowerCase()).toBe('b')
+  })
+
+  describe('order-number jump-to-order gating', () => {
+    it('renders a clickable that launches jumpToOrder when enabled', () => {
+      isJumpToOrderEnabledMock.mockReturnValue(true)
+      renderWithStore(<ShipmentDetail />, {
+        shipments: { selectedShipment: happyShipment } as any,
+        user: { user: sampleUser } as any,
+      })
+      const orderNum = screen.getByText('12345')
+      fireEvent.click(orderNum)
+      expect(API.jumpToOrder).toHaveBeenCalledWith({ order_num: '12345' })
+    })
+
+    it('renders plain text (no launch) when disabled', () => {
+      isJumpToOrderEnabledMock.mockReturnValue(false)
+      renderWithStore(<ShipmentDetail />, {
+        shipments: { selectedShipment: happyShipment } as any,
+        user: { user: sampleUser } as any,
+      })
+      const orderNum = screen.getByText('12345')
+      expect(orderNum.tagName.toLowerCase()).toBe('span')
+      fireEvent.click(orderNum)
+      expect(API.jumpToOrder).not.toHaveBeenCalled()
+    })
   })
 
   it('dispatches a deselect (thunk) when the close button is clicked', async () => {
