@@ -8,6 +8,79 @@ migrate writes")._
 _Branch: `main` (per session start). Changes staged locally; not committed/pushed
 until explicitly instructed (team workflow)._
 
+---
+
+## ▶ RESUME HERE (updated 2026-05-27)
+
+**Status: Phase 4 COMPLETE. Units 0–5 migrated & E2E-verified on `main`
+(deployed to QA + prod); Unit 6 resolved as leave-on-proxy (no migration —
+not a DB write). Next: Phase 5 decommission (separate effort, partial).**
+
+Migrated cloud-direct (all behind the `/onprem` wildcard via Hono
+precedence): driver-planning PATCH, shipment shadow + coverage, trip notes
+(POST/PATCH), activity save (POST /activities/:id), trip status/cancel/summary,
+shipment-filter CRUD, and **trip save (POST /trips + PUT /trips/:id)** — the
+16–18-round-trip WAN write, now 2 round trips. Commits: a2feae5, 4495d11,
+a5f1d9a, 6435b5f, 630c180, 4dbeea9, cdd53ea, 45e014f.
+
+**Left on the proxy deliberately (not bugs):**
+
+- `POST /remote/jump-to-order` (Unit 6, #12) — **not a DB write.** See the
+  2026-05-27 Unit 6 log entry below; it's a WinForms native-IPC navigation
+  shell-out (501 stub), and the UI doesn't even call it (client-side stub).
+- `PATCH /shipments/:id/weight` — dead route, no UI caller, on-prem broken vs
+  the real `longhaul_shipment_weight_link` schema (no scalar `weight` column).
+- `POST /activities` (create, no `:id`) — no UI caller; creation happens inside
+  trip-save.
+
+### Next: Phase 5 — decommission (separate effort, gated on Phase 4 — now PARTIAL)
+
+Phase 4 migrated every cloud-reachable longhaul **DB write** off the proxy. But
+`POST /remote/jump-to-order` legitimately stays on the proxy (Windows-only
+desktop navigation, no cloud equivalent), so the on-prem proxy path must stay:
+**the `/onprem` wildcard + `handlers/onprem.ts` + tunnel infra + the on-prem
+server's `handlers/longhaul/remote.ts` CANNOT be removed.** Decommission is
+therefore partial — the cloud Lambda's own longhaul read/write code is fully
+self-sufficient for everything except jump-to-order, but the proxy pipe remains
+for that single feature until a cloud-native order-navigation story exists.
+What _can_ still be retired safely (none of it is hit anymore for migrated
+routes): the unused on-prem write paths the migrated routes superseded. Scope
+this carefully in the Phase 5 plan — don't assume "remove everything."
+
+### How to ship a unit (the established loop)
+
+1. Build handler + unit tests; `cd apps/api && npx tsc --noEmit && npx vitest run <files> && npx eslint <files>`; `cd apps/e2e && npx tsc --noEmit`.
+2. **Pre-verify schema via the executor** before writing SQL (this caught the
+   weight + `idc_break` bugs). Probe pattern: `aws lambda invoke` the QA executor
+   with `{connectionString, sql}`.
+3. Pause for the user to **reseed** the QA planning DB + review.
+4. On their go: commit only this unit's files (`git reset -q -- .` then
+   `git add <files>`), push `main` (pre-push runs `turbo typecheck test`;
+   auto-deploys QA **and prod**).
+5. Watch deploy: `gh run watch <id> --exit-status`; wait `success`.
+6. `gh workflow run e2e-qa-longhaul.yml`; watch; confirm the unit's `@qa-mutating`
+   specs green. On a 500, CloudWatch `mssql_exec_failed` has the real SQL error.
+
+### Environment / handles (verify AWS SSO not expired — re-auth rolls daily)
+
+- Re-auth: `aws sso login --sso-session dolas --use-device-code` (interactive —
+  ask the user to run via `! …`).
+- QA executor fn: `pegasus-staging-wireguard-MssqlExecutorFn3A798014-aB7HemkBIwU0`
+  (region us-east-1). Invoke profile: `dolas-pegasus-staging` (Admin, 248812875460).
+  Read-only/CloudWatch: `dolas-pegasus-staging-ro`.
+- QA tenant MSSQL conn string lives in the QA Neon `tenants` table (Dolios E2E
+  tenant `b40b082e-1932-4182-a081-47b7df363276`, `Server=10.200.0.2,1433 / PegNW`).
+  QA `DATABASE_URL` is on the staging API Lambda env (read via `aws lambda
+get-function-configuration`). Cached locally at `/tmp/qa_mssql.txt` this session
+  (regenerate next session).
+- Shared cloud-write libs already built and reusable: `lib/longhaul-cloud-user.ts`
+  (`resolveLonghaulUser`), `lib/longhaul-cloud-write.ts` (`pickColumns`/
+  `assignments`/`valuePlaceholders`), `lib/longhaul-cloud-trip-summary.ts`
+  (`computeTripSummary` w/ `superVipField` option, `recomputeTripSummaryCloud`),
+  `lib/longhaul-filter-query-transform.ts`, `lib/longhaul-trip-save.ts`.
+
+---
+
 ## Progress log
 
 - **2026-05-26 — Unit 0 COMPLETE (gate passed).**
@@ -196,6 +269,35 @@ error:"Divide by zero error encountered."}` → `executeSql` throws
     `computeTripSummary` now takes `{ superVipField }` (default `supervip`);
     trip-save passes `idc_break` and selects it in RT1. Units 2/3 unchanged.
     34 unit tests green, tsc + eslint clean.
+
+- **2026-05-27 — Unit 5 COMPLETE ✅ (verified).** Commit 45e014f deployed
+  `success`; full e2e-qa-longhaul GREEN. Trip save proven cloud-direct on BOTH
+  paths: create (`:414`, `:618`, browser `:189`) and update/activity-diff
+  (browser `:127`); no-shipments 403 (`:371`). The schema pre-check caught the
+  `idc_break` summary bug mocks couldn't. Round trips: 16-18 → 2. Next: Unit 6 —
+  remote/jump-to-order (migrate vs leave-on-proxy).
+
+- **2026-05-27 — Unit 6 RESOLVED: leave-on-proxy (no migration). PHASE 4 COMPLETE.**
+  Decision confirmed by reading the source, not just the hypothesis:
+  - **`apps/api/src/handlers/longhaul/remote.ts:10`** (the on-prem server's
+    handler, reached via the `/onprem` proxy pipe) authors **no MSSQL**. It
+    returns 501 `NOT_IMPLEMENTED` on non-Windows, and on `win32` it's an
+    unimplemented native-IPC placeholder ("implement native IPC call here when
+    needed"). It is a WinForms desktop navigation shell-out, not a
+    cloud-reachable DB write — so there is nothing to author cloud-direct.
+  - **The UI never calls it.** `jumpToOrder` (`apps/tenant-web/src/features/
+driver-planning/utils/api/index.ts:81`) is stubbed client-side: it logs a
+    warn and `notifyError(...)` ("not yet supported in the cloud … future
+    phase") and **never issues the HTTP request.** The `resolveRoute`
+    `'pegasusRemoteFunctionCall' → POST /remote/jump-to-order` mapping
+    (`routes.ts:106`) exists but is dead from the UI's side.
+  - **Conclusion:** Unit 6 = documented no-op. Nothing to migrate, no E2E spec
+    to add (`#12` was always `—` for E2E). Phase 4's mandate — move every
+    cloud-reachable longhaul **write** off the on-prem proxy — is satisfied.
+  - **Phase 5 consequence:** the `/onprem` wildcard + `handlers/onprem.ts` +
+    tunnel infra + on-prem `remote.ts` must STAY for jump-to-order. Decommission
+    is partial (see RESUME HERE).
+  - No code change, no commit, no deploy this unit — plan doc update only.
 
 ## Goal
 
