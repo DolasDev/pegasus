@@ -40,7 +40,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
       return (
         <div className={styles.container}>
           <Link className={styles.closeErrorMessage} to={'/trips'} onClick={this.closeErrorMessage}>
-            <i className="fa fa-close"></i>
+            <i className="fas fa-xmark"></i>
           </Link>
           <h1>An error occurred</h1>
           <p>

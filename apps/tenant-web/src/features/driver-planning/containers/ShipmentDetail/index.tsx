@@ -359,7 +359,7 @@ export function ShipmentDetail({
         className={styles.closeIcon}
         data-target="close-shipment-detail"
         onClick={() => selectShipment(null)}
-        Icon={<i className="fa fa-close"></i>}
+        Icon={<i className="fas fa-xmark"></i>}
       />
       {selectedShipment &&
         fields.map(({ label, accessor }: any, index: number) => (

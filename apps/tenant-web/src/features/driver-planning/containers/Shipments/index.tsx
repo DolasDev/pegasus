@@ -133,7 +133,7 @@ export const SearchDashboard = () => {
       <Lane key="Shipments" title={`Shipments ${countShipments()}`}>
         {/*
                 Commenting this out because not sure how necessary this feature is
-                <IconButton className={styles.iconButton} onClick={() => changeMode(state => !state)} Icon={<i className="fa fa-table"></i>} />
+                <IconButton className={styles.iconButton} onClick={() => changeMode(state => !state)} Icon={<i className="fas fa-table"></i>} />
                 */}
         <FilterTabs />
         {isTableMode ? (
@@ -154,7 +154,7 @@ export const SearchDashboard = () => {
                   {label}
                   {query.sortBy && query.sortBy.value === value && (
                     <i
-                      className={`fa fa-caret-up ${
+                      className={`fas fa-caret-up ${
                         query.sortBy.order === 'desc' ? styles.down : ''
                       }`}
                     ></i>

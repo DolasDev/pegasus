@@ -161,7 +161,7 @@ const MoreTripActions: React.FC<{ tripId: any }> = ({ tripId }) => {
         data-target="more-trip-actions"
         onClick={() => setOpen((state) => !state)}
       >
-        <i className="fa fa-ellipsis-v" />
+        <i className="fas fa-ellipsis-vertical" />
       </Button>
       {isOpen && (
         <Popover

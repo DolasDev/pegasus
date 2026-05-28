@@ -42,7 +42,7 @@ export const ShipmentWeight = ({ onUpdate }: { onUpdate: any }) => {
           <IconButton
             style={{ color: `${weight ? 'green' : 'orange'}` }}
             onClick={() => onButtonClick()}
-            Icon={<i className="fas fa-balance-scale-right"></i>}
+            Icon={<i className="fas fa-scale-unbalanced-flip"></i>}
           />
         </HoverToolTip>
       </span>
@@ -77,7 +77,7 @@ export const ShipmentWeight = ({ onUpdate }: { onUpdate: any }) => {
                   <IconButton
                     className={styles.closeIcon}
                     onClick={() => setEditMode(false)}
-                    Icon={<i className="fa fa-close"></i>}
+                    Icon={<i className="fas fa-xmark"></i>}
                   />
                 </div>
               </div>

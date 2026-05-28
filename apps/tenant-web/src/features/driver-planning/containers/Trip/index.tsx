@@ -126,14 +126,14 @@ function TripInternal() {
               </div>
               <div className={styles.buttonContainer}>
                 <Button data-target="trip-back-to-trips" onClick={() => navigate('/trips')}>
-                  <i className="fa fa-arrow-left"></i> All trips
+                  <i className="fas fa-arrow-left"></i> All trips
                 </Button>
                 <Button
                   className={styles.editTripButton}
                   data-target="trip-edit-planning"
                   onClick={() => navigate(`/planning?tripId=${tripId}`)}
                 >
-                  <i className="fa fa-pencil"></i> &nbsp;Edit planning
+                  <i className="fas fa-pencil"></i> &nbsp;Edit planning
                 </Button>
               </div>
               <div className={` ${styles.headerInfo}`}>

@@ -217,7 +217,7 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip }: 
                                 }
                               >
                                 <HoverToolTip content='Driver has Committed?' direction="right">
-                                <i className={selectedActivity.is_committed ? 'fa fa-check' : 'fa fa-question' }></i>
+                                <i className={selectedActivity.is_committed ? 'fas fa-check' : 'fas fa-question' }></i>
                                 </HoverToolTip>
                               </Button>
                             </span>
@@ -239,7 +239,7 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip }: 
                               className={
                                 selectedActivity.is_confirmed
                                   ? 'fas fa-flag-checkered'
-                                  : 'fa fa-question'
+                                  : 'fas fa-question'
                               }
                             ></i>
                           </HoverToolTip>
@@ -341,7 +341,7 @@ const ActivityRow = React.forwardRef<HTMLDivElement, ActivityRowProps>(
                   : activity.is_confirmed
                     ? `fas fa-flag-checkered ${styles.green}`
                     : activity.is_committed
-                      ? `fa fa-check ${styles.green}`
+                      ? `fas fa-check ${styles.green}`
                       : ''
               }
             ></i>

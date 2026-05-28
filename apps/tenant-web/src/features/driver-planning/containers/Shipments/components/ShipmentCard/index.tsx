@@ -60,7 +60,7 @@ function getPackDateStart(shipment: any) {
       {packDate} &nbsp;
       <span style={{ color: 'green' }}>
         <HoverToolTip content="APU Comfirmed" direction="bottom">
-          <i className="fas fa-truck-loading" margin="5px"></i>
+          <i className="fas fa-truck-ramp-box" margin="5px"></i>
         </HoverToolTip>
       </span>
     </>
@@ -70,13 +70,13 @@ function getPackDateStart(shipment: any) {
       {shipment.packing_coverage?.is_covered ? (
         <span style={{ color: 'orange' }}>
           <HoverToolTip content="OA Confirmed" direction="bottom">
-            <i className="fas fa-shield-alt" margin="5px"></i>
+            <i className="fas fa-shield-halved" margin="5px"></i>
           </HoverToolTip>
         </span>
       ) : (
         <span style={{ color: 'brown' }}>
           <HoverToolTip content="OA Cannot Cover" direction="bottom">
-            <i className="fas fa-shield-alt" margin="5px"></i>
+            <i className="fas fa-shield-halved" margin="5px"></i>
           </HoverToolTip>
         </span>
       )}

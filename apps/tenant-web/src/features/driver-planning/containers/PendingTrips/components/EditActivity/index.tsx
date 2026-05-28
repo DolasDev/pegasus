@@ -72,7 +72,7 @@ export const EditActivity: React.FC<EditActivityProps> = ({
               onChange([null, null])
               closeEditActivity()
             }}
-            Icon={<i className="fa fa-close"></i>}
+            Icon={<i className="fas fa-xmark"></i>}
           >
             Clear Dates
           </Button>

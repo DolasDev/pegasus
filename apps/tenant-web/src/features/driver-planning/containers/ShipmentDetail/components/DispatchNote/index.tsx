@@ -87,7 +87,7 @@ export const DispatchNote = ({ onUpdate }: { onUpdate: any }) => {
                   <IconButton
                     className={styles.closeIcon}
                     onClick={() => setEditMode(false)}
-                    Icon={<i className="fa fa-close"></i>}
+                    Icon={<i className="fas fa-xmark"></i>}
                   />
                 </div>
               </div>

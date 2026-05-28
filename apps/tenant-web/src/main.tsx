@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 import { router } from './router'
 import { loadConfig } from './config'
+import '@fortawesome/fontawesome-free/css/all.min.css'
 import './globals.css'
 
 const queryClient = new QueryClient({
