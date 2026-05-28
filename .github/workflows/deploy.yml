@@ -57,7 +57,7 @@ jobs:
       - name: Path filter
         id: filter
         if: github.event_name == 'push'
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             api:
@@ -199,7 +199,7 @@ jobs:
       # role provisioned by PegasusStaging-E2EStagingRoleStack — see
       # packages/infra/lib/stacks/e2e-staging-role-stack.ts.
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ steps.outs.outputs.E2E_ROLE_ARN }}
           aws-region: us-east-1
