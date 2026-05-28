@@ -108,6 +108,16 @@ export class ApiCdnStack extends cdk.Stack {
         description:
           'CloudFront distribution domain for the Pegasus API. Read by dolas-infra PegasusDnsAliasStack to create the api.* alias.',
       })
+
+      // Branded API domain (api.pegasus[-qa].dolas.dev) exposed as a stack
+      // output so the deploy workflow can read it from the CDK outputs JSON
+      // without needing ssm:GetParameter IAM on the deploy role. The value
+      // resolves at deploy time via the same SSM token already used above.
+      new cdk.CfnOutput(this, 'ApiCustomDomain', {
+        value: customDomain.domainName,
+        description:
+          'Branded API domain (api.pegasus[-qa].dolas.dev), resolved from SSM at deploy time.',
+      })
     }
   }
 }
