@@ -21,7 +21,6 @@ import { workflowsHandler } from './handlers/workflows'
 import { eventsHandler } from './handlers/events'
 import { ordersHandler } from './handlers/orders'
 import { vpnAgentHandler } from './handlers/vpn-agent'
-import { onpremHandler } from './handlers/onprem'
 import { longhaulVersionHandler } from './handlers/longhaul-cloud/version'
 import { longhaulStatesHandler } from './handlers/longhaul-cloud/states'
 import { longhaulDriversHandler } from './handlers/longhaul-cloud/drivers'
@@ -339,10 +338,6 @@ v1.delete('/onprem/longhaul/shipment-filters/:id', longhaulDeleteShipmentFilterH
 // write the whole phase targets. See handlers/longhaul-cloud/trip-save.ts.
 v1.post('/onprem/longhaul/trips', longhaulCreateTripHandler)
 v1.put('/onprem/longhaul/trips/:id', longhaulUpdateTripHandler)
-// On-prem proxy — round-trips through the WireGuard tunnel to the tenant's
-// on-prem API server. Routes are tenant-scoped; URL is derived from the
-// tenant's VpnPeer overlay IP. See handlers/onprem.ts.
-v1.route('/onprem', onpremHandler)
 
 app.route('/api/v1', v1)
 
