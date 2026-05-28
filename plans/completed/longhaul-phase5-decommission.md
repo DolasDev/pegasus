@@ -76,3 +76,32 @@ on-prem longhaul server code.
 - Full `e2e-qa-longhaul` run green (proves the cloud-direct routes still serve after the
   proxy is gone).
 - CloudWatch: zero `onprem proxy forward` entries for longhaul over the observation window.
+
+## ✅ Results (2026-05-28 — branch `longhaul-phase5-decommission`)
+
+Executed in three gated commits, each `tsc --noEmit` + `vitest run` green:
+
+1. **`da76ae9`** — removed the `/onprem` wildcard proxy: deleted `handlers/onprem.ts`
+   (+test) and its `v1.route('/onprem', onpremHandler)` mount in `app.ts`. The explicit
+   `/onprem/longhaul/*` route registrations stay (the SPA still calls those URLs).
+2. **`848d5b0`** — deleted the on-prem longhaul server code: `handlers/longhaul/` (incl.
+   `remote.ts`), `repositories/longhaul/`, `middleware/longhaul-user.ts`, `lib/longhaul-db.ts`,
+   the `app.server.ts` mount, and the `closeAllLonghaulPools` shutdown wiring in `server.ts`.
+   Shared-file surgery: dropped the knex-typed `loadActivityTypesMap` from
+   `lib/longhaul-shipment-enrich.ts` and the `longhaulDb`/`longhaulUser` vars + `Knex` import
+   from `types.onprem.ts` (pegii/efwk keep `mssqlPool`). **`middleware/longhaul-user.ts`
+   turned out to be deletable, not surgery** — it was code-imported only by the deleted
+   on-prem router; every other reference was a comment.
+3. **`8936700`** — `npm uninstall knex -w apps/api`; lockfile updated.
+
+Verification grep (`from.*handlers/longhaul[^-]`, `repositories/longhaul`, `longhaul-db`,
+`middleware/longhaul-user`, `from 'knex'`) returns **no imports**. Full monorepo
+`npm run typecheck` green (13/13); `apps/api` `vitest` green (96 files / 1154 tests).
+
+**Out of scope, as planned & still live:** WireGuard tunnel + VPC infra, `lib/tunnel-client.ts`,
+`lib/mssql-executor-client.ts`, `apps/mssql-executor/**`, all `handlers/longhaul-cloud/**`,
+and `handlers/admin/vpn-diagnose.ts` — the cloud-direct MSSQL path still tunnels into the VPC.
+
+Pending before merge to `main`: the gating CloudWatch observation (zero `onprem proxy forward`
+longhaul entries) was assumed passed per the execution request; confirm before merge since a
+push to `main` auto-deploys.

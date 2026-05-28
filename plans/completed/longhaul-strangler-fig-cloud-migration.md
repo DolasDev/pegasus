@@ -1,5 +1,14 @@
 # Strangler-fig migration: on-prem longhaul → cloud Hono Lambda
 
+> ✅ **COMPLETE (2026-05-28).** All phases done. Every `/onprem/longhaul/*`
+> endpoint (reads + writes incl. trip save) is cloud-direct via the in-VPC
+> `mssql-executor`. Phase 5 decommission removed the proxy, the on-prem longhaul
+> handlers/repositories/middleware, `lib/longhaul-db.ts`, and the `knex` dependency
+> — see `plans/completed/longhaul-phase5-decommission.md` (branch
+> `longhaul-phase5-decommission`, commits `da76ae9`/`848d5b0`/`8936700`).
+> The WireGuard tunnel + VPC + `mssql-executor` stay (cloud-direct still needs them);
+> retiring the on-prem server entirely is deferred to a separate pegii/efwk plan.
+
 ## Context
 
 The on-prem Hono server (`apps/api/src/app.server.ts`) currently serves three slices: pegii (~2.2k LOC, zero cloud callers today), efwk (~360 LOC, depends on pegii's factory, zero cloud callers), and longhaul (the only slice with cloud callers — reached via the `/onprem/longhaul/*` proxy at `apps/api/src/handlers/onprem.ts:98`).
