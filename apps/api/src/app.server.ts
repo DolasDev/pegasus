@@ -1,9 +1,9 @@
 // ---------------------------------------------------------------------------
 // On-prem app — extends the base app with MSSQL-dependent routes.
 //
-// These routes require knex (longhaul) or mssql (pegii/efwk) which are only
-// available in on-prem deployments against a local SQL Server instance.
-// They are excluded from the Lambda bundle to avoid bundling native drivers.
+// These routes require mssql (pegii/efwk) which is only available in on-prem
+// deployments against a local SQL Server instance. They are excluded from the
+// Lambda bundle to avoid bundling native drivers.
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
@@ -13,7 +13,6 @@ import { app } from './app'
 import { tenantMiddleware } from './middleware/tenant'
 import { pegiiRouter } from './handlers/pegii'
 import { efwkRouter } from './handlers/efwk'
-import { longhaulRouter } from './handlers/longhaul'
 import { logger } from './lib/logger'
 import { db as basePrisma } from './db'
 
@@ -42,7 +41,6 @@ if (process.env['SKIP_AUTH'] === 'true') {
 
 onprem.route('/pegii', pegiiRouter)
 onprem.route('/efwk', efwkRouter)
-onprem.route('/longhaul', longhaulRouter)
 
 app.route('/api/v1', onprem)
 

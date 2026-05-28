@@ -9,8 +9,6 @@
 // Legacy source: longhaul/server/modules/activities/activity.service.ts
 // ---------------------------------------------------------------------------
 
-import type { Knex } from 'knex'
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -548,19 +546,4 @@ export function buildExtraShipmentActivities(
   }
 
   return extras
-}
-
-// ---------------------------------------------------------------------------
-// Activity-types map loader (cached per DB connection)
-// ---------------------------------------------------------------------------
-
-const ACTIVITY_TYPES_TABLE = 'Longhaul_ActivityType'
-
-/** Fetch the activityType map (code → row) from MSSQL. */
-export async function loadActivityTypesMap(db: Knex): Promise<Record<string, ActivityType>> {
-  const rows = (await db(ACTIVITY_TYPES_TABLE).select('*')) as ActivityType[]
-  return rows.reduce<Record<string, ActivityType>>((acc, row) => {
-    if (row.code) acc[row.code] = row
-    return acc
-  }, {})
 }

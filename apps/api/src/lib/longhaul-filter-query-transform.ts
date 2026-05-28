@@ -3,9 +3,9 @@
 //
 // Saved filters persist their date-range fields (pack_date, load_date,
 // delivery_date) as day offsets relative to "today" rather than absolute dates,
-// so a saved filter stays meaningful when re-applied on a later day. The proxy
-// converts on the way IN (transformDatesToTimeDiff) and back OUT
-// (transformTimeDiffToDate) — see handlers/longhaul/filter-options.ts.
+// so a saved filter stays meaningful when re-applied on a later day. The legacy
+// on-prem server converted on the way IN (transformDatesToTimeDiff) and back
+// OUT (transformTimeDiffToDate).
 //
 // The cloud read handlers (shipment-filters[.ts|-default.ts]) already inline the
 // OUT direction; the cloud WRITE handler (POST /shipment-filters) needs the IN

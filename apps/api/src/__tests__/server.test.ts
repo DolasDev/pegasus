@@ -12,16 +12,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 // Hoisted mocks
 // ---------------------------------------------------------------------------
 
-const { mockServe, mockCloseAllPools, mockCloseAllLonghaulPools, mockDbDisconnect } = vi.hoisted(
-  () => ({
-    mockServe: vi.fn(() => ({
-      close: vi.fn((cb?: () => void) => cb?.()),
-    })),
-    mockCloseAllPools: vi.fn(async () => {}),
-    mockCloseAllLonghaulPools: vi.fn(async () => {}),
-    mockDbDisconnect: vi.fn(async () => {}),
-  }),
-)
+const { mockServe, mockCloseAllPools, mockDbDisconnect } = vi.hoisted(() => ({
+  mockServe: vi.fn(() => ({
+    close: vi.fn((cb?: () => void) => cb?.()),
+  })),
+  mockCloseAllPools: vi.fn(async () => {}),
+  mockDbDisconnect: vi.fn(async () => {}),
+}))
 
 vi.mock('@hono/node-server', () => ({
   serve: mockServe,
@@ -29,10 +26,6 @@ vi.mock('@hono/node-server', () => ({
 
 vi.mock('../lib/mssql', () => ({
   closeAllPools: mockCloseAllPools,
-}))
-
-vi.mock('../lib/longhaul-db', () => ({
-  closeAllLonghaulPools: mockCloseAllLonghaulPools,
 }))
 
 vi.mock('../db', () => ({
@@ -62,7 +55,6 @@ describe('server bootstrap', () => {
   beforeEach(() => {
     mockServe.mockClear()
     mockCloseAllPools.mockClear()
-    mockCloseAllLonghaulPools.mockClear()
     mockDbDisconnect.mockClear()
     process.env['SKIP_AUTH'] = 'true'
     process.env['DATABASE_URL'] =
@@ -113,7 +105,6 @@ describe('server bootstrap', () => {
     await shutdown()
 
     expect(mockCloseAllPools).toHaveBeenCalledTimes(1)
-    expect(mockCloseAllLonghaulPools).toHaveBeenCalledTimes(1)
     expect(mockDbDisconnect).toHaveBeenCalledTimes(1)
   })
 })

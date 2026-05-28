@@ -15,8 +15,7 @@
 //   idToken       — undefined (no Cognito JWT; authorize() falls back to the wasm backend)
 //   policyStoreId — tenant.policyStoreId ?? undefined
 //   apiClient     — the verified ApiClient record (keyHash excluded). Retained
-//                   for legacy scope-based middleware that hasn't migrated yet
-//                   (see middleware/longhaul-user.ts).
+//                   for scope-based authorization in downstream handlers.
 // ---------------------------------------------------------------------------
 
 import crypto from 'node:crypto'

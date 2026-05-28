@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
-// Pure planning for cloud-direct trip save — the diff half of saveTripLogic
-// (handlers/longhaul/trips.ts). Given the request DTO plus the trip's current
+// Pure planning for cloud-direct trip save — the diff half of the legacy
+// saveTripLogic. Given the request DTO plus the trip's current
 // state (header + activities) read from the DB, it produces:
 //   - the TripMaster upsert row,
 //   - the activity add / update / remove sets (the sameSlot diff),
