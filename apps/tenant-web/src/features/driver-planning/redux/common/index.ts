@@ -81,6 +81,11 @@ export const {
   fetchFilterOptionsSuccess,
 } = commonSlice.actions
 
+// All reference-data thunks log their error AND re-throw so the AppGuard
+// bootstrap loop can collect every failure and surface them together. Before,
+// only fetchDrivers signalled failure (via the `error` slice) while the rest
+// swallowed silently — so a single misleading "Failed to fetch drivers" toast
+// hid the fact that zones/states/trip-statuses were all failing too.
 export const fetchDrivers = () => async (dispatch: AppDispatch) => {
   try {
     dispatch(fetchDriversStart())
@@ -89,6 +94,7 @@ export const fetchDrivers = () => async (dispatch: AppDispatch) => {
   } catch (e: any) {
     console.error(e)
     dispatch(fetchDriversFailure(e.message))
+    throw e
   }
 }
 
@@ -98,6 +104,7 @@ export const fetchTripStatuses = () => async (dispatch: AppDispatch) => {
     dispatch(fetchStatusesSuccess(tripShipments))
   } catch (e: any) {
     console.error(e)
+    throw e
   }
 }
 
@@ -107,6 +114,7 @@ export const fetchZones = () => async (dispatch: AppDispatch) => {
     dispatch(fetchZoneSuccess(zones))
   } catch (e: any) {
     console.error(e)
+    throw e
   }
 }
 
@@ -116,6 +124,7 @@ export const fetchFilterOptions = () => async (dispatch: AppDispatch) => {
     dispatch(fetchFilterOptionsSuccess(options))
   } catch (e: any) {
     console.error(e)
+    throw e
   }
 }
 
@@ -125,6 +134,7 @@ export const fetchStates = () => async (dispatch: AppDispatch) => {
     dispatch(fetchStatesSuccess(states))
   } catch (e: any) {
     console.error(e)
+    throw e
   }
 }
 
@@ -134,6 +144,7 @@ export const fetchPlanners = () => async (dispatch: AppDispatch) => {
     dispatch(fetchPlannersSuccess(planners))
   } catch (e: any) {
     console.error(e)
+    throw e
   }
 }
 
@@ -143,6 +154,7 @@ export const fetchDispatchers = () => async (dispatch: AppDispatch) => {
     dispatch(fetchDispatcherSuccess(dispatchers))
   } catch (e: any) {
     console.error(e)
+    throw e
   }
 }
 

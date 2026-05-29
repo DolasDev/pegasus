@@ -180,11 +180,11 @@ describe('common slice — thunks', () => {
     expect(store.getState().common.loading).toBe(false)
   })
 
-  it('fetchDrivers: dispatches failure on rejected call', async () => {
+  it('fetchDrivers: dispatches failure and re-throws on rejected call', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockedApi.fetchDrivers.mockRejectedValue(new Error('drivers down'))
     const store = makeStore()
-    await store.dispatch(fetchDrivers() as any)
+    await expect(store.dispatch(fetchDrivers() as any)).rejects.toThrow('drivers down')
     expect(store.getState().common.loading).toBe(false)
     expect(store.getState().common.error).toBe('drivers down')
     expect(errSpy).toHaveBeenCalled()
@@ -197,11 +197,11 @@ describe('common slice — thunks', () => {
     expect(store.getState().common.tripStatuses).toEqual([{ id: 'STATUS' }])
   })
 
-  it('fetchTripStatuses: swallows error and logs', async () => {
+  it('fetchTripStatuses: logs and re-throws on error', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockedApi.fetchTripStatuses.mockRejectedValue(new Error('nope'))
     const store = makeStore()
-    await store.dispatch(fetchTripStatuses() as any)
+    await expect(store.dispatch(fetchTripStatuses() as any)).rejects.toThrow('nope')
     // state unchanged from initial
     expect(store.getState().common.tripStatuses).toEqual([])
     expect(errSpy).toHaveBeenCalled()
@@ -214,11 +214,11 @@ describe('common slice — thunks', () => {
     expect(store.getState().common.stateList).toEqual([{ code: 'CA' }])
   })
 
-  it('fetchStates: swallows error', async () => {
+  it('fetchStates: logs and re-throws on error', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockedApi.fetchStates.mockRejectedValue(new Error('states down'))
     const store = makeStore()
-    await store.dispatch(fetchStates() as any)
+    await expect(store.dispatch(fetchStates() as any)).rejects.toThrow('states down')
     expect(store.getState().common.stateList).toEqual([])
     expect(errSpy).toHaveBeenCalled()
   })
@@ -230,11 +230,11 @@ describe('common slice — thunks', () => {
     expect(store.getState().common.zoneList).toEqual([{ id: 'Z' }])
   })
 
-  it('fetchZones: swallows error', async () => {
+  it('fetchZones: logs and re-throws on error', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockedApi.fetchZones.mockRejectedValue(new Error('zones down'))
     const store = makeStore()
-    await store.dispatch(fetchZones() as any)
+    await expect(store.dispatch(fetchZones() as any)).rejects.toThrow('zones down')
     expect(store.getState().common.zoneList).toEqual([])
     expect(errSpy).toHaveBeenCalled()
   })
@@ -246,11 +246,11 @@ describe('common slice — thunks', () => {
     expect(store.getState().common.plannersList).toEqual([{ id: 'P' }])
   })
 
-  it('fetchPlanners: swallows error', async () => {
+  it('fetchPlanners: logs and re-throws on error', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockedApi.fetchPlanners.mockRejectedValue(new Error('planners down'))
     const store = makeStore()
-    await store.dispatch(fetchPlanners() as any)
+    await expect(store.dispatch(fetchPlanners() as any)).rejects.toThrow('planners down')
     expect(store.getState().common.plannersList).toEqual([])
     expect(errSpy).toHaveBeenCalled()
   })
@@ -262,11 +262,11 @@ describe('common slice — thunks', () => {
     expect(store.getState().common.dispatcherList).toEqual([{ id: 'D' }])
   })
 
-  it('fetchDispatchers: swallows error', async () => {
+  it('fetchDispatchers: logs and re-throws on error', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockedApi.fetchDispatchers.mockRejectedValue(new Error('dispatchers down'))
     const store = makeStore()
-    await store.dispatch(fetchDispatchers() as any)
+    await expect(store.dispatch(fetchDispatchers() as any)).rejects.toThrow('dispatchers down')
     expect(store.getState().common.dispatcherList).toEqual([])
     expect(errSpy).toHaveBeenCalled()
   })
@@ -278,11 +278,11 @@ describe('common slice — thunks', () => {
     expect(store.getState().common.filterOptions).toEqual({ haulModes: ['LH'] })
   })
 
-  it('fetchFilterOptions: swallows error', async () => {
+  it('fetchFilterOptions: logs and re-throws on error', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockedApi.fetchFilterOptions.mockRejectedValue(new Error('options down'))
     const store = makeStore()
-    await store.dispatch(fetchFilterOptions() as any)
+    await expect(store.dispatch(fetchFilterOptions() as any)).rejects.toThrow('options down')
     expect(store.getState().common.filterOptions).toBeUndefined()
     expect(errSpy).toHaveBeenCalled()
   })

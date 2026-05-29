@@ -26,6 +26,7 @@ import { longhaulVersionHandler } from './handlers/longhaul-cloud/version'
 import { longhaulStatesHandler } from './handlers/longhaul-cloud/states'
 import { longhaulDriversHandler } from './handlers/longhaul-cloud/drivers'
 import { longhaulZonesHandler } from './handlers/longhaul-cloud/zones'
+import { longhaulTripStatusesHandler } from './handlers/longhaul-cloud/trip-statuses'
 import { longhaulPlannersHandler } from './handlers/longhaul-cloud/planners'
 import { longhaulActivityTypesHandler } from './handlers/longhaul-cloud/activity-types'
 import { longhaulFilterOptionsHandler } from './handlers/longhaul-cloud/filter-options'
@@ -251,6 +252,11 @@ v1.get('/onprem/longhaul/states', longhaulStatesHandler)
 v1.get('/onprem/longhaul/drivers', longhaulDriversHandler)
 // Phase 3: /zones is served cloud-direct, same pattern as /version above.
 v1.get('/onprem/longhaul/zones', longhaulZonesHandler)
+// Migration gap fix: /trip-statuses (MasterTripStatus) is served cloud-direct.
+// It was never ported in Phase 3 and the /onprem proxy that served it was
+// removed in Phase 5, so it had been 404ing on AppGuard bootstrap. Same
+// reference-data pattern as /states and /zones above.
+v1.get('/onprem/longhaul/trip-statuses', longhaulTripStatusesHandler)
 // Phase 3: /planners is served cloud-direct via the same in-VPC mssql-executor
 // path — likewise registered before the /onprem mount so it wins over the
 // wildcard proxy.

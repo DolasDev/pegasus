@@ -260,10 +260,9 @@ describe('AppGuard', () => {
   })
 
   it('still renders children but surfaces a snackbar when a reference-data fetch rejects', async () => {
-    // fetchDrivers thunk catches its own errors and dispatches a failure
-    // action that sets `common.error`. AppGuard observes that slice and pops
-    // the snackbar. Children should still render because fetchUser +
-    // fetchVersion succeed.
+    // Reference-data thunks re-throw on error; AppGuard collects every failure
+    // and lists the failed lookups by label in a single snackbar. Children
+    // should still render because fetchUser + fetchVersion succeed.
     ;(API.fetchDrivers as any).mockRejectedValue(new Error('drivers blew up'))
 
     renderWithStore(
@@ -276,7 +275,28 @@ describe('AppGuard', () => {
       expect(screen.getByTestId('children')).toBeInTheDocument()
     })
     await waitFor(() => {
-      expect(screen.getByText(/Failed to load reference data: drivers blew up/)).toBeInTheDocument()
+      expect(screen.getByText(/Failed to load reference data: drivers/)).toBeInTheDocument()
+    })
+  })
+
+  it('lists every failed reference-data lookup in one snackbar', async () => {
+    // When several lookups fail (e.g. the executor is being throttled), the
+    // snackbar must name all of them — not just drivers — so the user/operator
+    // sees the true blast radius.
+    ;(API.fetchDrivers as any).mockRejectedValue(new Error('boom'))
+    ;(API.fetchZones as any).mockRejectedValue(new Error('boom'))
+    ;(API.fetchStates as any).mockRejectedValue(new Error('boom'))
+
+    renderWithStore(
+      <AppGuard>
+        <div data-testid="children">child content</div>
+      </AppGuard>,
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Failed to load reference data: drivers, states, zones'),
+      ).toBeInTheDocument()
     })
   })
 })

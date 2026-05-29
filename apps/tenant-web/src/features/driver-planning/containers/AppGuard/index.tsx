@@ -31,7 +31,6 @@ const REFERENCE_DATA_THUNKS = [
 export function AppGuard({ children }: { children: ReactNode }) {
   const dispatch = useDispatch<any>()
   const userStore = useSelector((state: any) => state.user)
-  const commonError = useSelector((state: any) => state.common?.error)
   const [snackbarMessage, setSnackbarMessage] = useState<string | null>(null)
 
   useEffect(() => {
@@ -40,22 +39,22 @@ export function AppGuard({ children }: { children: ReactNode }) {
     // render gate below no longer depends on it — see the note by the gate.
     dispatch(fetchVersion())
 
-    for (const [label, thunk] of REFERENCE_DATA_THUNKS) {
-      Promise.resolve(dispatch(thunk())).catch((err: unknown) => {
-        const detail = err instanceof Error ? err.message : String(err)
-        setSnackbarMessage(`Failed to load ${label}: ${detail}`)
-      })
-    }
+    // Fire every reference-data thunk in parallel and collect *all* failures,
+    // not just the first. Each thunk logs + re-throws on error, so a rejection
+    // here means that lookup failed. We list the failed lookups by label in a
+    // single snackbar — previously only `drivers` surfaced (via the error
+    // slice) while the rest failed silently, producing a misleading toast.
+    Promise.allSettled(
+      REFERENCE_DATA_THUNKS.map(([, thunk]) => Promise.resolve(dispatch(thunk()))),
+    ).then((results) => {
+      const failed = results
+        .map((r, i) => (r.status === 'rejected' ? REFERENCE_DATA_THUNKS[i][0] : null))
+        .filter((label): label is string => label !== null)
+      if (failed.length > 0) {
+        setSnackbarMessage(`Failed to load reference data: ${failed.join(', ')}`)
+      }
+    })
   }, [dispatch])
-
-  // Some reference-data thunks (e.g. fetchDrivers) catch their own errors and
-  // dispatch a failure action rather than re-throwing — surface those via the
-  // snackbar too so the user sees the problem.
-  useEffect(() => {
-    if (typeof commonError === 'string' && commonError.length > 0) {
-      setSnackbarMessage(`Failed to load reference data: ${commonError}`)
-    }
-  }, [commonError])
 
   useEffect(() => {
     const code = userStore?.user?.code
