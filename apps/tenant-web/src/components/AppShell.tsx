@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useRouter } from '@tanstack/react-router'
 import {
   LayoutDashboard,
@@ -15,6 +15,7 @@ import {
   Workflow,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   type LucideIcon,
 } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
@@ -38,6 +39,13 @@ const OPERATIONS_PLANNING_ROLES = [
   'central_planning_dispatch',
 ] as const
 
+const OPERATIONS_CHILDREN = [
+  { to: '/driver-planning' as const, label: 'Availability', exact: true },
+  { to: '/driver-planning/planning' as const, label: 'Planning', exact: false },
+  { to: '/driver-planning/trips' as const, label: 'Trips', exact: false },
+  { to: '/driver-planning/shipments' as const, label: 'Shipments', exact: false },
+] as const
+
 const NAV_ITEMS = [
   {
     to: '/dashboard' as const,
@@ -45,18 +53,55 @@ const NAV_ITEMS = [
     icon: LayoutDashboard,
     exact: true,
     roles: null,
+    children: null,
   },
-  { to: '/moves' as const, label: 'Moves', icon: Truck, exact: false, roles: MOVES_VIEW_ROLES },
-  { to: '/quotes' as const, label: 'Quotes', icon: FileText, exact: false, roles: ADMIN_ONLY },
-  { to: '/customers' as const, label: 'Customers', icon: Users, exact: false, roles: ADMIN_ONLY },
-  { to: '/dispatch' as const, label: 'Dispatch', icon: Calendar, exact: false, roles: ADMIN_ONLY },
-  { to: '/invoices' as const, label: 'Billing', icon: Receipt, exact: false, roles: ADMIN_ONLY },
+  {
+    to: '/moves' as const,
+    label: 'Moves',
+    icon: Truck,
+    exact: false,
+    roles: MOVES_VIEW_ROLES,
+    children: null,
+  },
+  {
+    to: '/quotes' as const,
+    label: 'Quotes',
+    icon: FileText,
+    exact: false,
+    roles: ADMIN_ONLY,
+    children: null,
+  },
+  {
+    to: '/customers' as const,
+    label: 'Customers',
+    icon: Users,
+    exact: false,
+    roles: ADMIN_ONLY,
+    children: null,
+  },
+  {
+    to: '/dispatch' as const,
+    label: 'Dispatch',
+    icon: Calendar,
+    exact: false,
+    roles: ADMIN_ONLY,
+    children: null,
+  },
+  {
+    to: '/invoices' as const,
+    label: 'Billing',
+    icon: Receipt,
+    exact: false,
+    roles: ADMIN_ONLY,
+    children: null,
+  },
   {
     to: '/driver-planning' as const,
     label: 'Operations',
     icon: MapPinned,
     exact: false,
     roles: OPERATIONS_PLANNING_ROLES,
+    children: OPERATIONS_CHILDREN,
   },
 ] as const
 
@@ -96,6 +141,91 @@ function NavItem({ to, label, icon: Icon, exact, collapsed }: NavItemProps) {
       <Icon size={16} />
       {!collapsed && label}
     </Link>
+  )
+}
+
+type NavChild = { to: string; label: string; exact: boolean }
+
+type NavGroupProps = {
+  to: string
+  label: string
+  icon: LucideIcon
+  exact: boolean
+  collapsed: boolean
+  items: readonly NavChild[]
+}
+
+function NavGroup({ to, label, icon: Icon, exact, collapsed, items }: NavGroupProps) {
+  const router = useRouter()
+  const pathname = router.state.location.pathname
+  const isInSection = pathname === to || pathname.startsWith(to + '/')
+  const isParentActive = exact ? pathname === to : isInSection
+  const [open, setOpen] = useState<boolean>(isInSection)
+
+  // Re-open the group whenever the user navigates into it (e.g. from another
+  // section). Manual close still works while the user stays inside.
+  useEffect(() => {
+    if (isInSection) setOpen(true)
+  }, [isInSection])
+
+  // Collapsed sidebar — fall back to a single icon link; the sub-items live
+  // inside the section page once the user navigates in.
+  if (collapsed) {
+    return <NavItem to={to} label={label} icon={Icon} exact={exact} collapsed={collapsed} />
+  }
+
+  return (
+    <div>
+      <div className="flex items-center">
+        <Link
+          to={to}
+          className={cn(
+            'flex flex-1 items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+            isParentActive
+              ? 'bg-accent text-accent-foreground font-medium'
+              : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground',
+          )}
+        >
+          <Icon size={16} />
+          {label}
+        </Link>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
+          aria-expanded={open}
+          className="ml-1 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
+        >
+          <ChevronDown
+            size={14}
+            className={cn('transition-transform', open ? 'rotate-0' : '-rotate-90')}
+          />
+        </button>
+      </div>
+      {open && (
+        <div className="mt-1 ml-7 space-y-1 border-l pl-2">
+          {items.map((child) => {
+            const childActive = child.exact
+              ? pathname === child.to
+              : pathname === child.to || pathname.startsWith(child.to + '/')
+            return (
+              <Link
+                key={child.to}
+                to={child.to}
+                className={cn(
+                  'block rounded-md px-3 py-1.5 text-sm transition-colors',
+                  childActive
+                    ? 'bg-accent text-accent-foreground font-medium'
+                    : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground',
+                )}
+              >
+                {child.label}
+              </Link>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -172,16 +302,28 @@ export function AppShell({ children }: AppShellProps) {
         <Separator />
         <ScrollArea className="flex-1 py-2">
           <nav className={cn('space-y-1', collapsed ? 'px-1' : 'px-2')}>
-            {visibleNavItems.map((item) => (
-              <NavItem
-                key={item.to}
-                to={item.to}
-                label={item.label}
-                icon={item.icon}
-                exact={item.exact}
-                collapsed={collapsed}
-              />
-            ))}
+            {visibleNavItems.map((item) =>
+              item.children ? (
+                <NavGroup
+                  key={item.to}
+                  to={item.to}
+                  label={item.label}
+                  icon={item.icon}
+                  exact={item.exact}
+                  collapsed={collapsed}
+                  items={item.children}
+                />
+              ) : (
+                <NavItem
+                  key={item.to}
+                  to={item.to}
+                  label={item.label}
+                  icon={item.icon}
+                  exact={item.exact}
+                  collapsed={collapsed}
+                />
+              ),
+            )}
           </nav>
           {collapsed ? (
             <div className="px-2 py-3">
