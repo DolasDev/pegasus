@@ -29,6 +29,14 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  /* ShipmentDetail is `position: absolute` and slides off-screen via
+     `transform: translate(100%, 0)` when no shipment is selected. Without a
+     positioned ancestor, it anchors to <body> and the off-screen translate
+     extends the document ~400px to the right, leaving a visible empty strip
+     on the Planning / Shipments / Trip-detail screens. Anchor it here and
+     clip horizontally so the hidden state stays hidden. */
+  position: relative;
+  overflow-x: clip;
 }
 
 .driver-planning-root h1 {
