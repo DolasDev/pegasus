@@ -2,7 +2,7 @@
 // DriverPlanningPage smoke tests
 //
 // Boundary: route-level page that renders the Availability table by issuing
-// TanStack Query calls (driverPlanningQueryOptions, onpremVersionQueryOptions).
+// a TanStack Query call (driverPlanningQueryOptions).
 //
 // Strategy: mock @tanstack/react-query's useQuery so we can control the data
 // returned per query key (matching the developer-settings.test.tsx pattern).
@@ -35,11 +35,6 @@ let driverPlanningReturn: Record<string, unknown> = {
   isLoading: false,
   isError: false,
 }
-let onpremVersionReturn: Record<string, unknown> = {
-  data: { version: 'test' },
-  isLoading: false,
-  isError: false,
-}
 
 vi.mock('@tanstack/react-query', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@tanstack/react-query')
@@ -48,7 +43,6 @@ vi.mock('@tanstack/react-query', async () => {
     useQuery: (options: { queryKey: readonly unknown[] }) => {
       const head = options.queryKey?.[0]
       if (head === 'driver-planning') return driverPlanningReturn
-      if (head === 'onprem') return onpremVersionReturn
       return { data: undefined, isLoading: false, isError: false }
     },
   }
@@ -83,33 +77,6 @@ describe('DriverPlanningPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     driverPlanningReturn = { data: [], isLoading: false, isError: false }
-    onpremVersionReturn = {
-      data: { version: 'test' },
-      isLoading: false,
-      isError: false,
-    }
-  })
-
-  it('renders the on-prem ping OK panel when version query succeeds', () => {
-    renderPage()
-    expect(screen.getByText(/on-prem ping ok/i)).toBeInTheDocument()
-  })
-
-  it('renders the on-prem ping failed panel on version error', () => {
-    onpremVersionReturn = {
-      data: undefined,
-      isLoading: false,
-      isError: true,
-      error: new Error('boom'),
-    }
-    renderPage()
-    expect(screen.getByText(/on-prem ping failed/i)).toBeInTheDocument()
-  })
-
-  it('renders the on-prem pinging message while loading version', () => {
-    onpremVersionReturn = { data: undefined, isLoading: true, isError: false }
-    renderPage()
-    expect(screen.getByText(/pinging on-prem api/i)).toBeInTheDocument()
   })
 
   it('shows Loading text while drivers are loading', () => {
