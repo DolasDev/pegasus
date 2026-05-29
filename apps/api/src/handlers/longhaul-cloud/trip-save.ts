@@ -235,7 +235,11 @@ function buildSaveBatch(
   const summarySet = summaryCols.map((c) => `${c} = @s_${c}`).join(', ')
   stmts.push(`UPDATE TripMaster SET ${summarySet}, updated_date = GETDATE() WHERE id = @tripId;`)
 
+  // SET NOCOUNT ON keeps trigger-emitted rowcounts (LongDistanceDispatchActivity
+  // carries enabled triggers) out of the executor's `rowsAffected` array, so any
+  // future caller that reads it gets only the counts we authored.
   const sql = `
+SET NOCOUNT ON;
 SET XACT_ABORT ON;
 BEGIN TRY
   BEGIN TRAN;

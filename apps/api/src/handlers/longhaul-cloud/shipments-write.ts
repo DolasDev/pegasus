@@ -72,6 +72,7 @@ export const longhaulShipmentShadowHandler: Handler<AppEnv> = async (c) => {
     sql = `IF NOT EXISTS (SELECT 1 FROM sales WHERE order_num = @order_num) INSERT INTO sales (order_num) VALUES (@order_num);`
   } else {
     sql = `
+SET NOCOUNT ON;
 SET XACT_ABORT ON;
 IF EXISTS (SELECT 1 FROM sales WHERE order_num = @order_num)
   UPDATE sales SET ${assignments([...columns])} WHERE order_num = @order_num;
@@ -148,6 +149,7 @@ export const longhaulShipmentCoverageHandler: Handler<AppEnv> = async (c) => {
     'GETDATE()',
   ]
   const sql = `
+SET NOCOUNT ON;
 SET XACT_ABORT ON;
 BEGIN TRY
   BEGIN TRAN;

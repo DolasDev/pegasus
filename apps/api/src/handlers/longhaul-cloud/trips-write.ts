@@ -53,7 +53,10 @@ SELECT status FROM MasterTripStatus WHERE status_id = @statusId;
 `
 
 // RT2: atomic status change + activity sync + re-read (trailing SELECT).
+// SET NOCOUNT ON suppresses trigger-emitted rowcounts (the activity table
+// carries enabled triggers) so executor `rowsAffected` only reflects our SQL.
 const STATUS_WRITE_SQL = `
+SET NOCOUNT ON;
 SET XACT_ABORT ON;
 BEGIN TRY
   BEGIN TRAN;
@@ -155,7 +158,9 @@ export const longhaulTripStatusHandler: Handler<AppEnv> = async (c) => {
 // --- #9 POST /trips/:id/cancel --------------------------------------------
 
 // Atomic: touch + delete the trip's activities, then mark the trip canceled.
+// SET NOCOUNT ON suppresses trigger-emitted rowcounts on the activity table.
 const CANCEL_SQL = `
+SET NOCOUNT ON;
 SET XACT_ABORT ON;
 BEGIN TRY
   BEGIN TRAN;
