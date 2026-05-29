@@ -1,5 +1,68 @@
 # Mobile app config — make builds consume the deploy-generated env
 
+**Status (2026-05-29): COMPLETE.** A `mobile-build.yml` workflow_dispatch
+against `staging` / `android` produces a downloadable APK end-to-end.
+Final shipping artifact:
+https://expo.dev/artifacts/eas/fg5bXcoYGkhg1CZyND2uRa.apk
+
+Plan was reframed mid-flight: the original "consume the deploy artifact
+at build time" became "skip the artifact entirely — resolve config
+directly from SSM in `mobile-build.yml`" (Part 3 design lock 2026-05-28).
+The `mobile.env.deploy` artifact path was kept long enough to prove
+parity, then removed.
+
+**Started:** 2026-05-28 · **Completed:** 2026-05-29
+
+**Commit chain (in order):**
+
+- `a406522` — Parts 1+2: branded API URL in deploy artifact; `eas.json`
+  Cognito placeholders stripped
+- `4a073f3` — deploy fix: `ApiCustomDomain` CDK output replaces a
+  failing `aws ssm get-parameter` CLI call (deploy OIDC role lacked
+  `ssm:GetParameter` IAM; CDK reads SSM at synth time and the output
+  resolves at deploy)
+- `7aa9080` — Part 3: `mobile-build.yml` (manual `workflow_dispatch`,
+  SSM-direct read of four params, writes `apps/mobile/.env`, runs
+  `eas build`)
+- `7d49a19` → `bd50ab3` — metro-config resolution: superseded the
+  short-lived `@expo/metro-config` direct pin with the `expo/metro-config`
+  sub-export (per expo-doctor's "should not be installed directly")
+  plus an explicit `expo-font ~55.0.8` to dedupe a hoist conflict
+- `94e9495` — drop now-redundant `mobile.env.deploy` artifact block +
+  `Upload mobile env` step from `_deploy.yml` (workflow proved
+  SSM-direct works; artifact had no consumer)
+- `4d7f937` — root `overrides`: `react-native-worklets: 0.7.4` to fix
+  Reanimated 4.2.1's runtime `assertWorkletsVersionTask` (Reanimated
+  needs 0.7.x; npm landed 0.8.3 because expo-modules-core's peer range
+  allowed both). Required a full lockfile regen on the pinned
+  `node-20/npm-10.8.2` toolchain to take effect — overrides don't
+  re-apply against an existing lockfile.
+
+**Done when (all met):**
+
+- ✓ `mobile.env.deploy` was correctly generated with branded URL +
+  real MobileClientId; subsequently retired in `94e9495`.
+- ✓ `eas.json` no longer holds artifact-supplied runtime config.
+- ✓ A `preview`-profile Android EAS build completes against staging
+  Cognito values (run `26618905114` → EAS
+  `737aade2-de65-4bc1-916b-17bb6630c9cb`).
+
+**Out of scope, deferred to follow-up work:**
+
+- iOS builds — blocked on Apple Developer credential setup via
+  interactive `eas credentials`; will work non-interactively after that.
+- SRP sign-in + `movingapp://auth/callback` deep-link round-trip
+  smoke test on a real device with the produced APK — gated on user
+  device install, not the workflow.
+- App Store submission config (still `PLACEHOLDER` in
+  `eas.json submit.production.ios`); not blocking builds.
+- Mobile path filter in `deploy.yml` (build-on-merge for mobile);
+  separate decision.
+
+---
+
+## Original plan (preserved for reference)
+
 **Status (2026-05-18): not started.** The mobile build profiles in
 `apps/mobile/eas.json` still carry `"PLACEHOLDER"` Cognito values, so a
 preview/production build cannot authenticate. The deploy pipeline already
