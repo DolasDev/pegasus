@@ -53,10 +53,12 @@ const SALES_PERMISSIONS = [
   'customer:read',
   'customer:create',
   'customer:update',
+  'move:list',
   'move:read',
 ] as const
 const VIEWER_PERMISSIONS = [
   'quote:read',
+  'move:list',
   'move:read',
   'invoice:read',
   'customer:read',
@@ -229,7 +231,7 @@ test.describe('authenticated AVP smoke', () => {
       for (const s of all) if (s) await disablePersona(s.username)
     })
 
-    test('sales has exactly its 7 expected permissions', async () => {
+    test('sales has exactly its 8 expected permissions', async () => {
       expect(salesSession, 'sales persona did not provision').not.toBeNull()
       const fetch_ = fetchWithToken(salesSession!.token)
       const res = await fetch_('/api/v1/me/permissions')
@@ -241,7 +243,7 @@ test.describe('authenticated AVP smoke', () => {
       expect([...body.permissions].sort()).toEqual([...SALES_PERMISSIONS].sort())
     })
 
-    test('viewer has exactly its 5 read-only permissions and is denied on invite', async () => {
+    test('viewer has exactly its 6 read-only permissions and is denied on invite', async () => {
       expect(viewerSession, 'viewer persona did not provision').not.toBeNull()
       const fetch_ = fetchWithToken(viewerSession!.token)
 
