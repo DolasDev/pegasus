@@ -45,6 +45,7 @@
     "@babel/plugin-transform-react-display-name": "^7.28.0",
     "@babel/preset-env": "^7.28.5",
     "@babel/preset-typescript": "^7.28.5",
+    "@expo/metro-config": "55.0.23",
     "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^30.0.0",
     "@types/react": "^19.2.14",
