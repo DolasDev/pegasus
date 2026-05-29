@@ -49,7 +49,7 @@ export function AppGuard({ children }: { children: ReactNode }) {
     ).then((results) => {
       const failed = results
         .map((r, i) => (r.status === 'rejected' ? REFERENCE_DATA_THUNKS[i][0] : null))
-        .filter((label): label is string => label !== null)
+        .filter((label): label is NonNullable<typeof label> => label !== null)
       if (failed.length > 0) {
         setSnackbarMessage(`Failed to load reference data: ${failed.join(', ')}`)
       }
