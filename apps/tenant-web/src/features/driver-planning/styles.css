@@ -28,7 +28,11 @@
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 0;
+  /* AppShell's <main> is a block element (flex-1 in its parent column, but not
+     itself flex), so `flex: 1` above doesn't actually stretch this div. Pin the
+     min-height to main's content box so the planning surface fills the visible
+     area instead of collapsing to content height and leaving a gap below. */
+  min-height: 100%;
   /* ShipmentDetail is `position: absolute` and slides off-screen via
      `transform: translate(100%, 0)` when no shipment is selected. Without a
      positioned ancestor, it anchors to <body> and the off-screen translate
