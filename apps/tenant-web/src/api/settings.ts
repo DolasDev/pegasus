@@ -16,3 +16,24 @@ export async function updateMssqlSettings(data: {
     body: JSON.stringify(data),
   })
 }
+
+export type MssqlTestCode =
+  | 'OK'
+  | 'NOT_CONFIGURED'
+  | 'CONNECT_TIMEOUT'
+  | 'LOGIN_FAILED'
+  | 'QUERY_ERROR'
+  | 'EXECUTOR_ERROR'
+
+export type MssqlTestResult = {
+  ok: boolean
+  code: MssqlTestCode
+  detail: string
+  elapsedMs: number
+}
+
+export async function testMssqlConnection(): Promise<MssqlTestResult> {
+  return apiFetch<MssqlTestResult>('/api/v1/settings/mssql/test', {
+    method: 'POST',
+  })
+}

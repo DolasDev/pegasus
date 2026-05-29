@@ -13,6 +13,8 @@ import {
   Database,
   Terminal,
   ExternalLink,
+  Stethoscope,
+  CheckCircle2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
@@ -36,7 +38,12 @@ import {
   useRevokeApiClient,
   useRotateApiClient,
 } from '@/api/queries/api-clients'
-import { mssqlSettingsQueryOptions, useUpdateMssqlSettings } from '@/api/queries/settings'
+import {
+  mssqlSettingsQueryOptions,
+  useUpdateMssqlSettings,
+  useTestMssqlConnection,
+} from '@/api/queries/settings'
+import type { MssqlTestResult } from '@/api/settings'
 import { roleOptionsQueryOptions, type RoleOption } from '@/api/queries/users'
 import type { ApiClient, ApiClientWithKey } from '@/api/api-clients'
 import { getConfig } from '@/config'
@@ -559,15 +566,34 @@ function RotateConfirm({ client, onConfirm, onCancel, isPending }: RotateConfirm
 function MssqlSettingsSection() {
   const { data: mssqlSettings, isLoading, isError } = useQuery(mssqlSettingsQueryOptions)
   const updateMutation = useUpdateMssqlSettings()
+  const testMutation = useTestMssqlConnection()
 
   const [isEditing, setIsEditing] = useState(false)
   const [connectionString, setConnectionString] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [testResult, setTestResult] = useState<MssqlTestResult | null>(null)
 
   function startEditing() {
     setConnectionString(mssqlSettings?.mssqlConnectionString ?? '')
     setError(null)
+    setTestResult(null)
     setIsEditing(true)
+  }
+
+  async function handleRunDiagnostic() {
+    setTestResult(null)
+    try {
+      const result = await testMutation.mutateAsync()
+      setTestResult(result)
+    } catch (err) {
+      setTestResult({
+        ok: false,
+        code: 'EXECUTOR_ERROR',
+        detail:
+          err instanceof Error ? err.message : 'Could not run the diagnostic. Please try again.',
+        elapsedMs: 0,
+      })
+    }
   }
 
   function cancelEditing() {
@@ -593,6 +619,7 @@ function MssqlSettingsSection() {
 
   async function handleClear() {
     setError(null)
+    setTestResult(null)
     try {
       await updateMutation.mutateAsync({ mssqlConnectionString: null })
     } catch (err) {
@@ -634,34 +661,75 @@ function MssqlSettingsSection() {
         )}
 
         {!isLoading && !isError && !isEditing && (
-          <div className="flex items-center justify-between">
-            <div className="text-sm">
-              {mssqlSettings?.mssqlConnectionString ? (
-                <code className="font-mono text-muted-foreground">
-                  {maskConnectionString(mssqlSettings.mssqlConnectionString)}
-                </code>
-              ) : (
-                <span className="text-muted-foreground">Not configured</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {mssqlSettings?.mssqlConnectionString && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm">
+                {mssqlSettings?.mssqlConnectionString ? (
+                  <code className="font-mono text-muted-foreground">
+                    {maskConnectionString(mssqlSettings.mssqlConnectionString)}
+                  </code>
+                ) : (
+                  <span className="text-muted-foreground">Not configured</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {mssqlSettings?.mssqlConnectionString && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1.5 text-xs"
+                      onClick={() => void handleRunDiagnostic()}
+                      disabled={testMutation.isPending}
+                    >
+                      {testMutation.isPending ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <Stethoscope size={13} />
+                      )}
+                      Run diagnostic
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => void handleClear()}
+                      disabled={updateMutation.isPending}
+                    >
+                      {updateMutation.isPending && <Loader2 size={13} className="animate-spin" />}
+                      Clear
+                    </Button>
+                  </>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-                  onClick={() => void handleClear()}
-                  disabled={updateMutation.isPending}
+                  className="gap-1.5 text-xs"
+                  onClick={startEditing}
                 >
-                  {updateMutation.isPending && <Loader2 size={13} className="animate-spin" />}
-                  Clear
+                  <Pencil size={13} />
+                  Edit
                 </Button>
-              )}
-              <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={startEditing}>
-                <Pencil size={13} />
-                Edit
-              </Button>
+              </div>
             </div>
+
+            {testResult && (
+              <div
+                className={
+                  testResult.ok
+                    ? 'flex items-start gap-2 rounded-md border border-emerald-500/50 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400'
+                    : 'flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive'
+                }
+                role="status"
+              >
+                {testResult.ok ? (
+                  <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+                ) : (
+                  <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                )}
+                <span>{testResult.detail}</span>
+              </div>
+            )}
           </div>
         )}
 

@@ -12,6 +12,7 @@ import type { AppEnv } from '../types'
 import { registerTestErrorHandler } from '../test-helpers'
 import { seedPrincipalForRole } from '../__tests__/_principal'
 import { _clearAuthzCache } from '../lib/authz'
+import type * as MssqlExecutorClient from '../lib/mssql-executor-client'
 
 // ---------------------------------------------------------------------------
 // Mock the db module
@@ -30,7 +31,15 @@ vi.mock('../db', () => ({
   db: mockDb,
 }))
 
+const { mockExecuteSql } = vi.hoisted(() => ({ mockExecuteSql: vi.fn() }))
+
+vi.mock('../lib/mssql-executor-client', async () => {
+  const actual = await vi.importActual<typeof MssqlExecutorClient>('../lib/mssql-executor-client')
+  return { ...actual, executeSql: mockExecuteSql }
+})
+
 import { settingsHandler } from './settings'
+import { MssqlExecError } from '../lib/mssql-executor-client'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -173,6 +182,95 @@ describe('settings handler', () => {
       )
       expect(res.status).toBe(500)
       expect((await json(res)).code).toBe('INTERNAL_ERROR')
+    })
+  })
+
+  // ── POST /mssql/test ────────────────────────────────────────────────────────
+
+  describe('POST /mssql/test', () => {
+    const post: RequestInit = { method: 'POST' }
+
+    it('returns 403 for non-admin role', async () => {
+      const res = await buildApp('viewer').request('/mssql/test', post)
+      expect(res.status).toBe(403)
+      expect((await json(res)).code).toBe('FORBIDDEN')
+    })
+
+    it('returns NOT_CONFIGURED when no connection string is set', async () => {
+      mockDb.tenant.findUnique.mockResolvedValue({ mssqlConnectionString: null })
+      const res = await buildApp().request('/mssql/test', post)
+      expect(res.status).toBe(200)
+      const data = (await json(res)).data as JsonBody
+      expect(data['ok']).toBe(false)
+      expect(data['code']).toBe('NOT_CONFIGURED')
+      expect(mockExecuteSql).not.toHaveBeenCalled()
+    })
+
+    it('returns ok when SELECT 1 succeeds', async () => {
+      mockDb.tenant.findUnique.mockResolvedValue({
+        mssqlConnectionString: 'Server=h,61873;Password=p;',
+      })
+      mockExecuteSql.mockResolvedValue({
+        recordset: [{ ok: 1 }],
+        recordsets: [[{ ok: 1 }]],
+        rowsAffected: [1],
+      })
+      const res = await buildApp().request('/mssql/test', post)
+      expect(res.status).toBe(200)
+      const data = (await json(res)).data as JsonBody
+      expect(data['ok']).toBe(true)
+      expect(data['code']).toBe('OK')
+      expect(mockExecuteSql).toHaveBeenCalledWith('Server=h,61873;Password=p;', 'SELECT 1 AS ok', {
+        timeoutMs: 10_000,
+      })
+    })
+
+    it('classifies a connect failure as CONNECT_TIMEOUT', async () => {
+      mockDb.tenant.findUnique.mockResolvedValue({
+        mssqlConnectionString: 'Server=h,61873;Password=p;',
+      })
+      mockExecuteSql.mockRejectedValue(
+        new MssqlExecError(
+          'EXECUTOR_QUERY_ERROR',
+          'QUERY_FAILED: Failed to connect to 10.0.0.2:61873 in 15000ms',
+        ),
+      )
+      const res = await buildApp().request('/mssql/test', post)
+      const data = (await json(res)).data as JsonBody
+      expect(data['ok']).toBe(false)
+      expect(data['code']).toBe('CONNECT_TIMEOUT')
+      // the raw connection string (and its password) must never be echoed
+      expect(JSON.stringify(data)).not.toContain('Password=p')
+    })
+
+    it('classifies a login failure as LOGIN_FAILED', async () => {
+      mockDb.tenant.findUnique.mockResolvedValue({
+        mssqlConnectionString: 'Server=h,61873;Password=p;',
+      })
+      mockExecuteSql.mockRejectedValue(
+        new MssqlExecError(
+          'EXECUTOR_QUERY_ERROR',
+          "QUERY_FAILED: Login failed for user 'saPegasus'.",
+        ),
+      )
+      const res = await buildApp().request('/mssql/test', post)
+      const data = (await json(res)).data as JsonBody
+      expect(data['code']).toBe('LOGIN_FAILED')
+    })
+
+    it('classifies an executor/invoke failure as EXECUTOR_ERROR', async () => {
+      mockDb.tenant.findUnique.mockResolvedValue({
+        mssqlConnectionString: 'Server=h,61873;Password=p;',
+      })
+      mockExecuteSql.mockRejectedValue(
+        new MssqlExecError(
+          'EXECUTOR_NOT_CONFIGURED',
+          'MSSQL_EXECUTOR_FUNCTION_NAME env var is not set',
+        ),
+      )
+      const res = await buildApp().request('/mssql/test', post)
+      const data = (await json(res)).data as JsonBody
+      expect(data['code']).toBe('EXECUTOR_ERROR')
     })
   })
 })

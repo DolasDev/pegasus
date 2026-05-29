@@ -56,6 +56,7 @@ vi.mock('@/auth/permissions', () => ({
 
 // Mock the MSSQL settings query module
 const mockUseUpdateMssqlSettings = vi.fn()
+const mockUseTestMssqlConnection = vi.fn()
 
 vi.mock('@/api/queries/settings', () => ({
   mssqlSettingsQueryOptions: {
@@ -63,6 +64,7 @@ vi.mock('@/api/queries/settings', () => ({
     queryFn: vi.fn(),
   },
   useUpdateMssqlSettings: () => mockUseUpdateMssqlSettings(),
+  useTestMssqlConnection: () => mockUseTestMssqlConnection(),
 }))
 
 // Stub the role-options query so the form's RoleCheckboxList has fixtures.
@@ -176,6 +178,7 @@ describe('DeveloperSettingsPage', () => {
     mockUseRevokeApiClient.mockReturnValue(makeMutationResult())
     mockUseRotateApiClient.mockReturnValue(makeMutationResult())
     mockUseUpdateMssqlSettings.mockReturnValue(makeMutationResult())
+    mockUseTestMssqlConnection.mockReturnValue(makeMutationResult())
 
     // Default returns
     apiClientsReturn = { data: [], isLoading: false, isError: false }
