@@ -20,7 +20,7 @@
     "@aws-sdk/client-ec2": "^3.1038.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^22.19.19",
     "tsx": "^4.21.0",
     "typescript": "*",
     "vitest": "^4.1.5"
