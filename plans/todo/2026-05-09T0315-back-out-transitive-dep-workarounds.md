@@ -14,59 +14,68 @@ audits and can mask the next regression.
 
 This plan tracks both workarounds back out.
 
-## Workaround 1 — `fast-uri` allowlist in `audit-ci.jsonc`
+## Workaround 1 — `fast-uri` allowlist in `audit-ci.jsonc` — DONE 2026-05-28
 
-**Why it exists.** `aws-cdk-lib` ships its dependencies as
-`bundleDependencies` (i.e. baked into the published tarball). Its
-bundled `ajv@8.18.0` pulls `fast-uri@3.1.0`, which is vulnerable to
-GHSA-q3j6-qgpj-74h6 and GHSA-v39h-62p7-jpjc. npm `overrides` only
-rewrite the resolution graph; they cannot rewrite files inside a
-published tarball, so the bundled copy is unreachable. We allowlist
-the two GHSAs in `audit-ci.jsonc` to keep CI green.
-
-**Exit condition.** A future `aws-cdk-lib` release rebundles its
-dependencies with a patched `fast-uri` (≥ 3.1.2) or patched `ajv`
-(≥ 8.20.0). Verify by re-running `npx audit-ci --config ./audit-ci.jsonc`
-locally and observing the absence of the
-`Found vulnerable allowlisted advisories: GHSA-q3j6-qgpj-74h6,
-GHSA-v39h-62p7-jpjc.` line. We're already on the latest aws-cdk-lib
-(`2.253.1`); nothing to do until they cut a new minor.
-
-**The change when the time comes.**
-
-- [ ] Bump `aws-cdk-lib` if a newer version is out, run `npm install`,
-      and verify `npm ls fast-uri` shows 3.1.2+ everywhere (including
-      under `aws-cdk-lib/node_modules/`).
-- [ ] Delete the two GHSA entries from the `allowlist` in
-      `audit-ci.jsonc`. Leave `"high": true`.
-- [ ] If the allowlist becomes empty, the file can stay (cheap docs)
-      or be replaced by inline flags — author's call.
+The `fast-uri` allowlist no longer exists. `audit-ci.jsonc` now reads
+`"allowlist": []`, and the root `overrides` carries `"fast-uri": ">=3.1.2"`
+which is reachable through every non-bundled path. CI is green without
+the GHSA exceptions. Nothing further to do for this workaround.
 
 ## Workaround 2 — `jest-runtime` pin in `overrides`
 
-**Why it exists.** `jest-runtime` 30.4.0 / 30.4.1 / 30.4.2 (the
-latest) call `this._moduleMocker.clearMocksOnScope(...)` from
-`Runtime.resetModules`, but no published `jest-mock` has that method
-— the matching `jest-mock@30.4.2` was never released. Symptom: every
-mobile test suite fails with `TypeError: ... clearMocksOnScope is not
-a function` on `npm test`. We pin `jest-runtime` to `30.3.0` (the
-last release without the broken call) via `overrides` in root
-`package.json`. This produces `invalid:` warnings from `npm ls` (the
-parent jest packages declare `^30.4.x`) which are expected.
+**Why it exists (original framing).** `jest-runtime` 30.4.x calls
+`this._moduleMocker.clearMocksOnScope(...)` from `Runtime.resetModules`,
+which didn't exist on `jest-mock` at the time the pin was added.
 
-**Exit condition.** `jest-mock` publishes a version `≥ 30.4.2` that
-exposes `clearMocksOnScope`. Verify with:
+**Why it exists (current framing, 2026-05-29).** `jest-mock@30.4.1` _does_
+expose `clearMocksOnScope`, so the originally-stated exit condition is
+met. **But removing the pin still breaks all 20 mobile suites** — verified
+in this session with a clean `rm -rf node_modules package-lock.json && npm
+install` followed by `npm run -w @pegasus/mobile test`:
 
-```bash
-npm view jest-mock@latest version
-# expect 30.4.2 or higher
-npm pack jest-mock@latest --dry-run 2>&1
-grep clearMocksOnScope $(npm pack jest-mock@latest --dry-run | …)  # method should be defined
 ```
+Test Suites: 20 failed, 20 total
+TypeError: this._moduleMocker.clearMocksOnScope is not a function
+  at Runtime.resetModules (node_modules/jest-runtime/build/index.js:3784:28)
+```
+
+Root cause is one level deeper than the original plan captured:
+
+- `react-native@0.83.6` (pinned by Expo SDK 55, also via root `overrides`)
+  depends on `jest-environment-node@29.7.0`, which depends on
+  `jest-mock@29.7.0`.
+- npm hoists that 29.7.0 copy to root `node_modules/jest-mock` (verified
+  via `cat node_modules/jest-mock/package.json` → `"version": "29.7.0"`,
+  978-line `build/index.js` vs the 756-line 30.4.1 build).
+- `jest-runtime._moduleMocker = this._environment.moduleMocker`, and
+  `_environment` is the react-native preset's `jest-environment-node@29.7.0`,
+  whose `ModuleMocker` class has no `clearMocksOnScope` method.
+- So `jest-runtime@30.4.x` calls a method that doesn't exist on the
+  29.x mocker the preset hands it. Pinning runtime to 30.3.0 dodges the
+  call entirely.
+
+**Real exit condition.** Either of:
+
+1. `react-native` ships a release whose jest preset uses
+   `jest-environment-node@^30` (and the matching `jest-mock@^30`).
+   Verify with `npm ls jest-environment-node jest-mock` after the bump —
+   only 30.x entries should appear.
+2. We add a coordinated set of root `overrides` forcing
+   `jest-environment-node`, `@jest/environment`, `@jest/fake-timers`,
+   and `jest-mock` to `^30.4.x` tree-wide. Risky: react-native's preset
+   wires those packages together at a specific 29.x ABI; forcing 30.x
+   may break the preset's own setup. Worth a follow-up spike but not a
+   drive-by change.
+
+Until either ships, **leave the pin in place**. The `invalid:` warnings
+from `npm ls` (the parent jest packages declare `^30.4.x`) are expected
+and documented inline in `package.json`.
 
 **The change when the time comes.**
 
-- [ ] Confirm the matching `jest-mock` is on npm and has the method.
+- [ ] Confirm one of the two exit paths above is genuinely available
+      (re-run the mobile test suite without the pin in a throwaway
+      branch first).
 - [ ] Delete the `"jest-runtime": "30.3.0"` line from `overrides`
       and the matching `//overrides` comment.
 - [ ] `rm -rf node_modules package-lock.json && npm install` (npm

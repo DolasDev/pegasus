@@ -67,7 +67,7 @@
     "@babel/plugin-transform-modules-systemjs": "GHSA-fv7c-fp4j-7gwp arbitrary code on malicious input",
     "fast-uri": "GHSA-q3j6-qgpj-74h6 / GHSA-v39h-62p7-jpjc path traversal + host confusion",
     "fast-xml-builder": "GHSA-5wm8-gmm8-39j9 / GHSA-45c6-75p6-83cc attribute / comment regex bypass",
-    "jest-runtime": "30.4.0/.1/.2 call jest-mock.clearMocksOnScope() but no published jest-mock has that method; pin to 30.3.0 (last good) until jest ships a matching jest-mock"
+    "jest-runtime": "react-native@0.83.6's jest preset locks jest-environment-node@29.7.0 + jest-mock@29.7.0 (no clearMocksOnScope), which npm hoists to the root. jest-runtime 30.4.x calls _environment.moduleMocker.clearMocksOnScope() in resetModules() and 20/20 mobile suites fail. Pin to 30.3.0 (last release before that call was added) until either react-native ships a jest-30 preset or we add jest-environment-node/@jest/environment/@jest/fake-timers/jest-mock overrides for the mobile workspace."
   },
   "overrides": {
     "handlebars": ">=4.7.9",
