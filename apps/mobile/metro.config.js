@@ -1,4 +1,8 @@
-const { getDefaultConfig } = require('@expo/metro-config');
+// Use expo's metro-config sub-export rather than requiring @expo/metro-config
+// directly — that's the supported API and lets npm resolve via the `expo`
+// package (always hoisted) instead of needing @expo/metro-config to win
+// hoisting on its own. expo-doctor flags the direct dep as wrong.
+const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
 const projectRoot = __dirname;
