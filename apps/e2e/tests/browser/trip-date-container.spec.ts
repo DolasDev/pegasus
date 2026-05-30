@@ -16,7 +16,13 @@ import { test, expect, type Page } from '@playwright/test'
 // already-nested input), so the stub returns the component-shaped trip directly
 // inside the `{ data }` envelope that tenant-web's apiFetch unwraps.
 //
-// RUNNING (manual — mirrors landing.spec.ts; not part of CI):
+// CI: tagged `@local-only` so the deployed E2E gates (remote/qa) exclude it via
+// `grepInvert: /@local-only/` — it needs a logged-in tenant-web dev server, which
+// those unauthenticated, API-only gates don't provide. The WEB_URL skip below
+// guards the default local run too (remote gates DO set WEB_URL, so the tag, not
+// WEB_URL, is what keeps this out of CI).
+//
+// RUNNING (manual):
 //   1. Start a logged-in tenant-web dev server:  cd apps/tenant-web && npm run dev
 //   2. First run records the golden baseline:
 //        cd apps/e2e && WEB_URL=http://localhost:5173 \
@@ -120,7 +126,7 @@ async function stubLonghaul(page: Page): Promise<void> {
   })
 }
 
-test.describe('Trip dateContainer visual parity', () => {
+test.describe('Trip dateContainer visual parity @local-only', () => {
   test.beforeEach(async ({ page }) => {
     await stubLonghaul(page)
     await page.goto(`${WEB_URL}/driver-planning/trips/${TRIP_ID}`, {
