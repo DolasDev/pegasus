@@ -34,15 +34,6 @@ export default tseslint.config(
     },
   },
 
-  // Legacy migrated app — relax strict typing rules
-  {
-    files: ['apps/longhaul/**/*.{ts,tsx}'],
-    rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unused-vars': 'off',
-    },
-  },
-
   // Ported longhaul code inside tenant-web — same relaxed rules until the
   // follow-up phase rewrites it to match tenant-web conventions.
   {
