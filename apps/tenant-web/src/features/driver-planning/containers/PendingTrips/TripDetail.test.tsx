@@ -117,6 +117,60 @@ describe('DriverTripDetail', () => {
     expect(screen.getByTestId('driver-select')).toBeInTheDocument()
   })
 
+  it('locks the driver field (no typeahead) when the trip is In-Progress', () => {
+    const editTrip = vi.fn()
+    const EditComp = ({ value, onChange }: any) => (
+      <button
+        data-testid="driver-select"
+        onClick={() => onChange({ id: 9, driver_id: 9, driver_name: 'Pat' })}
+      >
+        {value?.label || 'select'}
+      </button>
+    )
+    const inProgressTrip = {
+      ...baseTrip,
+      status: { id: 4, status_id: 4, status: 'In-Progress' },
+    }
+    renderWithStore(
+      <DriverTripDetail
+        currentTrip={inProgressTrip}
+        label="Driver"
+        property="driver"
+        editLabel="Change Driver"
+        displayVal=""
+        editTrip={editTrip}
+        EditComponent={EditComp}
+      />,
+    )
+    // Read-only sentinel rendered…
+    expect(screen.getByText('Driver')).toBeInTheDocument()
+    expect(screen.getByText('Sam')).toBeInTheDocument()
+    expect(screen.getByText(/locked — trip in progress/i)).toBeInTheDocument()
+    // …and the typeahead EditComponent is NOT rendered.
+    expect(screen.queryByTestId('driver-select')).not.toBeInTheDocument()
+    expect(editTrip).not.toHaveBeenCalled()
+  })
+
+  it('falls back to "Unassigned" when an In-Progress trip has no driver', () => {
+    const inProgressTrip = {
+      ...baseTrip,
+      driver: null,
+      status: { id: 4, status_id: 4, status: 'In-Progress' },
+    }
+    renderWithStore(
+      <DriverTripDetail
+        currentTrip={inProgressTrip}
+        label="Driver"
+        property="driver"
+        editLabel="Change Driver"
+        displayVal=""
+        editTrip={() => {}}
+        EditComponent={() => null}
+      />,
+    )
+    expect(screen.getByText('Unassigned')).toBeInTheDocument()
+  })
+
   it('calls editTrip with driver and driver_id when driver changes', () => {
     const editTrip = vi.fn()
     const EditComp = ({ onChange }: any) => (
