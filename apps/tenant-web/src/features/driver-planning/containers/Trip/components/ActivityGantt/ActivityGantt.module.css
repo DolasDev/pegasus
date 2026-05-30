@@ -1,4 +1,11 @@
 .dateHeader {
+  /* JS positioning in ActivityGantt.tsx assumes each column renders at
+   * 101px outer (80 content + 20 padding + 1 border) — i.e. content-box.
+   * tenant-web inherits Tailwind Preflight's global `box-sizing: border-box`,
+   * which collapses the outer width to 80px and slides multi-day activity
+   * bars right of their date headers. Pin content-box here (and on
+   * .dateColumn / .activity / .eta) so the math matches the rendered grid. */
+  box-sizing: content-box;
   width: 80px;
   border-right: 1px solid var(--light-30);
   padding: 0 10px;
@@ -24,6 +31,10 @@
 }
 
 .eta {
+  /* See .dateHeader; the absolute-positioned bars use explicit pixel widths
+   * sized to the content-box stride, so they must opt out of Preflight's
+   * border-box default too. */
+  box-sizing: content-box;
   height: 50px;
   display: flex;
   justify-content: center;
@@ -48,6 +59,8 @@
 }
 
 .dateColumn {
+  /* See .dateHeader for why content-box is pinned. */
+  box-sizing: content-box;
   width: 80px;
   border-right: 1px solid var(--light-30);
   border-bottom: 1px solid var(--light-30);
@@ -62,6 +75,8 @@
 }
 
 .activity {
+  /* See .dateHeader. */
+  box-sizing: content-box;
   position: absolute;
   height: 50px;
   display: flex;

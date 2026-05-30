@@ -23,17 +23,29 @@ type AnyRec = Record<string, any>
 
 function reshapeActivity(a: any): any {
   if (!a || typeof a !== 'object') return a
-  if (a.activityType == null && (a.activityType_code != null || a.ActivityType_code != null)) {
+  // The legacy TypeORM-backed app exposed the activity PK as `activityId`; the
+  // cloud-direct handler in apps/api `SELECT a.* FROM LongDistanceDispatchActivity`
+  // returns the column name `id` (verified in tests/api/longhaul-qa.spec.ts).
+  // The ported ActivityGantt / Trip components still read `activity.activityId`
+  // for the save POST + React keys + data-activity-id selectors, so without an
+  // alias every save lands on `POST /activities/undefined` and the 400 is
+  // swallowed by updateActivityForTrip. Mirror the alias instead of touching
+  // every call site.
+  const withId = a.activityId == null && a.id != null ? { ...a, activityId: a.id } : a
+  if (
+    withId.activityType == null &&
+    (withId.activityType_code != null || withId.ActivityType_code != null)
+  ) {
     return {
-      ...a,
+      ...withId,
       activityType: {
-        code: a.activityType_code ?? a.ActivityType_code,
-        name: a.activityType_name,
-        abbreviation: a.activityType_abbreviation,
+        code: withId.activityType_code ?? withId.ActivityType_code,
+        name: withId.activityType_name,
+        abbreviation: withId.activityType_abbreviation,
       },
     }
   }
-  return a
+  return withId
 }
 
 export function reshapeTrip(raw: any): any {

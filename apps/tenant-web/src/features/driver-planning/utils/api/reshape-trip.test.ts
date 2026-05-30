@@ -64,6 +64,52 @@ describe('reshapeTrip', () => {
     expect(t.shipments[0].activities[0].activityType.code).toBe('PACK')
   })
 
+  it('aliases activity.id → activity.activityId on trip + shipment activities', () => {
+    // Regression: the cloud-direct handler in apps/api selects
+    // `LongDistanceDispatchActivity.id` (no `AS activityId`), but every ported
+    // ActivityGantt / Trip call site still reads `activity.activityId` — most
+    // critically `updateActivityForTrip(selectedActivity.activityId, …)` which
+    // builds the save URL `/activities/${activityId}`. Without this alias,
+    // every save POSTs to `/activities/undefined`, the handler 400s with
+    // "Invalid activity id", and the redux thunk swallows it. Keep this alias
+    // wired so the bug stays fixed even if the underlying API column never
+    // gets renamed.
+    const t = reshapeTrip({
+      id: 1,
+      activities: [{ id: 42, order_num: 555, ActivityType_code: 'PACK' }],
+      shipments: [
+        {
+          order_num: 555,
+          shipper_name: 'Doe',
+          activities: [{ id: 42, ActivityType_code: 'PACK' }],
+        },
+      ],
+    })
+    expect(t.activities[0].activityId).toBe(42)
+    expect(t.activities[0].id).toBe(42)
+    expect(t.shipments[0].activities[0].activityId).toBe(42)
+  })
+
+  it('does not overwrite an existing activityId when the bridge already sets it', () => {
+    // Defensive: if the bridge ever ships both `id` and `activityId` (or only
+    // `activityId`, as the legacy TypeORM entity did), the explicit
+    // `activityId` wins — the alias only fills in missing values.
+    const t = reshapeTrip({
+      id: 1,
+      activities: [{ id: 7, activityId: 99, ActivityType_code: 'PACK' }],
+    })
+    expect(t.activities[0].activityId).toBe(99)
+  })
+
+  it('leaves activityId undefined when neither id nor activityId is present', () => {
+    // Edge case: a malformed/empty activity row shouldn't fabricate an id.
+    const t = reshapeTrip({
+      id: 1,
+      activities: [{ order_num: 1, ActivityType_code: 'PACK' }],
+    })
+    expect(t.activities[0].activityId).toBeUndefined()
+  })
+
   it('reshapeTripList maps an array and passes non-arrays through', () => {
     expect(reshapeTripList([{ id: 1, driver_id: 2 }])[0].driver).toMatchObject({ driver_id: 2 })
     expect(reshapeTripList(null)).toBeNull()

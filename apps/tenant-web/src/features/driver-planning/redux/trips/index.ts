@@ -2,6 +2,7 @@ import { API } from '../../utils/api'
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import type { AppDispatch } from '../store'
 import { coerceListPayload } from '../lib/coerce-list-payload'
+import { notifyError } from '../../components/Snackbar/notify'
 
 export interface TripsState {
   loading: boolean
@@ -86,9 +87,16 @@ export const fetchTrips = (query: any) => async (dispatch: AppDispatch) => {
 
 export const updateActivityForTrip =
   (activityId: any, activity: any) => async (_dispatch: AppDispatch) => {
+    // Surface failures to the user. The original silent console.error here was
+    // hiding the (very common) `/activities/undefined` 400 caused by the
+    // `id`-vs-`activityId` shape mismatch — once that was fixed at the
+    // reshape, real failures still need to be visible to the dispatcher so a
+    // bad save doesn't masquerade as a successful one (the caller follows up
+    // with a reloadTrip() that paints the stale row back onto the screen).
     try {
       await API.saveActivity(activityId, activity)
     } catch (e: any) {
       console.error(e, 'failed to save activity')
+      notifyError(e?.message ?? 'Failed to save activity')
     }
   }
