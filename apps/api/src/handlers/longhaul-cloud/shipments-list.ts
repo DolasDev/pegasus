@@ -273,6 +273,8 @@ function buildEnrichmentSql(orderNums: number[], bag: ParamBag): string {
     `   at.code AS activityType_code,` +
     `   at.name AS activityType_name,` +
     `   at.abbreviation AS activityType_abbreviation,` +
+    `   at.isCanEditDates AS activityType_isCanEditDates,` +
+    `   at.isHasETA AS activityType_isHasETA,` +
     `   drv.driver_name AS driver_name` +
     `  FOR JSON PATH, WITHOUT_ARRAY_WRAPPER) AS __payload` +
     ` FROM LongDistanceDispatchActivity AS lda` +

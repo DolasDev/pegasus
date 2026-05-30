@@ -42,6 +42,13 @@ function reshapeActivity(a: any): any {
         code: withId.activityType_code ?? withId.ActivityType_code,
         name: withId.activityType_name,
         abbreviation: withId.activityType_abbreviation,
+        // `isCanEditDates` gates the PendingTrips date-edit popover and `isHasETA`
+        // gates the ActivityGantt estimated/actual date pickers. The on-prem bridge
+        // joins Longhaul_ActivityType and aliases these as `activityType_*`; without
+        // copying them through here every persisted activity reads `undefined` →
+        // falsy → the pickers never open.
+        isCanEditDates: withId.activityType_isCanEditDates,
+        isHasETA: withId.activityType_isHasETA,
       },
     }
   }

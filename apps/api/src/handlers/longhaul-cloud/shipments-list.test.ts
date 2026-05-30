@@ -158,6 +158,23 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
     expect(executeSqlMock).toHaveBeenCalledTimes(3)
   })
 
+  it('selects the Longhaul_ActivityType edit flags in the enrichment query', async () => {
+    // Regression: without `isCanEditDates` / `isHasETA` the driver-planning date
+    // pickers stay locked because the gate flags arrive undefined.
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
+    stubExecutor({ shipments: [{ order_num: 100 }], enrichment: [], extraLocations: [] })
+
+    await buildApp().request('/onprem/longhaul/shipments')
+
+    const enrichmentCall = executeSqlMock.mock.calls.find((call) =>
+      String(call[1]).includes("'activity' AS __src"),
+    )
+    expect(enrichmentCall).toBeDefined()
+    const sql = String(enrichmentCall![1])
+    expect(sql).toContain('at.isCanEditDates AS activityType_isCanEditDates')
+    expect(sql).toContain('at.isHasETA AS activityType_isHasETA')
+  })
+
   it('skips the enrichment round trips when the base query returns no rows', async () => {
     findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
     stubExecutor({ shipments: [] })

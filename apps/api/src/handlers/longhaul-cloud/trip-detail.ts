@@ -71,7 +71,9 @@ WHERE t.id = @id;
 SELECT a.*,
        at.code AS activityType_code,
        at.name AS activityType_name,
-       at.abbreviation AS activityType_abbreviation
+       at.abbreviation AS activityType_abbreviation,
+       at.isCanEditDates AS activityType_isCanEditDates,
+       at.isHasETA AS activityType_isHasETA
 FROM LongDistanceDispatchActivity a
 LEFT JOIN Longhaul_ActivityType at ON a.ActivityType_code = at.code
 WHERE a.TripMaster_id = @id;
@@ -97,6 +99,8 @@ SELECT a.*,
        at.code AS activityType_code,
        at.name AS activityType_name,
        at.abbreviation AS activityType_abbreviation,
+       at.isCanEditDates AS activityType_isCanEditDates,
+       at.isHasETA AS activityType_isHasETA,
        drv.driver_name AS driver_name
 FROM LongDistanceDispatchActivity a
 LEFT JOIN Longhaul_ActivityType at ON a.ActivityType_code = at.code
