@@ -2,16 +2,20 @@
 
 Tracker for features stubbed out during the port of `apps/longhaul`'s
 Planning + Dispatch UI into `apps/tenant-web/src/features/driver-planning/`.
-Each item is searchable in the codebase via `TODO(longhaul-port)`.
+
+> **Sweep 2026-05-30:** `grep -rn "TODO(longhaul-port)"` returns zero hits —
+> every individually-marked stub has been resolved. Remaining items below
+> (Redux→TanStack, restyling, `apps/longhaul` removal) are tracked as
+> standalone follow-up phases, not as inline code TODOs.
 
 ## Stubbed in this phase
 
-- [ ] **`API.jumpToOrder` / `pegasusRemoteFunctionCall`** —
-      `apps/tenant-web/src/features/driver-planning/utils/api/index.ts`.
-      Originally shelled out to the on-prem WinForms client to open an order
-      by `order_num`. Currently shows an alert. Needs a cloud equivalent —
-      either a tenant-web move/order detail route or a cloud-side deeplink
-      protocol the legacy app can register against.
+- [x] **`API.jumpToOrder` / `pegasusRemoteFunctionCall`** — shipped 2026-05-29
+      as a `pegasus-desktop://` URI-scheme handoff. The WinForms client
+      registers the scheme; the web app fires the URI fire-and-forget
+      (config-gated). Implementation: `utils/jump-to-order.ts` + tests, wired
+      via `utils/api/index.ts:71`. Commits `638b356` (web) + `a36e011`
+      (WinForms scheme registration).
 
 - [x] **Unsaved-changes navigation prompt in `PlanningModule`** —
       `apps/tenant-web/src/features/driver-planning/utils/router-compat.tsx`
@@ -30,9 +34,17 @@ Each item is searchable in the codebase via `TODO(longhaul-port)`.
       (`features/driver-planning/styles.css`). Re-skin once functionality is
       verified.
 
-- [ ] **Delete `apps/longhaul`** — left in place for the verification
-      window. Once the cloud port is confirmed working in production, remove
-      the standalone Vite app and its CI/deploy entries.
+- [ ] **Delete `apps/longhaul`** — **UNBLOCKED 2026-05-30.** The verification
+      window is over: the strangler-fig migration is complete (see
+      `plans/completed/longhaul-strangler-fig-cloud-migration.md`) and the
+      cloud port has been live in prod for weeks. Only external references
+      remaining are: `package-lock.json` workspace entry (auto-cleans on
+      removal), a historical `dolas/agents/project/GOTCHAS.md` note (about
+      CSS reset), and reference-only comments in
+      `apps/e2e/tests/browser/trip-date-container.spec.ts`. No CI workflow
+      depends on it — `e2e-qa-longhaul.yml` targets the cloud port at
+      `/driver-planning`, not this app. Ready to `rm -rf apps/longhaul` +
+      `npm install` in a one-PR cleanup.
 
 - [x] **`redux/nav` slice cleanup** — `redux/nav/` directory removed and
       its reducer dropped from `redux/store.ts` and the test-only
