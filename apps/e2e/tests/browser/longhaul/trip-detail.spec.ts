@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect, gateOnOnpremHealth } from './_shared'
 import { DriverPlanningLayout } from './pages/DriverPlanningLayout'
+import { PlanningPage } from './pages/PlanningPage'
 import { TripDetailPage } from './pages/TripDetailPage'
 import { TripsPage } from './pages/TripsPage'
 
@@ -101,9 +102,63 @@ test.describe('Trip detail', () => {
   // Triple-covered already; a browser spec adds no signal. See
   // plans/todo/longhaul-qa-mutating-triage.md.
 
-  // Dropped: the legacy app gated driver-edit on In-Progress status; the port
-  // doesn't carry that lock — `DriverTripDetail` (Planning) has no `isInProgress`
-  // check, and the trip-detail page never renders a driver-edit affordance to
-  // begin with. Tracking as a missing-feature-parity backlog item rather than a
-  // test gap. See plans/todo/longhaul-in-progress-driver-lock.md.
+  // Re-implemented (was `Dropped` per the In-Progress-driver-lock backlog item):
+  // the Planning view now renders a read-only driver display (data-target
+  // "driver-locked") in place of the typeahead when the loaded trip's
+  // currentTrip.status?.status === 'In-Progress'. See
+  // plans/completed/longhaul-in-progress-driver-lock.md and
+  // apps/tenant-web/.../PendingTrips/TripDetail.tsx :: DriverTripDetail.
+  test('Planning locks the driver field on an In-Progress trip', async ({ page, qaWebUrl }) => {
+    // We need a trip whose status is In-Progress. The default Trips-list filter
+    // already includes In-Progress; scan the rendered cards for one. Skip
+    // cleanly if the QA DB happens to have none under that filter.
+    const layout = new DriverPlanningLayout(page, qaWebUrl)
+    await layout.openTab('Trips')
+    const trips = new TripsPage(page)
+    try {
+      await trips.newTripButton.waitFor({ state: 'visible', timeout: 15_000 })
+    } catch {
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await trips.newTripButton.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {})
+    }
+    test.skip(
+      !(await trips.newTripButton.isVisible()),
+      'Trips module did not mount (on-prem AppGuard bootstrap slow or 5xx after retry)',
+    )
+    await trips.cards
+      .first()
+      .waitFor({ state: 'visible', timeout: 30_000 })
+      .catch(() => {})
+    const inProgressCard = page.locator('[data-target="trip-card"][data-trip-status="In-Progress"]')
+    test.skip(
+      (await inProgressCard.count()) === 0,
+      'no In-Progress trips in the QA DB under the default filter',
+    )
+    const tripId = await inProgressCard.first().getAttribute('data-trip-id')
+    expect(tripId, 'In-Progress trip card has a data-trip-id').toBeTruthy()
+
+    // Load Planning with ?tripId=<the In-Progress trip>.
+    const pp = new PlanningPage(page, qaWebUrl)
+    await pp.openWithTripId(tripId!)
+    // Same SearchDashboard shell-mount sentinel + reload-retry pattern as
+    // planning.spec.ts beforeEach — the Planning module's AppGuard fan-out can
+    // stall on a cold-start tunnel.
+    try {
+      await pp.searchDashboard.waitFor({ state: 'visible', timeout: 15_000 })
+    } catch {
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await pp.searchDashboard.waitFor({ state: 'visible', timeout: 45_000 }).catch(() => {})
+    }
+    test.skip(
+      !(await pp.searchDashboard.isVisible()),
+      'planning module did not mount (AppGuard still loading — on-prem fetch slow)',
+    )
+
+    // The driver-locked read-only display is rendered…
+    const lockedDisplay = pp.pendingTrips.locator('[data-target="driver-locked"]')
+    await expect(lockedDisplay).toBeVisible({ timeout: 30_000 })
+    await expect(lockedDisplay).toContainText(/locked — trip in progress/i)
+    // …and the typeahead is gone (not interactive — there's no <input> to focus).
+    await expect(pp.driverTypeahead).toHaveCount(0)
+  })
 })

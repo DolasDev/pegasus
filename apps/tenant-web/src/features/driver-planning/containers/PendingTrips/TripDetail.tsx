@@ -93,6 +93,25 @@ export function DriverTripDetail({
     setValue(currentTrip[property as string])
   }, [currentTrip[property as string]])
 
+  // Legacy parity: once a trip is In-Progress the driver assignment is locked.
+  // Render a read-only display in place of the typeahead so dispatchers can't
+  // silently reassign a driver mid-haul. See
+  // plans/completed/longhaul-in-progress-driver-lock.md.
+  const isInProgress = currentTrip?.status?.status === 'In-Progress'
+  if (isInProgress) {
+    const driverName = currentTrip.driver?.driver_name || 'Unassigned'
+    return (
+      <div className={styles['trip-detail']} data-target="driver-locked">
+        <div className={styles['title']}>{label}</div>
+        <span>
+          <i className="fas fa-lock" aria-hidden="true" style={{ marginRight: 6 }} />
+          {driverName}
+        </span>{' '}
+        <span className={styles['title']}>(locked — trip in progress)</span>
+      </div>
+    )
+  }
+
   return (
     <div className={styles['trip-detail']}>
       {editMode && EditComponent ? (
