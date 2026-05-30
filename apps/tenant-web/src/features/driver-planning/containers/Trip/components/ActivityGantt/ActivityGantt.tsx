@@ -93,6 +93,17 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip }: 
   const actualDate = selectedActivity?.actual_date ? new Date(selectedActivity.actual_date) : null
   const tomorrow = new Date()
   tomorrow.setDate(tomorrow.getDate() + 1)
+  // `openToDate` is the calendar's initial focus month/day. When it's an
+  // Invalid Date (because planned_start is null/blank/malformed for this
+  // activity) react-datepicker silently snaps the focus to `maxDate`, which
+  // for the Actual-Date picker is `tomorrow` — so every fresh popover was
+  // landing the user on tomorrow's cell instead of the activity's window.
+  // Fall back to today when planned_start can't be parsed.
+  const safeStartDate = (() => {
+    if (!selectedActivity?.planned_start) return new Date()
+    const d = new Date(selectedActivity.planned_start)
+    return Number.isNaN(d.getTime()) ? new Date() : d
+  })()
 
   return (
     <>
@@ -199,7 +210,7 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip }: 
                       onChange={(date: any) => {
                         updateActivity({ estimated_date: date ? date.toISOString() : null })
                       }}
-                      openToDate={etaDate ? etaDate : new Date(selectedActivity.planned_start)}
+                      openToDate={etaDate ? etaDate : safeStartDate}
                       isClearable={true}
                     />
 
@@ -264,9 +275,7 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip }: 
                         onChange={(date: any) => {
                           updateActivity({ actual_date: date ? date.toISOString() : null })
                         }}
-                        openToDate={
-                          actualDate ? actualDate : new Date(selectedActivity.planned_start)
-                        }
+                        openToDate={actualDate ? actualDate : safeStartDate}
                       />
                     </HoverToolTip>
                   </div>

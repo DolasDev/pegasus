@@ -167,3 +167,23 @@
   top: 25%;
   margin-top: -12px;
 }
+
+/* react-datepicker's stylesheet only paints the calendar popper (.react-datepicker__*)
+ * — the trigger <input> relies on the UA-default field border, which Tailwind
+ * v4 Preflight wipes via `*, ::before, ::after { border: 0 solid; }`. Without
+ * a border the ActivityGantt popover's Estimated/Actual-Date inputs render as
+ * a borderless text run, indistinguishable from a label. Restore a scoped
+ * border + light padding so the field reads as an input. */
+.driver-planning-root .react-datepicker__input-container input,
+.driver-planning-root .react-datepicker-wrapper input {
+  border: 1px solid var(--light-50);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font: inherit;
+  background: #fff;
+}
+.driver-planning-root .react-datepicker__input-container input:focus,
+.driver-planning-root .react-datepicker-wrapper input:focus {
+  outline: none;
+  border-color: var(--blue-300);
+}
