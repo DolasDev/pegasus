@@ -11,6 +11,8 @@
 }
 
 .tripContainer h3 {
+  /* Tightened from the UA-default 1em margins restored in
+   * driver-planning/styles.css; size/weight come from there. */
   margin-block-start: 0.25em;
   margin-block-end: 0.25em;
 }

@@ -40,12 +40,7 @@ const baseActivity = (overrides: any = {}) => ({
 describe('ActivityGantt', () => {
   it('renders day headers for each provided day', () => {
     const { container } = renderWithStore(
-      <ActivityGantt
-        days={days}
-        activities={[]}
-        orderIdToColor={{}}
-        reloadTrip={() => {}}
-      />,
+      <ActivityGantt days={days} activities={[]} orderIdToColor={{}} reloadTrip={() => {}} />,
     )
     const headers = container.querySelectorAll('h5')
     expect(headers.length).toBe(days.length)
@@ -53,12 +48,7 @@ describe('ActivityGantt', () => {
 
   it('renders an "Unknown" header for null days', () => {
     renderWithStore(
-      <ActivityGantt
-        days={[null]}
-        activities={[]}
-        orderIdToColor={{}}
-        reloadTrip={() => {}}
-      />,
+      <ActivityGantt days={[null]} activities={[]} orderIdToColor={{}} reloadTrip={() => {}} />,
     )
     expect(screen.getByText('Unknown')).toBeInTheDocument()
   })
@@ -123,5 +113,58 @@ describe('ActivityGantt', () => {
     )
     fireEvent.click(screen.getByText('TX'))
     expect(screen.getByText('Update Itinerary Dates')).toBeInTheDocument()
+  })
+
+  it('renders one data-target row per activity with its id/order/abbr hooks', () => {
+    const activities = [
+      baseActivity({ activityId: 1, order_num: 'O1' }),
+      baseActivity({ activityId: 2, order_num: 'O2' }),
+    ]
+    const { container } = renderWithStore(
+      <ActivityGantt
+        days={days}
+        activities={activities}
+        orderIdToColor={{ O1: 'c1', O2: 'c2' }}
+        reloadTrip={() => {}}
+      />,
+    )
+    const rows = container.querySelectorAll('[data-target="gantt-activity-row"]')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toHaveAttribute('data-activity-id', '1')
+    expect(rows[0]).toHaveAttribute('data-order-num', 'O1')
+    expect(rows[0]).toHaveAttribute('data-activity-abbr', 'PK')
+  })
+
+  it('renders an ETA marker when the activity has an estimated date', () => {
+    const activities = [baseActivity({ estimated_date: '2024-01-02T00:00:00Z' })]
+    const { container } = renderWithStore(
+      <ActivityGantt
+        days={days}
+        activities={activities}
+        orderIdToColor={{ O1: 'c1' }}
+        reloadTrip={() => {}}
+      />,
+    )
+    // The eta block carries the order's color class and the module `eta` class.
+    expect(container.querySelector('[class*="eta"]')).toBeInTheDocument()
+  })
+
+  it('renders the orange "New Dates!" overlay bar for a date-changed activity', () => {
+    const activities = [
+      baseActivity({
+        hasDateChange: true,
+        newStart: '2024-01-01T00:00:00Z',
+        newEnd: '2024-01-02T00:00:00Z',
+      }),
+    ]
+    renderWithStore(
+      <ActivityGantt
+        days={days}
+        activities={activities}
+        orderIdToColor={{ O1: 'c1' }}
+        reloadTrip={() => {}}
+      />,
+    )
+    expect(screen.getByText('New Dates!')).toBeInTheDocument()
   })
 })

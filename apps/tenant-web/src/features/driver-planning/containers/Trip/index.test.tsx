@@ -61,6 +61,66 @@ const tripFixture = {
   activities: [],
 }
 
+// A trip with two shipment activities — one VIP — for the dateContainer
+// (Trip Itinerary) parity tests. `activityType.code` is a non-peg code (WHSE)
+// so getPegDates() never flags a spurious date-change in this baseline.
+const activity = (over: Record<string, any> = {}) => ({
+  activityId: 1,
+  order_num: 'O1',
+  city: 'DALLAS',
+  state: 'TX',
+  planned_start: '2024-01-01T00:00:00Z',
+  planned_end: '2024-01-01T00:00:00Z',
+  estimated_date: null,
+  actual_date: null,
+  is_committed: false,
+  is_confirmed: false,
+  activityType: { abbreviation: 'WH', code: 'WHSE', isHasETA: false },
+  shipment: {
+    shipper_name: 'SMITH, JOHN',
+    order_num: 'O1',
+    vip: 'N',
+    supervip: 'N',
+    total_est_wt: 5000,
+    pegasus_shadow: null,
+  },
+  ...over,
+})
+
+const tripWithActivitiesFixture = {
+  ...tripFixture,
+  activities: [
+    activity({
+      activityId: 1,
+      order_num: 'O1',
+      shipment: {
+        shipper_name: 'SMITH, JOHN',
+        order_num: 'O1',
+        vip: 'Y',
+        supervip: 'N',
+        total_est_wt: 5000,
+        pegasus_shadow: null,
+      },
+    }),
+    activity({
+      activityId: 2,
+      order_num: 'O2',
+      city: 'AUSTIN',
+      state: 'CA',
+      planned_start: '2024-01-02T00:00:00Z',
+      planned_end: '2024-01-02T00:00:00Z',
+      shipment: {
+        shipper_name: 'DOE, JANE',
+        order_num: 'O2',
+        vip: 'N',
+        supervip: 'N',
+        total_est_wt: 3000,
+        pegasus_shadow: null,
+      },
+    }),
+  ],
+}
+
 describe('Trip detail container', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -101,5 +161,70 @@ describe('Trip detail container', () => {
     await waitFor(() => {
       expect(screen.getByTestId('shipment-detail-mock')).toBeInTheDocument()
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// dateContainer (Trip Itinerary) — visual-element parity with the longhaul
+// reference app. These assert every component that is *supposed* to be there
+// renders, including the fixed-left-column ↔ gantt-row alignment invariant
+// that the Tailwind-Preflight heading reset had broken.
+// ---------------------------------------------------------------------------
+describe('Trip dateContainer (Trip Itinerary)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    fetchTripMock.mockResolvedValue(tripWithActivitiesFixture)
+  })
+
+  it('renders all seven header-info fields', async () => {
+    renderWithStore(<Trip />)
+    await waitFor(() => expect(screen.getByText('Trip Itinerary')).toBeInTheDocument())
+    // "Big Rig" appears in both the Lane title and the Driver field.
+    expect(screen.getAllByText(/Big Rig/).length).toBeGreaterThan(0) // Driver
+    expect(screen.getByText(/Pb , Pa/)).toBeInTheDocument() // Planner (last , first)
+    expect(screen.getByText(/Db , Da/)).toBeInTheDocument() // Dispatcher
+    expect(screen.getByText(/1000/)).toBeInTheDocument() // Total Est Weight
+    expect(screen.getByText(/1100/)).toBeInTheDocument() // Total Actual Weight
+    expect(screen.getByText(/5000/)).toBeInTheDocument() // Total Est Linehaul
+  })
+
+  it('renders the full status rail with exactly one active step', async () => {
+    const { container } = renderWithStore(<Trip />)
+    await waitFor(() => expect(screen.getByText('Trip Itinerary')).toBeInTheDocument())
+    expect(container.querySelectorAll('[data-target="trip-status-step"]')).toHaveLength(5)
+    const active = container.querySelectorAll(
+      '[data-target="trip-status-step"][data-active="true"]',
+    )
+    expect(active).toHaveLength(1)
+    expect(active[0]).toHaveAttribute('data-status', 'Pending')
+  })
+
+  it('renders one fixed-column shipment card per activity, with the VIP badge', async () => {
+    const { container } = renderWithStore(<Trip />)
+    await waitFor(() => expect(screen.getByText('Trip Itinerary')).toBeInTheDocument())
+    const cards = container.querySelectorAll('[data-target="trip-shipment-activity"]')
+    expect(cards).toHaveLength(2)
+    // Card content: startCased shipper surname, order num, City, State.
+    expect(screen.getByText('Smith')).toBeInTheDocument()
+    expect(screen.getByText(/Dallas, TX/)).toBeInTheDocument()
+    // VIP shipper (vip: 'Y') renders the id-badge icon; the plain one does not.
+    expect(container.querySelectorAll('i.fa-id-badge')).toHaveLength(1)
+  })
+
+  it('keeps the fixed card column and gantt rows row-aligned (1:1 count)', async () => {
+    const { container } = renderWithStore(<Trip />)
+    await waitFor(() => expect(screen.getByText('Trip Itinerary')).toBeInTheDocument())
+    const cards = container.querySelectorAll('[data-target="trip-shipment-activity"]')
+    const rows = container.querySelectorAll('[data-target="gantt-activity-row"]')
+    expect(cards.length).toBe(rows.length)
+    expect(rows.length).toBe(2)
+  })
+
+  it('renders the activity gantt with a colored bar carrying the order color class', async () => {
+    const { container } = renderWithStore(<Trip />)
+    await waitFor(() => expect(screen.getByText('Trip Itinerary')).toBeInTheDocument())
+    expect(container.querySelector('[data-target="activity-gantt"]')).toBeInTheDocument()
+    // getColor maps order index → color{N}00 module class; the first order gets color100.
+    expect(container.querySelector('[class*="color100"]')).toBeInTheDocument()
   })
 })

@@ -6,6 +6,12 @@
   flex: none;
 }
 
+/* This <h5> date-header's ~53px height — which the fixed left card column's
+ * `margin-top: 53px` is tuned to for row-alignment — comes from the UA-default
+ * heading metrics restored in driver-planning/styles.css (Tailwind Preflight
+ * strips them). If that scoped reset is ever removed, this row collapses and
+ * the columns drift; re-pin an explicit height here if so. */
+
 .activityGantt {
   overflow-x: auto;
   z-index: 0;

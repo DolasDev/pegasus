@@ -108,6 +108,14 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
 
+  // Visual-regression tolerance for `toHaveScreenshot` (used by the
+  // WEB_URL-gated trip-date-container visual spec). A small per-pixel + ratio
+  // budget absorbs antialiasing/font-hinting noise without masking the
+  // layout-drift class of bug these snapshots exist to catch.
+  expect: {
+    toHaveScreenshot: { maxDiffPixelRatio: 0.01, threshold: 0.2 },
+  },
+
   // Local mode runs Prisma migrate + tenant seed; remote/qa modes hit a live env.
   ...(isDeployed
     ? {}

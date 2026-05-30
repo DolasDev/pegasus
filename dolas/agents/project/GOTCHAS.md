@@ -170,3 +170,54 @@ message `PreTokenGeneration failed with error <msg>.`. `unwrapPreTokenMessage`
 in `packages/auth/src/cognito-client.ts` strips that wrapper (and Cognito's
 appended period) so only the Lambda's own sentence reaches the login UI — keep
 pre-token error strings user-ready.
+
+## Ported longhaul CSS relies on browser-default headings that Tailwind Preflight strips
+
+`apps/longhaul` had **no CSS reset**, so its components were authored against
+browser-default heading metrics. tenant-web imports Tailwind v4 (`globals.css`),
+whose Preflight resets `h1–h6` to `margin: 0; font-size/weight: inherit`. When a
+longhaul component is ported into `driver-planning`, any layout that leaned on a
+default heading size/margin silently breaks:
+
+- The Trip Itinerary Gantt's fixed left card column uses `margin-top: 53px` to
+  clear the `<h5>` date-header row. That 53px **is** the height a UA-default
+  `<h5>` occupies at the feature's 14px base (`0.83em` text + `1.67em` block
+  margins). Preflight collapsed the header to one text line, dropping the left
+  column ~33px out of row-alignment with the Gantt rows.
+- The `<h3>` "Trip Itinerary" rendered at body size/weight instead of bold 1.17em.
+
+Fix pattern: **restore the UA-default heading metrics once, scoped to the whole
+feature**, in `driver-planning/styles.css`:
+
+```css
+:where(.driver-planning-root) :where(h3) {
+  font-size: 1.17em;
+  font-weight: bold;
+  margin: 1em 0;
+}
+/* …h2/h4/h5/h6 likewise; h1 keeps its existing explicit rule. */
+```
+
+The `:where()` wrapper zeroes specificity to (0,0,0): the rules still beat
+Preflight (unlayered always wins over Tailwind's `@layer base`) but lose to
+every component heading rule — explicit styles (`Lane .title`, `ConfirmDialog
+.title`) and margin overrides (`.tripContainer h3`, `.activityCreationContainer
+h3`) alike — so nothing downstream has to fight them. This covers every bare
+`<hN>` in the feature at once (Gantt date header, Expandable, filter modals,
+empty-states, AppGuard error, Notes, PendingTrips). The same block also restores
+`<p>` margins (`:where(p) { margin: 1em 0 }`) — Preflight zeroes those too and
+the AppGuard/ErrorBoundary/Notes paragraphs lost their spacing. Do NOT retune
+the Gantt's 53px magic number — the restored `<h5>` margin is what gives the
+header its height.
+
+Audited the rest of the feature for the same Preflight class: `<table>`
+(`components/Table`), `<ul>`/`<li>` (`components/Autocomplete`) are all
+explicitly classed → unaffected. longhaul had **no** global `a` rule, so bare
+`<a onClick>` (href-less, e.g. PendingTrips Save/edit) render identically in
+both apps — no fix needed; only `ErrorBoundary`'s `<a href="mailto:">` loses its
+default underline (cosmetic, left as-is to avoid diverging from the reference). Separately, the feature also lost its `font-family` (longhaul forced
+`Open Sans` on `body`/`*`); it's now declared on `.driver-planning-root` and the
+font is bundled via `@fontsource/open-sans` (400/700) imported in
+`DriverPlanningLayout.tsx`. Verified by `Trip/index.test.tsx` (card-count ===
+gantt-row-count alignment invariant) + a WEB_URL-gated visual spec
+`apps/e2e/tests/browser/trip-date-container.spec.ts`.

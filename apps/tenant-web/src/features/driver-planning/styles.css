@@ -41,11 +41,65 @@
      clip horizontally so the hidden state stays hidden. */
   position: relative;
   overflow-x: clip;
+  /* The longhaul reference app forced Open Sans globally on body/*. tenant-web
+   * uses a different default stack, so the ported feature inherited the wrong
+   * typeface (subtle width/spacing drift throughout). Restore it here, scoped.
+   * Open Sans (400/700) is bundled via @fontsource in DriverPlanningLayout. */
+  font-family: 'Open Sans', Tinos, serif, sans-serif;
 }
 
 .driver-planning-root h1 {
   font-weight: 100;
   font-size: 30px;
+}
+
+/* The longhaul app had NO CSS reset, so its ported components were authored
+ * against browser-default heading metrics. tenant-web's Tailwind v4 Preflight
+ * resets h1–h6 to `margin: 0; font-size/weight: inherit`, which (a) collapses
+ * the Gantt's <h5> date-header row that the Trip-itinerary fixed-column
+ * `margin-top: 53px` is tuned to, dropping the two columns out of alignment,
+ * and (b) renders every bare <h2>/<h3> across the feature (Expandable, filter
+ * modals, empty-states, AppGuard error, PendingTrips "Activities", Notes) at
+ * body size/weight. Restore the UA defaults, scoped to the feature.
+ *
+ * `:where()` zeroes the selector's specificity (0,0,0): these still beat
+ * Preflight (unlayered always wins over Tailwind's `@layer base`), but lose to
+ * every component-level heading rule — both explicit styles (Lane `.title`,
+ * ConfirmDialog `.title`) and margin overrides (`.tripContainer h3`,
+ * `.activityCreationContainer h3`, `.dateHeader h5`) — so nothing downstream
+ * has to fight this. h1 keeps its explicit rule above. */
+:where(.driver-planning-root) :where(h2) {
+  font-size: 1.5em;
+  font-weight: bold;
+  margin: 0.83em 0;
+}
+:where(.driver-planning-root) :where(h3) {
+  font-size: 1.17em;
+  font-weight: bold;
+  margin: 1em 0;
+}
+:where(.driver-planning-root) :where(h4) {
+  font-size: 1em;
+  font-weight: bold;
+  margin: 1.33em 0;
+}
+:where(.driver-planning-root) :where(h5) {
+  font-size: 0.83em;
+  font-weight: bold;
+  margin: 1.67em 0;
+}
+:where(.driver-planning-root) :where(h6) {
+  font-size: 0.67em;
+  font-weight: bold;
+  margin: 2.33em 0;
+}
+/* Preflight also zeroes <p> margins. longhaul (no reset) rendered paragraphs
+ * with the UA-default 1em block margin — restore it so the bare <p>s in the
+ * AppGuard error screen, ErrorBoundary, and Notes cards keep their spacing.
+ * Zero specificity defers to explicit paragraph styles (ConfirmDialog
+ * `.description`, which sets its own margin). */
+:where(.driver-planning-root) :where(p) {
+  margin: 1em 0;
 }
 
 .driver-planning-root label {
