@@ -31,6 +31,7 @@ import { longhaulPlannersHandler } from './handlers/longhaul-cloud/planners'
 import { longhaulActivityTypesHandler } from './handlers/longhaul-cloud/activity-types'
 import { longhaulFilterOptionsHandler } from './handlers/longhaul-cloud/filter-options'
 import { longhaulDispatchersHandler } from './handlers/longhaul-cloud/dispatchers'
+import { longhaulReferenceDataHandler } from './handlers/longhaul-cloud/reference-data'
 import { longhaulShipmentsListHandler } from './handlers/longhaul-cloud/shipments-list'
 import { longhaulUsersMeHandler } from './handlers/longhaul-cloud/users-me'
 import { longhaulShipmentFiltersDefaultHandler } from './handlers/longhaul-cloud/shipment-filters-default'
@@ -268,6 +269,13 @@ v1.get('/onprem/longhaul/activity-types', longhaulActivityTypesHandler)
 // the tenant's longhaulClient column — see lib/longhaul-client-config.ts.
 v1.get('/onprem/longhaul/filter-options', longhaulFilterOptionsHandler)
 v1.get('/onprem/longhaul/dispatchers', longhaulDispatchersHandler)
+// Batched bootstrap: /reference-data collapses the seven reference-data fetches
+// (drivers, trip-statuses, states, zones, planners, dispatchers, filter-options)
+// into one multi-statement MSSQL batch — dropping AppGuard bootstrap from ~9
+// to ~3 api Lambda invocations and removing the self-throttle risk. The seven
+// standalone endpoints above are retained for non-bootstrap callers. See
+// handlers/longhaul-cloud/reference-data.ts.
+v1.get('/onprem/longhaul/reference-data', longhaulReferenceDataHandler)
 // Phase 3: /users/me is served cloud-direct — the cloud Hono Lambda resolves
 // the caller's legacy identity (TenantUser.legacyWindowsUsername →
 // v_longhaul_salesman) via the mssql-executor Lambda. Same `{ data }` shape.

@@ -67,6 +67,7 @@ describe('API surface', () => {
       ['fetchPlanners', []],
       ['fetchDispatchers', []],
       ['fetchFilterOptions', []],
+      ['fetchReferenceData', []],
     ])('API.%s() invokes fetchData("%s")', async (name, args) => {
       fetchDataMock.mockResolvedValue(okEnvelope([{ id: 1 }]))
       const result = await (API as any)[name](...args)

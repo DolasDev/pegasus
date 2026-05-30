@@ -10,6 +10,7 @@ vi.mock('../../utils/api', () => ({
     fetchPlanners: vi.fn(),
     fetchDispatchers: vi.fn(),
     fetchFilterOptions: vi.fn(),
+    fetchReferenceData: vi.fn(),
   },
 }))
 
@@ -30,6 +31,7 @@ import commonReducer, {
   fetchPlanners,
   fetchDispatchers,
   fetchFilterOptions,
+  fetchReferenceData,
   type CommonState,
 } from './index'
 import { API } from '../../utils/api'
@@ -284,6 +286,57 @@ describe('common slice — thunks', () => {
     const store = makeStore()
     await expect(store.dispatch(fetchFilterOptions() as any)).rejects.toThrow('options down')
     expect(store.getState().common.filterOptions).toBeUndefined()
+    expect(errSpy).toHaveBeenCalled()
+  })
+
+  it('fetchReferenceData: dispatches all 7 success reducers from a single payload', async () => {
+    mockedApi.fetchReferenceData.mockResolvedValue({
+      drivers: [{ driver_name: 'Alice', id: 1 }],
+      tripStatuses: [{ id: 'PLANNED' }],
+      states: [{ code: 'CA' }],
+      zones: [{ id: 'Z1' }],
+      planners: [{ id: 'P1' }],
+      dispatchers: [{ id: 'D1' }],
+      filterOptions: { moveType: [{ value: 'L', label: 'Local' }] },
+    })
+    const store = makeStore()
+    await store.dispatch(fetchReferenceData() as any)
+    expect(mockedApi.fetchReferenceData).toHaveBeenCalledTimes(1)
+    const s = store.getState().common
+    expect(s.driversList).toHaveLength(1)
+    expect(s.driversList[0].driver_name).toBe('Alice')
+    expect(s.tripStatuses).toEqual([{ id: 'PLANNED' }])
+    expect(s.stateList).toEqual([{ code: 'CA' }])
+    expect(s.zoneList).toEqual([{ id: 'Z1' }])
+    expect(s.plannersList).toEqual([{ id: 'P1' }])
+    expect(s.dispatcherList).toEqual([{ id: 'D1' }])
+    expect(s.filterOptions).toEqual({ moveType: [{ value: 'L', label: 'Local' }] })
+  })
+
+  it('fetchReferenceData: handles the empty-client degraded shape', async () => {
+    // When the tenant has no longhaulClient the server returns empty
+    // dispatchers + empty filterOptions; the thunk must still dispatch ALL
+    // seven success actions so the slice doesn't keep stale values.
+    mockedApi.fetchReferenceData.mockResolvedValue({
+      drivers: [],
+      tripStatuses: [],
+      states: [],
+      zones: [],
+      planners: [],
+      dispatchers: [],
+      filterOptions: { moveType: [] },
+    })
+    const store = makeStore({ dispatcherList: [{ id: 'STALE' }] })
+    await store.dispatch(fetchReferenceData() as any)
+    expect(store.getState().common.dispatcherList).toEqual([])
+    expect(store.getState().common.filterOptions).toEqual({ moveType: [] })
+  })
+
+  it('fetchReferenceData: logs and re-throws on error', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockedApi.fetchReferenceData.mockRejectedValue(new Error('ref data down'))
+    const store = makeStore()
+    await expect(store.dispatch(fetchReferenceData() as any)).rejects.toThrow('ref data down')
     expect(errSpy).toHaveBeenCalled()
   })
 })

@@ -11,6 +11,9 @@ vi.mock('../../utils/api', () => {
   const API = {
     fetchUser: vi.fn(),
     fetchVersion: vi.fn(),
+    // Kept on the mock for any test that needs to override an individual
+    // standalone fetch (the seven standalone endpoints/thunks remain in the
+    // codebase for non-bootstrap callers).
     fetchDrivers: vi.fn(),
     fetchTripStatuses: vi.fn(),
     fetchStates: vi.fn(),
@@ -18,6 +21,8 @@ vi.mock('../../utils/api', () => {
     fetchPlanners: vi.fn(),
     fetchDispatchers: vi.fn(),
     fetchFilterOptions: vi.fn(),
+    // Batched bootstrap — AppGuard fires THIS instead of the seven above.
+    fetchReferenceData: vi.fn(),
     fetchShipmentDefaultFilterForUser: vi.fn(),
   }
   return { API }
@@ -36,6 +41,19 @@ const DEFAULT_VERSION = {
 function installHappyPathDefaults() {
   ;(API.fetchUser as any).mockResolvedValue(DEFAULT_USER)
   ;(API.fetchVersion as any).mockResolvedValue(DEFAULT_VERSION)
+  // The batched reference-data endpoint replaces the seven per-lookup fetches
+  // at bootstrap — payload mirrors the cloud handler's response shape.
+  ;(API.fetchReferenceData as any).mockResolvedValue({
+    drivers: [],
+    tripStatuses: [],
+    states: [],
+    zones: [],
+    planners: [],
+    dispatchers: [],
+    filterOptions: { moveType: [] },
+  })
+  // Standalone fetches remain stubbed in case a test invokes them directly,
+  // but AppGuard no longer calls them at bootstrap.
   ;(API.fetchDrivers as any).mockResolvedValue([])
   ;(API.fetchTripStatuses as any).mockResolvedValue([])
   ;(API.fetchStates as any).mockResolvedValue([])
@@ -58,7 +76,7 @@ describe('AppGuard', () => {
     vi.restoreAllMocks()
   })
 
-  it('dispatches all bootstrap thunks on mount', async () => {
+  it('dispatches user, version, and the batched reference-data fetch on mount', async () => {
     renderWithStore(
       <AppGuard>
         <div data-testid="children">child content</div>
@@ -68,14 +86,19 @@ describe('AppGuard', () => {
     await waitFor(() => {
       expect(API.fetchUser).toHaveBeenCalledTimes(1)
       expect(API.fetchVersion).toHaveBeenCalledTimes(1)
-      expect(API.fetchDrivers).toHaveBeenCalledTimes(1)
-      expect(API.fetchTripStatuses).toHaveBeenCalledTimes(1)
-      expect(API.fetchStates).toHaveBeenCalledTimes(1)
-      expect(API.fetchZones).toHaveBeenCalledTimes(1)
-      expect(API.fetchPlanners).toHaveBeenCalledTimes(1)
-      expect(API.fetchDispatchers).toHaveBeenCalledTimes(1)
-      expect(API.fetchFilterOptions).toHaveBeenCalledTimes(1)
+      // Bootstrap now hits a single batched endpoint instead of fanning out
+      // into seven individual reference-data fetches.
+      expect(API.fetchReferenceData).toHaveBeenCalledTimes(1)
     })
+    // The seven standalone endpoints must NOT be called at bootstrap any more
+    // — they remain in the codebase for non-bootstrap callers only.
+    expect(API.fetchDrivers).not.toHaveBeenCalled()
+    expect(API.fetchTripStatuses).not.toHaveBeenCalled()
+    expect(API.fetchStates).not.toHaveBeenCalled()
+    expect(API.fetchZones).not.toHaveBeenCalled()
+    expect(API.fetchPlanners).not.toHaveBeenCalled()
+    expect(API.fetchDispatchers).not.toHaveBeenCalled()
+    expect(API.fetchFilterOptions).not.toHaveBeenCalled()
   })
 
   it('calls loadDefaultFilter once a user with a code arrives in the store', async () => {
@@ -259,11 +282,11 @@ describe('AppGuard', () => {
     })
   })
 
-  it('still renders children but surfaces a snackbar when a reference-data fetch rejects', async () => {
-    // Reference-data thunks re-throw on error; AppGuard collects every failure
-    // and lists the failed lookups by label in a single snackbar. Children
-    // should still render because fetchUser + fetchVersion succeed.
-    ;(API.fetchDrivers as any).mockRejectedValue(new Error('drivers blew up'))
+  it('still renders children but surfaces a snackbar when the batched reference-data fetch rejects', async () => {
+    // The batched thunk re-throws on error; AppGuard surfaces the error's
+    // message in a single snackbar. Children still render because fetchUser
+    // + fetchVersion succeed independently.
+    ;(API.fetchReferenceData as any).mockRejectedValue(new Error('reference data blew up'))
 
     renderWithStore(
       <AppGuard>
@@ -275,27 +298,8 @@ describe('AppGuard', () => {
       expect(screen.getByTestId('children')).toBeInTheDocument()
     })
     await waitFor(() => {
-      expect(screen.getByText(/Failed to load reference data: drivers/)).toBeInTheDocument()
-    })
-  })
-
-  it('lists every failed reference-data lookup in one snackbar', async () => {
-    // When several lookups fail (e.g. the executor is being throttled), the
-    // snackbar must name all of them — not just drivers — so the user/operator
-    // sees the true blast radius.
-    ;(API.fetchDrivers as any).mockRejectedValue(new Error('boom'))
-    ;(API.fetchZones as any).mockRejectedValue(new Error('boom'))
-    ;(API.fetchStates as any).mockRejectedValue(new Error('boom'))
-
-    renderWithStore(
-      <AppGuard>
-        <div data-testid="children">child content</div>
-      </AppGuard>,
-    )
-
-    await waitFor(() => {
       expect(
-        screen.getByText('Failed to load reference data: drivers, states, zones'),
+        screen.getByText('Failed to load reference data: reference data blew up'),
       ).toBeInTheDocument()
     })
   })
