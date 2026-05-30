@@ -83,6 +83,12 @@ export const API = {
   // URI scheme (see utils/jump-to-order.ts). Fire-and-forget; config-gated.
   jumpToOrder: (args: { order_num: number }) => jumpToOrderImpl(args),
   fetchFilterOptions: () => fetchHelper('fetchFilterOptions'),
+  // Batched bootstrap reference data — one cloud request collapses what used
+  // to be seven (drivers, trip-statuses, states, zones, planners, dispatchers,
+  // filter-options). The thunk in redux/common fans the response back out into
+  // the existing per-slice success reducers; the seven standalone methods
+  // above are retained for non-bootstrap callers.
+  fetchReferenceData: () => fetchHelper('fetchReferenceData'),
   saveShipmentsFilter: async (payload: any) => {
     try {
       await fetchHelper('saveShipmentsFilter', payload)

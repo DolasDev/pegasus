@@ -158,4 +158,29 @@ export const fetchDispatchers = () => async (dispatch: AppDispatch) => {
   }
 }
 
+// Batched bootstrap thunk — one cloud request replaces the seven individual
+// fetchDrivers/fetchTripStatuses/.../fetchFilterOptions calls AppGuard used to
+// fan out at mount. The payload is unpacked into the SAME per-slice success
+// reducers so no component changes are needed.
+//
+// Graceful degradation: when the tenant has no `longhaulClient` configured
+// the server returns `dispatchers: []` and `filterOptions: { moveType: [] }`
+// (the other five lookups still populate). That is by design — see the
+// handler in apps/api/src/handlers/longhaul-cloud/reference-data.ts.
+export const fetchReferenceData = () => async (dispatch: AppDispatch) => {
+  try {
+    const data = await API.fetchReferenceData()
+    dispatch(fetchDriversSuccess(data.drivers))
+    dispatch(fetchStatusesSuccess(data.tripStatuses))
+    dispatch(fetchStatesSuccess(data.states))
+    dispatch(fetchZoneSuccess(data.zones))
+    dispatch(fetchPlannersSuccess(data.planners))
+    dispatch(fetchDispatcherSuccess(data.dispatchers))
+    dispatch(fetchFilterOptionsSuccess(data.filterOptions))
+  } catch (e: any) {
+    console.error(e)
+    throw e
+  }
+}
+
 export default commonSlice.reducer

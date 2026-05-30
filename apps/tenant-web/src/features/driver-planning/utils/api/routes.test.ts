@@ -13,6 +13,7 @@ describe('resolveRoute', () => {
       ['fetchUser', '/users/me'],
       ['fetchVersion', '/version'],
       ['fetchFilterOptions', '/filter-options'],
+      ['fetchReferenceData', '/reference-data'],
     ])('%s → GET %s', (name, path) => {
       expect(resolveRoute(name, [])).toEqual({ method: 'GET', path })
     })

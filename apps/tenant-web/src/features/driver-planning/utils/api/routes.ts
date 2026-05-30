@@ -32,6 +32,8 @@ export function resolveRoute(routeName: string, args: unknown[]): HttpRequest {
       return { method: 'GET', path: '/version' }
     case 'fetchFilterOptions':
       return { method: 'GET', path: '/filter-options' }
+    case 'fetchReferenceData':
+      return { method: 'GET', path: '/reference-data' }
 
     // ---- Trips ----
     case 'fetchTrips': {

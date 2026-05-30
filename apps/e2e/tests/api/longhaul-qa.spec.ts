@@ -169,6 +169,38 @@ test.describe('longhaul on-prem bridge (QA)', () => {
     }
   })
 
+  // /reference-data is the batched bootstrap endpoint introduced by the
+  // longhaul-reference-data-batch plan. It collapses the seven per-lookup
+  // fetches the tenant-web AppGuard used to fire (drivers, trip-statuses,
+  // states, zones, planners, dispatchers, filter-options) into a single
+  // multi-statement MSSQL batch served from the cloud Hono Lambda
+  // (apps/api/src/handlers/longhaul-cloud/reference-data.ts). Response shape:
+  // `{ data: { drivers, tripStatuses, states, zones, planners, dispatchers,
+  // filterOptions: { moveType: [{value,label}] } } }`.
+  test('GET /reference-data returns all 7 lookups in one payload @smoke', async ({
+    qaApiFetch,
+  }) => {
+    const res = await qaApiFetch(`${LH}/reference-data`)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.data, 'cloud-direct /reference-data returns { data }').toBeDefined()
+    const data = body.data
+    expect(Array.isArray(data.drivers), 'data.drivers is an array').toBe(true)
+    expect(Array.isArray(data.tripStatuses), 'data.tripStatuses is an array').toBe(true)
+    expect(Array.isArray(data.states), 'data.states is an array').toBe(true)
+    expect(Array.isArray(data.zones), 'data.zones is an array').toBe(true)
+    expect(Array.isArray(data.planners), 'data.planners is an array').toBe(true)
+    expect(Array.isArray(data.dispatchers), 'data.dispatchers is an array').toBe(true)
+    expect(data.filterOptions, 'data.filterOptions present').toBeDefined()
+    expect(Array.isArray(data.filterOptions.moveType), 'filterOptions.moveType is an array').toBe(
+      true,
+    )
+    for (const opt of data.filterOptions.moveType) {
+      expect(opt).toHaveProperty('value')
+      expect(opt).toHaveProperty('label')
+    }
+  })
+
   // Since Phase 3 of the longhaul strangler-fig migration, /users/me is served
   // cloud-direct (apps/api/src/handlers/longhaul-cloud/users-me.ts): the cloud
   // Hono Lambda resolves the caller's legacy identity (TenantUser →
