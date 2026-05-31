@@ -5,6 +5,19 @@ import { apiFetch } from '@/api/client'
 // Types
 // ---------------------------------------------------------------------------
 
+/** A single RDEL (delivery) activity on the driver's current trip. */
+export interface Delivery {
+  activityId: number
+  plannedStart: string | null
+  plannedEnd: string | null
+  estimatedDate: string | null
+  actualDate: string | null
+  isCommitted: boolean
+  isConfirmed: boolean
+  city: string | null
+  state: string | null
+}
+
 export interface DriverPlanningRow {
   driverId: number
   driverName: string
@@ -16,6 +29,8 @@ export interface DriverPlanningRow {
   confirmedAvailableDate: string | null
   confirmedAvailableLocation: string | null
   confirmedNotes: string | null
+  /** Every RDEL activity on the driver's current trip, sorted by effective date. */
+  deliveries: Delivery[]
 }
 
 // ---------------------------------------------------------------------------

@@ -72,6 +72,19 @@ describe('driverPlanningQueryOptions', () => {
         confirmedAvailableDate: null,
         confirmedAvailableLocation: null,
         confirmedNotes: null,
+        deliveries: [
+          {
+            activityId: 999,
+            plannedStart: '2026-05-08',
+            plannedEnd: '2026-05-10',
+            estimatedDate: '2026-05-10',
+            actualDate: null,
+            isCommitted: true,
+            isConfirmed: false,
+            city: 'ATLANTA',
+            state: 'GA',
+          },
+        ],
       },
     ]
     mockedApiFetch.mockResolvedValueOnce(rows)
@@ -97,6 +110,7 @@ describe('driverPlanningQueryOptions', () => {
         confirmedAvailableDate: '2026-05-15',
         confirmedAvailableLocation: 'Dallas, TX',
         confirmedNotes: 'OK',
+        deliveries: [],
       },
     ]
     mockedApiFetch.mockResolvedValueOnce(rows)

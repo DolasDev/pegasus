@@ -16,8 +16,12 @@ import { Check, X } from 'lucide-react'
 import {
   driverPlanningQueryOptions,
   useUpdateConfirmedAvailability,
+  type Delivery,
   type DriverPlanningRow,
 } from '@/api/queries/driver-planning'
+import { formatDateShort } from '@/features/driver-planning/utils/format-date'
+import { sameDayCheck } from '@/features/driver-planning/utils/date'
+import { HoverToolTip } from '@/features/driver-planning/containers/ToolTips'
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '-'
@@ -37,6 +41,146 @@ interface EditState {
   confirmedDate: string
   confirmedLocation: string
   notes: string
+}
+
+// ---------------------------------------------------------------------------
+// Per-delivery row on the driver's availability card.
+//
+// Each row renders:
+//   [start] [estimated-or-actual] [end], <STATE> <City> <confidence-icon>
+//
+// Collapsing: when the estimated/actual date matches the spread's start or
+// end (calendar-day compare via sameDayCheck), the duplicate bound is omitted
+// so the row reads cleanly. The estimated/actual date itself is bolded and
+// color-coded to the confidence tier; the matching Font Awesome glyph mirrors
+// the ActivityGantt convention (truck = actual, flag = confirmed, check =
+// committed).
+// ---------------------------------------------------------------------------
+
+interface ConfidenceTier {
+  /** Font Awesome glyph after `fa-` (empty string when no confidence). */
+  icon: string | null
+  /** Tailwind text-color class for the bolded effective date. */
+  colorClass: string
+  /** Hover tooltip label for the icon. */
+  label: string
+}
+
+function getConfidenceTier(d: Delivery): ConfidenceTier {
+  if (d.actualDate) {
+    return { icon: 'fa-truck-moving', colorClass: 'text-emerald-700', label: 'Verified complete' }
+  }
+  if (d.isConfirmed) {
+    return {
+      icon: 'fa-flag-checkered',
+      colorClass: 'text-emerald-600',
+      label: 'Confirmed with driver',
+    }
+  }
+  if (d.isCommitted) {
+    return { icon: 'fa-check', colorClass: 'text-emerald-500', label: 'Driver committed' }
+  }
+  return { icon: null, colorClass: '', label: '' }
+}
+
+function titleCaseCity(value: string | null): string {
+  if (!value) return ''
+  return value
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => (w ? w[0]!.toUpperCase() + w.slice(1) : ''))
+    .join(' ')
+}
+
+function DeliveryLine({ delivery }: { delivery: Delivery }) {
+  const tier = getConfidenceTier(delivery)
+  const effective = delivery.actualDate ?? delivery.estimatedDate ?? null
+  const start = delivery.plannedStart
+  const end = delivery.plannedEnd
+
+  const startStr = start ? formatDateShort(start) : ''
+  const endStr = end ? formatDateShort(end) : ''
+  const effStr = effective ? formatDateShort(effective) : ''
+
+  const collapseStart = effective != null && sameDayCheck(effective, start)
+  const collapseEnd = effective != null && sameDayCheck(effective, end)
+  const boldClass = `font-semibold ${tier.colorClass}`.trim()
+
+  // Build the date segment depending on collapsing.
+  let dateSegment: React.ReactNode
+  if (!effective) {
+    // No estimated/actual yet — render the bare spread.
+    if (startStr && endStr) {
+      dateSegment = `${startStr} – ${endStr}`
+    } else {
+      dateSegment = startStr || endStr || '-'
+    }
+  } else if (collapseStart && collapseEnd) {
+    dateSegment = (
+      <span className={boldClass} data-testid="delivery-effective">
+        {effStr}
+      </span>
+    )
+  } else if (collapseStart) {
+    dateSegment = (
+      <>
+        <span className={boldClass} data-testid="delivery-effective">
+          {effStr}
+        </span>
+        {' – '}
+        {endStr}
+      </>
+    )
+  } else if (collapseEnd) {
+    dateSegment = (
+      <>
+        {startStr}
+        {' – '}
+        <span className={boldClass} data-testid="delivery-effective">
+          {effStr}
+        </span>
+      </>
+    )
+  } else {
+    dateSegment = (
+      <>
+        {startStr}
+        {' – '}
+        <span className={boldClass} data-testid="delivery-effective">
+          {effStr}
+        </span>
+        {' – '}
+        {endStr}
+      </>
+    )
+  }
+
+  return (
+    <li
+      className="flex items-center gap-1.5 text-xs whitespace-nowrap"
+      data-testid="delivery-line"
+      data-activity-id={delivery.activityId}
+    >
+      <span>{dateSegment}</span>
+      {(delivery.state || delivery.city) && (
+        <span>
+          , {delivery.state && <b>{delivery.state}</b>}
+          {delivery.state && delivery.city ? ' ' : ''}
+          {titleCaseCity(delivery.city)}
+        </span>
+      )}
+      {tier.icon && (
+        <HoverToolTip content={tier.label} direction="top">
+          <i
+            className={`fas ${tier.icon} ${tier.colorClass}`}
+            data-testid="delivery-icon"
+            data-icon={tier.icon}
+            aria-label={tier.label}
+          />
+        </HoverToolTip>
+      )}
+    </li>
+  )
 }
 
 function DriverRow({ driver }: { driver: DriverPlanningRow }) {
@@ -87,8 +231,17 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
           <span className="text-muted-foreground">None</span>
         )}
       </TableCell>
-      <TableCell>{formatDate(driver.estimatedAvailableDate)}</TableCell>
-      <TableCell>{driver.estimatedAvailableLocation ?? '-'}</TableCell>
+      <TableCell data-testid="driver-deliveries">
+        {driver.deliveries.length === 0 ? (
+          <span className="text-muted-foreground">-</span>
+        ) : (
+          <ul className="space-y-0.5">
+            {driver.deliveries.map((d) => (
+              <DeliveryLine key={d.activityId} delivery={d} />
+            ))}
+          </ul>
+        )}
+      </TableCell>
       <TableCell>
         {editing ? (
           <Input
@@ -220,8 +373,7 @@ export function DriverPlanningPage() {
                 <TableRow>
                   <TableHead>Driver</TableHead>
                   <TableHead>Current Trip</TableHead>
-                  <TableHead>Est. Available Date</TableHead>
-                  <TableHead>Est. Available Location</TableHead>
+                  <TableHead>Deliveries</TableHead>
                   <TableHead>Confirmed Date</TableHead>
                   <TableHead>Confirmed Location</TableHead>
                   <TableHead>Notes</TableHead>
@@ -232,7 +384,7 @@ export function DriverPlanningPage() {
                 {filtered.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={7}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       No matching drivers.
