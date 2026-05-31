@@ -40,6 +40,11 @@ import type { AppEnv } from '../../types'
 import { db } from '../../db'
 import { executeSql, type SqlParam } from '../../lib/mssql-executor-client'
 import { logger } from '../../lib/logger'
+import {
+  buildExtraShipmentActivities,
+  type ActivityType,
+  type ShipmentRow,
+} from '../../lib/longhaul-shipment-enrich'
 
 type Row = Record<string, unknown>
 
@@ -82,10 +87,16 @@ SELECT * FROM TripNotes WHERE tripId = @id;
 `
 
 /**
- * RT2: shipments + their activities + coverage, batched by order_num. Three
- * statements → recordsets[0] = shipments, [1] = activities, [2] = packing
- * coverage. Extra locations are deliberately NOT in this batch — see
- * buildExtraLocationsSql.
+ * RT2: shipments + their activities + coverage + activity types, batched by
+ * order_num. Four statements → recordsets[0] = shipments, [1] = activities,
+ * [2] = packing coverage, [3] = activity types. Extra locations are
+ * deliberately NOT in this batch — see buildExtraLocationsSql.
+ *
+ * The activity-types statement feeds `buildExtraShipmentActivities` (the
+ * "add activity" templates each shipment offers). The legacy trip-detail path
+ * (shipment.service.ts getShipmentsByShipmentIds → buildExtraShipmentActivities)
+ * attaches these to every trip shipment; without them the AddActivity menu in
+ * the planning screen renders empty.
  */
 function buildShipmentBundleSql(orderNums: number[]): string {
   const inList = orderNums.map((_, i) => `@on${i}`).join(', ')
@@ -108,6 +119,8 @@ LEFT JOIN v_longhaul_drivers drv ON a.assigned_driver_id = drv.driver_id
 WHERE a.order_num IN (${inList});
 
 SELECT * FROM longhaul_shipmentcoverage WHERE order_num IN (${inList});
+
+SELECT * FROM Longhaul_ActivityType;
 `
 }
 
@@ -192,12 +205,18 @@ export const longhaulTripDetailHandler: Handler<AppEnv> = async (c) => {
             return [] as Row[]
           }),
       ])
+      const activityTypesMap: Record<string, ActivityType> = {}
+      for (const t of (shipBundle.recordsets[3] ?? []) as Row[]) {
+        const code = t['code']
+        if (typeof code === 'string') activityTypesMap[code] = t as ActivityType
+      }
       shipments = assembleShipments(
         (shipBundle.recordsets[0] ?? []) as Row[],
         (shipBundle.recordsets[1] ?? []) as Row[],
         (shipBundle.recordsets[2] ?? []) as Row[],
         extraLocations,
         id,
+        activityTypesMap,
       )
     }
 
@@ -230,6 +249,7 @@ function assembleShipments(
   coverages: Row[],
   extraLocations: Row[],
   tripId: number,
+  activityTypesMap: Record<string, ActivityType>,
 ): Row[] {
   const activitiesByOrder = groupBy(activities, 'order_num')
   const extraByOrder = groupBy(extraLocations, 'order_num')
@@ -240,11 +260,22 @@ function assembleShipments(
 
   return shipments.map((s) => {
     const on = s['order_num'] as number
+    const allActivities = activitiesByOrder[on] ?? []
+    const extraLocs = extraByOrder[on] ?? []
+    // buildExtraShipmentActivities decides which "add activity" templates to
+    // offer from the shipment's FULL activity set (mirrors the legacy
+    // getShipmentsByShipmentIds, which builds extras before the trip filter).
+    const extraActivities = buildExtraShipmentActivities(
+      { ...s, activities: allActivities, extra_locations: extraLocs } as ShipmentRow,
+      activityTypesMap,
+    )
     return {
       ...s,
-      activities: (activitiesByOrder[on] ?? []).filter((a) => a['TripMaster_id'] === tripId),
+      // Displayed activities are still narrowed to this trip.
+      activities: allActivities.filter((a) => a['TripMaster_id'] === tripId),
       packing_coverage: coverageByOrder[on] ?? null,
-      extra_locations: extraByOrder[on] ?? [],
+      extra_locations: extraLocs,
+      extraActivities,
     }
   })
 }

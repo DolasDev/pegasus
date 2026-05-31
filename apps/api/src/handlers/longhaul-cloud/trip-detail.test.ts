@@ -215,6 +215,50 @@ describe('GET longhaul/trips/:id (cloud-direct)', () => {
     }
   })
 
+  it('attaches extraActivities (add-activity templates) with a full activityType to each shipment', async () => {
+    // Regression: the cloud trip-detail port dropped the legacy
+    // getShipmentsByShipmentIds → buildExtraShipmentActivities step, so trip
+    // shipments arrived with no `extraActivities` and the AddActivity menu in
+    // the planning screen rendered empty. The RT2 batch now also fetches the
+    // activity-types map (recordsets[3]) to populate the templates.
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    executeSqlMock.mockResolvedValueOnce({
+      recordset: [tripRow],
+      recordsets: [[tripRow], [activityRow], [noteRow]],
+      rowsAffected: [],
+    })
+    // A shipment with a delivery date but no existing RDEL activity → the
+    // builder should offer an RDEL "add activity" template.
+    const shipmentRow = { order_num: 1001, shipper_name: 'Acme', del_date2: '2026-06-01' }
+    const rdelType = {
+      code: 'RDEL',
+      name: 'Delivery',
+      abbreviation: 'DEL',
+      isHasETA: true,
+      isCanEditDates: true,
+    }
+    executeSqlMock.mockResolvedValueOnce({
+      recordset: [shipmentRow],
+      // shipments / activities / coverage / activity-types
+      recordsets: [[shipmentRow], [], [], [rdelType]],
+      rowsAffected: [],
+    })
+    executeSqlMock.mockResolvedValueOnce({ recordset: [], recordsets: [[]], rowsAffected: [] })
+
+    const res = await buildApp().request('/onprem/longhaul/trips/42')
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: Record<string, unknown> }
+    const shipments = body.data.shipments as Array<Record<string, unknown>>
+    const extras = shipments[0]!['extraActivities'] as Array<Record<string, unknown>>
+    expect(Array.isArray(extras)).toBe(true)
+    const rdel = extras.find((e) => e['ActivityType_code'] === 'RDEL')
+    expect(rdel).toBeDefined()
+    // The template carries the full activity type — abbreviation for the menu
+    // label, isHasETA / isCanEditDates for downstream date editing.
+    expect(rdel!['activityType']).toMatchObject({ abbreviation: 'DEL', isHasETA: true })
+  })
+
   it('returns 422 MSSQL_NOT_CONFIGURED when the tenant has no connection string', async () => {
     findUnique.mockResolvedValue({ mssqlConnectionString: null })
 
