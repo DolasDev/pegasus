@@ -45,6 +45,7 @@ function makeActivity(
     state: unknown
     zip: unknown
   },
+  activityTypesMap: Record<string, Activity> = {},
 ): Activity {
   return {
     order_num: shipment['order_num'],
@@ -64,9 +65,14 @@ function makeActivity(
     city: location.city ?? null,
     state: location.state ?? null,
     zip: location.zip ?? null,
-    // Mirror the legacy nested marker so downstream merge/filter code that
-    // keys off `activityType.code` continues to recognise this row.
-    activityType: { code: activityTypeCode },
+    // Attach the FULL activity type (abbreviation + isCanEditDates / isHasETA)
+    // from the map when available — the planning UI renders
+    // `activity.activityType.abbreviation` and gates date editing on the flags,
+    // so a bare `{ code }` marker shows "undefined" and locks the pickers.
+    // Falls back to the legacy `{ code }` marker when no map is supplied (e.g.
+    // the trip-save path, which only persists ActivityType_code). Mirrors the
+    // legacy createActivity: `activityType: activityTypesMap[activityCode]`.
+    activityType: activityTypesMap[activityTypeCode] ?? { code: activityTypeCode },
     location_id: null,
   }
 }
@@ -79,7 +85,10 @@ function makeActivity(
  *
  * Mirrors `ActivityService.buildShipmentActivities` from the NestJS legacy app.
  */
-export function buildShipmentActivities(shipment: Shipment): Activity[] {
+export function buildShipmentActivities(
+  shipment: Shipment,
+  activityTypesMap: Record<string, Activity> = {},
+): Activity[] {
   const existing = ((shipment['activities'] as Activity[]) ?? []).filter(
     (a) => a['TripMaster_id'] == null,
   )
@@ -113,6 +122,7 @@ export function buildShipmentActivities(shipment: Shipment): Activity[] {
           shipment['pack_date2'] ?? shipment['plan_pack'],
           shipment['plan_pack'] ?? shipment['pack_date2'],
           originLocation,
+          activityTypesMap,
         ),
       )
     }
@@ -128,6 +138,7 @@ export function buildShipmentActivities(shipment: Shipment): Activity[] {
           shipment['load_date2'] ?? shipment['plan_load'],
           shipment['plan_load'] ?? shipment['load_date2'],
           originLocation,
+          activityTypesMap,
         ),
       )
     }
@@ -145,6 +156,7 @@ export function buildShipmentActivities(shipment: Shipment): Activity[] {
           shipment['rule19_out_date'] ?? fallbackLoad,
           shipment['rule19_out_date'] ?? fallbackPlan,
           originLocation,
+          activityTypesMap,
         ),
       )
     }
@@ -159,6 +171,7 @@ export function buildShipmentActivities(shipment: Shipment): Activity[] {
         shipment['del_date2'] ?? shipment['plan_del'],
         shipment['plan_del'] ?? shipment['del_date2'],
         destLocation,
+        activityTypesMap,
       ),
     )
   }
