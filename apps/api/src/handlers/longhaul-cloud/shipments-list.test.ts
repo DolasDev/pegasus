@@ -138,6 +138,14 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
     expect(codes).toContain('PACK')
     expect(codes).toContain('LOAD')
     expect(codes).toContain('RDEL')
+    // Regression: generated activities must carry the FULL activityType from the
+    // catalogue (not a bare { code }), or the planning UI renders "undefined"
+    // and can't gate date editing. LOAD + RDEL are generated → enriched from the
+    // activity-types map.
+    const load = activities.find(
+      (a) => (a['activityType'] as { code?: string } | undefined)?.code === 'LOAD',
+    )
+    expect(load!['activityType']).toMatchObject({ code: 'LOAD', name: 'Load' })
     // packing_coverage attached
     expect(shipment['packing_coverage']).toMatchObject({ order_num: 100, is_covered: true })
     // extras present (UNPK etc.)

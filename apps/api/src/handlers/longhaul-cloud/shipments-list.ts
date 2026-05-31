@@ -446,7 +446,7 @@ export const longhaulShipmentsListHandler: Handler<AppEnv> = async (c) => {
       if (wantedTripStatusIds && !wantedTripStatusIds.has(String(raw['TripStatus_id'] ?? ''))) {
         continue
       }
-      raw.activities = buildShipmentActivities(raw) as ActivityRow[]
+      raw.activities = buildShipmentActivities(raw, activityTypesMap) as ActivityRow[]
       raw.extraActivities = buildExtraShipmentActivities(raw, activityTypesMap)
       enriched.push(raw)
     }
