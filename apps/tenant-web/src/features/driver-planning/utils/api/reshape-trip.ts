@@ -19,6 +19,8 @@
 // unconditionally to every `fetchTrips` / `fetchTrip` response.
 // ---------------------------------------------------------------------------
 
+import type { ActivityType } from './activity-type'
+
 type AnyRec = Record<string, any>
 
 function reshapeActivity(a: any): any {
@@ -36,14 +38,20 @@ function reshapeActivity(a: any): any {
     withId.activityType == null &&
     (withId.activityType_code != null || withId.ActivityType_code != null)
   ) {
-    return {
-      ...withId,
-      activityType: {
-        code: withId.activityType_code ?? withId.ActivityType_code,
-        name: withId.activityType_name,
-        abbreviation: withId.activityType_abbreviation,
-      },
+    // Typing the rebuilt object as ActivityType locks the field names against
+    // the UI's read sites — `isCanEditDates` gates the PendingTrips date-edit
+    // popover and `isHasETA` gates the ActivityGantt estimated/actual date
+    // pickers. The on-prem bridge joins Longhaul_ActivityType and aliases these
+    // as `activityType_*`; without copying them through here every persisted
+    // activity reads `undefined` → falsy → the pickers never open.
+    const activityType: ActivityType = {
+      code: withId.activityType_code ?? withId.ActivityType_code,
+      name: withId.activityType_name,
+      abbreviation: withId.activityType_abbreviation,
+      isCanEditDates: withId.activityType_isCanEditDates,
+      isHasETA: withId.activityType_isHasETA,
     }
+    return { ...withId, activityType }
   }
   return withId
 }

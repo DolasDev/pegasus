@@ -64,6 +64,30 @@ describe('reshapeTrip', () => {
     expect(t.shipments[0].activities[0].activityType.code).toBe('PACK')
   })
 
+  it('copies the activityType edit flags from the flat bridge columns', () => {
+    // Regression: `isCanEditDates` gates the PendingTrips date-edit popover and
+    // `isHasETA` gates the ActivityGantt date pickers. Dropping them here left
+    // every persisted activity uneditable.
+    const t = reshapeTrip({
+      id: 1,
+      activities: [
+        {
+          activityId: 10,
+          order_num: 555,
+          ActivityType_code: 'PACK',
+          activityType_code: 'PACK',
+          activityType_isCanEditDates: true,
+          activityType_isHasETA: false,
+        },
+      ],
+    })
+    expect(t.activities[0].activityType).toMatchObject({
+      code: 'PACK',
+      isCanEditDates: true,
+      isHasETA: false,
+    })
+  })
+
   it('aliases activity.id → activity.activityId on trip + shipment activities', () => {
     // Regression: the cloud-direct handler in apps/api selects
     // `LongDistanceDispatchActivity.id` (no `AS activityId`), but every ported

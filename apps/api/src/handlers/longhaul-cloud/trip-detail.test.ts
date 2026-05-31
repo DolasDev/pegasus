@@ -186,6 +186,35 @@ describe('GET longhaul/trips/:id (cloud-direct)', () => {
     expect(executeSqlMock).toHaveBeenCalledTimes(1)
   })
 
+  it('joins the Longhaul_ActivityType edit flags onto trip + shipment activities', async () => {
+    // Regression: the activity queries selected only code/name/abbreviation from
+    // Longhaul_ActivityType, so `isCanEditDates` / `isHasETA` never reached the
+    // client and the driver-planning date pickers stayed locked. Both the RT1
+    // trip-activities query and the RT2 shipment-activities query must alias them.
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    executeSqlMock.mockResolvedValueOnce({
+      recordset: [tripRow],
+      recordsets: [[tripRow], [activityRow], [noteRow]],
+      rowsAffected: [],
+    })
+    executeSqlMock.mockResolvedValueOnce({
+      recordset: [{ order_num: 1001 }],
+      recordsets: [[{ order_num: 1001 }], [], []],
+      rowsAffected: [],
+    })
+    executeSqlMock.mockResolvedValueOnce({ recordset: [], recordsets: [[]], rowsAffected: [] })
+
+    await buildApp().request('/onprem/longhaul/trips/42')
+
+    // executeSql(connectionString, sql, opts) — the SQL is the second argument.
+    const tripBundleSql = executeSqlMock.mock.calls[0]![1] as string
+    const shipmentBundleSql = executeSqlMock.mock.calls[1]![1] as string
+    for (const sql of [tripBundleSql, shipmentBundleSql]) {
+      expect(sql).toContain('at.isCanEditDates AS activityType_isCanEditDates')
+      expect(sql).toContain('at.isHasETA AS activityType_isHasETA')
+    }
+  })
+
   it('returns 422 MSSQL_NOT_CONFIGURED when the tenant has no connection string', async () => {
     findUnique.mockResolvedValue({ mssqlConnectionString: null })
 
