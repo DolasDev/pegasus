@@ -48,39 +48,50 @@ const shipmentsSlice = createSlice({
     error: null,
   } as ShipmentsState,
   reducers: {
-    saveShipmentCoverage(state, action: PayloadAction<any>) {
-      const shipmentCoverageDto = action.payload
-      const shipmentIndexInList = findWithAttr(
-        state.shipmentList,
-        'order_num',
-        shipmentCoverageDto.order_num,
-      )
-      if (state.shipmentList[shipmentIndexInList]?.packing_coverage) {
-        state.shipmentList[shipmentIndexInList].packing_coverage = shipmentCoverageDto
+    // Pure apply-reducer driven by the saveShipmentCoverage thunk. Records the
+    // dto on the matched shipment whether or not it had a prior packing_coverage
+    // — a previous truthiness guard silently dropped first-time updates.
+    applyShipmentCoverage(state, action: PayloadAction<any>) {
+      const dto = action.payload
+      const shipmentIndexInList = findWithAttr(state.shipmentList, 'order_num', dto.order_num)
+      if (shipmentIndexInList !== -1) {
+        state.shipmentList[shipmentIndexInList].packing_coverage = dto
       }
-      API.saveShipmentCoverage(shipmentCoverageDto)
     },
 
-    patchShipmentShadow(state, action: PayloadAction<any>) {
-      const shipmentShadowDto = action.payload
-      const shipmentIndexInList = findWithAttr(
-        state.shipmentList,
-        'order_num',
-        shipmentShadowDto.order_num,
-      )
-      if (state.shipmentList[shipmentIndexInList]?.pegasus_shadow) {
+    saveShipmentCoverageFailure(state, action: PayloadAction<string>) {
+      state.error = action.payload
+    },
+
+    // Pure apply-reducer driven by the patchShipmentShadow thunk. See
+    // applyShipmentCoverage on why the truthiness guard was dropped.
+    applyShipmentShadow(state, action: PayloadAction<any>) {
+      const dto = action.payload
+      const shipmentIndexInList = findWithAttr(state.shipmentList, 'order_num', dto.order_num)
+      if (shipmentIndexInList !== -1) {
         state.shipmentList[shipmentIndexInList].pegasus_shadow = {
           ...state.shipmentList[shipmentIndexInList].pegasus_shadow,
-          ...shipmentShadowDto,
+          ...dto,
         }
       }
-      API.patchShipmentShadow(shipmentShadowDto)
+    },
+
+    patchShipmentShadowFailure(state, action: PayloadAction<string>) {
+      state.error = action.payload
     },
 
     changeShipmentQuery(state, action: PayloadAction<any>) {
+      // Deep-merge `filters` so a partial `{ filters: { foo: 1 } }` payload
+      // doesn't wipe the rest of the filter object. For an explicit wholesale
+      // reset, use `resetToDefaultShipmentQuery`.
+      const payload = action.payload ?? {}
       state.query = {
         ...state.query,
-        ...action.payload,
+        ...payload,
+        filters: {
+          ...state.query.filters,
+          ...(payload.filters ?? {}),
+        },
       }
     },
 
@@ -124,8 +135,10 @@ export const {
   fetchShipmentFailure,
   fetchShipmentStart,
   changeShipmentQuery,
-  saveShipmentCoverage,
-  patchShipmentShadow,
+  applyShipmentCoverage,
+  saveShipmentCoverageFailure,
+  applyShipmentShadow,
+  patchShipmentShadowFailure,
   resetToDefaultShipmentQuery,
 } = shipmentsSlice.actions
 
@@ -163,6 +176,41 @@ export const selectShipment = (selectedShipment: any) => async (dispatch: AppDis
     }
   }
 }
+
+// Thunks: own the network call and error surfacing so reducers stay pure. The
+// pre-flight findIndex also gates out unknown order_nums — firing the API for a
+// shipment not in the list was both wasteful and silently lost on rejection.
+export const saveShipmentCoverage =
+  (dto: any) => async (dispatch: AppDispatch, getState: () => any) => {
+    const list = getState().shipments.shipmentList
+    const shipmentIndexInList = list.findIndex((s: any) => s.order_num === dto.order_num)
+    if (shipmentIndexInList === -1) return
+    dispatch(applyShipmentCoverage(dto))
+    try {
+      await API.saveShipmentCoverage(dto)
+    } catch (e: any) {
+      console.error(e)
+      const msg = e?.message ?? 'Failed to save shipment coverage'
+      dispatch(saveShipmentCoverageFailure(msg))
+      notifyError(msg)
+    }
+  }
+
+export const patchShipmentShadow =
+  (dto: any) => async (dispatch: AppDispatch, getState: () => any) => {
+    const list = getState().shipments.shipmentList
+    const shipmentIndexInList = list.findIndex((s: any) => s.order_num === dto.order_num)
+    if (shipmentIndexInList === -1) return
+    dispatch(applyShipmentShadow(dto))
+    try {
+      await API.patchShipmentShadow(dto)
+    } catch (e: any) {
+      console.error(e)
+      const msg = e?.message ?? 'Failed to patch shipment shadow'
+      dispatch(patchShipmentShadowFailure(msg))
+      notifyError(msg)
+    }
+  }
 
 // Applies a saved-filter response from the API by parsing its `query` field
 // and dispatching changeShipmentQuery. Reports malformed payloads to the user
