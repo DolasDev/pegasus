@@ -26,11 +26,24 @@ import { HoverToolTip } from '@/features/driver-planning/containers/ToolTips'
 // `driver.phone` once the API surfaces it (see plan follow-up).
 const PLACEHOLDER_PHONE = '+12345678910'
 
-function formatDate(dateStr: string | null): string {
+// Compact day/month for the Ready Date column. UTC mirrors `formatDateShort`
+// so dates don't slip a day across the local timezone boundary.
+function formatDayMonth(dateStr: string | null): string {
   if (!dateStr) return '-'
   const d = new Date(dateStr)
   if (isNaN(d.getTime())) return dateStr
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const dd = String(d.getUTCDate()).padStart(2, '0')
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0')
+  return `${dd}/${mm}`
+}
+
+// Driver names arrive from the legacy view as "Last, First"; render them as
+// "Last, F.". Anything without a comma + given name passes through untouched.
+function formatDriverName(name: string): string {
+  const [last, first] = name.split(',')
+  if (!last || !first?.trim()) return name.trim()
+  const initial = first.trim()[0]!.toUpperCase()
+  return `${last.trim()}, ${initial}.`
 }
 
 function toInputDate(dateStr: string | null): string {
@@ -162,44 +175,70 @@ function DeliveryLine({ delivery }: { delivery: Delivery }) {
 //
 // When a driver has no confirmed availability we estimate when/where they free
 // up from their LAST delivery (deliveries arrive sorted by effective date).
-// The tier drives the styling: actual = no formatting, estimated = grey, and
-// spread-only = grey + italic (least certain).
+// The tier drives a source icon (see READY_ICON) rendered next to the bolded
+// date/location: actual = checkered flag, estimated = truck, spread = question
+// mark (least certain).
 // ---------------------------------------------------------------------------
 
 type ReadyTier = 'confirmed' | 'actual' | 'estimated' | 'spread' | 'none'
 
+interface ReadyTierMeta {
+  /** Font Awesome glyph after `fa-` (null when there is no source icon). */
+  icon: string | null
+  /** Hover tooltip label describing where the date/location came from. */
+  label: string
+}
+
+// Maps a ready-date/location source to its icon. The truck and checkered-flag
+// glyphs mirror the DeliveryLine / ActivityGantt convention for consistency.
+const READY_TIER: Record<ReadyTier, ReadyTierMeta> = {
+  confirmed: { icon: 'fa-calendar-check', label: 'Confirmed availability' },
+  actual: { icon: 'fa-flag-checkered', label: 'Actual delivery date' },
+  estimated: { icon: 'fa-truck-moving', label: 'Estimated delivery date' },
+  spread: { icon: 'fa-question', label: 'Planned spread (least certain)' },
+  none: { icon: null, label: '' },
+}
+
 interface ReadyGuess {
   kind: ReadyTier
   date: string | null
-  location: string | null
-  className: string
+  state: string | null
+  city: string | null
 }
 
 function getReadyGuess(driver: DriverPlanningRow): ReadyGuess {
   const last = driver.deliveries[driver.deliveries.length - 1]
-  const location =
-    last?.city && last?.state
-      ? `${titleCaseCity(last.city)}, ${last.state}`
-      : last?.city
-        ? titleCaseCity(last.city)
-        : (last?.state ?? null)
+  const state = last?.state ?? null
+  const city = last?.city ? titleCaseCity(last.city) : null
 
   if (last?.actualDate) {
-    return { kind: 'actual', date: last.actualDate, location, className: '' }
+    return { kind: 'actual', date: last.actualDate, state, city }
   }
   if (last?.estimatedDate) {
-    return {
-      kind: 'estimated',
-      date: last.estimatedDate,
-      location,
-      className: 'text-muted-foreground',
-    }
+    return { kind: 'estimated', date: last.estimatedDate, state, city }
   }
   const spread = last?.plannedEnd ?? last?.plannedStart ?? null
   if (spread) {
-    return { kind: 'spread', date: spread, location, className: 'text-muted-foreground italic' }
+    return { kind: 'spread', date: spread, state, city }
   }
-  return { kind: 'none', date: null, location, className: 'text-muted-foreground' }
+  return { kind: 'none', date: null, state, city }
+}
+
+// Source icon shown before the bolded Ready Date / Ready Location. Renders
+// nothing for the 'none' tier.
+function ReadyTierIcon({ kind }: { kind: ReadyTier }) {
+  const meta = READY_TIER[kind]
+  if (!meta.icon) return null
+  return (
+    <HoverToolTip content={meta.label} direction="top">
+      <i
+        className={`fas ${meta.icon}`}
+        data-testid="ready-tier-icon"
+        data-icon={meta.icon}
+        aria-label={meta.label}
+      />
+    </HoverToolTip>
+  )
 }
 
 type EditField = 'date' | 'location' | 'notes'
@@ -288,7 +327,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
   return (
     <TableRow data-testid="driver-row" data-driver-id={driver.driverId}>
       <TableCell className="font-medium" data-testid="driver-name">
-        {driver.driverName}
+        {formatDriverName(driver.driverName)}
       </TableCell>
 
       {/* Ready Date */}
@@ -302,17 +341,18 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
             data-ready-tier="confirmed"
             onClick={() => startEdit('date')}
           >
-            <i className="fas fa-calendar-check" />
-            {formatDate(driver.confirmedAvailableDate)}
+            <ReadyTierIcon kind="confirmed" />
+            {formatDayMonth(driver.confirmedAvailableDate)}
           </span>
         ) : (
           <span
-            className={`cursor-pointer hover:underline ${guess.className}`}
+            className="cursor-pointer hover:underline inline-flex items-center gap-1 font-semibold"
             data-testid="ready-date-cell"
             data-ready-tier={guess.kind}
             onClick={() => startEdit('date')}
           >
-            {guess.date ? formatDate(guess.date) : '-'}
+            <ReadyTierIcon kind={guess.kind} />
+            {guess.date ? formatDayMonth(guess.date) : '-'}
           </span>
         )}
       </TableCell>
@@ -320,7 +360,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
       {/* Ready Location */}
       <TableCell>
         {editingField === 'location' ? (
-          fieldInput('location', { placeholder: 'City, State', className: 'w-44' })
+          fieldInput('location', { placeholder: 'State, City', className: 'w-44' })
         ) : driver.confirmedAvailableLocation ? (
           <span
             className="cursor-pointer hover:underline font-semibold"
@@ -331,11 +371,20 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
           </span>
         ) : (
           <span
-            className={`cursor-pointer hover:underline ${guess.className}`}
+            className="cursor-pointer hover:underline inline-flex items-center gap-1 font-semibold"
             data-testid="ready-location-cell"
             onClick={() => startEdit('location')}
           >
-            {guess.location ?? '-'}
+            <ReadyTierIcon kind={guess.kind} />
+            {guess.state || guess.city ? (
+              <span>
+                {guess.state && <b>{guess.state}</b>}
+                {guess.state && guess.city ? ', ' : ''}
+                {guess.city}
+              </span>
+            ) : (
+              '-'
+            )}
           </span>
         )}
       </TableCell>
