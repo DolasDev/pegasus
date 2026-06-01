@@ -11,7 +11,12 @@ vi.mock('../../utils/api', () => ({
   },
 }))
 
+vi.mock('../../components/Snackbar/notify', () => ({
+  notifyError: vi.fn(),
+}))
+
 import { API } from '../../utils/api'
+import { notifyError } from '../../components/Snackbar/notify'
 import shipmentsReducer, {
   changeShipmentQuery,
   deleteShipmentFilter,
@@ -54,6 +59,8 @@ const mockedAPI = API as unknown as {
   fetchShipmentDefaultFilterForUser: ReturnType<typeof vi.fn>
   deleteShipmentFilter: ReturnType<typeof vi.fn>
 }
+
+const mockedNotifyError = notifyError as unknown as ReturnType<typeof vi.fn>
 
 // Silences console.error for the duration of a test (thunks log on rejection).
 const silenceConsoleError = () => vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -348,12 +355,51 @@ describe('shipments thunk — loadDefaultFilter', () => {
     expect(store.getState().shipments.query.searchTerm).toBe('orig')
   })
 
-  it('swallows API errors (logs to console)', async () => {
+  it('surfaces API rejection via notifyError (logs to console)', async () => {
     const errSpy = silenceConsoleError()
     mockedAPI.fetchShipmentDefaultFilterForUser.mockRejectedValueOnce(new Error('x'))
-    const store = makeStore()
+    const store = makeStore({ query: { searchTerm: 'orig', filters: {}, sortBy: {} } })
     await expect(store.dispatch(loadDefaultFilter('user-1') as any)).resolves.toBeUndefined()
     expect(errSpy).toHaveBeenCalled()
+    expect(mockedNotifyError).toHaveBeenCalledTimes(1)
+    expect(mockedNotifyError).toHaveBeenCalledWith('x')
+    // No dispatch — query unchanged.
+    expect(store.getState().shipments.query.searchTerm).toBe('orig')
+    errSpy.mockRestore()
+  })
+
+  it('falls back to a default message when the rejection has no message', async () => {
+    const errSpy = silenceConsoleError()
+    mockedAPI.fetchShipmentDefaultFilterForUser.mockRejectedValueOnce({})
+    const store = makeStore()
+    await store.dispatch(loadDefaultFilter('user-1') as any)
+    expect(mockedNotifyError).toHaveBeenCalledWith('Failed to load default filter')
+    errSpy.mockRestore()
+  })
+
+  it('does not dispatch and notifies on malformed JSON', async () => {
+    const errSpy = silenceConsoleError()
+    mockedAPI.fetchShipmentDefaultFilterForUser.mockResolvedValueOnce({ query: 'not valid json' })
+    const store = makeStore({ query: { searchTerm: 'orig', filters: {}, sortBy: {} } })
+    await store.dispatch(loadDefaultFilter('user-1') as any)
+    expect(store.getState().shipments.query.searchTerm).toBe('orig')
+    expect(mockedNotifyError).toHaveBeenCalledTimes(1)
+    expect(mockedNotifyError).toHaveBeenCalledWith(
+      'Saved filter is malformed and could not be applied',
+    )
+    errSpy.mockRestore()
+  })
+
+  it('does not dispatch and notifies when parsed query is not an object (null)', async () => {
+    const errSpy = silenceConsoleError()
+    mockedAPI.fetchShipmentDefaultFilterForUser.mockResolvedValueOnce({ query: 'null' })
+    const store = makeStore({ query: { searchTerm: 'orig', filters: {}, sortBy: {} } })
+    await store.dispatch(loadDefaultFilter('user-1') as any)
+    expect(store.getState().shipments.query.searchTerm).toBe('orig')
+    expect(mockedNotifyError).toHaveBeenCalledTimes(1)
+    expect(mockedNotifyError).toHaveBeenCalledWith(
+      'Saved filter is malformed and could not be applied',
+    )
     errSpy.mockRestore()
   })
 })
@@ -376,12 +422,48 @@ describe('shipments thunk — deleteShipmentFilter', () => {
     expect(store.getState().shipments.query.searchTerm).toBe('orig')
   })
 
-  it('swallows API errors', async () => {
+  it('surfaces API rejection via notifyError', async () => {
     const errSpy = silenceConsoleError()
     mockedAPI.deleteShipmentFilter.mockRejectedValueOnce(new Error('y'))
-    const store = makeStore()
+    const store = makeStore({ query: { searchTerm: 'orig', filters: {}, sortBy: {} } })
     await expect(store.dispatch(deleteShipmentFilter(1) as any)).resolves.toBeUndefined()
     expect(errSpy).toHaveBeenCalled()
+    expect(mockedNotifyError).toHaveBeenCalledTimes(1)
+    expect(mockedNotifyError).toHaveBeenCalledWith('y')
+    expect(store.getState().shipments.query.searchTerm).toBe('orig')
+    errSpy.mockRestore()
+  })
+
+  it('falls back to a default message when the rejection has no message', async () => {
+    const errSpy = silenceConsoleError()
+    mockedAPI.deleteShipmentFilter.mockRejectedValueOnce({})
+    const store = makeStore()
+    await store.dispatch(deleteShipmentFilter(1) as any)
+    expect(mockedNotifyError).toHaveBeenCalledWith('Failed to delete filter')
+    errSpy.mockRestore()
+  })
+
+  it('does not dispatch and notifies on malformed JSON', async () => {
+    const errSpy = silenceConsoleError()
+    mockedAPI.deleteShipmentFilter.mockResolvedValueOnce({ query: '{not json' })
+    const store = makeStore({ query: { searchTerm: 'orig', filters: {}, sortBy: {} } })
+    await store.dispatch(deleteShipmentFilter(1) as any)
+    expect(store.getState().shipments.query.searchTerm).toBe('orig')
+    expect(mockedNotifyError).toHaveBeenCalledWith(
+      'Saved filter is malformed and could not be applied',
+    )
+    errSpy.mockRestore()
+  })
+
+  it('does not dispatch and notifies when parsed query is not an object (null)', async () => {
+    const errSpy = silenceConsoleError()
+    mockedAPI.deleteShipmentFilter.mockResolvedValueOnce({ query: 'null' })
+    const store = makeStore({ query: { searchTerm: 'orig', filters: {}, sortBy: {} } })
+    await store.dispatch(deleteShipmentFilter(1) as any)
+    expect(store.getState().shipments.query.searchTerm).toBe('orig')
+    expect(mockedNotifyError).toHaveBeenCalledWith(
+      'Saved filter is malformed and could not be applied',
+    )
     errSpy.mockRestore()
   })
 })
