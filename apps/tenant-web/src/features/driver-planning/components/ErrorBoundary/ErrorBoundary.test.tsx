@@ -2,20 +2,6 @@ import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
-// The fallback UI renders <Link to="/trips">. router-compat resolves Link from
-// @tanstack/react-router which requires a Router context. Mock with a plain
-// <a> so we can render in isolation.
-vi.mock('@tanstack/react-router', () => ({
-  Link: (props: any) => (
-    <a href={typeof props.to === 'string' ? props.to : ''} className={props.className} onClick={props.onClick}>
-      {props.children}
-    </a>
-  ),
-  useLocation: () => ({}),
-  useNavigate: () => () => {},
-  useParams: () => ({}),
-}))
-
 // Silence the logger output that ErrorBoundary writes via console.error.
 vi.mock('../../utils/logger', () => ({
   default: {
@@ -61,6 +47,21 @@ describe('ErrorBoundary', () => {
     expect(screen.getByText(/support@dolas\.dev/)).toBeInTheDocument()
   })
 
+  it('renders the fallback UI without any router context', () => {
+    // The boundary must not depend on a RouterProvider — this render would
+    // throw if it tried to use @tanstack/react-router.
+    expect(() =>
+      render(
+        <ErrorBoundary>
+          <Boom />
+        </ErrorBoundary>,
+      ),
+    ).not.toThrow()
+    // Dismiss control is a button, not a link — so no navigation can happen.
+    expect(screen.getByRole('button', { name: /dismiss error/i })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /dismiss error/i })).not.toBeInTheDocument()
+  })
+
   it('renders a custom ErrorComponent when provided and a child throws', () => {
     const Custom: React.FC = () => <div data-testid="custom-fallback">custom!</div>
     render(
@@ -92,7 +93,7 @@ describe('ErrorBoundary', () => {
     expect(screen.getByTestId('custom-fallback')).toBeInTheDocument()
   })
 
-  it('clicking the close link in the fallback resets the error state', () => {
+  it('clicking the dismiss button in the fallback resets the error state', () => {
     // Use a child whose throwing can be toggled off by parent state, so that
     // after closeErrorMessage the boundary can render children again.
     const Toggle: React.FC<{ shouldThrow: boolean }> = ({ shouldThrow }) => {
@@ -103,7 +104,9 @@ describe('ErrorBoundary', () => {
       const [shouldThrow, setShouldThrow] = React.useState(true)
       return (
         <div>
-          <button onClick={() => setShouldThrow(false)} data-testid="fix">fix</button>
+          <button onClick={() => setShouldThrow(false)} data-testid="fix">
+            fix
+          </button>
           <ErrorBoundary>
             <Toggle shouldThrow={shouldThrow} />
           </ErrorBoundary>
@@ -112,14 +115,10 @@ describe('ErrorBoundary', () => {
     }
     render(<Wrapper />)
     expect(screen.getByText(/an error occurred/i)).toBeInTheDocument()
-    // Stop the child from throwing first, then click the close link.
+    // Stop the child from throwing first, then click the dismiss button.
     fireEvent.click(screen.getByTestId('fix'))
-    // The close link is the <a> inside the fallback (rendered via mocked Link).
-    const closeLink = screen.getByText(/an error occurred/i)
-      .parentElement!
-      .querySelector('a') as HTMLAnchorElement
-    expect(closeLink).toBeTruthy()
-    fireEvent.click(closeLink)
+    const dismissButton = screen.getByRole('button', { name: /dismiss error/i })
+    fireEvent.click(dismissButton)
     expect(screen.getByTestId('recovered')).toBeInTheDocument()
   })
 })

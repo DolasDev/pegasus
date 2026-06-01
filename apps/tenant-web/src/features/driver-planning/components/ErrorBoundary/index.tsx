@@ -1,5 +1,4 @@
 import React from 'react'
-import { Link } from '@/features/driver-planning/utils/router-compat'
 import styles from './ErrorBoundary.module.css'
 import logger from '../../utils/logger'
 
@@ -39,9 +38,14 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
       }
       return (
         <div className={styles.container}>
-          <Link className={styles.closeErrorMessage} to={'/trips'} onClick={this.closeErrorMessage}>
+          <button
+            type="button"
+            className={styles.closeErrorMessage}
+            onClick={this.closeErrorMessage}
+            aria-label="Dismiss error"
+          >
             <i className="fas fa-xmark"></i>
-          </Link>
+          </button>
           <h1>An error occurred</h1>
           <p>
             Please try reloading the application. If this continues, contact{' '}
