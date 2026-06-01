@@ -38,10 +38,10 @@ const commonSlice = createSlice({
       // → app error boundary, which is what was making the Trips list flake.
       state.driversList = asArray(action.payload)
         .map(({ driver_name, ...rest }: any) => ({
-          driver_name: (driver_name || '').trim(),
           ...rest,
+          driver_name: (driver_name || '').trim(),
         }))
-        .sort((a: any, b: any) => b.driver_name - a.driver_name)
+        .sort((a: any, b: any) => a.driver_name.localeCompare(b.driver_name))
       state.loading = false
     },
     fetchDriversFailure(state, action: PayloadAction<string>) {
