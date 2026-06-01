@@ -2,7 +2,6 @@
  * Unit tests for the `tripPlanning` slice.
  *
  * Slice key in store: `tripPlanning` (see `../store.ts`).
- * Source folder is named `pending-trips/` — historical, see testability notes.
  *
  * Strategy: drive the slice's exported reducer directly with synthetic state +
  * action objects. No store, no provider, no React. Pure functions in, pure
@@ -343,10 +342,7 @@ describe('tripPlanning slice — reducer (pure)', () => {
     it('removes the activity at activityIndex and pushes it onto extraActivities', () => {
       const state = seedStateWithShipment({}, 0, 'T')
       // shipment has 2 activities
-      const next = reducer(
-        state,
-        removeActivity({ shipmentIndex: 0, activityIndex: 0 }),
-      )
+      const next = reducer(state, removeActivity({ shipmentIndex: 0, activityIndex: 0 }))
       expect(next.trip.shipments[0].activities).toHaveLength(1)
       expect(next.trip.shipments[0].activities[0].id).toBe('a2')
       expect(next.trip.shipments[0].extraActivities).toHaveLength(1)
@@ -361,10 +357,7 @@ describe('tripPlanning slice — reducer (pure)', () => {
         0,
         'T',
       )
-      const next = reducer(
-        state,
-        removeActivity({ shipmentIndex: 0, activityIndex: 0 }),
-      )
+      const next = reducer(state, removeActivity({ shipmentIndex: 0, activityIndex: 0 }))
       expect(next.trip.shipments).toHaveLength(0)
       expect(next.shipmentToTrips['ORDER-1']?.[0]).toBeUndefined()
     })
@@ -374,10 +367,7 @@ describe('tripPlanning slice — reducer (pure)', () => {
       expect(() =>
         reducer(state, removeActivity({ shipmentIndex: 99, activityIndex: 0 })),
       ).not.toThrow()
-      const next = reducer(
-        state,
-        removeActivity({ shipmentIndex: 99, activityIndex: 0 }),
-      )
+      const next = reducer(state, removeActivity({ shipmentIndex: 99, activityIndex: 0 }))
       expect(next.trip.shipments).toHaveLength(1)
     })
 
@@ -397,10 +387,7 @@ describe('tripPlanning slice — reducer (pure)', () => {
       expect(() =>
         reducer(state, removeActivity({ shipmentIndex: 0, activityIndex: 0 })),
       ).not.toThrow()
-      const next = reducer(
-        state,
-        removeActivity({ shipmentIndex: 0, activityIndex: 0 }),
-      )
+      const next = reducer(state, removeActivity({ shipmentIndex: 0, activityIndex: 0 }))
       expect(next.trip.shipments[0].activities).toHaveLength(1)
       expect(next.trip.shipments[0].extraActivities).toHaveLength(1)
       expect(next.trip.shipments[0].extraActivities[0].id).toBe('a1')
@@ -428,10 +415,7 @@ describe('tripPlanning slice — reducer (pure)', () => {
       expect(() =>
         reducer(state, removeActivity({ shipmentIndex: 0, activityIndex: 0 })),
       ).not.toThrow()
-      const next = reducer(
-        state,
-        removeActivity({ shipmentIndex: 0, activityIndex: 0 }),
-      )
+      const next = reducer(state, removeActivity({ shipmentIndex: 0, activityIndex: 0 }))
       expect(next.trip.shipments).toHaveLength(0)
     })
   })
@@ -483,9 +467,7 @@ describe('tripPlanning slice — reducer (pure)', () => {
             { id: 'first', activityType: { sequencePriority: 1 } },
             { id: 'third', activityType: { sequencePriority: 3 } },
           ],
-          extraActivities: [
-            { id: 'middle', activityType: { sequencePriority: 2 } },
-          ],
+          extraActivities: [{ id: 'middle', activityType: { sequencePriority: 2 } }],
         },
         0,
         'T',
@@ -551,11 +533,7 @@ describe('tripPlanning slice — reducer (pure)', () => {
         },
       }
       const next = reducer(state, swapOrder({ from: 1, up: true }))
-      expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual([
-        'B',
-        'A',
-        'C',
-      ])
+      expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual(['B', 'A', 'C'])
     })
 
     it('moves a shipment down by one (up: false)', () => {
@@ -567,11 +545,7 @@ describe('tripPlanning slice — reducer (pure)', () => {
         },
       }
       const next = reducer(state, swapOrder({ from: 1, up: false }))
-      expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual([
-        'A',
-        'C',
-        'B',
-      ])
+      expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual(['A', 'C', 'B'])
     })
 
     describe('swapOrder edge cases (bounds-checked — see bugs.md #9)', () => {
@@ -584,11 +558,7 @@ describe('tripPlanning slice — reducer (pure)', () => {
           },
         }
         const next = reducer(state, swapOrder({ from: 0, up: true }))
-        expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual([
-          'A',
-          'B',
-          'C',
-        ])
+        expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual(['A', 'B', 'C'])
       })
 
       it('"down" on the last shipment is a no-op (cannot move past the bottom edge)', () => {
@@ -600,11 +570,7 @@ describe('tripPlanning slice — reducer (pure)', () => {
           },
         }
         const next = reducer(state, swapOrder({ from: 2, up: false }))
-        expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual([
-          'A',
-          'B',
-          'C',
-        ])
+        expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual(['A', 'B', 'C'])
       })
 
       it('"up" on the last shipment moves it toward the top', () => {
@@ -616,11 +582,7 @@ describe('tripPlanning slice — reducer (pure)', () => {
           },
         }
         const next = reducer(state, swapOrder({ from: 2, up: true }))
-        expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual([
-          'A',
-          'C',
-          'B',
-        ])
+        expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual(['A', 'C', 'B'])
       })
 
       it('"down" on the first shipment moves it toward the bottom', () => {
@@ -632,11 +594,7 @@ describe('tripPlanning slice — reducer (pure)', () => {
           },
         }
         const next = reducer(state, swapOrder({ from: 0, up: false }))
-        expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual([
-          'B',
-          'A',
-          'C',
-        ])
+        expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual(['B', 'A', 'C'])
       })
 
       it('is a no-op when `from` is out of range and does not throw', () => {
@@ -647,15 +605,9 @@ describe('tripPlanning slice — reducer (pure)', () => {
             shipments: buildShipments(),
           },
         }
-        expect(() =>
-          reducer(state, swapOrder({ from: 99, up: true })),
-        ).not.toThrow()
+        expect(() => reducer(state, swapOrder({ from: 99, up: true }))).not.toThrow()
         const next = reducer(state, swapOrder({ from: 99, up: false }))
-        expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual([
-          'A',
-          'B',
-          'C',
-        ])
+        expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual(['A', 'B', 'C'])
       })
     })
   })
@@ -722,10 +674,7 @@ describe('tripPlanning slice — reducer (pure)', () => {
 
     it('coerces driver_id to null when not provided in payload', () => {
       const state = makeInitialState()
-      const next = reducer(
-        state,
-        setTrip({ id: 1, name: 'X', driver: null, shipments: [] }),
-      )
+      const next = reducer(state, setTrip({ id: 1, name: 'X', driver: null, shipments: [] }))
       expect(next.trip.driver_id).toBeNull()
     })
 
@@ -739,10 +688,7 @@ describe('tripPlanning slice — reducer (pure)', () => {
           id: 1,
           name: 'Imported',
           driver_id: 1,
-          shipments: [
-            makeShipment({ order_num: 'IMP-1' }),
-            makeShipment({ order_num: 'IMP-2' }),
-          ],
+          shipments: [makeShipment({ order_num: 'IMP-1' }), makeShipment({ order_num: 'IMP-2' })],
         }),
       )
       expect(next.shipmentToTrips.STALE).toBeUndefined()
@@ -752,19 +698,14 @@ describe('tripPlanning slice — reducer (pure)', () => {
 
     it('handles an empty shipments array without throwing', () => {
       const state = makeInitialState()
-      const next = reducer(
-        state,
-        setTrip({ id: 1, name: 'Empty', driver_id: 1, shipments: [] }),
-      )
+      const next = reducer(state, setTrip({ id: 1, name: 'Empty', driver_id: 1, shipments: [] }))
       expect(next.shipmentToTrips).toEqual({})
     })
 
     it('coerces a missing shipments key to [] without throwing (regression: bug #8)', () => {
       // Before the fix: `.forEach` on undefined threw.
       const state = makeInitialState()
-      expect(() =>
-        reducer(state, setTrip({ id: 1, name: 'x' })),
-      ).not.toThrow()
+      expect(() => reducer(state, setTrip({ id: 1, name: 'x' }))).not.toThrow()
       const next = reducer(state, setTrip({ id: 1, name: 'x' }))
       expect(next.shipmentToTrips).toEqual({})
       expect(next.trip.id).toBe(1)
@@ -772,9 +713,7 @@ describe('tripPlanning slice — reducer (pure)', () => {
 
     it('coerces a null shipments value to [] without throwing (regression: bug #8)', () => {
       const state = makeInitialState()
-      expect(() =>
-        reducer(state, setTrip({ id: 2, name: 'y', shipments: null })),
-      ).not.toThrow()
+      expect(() => reducer(state, setTrip({ id: 2, name: 'y', shipments: null }))).not.toThrow()
       const next = reducer(state, setTrip({ id: 2, name: 'y', shipments: null }))
       expect(next.shipmentToTrips).toEqual({})
     })
@@ -793,7 +732,12 @@ describe('tripPlanning slice — reducer (pure)', () => {
 
     it('createNewTrip resets trip, unsavedTrip, shipmentToTrips, and selectedTripIndex', () => {
       const state = makeInitialState()
-      state.trip = { ...state.trip, name: 'leftover', driver: { id: 5 }, shipments: [{ order_num: '1' }] }
+      state.trip = {
+        ...state.trip,
+        name: 'leftover',
+        driver: { id: 5 },
+        shipments: [{ order_num: '1' }],
+      }
       state.unsavedTrip = { name: 'unsaved' }
       state.shipmentToTrips = { '1': { '0': 'leftover' } }
       state.selectedTripIndex = 3
@@ -852,13 +796,9 @@ describe('tripPlanning slice — thunks', () => {
 
     it('propagates rejections from API.saveTrip (no Failure dispatch in current code)', async () => {
       const dispatch = vi.fn()
-      ;(API.saveTrip as ReturnType<typeof vi.fn>).mockRejectedValue(
-        new Error('network'),
-      )
+      ;(API.saveTrip as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'))
 
-      await expect(
-        saveTrip({ name: 'fails' })(dispatch as any),
-      ).rejects.toThrow('network')
+      await expect(saveTrip({ name: 'fails' })(dispatch as any)).rejects.toThrow('network')
 
       // saveTripRequest is dispatched, but neither success nor failure is.
       expect(dispatch).toHaveBeenCalledTimes(1)
@@ -909,9 +849,7 @@ describe('tripPlanning slice — thunks', () => {
 
     it('on fetch failure: logs original error, dispatches setError, and surfaces notifyError', async () => {
       const dispatch = vi.fn()
-      ;(API.fetchTrip as ReturnType<typeof vi.fn>).mockRejectedValue(
-        new Error('boom'),
-      )
+      ;(API.fetchTrip as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('boom'))
 
       await initializeTripPage(5, { code: 'u' })(dispatch as any)
 
@@ -975,9 +913,7 @@ describe('tripPlanning slice — thunks', () => {
 
     it('logs and swallows errors from API.cancelTrip', async () => {
       const dispatch = vi.fn()
-      ;(API.cancelTrip as ReturnType<typeof vi.fn>).mockRejectedValue(
-        new Error('cancel-fail'),
-      )
+      ;(API.cancelTrip as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('cancel-fail'))
 
       await cancelTrip(1, { code: 'x' })(dispatch as any)
 

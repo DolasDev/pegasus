@@ -134,7 +134,8 @@ const tripPlanningSlice = createSlice({
           state.shipmentToTrips[shipment.order_num] = {}
         }
         if (!(state.selectedTripIndex in state.shipmentToTrips[shipment.order_num])) {
-          state.shipmentToTrips[shipment.order_num][state.selectedTripIndex] = state.trip.name ?? true
+          state.shipmentToTrips[shipment.order_num][state.selectedTripIndex] =
+            state.trip.name ?? true
         }
       })
     },

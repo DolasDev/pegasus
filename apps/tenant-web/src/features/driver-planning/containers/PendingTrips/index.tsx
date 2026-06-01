@@ -15,7 +15,7 @@ import {
   editActivity as editActivityAction,
   initializeTripPage as clearCurrentTripAction,
   cancelTrip as cancelTripAction,
-} from '../../redux/pending-trips'
+} from '../../redux/trip-planning'
 import { changeShipmentQuery as reloadShipmentsAction } from '../../redux/shipments'
 import { Card } from '../../components/Card'
 import { TripDetail, DriverTripDetail, NameTripDetail, DispatcherTripDetail } from './TripDetail'

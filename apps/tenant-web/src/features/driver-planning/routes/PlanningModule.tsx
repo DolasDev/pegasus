@@ -7,7 +7,7 @@ import { SearchDashboard } from '../containers/Shipments'
 import { PendingTrips } from '../containers/PendingTrips'
 import { ShipmentDetail } from '../containers/ShipmentDetail'
 import { ConfirmDialog } from '../components/ConfirmDialog'
-import { initializeTripPage as resetPageAction } from '@/features/driver-planning/redux/pending-trips'
+import { initializeTripPage as resetPageAction } from '@/features/driver-planning/redux/trip-planning'
 import { useAppDispatch } from '../redux/hooks'
 import type { RootState } from '../redux/store'
 
