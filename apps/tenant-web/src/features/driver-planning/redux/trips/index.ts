@@ -9,7 +9,7 @@ export interface TripsState {
   selectedTrip: any
   tripList: any[]
   query: any
-  error: boolean | string
+  error: string | null
 }
 
 const tripsSlice = createSlice({
@@ -31,7 +31,7 @@ const tripsSlice = createSlice({
       },
       sortBy: { value: 'planned_first_day', order: 'desc' },
     },
-    error: false,
+    error: null,
   } as TripsState,
   reducers: {
     selectTrip(state, action: PayloadAction<any>) {
@@ -60,9 +60,8 @@ const tripsSlice = createSlice({
       }
     },
     editTrip(state, action: PayloadAction<any>) {
-      const selectedTrip = state.selectedTrip
       state.selectedTrip = {
-        ...selectedTrip,
+        ...(state.selectedTrip ?? {}),
         ...action.payload,
       }
     },
