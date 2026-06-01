@@ -12,6 +12,7 @@ vi.mock('../../utils/logger', () => ({
 }))
 
 import { ErrorBoundary } from './index'
+import logger from '../../utils/logger'
 
 const Boom: React.FC = () => {
   throw new Error('kaboom')
@@ -23,6 +24,7 @@ describe('ErrorBoundary', () => {
   beforeEach(() => {
     // React still logs the error to console.error from its own machinery.
     errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(logger.error).mockClear()
   })
   afterEach(() => {
     errSpy.mockRestore()
@@ -45,6 +47,28 @@ describe('ErrorBoundary', () => {
     )
     expect(screen.getByText(/an error occurred/i)).toBeInTheDocument()
     expect(screen.getByText(/support@dolas\.dev/)).toBeInTheDocument()
+  })
+
+  it('tags componentDidCatch logs so they can be distinguished from other callers', () => {
+    render(
+      <ErrorBoundary>
+        <Boom />
+      </ErrorBoundary>,
+    )
+    expect(logger.error).toHaveBeenCalledTimes(1)
+    const [err, context] = vi.mocked(logger.error).mock.calls[0]!
+    expect(err).toBeInstanceOf(Error)
+    expect((err as Error).message).toBe('kaboom')
+    expect(context).toEqual({ source: 'ErrorBoundary' })
+  })
+
+  it('does not log via the boundary when no child throws', () => {
+    render(
+      <ErrorBoundary>
+        <div>ok</div>
+      </ErrorBoundary>,
+    )
+    expect(logger.error).not.toHaveBeenCalled()
   })
 
   it('renders the fallback UI without any router context', () => {

@@ -2,6 +2,10 @@ import React from 'react'
 import styles from './ErrorBoundary.module.css'
 import logger from '../../utils/logger'
 
+const log = {
+  error: (e: Error): void => logger.error(e, { source: 'ErrorBoundary' }),
+}
+
 interface ErrorBoundaryProps {
   children?: React.ReactNode
   ErrorComponent?: React.ComponentType
@@ -23,7 +27,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   override componentDidCatch(e: Error): void {
-    logger.error(e)
+    log.error(e)
   }
 
   closeErrorMessage = (): void => {
