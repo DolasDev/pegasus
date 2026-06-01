@@ -1,6 +1,8 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
+import { notifyError } from '../../components/Snackbar/notify'
 import { API } from '../../utils/api'
 import logger from '../../utils/logger'
+import { coerceListPayload } from '../lib/coerce-list-payload'
 import type { AppDispatch } from '../store'
 
 export interface TripPlanningState {
@@ -39,18 +41,19 @@ const tripPlanningSlice = createSlice({
         state.shipmentToTrips[shipment.order_num] = {}
       }
 
-      if (!state.shipmentToTrips[shipment.order_num][state.selectedTripIndex]) {
+      if (!(state.selectedTripIndex in state.shipmentToTrips[shipment.order_num])) {
         state.trip.shipments.push(shipment)
-        state.shipmentToTrips[shipment.order_num][state.selectedTripIndex] = state.trip.name
+        state.shipmentToTrips[shipment.order_num][state.selectedTripIndex] = state.trip.name ?? true
       }
     },
     removeShipmentFromTrip(state, action: PayloadAction<number>) {
       const shipmentIndexToRemove = action.payload
       const shipment = state.trip.shipments[shipmentIndexToRemove]
+      if (!shipment) return
       if (state.shipmentToTrips[shipment.order_num]) {
         delete state.shipmentToTrips[shipment.order_num][state.selectedTripIndex]
       }
-      state.trip.shipments.splice(action.payload, 1)
+      state.trip.shipments.splice(shipmentIndexToRemove, 1)
     },
     editTrip(state, action: PayloadAction<any>) {
       const selectedTrip = state.trip
@@ -60,20 +63,17 @@ const tripPlanningSlice = createSlice({
       }
     },
     removeActivity(state, action: PayloadAction<{ shipmentIndex: number; activityIndex: number }>) {
-      if (state.trip.shipments[action.payload.shipmentIndex].activities.length === 1) {
-        const shipment = state.trip.shipments[action.payload.shipmentIndex]
-        delete state.shipmentToTrips[shipment.order_num][state.selectedTripIndex]
+      const shipment = state.trip.shipments[action.payload.shipmentIndex]
+      if (!shipment) return
+      if (shipment.activities.length === 1) {
+        if (state.shipmentToTrips[shipment.order_num]) {
+          delete state.shipmentToTrips[shipment.order_num][state.selectedTripIndex]
+        }
         state.trip.shipments.splice(action.payload.shipmentIndex, 1)
       } else {
-        state.trip.shipments[action.payload.shipmentIndex].extraActivities.push(
-          state.trip.shipments[action.payload.shipmentIndex].activities[
-            action.payload.activityIndex
-          ],
-        )
-        state.trip.shipments[action.payload.shipmentIndex].activities.splice(
-          action.payload.activityIndex,
-          1,
-        )
+        shipment.extraActivities ??= []
+        shipment.extraActivities.push(shipment.activities[action.payload.activityIndex])
+        shipment.activities.splice(action.payload.activityIndex, 1)
       }
     },
 
@@ -128,12 +128,13 @@ const tripPlanningSlice = createSlice({
       state.trip.driver_id = action.payload.driver_id ? action.payload.driver_id : null
       state.unsavedTrip = action.payload
       state.shipmentToTrips = {}
-      action.payload.shipments.forEach((shipment: any) => {
+      const shipments = coerceListPayload(action.payload.shipments)
+      shipments.forEach((shipment: any) => {
         if (!state.shipmentToTrips[shipment.order_num]) {
           state.shipmentToTrips[shipment.order_num] = {}
         }
-        if (!state.shipmentToTrips[shipment.order_num][state.selectedTripIndex]) {
-          state.shipmentToTrips[shipment.order_num][state.selectedTripIndex] = state.trip.name
+        if (!(state.selectedTripIndex in state.shipmentToTrips[shipment.order_num])) {
+          state.shipmentToTrips[shipment.order_num][state.selectedTripIndex] = state.trip.name ?? true
         }
       })
     },
@@ -145,6 +146,9 @@ const tripPlanningSlice = createSlice({
       state.unsavedTrip = null
       state.shipmentToTrips = {}
       state.selectedTripIndex = undefined
+    },
+    setError(state, action: PayloadAction<string>) {
+      state.error = action.payload
     },
   },
 })
@@ -163,6 +167,7 @@ export const {
   editActivity,
   setSelectedTripIndex,
   createNewTrip,
+  setError,
 } = tripPlanningSlice.actions
 
 export const saveTrip = (trip: any) => async (dispatch: AppDispatch) => {
@@ -204,8 +209,10 @@ export const initializeTripPage = (tripId: any, user: any) => async (dispatch: A
 
     dispatch(setTrip(trip))
   } catch (e: any) {
-    e.message = `error initilazing ${e.message}`
+    const msg = `error initializing ${e?.message ?? 'unknown error'}`
     logger.error(e)
+    dispatch(setError(msg))
+    notifyError(msg)
   }
 }
 
