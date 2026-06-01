@@ -30,9 +30,7 @@ describe('Snackbar', () => {
   })
 
   it('appends a custom className', () => {
-    const { container } = render(
-      <Snackbar open={true} message="m" className="my-extra" />,
-    )
+    const { container } = render(<Snackbar open={true} message="m" className="my-extra" />)
     const root = container.firstChild as HTMLElement
     expect(root.className).toContain('my-extra')
   })
@@ -51,6 +49,18 @@ describe('Snackbar', () => {
     vi.advanceTimersByTime(2999)
     expect(onClose).not.toHaveBeenCalled()
     vi.advanceTimersByTime(1)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not stack autohide timers across re-renders while open', () => {
+    const onClose = vi.fn()
+    const { rerender } = render(
+      <Snackbar open={true} message="hi" autoHideDuration={1000} onClose={onClose} />,
+    )
+    // multiple re-renders while open — the old buggy code would queue a new timer each time
+    rerender(<Snackbar open={true} message="hi" autoHideDuration={1000} onClose={onClose} />)
+    rerender(<Snackbar open={true} message="hi" autoHideDuration={1000} onClose={onClose} />)
+    vi.advanceTimersByTime(1000)
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
