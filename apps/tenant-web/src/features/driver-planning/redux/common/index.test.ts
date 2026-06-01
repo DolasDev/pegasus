@@ -92,9 +92,24 @@ describe('common slice — driver reducers', () => {
     const { driversList, loading } = store.getState().common
     expect(loading).toBe(false)
     expect(driversList).toHaveLength(2)
-    expect(driversList.map((d: any) => d.driver_name).sort()).toEqual(['Alice', 'Bob'])
+    expect(driversList.map((d: any) => d.driver_name)).toEqual(['Alice', 'Bob'])
     // ids are preserved via spread
     expect(driversList.find((d: any) => d.driver_name === 'Alice').id).toBe(1)
+  })
+
+  it('fetchDriversSuccess sorts drivers alphabetically by name', () => {
+    const store = makeStore()
+    store.dispatch(
+      fetchDriversSuccess([
+        { driver_name: 'Charlie', id: 3 },
+        { driver_name: 'Alice', id: 1 },
+        { driver_name: 'Bob', id: 2 },
+      ]),
+    )
+    const { driversList } = store.getState().common
+    expect(driversList.map((d: any) => d.driver_name)).toEqual(['Alice', 'Bob', 'Charlie'])
+    // ids are preserved via spread
+    expect(driversList.map((d: any) => d.id)).toEqual([1, 2, 3])
   })
 
   it('fetchDriversSuccess handles missing driver_name as empty string', () => {
