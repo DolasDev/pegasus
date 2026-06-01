@@ -32,7 +32,7 @@ export interface ShipmentsState {
   query: any
   haulModes: any[]
   pegasus_shadow: any
-  error: boolean | string
+  error: string | null
 }
 
 const shipmentsSlice = createSlice({
@@ -45,7 +45,7 @@ const shipmentsSlice = createSlice({
     query: structuredClone(DEFAULT_QUERY),
     haulModes: [], // populates haulModes filter options
     pegasus_shadow: {},
-    error: false,
+    error: null,
   } as ShipmentsState,
   reducers: {
     saveShipmentCoverage(state, action: PayloadAction<any>) {

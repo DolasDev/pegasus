@@ -44,7 +44,7 @@ const makeStore = (preloadedShipments?: Partial<ShipmentsState>): EnhancedStore<
     query: { searchTerm: '', filters: {}, sortBy: {} },
     haulModes: [],
     pegasus_shadow: {},
-    error: false,
+    error: null,
   }
   return configureStore({
     reducer: { shipments: shipmentsReducer },
@@ -79,7 +79,7 @@ describe('shipments slice — initialState', () => {
     expect(state.shipmentList).toEqual([])
     expect(state.haulModes).toEqual([])
     expect(state.pegasus_shadow).toEqual({})
-    expect(state.error).toBe(false)
+    expect(state.error).toBeNull()
     // Default query has the documented filter keys.
     expect(state.query.searchTerm).toBe('')
     expect(state.query.filters.Is_Trip_Planning).toBe(true)

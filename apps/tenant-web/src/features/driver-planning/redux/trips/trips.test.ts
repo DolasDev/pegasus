@@ -42,7 +42,7 @@ describe('trips slice — initial state', () => {
     expect(state.loading).toBe(false)
     expect(state.selectedTrip).toBeNull()
     expect(state.tripList).toEqual([])
-    expect(state.error).toBe(false)
+    expect(state.error).toBeNull()
     expect(state.query).toMatchObject({
       searchTerm: '',
       sortBy: { value: 'planned_first_day', order: 'desc' },
@@ -133,9 +133,11 @@ describe('trips slice — editTrip reducer', () => {
   })
 
   it('creates a selectedTrip from the patch when none was selected', () => {
-    // `{ ...null, ...payload }` evaluates to `{ ...payload }` — documenting,
-    // not asserting a guard, since adding one would be a production change.
+    // The reducer now explicitly guards `selectedTrip ?? {}` so spreading
+    // onto a null selection is part of the documented contract, not an
+    // accident of `{ ...null }` evaluating to `{}`.
     const store = makeStore()
+    expect(getTrips(store).selectedTrip).toBeNull()
     store.dispatch(editTrip({ id: 7, foo: 'bar' }))
     expect(getTrips(store).selectedTrip).toEqual({ id: 7, foo: 'bar' })
   })
@@ -173,7 +175,7 @@ describe('trips slice — fetchTrips thunk', () => {
     expect(mockedFetchTrips).toHaveBeenCalledWith(query)
     expect(getTrips(store).loading).toBe(false)
     expect(getTrips(store).tripList).toEqual(trips)
-    expect(getTrips(store).error).toBe(false)
+    expect(getTrips(store).error).toBeNull()
   })
 
   it('records the error message and clears loading on rejection', async () => {
