@@ -56,8 +56,16 @@ vi.mock('../../utils/logger', () => ({
   },
 }))
 
+vi.mock('../../components/Snackbar/notify', () => ({
+  notifyError: vi.fn(),
+  notifySuccess: vi.fn(),
+  notify: vi.fn(),
+  registerSnackbarPush: vi.fn(),
+}))
+
 import { API } from '../../utils/api'
 import logger from '../../utils/logger'
+import { notifyError } from '../../components/Snackbar/notify'
 
 // ----- Fixtures --------------------------------------------------------------------
 
@@ -196,6 +204,23 @@ describe('tripPlanning slice — reducer (pure)', () => {
       expect(next.shipmentToTrips['ORDER-1'][0]).toBe('Trip A')
       expect(next.shipmentToTrips['ORDER-1'][1]).toBe('Trip B')
     })
+
+    it('dedupes even when trip.name is null (regression: bug #3)', () => {
+      // Before the fix: state.trip.name === null was written into shipmentToTrips,
+      // so the dedup check `!shipmentToTrips[orderNum][index]` saw `!null` -> true,
+      // causing the same shipment to be re-added on every dispatch.
+      const state = makeInitialState() // trip.name === null
+      state.selectedTripIndex = 0
+      const shipment = makeShipment({ order_num: 'DUP' })
+
+      let next = reducer(state, addShipmentToTrip(shipment))
+      next = reducer(next, addShipmentToTrip(shipment))
+      next = reducer(next, addShipmentToTrip(shipment))
+
+      expect(next.trip.shipments).toHaveLength(1)
+      // sentinel is `true` (the `?? true` fallback) because trip.name is null
+      expect(next.shipmentToTrips['DUP'][0]).toBe(true)
+    })
   })
 
   // ----- removeShipmentFromTrip -----------------------------------------------------
@@ -254,6 +279,32 @@ describe('tripPlanning slice — reducer (pure)', () => {
       }
       const next = reducer(state, removeShipmentFromTrip(0))
       expect(next.trip.shipments).toHaveLength(0)
+    })
+
+    it('is a no-op when index is out of range (regression: bug #4)', () => {
+      // Before the fix: removeShipmentFromTrip(99) on a short array dereferenced
+      // `shipment.order_num` on undefined and threw.
+      const a = makeShipment({ order_num: 'A' })
+      const state: TripPlanningState = {
+        trip: {
+          name: 'T',
+          driver: null,
+          shipments: [a],
+          status: {},
+        },
+        unsavedTrip: null,
+        selectedTripIndex: 0,
+        shipmentToTrips: { A: { 0: 'T' } },
+      }
+      expect(() => reducer(state, removeShipmentFromTrip(99))).not.toThrow()
+      const next = reducer(state, removeShipmentFromTrip(99))
+      expect(next.trip.shipments).toHaveLength(1)
+      expect(next.shipmentToTrips.A[0]).toBe('T')
+    })
+
+    it('is a no-op when the shipments array is empty', () => {
+      const state = makeInitialState()
+      expect(() => reducer(state, removeShipmentFromTrip(0))).not.toThrow()
     })
   })
 
@@ -316,6 +367,72 @@ describe('tripPlanning slice — reducer (pure)', () => {
       )
       expect(next.trip.shipments).toHaveLength(0)
       expect(next.shipmentToTrips['ORDER-1']?.[0]).toBeUndefined()
+    })
+
+    it('is a no-op when shipmentIndex is out of range (regression: bug #5)', () => {
+      const state = seedStateWithShipment({}, 0, 'T')
+      expect(() =>
+        reducer(state, removeActivity({ shipmentIndex: 99, activityIndex: 0 })),
+      ).not.toThrow()
+      const next = reducer(
+        state,
+        removeActivity({ shipmentIndex: 99, activityIndex: 0 }),
+      )
+      expect(next.trip.shipments).toHaveLength(1)
+    })
+
+    it('initializes extraActivities lazily when undefined (regression: bug #5)', () => {
+      // Shipment has 2 activities but no extraActivities array at all.
+      const state = seedStateWithShipment(
+        {
+          activities: [
+            { id: 'a1', activityType: { sequencePriority: 1 } },
+            { id: 'a2', activityType: { sequencePriority: 2 } },
+          ],
+          extraActivities: undefined,
+        },
+        0,
+        'T',
+      )
+      expect(() =>
+        reducer(state, removeActivity({ shipmentIndex: 0, activityIndex: 0 })),
+      ).not.toThrow()
+      const next = reducer(
+        state,
+        removeActivity({ shipmentIndex: 0, activityIndex: 0 }),
+      )
+      expect(next.trip.shipments[0].activities).toHaveLength(1)
+      expect(next.trip.shipments[0].extraActivities).toHaveLength(1)
+      expect(next.trip.shipments[0].extraActivities[0].id).toBe('a1')
+    })
+
+    it('tolerates a missing shipmentToTrips entry when removing the only activity (regression: bug #5)', () => {
+      // Shipment exists in state.trip.shipments but isn't tracked in shipmentToTrips
+      // (e.g. test fixture or stale state). Previous code: `delete state.shipmentToTrips[shipment.order_num][...]`
+      // would throw with "Cannot read properties of undefined".
+      const shipment = makeShipment({
+        order_num: 'UNMAPPED',
+        activities: [{ id: 'solo', activityType: { sequencePriority: 1 } }],
+      })
+      const state: TripPlanningState = {
+        trip: {
+          name: 'T',
+          driver: null,
+          shipments: [shipment],
+          status: {},
+        },
+        unsavedTrip: null,
+        selectedTripIndex: 0,
+        shipmentToTrips: {}, // no entry for UNMAPPED
+      }
+      expect(() =>
+        reducer(state, removeActivity({ shipmentIndex: 0, activityIndex: 0 })),
+      ).not.toThrow()
+      const next = reducer(
+        state,
+        removeActivity({ shipmentIndex: 0, activityIndex: 0 }),
+      )
+      expect(next.trip.shipments).toHaveLength(0)
     })
   })
 
@@ -641,6 +758,26 @@ describe('tripPlanning slice — reducer (pure)', () => {
       )
       expect(next.shipmentToTrips).toEqual({})
     })
+
+    it('coerces a missing shipments key to [] without throwing (regression: bug #8)', () => {
+      // Before the fix: `.forEach` on undefined threw.
+      const state = makeInitialState()
+      expect(() =>
+        reducer(state, setTrip({ id: 1, name: 'x' })),
+      ).not.toThrow()
+      const next = reducer(state, setTrip({ id: 1, name: 'x' }))
+      expect(next.shipmentToTrips).toEqual({})
+      expect(next.trip.id).toBe(1)
+    })
+
+    it('coerces a null shipments value to [] without throwing (regression: bug #8)', () => {
+      const state = makeInitialState()
+      expect(() =>
+        reducer(state, setTrip({ id: 2, name: 'y', shipments: null })),
+      ).not.toThrow()
+      const next = reducer(state, setTrip({ id: 2, name: 'y', shipments: null }))
+      expect(next.shipmentToTrips).toEqual({})
+    })
   })
 
   // ----- setSelectedTripIndex / createNewTrip ---------------------------------------
@@ -770,7 +907,7 @@ describe('tripPlanning slice — thunks', () => {
       })
     })
 
-    it('swallows fetch errors and forwards them to the logger with mangled message', async () => {
+    it('on fetch failure: logs original error, dispatches setError, and surfaces notifyError', async () => {
       const dispatch = vi.fn()
       ;(API.fetchTrip as ReturnType<typeof vi.fn>).mockRejectedValue(
         new Error('boom'),
@@ -778,10 +915,42 @@ describe('tripPlanning slice — thunks', () => {
 
       await initializeTripPage(5, { code: 'u' })(dispatch as any)
 
-      expect(dispatch).not.toHaveBeenCalled()
+      // logger still receives the original error for the debug trail
       expect(logger.error).toHaveBeenCalledTimes(1)
       const errArg = (logger.error as ReturnType<typeof vi.fn>).mock.calls[0][0]
-      expect(errArg.message).toBe('error initilazing boom')
+      expect(errArg).toBeInstanceOf(Error)
+
+      // setError is dispatched with a properly-spelled message
+      expect(dispatch).toHaveBeenCalledTimes(1)
+      const action = dispatch.mock.calls[0][0]
+      expect(action.type).toBe('tripPlanning/setError')
+      expect(action.payload).toContain('error initializing')
+      expect(action.payload).toContain('boom')
+
+      // notifyError surfaces the same message to the user
+      expect(notifyError).toHaveBeenCalledTimes(1)
+      expect(notifyError).toHaveBeenCalledWith(action.payload)
+    })
+
+    it('on a rejection with no message: still surfaces a useful error', async () => {
+      const dispatch = vi.fn()
+      ;(API.fetchTrip as ReturnType<typeof vi.fn>).mockRejectedValue({})
+
+      await initializeTripPage(5, { code: 'u' })(dispatch as any)
+
+      expect(notifyError).toHaveBeenCalledTimes(1)
+      const msg = (notifyError as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      expect(msg).toBe('error initializing unknown error')
+    })
+
+    it('after a successful setError dispatch, reducer writes message to state.error', () => {
+      // sanity check that the new setError reducer is wired correctly
+      const state = makeInitialState()
+      const next = reducer(state, {
+        type: 'tripPlanning/setError',
+        payload: 'error initializing boom',
+      })
+      expect(next.error).toBe('error initializing boom')
     })
   })
 
