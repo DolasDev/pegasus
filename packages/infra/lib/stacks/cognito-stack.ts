@@ -77,6 +77,15 @@ export interface CognitoStackProps extends cdk.StackProps {
    * keeps Cognito's default email behaviour (dev + un-migrated envs).
    */
   readonly sesFromEmail?: string
+
+  /**
+   * SES configuration set to route every invite through (e.g. `pegasus-invite-emails`).
+   * Provisioned by dolas-infra's PegasusSesBootstrapStack with an event destination
+   * → SNS topic for BOUNCE/COMPLAINT/REJECT/RENDERING_FAILURE/DELIVERY_DELAY, so we
+   * see per-message feedback for every invite. Only meaningful when sesFromEmail is
+   * also set; ignored otherwise.
+   */
+  readonly sesConfigurationSetName?: string
 }
 
 export class CognitoStack extends cdk.Stack {
@@ -293,6 +302,12 @@ export class CognitoStack extends cdk.Stack {
           fromName: 'Pegasus',
           sesRegion: this.region,
           sesVerifiedDomain: props.sesFromEmail.split('@')[1],
+          // Routes every invite through the SES configuration set so per-message
+          // bounce/complaint/reject events flow to the pegasus-ses-feedback SNS
+          // topic owned by dolas-infra's PegasusSesBootstrapStack.
+          ...(props.sesConfigurationSetName
+            ? { configurationSetName: props.sesConfigurationSetName }
+            : {}),
         })
       : undefined
 

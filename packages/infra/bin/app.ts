@@ -86,6 +86,14 @@ const SES_SENDER_DOMAIN: Record<Exclude<EnvName, 'dev'>, string> = {
 // e.g. no-reply@pegasus.dolas.dev.
 const sesFromEmail = sesEmailEnabled ? `no-reply@${SES_SENDER_DOMAIN[envName]}` : undefined
 
+// Pinned to the same string PegasusSesBootstrapStack (dolas-infra) creates in
+// each Pegasus account — kept hard-coded here (instead of an SSM lookup) for
+// the same reason SES_SENDER_DOMAIN is: it's a known constant per env and
+// avoids a build-time AWS dependency. When set, attaches every invite to the
+// configuration set so per-message bounce/complaint/reject events flow to the
+// pegasus-ses-feedback SNS topic.
+const sesConfigurationSetName = sesEmailEnabled ? 'pegasus-invite-emails' : undefined
+
 // Temporal Cloud namespace gRPC endpoints, one per non-dev env. Consumed by:
 //   - TemporalWorkerStack (Phase 2 Unit 4) — Fargate worker env TEMPORAL_ADDRESS
 //   - ApiStack (Phase 2 Unit 6)            — API Lambda env TEMPORAL_ADDRESS
@@ -140,6 +148,10 @@ const cognitoStack = new CognitoStack(app, `${stackIdPrefix}-CognitoStack`, {
   // When set, the user pool sends invite emails via SES from this verified
   // address instead of Cognito's default sender. undefined → COGNITO_DEFAULT.
   sesFromEmail,
+  // Attaches every invite to the dolas-infra SES configuration set so
+  // bounce/complaint/reject events are routed to the pegasus-ses-feedback SNS
+  // topic. Only meaningful when sesFromEmail is also set.
+  sesConfigurationSetName,
 })
 
 // ── E2EStagingRoleStack ──────────────────────────────────────────────────────
