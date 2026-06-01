@@ -457,8 +457,8 @@ describe('tripPlanning slice — reducer (pure)', () => {
       ])
     })
 
-    describe('swapOrder edge cases (current buggy behavior — see bugs.md #9)', () => {
-      it('"up" on the first shipment splices to index -1 (penultimate position)', () => {
+    describe('swapOrder edge cases (bounds-checked — see bugs.md #9)', () => {
+      it('"up" on the first shipment is a no-op (cannot move past the top edge)', () => {
         const state: TripPlanningState = {
           ...makeInitialState(),
           trip: {
@@ -467,15 +467,14 @@ describe('tripPlanning slice — reducer (pure)', () => {
           },
         }
         const next = reducer(state, swapOrder({ from: 0, up: true }))
-        // splice(-1, 0, A) inserts A before the last element
         expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual([
-          'B',
           'A',
+          'B',
           'C',
         ])
       })
 
-      it('"down" on the last shipment uses an out-of-range index (silent splice)', () => {
+      it('"down" on the last shipment is a no-op (cannot move past the bottom edge)', () => {
         const state: TripPlanningState = {
           ...makeInitialState(),
           trip: {
@@ -484,7 +483,57 @@ describe('tripPlanning slice — reducer (pure)', () => {
           },
         }
         const next = reducer(state, swapOrder({ from: 2, up: false }))
-        // splice(3, 0, C) appends — list is unchanged
+        expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual([
+          'A',
+          'B',
+          'C',
+        ])
+      })
+
+      it('"up" on the last shipment moves it toward the top', () => {
+        const state: TripPlanningState = {
+          ...makeInitialState(),
+          trip: {
+            ...makeInitialState().trip,
+            shipments: buildShipments(),
+          },
+        }
+        const next = reducer(state, swapOrder({ from: 2, up: true }))
+        expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual([
+          'A',
+          'C',
+          'B',
+        ])
+      })
+
+      it('"down" on the first shipment moves it toward the bottom', () => {
+        const state: TripPlanningState = {
+          ...makeInitialState(),
+          trip: {
+            ...makeInitialState().trip,
+            shipments: buildShipments(),
+          },
+        }
+        const next = reducer(state, swapOrder({ from: 0, up: false }))
+        expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual([
+          'B',
+          'A',
+          'C',
+        ])
+      })
+
+      it('is a no-op when `from` is out of range and does not throw', () => {
+        const state: TripPlanningState = {
+          ...makeInitialState(),
+          trip: {
+            ...makeInitialState().trip,
+            shipments: buildShipments(),
+          },
+        }
+        expect(() =>
+          reducer(state, swapOrder({ from: 99, up: true })),
+        ).not.toThrow()
+        const next = reducer(state, swapOrder({ from: 99, up: false }))
         expect(next.trip.shipments.map((s: any) => s.order_num)).toEqual([
           'A',
           'B',

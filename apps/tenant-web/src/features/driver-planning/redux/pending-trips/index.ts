@@ -105,8 +105,10 @@ const tripPlanningSlice = createSlice({
     },
     swapOrder(state, action: PayloadAction<{ from: number; up: boolean }>) {
       const { from, up } = action.payload
-      const to = up ? from - 1 : from + 1
       const shipments = state.trip.shipments
+      if (from < 0 || from >= shipments.length) return
+      const to = up ? from - 1 : from + 1
+      if (to < 0 || to >= shipments.length) return
       shipments.splice(to, 0, shipments.splice(from, 1)[0])
     },
     saveTripRequest(state, _action: PayloadAction<void>) {
