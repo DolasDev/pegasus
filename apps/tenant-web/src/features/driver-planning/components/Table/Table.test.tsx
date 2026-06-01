@@ -1,21 +1,20 @@
 import React from 'react'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { Table } from './index'
 
-// NOTE: The unit task description asked for sortable header tests, but
-// the production `Table` component does NOT implement sorting — it is a
-// pure rendering component. Tests below cover the actual contract:
+// Tests cover the actual contract of the (generic) `Table` component:
 //   - column header labels
 //   - row rendering via `property`
 //   - row rendering via custom `accessor`
 //   - empty rows array (empty tbody)
-//   - row data-id attribute (driven by `order_num`)
+//   - row data-id attribute (only when `rowId` is provided)
+//   - duplicate column labels render without React key warnings
 
 describe('Table', () => {
   const tableConfig = [
-    { label: 'Name', property: 'name' },
-    { label: 'Age', property: 'age' },
+    { label: 'Name', property: 'name' as const },
+    { label: 'Age', property: 'age' as const },
   ]
 
   it('renders the column header labels', () => {
@@ -39,9 +38,11 @@ describe('Table', () => {
   })
 
   it('renders cells via the `accessor` function when supplied', () => {
-    const cfg = [
-      { label: 'Full', accessor: (r: any) => `${r.first} ${r.last}` },
-    ]
+    interface Person {
+      first: string
+      last: string
+    }
+    const cfg = [{ label: 'Full', accessor: (r: Person) => `${r.first} ${r.last}` }]
     render(<Table rows={[{ first: 'Ada', last: 'Lovelace' }]} tableConfig={cfg} />)
     expect(screen.getByText('Ada Lovelace')).toBeInTheDocument()
   })
@@ -52,10 +53,59 @@ describe('Table', () => {
     expect(bodyRows.length).toBe(0)
   })
 
-  it('sets data-id on each row using the `order_num` field', () => {
-    const rows = [{ name: 'X', age: 1, order_num: 'XYZ' }]
+  it('omits the `data-id` attribute when no `rowId` prop is provided', () => {
+    const rows = [{ name: 'X', age: 1 }]
     const { container } = render(<Table rows={rows} tableConfig={tableConfig} />)
     const tr = container.querySelector('tbody tr')
-    expect(tr?.getAttribute('data-id')).toBe('XYZ')
+    expect(tr?.hasAttribute('data-id')).toBe(false)
+  })
+
+  it('stamps `data-id` on each row using the `rowId` accessor', () => {
+    const rows = [
+      { name: 'X', age: 1, order_num: 'XYZ' },
+      { name: 'Y', age: 2, order_num: 42 },
+    ]
+    const { container } = render(
+      <Table rows={rows} tableConfig={tableConfig} rowId={(row) => row.order_num} />,
+    )
+    const trs = container.querySelectorAll('tbody tr')
+    expect(trs[0]?.getAttribute('data-id')).toBe('XYZ')
+    // Numeric ids are coerced to strings on the DOM attribute.
+    expect(trs[1]?.getAttribute('data-id')).toBe('42')
+  })
+
+  describe('duplicate column labels', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    afterEach(() => {
+      errorSpy.mockClear()
+    })
+
+    it('render without React duplicate-key warnings', () => {
+      const cfg = [
+        { label: '', property: 'name' as const },
+        { label: 'Middle', property: 'name' as const },
+        { label: '', property: 'age' as const },
+      ]
+      const rows = [{ name: 'Alice', age: 30 }]
+      const { container } = render(<Table rows={rows} tableConfig={cfg} />)
+      const headers = container.querySelectorAll('thead th')
+      expect(headers.length).toBe(3)
+      const keyWarnings = errorSpy.mock.calls.filter((call) =>
+        String(call[0] ?? '').includes('Encountered two children with the same key'),
+      )
+      expect(keyWarnings).toEqual([])
+    })
+  })
+
+  it('compiles with a typed generic row shape', () => {
+    // Compile-time smoke: `property` is constrained to `keyof T & string`.
+    interface Row {
+      name: string
+    }
+    const cfg = [{ label: 'Name', property: 'name' as const }]
+    const rows: Row[] = [{ name: 'Smoke' }]
+    render(<Table<Row> rows={rows} tableConfig={cfg} />)
+    expect(screen.getByText('Smoke')).toBeInTheDocument()
   })
 })
