@@ -178,39 +178,34 @@ export const selectShipment = (selectedShipment: any) => async (dispatch: AppDis
 }
 
 // Thunks: own the network call and error surfacing so reducers stay pure. The
-// pre-flight findIndex also gates out unknown order_nums — firing the API for a
-// shipment not in the list was both wasteful and silently lost on rejection.
-export const saveShipmentCoverage =
-  (dto: any) => async (dispatch: AppDispatch, getState: () => any) => {
-    const list = getState().shipments.shipmentList
-    const shipmentIndexInList = list.findIndex((s: any) => s.order_num === dto.order_num)
-    if (shipmentIndexInList === -1) return
-    dispatch(applyShipmentCoverage(dto))
-    try {
-      await API.saveShipmentCoverage(dto)
-    } catch (e: any) {
-      console.error(e)
-      const msg = e?.message ?? 'Failed to save shipment coverage'
-      dispatch(saveShipmentCoverageFailure(msg))
-      notifyError(msg)
-    }
+// API fires unconditionally because the Coverage / shadow editors live in
+// ShipmentDetail, where the user can be editing a shipment that isn't in the
+// current dashboard list. The pure apply-reducers internally skip the state
+// mutation when the dto's order_num isn't in shipmentList — that's the only
+// gate needed.
+export const saveShipmentCoverage = (dto: any) => async (dispatch: AppDispatch) => {
+  dispatch(applyShipmentCoverage(dto))
+  try {
+    await API.saveShipmentCoverage(dto)
+  } catch (e: any) {
+    console.error(e)
+    const msg = e?.message ?? 'Failed to save shipment coverage'
+    dispatch(saveShipmentCoverageFailure(msg))
+    notifyError(msg)
   }
+}
 
-export const patchShipmentShadow =
-  (dto: any) => async (dispatch: AppDispatch, getState: () => any) => {
-    const list = getState().shipments.shipmentList
-    const shipmentIndexInList = list.findIndex((s: any) => s.order_num === dto.order_num)
-    if (shipmentIndexInList === -1) return
-    dispatch(applyShipmentShadow(dto))
-    try {
-      await API.patchShipmentShadow(dto)
-    } catch (e: any) {
-      console.error(e)
-      const msg = e?.message ?? 'Failed to patch shipment shadow'
-      dispatch(patchShipmentShadowFailure(msg))
-      notifyError(msg)
-    }
+export const patchShipmentShadow = (dto: any) => async (dispatch: AppDispatch) => {
+  dispatch(applyShipmentShadow(dto))
+  try {
+    await API.patchShipmentShadow(dto)
+  } catch (e: any) {
+    console.error(e)
+    const msg = e?.message ?? 'Failed to patch shipment shadow'
+    dispatch(patchShipmentShadowFailure(msg))
+    notifyError(msg)
   }
+}
 
 // Applies a saved-filter response from the API by parsing its `query` field
 // and dispatching changeShipmentQuery. Reports malformed payloads to the user

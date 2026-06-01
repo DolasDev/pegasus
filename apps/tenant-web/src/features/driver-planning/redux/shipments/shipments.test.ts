@@ -35,7 +35,9 @@ import shipmentsReducer, {
   type ShipmentsState,
 } from './index'
 
-const makeStore = (preloadedShipments?: Partial<ShipmentsState>): EnhancedStore<{ shipments: ShipmentsState }> => {
+const makeStore = (
+  preloadedShipments?: Partial<ShipmentsState>,
+): EnhancedStore<{ shipments: ShipmentsState }> => {
   const base: ShipmentsState = {
     loading: false,
     loadingSelectedShipment: false,
@@ -236,11 +238,17 @@ describe('shipments thunk — saveShipmentCoverage', () => {
     expect(mockedAPI.saveShipmentCoverage).toHaveBeenCalledWith(dto)
   })
 
-  it('skips state update AND skips API call when order_num is unknown (Unit-08 #3)', async () => {
+  it('skips the list mutation but still fires the API when order_num is not in shipmentList', async () => {
+    // ShipmentDetail can save coverage for a shipment that isn't in the
+    // current dashboard list (e.g. user opened the detail page directly from
+    // a deep link). The apply-reducer no-ops the list write; the API still
+    // fires server-side.
+    mockedAPI.saveShipmentCoverage.mockResolvedValueOnce(undefined)
     const store = makeStore({ shipmentList: [{ order_num: 'A', packing_coverage: {} }] })
-    await store.dispatch(saveShipmentCoverage({ order_num: 'Z' }) as any)
+    const dto = { order_num: 'Z', new: true }
+    await store.dispatch(saveShipmentCoverage(dto) as any)
     expect(store.getState().shipments.shipmentList[0].packing_coverage).toEqual({})
-    expect(mockedAPI.saveShipmentCoverage).not.toHaveBeenCalled()
+    expect(mockedAPI.saveShipmentCoverage).toHaveBeenCalledWith(dto)
   })
 
   it('surfaces API rejection via notifyError and writes state.error', async () => {
@@ -288,11 +296,15 @@ describe('shipments thunk — patchShipmentShadow', () => {
     expect(mockedAPI.patchShipmentShadow).toHaveBeenCalledWith(dto)
   })
 
-  it('skips state update AND skips API call when order_num is unknown (Unit-08 #3)', async () => {
+  it('skips the list mutation but still fires the API when order_num is not in shipmentList', async () => {
+    // Same rationale as the saveShipmentCoverage case above — ShipmentDetail
+    // may legitimately patch a shadow for a shipment not in the dashboard list.
+    mockedAPI.patchShipmentShadow.mockResolvedValueOnce(undefined)
     const store = makeStore({ shipmentList: [{ order_num: 1, pegasus_shadow: {} }] })
-    await store.dispatch(patchShipmentShadow({ order_num: 999 }) as any)
+    const dto = { order_num: 999, weight: 5 }
+    await store.dispatch(patchShipmentShadow(dto) as any)
     expect(store.getState().shipments.shipmentList[0]).toEqual({ order_num: 1, pegasus_shadow: {} })
-    expect(mockedAPI.patchShipmentShadow).not.toHaveBeenCalled()
+    expect(mockedAPI.patchShipmentShadow).toHaveBeenCalledWith(dto)
   })
 
   it('surfaces API rejection via notifyError and writes state.error', async () => {
