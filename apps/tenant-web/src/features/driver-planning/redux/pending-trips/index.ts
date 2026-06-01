@@ -12,17 +12,19 @@ export interface TripPlanningState {
   error?: any
 }
 
-const initialState: TripPlanningState = {
-  trip: {
-    name: null,
-    driver: null,
-    shipments: [],
-    status: {
-      id: 1,
-      status_id: 1,
-      status: 'Pending',
-    },
+const BLANK_TRIP = {
+  name: null,
+  driver: null,
+  shipments: [],
+  status: {
+    id: 1,
+    status_id: 1,
+    status: 'Pending',
   },
+} as const
+
+const initialState: TripPlanningState = {
+  trip: { ...BLANK_TRIP },
   unsavedTrip: null,
   shipmentToTrips: {},
 }
@@ -133,6 +135,15 @@ const tripPlanningSlice = createSlice({
         }
       })
     },
+    setSelectedTripIndex(state, action: PayloadAction<number | undefined>) {
+      state.selectedTripIndex = action.payload
+    },
+    createNewTrip(state) {
+      state.trip = { ...BLANK_TRIP }
+      state.unsavedTrip = null
+      state.shipmentToTrips = {}
+      state.selectedTripIndex = undefined
+    },
   },
 })
 
@@ -148,13 +159,9 @@ export const {
   addActivity,
   setTrip,
   editActivity,
+  setSelectedTripIndex,
+  createNewTrip,
 } = tripPlanningSlice.actions
-
-// These actions are referenced in imports but not defined in reducers.
-// Export them as aliases to maintain compatibility.
-export const setSelectedTripIndex = tripPlanningSlice.actions.editTrip
-export const createNewTrip = tripPlanningSlice.actions.editTrip
-export const resetPage = tripPlanningSlice.actions.editTrip
 
 export const saveTrip = (trip: any) => async (dispatch: AppDispatch) => {
   dispatch(saveTripRequest())

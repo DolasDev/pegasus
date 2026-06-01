@@ -31,7 +31,6 @@ import reducer, {
   setTrip,
   setSelectedTripIndex,
   createNewTrip,
-  resetPage,
   saveTrip,
   initializeTripPage,
   cancelTrip,
@@ -595,30 +594,31 @@ describe('tripPlanning slice — reducer (pure)', () => {
     })
   })
 
-  // ----- alias action creators (current behavior — see bugs.md #1) ------------------
+  // ----- setSelectedTripIndex / createNewTrip ---------------------------------------
 
-  describe('aliased action creators (setSelectedTripIndex / createNewTrip / resetPage)', () => {
-    it('setSelectedTripIndex is currently aliased to editTrip and does NOT set selectedTripIndex', () => {
+  describe('setSelectedTripIndex / createNewTrip', () => {
+    it('setSelectedTripIndex writes the index to state.selectedTripIndex', () => {
       const state = makeInitialState()
       const next = reducer(state, setSelectedTripIndex(2))
-      // Confirms the bug: top-level selectedTripIndex stays undefined
+      expect(next.selectedTripIndex).toBe(2)
+      // trip is untouched
+      expect(next.trip).toEqual(state.trip)
+    })
+
+    it('createNewTrip resets trip, unsavedTrip, shipmentToTrips, and selectedTripIndex', () => {
+      const state = makeInitialState()
+      state.trip = { ...state.trip, name: 'leftover', driver: { id: 5 }, shipments: [{ order_num: '1' }] }
+      state.unsavedTrip = { name: 'unsaved' }
+      state.shipmentToTrips = { '1': { '0': 'leftover' } }
+      state.selectedTripIndex = 3
+      const next = reducer(state, createNewTrip())
+      expect(next.trip.name).toBeNull()
+      expect(next.trip.driver).toBeNull()
+      expect(next.trip.shipments).toEqual([])
+      expect(next.trip.status).toEqual({ id: 1, status_id: 1, status: 'Pending' })
+      expect(next.unsavedTrip).toBeNull()
+      expect(next.shipmentToTrips).toEqual({})
       expect(next.selectedTripIndex).toBeUndefined()
-    })
-
-    it('createNewTrip merges the payload into state.trip rather than resetting it', () => {
-      const state = makeInitialState()
-      state.trip = { ...state.trip, name: 'leftover', driver: { id: 5 } }
-      const next = reducer(state, createNewTrip({ name: 'New' }))
-      expect(next.trip.name).toBe('New')
-      // BUG: leftover driver is NOT cleared
-      expect(next.trip.driver).toEqual({ id: 5 })
-    })
-
-    it('resetPage with no payload is a silent no-op', () => {
-      const state = makeInitialState()
-      state.trip = { ...state.trip, name: 'still here' }
-      const next = reducer(state, resetPage(undefined as any))
-      expect(next.trip.name).toBe('still here')
     })
   })
 })
