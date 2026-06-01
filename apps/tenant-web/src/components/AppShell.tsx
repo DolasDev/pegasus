@@ -105,11 +105,39 @@ const NAV_ITEMS = [
   },
 ] as const
 
+// Every page under Settings is tenant-admin-only. The role guard on
+// `settingsLayout` in router.tsx is the authoritative enforcement; this list
+// just decides which entries the sidebar renders so non-admins don't see
+// dead-end links.
 const SETTINGS_NAV_ITEMS = [
-  { to: '/settings/users' as const, label: 'Users', icon: UserCog, exact: false },
-  { to: '/settings/sso' as const, label: 'SSO Providers', icon: ShieldCheck, exact: false },
-  { to: '/settings/developer' as const, label: 'Developer Settings', icon: Key, exact: false },
-  { to: '/settings/workflows' as const, label: 'Workflows', icon: Workflow, exact: false },
+  {
+    to: '/settings/users' as const,
+    label: 'Users',
+    icon: UserCog,
+    exact: false,
+    roles: ADMIN_ONLY,
+  },
+  {
+    to: '/settings/sso' as const,
+    label: 'SSO Providers',
+    icon: ShieldCheck,
+    exact: false,
+    roles: ADMIN_ONLY,
+  },
+  {
+    to: '/settings/developer' as const,
+    label: 'Developer Settings',
+    icon: Key,
+    exact: false,
+    roles: ADMIN_ONLY,
+  },
+  {
+    to: '/settings/workflows' as const,
+    label: 'Workflows',
+    icon: Workflow,
+    exact: false,
+    roles: ADMIN_ONLY,
+  },
 ] as const
 
 type NavItemProps = {
@@ -240,6 +268,9 @@ export function AppShell({ children }: AppShellProps) {
   const visibleNavItems = perms.isLoading
     ? []
     : NAV_ITEMS.filter((item) => item.roles === null || item.roles.some((r) => userRoles.has(r)))
+  const visibleSettingsItems = perms.isLoading
+    ? []
+    : SETTINGS_NAV_ITEMS.filter((item) => item.roles.some((r) => userRoles.has(r)))
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false
     return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'
@@ -325,22 +356,33 @@ export function AppShell({ children }: AppShellProps) {
               ),
             )}
           </nav>
-          {collapsed ? (
-            <div className="px-2 py-3">
-              <Separator />
-            </div>
-          ) : (
-            <div className="px-4 pb-1 pt-4">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Settings
-              </p>
-            </div>
+          {visibleSettingsItems.length > 0 && (
+            <>
+              {collapsed ? (
+                <div className="px-2 py-3">
+                  <Separator />
+                </div>
+              ) : (
+                <div className="px-4 pb-1 pt-4">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Settings
+                  </p>
+                </div>
+              )}
+              <nav className={cn('space-y-1', collapsed ? 'px-1' : 'px-2')}>
+                {visibleSettingsItems.map((item) => (
+                  <NavItem
+                    key={item.to}
+                    to={item.to}
+                    label={item.label}
+                    icon={item.icon}
+                    exact={item.exact}
+                    collapsed={collapsed}
+                  />
+                ))}
+              </nav>
+            </>
           )}
-          <nav className={cn('space-y-1', collapsed ? 'px-1' : 'px-2')}>
-            {SETTINGS_NAV_ITEMS.map((item) => (
-              <NavItem key={item.to} {...item} collapsed={collapsed} />
-            ))}
-          </nav>
         </ScrollArea>
       </aside>
 

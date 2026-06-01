@@ -7,6 +7,7 @@ import { LoginPage } from '@/routes/login'
 import { LoginCallbackPage } from '@/routes/login.callback'
 import { AuthLayout } from '@/routes/_auth'
 import { authGuard } from '@/auth/guard'
+import { requireRole } from '@/auth/role-guard'
 import { DashboardPage } from '@/routes/index'
 import { MovesPage } from '@/routes/moves.index'
 import { MoveDetailPage } from '@/routes/moves.$moveId'
@@ -137,26 +138,37 @@ const invoicesRoute = createRoute({
   component: InvoicesPage,
 })
 
-const ssoConfigRoute = createRoute({
+// ---------------------------------------------------------------------------
+// Settings subtree — pathless layout that restricts every `/settings/*` route
+// to tenant_admin. New settings pages should hang off `settingsLayout` so they
+// inherit the role guard without each route having to remember `beforeLoad`.
+// ---------------------------------------------------------------------------
+const settingsLayout = createRoute({
   getParentRoute: () => authLayout,
+  id: '_settings',
+  beforeLoad: requireRole('tenant_admin'),
+})
+
+const ssoConfigRoute = createRoute({
+  getParentRoute: () => settingsLayout,
   path: '/settings/sso',
   component: SsoConfigPage,
 })
 
 const usersRoute = createRoute({
-  getParentRoute: () => authLayout,
+  getParentRoute: () => settingsLayout,
   path: '/settings/users',
   component: UsersPage,
 })
 
 const developerSettingsRoute = createRoute({
-  getParentRoute: () => authLayout,
+  getParentRoute: () => settingsLayout,
   path: '/settings/developer',
   component: DeveloperSettingsPage,
 })
 
 const workflowsSettingsRoute = createRoute({
-  getParentRoute: () => authLayout,
+  getParentRoute: () => settingsLayout,
   path: '/settings/workflows',
   component: WorkflowsSettingsPage,
 })
@@ -221,10 +233,12 @@ const routeTree = rootRoute.addChildren([
       dpTripDetailRoute,
       dpShipmentsRoute,
     ]),
-    ssoConfigRoute,
-    usersRoute,
-    developerSettingsRoute,
-    workflowsSettingsRoute,
+    settingsLayout.addChildren([
+      ssoConfigRoute,
+      usersRoute,
+      developerSettingsRoute,
+      workflowsSettingsRoute,
+    ]),
   ]),
 ])
 
