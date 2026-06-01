@@ -5,7 +5,7 @@ import { clsx } from 'clsx'
 import { CircularButton as CircularButtonTyped } from '../../../../components/Button'
 import { Popover as PopoverTyped } from '../../../../components/Popover'
 import { ActivityType } from '../../../../utils/constants/activity-type'
-import { addActivity as addActivityAction } from '../../../../redux/pending-trips'
+import { addActivity as addActivityAction } from '../../../../redux/trip-planning'
 import styles from './AddActivity.module.css'
 
 const Popover = PopoverTyped as any

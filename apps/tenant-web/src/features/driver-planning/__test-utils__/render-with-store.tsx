@@ -4,7 +4,7 @@ import { configureStore, type Reducer } from '@reduxjs/toolkit'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, type RenderOptions, type RenderResult } from '@testing-library/react'
 
-import pendingTripsReducer from '../redux/pending-trips'
+import tripPlanningReducer from '../redux/trip-planning'
 import shipmentReducer from '../redux/shipments'
 import commonReducer from '../redux/common'
 import tripReducer from '../redux/trips'
@@ -14,7 +14,7 @@ import { SnackbarProvider } from '../components/Snackbar/SnackbarProvider'
 import { ConfirmProvider } from '../components/ConfirmDialog'
 
 const reducers = {
-  tripPlanning: pendingTripsReducer,
+  tripPlanning: tripPlanningReducer,
   shipments: shipmentReducer,
   common: commonReducer,
   trips: tripReducer,
@@ -68,7 +68,9 @@ export interface RenderWithStoreOptions extends Omit<RenderOptions, 'wrapper'> {
   queryClient?: QueryClient
 }
 
-export function makeStore(opts: PartialTestRootState | { common?: PartialTestRootState['common'] } = {}): TestStore {
+export function makeStore(
+  opts: PartialTestRootState | { common?: PartialTestRootState['common'] } = {},
+): TestStore {
   return makeTestStore(opts as PartialTestRootState)
 }
 
@@ -108,7 +110,7 @@ export function renderWithStore(
 ): RenderResult & {
   store: TestStore
   queryClient: QueryClient
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   dispatched: any[]
 } {
   const mergedSlices: PartialTestRootState = {
@@ -123,7 +125,6 @@ export function renderWithStore(
   const testStore = store ?? makeTestStore(mergedSlices)
   const qc = queryClient ?? makeTestQueryClient()
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const dispatched: any[] = []
   const origDispatch = testStore.dispatch
   ;(testStore as { dispatch: typeof origDispatch }).dispatch = ((action: unknown) => {

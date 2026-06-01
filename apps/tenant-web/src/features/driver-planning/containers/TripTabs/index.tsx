@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux'
 import { clsx as cn } from 'clsx'
 
 import styles from './TripTabs.module.css'
-import { createNewTrip, setSelectedTripIndex } from '@/features/driver-planning/redux/pending-trips'
+import { createNewTrip, setSelectedTripIndex } from '@/features/driver-planning/redux/trip-planning'
 import { Button } from '@/features/driver-planning/components/Button'
 import { useAppDispatch } from '../../redux/hooks'
 import type { RootState } from '../../redux/store'

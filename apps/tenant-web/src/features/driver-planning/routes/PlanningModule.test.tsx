@@ -36,11 +36,11 @@ vi.mock('../containers/ShipmentDetail', () => ({
   ShipmentDetail: () => <div data-testid="mock-shipment-detail" />,
 }))
 
-// pending-trips slice exports `initializeTripPage` as a thunk; replace with a
+// trip-planning slice exports `initializeTripPage` as a thunk; replace with a
 // spy thunk-factory so we can assert on the args the module hands it.
 const initializeTripPageMock = vi.hoisted(() => vi.fn(() => () => Promise.resolve()))
-vi.mock('@/features/driver-planning/redux/pending-trips', async () => {
-  const actual = await vi.importActual<any>('@/features/driver-planning/redux/pending-trips')
+vi.mock('@/features/driver-planning/redux/trip-planning', async () => {
+  const actual = await vi.importActual<any>('@/features/driver-planning/redux/trip-planning')
   return {
     ...actual,
     initializeTripPage: initializeTripPageMock,
