@@ -105,6 +105,12 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
     expect(executeSqlMock).toHaveBeenCalledTimes(3)
     expect(body.meta).toEqual({ count: 1 })
 
+    // Planning query (round trip 1) filters to active, real drivers — kept in
+    // lockstep with the /drivers planning dropdown.
+    const planningSql = executeSqlMock.mock.calls[0]![1] as string
+    expect(planningSql).toContain("d.ACTIVE = 'Y'")
+    expect(planningSql).toContain('d.DRIVER_ID NOT IN (99994, 99995, 99996, 99997, 99998, 99999)')
+
     const row = body.data[0]!
     expect(row.driverId).toBe(1)
     expect(row.driverName).toBe('Alice Hauler')

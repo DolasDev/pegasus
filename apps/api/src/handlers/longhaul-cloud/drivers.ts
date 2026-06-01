@@ -23,6 +23,7 @@ import type { AppEnv } from '../../types'
 import { db } from '../../db'
 import { executeSql } from '../../lib/mssql-executor-client'
 import { logger } from '../../lib/logger'
+import { longhaulDriverFilter } from './driver-filter'
 
 const DRIVERS_SQL = `SELECT
   DRIVER_ID AS driver_id,
@@ -30,7 +31,8 @@ const DRIVERS_SQL = `SELECT
   AGENT_CODE AS agent_code,
   ACTIVE AS active,
   TYPE AS type
-FROM v_longhaul_drivers`
+FROM v_longhaul_drivers
+WHERE ${longhaulDriverFilter()}`
 
 export const longhaulDriversHandler: Handler<AppEnv> = async (c) => {
   const tenantId = c.get('tenantId')

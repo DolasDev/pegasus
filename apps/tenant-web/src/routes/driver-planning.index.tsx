@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { EmptyState } from '@/components/EmptyState'
 import {
   Table,
@@ -10,9 +11,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Check, X } from 'lucide-react'
 import {
   driverPlanningQueryOptions,
   useUpdateConfirmedAvailability,
@@ -20,8 +19,12 @@ import {
   type DriverPlanningRow,
 } from '@/api/queries/driver-planning'
 import { formatDateShort } from '@/features/driver-planning/utils/format-date'
-import { sameDayCheck } from '@/features/driver-planning/utils/date'
 import { HoverToolTip } from '@/features/driver-planning/containers/ToolTips'
+
+// Driver phone numbers are not yet exposed by the driver-planning payload, so
+// the phone/SMS quick-actions fall back to a placeholder. Replace with
+// `driver.phone` once the API surfaces it (see plan follow-up).
+const PLACEHOLDER_PHONE = '+12345678910'
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '-'
@@ -46,15 +49,14 @@ interface EditState {
 // ---------------------------------------------------------------------------
 // Per-delivery row on the driver's availability card.
 //
-// Each row renders:
-//   [start] [estimated-or-actual] [end], <STATE> <City> <confidence-icon>
-//
-// Collapsing: when the estimated/actual date matches the spread's start or
-// end (calendar-day compare via sameDayCheck), the duplicate bound is omitted
-// so the row reads cleanly. The estimated/actual date itself is bolded and
+// Rendered as a borderless table (one per driver) so the columns line up across
+// every delivery row. Column order: STATE | spread-start | effective | spread-end
+// | City | confidence-icon. The effective (actual/estimated) date is bolded and
 // color-coded to the confidence tier; the matching Font Awesome glyph mirrors
 // the ActivityGantt convention (truck = actual, flag = confirmed, check =
-// committed).
+// committed). All three date slots are ALWAYS rendered (no collapsing) so the
+// spread reads consistently; when there is no actual/estimated date the middle
+// slot shows phone + SMS quick-actions instead.
 // ---------------------------------------------------------------------------
 
 interface ConfidenceTier {
@@ -95,105 +97,144 @@ function titleCaseCity(value: string | null): string {
 function DeliveryLine({ delivery }: { delivery: Delivery }) {
   const tier = getConfidenceTier(delivery)
   const effective = delivery.actualDate ?? delivery.estimatedDate ?? null
-  const start = delivery.plannedStart
-  const end = delivery.plannedEnd
 
-  const startStr = start ? formatDateShort(start) : ''
-  const endStr = end ? formatDateShort(end) : ''
+  const startStr = delivery.plannedStart ? formatDateShort(delivery.plannedStart) : ''
+  const endStr = delivery.plannedEnd ? formatDateShort(delivery.plannedEnd) : ''
   const effStr = effective ? formatDateShort(effective) : ''
-
-  const collapseStart = effective != null && sameDayCheck(effective, start)
-  const collapseEnd = effective != null && sameDayCheck(effective, end)
   const boldClass = `font-semibold ${tier.colorClass}`.trim()
 
-  // Build the date segment depending on collapsing.
-  let dateSegment: React.ReactNode
-  if (!effective) {
-    // No estimated/actual yet — render the bare spread.
-    if (startStr && endStr) {
-      dateSegment = `${startStr} – ${endStr}`
-    } else {
-      dateSegment = startStr || endStr || '-'
-    }
-  } else if (collapseStart && collapseEnd) {
-    dateSegment = (
-      <span className={boldClass} data-testid="delivery-effective">
-        {effStr}
-      </span>
-    )
-  } else if (collapseStart) {
-    dateSegment = (
-      <>
-        <span className={boldClass} data-testid="delivery-effective">
-          {effStr}
-        </span>
-        {' – '}
-        {endStr}
-      </>
-    )
-  } else if (collapseEnd) {
-    dateSegment = (
-      <>
-        {startStr}
-        {' – '}
-        <span className={boldClass} data-testid="delivery-effective">
-          {effStr}
-        </span>
-      </>
-    )
-  } else {
-    dateSegment = (
-      <>
-        {startStr}
-        {' – '}
-        <span className={boldClass} data-testid="delivery-effective">
-          {effStr}
-        </span>
-        {' – '}
-        {endStr}
-      </>
-    )
-  }
-
   return (
-    <li
-      className="flex items-center gap-1.5 text-xs whitespace-nowrap"
+    <tr
+      className="whitespace-nowrap align-top"
       data-testid="delivery-line"
       data-activity-id={delivery.activityId}
     >
-      <span>{dateSegment}</span>
-      {(delivery.state || delivery.city) && (
-        <span>
-          , {delivery.state && <b>{delivery.state}</b>}
-          {delivery.state && delivery.city ? ' ' : ''}
-          {titleCaseCity(delivery.city)}
-        </span>
-      )}
-      {tier.icon && (
-        <HoverToolTip content={tier.label} direction="top">
-          <i
-            className={`fas ${tier.icon} ${tier.colorClass}`}
-            data-testid="delivery-icon"
-            data-icon={tier.icon}
-            aria-label={tier.label}
-          />
-        </HoverToolTip>
-      )}
-    </li>
+      <td className="pr-1.5">{delivery.state && <b>{delivery.state}</b>}</td>
+      <td className="pr-1.5 text-right tabular-nums">{startStr}</td>
+      <td className="px-1.5 text-center tabular-nums">
+        {effective ? (
+          <span className={boldClass} data-testid="delivery-effective">
+            {effStr}
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5">
+            <a
+              href={`tel:${PLACEHOLDER_PHONE}`}
+              aria-label="Call driver"
+              data-testid="delivery-call"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <i className="fas fa-phone" />
+            </a>
+            <a
+              href={`sms:${PLACEHOLDER_PHONE}`}
+              aria-label="Text driver"
+              data-testid="delivery-sms"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <i className="fas fa-comment-sms" />
+            </a>
+          </span>
+        )}
+      </td>
+      <td className="pl-1.5 tabular-nums">{endStr}</td>
+      <td className="pl-1.5">{titleCaseCity(delivery.city)}</td>
+      <td className="pl-1.5">
+        {tier.icon && (
+          <HoverToolTip content={tier.label} direction="top">
+            <i
+              className={`fas ${tier.icon} ${tier.colorClass}`}
+              data-testid="delivery-icon"
+              data-icon={tier.icon}
+              aria-label={tier.label}
+            />
+          </HoverToolTip>
+        )}
+      </td>
+    </tr>
   )
 }
 
+// ---------------------------------------------------------------------------
+// Ready date/location best-guess.
+//
+// When a driver has no confirmed availability we estimate when/where they free
+// up from their LAST delivery (deliveries arrive sorted by effective date).
+// The tier drives the styling: actual = no formatting, estimated = grey, and
+// spread-only = grey + italic (least certain).
+// ---------------------------------------------------------------------------
+
+type ReadyTier = 'confirmed' | 'actual' | 'estimated' | 'spread' | 'none'
+
+interface ReadyGuess {
+  kind: ReadyTier
+  date: string | null
+  location: string | null
+  className: string
+}
+
+function getReadyGuess(driver: DriverPlanningRow): ReadyGuess {
+  const last = driver.deliveries[driver.deliveries.length - 1]
+  const location =
+    last?.city && last?.state
+      ? `${titleCaseCity(last.city)}, ${last.state}`
+      : last?.city
+        ? titleCaseCity(last.city)
+        : (last?.state ?? null)
+
+  if (last?.actualDate) {
+    return { kind: 'actual', date: last.actualDate, location, className: '' }
+  }
+  if (last?.estimatedDate) {
+    return {
+      kind: 'estimated',
+      date: last.estimatedDate,
+      location,
+      className: 'text-muted-foreground',
+    }
+  }
+  const spread = last?.plannedEnd ?? last?.plannedStart ?? null
+  if (spread) {
+    return { kind: 'spread', date: spread, location, className: 'text-muted-foreground italic' }
+  }
+  return { kind: 'none', date: null, location, className: 'text-muted-foreground' }
+}
+
+type EditField = 'date' | 'location' | 'notes'
+
+const FIELD_KEY: Record<EditField, keyof EditState> = {
+  date: 'confirmedDate',
+  location: 'confirmedLocation',
+  notes: 'notes',
+}
+
 function DriverRow({ driver }: { driver: DriverPlanningRow }) {
-  const [editing, setEditing] = useState(false)
-  const [form, setForm] = useState<EditState>({
+  // The form is the working copy across all three click-to-edit fields; it is
+  // seeded once and never blindly reset, so editing one field never discards a
+  // pending edit on another. Display (non-editing) always reads server state
+  // off `driver`, so it reflects the latest persisted values.
+  const [editingField, setEditingField] = useState<EditField | null>(null)
+  const [form, setForm] = useState<EditState>(() => ({
     confirmedDate: toInputDate(driver.confirmedAvailableDate),
     confirmedLocation: driver.confirmedAvailableLocation ?? '',
     notes: driver.confirmedNotes ?? '',
-  })
+  }))
+  // Value of the field at the start of the current edit session, for Escape.
+  const [snapshot, setSnapshot] = useState('')
+  // Set just before an Escape-driven unmount so the resulting blur skips commit.
+  const skipBlur = useRef(false)
 
   const mutation = useUpdateConfirmedAvailability()
+  const guess = getReadyGuess(driver)
 
-  function handleSave() {
+  function startEdit(field: EditField) {
+    setSnapshot(form[FIELD_KEY[field]])
+    setEditingField(field)
+  }
+
+  function commit() {
     mutation.mutate(
       {
         driverId: driver.driverId,
@@ -201,19 +242,47 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
         confirmedLocation: form.confirmedLocation || null,
         notes: form.notes || null,
       },
-      {
-        onSuccess: () => setEditing(false),
-      },
+      { onSuccess: () => setEditingField(null) },
     )
   }
 
-  function handleCancel() {
-    setForm({
-      confirmedDate: toInputDate(driver.confirmedAvailableDate),
-      confirmedLocation: driver.confirmedAvailableLocation ?? '',
-      notes: driver.confirmedNotes ?? '',
-    })
-    setEditing(false)
+  function handleBlur() {
+    if (skipBlur.current) {
+      skipBlur.current = false
+      return
+    }
+    commit()
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      e.currentTarget.blur() // → handleBlur → commit
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      if (editingField) setForm((f) => ({ ...f, [FIELD_KEY[editingField]]: snapshot }))
+      skipBlur.current = true
+      setEditingField(null)
+    }
+  }
+
+  function fieldInput(
+    field: EditField,
+    extra: { type?: string; placeholder?: string; className?: string },
+  ) {
+    return (
+      <Input
+        type={extra.type ?? 'text'}
+        autoFocus
+        data-testid={`confirmed-${field}-input`}
+        value={form[FIELD_KEY[field]]}
+        placeholder={extra.placeholder}
+        onChange={(e) => setForm((f) => ({ ...f, [FIELD_KEY[field]]: e.target.value }))}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        className={extra.className}
+      />
+    )
   }
 
   return (
@@ -221,114 +290,100 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
       <TableCell className="font-medium" data-testid="driver-name">
         {driver.driverName}
       </TableCell>
-      <TableCell data-testid="driver-current-trip">
-        {driver.currentTripId ? (
-          <Badge variant="secondary">
-            #{driver.currentTripId}
-            {driver.currentTripTitle ? ` - ${driver.currentTripTitle}` : ''}
-          </Badge>
+
+      {/* Ready Date */}
+      <TableCell>
+        {editingField === 'date' ? (
+          fieldInput('date', { type: 'date', className: 'w-40' })
+        ) : driver.confirmedAvailableDate ? (
+          <span
+            className="cursor-pointer hover:underline inline-flex items-center gap-1 font-semibold"
+            data-testid="ready-date-cell"
+            data-ready-tier="confirmed"
+            onClick={() => startEdit('date')}
+          >
+            <i className="fas fa-calendar-check" />
+            {formatDate(driver.confirmedAvailableDate)}
+          </span>
         ) : (
-          <span className="text-muted-foreground">None</span>
+          <span
+            className={`cursor-pointer hover:underline ${guess.className}`}
+            data-testid="ready-date-cell"
+            data-ready-tier={guess.kind}
+            onClick={() => startEdit('date')}
+          >
+            {guess.date ? formatDate(guess.date) : '-'}
+          </span>
         )}
       </TableCell>
+
+      {/* Ready Location */}
+      <TableCell>
+        {editingField === 'location' ? (
+          fieldInput('location', { placeholder: 'City, State', className: 'w-44' })
+        ) : driver.confirmedAvailableLocation ? (
+          <span
+            className="cursor-pointer hover:underline font-semibold"
+            data-testid="ready-location-cell"
+            onClick={() => startEdit('location')}
+          >
+            {driver.confirmedAvailableLocation}
+          </span>
+        ) : (
+          <span
+            className={`cursor-pointer hover:underline ${guess.className}`}
+            data-testid="ready-location-cell"
+            onClick={() => startEdit('location')}
+          >
+            {guess.location ?? '-'}
+          </span>
+        )}
+      </TableCell>
+
+      {/* Deliveries */}
       <TableCell data-testid="driver-deliveries">
         {driver.deliveries.length === 0 ? (
           <span className="text-muted-foreground">-</span>
         ) : (
-          <ul className="space-y-0.5">
-            {driver.deliveries.map((d) => (
-              <DeliveryLine key={d.activityId} delivery={d} />
-            ))}
-          </ul>
+          <table className="border-separate border-spacing-x-1 border-spacing-y-0.5 text-xs">
+            <tbody>
+              {driver.deliveries.map((d) => (
+                <DeliveryLine key={d.activityId} delivery={d} />
+              ))}
+            </tbody>
+          </table>
         )}
       </TableCell>
+
+      {/* Notes */}
       <TableCell>
-        {editing ? (
-          <Input
-            type="date"
-            data-testid="confirmed-date-input"
-            value={form.confirmedDate}
-            onChange={(e) => setForm((f) => ({ ...f, confirmedDate: e.target.value }))}
-            className="w-40"
-          />
-        ) : (
-          <span
-            className="cursor-pointer hover:underline"
-            data-testid="confirmed-date-cell"
-            onClick={() => setEditing(true)}
-          >
-            {driver.confirmedAvailableDate ? formatDate(driver.confirmedAvailableDate) : '-'}
-          </span>
-        )}
-      </TableCell>
-      <TableCell>
-        {editing ? (
-          <Input
-            type="text"
-            data-testid="confirmed-location-input"
-            value={form.confirmedLocation}
-            onChange={(e) => setForm((f) => ({ ...f, confirmedLocation: e.target.value }))}
-            placeholder="City, State"
-            className="w-44"
-          />
-        ) : (
-          <span className="cursor-pointer hover:underline" onClick={() => setEditing(true)}>
-            {driver.confirmedAvailableLocation ?? '-'}
-          </span>
-        )}
-      </TableCell>
-      <TableCell>
-        {editing ? (
-          <Input
-            type="text"
-            data-testid="confirmed-notes-input"
-            value={form.notes}
-            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-            placeholder="Notes"
-            className="w-44"
-          />
+        {editingField === 'notes' ? (
+          fieldInput('notes', { placeholder: 'Notes', className: 'w-44' })
         ) : (
           <span
             className="cursor-pointer hover:underline text-muted-foreground"
-            onClick={() => setEditing(true)}
+            data-testid="notes-cell"
+            onClick={() => startEdit('notes')}
           >
             {driver.confirmedNotes || '-'}
           </span>
         )}
       </TableCell>
-      <TableCell>
-        {editing ? (
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              data-testid="confirmed-save"
-              onClick={handleSave}
-              disabled={mutation.isPending}
-            >
-              <Check className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              data-testid="confirmed-cancel"
-              onClick={handleCancel}
-              disabled={mutation.isPending}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        ) : (
-          <Button
-            variant="ghost"
-            size="sm"
-            data-testid="confirmed-edit"
-            onClick={() => setEditing(true)}
+
+      {/* Current Trip — navigates to the trip screen */}
+      <TableCell data-testid="driver-current-trip">
+        {driver.currentTripId ? (
+          <Link
+            to="/driver-planning/trips/$tripId"
+            params={{ tripId: String(driver.currentTripId) }}
+            data-testid="current-trip-link"
           >
-            Edit
-          </Button>
+            <Badge variant="secondary" className="cursor-pointer hover:underline">
+              {driver.currentTripTitle ?? 'View trip'}
+            </Badge>
+          </Link>
+        ) : (
+          <span className="text-muted-foreground">None</span>
         )}
       </TableCell>
     </TableRow>
@@ -372,19 +427,18 @@ export function DriverPlanningPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Driver</TableHead>
-                  <TableHead>Current Trip</TableHead>
+                  <TableHead>Ready Date</TableHead>
+                  <TableHead>Ready Location</TableHead>
                   <TableHead>Deliveries</TableHead>
-                  <TableHead>Confirmed Date</TableHead>
-                  <TableHead>Confirmed Location</TableHead>
                   <TableHead>Notes</TableHead>
-                  <TableHead className="w-20" />
+                  <TableHead>Current Trip</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={6}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       No matching drivers.

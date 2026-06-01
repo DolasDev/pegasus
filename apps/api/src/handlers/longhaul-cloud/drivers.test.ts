@@ -65,6 +65,10 @@ describe('GET longhaul/drivers (cloud-direct)', () => {
       'Server=a,1433',
       expect.stringContaining('DRIVER_ID AS driver_id'),
     )
+    // Active, real drivers only — kept in lockstep with /driver-planning.
+    const sql = executeSqlMock.mock.calls[0]![1] as string
+    expect(sql).toContain("ACTIVE = 'Y'")
+    expect(sql).toContain('DRIVER_ID NOT IN (99994, 99995, 99996, 99997, 99998, 99999)')
   })
 
   it('returns 422 MSSQL_NOT_CONFIGURED when the tenant has no connection string', async () => {

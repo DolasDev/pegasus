@@ -30,11 +30,15 @@ import type { AppEnv } from '../../types'
 import { db } from '../../db'
 import { executeSql } from '../../lib/mssql-executor-client'
 import { logger } from '../../lib/logger'
+import { longhaulDriverFilter } from './driver-filter'
 
 // One round trip: every driver and its latest non-cancelled trip.
 // v_longhaul_drivers exposes UPPERCASE columns on the Dolios SQL Server — alias
 // them to lowercase exactly as the on-prem `lowercaseRowKeys` normalisation
 // does, so downstream code sees `driver_id` etc.
+//
+// The WHERE clause keeps this list in lockstep with the Planning driver
+// dropdown (see ./driver-filter) — active, real drivers only.
 const PLANNING_SQL = `
 SELECT
   d.DRIVER_ID   AS driver_id,
@@ -56,6 +60,7 @@ OUTER APPLY (
     AND ISNULL(tm.internal_status, '') <> 'canceled'
   ORDER BY COALESCE(tm.planned_last_day, tm.created_date) DESC
 ) t
+WHERE ${longhaulDriverFilter('d')}
 `
 
 // Second round trip — every RDEL (delivery) activity for the latest-trip set.

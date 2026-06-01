@@ -6,9 +6,13 @@ import { expect } from '../../../../fixtures/qa'
 // Source: apps/tenant-web/src/routes/driver-planning.index.tsx
 //
 // Mirrors the legacy "driver availability / planning overview" surface: a table
-// of drivers (current trip, estimated availability) with inline-editable
-// "confirmed" date / location / notes that round-trip to the on-prem MSSQL DB
-// via PATCH /api/v1/longhaul/driver-planning/:driverId.
+// of drivers (current trip, ready date/location) with click-to-edit "ready"
+// date / location / notes that round-trip to the on-prem MSSQL DB via
+// PATCH /api/v1/longhaul/driver-planning/:driverId.
+//
+// Editing model: one field at a time. Clicking a cell swaps it for an input;
+// blur or Enter commits (fires the PATCH), Escape reverts. There is no Edit
+// button and no save/cancel buttons.
 // ---------------------------------------------------------------------------
 
 export class AvailabilityPage {
@@ -47,38 +51,39 @@ export class AvailabilityPage {
     return id
   }
 
-  // -- inline edit (within a given row) -------------------------------------
+  // -- click-to-edit (within a given row) -----------------------------------
 
-  async startEdit(row: Locator): Promise<void> {
-    // Either the dedicated "Edit" button or clicking the confirmed-date cell
-    // toggles the row into edit mode.
-    const editBtn = row.getByTestId('confirmed-edit')
-    if (await editBtn.isVisible().catch(() => false)) {
-      await editBtn.click()
-    } else {
-      await row.getByTestId('confirmed-date-cell').click()
-    }
-    await expect(row.getByTestId('confirmed-date-input')).toBeVisible()
+  private static readonly CELL_TESTID: Record<'date' | 'location' | 'notes', string> = {
+    date: 'ready-date-cell',
+    location: 'ready-location-cell',
+    notes: 'notes-cell',
   }
 
+  /**
+   * Click a field's cell, type `value`, then either commit (Enter) or revert
+   * (Escape). The input is gone afterwards in both cases.
+   */
+  async editField(
+    row: Locator,
+    field: 'date' | 'location' | 'notes',
+    value: string,
+    commit: 'enter' | 'escape' = 'enter',
+  ): Promise<void> {
+    await row.getByTestId(AvailabilityPage.CELL_TESTID[field]).click()
+    const input = row.getByTestId(`confirmed-${field}-input`)
+    await expect(input).toBeVisible()
+    await input.fill(value)
+    await input.press(commit === 'enter' ? 'Enter' : 'Escape')
+    await expect(input).toBeHidden()
+  }
+
+  /** Set any provided ready fields, committing each (one PATCH per field). */
   async setConfirmed(
     row: Locator,
     values: { date?: string; location?: string; notes?: string },
   ): Promise<void> {
-    if (values.date !== undefined) await row.getByTestId('confirmed-date-input').fill(values.date)
-    if (values.location !== undefined)
-      await row.getByTestId('confirmed-location-input').fill(values.location)
-    if (values.notes !== undefined)
-      await row.getByTestId('confirmed-notes-input').fill(values.notes)
-  }
-
-  async saveEdit(row: Locator): Promise<void> {
-    await row.getByTestId('confirmed-save').click()
-    await expect(row.getByTestId('confirmed-date-input')).toBeHidden()
-  }
-
-  async cancelEdit(row: Locator): Promise<void> {
-    await row.getByTestId('confirmed-cancel').click()
-    await expect(row.getByTestId('confirmed-date-input')).toBeHidden()
+    if (values.date !== undefined) await this.editField(row, 'date', values.date)
+    if (values.location !== undefined) await this.editField(row, 'location', values.location)
+    if (values.notes !== undefined) await this.editField(row, 'notes', values.notes)
   }
 }

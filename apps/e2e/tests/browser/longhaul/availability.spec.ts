@@ -49,26 +49,32 @@ test.describe('Availability tab', () => {
     })
     for (const col of [
       'Driver',
-      'Current Trip',
-      'Est. Available Date',
-      'Est. Available Location',
-      'Confirmed Date',
-      'Confirmed Location',
+      'Ready Date',
+      'Ready Location',
+      'Deliveries',
       'Notes',
+      'Current Trip',
     ]) {
       await expect(page.getByRole('columnheader', { name: col })).toBeVisible()
     }
     expect(await av.rowCount()).toBeGreaterThan(0)
   })
 
-  test('current-trip cell shows a badge for assigned drivers, "None" otherwise', async ({
+  test('current-trip cell links to the trip screen for assigned drivers, "None" otherwise', async ({
     page,
   }) => {
     const av = new AvailabilityPage(page)
     test.skip((await av.rowCount()) < 1, 'no drivers in the QA DB')
     const cell = av.rows.first().getByTestId('driver-current-trip')
-    // Either a "#<id>" badge or the literal "None" — both are valid renders.
-    await expect(cell).toContainText(/#\d+|None/)
+    const link = cell.getByTestId('current-trip-link')
+    // Either a trip link (title only, navigates to the trip screen — NO "#id")
+    // or the literal "None".
+    if (await link.isVisible().catch(() => false)) {
+      await expect(link).toHaveAttribute('href', /\/driver-planning\/trips\/\d+/)
+      await expect(cell).not.toContainText('#')
+    } else {
+      await expect(cell).toContainText('None')
+    }
   })
 
   test('filtering by driver name narrows the rows and clears back', async ({ page }) => {
@@ -105,11 +111,10 @@ test.describe('Availability tab', () => {
     const location = `E2E City, ${String.fromCharCode(65 + (today.getDate() % 26))}A`
     const notes = `e2e-${Date.now()}`
 
-    await av.startEdit(row)
+    // Click-to-edit, one field at a time (Enter commits each).
     await av.setConfirmed(row, { date, location, notes })
-    await av.saveEdit(row)
 
-    // Optimistic update reflected in the row…
+    // Persisted values reflected in the row…
     await expect(row).toContainText(location)
     await expect(row).toContainText(notes)
 
@@ -127,9 +132,8 @@ test.describe('Availability tab', () => {
 
     const row = av.rows.first()
     const before = (await row.innerText()).trim()
-    await av.startEdit(row)
-    await av.setConfirmed(row, { notes: 'should-not-be-saved' })
-    await av.cancelEdit(row)
+    // Type into Notes then Escape — the edit must be discarded (no PATCH).
+    await av.editField(row, 'notes', 'should-not-be-saved', 'escape')
     await expect(row).not.toContainText('should-not-be-saved')
     expect((await row.innerText()).trim()).toBe(before)
   })
