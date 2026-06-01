@@ -35,7 +35,9 @@ import shipmentsReducer, {
   type ShipmentsState,
 } from './index'
 
-const makeStore = (preloadedShipments?: Partial<ShipmentsState>): EnhancedStore<{ shipments: ShipmentsState }> => {
+const makeStore = (
+  preloadedShipments?: Partial<ShipmentsState>,
+): EnhancedStore<{ shipments: ShipmentsState }> => {
   const base: ShipmentsState = {
     loading: false,
     loadingSelectedShipment: false,
@@ -156,17 +158,36 @@ describe('shipments slice — query reducers', () => {
     expect(store.getState().shipments.query.filters).toEqual({ a: 1 })
   })
 
-  it('changeShipmentQuery overwrites nested keys (shallow merge)', () => {
-    const store = makeStore({ query: { searchTerm: '', filters: { a: 1 }, sortBy: {} } })
-    store.dispatch(changeShipmentQuery({ filters: { b: 2 } }))
-    // shallow merge — filters is replaced, not deep-merged
-    expect(store.getState().shipments.query.filters).toEqual({ b: 2 })
+  it('changeShipmentQuery deep-merges filters (preserves existing filter keys)', () => {
+    const store = makeStore({
+      query: {
+        searchTerm: '',
+        filters: { Is_Trip_Planning: true, load_date: ['2026-01-01', '2026-12-31'] },
+        sortBy: {},
+      },
+    })
+    store.dispatch(changeShipmentQuery({ filters: { newFilter: 1 } }))
+    expect(store.getState().shipments.query.filters).toEqual({
+      Is_Trip_Planning: true,
+      load_date: ['2026-01-01', '2026-12-31'],
+      newFilter: 1,
+    })
+  })
+
+  it('changeShipmentQuery without a filters payload preserves existing filters', () => {
+    const store = makeStore({
+      query: { searchTerm: '', filters: { a: 1, b: 2 }, sortBy: {} },
+    })
+    store.dispatch(changeShipmentQuery({ searchTerm: 'abc' }))
+    expect(store.getState().shipments.query.searchTerm).toBe('abc')
+    expect(store.getState().shipments.query.filters).toEqual({ a: 1, b: 2 })
   })
 
   it('changeShipmentQuery accepts empty payload', () => {
-    const store = makeStore({ query: { searchTerm: 'keep', filters: {}, sortBy: {} } })
+    const store = makeStore({ query: { searchTerm: 'keep', filters: { a: 1 }, sortBy: {} } })
     store.dispatch(changeShipmentQuery({}))
     expect(store.getState().shipments.query.searchTerm).toBe('keep')
+    expect(store.getState().shipments.query.filters).toEqual({ a: 1 })
   })
 
   it('resetToDefaultShipmentQuery resets to a fresh default query', () => {
@@ -190,8 +211,9 @@ describe('shipments slice — query reducers', () => {
   })
 })
 
-describe('shipments slice — saveShipmentCoverage reducer', () => {
-  it('updates packing_coverage on the matching shipment in the list', () => {
+describe('shipments thunk — saveShipmentCoverage', () => {
+  it('updates packing_coverage on the matching shipment and calls the API', async () => {
+    mockedAPI.saveShipmentCoverage.mockResolvedValueOnce(undefined)
     const store = makeStore({
       shipmentList: [
         { order_num: 'A', packing_coverage: { old: true } },
@@ -199,70 +221,109 @@ describe('shipments slice — saveShipmentCoverage reducer', () => {
       ],
     })
     const dto = { order_num: 'B', new: true }
-    store.dispatch(saveShipmentCoverage(dto))
+    await store.dispatch(saveShipmentCoverage(dto) as any)
     const list = store.getState().shipments.shipmentList
     expect(list[0].packing_coverage).toEqual({ old: true })
     expect(list[1].packing_coverage).toEqual(dto)
-  })
-
-  it('calls API.saveShipmentCoverage with the dto', () => {
-    const store = makeStore({
-      shipmentList: [{ order_num: 'A', packing_coverage: {} }],
-    })
-    const dto = { order_num: 'A', tier: 'gold' }
-    store.dispatch(saveShipmentCoverage(dto))
     expect(mockedAPI.saveShipmentCoverage).toHaveBeenCalledWith(dto)
-  })
-
-  it('does not throw when shipment is not found in the list', () => {
-    const store = makeStore({ shipmentList: [{ order_num: 'A', packing_coverage: {} }] })
-    expect(() => store.dispatch(saveShipmentCoverage({ order_num: 'Z' }))).not.toThrow()
-    // unchanged
-    expect(store.getState().shipments.shipmentList[0].packing_coverage).toEqual({})
-    // API still called even when match missing (current behavior)
     expect(mockedAPI.saveShipmentCoverage).toHaveBeenCalledTimes(1)
   })
 
-  it('does nothing to the list when matched shipment has no packing_coverage field', () => {
+  it('updates state even when the matched shipment has no prior packing_coverage (Unit-08 #2)', async () => {
+    mockedAPI.saveShipmentCoverage.mockResolvedValueOnce(undefined)
     const store = makeStore({ shipmentList: [{ order_num: 'A' }] })
-    store.dispatch(saveShipmentCoverage({ order_num: 'A', tier: 'gold' }))
-    expect(store.getState().shipments.shipmentList[0]).toEqual({ order_num: 'A' })
+    const dto = { order_num: 'A', tier: 'gold' }
+    await store.dispatch(saveShipmentCoverage(dto) as any)
+    expect(store.getState().shipments.shipmentList[0].packing_coverage).toEqual(dto)
+    expect(mockedAPI.saveShipmentCoverage).toHaveBeenCalledWith(dto)
+  })
+
+  it('skips the list mutation but still fires the API when order_num is not in shipmentList', async () => {
+    // ShipmentDetail can save coverage for a shipment that isn't in the
+    // current dashboard list (e.g. user opened the detail page directly from
+    // a deep link). The apply-reducer no-ops the list write; the API still
+    // fires server-side.
+    mockedAPI.saveShipmentCoverage.mockResolvedValueOnce(undefined)
+    const store = makeStore({ shipmentList: [{ order_num: 'A', packing_coverage: {} }] })
+    const dto = { order_num: 'Z', new: true }
+    await store.dispatch(saveShipmentCoverage(dto) as any)
+    expect(store.getState().shipments.shipmentList[0].packing_coverage).toEqual({})
+    expect(mockedAPI.saveShipmentCoverage).toHaveBeenCalledWith(dto)
+  })
+
+  it('surfaces API rejection via notifyError and writes state.error', async () => {
+    const errSpy = silenceConsoleError()
+    mockedAPI.saveShipmentCoverage.mockRejectedValueOnce(new Error('save boom'))
+    const store = makeStore({ shipmentList: [{ order_num: 'A', packing_coverage: {} }] })
+    await store.dispatch(saveShipmentCoverage({ order_num: 'A', tier: 'gold' }) as any)
+    expect(mockedNotifyError).toHaveBeenCalledWith('save boom')
+    expect(store.getState().shipments.error).toBe('save boom')
+    errSpy.mockRestore()
+  })
+
+  it('falls back to a default message when the rejection has no message', async () => {
+    const errSpy = silenceConsoleError()
+    mockedAPI.saveShipmentCoverage.mockRejectedValueOnce({})
+    const store = makeStore({ shipmentList: [{ order_num: 'A', packing_coverage: {} }] })
+    await store.dispatch(saveShipmentCoverage({ order_num: 'A' }) as any)
+    expect(mockedNotifyError).toHaveBeenCalledWith('Failed to save shipment coverage')
+    errSpy.mockRestore()
   })
 })
 
-describe('shipments slice — patchShipmentShadow reducer', () => {
-  it('shallow-merges into pegasus_shadow on the matching shipment', () => {
+describe('shipments thunk — patchShipmentShadow', () => {
+  it('shallow-merges into pegasus_shadow on the matching shipment and calls the API', async () => {
+    mockedAPI.patchShipmentShadow.mockResolvedValueOnce(undefined)
     const store = makeStore({
       shipmentList: [
         { order_num: 1, pegasus_shadow: { a: 1, b: 2 } },
         { order_num: 2, pegasus_shadow: { a: 9 } },
       ],
     })
-    store.dispatch(patchShipmentShadow({ order_num: 1, b: 22, c: 3 }))
+    await store.dispatch(patchShipmentShadow({ order_num: 1, b: 22, c: 3 }) as any)
     const list = store.getState().shipments.shipmentList
     expect(list[0].pegasus_shadow).toEqual({ a: 1, b: 22, c: 3, order_num: 1 })
     expect(list[1].pegasus_shadow).toEqual({ a: 9 })
+    expect(mockedAPI.patchShipmentShadow).toHaveBeenCalledWith({ order_num: 1, b: 22, c: 3 })
   })
 
-  it('calls API.patchShipmentShadow with the dto', () => {
-    const store = makeStore({
-      shipmentList: [{ order_num: 1, pegasus_shadow: {} }],
-    })
+  it('updates state even when the matched shipment has no prior pegasus_shadow (Unit-08 #2)', async () => {
+    mockedAPI.patchShipmentShadow.mockResolvedValueOnce(undefined)
+    const store = makeStore({ shipmentList: [{ order_num: 1 }] })
     const dto = { order_num: 1, foo: 'bar' }
-    store.dispatch(patchShipmentShadow(dto))
+    await store.dispatch(patchShipmentShadow(dto) as any)
+    expect(store.getState().shipments.shipmentList[0].pegasus_shadow).toEqual(dto)
     expect(mockedAPI.patchShipmentShadow).toHaveBeenCalledWith(dto)
   })
 
-  it('leaves the list alone when shipment lacks pegasus_shadow', () => {
-    const store = makeStore({ shipmentList: [{ order_num: 1 }] })
-    store.dispatch(patchShipmentShadow({ order_num: 1, foo: 'bar' }))
-    expect(store.getState().shipments.shipmentList[0]).toEqual({ order_num: 1 })
+  it('skips the list mutation but still fires the API when order_num is not in shipmentList', async () => {
+    // Same rationale as the saveShipmentCoverage case above — ShipmentDetail
+    // may legitimately patch a shadow for a shipment not in the dashboard list.
+    mockedAPI.patchShipmentShadow.mockResolvedValueOnce(undefined)
+    const store = makeStore({ shipmentList: [{ order_num: 1, pegasus_shadow: {} }] })
+    const dto = { order_num: 999, weight: 5 }
+    await store.dispatch(patchShipmentShadow(dto) as any)
+    expect(store.getState().shipments.shipmentList[0]).toEqual({ order_num: 1, pegasus_shadow: {} })
+    expect(mockedAPI.patchShipmentShadow).toHaveBeenCalledWith(dto)
   })
 
-  it('handles unknown order_num gracefully', () => {
+  it('surfaces API rejection via notifyError and writes state.error', async () => {
+    const errSpy = silenceConsoleError()
+    mockedAPI.patchShipmentShadow.mockRejectedValueOnce(new Error('shadow boom'))
     const store = makeStore({ shipmentList: [{ order_num: 1, pegasus_shadow: {} }] })
-    expect(() => store.dispatch(patchShipmentShadow({ order_num: 999 }))).not.toThrow()
-    expect(mockedAPI.patchShipmentShadow).toHaveBeenCalledTimes(1)
+    await store.dispatch(patchShipmentShadow({ order_num: 1, foo: 'bar' }) as any)
+    expect(mockedNotifyError).toHaveBeenCalledWith('shadow boom')
+    expect(store.getState().shipments.error).toBe('shadow boom')
+    errSpy.mockRestore()
+  })
+
+  it('falls back to a default message when the rejection has no message', async () => {
+    const errSpy = silenceConsoleError()
+    mockedAPI.patchShipmentShadow.mockRejectedValueOnce({})
+    const store = makeStore({ shipmentList: [{ order_num: 1, pegasus_shadow: {} }] })
+    await store.dispatch(patchShipmentShadow({ order_num: 1 }) as any)
+    expect(mockedNotifyError).toHaveBeenCalledWith('Failed to patch shipment shadow')
+    errSpy.mockRestore()
   })
 })
 
