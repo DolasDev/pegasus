@@ -2,6 +2,7 @@ import { createSlice, type PayloadAction } from '@reduxjs/toolkit'
 import { API } from '../../utils/api'
 import type { AppDispatch } from '../store'
 import { coerceListPayload } from '../lib/coerce-list-payload'
+import { notifyError } from '../../components/Snackbar/notify'
 
 const getDateOffset = (offsetDays: number): string => {
   const today = new Date()
@@ -163,25 +164,44 @@ export const selectShipment = (selectedShipment: any) => async (dispatch: AppDis
   }
 }
 
+// Applies a saved-filter response from the API by parsing its `query` field
+// and dispatching changeShipmentQuery. Reports malformed payloads to the user
+// rather than silently no-op'ing (which previously masked broken filters).
+const applySavedFilterResponse = (response: any, dispatch: AppDispatch): void => {
+  if (!response) return
+  let parsedQuery: any
+  try {
+    parsedQuery = JSON.parse(response.query)
+  } catch (parseErr) {
+    console.error('Malformed saved-filter query payload', parseErr)
+    notifyError('Saved filter is malformed and could not be applied')
+    return
+  }
+  if (!parsedQuery || typeof parsedQuery !== 'object') {
+    console.error('Saved-filter query is not an object', parsedQuery)
+    notifyError('Saved filter is malformed and could not be applied')
+    return
+  }
+  dispatch(changeShipmentQuery(parsedQuery))
+}
+
 export const loadDefaultFilter = (_userCode: any) => async (dispatch: AppDispatch, _state: any) => {
   try {
     const response = await API.fetchShipmentDefaultFilterForUser()
-    if (response) {
-      dispatch(changeShipmentQuery(JSON.parse(response.query)))
-    }
+    applySavedFilterResponse(response, dispatch)
   } catch (e: any) {
     console.error(e)
+    notifyError(e?.message ?? 'Failed to load default filter')
   }
 }
 
 export const deleteShipmentFilter = (id: any) => async (dispatch: AppDispatch) => {
   try {
     const response = await API.deleteShipmentFilter(id)
-    if (response) {
-      dispatch(changeShipmentQuery(JSON.parse(response.query)))
-    }
+    applySavedFilterResponse(response, dispatch)
   } catch (e: any) {
     console.error(e)
+    notifyError(e?.message ?? 'Failed to delete filter')
   }
 }
 
