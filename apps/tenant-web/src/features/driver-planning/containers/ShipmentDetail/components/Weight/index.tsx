@@ -3,7 +3,7 @@ import { useFloating, offset } from '@floating-ui/react'
 import { useSelector } from 'react-redux'
 
 import { Button, IconButton } from '../../../../components/Button'
-import { Popover } from '../../../../components/Popover'
+import { PopoverShell } from '../../../../components/PopoverShell'
 import styles from './Weight.module.css'
 import { patchShipmentShadow } from '../../../../redux/shipments'
 import { HoverToolTip } from '@/features/driver-planning/containers/ToolTips'
@@ -49,7 +49,7 @@ export const ShipmentWeight = ({ onUpdate }: { onUpdate: any }) => {
       <>
         {editMode && (
           <div className={styles['shipment-coverage-popover']}>
-            <Popover ref={refs.setFloating} style={floatingStyles}>
+            <PopoverShell ref={refs.setFloating} style={floatingStyles}>
               <div>
                 <div>
                   <label htmlFor="estimated_date">Enter New Weight:</label>
@@ -81,7 +81,7 @@ export const ShipmentWeight = ({ onUpdate }: { onUpdate: any }) => {
                   />
                 </div>
               </div>
-            </Popover>
+            </PopoverShell>
           </div>
         )}
       </>

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { useFloating, offset } from '@floating-ui/react'
-import { Popover } from '../../../../components/Popover'
+import { PopoverShell } from '../../../../components/PopoverShell'
 import styles from './EditActivity.module.css'
 import { DatePicker } from '../../../../components/DatePicker'
 import { useOutsideClick } from '@/features/driver-planning/utils/hooks/use-outside-click'
@@ -50,7 +50,7 @@ export const EditActivity: React.FC<EditActivityProps> = ({
 
   return (
     <div ref={wrapperRef}>
-      <Popover ref={refs.setFloating} style={floatingStyles}>
+      <PopoverShell ref={refs.setFloating} style={floatingStyles}>
         <div className={styles.formField}>
           <label htmlFor="estimated_date">Date Spread</label>
           <div>
@@ -77,7 +77,7 @@ export const EditActivity: React.FC<EditActivityProps> = ({
             Clear Dates
           </Button>
         </div>
-      </Popover>
+      </PopoverShell>
     </div>
   )
 }
