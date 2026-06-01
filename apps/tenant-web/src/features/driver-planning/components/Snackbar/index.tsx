@@ -40,7 +40,7 @@ export const Snackbar: React.FC<any> = ({
         className={`
           ${styles.root}
           ${isOpen && open ? styles.transition : ''}
-          ${styles[type]}
+          ${type ? (styles[type] ?? '') : ''}
           ${className}`}
       >
         {message}
