@@ -52,6 +52,18 @@ describe('Snackbar', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
+  it('does not render the literal string "undefined" in className when type prop is omitted', () => {
+    const { container } = render(<Snackbar open={true} message="hi" />)
+    const root = container.firstChild as HTMLElement
+    expect(root.className).not.toContain('undefined')
+  })
+
+  it('does not render the literal string "undefined" in className when type prop is an unknown value', () => {
+    const { container } = render(<Snackbar open={true} message="hi" type="warning" />)
+    const root = container.firstChild as HTMLElement
+    expect(root.className).not.toContain('undefined')
+  })
+
   it('does not stack autohide timers across re-renders while open', () => {
     const onClose = vi.fn()
     const { rerender } = render(
