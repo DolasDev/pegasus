@@ -3,7 +3,7 @@ import { useFloating, offset } from '@floating-ui/react'
 
 import styles from './ActivityGantt.module.css'
 import { formatDateShort } from '../../../../utils/format-date'
-import { Popover } from '../../../../components/Popover'
+import { PopoverShell } from '../../../../components/PopoverShell'
 import { DatePicker } from '../../../../components/DatePicker'
 import { updateActivityForTrip } from '../../../../redux/trips'
 import { Button } from '../../../../components/Button'
@@ -155,7 +155,7 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip }: 
         {/** Activity popper */}
       </div>
       {selectedActivity && (
-        <Popover ref={refs.setFloating} style={floatingStyles}>
+        <PopoverShell ref={refs.setFloating} style={floatingStyles}>
           {selectedActivity.hasDateChange ? (
             <>
               <button
@@ -285,7 +285,7 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip }: 
               )}
             </>
           )}
-        </Popover>
+        </PopoverShell>
       )}
     </>
   )

@@ -27,7 +27,7 @@ import { formatDate } from '../../utils/format-date'
 import { AddActivity } from './components/AddActivity'
 import { EditActivity } from './components/EditActivity'
 import { useFloating, offset } from '@floating-ui/react'
-import { Popover } from '@/features/driver-planning/components/Popover'
+import { PopoverShell } from '@/features/driver-planning/components/PopoverShell'
 import type { RootState } from '../../redux/store'
 import { useAppDispatch } from '../../redux/hooks'
 
@@ -164,7 +164,7 @@ const MoreTripActions: React.FC<{ tripId: any }> = ({ tripId }) => {
         <i className="fas fa-ellipsis-vertical" />
       </Button>
       {isOpen && (
-        <Popover
+        <PopoverShell
           ref={refs.setFloating}
           style={{
             ...floatingStyles,
@@ -176,7 +176,7 @@ const MoreTripActions: React.FC<{ tripId: any }> = ({ tripId }) => {
               Cancel Trip
             </div>
           </div>
-        </Popover>
+        </PopoverShell>
       )}
     </>
   )

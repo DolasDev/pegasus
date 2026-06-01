@@ -3,7 +3,7 @@ import { useFloating, offset } from '@floating-ui/react'
 import { useDispatch, useSelector } from 'react-redux'
 
 import { Button, IconButton } from '../../../../components/Button'
-import { Popover } from '../../../../components/Popover'
+import { PopoverShell } from '../../../../components/PopoverShell'
 import styles from './Coverage.module.css'
 import { saveShipmentCoverage } from '../../../../redux/shipments'
 import { HoverToolTip } from '@/features/driver-planning/containers/ToolTips'
@@ -54,7 +54,7 @@ export const ShipmentCoverage = ({ onUpdate }: { onUpdate: any }) => {
       <>
         {editMode && (
           <div className={styles['shipment-coverage-popover']}>
-            <Popover ref={refs.setFloating} style={floatingStyles}>
+            <PopoverShell ref={refs.setFloating} style={floatingStyles}>
               <div>
                 <YesNoToggle
                   label={'OA Committed?'}
@@ -117,7 +117,7 @@ export const ShipmentCoverage = ({ onUpdate }: { onUpdate: any }) => {
                   />
                 </div>
               </div>
-            </Popover>
+            </PopoverShell>
           </div>
         )}
       </>

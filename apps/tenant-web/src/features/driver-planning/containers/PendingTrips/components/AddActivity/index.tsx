@@ -3,12 +3,12 @@ import { useFloating, offset } from '@floating-ui/react'
 import { useDispatch } from 'react-redux'
 import { clsx } from 'clsx'
 import { CircularButton as CircularButtonTyped } from '../../../../components/Button'
-import { Popover as PopoverTyped } from '../../../../components/Popover'
+import { PopoverShell as PopoverShellTyped } from '../../../../components/PopoverShell'
 import { ActivityType } from '../../../../utils/constants/activity-type'
 import { addActivity as addActivityAction } from '../../../../redux/trip-planning'
 import styles from './AddActivity.module.css'
 
-const Popover = PopoverTyped as any
+const PopoverShell = PopoverShellTyped as any
 const CircularButton = CircularButtonTyped as any
 
 interface PartialShipment {
@@ -61,7 +61,7 @@ export const AddActivity: React.FC<AddActivityProps> = ({ shipment, shipmentInde
         {menuIsOpen ? '-' : '+'}
       </CircularButton>
       {menuIsOpen && (
-        <Popover
+        <PopoverShell
           ref={refs.setFloating}
           style={{
             ...floatingStyles,
@@ -81,7 +81,7 @@ export const AddActivity: React.FC<AddActivityProps> = ({ shipment, shipmentInde
               </div>
             ))}
           </div>
-        </Popover>
+        </PopoverShell>
       )}
     </div>
   )

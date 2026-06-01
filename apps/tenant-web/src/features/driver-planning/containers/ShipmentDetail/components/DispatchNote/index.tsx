@@ -3,7 +3,7 @@ import { useFloating, offset } from '@floating-ui/react'
 import { useSelector } from 'react-redux'
 
 import { Button, IconButton } from '../../../../components/Button'
-import { Popover } from '../../../../components/Popover'
+import { PopoverShell } from '../../../../components/PopoverShell'
 import styles from './DispatchNote.module.css'
 import { patchShipmentShadow } from '../../../../redux/shipments'
 import { HoverToolTip } from '@/features/driver-planning/containers/ToolTips'
@@ -58,7 +58,7 @@ export const DispatchNote = ({ onUpdate }: { onUpdate: any }) => {
       <>
         {editMode && (
           <div className={styles['shipment-coverage-popover']}>
-            <Popover ref={refs.setFloating} style={floatingStyles}>
+            <PopoverShell ref={refs.setFloating} style={floatingStyles}>
               <div>
                 <div>
                   <label htmlFor="estimated_date">Update Comment:</label>
@@ -91,7 +91,7 @@ export const DispatchNote = ({ onUpdate }: { onUpdate: any }) => {
                   />
                 </div>
               </div>
-            </Popover>
+            </PopoverShell>
           </div>
         )}
       </>
