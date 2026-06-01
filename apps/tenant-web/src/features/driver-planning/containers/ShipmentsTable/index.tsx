@@ -47,6 +47,7 @@ export const ShipmentsTable: React.FC<ShipmentsTableProps> = ({ shipments, onRow
       tableConfig={tableConfig}
       rowTarget="shipment-table-row"
       onRowClick={onRowClick}
+      rowId={(row) => row.order_num}
     />
   )
 }
