@@ -13,6 +13,7 @@ import {
   UserCog,
   Key,
   Workflow,
+  SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -105,10 +106,25 @@ const NAV_ITEMS = [
   },
 ] as const
 
+// One submenu entry per main-menu section — mirrors NAV_ITEMS order so the
+// rail inside /settings/app and the App Settings group here read the same.
+const APP_SETTINGS_CHILDREN = [
+  { to: '/settings/app/dashboard' as const, label: 'Dashboard', exact: false },
+  { to: '/settings/app/moves' as const, label: 'Moves', exact: false },
+  { to: '/settings/app/quotes' as const, label: 'Quotes', exact: false },
+  { to: '/settings/app/customers' as const, label: 'Customers', exact: false },
+  { to: '/settings/app/dispatch' as const, label: 'Dispatch', exact: false },
+  { to: '/settings/app/billing' as const, label: 'Billing', exact: false },
+  { to: '/settings/app/operations' as const, label: 'Operations', exact: false },
+] as const
+
 // Every page under Settings is tenant-admin-only. The role guard on
 // `settingsLayout` in router.tsx is the authoritative enforcement; this list
 // just decides which entries the sidebar renders so non-admins don't see
 // dead-end links.
+//
+// Flat entries render via `NavItem`; entries with a `children` array render
+// via `NavGroup` — the same component used by the main `Operations` nav above.
 const SETTINGS_NAV_ITEMS = [
   {
     to: '/settings/users' as const,
@@ -116,6 +132,7 @@ const SETTINGS_NAV_ITEMS = [
     icon: UserCog,
     exact: false,
     roles: ADMIN_ONLY,
+    children: null,
   },
   {
     to: '/settings/sso' as const,
@@ -123,6 +140,7 @@ const SETTINGS_NAV_ITEMS = [
     icon: ShieldCheck,
     exact: false,
     roles: ADMIN_ONLY,
+    children: null,
   },
   {
     to: '/settings/developer' as const,
@@ -130,6 +148,7 @@ const SETTINGS_NAV_ITEMS = [
     icon: Key,
     exact: false,
     roles: ADMIN_ONLY,
+    children: null,
   },
   {
     to: '/settings/workflows' as const,
@@ -137,6 +156,15 @@ const SETTINGS_NAV_ITEMS = [
     icon: Workflow,
     exact: false,
     roles: ADMIN_ONLY,
+    children: null,
+  },
+  {
+    to: '/settings/app' as const,
+    label: 'App Settings',
+    icon: SlidersHorizontal,
+    exact: false,
+    roles: ADMIN_ONLY,
+    children: APP_SETTINGS_CHILDREN,
   },
 ] as const
 
@@ -370,16 +398,28 @@ export function AppShell({ children }: AppShellProps) {
                 </div>
               )}
               <nav className={cn('space-y-1', collapsed ? 'px-1' : 'px-2')}>
-                {visibleSettingsItems.map((item) => (
-                  <NavItem
-                    key={item.to}
-                    to={item.to}
-                    label={item.label}
-                    icon={item.icon}
-                    exact={item.exact}
-                    collapsed={collapsed}
-                  />
-                ))}
+                {visibleSettingsItems.map((item) =>
+                  item.children ? (
+                    <NavGroup
+                      key={item.to}
+                      to={item.to}
+                      label={item.label}
+                      icon={item.icon}
+                      exact={item.exact}
+                      collapsed={collapsed}
+                      items={item.children}
+                    />
+                  ) : (
+                    <NavItem
+                      key={item.to}
+                      to={item.to}
+                      label={item.label}
+                      icon={item.icon}
+                      exact={item.exact}
+                      collapsed={collapsed}
+                    />
+                  ),
+                )}
               </nav>
             </>
           )}

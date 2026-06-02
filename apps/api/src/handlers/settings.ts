@@ -19,6 +19,7 @@ import { db } from '../db'
 import type { AppEnv } from '../types'
 import { logger } from '../lib/logger'
 import { executeSql, MssqlExecError } from '../lib/mssql-executor-client'
+import { AppSettingsPatchSchema, getAppSettings, updateAppSettings } from '../lib/app-settings'
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -176,6 +177,82 @@ settingsHandler.patch(
 // Response: { data: { ok, code, detail, elapsedMs } } — always HTTP 200; the
 // pass/fail verdict lives in the body so the UI can render it uniformly.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// GET /app
+//
+// Returns the tenant-wide UI preferences object hydrated through
+// AppSettingsSchema (so brand-new tenants get a fully-shaped default tree even
+// before any field has been written). Read-only — gated on ReadSettings.
+//
+// Response: { data: AppSettings }
+// ---------------------------------------------------------------------------
+settingsHandler.get('/app', requirePermission(Actions.ReadSettings), async (c) => {
+  const tenantId = c.get('tenantId')
+  const settings = await getAppSettings(db, tenantId)
+  return c.json({ data: settings })
+})
+
+// ---------------------------------------------------------------------------
+// PATCH /app
+//
+// Sparse partial update — the body may include any subset of the seven
+// sections (dashboard, moves, quotes, customers, dispatch, billing,
+// operations). Validates against AppSettingsPatchSchema (strict at the root,
+// so a typo'd section name is rejected); merges over the current value
+// section-by-section in lib/app-settings.ts.
+//
+// `operations.longhaulClient` is mirrored into the legacy `Tenant.longhaulClient`
+// column on every write so the cloud-direct longhaul handlers
+// (handlers/longhaul-cloud/*) — which read the column directly — see the new
+// value without being changed in this PR. A follow-up can collapse the column
+// once we trust the new path.
+//
+// Audit: writes a debug-level log line including the patched section keys (no
+// values, so secrets-by-accident never end up in logs); the column mirror is
+// the durable record of the operations.longhaulClient state change.
+//
+// Request:  AppSettingsPatch  (validated)
+// Response: { data: AppSettings }  (full hydrated object)
+// ---------------------------------------------------------------------------
+settingsHandler.patch(
+  '/app',
+  requirePermission(Actions.UpdateSettings),
+  validator('json', (value, c) => {
+    const r = AppSettingsPatchSchema.safeParse(value)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const patch = c.req.valid('json')
+
+    const next = await updateAppSettings(db, tenantId, patch)
+
+    // Mirror operations.longhaulClient → Tenant.longhaulClient column so the
+    // longhaul-cloud handlers (which still read the column) pick up the new
+    // value immediately. Only writes when the section was part of THIS patch,
+    // so a future settings UI editing an unrelated section never touches the
+    // mirror. Explicit null clears the column (admin "unconfigure" path).
+    if (patch.operations && 'longhaulClient' in patch.operations) {
+      const longhaulClient = next.operations.longhaulClient ?? null
+      await db.tenant.update({
+        where: { id: tenantId },
+        data: { longhaulClient },
+      })
+      logger.info('Tenant longhaul client updated via app settings', {
+        tenantId,
+        longhaulClient,
+      })
+    }
+
+    logger.info('App settings updated', {
+      tenantId,
+      sections: Object.keys(patch),
+    })
+    return c.json({ data: next })
+  },
+)
+
 settingsHandler.post('/mssql/test', requirePermission(Actions.ReadSettings), async (c) => {
   const tenantId = c.get('tenantId')
 

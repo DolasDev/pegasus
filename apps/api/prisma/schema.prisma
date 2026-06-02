@@ -223,6 +223,16 @@ model Tenant {
   /// an admin update; no API mutation. See handlers/workflows.ts.
   isPlatformTenant Boolean @default(false) @map("is_platform_tenant")
 
+  /// Tenant-wide UI preferences edited via /settings/app (one nested object per
+  /// main-menu section: dashboard, moves, quotes, customers, dispatch, billing,
+  /// operations). The shape is defined by AppSettingsSchema in
+  /// apps/api/src/lib/app-settings.ts — zod parses-with-defaults on every read
+  /// so new optional fields can be added without a migration. The Json column
+  /// is an implementation detail; if we move to a flag service later (LD,
+  /// AppConfig), the repo seam at lib/app-settings.ts swaps without touching
+  /// call sites. Defaults to {} for tenants created before the column existed.
+  appSettings Json @default("{}") @map("app_settings")
+
   // -------------------------------------------------------------------------
   // Relations
   // -------------------------------------------------------------------------

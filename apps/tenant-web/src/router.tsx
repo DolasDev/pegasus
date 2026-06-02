@@ -21,6 +21,15 @@ import { SsoConfigPage } from '@/routes/sso-config'
 import { UsersPage } from '@/routes/users'
 import { DeveloperSettingsPage } from '@/routes/settings.developer'
 import { WorkflowsSettingsPage } from '@/routes/settings.workflows'
+import { AppSettingsLayout } from '@/features/settings/app/AppSettingsLayout'
+import { AppSettingsIndexPage } from '@/routes/settings.app.index'
+import { AppSettingsDashboardPage } from '@/routes/settings.app.dashboard'
+import { AppSettingsMovesPage } from '@/routes/settings.app.moves'
+import { AppSettingsQuotesPage } from '@/routes/settings.app.quotes'
+import { AppSettingsCustomersPage } from '@/routes/settings.app.customers'
+import { AppSettingsDispatchPage } from '@/routes/settings.app.dispatch'
+import { AppSettingsBillingPage } from '@/routes/settings.app.billing'
+import { AppSettingsOperationsPage } from '@/routes/settings.app.operations'
 import { DriverPlanningPage } from '@/routes/driver-planning.index'
 import { DriverPlanningLayout } from '@/features/driver-planning/DriverPlanningLayout'
 
@@ -173,6 +182,66 @@ const workflowsSettingsRoute = createRoute({
   component: WorkflowsSettingsPage,
 })
 
+// ---------------------------------------------------------------------------
+// /settings/app — tenant-wide UI preferences. One landing route hosting the
+// shared left-rail layout, plus seven children (one per main-menu section).
+// Each child is a thin route component reading/writing /api/v1/settings/app.
+// New sections: add a route below + register on this layout's addChildren.
+// ---------------------------------------------------------------------------
+const appSettingsLayoutRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: '/settings/app',
+  component: AppSettingsLayout,
+})
+
+const appSettingsIndexRoute = createRoute({
+  getParentRoute: () => appSettingsLayoutRoute,
+  path: '/',
+  component: AppSettingsIndexPage,
+})
+
+const appSettingsDashboardRoute = createRoute({
+  getParentRoute: () => appSettingsLayoutRoute,
+  path: 'dashboard',
+  component: AppSettingsDashboardPage,
+})
+
+const appSettingsMovesRoute = createRoute({
+  getParentRoute: () => appSettingsLayoutRoute,
+  path: 'moves',
+  component: AppSettingsMovesPage,
+})
+
+const appSettingsQuotesRoute = createRoute({
+  getParentRoute: () => appSettingsLayoutRoute,
+  path: 'quotes',
+  component: AppSettingsQuotesPage,
+})
+
+const appSettingsCustomersRoute = createRoute({
+  getParentRoute: () => appSettingsLayoutRoute,
+  path: 'customers',
+  component: AppSettingsCustomersPage,
+})
+
+const appSettingsDispatchRoute = createRoute({
+  getParentRoute: () => appSettingsLayoutRoute,
+  path: 'dispatch',
+  component: AppSettingsDispatchPage,
+})
+
+const appSettingsBillingRoute = createRoute({
+  getParentRoute: () => appSettingsLayoutRoute,
+  path: 'billing',
+  component: AppSettingsBillingPage,
+})
+
+const appSettingsOperationsRoute = createRoute({
+  getParentRoute: () => appSettingsLayoutRoute,
+  path: 'operations',
+  component: AppSettingsOperationsPage,
+})
+
 const driverPlanningRoute = createRoute({
   getParentRoute: () => authLayout,
   path: '/driver-planning',
@@ -238,6 +307,16 @@ const routeTree = rootRoute.addChildren([
       usersRoute,
       developerSettingsRoute,
       workflowsSettingsRoute,
+      appSettingsLayoutRoute.addChildren([
+        appSettingsIndexRoute,
+        appSettingsDashboardRoute,
+        appSettingsMovesRoute,
+        appSettingsQuotesRoute,
+        appSettingsCustomersRoute,
+        appSettingsDispatchRoute,
+        appSettingsBillingRoute,
+        appSettingsOperationsRoute,
+      ]),
     ]),
   ]),
 ])
