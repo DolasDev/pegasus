@@ -164,14 +164,74 @@ describe('DriverPlanningPage', () => {
     expect(screen.getByText('Driver, B.')).toBeInTheDocument()
   })
 
-  it('formats the driver name as "Last, F."', () => {
+  it('formats the driver name as "Last, F." and renders it bold', () => {
     driverPlanningReturn = {
       data: [makeDriver({ driverName: 'Smith, John' })],
       isLoading: false,
       isError: false,
     }
     renderPage()
-    expect(screen.getByTestId('driver-name')).toHaveTextContent('Smith, J.')
+    const cell = screen.getByTestId('driver-name')
+    expect(cell).toHaveTextContent('Smith, J.')
+    expect(cell.className).toMatch(/font-bold/)
+  })
+
+  describe('ready location state bolding', () => {
+    it('bolds only the state token in the best-guess (no confirmed location) branch', () => {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            confirmedAvailableLocation: null,
+            deliveries: [delivery({ city: 'EL PASO', state: 'TX', actualDate: '2026-06-02' })],
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      const cell = screen.getByTestId('ready-location-cell')
+      // Outer span is no longer font-semibold; only the inner <b> wrapping the
+      // state code carries weight.
+      expect(cell.className).not.toMatch(/font-semibold/)
+      const bolded = cell.querySelectorAll('b')
+      expect(bolded).toHaveLength(1)
+      expect(bolded[0]).toHaveTextContent('TX')
+      expect(cell).toHaveTextContent('El Paso')
+    })
+
+    it('bolds only the leading state token in a "State, City" confirmed location', () => {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            confirmedAvailableLocation: 'TX, Dallas',
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      const cell = screen.getByTestId('ready-location-cell')
+      const bolded = cell.querySelectorAll('b')
+      expect(bolded).toHaveLength(1)
+      expect(bolded[0]).toHaveTextContent('TX')
+      expect(cell).toHaveTextContent('TX, Dallas')
+    })
+
+    it('leaves a confirmed location plain when the leading token is not a 2-letter state', () => {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            confirmedAvailableLocation: 'Home base',
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      const cell = screen.getByTestId('ready-location-cell')
+      expect(cell.querySelectorAll('b')).toHaveLength(0)
+      expect(cell).toHaveTextContent('Home base')
+    })
   })
 
   it('renders the current trip as an unbolded badge link to the trip screen', () => {
@@ -347,7 +407,7 @@ describe('DriverPlanningPage', () => {
   })
 
   describe('ready date best-guess tiers', () => {
-    it('shows the confirmed ready date bold with a calendar-check icon', () => {
+    it('shows the confirmed ready date bold with a calendar-check icon, formatted MM/DD', () => {
       driverPlanningReturn = {
         data: [makeDriver({ confirmedAvailableDate: '2026-07-01' })],
         isLoading: false,
@@ -358,6 +418,8 @@ describe('DriverPlanningPage', () => {
       expect(cell.getAttribute('data-ready-tier')).toBe('confirmed')
       expect(cell.className).toMatch(/font-semibold/)
       expect(cell.querySelector('.fa-calendar-check')).toBeTruthy()
+      // Ready Date renders MM/DD (US date order), not DD/MM.
+      expect(cell).toHaveTextContent('07/01')
     })
 
     it('marks an estimated guess with the estimated tier', () => {
@@ -482,7 +544,11 @@ describe('DriverPlanningPage', () => {
       const eff = screen.getByTestId('delivery-effective')
       expect(eff).toHaveTextContent('06/03')
       expect(eff.className).toMatch(/font-semibold/)
-      expect(eff.className).toMatch(/text-emerald-/)
+      // The confidence color lives on the icon, not the date — keep the date
+      // neutral so dispatchers only parse one color signal per row.
+      expect(eff.className).not.toMatch(/text-emerald-/)
+      const icon = screen.getByTestId('delivery-icon')
+      expect(icon.className).toMatch(/text-emerald-/)
     })
 
     it('falls back to spread start when there is no actual or estimated (priority 3)', () => {

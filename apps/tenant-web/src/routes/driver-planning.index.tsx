@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useSelector } from 'react-redux'
@@ -37,15 +37,16 @@ const PLACEHOLDER_PHONE = '+12345678910'
 const CARD_TEXT_CLASS = 'text-[#0c145c]' // --blue-700
 const CARD_ROW_CLASS = `bg-white/30 shadow-sm hover:bg-[#f5f5f5] ${CARD_TEXT_CLASS} font-light`
 
-// Compact day/month for the Ready Date column. UTC mirrors `formatDateShort`
-// so dates don't slip a day across the local timezone boundary.
-function formatDayMonth(dateStr: string | null): string {
+// Compact month/day for the Ready Date column (US date order, matches the
+// rest of Operations). UTC mirrors `formatDateShort` so dates don't slip a day
+// across the local timezone boundary.
+function formatMonthDay(dateStr: string | null): string {
   if (!dateStr) return '-'
   const d = new Date(dateStr)
   if (isNaN(d.getTime())) return dateStr
   const dd = String(d.getUTCDate()).padStart(2, '0')
   const mm = String(d.getUTCMonth() + 1).padStart(2, '0')
-  return `${dd}/${mm}`
+  return `${mm}/${dd}`
 }
 
 // Driver names arrive from the legacy view as "Last, First"; render them as
@@ -55,6 +56,25 @@ function formatDriverName(name: string): string {
   if (!last || !first?.trim()) return name.trim()
   const initial = first.trim()[0]!.toUpperCase()
   return `${last.trim()}, ${initial}.`
+}
+
+// Render a free-form Ready Location with only the leading state token bolded.
+// The input is a hand-entered "State, City" string (placeholder matches), but
+// users sometimes flip the order or omit the state entirely. We only bold a
+// leading 2-letter token; anything else is left plain.
+function renderConfirmedLocation(value: string): ReactNode {
+  const parts = value.split(',').map((p) => p.trim())
+  const head = parts[0] ?? ''
+  if (/^[A-Za-z]{2}$/.test(head)) {
+    const rest = parts.slice(1).join(', ')
+    return (
+      <>
+        <b>{head.toUpperCase()}</b>
+        {rest ? `, ${rest}` : ''}
+      </>
+    )
+  }
+  return value
 }
 
 function toInputDate(dateStr: string | null): string {
@@ -128,7 +148,9 @@ function DeliveryLine({ delivery }: { delivery: Delivery }) {
   const tier = getConfidenceTier(delivery)
   const effective = getDeliveryEffectiveDate(delivery)
   const effStr = effective ? formatDateShort(effective) : ''
-  const boldClass = `font-semibold ${tier.colorClass}`.trim()
+  // Dates stay neutral; the confidence tier's color lives on the icon only so
+  // dispatchers don't have to parse two color signals per row.
+  const boldClass = 'font-semibold'
 
   return (
     <tr
@@ -389,7 +411,9 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
 
   return (
     <TableRow data-testid="driver-row" data-driver-id={driver.driverId} className={CARD_ROW_CLASS}>
-      <TableCell data-testid="driver-name">{formatDriverName(driver.driverName)}</TableCell>
+      <TableCell className="font-bold" data-testid="driver-name">
+        {formatDriverName(driver.driverName)}
+      </TableCell>
 
       {/* Ready Date */}
       <TableCell>
@@ -403,7 +427,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
             onClick={() => startEdit('date')}
           >
             <ReadyTierIcon kind="confirmed" />
-            {formatDayMonth(driver.confirmedAvailableDate)}
+            {formatMonthDay(driver.confirmedAvailableDate)}
           </span>
         ) : (
           <span
@@ -413,7 +437,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
             onClick={() => startEdit('date')}
           >
             <ReadyTierIcon kind={guess.kind} />
-            {guess.date ? formatDayMonth(guess.date) : '-'}
+            {guess.date ? formatMonthDay(guess.date) : '-'}
           </span>
         )}
       </TableCell>
@@ -423,16 +447,19 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
         {editingField === 'location' ? (
           fieldInput('location', { placeholder: 'State, City', className: 'w-44' })
         ) : driver.confirmedAvailableLocation ? (
+          // Only the state token is bolded. If the leading comma-separated
+          // token is a 2-letter state code (matches the "State, City" hint),
+          // wrap it in <b>; otherwise the freeform string renders plain.
           <span
-            className="cursor-pointer hover:underline font-semibold"
+            className="cursor-pointer hover:underline"
             data-testid="ready-location-cell"
             onClick={() => startEdit('location')}
           >
-            {driver.confirmedAvailableLocation}
+            {renderConfirmedLocation(driver.confirmedAvailableLocation)}
           </span>
         ) : (
           <span
-            className="cursor-pointer hover:underline inline-flex items-center gap-1 font-semibold"
+            className="cursor-pointer hover:underline inline-flex items-center gap-1"
             data-testid="ready-location-cell"
             onClick={() => startEdit('location')}
           >
