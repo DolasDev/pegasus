@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Availability route — picks one of three view variants (V-A / V-B / V-C) at
+// Availability route — picks one of three view variants (A / B / C) at
 // random on mount and exposes a "Change View" tab control in the upper right
 // so dispatchers can switch on demand.
 //
@@ -18,9 +18,9 @@ import { AvailabilityViewC } from '@/features/driver-planning/availability/Avail
 type VariantKey = 'A' | 'B' | 'C'
 
 const VARIANTS: { key: VariantKey; label: string; Component: () => React.ReactElement }[] = [
-  { key: 'A', label: 'V-A', Component: AvailabilityViewA },
-  { key: 'B', label: 'V-B', Component: AvailabilityViewB },
-  { key: 'C', label: 'V-C', Component: AvailabilityViewC },
+  { key: 'A', label: 'A', Component: AvailabilityViewA },
+  { key: 'B', label: 'B', Component: AvailabilityViewB },
+  { key: 'C', label: 'C', Component: AvailabilityViewC },
 ]
 
 function pickRandomVariant(): VariantKey {
