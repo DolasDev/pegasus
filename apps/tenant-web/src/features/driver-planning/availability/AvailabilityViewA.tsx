@@ -152,28 +152,6 @@ function DeliveryLine({ delivery }: { delivery: Delivery }) {
         )}
       </td>
       <td className="pl-1.5">{titleCaseCity(delivery.city)}</td>
-      <td className="pl-1.5">
-        <span className="inline-flex items-center gap-1.5">
-          <a
-            href={`tel:${PLACEHOLDER_PHONE}`}
-            aria-label="Call driver"
-            data-testid="delivery-call"
-            className="text-muted-foreground hover:text-foreground"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <i className="fas fa-phone" />
-          </a>
-          <a
-            href={`sms:${PLACEHOLDER_PHONE}`}
-            aria-label="Text driver"
-            data-testid="delivery-sms"
-            className="text-muted-foreground hover:text-foreground"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <i className="fas fa-comment-sms" />
-          </a>
-        </span>
-      </td>
     </tr>
   )
 }
@@ -454,6 +432,29 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
           <span className="text-muted-foreground">None</span>
         )}
       </TableCell>
+
+      <TableCell data-testid="driver-contact">
+        <span className="inline-flex items-center gap-2">
+          <a
+            href={`tel:${PLACEHOLDER_PHONE}`}
+            aria-label="Call driver"
+            data-testid="driver-call"
+            className={`${CARD_TEXT_CLASS} hover:opacity-80`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <i className="fas fa-phone" />
+          </a>
+          <a
+            href={`sms:${PLACEHOLDER_PHONE}`}
+            aria-label="Text driver"
+            data-testid="driver-sms"
+            className={`${CARD_TEXT_CLASS} hover:opacity-80`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <i className="fas fa-comment-sms" />
+          </a>
+        </span>
+      </TableCell>
     </TableRow>
   )
 }
@@ -567,13 +568,14 @@ export function AvailabilityViewA() {
                   <TableHead className={CARD_TEXT_CLASS}>Deliveries</TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Notes</TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Current Trip</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Contact</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {visible.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       No matching drivers.

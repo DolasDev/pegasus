@@ -583,7 +583,7 @@ describe('DriverPlanningPage', () => {
       expect(eff).toHaveTextContent('06/01')
     })
 
-    it('renders phone + SMS quick-actions on every row, regardless of the date tier', () => {
+    it('renders one phone + SMS quick-action pair per driver row in the Contact column', () => {
       driverPlanningReturn = {
         data: [
           makeDriver({
@@ -602,15 +602,19 @@ describe('DriverPlanningPage', () => {
         isError: false,
       }
       renderPage()
+      // Contact icons live in the per-driver row's last column, not per delivery.
       const lines = screen.getAllByTestId('delivery-line')
       for (const line of lines) {
-        expect(within(line).getByTestId('delivery-call').getAttribute('href')).toBe(
-          'tel:+12345678910',
-        )
-        expect(within(line).getByTestId('delivery-sms').getAttribute('href')).toBe(
-          'sms:+12345678910',
-        )
+        expect(within(line).queryByTestId('delivery-call')).toBeNull()
+        expect(within(line).queryByTestId('delivery-sms')).toBeNull()
       }
+      const contact = screen.getByTestId('driver-contact')
+      expect(within(contact).getByTestId('driver-call').getAttribute('href')).toBe(
+        'tel:+12345678910',
+      )
+      expect(within(contact).getByTestId('driver-sms').getAttribute('href')).toBe(
+        'sms:+12345678910',
+      )
     })
 
     it('places the confidence icon immediately after the date cell (not after the city)', () => {
@@ -622,7 +626,7 @@ describe('DriverPlanningPage', () => {
       renderPage()
       const line = screen.getByTestId('delivery-line')
       const cells = Array.from(line.querySelectorAll('td'))
-      // Column order: state | date | icon | city | call/sms.
+      // Column order: state | date | icon | city. (Phone/chat moved to outer grid.)
       const effIdx = cells.findIndex((c) => c.querySelector('[data-testid="delivery-effective"]'))
       const iconIdx = cells.findIndex((c) => c.querySelector('[data-testid="delivery-icon"]'))
       const cityIdx = cells.findIndex((c) => c.textContent?.includes('Dallas'))
