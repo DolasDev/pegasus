@@ -8,15 +8,21 @@
 // returned per query key (matching the developer-settings.test.tsx pattern).
 // We render inside a real QueryClientProvider so non-mocked hooks still work.
 // @tanstack/react-router's Link is mocked to a plain anchor so the page renders
-// outside a RouterProvider.
+// outside a RouterProvider. Redux Provider wraps everything because the page
+// reads `state.common.stateList` / `state.common.zoneList` for the zone filter.
 // ---------------------------------------------------------------------------
 
 import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
+import { Provider } from 'react-redux'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DriverPlanningPage } from './driver-planning.index'
 import type { Delivery, DriverPlanningRow } from '@/api/queries/driver-planning'
+import {
+  makeTestStore,
+  type PartialTestRootState,
+} from '@/features/driver-planning/__test-utils__/render-with-store'
 
 // Shared mutate spy so commit assertions can inspect the payload.
 const { mutateMock } = vi.hoisted(() => ({ mutateMock: vi.fn() }))
@@ -72,12 +78,15 @@ vi.mock('@tanstack/react-query', async () => {
   }
 })
 
-function renderPage() {
+function renderPage(preloadedState: PartialTestRootState = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const store = makeTestStore(preloadedState)
   return render(
-    <QueryClientProvider client={qc}>
-      <DriverPlanningPage />
-    </QueryClientProvider>,
+    <Provider store={store}>
+      <QueryClientProvider client={qc}>
+        <DriverPlanningPage />
+      </QueryClientProvider>
+    </Provider>,
   )
 }
 
@@ -165,7 +174,7 @@ describe('DriverPlanningPage', () => {
     expect(screen.getByTestId('driver-name')).toHaveTextContent('Smith, J.')
   })
 
-  it('renders the current trip as a link to the trip screen, without the trip number', () => {
+  it('renders the current trip as an unbolded badge link to the trip screen', () => {
     driverPlanningReturn = {
       data: [
         makeDriver({
@@ -183,9 +192,13 @@ describe('DriverPlanningPage', () => {
     expect(link).toHaveTextContent('Houston Run')
     expect(link).not.toHaveTextContent('#42')
     expect(link.getAttribute('href')).toBe('/driver-planning/trips/42')
+    // The badge inside the link picks up font-normal (no shadcn font-semibold).
+    const badge = link.querySelector('[class*="font-normal"]')
+    expect(badge).toBeTruthy()
+    expect(link.querySelector('[class*="font-semibold"]')).toBeFalsy()
   })
 
-  it('renders the filter input', () => {
+  it('renders the driver name and zone filters', () => {
     driverPlanningReturn = {
       data: [makeDriver()],
       isLoading: false,
@@ -193,6 +206,106 @@ describe('DriverPlanningPage', () => {
     }
     renderPage()
     expect(screen.getByPlaceholderText(/filter by driver name/i)).toBeInTheDocument()
+    expect(screen.getByTestId('driver-zone-filter')).toBeInTheDocument()
+  })
+
+  describe('zone filter', () => {
+    const stateList = [
+      { geo_code: 'TX', geo_name: 'Texas', zone: 'SW' },
+      { geo_code: 'NY', geo_name: 'New York', zone: 'NE' },
+      { geo_code: 'CA', geo_name: 'California', zone: 'W' },
+    ]
+    const zoneList = [
+      { zone_code: 'SW', zone_description: 'Southwest' },
+      { zone_code: 'NE', zone_description: 'Northeast' },
+      { zone_code: 'W', zone_description: 'West' },
+    ]
+
+    it('narrows the visible rows to drivers whose ready state maps to a selected zone', () => {
+      driverPlanningReturn = {
+        data: [
+          // Alice → TX (Southwest)
+          makeDriver({
+            driverId: 1,
+            driverName: 'Alice',
+            deliveries: [delivery({ state: 'TX', actualDate: '2026-06-02' })],
+          }),
+          // Bob → NY (Northeast)
+          makeDriver({
+            driverId: 2,
+            driverName: 'Bob',
+            deliveries: [delivery({ activityId: 9, state: 'NY', actualDate: '2026-06-02' })],
+          }),
+          // Carol → CA (West)
+          makeDriver({
+            driverId: 3,
+            driverName: 'Carol',
+            deliveries: [delivery({ activityId: 8, state: 'CA', actualDate: '2026-06-02' })],
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage({ common: { stateList, zoneList } })
+
+      // Default: all three visible.
+      expect(screen.getAllByTestId('driver-row')).toHaveLength(3)
+
+      // Pick the Southwest zone — only Alice should remain.
+      const zoneFilter = screen.getByTestId('driver-zone-filter')
+      const combobox = within(zoneFilter).getByRole('combobox')
+      fireEvent.mouseDown(combobox)
+      fireEvent.focus(combobox)
+      fireEvent.click(screen.getByText('Southwest'))
+
+      const rows = screen.getAllByTestId('driver-row')
+      expect(rows).toHaveLength(1)
+      expect(rows[0]!.getAttribute('data-driver-id')).toBe('1')
+    })
+  })
+
+  describe('Ready Date sort', () => {
+    it('sorts ascending on first click and descending on the second; nulls stay last', () => {
+      driverPlanningReturn = {
+        data: [
+          // Alice — June 5 (estimated)
+          makeDriver({
+            driverId: 1,
+            driverName: 'Alice',
+            deliveries: [delivery({ actualDate: null, estimatedDate: '2026-06-05' })],
+          }),
+          // Bob — June 2 (estimated)
+          makeDriver({
+            driverId: 2,
+            driverName: 'Bob',
+            deliveries: [
+              delivery({ activityId: 9, actualDate: null, estimatedDate: '2026-06-02' }),
+            ],
+          }),
+          // Carol — no deliveries, no confirmed → no ready date.
+          makeDriver({ driverId: 3, driverName: 'Carol', deliveries: [] }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+
+      const header = screen.getByTestId('ready-date-header')
+
+      // Click 1 — asc: Bob (Jun 2) → Alice (Jun 5) → Carol (null last).
+      fireEvent.click(header)
+      let rows = screen.getAllByTestId('driver-row')
+      expect(rows.map((r) => r.getAttribute('data-driver-id'))).toEqual(['2', '1', '3'])
+      expect(screen.getByTestId('ready-date-sort-icon').getAttribute('data-sort-order')).toBe('asc')
+
+      // Click 2 — desc: Alice → Bob → Carol (null still last).
+      fireEvent.click(header)
+      rows = screen.getAllByTestId('driver-row')
+      expect(rows.map((r) => r.getAttribute('data-driver-id'))).toEqual(['1', '2', '3'])
+      expect(screen.getByTestId('ready-date-sort-icon').getAttribute('data-sort-order')).toBe(
+        'desc',
+      )
+    })
   })
 
   describe('click-to-edit fields', () => {
@@ -247,7 +360,7 @@ describe('DriverPlanningPage', () => {
       expect(cell.querySelector('.fa-calendar-check')).toBeTruthy()
     })
 
-    it('bolds an estimated guess with the truck icon', () => {
+    it('marks an estimated guess with the estimated tier', () => {
       driverPlanningReturn = {
         data: [
           makeDriver({ deliveries: [delivery({ actualDate: null, estimatedDate: '2026-06-09' })] }),
@@ -258,12 +371,9 @@ describe('DriverPlanningPage', () => {
       renderPage()
       const cell = screen.getByTestId('ready-date-cell')
       expect(cell.getAttribute('data-ready-tier')).toBe('estimated')
-      expect(cell.className).toMatch(/font-semibold/)
-      expect(cell.className).not.toMatch(/italic/)
-      expect(cell.querySelector('.fa-truck-moving')).toBeTruthy()
     })
 
-    it('bolds a spread-only guess with the question-mark icon', () => {
+    it('marks a spread-only guess with the spread tier', () => {
       driverPlanningReturn = {
         data: [
           makeDriver({
@@ -278,12 +388,9 @@ describe('DriverPlanningPage', () => {
       renderPage()
       const cell = screen.getByTestId('ready-date-cell')
       expect(cell.getAttribute('data-ready-tier')).toBe('spread')
-      expect(cell.className).toMatch(/font-semibold/)
-      expect(cell.className).not.toMatch(/italic/)
-      expect(cell.querySelector('.fa-question')).toBeTruthy()
     })
 
-    it('bolds an actual guess with the checkered-flag icon', () => {
+    it('marks an actual guess with the actual tier', () => {
       driverPlanningReturn = {
         data: [makeDriver({ deliveries: [delivery({ actualDate: '2026-06-15' })] })],
         isLoading: false,
@@ -292,33 +399,6 @@ describe('DriverPlanningPage', () => {
       renderPage()
       const cell = screen.getByTestId('ready-date-cell')
       expect(cell.getAttribute('data-ready-tier')).toBe('actual')
-      expect(cell.className).toMatch(/font-semibold/)
-      expect(cell.className).not.toMatch(/italic/)
-      expect(cell.querySelector('.fa-flag-checkered')).toBeTruthy()
-    })
-
-    it('renders the ready date as DD/MM and the location as State, City (state bold)', () => {
-      driverPlanningReturn = {
-        data: [
-          makeDriver({
-            deliveries: [
-              delivery({
-                actualDate: null,
-                estimatedDate: '2026-06-09',
-                city: 'DALLAS',
-                state: 'TX',
-              }),
-            ],
-          }),
-        ],
-        isLoading: false,
-        isError: false,
-      }
-      renderPage()
-      expect(screen.getByTestId('ready-date-cell')).toHaveTextContent('09/06')
-      const loc = screen.getByTestId('ready-location-cell')
-      expect(loc).toHaveTextContent('TX, Dallas')
-      expect(loc.querySelector('b')?.textContent).toBe('TX')
     })
   })
 
@@ -357,7 +437,7 @@ describe('DriverPlanningPage', () => {
       expect(lines[2]!.getAttribute('data-activity-id')).toBe('3')
     })
 
-    it('always renders all three date slots (no collapsing) with the effective bolded', () => {
+    it('shows the actual date when present (priority 1)', () => {
       driverPlanningReturn = {
         data: [
           makeDriver({
@@ -365,8 +445,8 @@ describe('DriverPlanningPage', () => {
               delivery({
                 plannedStart: '2026-06-01',
                 plannedEnd: '2026-06-03',
-                estimatedDate: '2026-06-01', // matches the start — must NOT collapse
-                isCommitted: true,
+                estimatedDate: '2026-06-02',
+                actualDate: '2026-06-04',
               }),
             ],
           }),
@@ -375,15 +455,12 @@ describe('DriverPlanningPage', () => {
         isError: false,
       }
       renderPage()
-      const line = screen.getByTestId('delivery-line')
-      expect(line.textContent).toContain('06/01')
-      expect(line.textContent).toContain('06/03')
       const eff = screen.getByTestId('delivery-effective')
-      expect(eff).toHaveTextContent('06/01')
+      expect(eff).toHaveTextContent('06/04')
       expect(eff.className).toMatch(/font-semibold/)
     })
 
-    it('renders three dates with the middle bolded + colored when estimated is inside the spread', () => {
+    it('falls back to estimated when there is no actual (priority 2)', () => {
       driverPlanningReturn = {
         data: [
           makeDriver({
@@ -392,6 +469,7 @@ describe('DriverPlanningPage', () => {
                 plannedStart: '2026-06-01',
                 plannedEnd: '2026-06-05',
                 estimatedDate: '2026-06-03',
+                actualDate: null,
                 isConfirmed: true,
               }),
             ],
@@ -401,29 +479,80 @@ describe('DriverPlanningPage', () => {
         isError: false,
       }
       renderPage()
-      const line = screen.getByTestId('delivery-line')
-      expect(line.textContent).toContain('06/01')
-      expect(line.textContent).toContain('06/05')
       const eff = screen.getByTestId('delivery-effective')
       expect(eff).toHaveTextContent('06/03')
       expect(eff.className).toMatch(/font-semibold/)
       expect(eff.className).toMatch(/text-emerald-/)
     })
 
-    it('shows phone + SMS quick-actions in place of the middle date when no actual/estimated', () => {
+    it('falls back to spread start when there is no actual or estimated (priority 3)', () => {
       driverPlanningReturn = {
         data: [
           makeDriver({
-            deliveries: [delivery({ actualDate: null, estimatedDate: null })],
+            deliveries: [
+              delivery({
+                plannedStart: '2026-06-01',
+                plannedEnd: '2026-06-05',
+                estimatedDate: null,
+                actualDate: null,
+              }),
+            ],
           }),
         ],
         isLoading: false,
         isError: false,
       }
       renderPage()
-      expect(screen.queryByTestId('delivery-effective')).not.toBeInTheDocument()
-      expect(screen.getByTestId('delivery-call').getAttribute('href')).toBe('tel:+12345678910')
-      expect(screen.getByTestId('delivery-sms').getAttribute('href')).toBe('sms:+12345678910')
+      const eff = screen.getByTestId('delivery-effective')
+      expect(eff).toHaveTextContent('06/01')
+    })
+
+    it('renders phone + SMS quick-actions on every row, regardless of the date tier', () => {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            deliveries: [
+              delivery({ activityId: 1, actualDate: '2026-06-04' }),
+              delivery({
+                activityId: 2,
+                actualDate: null,
+                estimatedDate: null,
+                plannedStart: null,
+              }),
+            ],
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      const lines = screen.getAllByTestId('delivery-line')
+      for (const line of lines) {
+        expect(within(line).getByTestId('delivery-call').getAttribute('href')).toBe(
+          'tel:+12345678910',
+        )
+        expect(within(line).getByTestId('delivery-sms').getAttribute('href')).toBe(
+          'sms:+12345678910',
+        )
+      }
+    })
+
+    it('places the confidence icon immediately after the date cell (not after the city)', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ deliveries: [delivery({ actualDate: '2026-06-02' })] })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      const line = screen.getByTestId('delivery-line')
+      const cells = Array.from(line.querySelectorAll('td'))
+      // Column order: state | date | icon | city | call/sms.
+      const effIdx = cells.findIndex((c) => c.querySelector('[data-testid="delivery-effective"]'))
+      const iconIdx = cells.findIndex((c) => c.querySelector('[data-testid="delivery-icon"]'))
+      const cityIdx = cells.findIndex((c) => c.textContent?.includes('Dallas'))
+      expect(effIdx).toBeGreaterThanOrEqual(0)
+      expect(iconIdx).toBe(effIdx + 1)
+      expect(cityIdx).toBe(iconIdx + 1)
     })
 
     it('renders the truck icon for an actual_date delivery', () => {

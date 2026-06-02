@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
+import { useSelector } from 'react-redux'
 import { EmptyState } from '@/components/EmptyState'
 import {
   Table,
@@ -20,11 +21,21 @@ import {
 } from '@/api/queries/driver-planning'
 import { formatDateShort } from '@/features/driver-planning/utils/format-date'
 import { HoverToolTip } from '@/features/driver-planning/containers/ToolTips'
+import { Select } from '@/features/driver-planning/components/Select'
+import type { RootState } from '@/features/driver-planning/redux/store'
 
 // Driver phone numbers are not yet exposed by the driver-planning payload, so
 // the phone/SMS quick-actions fall back to a placeholder. Replace with
 // `driver.phone` once the API surfaces it (see plan follow-up).
 const PLACEHOLDER_PHONE = '+12345678910'
+
+// Card aesthetic taken from features/driver-planning/components/Card/Card.module.css
+// — the same shared "shipment card" wrapper used across Operations. Inlined as a
+// Tailwind arbitrary-value class so this route doesn't depend on the
+// `.driver-planning-root` CSS variable being in scope (the layout DOES wrap us
+// in that root, but we read better without the indirection).
+const CARD_TEXT_CLASS = 'text-[#0c145c]' // --blue-700
+const CARD_ROW_CLASS = `bg-white/30 shadow-sm hover:bg-[#f5f5f5] ${CARD_TEXT_CLASS} font-light`
 
 // Compact day/month for the Ready Date column. UTC mirrors `formatDateShort`
 // so dates don't slip a day across the local timezone boundary.
@@ -63,13 +74,14 @@ interface EditState {
 // Per-delivery row on the driver's availability card.
 //
 // Rendered as a borderless table (one per driver) so the columns line up across
-// every delivery row. Column order: STATE | spread-start | effective | spread-end
-// | City | confidence-icon. The effective (actual/estimated) date is bolded and
-// color-coded to the confidence tier; the matching Font Awesome glyph mirrors
-// the ActivityGantt convention (truck = actual, flag = confirmed, check =
-// committed). All three date slots are ALWAYS rendered (no collapsing) so the
-// spread reads consistently; when there is no actual/estimated date the middle
-// slot shows phone + SMS quick-actions instead.
+// every delivery row. Column order: STATE | effective date | confidence icon |
+// City | phone/SMS quick-actions. The effective date is a single column
+// (priority actual → estimated → planned-start) bolded + color-coded to the
+// confidence tier; the matching Font Awesome glyph sits immediately to its
+// right (truck = actual, flag = confirmed, check = committed). Phone + SMS
+// anchors are always present in the trailing column — dispatchers reach for
+// the driver from the same spot regardless of whether the row has an effective
+// date.
 // ---------------------------------------------------------------------------
 
 interface ConfidenceTier {
@@ -107,12 +119,14 @@ function titleCaseCity(value: string | null): string {
     .join(' ')
 }
 
+/** Single date shown per delivery row. Priority: actual → estimated → spread-start. */
+function getDeliveryEffectiveDate(d: Delivery): string | null {
+  return d.actualDate ?? d.estimatedDate ?? d.plannedStart ?? null
+}
+
 function DeliveryLine({ delivery }: { delivery: Delivery }) {
   const tier = getConfidenceTier(delivery)
-  const effective = delivery.actualDate ?? delivery.estimatedDate ?? null
-
-  const startStr = delivery.plannedStart ? formatDateShort(delivery.plannedStart) : ''
-  const endStr = delivery.plannedEnd ? formatDateShort(delivery.plannedEnd) : ''
+  const effective = getDeliveryEffectiveDate(delivery)
   const effStr = effective ? formatDateShort(effective) : ''
   const boldClass = `font-semibold ${tier.colorClass}`.trim()
 
@@ -123,37 +137,15 @@ function DeliveryLine({ delivery }: { delivery: Delivery }) {
       data-activity-id={delivery.activityId}
     >
       <td className="pr-1.5">{delivery.state && <b>{delivery.state}</b>}</td>
-      <td className="pr-1.5 text-right tabular-nums">{startStr}</td>
-      <td className="px-1.5 text-center tabular-nums">
+      <td className="px-1.5 text-right tabular-nums">
         {effective ? (
           <span className={boldClass} data-testid="delivery-effective">
             {effStr}
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1.5">
-            <a
-              href={`tel:${PLACEHOLDER_PHONE}`}
-              aria-label="Call driver"
-              data-testid="delivery-call"
-              className="text-muted-foreground hover:text-foreground"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <i className="fas fa-phone" />
-            </a>
-            <a
-              href={`sms:${PLACEHOLDER_PHONE}`}
-              aria-label="Text driver"
-              data-testid="delivery-sms"
-              className="text-muted-foreground hover:text-foreground"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <i className="fas fa-comment-sms" />
-            </a>
-          </span>
+          <span className="text-muted-foreground">-</span>
         )}
       </td>
-      <td className="pl-1.5 tabular-nums">{endStr}</td>
-      <td className="pl-1.5">{titleCaseCity(delivery.city)}</td>
       <td className="pl-1.5">
         {tier.icon && (
           <HoverToolTip content={tier.label} direction="top">
@@ -165,6 +157,29 @@ function DeliveryLine({ delivery }: { delivery: Delivery }) {
             />
           </HoverToolTip>
         )}
+      </td>
+      <td className="pl-1.5">{titleCaseCity(delivery.city)}</td>
+      <td className="pl-1.5">
+        <span className="inline-flex items-center gap-1.5">
+          <a
+            href={`tel:${PLACEHOLDER_PHONE}`}
+            aria-label="Call driver"
+            data-testid="delivery-call"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <i className="fas fa-phone" />
+          </a>
+          <a
+            href={`sms:${PLACEHOLDER_PHONE}`}
+            aria-label="Text driver"
+            data-testid="delivery-sms"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <i className="fas fa-comment-sms" />
+          </a>
+        </span>
       </td>
     </tr>
   )
@@ -239,6 +254,54 @@ function ReadyTierIcon({ kind }: { kind: ReadyTier }) {
       />
     </HoverToolTip>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Zone & sort helpers (used by DriverPlanningPage)
+// ---------------------------------------------------------------------------
+
+interface StateRefRow {
+  geo_code?: string | null
+  geo_name?: string | null
+  zone?: string | null
+}
+
+interface ZoneRefRow {
+  zone_code: string
+  zone_description: string
+}
+
+/** Two-letter state extracted from confirmedAvailableLocation when present
+ *  (formats like "TX", "TX, Dallas" or "Dallas, TX" all surface a two-letter
+ *  token after splitting on commas). Falls back to the best-guess state from
+ *  the last delivery. */
+function getDriverReadyState(driver: DriverPlanningRow): string | null {
+  if (driver.confirmedAvailableLocation) {
+    for (const part of driver.confirmedAvailableLocation.split(',')) {
+      const t = part.trim()
+      if (/^[A-Za-z]{2}$/.test(t)) return t.toUpperCase()
+    }
+  }
+  return getReadyGuess(driver).state
+}
+
+function getDriverZoneCode(driver: DriverPlanningRow, stateList: StateRefRow[]): string | null {
+  const state = getDriverReadyState(driver)
+  if (!state) return null
+  const match = stateList.find((s) => (s.geo_code ?? '').toUpperCase() === state)
+  return match?.zone ?? null
+}
+
+/** Effective ready date used for both display and sort. */
+function getReadyDateKey(driver: DriverPlanningRow): string | null {
+  return driver.confirmedAvailableDate ?? getReadyGuess(driver).date
+}
+
+type SortOrder = 'asc' | 'desc'
+
+/** Mirrors getSortByValue from containers/Shipments/index.tsx. */
+function nextSortOrder(current: SortOrder | null): SortOrder {
+  return current === 'asc' ? 'desc' : 'asc'
 }
 
 type EditField = 'date' | 'location' | 'notes'
@@ -325,10 +388,8 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
   }
 
   return (
-    <TableRow data-testid="driver-row" data-driver-id={driver.driverId}>
-      <TableCell className="font-medium" data-testid="driver-name">
-        {formatDriverName(driver.driverName)}
-      </TableCell>
+    <TableRow data-testid="driver-row" data-driver-id={driver.driverId} className={CARD_ROW_CLASS}>
+      <TableCell data-testid="driver-name">{formatDriverName(driver.driverName)}</TableCell>
 
       {/* Ready Date */}
       <TableCell>
@@ -419,7 +480,8 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
         )}
       </TableCell>
 
-      {/* Current Trip — navigates to the trip screen */}
+      {/* Current Trip — navigates to the trip screen. Badge font-normal so
+          the chip text isn't bolded (shadcn Badge defaults to font-semibold). */}
       <TableCell data-testid="driver-current-trip">
         {driver.currentTripId ? (
           <Link
@@ -427,7 +489,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
             params={{ tripId: String(driver.currentTripId) }}
             data-testid="current-trip-link"
           >
-            <Badge variant="secondary" className="cursor-pointer hover:underline">
+            <Badge variant="secondary" className="cursor-pointer hover:underline font-normal">
               {driver.currentTripTitle ?? 'View trip'}
             </Badge>
           </Link>
@@ -439,13 +501,53 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
   )
 }
 
+interface ZoneOption {
+  value: string
+  label: string
+}
+
 export function DriverPlanningPage() {
   const { data: drivers, isLoading } = useQuery(driverPlanningQueryOptions)
-  const [filter, setFilter] = useState('')
-
-  const filtered = (drivers ?? []).filter((d) =>
-    d.driverName.toLowerCase().includes(filter.toLowerCase()),
+  const stateList = useSelector(
+    (state: RootState) => (state.common.stateList ?? []) as StateRefRow[],
   )
+  const zoneList = useSelector((state: RootState) => (state.common.zoneList ?? []) as ZoneRefRow[])
+
+  const [filter, setFilter] = useState('')
+  const [selectedZones, setSelectedZones] = useState<ZoneOption[]>([])
+  const [sortOrder, setSortOrder] = useState<SortOrder | null>(null)
+
+  const zoneOptions: ZoneOption[] = useMemo(
+    () => zoneList.map((z) => ({ value: z.zone_code, label: z.zone_description })),
+    [zoneList],
+  )
+
+  const visible = useMemo(() => {
+    const all = drivers ?? []
+    const selectedZoneCodes = selectedZones.map((z) => z.value)
+    const filtered = all.filter((d) => {
+      if (filter && !d.driverName.toLowerCase().includes(filter.toLowerCase())) {
+        return false
+      }
+      if (selectedZoneCodes.length > 0) {
+        const z = getDriverZoneCode(d, stateList)
+        if (!z || !selectedZoneCodes.includes(z)) return false
+      }
+      return true
+    })
+    if (!sortOrder) return filtered
+    return filtered.slice().sort((a, b) => {
+      const aKey = getReadyDateKey(a)
+      const bKey = getReadyDateKey(b)
+      if (aKey == null && bKey == null) return 0
+      // Nulls sort LAST in both directions — drivers with no ready date stay
+      // at the bottom regardless of sort direction (predictable for dispatchers).
+      if (aKey == null) return 1
+      if (bKey == null) return -1
+      const diff = +new Date(aKey) - +new Date(bKey)
+      return sortOrder === 'asc' ? diff : -diff
+    })
+  }, [drivers, filter, selectedZones, sortOrder, stateList])
 
   if (isLoading) {
     return (
@@ -464,27 +566,56 @@ export function DriverPlanningPage() {
         />
       ) : (
         <div className="space-y-3">
-          <Input
-            placeholder="Filter by driver name..."
-            data-testid="driver-filter"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="max-w-sm"
-          />
-          <div className="rounded-md border">
+          <div className="flex items-center gap-3">
+            <Input
+              placeholder="Filter by driver name..."
+              data-testid="driver-filter"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="max-w-sm"
+            />
+            <div className="min-w-[16rem]" data-testid="driver-zone-filter">
+              <Select
+                isMulti
+                placeholder="Zone"
+                options={zoneOptions}
+                value={selectedZones}
+                onChange={(value: unknown) =>
+                  setSelectedZones((value as ZoneOption[] | null) ?? [])
+                }
+              />
+            </div>
+          </div>
+          <div className="rounded-md bg-transparent">
             <Table data-testid="driver-table">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Driver</TableHead>
-                  <TableHead>Ready Date</TableHead>
-                  <TableHead>Ready Location</TableHead>
-                  <TableHead>Deliveries</TableHead>
-                  <TableHead>Notes</TableHead>
-                  <TableHead>Current Trip</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Driver</TableHead>
+                  <TableHead
+                    className={`${CARD_TEXT_CLASS} cursor-pointer select-none`}
+                    data-testid="ready-date-header"
+                    onClick={() => setSortOrder((o) => nextSortOrder(o))}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Ready Date
+                      {sortOrder && (
+                        <i
+                          className="fas fa-caret-up"
+                          data-testid="ready-date-sort-icon"
+                          data-sort-order={sortOrder}
+                          style={sortOrder === 'desc' ? { transform: 'rotate(180deg)' } : undefined}
+                        />
+                      )}
+                    </span>
+                  </TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Ready Location</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Deliveries</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Notes</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Current Trip</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.length === 0 ? (
+                {visible.length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={6}
@@ -494,7 +625,7 @@ export function DriverPlanningPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((driver) => <DriverRow key={driver.driverId} driver={driver} />)
+                  visible.map((driver) => <DriverRow key={driver.driverId} driver={driver} />)
                 )}
               </TableBody>
             </Table>
