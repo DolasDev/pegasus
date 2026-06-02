@@ -5,10 +5,12 @@
 // Postgres or the executor Lambda.
 //
 // The handler does up to 3 round trips: (1) planning rows (drivers + latest
-// trip), (2) RDEL deliveries for every trip in the planning set — skipped when
-// no driver has a current trip, (3) DriverConfirmedAvailability overrides —
-// soft-fails when the table is absent. Mocks below queue executeSql responses
-// in that order.
+// trip), (2) a 2-statement batch returning RDEL deliveries [recordset 0] +
+// one-row-per-shipment final activities [recordset 1] for every trip in the
+// planning set — skipped when no driver has a current trip, (3)
+// DriverConfirmedAvailability overrides — soft-fails when the table is absent.
+// Mocks below queue executeSql responses in that order, with `recordsets:
+// [deliveries, shipments]` on the batch call.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
@@ -74,6 +76,24 @@ function deliveryRow(overrides: Record<string, unknown> = {}) {
   }
 }
 
+/** A shipment row (final-activity-per-shipment) as the batch returns it. */
+function shipmentRow(overrides: Record<string, unknown> = {}) {
+  return {
+    trip_id: 10,
+    order_num: 5000,
+    activity_id: 200,
+    planned_start: '2026-06-08',
+    planned_end: '2026-06-12',
+    estimated_date: '2026-06-11',
+    actual_date: null,
+    is_committed: 0,
+    is_confirmed: 0,
+    city: 'Houston',
+    state: 'TX',
+    ...overrides,
+  }
+}
+
 describe('GET longhaul/driver-planning (cloud-direct)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -131,6 +151,47 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
         state: 'TX',
       },
     ])
+  })
+
+  it('returns one row per shipment from the batch recordset[1], with orderNum', async () => {
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    executeSqlMock
+      .mockResolvedValueOnce({ recordset: [planningRow()], rowsAffected: [] })
+      .mockResolvedValueOnce({
+        // Batch returns deliveries [0] + shipments [1]. The handler uses
+        // recordsets directly when present, falling back to `recordset` for
+        // legacy single-statement responses.
+        recordset: [],
+        recordsets: [
+          [],
+          [
+            shipmentRow({ order_num: 5001, actual_date: '2026-06-20', city: 'El Paso' }),
+            shipmentRow({ order_num: 5002, estimated_date: '2026-06-25', city: 'Houston' }),
+          ],
+        ],
+        rowsAffected: [],
+      })
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] })
+
+    // The handler builds a batch with TWO statements separated by `;` and a
+    // ROW_NUMBER() OVER PARTITION BY ... ORDER BY effective-date DESC selection
+    // for one-row-per-shipment. Assert both shape signals are present in the
+    // generated SQL.
+    const res = await buildApp().request('/onprem/longhaul/driver-planning')
+    const body = (await res.json()) as {
+      data: Array<{ shipments: Array<Record<string, unknown>> }>
+    }
+
+    const batchSql = executeSqlMock.mock.calls[1]![1] as string
+    expect(batchSql).toContain('ROW_NUMBER() OVER')
+    expect(batchSql).toContain('PARTITION BY la.TripMaster_id, la.order_num')
+
+    expect(res.status).toBe(200)
+    const shipments = body.data[0]!.shipments
+    expect(shipments).toHaveLength(2)
+    // Sorted by effective date asc (sortDeliveries) — El Paso 06/20 before Houston 06/25.
+    expect(shipments[0]).toMatchObject({ orderNum: 5001, city: 'El Paso' })
+    expect(shipments[1]).toMatchObject({ orderNum: 5002, city: 'Houston' })
   })
 
   it('falls back to trip fields when the driver has a trip but no deliveries', async () => {

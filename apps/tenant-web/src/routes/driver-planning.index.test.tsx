@@ -91,7 +91,7 @@ function renderPage(preloadedState: PartialTestRootState = {}) {
 }
 
 function makeDriver(overrides?: Partial<DriverPlanningRow>): DriverPlanningRow {
-  return {
+  const base: DriverPlanningRow = {
     driverId: 1,
     driverName: 'Driver, Alice',
     agentCode: 'A1',
@@ -109,8 +109,17 @@ function makeDriver(overrides?: Partial<DriverPlanningRow>): DriverPlanningRow {
     homeCity: null,
     homeState: null,
     deliveries: [],
+    shipments: [],
     ...overrides,
   }
+  // Mirror `deliveries` into `shipments` (one synthetic shipment per delivery)
+  // when callers only supplied deliveries, so Variant A's Deliveries column —
+  // which now reads `shipments` — keeps producing the same row count without
+  // every fixture having to spell both lists.
+  if (!overrides?.shipments && overrides?.deliveries) {
+    base.shipments = overrides.deliveries.map((d, i) => ({ ...d, orderNum: 9000 + i }))
+  }
+  return base
 }
 
 function delivery(overrides?: Partial<Delivery>): Delivery {
@@ -484,7 +493,7 @@ describe('DriverPlanningPage', () => {
       renderPage()
       const cell = screen.getByTestId('driver-deliveries')
       expect(cell).toHaveTextContent('-')
-      expect(screen.queryByTestId('delivery-line')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('shipment-line')).not.toBeInTheDocument()
     })
 
     it('renders one row per delivery, preserving the server-side sort order', () => {
@@ -502,7 +511,7 @@ describe('DriverPlanningPage', () => {
         isError: false,
       }
       renderPage()
-      const lines = screen.getAllByTestId('delivery-line')
+      const lines = screen.getAllByTestId('shipment-line')
       expect(lines).toHaveLength(3)
       expect(lines[0]!.getAttribute('data-activity-id')).toBe('1')
       expect(lines[1]!.getAttribute('data-activity-id')).toBe('2')
@@ -603,7 +612,7 @@ describe('DriverPlanningPage', () => {
       }
       renderPage()
       // Contact icons live in the per-driver row's last column, not per delivery.
-      const lines = screen.getAllByTestId('delivery-line')
+      const lines = screen.getAllByTestId('shipment-line')
       for (const line of lines) {
         expect(within(line).queryByTestId('delivery-call')).toBeNull()
         expect(within(line).queryByTestId('delivery-sms')).toBeNull()
@@ -624,7 +633,7 @@ describe('DriverPlanningPage', () => {
         isError: false,
       }
       renderPage()
-      const line = screen.getByTestId('delivery-line')
+      const line = screen.getByTestId('shipment-line')
       const cells = Array.from(line.querySelectorAll('td'))
       // Column order: state | date | icon | city. (Phone/chat moved to outer grid.)
       const effIdx = cells.findIndex((c) => c.querySelector('[data-testid="delivery-effective"]'))
@@ -689,7 +698,7 @@ describe('DriverPlanningPage', () => {
         isError: false,
       }
       renderPage()
-      const line = screen.getByTestId('delivery-line')
+      const line = screen.getByTestId('shipment-line')
       expect(line.textContent).toContain('TX')
       expect(line.textContent).toContain('El Paso')
     })

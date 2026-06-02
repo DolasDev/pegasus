@@ -18,6 +18,16 @@ export interface Delivery {
   state: string | null
 }
 
+/**
+ * One row per shipment on the driver's current trip, populated with the dates
+ * and location of the chronologically FINAL activity on each shipment (any
+ * activity type, not just RDEL). Variant A of the Availability screen renders
+ * this in place of the per-delivery `deliveries` list.
+ */
+export interface Shipment extends Delivery {
+  orderNum: number
+}
+
 export interface DriverPlanningRow {
   driverId: number
   driverName: string
@@ -38,6 +48,8 @@ export interface DriverPlanningRow {
   homeState: string | null
   /** Every RDEL activity on the driver's current trip, sorted by effective date. */
   deliveries: Delivery[]
+  /** One row per shipment, dates from the final activity on each. */
+  shipments: Shipment[]
 }
 
 // ---------------------------------------------------------------------------

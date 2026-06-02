@@ -117,7 +117,13 @@ function getDeliveryEffectiveDate(d: Delivery): string | null {
   return d.actualDate ?? d.estimatedDate ?? d.plannedStart ?? null
 }
 
-function DeliveryLine({ delivery }: { delivery: Delivery }) {
+function DeliveryLine({
+  delivery,
+  testId = 'delivery-line',
+}: {
+  delivery: Delivery
+  testId?: string
+}) {
   const tier = getConfidenceTier(delivery)
   const effective = getDeliveryEffectiveDate(delivery)
   const effStr = effective ? formatDateShort(effective) : ''
@@ -126,7 +132,7 @@ function DeliveryLine({ delivery }: { delivery: Delivery }) {
   return (
     <tr
       className="whitespace-nowrap align-top"
-      data-testid="delivery-line"
+      data-testid={testId}
       data-activity-id={delivery.activityId}
     >
       <td className="pr-1.5">{delivery.state && <b>{delivery.state}</b>}</td>
@@ -390,13 +396,13 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
       </TableCell>
 
       <TableCell data-testid="driver-deliveries">
-        {driver.deliveries.length === 0 ? (
+        {driver.shipments.length === 0 ? (
           <span className="text-muted-foreground">-</span>
         ) : (
           <table className="border-separate border-spacing-x-1 border-spacing-y-0.5 text-xs">
             <tbody>
-              {driver.deliveries.map((d) => (
-                <DeliveryLine key={d.activityId} delivery={d} />
+              {driver.shipments.map((s) => (
+                <DeliveryLine key={s.orderNum} delivery={s} testId="shipment-line" />
               ))}
             </tbody>
           </table>

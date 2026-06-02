@@ -91,6 +91,7 @@ describe('driverPlanningQueryOptions', () => {
             state: 'GA',
           },
         ],
+        shipments: [],
       },
     ]
     mockedApiFetch.mockResolvedValueOnce(rows)
@@ -123,6 +124,7 @@ describe('driverPlanningQueryOptions', () => {
         homeCity: 'Dallas',
         homeState: 'TX',
         deliveries: [],
+        shipments: [],
       },
     ]
     mockedApiFetch.mockResolvedValueOnce(rows)

@@ -64,11 +64,18 @@ OUTER APPLY (
 WHERE ${longhaulDriverFilter('d')}
 `
 
-// Second round trip — every RDEL (delivery) activity for the latest-trip set.
+// Second round trip — TWO recordsets in one batch:
+//   [0] every RDEL (delivery) activity for the latest-trip set (legacy shape,
+//       consumed by Variants B/C and by the back-compat
+//       estimatedAvailableDate/Location summary).
+//   [1] one row per (trip, shipment) — the chronologically FINAL activity on
+//       each shipment, irrespective of activity type. Variant A renders this
+//       to show one row per shipment with dates from the final activity.
 // The IN-list is interpolated from the trip_id values returned by PLANNING_SQL;
 // they're integers we just read back from the DB, so direct interpolation is
 // safe here. Skipped entirely when no driver has a current trip.
 function buildDeliveriesSql(tripIds: number[]): string {
+  const inList = tripIds.join(',')
   return `
 SELECT
   la.TripMaster_id AS trip_id,
@@ -83,7 +90,33 @@ SELECT
   la.state         AS state
 FROM LongDistanceDispatchActivity la
 WHERE la.ActivityType_code = 'RDEL'
-  AND la.TripMaster_id IN (${tripIds.join(',')})
+  AND la.TripMaster_id IN (${inList});
+
+WITH ranked AS (
+  SELECT
+    la.TripMaster_id AS trip_id,
+    la.order_num     AS order_num,
+    la.id            AS activity_id,
+    la.planned_start AS planned_start,
+    la.planned_end   AS planned_end,
+    la.estimated_date AS estimated_date,
+    la.actual_date   AS actual_date,
+    la.is_committed  AS is_committed,
+    la.is_confirmed  AS is_confirmed,
+    la.city          AS city,
+    la.state         AS state,
+    ROW_NUMBER() OVER (
+      PARTITION BY la.TripMaster_id, la.order_num
+      ORDER BY COALESCE(la.actual_date, la.estimated_date, la.planned_end, la.planned_start) DESC,
+               la.id DESC
+    ) AS rn
+  FROM LongDistanceDispatchActivity la
+  WHERE la.TripMaster_id IN (${inList})
+    AND la.order_num IS NOT NULL
+)
+SELECT trip_id, order_num, activity_id, planned_start, planned_end,
+       estimated_date, actual_date, is_committed, is_confirmed, city, state
+FROM ranked WHERE rn = 1;
 `
 }
 
@@ -122,6 +155,11 @@ interface DeliveryRow {
   state: string | null
 }
 
+/** One row per (trip, shipment) — see buildDeliveriesSql recordset [1]. */
+interface ShipmentRow extends DeliveryRow {
+  order_num: number
+}
+
 interface ConfirmedRow {
   driver_id: number
   confirmed_date: string | null
@@ -147,6 +185,11 @@ interface Delivery {
   state: string | null
 }
 
+/** Same shape as Delivery plus the shipment FK. */
+interface Shipment extends Delivery {
+  orderNum: number
+}
+
 interface DriverPlanningRow {
   driverId: number
   driverName: string
@@ -165,6 +208,7 @@ interface DriverPlanningRow {
   homeCity: string | null
   homeState: string | null
   deliveries: Delivery[]
+  shipments: Shipment[]
 }
 
 /** Mirrors features/driver-planning/containers/Trip/utils/sort-activities.ts.
@@ -211,16 +255,27 @@ export const longhaulDriverPlanningHandler: Handler<AppEnv> = async (c) => {
     const { recordset } = await executeSql(connectionString, PLANNING_SQL)
     const rows = recordset as PlanningRow[]
 
-    // Round trip 2 — RDEL deliveries for every trip in the planning set. Skip
+    // Round trip 2 — RDEL deliveries AND final-activity-per-shipment for every
+    // trip in the planning set, fetched as a single 2-statement batch. Skipped
     // entirely when no driver has a current trip.
     const tripIds = rows.map((r) => r.trip_id).filter((id): id is number => typeof id === 'number')
     const deliveriesByTrip = new Map<number, Delivery[]>()
+    const shipmentsByTrip = new Map<number, Shipment[]>()
     if (tripIds.length > 0) {
-      const { recordset: deliveryRows } = await executeSql(
-        connectionString,
-        buildDeliveriesSql(tripIds),
-      )
-      for (const row of deliveryRows as DeliveryRow[]) {
+      const batch = await executeSql(connectionString, buildDeliveriesSql(tripIds))
+      // Defensive: a single-statement executor response (legacy / mocked) only
+      // sets `recordset`; treat it as the deliveries recordset with no
+      // shipments. The wrapper normally populates `recordsets` itself.
+      const sets: unknown[][] =
+        Array.isArray(batch.recordsets) && batch.recordsets.length > 0
+          ? batch.recordsets
+          : batch.recordset
+            ? [batch.recordset]
+            : []
+      const deliveryRows = (sets[0] ?? []) as DeliveryRow[]
+      const shipmentRows = (sets[1] ?? []) as ShipmentRow[]
+
+      for (const row of deliveryRows) {
         const delivery: Delivery = {
           activityId: row.activity_id,
           plannedStart: row.planned_start ?? null,
@@ -243,6 +298,31 @@ export const longhaulDriverPlanningHandler: Handler<AppEnv> = async (c) => {
       for (const [tripId, bucket] of deliveriesByTrip) {
         deliveriesByTrip.set(tripId, sortDeliveries(bucket))
       }
+
+      for (const row of shipmentRows) {
+        const shipment: Shipment = {
+          orderNum: row.order_num,
+          activityId: row.activity_id,
+          plannedStart: row.planned_start ?? null,
+          plannedEnd: row.planned_end ?? null,
+          estimatedDate: row.estimated_date ?? null,
+          actualDate: row.actual_date ?? null,
+          isCommitted: toBool(row.is_committed),
+          isConfirmed: toBool(row.is_confirmed),
+          city: row.city ?? null,
+          state: row.state ?? null,
+        }
+        const bucket = shipmentsByTrip.get(row.trip_id)
+        if (bucket) {
+          bucket.push(shipment)
+        } else {
+          shipmentsByTrip.set(row.trip_id, [shipment])
+        }
+      }
+      // Same effective-date sort as deliveries so the rendering order is stable.
+      for (const [tripId, bucket] of shipmentsByTrip) {
+        shipmentsByTrip.set(tripId, sortDeliveries(bucket) as Shipment[])
+      }
     }
 
     // Round trip 3 — Confirmed-availability overrides. Optional; the
@@ -263,6 +343,7 @@ export const longhaulDriverPlanningHandler: Handler<AppEnv> = async (c) => {
     const data: DriverPlanningRow[] = rows.map((row) => {
       const conf = confirmedByDriver.get(row.driver_id)
       const deliveries = row.trip_id != null ? (deliveriesByTrip.get(row.trip_id) ?? []) : []
+      const shipments = row.trip_id != null ? (shipmentsByTrip.get(row.trip_id) ?? []) : []
 
       // For back-compat, derive a single estimated date + location from the
       // LAST delivery (highest effective date after sortDeliveries) so existing
@@ -303,6 +384,7 @@ export const longhaulDriverPlanningHandler: Handler<AppEnv> = async (c) => {
         homeCity: conf?.home_city ?? null,
         homeState: conf?.home_state ?? null,
         deliveries,
+        shipments,
       }
     })
 
