@@ -29,6 +29,13 @@ export interface DriverPlanningRow {
   confirmedAvailableDate: string | null
   confirmedAvailableLocation: string | null
   confirmedNotes: string | null
+  /** Planner-maintained Variant-B roster overrides. */
+  canada: boolean
+  california: boolean
+  rating: number | null
+  equipment: string | null
+  homeCity: string | null
+  homeState: string | null
   /** Every RDEL activity on the driver's current trip, sorted by effective date. */
   deliveries: Delivery[]
 }
@@ -57,6 +64,12 @@ type UpdateConfirmedInput = {
   confirmedDate: string | null
   confirmedLocation: string | null
   notes: string | null
+  canada?: boolean | null
+  california?: boolean | null
+  rating?: number | null
+  equipment?: string | null
+  homeCity?: string | null
+  homeState?: string | null
 }
 
 export function useUpdateConfirmedAvailability() {

@@ -19,37 +19,46 @@ import type { AppEnv } from '../../types'
 import { executeSql, MssqlExecError } from '../../lib/mssql-executor-client'
 import { resolveLonghaulUser } from '../../lib/longhaul-cloud-user'
 import { logger } from '../../lib/logger'
+import { ENSURE_CONFIRMED_TABLE_SQL } from './driver-confirmed-availability-schema'
 
 const PatchConfirmedBody = z.object({
   confirmedDate: z.string().nullable(),
   confirmedLocation: z.string().nullable(),
   notes: z.string().nullable().optional(),
+  // Variant-B roster overrides (planner-maintained, optional on the wire).
+  canada: z.boolean().nullable().optional(),
+  california: z.boolean().nullable().optional(),
+  rating: z.number().nullable().optional(),
+  equipment: z.string().nullable().optional(),
+  homeCity: z.string().nullable().optional(),
+  homeState: z.string().nullable().optional(),
 })
 
-// IF-NOT-EXISTS create (mirrors ensureConfirmedTable) + IF EXISTS upsert.
+// Ensure-schema (create/alter, mirrors ensureConfirmedTable) + IF EXISTS upsert.
 const UPSERT_SQL = `
-SET XACT_ABORT ON;
-IF OBJECT_ID('DriverConfirmedAvailability', 'U') IS NULL
-  CREATE TABLE DriverConfirmedAvailability (
-    driver_id int NOT NULL PRIMARY KEY,
-    confirmed_date varchar(50) NULL,
-    confirmed_location varchar(255) NULL,
-    notes varchar(1000) NULL,
-    updated_by int NULL,
-    updated_at datetime NULL DEFAULT GETDATE()
-  );
+${ENSURE_CONFIRMED_TABLE_SQL}
 IF EXISTS (SELECT 1 FROM DriverConfirmedAvailability WHERE driver_id = @driver_id)
   UPDATE DriverConfirmedAvailability
   SET confirmed_date = @confirmed_date,
       confirmed_location = @confirmed_location,
       notes = @notes,
+      canada = @canada,
+      california = @california,
+      rating = @rating,
+      equipment = @equipment,
+      home_city = @home_city,
+      home_state = @home_state,
       updated_by = @updated_by,
       updated_at = GETDATE()
   WHERE driver_id = @driver_id;
 ELSE
   INSERT INTO DriverConfirmedAvailability
-    (driver_id, confirmed_date, confirmed_location, notes, updated_by, updated_at)
-  VALUES (@driver_id, @confirmed_date, @confirmed_location, @notes, @updated_by, GETDATE());
+    (driver_id, confirmed_date, confirmed_location, notes,
+     canada, california, rating, equipment, home_city, home_state,
+     updated_by, updated_at)
+  VALUES (@driver_id, @confirmed_date, @confirmed_location, @notes,
+     @canada, @california, @rating, @equipment, @home_city, @home_state,
+     @updated_by, GETDATE());
 `
 
 export const longhaulDriverPlanningPatchHandler: Handler<AppEnv> = async (c) => {
@@ -80,6 +89,12 @@ export const longhaulDriverPlanningPatchHandler: Handler<AppEnv> = async (c) => 
         { name: 'confirmed_date', value: parsed.data.confirmedDate },
         { name: 'confirmed_location', value: parsed.data.confirmedLocation },
         { name: 'notes', value: parsed.data.notes ?? null },
+        { name: 'canada', value: parsed.data.canada ?? null },
+        { name: 'california', value: parsed.data.california ?? null },
+        { name: 'rating', value: parsed.data.rating ?? null },
+        { name: 'equipment', value: parsed.data.equipment ?? null },
+        { name: 'home_city', value: parsed.data.homeCity ?? null },
+        { name: 'home_state', value: parsed.data.homeState ?? null },
         { name: 'updated_by', value: resolved.code },
       ],
     })

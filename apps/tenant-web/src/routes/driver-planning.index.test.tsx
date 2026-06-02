@@ -102,6 +102,12 @@ function makeDriver(overrides?: Partial<DriverPlanningRow>): DriverPlanningRow {
     confirmedAvailableDate: null,
     confirmedAvailableLocation: null,
     confirmedNotes: null,
+    canada: false,
+    california: false,
+    rating: null,
+    equipment: null,
+    homeCity: null,
+    homeState: null,
     deliveries: [],
     ...overrides,
   }
@@ -126,6 +132,10 @@ describe('DriverPlanningPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     driverPlanningReturn = { data: [], isLoading: false, isError: false }
+    // Pin the random variant pick to V-A (index 0). The variants A/C retain the
+    // original move-centric columns these suites assert on; V-B has diverged into
+    // a roster (covered by its own describe block below). Math.floor(0 * 3) = 0.
+    vi.spyOn(Math, 'random').mockReturnValue(0)
   })
 
   it('shows Loading text while drivers are loading', () => {
@@ -678,6 +688,151 @@ describe('DriverPlanningPage', () => {
       const line = screen.getByTestId('delivery-line')
       expect(line.textContent).toContain('TX')
       expect(line.textContent).toContain('El Paso')
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Variant B — planner-oriented driver roster. Re-pin the random variant pick
+  // to V-B (Math.floor(0.5 * 3) = 1) so renderPage() mounts the roster.
+  // -------------------------------------------------------------------------
+  describe('Variant B roster', () => {
+    beforeEach(() => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    })
+
+    it('renders the roster headers and Driver Code / Agency from driver data', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ driverId: 4502, driverName: 'Hauler, Alice', agentCode: '1545' })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+
+      // Scope to the table — "Zone" also appears in the zone-filter placeholder.
+      const table = within(screen.getByTestId('driver-table'))
+      for (const header of [
+        'Driver Name',
+        'Driver Code',
+        'State',
+        'Zone',
+        'Empty Date',
+        'Canada?',
+        'California?',
+        'Rating',
+        'Equipment',
+        'Notes',
+        'Home City',
+        'Home State',
+        'Agency',
+      ]) {
+        expect(table.getByText(header)).toBeInTheDocument()
+      }
+      expect(screen.getByTestId('driver-code')).toHaveTextContent('4502')
+      expect(screen.getByTestId('driver-agency')).toHaveTextContent('1545')
+    })
+
+    it('falls back to the 1111 placeholder when the driver has no agent code', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ agentCode: null })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      expect(screen.getByTestId('driver-agency')).toHaveTextContent('1111')
+    })
+
+    it('colours the driver-name cell by agency', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ agentCode: '1511' })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      expect(screen.getByTestId('driver-name').className).toMatch(/bg-red-300/)
+    })
+
+    it('derives State and Zone from the ready location / stateList', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ confirmedAvailableLocation: 'Austin, TX' })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage({ common: { stateList: [{ geo_code: 'TX', geo_name: 'Texas', zone: 'SW' }] } })
+      expect(screen.getByTestId('driver-state')).toHaveTextContent('TX')
+      expect(screen.getByTestId('driver-zone')).toHaveTextContent('SW')
+    })
+
+    it('toggles Canada on click, commits canada:true, and highlights the cell yellow', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ driverId: 9, canada: false })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      const cell = screen.getByTestId('driver-canada')
+      expect(cell.className).not.toMatch(/bg-yellow-200/)
+      fireEvent.click(cell)
+      expect(mutateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ driverId: 9, canada: true }),
+        expect.anything(),
+      )
+      expect(screen.getByTestId('driver-canada').className).toMatch(/bg-yellow-200/)
+      expect(screen.getByTestId('driver-canada')).toHaveTextContent('Yes')
+    })
+
+    it('highlights Rating red when below 4.5', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ rating: 4.2 })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      const cell = screen.getByTestId('driver-rating')
+      expect(cell.className).toMatch(/bg-red-200/)
+      expect(cell.className).toMatch(/text-red-700/)
+    })
+
+    it('does not highlight Rating at or above 4.5', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ rating: 4.8 })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      expect(screen.getByTestId('driver-rating').className).not.toMatch(/bg-red-200/)
+    })
+
+    it('commits the edited Rating via the mutation on blur', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ driverId: 7, rating: null })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      fireEvent.click(screen.getByTestId('driver-rating'))
+      const input = screen.getByTestId('confirmed-rating-input')
+      fireEvent.change(input, { target: { value: '4.9' } })
+      fireEvent.blur(input)
+      expect(mutateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ driverId: 7, rating: 4.9 }),
+        expect.anything(),
+      )
+    })
+
+    it('commits a selected Equipment value', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ driverId: 3, equipment: null })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      fireEvent.click(screen.getByTestId('driver-equipment'))
+      const select = screen.getByTestId('confirmed-equipment-select')
+      fireEvent.change(select, { target: { value: 'Straight Truck' } })
+      expect(mutateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ driverId: 3, equipment: 'Straight Truck' }),
+        expect.anything(),
+      )
     })
   })
 })

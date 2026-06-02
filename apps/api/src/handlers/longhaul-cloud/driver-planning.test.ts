@@ -298,6 +298,12 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
             confirmed_date: '2026-06-20',
             confirmed_location: 'Austin, TX',
             notes: 'driver confirmed',
+            canada: 1,
+            california: 0,
+            rating: 4.8,
+            equipment: 'Straight Truck',
+            home_city: 'Austin',
+            home_state: 'TX',
           },
         ],
         rowsAffected: [],
@@ -309,6 +315,13 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
     expect(body.data[0]!.confirmedAvailableDate).toBe('2026-06-20')
     expect(body.data[0]!.confirmedAvailableLocation).toBe('Austin, TX')
     expect(body.data[0]!.confirmedNotes).toBe('driver confirmed')
+    // Variant-B roster overrides — bit columns normalised to boolean.
+    expect(body.data[0]!.canada).toBe(true)
+    expect(body.data[0]!.california).toBe(false)
+    expect(body.data[0]!.rating).toBe(4.8)
+    expect(body.data[0]!.equipment).toBe('Straight Truck')
+    expect(body.data[0]!.homeCity).toBe('Austin')
+    expect(body.data[0]!.homeState).toBe('TX')
   })
 
   it('soft-fails when the DriverConfirmedAvailability table is missing', async () => {

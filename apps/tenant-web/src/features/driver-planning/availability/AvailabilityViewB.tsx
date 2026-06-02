@@ -1,14 +1,15 @@
 // ---------------------------------------------------------------------------
-// Availability view variant B.
+// Availability view variant B — planner-oriented driver roster.
 //
 // One of three parallel copies (A/B/C) wired into routes/driver-planning.index.tsx
-// behind a "Change View" tab toggle. Each variant starts as a verbatim copy of
-// the original Availability page so the three can evolve independently. Edit
-// freely — there is no shared base; divergence between A/B/C is the point.
+// behind a "Change View" tab toggle. Variant B diverges from the move-centric A/C
+// into a flat attribute table: a row per driver with planner-maintained fields
+// (Canada/California eligibility, rating, equipment, home location, notes) stored
+// as manual overrides on DriverConfirmedAvailability, plus derived State/Zone and
+// the agency-coloured driver name. Edit freely — there is no shared base.
 // ---------------------------------------------------------------------------
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
 import { useSelector } from 'react-redux'
 import { EmptyState } from '@/components/EmptyState'
 import {
@@ -20,22 +21,42 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import {
   driverPlanningQueryOptions,
   useUpdateConfirmedAvailability,
-  type Delivery,
   type DriverPlanningRow,
 } from '@/api/queries/driver-planning'
-import { formatDateShort } from '@/features/driver-planning/utils/format-date'
 import { HoverToolTip } from '@/features/driver-planning/containers/ToolTips'
 import { Select } from '@/features/driver-planning/components/Select'
 import type { RootState } from '@/features/driver-planning/redux/store'
 
-const PLACEHOLDER_PHONE = '+12345678910'
-
 const CARD_TEXT_CLASS = 'text-[#0c145c]'
 const CARD_ROW_CLASS = `bg-white/30 shadow-sm hover:bg-[#f5f5f5] ${CARD_TEXT_CLASS} font-light`
+
+const AGENCY_PLACEHOLDER = '1111'
+const EQUIPMENT_OPTIONS = ['Tractor Trailer', 'Straight Truck']
+
+// Driver-name cell background keyed by agency (agent code). Tunable shades.
+const AGENCY_BG: Record<string, string> = {
+  '1511': 'bg-red-300',
+  '1545': 'bg-orange-300',
+  '1505': 'bg-white',
+  '1523': 'bg-emerald-200',
+  '1295': 'bg-yellow-200',
+}
+
+function agencyBgClass(agentCode: string | null): string {
+  if (!agentCode) return ''
+  return AGENCY_BG[agentCode.trim()] ?? ''
+}
+
+function ratingClass(rating: number | null): string {
+  return rating != null && rating < 4.5 ? 'bg-red-200 text-red-700' : ''
+}
+
+function formatRating(rating: number | null): string {
+  return rating == null ? '-' : rating.toFixed(1)
+}
 
 function formatMonthDay(dateStr: string | null): string {
   if (!dateStr) return '-'
@@ -53,55 +74,11 @@ function formatDriverName(name: string): string {
   return `${last.trim()}, ${initial}.`
 }
 
-function renderConfirmedLocation(value: string): ReactNode {
-  const parts = value.split(',').map((p) => p.trim())
-  const head = parts[0] ?? ''
-  if (/^[A-Za-z]{2}$/.test(head)) {
-    const rest = parts.slice(1).join(', ')
-    return (
-      <>
-        <b>{head.toUpperCase()}</b>
-        {rest ? `, ${rest}` : ''}
-      </>
-    )
-  }
-  return value
-}
-
 function toInputDate(dateStr: string | null): string {
   if (!dateStr) return ''
   const d = new Date(dateStr)
   if (isNaN(d.getTime())) return ''
   return d.toISOString().slice(0, 10)
-}
-
-interface EditState {
-  confirmedDate: string
-  confirmedLocation: string
-  notes: string
-}
-
-interface ConfidenceTier {
-  icon: string | null
-  colorClass: string
-  label: string
-}
-
-function getConfidenceTier(d: Delivery): ConfidenceTier {
-  if (d.actualDate) {
-    return { icon: 'fa-truck-moving', colorClass: 'text-emerald-700', label: 'Verified complete' }
-  }
-  if (d.isConfirmed) {
-    return {
-      icon: 'fa-flag-checkered',
-      colorClass: 'text-emerald-600',
-      label: 'Confirmed with driver',
-    }
-  }
-  if (d.isCommitted) {
-    return { icon: 'fa-check', colorClass: 'text-emerald-500', label: 'Driver committed' }
-  }
-  return { icon: null, colorClass: '', label: '' }
 }
 
 function titleCaseCity(value: string | null): string {
@@ -113,69 +90,16 @@ function titleCaseCity(value: string | null): string {
     .join(' ')
 }
 
-function getDeliveryEffectiveDate(d: Delivery): string | null {
-  return d.actualDate ?? d.estimatedDate ?? d.plannedStart ?? null
-}
-
-function DeliveryLine({ delivery }: { delivery: Delivery }) {
-  const tier = getConfidenceTier(delivery)
-  const effective = getDeliveryEffectiveDate(delivery)
-  const effStr = effective ? formatDateShort(effective) : ''
-  const boldClass = 'font-semibold'
-
-  return (
-    <tr
-      className="whitespace-nowrap align-top"
-      data-testid="delivery-line"
-      data-activity-id={delivery.activityId}
-    >
-      <td className="pr-1.5">{delivery.state && <b>{delivery.state}</b>}</td>
-      <td className="px-1.5 text-right tabular-nums">
-        {effective ? (
-          <span className={boldClass} data-testid="delivery-effective">
-            {effStr}
-          </span>
-        ) : (
-          <span className="text-muted-foreground">-</span>
-        )}
-      </td>
-      <td className="pl-1.5">
-        {tier.icon && (
-          <HoverToolTip content={tier.label} direction="top">
-            <i
-              className={`fas ${tier.icon} ${tier.colorClass}`}
-              data-testid="delivery-icon"
-              data-icon={tier.icon}
-              aria-label={tier.label}
-            />
-          </HoverToolTip>
-        )}
-      </td>
-      <td className="pl-1.5">{titleCaseCity(delivery.city)}</td>
-      <td className="pl-1.5">
-        <span className="inline-flex items-center gap-1.5">
-          <a
-            href={`tel:${PLACEHOLDER_PHONE}`}
-            aria-label="Call driver"
-            data-testid="delivery-call"
-            className="text-muted-foreground hover:text-foreground"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <i className="fas fa-phone" />
-          </a>
-          <a
-            href={`sms:${PLACEHOLDER_PHONE}`}
-            aria-label="Text driver"
-            data-testid="delivery-sms"
-            className="text-muted-foreground hover:text-foreground"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <i className="fas fa-comment-sms" />
-          </a>
-        </span>
-      </td>
-    </tr>
-  )
+interface EditState {
+  confirmedDate: string
+  confirmedLocation: string
+  notes: string
+  canada: boolean
+  california: boolean
+  rating: string
+  equipment: string
+  homeCity: string
+  homeState: string
 }
 
 type ReadyTier = 'confirmed' | 'actual' | 'estimated' | 'spread' | 'none'
@@ -271,42 +195,81 @@ function nextSortOrder(current: SortOrder | null): SortOrder {
   return current === 'asc' ? 'desc' : 'asc'
 }
 
-type EditField = 'date' | 'location' | 'notes'
+// Free-text / numeric / date / select edit fields. Canada & California are
+// click-to-toggle booleans handled separately (no edit mode).
+type EditField = 'emptyDate' | 'rating' | 'equipment' | 'notes' | 'homeCity' | 'homeState'
 
-const FIELD_KEY: Record<EditField, keyof EditState> = {
-  date: 'confirmedDate',
-  location: 'confirmedLocation',
+type StringEditKey = 'confirmedDate' | 'rating' | 'equipment' | 'notes' | 'homeCity' | 'homeState'
+
+const FIELD_KEY: Record<EditField, StringEditKey> = {
+  emptyDate: 'confirmedDate',
+  rating: 'rating',
+  equipment: 'equipment',
   notes: 'notes',
+  homeCity: 'homeCity',
+  homeState: 'homeState',
 }
 
-function DriverRow({ driver }: { driver: DriverPlanningRow }) {
+function parseRating(value: string): number | null {
+  const r = Number.parseFloat(value)
+  if (!Number.isFinite(r)) return null
+  return Math.min(5, Math.max(0, r))
+}
+
+function DriverRow({ driver, stateList }: { driver: DriverPlanningRow; stateList: StateRefRow[] }) {
   const [editingField, setEditingField] = useState<EditField | null>(null)
   const [form, setForm] = useState<EditState>(() => ({
     confirmedDate: toInputDate(driver.confirmedAvailableDate),
     confirmedLocation: driver.confirmedAvailableLocation ?? '',
     notes: driver.confirmedNotes ?? '',
+    canada: driver.canada,
+    california: driver.california,
+    rating: driver.rating == null ? '' : String(driver.rating),
+    equipment: driver.equipment ?? '',
+    homeCity: driver.homeCity ?? '',
+    homeState: driver.homeState ?? '',
   }))
   const [snapshot, setSnapshot] = useState('')
   const skipBlur = useRef(false)
 
   const mutation = useUpdateConfirmedAvailability()
   const guess = getReadyGuess(driver)
+  const state = getDriverReadyState(driver)
+  const zone = getDriverZoneCode(driver, stateList)
+  const agency = driver.agentCode ?? AGENCY_PLACEHOLDER
 
   function startEdit(field: EditField) {
     setSnapshot(form[FIELD_KEY[field]])
     setEditingField(field)
   }
 
-  function commit() {
+  // The upsert overwrites the whole row, so every save sends the full field set.
+  function commitWith(f: EditState) {
     mutation.mutate(
       {
         driverId: driver.driverId,
-        confirmedDate: form.confirmedDate || null,
-        confirmedLocation: form.confirmedLocation || null,
-        notes: form.notes || null,
+        confirmedDate: f.confirmedDate || null,
+        confirmedLocation: f.confirmedLocation || null,
+        notes: f.notes || null,
+        canada: f.canada,
+        california: f.california,
+        rating: parseRating(f.rating),
+        equipment: f.equipment || null,
+        homeCity: f.homeCity || null,
+        homeState: f.homeState || null,
       },
       { onSuccess: () => setEditingField(null) },
     )
+  }
+
+  function commit() {
+    commitWith(form)
+  }
+
+  function toggleBool(key: 'canada' | 'california') {
+    const next = { ...form, [key]: !form[key] }
+    setForm(next)
+    commitWith(next)
   }
 
   function handleBlur() {
@@ -331,11 +294,12 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
 
   function fieldInput(
     field: EditField,
-    extra: { type?: string; placeholder?: string; className?: string },
+    extra: { type?: string; placeholder?: string; className?: string; step?: string },
   ) {
     return (
       <Input
         type={extra.type ?? 'text'}
+        step={extra.step}
         autoFocus
         data-testid={`confirmed-${field}-input`}
         value={form[FIELD_KEY[field]]}
@@ -348,112 +312,150 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
     )
   }
 
+  function equipmentSelect() {
+    return (
+      <select
+        autoFocus
+        data-testid="confirmed-equipment-select"
+        value={form.equipment}
+        onChange={(e) => {
+          skipBlur.current = true
+          const next = { ...form, equipment: e.target.value }
+          setForm(next)
+          commitWith(next)
+        }}
+        onBlur={handleBlur}
+        className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+      >
+        <option value="">—</option>
+        {EQUIPMENT_OPTIONS.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    )
+  }
+
+  function boolCell(key: 'canada' | 'california', testid: string) {
+    const on = form[key]
+    return (
+      <TableCell
+        className={`cursor-pointer select-none ${on ? 'bg-yellow-200' : ''}`}
+        data-testid={testid}
+        onClick={() => toggleBool(key)}
+      >
+        {on ? 'Yes' : '-'}
+      </TableCell>
+    )
+  }
+
   return (
     <TableRow data-testid="driver-row" data-driver-id={driver.driverId} className={CARD_ROW_CLASS}>
-      <TableCell className="font-bold" data-testid="driver-name">
+      <TableCell
+        className={`font-bold ${agencyBgClass(driver.agentCode)}`}
+        data-testid="driver-name"
+      >
         {formatDriverName(driver.driverName)}
       </TableCell>
 
+      <TableCell data-testid="driver-code">{driver.driverId}</TableCell>
+
+      <TableCell data-testid="driver-state">{state ? <b>{state}</b> : '-'}</TableCell>
+
+      <TableCell data-testid="driver-zone">{zone ?? '-'}</TableCell>
+
       <TableCell>
-        {editingField === 'date' ? (
-          fieldInput('date', { type: 'date', className: 'w-40' })
-        ) : driver.confirmedAvailableDate ? (
-          <span
-            className="cursor-pointer hover:underline inline-flex items-center gap-1 font-semibold"
-            data-testid="ready-date-cell"
-            data-ready-tier="confirmed"
-            onClick={() => startEdit('date')}
-          >
-            <ReadyTierIcon kind="confirmed" />
-            {formatMonthDay(driver.confirmedAvailableDate)}
-          </span>
+        {editingField === 'emptyDate' ? (
+          fieldInput('emptyDate', { type: 'date', className: 'w-40' })
         ) : (
           <span
             className="cursor-pointer hover:underline inline-flex items-center gap-1 font-semibold"
-            data-testid="ready-date-cell"
-            data-ready-tier={guess.kind}
-            onClick={() => startEdit('date')}
+            data-testid="empty-date-cell"
+            data-ready-tier={driver.confirmedAvailableDate ? 'confirmed' : guess.kind}
+            onClick={() => startEdit('emptyDate')}
           >
-            <ReadyTierIcon kind={guess.kind} />
-            {guess.date ? formatMonthDay(guess.date) : '-'}
+            <ReadyTierIcon kind={driver.confirmedAvailableDate ? 'confirmed' : guess.kind} />
+            {driver.confirmedAvailableDate
+              ? formatMonthDay(driver.confirmedAvailableDate)
+              : guess.date
+                ? formatMonthDay(guess.date)
+                : '-'}
           </span>
         )}
       </TableCell>
 
-      <TableCell>
-        {editingField === 'location' ? (
-          fieldInput('location', { placeholder: 'State, City', className: 'w-44' })
-        ) : driver.confirmedAvailableLocation ? (
-          <span
-            className="cursor-pointer hover:underline"
-            data-testid="ready-location-cell"
-            onClick={() => startEdit('location')}
-          >
-            {renderConfirmedLocation(driver.confirmedAvailableLocation)}
-          </span>
+      {boolCell('canada', 'driver-canada')}
+      {boolCell('california', 'driver-california')}
+
+      <TableCell
+        className={`cursor-pointer ${ratingClass(driver.rating)}`}
+        data-testid="driver-rating"
+        onClick={editingField === 'rating' ? undefined : () => startEdit('rating')}
+      >
+        {editingField === 'rating' ? (
+          fieldInput('rating', {
+            type: 'number',
+            step: '0.1',
+            placeholder: '0-5',
+            className: 'w-20',
+          })
         ) : (
-          <span
-            className="cursor-pointer hover:underline inline-flex items-center gap-1"
-            data-testid="ready-location-cell"
-            onClick={() => startEdit('location')}
-          >
-            <ReadyTierIcon kind={guess.kind} />
-            {guess.state || guess.city ? (
-              <span>
-                {guess.state && <b>{guess.state}</b>}
-                {guess.state && guess.city ? ', ' : ''}
-                {guess.city}
-              </span>
-            ) : (
-              '-'
-            )}
-          </span>
+          <span className="hover:underline">{formatRating(driver.rating)}</span>
         )}
       </TableCell>
 
-      <TableCell data-testid="driver-deliveries">
-        {driver.deliveries.length === 0 ? (
-          <span className="text-muted-foreground">-</span>
+      <TableCell
+        className="cursor-pointer"
+        data-testid="driver-equipment"
+        onClick={editingField === 'equipment' ? undefined : () => startEdit('equipment')}
+      >
+        {editingField === 'equipment' ? (
+          equipmentSelect()
         ) : (
-          <table className="border-separate border-spacing-x-1 border-spacing-y-0.5 text-xs">
-            <tbody>
-              {driver.deliveries.map((d) => (
-                <DeliveryLine key={d.activityId} delivery={d} />
-              ))}
-            </tbody>
-          </table>
+          <span className="hover:underline">{driver.equipment || '-'}</span>
         )}
       </TableCell>
 
-      <TableCell>
+      <TableCell
+        className="cursor-pointer"
+        data-testid="notes-cell"
+        onClick={editingField === 'notes' ? undefined : () => startEdit('notes')}
+      >
         {editingField === 'notes' ? (
           fieldInput('notes', { placeholder: 'Notes', className: 'w-44' })
         ) : (
-          <span
-            className="cursor-pointer hover:underline text-muted-foreground"
-            data-testid="notes-cell"
-            onClick={() => startEdit('notes')}
-          >
+          <span className="hover:underline text-muted-foreground">
             {driver.confirmedNotes || '-'}
           </span>
         )}
       </TableCell>
 
-      <TableCell data-testid="driver-current-trip">
-        {driver.currentTripId ? (
-          <Link
-            to="/driver-planning/trips/$tripId"
-            params={{ tripId: String(driver.currentTripId) }}
-            data-testid="current-trip-link"
-          >
-            <Badge variant="secondary" className="cursor-pointer hover:underline font-normal">
-              {driver.currentTripTitle ?? 'View trip'}
-            </Badge>
-          </Link>
+      <TableCell
+        className="cursor-pointer"
+        data-testid="driver-home-city"
+        onClick={editingField === 'homeCity' ? undefined : () => startEdit('homeCity')}
+      >
+        {editingField === 'homeCity' ? (
+          fieldInput('homeCity', { placeholder: 'Home City', className: 'w-36' })
         ) : (
-          <span className="text-muted-foreground">None</span>
+          <span className="hover:underline">{driver.homeCity || '-'}</span>
         )}
       </TableCell>
+
+      <TableCell
+        className="cursor-pointer"
+        data-testid="driver-home-state"
+        onClick={editingField === 'homeState' ? undefined : () => startEdit('homeState')}
+      >
+        {editingField === 'homeState' ? (
+          fieldInput('homeState', { placeholder: 'Home State', className: 'w-24' })
+        ) : (
+          <span className="hover:underline">{driver.homeState || '-'}</span>
+        )}
+      </TableCell>
+
+      <TableCell data-testid="driver-agency">{agency}</TableCell>
     </TableRow>
   )
 }
@@ -545,42 +547,51 @@ export function AvailabilityViewB() {
             <Table data-testid="driver-table">
               <TableHeader>
                 <TableRow>
-                  <TableHead className={CARD_TEXT_CLASS}>Driver</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Driver Name</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Driver Code</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>State</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Zone</TableHead>
                   <TableHead
                     className={`${CARD_TEXT_CLASS} cursor-pointer select-none`}
-                    data-testid="ready-date-header"
+                    data-testid="empty-date-header"
                     onClick={() => setSortOrder((o) => nextSortOrder(o))}
                   >
                     <span className="inline-flex items-center gap-1">
-                      Ready Date
+                      Empty Date
                       {sortOrder && (
                         <i
                           className="fas fa-caret-up"
-                          data-testid="ready-date-sort-icon"
+                          data-testid="empty-date-sort-icon"
                           data-sort-order={sortOrder}
                           style={sortOrder === 'desc' ? { transform: 'rotate(180deg)' } : undefined}
                         />
                       )}
                     </span>
                   </TableHead>
-                  <TableHead className={CARD_TEXT_CLASS}>Ready Location</TableHead>
-                  <TableHead className={CARD_TEXT_CLASS}>Deliveries</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Canada?</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>California?</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Rating</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Equipment</TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Notes</TableHead>
-                  <TableHead className={CARD_TEXT_CLASS}>Current Trip</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Home City</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Home State</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Agency</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {visible.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={13}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       No matching drivers.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  visible.map((driver) => <DriverRow key={driver.driverId} driver={driver} />)
+                  visible.map((driver) => (
+                    <DriverRow key={driver.driverId} driver={driver} stateList={stateList} />
+                  ))
                 )}
               </TableBody>
             </Table>

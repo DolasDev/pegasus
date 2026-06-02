@@ -31,6 +31,7 @@ import { db } from '../../db'
 import { executeSql } from '../../lib/mssql-executor-client'
 import { logger } from '../../lib/logger'
 import { longhaulDriverFilter } from './driver-filter'
+import { ENSURE_CONFIRMED_TABLE_SQL } from './driver-confirmed-availability-schema'
 
 // One round trip: every driver and its latest non-cancelled trip.
 // v_longhaul_drivers exposes UPPERCASE columns on the Dolios SQL Server — alias
@@ -86,9 +87,14 @@ WHERE la.ActivityType_code = 'RDEL'
 `
 }
 
-// Third round trip — soft-fails when DriverConfirmedAvailability is absent.
+// Third round trip — ensures the table (+ Variant-B columns) exists, then reads
+// every override. Still wrapped in a soft-fail try/catch by the caller; the
+// ensure prefix keeps the SELECT safe on tenants whose table predates the
+// roster columns.
 const CONFIRMED_SQL = `
-SELECT driver_id, confirmed_date, confirmed_location, notes
+${ENSURE_CONFIRMED_TABLE_SQL}
+SELECT driver_id, confirmed_date, confirmed_location, notes,
+       canada, california, rating, equipment, home_city, home_state
 FROM DriverConfirmedAvailability
 `
 
@@ -121,6 +127,12 @@ interface ConfirmedRow {
   confirmed_date: string | null
   confirmed_location: string | null
   notes: string | null
+  canada: boolean | number | null
+  california: boolean | number | null
+  rating: number | null
+  equipment: string | null
+  home_city: string | null
+  home_state: string | null
 }
 
 interface Delivery {
@@ -146,6 +158,12 @@ interface DriverPlanningRow {
   confirmedAvailableDate: string | null
   confirmedAvailableLocation: string | null
   confirmedNotes: string | null
+  canada: boolean
+  california: boolean
+  rating: number | null
+  equipment: string | null
+  homeCity: string | null
+  homeState: string | null
   deliveries: Delivery[]
 }
 
@@ -278,6 +296,12 @@ export const longhaulDriverPlanningHandler: Handler<AppEnv> = async (c) => {
         confirmedAvailableDate: conf?.confirmed_date ?? null,
         confirmedAvailableLocation: conf?.confirmed_location ?? null,
         confirmedNotes: conf?.notes ?? null,
+        canada: toBool(conf?.canada),
+        california: toBool(conf?.california),
+        rating: conf?.rating ?? null,
+        equipment: conf?.equipment ?? null,
+        homeCity: conf?.home_city ?? null,
+        homeState: conf?.home_state ?? null,
         deliveries,
       }
     })

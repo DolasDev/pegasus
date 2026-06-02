@@ -60,6 +60,12 @@ describe('PATCH longhaul/driver-planning/:driverId (cloud-direct)', () => {
       confirmedDate: '2026-06-01',
       confirmedLocation: 'City, ST',
       notes: 'hello',
+      canada: true,
+      california: false,
+      rating: 4.7,
+      equipment: 'Tractor Trailer',
+      homeCity: 'Austin',
+      homeState: 'TX',
     })
 
     expect(res.status).toBe(200)
@@ -70,14 +76,26 @@ describe('PATCH longhaul/driver-planning/:driverId (cloud-direct)', () => {
       { name: 'confirmed_date', value: '2026-06-01' },
       { name: 'confirmed_location', value: 'City, ST' },
       { name: 'notes', value: 'hello' },
+      { name: 'canada', value: true },
+      { name: 'california', value: false },
+      { name: 'rating', value: 4.7 },
+      { name: 'equipment', value: 'Tractor Trailer' },
+      { name: 'home_city', value: 'Austin' },
+      { name: 'home_state', value: 'TX' },
       { name: 'updated_by', value: 7 },
     ])
   })
 
-  it('defaults missing notes to null', async () => {
+  it('defaults missing optional fields to null', async () => {
     await patch('42', { confirmedDate: null, confirmedLocation: null })
     const [, , opts] = executeSqlMock.mock.calls[0]!
     expect(opts.params).toContainEqual({ name: 'notes', value: null })
+    expect(opts.params).toContainEqual({ name: 'canada', value: null })
+    expect(opts.params).toContainEqual({ name: 'california', value: null })
+    expect(opts.params).toContainEqual({ name: 'rating', value: null })
+    expect(opts.params).toContainEqual({ name: 'equipment', value: null })
+    expect(opts.params).toContainEqual({ name: 'home_city', value: null })
+    expect(opts.params).toContainEqual({ name: 'home_state', value: null })
   })
 
   it('returns 400 for a non-numeric driver id', async () => {

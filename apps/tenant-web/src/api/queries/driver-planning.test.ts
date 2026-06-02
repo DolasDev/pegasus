@@ -72,6 +72,12 @@ describe('driverPlanningQueryOptions', () => {
         confirmedAvailableDate: null,
         confirmedAvailableLocation: null,
         confirmedNotes: null,
+        canada: false,
+        california: false,
+        rating: null,
+        equipment: null,
+        homeCity: null,
+        homeState: null,
         deliveries: [
           {
             activityId: 999,
@@ -110,6 +116,12 @@ describe('driverPlanningQueryOptions', () => {
         confirmedAvailableDate: '2026-05-15',
         confirmedAvailableLocation: 'Dallas, TX',
         confirmedNotes: 'OK',
+        canada: true,
+        california: false,
+        rating: 4.2,
+        equipment: 'Tractor Trailer',
+        homeCity: 'Dallas',
+        homeState: 'TX',
         deliveries: [],
       },
     ]
