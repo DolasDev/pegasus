@@ -492,29 +492,6 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
         )}
       </TableCell>
 
-      <TableCell data-testid="driver-contact">
-        <span className="inline-flex items-center gap-2">
-          <a
-            href={`tel:${PLACEHOLDER_PHONE}`}
-            aria-label="Call driver"
-            data-testid="driver-call"
-            className={`${CARD_TEXT_CLASS} hover:opacity-80`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <i className="fas fa-phone" />
-          </a>
-          <a
-            href={`sms:${PLACEHOLDER_PHONE}`}
-            aria-label="Text driver"
-            data-testid="driver-sms"
-            className={`${CARD_TEXT_CLASS} hover:opacity-80`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <i className="fas fa-comment-sms" />
-          </a>
-        </span>
-      </TableCell>
-
       <TableCell data-testid="driver-deliveries">
         {driver.shipments.length === 0 ? (
           <span className="text-muted-foreground">-</span>
@@ -544,6 +521,29 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
             </tbody>
           </table>
         )}
+      </TableCell>
+
+      <TableCell data-testid="driver-contact">
+        <span className="inline-flex items-center gap-2">
+          <a
+            href={`tel:${PLACEHOLDER_PHONE}`}
+            aria-label="Call driver"
+            data-testid="driver-call"
+            className={`${CARD_TEXT_CLASS} hover:opacity-80`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <i className="fas fa-phone" />
+          </a>
+          <a
+            href={`sms:${PLACEHOLDER_PHONE}`}
+            aria-label="Text driver"
+            data-testid="driver-sms"
+            className={`${CARD_TEXT_CLASS} hover:opacity-80`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <i className="fas fa-comment-sms" />
+          </a>
+        </span>
       </TableCell>
     </TableRow>
   )
@@ -689,8 +689,8 @@ export function AvailabilityViewA() {
                   <TableHead className={CARD_TEXT_CLASS}>Ready State</TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Ready City</TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Notes</TableHead>
-                  <TableHead className={CARD_TEXT_CLASS}>Contact</TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Deliveries</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Contact</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
