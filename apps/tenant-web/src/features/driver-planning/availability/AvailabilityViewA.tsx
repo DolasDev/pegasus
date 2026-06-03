@@ -92,18 +92,28 @@ interface ConfidenceTier {
 }
 
 function getConfidenceTier(d: Delivery): ConfidenceTier {
+  // Every tier paints in the row's brand-blue text colour — no per-tier hue.
   if (d.actualDate) {
-    return { icon: 'fa-truck-moving', colorClass: 'text-emerald-700', label: 'Verified complete' }
+    return { icon: 'fa-truck-moving', colorClass: CARD_TEXT_CLASS, label: 'Verified complete' }
   }
   if (d.isConfirmed) {
     return {
       icon: 'fa-flag-checkered',
-      colorClass: 'text-emerald-600',
+      colorClass: CARD_TEXT_CLASS,
       label: 'Confirmed with driver',
     }
   }
   if (d.isCommitted) {
-    return { icon: 'fa-check', colorClass: 'text-emerald-500', label: 'Driver committed' }
+    return { icon: 'fa-check', colorClass: CARD_TEXT_CLASS, label: 'Driver committed' }
+  }
+  // Spread fallback — the date shown comes from planned_start only (no
+  // estimated / actual). Mirrors the Ready Date "spread" tier.
+  if (!d.estimatedDate && d.plannedStart) {
+    return {
+      icon: 'fa-question',
+      colorClass: CARD_TEXT_CLASS,
+      label: 'Planned spread (least certain)',
+    }
   }
   return { icon: null, colorClass: '', label: '' }
 }
@@ -131,25 +141,16 @@ function DeliveryLine({
   const tier = getConfidenceTier(delivery)
   const effective = getDeliveryEffectiveDate(delivery)
   const effStr = effective ? formatDateShort(effective) : ''
-  const boldClass = 'font-bold'
 
+  // Column order: icon | date | state | city. No bold inside shipment rows —
+  // every cell inherits the row's regular weight.
   return (
     <tr
       className="whitespace-nowrap align-top"
       data-testid={testId}
       data-activity-id={delivery.activityId}
     >
-      <td className="pr-1.5">{delivery.state && <b>{delivery.state}</b>}</td>
-      <td className="px-1.5 text-right tabular-nums">
-        {effective ? (
-          <span className={boldClass} data-testid="delivery-effective">
-            {effStr}
-          </span>
-        ) : (
-          <span className="text-muted-foreground">-</span>
-        )}
-      </td>
-      <td className="pl-1.5">
+      <td className="pr-1.5">
         {tier.icon && (
           <HoverToolTip content={tier.label} direction="top">
             <i
@@ -161,6 +162,14 @@ function DeliveryLine({
           </HoverToolTip>
         )}
       </td>
+      <td className="px-1.5 text-right tabular-nums">
+        {effective ? (
+          <span data-testid="delivery-effective">{effStr}</span>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        )}
+      </td>
+      <td className="px-1.5">{delivery.state ?? ''}</td>
       <td className="pl-1.5">{titleCaseCity(delivery.city)}</td>
     </tr>
   )

@@ -655,7 +655,8 @@ describe('DriverPlanningPage', () => {
       renderPage()
       const eff = screen.getByTestId('delivery-effective')
       expect(eff).toHaveTextContent('06/04')
-      expect(eff.className).toMatch(/font-bold/)
+      // Shipment rows are no longer bold — every cell inherits the regular weight.
+      expect(eff.className).not.toMatch(/font-bold/)
     })
 
     it('falls back to estimated when there is no actual (priority 2)', () => {
@@ -679,12 +680,11 @@ describe('DriverPlanningPage', () => {
       renderPage()
       const eff = screen.getByTestId('delivery-effective')
       expect(eff).toHaveTextContent('06/03')
-      expect(eff.className).toMatch(/font-bold/)
-      // The confidence color lives on the icon, not the date — keep the date
-      // neutral so dispatchers only parse one color signal per row.
-      expect(eff.className).not.toMatch(/text-emerald-/)
+      expect(eff.className).not.toMatch(/font-bold/)
+      // Confidence icons all paint in the row's brand-blue text colour now.
       const icon = screen.getByTestId('delivery-icon')
-      expect(icon.className).toMatch(/text-emerald-/)
+      expect(icon.className).toMatch(/text-\[#0c145c\]/)
+      expect(icon.className).not.toMatch(/text-emerald-/)
     })
 
     it('falls back to spread start when there is no actual or estimated (priority 3)', () => {
@@ -743,7 +743,7 @@ describe('DriverPlanningPage', () => {
       )
     })
 
-    it('places the confidence icon immediately after the date cell (not after the city)', () => {
+    it('orders the shipment cells icon | date | state | city', () => {
       driverPlanningReturn = {
         data: [makeDriver({ deliveries: [delivery({ actualDate: '2026-06-02' })] })],
         isLoading: false,
@@ -752,13 +752,14 @@ describe('DriverPlanningPage', () => {
       renderPage()
       const line = screen.getByTestId('shipment-line')
       const cells = Array.from(line.querySelectorAll('td'))
-      // Column order: state | date | icon | city. (Phone/chat moved to outer grid.)
-      const effIdx = cells.findIndex((c) => c.querySelector('[data-testid="delivery-effective"]'))
       const iconIdx = cells.findIndex((c) => c.querySelector('[data-testid="delivery-icon"]'))
+      const effIdx = cells.findIndex((c) => c.querySelector('[data-testid="delivery-effective"]'))
+      const stateIdx = cells.findIndex((c) => c.textContent === 'TX')
       const cityIdx = cells.findIndex((c) => c.textContent?.includes('Dallas'))
-      expect(effIdx).toBeGreaterThanOrEqual(0)
-      expect(iconIdx).toBe(effIdx + 1)
-      expect(cityIdx).toBe(iconIdx + 1)
+      expect(iconIdx).toBeGreaterThanOrEqual(0)
+      expect(effIdx).toBe(iconIdx + 1)
+      expect(stateIdx).toBe(effIdx + 1)
+      expect(cityIdx).toBe(stateIdx + 1)
     })
 
     it('renders the truck icon for an actual_date delivery', () => {
@@ -808,7 +809,7 @@ describe('DriverPlanningPage', () => {
       expect(screen.queryByTestId('delivery-icon')).not.toBeInTheDocument()
     })
 
-    it('renders the state code (bold) and title-cased city in the row', () => {
+    it('renders the state code and title-cased city (no bold) in the row', () => {
       driverPlanningReturn = {
         data: [makeDriver({ deliveries: [delivery({ city: 'EL PASO', state: 'TX' })] })],
         isLoading: false,
@@ -818,6 +819,33 @@ describe('DriverPlanningPage', () => {
       const line = screen.getByTestId('shipment-line')
       expect(line.textContent).toContain('TX')
       expect(line.textContent).toContain('El Paso')
+      // State is no longer wrapped in <b> — shipment rows are weight-neutral.
+      expect(line.querySelectorAll('b')).toHaveLength(0)
+    })
+
+    it('renders a question-mark icon when the date is a planned-spread fallback', () => {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            deliveries: [
+              delivery({
+                plannedStart: '2026-06-01',
+                plannedEnd: '2026-06-05',
+                estimatedDate: null,
+                actualDate: null,
+                isConfirmed: false,
+                isCommitted: false,
+              }),
+            ],
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      const icon = screen.getByTestId('delivery-icon')
+      expect(icon.getAttribute('data-icon')).toBe('fa-question')
+      expect(icon.className).toMatch(/text-\[#0c145c\]/)
     })
   })
 
