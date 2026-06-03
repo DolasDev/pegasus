@@ -173,11 +173,15 @@ describe('DriverPlanningPage', () => {
     }
     renderPage()
 
-    // Headers — Confirmed → Ready, Current Trip moved to the end.
+    // Headers — Ready Location split into Ready State + Ready City; Variant A
+    // drops Current Trip (the Deliveries cell links to it instead).
     expect(screen.getByText('Driver')).toBeInTheDocument()
     expect(screen.getByText('Ready Date')).toBeInTheDocument()
-    expect(screen.getByText('Ready Location')).toBeInTheDocument()
-    expect(screen.getByText('Current Trip')).toBeInTheDocument()
+    expect(screen.getByText('Ready State')).toBeInTheDocument()
+    expect(screen.getByText('Ready City')).toBeInTheDocument()
+    expect(screen.getByText('Deliveries')).toBeInTheDocument()
+    expect(screen.queryByText('Ready Location')).not.toBeInTheDocument()
+    expect(screen.queryByText('Current Trip')).not.toBeInTheDocument()
     expect(screen.queryByText('Confirmed Date')).not.toBeInTheDocument()
     expect(screen.queryByText('Confirmed Location')).not.toBeInTheDocument()
 
@@ -198,8 +202,8 @@ describe('DriverPlanningPage', () => {
     expect(cell.className).toMatch(/font-bold/)
   })
 
-  describe('ready location state bolding', () => {
-    it('bolds only the state token in the best-guess (no confirmed location) branch', () => {
+  describe('ready state / ready city columns', () => {
+    it('falls back to the best-guess city/state when no confirmed location is set', () => {
       driverPlanningReturn = {
         data: [
           makeDriver({
@@ -211,52 +215,46 @@ describe('DriverPlanningPage', () => {
         isError: false,
       }
       renderPage()
-      const cell = screen.getByTestId('ready-location-cell')
-      // Outer span is no longer font-semibold; only the inner <b> wrapping the
-      // state code carries weight.
-      expect(cell.className).not.toMatch(/font-semibold/)
-      const bolded = cell.querySelectorAll('b')
-      expect(bolded).toHaveLength(1)
-      expect(bolded[0]).toHaveTextContent('TX')
-      expect(cell).toHaveTextContent('El Paso')
+      const stateCell = screen.getByTestId('ready-state-cell')
+      const cityCell = screen.getByTestId('ready-city-cell')
+      // State code renders bold in its own column.
+      const stateBold = stateCell.querySelectorAll('b')
+      expect(stateBold).toHaveLength(1)
+      expect(stateBold[0]).toHaveTextContent('TX')
+      expect(cityCell).toHaveTextContent('El Paso')
     })
 
-    it('bolds only the leading state token in a "State, City" confirmed location', () => {
+    it('splits a "STATE, City" confirmed location across the two columns', () => {
       driverPlanningReturn = {
-        data: [
-          makeDriver({
-            confirmedAvailableLocation: 'TX, Dallas',
-          }),
-        ],
+        data: [makeDriver({ confirmedAvailableLocation: 'TX, Dallas' })],
         isLoading: false,
         isError: false,
       }
       renderPage()
-      const cell = screen.getByTestId('ready-location-cell')
-      const bolded = cell.querySelectorAll('b')
-      expect(bolded).toHaveLength(1)
-      expect(bolded[0]).toHaveTextContent('TX')
-      expect(cell).toHaveTextContent('TX, Dallas')
+      const stateCell = screen.getByTestId('ready-state-cell')
+      const cityCell = screen.getByTestId('ready-city-cell')
+      expect(stateCell.querySelectorAll('b')).toHaveLength(1)
+      expect(stateCell).toHaveTextContent('TX')
+      expect(cityCell).toHaveTextContent('Dallas')
     })
 
-    it('leaves a confirmed location plain when the leading token is not a 2-letter state', () => {
+    it('puts a non-2-letter prefix entirely into the city column', () => {
       driverPlanningReturn = {
-        data: [
-          makeDriver({
-            confirmedAvailableLocation: 'Home base',
-          }),
-        ],
+        data: [makeDriver({ confirmedAvailableLocation: 'Home base' })],
         isLoading: false,
         isError: false,
       }
       renderPage()
-      const cell = screen.getByTestId('ready-location-cell')
-      expect(cell.querySelectorAll('b')).toHaveLength(0)
-      expect(cell).toHaveTextContent('Home base')
+      const stateCell = screen.getByTestId('ready-state-cell')
+      const cityCell = screen.getByTestId('ready-city-cell')
+      // No state code parsed → state column shows the placeholder.
+      expect(stateCell).toHaveTextContent('-')
+      expect(stateCell.querySelectorAll('b')).toHaveLength(0)
+      expect(cityCell).toHaveTextContent('Home base')
     })
   })
 
-  it('renders the current trip as an unbolded badge link to the trip screen', () => {
+  it('wraps the Deliveries table in a link to the current trip', () => {
     driverPlanningReturn = {
       data: [
         makeDriver({
@@ -264,20 +262,20 @@ describe('DriverPlanningPage', () => {
           driverName: 'Gary',
           currentTripId: 42,
           currentTripTitle: 'Houston Run',
+          deliveries: [delivery({ city: 'HOUSTON', state: 'TX', actualDate: '2026-06-02' })],
         }),
       ],
       isLoading: false,
       isError: false,
     }
     renderPage()
-    const link = screen.getByTestId('current-trip-link')
-    expect(link).toHaveTextContent('Houston Run')
-    expect(link).not.toHaveTextContent('#42')
+    // Current Trip column is gone in Variant A; the whole Deliveries table is
+    // a click-through to the trip detail screen instead.
+    expect(screen.queryByTestId('current-trip-link')).not.toBeInTheDocument()
+    const link = screen.getByTestId('deliveries-trip-link')
     expect(link.getAttribute('href')).toBe('/driver-planning/trips/42')
-    // The badge inside the link picks up font-normal (no shadcn font-semibold).
-    const badge = link.querySelector('[class*="font-normal"]')
-    expect(badge).toBeTruthy()
-    expect(link.querySelector('[class*="font-semibold"]')).toBeFalsy()
+    // The shipment line still renders inside the link.
+    expect(link.querySelector('[data-testid="shipment-line"]')).toBeTruthy()
   })
 
   it('renders the driver name and zone filters', () => {
@@ -438,12 +436,72 @@ describe('DriverPlanningPage', () => {
   })
 
   describe('click-to-edit fields', () => {
-    it('opens an inline date input when the Ready Date cell is clicked', () => {
+    it('opens linked date/state/city inputs when any of the three cells is clicked', () => {
       driverPlanningReturn = { data: [makeDriver()], isLoading: false, isError: false }
       renderPage()
       expect(screen.queryByTestId('confirmed-date-input')).not.toBeInTheDocument()
       fireEvent.click(screen.getByTestId('ready-date-cell'))
+      // All three inputs render together — they're a linked edit group.
       expect(screen.getByTestId('confirmed-date-input')).toBeInTheDocument()
+      expect(screen.getByTestId('confirmed-state-input')).toBeInTheDocument()
+      expect(screen.getByTestId('confirmed-city-input')).toBeInTheDocument()
+    })
+
+    it('also opens the linked group when Ready State or Ready City is clicked', () => {
+      driverPlanningReturn = { data: [makeDriver()], isLoading: false, isError: false }
+      renderPage()
+      fireEvent.click(screen.getByTestId('ready-state-cell'))
+      expect(screen.getByTestId('confirmed-date-input')).toBeInTheDocument()
+      expect(screen.getByTestId('confirmed-state-input')).toBeInTheDocument()
+      expect(screen.getByTestId('confirmed-city-input')).toBeInTheDocument()
+    })
+
+    it('refuses to save until date AND state AND city are all populated', () => {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            driverId: 5,
+            confirmedAvailableDate: null,
+            confirmedAvailableLocation: null,
+            deliveries: [],
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      // Driver was filtered out by default date range — clear the range so the
+      // row mounts with empty linked-group fields.
+      fireEvent.change(screen.getByTestId('ready-date-from'), { target: { value: '' } })
+      fireEvent.change(screen.getByTestId('ready-date-to'), { target: { value: '' } })
+
+      fireEvent.click(screen.getByTestId('ready-date-cell'))
+      const dateInput = screen.getByTestId('confirmed-date-input')
+      const stateInput = screen.getByTestId('confirmed-state-input')
+      const cityInput = screen.getByTestId('confirmed-city-input')
+
+      // Date only → blur attempts to commit but is a no-op; inputs stay open.
+      fireEvent.change(dateInput, { target: { value: '2026-07-04' } })
+      fireEvent.blur(dateInput)
+      expect(mutateMock).not.toHaveBeenCalled()
+      expect(screen.getByTestId('confirmed-date-input')).toBeInTheDocument()
+
+      // Adding state alone still isn't enough.
+      fireEvent.change(stateInput, { target: { value: 'CA' } })
+      fireEvent.blur(stateInput)
+      expect(mutateMock).not.toHaveBeenCalled()
+
+      // City completes the triple → mutation fires with all three packed in.
+      fireEvent.change(cityInput, { target: { value: 'Fresno' } })
+      fireEvent.blur(cityInput)
+      expect(mutateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          driverId: 5,
+          confirmedDate: '2026-07-04',
+          confirmedLocation: 'CA, Fresno',
+        }),
+        expect.anything(),
+      )
     })
 
     it('commits the edited Notes via the mutation on blur', () => {
@@ -485,7 +543,7 @@ describe('DriverPlanningPage', () => {
       renderPage()
       const cell = screen.getByTestId('ready-date-cell')
       expect(cell.getAttribute('data-ready-tier')).toBe('confirmed')
-      expect(cell.className).toMatch(/font-semibold/)
+      expect(cell.className).toMatch(/font-bold/)
       expect(cell.querySelector('.fa-calendar-check')).toBeTruthy()
       // Ready Date renders MM/DD (US date order), not DD/MM.
       expect(cell).toHaveTextContent('07/01')
@@ -597,7 +655,7 @@ describe('DriverPlanningPage', () => {
       renderPage()
       const eff = screen.getByTestId('delivery-effective')
       expect(eff).toHaveTextContent('06/04')
-      expect(eff.className).toMatch(/font-semibold/)
+      expect(eff.className).toMatch(/font-bold/)
     })
 
     it('falls back to estimated when there is no actual (priority 2)', () => {
@@ -621,7 +679,7 @@ describe('DriverPlanningPage', () => {
       renderPage()
       const eff = screen.getByTestId('delivery-effective')
       expect(eff).toHaveTextContent('06/03')
-      expect(eff.className).toMatch(/font-semibold/)
+      expect(eff.className).toMatch(/font-bold/)
       // The confidence color lives on the icon, not the date — keep the date
       // neutral so dispatchers only parse one color signal per row.
       expect(eff.className).not.toMatch(/text-emerald-/)

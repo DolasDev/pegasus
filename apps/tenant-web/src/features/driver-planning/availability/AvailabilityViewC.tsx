@@ -6,7 +6,7 @@
 // the original Availability page so the three can evolve independently. Edit
 // freely — there is no shared base; divergence between A/B/C is the point.
 // ---------------------------------------------------------------------------
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useSelector } from 'react-redux'
@@ -53,19 +53,23 @@ function formatDriverName(name: string): string {
   return `${last.trim()}, ${initial}.`
 }
 
-function renderConfirmedLocation(value: string): ReactNode {
+/** Pull `STATE` and `City` out of the canonical "STATE, City" storage format.
+ *  Strings without a 2-letter leading code put everything into `city`. */
+function parseLocation(value: string | null): { state: string; city: string } {
+  if (!value) return { state: '', city: '' }
   const parts = value.split(',').map((p) => p.trim())
   const head = parts[0] ?? ''
   if (/^[A-Za-z]{2}$/.test(head)) {
-    const rest = parts.slice(1).join(', ')
-    return (
-      <>
-        <b>{head.toUpperCase()}</b>
-        {rest ? `, ${rest}` : ''}
-      </>
-    )
+    return { state: head.toUpperCase(), city: parts.slice(1).join(', ') }
   }
-  return value
+  return { state: '', city: value }
+}
+
+function joinLocation(state: string, city: string): string {
+  const s = state.trim().toUpperCase()
+  const c = city.trim()
+  if (s && c) return `${s}, ${c}`
+  return s || c
 }
 
 function toInputDate(dateStr: string | null): string {
@@ -77,7 +81,8 @@ function toInputDate(dateStr: string | null): string {
 
 interface EditState {
   confirmedDate: string
-  confirmedLocation: string
+  confirmedState: string
+  confirmedCity: string
   notes: string
 }
 
@@ -121,7 +126,7 @@ function DeliveryLine({ delivery }: { delivery: Delivery }) {
   const tier = getConfidenceTier(delivery)
   const effective = getDeliveryEffectiveDate(delivery)
   const effStr = effective ? formatDateShort(effective) : ''
-  const boldClass = 'font-semibold'
+  const boldClass = 'font-bold'
 
   return (
     <tr
@@ -294,41 +299,67 @@ function dateInRange(dateStr: string | null, from: string, to: string): boolean 
   return true
 }
 
-type EditField = 'date' | 'location' | 'notes'
-
-const FIELD_KEY: Record<EditField, keyof EditState> = {
-  date: 'confirmedDate',
-  location: 'confirmedLocation',
-  notes: 'notes',
-}
+// Ready Date / Ready State / Ready City are linked: editing any of the three
+// opens all three at once and the mutation only fires when every one is
+// filled in. Notes still edits independently.
+type LinkedFocus = 'date' | 'state' | 'city'
+type EditMode = { kind: 'linked'; focus: LinkedFocus } | { kind: 'notes' } | null
 
 function DriverRow({ driver }: { driver: DriverPlanningRow }) {
-  const [editingField, setEditingField] = useState<EditField | null>(null)
-  const [form, setForm] = useState<EditState>(() => ({
-    confirmedDate: toInputDate(driver.confirmedAvailableDate),
-    confirmedLocation: driver.confirmedAvailableLocation ?? '',
-    notes: driver.confirmedNotes ?? '',
-  }))
-  const [snapshot, setSnapshot] = useState('')
+  const [editMode, setEditMode] = useState<EditMode>(null)
+  const initialForm = (): EditState => {
+    const { state, city } = parseLocation(driver.confirmedAvailableLocation)
+    return {
+      confirmedDate: toInputDate(driver.confirmedAvailableDate),
+      confirmedState: state,
+      confirmedCity: city,
+      notes: driver.confirmedNotes ?? '',
+    }
+  }
+  const [form, setForm] = useState<EditState>(initialForm)
+  const [snapshot, setSnapshot] = useState<EditState>(form)
   const skipBlur = useRef(false)
 
   const mutation = useUpdateConfirmedAvailability()
   const guess = getReadyGuess(driver)
 
-  function startEdit(field: EditField) {
-    setSnapshot(form[FIELD_KEY[field]])
-    setEditingField(field)
+  function startLinkedEdit(focus: LinkedFocus) {
+    setSnapshot(form)
+    setEditMode({ kind: 'linked', focus })
   }
 
-  function commit() {
+  function startNotesEdit() {
+    setSnapshot(form)
+    setEditMode({ kind: 'notes' })
+  }
+
+  function commitLinked() {
+    const date = form.confirmedDate.trim()
+    const state = form.confirmedState.trim()
+    const city = form.confirmedCity.trim()
+    // Partial commits are a no-op — the user must populate all three before
+    // anything saves. The inputs stay rendered so they can finish.
+    if (!date || !state || !city) return
+    mutation.mutate(
+      {
+        driverId: driver.driverId,
+        confirmedDate: date,
+        confirmedLocation: joinLocation(state, city),
+        notes: form.notes || null,
+      },
+      { onSuccess: () => setEditMode(null) },
+    )
+  }
+
+  function commitNotes() {
     mutation.mutate(
       {
         driverId: driver.driverId,
         confirmedDate: form.confirmedDate || null,
-        confirmedLocation: form.confirmedLocation || null,
+        confirmedLocation: joinLocation(form.confirmedState, form.confirmedCity) || null,
         notes: form.notes || null,
       },
-      { onSuccess: () => setEditingField(null) },
+      { onSuccess: () => setEditMode(null) },
     )
   }
 
@@ -337,7 +368,8 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
       skipBlur.current = false
       return
     }
-    commit()
+    if (editMode?.kind === 'linked') commitLinked()
+    else if (editMode?.kind === 'notes') commitNotes()
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -346,24 +378,26 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
       e.currentTarget.blur()
     } else if (e.key === 'Escape') {
       e.preventDefault()
-      if (editingField) setForm((f) => ({ ...f, [FIELD_KEY[editingField]]: snapshot }))
+      setForm(snapshot)
       skipBlur.current = true
-      setEditingField(null)
+      setEditMode(null)
     }
   }
 
-  function fieldInput(
-    field: EditField,
-    extra: { type?: string; placeholder?: string; className?: string },
+  function linkedInput(
+    field: LinkedFocus,
+    key: 'confirmedDate' | 'confirmedState' | 'confirmedCity',
+    extra: { type?: string; placeholder?: string; className?: string; maxLength?: number },
   ) {
     return (
       <Input
         type={extra.type ?? 'text'}
-        autoFocus
+        autoFocus={editMode?.kind === 'linked' && editMode.focus === field}
         data-testid={`confirmed-${field}-input`}
-        value={form[FIELD_KEY[field]]}
+        value={form[key]}
         placeholder={extra.placeholder}
-        onChange={(e) => setForm((f) => ({ ...f, [FIELD_KEY[field]]: e.target.value }))}
+        maxLength={extra.maxLength}
+        onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         className={extra.className}
@@ -378,24 +412,24 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
       </TableCell>
 
       <TableCell>
-        {editingField === 'date' ? (
-          fieldInput('date', { type: 'date', className: 'w-40' })
+        {editMode?.kind === 'linked' ? (
+          linkedInput('date', 'confirmedDate', { type: 'date', className: 'w-40' })
         ) : driver.confirmedAvailableDate ? (
           <span
-            className="cursor-pointer hover:underline inline-flex items-center gap-1 font-semibold"
+            className="cursor-pointer hover:underline inline-flex items-center gap-1 font-bold"
             data-testid="ready-date-cell"
             data-ready-tier="confirmed"
-            onClick={() => startEdit('date')}
+            onClick={() => startLinkedEdit('date')}
           >
             <ReadyTierIcon kind="confirmed" />
             {formatMonthDay(driver.confirmedAvailableDate)}
           </span>
         ) : (
           <span
-            className="cursor-pointer hover:underline inline-flex items-center gap-1 font-semibold"
+            className="cursor-pointer hover:underline inline-flex items-center gap-1 font-bold"
             data-testid="ready-date-cell"
             data-ready-tier={guess.kind}
-            onClick={() => startEdit('date')}
+            onClick={() => startLinkedEdit('date')}
           >
             <ReadyTierIcon kind={guess.kind} />
             {guess.date ? formatMonthDay(guess.date) : '-'}
@@ -404,31 +438,41 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
       </TableCell>
 
       <TableCell>
-        {editingField === 'location' ? (
-          fieldInput('location', { placeholder: 'State, City', className: 'w-44' })
-        ) : driver.confirmedAvailableLocation ? (
-          <span
-            className="cursor-pointer hover:underline"
-            data-testid="ready-location-cell"
-            onClick={() => startEdit('location')}
-          >
-            {renderConfirmedLocation(driver.confirmedAvailableLocation)}
-          </span>
+        {editMode?.kind === 'linked' ? (
+          linkedInput('state', 'confirmedState', {
+            placeholder: 'TX',
+            className: 'w-16',
+            maxLength: 2,
+          })
         ) : (
           <span
             className="cursor-pointer hover:underline"
-            data-testid="ready-location-cell"
-            onClick={() => startEdit('location')}
+            data-testid="ready-state-cell"
+            onClick={() => startLinkedEdit('state')}
           >
-            {guess.state || guess.city ? (
-              <span>
-                {guess.state && <b>{guess.state}</b>}
-                {guess.state && guess.city ? ', ' : ''}
-                {guess.city}
-              </span>
-            ) : (
-              '-'
-            )}
+            {(() => {
+              const parsed = parseLocation(driver.confirmedAvailableLocation)
+              const state = parsed.state || guess.state || ''
+              return state ? <b>{state}</b> : '-'
+            })()}
+          </span>
+        )}
+      </TableCell>
+
+      <TableCell>
+        {editMode?.kind === 'linked' ? (
+          linkedInput('city', 'confirmedCity', { placeholder: 'City', className: 'w-36' })
+        ) : (
+          <span
+            className="cursor-pointer hover:underline"
+            data-testid="ready-city-cell"
+            onClick={() => startLinkedEdit('city')}
+          >
+            {(() => {
+              const parsed = parseLocation(driver.confirmedAvailableLocation)
+              const city = parsed.city || guess.city || ''
+              return city || '-'
+            })()}
           </span>
         )}
       </TableCell>
@@ -448,13 +492,22 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
       </TableCell>
 
       <TableCell>
-        {editingField === 'notes' ? (
-          fieldInput('notes', { placeholder: 'Notes', className: 'w-44' })
+        {editMode?.kind === 'notes' ? (
+          <Input
+            autoFocus
+            data-testid="confirmed-notes-input"
+            value={form.notes}
+            placeholder="Notes"
+            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+            className="w-44"
+          />
         ) : (
           <span
             className="cursor-pointer hover:underline text-muted-foreground"
             data-testid="notes-cell"
-            onClick={() => startEdit('notes')}
+            onClick={() => startNotesEdit()}
           >
             {driver.confirmedNotes || '-'}
           </span>
@@ -617,7 +670,8 @@ export function AvailabilityViewC() {
                       )}
                     </span>
                   </TableHead>
-                  <TableHead className={CARD_TEXT_CLASS}>Ready Location</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Ready State</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Ready City</TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Deliveries</TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Notes</TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Current Trip</TableHead>
@@ -627,7 +681,7 @@ export function AvailabilityViewC() {
                 {visible.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       No matching drivers.
