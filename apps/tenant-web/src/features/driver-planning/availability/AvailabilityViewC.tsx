@@ -446,7 +446,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
           })
         ) : (
           <span
-            className="cursor-pointer hover:underline"
+            className="cursor-pointer hover:underline font-bold"
             data-testid="ready-state-cell"
             onClick={() => startLinkedEdit('state')}
           >
