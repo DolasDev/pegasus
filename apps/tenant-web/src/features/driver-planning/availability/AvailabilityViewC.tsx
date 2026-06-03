@@ -201,7 +201,13 @@ interface ReadyGuess {
 }
 
 function getReadyGuess(driver: DriverPlanningRow): ReadyGuess {
-  const last = driver.deliveries[driver.deliveries.length - 1]
+  // Use the chronologically FINAL activity on the driver's latest trip — any
+  // activity type — by reading the last `shipments` entry. Each shipment row
+  // already represents its own final activity; the array is sorted ascending
+  // by effective date so the trailing element wins. Falls back to the last
+  // delivery (legacy RDEL list) when no shipments are present.
+  const last =
+    driver.shipments[driver.shipments.length - 1] ?? driver.deliveries[driver.deliveries.length - 1]
   const state = last?.state ?? null
   const city = last?.city ? titleCaseCity(last.city) : null
 
@@ -269,6 +275,23 @@ type SortOrder = 'asc' | 'desc'
 
 function nextSortOrder(current: SortOrder | null): SortOrder {
   return current === 'asc' ? 'desc' : 'asc'
+}
+
+/** ISO `YYYY-MM-DD` for an offset (in months) from today. */
+function isoDateOffsetMonths(months: number): string {
+  const d = new Date()
+  d.setMonth(d.getMonth() + months)
+  return d.toISOString().slice(0, 10)
+}
+
+/** True when `dateStr` falls inside the [from, to] window (inclusive). Each
+ *  bound may be empty — an empty bound means "open on that side". A null
+ *  dateStr always fails the filter (driver has no calculated availability). */
+function dateInRange(dateStr: string | null, from: string, to: string): boolean {
+  if (!dateStr) return false
+  if (from && dateStr < from) return false
+  if (to && dateStr > to) return false
+  return true
 }
 
 type EditField = 'date' | 'location' | 'notes'
@@ -472,7 +495,14 @@ export function AvailabilityViewC() {
 
   const [filter, setFilter] = useState('')
   const [selectedZones, setSelectedZones] = useState<ZoneOption[]>([])
-  const [sortOrder, setSortOrder] = useState<SortOrder | null>(null)
+  // Default sort: earliest calculated availability first.
+  const [sortOrder, setSortOrder] = useState<SortOrder | null>('asc')
+  // Default date range: today ±3 months, around the calculated availability.
+  // A driver passes the filter when their calculated date sits inside the
+  // window; drivers without a calculated date are excluded (clear both inputs
+  // to show every driver).
+  const [dateFrom, setDateFrom] = useState(() => isoDateOffsetMonths(-3))
+  const [dateTo, setDateTo] = useState(() => isoDateOffsetMonths(3))
 
   const zoneOptions: ZoneOption[] = useMemo(
     () => zoneList.map((z) => ({ value: z.zone_code, label: z.zone_description })),
@@ -482,6 +512,7 @@ export function AvailabilityViewC() {
   const visible = useMemo(() => {
     const all = drivers ?? []
     const selectedZoneCodes = selectedZones.map((z) => z.value)
+    const rangeActive = dateFrom !== '' || dateTo !== ''
     const filtered = all.filter((d) => {
       if (filter && !d.driverName.toLowerCase().includes(filter.toLowerCase())) {
         return false
@@ -489,6 +520,9 @@ export function AvailabilityViewC() {
       if (selectedZoneCodes.length > 0) {
         const z = getDriverZoneCode(d, stateList)
         if (!z || !selectedZoneCodes.includes(z)) return false
+      }
+      if (rangeActive && !dateInRange(getReadyDateKey(d), dateFrom, dateTo)) {
+        return false
       }
       return true
     })
@@ -502,7 +536,7 @@ export function AvailabilityViewC() {
       const diff = +new Date(aKey) - +new Date(bKey)
       return sortOrder === 'asc' ? diff : -diff
     })
-  }, [drivers, filter, selectedZones, sortOrder, stateList])
+  }, [drivers, filter, selectedZones, sortOrder, stateList, dateFrom, dateTo])
 
   if (isLoading) {
     return (
@@ -538,6 +572,27 @@ export function AvailabilityViewC() {
                 onChange={(value: unknown) =>
                   setSelectedZones((value as ZoneOption[] | null) ?? [])
                 }
+              />
+            </div>
+            <div
+              className={`flex items-center gap-2 text-sm ${CARD_TEXT_CLASS}`}
+              data-testid="ready-date-range-filter"
+            >
+              <span>From</span>
+              <Input
+                type="date"
+                data-testid="ready-date-from"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="w-40"
+              />
+              <span>To</span>
+              <Input
+                type="date"
+                data-testid="ready-date-to"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="w-40"
               />
             </div>
           </div>

@@ -99,7 +99,10 @@ function makeDriver(overrides?: Partial<DriverPlanningRow>): DriverPlanningRow {
     currentTripTitle: null,
     estimatedAvailableDate: '2026-06-01',
     estimatedAvailableLocation: 'Dallas, TX',
-    confirmedAvailableDate: null,
+    // Default confirmed date inside the default A/B/C date-range filter
+    // (today ±3 months); tests that exercise the no-confirmed-date branch
+    // override this to null and bring their own shipments/deliveries.
+    confirmedAvailableDate: '2026-06-01',
     confirmedAvailableLocation: null,
     confirmedNotes: null,
     canada: false,
@@ -344,46 +347,93 @@ describe('DriverPlanningPage', () => {
   })
 
   describe('Ready Date sort', () => {
-    it('sorts ascending on first click and descending on the second; nulls stay last', () => {
+    it('defaults to ascending (earliest first) and toggles to descending on header click', () => {
       driverPlanningReturn = {
         data: [
           // Alice — June 5 (estimated)
           makeDriver({
             driverId: 1,
             driverName: 'Alice',
+            confirmedAvailableDate: null,
             deliveries: [delivery({ actualDate: null, estimatedDate: '2026-06-05' })],
           }),
           // Bob — June 2 (estimated)
           makeDriver({
             driverId: 2,
             driverName: 'Bob',
+            confirmedAvailableDate: null,
             deliveries: [
               delivery({ activityId: 9, actualDate: null, estimatedDate: '2026-06-02' }),
             ],
           }),
-          // Carol — no deliveries, no confirmed → no ready date.
-          makeDriver({ driverId: 3, driverName: 'Carol', deliveries: [] }),
+          // Carol — June 8 (estimated). She used to be the "no date" tail row,
+          // but the default date-range filter now hides drivers with no
+          // calculated date, so we give her a date inside the window instead.
+          makeDriver({
+            driverId: 3,
+            driverName: 'Carol',
+            confirmedAvailableDate: null,
+            deliveries: [
+              delivery({ activityId: 7, actualDate: null, estimatedDate: '2026-06-08' }),
+            ],
+          }),
         ],
         isLoading: false,
         isError: false,
       }
       renderPage()
 
-      const header = screen.getByTestId('ready-date-header')
-
-      // Click 1 — asc: Bob (Jun 2) → Alice (Jun 5) → Carol (null last).
-      fireEvent.click(header)
+      // Default sort is 'asc' (earliest first) on mount — Bob → Alice → Carol.
       let rows = screen.getAllByTestId('driver-row')
       expect(rows.map((r) => r.getAttribute('data-driver-id'))).toEqual(['2', '1', '3'])
       expect(screen.getByTestId('ready-date-sort-icon').getAttribute('data-sort-order')).toBe('asc')
 
-      // Click 2 — desc: Alice → Bob → Carol (null still last).
+      // Click 1 — toggles to desc: Carol → Alice → Bob.
+      const header = screen.getByTestId('ready-date-header')
       fireEvent.click(header)
       rows = screen.getAllByTestId('driver-row')
-      expect(rows.map((r) => r.getAttribute('data-driver-id'))).toEqual(['1', '2', '3'])
+      expect(rows.map((r) => r.getAttribute('data-driver-id'))).toEqual(['3', '1', '2'])
       expect(screen.getByTestId('ready-date-sort-icon').getAttribute('data-sort-order')).toBe(
         'desc',
       )
+
+      // Click 2 — back to asc.
+      fireEvent.click(header)
+      rows = screen.getAllByTestId('driver-row')
+      expect(rows.map((r) => r.getAttribute('data-driver-id'))).toEqual(['2', '1', '3'])
+      expect(screen.getByTestId('ready-date-sort-icon').getAttribute('data-sort-order')).toBe('asc')
+    })
+
+    it('applies a today ±3 months date-range filter by default; clearing both bounds shows every driver', () => {
+      driverPlanningReturn = {
+        data: [
+          // In range — June 5 (≈ today)
+          makeDriver({ driverId: 1, driverName: 'InRange', confirmedAvailableDate: '2026-06-05' }),
+          // Far future — outside the +3mo bound.
+          makeDriver({ driverId: 2, driverName: 'Far', confirmedAvailableDate: '2027-01-01' }),
+          // No calculated date at all → also excluded by the filter.
+          makeDriver({
+            driverId: 3,
+            driverName: 'Unknown',
+            confirmedAvailableDate: null,
+            deliveries: [],
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+
+      // Default range hides the far-future driver and the no-date driver.
+      let rows = screen.getAllByTestId('driver-row')
+      expect(rows.map((r) => r.getAttribute('data-driver-id'))).toEqual(['1'])
+
+      // Clearing both bounds disables the range filter and shows every driver
+      // (still sorted asc, nulls last).
+      fireEvent.change(screen.getByTestId('ready-date-from'), { target: { value: '' } })
+      fireEvent.change(screen.getByTestId('ready-date-to'), { target: { value: '' } })
+      rows = screen.getAllByTestId('driver-row')
+      expect(rows.map((r) => r.getAttribute('data-driver-id'))).toEqual(['1', '2', '3'])
     })
   })
 
@@ -444,7 +494,10 @@ describe('DriverPlanningPage', () => {
     it('marks an estimated guess with the estimated tier', () => {
       driverPlanningReturn = {
         data: [
-          makeDriver({ deliveries: [delivery({ actualDate: null, estimatedDate: '2026-06-09' })] }),
+          makeDriver({
+            confirmedAvailableDate: null,
+            deliveries: [delivery({ actualDate: null, estimatedDate: '2026-06-09' })],
+          }),
         ],
         isLoading: false,
         isError: false,
@@ -458,6 +511,7 @@ describe('DriverPlanningPage', () => {
       driverPlanningReturn = {
         data: [
           makeDriver({
+            confirmedAvailableDate: null,
             deliveries: [
               delivery({ actualDate: null, estimatedDate: null, plannedEnd: '2026-06-10' }),
             ],
@@ -473,7 +527,12 @@ describe('DriverPlanningPage', () => {
 
     it('marks an actual guess with the actual tier', () => {
       driverPlanningReturn = {
-        data: [makeDriver({ deliveries: [delivery({ actualDate: '2026-06-15' })] })],
+        data: [
+          makeDriver({
+            confirmedAvailableDate: null,
+            deliveries: [delivery({ actualDate: '2026-06-15' })],
+          }),
+        ],
         isLoading: false,
         isError: false,
       }

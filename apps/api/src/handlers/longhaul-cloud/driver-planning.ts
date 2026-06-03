@@ -345,22 +345,25 @@ export const longhaulDriverPlanningHandler: Handler<AppEnv> = async (c) => {
       const deliveries = row.trip_id != null ? (deliveriesByTrip.get(row.trip_id) ?? []) : []
       const shipments = row.trip_id != null ? (shipmentsByTrip.get(row.trip_id) ?? []) : []
 
-      // For back-compat, derive a single estimated date + location from the
-      // LAST delivery (highest effective date after sortDeliveries) so existing
-      // consumers of estimatedAvailableDate/Location keep working. Fall back to
-      // the trip's planned/actual last day and destination_geo_name when there
-      // are no deliveries.
+      // Calculated availability date / location: the chronologically FINAL
+      // activity on the driver's latest trip — i.e. the last shipment's
+      // final-activity row (any activity type, not just RDEL). Both arrays are
+      // sorted ascending by effective date, so the last element is the latest.
+      // Falls back to the last RDEL delivery, then to the trip's planned/actual
+      // last day + destination_geo_name when no activities are available.
+      const lastShipment = shipments[shipments.length - 1]
       const lastDelivery = deliveries[deliveries.length - 1]
+      const lastActivity = lastShipment ?? lastDelivery
       const estimatedDate =
-        lastDelivery?.actualDate ??
-        lastDelivery?.estimatedDate ??
-        lastDelivery?.plannedEnd ??
+        lastActivity?.actualDate ??
+        lastActivity?.estimatedDate ??
+        lastActivity?.plannedEnd ??
         row.planned_last_day ??
         row.actual_last_day ??
         null
 
-      const lastCity = lastDelivery?.city ?? null
-      const lastState = lastDelivery?.state ?? null
+      const lastCity = lastActivity?.city ?? null
+      const lastState = lastActivity?.state ?? null
       const estimatedLocation =
         lastCity && lastState
           ? `${lastCity}, ${lastState}`
