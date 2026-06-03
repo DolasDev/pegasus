@@ -416,11 +416,10 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
           </span>
         ) : (
           <span
-            className="cursor-pointer hover:underline inline-flex items-center gap-1"
+            className="cursor-pointer hover:underline"
             data-testid="ready-location-cell"
             onClick={() => startEdit('location')}
           >
-            <ReadyTierIcon kind={guess.kind} />
             {guess.state || guess.city ? (
               <span>
                 {guess.state && <b>{guess.state}</b>}
