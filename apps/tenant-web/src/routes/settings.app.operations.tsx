@@ -24,6 +24,7 @@ import {
   useUpdateAppSettings,
   type LonghaulClient,
 } from '@/api/queries/app-settings'
+import { DriverImportCard } from '@/features/settings/app/DriverImport'
 
 // The three storage states the dropdown represents. `''` = "not configured",
 // modeled separately from `'nwi' | 'qmm'` so the controlled <select> can render
@@ -123,6 +124,7 @@ export function AppSettingsOperationsPage() {
           )}
         </CardFooter>
       </Card>
+      <DriverImportCard />
     </div>
   )
 }
