@@ -301,7 +301,14 @@ export function AppShell({ children }: AppShellProps) {
     : SETTINGS_NAV_ITEMS.filter((item) => item.roles.some((r) => userRoles.has(r)))
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false
-    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'
+    try {
+      return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'
+    } catch {
+      // localStorage may be unavailable (private mode, SSR, restricted
+      // sandboxes) — fall back to the expanded sidebar. Matches the
+      // try/catch around the setItem call below.
+      return false
+    }
   })
 
   function toggleCollapsed() {
