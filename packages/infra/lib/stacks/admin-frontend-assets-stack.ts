@@ -12,6 +12,12 @@ import { type Construct } from 'constructs'
 // when useApiCustomDomain is set.
 const API_DOMAIN_NAME_PARAM = '/dolas/pegasus/api/domain-name'
 
+// SSM parameter published by dolas-infra — the branded admin web domain
+// (admin.pegasus[-qa].dolas.dev). Read at deploy time when useWebCustomDomain
+// is set so config.json's redirectUri (and the logout_uri derived from it)
+// stays on the brand instead of the raw *.cloudfront.net host.
+const ADMIN_DOMAIN_NAME_PARAM = '/dolas/pegasus/admin/domain-name'
+
 export interface AdminFrontendAssetsStackProps extends cdk.StackProps {
   /**
    * Name of the upstream AdminFrontendStack — used to build Fn::ImportValue
@@ -46,6 +52,15 @@ export interface AdminFrontendAssetsStackProps extends cdk.StackProps {
    * through CloudFront (WAF/Shield); the execute-api URL has neither property.
    */
   readonly useApiCustomDomain?: boolean
+  /**
+   * When true, config.json's cognito.redirectUri points at the branded admin
+   * web domain (https://admin.pegasus[-qa].dolas.dev/auth/callback, read from
+   * SSM) instead of the raw CloudFront distribution domain. Set for
+   * staging/prod; leave false for dev. Keeps a signed-out admin on the brand —
+   * signOut() derives its post-logout redirect from this value. The matching
+   * URL must also be registered in CognitoStack's admin callback/logout URLs.
+   */
+  readonly useWebCustomDomain?: boolean
 }
 
 /**
@@ -111,6 +126,17 @@ export class AdminFrontendAssetsStack extends cdk.Stack {
           `${props.apiStackName}:ExportsOutputFnGetAttPegasusHttpApiF652FECBApiEndpointFD99A5D1`,
         )
 
+    // redirectUri host: branded domain when attached (staging/prod), else the
+    // raw CloudFront domain (dev). signOut() in the admin app derives the
+    // post-logout redirect from this, so the brand stays in the address bar.
+    const redirectUri = props.useWebCustomDomain
+      ? cdk.Fn.join('', [
+          'https://',
+          ssm.StringParameter.valueForStringParameter(this, ADMIN_DOMAIN_NAME_PARAM),
+          '/auth/callback',
+        ])
+      : `https://${distributionDomainName}/auth/callback`
+
     const distPath = path.join(__dirname, '../../../../apps/admin-web/dist')
     if (fs.existsSync(distPath)) {
       new s3deploy.BucketDeployment(this, 'DeployAdmin', {
@@ -121,7 +147,7 @@ export class AdminFrontendAssetsStack extends cdk.Stack {
             cognito: {
               domain: cognitoDomain,
               clientId: cognitoAdminClientId,
-              redirectUri: `https://${distributionDomainName}/auth/callback`,
+              redirectUri,
             },
           }),
         ],

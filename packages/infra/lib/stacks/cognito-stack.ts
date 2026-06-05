@@ -26,6 +26,15 @@ import * as ssm from 'aws-cdk-lib/aws-ssm'
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
 import type { Construct } from 'constructs'
 
+// SSM parameters published by dolas-infra holding the branded web domains
+// (pegasus[-qa].dolas.dev / admin.pegasus[-qa].dolas.dev). Read at deploy time
+// when the corresponding attach*CustomDomain flag is set, so the custom-domain
+// URLs can be registered as allowed OAuth callback/logout URLs alongside the
+// raw CloudFront ones. Same param names frontend-stack.ts / admin-frontend-
+// stack.ts read for the distribution aliases.
+const WEB_DOMAIN_NAME_PARAM = '/dolas/pegasus/web/domain-name'
+const ADMIN_DOMAIN_NAME_PARAM = '/dolas/pegasus/admin/domain-name'
+
 export interface CognitoStackProps extends cdk.StackProps {
   /**
    * CloudFront distributionDomainName token from FrontendStack (e.g. xxx.cloudfront.net, no protocol).
@@ -40,6 +49,24 @@ export interface CognitoStackProps extends cdk.StackProps {
    * localhost. CDK resolves this cross-stack token via Fn::ImportValue at deploy time.
    */
   readonly adminDistributionDomain?: string
+
+  /**
+   * When true, the branded tenant web domain (pegasus[-qa].dolas.dev, read from
+   * SSM at WEB_DOMAIN_NAME_PARAM) is registered as an allowed tenant OAuth
+   * callback/logout URL alongside the raw CloudFront domain. Set for staging /
+   * prod where a custom domain is attached; leave false for dev. Without this,
+   * sign-out (whose logout_uri is derived from config.json's redirectUri)
+   * bounces the browser to the *.cloudfront.net host instead of the brand.
+   */
+  readonly attachTenantWebCustomDomain?: boolean
+
+  /**
+   * When true, the branded admin web domain (admin.pegasus[-qa].dolas.dev, read
+   * from SSM at ADMIN_DOMAIN_NAME_PARAM) is registered as an allowed admin OAuth
+   * callback/logout URL alongside the raw CloudFront domain. Set for staging /
+   * prod; leave false for dev.
+   */
+  readonly attachAdminWebCustomDomain?: boolean
 
   /**
    * Verified SES sender address for invite emails (e.g. no-reply@pegasus.dolas.dev).
@@ -91,24 +118,40 @@ export class CognitoStack extends cdk.Stack {
     // When the domain token is a CloudFormation reference (cross-stack), CDK
     // automatically generates Fn::ImportValue so CloudFormation resolves the
     // real CloudFront hostname before creating/updating the Cognito app client.
-    const tenantCallbackUrls = props.tenantDistributionDomain
-      ? [
-          'http://localhost:5173/login/callback',
-          `https://${props.tenantDistributionDomain}/login/callback`,
-        ]
-      : ['http://localhost:5173/login/callback']
-    const tenantLogoutUrls = props.tenantDistributionDomain
-      ? ['http://localhost:5173/login', `https://${props.tenantDistributionDomain}/login`]
-      : ['http://localhost:5173/login']
-    const adminCallbackUrls = props.adminDistributionDomain
-      ? [
-          'http://localhost:5174/auth/callback',
-          `https://${props.adminDistributionDomain}/auth/callback`,
-        ]
-      : ['http://localhost:5174/auth/callback']
-    const adminLogoutUrls = props.adminDistributionDomain
-      ? ['http://localhost:5174/login', `https://${props.adminDistributionDomain}/login`]
-      : ['http://localhost:5174/login']
+    //
+    // When a custom domain is attached (staging/prod), the branded host is read
+    // from SSM and ALSO registered. The branded URLs are what config.json's
+    // redirectUri points at, so they must be allowed or Cognito rejects the
+    // post-login callback and post-logout redirect. The CloudFront URLs are kept
+    // as harmless fallbacks. dev has no custom domain → CloudFront only.
+    const tenantWebDomain = props.attachTenantWebCustomDomain
+      ? ssm.StringParameter.valueForStringParameter(this, WEB_DOMAIN_NAME_PARAM)
+      : undefined
+    const adminWebDomain = props.attachAdminWebCustomDomain
+      ? ssm.StringParameter.valueForStringParameter(this, ADMIN_DOMAIN_NAME_PARAM)
+      : undefined
+
+    const tenantCallbackUrls = ['http://localhost:5173/login/callback']
+    const tenantLogoutUrls = ['http://localhost:5173/login']
+    if (props.tenantDistributionDomain) {
+      tenantCallbackUrls.push(`https://${props.tenantDistributionDomain}/login/callback`)
+      tenantLogoutUrls.push(`https://${props.tenantDistributionDomain}/login`)
+    }
+    if (tenantWebDomain) {
+      tenantCallbackUrls.push(`https://${tenantWebDomain}/login/callback`)
+      tenantLogoutUrls.push(`https://${tenantWebDomain}/login`)
+    }
+
+    const adminCallbackUrls = ['http://localhost:5174/auth/callback']
+    const adminLogoutUrls = ['http://localhost:5174/login']
+    if (props.adminDistributionDomain) {
+      adminCallbackUrls.push(`https://${props.adminDistributionDomain}/auth/callback`)
+      adminLogoutUrls.push(`https://${props.adminDistributionDomain}/login`)
+    }
+    if (adminWebDomain) {
+      adminCallbackUrls.push(`https://${adminWebDomain}/auth/callback`)
+      adminLogoutUrls.push(`https://${adminWebDomain}/login`)
+    }
     // -------------------------------------------------------------------------
     // Pre-Authentication Lambda trigger
     //

@@ -131,6 +131,12 @@ const cognitoStack = new CognitoStack(app, `${stackIdPrefix}-CognitoStack`, {
   description: `${descPrefix} — Cognito User Pool for platform and tenant auth`,
   tenantDistributionDomain: frontendStack.distribution.distributionDomainName,
   adminDistributionDomain: adminFrontendStack.distribution.distributionDomainName,
+  // Register the branded web domains as allowed OAuth callback/logout URLs in
+  // staging/prod so sign-out keeps the browser on pegasus[-qa].dolas.dev
+  // instead of flipping to the raw *.cloudfront.net host. dev has no custom
+  // domain → CloudFront URLs only.
+  attachTenantWebCustomDomain: envName === 'staging' || envName === 'prod',
+  attachAdminWebCustomDomain: envName === 'staging' || envName === 'prod',
   // When set, the user pool sends invite emails via SES from this verified
   // address instead of Cognito's default sender. undefined → COGNITO_DEFAULT.
   sesFromEmail,
@@ -243,6 +249,9 @@ const frontendAssetsStack = new FrontendAssetsStack(app, `${stackIdPrefix}-Front
   // staging/prod → https://api.pegasus[-qa].dolas.dev (via CloudFront).
   // dev keeps the raw execute-api URL — no custom API domain there.
   useApiCustomDomain: envName === 'staging' || envName === 'prod',
+  // Point config.json's cognito.redirectUri at the branded domain in
+  // staging/prod so login + logout stay on pegasus[-qa].dolas.dev.
+  useWebCustomDomain: envName === 'staging' || envName === 'prod',
   // Enable the "jump to order" desktop launcher on QA + prod. (Inert until the
   // Pegasus desktop app registers the pegasus-desktop:// scheme — see
   // plans/todo/jump-to-order-desktop-handoff.md.)
@@ -266,6 +275,9 @@ const adminFrontendAssetsStack = new AdminFrontendAssetsStack(
     // staging/prod → https://api.pegasus[-qa].dolas.dev (via CloudFront).
     // dev keeps the raw execute-api URL — no custom API domain there.
     useApiCustomDomain: envName === 'staging' || envName === 'prod',
+    // Point config.json's cognito.redirectUri at admin.pegasus[-qa].dolas.dev
+    // in staging/prod so login + logout stay on the brand.
+    useWebCustomDomain: envName === 'staging' || envName === 'prod',
   },
 )
 adminFrontendAssetsStack.addDependency(adminFrontendStack)
