@@ -12,6 +12,13 @@ import { type Construct } from 'constructs'
 // when useApiCustomDomain is set.
 const API_DOMAIN_NAME_PARAM = '/dolas/pegasus/api/domain-name'
 
+// SSM parameter published by dolas-infra's PegasusDnsBootstrapStack — the
+// branded tenant web domain (pegasus[-qa].dolas.dev). Read at deploy time when
+// useWebCustomDomain is set so config.json's redirectUri (and thus the OAuth
+// callback + the logout_uri derived from it) stays on the brand instead of the
+// raw *.cloudfront.net host.
+const WEB_DOMAIN_NAME_PARAM = '/dolas/pegasus/web/domain-name'
+
 export interface FrontendAssetsStackProps extends cdk.StackProps {
   /**
    * Name of the upstream FrontendStack — used to build Fn::ImportValue strings
@@ -51,6 +58,18 @@ export interface FrontendAssetsStackProps extends cdk.StackProps {
    * through CloudFront (WAF/Shield); the execute-api URL has neither property.
    */
   readonly useApiCustomDomain?: boolean
+  /**
+   * When true, config.json's cognito.redirectUri points at the branded tenant
+   * web domain (https://pegasus[-qa].dolas.dev/login/callback, read from SSM)
+   * instead of the raw CloudFront distribution domain. Set for staging/prod;
+   * leave false for dev, which has no custom domain.
+   *
+   * This is what keeps a signed-out user on the brand: Cognito derives its
+   * post-logout redirect (logout_uri) from this value, so a CloudFront-hosted
+   * redirectUri sends the browser to *.cloudfront.net on sign-out. The matching
+   * URL must also be registered in CognitoStack's tenant callback/logout URLs.
+   */
+  readonly useWebCustomDomain?: boolean
   /**
    * When true, config.json enables the driver-planning "jump to order" desktop
    * launcher (features.jumpToOrder.enabled). The order-number link then launches
@@ -134,6 +153,18 @@ export class FrontendAssetsStack extends cdk.Stack {
       `.auth.${cognitoRegion}.amazoncognito.com`,
     ])
 
+    // redirectUri host: branded domain when attached (staging/prod), else the
+    // raw CloudFront domain (dev). buildLogoutUrl() in the web app derives the
+    // post-logout redirect from this, so keeping it on the brand prevents the
+    // address bar flipping to *.cloudfront.net on sign-out.
+    const redirectUri = props.useWebCustomDomain
+      ? cdk.Fn.join('', [
+          'https://',
+          ssm.StringParameter.valueForStringParameter(this, WEB_DOMAIN_NAME_PARAM),
+          '/login/callback',
+        ])
+      : `https://${distributionDomainName}/login/callback`
+
     const distPath = path.join(__dirname, '../../../../apps/tenant-web/dist')
     if (fs.existsSync(distPath)) {
       new s3deploy.BucketDeployment(this, 'DeployWebsite', {
@@ -146,7 +177,7 @@ export class FrontendAssetsStack extends cdk.Stack {
               userPoolId: cognitoUserPoolId,
               clientId: cognitoTenantClientId,
               domain: cognitoDomain,
-              redirectUri: `https://${distributionDomainName}/login/callback`,
+              redirectUri,
             },
             features: {
               jumpToOrder: {
