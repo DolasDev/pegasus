@@ -86,6 +86,17 @@ const SES_SENDER_DOMAIN: Record<Exclude<EnvName, 'dev'>, string> = {
 // e.g. no-reply@pegasus.dolas.dev.
 const sesFromEmail = sesEmailEnabled ? `no-reply@${SES_SENDER_DOMAIN[envName]}` : undefined
 
+// Temporal Cloud namespace gRPC endpoints, one per non-dev env. Consumed by:
+//   - TemporalWorkerStack (Phase 2 Unit 4) — Fargate worker env TEMPORAL_ADDRESS
+//   - ApiStack (Phase 2 Unit 6)            — API Lambda env TEMPORAL_ADDRESS
+// Credentials live in Secrets Manager at pegasus/{env}/temporal-cloud
+// (Secret.fromSecretNameV2 convention). Dev uses local Temporal via
+// docker-compose.temporal.yml — no entry needed here.
+export const TEMPORAL_ADDRESS: Record<Exclude<EnvName, 'dev'>, string> = {
+  staging: 'pegasus-staging.chgel.tmprl.cloud:7233',
+  prod: 'pegasus-prod.chgel.tmprl.cloud:7233',
+}
+
 // ── Infra stacks (deployed first — no dependencies) ──────────────────────────
 // CloudFront distribution domain names are CDK tokens. When CognitoStack
 // references them, CDK generates Fn::ImportValue so CloudFormation resolves
