@@ -12,9 +12,15 @@ import Papa from 'papaparse'
 // Mapping targets
 // ---------------------------------------------------------------------------
 
-/** The editable subset of DriverPlanningRow the import understands. */
+/** The editable subset of DriverPlanningRow the import understands.
+ *
+ *  `driverId` is the planner-facing "Driver Code" (an integer, the legacy
+ *  DRIVER_ID column) — the import's match key. It is distinct from
+ *  `agentCode`, the agency/affiliation marker (e.g. NWI/QMM) shown on the
+ *  Availability rows; agentCode is not updateable via the confirmed-
+ *  availability mutation, so it isn't in this list. */
 export type ImportTarget =
-  | 'agentCode'
+  | 'driverId'
   | 'confirmedDate'
   | 'confirmedState'
   | 'confirmedCity'
@@ -33,10 +39,11 @@ interface TargetDef {
   required?: boolean
 }
 
-/** Order shown in the column-mapper dropdown and template. agentCode first
- *  because it's the only required field. */
+/** Order shown in the column-mapper dropdown and template. driverId first
+ *  because it's the only required field — every row is matched to an
+ *  existing driver by Driver Code. */
 export const TARGETS: readonly TargetDef[] = [
-  { value: 'agentCode', label: 'Driver Code (Agent Code)', kind: 'string', required: true },
+  { value: 'driverId', label: 'Driver Code', kind: 'number', required: true },
   { value: 'confirmedDate', label: 'Ready Date', kind: 'date' },
   { value: 'confirmedState', label: 'Ready State', kind: 'string' },
   { value: 'confirmedCity', label: 'Ready City', kind: 'string' },
@@ -138,10 +145,10 @@ export function validateMapping(mapping: ColumnMapping): MappingValidation {
   return { ok: errors.length === 0, errors }
 }
 
-/** Type guard: which targets a row produces. Only `agentCode` is always
+/** Type guard: which targets a row produces. Only `driverId` is always
  *  present (required by validateMapping). All others optional. */
 export interface CoercedRow {
-  agentCode: string
+  driverId: number
   confirmedDate?: string | null
   confirmedState?: string | null
   confirmedCity?: string | null
@@ -155,8 +162,8 @@ export interface CoercedRow {
 }
 
 /** Apply `mapping` to one row of cells, coercing each cell to the target's
- *  declared kind. Returns null if `agentCode` is missing/blank — those rows
- *  can't be matched and the caller should skip them. */
+ *  declared kind. Returns null if `driverId` is missing or not a positive
+ *  integer — those rows can't be matched and the caller should skip them. */
 export function coerceRow(cells: string[], mapping: ColumnMapping): CoercedRow | null {
   const out: Record<string, unknown> = {}
   for (let i = 0; i < mapping.length; i++) {
@@ -165,8 +172,8 @@ export function coerceRow(cells: string[], mapping: ColumnMapping): CoercedRow |
     const raw = (cells[i] ?? '').trim()
     out[target] = coerce(raw, TARGETS_BY_VALUE[target].kind)
   }
-  const code = out['agentCode']
-  if (typeof code !== 'string' || code.length === 0) return null
+  const id = out['driverId']
+  if (typeof id !== 'number' || !Number.isInteger(id) || id <= 0) return null
   return out as unknown as CoercedRow
 }
 
@@ -225,11 +232,12 @@ export interface DriverUpdatePayload {
   homeState?: string | null
 }
 
-/** Convert a coerced row + matched driverId into a mutation input. Only
- *  emits keys the row actually set so partial CSVs don't blank fields. */
-export function toUpdatePayload(row: CoercedRow, driverId: number): DriverUpdatePayload {
+/** Convert a coerced row into a mutation input. The row's own `driverId`
+ *  (the Driver Code column) is the match key. Only emits optional keys
+ *  the row actually set, so partial CSVs don't blank fields. */
+export function toUpdatePayload(row: CoercedRow): DriverUpdatePayload {
   const payload: DriverUpdatePayload = {
-    driverId,
+    driverId: row.driverId,
     confirmedDate: row.confirmedDate ?? null,
     confirmedLocation: joinLocation(row.confirmedState, row.confirmedCity),
     notes: row.notes ?? null,
@@ -251,7 +259,7 @@ export function toUpdatePayload(row: CoercedRow, driverId: number): DriverUpdate
 export const TEMPLATE_HEADERS = TARGETS.map((t) => t.label)
 
 const TEMPLATE_SAMPLE_ROW = [
-  'AB123', // Driver Code
+  '1234', // Driver Code (driverId)
   '2026-06-15', // Ready Date
   'TX', // Ready State
   'Houston', // Ready City

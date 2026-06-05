@@ -5,9 +5,10 @@
 // Step 2: map source columns to driver fields
 // Step 3: review match counts and run the per-row mutation
 //
-// No new backend — every row is matched to an existing driver by
-// `agentCode` and pushed through `useUpdateConfirmedAvailability`, the same
-// mutation the Availability screen's inline cell edits use.
+// No new backend — every row is matched to an existing driver by its
+// `driverId` (the planner-facing "Driver Code" column) and pushed through
+// `useUpdateConfirmedAvailability`, the same mutation the Availability
+// screen's inline cell edits use.
 // ---------------------------------------------------------------------------
 import { useMemo, useReducer } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
@@ -16,7 +17,6 @@ import { Button } from '@/components/ui/button'
 import {
   driverPlanningQueryOptions,
   useUpdateConfirmedAvailability,
-  type DriverPlanningRow,
 } from '@/api/queries/driver-planning'
 import { ColumnMapper } from './ColumnMapper'
 import {
@@ -43,7 +43,7 @@ interface State {
   importing: boolean
   /** `null` → not started · running counter while importing · final result. */
   progress: { done: number; total: number } | null
-  rowErrors: Array<{ agentCode: string; message: string }>
+  rowErrors: Array<{ driverId: number; message: string }>
 }
 
 const initial: State = {
@@ -72,7 +72,7 @@ type Action =
   | { type: 'importProgress'; done: number }
   | {
       type: 'importDone'
-      errors: Array<{ agentCode: string; message: string }>
+      errors: Array<{ driverId: number; message: string }>
     }
 
 function reducer(state: State, action: Action): State {
@@ -147,8 +147,11 @@ export function ImportDialog({ open, onClose }: Props) {
   const driversQuery = useQuery(driverPlanningQueryOptions)
   const update = useUpdateConfirmedAvailability()
 
-  // Lookup table: agentCode → driverId. Built once per dataset.
-  const driversByCode = useMemo(() => buildIndex(driversQuery.data ?? []), [driversQuery.data])
+  // Set of valid Driver Codes (driverIds) on this tenant. Built once per dataset.
+  const validDriverIds = useMemo(
+    () => new Set((driversQuery.data ?? []).map((d) => d.driverId)),
+    [driversQuery.data],
+  )
 
   // Step 2 derived state — needs `parsed` to render.
   const validation = useMemo(() => validateMapping(state.mapping), [state.mapping])
@@ -157,23 +160,22 @@ export function ImportDialog({ open, onClose }: Props) {
   const matched = useMemo(() => {
     if (!state.parsed)
       return {
-        hits: [] as Array<{ driverId: number; agentCode: string; cells: string[] }>,
-        misses: [] as string[],
+        hits: [] as Array<{ driverId: number; cells: string[] }>,
+        misses: [] as number[],
       }
-    const hits: Array<{ driverId: number; agentCode: string; cells: string[] }> = []
-    const misses: string[] = []
+    const hits: Array<{ driverId: number; cells: string[] }> = []
+    const misses: number[] = []
     for (const cells of state.parsed.rows) {
       const row = coerceRow(cells, state.mapping)
-      if (!row) continue // row without agentCode — silently dropped
-      const driver = driversByCode.get(row.agentCode.trim())
-      if (driver) {
-        hits.push({ driverId: driver.driverId, agentCode: row.agentCode, cells })
+      if (!row) continue // row without a valid Driver Code — silently dropped
+      if (validDriverIds.has(row.driverId)) {
+        hits.push({ driverId: row.driverId, cells })
       } else {
-        misses.push(row.agentCode)
+        misses.push(row.driverId)
       }
     }
     return { hits, misses }
-  }, [state.parsed, state.mapping, driversByCode])
+  }, [state.parsed, state.mapping, validDriverIds])
 
   function handleClose() {
     if (state.importing) return
@@ -199,16 +201,16 @@ export function ImportDialog({ open, onClose }: Props) {
     if (!state.parsed) return
     const total = matched.hits.length
     dispatch({ type: 'importStart', total })
-    const errors: Array<{ agentCode: string; message: string }> = []
+    const errors: Array<{ driverId: number; message: string }> = []
     for (let i = 0; i < matched.hits.length; i++) {
-      const { driverId, agentCode, cells } = matched.hits[i]!
+      const { driverId, cells } = matched.hits[i]!
       const row = coerceRow(cells, state.mapping)
       if (!row) continue
       try {
-        await update.mutateAsync(toUpdatePayload(row, driverId))
+        await update.mutateAsync(toUpdatePayload(row))
       } catch (err) {
         errors.push({
-          agentCode,
+          driverId,
           message: err instanceof Error ? err.message : 'unknown error',
         })
       }
@@ -229,8 +231,9 @@ export function ImportDialog({ open, onClose }: Props) {
             <h2 className="text-lg font-semibold">Import drivers from CSV</h2>
           </Dialog.Title>
           <p id="driver-import-description" className="mt-1 text-sm text-muted-foreground">
-            Match rows to existing drivers by their <strong>driver code</strong> and update
-            availability fields. New drivers are not created.
+            Match rows to existing drivers by their <strong>Driver Code</strong> and update
+            availability fields. Rows whose Driver Code doesn't exist on this tenant are skipped;
+            new drivers are not created.
           </p>
 
           <div className="mt-4 min-h-[280px]">
@@ -421,9 +424,9 @@ function ReviewStep({
 }: {
   total: number
   hits: number
-  misses: string[]
+  misses: number[]
   progress: { done: number; total: number } | null
-  rowErrors: Array<{ agentCode: string; message: string }>
+  rowErrors: Array<{ driverId: number; message: string }>
   done: boolean
 }) {
   return (
@@ -455,7 +458,7 @@ function ReviewStep({
           <ul className="mt-1 list-disc pl-5 text-xs">
             {rowErrors.slice(0, 10).map((e, i) => (
               <li key={i}>
-                {e.agentCode}: {e.message}
+                Driver Code {e.driverId}: {e.message}
               </li>
             ))}
             {rowErrors.length > 10 && <li>…and {rowErrors.length - 10} more</li>}
@@ -464,17 +467,4 @@ function ReviewStep({
       )}
     </div>
   )
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function buildIndex(rows: DriverPlanningRow[]): Map<string, DriverPlanningRow> {
-  const m = new Map<string, DriverPlanningRow>()
-  for (const r of rows) {
-    const code = (r.agentCode ?? '').trim()
-    if (code) m.set(code, r)
-  }
-  return m
 }
