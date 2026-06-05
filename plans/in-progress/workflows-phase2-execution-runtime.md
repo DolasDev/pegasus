@@ -1,5 +1,42 @@
 # Pegasus Workflows — Phase 2: Server-Side Execution Runtime
 
+> ## 🚦 Resume Status (last updated 2026-06-05)
+>
+> **Units 1-3 are MERGED to `main`.** Operator prereqs all DONE. **Resume at Unit 4.**
+>
+> | Unit                                       | Status               | Reference                     |
+> | ------------------------------------------ | -------------------- | ----------------------------- |
+> | 1 — Execution schema + manifest foundation | ✅ MERGED            | #134 → `9563eb8` (2026-05-22) |
+> | 2 — Fork endpoint                          | ✅ MERGED            | #135 → `b733257` (2026-05-22) |
+> | 3 — Per-workflow runtime service account   | ✅ MERGED            | #136 → `ea39600` (2026-05-22) |
+> | 4 — Temporal Cloud + Fargate worker infra  | ⬜ NEXT              | —                             |
+> | 5 — The Temporal worker process            | ⬜ pending Unit 4    | —                             |
+> | 6 — Execution API                          | ⬜ pending Units 3-5 | —                             |
+> | 7 — tenant-web execution UI                | ⬜ pending Unit 6    | —                             |
+>
+> **Operator prereqs all satisfied (2026-06-05):**
+>
+> - ✅ Temporal Cloud namespaces `pegasus-staging` / `pegasus-prod` exist on account `chgel.tmprl.cloud`.
+> - ✅ Endpoints in `packages/infra/bin/app.ts` as `export const TEMPORAL_ADDRESS` map (#178 → `6e29659`):
+>   - staging: `pegasus-staging.chgel.tmprl.cloud:7233`
+>   - prod: `pegasus-prod.chgel.tmprl.cloud:7233`
+> - ✅ Secrets in AWS Secrets Manager (us-east-1, tagged `Project=pegasus, Component=workflows-phase2, Env=<env>, ManagedBy=manual-cli`):
+>   - `pegasus/staging/temporal-cloud` (acct `248812875460`) — JSON `{"apiKey": "<JWT>"}`, **API-key auth** (not mTLS)
+>   - `pegasus/staging/workflow-broker-secret` (acct `248812875460`) — 64-char hex random
+>   - `pegasus/prod/temporal-cloud` (acct `331145994639`) — JSON `{"apiKey": "<JWT>"}`
+>   - `pegasus/prod/workflow-broker-secret` (acct `331145994639`) — 64-char hex random (distinct from staging)
+> - ✅ KMS runtime-token key — code already in `ApiStack` (Unit 3, merged); materializes on next ApiStack deploy. Lambda env `WORKFLOW_TOKEN_KMS_KEY_ID` wired.
+> - ⚪ ECR repo `pegasus-temporal-worker` — created by Unit 4's own `TemporalWorkerStack`, no manual step.
+>
+> **Resume-session checklist:**
+>
+> 1. Read this file top-to-bottom + `[[project_workflows_phase2_status]]` memory.
+> 2. Skim `apps/api/src/handlers/workflows.ts` and `workflow.repository.ts` on `main` to see Units 1-3 landed code (runtime token provisioning, fork, manifest `requiredActions`).
+> 3. Confirm Unit 4 still uses **API-key auth** (not mTLS) per the operator decision above — Unit 4 plan must read `secretValueFromJson('apiKey')`, not cert+key.
+> 4. Use the established pattern: research → plan → spawn worker agent in a worktree → PR → green CI → merge. See "Resume notes" at the bottom for gotchas from the Units 1-3 run.
+>
+> See `[[project_workflows_phase2_status]]` and `[[project_audit_ci_jscookie_allowlist]]` in the memory index.
+
 ## Context
 
 Phase 1 of the Pegasus Workflows feature is shipped, merged, and deployed: tenants
@@ -39,12 +76,17 @@ worktree + branch → its own PR, executed in dependency order (not parallel).
 
 ## Operator prerequisites (before Unit 4)
 
+**✅ ALL SATISFIED 2026-06-05 — see the Resume Status block at the top of this file
+for namespace names, account IDs, and Secrets Manager paths.** Original
+requirement list retained below for plan completeness:
+
 1. Temporal Cloud account + namespaces `pegasus-staging`, `pegasus-prod`; register
    custom search attributes `TenantId`, `PegasusWorkflowId`; set retention (~30d).
 2. Temporal Cloud namespace credentials (mTLS cert+key or API key) in Secrets
    Manager at `pegasus/{env}/temporal-cloud` (existing `Secret.fromSecretNameV2`
-   convention).
+   convention). → **Decision: API key (JWT) auth, JSON shape `{"apiKey": "..."}`.**
 3. KMS key for runtime-token encryption (created in `ApiStack`, ARN exported).
+   → Done as part of Unit 3 (#136).
 4. Internal shared secret at `pegasus/{env}/workflow-broker-secret`.
 5. ECR repo `pegasus-temporal-worker` (created by `TemporalWorkerStack`).
 
@@ -83,9 +125,9 @@ worktree + branch → its own PR, executed in dependency order (not parallel).
 
 ---
 
-## Unit 1 — Execution schema + manifest foundation
+## Unit 1 — Execution schema + manifest foundation ✅ DONE (#134, `9563eb8`, 2026-05-22)
 
-**Branch:** `phase2/01-execution-schema-manifest`
+**Branch:** `phase2/01-execution-schema-manifest` (merged + deleted)
 
 - `apps/api/prisma/schema.prisma` — new `WorkflowExecution` model
   (`id, tenantId, workflowId FK, status, input Json, result Json?, errorMessage?,`
@@ -111,9 +153,9 @@ new columns yet; Phase-1 uploads still pass (field defaulted).
 **Verify:** `prisma migrate dev`; `apps/api` unit tests; SDK `pytest`;
 `pegasus-workflows package` on `workflows-stdlib` succeeds.
 
-## Unit 2 — Fork endpoint
+## Unit 2 — Fork endpoint ✅ DONE (#135, `b733257`, 2026-05-22)
 
-**Branch:** `phase2/02-fork-endpoint`
+**Branch:** `phase2/02-fork-endpoint` (merged + deleted)
 
 - `apps/api/src/repositories/workflow.repository.ts` — `forkGlobalToTenant(sourceId,
 targetTenantId, createdByUserId)`: reads a GLOBAL source, S3-copies the artifact to
@@ -132,9 +174,9 @@ targetTenantId, createdByUserId)`: reads a GLOBAL source, S3-copies the artifact
 **Verify:** local API — fork a GLOBAL stdlib workflow → new TENANT row + copied S3
 object + provenance columns; tenant-web shows it under "Your workflows".
 
-## Unit 3 — Per-workflow runtime service account
+## Unit 3 — Per-workflow runtime service account ✅ DONE (#136, `ea39600`, 2026-05-22)
 
-**Branch:** `phase2/03-runtime-service-account`
+**Branch:** `phase2/03-runtime-service-account` (merged + deleted)
 
 - `apps/api/src/handlers/workflows.ts` — in `POST /` (finalize) and `POST /:id/fork`,
   within the same transaction, provision a runtime service account exactly as
@@ -156,9 +198,18 @@ are unused side effects. Pre-existing workflows lazily mint on first run (Unit 6
 **Verify:** finalize locally (real or LocalStack KMS) → `TenantUser` + `ApiClient`
 rows + non-null ciphertext; `decryptRuntimeToken` round-trips; plaintext in no log.
 
-## Unit 4 — Temporal Cloud + Fargate worker infra
+## Unit 4 — Temporal Cloud + Fargate worker infra ⬜ NEXT — start here
 
-**Branch:** `phase2/04-temporal-worker-infra`
+**Branch:** `phase2/04-temporal-worker-infra` (base: `main` — Units 1-3 already in `main`, not stacked)
+
+**Resume-specific guidance (read before planning):**
+
+- Endpoints live in `packages/infra/bin/app.ts` as `export const TEMPORAL_ADDRESS: Record<Exclude<EnvName,'dev'>, string>` (added in #178). Import from there; do NOT hard-code.
+- Auth is **API key (JWT), NOT mTLS.** `pegasus/{env}/temporal-cloud` is JSON `{"apiKey":"<jwt>"}`. Use `ecs.Secret.fromSecretsManager(secret, 'apiKey')` so the value is injected as a secret env on the Fargate task, never plaintext in the task def. Same approach for `WORKFLOW_BROKER_SECRET` (raw string, no JSON path).
+- The KMS runtime-token key from Unit 3 is already in `ApiStack` — Unit 4 does not touch it. ECR repo `pegasus-temporal-worker` is created here.
+- Account IDs (for Secret ARNs in cross-stack outputs / tests): staging `248812875460`, prod `331145994639`. Both us-east-1.
+
+Original Unit 4 spec follows:
 
 - `packages/infra/lib/stacks/temporal-worker-stack.ts` — new stack: NAT Gateway +
   `PRIVATE_WITH_EGRESS` subnets added to `WireGuardStack.vpc`; ECR repo
@@ -278,3 +329,87 @@ parallelism — each unit depends on prior units' merges.
 - `packages/infra/bin/app.ts`, `packages/infra/lib/stacks/{api,wireguard}-stack.ts`
 - `packages/workflows-sdk-python/pegasus_workflows/{api,manifest}.py`
 - `packages/workflows-stdlib/`, `apps/tenant-web/src/routes/settings.workflows.tsx`
+
+---
+
+## Resume notes — lessons from the Units 1-3 run
+
+Hard-won gotchas the next session will hit if it doesn't read these:
+
+### Toolchain
+
+- **Use node 24, not the default node 25.** PATH-pin
+  `/home/steve/.nvm/versions/node/v24.16.0/bin` for any `npm install` / `turbo` /
+  `npm test` / `npm run typecheck` / git push (husky hook). Default node 25
+  corrupts `node_modules` and lockfile resolution silently diverges from CI.
+  See `[[project_node_version_gate]]`.
+- Repo pins `packageManager: npm@10.8.2`. Any lockfile regen MUST happen on
+  node-20/npm-10.8.2 (your machine, not the agent sandbox). The agent sandbox
+  has node 25 and cannot safely regenerate the lockfile.
+
+### Stacked-PR merge mechanics (if you stack Units 4-7)
+
+- Units 1-3 were stacked (`phase2/02` base = `phase2/01`, etc.) and squash-merged.
+  **The squash-merge of an earlier unit creates conflicts when updating the next
+  unit from `main`** — the squashed commit and the next unit's same-content
+  original commits overlap. Resolve by taking `--ours` (the next unit's branch
+  is the superset), verify with `grep` for each unit's signature features
+  before committing.
+- **`gh pr edit --base` is broken** (Projects-classic GraphQL deprecation
+  silently aborts the base change). Use `gh api -X PATCH repos/.../pulls/N -f base=main`
+  instead. See `[[project_audit_ci_jscookie_allowlist]]`.
+- **Retarget a stacked PR's base to `main` BEFORE deleting its current base
+  branch.** Deleting a PR's base branch auto-CLOSES the PR. (Hit this on #135.)
+- `gh pr merge --delete-branch` fails (and skips remote delete) when the local
+  branch is held by an agent worktree. Either remove the worktree first, or
+  merge without `--delete-branch` then delete the remote branch manually.
+
+### Required CI checks
+
+- Required gates on `main`: `Test`, `E2E Tests`, `Lint`, `Typecheck`,
+  `Secret Scanning (Betterleaks)`. All must be green to merge — admin override
+  is off-limits per CLAUDE.md.
+- `Test` runs `audit-ci` first. If a new high advisory drops mid-PR, all CI goes
+  red repo-wide. The `js-cookie@2.2.1` advisory was hit during Units 1-3 (now
+  cleared by deleting orphan `amazon-cognito-identity-js`, `232ef88`). See
+  `[[project_audit_ci_jscookie_allowlist]]` for the override-vs-allowlist
+  decision tree if it recurs.
+
+### Worker agent prompt — what worked
+
+The Unit 1-3 agents each succeeded with these elements in the prompt:
+
+- Full task copied verbatim from the plan + explicit branch name + base branch.
+- Codebase conventions section (existing patterns to mirror — repo file paths,
+  Cedar policy structure, `Secret.fromSecretNameV2` usage, etc.).
+- Verification recipe (the agent can't reach a live DB / KMS in worktree, so
+  the achievable checks are: `prisma validate`, `prisma generate`,
+  `npm test -w apps/api` with mocked repo, `npm run typecheck`, SDK `pytest`).
+- Note that worker may need to symlink the repo-root `node_modules` into its
+  worktree to run tests (then remove the symlink before committing).
+- Note that full local-API integration verification needs Docker — agent
+  should record those steps as human follow-up in the PR body, not skip
+  silently.
+
+### Where to put new per-env configuration
+
+- `packages/infra/bin/app.ts` is the central per-env config switchboard.
+  Existing precedents: `SES_SENDER_DOMAIN` map, `TEMPORAL_ADDRESS` map
+  (added in #178). Add new per-env values there as
+  `Record<Exclude<EnvName,'dev'>, T>` and `export const`.
+- Secrets follow the AWS-Secrets-Manager-is-source-of-truth pattern. CDK
+  references via `secretsmanager.Secret.fromSecretNameV2`; provisioning is
+  out-of-band (manual or one-off CLI). **Never** push secret VALUES through
+  GitHub Actions secrets → CI → AWS. CI gets `Get*` only, not `Put*`.
+
+### Anti-scope reminders
+
+- The original plan invocation was `/batch` (parallel) — but Phase 2 is
+  EXPLICITLY sequential. If a future session is `/batch`-invoked, surface the
+  contradiction before spawning parallel agents — they will conflict on
+  `workflows.ts`, `schema.prisma`, `role-options.ts`, etc.
+- Units 4-7 require **operator prereqs** (now satisfied; see Resume Status
+  block at top). Do NOT re-do them. If a fresh session can't confirm the
+  prereqs exist, run `aws secretsmanager describe-secret --secret-id
+pegasus/{env}/temporal-cloud --profile dolas-pegasus-{env} --region us-east-1`
+  to verify before planning Unit 4.
