@@ -27,6 +27,7 @@ import {
   type DriverPlanningRow,
 } from '@/api/queries/driver-planning'
 import { formatDateShort } from '@/features/driver-planning/utils/format-date'
+import { smsDriver } from '@/features/driver-planning/utils/sms-driver'
 import { HoverToolTip } from '@/features/driver-planning/containers/ToolTips'
 import { Select } from '@/features/driver-planning/components/Select'
 import type { RootState } from '@/features/driver-planning/redux/store'
@@ -535,11 +536,19 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
             <i className="fas fa-phone" />
           </a>
           <a
-            href={`sms:${PLACEHOLDER_PHONE}`}
+            href="#"
             aria-label="Text driver"
             data-testid="driver-sms"
+            data-driver-code={driver.agentCode ?? ''}
             className={`${CARD_TEXT_CLASS} hover:opacity-80`}
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              // Hand off to the desktop app via the pegasus-desktop:// URI —
+              // same pattern as jump-to-order. Util handles config gating,
+              // validation, and the optimistic notify UX.
+              e.preventDefault()
+              e.stopPropagation()
+              smsDriver({ driver_code: driver.agentCode })
+            }}
           >
             <i className="fas fa-comment-sms" />
           </a>

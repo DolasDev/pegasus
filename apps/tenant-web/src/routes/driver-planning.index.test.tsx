@@ -738,9 +738,12 @@ describe('DriverPlanningPage', () => {
       expect(within(contact).getByTestId('driver-call').getAttribute('href')).toBe(
         'tel:+12345678910',
       )
-      expect(within(contact).getByTestId('driver-sms').getAttribute('href')).toBe(
-        'sms:+12345678910',
-      )
+      // SMS hands off to the pegasus-desktop:// app via an onClick handler
+      // (smsDriver util) — href is the placeholder `#` and the driver code
+      // travels through `data-driver-code` on the anchor.
+      const sms = within(contact).getByTestId('driver-sms')
+      expect(sms.getAttribute('href')).toBe('#')
+      expect(sms.getAttribute('data-driver-code')).not.toBeNull()
     })
 
     it('orders the shipment cells icon | date | state | city', () => {
