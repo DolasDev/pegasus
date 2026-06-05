@@ -70,7 +70,8 @@ describe('PATCH longhaul/driver-planning/:driverId (cloud-direct)', () => {
 
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ data: { success: true } })
-    const [, , opts] = executeSqlMock.mock.calls[0]!
+    // Call 0 is the schema-ensure (no params); call 1 is the upsert.
+    const [, , opts] = executeSqlMock.mock.calls[1]!
     expect(opts.params).toEqual([
       { name: 'driver_id', value: 42 },
       { name: 'confirmed_date', value: '2026-06-01' },
@@ -88,7 +89,8 @@ describe('PATCH longhaul/driver-planning/:driverId (cloud-direct)', () => {
 
   it('defaults missing optional fields to null', async () => {
     await patch('42', { confirmedDate: null, confirmedLocation: null })
-    const [, , opts] = executeSqlMock.mock.calls[0]!
+    // Call 0 is the schema-ensure (no params); call 1 is the upsert.
+    const [, , opts] = executeSqlMock.mock.calls[1]!
     expect(opts.params).toContainEqual({ name: 'notes', value: null })
     expect(opts.params).toContainEqual({ name: 'canada', value: null })
     expect(opts.params).toContainEqual({ name: 'california', value: null })

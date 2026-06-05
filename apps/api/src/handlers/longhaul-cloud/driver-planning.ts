@@ -120,12 +120,15 @@ FROM ranked WHERE rn = 1;
 `
 }
 
-// Third round trip — ensures the table (+ Variant-B columns) exists, then reads
-// every override. Still wrapped in a soft-fail try/catch by the caller; the
-// ensure prefix keeps the SELECT safe on tenants whose table predates the
-// roster columns.
+// Third round trip — reads every override from DriverConfirmedAvailability.
+// Must be preceded by ENSURE_CONFIRMED_TABLE_SQL in a SEPARATE call, not
+// concatenated into the same batch: SQL Server resolves column references at
+// parse time, so referencing home_state/rating/etc. in the SELECT before the
+// ALTER TABLE ADD … in the same batch raises `Invalid column name` on tenants
+// whose table predates those columns. Splitting the calls lets the ALTER
+// commit before this SELECT is parsed. Still wrapped in a soft-fail
+// try/catch by the caller for genuinely-absent tables on M2M-only tenants.
 const CONFIRMED_SQL = `
-${ENSURE_CONFIRMED_TABLE_SQL}
 SELECT driver_id, confirmed_date, confirmed_location, notes,
        canada, california, rating, equipment, home_city, home_state
 FROM DriverConfirmedAvailability
@@ -325,11 +328,15 @@ export const longhaulDriverPlanningHandler: Handler<AppEnv> = async (c) => {
       }
     }
 
-    // Round trip 3 — Confirmed-availability overrides. Optional; the
-    // DriverConfirmedAvailability table may not exist on a given tenant, so we
-    // catch the query error and treat the override set as empty.
+    // Round trip 3 — Confirmed-availability overrides. The schema-ensure
+    // (CREATE-if-missing + ALTER-ADD-column guards) MUST run as its own batch
+    // so SQL Server parse-time column resolution doesn't reject the SELECT on
+    // tenants whose table predates the Variant-B roster columns. Both calls
+    // are wrapped in a single soft-fail try/catch — if either fails, the
+    // override set is treated as empty so the planning grid still renders.
     const confirmedByDriver = new Map<number, ConfirmedRow>()
     try {
+      await executeSql(connectionString, ENSURE_CONFIRMED_TABLE_SQL)
       const { recordset: confirmedRows } = await executeSql(connectionString, CONFIRMED_SQL)
       for (const row of confirmedRows as ConfirmedRow[]) {
         confirmedByDriver.set(row.driver_id, row)

@@ -34,9 +34,13 @@ const PatchConfirmedBody = z.object({
   homeState: z.string().nullable().optional(),
 })
 
-// Ensure-schema (create/alter, mirrors ensureConfirmedTable) + IF EXISTS upsert.
+// IF EXISTS upsert. ENSURE_CONFIRMED_TABLE_SQL must run in a SEPARATE
+// executeSql call before this — concatenating into one batch trips SQL
+// Server's parse-time column resolution, which rejects references to
+// just-being-ALTERed columns (e.g. `home_state = @home_state`) with
+// `Invalid column name 'home_state'` on tenants whose table predates them.
 const UPSERT_SQL = `
-${ENSURE_CONFIRMED_TABLE_SQL}
+SET XACT_ABORT ON;
 IF EXISTS (SELECT 1 FROM DriverConfirmedAvailability WHERE driver_id = @driver_id)
   UPDATE DriverConfirmedAvailability
   SET confirmed_date = @confirmed_date,
@@ -83,6 +87,10 @@ export const longhaulDriverPlanningPatchHandler: Handler<AppEnv> = async (c) => 
   }
 
   try {
+    // Split: ensure-schema first (commits any ALTER TABLE ADD column ...),
+    // then upsert. One batch would parse-error on tenants whose table is
+    // missing a referenced column. See UPSERT_SQL comment.
+    await executeSql(resolved.connectionString, ENSURE_CONFIRMED_TABLE_SQL)
     await executeSql(resolved.connectionString, UPSERT_SQL, {
       params: [
         { name: 'driver_id', value: driverId },

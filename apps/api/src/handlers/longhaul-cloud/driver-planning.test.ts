@@ -101,7 +101,8 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
 
   it('returns { data, meta } with a deliveries array and back-compat summary', async () => {
     findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
-    // Round trip 1: planning. Round trip 2: RDEL deliveries. Round trip 3: confirmed.
+    // Round trip 1: planning. Round trip 2: RDEL deliveries. Round trip 3:
+    // schema-ensure (no rows read). Round trip 4: confirmed SELECT.
     executeSqlMock
       .mockResolvedValueOnce({ recordset: [planningRow()], rowsAffected: [] })
       .mockResolvedValueOnce({
@@ -116,13 +117,14 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
         ],
         rowsAffected: [],
       })
-      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] })
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // ensure
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // confirmed
 
     const res = await buildApp().request('/onprem/longhaul/driver-planning')
     const body = (await res.json()) as { data: Array<Record<string, unknown>>; meta: unknown }
 
     expect(res.status).toBe(200)
-    expect(executeSqlMock).toHaveBeenCalledTimes(3)
+    expect(executeSqlMock).toHaveBeenCalledTimes(4)
     expect(body.meta).toEqual({ count: 1 })
 
     // Planning query (round trip 1) filters to active, real drivers — kept in
@@ -171,7 +173,8 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
         ],
         rowsAffected: [],
       })
-      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] })
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // ensure
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // confirmed
 
     // The handler builds a batch with TWO statements separated by `;` and a
     // ROW_NUMBER() OVER PARTITION BY ... ORDER BY effective-date DESC selection
@@ -202,6 +205,7 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
         rowsAffected: [],
       })
       .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // no RDELs
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // ensure
       .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // no confirmed
 
     const res = await buildApp().request('/onprem/longhaul/driver-planning')
@@ -228,14 +232,16 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
         ],
         rowsAffected: [],
       })
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // ensure
       .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // confirmed (no deliveries query)
 
     const res = await buildApp().request('/onprem/longhaul/driver-planning')
     const body = (await res.json()) as { data: Array<Record<string, unknown>> }
 
     expect(res.status).toBe(200)
-    // Only 2 round trips when no trip ids — deliveries SELECT is skipped.
-    expect(executeSqlMock).toHaveBeenCalledTimes(2)
+    // 3 round trips when no trip ids — deliveries SELECT is skipped, but
+    // ensure-schema and confirmed SELECT still run.
+    expect(executeSqlMock).toHaveBeenCalledTimes(3)
     expect(body.data[0]!.currentTripId).toBeNull()
     expect(body.data[0]!.deliveries).toEqual([])
   })
@@ -270,7 +276,8 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
         ],
         rowsAffected: [],
       })
-      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] })
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // ensure
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // confirmed
 
     const res = await buildApp().request('/onprem/longhaul/driver-planning')
     const body = (await res.json()) as {
@@ -298,7 +305,8 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
         ],
         rowsAffected: [],
       })
-      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] })
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // ensure
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // confirmed
 
     const res = await buildApp().request('/onprem/longhaul/driver-planning')
     const body = (await res.json()) as {
@@ -323,7 +331,8 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
         ],
         rowsAffected: [],
       })
-      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] })
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // ensure
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // confirmed
 
     const res = await buildApp().request('/onprem/longhaul/driver-planning')
     const body = (await res.json()) as {
@@ -352,6 +361,7 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
     executeSqlMock
       .mockResolvedValueOnce({ recordset: [planningRow()], rowsAffected: [] })
       .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // no deliveries
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // ensure
       .mockResolvedValueOnce({
         recordset: [
           {
@@ -390,6 +400,7 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
     executeSqlMock
       .mockResolvedValueOnce({ recordset: [planningRow()], rowsAffected: [] })
       .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // no deliveries
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // ensure
       .mockRejectedValueOnce(
         new Error("QUERY_FAILED: Invalid object name 'DriverConfirmedAvailability'"),
       )
