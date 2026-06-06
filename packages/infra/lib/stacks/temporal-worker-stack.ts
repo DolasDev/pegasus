@@ -44,7 +44,6 @@ import * as cdk from 'aws-cdk-lib'
 import * as ec2 from 'aws-cdk-lib/aws-ec2'
 import * as ecr from 'aws-cdk-lib/aws-ecr'
 import * as ecs from 'aws-cdk-lib/aws-ecs'
-import * as iam from 'aws-cdk-lib/aws-iam'
 import * as logs from 'aws-cdk-lib/aws-logs'
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
 import { type Construct } from 'constructs'
@@ -101,6 +100,23 @@ export interface TemporalWorkerStackProps extends cdk.StackProps {
    * the `ENV_NAME` container env var (so worker logs are easy to filter).
    */
   readonly envName: string
+
+  /**
+   * Full Secrets Manager ARN (with the 6-char random suffix) for the
+   * Temporal Cloud API-key secret. Sourced from `TEMPORAL_SECRET_ARNS`
+   * in `bin/app.ts`. Required: ECS task-secret injection fails with
+   * `ResourceNotFoundException` if given the no-suffix ARN that
+   * `Secret.fromSecretNameV2` produces, so we use
+   * `Secret.fromSecretCompleteArn` to thread the suffix through.
+   */
+  readonly temporalCloudSecretArn: string
+
+  /**
+   * Full Secrets Manager ARN (with the 6-char random suffix) for the
+   * workflow-broker shared secret. Same rationale as
+   * `temporalCloudSecretArn`.
+   */
+  readonly workflowBrokerSecretArn: string
 }
 
 /**
@@ -178,19 +194,31 @@ export class TemporalWorkerStack extends cdk.Stack {
     // -----------------------------------------------------------------------
     // Secrets — Temporal Cloud API key (JSON `{"apiKey":"<jwt>"}`) and the
     // broker shared secret (raw string). Both already provisioned per the
-    // plan's operator prereqs. fromSecretNameV2 means the runtime always
-    // pulls the latest version (no SecretVersionStage pin), which matches
-    // how WORKFLOW_TOKEN_KMS_KEY_ID etc. behave elsewhere.
+    // plan's operator prereqs.
+    //
+    // Why `fromSecretCompleteArn` (with the suffix), not `fromSecretNameV2`:
+    // `Secret.fromSecretNameV2` produces a no-suffix ARN
+    // (`arn:...:secret:pegasus/<env>/<name>`). ECS task-secret injection
+    // then puts that no-suffix ARN into the container's
+    // `secrets[].valueFrom`. When Fargate calls
+    // `secretsmanager:GetSecretValue` with that ARN, Secrets Manager
+    // returns `ResourceNotFoundException: Secrets Manager can't find the
+    // specified secret` — verified live 2026-06-06 from the staging
+    // account. The no-suffix ARN is NOT a valid SecretId at the SM API,
+    // despite some AWS docs implying it is. Using the full ARN
+    // (with the 6-char suffix) fixes both the ECS lookup AND lets the
+    // default `grantRead` IAM grant match the actual call. The per-env
+    // ARN values live in `TEMPORAL_SECRET_ARNS` in bin/app.ts.
     // -----------------------------------------------------------------------
-    const temporalCloudSecret = secretsmanager.Secret.fromSecretNameV2(
+    const temporalCloudSecret = secretsmanager.Secret.fromSecretCompleteArn(
       this,
       'TemporalCloudSecret',
-      `pegasus/${envName}/temporal-cloud`,
+      props.temporalCloudSecretArn,
     )
-    const workflowBrokerSecret = secretsmanager.Secret.fromSecretNameV2(
+    const workflowBrokerSecret = secretsmanager.Secret.fromSecretCompleteArn(
       this,
       'WorkflowBrokerSecret',
-      `pegasus/${envName}/workflow-broker-secret`,
+      props.workflowBrokerSecretArn,
     )
 
     // -----------------------------------------------------------------------
@@ -237,38 +265,19 @@ export class TemporalWorkerStack extends cdk.Stack {
     // doesn't exist yet (it normally lands when the container is added,
     // but we grant before that here so the order-of-operations is
     // explicit). Returns the same instance on subsequent calls.
+    // With `fromSecretCompleteArn` above, the standard `grantRead` helper
+    // produces a policy whose Resource is exactly the full ARN (with
+    // suffix) that ECS injects into `secrets[].valueFrom` — so IAM
+    // evaluation matches the actual SM API call. No wildcard needed.
     const executionRole = taskDefinition.obtainExecutionRole()
-    // CDK + ECS Secrets Manager gotcha. Background:
-    //
-    // * `Secret.fromSecretNameV2(...).grantRead(role)` builds a policy whose
-    //   Resource ends in `-??????` (six chars matching the SM random
-    //   suffix). ECS task-secret injection calls Secrets Manager with the
-    //   NO-SUFFIX ARN (the form `arn:...:secret:pegasus/<env>/<name>` you
-    //   see in `containerDefinitions[].secrets[].valueFrom`), so the
-    //   `??????` pattern doesn't match → AccessDenied.
-    // * The previous fix used `arn:...:secret:pegasus/<env>/<name>*` (one
-    //   trailing wildcard). The IAM Policy Simulator reports `allowed` on
-    //   both no-suffix AND with-suffix ARNs against this pattern, but the
-    //   actual ECS task-secret injection STILL returned AccessDenied in
-    //   staging (PR #190 deploy). The exact CDK/SM/ECS interaction that
-    //   defeats trailing-* is murky; rather than chase the ARN-matching
-    //   nuance further, grant `secretsmanager:GetSecretValue` +
-    //   `DescribeSecret` on Resource: `*` constrained by an aws:ResourceTag
-    //   would be ideal — but our existing two SM secrets are not tagged
-    //   yet. So we use a bare wildcard, scoped tightly to these two SM
-    //   actions only (the role can't reach any OTHER Secrets Manager
-    //   capability). Narrow back to a tag/ARN scope in a future cleanup.
-    const secretAccess = new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
-      resources: ['*'],
-    })
-    executionRole.addToPrincipalPolicy(secretAccess)
+    temporalCloudSecret.grantRead(executionRole)
+    workflowBrokerSecret.grantRead(executionRole)
     // Also grant the TASK role so the worker process can re-read the
     // broker secret in-band if a future revision wants to rotate without
     // a Fargate restart. (Cheap to add now; impossible to retrofit if the
     // worker ever starts caching the value and we change auth shape.)
-    taskDefinition.taskRole.addToPrincipalPolicy(secretAccess)
+    temporalCloudSecret.grantRead(taskDefinition.taskRole)
+    workflowBrokerSecret.grantRead(taskDefinition.taskRole)
 
     // Container image — `latest` from the ECR repo created above. Unit 5
     // ships the first image via .github/workflows/temporal-worker.yml.

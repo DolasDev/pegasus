@@ -42,6 +42,12 @@ function synth(): { template: Template; stack: TemporalWorkerStack } {
     temporalTaskQueue: 'pegasus-stdlib-staging',
     pegasusApiBaseUrl: 'https://api.pegasus-qa.dolas.dev',
     envName: 'staging',
+    // Full ARNs (with the 6-char random suffix) — using fake but
+    // realistic-shape suffixes so the assertions can match exactly.
+    temporalCloudSecretArn:
+      'arn:aws:secretsmanager:us-east-1:111111111111:secret:pegasus/staging/temporal-cloud-TESTAB',
+    workflowBrokerSecretArn:
+      'arn:aws:secretsmanager:us-east-1:111111111111:secret:pegasus/staging/workflow-broker-secret-TESTCD',
   })
   return { template: Template.fromStack(stack), stack }
 }
@@ -165,18 +171,18 @@ describe('TemporalWorkerStack — container env vars', () => {
     })
   })
 
-  it('injects TEMPORAL_CLOUD_API_KEY from the apiKey JSON field of pegasus/{env}/temporal-cloud', () => {
+  it('injects TEMPORAL_CLOUD_API_KEY from the apiKey JSON field of the temporal-cloud secret', () => {
+    // Since #192 the secret ARN is a literal string (not an Fn::Join
+    // token), so `ValueFrom` is just `<full-arn>:apiKey::`.
     synth().template.hasResourceProperties('AWS::ECS::TaskDefinition', {
       ContainerDefinitions: Match.arrayWith([
         Match.objectLike({
           Secrets: Match.arrayWith([
             Match.objectLike({
               Name: 'TEMPORAL_CLOUD_API_KEY',
-              ValueFrom: Match.objectLike({
-                'Fn::Join': Match.arrayWith([
-                  Match.arrayWith([Match.stringLikeRegexp(':apiKey::')]),
-                ]),
-              }),
+              ValueFrom: Match.stringLikeRegexp(
+                'arn:aws:secretsmanager:us-east-1:111111111111:secret:pegasus/staging/temporal-cloud-TESTAB:apiKey::',
+              ),
             }),
           ]),
         }),
@@ -227,20 +233,30 @@ describe('TemporalWorkerStack — IAM grants', () => {
     })
   })
 
-  // Regression guard for the post-#188 staging boot failure:
-  // ECS task-secret injection kept returning AccessDenied even with a
-  // trailing-`*` ARN grant (PR #190). The CDK/SM/ECS ARN-matching path
-  // is murky enough that we fell back to a bare `*` Resource scoped
-  // tightly to the two SM read actions (#191). This test asserts that
-  // both the execution role and the task role have a Resource: `*`
-  // grant limited to JUST those two actions, never broader.
-  it('grants SM read on Resource:* (scoped to 2 actions) on both task + execution roles', () => {
+  // Regression guard for the post-#188 staging boot failures (PRs #190,
+  // #191, and finally #192). Two independent issues both rooted in the
+  // CDK `Secret.fromSecretNameV2` helper producing a no-suffix ARN:
+  //
+  //   1. The default `grantRead` policy uses a `-??????` suffix pattern
+  //      that doesn't match no-suffix-ARN calls (IAM AccessDenied).
+  //   2. The no-suffix ARN is NOT a valid Secrets Manager SecretId —
+  //      `GetSecretValue` returns `ResourceNotFoundException`.
+  //
+  // Both vanish once we switch to `Secret.fromSecretCompleteArn` with
+  // the full ARN (with 6-char random suffix). This test asserts:
+  //   - The container's `secrets[].valueFrom` is the FULL ARN we passed.
+  //   - The IAM grant Resource is also the FULL ARN (no `??????` form,
+  //     no wildcards) — so IAM matches the actual SM API call exactly.
+  it('uses the full Secrets Manager ARN (with suffix) end-to-end in valueFrom AND IAM Resource', () => {
     const tmpl = synth().template.toJSON() as {
       Resources?: Record<
         string,
         {
           Type: string
           Properties?: {
+            ContainerDefinitions?: Array<{
+              Secrets?: Array<{ Name: string; ValueFrom: string | unknown }>
+            }>
             PolicyDocument?: {
               Statement?: Array<{
                 Action?: string | string[]
@@ -251,7 +267,30 @@ describe('TemporalWorkerStack — IAM grants', () => {
         }
       >
     }
-    let starGetSecretValueCount = 0
+    const fullCloudArn =
+      'arn:aws:secretsmanager:us-east-1:111111111111:secret:pegasus/staging/temporal-cloud-TESTAB'
+    const fullBrokerArn =
+      'arn:aws:secretsmanager:us-east-1:111111111111:secret:pegasus/staging/workflow-broker-secret-TESTCD'
+
+    // (1) Task def secrets reference the full ARN. The Temporal cloud one
+    // has `:apiKey::` appended for the JSON key path; broker is raw.
+    const taskDefs = Object.values(tmpl.Resources ?? {}).filter(
+      (r) => r.Type === 'AWS::ECS::TaskDefinition',
+    )
+    expect(taskDefs.length).toBe(1)
+    const secrets = taskDefs[0]?.Properties?.ContainerDefinitions?.[0]?.Secrets ?? []
+    const broker = secrets.find((s) => s.Name === 'WORKFLOW_BROKER_SECRET')
+    const tcloud = secrets.find((s) => s.Name === 'TEMPORAL_CLOUD_API_KEY')
+    expect(broker?.ValueFrom).toBe(fullBrokerArn)
+    expect(tcloud?.ValueFrom).toBe(`${fullCloudArn}:apiKey::`)
+
+    // (2) Every SM `GetSecretValue` grant Resource is the full ARN
+    // (no `??????` suffix-wildcard, no bare `*`, no stripped no-suffix
+    // ARN). CDK emits one statement per (role × secret) pair, so a
+    // synthesized template has 4 statements (2 secrets × 2 roles); we
+    // assert the resource set across them includes both full ARNs.
+    const seenResources = new Set<string>()
+    let grantCount = 0
     for (const r of Object.values(tmpl.Resources ?? {})) {
       if (r.Type !== 'AWS::IAM::Policy') continue
       for (const s of r.Properties?.PolicyDocument?.Statement ?? []) {
@@ -262,20 +301,22 @@ describe('TemporalWorkerStack — IAM grants', () => {
         const resources = (Array.isArray(s.Resource) ? s.Resource : [s.Resource ?? '']).filter(
           (a): a is string => typeof a === 'string',
         )
-        if (resources.includes('*')) {
-          // Belt-and-braces: a Resource:* grant must be tightly scoped
-          // to the two SM read actions — never let secretsmanager:*
-          // sneak in alongside.
-          expect(actions.sort()).toEqual(
-            ['secretsmanager:DescribeSecret', 'secretsmanager:GetSecretValue'].sort(),
+        for (const res of resources) {
+          expect(res, `SM grant resource should be a full ARN, not "${res}"`).not.toMatch(
+            /[?*]/,
           )
-          starGetSecretValueCount++
+          expect(res).toMatch(/-[A-Za-z0-9]{6}$/)
+          seenResources.add(res)
         }
+        grantCount++
       }
     }
-    // Both the execution role (Fargate secret injection at task start)
-    // AND the task role (worker process in-band reads) need the grant.
-    expect(starGetSecretValueCount).toBeGreaterThanOrEqual(2)
+    // Both full ARNs must appear in the grant set (otherwise one of the
+    // two secrets isn't reachable from its consuming role).
+    expect(seenResources.has(fullCloudArn)).toBe(true)
+    expect(seenResources.has(fullBrokerArn)).toBe(true)
+    // Exec role + task role × 2 secrets = 4 statements expected.
+    expect(grantCount).toBeGreaterThanOrEqual(4)
   })
 
   it('does NOT grant kms:* — runtime token is fetched via the API broker, not directly', () => {
