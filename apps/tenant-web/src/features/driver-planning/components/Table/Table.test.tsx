@@ -1,6 +1,6 @@
 import React from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { Table } from './index'
 
 // Tests cover the actual contract of the (generic) `Table` component:
@@ -95,6 +95,69 @@ describe('Table', () => {
         String(call[0] ?? '').includes('Encountered two children with the same key'),
       )
       expect(keyWarnings).toEqual([])
+    })
+  })
+
+  describe('sortable headers', () => {
+    it('does not make headers clickable when `onSort` is omitted', () => {
+      const { container } = render(<Table rows={[]} tableConfig={tableConfig} />)
+      const sortable = container.querySelectorAll(
+        'thead th[data-target="shipment-table-sort-header"]',
+      )
+      expect(sortable.length).toBe(0)
+    })
+
+    it('calls `onSort` with the column key (defaulting to `property`) on header click', () => {
+      const onSort = vi.fn()
+      render(<Table rows={[]} tableConfig={tableConfig} onSort={onSort} />)
+      fireEvent.click(screen.getByText('Age'))
+      expect(onSort).toHaveBeenCalledWith('age')
+    })
+
+    it('uses an explicit `sortKey` over `property` when provided', () => {
+      const onSort = vi.fn()
+      const cfg = [{ label: 'Pack Range', property: 'pack_date' as const, sortKey: 'pack_date2' }]
+      render(<Table rows={[]} tableConfig={cfg} onSort={onSort} />)
+      fireEvent.click(screen.getByText('Pack Range'))
+      expect(onSort).toHaveBeenCalledWith('pack_date2')
+    })
+
+    it('does not make a column sortable when it has neither `property` nor `sortKey`', () => {
+      const onSort = vi.fn()
+      const cfg = [{ label: 'Actions', accessor: () => 'x' }]
+      const { container } = render(<Table rows={[]} tableConfig={cfg} onSort={onSort} />)
+      const th = container.querySelector('thead th')
+      expect(th?.getAttribute('data-target')).toBeNull()
+      fireEvent.click(screen.getByText('Actions'))
+      expect(onSort).not.toHaveBeenCalled()
+    })
+
+    it('marks the active column with `aria-sort` reflecting the order', () => {
+      const onSort = vi.fn()
+      const { container, rerender } = render(
+        <Table
+          rows={[]}
+          tableConfig={tableConfig}
+          onSort={onSort}
+          sortBy={{ value: 'age', order: 'asc' }}
+        />,
+      )
+      const ageTh = container.querySelector('thead th[data-sort="age"]')
+      const nameTh = container.querySelector('thead th[data-sort="name"]')
+      expect(ageTh?.getAttribute('aria-sort')).toBe('ascending')
+      expect(nameTh?.getAttribute('aria-sort')).toBeNull()
+
+      rerender(
+        <Table
+          rows={[]}
+          tableConfig={tableConfig}
+          onSort={onSort}
+          sortBy={{ value: 'age', order: 'desc' }}
+        />,
+      )
+      expect(container.querySelector('thead th[data-sort="age"]')?.getAttribute('aria-sort')).toBe(
+        'descending',
+      )
     })
   })
 

@@ -32,7 +32,24 @@
     padding: 10px;
     text-align: left;
   }
-  
+
+  .th.sortable {
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .th.sortable:hover {
+    background-color: var(--grey-light);
+  }
+
+  .th i {
+    margin-left: 5px;
+  }
+
+  .th .down {
+    transform: rotate(180deg);
+  }
+
   .thead {
     height: 100px;
   }
