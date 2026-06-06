@@ -228,12 +228,13 @@ describe('TemporalWorkerStack — IAM grants', () => {
   })
 
   // Regression guard for the post-#188 staging boot failure:
-  // ECS task-secret injection calls Secrets Manager with the NO-SUFFIX
-  // ARN, but the default CDK `grantRead` builds policies whose Resource
-  // ends in `-??????` (random suffix wildcard) — those don't match. We
-  // must grant the trailing-`*` form so the no-suffix call also matches.
-  // See temporal-worker-stack.ts for the full explanation.
-  it('grants secret access with a trailing `*` so the no-suffix ARN ECS uses also matches', () => {
+  // ECS task-secret injection kept returning AccessDenied even with a
+  // trailing-`*` ARN grant (PR #190). The CDK/SM/ECS ARN-matching path
+  // is murky enough that we fell back to a bare `*` Resource scoped
+  // tightly to the two SM read actions (#191). This test asserts that
+  // both the execution role and the task role have a Resource: `*`
+  // grant limited to JUST those two actions, never broader.
+  it('grants SM read on Resource:* (scoped to 2 actions) on both task + execution roles', () => {
     const tmpl = synth().template.toJSON() as {
       Resources?: Record<
         string,
@@ -250,26 +251,31 @@ describe('TemporalWorkerStack — IAM grants', () => {
         }
       >
     }
-    const wildcardSecretResources: string[] = []
+    let starGetSecretValueCount = 0
     for (const r of Object.values(tmpl.Resources ?? {})) {
       if (r.Type !== 'AWS::IAM::Policy') continue
       for (const s of r.Properties?.PolicyDocument?.Statement ?? []) {
-        const actions = Array.isArray(s.Action) ? s.Action : [s.Action ?? '']
+        const actions = (Array.isArray(s.Action) ? s.Action : [s.Action ?? '']).filter(
+          (a): a is string => typeof a === 'string',
+        )
         if (!actions.includes('secretsmanager:GetSecretValue')) continue
-        const resources = Array.isArray(s.Resource) ? s.Resource : [s.Resource ?? '']
-        for (const res of resources) {
-          if (typeof res === 'string' && res.endsWith('*')) {
-            wildcardSecretResources.push(res)
-          }
+        const resources = (Array.isArray(s.Resource) ? s.Resource : [s.Resource ?? '']).filter(
+          (a): a is string => typeof a === 'string',
+        )
+        if (resources.includes('*')) {
+          // Belt-and-braces: a Resource:* grant must be tightly scoped
+          // to the two SM read actions — never let secretsmanager:*
+          // sneak in alongside.
+          expect(actions.sort()).toEqual(
+            ['secretsmanager:DescribeSecret', 'secretsmanager:GetSecretValue'].sort(),
+          )
+          starGetSecretValueCount++
         }
       }
     }
-    // Both the temporal-cloud secret and the workflow-broker secret need
-    // a trailing-`*` grant — one each for the execution role and the task
-    // role means at least 4 matches across the synthesized template.
-    expect(wildcardSecretResources.length).toBeGreaterThanOrEqual(4)
-    expect(wildcardSecretResources.some((r) => r.includes('temporal-cloud'))).toBe(true)
-    expect(wildcardSecretResources.some((r) => r.includes('workflow-broker-secret'))).toBe(true)
+    // Both the execution role (Fargate secret injection at task start)
+    // AND the task role (worker process in-band reads) need the grant.
+    expect(starGetSecretValueCount).toBeGreaterThanOrEqual(2)
   })
 
   it('does NOT grant kms:* — runtime token is fetched via the API broker, not directly', () => {
