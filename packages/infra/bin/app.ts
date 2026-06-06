@@ -349,7 +349,14 @@ if (envName === 'staging' || envName === 'prod') {
       description: `${descPrefix} — Temporal Cloud worker (ECS Fargate, curated stdlib workflows)`,
       vpc: wireguardStack.vpc,
       workerSubnets: wireguardStack.temporalWorkerSubnets,
-      temporalNamespace: `pegasus-${envName}`,
+      // Temporal Cloud namespace IDs are `<short>.<account-id>` — the
+      // short name alone is not what `validate` will accept. Verified
+      // 2026-06-06 against the live `chgel` account: the SDK's first
+      // `describeNamespace` returns PermissionDenied with the short
+      // form, and the worker crashes with `Worker validation failed`.
+      // Derive the full ID from the gRPC address, which already
+      // embeds it (`<full-namespace>.tmprl.cloud:7233`).
+      temporalNamespace: TEMPORAL_ADDRESS[envName].replace(/\.tmprl\.cloud:\d+$/, ''),
       temporalAddress: TEMPORAL_ADDRESS[envName],
       temporalTaskQueue: `pegasus-stdlib-${envName}`,
       pegasusApiBaseUrl: apiCustomDomain,
