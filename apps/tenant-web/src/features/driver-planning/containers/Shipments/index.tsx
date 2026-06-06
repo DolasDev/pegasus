@@ -10,6 +10,7 @@ import { useSelector } from 'react-redux'
 // import { IconButton } from '../../components/Button';
 import { ShipmentsTable } from '../ShipmentsTable'
 import { useAppDispatch } from '../../redux/hooks'
+import { getSortByValue } from '../../utils/sort'
 import type { RootState } from '../../redux/store'
 
 const MemoizedShipmentCards = React.memo(({ shipments }: { shipments: any[] }) => {
@@ -37,57 +38,6 @@ const headers = [
   { label: 'Account', value: 'company', sortable: true, width: '5' },
   { label: 'Driver', value: 'driver_name', sortable: true, width: '5' },
 ]
-
-function getSortByValue(query: any, value: any) {
-  let sortBy = null
-  if (query.sortBy && query.sortBy.value === value) {
-    if (query.sortBy.order === 'asc') {
-      sortBy = {
-        value,
-        order: 'desc',
-      }
-    } else {
-      sortBy = {
-        value,
-        order: 'asc',
-      }
-    }
-  } else {
-    sortBy = {
-      value,
-      order: 'asc',
-    }
-  }
-  return sortBy
-}
-
-/* WIP
-function getSortByValue(query, value) {
-  let sorts = query.sortBy
-  console.log('query sorts', query.sortBy)
-  let newSort = true;
-  for (const sort in sorts){
-    if (sort.value === value) {
-      newSort = false;
-      if (sort.order === "asc") {
-        sort.order = "desc"
-      }
-      else {
-        sort.order = "asc"
-      }
-    }
-  }
-  if (newSort) {
-    sorts.unshift({value: value,order: 'asc'})
-  }
-
-  if (sorts.length > 2){
-    sorts.length = 2
-  }
-  console.log('sorts', sorts)
-  return sorts;
-}
-*/
 
 export const SearchDashboard = () => {
   const shipments = useSelector((state: RootState) => state.shipments.shipmentList)
@@ -137,7 +87,7 @@ export const SearchDashboard = () => {
                 */}
         <FilterTabs />
         {isTableMode ? (
-          <ShipmentsTable shipments={shipments} />
+          <ShipmentsTable shipments={shipments} sortBy={query.sortBy} onSort={changeSortBy} />
         ) : (
           <>
             <div className={styles.flexContainer}>

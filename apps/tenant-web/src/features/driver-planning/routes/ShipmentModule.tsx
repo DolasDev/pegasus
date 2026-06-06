@@ -3,10 +3,11 @@ import { ShipmentsTable } from '../containers/ShipmentsTable'
 import { useSelector } from 'react-redux'
 import { FilterTabs } from '../containers/Shipments/components/FilterTabs'
 import { Lane } from '../components/Lane'
-import { fetchShipments, selectShipment } from '../redux/shipments'
+import { fetchShipments, selectShipment, changeShipmentQuery } from '../redux/shipments'
 import { ShipmentDetail } from '../containers/ShipmentDetail'
 import { useAppDispatch } from '../redux/hooks'
 import { useDebounce } from '../utils/hooks/use-debounce'
+import { getSortByValue } from '../utils/sort'
 import type { RootState } from '../redux/store'
 
 export function ShipmentModule() {
@@ -23,6 +24,12 @@ export function ShipmentModule() {
     if (debouncedQuery) dispatch(fetchShipments(debouncedQuery) as any)
   }, [debouncedQuery, dispatch])
 
+  // Clicking a column header drives the server-side sort (same `query.sortBy`
+  // the card-view sort headers use); the fetch effect above re-runs on change.
+  const changeSortBy = (sortKey: string) => {
+    dispatch(changeShipmentQuery({ sortBy: getSortByValue(query, sortKey) }))
+  }
+
   return (
     <>
       {/* Selecting a row populates `shipments.selectedShipment`, which the
@@ -35,6 +42,8 @@ export function ShipmentModule() {
         <ShipmentsTable
           shipments={shipments}
           onRowClick={(shipment) => dispatch(selectShipment(shipment) as any)}
+          sortBy={query.sortBy}
+          onSort={changeSortBy}
         />
       </Lane>
     </>
