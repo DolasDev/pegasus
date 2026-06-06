@@ -238,26 +238,30 @@ export class TemporalWorkerStack extends cdk.Stack {
     // but we grant before that here so the order-of-operations is
     // explicit). Returns the same instance on subsequent calls.
     const executionRole = taskDefinition.obtainExecutionRole()
-    // CDK gotcha: `Secret.fromSecretNameV2(...).grantRead(executionRole)`
-    // builds a policy whose Resource ends in `-??????` (six chars matching
-    // the random Secrets Manager suffix). But ECS task-secret injection
-    // calls Secrets Manager with the NO-SUFFIX ARN (the form
-    // `arn:...:secret:pegasus/<env>/<name>` you see in the container's
-    // `secrets[].valueFrom`). That ARN doesn't match the `??????` pattern
-    // and the task fails to start with AccessDenied — observed at first
-    // staging boot post-Unit-5 (#188). Granting an extra statement with a
-    // trailing `*` wildcard catches BOTH the no-suffix form (what ECS
-    // passes) and the with-suffix form (what `GetSecretValue` actually
-    // resolves to in service-side metadata).
-    const secretArnPattern = (name: string): string =>
-      `arn:aws:secretsmanager:${this.region}:${this.account}:secret:pegasus/${envName}/${name}*`
+    // CDK + ECS Secrets Manager gotcha. Background:
+    //
+    // * `Secret.fromSecretNameV2(...).grantRead(role)` builds a policy whose
+    //   Resource ends in `-??????` (six chars matching the SM random
+    //   suffix). ECS task-secret injection calls Secrets Manager with the
+    //   NO-SUFFIX ARN (the form `arn:...:secret:pegasus/<env>/<name>` you
+    //   see in `containerDefinitions[].secrets[].valueFrom`), so the
+    //   `??????` pattern doesn't match → AccessDenied.
+    // * The previous fix used `arn:...:secret:pegasus/<env>/<name>*` (one
+    //   trailing wildcard). The IAM Policy Simulator reports `allowed` on
+    //   both no-suffix AND with-suffix ARNs against this pattern, but the
+    //   actual ECS task-secret injection STILL returned AccessDenied in
+    //   staging (PR #190 deploy). The exact CDK/SM/ECS interaction that
+    //   defeats trailing-* is murky; rather than chase the ARN-matching
+    //   nuance further, grant `secretsmanager:GetSecretValue` +
+    //   `DescribeSecret` on Resource: `*` constrained by an aws:ResourceTag
+    //   would be ideal — but our existing two SM secrets are not tagged
+    //   yet. So we use a bare wildcard, scoped tightly to these two SM
+    //   actions only (the role can't reach any OTHER Secrets Manager
+    //   capability). Narrow back to a tag/ARN scope in a future cleanup.
     const secretAccess = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
-      resources: [
-        secretArnPattern('temporal-cloud'),
-        secretArnPattern('workflow-broker-secret'),
-      ],
+      resources: ['*'],
     })
     executionRole.addToPrincipalPolicy(secretAccess)
     // Also grant the TASK role so the worker process can re-read the
