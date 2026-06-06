@@ -44,6 +44,7 @@ import * as cdk from 'aws-cdk-lib'
 import * as ec2 from 'aws-cdk-lib/aws-ec2'
 import * as ecr from 'aws-cdk-lib/aws-ecr'
 import * as ecs from 'aws-cdk-lib/aws-ecs'
+import * as iam from 'aws-cdk-lib/aws-iam'
 import * as logs from 'aws-cdk-lib/aws-logs'
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
 import { type Construct } from 'constructs'
@@ -237,14 +238,33 @@ export class TemporalWorkerStack extends cdk.Stack {
     // but we grant before that here so the order-of-operations is
     // explicit). Returns the same instance on subsequent calls.
     const executionRole = taskDefinition.obtainExecutionRole()
-    temporalCloudSecret.grantRead(executionRole)
-    workflowBrokerSecret.grantRead(executionRole)
+    // CDK gotcha: `Secret.fromSecretNameV2(...).grantRead(executionRole)`
+    // builds a policy whose Resource ends in `-??????` (six chars matching
+    // the random Secrets Manager suffix). But ECS task-secret injection
+    // calls Secrets Manager with the NO-SUFFIX ARN (the form
+    // `arn:...:secret:pegasus/<env>/<name>` you see in the container's
+    // `secrets[].valueFrom`). That ARN doesn't match the `??????` pattern
+    // and the task fails to start with AccessDenied — observed at first
+    // staging boot post-Unit-5 (#188). Granting an extra statement with a
+    // trailing `*` wildcard catches BOTH the no-suffix form (what ECS
+    // passes) and the with-suffix form (what `GetSecretValue` actually
+    // resolves to in service-side metadata).
+    const secretArnPattern = (name: string): string =>
+      `arn:aws:secretsmanager:${this.region}:${this.account}:secret:pegasus/${envName}/${name}*`
+    const secretAccess = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
+      resources: [
+        secretArnPattern('temporal-cloud'),
+        secretArnPattern('workflow-broker-secret'),
+      ],
+    })
+    executionRole.addToPrincipalPolicy(secretAccess)
     // Also grant the TASK role so the worker process can re-read the
     // broker secret in-band if a future revision wants to rotate without
     // a Fargate restart. (Cheap to add now; impossible to retrofit if the
     // worker ever starts caching the value and we change auth shape.)
-    temporalCloudSecret.grantRead(taskDefinition.taskRole)
-    workflowBrokerSecret.grantRead(taskDefinition.taskRole)
+    taskDefinition.taskRole.addToPrincipalPolicy(secretAccess)
 
     // Container image — `latest` from the ECR repo created above. Unit 5
     // ships the first image via .github/workflows/temporal-worker.yml.
