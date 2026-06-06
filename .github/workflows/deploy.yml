@@ -71,6 +71,14 @@ jobs:
               - 'apps/admin-web/**'
             infra:
               - 'packages/infra/**'
+              # Phase 2 Unit 5 will introduce apps/temporal-worker/ with
+              # the Python worker source + Dockerfile. Listing it under
+              # the infra filter now is forward-looking: until Unit 5
+              # lands the directory does not exist, so this branch is a
+              # no-op. Infra changes already force --all, so once the
+              # worker app lands, edits to it will simply trigger the
+              # full deploy that the Unit-5 image build+push hooks into.
+              - 'apps/temporal-worker/**'
               - '.github/workflows/deploy.yml'
               - '.github/workflows/_deploy.yml'
               - 'package-lock.json'

@@ -190,8 +190,15 @@ jobs:
                 "${STACK_PREFIX}-ApiStack" \
                 "${STACK_PREFIX}-ApiCdnStack" \
                 "${STACK_PREFIX}-MonitoringStack" \
+                "${STACK_PREFIX}-TemporalWorkerStack" \
               )
             fi
+            # TemporalWorkerStack: Phase 2 Unit 4 added the Fargate worker
+            # plane in the WireGuard VPC. It's logically an api-side concern
+            # — the API Lambda starts workflows that the worker executes —
+            # so it deploys with the api bucket. Synth is a no-op for dev
+            # (the stack only instantiates for staging/prod), so the dev
+            # path is unaffected.
             if [[ "$TENANT" == "true" ]]; then
               stacks+=( \
                 "${STACK_PREFIX}-FrontendStack" \
