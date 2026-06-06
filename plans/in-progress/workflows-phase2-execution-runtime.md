@@ -2,7 +2,7 @@
 
 > ## 🚦 Resume Status (last updated 2026-06-06)
 >
-> **Units 1-4 are MERGED to `main`.** Operator prereqs all DONE. **Resume at Unit 5.**
+> **Units 1-5 are MERGED to `main`.** Operator prereqs all DONE. **Resume at Unit 6.**
 >
 > | Unit                                       | Status               | Reference                     |
 > | ------------------------------------------ | -------------------- | ----------------------------- |
@@ -10,8 +10,8 @@
 > | 2 — Fork endpoint                          | ✅ MERGED            | #135 → `b733257` (2026-05-22) |
 > | 3 — Per-workflow runtime service account   | ✅ MERGED            | #136 → `ea39600` (2026-05-22) |
 > | 4 — Temporal Cloud + Fargate worker infra  | ✅ MERGED            | #186 → `7d5955b` (2026-06-06) |
-> | 5 — The Temporal worker process            | ⬜ NEXT              | —                             |
-> | 6 — Execution API                          | ⬜ pending Unit 5    | —                             |
+> | 5 — The Temporal worker process            | ✅ MERGED            | #188 → `a21afb5` (2026-06-06) |
+> | 6 — Execution API                          | ⬜ NEXT              | —                             |
 > | 7 — tenant-web execution UI                | ⬜ pending Unit 6    | —                             |
 >
 > **Operator prereqs all satisfied (2026-06-05):**
@@ -218,42 +218,40 @@ rows + non-null ciphertext; `decryptRuntimeToken` round-trips; plaintext in no l
 
 ---
 
-## Unit 5 — The Temporal worker process ⬜ NEXT
+## Unit 5 — The Temporal worker process ✅ DONE (#188, `a21afb5`, 2026-06-06)
 
-**Branch:** `phase2/05-temporal-worker-process` (base: `main` — Units 1-4 already in `main`, not stacked)
+**Branch:** `phase2/05-temporal-worker-process` (merged + deleted)
 
-**Resume-specific guidance (read before planning):**
+**What landed:**
 
-- The Fargate scaffolding is live: ECR repo `pegasus-temporal-worker`, ECS cluster, Fargate service @ `desiredCount: 0`, dedicated SG, env vars and Secrets Manager wiring all in place from Unit 4. The Unit 5 PR ships the Python image and bumps `desiredCount` to 1.
-- Image must be tagged `latest` (or update `temporal-worker-stack.ts` to pin a different tag) — the existing task def references `ecr:latest`.
-- Bundle `packages/workflows-stdlib/` into the image and register only those workflows in `registry.py` — curated-only boundary per the plan.
-- Locally, extend `docker-compose.temporal.yml` to run the worker against the local Temporal dev server (Phase-1 already has `docker-compose.temporal.yml` if present; otherwise it's a Unit 5 add).
-- Container env vars the worker will see at runtime: `TEMPORAL_NAMESPACE`, `TEMPORAL_ADDRESS`, `TEMPORAL_TASK_QUEUE`, `PEGASUS_API_BASE_URL`, `ENV_NAME`, plus secret env `TEMPORAL_CLOUD_API_KEY` (JWT) and `WORKFLOW_BROKER_SECRET`. The broker endpoint + status-sync endpoint land in Unit 6 — until then, status PATCHes will 404 (acceptable in Unit 5 staging smoke).
+- `apps/temporal-worker/` — new Python 3.12 app: `Dockerfile` (multi-stage, slim base, build context = repo root so it can `COPY` from `packages/workflows-{sdk-python,stdlib}`); `pegasus_temporal_worker/` package containing `worker.py` (Temporal Cloud connect via `Client.connect(..., api_key=...)`, SIGTERM-graceful, JSON stdout logging), `registry.py` (curated-only `name → SendQuoteFollowup`, unknown name raises), `runtime_client.py` (POSTs to `…/api/v1/internal/workflow-runtime-token`, 404 → `BrokerEndpointMissing`, plaintext never logged/disked), `status_sync.py` (PATCH terminal status, 404-tolerated, exponential backoff for 5xx), `config.py` (env validation, fails-fast).
+- `apps/temporal-worker/tests/` — 30/30 pytest pass incl. full E2E via `WorkflowEnvironment.start_local`.
+- `packages/workflows-stdlib/` — **no change needed**; the worker imports `SendQuoteFollowup` + `compose_followup` directly from `send_quote_followup.workflow`.
+- `packages/infra/lib/stacks/temporal-worker-stack.ts` — `desiredCount: 0 → 1`; doc-block updated from "dormant" to "running"; matching test assertion updated.
+- `docker-compose.temporal.yml` — new `temporal-worker` service for local dev (opt-in via `up temporal-worker`; depends on `temporal` healthcheck). Worker tolerates empty `TEMPORAL_CLOUD_API_KEY` locally.
+- `.github/workflows/temporal-worker.yml` — new dedicated workflow on push to `main` matching `apps/temporal-worker/**` / `packages/workflows-{sdk-python,stdlib}/**`. Per-env jobs (staging → prod) build the image once and push `:latest` + `:$GITHUB_SHA` to each env's ECR repo, then `aws ecs update-service --force-new-deployment` to roll the Fargate task to the new image. CI pattern (A) chosen over inlining into `_deploy.yml` for separation of concerns (mirrors `mobile-build.yml` precedent).
 
-- `apps/temporal-worker/` — new Python app: `Dockerfile` (installs `temporalio`,
-  the SDK, **bundles `packages/workflows-stdlib/`**); `worker.py` (connects to
-  Temporal Cloud via the secret, registers curated stdlib workflows + activities,
-  polls `pegasus-stdlib-<env>`); `runtime_client.py` (on activity start fetches the
-  per-workflow token from the internal broker by `executionId`, builds
-  `PegasusClient`); `status_sync.py` (PATCH terminal status); `registry.py` (maps
-  `Workflow.name` → stdlib class; rejects any non-curated name — the curated-only
-  boundary); `tests/` using `temporalio.testing` + mocked broker/API.
-- `docker-compose.temporal.yml` (repo root) — extend so the worker runs locally
-  against local Temporal.
-- `packages/workflows-stdlib/` — add an explicit activity export surface if needed
-  so the worker can register `compose_followup`.
+**IAM grant**: ECR push + `ecs:UpdateService/DescribeServices` perms attached out-of-band as inline policy `temporal-worker-image-deploy` on `pegasus-github-actions-deploy-{staging,prod}` (operator role, not in CDK — no `fromRoleName` precedent in the codebase). Applied before merge so the first post-merge image build/push succeeded.
 
-**Mergeable alone:** standalone process; runnable + unit-tested against local
-Temporal without prod. CI builds the image to the Unit-4 ECR repo; bump Fargate
-`desiredCount` to 1 here.
-**Verify (local):** `docker-compose.temporal.yml` up; start `send_quote_followup`
-with a mocked broker token → activity composes the message, status PATCH attempted.
-**Verify (staging):** deploy image, scale Fargate to 1 → connects to Temporal Cloud,
-registers on `pegasus-stdlib-staging`.
+**Verified:** 30/30 pytest, full infra test suite, typecheck/lint, and both auto-triggered post-merge runs landed successfully (image build/push + Fargate roll on both envs; cluster `pegasus-temporal-worker-staging`/`-prod` workers now polling `pegasus-stdlib-staging`/`-prod`). Pre-Unit-6 expectation: broker endpoint returns 404 → worker logs WARN `status_sync.endpoint_missing` and the activity raises `BrokerEndpointMissing` (acceptable pre-Unit-6 state).
 
-## Unit 6 — Execution API
+---
 
-**Branch:** `phase2/06-execution-api`
+## Unit 6 — Execution API ⬜ NEXT (resume guidance below; original spec follows)
+
+**Branch:** `phase2/06-execution-api` (base: `main` — Units 1-5 already in `main`, not stacked)
+
+**Resume-specific guidance:**
+
+- The worker is **running and polling** Temporal Cloud on `pegasus-stdlib-{staging,prod}` as of #188. It expects two internal endpoints that DO NOT EXIST YET and currently 404s on both — implementing them is the headline goal of Unit 6:
+  - `POST /api/v1/internal/workflow-runtime-token` — broker that KMS-decrypts `Workflow.runtimeTokenCiphertext` (Unit 3) and returns plaintext. Shared-secret-gated via `X-Workflow-Broker-Secret` header (env: `WORKFLOW_BROKER_SECRET`).
+  - `PATCH /api/v1/internal/workflow-executions/:id` — worker write-back for terminal status.
+- Both must be mounted on `m2mV1` (M2M auth class), NOT user-session-authed. The header-secret IS the auth.
+- Public side: `POST /:id/run` (new `Actions.RunWorkflow`) lazily mints the runtime account if missing (pre-Unit-3 workflows haven't been finalized through the new path), inserts `QUEUED`, calls Temporal Cloud (`temporal-client.ts`) with id `wf/<tenantId>/<name>/<executionId>` + `REJECT_DUPLICATE`, returns row. Plus `GET /:id/executions`, `GET /:id/executions/:executionId`.
+- `temporal-client.ts` for the API Lambda — public-egress Lambda already reaches Temporal Cloud per the architecture decisions, so no VPC attachment needed. Creds from `pegasus/{env}/temporal-cloud` (JSON `apiKey`).
+- Reconcile-poller (1-min EventBridge) is the optional fast-follow per the plan; without it a crashed worker leaves stale `RUNNING` rows.
+
+Original spec follows:
 
 - `apps/api/src/repositories/workflow-execution.repository.ts` — new repo.
 - `apps/api/src/lib/temporal-client.ts` — Temporal Cloud client for the (public-
