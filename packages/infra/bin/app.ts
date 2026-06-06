@@ -90,12 +90,44 @@ const sesFromEmail = sesEmailEnabled ? `no-reply@${SES_SENDER_DOMAIN[envName]}` 
 // Temporal Cloud namespace gRPC endpoints, one per non-dev env. Consumed by:
 //   - TemporalWorkerStack (Phase 2 Unit 4) — Fargate worker env TEMPORAL_ADDRESS
 //   - ApiStack (Phase 2 Unit 6)            — API Lambda env TEMPORAL_ADDRESS
-// Credentials live in Secrets Manager at pegasus/{env}/temporal-cloud
-// (Secret.fromSecretNameV2 convention). Dev uses local Temporal via
-// docker-compose.temporal.yml — no entry needed here.
+// Credentials live in Secrets Manager at pegasus/{env}/temporal-cloud.
+// Dev uses local Temporal via docker-compose.temporal.yml — no entry here.
 export const TEMPORAL_ADDRESS: Record<Exclude<EnvName, 'dev'>, string> = {
   staging: 'pegasus-staging.chgel.tmprl.cloud:7233',
   prod: 'pegasus-prod.chgel.tmprl.cloud:7233',
+}
+
+// Full Secrets Manager ARNs (with the 6-char random suffix) for the two
+// Phase-2 secrets, per env. They MUST include the suffix:
+// `Secret.fromSecretNameV2('pegasus/<env>/<name>')` produces a no-suffix
+// ARN, and ECS task-secret injection then calls Secrets Manager with that
+// no-suffix form, which Secrets Manager rejects with
+// `ResourceNotFoundException: Secrets Manager can't find the specified
+// secret` (verified live 2026-06-06 — the no-suffix `arn:...:secret:<name>`
+// form is NOT a valid SecretId at the API level, despite some AWS docs
+// implying it is). Using `Secret.fromSecretCompleteArn` with the full ARN
+// fixes both the ECS lookup AND lets the default `grantRead` policy match.
+//
+// Sourced manually via `aws secretsmanager describe-secret` per env; the
+// suffix never changes for the lifetime of the secret, so this is stable.
+// If a secret is ever ROTATED-by-recreation, update the suffix here in
+// the same change.
+export const TEMPORAL_SECRET_ARNS: Record<
+  Exclude<EnvName, 'dev'>,
+  { temporalCloud: string; workflowBroker: string }
+> = {
+  staging: {
+    temporalCloud:
+      'arn:aws:secretsmanager:us-east-1:248812875460:secret:pegasus/staging/temporal-cloud-1xLDVL',
+    workflowBroker:
+      'arn:aws:secretsmanager:us-east-1:248812875460:secret:pegasus/staging/workflow-broker-secret-s6jQx2',
+  },
+  prod: {
+    temporalCloud:
+      'arn:aws:secretsmanager:us-east-1:331145994639:secret:pegasus/prod/temporal-cloud-f4IFFF',
+    workflowBroker:
+      'arn:aws:secretsmanager:us-east-1:331145994639:secret:pegasus/prod/workflow-broker-secret-VJPAmr',
+  },
 }
 
 // ── Infra stacks (deployed first — no dependencies) ──────────────────────────
@@ -322,6 +354,8 @@ if (envName === 'staging' || envName === 'prod') {
       temporalTaskQueue: `pegasus-stdlib-${envName}`,
       pegasusApiBaseUrl: apiCustomDomain,
       envName,
+      temporalCloudSecretArn: TEMPORAL_SECRET_ARNS[envName].temporalCloud,
+      workflowBrokerSecretArn: TEMPORAL_SECRET_ARNS[envName].workflowBroker,
     },
   )
   temporalWorkerStack.addDependency(wireguardStack)
