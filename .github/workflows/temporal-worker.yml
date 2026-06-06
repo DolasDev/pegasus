@@ -1,0 +1,202 @@
+name: Temporal worker image
+
+# Builds + pushes the Pegasus Temporal worker container image (Phase 2 Unit 5)
+# to the per-env ECR repositories created by TemporalWorkerStack, then forces
+# a Fargate redeploy so the running tasks pick up the new image.
+#
+# Why a separate workflow (pattern A) instead of folding into deploy.yml:
+#   - The image build is Python-only and doesn't share any of the JS/TS
+#     build pipeline with the existing deploys (no npm ci, no turbo build).
+#   - Triggering only on `apps/temporal-worker/**` (+ bundled SDK/stdlib)
+#     means tenant-web/admin-web pushes don't pay any of this cost.
+#   - The infra change that bumped `desiredCount` to 1 already triggers
+#     `deploy.yml` (infra path filter), so the CDK stack rolls itself. This
+#     workflow's job is just the image — separation of concerns matches the
+#     mobile-build.yml / publish-stdlib.yml precedent.
+#
+# ── OPERATOR PREREQUISITE (one-time, before the first run) ─────────────────
+# The OIDC role `AWS_DEPLOY_ROLE_ARN` per env environment needs ECR
+# push perms on `arn:aws:ecr:us-east-1:*:repository/pegasus-temporal-worker`
+# plus `ecs:UpdateService` + `ecs:DescribeServices` on the
+# `pegasus-temporal-worker-<env>` service. The role pre-existed Phase 2
+# Unit 4 and was set up out-of-band (see `e2e-staging-role-stack.ts` —
+# it carries the same OIDC trust pattern as the deploy role). Granting
+# these actions is a manual operator step; see the PR body of the Unit 5
+# merge for the IAM policy snippet to attach.
+# ---------------------------------------------------------------------------
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/temporal-worker/**'
+      - 'packages/workflows-sdk-python/**'
+      - 'packages/workflows-stdlib/**'
+      - '.github/workflows/temporal-worker.yml'
+  workflow_dispatch:
+    inputs:
+      env-name:
+        description: 'Target env (defaults to both)'
+        type: choice
+        required: true
+        default: both
+        options:
+          - both
+          - staging
+          - prod
+
+concurrency:
+  group: temporal-worker-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build the image once, push it twice (once per env ECR repo). A single
+  # build avoids any "did staging and prod really get the same artifact?"
+  # surprise. Image-by-digest is the contract; the `:latest` tag is the
+  # surface ECS reads.
+  # ---------------------------------------------------------------------------
+  staging:
+    name: Push image to staging ECR
+    if: github.event_name == 'push' || inputs.env-name == 'both' || inputs.env-name == 'staging'
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      AWS_REGION: us-east-1
+      ECR_REPO_NAME: pegasus-temporal-worker
+      ECS_CLUSTER: pegasus-temporal-worker-staging
+      ECS_SERVICE: pegasus-temporal-worker-staging
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: temporal-worker-staging-${{ github.run_id }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build context = repo root, NOT apps/temporal-worker/. The Dockerfile
+      # reaches into packages/workflows-sdk-python/ + packages/workflows-stdlib/
+      # via sibling COPY lines (see apps/temporal-worker/Dockerfile header).
+      - name: Build + push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/temporal-worker/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:latest
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ github.sha }}
+          cache-from: type=gha,scope=temporal-worker-staging
+          cache-to: type=gha,scope=temporal-worker-staging,mode=max
+
+      - name: Force Fargate redeploy
+        # `:latest` is mutable, so ECS won't pull the new image on its own.
+        # --force-new-deployment makes the service start fresh tasks against
+        # the latest tag; the circuit breaker on the service auto-rolls-back
+        # if the new image fails health checks.
+        # || true on describe-services: if the service has not been deployed
+        # yet (e.g. first ever run on a fresh account), update-service will
+        # 400, which we want to surface — the describe is informational only.
+        run: |
+          set -euo pipefail
+          aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].{Status:status,Desired:desiredCount,Running:runningCount,TaskDef:taskDefinition}' \
+            --output table || true
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --force-new-deployment \
+            --output json > /tmp/update-service.json
+          echo "Forced redeploy of $ECS_SERVICE in $ECS_CLUSTER."
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### Temporal worker image pushed to staging"
+            echo "- Image: \`${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}\`"
+            echo "- Tags: \`latest\`, \`${{ github.sha }}\`"
+            echo "- ECS service: \`${ECS_SERVICE}\` (force-new-deployment triggered)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  prod:
+    name: Push image to prod ECR
+    if: github.event_name == 'push' || inputs.env-name == 'both' || inputs.env-name == 'prod'
+    needs: [staging]
+    runs-on: ubuntu-latest
+    environment: prod
+    env:
+      AWS_REGION: us-east-1
+      ECR_REPO_NAME: pegasus-temporal-worker
+      ECS_CLUSTER: pegasus-temporal-worker-prod
+      ECS_SERVICE: pegasus-temporal-worker-prod
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: temporal-worker-prod-${{ github.run_id }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build + push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/temporal-worker/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:latest
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ github.sha }}
+          cache-from: type=gha,scope=temporal-worker-prod
+          cache-to: type=gha,scope=temporal-worker-prod,mode=max
+
+      - name: Force Fargate redeploy
+        run: |
+          set -euo pipefail
+          aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].{Status:status,Desired:desiredCount,Running:runningCount,TaskDef:taskDefinition}' \
+            --output table || true
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --force-new-deployment \
+            --output json > /tmp/update-service.json
+          echo "Forced redeploy of $ECS_SERVICE in $ECS_CLUSTER."
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### Temporal worker image pushed to prod"
+            echo "- Image: \`${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}\`"
+            echo "- Tags: \`latest\`, \`${{ github.sha }}\`"
+            echo "- ECS service: \`${ECS_SERVICE}\` (force-new-deployment triggered)"
+          } >> "$GITHUB_STEP_SUMMARY"
