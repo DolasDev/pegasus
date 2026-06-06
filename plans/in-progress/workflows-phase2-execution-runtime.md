@@ -218,22 +218,39 @@ rows + non-null ciphertext; `decryptRuntimeToken` round-trips; plaintext in no l
 
 ---
 
-## Unit 5 — The Temporal worker process ✅ DONE (#188, `a21afb5`, 2026-06-06)
+## Unit 5 — The Temporal worker process ✅ DONE (#188 + #189/#192/#193 hotfixes, 2026-06-06)
 
 **Branch:** `phase2/05-temporal-worker-process` (merged + deleted)
 
-**What landed:**
+**What landed in #188 (`a21afb5`):**
 
-- `apps/temporal-worker/` — new Python 3.12 app: `Dockerfile` (multi-stage, slim base, build context = repo root so it can `COPY` from `packages/workflows-{sdk-python,stdlib}`); `pegasus_temporal_worker/` package containing `worker.py` (Temporal Cloud connect via `Client.connect(..., api_key=...)`, SIGTERM-graceful, JSON stdout logging), `registry.py` (curated-only `name → SendQuoteFollowup`, unknown name raises), `runtime_client.py` (POSTs to `…/api/v1/internal/workflow-runtime-token`, 404 → `BrokerEndpointMissing`, plaintext never logged/disked), `status_sync.py` (PATCH terminal status, 404-tolerated, exponential backoff for 5xx), `config.py` (env validation, fails-fast).
+- `apps/temporal-worker/` — new Python 3.12 app: multi-stage Dockerfile (build context = repo root so it can `COPY` from `packages/workflows-{sdk-python,stdlib}`); `pegasus_temporal_worker/` package containing `worker.py` (Temporal Cloud connect via `Client.connect(..., api_key=...)`, SIGTERM-graceful, JSON stdout logging), `registry.py` (curated-only `name → SendQuoteFollowup`, unknown name raises), `runtime_client.py` (POSTs to `…/api/v1/internal/workflow-runtime-token`, 404 → `BrokerEndpointMissing`, plaintext never logged/disked), `status_sync.py` (PATCH terminal status, 404-tolerated, exponential backoff for 5xx), `config.py` (env validation, fails-fast).
 - `apps/temporal-worker/tests/` — 30/30 pytest pass incl. full E2E via `WorkflowEnvironment.start_local`.
-- `packages/workflows-stdlib/` — **no change needed**; the worker imports `SendQuoteFollowup` + `compose_followup` directly from `send_quote_followup.workflow`.
-- `packages/infra/lib/stacks/temporal-worker-stack.ts` — `desiredCount: 0 → 1`; doc-block updated from "dormant" to "running"; matching test assertion updated.
-- `docker-compose.temporal.yml` — new `temporal-worker` service for local dev (opt-in via `up temporal-worker`; depends on `temporal` healthcheck). Worker tolerates empty `TEMPORAL_CLOUD_API_KEY` locally.
-- `.github/workflows/temporal-worker.yml` — new dedicated workflow on push to `main` matching `apps/temporal-worker/**` / `packages/workflows-{sdk-python,stdlib}/**`. Per-env jobs (staging → prod) build the image once and push `:latest` + `:$GITHUB_SHA` to each env's ECR repo, then `aws ecs update-service --force-new-deployment` to roll the Fargate task to the new image. CI pattern (A) chosen over inlining into `_deploy.yml` for separation of concerns (mirrors `mobile-build.yml` precedent).
+- `packages/infra/lib/stacks/temporal-worker-stack.ts` — `desiredCount: 0 → 1`.
+- `docker-compose.temporal.yml` — new `temporal-worker` service for local dev (opt-in via `up temporal-worker`).
+- `.github/workflows/temporal-worker.yml` — new dedicated workflow on push to `main` matching `apps/temporal-worker/**` / `packages/workflows-{sdk-python,stdlib}/**`. Per-env jobs (staging → prod) build the image once and push `:latest` + `:$GITHUB_SHA` to each env's ECR repo, then `aws ecs update-service --force-new-deployment` to roll the Fargate task to the new image.
 
-**IAM grant**: ECR push + `ecs:UpdateService/DescribeServices` perms attached out-of-band as inline policy `temporal-worker-image-deploy` on `pegasus-github-actions-deploy-{staging,prod}` (operator role, not in CDK — no `fromRoleName` precedent in the codebase). Applied before merge so the first post-merge image build/push succeeded.
+**Operator out-of-band step (one-time):** inline policy `temporal-worker-image-deploy` attached to `pegasus-github-actions-deploy-{staging,prod}` granting ECR push + `ecs:UpdateService/DescribeServices` on the worker resources. No `Role.fromRoleName` precedent in the codebase, so this stayed manual.
 
-**Verified:** 30/30 pytest, full infra test suite, typecheck/lint, and both auto-triggered post-merge runs landed successfully (image build/push + Fargate roll on both envs; cluster `pegasus-temporal-worker-staging`/`-prod` workers now polling `pegasus-stdlib-staging`/`-prod`). Pre-Unit-6 expectation: broker endpoint returns 404 → worker logs WARN `status_sync.endpoint_missing` and the activity raises `BrokerEndpointMissing` (acceptable pre-Unit-6 state).
+**Hotfixes that landed during first staging boot (all merged 2026-06-06):**
+
+| PR | Sha | Bug | Fix |
+| --- | --- | --- | --- |
+| #189 | `027feff` | SDK wheel build failed with "duplicate file" because `pyproject.toml` had both `packages = [...]` AND a `force-include` block adding `templates/` a second time. Phase 1's `pip install -e` masked it. | Drop the redundant `force-include` block. |
+| #192 | `f7538c8` | ECS task launches failed with `AccessDenied` then `ResourceNotFoundException`. Root cause: `Secret.fromSecretNameV2` produces a **no-suffix ARN** that is NOT a valid Secrets Manager `SecretId` at the API layer (verified live), so both the IAM grant Resource AND the `secrets[].valueFrom` were unmatchable. | Switch to `Secret.fromSecretCompleteArn` with full ARNs. Per-env full ARNs in new `TEMPORAL_SECRET_ARNS` map in `bin/app.ts`. |
+| #193 | `28e30f6` | Worker reached `worker.connected` then crashed at namespace validation with `Worker validation failed: Namespace pegasus-staging was not found ... PermissionDenied`. Root cause: Temporal Cloud namespace IDs are `<short>.<account-id>`, not the short name alone. | Derive full namespace ID from the gRPC address (strip `.tmprl.cloud:7233`). |
+
+PRs #190 (`9300c8c` — trailing-`*` ARN, didn't actually fix the issue) and #191 (`c141020` — bare `Resource:*`, fixed IAM but revealed the SM ResourceNotFound issue) were superseded by #192's `fromSecretCompleteArn` approach.
+
+**Verified live (2026-06-06):** Fargate task def rev 3 on `pegasus-temporal-worker-staging` is running cleanly. Worker logs in `/pegasus/staging/temporal-worker`:
+
+```
+worker.starting   namespace=pegasus-staging.chgel  task_queue=pegasus-stdlib-staging  uses_temporal_cloud=true
+worker.connected
+worker.polling
+```
+
+Pre-Unit-6 expectation: starting any workflow would activity-fail with `BrokerEndpointMissing` (broker endpoint returns 404). Worker logs `WARN status_sync.endpoint_missing` on PATCH attempts. Both will clear once Unit 6 lands the internal endpoints.
 
 ---
 
