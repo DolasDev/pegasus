@@ -287,7 +287,10 @@ export class TemporalWorkerStack extends cdk.Stack {
     const workerSg = new ec2.SecurityGroup(this, 'WorkerSg', {
       vpc,
       securityGroupName: 'pegasus-temporal-worker',
-      description: 'Temporal worker Fargate task — egress only (Temporal Cloud + ECR + Logs + Pegasus API).',
+      // EC2 rejects non-ASCII in SecurityGroup GroupDescription ("Character
+      // sets beyond ASCII are not supported"). Keep this string plain ASCII —
+      // the file-level comments above can stay UTF-8 since they never reach AWS.
+      description: 'Temporal worker Fargate task - egress only (Temporal Cloud + ECR + Logs + Pegasus API).',
       allowAllOutbound: true,
     })
 

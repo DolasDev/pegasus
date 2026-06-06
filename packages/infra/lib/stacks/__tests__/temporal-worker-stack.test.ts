@@ -111,6 +111,22 @@ describe('TemporalWorkerStack — networking', () => {
     })
   })
 
+  // Regression guard: EC2 rejects non-ASCII in SG GroupDescription with
+  // "Character sets beyond ASCII are not supported" (an em-dash slipped in
+  // on the first Unit-4 deploy and rolled back the staging stack — see
+  // commits 7d5955b → fix). Synth-level check so we catch it before CFN.
+  it('uses ASCII-only in the SecurityGroup description', () => {
+    const sgs = synth().template.findResources('AWS::EC2::SecurityGroup')
+    const descriptions = Object.values(sgs).map(
+      (sg) => (sg as { Properties: { GroupDescription?: string } }).Properties.GroupDescription ?? '',
+    )
+    expect(descriptions.length).toBeGreaterThan(0)
+    for (const desc of descriptions) {
+      // eslint-disable-next-line no-control-regex
+      expect(desc, `Non-ASCII in SG description: "${desc}"`).toMatch(/^[\x00-\x7F]*$/)
+    }
+  })
+
   it('attaches the service to the temporal-worker-egress subnets (no public IP)', () => {
     synth().template.hasResourceProperties('AWS::ECS::Service', {
       NetworkConfiguration: Match.objectLike({
