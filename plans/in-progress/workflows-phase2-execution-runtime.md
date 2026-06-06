@@ -1,17 +1,17 @@
 # Pegasus Workflows — Phase 2: Server-Side Execution Runtime
 
-> ## 🚦 Resume Status (last updated 2026-06-05)
+> ## 🚦 Resume Status (last updated 2026-06-06)
 >
-> **Units 1-3 are MERGED to `main`.** Operator prereqs all DONE. **Resume at Unit 4.**
+> **Units 1-4 are MERGED to `main`.** Operator prereqs all DONE. **Resume at Unit 5.**
 >
 > | Unit                                       | Status               | Reference                     |
 > | ------------------------------------------ | -------------------- | ----------------------------- |
 > | 1 — Execution schema + manifest foundation | ✅ MERGED            | #134 → `9563eb8` (2026-05-22) |
 > | 2 — Fork endpoint                          | ✅ MERGED            | #135 → `b733257` (2026-05-22) |
 > | 3 — Per-workflow runtime service account   | ✅ MERGED            | #136 → `ea39600` (2026-05-22) |
-> | 4 — Temporal Cloud + Fargate worker infra  | ⬜ NEXT              | —                             |
-> | 5 — The Temporal worker process            | ⬜ pending Unit 4    | —                             |
-> | 6 — Execution API                          | ⬜ pending Units 3-5 | —                             |
+> | 4 — Temporal Cloud + Fargate worker infra  | ✅ MERGED            | #186 → `7d5955b` (2026-06-06) |
+> | 5 — The Temporal worker process            | ⬜ NEXT              | —                             |
+> | 6 — Execution API                          | ⬜ pending Unit 5    | —                             |
 > | 7 — tenant-web execution UI                | ⬜ pending Unit 6    | —                             |
 >
 > **Operator prereqs all satisfied (2026-06-05):**
@@ -26,7 +26,7 @@
 >   - `pegasus/prod/temporal-cloud` (acct `331145994639`) — JSON `{"apiKey": "<JWT>"}`
 >   - `pegasus/prod/workflow-broker-secret` (acct `331145994639`) — 64-char hex random (distinct from staging)
 > - ✅ KMS runtime-token key — code already in `ApiStack` (Unit 3, merged); materializes on next ApiStack deploy. Lambda env `WORKFLOW_TOKEN_KMS_KEY_ID` wired.
-> - ⚪ ECR repo `pegasus-temporal-worker` — created by Unit 4's own `TemporalWorkerStack`, no manual step.
+> - ✅ ECR repo `pegasus-temporal-worker`, ECS cluster, dormant Fargate service (`desiredCount: 0`), NAT Gateway + `temporal-worker-egress` subnets on the WireGuard VPC — all landed in Unit 4 (#186 → `7d5955b`). Unit 5 ships the worker image and bumps desired count.
 >
 > **Resume-session checklist:**
 >
@@ -198,42 +198,37 @@ are unused side effects. Pre-existing workflows lazily mint on first run (Unit 6
 **Verify:** finalize locally (real or LocalStack KMS) → `TenantUser` + `ApiClient`
 rows + non-null ciphertext; `decryptRuntimeToken` round-trips; plaintext in no log.
 
-## Unit 4 — Temporal Cloud + Fargate worker infra ⬜ NEXT — start here
+## Unit 4 — Temporal Cloud + Fargate worker infra ✅ DONE (#186, `7d5955b`, 2026-06-06)
 
-**Branch:** `phase2/04-temporal-worker-infra` (base: `main` — Units 1-3 already in `main`, not stacked)
+**Branch:** `phase2/04-temporal-worker-infra` (merged + deleted)
+
+**What landed:**
+
+- `packages/infra/lib/stacks/temporal-worker-stack.ts` — new stack: ECR repo `pegasus-temporal-worker` (RETAIN, image scan on push, last-20 lifecycle), ECS Fargate cluster (containerInsights), task def (512 CPU / 1024 MiB, `desiredCount: 0`, placeholder `ecr:latest` image), task role with `secretsmanager:GetSecretValue` on the two Phase-2 secrets, `awslogs` log group (1-month retention, RETAIN), security group `pegasus-temporal-worker` (egress-only), env vars `TEMPORAL_NAMESPACE`/`TEMPORAL_ADDRESS`/`TEMPORAL_TASK_QUEUE`/`PEGASUS_API_BASE_URL`/`ENV_NAME`, secret env vars `TEMPORAL_CLOUD_API_KEY` (JSON path `apiKey`) + `WORKFLOW_BROKER_SECRET` (raw).
+- `packages/infra/lib/stacks/wireguard-stack.ts` — third `subnetConfiguration` entry `temporal-worker-egress` (PRIVATE_WITH_EGRESS, /24) + `natGateways: 1` so the Fargate fleet has outbound. Existing `hub-public` and `private-lambda` CIDR slots are preserved (additive expansion). Hub still routes via its own IGW — NAT is consumed only by the new subnets. Public prop `temporalWorkerSubnets: ec2.ISubnet[]`.
+- `packages/infra/lib/stacks/__tests__/temporal-worker-stack.test.ts` — vitest assertion test (ECR repo, ECS cluster, Fargate service @ DesiredCount 0, NAT, SG, log group, env + secret wiring).
+- Updated `packages/infra/lib/stacks/__tests__/wireguard-stack.test.ts` — subnet count 4→6 and NAT count 0→1, with a comment explaining the Phase-2 expansion; the "hub does NOT route through NAT" intent is preserved via a route-table assertion.
+- `packages/infra/bin/app.ts` — instantiate for staging/prod only; depends on WireGuardStack + ApiStack. `PEGASUS_API_BASE_URL` resolved from SSM `/dolas/pegasus/api/domain-name` (same source FrontendAssetsStack uses for the SPA config.json), prefixed with `https://`.
+- `.github/workflows/_deploy.yml` — `${STACK_PREFIX}-TemporalWorkerStack` added to the API-side stack list in the `Resolve CDK stack target` step.
+- `.github/workflows/deploy.yml` — path filter `infra:` now includes `apps/temporal-worker/**` (forward-looking for Unit 5).
+
+**Verified:** typecheck + lint + tests + `cdk synth` for staging and prod all green in CI; PR #186 5/5 required checks ✅. Live deploy auto-triggered on merge (`--all` forced by infra path change).
+
+**Cost delta:** ~$35–40/mo per env for the new NAT Gateway. Fargate at desiredCount: 0 is free; empty ECR is free until Unit 5 images land.
+
+---
+
+## Unit 5 — The Temporal worker process ⬜ NEXT
+
+**Branch:** `phase2/05-temporal-worker-process` (base: `main` — Units 1-4 already in `main`, not stacked)
 
 **Resume-specific guidance (read before planning):**
 
-- Endpoints live in `packages/infra/bin/app.ts` as `export const TEMPORAL_ADDRESS: Record<Exclude<EnvName,'dev'>, string>` (added in #178). Import from there; do NOT hard-code.
-- Auth is **API key (JWT), NOT mTLS.** `pegasus/{env}/temporal-cloud` is JSON `{"apiKey":"<jwt>"}`. Use `ecs.Secret.fromSecretsManager(secret, 'apiKey')` so the value is injected as a secret env on the Fargate task, never plaintext in the task def. Same approach for `WORKFLOW_BROKER_SECRET` (raw string, no JSON path).
-- The KMS runtime-token key from Unit 3 is already in `ApiStack` — Unit 4 does not touch it. ECR repo `pegasus-temporal-worker` is created here.
-- Account IDs (for Secret ARNs in cross-stack outputs / tests): staging `248812875460`, prod `331145994639`. Both us-east-1.
-
-Original Unit 4 spec follows:
-
-- `packages/infra/lib/stacks/temporal-worker-stack.ts` — new stack: NAT Gateway +
-  `PRIVATE_WITH_EGRESS` subnets added to `WireGuardStack.vpc`; ECR repo
-  `pegasus-temporal-worker`; ECS cluster + Fargate service (image from Unit 5, start
-  at `desiredCount: 0`); task role with `secretsmanager:GetSecretValue` on
-  `pegasus/{env}/temporal-cloud` + CloudWatch logs; env `TEMPORAL_NAMESPACE`,
-  `TEMPORAL_ADDRESS`, `TEMPORAL_TASK_QUEUE=pegasus-stdlib-<env>`,
-  `PEGASUS_API_BASE_URL`, `WORKFLOW_BROKER_SECRET` ref.
-- `packages/infra/bin/app.ts` — instantiate for staging/prod (dev uses local
-  Temporal); `addDependency` on `WireGuardStack` + `ApiStack`.
-- `packages/infra/lib/stacks/__tests__/temporal-worker-stack.test.ts` — `Template`
-  snapshot/assertion test.
-- `.github/workflows/deploy.yml` / `_deploy.yml` — path filter for
-  `packages/infra/**` + `apps/temporal-worker/**`; include the new stack in the CDK
-  target; worker-image build+push to ECR (image build may land with Unit 5).
-
-**Mergeable alone:** synthesizes/deploys with `desiredCount: 0`; nothing references
-it. Staging only.
-**Verify:** `cdk synth` + snapshot test in CI; deploy to staging; confirm NAT
-Gateway, ECR repo, ECS cluster exist and a hello-world task reaches `temporal.io`.
-
-## Unit 5 — The Temporal worker process
-
-**Branch:** `phase2/05-temporal-worker-process`
+- The Fargate scaffolding is live: ECR repo `pegasus-temporal-worker`, ECS cluster, Fargate service @ `desiredCount: 0`, dedicated SG, env vars and Secrets Manager wiring all in place from Unit 4. The Unit 5 PR ships the Python image and bumps `desiredCount` to 1.
+- Image must be tagged `latest` (or update `temporal-worker-stack.ts` to pin a different tag) — the existing task def references `ecr:latest`.
+- Bundle `packages/workflows-stdlib/` into the image and register only those workflows in `registry.py` — curated-only boundary per the plan.
+- Locally, extend `docker-compose.temporal.yml` to run the worker against the local Temporal dev server (Phase-1 already has `docker-compose.temporal.yml` if present; otherwise it's a Unit 5 add).
+- Container env vars the worker will see at runtime: `TEMPORAL_NAMESPACE`, `TEMPORAL_ADDRESS`, `TEMPORAL_TASK_QUEUE`, `PEGASUS_API_BASE_URL`, `ENV_NAME`, plus secret env `TEMPORAL_CLOUD_API_KEY` (JWT) and `WORKFLOW_BROKER_SECRET`. The broker endpoint + status-sync endpoint land in Unit 6 — until then, status PATCHes will 404 (acceptable in Unit 5 staging smoke).
 
 - `apps/temporal-worker/` — new Python app: `Dockerfile` (installs `temporalio`,
   the SDK, **bundles `packages/workflows-stdlib/`**); `worker.py` (connects to
