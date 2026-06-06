@@ -18,17 +18,27 @@ describe('WireGuardStack — networking', () => {
     })
   })
 
-  it('creates public and private subnets', () => {
+  it('creates public, private-isolated, and temporal-worker-egress subnets', () => {
     const template = synth()
-    // 2 AZs × 2 subnet groups = 4 subnets total.
-    template.resourceCountIs('AWS::EC2::Subnet', 4)
+    // Phase-2 Unit 4 expansion: 2 AZs × 3 subnet groups = 6 subnets total.
+    //   - hub-public (×2): unchanged, hub lives here, has its own IGW route
+    //   - private-lambda (×2, PRIVATE_ISOLATED): tunnel-proxy + mssql-executor
+    //   - temporal-worker-egress (×2, PRIVATE_WITH_EGRESS): Fargate worker,
+    //     consumed by TemporalWorkerStack
+    template.resourceCountIs('AWS::EC2::Subnet', 6)
     template.hasResourceProperties('AWS::EC2::Subnet', {
       MapPublicIpOnLaunch: true,
     })
   })
 
-  it('does NOT create a NAT Gateway (hub uses its own public ENI)', () => {
-    synth().resourceCountIs('AWS::EC2::NatGateway', 0)
+  it('creates exactly one NAT Gateway (for the Phase-2 temporal-worker subnets — the hub keeps its own public ENI route)', () => {
+    // Pre-Phase-2 this asserted zero NAT Gateways. Phase 2 Unit 4 added a
+    // PRIVATE_WITH_EGRESS subnet for the Temporal Cloud Fargate worker
+    // (apps/temporal-worker), which requires NAT egress. The hub does NOT
+    // route through the NAT — it lives in hub-public and uses its own IGW
+    // route — so the original "hub uses its own public ENI" intent is
+    // preserved by holding the count at exactly 1 (one NAT, never two).
+    synth().resourceCountIs('AWS::EC2::NatGateway', 1)
   })
 })
 
@@ -48,8 +58,23 @@ describe('WireGuardStack — hub security group', () => {
 })
 
 describe('WireGuardStack — EC2 hub', () => {
-  it('creates a single EIP', () => {
-    synth().resourceCountIs('AWS::EC2::EIP', 1)
+  it('creates the hub EIP plus the NAT Gateway EIP', () => {
+    // Pre-Phase-2 this asserted exactly 1 EIP (the hub's). Phase 2 Unit 4
+    // added a NAT Gateway for the temporal-worker subnets, which CDK
+    // automatically allocates its own EIP for, so the total is now 2. The
+    // hub still owns its own stable EIP (tagged `pegasus-wireguard-hub`,
+    // verified in the next assertion) and is the one tenants embed in
+    // client.conf; the NAT EIP is purely an outbound NAT public address
+    // for the Fargate worker.
+    synth().resourceCountIs('AWS::EC2::EIP', 2)
+  })
+
+  it('still creates the named pegasus-wireguard-hub EIP (Phase 2 NAT EIP is additive, not a replacement)', () => {
+    synth().hasResourceProperties('AWS::EC2::EIP', {
+      Tags: Match.arrayWith([
+        Match.objectLike({ Key: 'Name', Value: 'pegasus-wireguard-hub' }),
+      ]),
+    })
   })
 
   it('creates an ASG sized 1/1/1', () => {
