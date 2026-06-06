@@ -88,6 +88,20 @@ export class WireGuardStack extends cdk.Stack {
   /** Bucket the CI publish-vpn-agent workflow drops agent tarballs into. */
   public readonly agentArtifactsBucket: s3.IBucket
 
+  /**
+   * `PRIVATE_WITH_EGRESS` subnets carved out of the WireGuard VPC for the
+   * Phase 2 Temporal Cloud worker (apps/temporal-worker, ECS Fargate). The
+   * worker needs outbound to Temporal Cloud + ECR + CloudWatch Logs + KMS +
+   * the public API, so it sits behind the NAT Gateway created here. Consumed
+   * by TemporalWorkerStack; ignored by the hub + private-lambda paths.
+   *
+   * The NAT Gateway lives in this stack (created automatically because the
+   * VPC now has a `PRIVATE_WITH_EGRESS` subnet config + `natGateways: 1`),
+   * which is harmless to the existing hub + tunnel-proxy + mssql-executor
+   * paths — none of them route through the NAT.
+   */
+  public readonly temporalWorkerSubnets: ec2.ISubnet[]
+
   /** ASG name - used by CI to trigger an instance refresh after publishing a new agent. */
   public readonly hubAsgName: string
 
@@ -137,12 +151,26 @@ export class WireGuardStack extends cdk.Stack {
     // VPC - 10.10.0.0/16 per plan §2
     // -----------------------------------------------------------------------
     // Two AZs declared but only AZ-a is used in v1. Hub is in a public subnet
-    // (no NAT GW - its agent needs egress via its own public ENI per Q16).
+    // (the hub agent needs egress via its own public ENI per Q16 — it does
+    // NOT route through the NAT below). The third `PRIVATE_WITH_EGRESS`
+    // group was added in Phase 2 Unit 4 for the Temporal Cloud Fargate
+    // worker; the NAT Gateway it requires lives here so the worker stack
+    // can stay pure-consumer of the VPC reference.
+    //
+    // Why: CDK allocates subnet CIDRs in subnetConfiguration order. The
+    // existing `hub-public` and `private-lambda` entries keep their
+    // pre-Phase-2 CIDR slots (10.10.0.0/24, 10.10.1.0/24, 10.10.2.0/24,
+    // 10.10.3.0/24), so existing ENIs / route tables are not renumbered.
+    // The new `temporal-worker-egress` /24s land in the next free slots
+    // (10.10.4.0/24, 10.10.5.0/24) — additive, never replacing.
     const vpc = new ec2.Vpc(this, 'VpnVpc', {
       vpcName: 'pegasus-wireguard-vpc',
       ipAddresses: ec2.IpAddresses.cidr('10.10.0.0/16'),
       maxAzs: 2,
-      natGateways: 0,
+      // One NAT Gateway for the temporal-worker subnets. The hub does NOT
+      // route through it (hub-public has its own IGW route). ~$35–40/mo new
+      // cost owned by this stack; documented in TemporalWorkerStack.
+      natGateways: 1,
       subnetConfiguration: [
         {
           name: 'hub-public',
@@ -157,10 +185,24 @@ export class WireGuardStack extends cdk.Stack {
           subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
           cidrMask: 24,
         },
+        {
+          // Phase 2 Unit 4 addition. Consumed by TemporalWorkerStack so the
+          // Fargate worker has outbound to Temporal Cloud + ECR + KMS +
+          // CloudWatch Logs + the API. Routes through the single NAT
+          // Gateway provisioned above. Leaving this subnet group on the
+          // VPC even when no Fargate service is attached is harmless and
+          // costs nothing beyond the NAT — there are no IPs in use.
+          name: 'temporal-worker-egress',
+          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+          cidrMask: 24,
+        },
       ],
     })
     this.vpc = vpc
     this.privateLambdaSubnets = vpc.isolatedSubnets
+    this.temporalWorkerSubnets = vpc.selectSubnets({
+      subnetGroupName: 'temporal-worker-egress',
+    }).subnets
     // Tag the private-lambda subnets so the hub's cloud-init can find their
     // route tables via `aws ec2 describe-route-tables` and point
     // 10.200.0.0/16 at itself on each boot.
