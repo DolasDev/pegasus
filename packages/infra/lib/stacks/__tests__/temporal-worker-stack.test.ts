@@ -227,6 +227,51 @@ describe('TemporalWorkerStack — IAM grants', () => {
     })
   })
 
+  // Regression guard for the post-#188 staging boot failure:
+  // ECS task-secret injection calls Secrets Manager with the NO-SUFFIX
+  // ARN, but the default CDK `grantRead` builds policies whose Resource
+  // ends in `-??????` (random suffix wildcard) — those don't match. We
+  // must grant the trailing-`*` form so the no-suffix call also matches.
+  // See temporal-worker-stack.ts for the full explanation.
+  it('grants secret access with a trailing `*` so the no-suffix ARN ECS uses also matches', () => {
+    const tmpl = synth().template.toJSON() as {
+      Resources?: Record<
+        string,
+        {
+          Type: string
+          Properties?: {
+            PolicyDocument?: {
+              Statement?: Array<{
+                Action?: string | string[]
+                Resource?: string | string[]
+              }>
+            }
+          }
+        }
+      >
+    }
+    const wildcardSecretResources: string[] = []
+    for (const r of Object.values(tmpl.Resources ?? {})) {
+      if (r.Type !== 'AWS::IAM::Policy') continue
+      for (const s of r.Properties?.PolicyDocument?.Statement ?? []) {
+        const actions = Array.isArray(s.Action) ? s.Action : [s.Action ?? '']
+        if (!actions.includes('secretsmanager:GetSecretValue')) continue
+        const resources = Array.isArray(s.Resource) ? s.Resource : [s.Resource ?? '']
+        for (const res of resources) {
+          if (typeof res === 'string' && res.endsWith('*')) {
+            wildcardSecretResources.push(res)
+          }
+        }
+      }
+    }
+    // Both the temporal-cloud secret and the workflow-broker secret need
+    // a trailing-`*` grant — one each for the execution role and the task
+    // role means at least 4 matches across the synthesized template.
+    expect(wildcardSecretResources.length).toBeGreaterThanOrEqual(4)
+    expect(wildcardSecretResources.some((r) => r.includes('temporal-cloud'))).toBe(true)
+    expect(wildcardSecretResources.some((r) => r.includes('workflow-broker-secret'))).toBe(true)
+  })
+
   it('does NOT grant kms:* — runtime token is fetched via the API broker, not directly', () => {
     const tmpl = synth().template.toJSON() as {
       Resources?: Record<
