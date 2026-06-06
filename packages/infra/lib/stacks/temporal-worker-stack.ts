@@ -306,6 +306,16 @@ export class TemporalWorkerStack extends cdk.Stack {
       // assignPublicIp defaults to false — correct: outbound goes via NAT.
       // No load balancer (worker is poll-only).
       enableExecuteCommand: false,
+      // Deployment circuit breaker — if the worker image is broken (which
+      // it will be on the first Unit 5 deploy if the bundle has a defect),
+      // we want CFN to roll back in ~5 min instead of the default 3-hour
+      // wait. Rollback flips the service back to the previous task def.
+      circuitBreaker: { rollback: true },
+      // For a single-task fleet this is moot (desiredCount: 0 → 1 in
+      // Unit 5), but pinning the percentages explicit silences the
+      // upstream CDK warning and documents the rolling-deploy shape.
+      minHealthyPercent: 0,
+      maxHealthyPercent: 200,
     })
     this.service = service
 

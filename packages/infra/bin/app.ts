@@ -11,6 +11,7 @@ import { MonitoringStack } from '../lib/stacks/monitoring-stack'
 import { DocumentsStack } from '../lib/stacks/documents-stack'
 import { WireGuardStack } from '../lib/stacks/wireguard-stack'
 import { E2EStagingRoleStack } from '../lib/stacks/e2e-staging-role-stack'
+import { TemporalWorkerStack } from '../lib/stacks/temporal-worker-stack'
 
 const app = new cdk.App()
 
@@ -283,3 +284,46 @@ const adminFrontendAssetsStack = new AdminFrontendAssetsStack(
 adminFrontendAssetsStack.addDependency(adminFrontendStack)
 adminFrontendAssetsStack.addDependency(cognitoStack)
 adminFrontendAssetsStack.addDependency(apiStack)
+
+// ── TemporalWorkerStack (Phase 2 Unit 4) ─────────────────────────────────────
+// Staging/prod only. Dev runs Temporal locally via docker-compose.temporal.yml,
+// no Fargate fleet there. Depends on WireGuardStack (for VPC + worker subnets)
+// and ApiStack (PEGASUS_API_BASE_URL must be live so the worker can reach the
+// internal broker + status-sync endpoints once Unit 6 wires them up).
+//
+// In Unit 4 the service runs at `desiredCount: 0` and the ECR repo is empty,
+// so deploying this stack is essentially a no-op other than creating the
+// scaffolding. Unit 5 ships the worker image and bumps the desired count.
+//
+// PEGASUS_API_BASE_URL: in staging/prod we point at the branded
+// `https://api.pegasus[-qa].dolas.dev` resolved from the SSM param dolas-infra
+// publishes (`/dolas/pegasus/api/domain-name`). This matches how
+// FrontendAssetsStack writes the same URL into config.json, so the worker and
+// the browser SPA both target the same CloudFront-fronted API endpoint.
+if (envName === 'staging' || envName === 'prod') {
+  const apiCustomDomain = cdk.Fn.join('', [
+    'https://',
+    cdk.aws_ssm.StringParameter.valueForStringParameter(
+      apiStack,
+      '/dolas/pegasus/api/domain-name',
+    ),
+  ])
+  const temporalWorkerStack = new TemporalWorkerStack(
+    app,
+    `${stackIdPrefix}-TemporalWorkerStack`,
+    {
+      env,
+      stackName: `${stackNamePrefix}-temporal-worker`,
+      description: `${descPrefix} — Temporal Cloud worker (ECS Fargate, curated stdlib workflows)`,
+      vpc: wireguardStack.vpc,
+      workerSubnets: wireguardStack.temporalWorkerSubnets,
+      temporalNamespace: `pegasus-${envName}`,
+      temporalAddress: TEMPORAL_ADDRESS[envName],
+      temporalTaskQueue: `pegasus-stdlib-${envName}`,
+      pegasusApiBaseUrl: apiCustomDomain,
+      envName,
+    },
+  )
+  temporalWorkerStack.addDependency(wireguardStack)
+  temporalWorkerStack.addDependency(apiStack)
+}
