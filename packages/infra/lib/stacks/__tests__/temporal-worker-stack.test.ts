@@ -37,7 +37,10 @@ function synth(): { template: Template; stack: TemporalWorkerStack } {
     env: { account: '111111111111', region: 'us-east-1' },
     vpc,
     workerSubnets,
-    temporalNamespace: 'pegasus-staging',
+    // Full namespace ID — matches the form `<short>.<account-id>` that
+    // Temporal Cloud's API expects; bin/app.ts derives this from the
+    // gRPC address. Keep the test in sync.
+    temporalNamespace: 'pegasus-staging.chgel',
     temporalAddress: 'pegasus-staging.chgel.tmprl.cloud:7233',
     temporalTaskQueue: 'pegasus-stdlib-staging',
     pegasusApiBaseUrl: 'https://api.pegasus-qa.dolas.dev',
@@ -154,7 +157,7 @@ describe('TemporalWorkerStack — container env vars', () => {
         Match.objectLike({
           Name: 'temporal-worker',
           Environment: Match.arrayWith([
-            { Name: 'TEMPORAL_NAMESPACE', Value: 'pegasus-staging' },
+            { Name: 'TEMPORAL_NAMESPACE', Value: 'pegasus-staging.chgel' },
             {
               Name: 'TEMPORAL_ADDRESS',
               Value: 'pegasus-staging.chgel.tmprl.cloud:7233',
