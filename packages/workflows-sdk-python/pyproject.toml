@@ -31,10 +31,15 @@ dev = [
 pegasus-workflows = "pegasus_workflows.cli:main"
 
 [tool.hatch.build.targets.wheel]
+# `packages = [...]` already pulls every file under pegasus_workflows/ into
+# the wheel, including the non-Python `templates/` data dir used by the
+# `pegasus-workflows init` CLI scaffold. A previous `[...wheel.force-include]`
+# block tried to re-add `pegasus_workflows/templates` at the same path and
+# broke the wheel build with "A second file is being added at the same
+# path: pegasus_workflows/templates/README.md". Phase 1 only used `pip
+# install -e` (editable) so the bug went unnoticed until the Phase 2
+# Unit 5 Dockerfile did a real `pip install` against the SDK.
 packages = ["pegasus_workflows"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"pegasus_workflows/templates" = "pegasus_workflows/templates"
 
 [tool.hatch.build.targets.sdist]
 include = ["pegasus_workflows", "README.md", "pyproject.toml"]
