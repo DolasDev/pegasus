@@ -2,17 +2,23 @@
 #
 # This is a LOCAL-DEV AID ONLY. It is invoked by `pegasus-workflows test`
 # (see packages/workflows-sdk-python) so workflow authors can run their
-# workflows against a real Temporal server before publishing. The Pegasus
-# API does NOT connect to Temporal in Phase 1 — there is no production
-# Temporal endpoint and nothing here touches prod.
+# workflows against a real Temporal server before publishing.
 #
-# Start manually:
-#   docker compose -f docker-compose.temporal.yml up -d
+# Phase 2 Unit 5 added the `temporal-worker` service so the curated stdlib
+# worker can be run locally against the same Temporal dev server. Both
+# services are defined; the worker is OPT-IN — start what you need:
+#
+#   # SDK-only flow (Phase 1 behaviour, unchanged):
+#   docker compose -f docker-compose.temporal.yml up temporal
+#
+#   # Full curated-worker flow (Phase 2 Unit 5 onwards):
+#   docker compose -f docker-compose.temporal.yml up
+#
 # Stop:
 #   docker compose -f docker-compose.temporal.yml down
 #
 # Ports:
-#   7233  Temporal frontend gRPC (the SDK connects here)
+#   7233  Temporal frontend gRPC (the SDK and worker both connect here)
 #   8080  Temporal Web UI  ->  http://localhost:8080
 
 name: pegasus-temporal-dev
@@ -34,3 +40,46 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+
+  # Pegasus Temporal worker — Phase 2 Unit 5. Connects to the local
+  # `temporal` service (no TLS, no auth — the empty TEMPORAL_CLOUD_API_KEY
+  # flips the worker into "local Temporal dev server" mode; see
+  # apps/temporal-worker/pegasus_temporal_worker/config.py and worker.py).
+  #
+  # PEGASUS_API_BASE_URL points at host.docker.internal so an `apps/api` you
+  # run locally (with `npm run dev`) is reachable from inside the container.
+  # On Linux you may need to expose host.docker.internal manually — most
+  # recent Docker Desktop / Docker Engine setups handle this transparently.
+  #
+  # WORKFLOW_BROKER_SECRET is a non-empty sentinel so the worker's broker
+  # client doesn't fail-fast at startup. Until Unit 6 lands, broker calls
+  # will 404; the worker handles that explicitly (see runtime_client.py).
+  temporal-worker:
+    build:
+      # Repo root — matches the Dockerfile's expectation. CI invokes
+      # `docker build -f apps/temporal-worker/Dockerfile .` from the same
+      # context.
+      context: .
+      dockerfile: apps/temporal-worker/Dockerfile
+    container_name: pegasus-temporal-worker
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: 'temporal:7233'
+      # Local Temporal dev server only ships the `default` namespace.
+      TEMPORAL_NAMESPACE: 'default'
+      TEMPORAL_TASK_QUEUE: 'pegasus-stdlib-dev'
+      PEGASUS_API_BASE_URL: 'http://host.docker.internal:3000'
+      ENV_NAME: 'dev'
+      # Empty -> worker connects without auth + TLS (local Temporal mode).
+      TEMPORAL_CLOUD_API_KEY: ''
+      # Non-empty placeholder so config.py doesn't fail-fast; broker calls
+      # will 404 against any non-Unit-6 API and that's expected.
+      WORKFLOW_BROKER_SECRET: 'local-dev-only'
+    # Linux dev hosts: this maps host.docker.internal to the host's IP so
+    # the worker can reach `npm run dev`'s API on :3000. Docker Desktop
+    # (macOS, Windows) does this automatically; the explicit mapping is
+    # a no-op there.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
