@@ -87,9 +87,9 @@ describe('TemporalWorkerStack — ECS cluster + Fargate service', () => {
     template.resourceCountIs('AWS::ECS::Service', 1)
   })
 
-  it('starts the service at desiredCount 0 (Unit 5 bumps to 1 once the image lands)', () => {
+  it('runs the service at desiredCount 1 (Unit 5 — image is now present in ECR)', () => {
     synth().template.hasResourceProperties('AWS::ECS::Service', {
-      DesiredCount: 0,
+      DesiredCount: 1,
       LaunchType: 'FARGATE',
     })
   })

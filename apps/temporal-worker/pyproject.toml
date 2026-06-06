@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pegasus-temporal-worker"
+version = "0.1.0"
+description = "Pegasus Temporal worker — executes curated stdlib workflows against Temporal Cloud."
+readme = "README.md"
+# Match the SDK's Python floor. The container image pins 3.12 explicitly so
+# the runtime version is fully deterministic; the lower bound here keeps
+# local-dev on Python 3.11 still workable.
+requires-python = ">=3.11"
+license = { text = "UNLICENSED" }
+authors = [{ name = "DolasDev" }]
+keywords = ["pegasus", "workflows", "temporal", "worker"]
+classifiers = [
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  # temporalio is pinned at the same floor as the SDK package
+  # (packages/workflows-sdk-python/pyproject.toml). Same lower bound so a
+  # single resolution can satisfy both.
+  "temporalio>=1.7",
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "ruff>=0.6",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["pegasus_temporal_worker"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"

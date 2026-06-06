@@ -3,15 +3,15 @@
 // worker (apps/temporal-worker, lands in Phase 2 Unit 5).
 //
 // Lifecycle across Phase 2 units:
-//   - Unit 4 (this commit): synthesise the dormant fleet. ECR repo exists
-//     but contains no images yet; Fargate service is created with
-//     `desiredCount: 0`, so ECS never tries to pull the placeholder image
-//     and nothing actually runs. Stack synth/deploy is therefore safe with
-//     no extra operator steps beyond the Secrets Manager prereqs (already
-//     satisfied per the plan).
-//   - Unit 5: ships the Python worker image, pushes to this ECR repo,
-//     bumps `desiredCount` to 1 so the worker connects to Temporal Cloud
-//     and registers on the task queue.
+//   - Unit 4: synthesised the dormant fleet. ECR repo exists but contained
+//     no images; Fargate service was created with `desiredCount: 0` so ECS
+//     never tried to pull the placeholder image.
+//   - Unit 5 (this commit): the Python worker image now lives in
+//     `apps/temporal-worker/` and is built+pushed to the ECR repo by
+//     `.github/workflows/temporal-worker.yml` on every push to main that
+//     touches the worker source or its bundled SDK/stdlib packages.
+//     `desiredCount` is bumped to 1 so the worker connects to Temporal
+//     Cloud and registers on the shared task queue.
 //   - Unit 6: wires the API to start workflows on the same namespace; the
 //     fleet here is what executes them.
 //   - Unit 7: tenant-web UI to trigger runs.
@@ -35,8 +35,9 @@
 //
 // Cost note:
 //   The dominant new monthly cost is the NAT Gateway itself, ~$35–40/mo
-//   per env (us-east-1: $0.045/hr + data-processing). Fargate at
-//   desiredCount: 0 is free; ECR storage is negligible until images land.
+//   per env (us-east-1: $0.045/hr + data-processing). Unit 5 adds the
+//   Fargate task cost: 0.5 vCPU + 1 GiB ~= $13/mo per env. ECR storage
+//   stays negligible.
 // ---------------------------------------------------------------------------
 
 import * as cdk from 'aws-cdk-lib'
@@ -112,7 +113,7 @@ export class TemporalWorkerStack extends cdk.Stack {
   /** ECS cluster — Fargate-only, containerInsights enabled. */
   public readonly cluster: ecs.ICluster
 
-  /** Fargate service, created at `desiredCount: 0` in Unit 4. */
+  /** Fargate service, running at `desiredCount: 1` since Unit 5. */
   public readonly service: ecs.FargateService
 
   /** Dedicated CloudWatch log group, retained on stack delete. */
@@ -245,9 +246,11 @@ export class TemporalWorkerStack extends cdk.Stack {
     temporalCloudSecret.grantRead(taskDefinition.taskRole)
     workflowBrokerSecret.grantRead(taskDefinition.taskRole)
 
-    // Container image — `latest` from the ECR repo created above. In Unit
-    // 4 this image does not yet exist; with `desiredCount: 0` ECS never
-    // tries to pull it. Unit 5 ships the first image.
+    // Container image — `latest` from the ECR repo created above. Unit 5
+    // ships the first image via .github/workflows/temporal-worker.yml.
+    // Each push to main that touches apps/temporal-worker/ (or the
+    // bundled SDK/stdlib) rolls a new `:latest` tag and forces a Fargate
+    // redeploy with `aws ecs update-service --force-new-deployment`.
     taskDefinition.addContainer('WorkerContainer', {
       containerName: 'temporal-worker',
       image: ecs.ContainerImage.fromEcrRepository(repository, 'latest'),
@@ -295,13 +298,18 @@ export class TemporalWorkerStack extends cdk.Stack {
     })
 
     // -----------------------------------------------------------------------
-    // Fargate service — desiredCount: 0 in Unit 4. Unit 5 bumps to 1.
+    // Fargate service — running at desiredCount: 1 since Phase 2 Unit 5.
+    // The first image landed via .github/workflows/temporal-worker.yml so
+    // ECS now has something to pull.
     // -----------------------------------------------------------------------
     const service = new ecs.FargateService(this, 'WorkerService', {
       serviceName: `pegasus-temporal-worker-${envName}`,
       cluster,
       taskDefinition,
-      desiredCount: 0,
+      // Phase 2 Unit 5: image present, one task per env is enough for
+      // the curated stdlib's expected load. Scale up here when manual
+      // load justifies it.
+      desiredCount: 1,
       // Place in the temporal-worker-egress subnet group, not the
       // hub-public or private-lambda subnets.
       vpcSubnets: { subnets: workerSubnets },
@@ -337,7 +345,7 @@ export class TemporalWorkerStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'WorkerServiceName', {
       value: service.serviceName,
       description:
-        'Fargate service name — bump desiredCount via the AWS CLI when the Unit 5 image is published.',
+        'Fargate service name. Use with `aws ecs update-service --force-new-deployment` to roll to a freshly-pushed worker image.',
     })
     new cdk.CfnOutput(this, 'WorkerLogGroupName', {
       value: logGroup.logGroupName,
