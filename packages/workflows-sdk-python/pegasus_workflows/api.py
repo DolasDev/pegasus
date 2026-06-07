@@ -205,6 +205,85 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
+    def run_workflow(
+        self,
+        workflow_id: str,
+        input: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Start a server-side execution of *workflow_id*.
+
+        Triggers ``POST /api/v1/workflows/{id}/run``. The workflow must be
+        in the curated executable allowlist (Phase 2: only stdlib workflows
+        run server-side) — non-curated names raise with code
+        ``WORKFLOW_NOT_EXECUTABLE``.
+
+        Args:
+            workflow_id: The workflow to run (GLOBAL or a TENANT fork of one).
+            input: JSON-shaped input dict the worker passes to the workflow.
+                Defaults to an empty dict.
+
+        Returns:
+            The freshly-created ``WorkflowExecutionResponse`` object in its
+            initial state (``QUEUED`` or ``RUNNING`` depending on whether
+            the Temporal start round-trip has completed).
+
+        Raises:
+            PegasusApiError: On 400 (not in allowlist), 404, 502 (Temporal
+                start failed), or any other non-2xx.
+        """
+        payload = {"input": input or {}}
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/workflows/{workflow_id}/run",
+                json=payload,
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def list_executions(
+        self,
+        workflow_id: str,
+        *,
+        limit: int = 50,
+        before: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List recent executions of *workflow_id*, newest first.
+
+        Args:
+            workflow_id: The workflow whose executions to list.
+            limit: Page size (1..200; default 50).
+            before: Optional ``execution_id`` of the last row on the
+                previous page — keyset pagination, robust to inserts.
+
+        Returns:
+            A list of ``WorkflowExecutionResponse`` objects.
+
+        Raises:
+            PegasusApiError: On 404 (workflow not visible) or any other
+                non-2xx.
+        """
+        params: dict[str, Any] = {"limit": limit}
+        if before:
+            params["before"] = before
+        return self._get_json(
+            f"/api/v1/workflows/{workflow_id}/executions", **params
+        )["data"]
+
+    def get_execution(
+        self,
+        workflow_id: str,
+        execution_id: str,
+    ) -> dict[str, Any]:
+        """Fetch one execution.
+
+        Raises:
+            PegasusApiError: On 404 (workflow not visible or execution not
+                part of this workflow).
+        """
+        return self._get_json(
+            f"/api/v1/workflows/{workflow_id}/executions/{execution_id}",
+        )["data"]
+
     def fork_workflow(self, workflow_id: str) -> dict[str, Any]:
         """Fork a GLOBAL platform-library workflow into the caller's tenant.
 

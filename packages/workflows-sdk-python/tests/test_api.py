@@ -205,3 +205,115 @@ def test_error_carries_correlation_id() -> None:
 def test_missing_token_rejected() -> None:
     with pytest.raises(ValueError, match="token"):
         PegasusClient(base_url="http://api.test", token="")
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 Unit 6 — execution endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_run_workflow_posts_to_run_path() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["body"] = request.read()
+        return httpx.Response(
+            201,
+            json={
+                "data": {
+                    "id": "exec-1",
+                    "workflowId": "wf-1",
+                    "status": "QUEUED",
+                    "input": {"quote_id": "q-1"},
+                }
+            },
+        )
+
+    client = _client_with(handler)
+    row = client.run_workflow("wf-1", {"quote_id": "q-1"})
+
+    assert row["id"] == "exec-1"
+    assert captured["path"] == "/api/v1/workflows/wf-1/run"
+    assert b'"input"' in captured["body"]
+    assert b'"quote_id"' in captured["body"]
+
+
+def test_run_workflow_default_empty_input() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = request.read()
+        return httpx.Response(
+            201,
+            json={"data": {"id": "exec-1", "status": "QUEUED"}},
+        )
+
+    client = _client_with(handler)
+    client.run_workflow("wf-1")
+    assert b'"input":{}' in captured["body"].replace(b" ", b"")
+
+
+def test_run_workflow_not_executable_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            json={
+                "error": "not curated",
+                "code": "WORKFLOW_NOT_EXECUTABLE",
+            },
+        )
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.run_workflow("wf-1", {})
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.code == "WORKFLOW_NOT_EXECUTABLE"
+
+
+def test_list_executions_passes_limit_and_before() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["query"] = dict(request.url.params)
+        return httpx.Response(
+            200, json={"data": [{"id": "exec-1"}], "meta": {"count": 1}}
+        )
+
+    client = _client_with(handler)
+    rows = client.list_executions("wf-1", limit=25, before="exec-prev")
+
+    assert rows == [{"id": "exec-1"}]
+    assert captured["path"] == "/api/v1/workflows/wf-1/executions"
+    assert captured["query"]["limit"] == "25"
+    assert captured["query"]["before"] == "exec-prev"
+
+
+def test_list_executions_omits_before_when_unset() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["query"] = dict(request.url.params)
+        return httpx.Response(200, json={"data": [], "meta": {"count": 0}})
+
+    client = _client_with(handler)
+    client.list_executions("wf-1")
+    assert "before" not in captured["query"]
+
+
+def test_get_execution_uses_nested_path() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        return httpx.Response(
+            200,
+            json={"data": {"id": "exec-1", "workflowId": "wf-1", "status": "COMPLETED"}},
+        )
+
+    client = _client_with(handler)
+    row = client.get_execution("wf-1", "exec-1")
+
+    assert row["id"] == "exec-1"
+    assert captured["path"] == "/api/v1/workflows/wf-1/executions/exec-1"
