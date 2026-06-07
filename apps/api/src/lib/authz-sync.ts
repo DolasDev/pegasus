@@ -75,6 +75,40 @@ async function listAllStaticPolicies(policyStoreId: string): Promise<readonly Po
   return out
 }
 
+/**
+ * Retries on AVP `ThrottlingException` with exponential backoff + jitter.
+ *
+ * Backoff schedule: ~250ms, 500ms, 1s, 2s, 4s, 8s (capped). Jittered ±25%
+ * to spread retries across in-flight tenants and avoid synchronized waves
+ * hammering AVP at the same moment when the deploy Trigger reconciles
+ * many tenants in parallel.
+ *
+ * Why this exists: at ~15 tenants × ~15 .cedar files = ~225 CreatePolicy
+ * calls, AVP's write quota throws `ThrottlingException: Too many write
+ * operations for resource Unspecified` and rolls the deploy back. This
+ * happened on the prod deploy of Phase 2 Unit 6 (#195) when adding the
+ * new `RunWorkflow` action triggered a full policy resync. Only
+ * `ThrottlingException` is retried — validation/auth errors propagate
+ * immediately. `ResourceNotFoundException` is left to the caller (the
+ * provisioning path's `withConsistencyRetry` covers a different scenario).
+ */
+async function withThrottleRetry<T>(fn: () => Promise<T>, maxAttempts = 7): Promise<T> {
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastErr = err
+      const name = (err as { name?: string }).name
+      if (name !== 'ThrottlingException' || attempt === maxAttempts) throw err
+      const baseMs = Math.min(8_000, 250 * 2 ** (attempt - 1))
+      const jitter = baseMs * (0.75 + Math.random() * 0.5) // ±25%
+      await new Promise((resolve) => setTimeout(resolve, jitter))
+    }
+  }
+  throw lastErr
+}
+
 /** Wraps an AVP SDK error so the per-tenant aggregate identifies which AVP
  *  call (and which policy file, when relevant) caused the failure. AWS SDK
  *  error messages are typically generic ("Invalid input") without naming the
@@ -109,11 +143,13 @@ export async function syncTenantPolicies(policyStoreId: string): Promise<SyncTen
   const avp = getAvp()
 
   try {
-    await avp.send(
-      new PutSchemaCommand({
-        policyStoreId,
-        definition: { cedarJson: loadSchemaJson() },
-      }),
+    await withThrottleRetry(() =>
+      avp.send(
+        new PutSchemaCommand({
+          policyStoreId,
+          definition: { cedarJson: loadSchemaJson() },
+        }),
+      ),
     )
   } catch (err) {
     throw annotate(err, 'PutSchema')
@@ -131,29 +167,34 @@ export async function syncTenantPolicies(policyStoreId: string): Promise<SyncTen
   for (const p of existing) {
     if (!p.policyId) continue
     try {
-      await avp.send(new DeletePolicyCommand({ policyStoreId, policyId: p.policyId }))
+      await withThrottleRetry(() =>
+        avp.send(new DeletePolicyCommand({ policyStoreId, policyId: p.policyId })),
+      )
     } catch (err) {
       throw annotate(err, `DeletePolicy(${p.policyId})`)
     }
   }
 
-  // Recreate from current files. Parallel — these calls are independent and
-  // we want the gap-without-policies window to close as fast as possible.
+  // Recreate from current files. Sequential per-tenant (was parallel; the
+  // parallel version hit `ThrottlingException` on the prod deploy of Phase
+  // 2 Unit 6 — 4 tenants in flight × 15 policies each ≈ 60 concurrent
+  // CreatePolicy calls is over AVP's write quota). The slight extra
+  // policy-gap window per tenant is acceptable; ~15 × 50ms ≈ 0.75s.
   const files = loadPolicies()
-  await Promise.all(
-    files.map(async (f) => {
-      try {
-        await avp.send(
+  for (const f of files) {
+    try {
+      await withThrottleRetry(() =>
+        avp.send(
           new CreatePolicyCommand({
             policyStoreId,
             definition: { static: { description: f.name, statement: f.statement } },
           }),
-        )
-      } catch (err) {
-        throw annotate(err, `CreatePolicy(${f.name})`)
-      }
-    }),
-  )
+        ),
+      )
+    } catch (err) {
+      throw annotate(err, `CreatePolicy(${f.name})`)
+    }
+  }
 
   return { policyStoreId, deleted: existing.length, created: files.length }
 }

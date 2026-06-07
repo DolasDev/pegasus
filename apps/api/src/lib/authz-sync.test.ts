@@ -139,6 +139,58 @@ describe('syncTenantPolicies', () => {
     expect(result.deleted).toBe(0)
     expect(result.created).toBe(loadPolicies().length)
   })
+
+  // Regression for the prod deploy failure of Phase 2 Unit 6 (#195):
+  // 15 tenants × 15 .cedar files = 225 CreatePolicy calls; AVP throttled
+  // ~3 of them with `ThrottlingException`, which propagated past the
+  // per-tenant aggregate and rolled back the SyncAvpPoliciesTrigger custom
+  // resource. The retry helper now eats `ThrottlingException` with
+  // exponential backoff + jitter (up to 7 attempts) so a transient quota
+  // breach during a bulk resync doesn't fail the deploy.
+  it('retries CreatePolicy on ThrottlingException until it succeeds', async () => {
+    let createAttempts = 0
+    sendMock.mockImplementation((cmd: unknown) => {
+      if (cmd instanceof PutSchemaCommand) return Promise.resolve({})
+      if (cmd instanceof ListPoliciesCommand) return Promise.resolve({ policies: [] })
+      if (cmd instanceof CreatePolicyCommand) {
+        createAttempts++
+        // Throttle the first two attempts of the very first create only,
+        // then let everything through. Verifies the retry path executes
+        // without slowing the test (~250 + 500 ≈ 750ms with the new
+        // backoff — well inside CI budget).
+        if (createAttempts <= 2) {
+          const err = new Error('Too many write operations for resource Unspecified')
+          ;(err as Error & { name: string }).name = 'ThrottlingException'
+          return Promise.reject(err)
+        }
+        return Promise.resolve({ policyId: 'x' })
+      }
+      throw new Error(`Unexpected command: ${cmd?.constructor.name}`)
+    })
+
+    const result = await syncTenantPolicies('ps-throttled')
+    expect(result.created).toBe(loadPolicies().length)
+    // First file created on attempt 3 (1+1 throttle + 1 success), rest one each.
+    expect(createAttempts).toBe(loadPolicies().length + 2)
+  })
+
+  it('propagates non-throttle errors immediately (no retry wasted on ValidationException)', async () => {
+    let createAttempts = 0
+    sendMock.mockImplementation((cmd: unknown) => {
+      if (cmd instanceof PutSchemaCommand) return Promise.resolve({})
+      if (cmd instanceof ListPoliciesCommand) return Promise.resolve({ policies: [] })
+      if (cmd instanceof CreatePolicyCommand) {
+        createAttempts++
+        const err = new Error('Invalid input')
+        ;(err as Error & { name: string }).name = 'ValidationException'
+        return Promise.reject(err)
+      }
+      throw new Error(`Unexpected command: ${cmd?.constructor.name}`)
+    })
+
+    await expect(syncTenantPolicies('ps-bad-input')).rejects.toThrow(/CreatePolicy/)
+    expect(createAttempts).toBe(1)
+  })
 })
 
 describe('syncAllTenantPolicies', () => {
