@@ -1,8 +1,8 @@
 # Pegasus Workflows — Phase 2: Server-Side Execution Runtime
 
-> ## 🚦 Resume Status (last updated 2026-06-06)
+> ## 🚦 Resume Status (last updated 2026-06-07)
 >
-> **Units 1-5 are MERGED to `main`.** Operator prereqs all DONE. **Resume at Unit 6.**
+> **Units 1-6 are MERGED to `main`.** Operator prereqs all DONE. **Resume at Unit 6.5 (fast-follow) or Unit 7.**
 >
 > | Unit                                       | Status               | Reference                     |
 > | ------------------------------------------ | -------------------- | ----------------------------- |
@@ -11,9 +11,10 @@
 > | 3 — Per-workflow runtime service account   | ✅ MERGED            | #136 → `ea39600` (2026-05-22) |
 > | 4 — Temporal Cloud + Fargate worker infra  | ✅ MERGED            | #186 → `7d5955b` (2026-06-06) |
 > | 5 — The Temporal worker process            | ✅ MERGED            | #188 → `a21afb5` (2026-06-06) |
-> | 6 — Execution API                          | 🟡 PR OPEN           | branch `phase2/06-execution-api` |
-> | 6.5 — Reconcile poller (fast-follow)       | ⬜ DEFERRED          | (notes below)                 |
-> | 7 — tenant-web execution UI                | ⬜ pending Unit 6    | —                             |
+> | 6 — Execution API                          | ✅ MERGED            | #195 → `b55299e` (2026-06-07) |
+> | 6.1 — stdlib server args contract          | ✅ MERGED            | #196 → `50d2659` (2026-06-07) |
+> | 6.5 — Reconcile poller (fast-follow)       | ⬜ NEXT              | (notes below)                 |
+> | 7 — tenant-web execution UI                | ⬜ pending Unit 6.5  | —                             |
 >
 > **Operator prereqs all satisfied (2026-06-05):**
 >
@@ -255,9 +256,11 @@ Pre-Unit-6 expectation: starting any workflow would activity-fail with `BrokerEn
 
 ---
 
-## Unit 6 — Execution API 🟡 PR OPEN (branch `phase2/06-execution-api`)
+## Unit 6 — Execution API ✅ DONE (#195 → `b55299e`, 2026-06-07)
 
-**Landed in the PR (all green locally — typecheck + lint + 1225 api tests + 70 SDK tests + cdk synth staging/prod):**
+**Branch:** `phase2/06-execution-api` (merged + deleted)
+
+**Landed:**
 
 - `apps/api/src/repositories/workflow-execution.repository.ts` — `create / findById / listByWorkflow / markStarted / markTerminal` with keyset pagination by `(queuedAt, id)`.
 - `apps/api/src/lib/temporal-client.ts` — cached `Connection.connect({ tls: true, apiKey, metadata })` for Temporal Cloud; bare localhost connect for dev. `_setTemporalClientForTesting` injection hook.
@@ -271,7 +274,8 @@ Pre-Unit-6 expectation: starting any workflow would activity-fail with `BrokerEn
 
 **Deliberate decisions / contract notes:**
 
-- **Workflow args shape:** the API calls `client.workflow.start(workflow.name, { args: [{ executionId, input }] })` per the plan's "runtime token delivery" decision. The current `send_quote_followup` workflow class in `packages/workflows-stdlib/` takes positional `quote_id`, not `{ executionId, input }` — that's a **worker-side contract gap** that needs to land alongside Unit 6 deploy for the live smoke test to pass. Either the stdlib workflow's `run(...)` signature changes to `run(self, args: dict)` or the worker introspects positional args from the dict. Tracked as a deploy follow-up; the API contract is locked per the plan.
+- **Workflow args shape:** the API calls `client.workflow.start(workflow.name, { args: [{ executionId, input }] })` per the plan's "runtime token delivery" decision. The stdlib's `send_quote_followup` workflow accepts both this dict shape (server-side) AND the legacy positional `quote_id` string (`pegasus-workflows test` local-dev parity) — landed in **PR #196 (`50d2659`)** as a small fast-follow. Future curated workflows mirror the dict-or-string shape (documented in the module docstring).
+- **`@temporalio/client@1.16.2` pin** (not latest 1.17.x) — `@temporalio/proto@1.17.x` exact-pins `protobufjs@7.5.5` which carries 4 high CVEs (`GHSA-66ff-xgx4-vchm` etc.); npm `overrides` doesn't propagate through exact-version sub-deps, so we couldn't bump protobufjs cleanly while staying on `@temporalio/client@1.17`. `1.16.2` uses `^7.2.5` (a range) so the tree-wide override picks up `7.6.2`. The 1.16↔1.17 client API we use (`Connection.connect`, `client.workflow.start`, `REJECT_DUPLICATE`) is identical. Revert when `@temporalio/proto@1.18+` relaxes the pin. Override registered in root `package.json` `overrides.protobufjs` + dependency-justifications block.
 - **Broker-secret env var:** injected as plaintext via the CloudFormation Secrets Manager dynamic reference (same `secretValue.unsafeUnwrap()` pattern DATABASE_URL uses), NOT fetched via AWS SDK at runtime. Lambda has no `ecs.Secret` equivalent; threading the full ARN to `grantRead` keeps IAM precise.
 - **Temporal Cloud API key:** also injected as plaintext via `secretValueFromJson('apiKey').unsafeUnwrap()`. Same rationale.
 - **Reconcile poller deferred** — see below.
