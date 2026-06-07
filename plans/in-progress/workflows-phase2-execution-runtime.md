@@ -2,42 +2,56 @@
 
 > ## 🚦 Resume Status (last updated 2026-06-07)
 >
-> **Units 1-6 are MERGED to `main`.** Operator prereqs all DONE. **Resume at Unit 6.5 (fast-follow) or Unit 7.**
+> **Units 1-6 are MERGED AND LIVE on staging + prod.** **Resume at Unit 6.5 (fast-follow) OR Unit 7 (UI) — they're independent.**
 >
 > | Unit                                       | Status               | Reference                     |
 > | ------------------------------------------ | -------------------- | ----------------------------- |
-> | 1 — Execution schema + manifest foundation | ✅ MERGED            | #134 → `9563eb8` (2026-05-22) |
-> | 2 — Fork endpoint                          | ✅ MERGED            | #135 → `b733257` (2026-05-22) |
-> | 3 — Per-workflow runtime service account   | ✅ MERGED            | #136 → `ea39600` (2026-05-22) |
-> | 4 — Temporal Cloud + Fargate worker infra  | ✅ MERGED            | #186 → `7d5955b` (2026-06-06) |
-> | 5 — The Temporal worker process            | ✅ MERGED            | #188 → `a21afb5` (2026-06-06) |
-> | 6 — Execution API                          | ✅ MERGED            | #195 → `b55299e` (2026-06-07) |
-> | 6.1 — stdlib server args contract          | ✅ MERGED            | #196 → `50d2659` (2026-06-07) |
-> | 6.5 — Reconcile poller (fast-follow)       | ⬜ NEXT              | (notes below)                 |
-> | 7 — tenant-web execution UI                | ⬜ pending Unit 6.5  | —                             |
+> | 1 — Execution schema + manifest foundation | ✅ MERGED + DEPLOYED | #134 → `9563eb8` (2026-05-22) |
+> | 2 — Fork endpoint                          | ✅ MERGED + DEPLOYED | #135 → `b733257` (2026-05-22) |
+> | 3 — Per-workflow runtime service account   | ✅ MERGED + DEPLOYED | #136 → `ea39600` (2026-05-22) |
+> | 4 — Temporal Cloud + Fargate worker infra  | ✅ MERGED + DEPLOYED | #186 → `7d5955b` (2026-06-06) |
+> | 5 — The Temporal worker process            | ✅ MERGED + DEPLOYED | #188 → `a21afb5` (2026-06-06) |
+> | 6 — Execution API                          | ✅ MERGED + DEPLOYED | #195 → `b55299e` (2026-06-07) |
+> | 6.1 — stdlib server args contract          | ✅ MERGED + DEPLOYED | #196 → `50d2659` (2026-06-07) |
+> | 6.2 — AVP bulk-sync throttle retry         | ✅ MERGED + DEPLOYED | #198 → `57e344b` (2026-06-07) |
+> | 6.5 — Reconcile poller (fast-follow)       | ⬜ READY TO START    | (spec below)                  |
+> | 7 — tenant-web execution UI                | ⬜ READY TO START    | (spec below)                  |
 >
-> **Operator prereqs all satisfied (2026-06-05):**
+> **Live runtime state (verified 2026-06-07):**
 >
-> - ✅ Temporal Cloud namespaces `pegasus-staging` / `pegasus-prod` exist on account `chgel.tmprl.cloud`.
-> - ✅ Endpoints in `packages/infra/bin/app.ts` as `export const TEMPORAL_ADDRESS` map (#178 → `6e29659`):
->   - staging: `pegasus-staging.chgel.tmprl.cloud:7233`
->   - prod: `pegasus-prod.chgel.tmprl.cloud:7233`
-> - ✅ Secrets in AWS Secrets Manager (us-east-1, tagged `Project=pegasus, Component=workflows-phase2, Env=<env>, ManagedBy=manual-cli`):
->   - `pegasus/staging/temporal-cloud` (acct `248812875460`) — JSON `{"apiKey": "<JWT>"}`, **API-key auth** (not mTLS)
->   - `pegasus/staging/workflow-broker-secret` (acct `248812875460`) — 64-char hex random
->   - `pegasus/prod/temporal-cloud` (acct `331145994639`) — JSON `{"apiKey": "<JWT>"}`
->   - `pegasus/prod/workflow-broker-secret` (acct `331145994639`) — 64-char hex random (distinct from staging)
-> - ✅ KMS runtime-token key — code already in `ApiStack` (Unit 3, merged); materializes on next ApiStack deploy. Lambda env `WORKFLOW_TOKEN_KMS_KEY_ID` wired.
-> - ✅ ECR repo `pegasus-temporal-worker`, ECS cluster, dormant Fargate service (`desiredCount: 0`), NAT Gateway + `temporal-worker-egress` subnets on the WireGuard VPC — all landed in Unit 4 (#186 → `7d5955b`). Unit 5 ships the worker image and bumps desired count.
+> - `pegasus-temporal-worker-{staging,prod}` Fargate clusters: `Running: 1`, `Rollout: COMPLETED`. Workers polling `pegasus-stdlib-{staging,prod}` task queues on Temporal Cloud namespace `pegasus-{staging,prod}.chgel`.
+> - API endpoints live on both envs: public `POST /api/v1/workflows/:id/run`, `GET /:id/executions[/:executionId]`; internal (m2mV1 shared-secret-header) `POST /api/v1/internal/workflow-runtime-token`, `PATCH /api/v1/internal/workflow-executions/:id`.
+> - AVP policy stores: all tenants re-synced with the new `RunWorkflow` Cedar action via #198's retry-protected `SyncAvpPoliciesTrigger`.
+> - Pre-Unit-6 worker `WARN status_sync.endpoint_missing` log lines should stop appearing once a workflow actually runs (no executions have been triggered live yet — see live-smoke test below).
+>
+> **Operator prereqs — all satisfied (no action needed):**
+>
+> - ✅ Temporal Cloud namespaces, gRPC endpoints (`TEMPORAL_ADDRESS` map in `bin/app.ts`), Secrets Manager secrets with full ARNs in `TEMPORAL_SECRET_ARNS` map, KMS runtime-token key, ECR repo + Fargate scaffolding, ECR push + ECS update IAM on `pegasus-github-actions-deploy-{staging,prod}`. See `[[project_workflows_phase2_status]]` for the full inventory.
+>
+> **Recommended live smoke test BEFORE starting 6.5 / 7 (~5 min):**
+>
+> The Phase 2 happy path has been tested end-to-end at the unit + handler level but NOT triggered live yet. Worth a single execution to confirm the broker fetch + status PATCH + worker activity all wire up correctly:
+>
+> 1. Identify the `send_quote_followup` workflow id on a staging tenant (via the tenant-web "Workflows" page, or `SELECT id FROM workflows WHERE name = 'send_quote_followup' AND tenantId = ... LIMIT 1` after forking the global).
+> 2. `curl -X POST https://api.pegasus-qa.dolas.dev/api/v1/workflows/<id>/run -H "Authorization: Bearer <vnd_…>" -H 'Content-Type: application/json' -d '{"input": {"quote_id": "Q-test"}}'` — needs an API key with the `RunWorkflow` action (any `workflow_developer`-or-higher persona).
+> 3. Watch CloudWatch `/pegasus/staging/temporal-worker` — should see `worker.run` → activity → `status_sync.ok` (not `…endpoint_missing`).
+> 4. `GET /api/v1/workflows/<id>/executions/<executionId>` returns `status: COMPLETED` with `result` set to the composed follow-up message.
+>
+> If the smoke test fails, the most likely culprits in order are: (a) `WORKFLOW_BROKER_SECRET` env mismatch between API Lambda and worker — check both reference `pegasus/staging/workflow-broker-secret`'s current value; (b) `RunWorkflow` Cedar action not granted to the calling persona — check `apps/api/src/authz/policies/30-personas/workflow-developer.cedar`; (c) workflow id `wf/<tenantId>/<name>/<executionId>` collision (unlikely — REJECT_DUPLICATE only fires on exact id reuse).
 >
 > **Resume-session checklist:**
 >
 > 1. Read this file top-to-bottom + `[[project_workflows_phase2_status]]` memory.
-> 2. Skim `apps/api/src/handlers/workflows.ts` and `workflow.repository.ts` on `main` to see Units 1-3 landed code (runtime token provisioning, fork, manifest `requiredActions`).
-> 3. Confirm Unit 4 still uses **API-key auth** (not mTLS) per the operator decision above — Unit 4 plan must read `secretValueFromJson('apiKey')`, not cert+key.
-> 4. Use the established pattern: research → plan → spawn worker agent in a worktree → PR → green CI → merge. See "Resume notes" at the bottom for gotchas from the Units 1-3 run.
+> 2. If picking up Unit 6.5: read the "Unit 6.5 — Reconcile poller" section below + the "Key architecture decisions" execution-status-sync paragraph. Read `apps/api/src/repositories/workflow-execution.repository.ts` on `main` to see the `markTerminal` shape the poller reuses.
+> 3. If picking up Unit 7: read the "Unit 7 — tenant-web execution UI" section + skim `apps/tenant-web/src/routes/settings.workflows.tsx` to see the Phase-1 + Unit-2 fork button shape. New executions list/detail UI follows that pattern.
+> 4. **6.5 and 7 are mergeable in either order and can land in parallel** — 7 is additive frontend gated on `workflow:run`; 6.5 is a standalone Lambda. Pick whichever matters more for your release pressure.
+> 5. Use the established pattern: research → plan → spawn worker agent in a worktree → PR → green CI → merge. See "Resume notes" at the bottom + the hotfix-chain at the end of Units 5 and 6 for gotchas.
 >
-> See `[[project_workflows_phase2_status]]` and `[[project_audit_ci_jscookie_allowlist]]` in the memory index.
+> **Lessons accrued this phase (linked from `MEMORY.md`):**
+> - `[[feedback_cdk_secret_complete_arn_for_ecs]]` — ECS secret env injection requires `Secret.fromSecretCompleteArn` with the full suffixed ARN, never `fromSecretNameV2`. (Burned 5 PRs learning this on Unit 5.)
+> - `[[feedback_avp_bulk_sync_throttle_retry]]` — `SyncAvpPoliciesTrigger` needs `ThrottlingException` retry + per-tenant serial CreatePolicy above ~15 tenants. (Surfaced on Unit 6's prod deploy.)
+> - `[[feedback_cdk_retain_orphans_on_rollback]]` — new stacks with `RemovalPolicy.RETAIN` + deterministic names leave orphans that block the next deploy after a CREATE_FAILED. (Hit on Unit 4.)
+> - `[[project_workflows_phase2_status]]` — full unit-by-unit ledger and current live state.
 
 ## Context
 
@@ -280,76 +294,65 @@ Pre-Unit-6 expectation: starting any workflow would activity-fail with `BrokerEn
 - **Temporal Cloud API key:** also injected as plaintext via `secretValueFromJson('apiKey').unsafeUnwrap()`. Same rationale.
 - **Reconcile poller deferred** — see below.
 
-### Unit 6.5 — Reconcile poller (fast-follow, deferred from Unit 6)
+**Post-merge hotfix chain:**
 
-**Why deferred:** Unit 6 is already 9 commits touching 3 packages + tests; adding a new Lambda + EventBridge construct widens the blast radius without unblocking anything. The current worker write-back is correct on the happy path; the reconcile poller is the crash-recovery story.
+| PR | Sha | Bug surfaced | Fix |
+| --- | --- | --- | --- |
+| #196 | `50d2659` | Stdlib `send_quote_followup.run(self, quote_id)` couldn't unpack the new `{ executionId, input }` payload — live smoke would template the whole dict into the follow-up. | Accept dict-or-string in `run()`; document the contract for future curated workflows. |
+| #198 | `57e344b` | Prod deploy `UPDATE_ROLLBACK_FAILED` — `SyncAvpPoliciesTrigger` re-syncing the new `RunWorkflow` Cedar action across 15 prod tenants × 15 .cedar files × 4-wide tenant concurrency = ~60 concurrent CreatePolicy calls hit `ThrottlingException`. Staging passed (fewer tenants). | `withThrottleRetry` helper (250ms..8s exponential backoff + ±25% jitter, 7 attempts) wrapped around PutSchema / DeletePolicy / CreatePolicy AND serialize-per-tenant CreatePolicy. Recovery procedure: `aws cloudformation continue-update-rollback --resources-to-skip SyncAvpPoliciesTrigger --profile dolas-pegasus-prod`. See `[[feedback_avp_bulk_sync_throttle_retry]]`. |
+
+---
+
+## Unit 6.5 — Reconcile poller (fast-follow, deferred from Unit 6) ⬜ READY TO START
+
+**Why this was deferred from Unit 6:** Unit 6 was already 9 commits touching 3 packages + tests; adding a new Lambda + EventBridge construct widens the blast radius without unblocking anything. The current worker write-back is correct on the happy path; the reconcile poller is the crash-recovery story.
+
+**Branch:** `phase2/06.5-reconcile-poller` (base: `main` — Units 1-6 already in `main`)
 
 **Design (~30 min implementation):**
+
 - Plain `NodejsFunction` in `ApiStack` (no VPC; public-egress is fine for Temporal Cloud).
 - `events.Rule` on `Schedule.rate(Duration.minutes(1))`.
-- Handler reads `WorkflowExecution` rows where `status = 'RUNNING' AND startedAt < now() - 5m`, calls Temporal `WorkflowClient.describe(temporalWorkflowId)` for each, and PATCHes via the same `markTerminal` path the worker uses.
-- Idempotent: writes via the existing repo functions.
-- **Shipping plan:** open a follow-up PR (`phase2/06.5-reconcile-poller`) immediately after Unit 6 merges. Unit 7 (UI) does not block on it.
+- Handler reads `WorkflowExecution` rows where `status = 'RUNNING' AND startedAt < now() - 5m`, calls Temporal `WorkflowClient.describe(temporalWorkflowId)` for each, and PATCHes via the same `markTerminal` repo path the worker uses (NOT via the broker endpoint — same DB, direct repo call).
+- Idempotent: writes via existing `workflowExecutionRepository.markTerminal` (already covers the "already-terminal no-op" case from #195).
+- Bounded scope per invocation: limit to 100 stale rows per tick so a backlog can't blow the Lambda timeout. If 100 rows come back, log a metric and let the next tick pick up the rest.
 
-Resume guidance & original spec retained for reference:
+**Resume-specific guidance (for the Unit 6.5 worker agent):**
 
-**Branch:** `phase2/06-execution-api` (base: `main` — Units 1-5 already in `main`, not stacked)
+- `temporal-client.ts` from #195 is the precedent — already has `Connection.connect({ apiKey })` shape and caches the client. Re-import it; don't reinvent.
+- Tenant-scoping: the reconcile Lambda runs ACROSS tenants (the worker writes status for any tenant). Pull `WorkflowExecution` rows with `db.workflowExecution.findMany({ where: { status: 'RUNNING', startedAt: { lt: ... } } })` — bypass the tenant scope middleware via the same root `db` instance used by `lambda-sync-avp-policies.ts` (look at that handler for the existing precedent of a tenant-agnostic Lambda).
+- The Lambda's IAM needs `temporal-cloud` secret read (full ARN — see `[[feedback_cdk_secret_complete_arn_for_ecs]]`) AND the existing Prisma DB env. Both already live in `ApiStack` for the main API Lambda; share the constructs.
+- Terminal-state mapping: Temporal `WorkflowExecutionStatus` → our enum: `COMPLETED → COMPLETED`, `FAILED → FAILED`, `CANCELED → CANCELLED`, `TERMINATED → CANCELLED`, `TIMED_OUT → TIMED_OUT`. Leave `RUNNING` alone (worker is still in flight). `CONTINUED_AS_NEW` is not reachable for curated stdlib workflows; treat as RUNNING and log.
+- For result/error: call Temporal `client.workflow.getHandle(temporalWorkflowId).result()` to grab the return value on `COMPLETED`, or `.describe()` then `historyEvents()` for the failure message on `FAILED`. The 5-min "still running" guard avoids racing against a healthy worker that just hasn't finished yet.
+- Add a CloudWatch metric: `WorkflowExecutionReconciled{Status=...}` so we can see on a dashboard how often this kicks in vs the worker write-back.
 
-**Resume-specific guidance:**
+**Mergeable alone:** purely additive — when 0 stale rows exist, the handler does nothing. Doesn't touch any happy-path code.
 
-- The worker is **running and polling** Temporal Cloud on `pegasus-stdlib-{staging,prod}` as of #188. It expects two internal endpoints that DO NOT EXIST YET and currently 404s on both — implementing them is the headline goal of Unit 6:
-  - `POST /api/v1/internal/workflow-runtime-token` — broker that KMS-decrypts `Workflow.runtimeTokenCiphertext` (Unit 3) and returns plaintext. Shared-secret-gated via `X-Workflow-Broker-Secret` header (env: `WORKFLOW_BROKER_SECRET`).
-  - `PATCH /api/v1/internal/workflow-executions/:id` — worker write-back for terminal status.
-- Both must be mounted on `m2mV1` (M2M auth class), NOT user-session-authed. The header-secret IS the auth.
-- Public side: `POST /:id/run` (new `Actions.RunWorkflow`) lazily mints the runtime account if missing (pre-Unit-3 workflows haven't been finalized through the new path), inserts `QUEUED`, calls Temporal Cloud (`temporal-client.ts`) with id `wf/<tenantId>/<name>/<executionId>` + `REJECT_DUPLICATE`, returns row. Plus `GET /:id/executions`, `GET /:id/executions/:executionId`.
-- `temporal-client.ts` for the API Lambda — public-egress Lambda already reaches Temporal Cloud per the architecture decisions, so no VPC attachment needed. Creds from `pegasus/{env}/temporal-cloud` (JSON `apiKey`).
-- Reconcile-poller (1-min EventBridge) is the optional fast-follow per the plan; without it a crashed worker leaves stale `RUNNING` rows.
+**Verify (staging):** crash the staging Fargate task mid-execution (e.g. force-deploy a broken image, then revert) — the orphaned `RUNNING` row should flip to `COMPLETED`/`FAILED` within 1-2 minutes. CloudWatch metric increments.
 
-Original spec follows:
+## Unit 7 — tenant-web execution UI ⬜ READY TO START
 
-- `apps/api/src/repositories/workflow-execution.repository.ts` — new repo.
-- `apps/api/src/lib/temporal-client.ts` — Temporal Cloud client for the (public-
-  egress) API Lambda; creds from `pegasus/{env}/temporal-cloud`.
-- `apps/api/src/handlers/workflows.ts` — `POST /:id/run` (new `Actions.RunWorkflow`;
-  validate the workflow is a curated/executable one, lazily mint the runtime account
-  if missing, insert `QUEUED WorkflowExecution`, `start_workflow` on Temporal Cloud
-  with id `wf/<tenantId>/<name>/<executionId>`, return the row); `GET /:id/executions`;
-  `GET /:id/executions/:executionId`.
-- `apps/api/src/handlers/workflow-internal.ts` — new, mounted on `m2mV1` under
-  `/internal`, shared-secret-header gated: `POST /workflow-runtime-token` (broker,
-  KMS-decrypt) and `PATCH /workflow-executions/:id` (worker write-back).
-- `apps/api/src/app.ts` — mount the internal handler on `m2mV1`.
-- `apps/api/src/authz/actions.ts` + `cedar.schema.json` — add `RunWorkflow`;
-  grant it in `workflow-developer.cedar` (and `tenant_admin`).
-- `packages/infra/lib/stacks/api-stack.ts` — env: Temporal creds secret,
-  `WORKFLOW_BROKER_SECRET`; the reconcile-poller Lambda (plain, internet-egress,
-  1-min EventBridge) — or note as fast-follow.
-- `packages/workflows-sdk-python/pegasus_workflows/api.py` — `run_workflow`,
-  `list_executions`, `get_execution`.
-- Tests in `workflows.test.ts`.
+**Branch:** `phase2/07-execution-ui` (base: `main` — Units 1-6 already in `main`)
 
-**Mergeable alone:** depends on Units 3–5; if the worker fleet is at `desiredCount:0`
-executions sit `QUEUED` harmlessly. Internal endpoints inert without the worker.
-**Verify (staging — full Temporal Cloud path):** with the staging worker running,
-`POST /workflows/:id/run` on `send_quote_followup` → `QUEUED→RUNNING→COMPLETED`
-execution row; worker fetched the scoped runtime token from the broker and the
-activity called the Pegasus API; `GET /:id/executions` reflects status.
+**Resume-specific guidance (for the Unit 7 worker agent):**
 
-## Unit 7 — tenant-web execution UI
+- This is independent of Unit 6.5 — they touch disjoint codebases (`apps/tenant-web/**` vs `packages/infra/**` + `apps/api/**`). Either order, parallel-friendly.
+- The Unit-2 fork button is the closest precedent for adding new actions to `settings.workflows.tsx`; read it for the dialog + toast + react-query invalidation pattern.
+- API endpoints to call (all live on staging + prod): `POST /api/v1/workflows/:id/run`, `GET /api/v1/workflows/:id/executions[?limit=&before=]`, `GET /api/v1/workflows/:id/executions/:executionId`. Auth = the existing tenant session token; no special header.
+- `WorkflowExecution` type shape: see `apps/api/src/repositories/workflow-execution.repository.ts` for the row, `apps/api/src/handlers/workflows.ts` for the response wire shape (camelCase JSON). Mirror in `apps/tenant-web/src/api/workflows.ts`.
+- Polling: when the executions list contains any `QUEUED` or `RUNNING` rows, refetch on a `refetchInterval: 3000` (3s) until they all settle. When all terminal, drop back to the default refetch behavior. TanStack Query's `refetchInterval: (query) => …` callback shape supports this.
+- Permission gate: the per-row "Run" button only renders when the user has the `RunWorkflow` Cedar action — check via the existing `usePermissions()` hook (per `apps/tenant-web/src/auth/...`).
 
-**Branch:** `phase2/07-execution-ui`
+**Files to add/modify:**
 
-- `apps/tenant-web/src/api/workflows.ts` — `WorkflowExecution` type, `runWorkflow`,
-  `listExecutions`, `getExecution`.
-- `apps/tenant-web/src/api/queries/workflows.ts` — `executionsQueryOptions` (polls
-  `refetchInterval` while any execution is `QUEUED`/`RUNNING`); `useRunWorkflow`.
-- `apps/tenant-web/src/routes/settings.workflows.tsx` — per-row "Run" button +
-  input dialog; per-workflow executions list with status badges, timestamps,
-  result/error. Optionally a `settings.workflows.$id.tsx` execution-history route.
+- `apps/tenant-web/src/api/workflows.ts` — `WorkflowExecution` type, `runWorkflow / listExecutions / getExecution` HTTP wrappers.
+- `apps/tenant-web/src/api/queries/workflows.ts` — `executionsQueryOptions(workflowId)` (polls while any QUEUED/RUNNING); `useRunWorkflow()` mutation hook with onSuccess → invalidate executions.
+- `apps/tenant-web/src/routes/settings.workflows.tsx` — per-row "Run" button + input-JSON dialog; per-workflow executions list with status badges (QUEUED grey, RUNNING blue, COMPLETED green, FAILED red, TIMED_OUT/CANCELLED amber), timestamps, result/error rendering.
+- Optionally `apps/tenant-web/src/routes/settings.workflows.$id.tsx` — dedicated execution-history route (deeper detail, paginated list). Phase-2 nice-to-have; not blocking.
 
-**Mergeable alone:** additive frontend, gated behind the `workflow:run` permission.
-**Verify (staging):** run a stdlib workflow from the UI, watch it poll to
-`COMPLETED`, view the result.
+**Mergeable alone:** additive frontend, gated behind the `RunWorkflow` Cedar action (Cedar action already deployed via #195, so any tenant_admin or workflow_developer can see the button).
+
+**Verify (staging):** trigger `send_quote_followup` from the UI on a staging tenant, watch the executions list poll from QUEUED → RUNNING → COMPLETED, view the composed follow-up message in the result panel.
 
 ---
 
@@ -363,10 +366,18 @@ activity called the Pegasus API; `GET /:id/executions` reflects status.
 
 ## Execution model
 
-Sequential — one unit at a time, in the order above (1→7), each in its own git
-worktree + branch → its own PR. Units 1–3 (API/SDK only) can land before any
-Temporal Cloud provisioning; Units 4–7 require the operator prerequisites. No
-parallelism — each unit depends on prior units' merges.
+Units 1–6 were strictly sequential — each depended on the prior unit's merge
+(schema → fork → runtime account → infra → worker → API). **6.5 and 7 are
+parallelizable** — they touch disjoint codebases and don't depend on each
+other:
+
+- **Unit 6.5** is `packages/infra/lib/stacks/api-stack.ts` + a new
+  `apps/api/src/lambda-reconcile-workflow-executions.ts` handler.
+- **Unit 7** is `apps/tenant-web/src/{api,routes}/...`.
+
+Either order, or in parallel. Once both land, Phase 2 is feature-complete and
+the plan archives to `plans/completed/`. Phase-3 handoffs (sandboxed tenant
+code, event-driven triggers, dynamic token scoping) are listed below.
 
 ## Critical files
 
