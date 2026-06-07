@@ -8,14 +8,24 @@ a Pegasus workflow:
   follow-up message — in a real deployment it would call the Pegasus API
   via :class:`pegasus_workflows.PegasusClient`).
 
-Phase 1 has no server-side execution, so this runs only via
-``pegasus-workflows test send_quote_followup``. It exists to exercise the
-upload path end-to-end and to give tenants a worked example.
+Args contract (Phase 2 Unit 6, see plans/in-progress/workflows-phase2-…):
+
+  The server-side ``POST /api/v1/workflows/:id/run`` endpoint starts the
+  Temporal workflow with a single positional dict argument of the shape
+  ``{"executionId": <uuid>, "input": <user-supplied dict>}``. The
+  ``executionId`` is used by the worker's activity infrastructure (broker
+  fetch + status PATCH); workflow business logic should read from
+  ``input``.
+
+  ``pegasus-workflows test send_quote_followup`` (Phase 1 local-dev flow)
+  starts the workflow with a raw positional string for backwards compat —
+  the ``run()`` signature accepts both shapes.
 """
 
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any
 
 from pegasus_workflows import activity, pegasus_workflow, workflow
 
@@ -43,11 +53,23 @@ class SendQuoteFollowup:
     """Compose and (eventually) send a quote follow-up."""
 
     @workflow.run
-    async def run(self, quote_id: str = "quote-unknown") -> str:
-        """Run the follow-up workflow for *quote_id*.
+    async def run(self, payload: dict[str, Any] | str = "quote-unknown") -> str:
+        """Run the follow-up workflow.
+
+        Accepts either:
+
+        * a server-side payload ``{"executionId": str, "input": {...}}`` from
+          ``POST /api/v1/workflows/:id/run`` — reads ``input.quote_id``;
+        * a raw ``quote_id`` string from ``pegasus-workflows test`` (local
+          dev parity).
 
         Returns the composed follow-up message.
         """
+        if isinstance(payload, dict):
+            inner = payload.get("input") or {}
+            quote_id = str(inner.get("quote_id", "quote-unknown"))
+        else:
+            quote_id = payload
         return await workflow.execute_activity(
             compose_followup,
             quote_id,
