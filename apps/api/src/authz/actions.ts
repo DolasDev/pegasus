@@ -153,6 +153,11 @@ export const Actions = {
     resourceType: 'Workflow',
     permission: 'workflow:upload',
   },
+  RunWorkflow: {
+    id: 'RunWorkflow',
+    resourceType: 'Workflow',
+    permission: 'workflow:run',
+  },
 } as const satisfies Record<string, ActionDef>
 
 export type ActionKey = keyof typeof Actions

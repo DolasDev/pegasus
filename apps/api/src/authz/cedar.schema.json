@@ -199,6 +199,9 @@
       },
       "UploadWorkflow": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
+      },
+      "RunWorkflow": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
       }
     }
   }
