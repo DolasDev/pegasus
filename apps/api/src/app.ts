@@ -19,6 +19,7 @@ import { apiClientsHandler } from './handlers/api-clients'
 import { settingsHandler } from './handlers/settings'
 import { documentsHandler } from './handlers/documents'
 import { workflowsHandler } from './handlers/workflows'
+import { workflowInternalHandler } from './handlers/workflow-internal'
 import { eventsHandler } from './handlers/events'
 import { ordersHandler } from './handlers/orders'
 import { vpnAgentHandler } from './handlers/vpn-agent'
@@ -187,6 +188,11 @@ const m2mV1 = new Hono<AppEnv>()
 m2mV1.route('/events', eventsHandler)
 m2mV1.route('/orders', ordersHandler)
 m2mV1.route('/workflows', workflowsHandler)
+// Worker-only internal endpoints — gated by the shared-secret header
+// X-Workflow-Broker-Secret (see handlers/workflow-internal.ts). No tenant
+// middleware involvement; tenant scope is derived from the WorkflowExecution
+// row each call references.
+m2mV1.route('/internal', workflowInternalHandler)
 
 app.route('/api/v1', m2mV1)
 
