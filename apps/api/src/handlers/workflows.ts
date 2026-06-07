@@ -31,9 +31,13 @@ import { Actions, ALL_ACTIONS } from '../authz/actions'
 import { createWorkflowRepository } from '../repositories/workflow.repository'
 import type { WorkflowRow, WorkflowVisibility } from '../repositories/workflow.repository'
 import { createApiClientRepository } from '../repositories/api-client.repository'
+import { createWorkflowExecutionRepository } from '../repositories/workflow-execution.repository'
+import type { WorkflowExecutionRow } from '../repositories/workflow-execution.repository'
 import type { AppEnv } from '../types'
 import { presignDownload, presignUpload } from '../lib/documents-s3'
 import { encryptRuntimeToken } from '../lib/runtime-token-crypto'
+import { getTemporalClient, temporalTaskQueue } from '../lib/temporal-client'
+import { CURATED_WORKFLOW_NAMES } from '../lib/curated-workflows'
 import { logger } from '../lib/logger'
 
 // ---------------------------------------------------------------------------
@@ -94,6 +98,16 @@ const FinalizeBody = z.object({
   manifest: ManifestSchema,
 })
 
+const RunBody = z.object({
+  // Workflow-defined arbitrary JSON. Pegasus does NOT validate its shape
+  // here — that contract belongs to the workflow author. Defaults to {}
+  // so the SDK can call `run_workflow(id)` with no input.
+  input: z.record(z.string(), z.unknown()).optional().default({}),
+})
+
+const LIST_DEFAULT_LIMIT = 50
+const LIST_MAX_LIMIT = 200
+
 // ---------------------------------------------------------------------------
 // Response shapes
 // ---------------------------------------------------------------------------
@@ -110,6 +124,44 @@ type WorkflowResponse = {
   forkedFromVersion: string | null
   createdAt: string
   updatedAt: string
+}
+
+type WorkflowExecutionResponse = {
+  id: string
+  tenantId: string
+  workflowId: string
+  status: WorkflowExecutionRow['status']
+  input: WorkflowExecutionRow['input']
+  result: WorkflowExecutionRow['result']
+  errorMessage: string | null
+  temporalWorkflowId: string | null
+  temporalRunId: string | null
+  triggeredByUserId: string
+  queuedAt: string
+  startedAt: string | null
+  finishedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+function toExecutionResponse(row: WorkflowExecutionRow): WorkflowExecutionResponse {
+  return {
+    id: row.id,
+    tenantId: row.tenantId,
+    workflowId: row.workflowId,
+    status: row.status,
+    input: row.input,
+    result: row.result,
+    errorMessage: row.errorMessage,
+    temporalWorkflowId: row.temporalWorkflowId,
+    temporalRunId: row.temporalRunId,
+    triggeredByUserId: row.triggeredByUserId,
+    queuedAt: row.queuedAt.toISOString(),
+    startedAt: row.startedAt ? row.startedAt.toISOString() : null,
+    finishedAt: row.finishedAt ? row.finishedAt.toISOString() : null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  }
 }
 
 function toResponse(row: WorkflowRow): WorkflowResponse {
@@ -494,3 +546,222 @@ workflowsHandler.post('/:id/fork', requirePermission(Actions.UploadWorkflow), as
   })
   return c.json({ data: toResponse(row) }, 201)
 })
+
+// ---------------------------------------------------------------------------
+// POST /:id/run
+//
+// Trigger a server-side execution of a workflow. Phase-2 contract:
+//
+//   - Only curated names (CURATED_WORKFLOW_NAMES) are executable. The worker
+//     refuses to register anything else, so we reject 400 here for a clean
+//     error story instead of letting the row sit QUEUED forever.
+//   - The workflow's runtime account must exist. Workflows finalized BEFORE
+//     Unit 3 lack runtime columns — they're lazily minted here on first run
+//     in the same transaction as the QUEUED execution insert.
+//   - The runtime token is NOT placed in Temporal workflow args (Temporal
+//     history is durable; a credential there outlives the run). The worker
+//     fetches the token from the broker by `executionId` at activity start.
+//   - The Temporal workflow id is `wf/<tenantId>/<name>/<executionId>` with
+//     REJECT_DUPLICATE — re-submission of the same execution returns the
+//     existing handle instead of starting a second run.
+//
+// Request:  { input? }
+// Response: { data: WorkflowExecutionResponse } (201) | 400 | 404 | 502
+// ---------------------------------------------------------------------------
+workflowsHandler.post(
+  '/:id/run',
+  requirePermission(Actions.RunWorkflow),
+  validator('json', (value, c) => {
+    // POST with no body is allowed — { input: {} } is the default.
+    const inputValue = value == null ? {} : value
+    const r = RunBody.safeParse(inputValue)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const userId = c.get('userId')
+    if (!userId) {
+      throw new DomainError('Authenticated user required to run workflows', 'UNAUTHENTICATED')
+    }
+    const workflowId = c.req.param('id') ?? ''
+    const { input } = c.req.valid('json')
+    const db = c.get('db')
+
+    const repo = createWorkflowRepository(db)
+    const workflow = await repo.findByIdForTenant(workflowId, tenantId)
+    if (!workflow) {
+      return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
+    }
+    if (!CURATED_WORKFLOW_NAMES.has(workflow.name)) {
+      return c.json(
+        {
+          error: `Workflow "${workflow.name}" is not in the executable allowlist (Phase 2 runs curated stdlib workflows only)`,
+          code: 'WORKFLOW_NOT_EXECUTABLE',
+        },
+        400,
+      )
+    }
+
+    // Single transaction: lazy-mint the runtime account if needed, then
+    // insert the QUEUED execution. A failure rolls back both.
+    const inserted = await db.$transaction(async (tx) => {
+      const txClient = tx as PrismaClient
+      if (!workflow.runtimeApiClientId || !workflow.runtimeTokenCiphertext) {
+        // Pre-Unit-3 workflow — provision its runtime account now.
+        await provisionRuntimeServiceAccount(tx, {
+          tenantId,
+          workflowId: workflow.id,
+          createdById: userId,
+        })
+      }
+      const execRepo = createWorkflowExecutionRepository(txClient)
+      return execRepo.create({
+        tenantId,
+        workflowId: workflow.id,
+        triggeredByUserId: userId,
+        input: input as Prisma.InputJsonValue,
+      })
+    })
+
+    // Start the Temporal workflow. If start_workflow throws, mark the
+    // execution FAILED with the error so we don't leak QUEUED rows for
+    // runtime failures.
+    const temporalWorkflowId = `wf/${tenantId}/${workflow.name}/${inserted.id}`
+    try {
+      const client = await getTemporalClient()
+      const handle = await client.workflow.start(workflow.name, {
+        args: [{ executionId: inserted.id, input }],
+        taskQueue: temporalTaskQueue(),
+        workflowId: temporalWorkflowId,
+        // Idempotent re-submit: if a previous call already started this id,
+        // we'd rather error here than start a second run. The catch below
+        // converts the WorkflowExecutionAlreadyStartedError into a 409.
+        workflowIdReusePolicy: 'REJECT_DUPLICATE',
+      })
+
+      // Eagerly transition QUEUED → RUNNING so the row reflects reality
+      // before the worker write-back lands. The worker's PATCH will be a
+      // RUNNING-self update (idempotent) once it sees the activity.
+      const execRepo = createWorkflowExecutionRepository(db)
+      const running = await execRepo.markStarted(inserted.id, {
+        temporalWorkflowId: handle.workflowId,
+        temporalRunId: handle.firstExecutionRunId ?? '',
+        startedAt: new Date(),
+      })
+
+      logger.info('Workflow execution started', {
+        executionId: inserted.id,
+        workflowId: workflow.id,
+        tenantId,
+        temporalWorkflowId: handle.workflowId,
+        temporalRunId: handle.firstExecutionRunId ?? null,
+      })
+
+      return c.json({ data: toExecutionResponse(running) }, 201)
+    } catch (err) {
+      // Roll the QUEUED row forward to FAILED so the operator + caller see
+      // the runtime failure cleanly. No transaction here — these are two
+      // independent failure surfaces (Temporal vs DB).
+      const message = err instanceof Error ? err.message : String(err)
+      const execRepo = createWorkflowExecutionRepository(db)
+      const failed = await execRepo
+        .markTerminal(inserted.id, {
+          status: 'FAILED',
+          errorMessage: `Temporal start_workflow failed: ${message}`,
+          finishedAt: new Date(),
+        })
+        .catch(() => null)
+
+      logger.error('Workflow execution start failed', {
+        executionId: inserted.id,
+        workflowId: workflow.id,
+        tenantId,
+        error: message,
+      })
+
+      return c.json(
+        {
+          error: `Failed to start workflow on Temporal: ${message}`,
+          code: 'TEMPORAL_START_FAILED',
+          data: failed ? toExecutionResponse(failed) : null,
+        },
+        502,
+      )
+    }
+  },
+)
+
+// ---------------------------------------------------------------------------
+// GET /:id/executions?limit=&before=
+//
+// Tenant-scoped paged list of executions for a workflow, newest first.
+// `before` accepts the id of the last row on the previous page (cursor by
+// (queuedAt, id) — robust to inserts during pagination).
+// ---------------------------------------------------------------------------
+workflowsHandler.get(
+  '/:id/executions',
+  requirePermission(Actions.ReadWorkflow),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const workflowId = c.req.param('id') ?? ''
+    const db = c.get('db')
+
+    const repo = createWorkflowRepository(db)
+    const workflow = await repo.findByIdForTenant(workflowId, tenantId)
+    if (!workflow) {
+      return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
+    }
+
+    const limitParam = c.req.query('limit')
+    const before = c.req.query('before') ?? null
+    let limit = LIST_DEFAULT_LIMIT
+    if (limitParam) {
+      const parsed = Number.parseInt(limitParam, 10)
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return c.json(
+          { error: 'limit must be a positive integer', code: 'VALIDATION_ERROR' },
+          400,
+        )
+      }
+      limit = Math.min(parsed, LIST_MAX_LIMIT)
+    }
+
+    const execRepo = createWorkflowExecutionRepository(db)
+    const rows = await execRepo.listByWorkflow(workflow.id, { limit, before })
+    return c.json({
+      data: rows.map(toExecutionResponse),
+      meta: { count: rows.length, limit },
+    })
+  },
+)
+
+// ---------------------------------------------------------------------------
+// GET /:id/executions/:executionId
+//
+// Tenant-scoped fetch. 404 if the execution does not belong to this workflow
+// or is not visible to the caller's tenant.
+// ---------------------------------------------------------------------------
+workflowsHandler.get(
+  '/:id/executions/:executionId',
+  requirePermission(Actions.ReadWorkflow),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const workflowId = c.req.param('id') ?? ''
+    const executionId = c.req.param('executionId') ?? ''
+    const db = c.get('db')
+
+    const repo = createWorkflowRepository(db)
+    const workflow = await repo.findByIdForTenant(workflowId, tenantId)
+    if (!workflow) {
+      return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
+    }
+
+    const execRepo = createWorkflowExecutionRepository(db)
+    const row = await execRepo.findById(executionId)
+    if (!row || row.workflowId !== workflow.id) {
+      return c.json({ error: 'Execution not found', code: 'NOT_FOUND' }, 404)
+    }
+    return c.json({ data: toExecutionResponse(row) })
+  },
+)

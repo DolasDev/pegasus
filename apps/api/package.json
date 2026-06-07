@@ -38,6 +38,7 @@
     "@pegasus/domain": "*",
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.0",
+    "@temporalio/client": "1.16.2",
     "dotenv": "^16.4.5",
     "fast-xml-parser": "^5.7.1",
     "hono": "^4.12.14",

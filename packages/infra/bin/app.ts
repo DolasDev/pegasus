@@ -213,6 +213,22 @@ const wireguardStack = new WireGuardStack(app, `${stackIdPrefix}-WireGuardStack`
 // ── ApiStack ──────────────────────────────────────────────────────────────────
 // CDK deployment order: CognitoStack + DocumentsStack + WireGuardStack → ApiStack.
 
+// Per-env Temporal wiring — same source-of-truth maps the worker uses, so
+// the two halves can't drift. Skipped in dev (no Phase-2 Temporal there;
+// the API client falls through to a localhost dev-server connect).
+const apiTemporalAddress =
+  envName === 'dev' ? undefined : TEMPORAL_ADDRESS[envName]
+const apiTemporalNamespace =
+  envName === 'dev'
+    ? undefined
+    : TEMPORAL_ADDRESS[envName].replace(/\.tmprl\.cloud:\d+$/, '')
+const apiTemporalTaskQueue =
+  envName === 'dev' ? undefined : `pegasus-stdlib-${envName}`
+const apiTemporalCloudSecretArn =
+  envName === 'dev' ? undefined : TEMPORAL_SECRET_ARNS[envName].temporalCloud
+const apiWorkflowBrokerSecretArn =
+  envName === 'dev' ? undefined : TEMPORAL_SECRET_ARNS[envName].workflowBroker
+
 const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   env,
   stackName: `${stackNamePrefix}-api`,
@@ -229,6 +245,14 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   wireguardAgentApiKeyHashParameterName: wireguardStack.agentApiKeyHashParameterName,
   tunnelProxyFunction: wireguardStack.tunnelProxyFunction,
   mssqlExecutorFunction: wireguardStack.mssqlExecutorFunction,
+  // Phase 2 Unit 6 — Temporal Cloud + worker-broker shared secret. Same
+  // address + namespace TemporalWorkerStack receives, so the API and the
+  // worker target the same namespace/queue without a chance of drift.
+  temporalAddress: apiTemporalAddress,
+  temporalNamespace: apiTemporalNamespace,
+  temporalTaskQueue: apiTemporalTaskQueue,
+  temporalCloudSecretArn: apiTemporalCloudSecretArn,
+  workflowBrokerSecretArn: apiWorkflowBrokerSecretArn,
 })
 apiStack.addDependency(cognitoStack)
 

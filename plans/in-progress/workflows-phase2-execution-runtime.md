@@ -11,7 +11,8 @@
 > | 3 — Per-workflow runtime service account   | ✅ MERGED            | #136 → `ea39600` (2026-05-22) |
 > | 4 — Temporal Cloud + Fargate worker infra  | ✅ MERGED            | #186 → `7d5955b` (2026-06-06) |
 > | 5 — The Temporal worker process            | ✅ MERGED            | #188 → `a21afb5` (2026-06-06) |
-> | 6 — Execution API                          | ⬜ NEXT              | —                             |
+> | 6 — Execution API                          | 🟡 PR OPEN           | branch `phase2/06-execution-api` |
+> | 6.5 — Reconcile poller (fast-follow)       | ⬜ DEFERRED          | (notes below)                 |
 > | 7 — tenant-web execution UI                | ⬜ pending Unit 6    | —                             |
 >
 > **Operator prereqs all satisfied (2026-06-05):**
@@ -254,7 +255,39 @@ Pre-Unit-6 expectation: starting any workflow would activity-fail with `BrokerEn
 
 ---
 
-## Unit 6 — Execution API ⬜ NEXT (resume guidance below; original spec follows)
+## Unit 6 — Execution API 🟡 PR OPEN (branch `phase2/06-execution-api`)
+
+**Landed in the PR (all green locally — typecheck + lint + 1225 api tests + 70 SDK tests + cdk synth staging/prod):**
+
+- `apps/api/src/repositories/workflow-execution.repository.ts` — `create / findById / listByWorkflow / markStarted / markTerminal` with keyset pagination by `(queuedAt, id)`.
+- `apps/api/src/lib/temporal-client.ts` — cached `Connection.connect({ tls: true, apiKey, metadata })` for Temporal Cloud; bare localhost connect for dev. `_setTemporalClientForTesting` injection hook.
+- `apps/api/src/lib/curated-workflows.ts` — `CURATED_WORKFLOW_NAMES = { 'send_quote_followup' }` with a cross-reference comment to the worker's Python registry (the contract's other half).
+- `apps/api/src/handlers/workflows.ts` — `POST /:id/run` (lazy-mints runtime account if missing, inserts QUEUED, calls Temporal Cloud with workflow id `wf/<tenantId>/<name>/<executionId>` + `REJECT_DUPLICATE`, eagerly marks RUNNING on success or FAILED on Temporal error). `GET /:id/executions[?limit=&before=]` + `GET /:id/executions/:executionId` — both tenant-scoped.
+- `apps/api/src/handlers/workflow-internal.ts` — mounted on `m2mV1` at `/internal`. `POST /workflow-runtime-token` (KMS-decrypts ciphertext + returns plaintext with `Cache-Control: no-store`; 404 if execution missing/terminal or ciphertext null). `PATCH /workflow-executions/:id` (state-machine validation; idempotent terminal-self; tenant-scope derived from execution row). Gated by `X-Workflow-Broker-Secret` constant-time compare with `process.env.WORKFLOW_BROKER_SECRET`.
+- `apps/api/src/authz/actions.ts` + `cedar.schema.json` + `policies/30-personas/workflow-developer.cedar` — new `RunWorkflow` action. tenant_admin already grants implicitly. role-options.ts unchanged (no new persona).
+- `packages/infra/lib/stacks/api-stack.ts` + `bin/app.ts` — env wiring: `TEMPORAL_ADDRESS / TEMPORAL_NAMESPACE / TEMPORAL_TASK_QUEUE` + `TEMPORAL_CLOUD_API_KEY` (injected as plaintext env var from the `pegasus/{env}/temporal-cloud` secret's `apiKey` JSON field — same DATABASE_URL pattern) + `WORKFLOW_BROKER_SECRET` (plaintext env from `pegasus/{env}/workflow-broker-secret`). Uses `Secret.fromSecretCompleteArn` with the full ARN map already in `bin/app.ts` (per `[[feedback_cdk_secret_complete_arn_for_ecs]]`). Dev is skipped (no Phase 2 there).
+- `packages/workflows-sdk-python/pegasus_workflows/api.py` — `run_workflow / list_executions / get_execution` methods + 5 mocked-transport tests.
+- `packages/workflows-sdk-python/pegasus_workflows/cli/run.py` — `pegasus-workflows run <name|name@version> [--input '<json>']` CLI command for parity with `package` / `push` / `test`.
+
+**Deliberate decisions / contract notes:**
+
+- **Workflow args shape:** the API calls `client.workflow.start(workflow.name, { args: [{ executionId, input }] })` per the plan's "runtime token delivery" decision. The current `send_quote_followup` workflow class in `packages/workflows-stdlib/` takes positional `quote_id`, not `{ executionId, input }` — that's a **worker-side contract gap** that needs to land alongside Unit 6 deploy for the live smoke test to pass. Either the stdlib workflow's `run(...)` signature changes to `run(self, args: dict)` or the worker introspects positional args from the dict. Tracked as a deploy follow-up; the API contract is locked per the plan.
+- **Broker-secret env var:** injected as plaintext via the CloudFormation Secrets Manager dynamic reference (same `secretValue.unsafeUnwrap()` pattern DATABASE_URL uses), NOT fetched via AWS SDK at runtime. Lambda has no `ecs.Secret` equivalent; threading the full ARN to `grantRead` keeps IAM precise.
+- **Temporal Cloud API key:** also injected as plaintext via `secretValueFromJson('apiKey').unsafeUnwrap()`. Same rationale.
+- **Reconcile poller deferred** — see below.
+
+### Unit 6.5 — Reconcile poller (fast-follow, deferred from Unit 6)
+
+**Why deferred:** Unit 6 is already 9 commits touching 3 packages + tests; adding a new Lambda + EventBridge construct widens the blast radius without unblocking anything. The current worker write-back is correct on the happy path; the reconcile poller is the crash-recovery story.
+
+**Design (~30 min implementation):**
+- Plain `NodejsFunction` in `ApiStack` (no VPC; public-egress is fine for Temporal Cloud).
+- `events.Rule` on `Schedule.rate(Duration.minutes(1))`.
+- Handler reads `WorkflowExecution` rows where `status = 'RUNNING' AND startedAt < now() - 5m`, calls Temporal `WorkflowClient.describe(temporalWorkflowId)` for each, and PATCHes via the same `markTerminal` path the worker uses.
+- Idempotent: writes via the existing repo functions.
+- **Shipping plan:** open a follow-up PR (`phase2/06.5-reconcile-poller`) immediately after Unit 6 merges. Unit 7 (UI) does not block on it.
+
+Resume guidance & original spec retained for reference:
 
 **Branch:** `phase2/06-execution-api` (base: `main` — Units 1-5 already in `main`, not stacked)
 

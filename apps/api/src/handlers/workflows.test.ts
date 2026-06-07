@@ -22,31 +22,47 @@ import { _clearAuthzCache } from '../lib/authz'
 const {
   mockRepo,
   mockApiClientRepo,
+  mockExecutionRepo,
   mockTenantFindUnique,
   mockTenantUserCreate,
   mockPresignUpload,
   mockPresignDownload,
   mockCopyObject,
   mockEncryptRuntimeToken,
-} = vi.hoisted(() => ({
-  mockRepo: {
-    create: vi.fn(),
-    findByIdForTenant: vi.fn(),
-    listForTenant: vi.fn(),
-    findByNaturalKey: vi.fn(),
-    forkGlobalToTenant: vi.fn(),
-    attachRuntimeToken: vi.fn(),
-  },
-  mockApiClientRepo: {
-    create: vi.fn(),
-  },
-  mockTenantFindUnique: vi.fn(),
-  mockTenantUserCreate: vi.fn(),
-  mockPresignUpload: vi.fn(),
-  mockPresignDownload: vi.fn(),
-  mockCopyObject: vi.fn(),
-  mockEncryptRuntimeToken: vi.fn(),
-}))
+  mockGetTemporalClient,
+  mockTemporalStart,
+} = vi.hoisted(() => {
+  const start = vi.fn()
+  const client = { workflow: { start } }
+  return {
+    mockRepo: {
+      create: vi.fn(),
+      findByIdForTenant: vi.fn(),
+      listForTenant: vi.fn(),
+      findByNaturalKey: vi.fn(),
+      forkGlobalToTenant: vi.fn(),
+      attachRuntimeToken: vi.fn(),
+    },
+    mockApiClientRepo: {
+      create: vi.fn(),
+    },
+    mockExecutionRepo: {
+      create: vi.fn(),
+      findById: vi.fn(),
+      listByWorkflow: vi.fn(),
+      markStarted: vi.fn(),
+      markTerminal: vi.fn(),
+    },
+    mockTenantFindUnique: vi.fn(),
+    mockTenantUserCreate: vi.fn(),
+    mockPresignUpload: vi.fn(),
+    mockPresignDownload: vi.fn(),
+    mockCopyObject: vi.fn(),
+    mockEncryptRuntimeToken: vi.fn(),
+    mockGetTemporalClient: vi.fn(async () => client),
+    mockTemporalStart: start,
+  }
+})
 
 vi.mock('../repositories/workflow.repository', () => ({
   createWorkflowRepository: vi.fn(() => mockRepo),
@@ -54,6 +70,15 @@ vi.mock('../repositories/workflow.repository', () => ({
 
 vi.mock('../repositories/api-client.repository', () => ({
   createApiClientRepository: vi.fn(() => mockApiClientRepo),
+}))
+
+vi.mock('../repositories/workflow-execution.repository', () => ({
+  createWorkflowExecutionRepository: vi.fn(() => mockExecutionRepo),
+}))
+
+vi.mock('../lib/temporal-client', () => ({
+  getTemporalClient: mockGetTemporalClient,
+  temporalTaskQueue: () => 'pegasus-stdlib-test',
 }))
 
 vi.mock('../lib/documents-s3', () => ({
@@ -619,6 +644,239 @@ describe('workflows handler', () => {
       const raw = await res.text()
       expect(raw).not.toContain('vnd_THIS_IS_THE_PLAINTEXT_KEY')
       expect(raw).not.toContain('BASE64-CIPHERTEXT')
+    })
+  })
+
+  // ── POST /:id/run ─────────────────────────────────────────────────────────
+
+  describe('POST /:id/run', () => {
+    const execId = 'exec-1'
+    const queuedExecution = {
+      id: execId,
+      tenantId: 'test-tenant-id',
+      workflowId: 'wf-1',
+      status: 'QUEUED' as const,
+      input: { quote_id: 'q-1' },
+      result: null,
+      errorMessage: null,
+      temporalWorkflowId: null,
+      temporalRunId: null,
+      triggeredByUserId: 'user-1',
+      queuedAt: now,
+      startedAt: null,
+      finishedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    }
+    const runningExecution = {
+      ...queuedExecution,
+      status: 'RUNNING' as const,
+      startedAt: now,
+      temporalWorkflowId: 'wf/test-tenant-id/send_quote_followup/exec-1',
+      temporalRunId: 'run-123',
+    }
+
+    beforeEach(() => {
+      mockExecutionRepo.create.mockResolvedValue(queuedExecution)
+      mockExecutionRepo.markStarted.mockResolvedValue(runningExecution)
+      mockExecutionRepo.markTerminal.mockResolvedValue({
+        ...queuedExecution,
+        status: 'FAILED',
+        errorMessage: 'Temporal start_workflow failed: boom',
+        finishedAt: now,
+      })
+      mockTemporalStart.mockResolvedValue({
+        workflowId: 'wf/test-tenant-id/send_quote_followup/exec-1',
+        firstExecutionRunId: 'run-123',
+      })
+    })
+
+    it('returns 403 without workflow_developer or tenant_admin', async () => {
+      const res = await buildApp(['viewer']).request('/wf-1/run', post({ input: {} }))
+      expect(res.status).toBe(403)
+    })
+
+    it('returns 404 when the workflow is not visible to the tenant', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(null)
+      const res = await buildApp().request('/wf-1/run', post({ input: {} }))
+      expect(res.status).toBe(404)
+    })
+
+    it('returns 400 WORKFLOW_NOT_EXECUTABLE for non-curated workflow names', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue({
+        ...provisionedRow,
+        name: 'some_other_workflow',
+      })
+      const res = await buildApp().request('/wf-1/run', post({ input: {} }))
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('WORKFLOW_NOT_EXECUTABLE')
+    })
+
+    it('starts the workflow and returns the RUNNING row on the happy path', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      const res = await buildApp().request('/wf-1/run', post({ input: { quote_id: 'q-1' } }))
+      expect(res.status).toBe(201)
+      const data = (await json(res)).data as JsonBody
+      expect(data['id']).toBe(execId)
+      expect(data['status']).toBe('RUNNING')
+      // The runtime token MUST NOT appear in workflow args.
+      const startArgs = mockTemporalStart.mock.calls[0]?.[1]?.['args'] as
+        | unknown[]
+        | undefined
+      expect(startArgs).toBeDefined()
+      expect(JSON.stringify(startArgs)).not.toContain('vnd_')
+      expect(JSON.stringify(startArgs)).toContain(execId)
+      // Workflow id matches the contract.
+      expect(mockTemporalStart.mock.calls[0]?.[1]?.['workflowId']).toBe(
+        'wf/test-tenant-id/send_quote_followup/exec-1',
+      )
+      // REJECT_DUPLICATE policy.
+      expect(mockTemporalStart.mock.calls[0]?.[1]?.['workflowIdReusePolicy']).toBe(
+        'REJECT_DUPLICATE',
+      )
+    })
+
+    it('lazy-mints the runtime account when the workflow lacks one', async () => {
+      // mockRow.runtimeApiClientId / runtimeTokenCiphertext are both null.
+      mockRepo.findByIdForTenant.mockResolvedValue(mockRow)
+      const res = await buildApp().request('/wf-1/run', post({ input: {} }))
+      expect(res.status).toBe(201)
+      expect(mockTenantUserCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            isServiceAccount: true,
+            roleNames: ['workflow_runtime'],
+          }),
+        }),
+      )
+      expect(mockApiClientRepo.create).toHaveBeenCalled()
+      expect(mockEncryptRuntimeToken).toHaveBeenCalled()
+    })
+
+    it('does NOT re-mint when the workflow already has a runtime account', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      await buildApp().request('/wf-1/run', post({ input: {} }))
+      expect(mockTenantUserCreate).not.toHaveBeenCalled()
+      expect(mockApiClientRepo.create).not.toHaveBeenCalled()
+    })
+
+    it('rolls the execution to FAILED + returns 502 when Temporal start throws', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockTemporalStart.mockRejectedValue(new Error('boom'))
+      const res = await buildApp().request('/wf-1/run', post({ input: {} }))
+      expect(res.status).toBe(502)
+      expect(mockExecutionRepo.markTerminal).toHaveBeenCalledWith(
+        execId,
+        expect.objectContaining({ status: 'FAILED' }),
+      )
+    })
+
+    it('returns 422 when no authenticated user', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      const res = await buildApp(['tenant_admin'], null).request('/wf-1/run', post({ input: {} }))
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('UNAUTHENTICATED')
+    })
+  })
+
+  // ── GET /:id/executions ───────────────────────────────────────────────────
+
+  describe('GET /:id/executions', () => {
+    const execRow = {
+      id: 'exec-1',
+      tenantId: 'test-tenant-id',
+      workflowId: 'wf-1',
+      status: 'COMPLETED' as const,
+      input: {},
+      result: { message: 'ok' },
+      errorMessage: null,
+      temporalWorkflowId: 'wf/test-tenant-id/send_quote_followup/exec-1',
+      temporalRunId: 'run-123',
+      triggeredByUserId: 'user-1',
+      queuedAt: now,
+      startedAt: now,
+      finishedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    it('returns 404 when the workflow is not visible', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(null)
+      const res = await buildApp().request('/wf-1/executions')
+      expect(res.status).toBe(404)
+    })
+
+    it('returns the executions list newest-first', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.listByWorkflow.mockResolvedValue([execRow])
+      const res = await buildApp().request('/wf-1/executions')
+      expect(res.status).toBe(200)
+      const body = await json(res)
+      expect((body['data'] as unknown[]).length).toBe(1)
+      expect((body['meta'] as JsonBody)['count']).toBe(1)
+    })
+
+    it('returns 400 on a negative limit', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      const res = await buildApp().request('/wf-1/executions?limit=-3')
+      expect(res.status).toBe(400)
+    })
+
+    it('forwards the before cursor to the repo', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.listByWorkflow.mockResolvedValue([])
+      await buildApp().request('/wf-1/executions?limit=10&before=exec-prev')
+      expect(mockExecutionRepo.listByWorkflow).toHaveBeenCalledWith(
+        'wf-1',
+        { limit: 10, before: 'exec-prev' },
+      )
+    })
+  })
+
+  // ── GET /:id/executions/:executionId ──────────────────────────────────────
+
+  describe('GET /:id/executions/:executionId', () => {
+    const execRow = {
+      id: 'exec-1',
+      tenantId: 'test-tenant-id',
+      workflowId: 'wf-1',
+      status: 'COMPLETED' as const,
+      input: {},
+      result: { message: 'ok' },
+      errorMessage: null,
+      temporalWorkflowId: null,
+      temporalRunId: null,
+      triggeredByUserId: 'user-1',
+      queuedAt: now,
+      startedAt: now,
+      finishedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    it('returns 404 when the workflow is not visible', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(null)
+      const res = await buildApp().request('/wf-1/executions/exec-1')
+      expect(res.status).toBe(404)
+    })
+
+    it('returns 404 when the execution belongs to another workflow', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.findById.mockResolvedValue({
+        ...execRow,
+        workflowId: 'wf-other',
+      })
+      const res = await buildApp().request('/wf-1/executions/exec-1')
+      expect(res.status).toBe(404)
+    })
+
+    it('returns the execution row when scoping is satisfied', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.findById.mockResolvedValue(execRow)
+      const res = await buildApp().request('/wf-1/executions/exec-1')
+      expect(res.status).toBe(200)
+      const data = (await json(res)).data as JsonBody
+      expect(data['id']).toBe('exec-1')
     })
   })
 })

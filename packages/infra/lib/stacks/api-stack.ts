@@ -83,6 +83,52 @@ export interface ApiStackProps extends cdk.StackProps {
    * is injected as MSSQL_EXECUTOR_FUNCTION_NAME for mssql-executor-client.ts.
    */
   readonly mssqlExecutorFunction?: lambda.IFunction
+
+  /**
+   * Temporal Cloud gRPC endpoint, e.g. `pegasus-staging.chgel.tmprl.cloud:7233`.
+   * Surfaced to the API Lambda as TEMPORAL_ADDRESS so apps/api/src/lib/
+   * temporal-client.ts can `Connection.connect` against Temporal Cloud when
+   * `POST /workflows/:id/run` starts a workflow. Omit (or leave undefined) for
+   * dev — the client falls through to a local docker-compose Temporal server.
+   */
+  readonly temporalAddress?: string
+
+  /**
+   * Full Temporal Cloud namespace id (`<short>.<account>`). Mirrors the same
+   * value TemporalWorkerStack receives — both halves of the Pegasus side must
+   * agree, so we accept it as a sibling prop derived in `bin/app.ts` rather
+   * than re-parsing the address here.
+   */
+  readonly temporalNamespace?: string
+
+  /**
+   * Task queue the worker is polling — e.g. `pegasus-stdlib-staging`. Must
+   * match TemporalWorkerStack's `TEMPORAL_TASK_QUEUE` exactly, else the API
+   * starts workflows on a queue nobody is listening to.
+   */
+  readonly temporalTaskQueue?: string
+
+  /**
+   * FULL Secrets Manager ARN (with the 6-char random suffix) for the Temporal
+   * Cloud API-key secret. Same secret TemporalWorkerStack already reads. The
+   * full-ARN-with-suffix form is required because Secrets Manager rejects the
+   * no-suffix form CDK's `fromSecretNameV2` produces — see TEMPORAL_SECRET_ARNS
+   * in bin/app.ts (and `[[feedback_cdk_secret_complete_arn_for_ecs]]`).
+   *
+   * For Lambda we read the secret value at runtime in temporal-client.ts (no
+   * `ecs.Secret` injection involved), but threading the full ARN end-to-end
+   * gives the IAM grant a precise resource AND keeps shape parity with the
+   * worker side.
+   */
+  readonly temporalCloudSecretArn?: string
+
+  /**
+   * FULL Secrets Manager ARN (with the 6-char random suffix) for the
+   * worker→API broker shared secret. The internal handlers
+   * (POST /workflow-runtime-token, PATCH /workflow-executions/:id) compare
+   * the `X-Workflow-Broker-Secret` request header against this value.
+   */
+  readonly workflowBrokerSecretArn?: string
 }
 
 export class ApiStack extends cdk.Stack {
@@ -274,6 +320,81 @@ export class ApiStack extends cdk.Stack {
     })
     workflowTokenKey.grantEncryptDecrypt(apiFunction)
     apiFunction.addEnvironment('WORKFLOW_TOKEN_KMS_KEY_ID', workflowTokenKey.keyId)
+
+    // ---------------------------------------------------------------------------
+    // Temporal Cloud client (Phase 2 Unit 6).
+    //
+    // POST /workflows/:id/run uses `client.workflow.start` against Temporal
+    // Cloud. The client (apps/api/src/lib/temporal-client.ts) reads:
+    //   - TEMPORAL_ADDRESS         — gRPC endpoint
+    //   - TEMPORAL_NAMESPACE       — full namespace id (`<short>.<account>`)
+    //   - TEMPORAL_TASK_QUEUE      — must match TemporalWorkerStack's queue
+    //   - TEMPORAL_CLOUD_SECRET_ARN — full ARN of the JSON {apiKey} secret
+    //
+    // The Lambda uses the AWS SDK to GetSecretValue at startup, caching the
+    // result for the container lifetime — unlike ECS task-secret injection,
+    // Lambda has no `ecs.Secret` equivalent; the SDK call is the contract.
+    //
+    // Skipped entirely when no temporalCloudSecretArn was supplied (dev or
+    // a pre-Phase-2 environment) — the client falls through to a localhost
+    // dev-server connect when TEMPORAL_ADDRESS is unset.
+    // ---------------------------------------------------------------------------
+    if (
+      props.temporalAddress &&
+      props.temporalNamespace &&
+      props.temporalTaskQueue &&
+      props.temporalCloudSecretArn
+    ) {
+      apiFunction.addEnvironment('TEMPORAL_ADDRESS', props.temporalAddress)
+      apiFunction.addEnvironment('TEMPORAL_NAMESPACE', props.temporalNamespace)
+      apiFunction.addEnvironment('TEMPORAL_TASK_QUEUE', props.temporalTaskQueue)
+      // `fromSecretCompleteArn` is the form that matches the no-suffix-rejection
+      // bug captured in the bin/app.ts comment. Lambda's runtime SDK call works
+      // with either form, but threading the full ARN here gives the IAM grant
+      // a precise resource AND keeps shape parity with TemporalWorkerStack.
+      const temporalSecret = secretsmanager.Secret.fromSecretCompleteArn(
+        this,
+        'TemporalCloudSecret',
+        props.temporalCloudSecretArn,
+      )
+      // Inject the apiKey JSON field as a plaintext env var. CloudFormation
+      // resolves the secretsmanager:GetSecretValue dynamic reference at
+      // deploy time; the Lambda boots with a literal string and the client
+      // (lib/temporal-client.ts) reads it from `process.env`. Matches the
+      // DATABASE_URL pattern above — no AWS SDK call needed at runtime.
+      apiFunction.addEnvironment(
+        'TEMPORAL_CLOUD_API_KEY',
+        temporalSecret.secretValueFromJson('apiKey').unsafeUnwrap(),
+      )
+      temporalSecret.grantRead(apiFunction)
+    }
+
+    // ---------------------------------------------------------------------------
+    // Workflow broker shared-secret (Phase 2 Unit 6).
+    //
+    // Gates the two internal endpoints under /api/v1/internal/* — the worker
+    // presents this in the `X-Workflow-Broker-Secret` header on every call.
+    // Read once at request time via process.env (the Lambda startup hot path
+    // need not pre-fetch; the secret value is injected as a plaintext env var
+    // via the same Secrets Manager pattern used for DATABASE_URL above).
+    // ---------------------------------------------------------------------------
+    if (props.workflowBrokerSecretArn) {
+      const brokerSecret = secretsmanager.Secret.fromSecretCompleteArn(
+        this,
+        'WorkflowBrokerSecret',
+        props.workflowBrokerSecretArn,
+      )
+      // Materialise the secret string as a deploy-time env var on the function.
+      // Mirrors how DATABASE_URL is fed in — at runtime the handler reads
+      // `process.env.WORKFLOW_BROKER_SECRET` directly, no AWS SDK call.
+      apiFunction.addEnvironment(
+        'WORKFLOW_BROKER_SECRET',
+        brokerSecret.secretValue.unsafeUnwrap(),
+      )
+      // Also grant read so a future code path that wants the live value via
+      // GetSecretValue (e.g. for rotation) has IAM coverage already.
+      brokerSecret.grantRead(apiFunction)
+    }
 
     // ---------------------------------------------------------------------------
     // Tunnel proxy — grant invoke + surface function name as env var.
