@@ -16,7 +16,7 @@
     "constructs": "^10.4.2"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^22.19.20",
     "@vitest/coverage-v8": "^4.0.0",
     "aws-cdk": "^2.1124.1",
     "typescript": "*",

@@ -21,8 +21,8 @@
     "e2e:qa": "E2E_TARGET=qa npm run e2e --workspace=@pegasus/e2e"
   },
   "devDependencies": {
-    "@aws-sdk/client-ssm": "^3.1034.0",
-    "@aws-sdk/credential-providers": "^3.1037.0",
+    "@aws-sdk/client-ssm": "^3.1064.0",
+    "@aws-sdk/credential-providers": "^3.1064.0",
     "@eslint/js": "^10.0.0",
     "audit-ci": "^7.1.0",
     "eslint": "^10.2.1",
@@ -32,7 +32,7 @@
     "prettier": "^3.8.3",
     "turbo": "^2.9.6",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.59.0",
+    "typescript-eslint": "^8.61.0",
     "vitest": "^4.1.5"
   },
   "lint-staged": {
