@@ -114,3 +114,42 @@ export type {
   DocumentVariantStatus,
 } from './document/index'
 export { toDocumentId } from './document/index'
+
+// Messaging context
+export type {
+  MessageId,
+  RingCentralConnectionId,
+  SubscriptionId,
+  SmsThreadId,
+  MessageDirection,
+  MessageSource,
+  MessageStatus,
+  ForwardStatus,
+  PhoneNumber,
+  MessageContent,
+  Message,
+  NormalizedMessage,
+  RcDirection,
+  ThreadEntryInput,
+  ThreadPhonePair,
+  V1MessageInput,
+} from './messaging/index'
+export {
+  toMessageId,
+  toRingCentralConnectionId,
+  toSubscriptionId,
+  toSmsThreadId,
+  MESSAGE_STATUSES,
+  FORWARD_STATUSES,
+  isValidE164,
+  toPhoneNumber,
+  dedupeKey,
+  isSms,
+  normalizeThreadEntry,
+  normalizeV1Message,
+  canForward,
+  canTransitionForward,
+  deriveMessageStatus,
+  isWebhookValidationHandshake,
+  VALIDATION_TOKEN_HEADER,
+} from './messaging/index'
