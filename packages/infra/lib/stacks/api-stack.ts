@@ -293,6 +293,30 @@ export class ApiStack extends cdk.Stack {
     dbSecret.grantRead(apiFunction)
 
     // ---------------------------------------------------------------------------
+    // RingCentral SMS capture — refresh-token secrets.
+    //
+    // The OAuth callback (api Lambda) creates one Secrets Manager secret per
+    // connection under `pegasus/<env>/ringcentral/<connectionId>`, and the
+    // token-refresh cron (below) reads + rotates it. Scope the grant to that
+    // name prefix (the wildcard covers Secrets Manager's random ARN suffix).
+    // Inert until RINGCENTRAL_ENABLED=true; the prefix env is safe to set now so
+    // secret naming is correct per environment.
+    // ---------------------------------------------------------------------------
+    const ringcentralSecretPrefix = `pegasus/${envName}/ringcentral`
+    const ringcentralSecretArnPattern = `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${ringcentralSecretPrefix}/*`
+    const ringcentralSecretPolicy = new iam.PolicyStatement({
+      actions: [
+        'secretsmanager:CreateSecret',
+        'secretsmanager:PutSecretValue',
+        'secretsmanager:GetSecretValue',
+        'secretsmanager:DescribeSecret',
+      ],
+      resources: [ringcentralSecretArnPattern],
+    })
+    apiFunction.addToRolePolicy(ringcentralSecretPolicy)
+    apiFunction.addEnvironment('RINGCENTRAL_SECRET_PREFIX', ringcentralSecretPrefix)
+
+    // ---------------------------------------------------------------------------
     // S3 documents bucket — grant scoped read/write/delete and inject the
     // bucket name as an environment variable. grantReadWrite covers
     // GetObject + PutObject; grantDelete is added explicitly so the future
@@ -387,10 +411,7 @@ export class ApiStack extends cdk.Stack {
       // Materialise the secret string as a deploy-time env var on the function.
       // Mirrors how DATABASE_URL is fed in — at runtime the handler reads
       // `process.env.WORKFLOW_BROKER_SECRET` directly, no AWS SDK call.
-      apiFunction.addEnvironment(
-        'WORKFLOW_BROKER_SECRET',
-        brokerSecret.secretValue.unsafeUnwrap(),
-      )
+      apiFunction.addEnvironment('WORKFLOW_BROKER_SECRET', brokerSecret.secretValue.unsafeUnwrap())
       // Also grant read so a future code path that wants the live value via
       // GetSecretValue (e.g. for rotation) has IAM coverage already.
       brokerSecret.grantRead(apiFunction)
@@ -613,6 +634,60 @@ export class ApiStack extends cdk.Stack {
       description:
         'Hourly trigger for the AVP policy-store count metric emitter (Pegasus/Authorization/PolicyStoreCount).',
       targets: [new eventsTargets.LambdaFunction(avpStoreCountFunction)],
+    })
+
+    // ---------------------------------------------------------------------------
+    // RingCentral token-refresh cron
+    //
+    // Keeps every active RingCentral connection's OAuth refresh token warm
+    // (RC refresh tokens lapse if unused). Reads + rotates the per-connection
+    // secret in Secrets Manager. Inert until RINGCENTRAL_ENABLED=true (the
+    // handler no-ops when readOAuthConfig() returns null), so it is safe to
+    // schedule now. RingCentral OAuth client id/secret + state secret are
+    // injected as env vars when the platform RC app is registered.
+    // ---------------------------------------------------------------------------
+    const ringcentralTokenRefreshLogGroup = new logs.LogGroup(
+      this,
+      'RingCentralTokenRefreshLogGroup',
+      {
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      },
+    )
+
+    const ringcentralTokenRefreshFunction = new nodejs.NodejsFunction(
+      this,
+      'RingCentralTokenRefreshFunction',
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        entry: path.join(__dirname, '../../../../apps/api/src/lambda-ringcentral-token-refresh.ts'),
+        handler: 'handler',
+        environment: {
+          NODE_ENV: 'production',
+          DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+          LOG_LEVEL: 'INFO',
+          RINGCENTRAL_SECRET_PREFIX: ringcentralSecretPrefix,
+        },
+        bundling: {
+          minify: true,
+          sourceMap: true,
+          externalModules: ['@aws-sdk/*'],
+        },
+        memorySize: 256,
+        timeout: cdk.Duration.minutes(2),
+        logGroup: ringcentralTokenRefreshLogGroup,
+      },
+    )
+
+    dbSecret.grantRead(ringcentralTokenRefreshFunction)
+    ringcentralTokenRefreshFunction.addToRolePolicy(ringcentralSecretPolicy)
+
+    new events.Rule(this, 'RingCentralTokenRefreshSchedule', {
+      // RC access tokens live ~1h and refresh tokens lapse after inactivity;
+      // refresh every 30 min to stay comfortably ahead of both.
+      schedule: events.Schedule.rate(cdk.Duration.minutes(30)),
+      description: 'Refreshes RingCentral OAuth tokens for active connections.',
+      targets: [new eventsTargets.LambdaFunction(ringcentralTokenRefreshFunction)],
     })
 
     // ---------------------------------------------------------------------------
