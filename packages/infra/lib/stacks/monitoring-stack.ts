@@ -3,7 +3,16 @@ import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch'
 import * as cloudwatch_actions from 'aws-cdk-lib/aws-cloudwatch-actions'
 import * as sns from 'aws-cdk-lib/aws-sns'
 import { type Construct } from 'constructs'
-import { AVP_POLICY_STORE_COUNT_METRIC_NAME, PEGASUS_AUTHZ_METRIC_NAMESPACE } from '../metrics'
+import {
+  AVP_POLICY_STORE_COUNT_METRIC_NAME,
+  PEGASUS_AUTHZ_METRIC_NAMESPACE,
+  PEGASUS_RINGCENTRAL_METRIC_NAMESPACE,
+  RC_OUTBOX_PENDING_METRIC_NAME,
+  RC_OUTBOX_DEAD_METRIC_NAME,
+  RC_SUBSCRIPTIONS_DEAD_METRIC_NAME,
+  RC_CONNECTIONS_UNHEALTHY_METRIC_NAME,
+  RC_SYNC_LAG_SECONDS_METRIC_NAME,
+} from '../metrics'
 
 export interface MonitoringStackProps extends cdk.StackProps {
   /**
@@ -23,6 +32,13 @@ export interface MonitoringStackProps extends cdk.StackProps {
    * Used to scope the 5xx error alarm dimension.
    */
   readonly httpApiStage: string
+
+  /**
+   * The RingCentral capture DLQ queue name. When provided, a depth alarm is
+   * created (poison webhook-capture jobs). Optional so the stack still synths
+   * in tests / environments that don't pass it.
+   */
+  readonly ringcentralCaptureDlqName?: string
 }
 
 /**
@@ -179,6 +195,117 @@ export class MonitoringStack extends cdk.Stack {
     })
     avpStoreCountCriticalAlarm.addAlarmAction(snsAction)
 
+    // ── RingCentral capture-health alarms ──────────────────────────────────────
+    // Gauges published every 15 min by the ringcentral-metrics emitter
+    // (ApiStack → lambda-ringcentral-metrics.ts → Pegasus/RingCentral). The
+    // feature is inert until RINGCENTRAL_ENABLED, and the emitter publishes 0s
+    // while inert, so every alarm uses NOT_BREACHING — they stay green until the
+    // feature is on AND something actually breaks, rather than paging on no-data.
+    const rcGauge = (metricName: string, period = cdk.Duration.minutes(15)) =>
+      new cloudwatch.Metric({
+        namespace: PEGASUS_RINGCENTRAL_METRIC_NAMESPACE,
+        metricName,
+        statistic: 'Maximum',
+        period,
+      })
+
+    const rcOutboxDeadMetric = rcGauge(RC_OUTBOX_DEAD_METRIC_NAME)
+    const rcOutboxPendingMetric = rcGauge(RC_OUTBOX_PENDING_METRIC_NAME)
+    const rcSubsDeadMetric = rcGauge(RC_SUBSCRIPTIONS_DEAD_METRIC_NAME)
+    const rcConnUnhealthyMetric = rcGauge(RC_CONNECTIONS_UNHEALTHY_METRIC_NAME)
+    const rcSyncLagMetric = rcGauge(RC_SYNC_LAG_SECONDS_METRIC_NAME)
+
+    const rcAlarms: Array<{
+      id: string
+      name: string
+      metric: cloudwatch.Metric
+      threshold: number
+      description: string
+    }> = [
+      {
+        id: 'RcOutboxDeadAlarm',
+        name: 'pegasus-rc-outbox-dead',
+        metric: rcOutboxDeadMetric,
+        threshold: 0, // any DEAD row = a forward that exhausted retries
+        description:
+          'RingCentral forward-outbox has dead-lettered rows — a captured SMS failed to ' +
+          'reach on-prem after all retries. Investigate + manually redrive (set DEAD → PENDING).',
+      },
+      {
+        id: 'RcSubscriptionsDeadAlarm',
+        name: 'pegasus-rc-subscriptions-dead',
+        metric: rcSubsDeadMetric,
+        threshold: 0, // a dead/blacklisted subscription = no webhook delivery
+        description:
+          'A RingCentral webhook subscription is dead/blacklisted — near-real-time delivery ' +
+          'is down for a connection (the reconciliation sync still backstops capture).',
+      },
+      {
+        id: 'RcConnectionsUnhealthyAlarm',
+        name: 'pegasus-rc-connections-unhealthy',
+        metric: rcConnUnhealthyMetric,
+        threshold: 0, // unhealthy = token refresh failing / connection broken
+        description:
+          'A RingCentral connection is UNHEALTHY — likely a failing token refresh. Capture ' +
+          'for that tenant has stopped until the connection is repaired/reconnected.',
+      },
+      {
+        id: 'RcOutboxBacklogAlarm',
+        name: 'pegasus-rc-outbox-backlog',
+        metric: rcOutboxPendingMetric,
+        threshold: 500, // sustained backlog → on-prem unreachable or forwarder stuck
+        description:
+          'RingCentral forward-outbox backlog exceeds 500 pending rows — on-prem is likely ' +
+          'unreachable or the forwarder is stalled. Rows park PENDING until on-prem recovers.',
+      },
+      {
+        id: 'RcSyncLagAlarm',
+        name: 'pegasus-rc-sync-lag',
+        metric: rcSyncLagMetric,
+        threshold: 3600, // oldest cursor >1h stale vs a 15-min sync cron
+        description:
+          'RingCentral sync lag exceeds 1 hour — the oldest cursor has not advanced, so ' +
+          'capture is stalled (the safety-net sync runs every 15 min).',
+      },
+    ]
+
+    for (const a of rcAlarms) {
+      const alarm = new cloudwatch.Alarm(this, a.id, {
+        alarmName: a.name,
+        alarmDescription: a.description,
+        metric: a.metric,
+        threshold: a.threshold,
+        evaluationPeriods: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      })
+      alarm.addAlarmAction(snsAction)
+    }
+
+    // ── RingCentral capture DLQ depth (native SQS metric) ──────────────────────
+    let rcCaptureDlqMetric: cloudwatch.Metric | undefined
+    if (props.ringcentralCaptureDlqName) {
+      rcCaptureDlqMetric = new cloudwatch.Metric({
+        namespace: 'AWS/SQS',
+        metricName: 'ApproximateNumberOfMessagesVisible',
+        dimensionsMap: { QueueName: props.ringcentralCaptureDlqName },
+        statistic: 'Maximum',
+        period: cdk.Duration.minutes(5),
+      })
+      const rcCaptureDlqAlarm = new cloudwatch.Alarm(this, 'RcCaptureDlqAlarm', {
+        alarmName: 'pegasus-rc-capture-dlq',
+        alarmDescription:
+          'RingCentral capture DLQ has messages — webhook capture jobs failed past their ' +
+          'redrive limit (poison events). Inspect the DLQ and redrive after fixing the cause.',
+        metric: rcCaptureDlqMetric,
+        threshold: 0,
+        evaluationPeriods: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      })
+      rcCaptureDlqAlarm.addAlarmAction(snsAction)
+    }
+
     // ── CloudWatch dashboard ───────────────────────────────────────────────────
     new cloudwatch.Dashboard(this, 'OperationsDashboard', {
       dashboardName: 'Pegasus-Operations',
@@ -216,6 +343,27 @@ export class MonitoringStack extends cdk.Stack {
               { value: 80, label: 'Critical (80)', color: cloudwatch.Color.RED },
             ],
             width: 16,
+          }),
+        ],
+        [
+          new cloudwatch.GraphWidget({
+            title: 'RingCentral Outbox (pending / dead)',
+            left: [rcOutboxPendingMetric, rcOutboxDeadMetric],
+            width: 8,
+          }),
+          new cloudwatch.GraphWidget({
+            title: 'RingCentral Subscriptions Dead / Connections Unhealthy',
+            left: [rcSubsDeadMetric, rcConnUnhealthyMetric],
+            width: 8,
+          }),
+          new cloudwatch.GraphWidget({
+            title: 'RingCentral Sync Lag (s)',
+            left: [rcSyncLagMetric],
+            leftAnnotations: [
+              { value: 3600, label: 'Lag alarm (1h)', color: cloudwatch.Color.RED },
+            ],
+            ...(rcCaptureDlqMetric ? { right: [rcCaptureDlqMetric] } : {}),
+            width: 8,
           }),
         ],
       ],

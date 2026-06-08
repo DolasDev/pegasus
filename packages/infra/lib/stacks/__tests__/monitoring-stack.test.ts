@@ -1,4 +1,4 @@
-import { describe, it } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import * as cdk from 'aws-cdk-lib'
 import { Template, Match } from 'aws-cdk-lib/assertions'
 import { MonitoringStack } from '../monitoring-stack'
@@ -6,6 +6,17 @@ import { MonitoringStack } from '../monitoring-stack'
 function synthMonitoringStack() {
   const app = new cdk.App()
   const stack = new MonitoringStack(app, 'TestMonitoring', {
+    lambdaFunctionName: 'test-api-function',
+    httpApiId: 'abc123def4',
+    httpApiStage: '$default',
+    ringcentralCaptureDlqName: 'test-rc-capture-dlq',
+  })
+  return Template.fromStack(stack)
+}
+
+function synthMonitoringStackWithoutDlq() {
+  const app = new cdk.App()
+  const stack = new MonitoringStack(app, 'TestMonitoringNoDlq', {
     lambdaFunctionName: 'test-api-function',
     httpApiId: 'abc123def4',
     httpApiStage: '$default',
@@ -177,9 +188,74 @@ describe('MonitoringStack — CloudWatch dashboard', () => {
   })
 })
 
-describe('MonitoringStack — alarm count', () => {
-  it('creates exactly five CloudWatch alarms (3 service alarms + 2 AVP store-count alarms)', () => {
+describe('MonitoringStack — RingCentral capture-health alarms', () => {
+  it('alarms on any dead forward-outbox row (NOT_BREACHING while inert)', () => {
     const template = synthMonitoringStack()
-    template.resourceCountIs('AWS::CloudWatch::Alarm', 5)
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-rc-outbox-dead',
+      Namespace: 'Pegasus/RingCentral',
+      MetricName: 'OutboxDead',
+      Threshold: 0,
+      ComparisonOperator: 'GreaterThanThreshold',
+      TreatMissingData: 'notBreaching',
+    })
+  })
+
+  it('alarms on dead subscriptions and unhealthy connections', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-rc-subscriptions-dead',
+      MetricName: 'SubscriptionsDead',
+      Threshold: 0,
+    })
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-rc-connections-unhealthy',
+      MetricName: 'ConnectionsUnhealthy',
+      Threshold: 0,
+    })
+  })
+
+  it('alarms on a sustained outbox backlog (>500) and sync lag (>1h)', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-rc-outbox-backlog',
+      MetricName: 'OutboxPending',
+      Threshold: 500,
+    })
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-rc-sync-lag',
+      MetricName: 'SyncLagSeconds',
+      Threshold: 3600,
+    })
+  })
+
+  it('alarms on capture DLQ depth when a queue name is provided', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-rc-capture-dlq',
+      Namespace: 'AWS/SQS',
+      MetricName: 'ApproximateNumberOfMessagesVisible',
+      Threshold: 0,
+    })
+  })
+
+  it('omits the DLQ alarm when no queue name is provided', () => {
+    const template = synthMonitoringStackWithoutDlq()
+    const alarms = template.findResources('AWS::CloudWatch::Alarm', {
+      Properties: { AlarmName: 'pegasus-rc-capture-dlq' },
+    })
+    expect(Object.keys(alarms)).toHaveLength(0)
+  })
+})
+
+describe('MonitoringStack — alarm count', () => {
+  it('creates 11 alarms (3 service + 2 AVP + 5 RingCentral gauges + 1 capture DLQ)', () => {
+    const template = synthMonitoringStack()
+    template.resourceCountIs('AWS::CloudWatch::Alarm', 11)
+  })
+
+  it('creates 10 alarms when the capture DLQ name is absent', () => {
+    const template = synthMonitoringStackWithoutDlq()
+    template.resourceCountIs('AWS::CloudWatch::Alarm', 10)
   })
 })

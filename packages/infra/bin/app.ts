@@ -216,14 +216,10 @@ const wireguardStack = new WireGuardStack(app, `${stackIdPrefix}-WireGuardStack`
 // Per-env Temporal wiring — same source-of-truth maps the worker uses, so
 // the two halves can't drift. Skipped in dev (no Phase-2 Temporal there;
 // the API client falls through to a localhost dev-server connect).
-const apiTemporalAddress =
-  envName === 'dev' ? undefined : TEMPORAL_ADDRESS[envName]
+const apiTemporalAddress = envName === 'dev' ? undefined : TEMPORAL_ADDRESS[envName]
 const apiTemporalNamespace =
-  envName === 'dev'
-    ? undefined
-    : TEMPORAL_ADDRESS[envName].replace(/\.tmprl\.cloud:\d+$/, '')
-const apiTemporalTaskQueue =
-  envName === 'dev' ? undefined : `pegasus-stdlib-${envName}`
+  envName === 'dev' ? undefined : TEMPORAL_ADDRESS[envName].replace(/\.tmprl\.cloud:\d+$/, '')
+const apiTemporalTaskQueue = envName === 'dev' ? undefined : `pegasus-stdlib-${envName}`
 const apiTemporalCloudSecretArn =
   envName === 'dev' ? undefined : TEMPORAL_SECRET_ARNS[envName].temporalCloud
 const apiWorkflowBrokerSecretArn =
@@ -285,6 +281,7 @@ new MonitoringStack(app, `${stackIdPrefix}-MonitoringStack`, {
   lambdaFunctionName: apiStack.lambdaFunctionName,
   httpApiId: apiStack.httpApiId,
   httpApiStage: apiStack.httpApiStage,
+  ringcentralCaptureDlqName: apiStack.ringcentralCaptureDlqName,
 })
 
 // ── Asset stacks (deployed last — depend on all upstream stacks) ──────────────
@@ -359,36 +356,29 @@ adminFrontendAssetsStack.addDependency(apiStack)
 if (envName === 'staging' || envName === 'prod') {
   const apiCustomDomain = cdk.Fn.join('', [
     'https://',
-    cdk.aws_ssm.StringParameter.valueForStringParameter(
-      apiStack,
-      '/dolas/pegasus/api/domain-name',
-    ),
+    cdk.aws_ssm.StringParameter.valueForStringParameter(apiStack, '/dolas/pegasus/api/domain-name'),
   ])
-  const temporalWorkerStack = new TemporalWorkerStack(
-    app,
-    `${stackIdPrefix}-TemporalWorkerStack`,
-    {
-      env,
-      stackName: `${stackNamePrefix}-temporal-worker`,
-      description: `${descPrefix} — Temporal Cloud worker (ECS Fargate, curated stdlib workflows)`,
-      vpc: wireguardStack.vpc,
-      workerSubnets: wireguardStack.temporalWorkerSubnets,
-      // Temporal Cloud namespace IDs are `<short>.<account-id>` — the
-      // short name alone is not what `validate` will accept. Verified
-      // 2026-06-06 against the live `chgel` account: the SDK's first
-      // `describeNamespace` returns PermissionDenied with the short
-      // form, and the worker crashes with `Worker validation failed`.
-      // Derive the full ID from the gRPC address, which already
-      // embeds it (`<full-namespace>.tmprl.cloud:7233`).
-      temporalNamespace: TEMPORAL_ADDRESS[envName].replace(/\.tmprl\.cloud:\d+$/, ''),
-      temporalAddress: TEMPORAL_ADDRESS[envName],
-      temporalTaskQueue: `pegasus-stdlib-${envName}`,
-      pegasusApiBaseUrl: apiCustomDomain,
-      envName,
-      temporalCloudSecretArn: TEMPORAL_SECRET_ARNS[envName].temporalCloud,
-      workflowBrokerSecretArn: TEMPORAL_SECRET_ARNS[envName].workflowBroker,
-    },
-  )
+  const temporalWorkerStack = new TemporalWorkerStack(app, `${stackIdPrefix}-TemporalWorkerStack`, {
+    env,
+    stackName: `${stackNamePrefix}-temporal-worker`,
+    description: `${descPrefix} — Temporal Cloud worker (ECS Fargate, curated stdlib workflows)`,
+    vpc: wireguardStack.vpc,
+    workerSubnets: wireguardStack.temporalWorkerSubnets,
+    // Temporal Cloud namespace IDs are `<short>.<account-id>` — the
+    // short name alone is not what `validate` will accept. Verified
+    // 2026-06-06 against the live `chgel` account: the SDK's first
+    // `describeNamespace` returns PermissionDenied with the short
+    // form, and the worker crashes with `Worker validation failed`.
+    // Derive the full ID from the gRPC address, which already
+    // embeds it (`<full-namespace>.tmprl.cloud:7233`).
+    temporalNamespace: TEMPORAL_ADDRESS[envName].replace(/\.tmprl\.cloud:\d+$/, ''),
+    temporalAddress: TEMPORAL_ADDRESS[envName],
+    temporalTaskQueue: `pegasus-stdlib-${envName}`,
+    pegasusApiBaseUrl: apiCustomDomain,
+    envName,
+    temporalCloudSecretArn: TEMPORAL_SECRET_ARNS[envName].temporalCloud,
+    workflowBrokerSecretArn: TEMPORAL_SECRET_ARNS[envName].workflowBroker,
+  })
   temporalWorkerStack.addDependency(wireguardStack)
   temporalWorkerStack.addDependency(apiStack)
 }
