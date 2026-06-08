@@ -735,6 +735,50 @@ export class ApiStack extends cdk.Stack {
     })
 
     // ---------------------------------------------------------------------------
+    // RingCentral subscription-renewal cron
+    //
+    // Ensures each active connection has a healthy webhook subscription
+    // (create / renew / recreate). Inert until RINGCENTRAL_ENABLED=true AND
+    // RINGCENTRAL_WEBHOOK_URL is set (the shared webhook delivery address,
+    // injected per env once the public webhook route exists — Unit 10).
+    // ---------------------------------------------------------------------------
+    const ringcentralRenewLogGroup = new logs.LogGroup(this, 'RingCentralRenewLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+
+    const ringcentralRenewFunction = new nodejs.NodejsFunction(this, 'RingCentralRenewFunction', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../../../../apps/api/src/lambda-ringcentral-renew.ts'),
+      handler: 'handler',
+      environment: {
+        NODE_ENV: 'production',
+        DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+        LOG_LEVEL: 'INFO',
+        RINGCENTRAL_SECRET_PREFIX: ringcentralSecretPrefix,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        externalModules: ['@aws-sdk/*'],
+      },
+      memorySize: 256,
+      timeout: cdk.Duration.minutes(2),
+      logGroup: ringcentralRenewLogGroup,
+    })
+
+    dbSecret.grantRead(ringcentralRenewFunction)
+    ringcentralRenewFunction.addToRolePolicy(ringcentralSecretPolicy)
+
+    new events.Rule(this, 'RingCentralRenewSchedule', {
+      // Subscriptions live ~7 days; renew within 24h of expiry. Hourly is
+      // comfortably ahead and recreates a blacklisted sub within the hour.
+      schedule: events.Schedule.rate(cdk.Duration.hours(1)),
+      description: 'Ensures RingCentral webhook subscriptions stay alive.',
+      targets: [new eventsTargets.LambdaFunction(ringcentralRenewFunction)],
+    })
+
+    // ---------------------------------------------------------------------------
     // AVP policy reconciliation — deploy-time Trigger
     //
     // Tenant policy stores are provisioned at tenant-create time

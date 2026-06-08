@@ -47,7 +47,7 @@ beforeEach(() => {
   Object.values(h).forEach((fn) => fn.mockReset())
   h.acquireAccessToken.mockResolvedValue('at')
   getMock = vi.fn()
-  h.makeClient.mockReturnValue({ get: getMock, post: vi.fn() })
+  h.makeClient.mockReturnValue({ get: getMock, post: vi.fn(), put: vi.fn(), del: vi.fn() })
   h.getSyncCursor.mockResolvedValue(null) // no cursor → FSync by default
   h.captureMessage.mockResolvedValue({})
   h.saveSyncCursor.mockResolvedValue({})
