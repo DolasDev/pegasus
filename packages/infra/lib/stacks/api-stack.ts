@@ -10,7 +10,9 @@ import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs'
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2'
 import * as apigwv2i from 'aws-cdk-lib/aws-apigatewayv2-integrations'
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
+import * as sqs from 'aws-cdk-lib/aws-sqs'
 import * as ssm from 'aws-cdk-lib/aws-ssm'
+import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources'
 import * as triggers from 'aws-cdk-lib/triggers'
 import type * as s3 from 'aws-cdk-lib/aws-s3'
 import { type Construct } from 'constructs'
@@ -777,6 +779,64 @@ export class ApiStack extends cdk.Stack {
       description: 'Ensures RingCentral webhook subscriptions stay alive.',
       targets: [new eventsTargets.LambdaFunction(ringcentralRenewFunction)],
     })
+
+    // ---------------------------------------------------------------------------
+    // RingCentral capture queue + worker (the near-real-time path)
+    //
+    // The webhook fast-acks by enqueuing a capture job; this SQS-triggered worker
+    // runs the idempotent sync pull for the job's connection. A DLQ captures
+    // poison messages after maxReceiveCount. The api Lambda gets the queue URL
+    // (so enqueueCapture sends) + sqs:SendMessage. Inert until a subscription
+    // delivers an event (flag off → no webhook traffic).
+    // ---------------------------------------------------------------------------
+    const ringcentralCaptureDlq = new sqs.Queue(this, 'RingCentralCaptureDLQ', {
+      retentionPeriod: cdk.Duration.days(14),
+      enforceSSL: true,
+    })
+    const ringcentralCaptureQueue = new sqs.Queue(this, 'RingCentralCaptureQueue', {
+      // Must be >= the worker's timeout so an in-flight message isn't redelivered.
+      visibilityTimeout: cdk.Duration.minutes(6),
+      enforceSSL: true,
+      deadLetterQueue: { queue: ringcentralCaptureDlq, maxReceiveCount: 5 },
+    })
+
+    const ringcentralCaptureLogGroup = new logs.LogGroup(this, 'RingCentralCaptureLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+
+    const ringcentralCaptureFunction = new nodejs.NodejsFunction(
+      this,
+      'RingCentralCaptureFunction',
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        entry: path.join(__dirname, '../../../../apps/api/src/lambda-ringcentral-capture.ts'),
+        handler: 'handler',
+        environment: {
+          NODE_ENV: 'production',
+          DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+          LOG_LEVEL: 'INFO',
+          RINGCENTRAL_SECRET_PREFIX: ringcentralSecretPrefix,
+        },
+        bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+        memorySize: 512,
+        timeout: cdk.Duration.minutes(5),
+        logGroup: ringcentralCaptureLogGroup,
+      },
+    )
+
+    dbSecret.grantRead(ringcentralCaptureFunction)
+    ringcentralCaptureFunction.addToRolePolicy(ringcentralSecretPolicy)
+    ringcentralCaptureFunction.addEventSource(
+      new lambdaEventSources.SqsEventSource(ringcentralCaptureQueue, {
+        batchSize: 5,
+        reportBatchItemFailures: true,
+      }),
+    )
+
+    // Wire the webhook (api Lambda) as the producer.
+    ringcentralCaptureQueue.grantSendMessages(apiFunction)
+    apiFunction.addEnvironment('RINGCENTRAL_WEBHOOK_QUEUE_URL', ringcentralCaptureQueue.queueUrl)
 
     // ---------------------------------------------------------------------------
     // AVP policy reconciliation — deploy-time Trigger
