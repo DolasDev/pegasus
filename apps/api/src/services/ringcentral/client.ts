@@ -81,6 +81,8 @@ export async function acquireAccessToken(
 export interface RingCentralClient {
   get<T = unknown>(path: string, query?: Record<string, string>): Promise<T>
   post<T = unknown>(path: string, body: unknown): Promise<T>
+  put<T = unknown>(path: string, body: unknown): Promise<T>
+  del(path: string): Promise<void>
 }
 
 /** Parses a Retry-After header (seconds, per RC) into ms; defaults to 60s. */
@@ -122,6 +124,28 @@ export function makeClient(apiBase: string, accessToken: string): RingCentralCli
           body: JSON.stringify(body),
         }),
       )
+    },
+    async put<T>(path: string, body: unknown): Promise<T> {
+      const url = new URL(path, apiBase)
+      return handle<T>(
+        await fetch(url, {
+          method: 'PUT',
+          headers: { ...auth, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+      )
+    },
+    async del(path: string): Promise<void> {
+      const res = await fetch(new URL(path, apiBase), { method: 'DELETE', headers: auth })
+      if (res.status === 429) throw new RateLimitError(retryAfterMs(res))
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        throw new RingCentralOAuthError(
+          `RingCentral API ${res.status}: ${text.slice(0, 200)}`,
+          res.status,
+        )
+      }
+      // DELETE returns 204 No Content — nothing to parse.
     },
   }
 }

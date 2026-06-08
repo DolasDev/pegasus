@@ -40,12 +40,12 @@ function synthApiStackWithCognito() {
 }
 
 describe('ApiStack — Lambda function', () => {
-  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + RingCentral token-refresh + RingCentral sync + Trigger invoker)', () => {
+  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + RingCentral token-refresh/sync/renew + Trigger invoker)', () => {
     // HTTP API handler + AvpStoreCountFunction + SyncAvpPoliciesFunction +
-    // RingCentralTokenRefreshFunction + RingCentralSyncFunction + the CDK
-    // Triggers framework's invoker Lambda (one per Trigger).
+    // RingCentralTokenRefreshFunction + RingCentralSyncFunction +
+    // RingCentralRenewFunction + the CDK Triggers framework's invoker Lambda.
     const template = synthApiStack()
-    template.resourceCountIs('AWS::Lambda::Function', 6)
+    template.resourceCountIs('AWS::Lambda::Function', 7)
   })
 
   it('uses Node.js 20.x runtime', () => {
@@ -525,6 +525,15 @@ describe('ApiStack — RingCentral token-refresh cron', () => {
       ScheduleExpression: 'rate(15 minutes)',
       State: 'ENABLED',
       Description: 'RingCentral reconciliation sync (dual-store SMS capture).',
+    })
+  })
+
+  it('schedules the subscription-renewal Lambda hourly', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::Events::Rule', {
+      ScheduleExpression: 'rate(1 hour)',
+      State: 'ENABLED',
+      Description: 'Ensures RingCentral webhook subscriptions stay alive.',
     })
   })
 

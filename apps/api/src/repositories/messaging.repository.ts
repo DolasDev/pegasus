@@ -190,6 +190,19 @@ export async function findSubscriptionByRcId(db: PrismaClient, subscriptionId: s
   return db.ringCentralSubscription.findUnique({ where: { subscriptionId } })
 }
 
+/** Returns the most-recently-created subscription for a connection, if any. */
+export async function findSubscriptionByConnection(db: PrismaClient, connectionId: string) {
+  return db.ringCentralSubscription.findFirst({
+    where: { connectionId },
+    orderBy: { createdAt: 'desc' },
+  })
+}
+
+/** Deletes a subscription row (used after recreating a blacklisted/dead one). */
+export async function deleteSubscription(db: PrismaClient, id: string) {
+  await db.ringCentralSubscription.delete({ where: { id } })
+}
+
 /**
  * Lists subscriptions due for renewal: ACTIVE/EXPIRING and expiring before
  * `before`, or any in a recreate-worthy state (BLACKLISTED/DEAD). Base-client.
