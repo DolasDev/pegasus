@@ -40,13 +40,13 @@ function synthApiStackWithCognito() {
 }
 
 describe('ApiStack — Lambda function', () => {
-  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + RingCentral token-refresh/sync/renew/capture + Trigger invoker)', () => {
+  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + RingCentral token-refresh/sync/renew/capture/forward + Trigger invoker)', () => {
     // HTTP API handler + AvpStoreCountFunction + SyncAvpPoliciesFunction +
     // RingCentralTokenRefreshFunction + RingCentralSyncFunction +
-    // RingCentralRenewFunction + RingCentralCaptureFunction + the CDK Triggers
-    // framework's invoker Lambda.
+    // RingCentralRenewFunction + RingCentralCaptureFunction +
+    // RingCentralForwardFunction + the CDK Triggers framework's invoker Lambda.
     const template = synthApiStack()
-    template.resourceCountIs('AWS::Lambda::Function', 8)
+    template.resourceCountIs('AWS::Lambda::Function', 9)
   })
 
   it('uses Node.js 20.x runtime', () => {
@@ -535,6 +535,15 @@ describe('ApiStack — RingCentral token-refresh cron', () => {
       ScheduleExpression: 'rate(1 hour)',
       State: 'ENABLED',
       Description: 'Ensures RingCentral webhook subscriptions stay alive.',
+    })
+  })
+
+  it('schedules the on-prem forwarder Lambda every 5 minutes', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::Events::Rule', {
+      ScheduleExpression: 'rate(5 minutes)',
+      State: 'ENABLED',
+      Description: 'Forwards captured RingCentral SMS to the on-prem SQL Server.',
     })
   })
 
