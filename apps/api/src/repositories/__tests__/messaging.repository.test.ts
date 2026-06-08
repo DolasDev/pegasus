@@ -27,6 +27,7 @@ import {
   listPendingForwards,
   markForwardSent,
   markForwardFailed,
+  parkForward,
 } from '../messaging.repository'
 import { toPhoneNumber, type NormalizedMessage } from '@pegasus/domain'
 
@@ -277,9 +278,13 @@ describe.skipIf(!hasDb)('messaging.repository (integration)', () => {
       })
       const afterFail = await db.message.findUnique({ where: { id: captured.id } })
       expect(afterFail?.forwardStatus).toBe('FAILED')
-      // No longer due (nextAttemptAt in the future) and status FAILED, so not PENDING.
+      // Not due yet (nextAttemptAt 30s in the future), so the backoff hides it.
       const stillPending = await listPendingForwards(db, 50)
       expect(stillPending.find((p) => p.messageId === captured.id)).toBeUndefined()
+
+      // Once the backoff elapses a FAILED row is re-drained (retry), not stuck.
+      const dueAgain = await listPendingForwards(db, 50, new Date(Date.now() + 60_000))
+      expect(dueAgain.find((p) => p.messageId === captured.id)).toBeDefined()
 
       // Mark sent.
       const purgeAfter = new Date(Date.now() + 72 * 3_600_000)
@@ -289,6 +294,25 @@ describe.skipIf(!hasDb)('messaging.repository (integration)', () => {
       expect(sent?.forwardStatus).toBe('SENT')
       expect(sent?.status).toBe('FORWARDED')
       expect(sent?.purgeAfter).not.toBeNull()
+    })
+
+    it('parks a forward (transient on-prem outage) without consuming an attempt', async () => {
+      const captured = await captureMessage(db, tenantId, normalized({ externalId: 'park' }))
+      const obx = await db.messageForwardOutbox.findUnique({ where: { messageId: captured.id } })
+      expect(obx?.attempts).toBe(0)
+
+      const later = new Date(Date.now() + 5 * 60_000)
+      await parkForward(db, obx!.id, later, 'on-prem unreachable')
+
+      const parked = await db.messageForwardOutbox.findUnique({ where: { messageId: captured.id } })
+      // Stays PENDING + attempts untouched, so a long outage never dead-letters.
+      expect(parked?.status).toBe('PENDING')
+      expect(parked?.attempts).toBe(0)
+      expect(parked?.lastError).toBe('on-prem unreachable')
+      // The message stays merely CAPTURED — the forward never advanced.
+      const msg = await db.message.findUnique({ where: { id: captured.id } })
+      expect(msg?.forwardStatus).toBe('PENDING')
+      expect(msg?.status).toBe('CAPTURED')
     })
   })
 })

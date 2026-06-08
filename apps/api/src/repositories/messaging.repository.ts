@@ -380,16 +380,40 @@ export async function captureMessage(
 }
 
 /**
- * Drains the next batch of forwardable outbox rows (PENDING and due) across all
- * tenants, with their messages. Base-client — the forwarder cron resolves the
+ * Drains the next batch of forwardable outbox rows that are due across all
+ * tenants, with their messages. Both PENDING (never delivered, or parked after a
+ * transient on-prem outage) and FAILED (a prior attempt failed and the backoff
+ * has elapsed) are retryable — matching domain `canForward`; SENT is terminal and
+ * DEAD only re-opens via an explicit manual redrive. The `nextAttemptAt <= now`
+ * clause enforces the backoff. Base-client — the forwarder cron resolves the
  * tenant's on-prem connection string per row.
  */
 export async function listPendingForwards(db: PrismaClient, limit: number, now: Date = new Date()) {
   return db.messageForwardOutbox.findMany({
-    where: { status: 'PENDING', nextAttemptAt: { lte: now } },
+    where: { status: { in: ['PENDING', 'FAILED'] }, nextAttemptAt: { lte: now } },
     orderBy: { nextAttemptAt: 'asc' },
     take: limit,
     include: { message: true },
+  })
+}
+
+/**
+ * Parks a forward for a later retry WITHOUT consuming a delivery attempt: keeps
+ * the row PENDING and pushes out `nextAttemptAt`. Used when the failure is the
+ * on-prem side being unreachable/unconfigured (an infra outage, not a bad
+ * message), so a long outage can't dead-letter the whole backlog — the rows just
+ * wait. `attempts` is deliberately left untouched and the message's forwardStatus
+ * stays PENDING/CAPTURED.
+ */
+export async function parkForward(
+  db: PrismaClient,
+  outboxId: string,
+  nextAttemptAt: Date,
+  error: string,
+) {
+  return db.messageForwardOutbox.update({
+    where: { id: outboxId },
+    data: { status: 'PENDING', nextAttemptAt, lastError: error },
   })
 }
 

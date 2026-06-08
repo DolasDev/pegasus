@@ -839,6 +839,59 @@ export class ApiStack extends cdk.Stack {
     apiFunction.addEnvironment('RINGCENTRAL_WEBHOOK_QUEUE_URL', ringcentralCaptureQueue.queueUrl)
 
     // ---------------------------------------------------------------------------
+    // RingCentral on-prem forwarder cron
+    //
+    // Drains the MessageForwardOutbox and writes captured SMS to each tenant's
+    // on-prem SQL Server through the in-VPC mssql-executor (the same path the
+    // migrated longhaul handlers use — no new VPC Lambda). The idempotent MERGE
+    // makes the at-least-once drain effectively-once. Inert until
+    // RINGCENTRAL_ENABLED=true (nothing captures → empty outbox → no-op); and a
+    // no-op too where mssqlExecutorFunction is absent (the row just parks PENDING).
+    // ---------------------------------------------------------------------------
+    const ringcentralForwardLogGroup = new logs.LogGroup(this, 'RingCentralForwardLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+
+    const ringcentralForwardFunction = new nodejs.NodejsFunction(
+      this,
+      'RingCentralForwardFunction',
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        entry: path.join(__dirname, '../../../../apps/api/src/lambda-ringcentral-forward.ts'),
+        handler: 'handler',
+        environment: {
+          NODE_ENV: 'production',
+          DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+          LOG_LEVEL: 'INFO',
+        },
+        bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+        memorySize: 512,
+        timeout: cdk.Duration.minutes(5),
+        logGroup: ringcentralForwardLogGroup,
+      },
+    )
+
+    dbSecret.grantRead(ringcentralForwardFunction)
+    // The forwarder reaches tenant MSSQL by synchronously invoking the in-VPC
+    // executor — same MSSQL_EXECUTOR_FUNCTION_NAME contract as the api Lambda.
+    if (props.mssqlExecutorFunction) {
+      props.mssqlExecutorFunction.grantInvoke(ringcentralForwardFunction)
+      ringcentralForwardFunction.addEnvironment(
+        'MSSQL_EXECUTOR_FUNCTION_NAME',
+        props.mssqlExecutorFunction.functionName,
+      )
+    }
+
+    new events.Rule(this, 'RingCentralForwardSchedule', {
+      // Drains the outbox often enough to keep on-prem near-real-time without
+      // hammering it; backoff/jitter inside the Lambda spaces out retries.
+      schedule: events.Schedule.rate(cdk.Duration.minutes(5)),
+      description: 'Forwards captured RingCentral SMS to the on-prem SQL Server.',
+      targets: [new eventsTargets.LambdaFunction(ringcentralForwardFunction)],
+    })
+
+    // ---------------------------------------------------------------------------
     // AVP policy reconciliation — deploy-time Trigger
     //
     // Tenant policy stores are provisioned at tenant-create time
