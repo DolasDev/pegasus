@@ -88,6 +88,26 @@ export async function findConnectionById(db: PrismaClient, id: string) {
   return db.ringCentralConnection.findUnique({ where: { id } })
 }
 
+/** Lists a tenant's connections (oldest first) for the Settings UI. Tenant-scoped. */
+export async function listConnectionsByTenant(db: PrismaClient, tenantId: string) {
+  return db.ringCentralConnection.findMany({
+    where: { tenantId },
+    orderBy: { createdAt: 'asc' },
+  })
+}
+
+/**
+ * Deletes a tenant's connection by id and returns the number of rows removed.
+ * Uses deleteMany (not delete) so it is idempotent + tenant-safe: a foreign or
+ * missing id matches nothing and returns 0 rather than throwing. The Prisma
+ * cascade drops the connection's subscriptions + sync cursors; Message rows are
+ * `onDelete: SetNull` so captured messages are retained.
+ */
+export async function deleteConnectionForTenant(db: PrismaClient, tenantId: string, id: string) {
+  const { count } = await db.ringCentralConnection.deleteMany({ where: { id, tenantId } })
+  return count
+}
+
 /**
  * Lists all connections with a usable token across every tenant: ACTIVE status
  * AND a stored refresh-token secret. The `tokenSecretArn != null` guard means a

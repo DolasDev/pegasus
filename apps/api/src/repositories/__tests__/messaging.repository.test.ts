@@ -13,6 +13,8 @@ import {
   upsertConnection,
   findConnectionById,
   listActiveConnections,
+  listConnectionsByTenant,
+  deleteConnectionForTenant,
   markTokenRefreshed,
   markTokenExpired,
   upsertSubscription,
@@ -104,6 +106,85 @@ describe.skipIf(!hasDb)('messaging.repository (integration)', () => {
       expect(expired?.health).toBe('UNHEALTHY')
       // Restore ACTIVE for downstream tests that rely on listActiveConnections.
       await markTokenRefreshed(db, a.id, new Date())
+    })
+
+    it('listConnectionsByTenant returns only the tenant own connections', async () => {
+      // A second, isolated tenant whose connection must never leak into ours.
+      const otherTenant = await db.tenant.upsert({
+        where: { slug: `${SLUG}-other` },
+        create: { name: 'Messaging Repo Test Other', slug: `${SLUG}-other` },
+        update: {},
+      })
+      try {
+        const mine = await upsertConnection(db, tenantId, {
+          rcAccountId: 'acct-list',
+          rcExtensionId: 'ext-list',
+          ownerNumber: '+19085763333',
+        })
+        const foreign = await upsertConnection(db, otherTenant.id, {
+          rcAccountId: 'acct-foreign',
+          rcExtensionId: 'ext-foreign',
+          ownerNumber: '+19085764444',
+        })
+
+        const listed = await listConnectionsByTenant(db, tenantId)
+        const ids = listed.map((c) => c.id)
+        expect(ids).toContain(mine.id)
+        expect(ids).not.toContain(foreign.id)
+        expect(listed.every((c) => c.tenantId === tenantId)).toBe(true)
+      } finally {
+        await db.tenant.deleteMany({ where: { slug: `${SLUG}-other` } })
+      }
+    })
+
+    it('deleteConnectionForTenant removes only the owned row, cascades, and is tenant-safe', async () => {
+      const otherTenant = await db.tenant.upsert({
+        where: { slug: `${SLUG}-del` },
+        create: { name: 'Messaging Repo Test Del', slug: `${SLUG}-del` },
+        update: {},
+      })
+      try {
+        const conn = await upsertConnection(db, tenantId, {
+          rcAccountId: 'acct-del',
+          rcExtensionId: 'ext-del',
+          ownerNumber: '+19085765555',
+        })
+        const foreign = await upsertConnection(db, otherTenant.id, {
+          rcAccountId: 'acct-del-foreign',
+          rcExtensionId: 'ext-del-foreign',
+          ownerNumber: '+19085766666',
+        })
+
+        // Give the owned connection a subscription + sync cursor that should cascade.
+        const sub = await upsertSubscription(db, tenantId, {
+          connectionId: conn.id,
+          subscriptionId: 'rc-sub-del',
+          eventFilters: ['/restapi/v1.0/account/~/message-threads/entries/sync'],
+          deliveryAddress: 'https://hook.example/api/v1/integrations/ringcentral/webhook',
+          verificationToken: 'vtok-del',
+          expiresAt: new Date(Date.now() + 3_600_000),
+        })
+        await saveSyncCursor(db, tenantId, conn.id, 'THREAD', 'token-del')
+
+        // Foreign id under our tenant → no match → count 0, foreign row untouched.
+        expect(await deleteConnectionForTenant(db, tenantId, foreign.id)).toBe(0)
+        expect(await findConnectionById(db, foreign.id)).not.toBeNull()
+
+        // Owned id → deleted, returns 1.
+        expect(await deleteConnectionForTenant(db, tenantId, conn.id)).toBe(1)
+        expect(await findConnectionById(db, conn.id)).toBeNull()
+
+        // Cascade dropped the subscription + sync cursor.
+        expect(await findSubscriptionByRcId(db, 'rc-sub-del')).toBeNull()
+        expect(await getSyncCursor(db, tenantId, conn.id, 'THREAD')).toBeNull()
+        // (sub captured for clarity; its row is gone via cascade)
+        expect(sub.id).toBeTruthy()
+
+        // Idempotent: a repeat delete of the now-missing row returns 0.
+        expect(await deleteConnectionForTenant(db, tenantId, conn.id)).toBe(0)
+      } finally {
+        await db.tenant.deleteMany({ where: { slug: `${SLUG}-del` } })
+      }
     })
   })
 
