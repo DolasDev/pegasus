@@ -69,6 +69,7 @@ import {
   ringcentralOauthHandler,
   ringcentralOauthCallbackHandler,
 } from './handlers/integrations/ringcentral-oauth'
+import { ringcentralWebhookHandler } from './handlers/integrations/ringcentral-webhook'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
 import { DomainError } from '@pegasus/domain'
@@ -163,6 +164,9 @@ app.route('/api/admin', adminRouter)
 // Mounted BEFORE the tenant-protected /api/v1 block.
 // ---------------------------------------------------------------------------
 app.route('/api/integrations/ringcentral', ringcentralOauthCallbackHandler)
+// RingCentral webhook — pre-tenant; tenant resolved from the payload's
+// subscriptionId. Mounted on the same prefix as the OAuth callback.
+app.route('/api/integrations/ringcentral', ringcentralWebhookHandler)
 
 // ---------------------------------------------------------------------------
 // Hub agent API — /api/vpn/**
