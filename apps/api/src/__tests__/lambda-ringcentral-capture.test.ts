@@ -53,12 +53,45 @@ describe('lambda-ringcentral-capture', () => {
       ]),
     )
 
-    expect(h.syncConnection).toHaveBeenCalledWith(expect.anything(), CONFIG, {
-      id: 'conn-1',
-      tenantId: 'tnt-1',
-    })
+    expect(h.syncConnection).toHaveBeenCalledWith(
+      expect.anything(),
+      CONFIG,
+      { id: 'conn-1', tenantId: 'tnt-1' },
+      {},
+    )
     expect(h.markWebhookEventProcessed).toHaveBeenCalledWith(expect.anything(), 'evt-1')
     expect(res.batchItemFailures).toEqual([])
+  })
+
+  it('runs a webhook-less backfill job with backfillDays and no webhook bookkeeping', async () => {
+    h.findConnectionById.mockResolvedValue({ id: 'conn-1', tenantId: 'tnt-1' })
+    h.syncConnection.mockResolvedValue({ captured: 17 })
+
+    const res = await handler(
+      sqsEvent([
+        { webhookEventId: null, connectionId: 'conn-1', tenantId: 'tnt-1', backfillDays: 30 },
+      ]),
+    )
+
+    expect(h.syncConnection).toHaveBeenCalledWith(expect.anything(), CONFIG, expect.anything(), {
+      backfillDays: 30,
+    })
+    // No originating webhook event → no processed/failed bookkeeping.
+    expect(h.markWebhookEventProcessed).not.toHaveBeenCalled()
+    expect(h.markWebhookEventFailed).not.toHaveBeenCalled()
+    expect(res.batchItemFailures).toEqual([])
+  })
+
+  it('reports a batch failure for a backfill job without touching webhook bookkeeping', async () => {
+    h.findConnectionById.mockResolvedValue({ id: 'conn-1', tenantId: 'tnt-1' })
+    h.syncConnection.mockRejectedValue(new Error('RC down'))
+
+    const res = await handler(
+      sqsEvent([{ webhookEventId: null, connectionId: 'conn-1', tenantId: 'tnt-1' }]),
+    )
+
+    expect(h.markWebhookEventFailed).not.toHaveBeenCalled()
+    expect(res.batchItemFailures).toEqual([{ itemIdentifier: 'm-0' }])
   })
 
   it('drops the job when the integration is disabled (no failure)', async () => {

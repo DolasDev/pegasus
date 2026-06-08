@@ -28,7 +28,22 @@ import {
   fetchExtensionInfo,
 } from '../../services/ringcentral/oauth'
 import { storeRefreshToken } from '../../lib/ringcentral-secrets'
+import { enqueueBackfill } from '../../lib/ringcentral-queue'
 import { upsertConnection, markTokenRefreshed } from '../../repositories/messaging.repository'
+
+/**
+ * Days to backfill when a connection is first established. Defaults to the sync
+ * service's own default (90) when unset/invalid; capped so a fat-fingered env
+ * can't request an unbounded FSync window.
+ */
+const MAX_BACKFILL_DAYS = 365
+function readBackfillDays(): number | undefined {
+  const raw = process.env['RINGCENTRAL_BACKFILL_DAYS']
+  if (!raw) return undefined
+  const days = Number(raw)
+  if (!Number.isFinite(days) || days <= 0) return undefined
+  return Math.min(Math.floor(days), MAX_BACKFILL_DAYS)
+}
 
 // ---------------------------------------------------------------------------
 // Admin: start the connect flow (tenant-authenticated)
@@ -101,10 +116,26 @@ ringcentralOauthCallbackHandler.get('/oauth/callback', async (c) => {
     const secretArn = await storeRefreshToken(connection.id, tokens.refresh_token)
     await markTokenRefreshed(db, connection.id, new Date(), secretArn)
 
+    // Kick an immediate backfill so historical SMS show up right away rather
+    // than after the next reconciliation cron. The freshly-upserted connection
+    // has no sync cursor, so the worker's syncConnection does a full FSync of
+    // both stores. Best-effort: a queue failure must not fail the connect (the
+    // cron is the backstop), so log and continue.
+    const enqueued = await enqueueBackfill(state.tenantId, connection.id, readBackfillDays()).catch(
+      (err: unknown) => {
+        logger.warn('failed to enqueue RingCentral backfill — cron will backstop', {
+          connectionId: connection.id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        return false
+      },
+    )
+
     logger.info('RingCentral connection established', {
       tenantId: state.tenantId,
       connectionId: connection.id,
       rcAccountId: info.rcAccountId,
+      backfillEnqueued: enqueued,
     })
 
     const successRedirect = process.env['RINGCENTRAL_OAUTH_SUCCESS_REDIRECT']

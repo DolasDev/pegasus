@@ -42,29 +42,40 @@ async function processRecord(record: SQSRecord): Promise<void> {
     return
   }
 
+  // Backfill-on-connect jobs (Unit 15) have no originating webhook event, so the
+  // InboundWebhookEvent bookkeeping is conditional on webhookEventId being set.
+  const { webhookEventId } = job
   try {
     const connection = await findConnectionById(db, job.connectionId)
     if (!connection) {
       logger.warn('capture job for unknown connection — dropping', {
         connectionId: job.connectionId,
       })
-      await markWebhookEventFailed(db, job.webhookEventId, 'connection not found')
+      if (webhookEventId) await markWebhookEventFailed(db, webhookEventId, 'connection not found')
       return
     }
-    const { captured } = await syncConnection(db, config, connection)
-    await markWebhookEventProcessed(db, job.webhookEventId)
+    const { captured } = await syncConnection(
+      db,
+      config,
+      connection,
+      job.backfillDays != null ? { backfillDays: job.backfillDays } : {},
+    )
+    if (webhookEventId) await markWebhookEventProcessed(db, webhookEventId)
     logger.info('capture job processed', {
-      webhookEventId: job.webhookEventId,
+      webhookEventId,
       connectionId: job.connectionId,
+      backfill: job.backfillDays != null,
       captured,
     })
   } catch (err) {
-    // Record the failure on the event, then rethrow so SQS retries / DLQs it.
-    await markWebhookEventFailed(
-      db,
-      job.webhookEventId,
-      err instanceof Error ? err.message : String(err),
-    ).catch(() => {})
+    // Record the failure on the event (if any), then rethrow so SQS retries / DLQs it.
+    if (webhookEventId) {
+      await markWebhookEventFailed(
+        db,
+        webhookEventId,
+        err instanceof Error ? err.message : String(err),
+      ).catch(() => {})
+    }
     throw err
   }
 }

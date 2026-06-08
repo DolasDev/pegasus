@@ -20,12 +20,19 @@ export function __resetQueueClientForTests(): void {
   _client = null
 }
 
-/** The capture job enqueued per webhook delivery. */
+/**
+ * A capture job for the worker. Most originate from a webhook delivery
+ * (`webhookEventId` set, `subscriptionId` present); a backfill-on-connect job
+ * (Unit 15) has `webhookEventId: null` and carries `backfillDays` so the worker's
+ * `syncConnection` does a full FSync window rather than the default. Either way
+ * the worker just runs the idempotent dual-store sync for `connectionId`.
+ */
 export interface CaptureJob {
-  webhookEventId: string
+  webhookEventId: string | null
   tenantId: string
   connectionId: string | null
-  subscriptionId: string
+  subscriptionId?: string
+  backfillDays?: number
 }
 
 /**
@@ -39,4 +46,23 @@ export async function enqueueCapture(job: CaptureJob): Promise<boolean> {
     new SendMessageCommand({ QueueUrl: queueUrl, MessageBody: JSON.stringify(job) }),
   )
   return true
+}
+
+/**
+ * Enqueues a backfill-on-connect job: a webhook-less capture that triggers an
+ * immediate full sync for a freshly-connected connection (no cursor yet → the
+ * sync FSyncs both stores), instead of waiting for the reconciliation cron.
+ * Reuses the capture queue/worker (Unit 11). No-op if the queue is unset.
+ */
+export async function enqueueBackfill(
+  tenantId: string,
+  connectionId: string,
+  backfillDays?: number,
+): Promise<boolean> {
+  return enqueueCapture({
+    webhookEventId: null,
+    tenantId,
+    connectionId,
+    ...(backfillDays != null ? { backfillDays } : {}),
+  })
 }
