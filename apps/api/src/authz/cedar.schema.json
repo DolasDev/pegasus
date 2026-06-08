@@ -113,6 +113,9 @@
       "UpdateSettings": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Setting"] }
       },
+      "ManageRingCentralIntegration": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Setting"] }
+      },
       "ListApiClients": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["ApiClient"] }
       },
