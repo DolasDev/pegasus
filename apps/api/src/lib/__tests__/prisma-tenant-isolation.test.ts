@@ -840,6 +840,14 @@ describe.skipIf(!hasDb)('createTenantDb — cross-tenant isolation (integration)
         'ApiClient', // M2M auth — accessed by api-client-auth middleware, not tenant handlers
         'VpnPeer', // admin/platform-only — accessed by platform_admin routes and the hub reconcile agent (scope vpn:sync), never by tenant handlers
         'Workflow', // visibility=GLOBAL requires reading rows owned by another tenant; the repo scopes manually via OR [{tenantId}, {visibility: 'GLOBAL'}]
+        // Messaging — background capture/forward path. The webhook (pre-tenant),
+        // capture worker, sync/renewal/token-refresh/purge crons all use the
+        // base client and resolve tenant from the subscriptionId / connection /
+        // row, so these are never read via the tenant-scoped client.
+        'RingCentralSubscription',
+        'RingCentralSyncCursor',
+        'InboundWebhookEvent',
+        'MessageForwardOutbox',
       ])
 
       // Extract model names that contain a tenantId field declaration.

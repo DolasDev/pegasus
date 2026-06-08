@@ -256,6 +256,14 @@ model Tenant {
   workflows      Workflow[]
   vpnPeer        VpnPeer?
 
+  // Messaging context — RingCentral SMS capture
+  ringCentralConnections   RingCentralConnection[]
+  ringCentralSubscriptions RingCentralSubscription[]
+  ringCentralSyncCursors   RingCentralSyncCursor[]
+  inboundWebhookEvents     InboundWebhookEvent[]
+  messages                 Message[]
+  messageForwardOutbox     MessageForwardOutbox[]
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -1280,4 +1288,278 @@ model FeatureFlag {
 
   @@map("feature_flags")
   @@schema("platform")
+}
+
+// ===========================================================================
+// Messaging context — RingCentral SMS capture
+//
+// Captures SMS from both the RingCentral Thread Messaging store and the legacy
+// v1.0 message-store, buffers them in Neon, and forwards them idempotently to
+// the on-prem SQL Server (system of record). The cloud `Message` row is a
+// transient idempotency buffer — body purged 72h after forward, row deleted at
+// 30 days. Mirrors the domain `messaging` bounded context (packages/domain).
+//
+// All models additive / expand-only. tenantId is the 2nd field on every model
+// so the schema-sync regex in prisma-tenant-isolation.test.ts captures it.
+// ===========================================================================
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+
+  @@schema("public")
+}
+
+enum MessageSource {
+  THREAD_STORE
+  V1_STORE
+
+  @@schema("public")
+}
+
+enum MessageStatus {
+  CAPTURED
+  FORWARDED
+  FAILED
+
+  @@schema("public")
+}
+
+enum ForwardStatus {
+  PENDING
+  SENT
+  FAILED
+  DEAD
+
+  @@schema("public")
+}
+
+enum RcTokenStatus {
+  ACTIVE
+  EXPIRED
+
+  @@schema("public")
+}
+
+enum RcConnectionHealth {
+  HEALTHY
+  DEGRADED
+  UNHEALTHY
+
+  @@schema("public")
+}
+
+enum RcSubscriptionStatus {
+  ACTIVE
+  EXPIRING
+  BLACKLISTED
+  DEAD
+
+  @@schema("public")
+}
+
+enum RcSyncStore {
+  THREAD
+  V1
+
+  @@schema("public")
+}
+
+enum WebhookEventStatus {
+  PENDING
+  PROCESSED
+  FAILED
+
+  @@schema("public")
+}
+
+/// One connected RingCentral account per tenant (covering one or more
+/// SMS-enabled numbers). The rotating OAuth refresh token lives in Secrets
+/// Manager; only its ARN is persisted here and is NEVER returned by any API.
+model RingCentralConnection {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// RingCentral account id (the `~` account this connection authorises).
+  rcAccountId String @map("rc_account_id")
+
+  /// RingCentral extension id whose token/number this connection owns.
+  rcExtensionId String @map("rc_extension_id")
+
+  /// The primary SMS-enabled number for this connection, E.164.
+  ownerNumber String @map("owner_number")
+
+  /// Secrets Manager ARN holding the rotating OAuth refresh token.
+  /// Null until the OAuth connect flow completes. NEVER returned from the API.
+  tokenSecretArn String? @map("token_secret_arn")
+
+  tokenStatus     RcTokenStatus      @default(ACTIVE) @map("token_status")
+  scopes          String[]
+  lastRefreshedAt DateTime?          @map("last_refreshed_at") @db.Timestamptz(6)
+  health          RcConnectionHealth @default(HEALTHY)
+
+  tenant        Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  subscriptions RingCentralSubscription[]
+  syncCursors   RingCentralSyncCursor[]
+  messages      Message[]
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, rcAccountId, rcExtensionId])
+  @@index([tenantId])
+  @@map("ringcentral_connections")
+  @@schema("public")
+}
+
+/// A managed RingCentral webhook subscription. One shared webhook URL serves
+/// all tenants; each subscription carries its own verificationToken and the
+/// event payload's subscriptionId maps back to this row → connection → tenant.
+model RingCentralSubscription {
+  id           String @id @default(uuid())
+  tenantId     String @map("tenant_id")
+  connectionId String @map("connection_id")
+
+  /// RingCentral's subscription id — the key the webhook payload resolves on.
+  subscriptionId String @map("subscription_id")
+
+  eventFilters     String[] @map("event_filters")
+  transport        String   @default("WebHook")
+  deliveryAddress  String   @map("delivery_address")
+  /// Shared secret echoed by RC on each delivery; compared on the webhook leg.
+  verificationToken String  @map("verification_token")
+
+  expiresAt     DateTime             @map("expires_at")
+  status        RcSubscriptionStatus @default(ACTIVE)
+  lastRenewedAt DateTime?            @map("last_renewed_at")
+  failureCount  Int                  @default(0) @map("failure_count")
+
+  tenant     Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  connection RingCentralConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([subscriptionId])
+  @@index([tenantId])
+  @@index([connectionId])
+  @@index([status, expiresAt])
+  @@map("ringcentral_subscriptions")
+  @@schema("public")
+}
+
+/// Per-store sync token — the reconciliation-sync safety net's memory.
+model RingCentralSyncCursor {
+  id           String @id @default(uuid())
+  tenantId     String @map("tenant_id")
+  connectionId String @map("connection_id")
+
+  store      RcSyncStore
+  syncToken  String?     @map("sync_token")
+  lastSyncAt DateTime?   @map("last_sync_at")
+
+  tenant     Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  connection RingCentralConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, connectionId, store])
+  @@index([tenantId])
+  @@map("ringcentral_sync_cursors")
+  @@schema("public")
+}
+
+/// Raw webhook event inbox — fast-ack landing zone for replay/audit. Persisted
+/// only after the subscriptionId resolves to a tenant (the handshake returns
+/// before any row is written).
+model InboundWebhookEvent {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  subscriptionId String? @map("subscription_id")
+  connectionId   String? @map("connection_id")
+
+  rawPayload Json @map("raw_payload")
+  headers    Json
+
+  receivedAt  DateTime           @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt DateTime?          @map("processed_at") @db.Timestamptz(6)
+  status      WebhookEventStatus @default(PENDING)
+  error       String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([tenantId, status])
+  @@index([receivedAt])
+  @@map("inbound_webhook_events")
+  @@schema("public")
+}
+
+/// A normalised captured SMS — transient cloud buffer. The `@@unique([tenantId,
+/// source, externalId])` is the idempotency linchpin: webhook-path and
+/// sync-path upserts converge on it, giving exactly one row per message.
+model Message {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  connectionId String? @map("connection_id")
+
+  source     MessageSource
+  externalId String           @map("external_id")
+  threadId   String?          @map("thread_id")
+  direction  MessageDirection
+  fromNumber String           @map("from_number")
+  toNumber   String           @map("to_number")
+  body       String?
+
+  rcCreationTime     DateTime  @map("rc_creation_time") @db.Timestamptz(6)
+  rcLastModifiedTime DateTime? @map("rc_last_modified_time") @db.Timestamptz(6)
+
+  status        MessageStatus @default(CAPTURED)
+  forwardStatus ForwardStatus @default(PENDING) @map("forward_status")
+
+  /// Set when the PII body is nulled (72h after the forward succeeds).
+  bodyPurgedAt DateTime? @map("body_purged_at") @db.Timestamptz(6)
+  /// When the body becomes eligible for purge (forward time + 72h).
+  purgeAfter DateTime? @map("purge_after") @db.Timestamptz(6)
+
+  capturedAt DateTime @default(now()) @map("captured_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant     Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  connection RingCentralConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  outbox     MessageForwardOutbox?
+
+  @@unique([tenantId, source, externalId])
+  @@index([tenantId, forwardStatus])
+  @@index([tenantId, rcCreationTime])
+  @@map("messages")
+  @@schema("public")
+}
+
+/// Transactional outbox driving reliable on-prem delivery. One row per Message;
+/// the forwarder drains PENDING rows (nextAttemptAt <= now) into the on-prem
+/// SQL Server, backing off on failure and dead-lettering after N attempts.
+model MessageForwardOutbox {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  messageId String @map("message_id")
+
+  attempts      Int           @default(0)
+  nextAttemptAt DateTime      @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  status        ForwardStatus @default(PENDING)
+  lastError     String?       @map("last_error")
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([messageId])
+  @@index([tenantId, status, nextAttemptAt])
+  @@map("message_forward_outbox")
+  @@schema("public")
 }
