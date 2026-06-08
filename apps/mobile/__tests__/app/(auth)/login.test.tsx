@@ -215,7 +215,9 @@ describe('LoginScreen', () => {
       // Clean up: resolve the pending promise and unmount
       resolveLogin()
       unmount()
-    })
+      // Bump the per-test timeout: this RN-render + state-flush test occasionally
+      // spikes past jest's default under CI load (the known login.test flake).
+    }, 30000)
 
     it('renders SHOW toggle when password step is active (AUTH-04)', () => {
       const { getByText } = render(<LoginScreen />)
@@ -300,7 +302,8 @@ describe('LoginScreen', () => {
       // Clean up: resolve the pending promise and unmount
       resolveFn()
       unmount()
-    })
+      // Bump the per-test timeout: load-sensitive RN-render test (see above).
+    }, 30000)
 
     it('clears passwordError when driver re-types in password field (AUTH-05)', async () => {
       const { getByText, getByPlaceholderText, queryByText } = render(<LoginScreen />)

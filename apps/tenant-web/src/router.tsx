@@ -21,6 +21,7 @@ import { SsoConfigPage } from '@/routes/sso-config'
 import { UsersPage } from '@/routes/users'
 import { DeveloperSettingsPage } from '@/routes/settings.developer'
 import { WorkflowsSettingsPage } from '@/routes/settings.workflows'
+import { RingCentralIntegrationPage } from '@/routes/settings.integrations.ringcentral'
 import { AppSettingsLayout } from '@/features/settings/app/AppSettingsLayout'
 import { AppSettingsIndexPage } from '@/routes/settings.app.index'
 import { AppSettingsDashboardPage } from '@/routes/settings.app.dashboard'
@@ -182,6 +183,12 @@ const workflowsSettingsRoute = createRoute({
   component: WorkflowsSettingsPage,
 })
 
+const ringCentralRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: '/settings/integrations/ringcentral',
+  component: RingCentralIntegrationPage,
+})
+
 // ---------------------------------------------------------------------------
 // /settings/app — tenant-wide UI preferences. One landing route hosting the
 // shared left-rail layout, plus seven children (one per main-menu section).
@@ -307,6 +314,7 @@ const routeTree = rootRoute.addChildren([
       usersRoute,
       developerSettingsRoute,
       workflowsSettingsRoute,
+      ringCentralRoute,
       appSettingsLayoutRoute.addChildren([
         appSettingsIndexRoute,
         appSettingsDashboardRoute,
