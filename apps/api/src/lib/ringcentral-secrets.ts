@@ -12,8 +12,11 @@ import {
   CreateSecretCommand,
   PutSecretValueCommand,
   GetSecretValueCommand,
+  DeleteSecretCommand,
   ResourceExistsException,
+  ResourceNotFoundException,
 } from '@aws-sdk/client-secrets-manager'
+import { logger } from './logger'
 
 let _client: SecretsManagerClient | null = null
 function client(): SecretsManagerClient {
@@ -71,6 +74,27 @@ export async function getRefreshToken(secretArn: string): Promise<string> {
     throw new Error(`Secret ${secretArn} has no string value`)
   }
   return out.SecretString
+}
+
+/**
+ * Best-effort delete of a connection's refresh-token secret on disconnect.
+ * Force-deletes (no 7-30d recovery window) so the per-connection name is freed
+ * immediately for a future re-connect. A missing secret is swallowed — the
+ * connection row may have been created before its secret was ever written — so
+ * disconnect never fails on the secret side.
+ */
+export async function deleteRefreshToken(secretArn: string): Promise<void> {
+  try {
+    await client().send(
+      new DeleteSecretCommand({ SecretId: secretArn, ForceDeleteWithoutRecovery: true }),
+    )
+  } catch (err) {
+    if (err instanceof ResourceNotFoundException) {
+      logger.warn('RingCentral refresh-token secret already absent on delete', { secretArn })
+      return
+    }
+    throw err
+  }
 }
 
 /** Test-only: reset the memoised client so a mock can be installed per test. */

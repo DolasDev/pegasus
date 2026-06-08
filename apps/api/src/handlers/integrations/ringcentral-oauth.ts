@@ -27,9 +27,15 @@ import {
   exchangeCodeForToken,
   fetchExtensionInfo,
 } from '../../services/ringcentral/oauth'
-import { storeRefreshToken } from '../../lib/ringcentral-secrets'
+import { storeRefreshToken, deleteRefreshToken } from '../../lib/ringcentral-secrets'
 import { enqueueBackfill } from '../../lib/ringcentral-queue'
-import { upsertConnection, markTokenRefreshed } from '../../repositories/messaging.repository'
+import {
+  upsertConnection,
+  markTokenRefreshed,
+  listConnectionsByTenant,
+  findConnectionById,
+  deleteConnectionForTenant,
+} from '../../repositories/messaging.repository'
 
 /**
  * Days to backfill when a connection is first established. Defaults to the sync
@@ -69,6 +75,91 @@ ringcentralOauthHandler.get(
       config.stateSecret,
     )
     return c.json({ url: buildAuthorizeUrl(config, state) })
+  },
+)
+
+// ---------------------------------------------------------------------------
+// Admin: list / disconnect connections (tenant-authenticated)
+//
+// These operate on DB rows, not the live RC app, so they are NOT flag-gated:
+// the Settings UI can always show and remove the tenant's own connections.
+// ---------------------------------------------------------------------------
+
+/** The connection shape returned to the Settings UI. Deliberately omits the
+ * `tokenSecretArn` (secret pointer) and bookkeeping (`updatedAt`/`tenantId`). */
+type RcConnection = {
+  id: string
+  ownerNumber: string
+  rcAccountId: string
+  rcExtensionId: string
+  tokenStatus: 'ACTIVE' | 'EXPIRED'
+  health: 'HEALTHY' | 'DEGRADED' | 'UNHEALTHY'
+  lastRefreshedAt: string | null
+  scopes: string[]
+  createdAt: string
+}
+
+ringcentralOauthHandler.get(
+  '/connections',
+  requirePermission(Actions.ManageRingCentralIntegration),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const rows = await listConnectionsByTenant(db, tenantId)
+    const connections: RcConnection[] = rows.map((row) => ({
+      id: row.id,
+      ownerNumber: row.ownerNumber,
+      rcAccountId: row.rcAccountId,
+      rcExtensionId: row.rcExtensionId,
+      tokenStatus: row.tokenStatus,
+      health: row.health,
+      lastRefreshedAt: row.lastRefreshedAt ? row.lastRefreshedAt.toISOString() : null,
+      scopes: row.scopes,
+      createdAt: row.createdAt.toISOString(),
+      // NB: tokenSecretArn / updatedAt / tenantId are deliberately dropped.
+    }))
+    return c.json({ data: { connections } })
+  },
+)
+
+ringcentralOauthHandler.delete(
+  '/connections/:id',
+  requirePermission(Actions.ManageRingCentralIntegration),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const id = c.req.param('id')
+    if (!id) {
+      return c.json({ error: 'RingCentral connection not found', code: 'NOT_FOUND' }, 404)
+    }
+
+    // Capture the secret ARN before the row is gone so we can clean it up.
+    const existing = await findConnectionById(db, id)
+    const tokenSecretArn =
+      existing && existing.tenantId === tenantId ? existing.tokenSecretArn : null
+
+    const deleted = await deleteConnectionForTenant(db, tenantId, id)
+    if (deleted === 0) {
+      return c.json({ error: 'RingCentral connection not found', code: 'NOT_FOUND' }, 404)
+    }
+
+    // Best-effort: free the refresh-token secret. A failure here must not fail
+    // the disconnect (the row is already gone), so swallow + log.
+    if (tokenSecretArn) {
+      try {
+        await deleteRefreshToken(tokenSecretArn)
+      } catch (err) {
+        logger.warn('failed to delete RingCentral refresh-token secret on disconnect', {
+          connectionId: id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+
+    // We deliberately do NOT call RingCentral to delete the remote webhook
+    // subscription: without the renewal cron keeping it alive it expires on its
+    // own (~7 days), so leaving it is safe and avoids a network dependency on
+    // the disconnect path.
+    logger.info('RingCentral connection disconnected', { tenantId, connectionId: id })
+    return c.json({ data: { disconnected: true } })
   },
 )
 
