@@ -11,12 +11,15 @@ import { AvailabilityPage } from './pages/AvailabilityPage'
 test.describe('Availability tab', () => {
   test.beforeEach(async ({ page, qaWebUrl, qaApiFetch }) => {
     await gateOnOnpremHealth(page, qaWebUrl, qaApiFetch)
-    // gateOnOnpremHealth navigated to /driver-planning. Best-effort wait for
-    // AppGuard + the driver-planning fetch to settle so the `rowCount`-based
-    // `test.skip`s below don't race the (slow) on-prem load and silently skip;
-    // if the load is pathologically slow each test still has its own timeout
-    // (and the @smoke test below will surface it as a real failure).
+    // gateOnOnpremHealth navigated to /driver-planning. The index route renders a
+    // RANDOM A/B/C view variant per mount; pin C (the variant these specs target)
+    // before anything waits on the driver table or asserts columns/cells.
     const av = new AvailabilityPage(page)
+    await av.pinVariant('C')
+    // Best-effort wait for AppGuard + the driver-planning fetch to settle so the
+    // `rowCount`-based `test.skip`s below don't race the (slow) on-prem load and
+    // silently skip; if the load is pathologically slow each test still has its
+    // own timeout (and the @smoke test below will surface it as a real failure).
     await av.table
       .or(page.getByText('No drivers found'))
       .waitFor({ state: 'visible', timeout: 30_000 })
@@ -39,6 +42,7 @@ test.describe('Availability tab', () => {
     // planning DB not loaded" finding.
     if (!(await av.table.isVisible())) {
       await page.reload({ waitUntil: 'domcontentloaded' })
+      await av.pinVariant('C') // reload re-randomises the variant
       await av.table
         .or(page.getByText('No drivers found'))
         .waitFor({ state: 'visible', timeout: 30_000 })
@@ -47,10 +51,16 @@ test.describe('Availability tab', () => {
     await expect(av.table, 'QA planning DB should have ≥1 driver row').toBeVisible({
       timeout: 15_000,
     })
+    // Variant C splits the legacy "Ready Location" column into Ready State + Ready City.
+    // Substring (non-exact) match on purpose: the "Ready Date" header carries a
+    // Font Awesome sort caret whose CSS ::before glyph leaks into the accessible
+    // name, so `exact` would miss it. No Variant-C header name is a substring of
+    // another, so each still resolves to exactly one columnheader.
     for (const col of [
       'Driver',
       'Ready Date',
-      'Ready Location',
+      'Ready State',
+      'Ready City',
       'Deliveries',
       'Notes',
       'Current Trip',
@@ -97,7 +107,7 @@ test.describe('Availability tab', () => {
     await expect.poll(() => av.rowCount()).toBe(total)
   })
 
-  test('inline-edits a driver confirmed date/location/notes and persists @qa-mutating', async ({
+  test('inline-edits a driver confirmed ready date/state/city/notes and persists @qa-mutating', async ({
     page,
   }) => {
     const av = new AvailabilityPage(page)
@@ -106,23 +116,28 @@ test.describe('Availability tab', () => {
     const driverId = await av.firstDriverId()
     const row = av.rowByDriverId(driverId)
 
-    const today = new Date()
-    const date = today.toISOString().slice(0, 10)
-    const location = `E2E City, ${String.fromCharCode(65 + (today.getDate() % 26))}A`
-    const notes = `e2e-${Date.now()}`
+    const date = new Date().toISOString().slice(0, 10)
+    const state = 'TX' // 2-letter code so it round-trips as Ready State (not City)
+    const stamp = `${Date.now()}`
+    const city = `E2E City ${stamp.slice(-6)}` // unique per run so the reload check is meaningful
+    const notes = `e2e-${stamp}`
 
-    // Click-to-edit, one field at a time (Enter commits each).
-    await av.setConfirmed(row, { date, location, notes })
+    // Ready Date/State/City commit together (one linked PATCH); Notes is separate.
+    await av.setReady(row, { date, state, city })
+    await av.editNotes(row, notes)
 
     // Persisted values reflected in the row…
-    await expect(row).toContainText(location)
+    await expect(row).toContainText(state)
+    await expect(row).toContainText(city)
     await expect(row).toContainText(notes)
 
-    // …and persisted: reload and re-read the row.
+    // …and persisted: reload (re-pin C — the variant re-randomises) and re-read.
     await page.reload({ waitUntil: 'domcontentloaded' })
+    await av.pinVariant('C')
     const reloaded = av.rowByDriverId(driverId)
     await expect(reloaded).toBeVisible()
-    await expect(reloaded).toContainText(location)
+    await expect(reloaded).toContainText(state)
+    await expect(reloaded).toContainText(city)
     await expect(reloaded).toContainText(notes)
   })
 
@@ -133,7 +148,7 @@ test.describe('Availability tab', () => {
     const row = av.rows.first()
     const before = (await row.innerText()).trim()
     // Type into Notes then Escape — the edit must be discarded (no PATCH).
-    await av.editField(row, 'notes', 'should-not-be-saved', 'escape')
+    await av.editNotes(row, 'should-not-be-saved', 'escape')
     await expect(row).not.toContainText('should-not-be-saved')
     expect((await row.innerText()).trim()).toBe(before)
   })
