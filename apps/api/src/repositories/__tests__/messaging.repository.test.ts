@@ -28,6 +28,8 @@ import {
   markForwardSent,
   markForwardFailed,
   parkForward,
+  purgeForwardedBodies,
+  hardDeleteForwarded,
 } from '../messaging.repository'
 import { toPhoneNumber, type NormalizedMessage } from '@pegasus/domain'
 
@@ -313,6 +315,90 @@ describe.skipIf(!hasDb)('messaging.repository (integration)', () => {
       const msg = await db.message.findUnique({ where: { id: captured.id } })
       expect(msg?.forwardStatus).toBe('PENDING')
       expect(msg?.status).toBe('CAPTURED')
+    })
+  })
+
+  describe('buffer-purge', () => {
+    it('purges only forwarded bodies past their window, idempotently', async () => {
+      // SENT + purge window elapsed → eligible.
+      const due = await captureMessage(db, tenantId, normalized({ externalId: 'purge-due' }))
+      const dueObx = await db.messageForwardOutbox.findUnique({ where: { messageId: due.id } })
+      await markForwardSent(db, dueObx!.id, due.id, new Date(Date.now() - 1_000))
+
+      // SENT but window still in the future → not yet eligible.
+      const future = await captureMessage(db, tenantId, normalized({ externalId: 'purge-future' }))
+      const futureObx = await db.messageForwardOutbox.findUnique({
+        where: { messageId: future.id },
+      })
+      await markForwardSent(db, futureObx!.id, future.id, new Date(Date.now() + 72 * 3_600_000))
+
+      // Never forwarded → never purged.
+      const pending = await captureMessage(
+        db,
+        tenantId,
+        normalized({ externalId: 'purge-pending' }),
+      )
+
+      const purged = await purgeForwardedBodies(db)
+      expect(purged).toBeGreaterThanOrEqual(1)
+
+      const dueRow = await db.message.findUnique({ where: { id: due.id } })
+      expect(dueRow?.body).toBeNull()
+      expect(dueRow?.bodyPurgedAt).not.toBeNull()
+
+      const futureRow = await db.message.findUnique({ where: { id: future.id } })
+      expect(futureRow?.body).toBeTruthy()
+      expect(futureRow?.bodyPurgedAt).toBeNull()
+
+      const pendingRow = await db.message.findUnique({ where: { id: pending.id } })
+      expect(pendingRow?.body).toBeTruthy()
+
+      // Idempotent: a second sweep does not re-stamp an already-purged row (the
+      // `bodyPurgedAt: null` guard excludes it), so its purge timestamp is stable.
+      const firstPurgedAt = dueRow?.bodyPurgedAt?.getTime()
+      await purgeForwardedBodies(db)
+      const stillDue = await db.message.findUnique({ where: { id: due.id } })
+      expect(stillDue?.body).toBeNull()
+      expect(stillDue?.bodyPurgedAt?.getTime()).toBe(firstPurgedAt)
+    })
+
+    it('hard-deletes SENT tombstones older than the cutoff and cascades the outbox', async () => {
+      const old = await captureMessage(db, tenantId, normalized({ externalId: 'del-old' }))
+      const oldObx = await db.messageForwardOutbox.findUnique({ where: { messageId: old.id } })
+      await markForwardSent(db, oldObx!.id, old.id, new Date(Date.now() - 1_000))
+      // Backdate capture beyond the retention horizon.
+      await db.message.update({
+        where: { id: old.id },
+        data: { capturedAt: new Date('2026-01-01T00:00:00.000Z') },
+      })
+
+      // Recent SENT row → retained.
+      const recent = await captureMessage(db, tenantId, normalized({ externalId: 'del-recent' }))
+      const recentObx = await db.messageForwardOutbox.findUnique({
+        where: { messageId: recent.id },
+      })
+      await markForwardSent(db, recentObx!.id, recent.id, new Date(Date.now() - 1_000))
+
+      // Old but never forwarded → retained (not yet durable on-prem).
+      const oldPending = await captureMessage(
+        db,
+        tenantId,
+        normalized({ externalId: 'del-pending' }),
+      )
+      await db.message.update({
+        where: { id: oldPending.id },
+        data: { capturedAt: new Date('2026-01-01T00:00:00.000Z') },
+      })
+
+      const cutoff = new Date(Date.now() - 30 * 24 * 3_600_000)
+      const deleted = await hardDeleteForwarded(db, cutoff)
+      expect(deleted).toBe(1)
+
+      expect(await db.message.findUnique({ where: { id: old.id } })).toBeNull()
+      // Cascade dropped the outbox row too.
+      expect(await db.messageForwardOutbox.findUnique({ where: { messageId: old.id } })).toBeNull()
+      expect(await db.message.findUnique({ where: { id: recent.id } })).not.toBeNull()
+      expect(await db.message.findUnique({ where: { id: oldPending.id } })).not.toBeNull()
     })
   })
 })
