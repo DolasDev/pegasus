@@ -1,0 +1,86 @@
+// ---------------------------------------------------------------------------
+// SQS consumer — RingCentral capture worker.
+//
+// Drains capture jobs enqueued by the webhook (Unit 10). Thread webhook events
+// are thin (lastModifiedTime only), so the actual records are pulled via the
+// sync API: the worker runs the same idempotent dual-store sync (Unit 7) for
+// the job's connection, then marks the raw webhook event processed.
+//
+// Idempotent with the reconciliation-sync safety net — both converge on the
+// (tenantId, source, externalId) upsert, so a webhook + a sync seeing the same
+// message produce one row. Uses partial-batch-response so only failed records
+// are retried (and eventually dead-lettered) by SQS.
+// ---------------------------------------------------------------------------
+
+import type { SQSEvent, SQSBatchResponse, SQSRecord } from 'aws-lambda'
+import { db } from './db'
+import { createLogger } from './lib/logger'
+import { readOAuthConfig } from './services/ringcentral/oauth'
+import { syncConnection } from './services/ringcentral/sync'
+import {
+  findConnectionById,
+  markWebhookEventProcessed,
+  markWebhookEventFailed,
+} from './repositories/messaging.repository'
+import type { CaptureJob } from './lib/ringcentral-queue'
+
+const logger = createLogger('pegasus-ringcentral-capture')
+
+async function processRecord(record: SQSRecord): Promise<void> {
+  const config = readOAuthConfig()
+  if (!config) {
+    // Flag off — drop the job (don't fail the record into the DLQ).
+    logger.warn('RingCentral disabled — dropping capture job')
+    return
+  }
+
+  const job = JSON.parse(record.body) as CaptureJob
+  if (!job.connectionId) {
+    logger.warn('capture job without a connectionId — dropping', {
+      webhookEventId: job.webhookEventId,
+    })
+    return
+  }
+
+  try {
+    const connection = await findConnectionById(db, job.connectionId)
+    if (!connection) {
+      logger.warn('capture job for unknown connection — dropping', {
+        connectionId: job.connectionId,
+      })
+      await markWebhookEventFailed(db, job.webhookEventId, 'connection not found')
+      return
+    }
+    const { captured } = await syncConnection(db, config, connection)
+    await markWebhookEventProcessed(db, job.webhookEventId)
+    logger.info('capture job processed', {
+      webhookEventId: job.webhookEventId,
+      connectionId: job.connectionId,
+      captured,
+    })
+  } catch (err) {
+    // Record the failure on the event, then rethrow so SQS retries / DLQs it.
+    await markWebhookEventFailed(
+      db,
+      job.webhookEventId,
+      err instanceof Error ? err.message : String(err),
+    ).catch(() => {})
+    throw err
+  }
+}
+
+export async function handler(event: SQSEvent): Promise<SQSBatchResponse> {
+  const batchItemFailures: { itemIdentifier: string }[] = []
+  for (const record of event.Records) {
+    try {
+      await processRecord(record)
+    } catch (err) {
+      logger.error('capture record failed — will retry', {
+        messageId: record.messageId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      batchItemFailures.push({ itemIdentifier: record.messageId })
+    }
+  }
+  return { batchItemFailures }
+}

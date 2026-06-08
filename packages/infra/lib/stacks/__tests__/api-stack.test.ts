@@ -40,12 +40,13 @@ function synthApiStackWithCognito() {
 }
 
 describe('ApiStack — Lambda function', () => {
-  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + RingCentral token-refresh/sync/renew + Trigger invoker)', () => {
+  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + RingCentral token-refresh/sync/renew/capture + Trigger invoker)', () => {
     // HTTP API handler + AvpStoreCountFunction + SyncAvpPoliciesFunction +
     // RingCentralTokenRefreshFunction + RingCentralSyncFunction +
-    // RingCentralRenewFunction + the CDK Triggers framework's invoker Lambda.
+    // RingCentralRenewFunction + RingCentralCaptureFunction + the CDK Triggers
+    // framework's invoker Lambda.
     const template = synthApiStack()
-    template.resourceCountIs('AWS::Lambda::Function', 7)
+    template.resourceCountIs('AWS::Lambda::Function', 8)
   })
 
   it('uses Node.js 20.x runtime', () => {
@@ -534,6 +535,22 @@ describe('ApiStack — RingCentral token-refresh cron', () => {
       ScheduleExpression: 'rate(1 hour)',
       State: 'ENABLED',
       Description: 'Ensures RingCentral webhook subscriptions stay alive.',
+    })
+  })
+
+  it('creates the capture queue + DLQ with a redrive policy', () => {
+    const template = synthApiStack()
+    // Two RingCentral SQS queues (capture + its DLQ).
+    template.resourceCountIs('AWS::SQS::Queue', 2)
+    template.hasResourceProperties('AWS::SQS::Queue', {
+      RedrivePolicy: Match.objectLike({ maxReceiveCount: 5 }),
+    })
+  })
+
+  it('wires the capture queue as an event source for the worker (partial batch failures)', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::Lambda::EventSourceMapping', {
+      FunctionResponseTypes: ['ReportBatchItemFailures'],
     })
   })
 
