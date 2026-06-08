@@ -52,6 +52,10 @@ test.describe('Availability tab', () => {
       timeout: 15_000,
     })
     // Variant C splits the legacy "Ready Location" column into Ready State + Ready City.
+    // Substring (non-exact) match on purpose: the "Ready Date" header carries a
+    // Font Awesome sort caret whose CSS ::before glyph leaks into the accessible
+    // name, so `exact` would miss it. No Variant-C header name is a substring of
+    // another, so each still resolves to exactly one columnheader.
     for (const col of [
       'Driver',
       'Ready Date',
@@ -61,7 +65,7 @@ test.describe('Availability tab', () => {
       'Notes',
       'Current Trip',
     ]) {
-      await expect(page.getByRole('columnheader', { name: col, exact: true })).toBeVisible()
+      await expect(page.getByRole('columnheader', { name: col })).toBeVisible()
     }
     expect(await av.rowCount()).toBeGreaterThan(0)
   })
