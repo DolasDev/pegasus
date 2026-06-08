@@ -604,6 +604,24 @@ describe('CognitoStack — invite email sender', () => {
             Match.arrayWith([':ses:us-east-1:111111111111:identity/pegasus.dolas.dev']),
           ]),
         },
+        // No configuration set when sesConfigurationSetName is omitted.
+        ConfigurationSet: Match.absent(),
+      }),
+    })
+  })
+
+  it('attaches the configuration set when sesConfigurationSetName is supplied', () => {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const stack = new CognitoStack(app, 'TestCognitoSesWithConfigSet', {
+      env: { account: '111111111111', region: 'us-east-1' },
+      sesFromEmail: 'no-reply@pegasus.dolas.dev',
+      sesConfigurationSetName: 'pegasus-invite-emails',
+    })
+    const t = Template.fromStack(stack)
+    t.hasResourceProperties('AWS::Cognito::UserPool', {
+      EmailConfiguration: Match.objectLike({
+        EmailSendingAccount: 'DEVELOPER',
+        ConfigurationSet: 'pegasus-invite-emails',
       }),
     })
   })
