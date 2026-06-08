@@ -691,6 +691,50 @@ export class ApiStack extends cdk.Stack {
     })
 
     // ---------------------------------------------------------------------------
+    // RingCentral reconciliation-sync cron
+    //
+    // Pulls SMS from both stores for every active connection (Unit 7). Primary
+    // capture path until the webhook lands (Phase 2), then the low-frequency
+    // safety net. Reuses the same Secrets-Manager grant (the sync rotates the
+    // token via acquireAccessToken). Inert until RINGCENTRAL_ENABLED=true.
+    // ---------------------------------------------------------------------------
+    const ringcentralSyncLogGroup = new logs.LogGroup(this, 'RingCentralSyncLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+
+    const ringcentralSyncFunction = new nodejs.NodejsFunction(this, 'RingCentralSyncFunction', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, '../../../../apps/api/src/lambda-ringcentral-sync.ts'),
+      handler: 'handler',
+      environment: {
+        NODE_ENV: 'production',
+        DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+        LOG_LEVEL: 'INFO',
+        RINGCENTRAL_SECRET_PREFIX: ringcentralSecretPrefix,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        externalModules: ['@aws-sdk/*'],
+      },
+      memorySize: 512,
+      // Generous — a backfill FSync across many connections paginates serially.
+      timeout: cdk.Duration.minutes(5),
+      logGroup: ringcentralSyncLogGroup,
+    })
+
+    dbSecret.grantRead(ringcentralSyncFunction)
+    ringcentralSyncFunction.addToRolePolicy(ringcentralSecretPolicy)
+
+    new events.Rule(this, 'RingCentralSyncSchedule', {
+      // Safety-net cadence — near-real-time comes from the webhook (Phase 2).
+      schedule: events.Schedule.rate(cdk.Duration.minutes(15)),
+      description: 'RingCentral reconciliation sync (dual-store SMS capture).',
+      targets: [new eventsTargets.LambdaFunction(ringcentralSyncFunction)],
+    })
+
+    // ---------------------------------------------------------------------------
     // AVP policy reconciliation — deploy-time Trigger
     //
     // Tenant policy stores are provisioned at tenant-create time
