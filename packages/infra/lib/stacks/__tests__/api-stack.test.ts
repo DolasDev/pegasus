@@ -40,14 +40,14 @@ function synthApiStackWithCognito() {
 }
 
 describe('ApiStack — Lambda function', () => {
-  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + RingCentral token-refresh/sync/renew/capture/forward/buffer-purge + Trigger invoker)', () => {
+  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + RingCentral token-refresh/sync/renew/capture/forward/buffer-purge/metrics + Trigger invoker)', () => {
     // HTTP API handler + AvpStoreCountFunction + SyncAvpPoliciesFunction +
     // RingCentralTokenRefreshFunction + RingCentralSyncFunction +
     // RingCentralRenewFunction + RingCentralCaptureFunction +
     // RingCentralForwardFunction + RingCentralBufferPurgeFunction +
-    // the CDK Triggers framework's invoker Lambda.
+    // RingCentralMetricsFunction + the CDK Triggers framework's invoker Lambda.
     const template = synthApiStack()
-    template.resourceCountIs('AWS::Lambda::Function', 10)
+    template.resourceCountIs('AWS::Lambda::Function', 11)
   })
 
   it('uses Node.js 20.x runtime', () => {
@@ -554,6 +554,25 @@ describe('ApiStack — RingCentral token-refresh cron', () => {
       ScheduleExpression: 'rate(6 hours)',
       State: 'ENABLED',
       Description: 'Purges forwarded RingCentral SMS bodies + old tombstones from Neon.',
+    })
+  })
+
+  it('schedules the health-metrics emitter every 15 minutes with a scoped PutMetricData grant', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::Events::Rule', {
+      ScheduleExpression: 'rate(15 minutes)',
+      State: 'ENABLED',
+      Description: 'Emits RingCentral capture-health gauges (Pegasus/RingCentral).',
+    })
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'cloudwatch:PutMetricData',
+            Condition: { StringEquals: { 'cloudwatch:namespace': 'Pegasus/RingCentral' } },
+          }),
+        ]),
+      },
     })
   })
 

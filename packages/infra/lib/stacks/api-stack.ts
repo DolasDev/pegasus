@@ -16,7 +16,7 @@ import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources'
 import * as triggers from 'aws-cdk-lib/triggers'
 import type * as s3 from 'aws-cdk-lib/aws-s3'
 import { type Construct } from 'constructs'
-import { PEGASUS_AUTHZ_METRIC_NAMESPACE } from '../metrics'
+import { PEGASUS_AUTHZ_METRIC_NAMESPACE, PEGASUS_RINGCENTRAL_METRIC_NAMESPACE } from '../metrics'
 
 export interface ApiStackProps extends cdk.StackProps {
   /**
@@ -145,6 +145,9 @@ export class ApiStack extends cdk.Stack {
 
   /** The HTTP API Gateway v2 default stage name. */
   public readonly httpApiStage: string = '$default'
+
+  /** The RingCentral capture DLQ name — used by MonitoringStack to alarm on depth. */
+  public readonly ringcentralCaptureDlqName: string
 
   constructor(scope: Construct, id: string, props: ApiStackProps = {}) {
     super(scope, id, props)
@@ -793,6 +796,7 @@ export class ApiStack extends cdk.Stack {
       retentionPeriod: cdk.Duration.days(14),
       enforceSSL: true,
     })
+    this.ringcentralCaptureDlqName = ringcentralCaptureDlq.queueName
     const ringcentralCaptureQueue = new sqs.Queue(this, 'RingCentralCaptureQueue', {
       // Must be >= the worker's timeout so an in-flight message isn't redelivered.
       visibilityTimeout: cdk.Duration.minutes(6),
@@ -934,6 +938,58 @@ export class ApiStack extends cdk.Stack {
       schedule: events.Schedule.rate(cdk.Duration.hours(6)),
       description: 'Purges forwarded RingCentral SMS bodies + old tombstones from Neon.',
       targets: [new eventsTargets.LambdaFunction(ringcentralBufferPurgeFunction)],
+    })
+
+    // ---------------------------------------------------------------------------
+    // RingCentral health-metrics emitter cron
+    //
+    // Publishes the DB-derived capture-health gauges (outbox depth/dead,
+    // subscriptions dead, unhealthy connections, sync lag) to the
+    // Pegasus/RingCentral namespace for the MonitoringStack alarms. One emitter
+    // (mirrors AvpStoreCountFunction) keeps all the gauges + the single
+    // PutMetricData grant in one place. Inert-safe: emits 0s until enabled.
+    // ---------------------------------------------------------------------------
+    const ringcentralMetricsLogGroup = new logs.LogGroup(this, 'RingCentralMetricsLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+
+    const ringcentralMetricsFunction = new nodejs.NodejsFunction(
+      this,
+      'RingCentralMetricsFunction',
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        entry: path.join(__dirname, '../../../../apps/api/src/lambda-ringcentral-metrics.ts'),
+        handler: 'handler',
+        environment: {
+          NODE_ENV: 'production',
+          DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+          LOG_LEVEL: 'INFO',
+        },
+        bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+        memorySize: 256,
+        timeout: cdk.Duration.seconds(30),
+        logGroup: ringcentralMetricsLogGroup,
+      },
+    )
+
+    dbSecret.grantRead(ringcentralMetricsFunction)
+    // PutMetricData has no resource-level scoping (Resource must be `*`); the
+    // namespace condition narrows this role to the Pegasus/RingCentral namespace.
+    ringcentralMetricsFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['cloudwatch:PutMetricData'],
+        resources: ['*'],
+        conditions: {
+          StringEquals: { 'cloudwatch:namespace': PEGASUS_RINGCENTRAL_METRIC_NAMESPACE },
+        },
+      }),
+    )
+
+    new events.Rule(this, 'RingCentralMetricsSchedule', {
+      schedule: events.Schedule.rate(cdk.Duration.minutes(15)),
+      description: 'Emits RingCentral capture-health gauges (Pegasus/RingCentral).',
+      targets: [new eventsTargets.LambdaFunction(ringcentralMetricsFunction)],
     })
 
     // ---------------------------------------------------------------------------
