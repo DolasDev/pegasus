@@ -80,6 +80,12 @@ export const Actions = {
     resourceType: 'Setting',
     permission: 'setting:update',
   },
+  // ── Integrations ──────────────────────────────────────────────────────────
+  ManageRingCentralIntegration: {
+    id: 'ManageRingCentralIntegration',
+    resourceType: 'Setting',
+    permission: 'ringcentral:manage',
+  },
   // ── API clients (M2M key administration) ────────────────────────────────
   ListApiClients: {
     id: 'ListApiClients',

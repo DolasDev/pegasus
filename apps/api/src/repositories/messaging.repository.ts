@@ -89,11 +89,16 @@ export async function findConnectionById(db: PrismaClient, id: string) {
 }
 
 /**
- * Lists all connections with a usable (non-expired) token across every tenant.
- * Base-client / cross-tenant — used by the token-refresh, sync and renewal crons.
+ * Lists all connections with a usable token across every tenant: ACTIVE status
+ * AND a stored refresh-token secret. The `tokenSecretArn != null` guard means a
+ * connection whose OAuth row was created but whose secret write failed mid-connect
+ * is never picked up by the token-refresh/sync crons (which would otherwise crash
+ * trying to read a missing secret). Base-client / cross-tenant.
  */
 export async function listActiveConnections(db: PrismaClient) {
-  return db.ringCentralConnection.findMany({ where: { tokenStatus: 'ACTIVE' } })
+  return db.ringCentralConnection.findMany({
+    where: { tokenStatus: 'ACTIVE', tokenSecretArn: { not: null } },
+  })
 }
 
 /** Records a successful token refresh (and rotation of the stored secret ARN). */

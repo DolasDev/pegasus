@@ -65,6 +65,10 @@ import {
   longhaulUpdateTripHandler,
 } from './handlers/longhaul-cloud/trip-save'
 import { meHandler } from './handlers/me'
+import {
+  ringcentralOauthHandler,
+  ringcentralOauthCallbackHandler,
+} from './handlers/integrations/ringcentral-oauth'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
 import { DomainError } from '@pegasus/domain'
@@ -151,6 +155,14 @@ app.route('/api/auth', authHandler)
 // Must be mounted BEFORE the tenant-protected /api/v1 block.
 // ---------------------------------------------------------------------------
 app.route('/api/admin', adminRouter)
+
+// ---------------------------------------------------------------------------
+// RingCentral OAuth callback — pre-tenant. The RingCentral redirect carries no
+// Cognito session or tenant subdomain, so the tenant is re-bound from the
+// HMAC-signed `state`. Flag-gated (RINGCENTRAL_ENABLED) inside the handler.
+// Mounted BEFORE the tenant-protected /api/v1 block.
+// ---------------------------------------------------------------------------
+app.route('/api/integrations/ringcentral', ringcentralOauthCallbackHandler)
 
 // ---------------------------------------------------------------------------
 // Hub agent API — /api/vpn/**
@@ -242,6 +254,9 @@ v1.route('/crew', crewHandler)
 v1.route('/invoices', billingHandler)
 v1.route('/api-clients', apiClientsHandler)
 v1.route('/settings', settingsHandler)
+// RingCentral connect flow — admin starts OAuth (tenant-authenticated). The
+// callback is mounted pre-tenant above. Flag-gated inside the handler.
+v1.route('/integrations/ringcentral', ringcentralOauthHandler)
 v1.route('/documents', documentsHandler)
 // Note: /workflows is mounted on the m2mV1 router above (dual-auth: Cognito
 // sessions + vnd_ vendor keys) — it must be matched before tenantMiddleware.
