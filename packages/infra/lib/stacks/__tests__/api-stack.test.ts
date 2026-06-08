@@ -40,11 +40,12 @@ function synthApiStackWithCognito() {
 }
 
 describe('ApiStack — Lambda function', () => {
-  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + Trigger invoker)', () => {
+  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + RingCentral token-refresh + Trigger invoker)', () => {
     // HTTP API handler + AvpStoreCountFunction + SyncAvpPoliciesFunction +
-    // the CDK Triggers framework's invoker Lambda (one per Trigger).
+    // RingCentralTokenRefreshFunction + the CDK Triggers framework's invoker
+    // Lambda (one per Trigger).
     const template = synthApiStack()
-    template.resourceCountIs('AWS::Lambda::Function', 4)
+    template.resourceCountIs('AWS::Lambda::Function', 5)
   })
 
   it('uses Node.js 20.x runtime', () => {
@@ -499,6 +500,41 @@ describe('ApiStack — AVP store-count metric emitter', () => {
             Resource: '*',
             Condition: {
               StringEquals: { 'cloudwatch:namespace': 'Pegasus/Authorization' },
+            },
+          }),
+        ]),
+      },
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+describe('ApiStack — RingCentral token-refresh cron', () => {
+  it('schedules the token-refresh Lambda every 30 minutes', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::Events::Rule', {
+      ScheduleExpression: 'rate(30 minutes)',
+      State: 'ENABLED',
+      Description: 'Refreshes RingCentral OAuth tokens for active connections.',
+    })
+  })
+
+  it('grants Secrets Manager read/write scoped to the ringcentral name prefix', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith([
+              'secretsmanager:CreateSecret',
+              'secretsmanager:PutSecretValue',
+              'secretsmanager:GetSecretValue',
+            ]),
+            Effect: 'Allow',
+            // Resource is an Fn::Join embedding region/account refs and ending
+            // in the ringcentral name-prefix wildcard.
+            Resource: {
+              'Fn::Join': ['', Match.arrayWith([Match.stringLikeRegexp('ringcentral/\\*')])],
             },
           }),
         ]),

@@ -129,6 +129,27 @@ export interface RcTokenResponse {
   owner_id: string
 }
 
+/**
+ * A RingCentral OAuth/API error carrying the HTTP status, so callers can tell a
+ * permanent failure (4xx — e.g. a dead refresh token, `invalid_grant`) from a
+ * transient one (5xx / network) and avoid permanently sidelining a connection
+ * on a blip. `status` is undefined for a network-level failure.
+ */
+export class RingCentralOAuthError extends Error {
+  constructor(
+    message: string,
+    public readonly status?: number,
+  ) {
+    super(message)
+    this.name = 'RingCentralOAuthError'
+  }
+
+  /** True for client errors (4xx) — the credential/grant is genuinely bad. */
+  get isPermanent(): boolean {
+    return this.status !== undefined && this.status >= 400 && this.status < 500
+  }
+}
+
 function basicAuth(config: RingCentralOAuthConfig): string {
   return Buffer.from(`${config.clientId}:${config.clientSecret}`).toString('base64')
 }
@@ -147,7 +168,10 @@ async function postToken(
   })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(`RingCentral token endpoint returned ${res.status}: ${text.slice(0, 200)}`)
+    throw new RingCentralOAuthError(
+      `RingCentral token endpoint returned ${res.status}: ${text.slice(0, 200)}`,
+      res.status,
+    )
   }
   return (await res.json()) as RcTokenResponse
 }
