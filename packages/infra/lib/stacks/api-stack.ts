@@ -892,6 +892,51 @@ export class ApiStack extends cdk.Stack {
     })
 
     // ---------------------------------------------------------------------------
+    // RingCentral buffer-purge cron (PII retention)
+    //
+    // Neon is a transient buffer; on-prem is authoritative once SENT. This cron
+    // nulls forwarded message bodies past their 72h window and hard-deletes SENT
+    // tombstones older than 30 days. DB-only (no executor / no RC secrets).
+    // Inert until messages exist (empty table → no-op).
+    // ---------------------------------------------------------------------------
+    const ringcentralBufferPurgeLogGroup = new logs.LogGroup(
+      this,
+      'RingCentralBufferPurgeLogGroup',
+      {
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      },
+    )
+
+    const ringcentralBufferPurgeFunction = new nodejs.NodejsFunction(
+      this,
+      'RingCentralBufferPurgeFunction',
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        entry: path.join(__dirname, '../../../../apps/api/src/lambda-ringcentral-buffer-purge.ts'),
+        handler: 'handler',
+        environment: {
+          NODE_ENV: 'production',
+          DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+          LOG_LEVEL: 'INFO',
+        },
+        bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+        memorySize: 256,
+        timeout: cdk.Duration.minutes(5),
+        logGroup: ringcentralBufferPurgeLogGroup,
+      },
+    )
+
+    dbSecret.grantRead(ringcentralBufferPurgeFunction)
+
+    new events.Rule(this, 'RingCentralBufferPurgeSchedule', {
+      // Every 6h keeps the PII body's worst-case lifetime ≈ 72h window + 6h.
+      schedule: events.Schedule.rate(cdk.Duration.hours(6)),
+      description: 'Purges forwarded RingCentral SMS bodies + old tombstones from Neon.',
+      targets: [new eventsTargets.LambdaFunction(ringcentralBufferPurgeFunction)],
+    })
+
+    // ---------------------------------------------------------------------------
     // AVP policy reconciliation — deploy-time Trigger
     //
     // Tenant policy stores are provisioned at tenant-create time

@@ -443,6 +443,41 @@ export async function markForwardSent(
   ])
 }
 
+// ---------------------------------------------------------------------------
+// Buffer-purge — PII retention (Unit 14)
+//
+// Neon is a transient buffer; the on-prem SQL Server is the authoritative store
+// once a message is SENT. These are bulk, cross-tenant (base-client) sweeps run
+// by the buffer-purge cron.
+// ---------------------------------------------------------------------------
+
+/**
+ * Nulls the PII body (and stamps `bodyPurgedAt`) of every forwarded message
+ * whose 72h purge window has elapsed. `bodyPurgedAt: null` makes it idempotent —
+ * an already-purged row is skipped, and captureMessage never rewrites a body on
+ * re-capture, so a purged body is never resurrected. Returns the rows purged.
+ */
+export async function purgeForwardedBodies(db: PrismaClient, now: Date = new Date()) {
+  const { count } = await db.message.updateMany({
+    where: { forwardStatus: 'SENT', purgeAfter: { lte: now }, bodyPurgedAt: null },
+    data: { body: null, bodyPurgedAt: now },
+  })
+  return count
+}
+
+/**
+ * Hard-deletes forwarded message tombstones captured before `olderThan`. Only
+ * SENT rows (durable on-prem) are removed — PENDING/FAILED rows are still being
+ * delivered and DEAD rows are kept for investigation. The FK cascade drops each
+ * deleted message's outbox row. Returns the rows deleted.
+ */
+export async function hardDeleteForwarded(db: PrismaClient, olderThan: Date) {
+  const { count } = await db.message.deleteMany({
+    where: { forwardStatus: 'SENT', capturedAt: { lt: olderThan } },
+  })
+  return count
+}
+
 /**
  * Records a failed forward attempt. `nextStatus` is FAILED for a retry (with a
  * future `nextAttemptAt` backoff) or DEAD when retries are exhausted; the

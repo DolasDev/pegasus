@@ -40,13 +40,14 @@ function synthApiStackWithCognito() {
 }
 
 describe('ApiStack — Lambda function', () => {
-  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + RingCentral token-refresh/sync/renew/capture/forward + Trigger invoker)', () => {
+  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + RingCentral token-refresh/sync/renew/capture/forward/buffer-purge + Trigger invoker)', () => {
     // HTTP API handler + AvpStoreCountFunction + SyncAvpPoliciesFunction +
     // RingCentralTokenRefreshFunction + RingCentralSyncFunction +
     // RingCentralRenewFunction + RingCentralCaptureFunction +
-    // RingCentralForwardFunction + the CDK Triggers framework's invoker Lambda.
+    // RingCentralForwardFunction + RingCentralBufferPurgeFunction +
+    // the CDK Triggers framework's invoker Lambda.
     const template = synthApiStack()
-    template.resourceCountIs('AWS::Lambda::Function', 9)
+    template.resourceCountIs('AWS::Lambda::Function', 10)
   })
 
   it('uses Node.js 20.x runtime', () => {
@@ -544,6 +545,15 @@ describe('ApiStack — RingCentral token-refresh cron', () => {
       ScheduleExpression: 'rate(5 minutes)',
       State: 'ENABLED',
       Description: 'Forwards captured RingCentral SMS to the on-prem SQL Server.',
+    })
+  })
+
+  it('schedules the buffer-purge Lambda every 6 hours', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::Events::Rule', {
+      ScheduleExpression: 'rate(6 hours)',
+      State: 'ENABLED',
+      Description: 'Purges forwarded RingCentral SMS bodies + old tombstones from Neon.',
     })
   })
 
