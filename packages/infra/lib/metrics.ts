@@ -48,3 +48,22 @@ export const RC_SUBSCRIPTIONS_DEAD_METRIC_NAME = 'SubscriptionsDead'
 export const RC_CONNECTIONS_UNHEALTHY_METRIC_NAME = 'ConnectionsUnhealthy'
 /** Seconds since the oldest sync cursor last advanced (capture staleness). */
 export const RC_SYNC_LAG_SECONDS_METRIC_NAME = 'SyncLagSeconds'
+
+// ---------------------------------------------------------------------------
+// Workflow execution-runtime metrics (Phase 2).
+//
+// Emitted by the reconcile poller (apps/api/src/lambda-reconcile-workflow-
+// executions.ts), which repeats these strings literally for the same
+// apps/api-can't-import-@pegasus/infra reason as the emitters above. Keep both
+// sides in sync if either string changes.
+// ---------------------------------------------------------------------------
+
+export const PEGASUS_WORKFLOWS_METRIC_NAMESPACE = 'Pegasus/Workflows'
+
+/**
+ * Count of orphaned RUNNING executions the reconcile poller flipped to a
+ * terminal state (a crashed worker never wrote back). One datapoint per
+ * reconciled row, dimensioned by the resolved terminal `Status`. A sustained
+ * non-zero value means workers are crashing mid-execution.
+ */
+export const WORKFLOW_EXECUTION_RECONCILED_METRIC_NAME = 'WorkflowExecutionReconciled'

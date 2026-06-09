@@ -16,7 +16,11 @@ import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources'
 import * as triggers from 'aws-cdk-lib/triggers'
 import type * as s3 from 'aws-cdk-lib/aws-s3'
 import { type Construct } from 'constructs'
-import { PEGASUS_AUTHZ_METRIC_NAMESPACE, PEGASUS_RINGCENTRAL_METRIC_NAMESPACE } from '../metrics'
+import {
+  PEGASUS_AUTHZ_METRIC_NAMESPACE,
+  PEGASUS_RINGCENTRAL_METRIC_NAMESPACE,
+  PEGASUS_WORKFLOWS_METRIC_NAMESPACE,
+} from '../metrics'
 
 export interface ApiStackProps extends cdk.StackProps {
   /**
@@ -414,6 +418,87 @@ export class ApiStack extends cdk.Stack {
         temporalSecret.secretValueFromJson('apiKey').unsafeUnwrap(),
       )
       temporalSecret.grantRead(apiFunction)
+
+      // -----------------------------------------------------------------------
+      // Workflow-execution reconcile poller (Phase 2 Unit 6.5)
+      //
+      // Crash-recovery backstop: a plain (non-VPC, public-egress) Lambda that
+      // runs every minute, finds RUNNING executions orphaned by a crashed
+      // worker (no terminal write-back), asks Temporal Cloud for their true
+      // state, and flips them. Reads/writes cross-tenant via the root `db`.
+      //
+      // Lives inside this Temporal-configured branch because it has nothing to
+      // reconcile without a Temporal Cloud connection — it reuses the exact
+      // env trio + secret the API Lambda just received. Bundled separately
+      // (own log group) so a misbehaving poller can't crash the API Lambda.
+      // -----------------------------------------------------------------------
+      const reconcileLogGroup = new logs.LogGroup(
+        this,
+        'ReconcileWorkflowExecutionsLogGroup',
+        {
+          retention: logs.RetentionDays.ONE_MONTH,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        },
+      )
+
+      const reconcileFunction = new nodejs.NodejsFunction(
+        this,
+        'ReconcileWorkflowExecutionsFunction',
+        {
+          runtime: lambda.Runtime.NODEJS_20_X,
+          entry: path.join(
+            __dirname,
+            '../../../../apps/api/src/lambda-reconcile-workflow-executions.ts',
+          ),
+          handler: 'handler',
+          environment: {
+            NODE_ENV: 'production',
+            DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+            LOG_LEVEL: 'INFO',
+            TEMPORAL_ADDRESS: props.temporalAddress,
+            TEMPORAL_NAMESPACE: props.temporalNamespace,
+            TEMPORAL_TASK_QUEUE: props.temporalTaskQueue,
+            TEMPORAL_CLOUD_API_KEY: temporalSecret
+              .secretValueFromJson('apiKey')
+              .unsafeUnwrap(),
+          },
+          bundling: {
+            minify: true,
+            sourceMap: true,
+            externalModules: ['@aws-sdk/*'],
+          },
+          memorySize: 256,
+          // Up to 100 describe()/result() round-trips to Temporal Cloud per
+          // tick — generous so a slow Cloud response can't truncate the batch.
+          timeout: cdk.Duration.minutes(2),
+          logGroup: reconcileLogGroup,
+        },
+      )
+
+      dbSecret.grantRead(reconcileFunction)
+      temporalSecret.grantRead(reconcileFunction)
+
+      // PutMetricData has no resource-level scoping (Resource must be `*`); the
+      // cloudwatch:namespace condition narrows this role to the Pegasus/Workflows
+      // namespace only — it can't publish to arbitrary customer namespaces.
+      reconcileFunction.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ['cloudwatch:PutMetricData'],
+          resources: ['*'],
+          conditions: {
+            StringEquals: { 'cloudwatch:namespace': PEGASUS_WORKFLOWS_METRIC_NAMESPACE },
+          },
+        }),
+      )
+
+      new events.Rule(this, 'ReconcileWorkflowExecutionsSchedule', {
+        // Every minute: a crashed worker's orphaned RUNNING row flips to its
+        // true terminal state within ~1–2 min (5-min grace + next tick).
+        schedule: events.Schedule.rate(cdk.Duration.minutes(1)),
+        description:
+          'Reconciles orphaned RUNNING workflow executions against Temporal Cloud (crash-recovery backstop).',
+        targets: [new eventsTargets.LambdaFunction(reconcileFunction)],
+      })
     }
 
     // ---------------------------------------------------------------------------
