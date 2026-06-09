@@ -55,6 +55,14 @@ SELECT status FROM MasterTripStatus WHERE status_id = @statusId;
 // RT2: atomic status change + activity sync + re-read (trailing SELECT).
 // SET NOCOUNT ON suppresses trigger-emitted rowcounts (the activity table
 // carries enabled triggers) so executor `rowsAffected` only reflects our SQL.
+//
+// When @clearReady = 1 (the trip is being confirmed for a driver — see the
+// handler), the driver's manually-entered ready availability is now stale, so
+// we NULL confirmed_date/confirmed_location in the same transaction. The
+// OBJECT_ID guard is required: DriverConfirmedAvailability is lazily created
+// (driver-confirmed-availability-schema.ts), and under XACT_ABORT ON a missing
+// table would otherwise roll back the whole status change on tenants that have
+// never written a confirmed-availability override.
 const STATUS_WRITE_SQL = `
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
@@ -64,6 +72,11 @@ BEGIN TRY
   UPDATE LongDistanceDispatchActivity
     SET trip_status_id = @statusId, status = @statusName, modified_by = @code, updated_at = GETDATE()
     WHERE TripMaster_id = @id;
+  IF @clearReady = 1 AND @driverId IS NOT NULL
+     AND OBJECT_ID('DriverConfirmedAvailability','U') IS NOT NULL
+    UPDATE DriverConfirmedAvailability
+      SET confirmed_date = NULL, confirmed_location = NULL, updated_by = @code, updated_at = GETDATE()
+      WHERE driver_id = @driverId;
   COMMIT TRAN;
   SELECT * FROM TripMaster WHERE id = @id;
 END TRY
@@ -137,12 +150,24 @@ export const longhaulTripStatusHandler: Handler<AppEnv> = async (c) => {
     const statusName =
       (recordsets[2]?.[0] as { status?: string } | undefined)?.status ?? status ?? ''
 
+    // Confirming a driver onto a trip (Pending/Offered -> Accepted/In-Progress)
+    // invalidates their manually-entered ready availability. Clear it in the
+    // same write transaction. driverAssigned is guaranteed here for statusId > 1
+    // by the guard above, but @driverId is also re-guarded in SQL.
+    const oldStatus = header.TripStatus_id ?? 0
+    const clearReady =
+      header.driver_id != null &&
+      (oldStatus === 1 || oldStatus === 2) &&
+      (statusId === 3 || statusId === 4)
+
     const { recordset } = await executeSql(connectionString, STATUS_WRITE_SQL, {
       params: [
         { name: 'id', value: tripId },
         { name: 'statusId', value: statusId },
         { name: 'statusName', value: statusName },
         { name: 'code', value: resolved.code },
+        { name: 'clearReady', value: clearReady ? 1 : 0 },
+        { name: 'driverId', value: header.driver_id ?? null },
       ],
     })
     return c.json({ data: recordset[0] ?? null })

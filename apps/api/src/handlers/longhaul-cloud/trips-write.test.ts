@@ -94,6 +94,63 @@ describe('PATCH /trips/:id/status (cloud-direct)', () => {
     expect(opts.params).toContainEqual({ name: 'code', value: 7 })
   })
 
+  // Confirming a driver onto a trip clears their stale ready availability.
+  it('clears ready availability on Offered -> Accepted for an assigned driver', async () => {
+    executeSqlMock
+      .mockResolvedValueOnce(readResult([{ driver_id: 9, TripStatus_id: 2 }]))
+      .mockResolvedValueOnce({ recordset: [{ id: 55 }], recordsets: [], rowsAffected: [1] })
+
+    const res = await req('/onprem/longhaul/trips/55/status', 'PATCH', { statusId: 3 })
+
+    expect(res.status).toBe(200)
+    const [, writeSql, opts] = executeSqlMock.mock.calls[1]!
+    expect(writeSql).toContain('UPDATE DriverConfirmedAvailability')
+    expect(opts.params).toContainEqual({ name: 'clearReady', value: 1 })
+    expect(opts.params).toContainEqual({ name: 'driverId', value: 9 })
+  })
+
+  it('clears ready availability on a direct Pending -> Accepted jump', async () => {
+    executeSqlMock
+      .mockResolvedValueOnce(readResult([{ driver_id: 9, TripStatus_id: 1 }]))
+      .mockResolvedValueOnce({ recordset: [{ id: 55 }], recordsets: [], rowsAffected: [1] })
+
+    const res = await req('/onprem/longhaul/trips/55/status', 'PATCH', { statusId: 3 })
+
+    expect(res.status).toBe(200)
+    expect(executeSqlMock.mock.calls[1]![2].params).toContainEqual({
+      name: 'clearReady',
+      value: 1,
+    })
+  })
+
+  it('does NOT clear when the driver is already confirmed (Accepted -> In-Progress)', async () => {
+    executeSqlMock
+      .mockResolvedValueOnce(readResult([{ driver_id: 9, TripStatus_id: 3 }]))
+      .mockResolvedValueOnce({ recordset: [{ id: 55 }], recordsets: [], rowsAffected: [1] })
+
+    const res = await req('/onprem/longhaul/trips/55/status', 'PATCH', { statusId: 4 })
+
+    expect(res.status).toBe(200)
+    expect(executeSqlMock.mock.calls[1]![2].params).toContainEqual({
+      name: 'clearReady',
+      value: 0,
+    })
+  })
+
+  it('does NOT clear on Pending -> Offered (still not confirmed)', async () => {
+    executeSqlMock
+      .mockResolvedValueOnce(readResult([{ driver_id: 9, TripStatus_id: 1 }]))
+      .mockResolvedValueOnce({ recordset: [{ id: 55 }], recordsets: [], rowsAffected: [1] })
+
+    const res = await req('/onprem/longhaul/trips/55/status', 'PATCH', { statusId: 2 })
+
+    expect(res.status).toBe(200)
+    expect(executeSqlMock.mock.calls[1]![2].params).toContainEqual({
+      name: 'clearReady',
+      value: 0,
+    })
+  })
+
   it('returns 404 when the trip is missing', async () => {
     executeSqlMock.mockResolvedValueOnce(readResult(null))
     const res = await req('/onprem/longhaul/trips/55/status', 'PATCH', { statusId: 3 })

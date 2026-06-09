@@ -8,6 +8,16 @@ export enum TripStatus {
   FINALIZED = 'Finalized',
 }
 
+// A trip moving from Pending/Offered into Accepted/In-Progress confirms the
+// driver, which invalidates (and server-side clears) their manually-entered
+// ready availability. The Trips screen uses this to warn before the change.
+const PRE_CONFIRM_STATUSES = new Set<TripStatus>([TripStatus.PENDING, TripStatus.OFFERED])
+const CONFIRMED_STATUSES = new Set<TripStatus>([TripStatus.ACCEPTED, TripStatus.IN_PROGRESS])
+
+export function clearsDriverAvailability(from?: TripStatus, to?: TripStatus): boolean {
+  return !!from && !!to && PRE_CONFIRM_STATUSES.has(from) && CONFIRMED_STATUSES.has(to)
+}
+
 export const TripStatusOptions = [
   {
     status: TripStatus.PENDING,

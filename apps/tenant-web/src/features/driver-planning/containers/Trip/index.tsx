@@ -81,7 +81,7 @@ function TripInternal() {
 
   const promptForStatusUpdate = usePromptForStatusUpdate()
   const promptAndChangeStatus = (status: any, status_id: any) => {
-    promptForStatusUpdate(status, () => changeStatus(status_id, status))
+    promptForStatusUpdate(status, trip.status?.status, () => changeStatus(status_id, status))
   }
 
   useStatusPredictionPrompt({
