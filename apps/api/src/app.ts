@@ -251,8 +251,11 @@ v1.route('/crew', crewHandler)
 v1.route('/invoices', billingHandler)
 v1.route('/api-clients', apiClientsHandler)
 v1.route('/settings', settingsHandler)
-// RingCentral connect flow — admin starts OAuth (tenant-authenticated). The
-// callback is mounted pre-tenant above. Flag-gated inside the handler.
+// RingCentral connections (tenant-authenticated, admin). Bring-your-own JWT:
+// the tenant pastes their RingCentral app's client id/secret + JWT credential,
+// which connect validates with a live jwt-bearer exchange. No platform OAuth app
+// and no consent redirect. The webhook is mounted pre-tenant above. Connect is
+// flag-gated inside the handler; list/disconnect are not.
 v1.route('/integrations/ringcentral', ringcentralOauthHandler)
 v1.route('/documents', documentsHandler)
 // Note: /workflows is mounted on the m2mV1 router above (dual-auth: Cognito
