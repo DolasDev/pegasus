@@ -1,15 +1,20 @@
 # Pegasus Workflows — Author, Upload, Browse (Phase 1)
 
-**Status (2026-05-18): in progress.** Backend foundation, both web UIs, and
-the admin promote/demote control are shipped on `main`. The Python SDK,
-`workflows-stdlib`, and the local Temporal docker-compose are built on
-branch `feat/workflows-sdk-python` (commits `7b8e670`, `fc42e75`, `e66cd4f`,
-`0b8add1`) — all three remaining sections below are now ✅. Left in
-`in-progress/` pending full live verification + merge.
+> ## ✅ PHASE COMPLETE (archived 2026-06-09)
+>
+> All deliverables merged to `main`: backend foundation, admin
+> promote/demote, both web UIs (`8a14977`, `1619e94`, `e70d61a`), Python
+> SDK + stdlib + local Temporal (PR #110, merged 2026-05-19), and the
+> `vnd_*` vendor-key auth fix (PR #112, merged 2026-05-19). The
+> verification items below were superseded by Phase 2, which exercised
+> the full upload→execute path live on staging + prod (see
+> `plans/completed/workflows-phase2-execution-runtime.md`). Phase 3
+> (sandboxed tenant code + triggers) is scoped in
+> `plans/todo/workflows-phase3-sandboxed-tenant-code-and-triggers.md`.
 
-**Started:** 2026-05-13
-**Commits:** `8a14977`, `1619e94`, `e70d61a` (on `main`);
-`7b8e670`, `fc42e75`, `e66cd4f`, `0b8add1` (on `feat/workflows-sdk-python`)
+**Started:** 2026-05-13 · **Completed:** 2026-05-19 (archived 2026-06-09)
+**Commits:** `8a14977`, `1619e94`, `e70d61a` (direct to `main`);
+PR #110 (SDK/stdlib/Temporal), PR #112 (vendor-key auth)
 
 ---
 
