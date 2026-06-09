@@ -4,8 +4,9 @@
 // Tests cover:
 //   - Loading state rendering
 //   - Error state rendering
-//   - Empty / disconnected state (number input + Connect button)
-//   - Connect: invalid/disabled state with no number, calls startRingCentralConnect
+//   - Empty / disconnected state (4 credential fields + Connect button)
+//   - Connect: disabled until all fields filled, calls the connect mutation
+//   - Connect: a 400 surfaces the rejected-credentials message
 //   - Connected state (renders a connection + Disconnect button)
 //   - Clicking Disconnect reveals the confirm card
 // ---------------------------------------------------------------------------
@@ -15,12 +16,14 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RingCentralIntegrationPage } from '../routes/settings.integrations.ringcentral'
 import type { RcConnection } from '../api/ringcentral'
+import { ApiError } from '../api/client'
 
 // ---------------------------------------------------------------------------
 // Mock dependencies
 // ---------------------------------------------------------------------------
 
 // Mock the React Query hooks from our ringcentral query module
+const mockUseConnectRingCentral = vi.fn()
 const mockUseDisconnectRingCentral = vi.fn()
 
 vi.mock('@/api/queries/ringcentral', () => ({
@@ -28,13 +31,8 @@ vi.mock('@/api/queries/ringcentral', () => ({
     queryKey: ['integrations', 'ringcentral', 'connections'],
     queryFn: vi.fn(),
   },
+  useConnectRingCentral: () => mockUseConnectRingCentral(),
   useDisconnectRingCentral: () => mockUseDisconnectRingCentral(),
-}))
-
-// Mock the imperative connect call.
-const mockStartConnect = vi.fn()
-vi.mock('@/api/ringcentral', () => ({
-  startRingCentralConnect: (...args: unknown[]) => mockStartConnect(...args),
 }))
 
 const connectionsQueryKey = ['integrations', 'ringcentral', 'connections']
@@ -104,8 +102,10 @@ function renderPage() {
 describe('RingCentralIntegrationPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockUseConnectRingCentral.mockReturnValue(
+      makeMutationResult({ mutateAsync: vi.fn().mockResolvedValue({ connectionId: 'conn-new' }) }),
+    )
     mockUseDisconnectRingCentral.mockReturnValue(makeMutationResult())
-    mockStartConnect.mockResolvedValue({ url: 'https://rc.example/authorize' })
     connectionsReturn = {
       data: { connections: [] },
       isLoading: false,
@@ -125,29 +125,62 @@ describe('RingCentralIntegrationPage', () => {
     expect(screen.getByText(/failed to load ringcentral connections/i)).toBeInTheDocument()
   })
 
-  it('shows the connect form (number input + button) when there are no connections', () => {
+  it('shows the credential form (4 fields + button) when there are no connections', () => {
     connectionsReturn = { data: { connections: [] }, isLoading: false, isError: false }
     renderPage()
 
+    expect(screen.getByLabelText(/client id/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/client secret/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^jwt$/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/owner phone number/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /connect ringcentral/i })).toBeInTheDocument()
   })
 
-  it('disables Connect until a number is entered, then calls startRingCentralConnect', async () => {
+  function fillCredentialForm() {
+    fireEvent.change(screen.getByLabelText(/client id/i), { target: { value: 'cid' } })
+    fireEvent.change(screen.getByLabelText(/client secret/i), { target: { value: 'secret' } })
+    fireEvent.change(screen.getByLabelText(/^jwt$/i), { target: { value: 'the-jwt' } })
+    fireEvent.change(screen.getByLabelText(/owner phone number/i), {
+      target: { value: '+14155550123' },
+    })
+  }
+
+  it('disables Connect until all fields are filled, then calls the connect mutation', async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({ connectionId: 'conn-new' })
+    mockUseConnectRingCentral.mockReturnValue(makeMutationResult({ mutateAsync }))
     connectionsReturn = { data: { connections: [] }, isLoading: false, isError: false }
     renderPage()
 
     const button = screen.getByRole('button', { name: /connect ringcentral/i })
     expect(button).toBeDisabled()
 
-    fireEvent.change(screen.getByLabelText(/owner phone number/i), {
-      target: { value: '+14155550123' },
-    })
+    fillCredentialForm()
     expect(button).not.toBeDisabled()
 
     fireEvent.click(button)
     await waitFor(() => {
-      expect(mockStartConnect).toHaveBeenCalledWith('+14155550123')
+      expect(mutateAsync).toHaveBeenCalledWith({
+        clientId: 'cid',
+        clientSecret: 'secret',
+        jwt: 'the-jwt',
+        number: '+14155550123',
+      })
+    })
+  })
+
+  it('shows the rejected-credentials message when the connect mutation throws a 400', async () => {
+    const mutateAsync = vi
+      .fn()
+      .mockRejectedValue(new ApiError('Bad credentials', 'INVALID_CREDENTIALS', 400))
+    mockUseConnectRingCentral.mockReturnValue(makeMutationResult({ mutateAsync }))
+    connectionsReturn = { data: { connections: [] }, isLoading: false, isError: false }
+    renderPage()
+
+    fillCredentialForm()
+    fireEvent.click(screen.getByRole('button', { name: /connect ringcentral/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/those ringcentral credentials were rejected/i)).toBeInTheDocument()
     })
   })
 

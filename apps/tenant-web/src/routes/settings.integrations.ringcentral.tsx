@@ -9,10 +9,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   ringCentralConnectionsQueryOptions,
+  useConnectRingCentral,
   useDisconnectRingCentral,
 } from '@/api/queries/ringcentral'
 import type { RcConnection } from '@/api/ringcentral'
-import { startRingCentralConnect } from '@/api/ringcentral'
 import { ApiError } from '@/api/client'
 
 // ---------------------------------------------------------------------------
@@ -45,25 +45,43 @@ function formatLastRefreshed(value: string | null): string {
 // ---------------------------------------------------------------------------
 
 function ConnectForm() {
+  const [clientId, setClientId] = useState('')
+  const [clientSecret, setClientSecret] = useState('')
+  const [jwt, setJwt] = useState('')
   const [number, setNumber] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [isStarting, setIsStarting] = useState(false)
+  const connectMutation = useConnectRingCentral()
+
+  const isPending = connectMutation.isPending
+  const isComplete =
+    clientId.trim().length > 0 &&
+    clientSecret.trim().length > 0 &&
+    jwt.trim().length > 0 &&
+    number.trim().length > 0
 
   async function handleConnect() {
     setError(null)
-    setIsStarting(true)
     try {
-      const { url } = await startRingCentralConnect(number)
-      window.location.assign(url)
+      await connectMutation.mutateAsync({
+        clientId: clientId.trim(),
+        clientSecret: clientSecret.trim(),
+        jwt: jwt.trim(),
+        number: number.trim(),
+      })
+      // On success the connections query invalidates and the connection card
+      // replaces this form.
     } catch (err) {
-      if (err instanceof ApiError && err.status === 503) {
+      if (err instanceof ApiError && err.status === 400) {
+        setError(
+          'Those RingCentral credentials were rejected — check the client id, secret, and JWT.',
+        )
+      } else if (err instanceof ApiError && err.status === 503) {
         setError('RingCentral is not enabled — contact your administrator.')
       } else if (err instanceof Error) {
         setError(err.message)
       } else {
         setError('An unexpected error occurred. Please try again.')
       }
-      setIsStarting(false)
     }
   }
 
@@ -77,10 +95,54 @@ function ConnectForm() {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Link a RingCentral extension so Pegasus can capture calls and messages. Enter the owner
-          phone number in E.164 format (for example <code className="font-mono">+14155550123</code>
-          ), then authorize the connection with RingCentral.
+          Link your own RingCentral app so Pegasus can capture calls and messages. In the{' '}
+          <a
+            href="https://developers.ringcentral.com/guide/authentication/jwt-flow"
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-2"
+          >
+            RingCentral developer console
+          </a>{' '}
+          register an app, enable JWT auth, and create a JWT credential bound to that app&apos;s
+          client id. Paste the client id, client secret, and JWT below, along with the owner
+          extension&apos;s phone number in E.164 format.
         </p>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="rc-client-id">Client ID</Label>
+          <Input
+            id="rc-client-id"
+            value={clientId}
+            onChange={(e) => setClientId(e.target.value)}
+            disabled={isPending}
+            autoComplete="off"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="rc-client-secret">Client secret</Label>
+          <Input
+            id="rc-client-secret"
+            type="password"
+            value={clientSecret}
+            onChange={(e) => setClientSecret(e.target.value)}
+            disabled={isPending}
+            autoComplete="off"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="rc-jwt">JWT</Label>
+          <Input
+            id="rc-jwt"
+            type="password"
+            value={jwt}
+            onChange={(e) => setJwt(e.target.value)}
+            disabled={isPending}
+            autoComplete="off"
+          />
+        </div>
 
         <div className="space-y-1.5">
           <Label htmlFor="rc-number">Owner phone number</Label>
@@ -89,7 +151,7 @@ function ConnectForm() {
             placeholder="+14155550123"
             value={number}
             onChange={(e) => setNumber(e.target.value)}
-            disabled={isStarting}
+            disabled={isPending}
           />
         </div>
 
@@ -106,10 +168,10 @@ function ConnectForm() {
         <div className="flex justify-end">
           <Button
             className="gap-2"
-            disabled={isStarting || number.trim().length === 0}
+            disabled={isPending || !isComplete}
             onClick={() => void handleConnect()}
           >
-            {isStarting ? <Loader2 size={14} className="animate-spin" /> : <Phone size={14} />}
+            {isPending ? <Loader2 size={14} className="animate-spin" /> : <Phone size={14} />}
             Connect RingCentral
           </Button>
         </div>

@@ -1,7 +1,7 @@
 import { apiFetch } from './client'
 
 /**
- * A single RingCentral OAuth connection bound to a tenant. One connection per
+ * A single RingCentral connection bound to a tenant. One connection per
  * RingCentral extension (owner number). `tokenStatus`/`health` drive the badge
  * shown on the integration settings page.
  */
@@ -29,8 +29,14 @@ export async function disconnectRingCentralConnection(
   })
 }
 
-export async function startRingCentralConnect(number: string): Promise<{ url: string }> {
-  return apiFetch<{ url: string }>(
-    `/api/v1/integrations/ringcentral/oauth/start?number=${encodeURIComponent(number)}`,
-  )
+export async function connectRingCentral(input: {
+  clientId: string
+  clientSecret: string
+  jwt: string
+  number: string
+}): Promise<{ connectionId: string }> {
+  return apiFetch<{ connectionId: string }>('/api/v1/integrations/ringcentral/connections', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
 }
