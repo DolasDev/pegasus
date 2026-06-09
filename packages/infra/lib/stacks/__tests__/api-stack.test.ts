@@ -677,3 +677,79 @@ describe('ApiStack — RingCentral master switch (ringcentralEnabled)', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+describe('ApiStack — workflow-execution reconcile poller (Phase 2 Unit 6.5)', () => {
+  // A complete secret ARN (with the random 6-char suffix) is required by
+  // Secret.fromSecretCompleteArn — see the no-suffix-rejection gotcha.
+  const temporalProps = {
+    env: { account: '111111111111', region: 'us-east-1' },
+    temporalAddress: 'pegasus-staging.chgel.tmprl.cloud:7233',
+    temporalNamespace: 'pegasus-staging.chgel',
+    temporalTaskQueue: 'pegasus-stdlib-staging',
+    temporalCloudSecretArn:
+      'arn:aws:secretsmanager:us-east-1:111111111111:secret:pegasus/staging/temporal-cloud-aBcDeF',
+  }
+
+  function synthTemporal() {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const apiStack = new ApiStack(app, 'TestApiTemporal', temporalProps)
+    return Template.fromStack(apiStack)
+  }
+
+  it('does NOT synthesize the poller when Temporal is unconfigured', () => {
+    const template = synthApiStack()
+    const rules = template.findResources('AWS::Events::Rule')
+    const reconcileRules = Object.values(rules).filter((r) =>
+      String(r.Properties?.Description ?? '').includes('reconcile'),
+    )
+    if (reconcileRules.length !== 0) {
+      throw new Error(
+        `expected no reconcile Rule without Temporal config, found ${reconcileRules.length}`,
+      )
+    }
+  })
+
+  it('schedules the reconcile poller every minute via EventBridge', () => {
+    const template = synthTemporal()
+    template.hasResourceProperties('AWS::Events::Rule', {
+      ScheduleExpression: 'rate(1 minute)',
+      State: 'ENABLED',
+      Description:
+        'Reconciles orphaned RUNNING workflow executions against Temporal Cloud (crash-recovery backstop).',
+    })
+  })
+
+  it('wires the poller Lambda with DATABASE_URL + the Temporal env trio + API key', () => {
+    const template = synthTemporal()
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.objectLike({
+          DATABASE_URL: Match.anyValue(),
+          TEMPORAL_ADDRESS: 'pegasus-staging.chgel.tmprl.cloud:7233',
+          TEMPORAL_NAMESPACE: 'pegasus-staging.chgel',
+          TEMPORAL_TASK_QUEUE: 'pegasus-stdlib-staging',
+          TEMPORAL_CLOUD_API_KEY: Match.anyValue(),
+        }),
+      },
+    })
+  })
+
+  it('grants cloudwatch:PutMetricData scoped to the Pegasus/Workflows namespace', () => {
+    const template = synthTemporal()
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'cloudwatch:PutMetricData',
+            Effect: 'Allow',
+            Resource: '*',
+            Condition: {
+              StringEquals: { 'cloudwatch:namespace': 'Pegasus/Workflows' },
+            },
+          }),
+        ]),
+      },
+    })
+  })
+})
