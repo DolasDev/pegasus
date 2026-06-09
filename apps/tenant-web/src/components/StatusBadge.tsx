@@ -1,4 +1,5 @@
 import type { MoveStatus, QuoteStatus, InvoiceStatus } from '@pegasus/domain'
+import type { WorkflowExecutionStatus } from '@/api/workflows'
 import { Badge } from '@/components/ui/badge'
 
 // ---------------------------------------------------------------------------
@@ -77,4 +78,36 @@ const INVOICE_STATUS_LABEL: Record<InvoiceStatus, string> = {
 
 export function InvoiceStatusBadge({ status }: { status: InvoiceStatus }) {
   return <Badge variant={INVOICE_STATUS_VARIANT[status]}>{INVOICE_STATUS_LABEL[status]}</Badge>
+}
+
+// ---------------------------------------------------------------------------
+// WorkflowExecutionStatus badge
+// ---------------------------------------------------------------------------
+const WORKFLOW_EXECUTION_STATUS_VARIANT: Record<
+  WorkflowExecutionStatus,
+  'muted' | 'info' | 'warning' | 'success' | 'destructive'
+> = {
+  QUEUED: 'muted',
+  RUNNING: 'info',
+  COMPLETED: 'success',
+  FAILED: 'destructive',
+  TIMED_OUT: 'warning',
+  CANCELLED: 'warning',
+}
+
+const WORKFLOW_EXECUTION_STATUS_LABEL: Record<WorkflowExecutionStatus, string> = {
+  QUEUED: 'Queued',
+  RUNNING: 'Running',
+  COMPLETED: 'Completed',
+  FAILED: 'Failed',
+  TIMED_OUT: 'Timed out',
+  CANCELLED: 'Cancelled',
+}
+
+export function WorkflowExecutionStatusBadge({ status }: { status: WorkflowExecutionStatus }) {
+  return (
+    <Badge variant={WORKFLOW_EXECUTION_STATUS_VARIANT[status]}>
+      {WORKFLOW_EXECUTION_STATUS_LABEL[status]}
+    </Badge>
+  )
 }
