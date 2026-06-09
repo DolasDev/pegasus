@@ -377,7 +377,7 @@ describe('shipments thunk — selectShipment', () => {
     expect(mockedAPI.fetchShipments).not.toHaveBeenCalled()
   })
 
-  it('fetches by order_num and stores the first match', async () => {
+  it('fetches by order_num and stores the exact match', async () => {
     const ship = { order_num: 7, label: 'one' }
     mockedAPI.fetchShipments.mockResolvedValueOnce([ship, { order_num: 8 }])
     const store = makeStore()
@@ -385,6 +385,43 @@ describe('shipments thunk — selectShipment', () => {
     expect(mockedAPI.fetchShipments).toHaveBeenCalledWith({ searchTerm: '7' })
     expect(store.getState().shipments.selectedShipment).toEqual(ship)
     expect(store.getState().shipments.loadingSelectedShipment).toBe(false)
+  })
+
+  it('does NOT return a prefix near-match when the exact order_num is absent', async () => {
+    // Fuzzy search for "7" also returns "70"/"71"; result[0] would be the wrong
+    // row. With no exact "7" present, this must resolve to not-found, not "70".
+    mockedAPI.fetchShipments.mockResolvedValueOnce([
+      { order_num: 70, label: 'seventy' },
+      { order_num: 71, label: 'seventy-one' },
+    ])
+    const store = makeStore({ selectedShipment: { order_num: 999 } })
+    await store.dispatch(selectShipment({ order_num: 7 }) as any)
+    expect(store.getState().shipments.selectedShipment).toEqual({ order_num: 999 })
+    expect(store.getState().shipments.error).toBe('Shipment 7 not found')
+    expect(store.getState().shipments.loadingSelectedShipment).toBe(false)
+    expect(mockedNotifyError).toHaveBeenCalledWith('Shipment 7 not found')
+  })
+
+  it('picks the exact match even when prefix near-matches sort first', async () => {
+    const exact = { order_num: 7, label: 'seven' }
+    mockedAPI.fetchShipments.mockResolvedValueOnce([
+      { order_num: 70, label: 'seventy' },
+      exact,
+      { order_num: 71, label: 'seventy-one' },
+    ])
+    const store = makeStore()
+    await store.dispatch(selectShipment({ order_num: 7 }) as any)
+    expect(store.getState().shipments.selectedShipment).toEqual(exact)
+    expect(mockedNotifyError).not.toHaveBeenCalled()
+  })
+
+  it('treats an empty result set as not-found and surfaces the error', async () => {
+    mockedAPI.fetchShipments.mockResolvedValueOnce([])
+    const store = makeStore()
+    await store.dispatch(selectShipment({ order_num: 42 }) as any)
+    expect(store.getState().shipments.selectedShipment).toBeNull()
+    expect(store.getState().shipments.error).toBe('Shipment 42 not found')
+    expect(mockedNotifyError).toHaveBeenCalledWith('Shipment 42 not found')
   })
 
   it('captures error and clears loadingSelectedShipment on rejection', async () => {
