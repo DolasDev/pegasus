@@ -1,5 +1,9 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
-import { listRingCentralConnections, disconnectRingCentralConnection } from '@/api/ringcentral'
+import {
+  listRingCentralConnections,
+  disconnectRingCentralConnection,
+  connectRingCentral,
+} from '@/api/ringcentral'
 
 // ---------------------------------------------------------------------------
 // Query keys
@@ -17,6 +21,17 @@ export const ringCentralConnectionsQueryOptions = queryOptions({
 // ---------------------------------------------------------------------------
 // Mutations
 // ---------------------------------------------------------------------------
+export function useConnectRingCentral() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { clientId: string; clientSecret: string; jwt: string; number: string }) =>
+      connectRingCentral(input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: connectionsQueryKey })
+    },
+  })
+}
+
 export function useDisconnectRingCentral() {
   const qc = useQueryClient()
   return useMutation({

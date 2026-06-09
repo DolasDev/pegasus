@@ -13,7 +13,7 @@ import { apiFetch } from '../api/client'
 import {
   listRingCentralConnections,
   disconnectRingCentralConnection,
-  startRingCentralConnect,
+  connectRingCentral,
 } from '../api/ringcentral'
 
 const mockApiFetch = vi.mocked(apiFetch)
@@ -36,13 +36,20 @@ describe('ringcentral api', () => {
     expect(result).toEqual({ disconnected: true })
   })
 
-  it('startRingCentralConnect calls GET oauth/start with the URL-encoded number', async () => {
-    mockApiFetch.mockResolvedValueOnce({ url: 'https://rc.example/authorize' })
-    const result = await startRingCentralConnect('+14155550123')
-    expect(mockApiFetch).toHaveBeenCalledWith(
-      '/api/v1/integrations/ringcentral/oauth/start?number=%2B14155550123',
-    )
-    expect(result).toEqual({ url: 'https://rc.example/authorize' })
+  it('connectRingCentral POSTs the credentials to /connections', async () => {
+    mockApiFetch.mockResolvedValueOnce({ connectionId: 'conn-9' })
+    const input = {
+      clientId: 'cid',
+      clientSecret: 'secret',
+      jwt: 'the-jwt',
+      number: '+14155550123',
+    }
+    const result = await connectRingCentral(input)
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/integrations/ringcentral/connections', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+    expect(result).toEqual({ connectionId: 'conn-9' })
   })
 
   it('propagates errors thrown by apiFetch', async () => {
