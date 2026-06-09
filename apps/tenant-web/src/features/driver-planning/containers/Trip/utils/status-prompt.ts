@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { TripStatus, TripStatusOptions } from '../../../common/trip-status'
+import {
+  clearsDriverAvailability,
+  TripStatus,
+  TripStatusOptions,
+} from '../../../common/trip-status'
 import { useConfirm } from '../../../components/ConfirmDialog'
 
 function predictCurrentStatus({
@@ -24,16 +28,27 @@ function predictCurrentStatus({
  * Hook returning a function that prompts the user to promote a trip status,
  * then invokes the supplied callback if they confirm. Uses the app-level
  * <ConfirmDialog> rather than `window.confirm`.
+ *
+ * When the promotion confirms the driver onto the trip (Pending/Offered ->
+ * Accepted/In-Progress), it shows a destructive warning variant because the
+ * driver's recorded ready availability will be cleared server-side.
  */
 export function usePromptForStatusUpdate() {
   const confirm = useConfirm()
   return useCallback(
-    async (status: TripStatus, cb: () => void) => {
-      const ok = await confirm({
-        title: 'Promote trip status?',
-        description: `Do you want to promote this trip to ${status}?`,
-        confirmLabel: 'Promote',
-      })
+    async (target: TripStatus, current: TripStatus | undefined, cb: () => void) => {
+      const ok = clearsDriverAvailability(current, target)
+        ? await confirm({
+            title: 'Confirm trip & clear driver availability?',
+            description: `Promoting to ${target} confirms the driver for this trip. Their recorded ready date and location will be cleared.`,
+            confirmLabel: 'Confirm',
+            destructive: true,
+          })
+        : await confirm({
+            title: 'Promote trip status?',
+            description: `Do you want to promote this trip to ${target}?`,
+            confirmLabel: 'Promote',
+          })
       if (ok) cb()
     },
     [confirm],
@@ -65,7 +80,7 @@ export const useStatusPredictionPrompt = ({ trip, changeStatus }: any) => {
     })
     if (!calculatedStatus) return
     const status = TripStatusOptions.find((option) => option.status === calculatedStatus)
-    promptForStatusUpdate(calculatedStatus as TripStatus, () =>
+    promptForStatusUpdate(calculatedStatus as TripStatus, trip?.status?.status, () =>
       changeStatus(status?.status_id, status?.status),
     )
   }, [changeStatus, showPrompt, trip, promptForStatusUpdate])

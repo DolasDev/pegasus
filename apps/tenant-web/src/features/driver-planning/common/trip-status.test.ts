@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { TripStatus, TripStatusOptions } from './trip-status'
+import { clearsDriverAvailability, TripStatus, TripStatusOptions } from './trip-status'
 
 describe('TripStatus', () => {
   it('maps each enum member to its display label', () => {
@@ -25,5 +25,26 @@ describe('TripStatusOptions', () => {
   it('has unique status_ids', () => {
     const ids = TripStatusOptions.map((o) => o.status_id)
     expect(new Set(ids).size).toBe(ids.length)
+  })
+})
+
+describe('clearsDriverAvailability', () => {
+  it('is true when moving from Pending/Offered into Accepted/In-Progress', () => {
+    expect(clearsDriverAvailability(TripStatus.OFFERED, TripStatus.ACCEPTED)).toBe(true)
+    expect(clearsDriverAvailability(TripStatus.OFFERED, TripStatus.IN_PROGRESS)).toBe(true)
+    expect(clearsDriverAvailability(TripStatus.PENDING, TripStatus.ACCEPTED)).toBe(true)
+    expect(clearsDriverAvailability(TripStatus.PENDING, TripStatus.IN_PROGRESS)).toBe(true)
+  })
+
+  it('is false when the driver is already confirmed or not yet confirmed', () => {
+    expect(clearsDriverAvailability(TripStatus.ACCEPTED, TripStatus.IN_PROGRESS)).toBe(false)
+    expect(clearsDriverAvailability(TripStatus.PENDING, TripStatus.OFFERED)).toBe(false)
+    expect(clearsDriverAvailability(TripStatus.ACCEPTED, TripStatus.FINALIZED)).toBe(false)
+    expect(clearsDriverAvailability(TripStatus.OFFERED, TripStatus.FINALIZED)).toBe(false)
+  })
+
+  it('is false when either status is missing', () => {
+    expect(clearsDriverAvailability(undefined, TripStatus.ACCEPTED)).toBe(false)
+    expect(clearsDriverAvailability(TripStatus.OFFERED, undefined)).toBe(false)
   })
 })
