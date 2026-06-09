@@ -165,15 +165,31 @@ export const fetchShipments = (query: any) => async (dispatch: AppDispatch) => {
 export const selectShipment = (selectedShipment: any) => async (dispatch: AppDispatch) => {
   if (!selectedShipment) {
     dispatch(fetchShipmentSuccess(null))
-  } else {
-    try {
-      dispatch(fetchShipmentStart())
-      const shipment = await API.fetchShipments({ searchTerm: String(selectedShipment.order_num) })
-      dispatch(fetchShipmentSuccess(shipment[0]))
-    } catch (e: any) {
-      console.error(`Error fetching shipment`, e)
-      dispatch(fetchShipmentFailure(e.message))
+    return
+  }
+  const orderNum = String(selectedShipment.order_num)
+  try {
+    dispatch(fetchShipmentStart())
+    // `fetchShipments({ searchTerm })` is a fuzzy substring match — searching
+    // "7" also returns "70", "71", … — so result[0] can be the WRONG shipment.
+    // Resolve the row whose order_num is an exact match, and treat "no exact
+    // match" as not-found rather than silently loading a near-match.
+    const results = await API.fetchShipments({ searchTerm: orderNum })
+    const exact = (Array.isArray(results) ? results : []).find(
+      (s: any) => String(s?.order_num) === orderNum,
+    )
+    if (exact) {
+      dispatch(fetchShipmentSuccess(exact))
+    } else {
+      const msg = `Shipment ${orderNum} not found`
+      dispatch(fetchShipmentFailure(msg))
+      notifyError(msg)
     }
+  } catch (e: any) {
+    console.error(`Error fetching shipment`, e)
+    const msg = e?.message ?? 'Failed to load shipment'
+    dispatch(fetchShipmentFailure(msg))
+    notifyError(msg)
   }
 }
 
