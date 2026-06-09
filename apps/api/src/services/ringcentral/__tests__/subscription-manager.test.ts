@@ -21,16 +21,8 @@ vi.mock('../../../repositories/messaging.repository', () => ({
 }))
 
 import { ensureForConnection, EVENT_FILTERS } from '../subscription-manager'
-import { RingCentralOAuthError, type RingCentralOAuthConfig } from '../oauth'
+import { RingCentralOAuthError } from '../oauth'
 import type * as ClientModule from '../client'
-
-const config = {
-  clientId: 'c',
-  clientSecret: 's',
-  redirectUri: 'r',
-  apiBase: 'https://platform.devtest.ringcentral.com',
-  stateSecret: 'x',
-} satisfies RingCentralOAuthConfig
 
 const db = {} as never
 const connection = { id: 'conn-1', tenantId: 'tnt-1', tokenSecretArn: 'arn:1' }
@@ -46,7 +38,10 @@ let client: {
 
 beforeEach(() => {
   Object.values(h).forEach((fn) => fn.mockReset())
-  h.acquireAccessToken.mockResolvedValue('at')
+  h.acquireAccessToken.mockResolvedValue({
+    accessToken: 'at',
+    apiBase: 'https://platform.devtest.ringcentral.com',
+  })
   client = { post: vi.fn(), put: vi.fn(), del: vi.fn(), get: vi.fn() }
   h.makeClient.mockReturnValue(client)
   h.upsertSubscription.mockResolvedValue({})
@@ -59,7 +54,7 @@ describe('ensureForConnection', () => {
     h.findSubscriptionByConnection.mockResolvedValue(null)
     client.post.mockResolvedValue({ id: 'rc-sub-1', expirationTime: '2026-06-15T00:00:00.000Z' })
 
-    const action = await ensureForConnection(db, config, connection, webhookUrl, NOW)
+    const action = await ensureForConnection(db, connection, webhookUrl, NOW)
 
     expect(action).toBe('created')
     const [path, body] = client.post.mock.calls[0]!
@@ -80,7 +75,7 @@ describe('ensureForConnection', () => {
       status: 'ACTIVE',
       expiresAt: new Date(NOW + 5 * 24 * 60 * 60 * 1000),
     })
-    const action = await ensureForConnection(db, config, connection, webhookUrl, NOW)
+    const action = await ensureForConnection(db, connection, webhookUrl, NOW)
     expect(action).toBe('noop')
     expect(client.put).not.toHaveBeenCalled()
     expect(client.post).not.toHaveBeenCalled()
@@ -95,7 +90,7 @@ describe('ensureForConnection', () => {
     })
     client.put.mockResolvedValue({ id: 'rc-sub-1', expirationTime: '2026-06-20T00:00:00.000Z' })
 
-    const action = await ensureForConnection(db, config, connection, webhookUrl, NOW)
+    const action = await ensureForConnection(db, connection, webhookUrl, NOW)
 
     expect(action).toBe('renewed')
     expect(client.put).toHaveBeenCalledWith('/restapi/v1.0/subscription/rc-sub-1', {
@@ -118,7 +113,7 @@ describe('ensureForConnection', () => {
     client.del.mockResolvedValue(undefined)
     client.post.mockResolvedValue({ id: 'rc-new' })
 
-    const action = await ensureForConnection(db, config, connection, webhookUrl, NOW)
+    const action = await ensureForConnection(db, connection, webhookUrl, NOW)
 
     expect(action).toBe('recreated')
     expect(client.del).toHaveBeenCalledWith('/restapi/v1.0/subscription/rc-old')
@@ -141,7 +136,7 @@ describe('ensureForConnection', () => {
     client.del.mockResolvedValue(undefined)
     client.post.mockResolvedValue({ id: 'rc-fresh' })
 
-    const action = await ensureForConnection(db, config, connection, webhookUrl, NOW)
+    const action = await ensureForConnection(db, connection, webhookUrl, NOW)
 
     expect(action).toBe('recreated')
     expect(h.upsertSubscription).toHaveBeenCalledWith(
@@ -161,7 +156,7 @@ describe('ensureForConnection', () => {
     client.del.mockRejectedValue(new RingCentralOAuthError('not found', 404))
     client.post.mockResolvedValue({ id: 'rc-new' })
 
-    const action = await ensureForConnection(db, config, connection, webhookUrl, NOW)
+    const action = await ensureForConnection(db, connection, webhookUrl, NOW)
     expect(action).toBe('recreated')
     expect(h.upsertSubscription).toHaveBeenCalled() // recreate still completes
   })

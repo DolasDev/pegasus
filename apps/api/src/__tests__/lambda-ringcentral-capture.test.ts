@@ -55,7 +55,6 @@ describe('lambda-ringcentral-capture', () => {
 
     expect(h.syncConnection).toHaveBeenCalledWith(
       expect.anything(),
-      CONFIG,
       { id: 'conn-1', tenantId: 'tnt-1' },
       {},
     )
@@ -73,7 +72,7 @@ describe('lambda-ringcentral-capture', () => {
       ]),
     )
 
-    expect(h.syncConnection).toHaveBeenCalledWith(expect.anything(), CONFIG, expect.anything(), {
+    expect(h.syncConnection).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
       backfillDays: 30,
     })
     // No originating webhook event → no processed/failed bookkeeping.

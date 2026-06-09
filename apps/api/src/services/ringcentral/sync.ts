@@ -16,7 +16,6 @@ import type { PrismaClient } from '@prisma/client'
 import type { ThreadPhonePair } from '@pegasus/domain'
 import { DomainError } from '@pegasus/domain'
 import { createLogger } from '../../lib/logger'
-import type { RingCentralOAuthConfig } from './oauth'
 import { RingCentralOAuthError } from './oauth'
 import { acquireAccessToken, makeClient, type RingCentralClient } from './client'
 import {
@@ -96,12 +95,11 @@ export interface SyncOptions {
  */
 export async function syncConnection(
   db: PrismaClient,
-  config: RingCentralOAuthConfig,
   connection: SyncConnection,
   opts: SyncOptions = {},
 ): Promise<{ captured: number }> {
-  const accessToken = await acquireAccessToken(config, db, connection)
-  const client = makeClient(config.apiBase, accessToken)
+  const { accessToken, apiBase } = await acquireAccessToken(connection)
+  const client = makeClient(apiBase, accessToken)
   const backfillDays = opts.backfillDays ?? DEFAULT_BACKFILL_DAYS
   const now = opts.now ?? Date.now()
 

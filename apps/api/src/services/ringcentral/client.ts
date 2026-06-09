@@ -2,20 +2,17 @@
 // RingCentral REST client.
 //
 // Wraps authenticated calls to the RingCentral platform API:
-//   - acquireAccessToken: refreshes (and rotates) a connection's OAuth token,
-//     caching the short-lived access token in-memory per warm Lambda container
-//     so a sync run makes one rotation, not one per API call.
+//   - acquireAccessToken: mints a short-lived access token from a connection's
+//     stored JWT credentials (RingCentral's jwt-bearer grant), caching it
+//     in-memory per warm Lambda container so a sync run does one exchange, not
+//     one per API call. The JWT is the durable credential — there is nothing to
+//     rotate or write back.
 //   - makeClient: a thin GET/POST wrapper that honours rate limits (429 →
 //     RateLimitError with the Retry-After delay) and surfaces other failures.
-//
-// Token rotation reuses the same Secrets-Manager + repository path as the
-// token-refresh cron, so the stored refresh token is always the latest.
 // ---------------------------------------------------------------------------
 
-import type { PrismaClient } from '@prisma/client'
-import { type RingCentralOAuthConfig, refreshAccessToken, RingCentralOAuthError } from './oauth'
-import { getRefreshToken, storeRefreshToken } from '../../lib/ringcentral-secrets'
-import { markTokenRefreshed } from '../../repositories/messaging.repository'
+import { DEFAULT_API_BASE, exchangeJwtForToken, RingCentralOAuthError } from './oauth'
+import { getConnectionCredentials } from '../../lib/ringcentral-secrets'
 
 /** Thrown on a 429 — carries how long to wait before retrying. */
 export class RateLimitError extends Error {
@@ -29,6 +26,7 @@ export class RateLimitError extends Error {
 // container's lifetime; a cold start simply re-acquires. Exported reset for tests.
 interface CachedToken {
   accessToken: string
+  apiBase: string
   expiresAt: number
 }
 const tokenCache = new Map<string, CachedToken>()
@@ -43,35 +41,40 @@ export interface TokenConnection {
   tokenSecretArn: string | null
 }
 
+/** A freshly-minted access token plus the RingCentral environment it's for. */
+export interface AcquiredToken {
+  accessToken: string
+  apiBase: string
+}
+
 /**
- * Returns a valid access token for the connection, refreshing (and rotating the
- * stored refresh token) only when the cached access token is missing or within
- * 60s of expiry.
+ * Returns a valid access token (and the connection's RingCentral environment)
+ * by exchanging the connection's stored JWT credentials via the jwt-bearer
+ * grant, only when the cached token is missing or within 60s of expiry.
  *
- * @throws {Error} if the connection has no stored refresh-token secret.
+ * @throws {Error} if the connection has no stored credential secret.
+ * @throws {RingCentralOAuthError} if the JWT/credentials are rejected.
  */
 export async function acquireAccessToken(
-  config: RingCentralOAuthConfig,
-  db: PrismaClient,
   connection: TokenConnection,
   now: number = Date.now(),
-): Promise<string> {
+): Promise<AcquiredToken> {
   const cached = tokenCache.get(connection.id)
   if (cached && cached.expiresAt > now + 60_000) {
-    return cached.accessToken
+    return { accessToken: cached.accessToken, apiBase: cached.apiBase }
   }
   if (!connection.tokenSecretArn) {
-    throw new Error(`Connection ${connection.id} has no stored refresh token`)
+    throw new Error(`Connection ${connection.id} has no stored credentials`)
   }
-  const refreshToken = await getRefreshToken(connection.tokenSecretArn)
-  const tokens = await refreshAccessToken(config, refreshToken)
-  const arn = await storeRefreshToken(connection.id, tokens.refresh_token)
-  await markTokenRefreshed(db, connection.id, new Date(now), arn)
+  const creds = await getConnectionCredentials(connection.tokenSecretArn)
+  const apiBase = creds.apiBase ?? DEFAULT_API_BASE
+  const tokens = await exchangeJwtForToken(creds, apiBase)
   tokenCache.set(connection.id, {
     accessToken: tokens.access_token,
+    apiBase,
     expiresAt: now + tokens.expires_in * 1000,
   })
-  return tokens.access_token
+  return { accessToken: tokens.access_token, apiBase }
 }
 
 // ---------------------------------------------------------------------------

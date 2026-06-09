@@ -1,18 +1,22 @@
 // ---------------------------------------------------------------------------
-// RingCentral OAuth connect handler.
+// RingCentral connections handler (tenant-admin).
 //
-//   GET /api/v1/integrations/ringcentral/oauth/start    (tenant admin)
-//       → returns the RingCentral authorize URL with a signed state.
-//   GET /api/integrations/ringcentral/oauth/callback    (pre-tenant; RC redirect)
-//       → exchanges the code, records the connection, stores the refresh token.
+//   POST   /api/v1/integrations/ringcentral/connections      → connect (BYO JWT)
+//   GET    /api/v1/integrations/ringcentral/connections      → list
+//   DELETE /api/v1/integrations/ringcentral/connections/:id  → disconnect
 //
-// Flag-gated by RINGCENTRAL_ENABLED — when off (or not configured) the routes
-// fail closed with 503, so the deploy is inert until the platform RC app and
-// its secrets are wired up.
+// Bring-your-own auth: the tenant pastes their own RingCentral app's client id +
+// client secret + a JWT credential (bound to that app). Connect validates them
+// with a live jwt-bearer exchange, then stores them in Secrets Manager and
+// records the connection. There is no platform OAuth app and no consent redirect.
+//
+// Connect fails closed with 503 when RINGCENTRAL_ENABLED is unset (platform
+// master switch). List/disconnect operate on DB rows and are NOT flag-gated.
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
-import { randomUUID } from 'node:crypto'
+import { validator } from 'hono/validator'
+import { z } from 'zod'
 import { requirePermission } from '../../middleware/rbac'
 import { Actions } from '../../authz/actions'
 import { db } from '../../db'
@@ -21,13 +25,15 @@ import { logger } from '../../lib/logger'
 import { isValidE164 } from '@pegasus/domain'
 import {
   readOAuthConfig,
-  signState,
-  verifyState,
-  buildAuthorizeUrl,
-  exchangeCodeForToken,
+  exchangeJwtForToken,
   fetchExtensionInfo,
+  RingCentralOAuthError,
+  type JwtCredentials,
 } from '../../services/ringcentral/oauth'
-import { storeRefreshToken, deleteRefreshToken } from '../../lib/ringcentral-secrets'
+import {
+  storeConnectionCredentials,
+  deleteConnectionCredentials,
+} from '../../lib/ringcentral-secrets'
 import { enqueueBackfill } from '../../lib/ringcentral-queue'
 import {
   upsertConnection,
@@ -51,39 +57,7 @@ function readBackfillDays(): number | undefined {
   return Math.min(Math.floor(days), MAX_BACKFILL_DAYS)
 }
 
-// ---------------------------------------------------------------------------
-// Admin: start the connect flow (tenant-authenticated)
-// ---------------------------------------------------------------------------
-
 export const ringcentralOauthHandler = new Hono<AppEnv>()
-
-ringcentralOauthHandler.get(
-  '/oauth/start',
-  requirePermission(Actions.ManageRingCentralIntegration),
-  (c) => {
-    const config = readOAuthConfig()
-    if (!config) {
-      return c.json({ error: 'RingCentral integration is not enabled' }, 503)
-    }
-    const tenantId = c.get('tenantId')
-    const ownerNumber = c.req.query('number')
-    if (!ownerNumber || !isValidE164(ownerNumber)) {
-      return c.json({ error: 'A valid E.164 `number` query parameter is required' }, 400)
-    }
-    const state = signState(
-      { tenantId, ownerNumber, nonce: randomUUID(), iat: Date.now() },
-      config.stateSecret,
-    )
-    return c.json({ url: buildAuthorizeUrl(config, state) })
-  },
-)
-
-// ---------------------------------------------------------------------------
-// Admin: list / disconnect connections (tenant-authenticated)
-//
-// These operate on DB rows, not the live RC app, so they are NOT flag-gated:
-// the Settings UI can always show and remove the tenant's own connections.
-// ---------------------------------------------------------------------------
 
 /** The connection shape returned to the Settings UI. Deliberately omits the
  * `tokenSecretArn` (secret pointer) and bookkeeping (`updatedAt`/`tenantId`). */
@@ -98,6 +72,119 @@ type RcConnection = {
   scopes: string[]
   createdAt: string
 }
+
+// ---------------------------------------------------------------------------
+// Connect (bring-your-own JWT credentials)
+// ---------------------------------------------------------------------------
+
+const ConnectBody = z.object({
+  clientId: z.string().min(1),
+  clientSecret: z.string().min(1),
+  jwt: z.string().min(1),
+  number: z.string().refine(isValidE164, 'must be a valid E.164 phone number'),
+  apiBase: z.string().url().optional(),
+})
+
+ringcentralOauthHandler.post(
+  '/connections',
+  requirePermission(Actions.ManageRingCentralIntegration),
+  validator('json', (value, c) => {
+    const r = ConnectBody.safeParse(value)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => {
+    const config = readOAuthConfig()
+    if (!config) {
+      return c.json({ error: 'RingCentral integration is not enabled' }, 503)
+    }
+    const tenantId = c.get('tenantId')
+    const body = c.req.valid('json')
+    const apiBase = body.apiBase ?? config.apiBase
+    const creds: JwtCredentials = {
+      clientId: body.clientId,
+      clientSecret: body.clientSecret,
+      jwt: body.jwt,
+      ...(body.apiBase != null ? { apiBase: body.apiBase } : {}),
+    }
+
+    // Validate the pasted credentials with a live exchange + identity read
+    // before persisting anything.
+    let info
+    try {
+      const tokens = await exchangeJwtForToken(creds, apiBase)
+      info = await fetchExtensionInfo(apiBase, tokens.access_token)
+    } catch (err) {
+      if (err instanceof RingCentralOAuthError && err.isPermanent) {
+        logger.warn('RingCentral connect rejected credentials', { tenantId })
+        return c.json(
+          { error: 'RingCentral rejected the provided credentials', code: 'INVALID_CREDENTIALS' },
+          400,
+        )
+      }
+      logger.error('RingCentral connect failed during credential validation', {
+        tenantId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      return c.json(
+        { error: 'Failed to validate RingCentral credentials', code: 'EXCHANGE_FAILED' },
+        502,
+      )
+    }
+
+    let connectionId: string
+    try {
+      const connection = await upsertConnection(db, tenantId, {
+        rcAccountId: info.rcAccountId,
+        rcExtensionId: info.rcExtensionId,
+        ownerNumber: body.number,
+        scopes: [],
+      })
+      connectionId = connection.id
+      const secretArn = await storeConnectionCredentials(connection.id, creds)
+      await markTokenRefreshed(db, connection.id, new Date(), secretArn)
+    } catch (err) {
+      // A failure between creating the row and storing the secret leaves the row
+      // with a null tokenSecretArn — inert (the crons filter those out via
+      // listActiveConnections) and self-healing on a re-connect (idempotent
+      // upsert + secret overwrite). Surface a clean 502 rather than a raw 500.
+      logger.error('RingCentral connect failed while persisting the connection', {
+        tenantId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      return c.json(
+        { error: 'Failed to save the RingCentral connection', code: 'PERSIST_FAILED' },
+        502,
+      )
+    }
+
+    // Kick an immediate backfill so historical SMS show up right away rather
+    // than after the next reconciliation cron. The freshly-upserted connection
+    // has no sync cursor, so the worker's syncConnection does a full FSync of
+    // both stores. Best-effort: a queue failure must not fail the connect.
+    const enqueued = await enqueueBackfill(tenantId, connectionId, readBackfillDays()).catch(
+      (err: unknown) => {
+        logger.warn('failed to enqueue RingCentral backfill — cron will backstop', {
+          connectionId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        return false
+      },
+    )
+
+    logger.info('RingCentral connection established', {
+      tenantId,
+      connectionId,
+      rcAccountId: info.rcAccountId,
+      backfillEnqueued: enqueued,
+    })
+    return c.json({ data: { connectionId } }, 201)
+  },
+)
+
+// ---------------------------------------------------------------------------
+// List / disconnect (operate on DB rows — not flag-gated)
+// ---------------------------------------------------------------------------
 
 ringcentralOauthHandler.get(
   '/connections',
@@ -141,13 +228,13 @@ ringcentralOauthHandler.delete(
       return c.json({ error: 'RingCentral connection not found', code: 'NOT_FOUND' }, 404)
     }
 
-    // Best-effort: free the refresh-token secret. A failure here must not fail
-    // the disconnect (the row is already gone), so swallow + log.
+    // Best-effort: free the credential secret. A failure here must not fail the
+    // disconnect (the row is already gone), so swallow + log.
     if (tokenSecretArn) {
       try {
-        await deleteRefreshToken(tokenSecretArn)
+        await deleteConnectionCredentials(tokenSecretArn)
       } catch (err) {
-        logger.warn('failed to delete RingCentral refresh-token secret on disconnect', {
+        logger.warn('failed to delete RingCentral credential secret on disconnect', {
           connectionId: id,
           error: err instanceof Error ? err.message : String(err),
         })
@@ -162,81 +249,3 @@ ringcentralOauthHandler.delete(
     return c.json({ data: { disconnected: true } })
   },
 )
-
-// ---------------------------------------------------------------------------
-// Pre-tenant: OAuth callback (RingCentral redirect carries no session)
-// ---------------------------------------------------------------------------
-
-export const ringcentralOauthCallbackHandler = new Hono<AppEnv>()
-
-ringcentralOauthCallbackHandler.get('/oauth/callback', async (c) => {
-  const config = readOAuthConfig()
-  if (!config) {
-    return c.json({ error: 'RingCentral integration is not enabled' }, 503)
-  }
-
-  const error = c.req.query('error')
-  if (error) {
-    logger.warn('RingCentral OAuth callback returned an error', { error })
-    return c.json({ error: `RingCentral authorization failed: ${error}` }, 400)
-  }
-
-  const code = c.req.query('code')
-  const stateToken = c.req.query('state')
-  if (!code || !stateToken) {
-    return c.json({ error: 'Missing code or state' }, 400)
-  }
-
-  const state = verifyState(stateToken, config.stateSecret)
-  if (!state) {
-    logger.warn('RingCentral OAuth callback rejected: invalid state signature')
-    return c.json({ error: 'Invalid state' }, 401)
-  }
-
-  try {
-    const tokens = await exchangeCodeForToken(config, code)
-    const info = await fetchExtensionInfo(config, tokens.access_token)
-
-    const connection = await upsertConnection(db, state.tenantId, {
-      rcAccountId: info.rcAccountId,
-      rcExtensionId: info.rcExtensionId,
-      ownerNumber: state.ownerNumber,
-      scopes: tokens.scope ? tokens.scope.split(' ') : [],
-    })
-
-    const secretArn = await storeRefreshToken(connection.id, tokens.refresh_token)
-    await markTokenRefreshed(db, connection.id, new Date(), secretArn)
-
-    // Kick an immediate backfill so historical SMS show up right away rather
-    // than after the next reconciliation cron. The freshly-upserted connection
-    // has no sync cursor, so the worker's syncConnection does a full FSync of
-    // both stores. Best-effort: a queue failure must not fail the connect (the
-    // cron is the backstop), so log and continue.
-    const enqueued = await enqueueBackfill(state.tenantId, connection.id, readBackfillDays()).catch(
-      (err: unknown) => {
-        logger.warn('failed to enqueue RingCentral backfill — cron will backstop', {
-          connectionId: connection.id,
-          error: err instanceof Error ? err.message : String(err),
-        })
-        return false
-      },
-    )
-
-    logger.info('RingCentral connection established', {
-      tenantId: state.tenantId,
-      connectionId: connection.id,
-      rcAccountId: info.rcAccountId,
-      backfillEnqueued: enqueued,
-    })
-
-    const successRedirect = process.env['RINGCENTRAL_OAUTH_SUCCESS_REDIRECT']
-    if (successRedirect) return c.redirect(successRedirect)
-    return c.json({ status: 'connected', connectionId: connection.id })
-  } catch (err) {
-    logger.error('RingCentral OAuth callback failed', {
-      tenantId: state.tenantId,
-      error: err instanceof Error ? err.message : String(err),
-    })
-    return c.json({ error: 'Failed to complete RingCentral connection' }, 502)
-  }
-})

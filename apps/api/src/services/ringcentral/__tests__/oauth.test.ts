@@ -1,124 +1,46 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   readOAuthConfig,
-  signState,
-  verifyState,
-  buildAuthorizeUrl,
-  exchangeCodeForToken,
+  exchangeJwtForToken,
   fetchExtensionInfo,
-  type RingCentralOAuthConfig,
-  type OAuthState,
+  RingCentralOAuthError,
+  type JwtCredentials,
 } from '../oauth'
 
-const config: RingCentralOAuthConfig = {
+const API_BASE = 'https://platform.devtest.ringcentral.com'
+
+const creds: JwtCredentials = {
   clientId: 'client-abc',
   clientSecret: 'secret-xyz',
-  redirectUri: 'https://api.example/api/integrations/ringcentral/oauth/callback',
-  apiBase: 'https://platform.devtest.ringcentral.com',
-  stateSecret: 'state-signing-secret',
-}
-
-const state: OAuthState = {
-  tenantId: 'tnt-1',
-  ownerNumber: '+19085760908',
-  nonce: 'nonce-1',
-  iat: Date.now(),
+  jwt: 'the-jwt-assertion',
 }
 
 // ---------------------------------------------------------------------------
-// readOAuthConfig
+// readOAuthConfig (platform master switch + default api base)
 // ---------------------------------------------------------------------------
 
 describe('readOAuthConfig', () => {
-  const base = {
-    RINGCENTRAL_ENABLED: 'true',
-    RINGCENTRAL_CLIENT_ID: 'cid',
-    RINGCENTRAL_CLIENT_SECRET: 'csec',
-    RINGCENTRAL_OAUTH_REDIRECT_URI: 'https://api/cb',
-    RINGCENTRAL_OAUTH_STATE_SECRET: 'ssec',
-  }
-
-  it('returns null when the flag is off', () => {
-    expect(readOAuthConfig({ ...base, RINGCENTRAL_ENABLED: 'false' })).toBeNull()
+  it('returns null when the flag is off / unset', () => {
+    expect(readOAuthConfig({ RINGCENTRAL_ENABLED: 'false' })).toBeNull()
+    expect(readOAuthConfig({})).toBeNull()
   })
 
-  it('returns null when a required var is missing', () => {
-    const { RINGCENTRAL_CLIENT_SECRET: _omit, ...partial } = base
-    expect(readOAuthConfig(partial as NodeJS.ProcessEnv)).toBeNull()
-  })
-
-  it('returns config and defaults the api base when all present', () => {
-    const cfg = readOAuthConfig(base as NodeJS.ProcessEnv)
-    expect(cfg?.clientId).toBe('cid')
+  it('defaults the api base when enabled', () => {
+    const cfg = readOAuthConfig({ RINGCENTRAL_ENABLED: 'true' })
     expect(cfg?.apiBase).toBe('https://platform.ringcentral.com')
   })
-})
 
-// ---------------------------------------------------------------------------
-// State signing
-// ---------------------------------------------------------------------------
-
-describe('signState / verifyState', () => {
-  it('round-trips a valid state', () => {
-    const token = signState(state, config.stateSecret)
-    expect(verifyState(token, config.stateSecret)).toEqual(state)
-  })
-
-  it('rejects a tampered body', () => {
-    const token = signState(state, config.stateSecret)
-    const [body, sig] = token.split('.')
-    const forged = Buffer.from(JSON.stringify({ ...state, tenantId: 'evil' }), 'utf8').toString(
-      'base64url',
-    )
-    expect(verifyState(`${forged}.${sig}`, config.stateSecret)).toBeNull()
-    expect(body).toBeTruthy()
-  })
-
-  it('rejects a wrong signing secret', () => {
-    const token = signState(state, config.stateSecret)
-    expect(verifyState(token, 'different-secret')).toBeNull()
-  })
-
-  it('rejects a malformed token', () => {
-    expect(verifyState('garbage', config.stateSecret)).toBeNull()
-    expect(verifyState('', config.stateSecret)).toBeNull()
-  })
-
-  it('rejects a stale state (replay protection)', () => {
-    const old: OAuthState = { ...state, iat: Date.now() - 20 * 60 * 1000 }
-    const token = signState(old, config.stateSecret)
-    expect(verifyState(token, config.stateSecret)).toBeNull()
-  })
-
-  it('rejects an implausibly future-dated state', () => {
-    const future: OAuthState = { ...state, iat: Date.now() + 5 * 60 * 1000 }
-    const token = signState(future, config.stateSecret)
-    expect(verifyState(token, config.stateSecret)).toBeNull()
+  it('respects a RINGCENTRAL_API_BASE override', () => {
+    const cfg = readOAuthConfig({ RINGCENTRAL_ENABLED: 'true', RINGCENTRAL_API_BASE: API_BASE })
+    expect(cfg?.apiBase).toBe(API_BASE)
   })
 })
 
 // ---------------------------------------------------------------------------
-// Authorize URL
+// JWT-bearer exchange + extension info (fetch-mocked)
 // ---------------------------------------------------------------------------
 
-describe('buildAuthorizeUrl', () => {
-  it('includes the OAuth query params', () => {
-    const token = signState(state, config.stateSecret)
-    const url = new URL(buildAuthorizeUrl(config, token))
-    expect(url.origin).toBe('https://platform.devtest.ringcentral.com')
-    expect(url.pathname).toBe('/restapi/oauth/authorize')
-    expect(url.searchParams.get('response_type')).toBe('code')
-    expect(url.searchParams.get('client_id')).toBe('client-abc')
-    expect(url.searchParams.get('redirect_uri')).toBe(config.redirectUri)
-    expect(url.searchParams.get('state')).toBe(token)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Token exchange + extension info (fetch-mocked)
-// ---------------------------------------------------------------------------
-
-describe('exchangeCodeForToken / fetchExtensionInfo', () => {
+describe('exchangeJwtForToken / fetchExtensionInfo', () => {
   let fetchMock: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
@@ -134,47 +56,73 @@ describe('exchangeCodeForToken / fetchExtensionInfo', () => {
     text: () => Promise.resolve(''),
   })
 
-  it('exchanges a code with Basic auth + form body', async () => {
-    fetchMock.mockResolvedValue(
-      ok({
-        access_token: 'at',
-        refresh_token: 'rt',
-        expires_in: 3600,
-        refresh_token_expires_in: 604800,
-        scope: 'SMS ReadMessages',
-        owner_id: 'ext-101',
-      }),
-    )
-    const res = await exchangeCodeForToken(config, 'the-code')
-    expect(res.refresh_token).toBe('rt')
+  it('exchanges a JWT with Basic auth + jwt-bearer grant', async () => {
+    fetchMock.mockResolvedValue(ok({ access_token: 'at', expires_in: 3600 }))
+    const res = await exchangeJwtForToken(creds, API_BASE)
+    expect(res.access_token).toBe('at')
+    expect(res.expires_in).toBe(3600)
 
     const [url, init] = fetchMock.mock.calls[0]!
-    expect(String(url)).toBe('https://platform.devtest.ringcentral.com/restapi/oauth/token')
+    expect(String(url)).toBe(`${API_BASE}/restapi/oauth/token`)
     expect((init.headers as Record<string, string>)['Authorization']).toBe(
       `Basic ${Buffer.from('client-abc:secret-xyz').toString('base64')}`,
     )
-    expect((init.body as URLSearchParams).get('grant_type')).toBe('authorization_code')
-    expect((init.body as URLSearchParams).get('code')).toBe('the-code')
+    expect((init.body as URLSearchParams).get('grant_type')).toBe(
+      'urn:ietf:params:oauth:grant-type:jwt-bearer',
+    )
+    expect((init.body as URLSearchParams).get('assertion')).toBe('the-jwt-assertion')
   })
 
-  it('throws on a non-2xx token response', async () => {
+  it('throws a permanent RingCentralOAuthError on a 400', async () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 400,
       text: () => Promise.resolve('invalid_grant'),
       json: () => Promise.resolve({}),
     })
-    await expect(exchangeCodeForToken(config, 'bad')).rejects.toThrow(/400/)
+    await expect(exchangeJwtForToken(creds, API_BASE)).rejects.toThrowError(
+      expect.objectContaining({ status: 400, isPermanent: true }),
+    )
+  })
+
+  it('treats a 5xx as transient (isPermanent false)', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: () => Promise.resolve('busy'),
+      json: () => Promise.resolve({}),
+    })
+    await expect(exchangeJwtForToken(creds, API_BASE)).rejects.toThrowError(
+      expect.objectContaining({ status: 503, isPermanent: false }),
+    )
   })
 
   it('reads account + extension ids from extension-info', async () => {
     fetchMock.mockResolvedValue(ok({ id: 808080, account: { id: 707070 } }))
-    const info = await fetchExtensionInfo(config, 'at')
+    const info = await fetchExtensionInfo(API_BASE, 'at')
     expect(info).toEqual({ rcExtensionId: '808080', rcAccountId: '707070' })
   })
 
   it('throws when extension-info is missing ids', async () => {
     fetchMock.mockResolvedValue(ok({ id: 1 }))
-    await expect(fetchExtensionInfo(config, 'at')).rejects.toThrow(/missing/)
+    await expect(fetchExtensionInfo(API_BASE, 'at')).rejects.toThrow(/missing/)
+  })
+
+  it('throws a status-carrying RingCentralOAuthError on a non-2xx extension-info', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 403,
+      text: () => Promise.resolve('insufficient scope'),
+      json: () => Promise.resolve({}),
+    })
+    await expect(fetchExtensionInfo(API_BASE, 'at')).rejects.toThrowError(
+      expect.objectContaining({ status: 403, isPermanent: true }),
+    )
+  })
+
+  it('exposes RingCentralOAuthError.isPermanent by status', () => {
+    expect(new RingCentralOAuthError('x', 401).isPermanent).toBe(true)
+    expect(new RingCentralOAuthError('x', 500).isPermanent).toBe(false)
+    expect(new RingCentralOAuthError('x').isPermanent).toBe(false)
   })
 })
