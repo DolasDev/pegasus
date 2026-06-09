@@ -87,6 +87,16 @@ const SES_SENDER_DOMAIN: Record<Exclude<EnvName, 'dev'>, string> = {
 // e.g. no-reply@pegasus.dolas.dev.
 const sesFromEmail = sesEmailEnabled ? `no-reply@${SES_SENDER_DOMAIN[envName]}` : undefined
 
+// ── RingCentral SMS capture (prod) ───────────────────────────────────────────
+// Master switch for the RingCentral capture integration (see ApiStackProps
+// .ringcentralEnabled). Enabled in prod only — that is where real tenants paste
+// their own RingCentral JWT credentials and connect. Env-gated rather than a
+// one-shot context flag so it stays on across routine main-push deploys (a
+// context flag CI doesn't pass would silently disable a live integration on the
+// next deploy). Inert until a tenant connects: zero connections → crons no-op,
+// no subscription, no webhook traffic. dev/staging stay off.
+const ringcentralEnabled = envName === 'prod'
+
 // Temporal Cloud namespace gRPC endpoints, one per non-dev env. Consumed by:
 //   - TemporalWorkerStack (Phase 2 Unit 4) — Fargate worker env TEMPORAL_ADDRESS
 //   - ApiStack (Phase 2 Unit 6)            — API Lambda env TEMPORAL_ADDRESS
@@ -249,6 +259,7 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   temporalTaskQueue: apiTemporalTaskQueue,
   temporalCloudSecretArn: apiTemporalCloudSecretArn,
   workflowBrokerSecretArn: apiWorkflowBrokerSecretArn,
+  ringcentralEnabled,
 })
 apiStack.addDependency(cognitoStack)
 

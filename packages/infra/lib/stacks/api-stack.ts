@@ -131,6 +131,24 @@ export interface ApiStackProps extends cdk.StackProps {
    * the `X-Workflow-Broker-Secret` request header against this value.
    */
   readonly workflowBrokerSecretArn?: string
+
+  /**
+   * Master switch for the RingCentral SMS capture integration. When true:
+   *   - `RINGCENTRAL_ENABLED=true` is set on the api Lambda (unlocks the
+   *     bring-your-own-JWT connect endpoint) and on the capture / sync / renew /
+   *     token-refresh crons (whose `readOAuthConfig()` no-ops while unset), and
+   *   - `RINGCENTRAL_WEBHOOK_URL` (the public delivery address RingCentral POSTs
+   *     events to) is set on the renew cron — the only Lambda that registers and
+   *     renews the per-connection RingCentral subscription via their API. The URL
+   *     is derived from the stack's own HTTP API endpoint, so there is no manual
+   *     RingCentral-console webhook setup.
+   *
+   * Inert-safe: with zero connected tenants every cron is a no-op, no
+   * subscription is created, and no webhook traffic flows — nothing happens until
+   * a tenant pastes their RingCentral credentials in the UI. Default off; enabled
+   * for prod in bin/app.ts.
+   */
+  readonly ringcentralEnabled?: boolean
 }
 
 export class ApiStack extends cdk.Stack {
@@ -1110,6 +1128,31 @@ export class ApiStack extends cdk.Stack {
     this.apiUrl = httpApi.apiEndpoint
     this.lambdaFunctionName = apiFunction.functionName
     this.httpApiId = httpApi.apiId
+
+    // ---------------------------------------------------------------------------
+    // RingCentral master switch (prod). Set here — after httpApi exists — because
+    // the webhook delivery address is derived from the API's own public endpoint.
+    // RINGCENTRAL_ENABLED ungates the connect endpoint (api Lambda) + the crons
+    // whose readOAuthConfig() no-ops while unset. RINGCENTRAL_WEBHOOK_URL goes
+    // only on the renew cron: it is the sole Lambda that registers/renews the
+    // per-connection RingCentral subscription (deliveryAddress = this URL), so the
+    // webhook is wired programmatically — no manual RingCentral-console setup.
+    // Inert until a tenant connects (zero connections → every cron no-ops).
+    if (props.ringcentralEnabled) {
+      for (const fn of [
+        apiFunction,
+        ringcentralCaptureFunction,
+        ringcentralSyncFunction,
+        ringcentralRenewFunction,
+        ringcentralTokenRefreshFunction,
+      ]) {
+        fn.addEnvironment('RINGCENTRAL_ENABLED', 'true')
+      }
+      ringcentralRenewFunction.addEnvironment(
+        'RINGCENTRAL_WEBHOOK_URL',
+        `${httpApi.apiEndpoint}/api/integrations/ringcentral/webhook`,
+      )
+    }
 
     new cdk.CfnOutput(this, 'ApiUrl', {
       value: httpApi.apiEndpoint,

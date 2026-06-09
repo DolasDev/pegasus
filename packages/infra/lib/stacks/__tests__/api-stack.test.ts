@@ -615,3 +615,65 @@ describe('ApiStack — RingCentral credential health-check cron', () => {
     })
   })
 })
+
+describe('ApiStack — RingCentral master switch (ringcentralEnabled)', () => {
+  function synthEnabled() {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const apiStack = new ApiStack(app, 'TestApiRcEnabled', {
+      env: { account: '111111111111', region: 'us-east-1' },
+      ringcentralEnabled: true,
+    })
+    return Template.fromStack(apiStack)
+  }
+
+  it('leaves RINGCENTRAL_ENABLED unset on every Lambda by default (inert)', () => {
+    const template = synthApiStack()
+    const fns = template.findResources('AWS::Lambda::Function')
+    const withFlag = Object.values(fns).filter(
+      (fn) => fn.Properties?.Environment?.Variables?.RINGCENTRAL_ENABLED !== undefined,
+    )
+    if (withFlag.length !== 0) {
+      throw new Error(`expected no Lambda to carry RINGCENTRAL_ENABLED, found ${withFlag.length}`)
+    }
+  })
+
+  it('sets RINGCENTRAL_ENABLED=true on the api + cron Lambdas when enabled', () => {
+    const template = synthEnabled()
+    const fns = template.findResources('AWS::Lambda::Function')
+    const enabled = Object.values(fns).filter(
+      (fn) => fn.Properties?.Environment?.Variables?.RINGCENTRAL_ENABLED === 'true',
+    )
+    // api Lambda + capture/sync/renew/token-refresh crons = 5.
+    if (enabled.length !== 5) {
+      throw new Error(`expected 5 Lambdas with RINGCENTRAL_ENABLED=true, found ${enabled.length}`)
+    }
+  })
+
+  it('sets RINGCENTRAL_WEBHOOK_URL (own API endpoint) only on the renew cron', () => {
+    const template = synthEnabled()
+    // Exactly one Lambda — the renewal cron — registers the subscription, so it
+    // is the only one that needs the public delivery address.
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.objectLike({
+          RINGCENTRAL_ENABLED: 'true',
+          RINGCENTRAL_WEBHOOK_URL: {
+            'Fn::Join': [
+              '',
+              Match.arrayWith([Match.stringLikeRegexp('/api/integrations/ringcentral/webhook')]),
+            ],
+          },
+        }),
+      },
+    })
+    const fns = template.findResources('AWS::Lambda::Function')
+    const withUrl = Object.values(fns).filter(
+      (fn) => fn.Properties?.Environment?.Variables?.RINGCENTRAL_WEBHOOK_URL !== undefined,
+    )
+    if (withUrl.length !== 1) {
+      throw new Error(
+        `expected exactly 1 Lambda with RINGCENTRAL_WEBHOOK_URL, found ${withUrl.length}`,
+      )
+    }
+  })
+})

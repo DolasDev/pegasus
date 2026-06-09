@@ -3,11 +3,13 @@
 **Branch:** _create `feat/ringcentral-message-capture` before implementing — do not build on `main`._
 **Goal:** Reliably capture all RingCentral SMS (inbound + outbound, across the v1.0 message-store **and** the new Thread Messaging "Shared" store), persist them in Pegasus (Neon), and forward them to the on-prem Postgres over the existing WireGuard bridge — with a managed webhook-subscription + OAuth-token lifecycle layer so capture survives expiry, blacklisting, and outages.
 
-> Status: DRAFT — awaiting approval per `engineering-principles.md` (plan-before-code).
+> Status: ✅ COMPLETE (2026-06-09). All phases implemented and merged to `main` across every layer (domain, repository, API handlers/services, all seven cron/worker Lambdas, infra, UI, e2e + runbook). Auth pivoted from platform 3-legged OAuth to **per-tenant bring-your-own JWT** (paste client id/secret + JWT credential; validated by a live jwt-bearer exchange) — see PRs #200–#223. Verified green: domain 33, api 97, infra 244, tenant-web 14, full typecheck, e2e webhook acceptance. Plan archived to `plans/completed/`.
+>
+> _Note: the sections below are the original DRAFT design. Where it says "OAuth", the shipped implementation uses BYO-JWT (no platform OAuth app, no consent redirect); the connect endpoint is `POST /api/v1/integrations/ringcentral/connections`. Everything else shipped as designed._
 
 ### Resolved decisions (2026-06-08)
 
-1. **On-prem Postgres is authoritative.** Neon's role drops to a **control plane + transient message buffer**: it holds long-lived operational state (connections, subscriptions, sync cursors, raw webhook inbox, outbox) and only a *short-lived* copy of message bodies, purged shortly after a row is confirmed forwarded on-prem. The system of record for messages is on-prem.
+1. **On-prem Postgres is authoritative.** Neon's role drops to a **control plane + transient message buffer**: it holds long-lived operational state (connections, subscriptions, sync cursors, raw webhook inbox, outbox) and only a _short-lived_ copy of message bodies, purged shortly after a row is confirmed forwarded on-prem. The system of record for messages is on-prem.
 2. **Per-tenant OAuth.** One platform-level RingCentral app; each tenant authorizes it via 3-legged OAuth (the connect flow). Tokens, subscriptions, and cursors are all per `RingCentralConnection` (per tenant).
 3. **Near-real-time required → webhooks are the PRIMARY path** (user accepts the webhook dependency). The scheduled reconciliation sync is **demoted to a low-frequency safety net** (gap recovery / blacklist windows), not the primary capture mechanism.
 4. **On-prem target is the existing SQL Server**, written via the existing **mssql-executor** path over the WireGuard tunnel (T-SQL `MERGE`, idempotent). No new on-prem Postgres; the forwarder does not open its own DB connection — it submits T-SQL through mssql-executor.
@@ -24,9 +26,9 @@ Multi-tenant webhook model (how the dependency is accommodated): **one shared we
 A live diagnosis of the source account (number `+19085760908`, `usageType: MainCompanyNumber`, extension 101) established:
 
 - The account was migrated to **Thread Messaging (Shared Inbox)** on **2026-06-01**. `features?featureId=MessageThreads` → `available: true`.
-- **Inbound** SMS to a common-resource number (main company / site / call-queue number) now writes to the **Message Threads store** (`/restapi/v1.0/account/~/message-threads/messages`) — *not* the v1.0 `message-store`. Verified: v1.0 inbound stopped `2026-06-01T17:19Z`; thread store has the inbound from `2026-06-02` onward.
+- **Inbound** SMS to a common-resource number (main company / site / call-queue number) now writes to the **Message Threads store** (`/restapi/v1.0/account/~/message-threads/messages`) — _not_ the v1.0 `message-store`. Verified: v1.0 inbound stopped `2026-06-01T17:19Z`; thread store has the inbound from `2026-06-02` onward.
 - **Outbound** sent via the v1.0 `/sms` API still lands in the v1.0 `message-store`.
-- **Thread Messaging webhook events are "thin"** — per `threads/events.md`, the event payload carries only `lastModifiedTime`. The webhook is a *trigger*; the actual records must be pulled via the **sync API**.
+- **Thread Messaging webhook events are "thin"** — per `threads/events.md`, the event payload carries only `lastModifiedTime`. The webhook is a _trigger_; the actual records must be pulled via the **sync API**.
 
 Two hard reliability constraints fall out of this:
 
@@ -93,14 +95,14 @@ Pure domain in `packages/domain/src/messaging/` (zero I/O, branded IDs, immutabl
 
 All tenant-scoped, `@@schema("public")`, `tenantId` FK to `Tenant`, snake_case `@map`. Migrations are **expand-only / non-destructive** per the expand-then-contract rule.
 
-| Model | Purpose | Key fields / constraints |
-|---|---|---|
-| `RingCentralConnection` | One connected RC account per tenant (or per number) | `rcAccountId`, `rcExtensionId`, `ownerNumber`, `tokenSecretArn` (Secrets Manager — refresh token), `tokenStatus`, `scopes[]`, `lastRefreshedAt`, `health` |
-| `RingCentralSubscription` | Managed webhook subscription | `subscriptionId`, `eventFilters[]`, `transport`, `deliveryAddress`, `verificationToken`, `expiresAt`, `status` (`ACTIVE|EXPIRING|BLACKLISTED|DEAD`), `lastRenewedAt`, `failureCount` |
-| `RingCentralSyncCursor` | Sync token per store — the backstop's memory | `store` (`THREAD|V1`), `syncToken`, `lastSyncAt`, `@@unique([tenantId, connectionId, store])` |
-| `InboundWebhookEvent` | Raw event inbox (replay/audit) | `rawPayload Json`, `headers Json`, `receivedAt`, `processedAt`, `status` |
-| `Message` | Normalized captured SMS — **transient cloud buffer** (body purged after forward; on-prem authoritative) | `source`, `externalId`, `threadId?`, `direction`, `fromNumber`, `toNumber`, `body`, `rcCreationTime`, `rcLastModifiedTime`, `forwardStatus`, `bodyPurgedAt?`, `purgeAfter?`, **`@@unique([tenantId, source, externalId])`**, indexes on `[tenantId, forwardStatus]` and `[tenantId, rcCreationTime]` (SMS-only — no attachments column) |
-| `MessageForwardOutbox` | Reliable on-prem delivery | `messageId`, `attempts`, `nextAttemptAt`, `status` (`PENDING|SENT|FAILED|DEAD`), `lastError`, index `[tenantId, status, nextAttemptAt]` |
+| Model                     | Purpose                                                                                                 | Key fields / constraints                                                                                                                                                                                                                                                                                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ----------- | -------------------------------------------------------------- |
+| `RingCentralConnection`   | One connected RC account per tenant (or per number)                                                     | `rcAccountId`, `rcExtensionId`, `ownerNumber`, `tokenSecretArn` (Secrets Manager — refresh token), `tokenStatus`, `scopes[]`, `lastRefreshedAt`, `health`                                                                                                                                                                               |
+| `RingCentralSubscription` | Managed webhook subscription                                                                            | `subscriptionId`, `eventFilters[]`, `transport`, `deliveryAddress`, `verificationToken`, `expiresAt`, `status` (`ACTIVE                                                                                                                                                                                                                 | EXPIRING                                                                     | BLACKLISTED | DEAD`), `lastRenewedAt`, `failureCount`                        |
+| `RingCentralSyncCursor`   | Sync token per store — the backstop's memory                                                            | `store` (`THREAD                                                                                                                                                                                                                                                                                                                        | V1`), `syncToken`, `lastSyncAt`, `@@unique([tenantId, connectionId, store])` |
+| `InboundWebhookEvent`     | Raw event inbox (replay/audit)                                                                          | `rawPayload Json`, `headers Json`, `receivedAt`, `processedAt`, `status`                                                                                                                                                                                                                                                                |
+| `Message`                 | Normalized captured SMS — **transient cloud buffer** (body purged after forward; on-prem authoritative) | `source`, `externalId`, `threadId?`, `direction`, `fromNumber`, `toNumber`, `body`, `rcCreationTime`, `rcLastModifiedTime`, `forwardStatus`, `bodyPurgedAt?`, `purgeAfter?`, **`@@unique([tenantId, source, externalId])`**, indexes on `[tenantId, forwardStatus]` and `[tenantId, rcCreationTime]` (SMS-only — no attachments column) |
+| `MessageForwardOutbox`    | Reliable on-prem delivery                                                                               | `messageId`, `attempts`, `nextAttemptAt`, `status` (`PENDING                                                                                                                                                                                                                                                                            | SENT                                                                         | FAILED      | DEAD`), `lastError`, index `[tenantId, status, nextAttemptAt]` |
 
 The `@@unique([tenantId, source, externalId])` on `Message` is the linchpin: webhook-path and sync-path upserts collide on it, giving exactly-one row regardless of how many times either path sees the message.
 
@@ -109,16 +111,18 @@ The `@@unique([tenantId, source, externalId])` on `Message` is the linchpin: web
 ## 5. Management plane (the "hook registration management layer")
 
 ### 5a. OAuth / credential lifecycle
+
 - **3-legged connect:** admin endpoints `GET /api/v1/integrations/ringcentral/oauth/start` → RC authorize URL; `GET …/oauth/callback` → exchange code, store the (rotating) refresh token in **Secrets Manager** (`pegasus/{env}/ringcentral/{connectionId}`), record `RingCentralConnection`. Access tokens are never persisted.
 - **Token-refresh worker (EventBridge cron):** refresh access tokens before expiry; persist rotated refresh tokens; on refresh failure mark `tokenStatus=EXPIRED` + `health=UNHEALTHY` and alarm. (RC refresh tokens lapse if unused — the cron keeps them warm.)
 
 ### 5b. Subscription manager
+
 - `SubscriptionManager.ensure(connection)`:
   - **create** if none — `POST /restapi/v1.0/subscription` with a fresh `verificationToken` and the event filters below; store `subscriptionId` + `expiresAt`.
   - **renew** (`PUT`) when `expiresAt` within the renewal threshold (e.g. < 24h of TTL).
   - **recreate** if `status` is `BLACKLISTED`/`DEAD` or renewal 404s.
 - **Event filters (cover both stores):**
-  - `/restapi/v1.0/account/~/message-threads/entries/sync` — Thread *message* events (inbound + threaded outbound). **Primary.**
+  - `/restapi/v1.0/account/~/message-threads/entries/sync` — Thread _message_ events (inbound + threaded outbound). **Primary.**
   - `/restapi/v1.0/account/~/message-threads/sync` — Thread events (assignment/resolve) — optional, useful for thread metadata.
   - `/restapi/v1.0/account/~/extension/~/message-store/instant?type=SMS` — v1.0 outbound, if v1.0 send remains in use.
 - **Renewal scheduler (EventBridge cron):** iterate ACTIVE connections, renew/recreate as needed, update health.
@@ -128,15 +132,18 @@ The `@@unique([tenantId, source, externalId])` on `Message` is the linchpin: web
 ## 6. Capture paths
 
 ### 6a. Webhook ingestion (latency path) — `POST /api/v1/integrations/ringcentral/webhook`
+
 - Mounted **pre-tenant** (unauthenticated, like the M2M block in `app.ts`).
 - **Validation handshake:** if the `Validation-Token` request header is present (subscription create/renew), echo it back in the response header and return `200` immediately.
 - **Event auth:** compare the inbound `verificationToken` header against the stored per-subscription token; resolve tenant/connection from the subscription id in the payload. Reject mismatches at `WARN` (expected) → 401.
 - **Fast-ack:** persist raw payload to `InboundWebhookEvent`, push to **SQS**, return `200` in <1s. No heavy work inline (slow/erroring endpoints get blacklisted by RC).
 
 ### 6b. Capture worker (SQS consumer Lambda)
+
 - For each raw event: because thread events are thin, call the **sync API** (`ISync` using the stored `RingCentralSyncCursor`) to pull the actual changed entries. For thread messages, call **Read Thread** to resolve the from/to phone pair (thread entries omit numbers). Normalize via domain functions → **UPSERT `Message`** on `(tenantId, source, externalId)`. For new/changed rows, insert a `MessageForwardOutbox` row. Mark the raw event processed.
 
 ### 6c. Reconciliation sync (safety net) — EventBridge cron, per connection
+
 - Independent of webhook health, but now a **low-frequency** safety net (webhooks carry near-real-time). Suggested cadence ~15 min (tunable): `ISync` thread entries **and** `ISync` v1.0 message-store from stored cursors; `FSync` on first run or `SYNC_TOKEN_INVALID` to backfill/repair. Same idempotent upsert + outbox path. Guarantees that anything a webhook missed (blacklist window, AWS/RC outage) is still captured within one sync interval — without being the primary latency path.
 
 ---
@@ -187,6 +194,7 @@ The `@@unique([tenantId, source, externalId])` on `Message` is the linchpin: web
 ## 8. Infrastructure (CDK) — `packages/infra/lib/stacks/`
 
 New `messaging-stack.ts` (or extend `api-stack.ts`):
+
 - **SQS** capture queue + **DLQ** (redrive).
 - **EventBridge cron rules:** reconciliation-sync, subscription-renewal, token-refresh.
 - **Lambdas:** capture worker (SQS-triggered); forwarder (builds T-SQL `MERGE`, invokes the **existing mssql-executor** — no new VPC Lambda); buffer-purge cron; sync/renewal/token-refresh cron handlers.
@@ -219,6 +227,7 @@ New `messaging-stack.ts` (or extend `api-stack.ts`):
 ## 11. Files to create / modify
 
 **Create**
+
 - `packages/domain/src/messaging/index.ts` + `*.test.ts` (TDD-first)
 - `apps/api/src/repositories/messaging.repository.ts` + tests
 - `apps/api/src/handlers/integrations/ringcentral-webhook.ts` + tests
@@ -233,6 +242,7 @@ New `messaging-stack.ts` (or extend `api-stack.ts`):
 - On-prem **T-SQL** DDL script (`dbo.inbound_messages`) + runbook under `docs/`
 
 **Modify**
+
 - `apps/api/prisma/schema.prisma` — new models/enums
 - `apps/api/src/app.ts` — mount webhook (pre-tenant) + OAuth/admin routes (post-tenant)
 - `apps/api/src/authz/actions.ts` + Cedar policies — messaging admin actions
@@ -244,14 +254,14 @@ New `messaging-stack.ts` (or extend `api-stack.ts`):
 
 ## 12. TDD order (per engineering-principles.md — tests precede implementation)
 
-1. `[ ]` domain `messaging` tests (normalization, dedupe key, status transitions, handshake detection) → `[ ]` implement domain
-2. `[ ]` repository tests (idempotent upsert, outbox enqueue, cursor) → `[ ]` implement repository
-3. `[ ]` webhook handler tests (handshake echo, verification-token, fast-ack, raw persist) → `[ ]` implement
-4. `[ ]` subscription-manager tests (create/renew/recreate, blacklist) → `[ ]` implement
-5. `[ ]` sync tests (ISync cursor advance, FSync backfill, thread phone-pair resolution, idempotency vs webhook path) → `[ ]` implement
-6. `[ ]` forwarder tests (T-SQL `MERGE` builder/parameterization, at-least-once, idempotent on-prem MERGE, backoff, DEAD, on-prem-down → rows stay PENDING) + buffer-purge tests → `[ ]` implement forwarder + purge cron
-7. `[ ]` infra snapshot/assertion tests → `[ ]` implement stack
-8. `[ ]` e2e API acceptance
+1. `[x]` domain `messaging` tests (normalization, dedupe key, status transitions, handshake detection) → `[x]` implement domain
+2. `[x]` repository tests (idempotent upsert, outbox enqueue, cursor) → `[x]` implement repository
+3. `[x]` webhook handler tests (handshake echo, verification-token, fast-ack, raw persist) → `[x]` implement
+4. `[x]` subscription-manager tests (create/renew/recreate, blacklist) → `[x]` implement
+5. `[x]` sync tests (ISync cursor advance, FSync backfill, thread phone-pair resolution, idempotency vs webhook path) → `[x]` implement
+6. `[x]` forwarder tests (T-SQL `MERGE` builder/parameterization, at-least-once, idempotent on-prem MERGE, backoff, DEAD, on-prem-down → rows stay PENDING) + buffer-purge tests → `[x]` implement forwarder + purge cron
+7. `[x]` infra snapshot/assertion tests → `[x]` implement stack
+8. `[x]` e2e API acceptance (webhook handshake/validation/unknown-sub)
 
 ---
 
@@ -270,18 +280,15 @@ New `messaging-stack.ts` (or extend `api-stack.ts`):
 ## 14. Open questions
 
 **Resolved (2026-06-08):**
+
 1. ~~System of record~~ → **On-prem authoritative**; Neon = control plane + transient buffer.
 2. ~~Connection model~~ → **Per-tenant 3-legged OAuth** against one platform RC app.
 3. ~~Latency~~ → **Near-real-time; webhooks primary**, sync demoted to safety net.
 
-**Resolved (2026-06-08, round 2):**
-4. ~~On-prem engine~~ → **existing SQL Server via mssql-executor** (T-SQL `MERGE`).
-5. ~~Scope~~ → **SMS only**; multiple numbers per connection allowed.
-6. ~~Buffer retention~~ → **body purged 72h after SENT; tombstone 30 days** (best-judgement default; tunable).
-7. ~~Backfill~~ → **thread FSync + 90-day v1.0 window on first connect** (configurable, capped).
+**Resolved (2026-06-08, round 2):** 4. ~~On-prem engine~~ → **existing SQL Server via mssql-executor** (T-SQL `MERGE`). 5. ~~Scope~~ → **SMS only**; multiple numbers per connection allowed. 6. ~~Buffer retention~~ → **body purged 72h after SENT; tombstone 30 days** (best-judgement default; tunable). 7. ~~Backfill~~ → **thread FSync + 90-day v1.0 window on first connect** (configurable, capped).
 
-**Still open (nice-to-have, none block Phase 0):**
-8. Confirm every tenant that will enable RC capture already has a healthy WireGuard overlay + working `Tenant.mssqlConnectionString` (mssql-executor reachability is a prerequisite for Phase 3).
-9. Who runs the on-prem `dbo.inbound_messages` DDL — DBA-applied script vs auto-ensure on first write?
-10. Any compliance constraint on SMS bodies transiting/buffering in AWS at all (could tighten the 72h to "purge on SENT").
+**Still open (nice-to-have, none block Phase 0):** 8. Confirm every tenant that will enable RC capture already has a healthy WireGuard overlay + working `Tenant.mssqlConnectionString` (mssql-executor reachability is a prerequisite for Phase 3). 9. Who runs the on-prem `dbo.inbound_messages` DDL — DBA-applied script vs auto-ensure on first write? 10. Any compliance constraint on SMS bodies transiting/buffering in AWS at all (could tighten the 72h to "purge on SENT").
+
+```
+
 ```
