@@ -56,7 +56,6 @@ async function processRecord(record: SQSRecord): Promise<void> {
     }
     const { captured } = await syncConnection(
       db,
-      config,
       connection,
       job.backfillDays != null ? { backfillDays: job.backfillDays } : {},
     )

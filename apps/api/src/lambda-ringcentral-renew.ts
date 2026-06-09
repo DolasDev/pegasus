@@ -37,7 +37,7 @@ export async function handler(): Promise<void> {
   let failed = 0
   for (const conn of connections) {
     try {
-      const action = await ensureForConnection(db, config, conn, webhookUrl)
+      const action = await ensureForConnection(db, conn, webhookUrl)
       actions[action]++
     } catch (err) {
       failed++

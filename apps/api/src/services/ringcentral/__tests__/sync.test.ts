@@ -19,16 +19,8 @@ vi.mock('../../../repositories/messaging.repository', () => ({
 }))
 
 import { syncConnection } from '../sync'
-import { RingCentralOAuthError, type RingCentralOAuthConfig } from '../oauth'
+import { RingCentralOAuthError } from '../oauth'
 import type * as ClientModule from '../client'
-
-const config = {
-  clientId: 'c',
-  clientSecret: 's',
-  redirectUri: 'r',
-  apiBase: 'https://platform.devtest.ringcentral.com',
-  stateSecret: 'x',
-} satisfies RingCentralOAuthConfig
 
 const db = {} as never
 const connection = {
@@ -45,7 +37,10 @@ let getMock: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   Object.values(h).forEach((fn) => fn.mockReset())
-  h.acquireAccessToken.mockResolvedValue('at')
+  h.acquireAccessToken.mockResolvedValue({
+    accessToken: 'at',
+    apiBase: 'https://platform.devtest.ringcentral.com',
+  })
   getMock = vi.fn()
   h.makeClient.mockReturnValue({ get: getMock, post: vi.fn(), put: vi.fn(), del: vi.fn() })
   h.getSyncCursor.mockResolvedValue(null) // no cursor → FSync by default
@@ -71,7 +66,7 @@ describe('syncConnection — v1 store', () => {
       return Promise.resolve({ records: [], syncInfo: { syncToken: 't-tok' } })
     })
 
-    const { captured } = await syncConnection(db, config, connection)
+    const { captured } = await syncConnection(db, connection)
 
     expect(captured).toBe(1)
     const v1Call = getMock.mock.calls.find((c) => c[0] === V1_PATH)!
@@ -91,7 +86,7 @@ describe('syncConnection — v1 store', () => {
     )
     getMock.mockResolvedValue({ records: [], syncInfo: { syncToken: 'x' } })
 
-    await syncConnection(db, config, connection)
+    await syncConnection(db, connection)
 
     const v1Call = getMock.mock.calls.find((c) => c[0] === V1_PATH)!
     expect(v1Call[1]).toMatchObject({ syncType: 'ISync', syncToken: 'prev' })
@@ -112,7 +107,7 @@ describe('syncConnection — v1 store', () => {
       return Promise.resolve({ records: [], syncInfo: { syncToken: 't' } })
     })
 
-    const { captured } = await syncConnection(db, config, connection)
+    const { captured } = await syncConnection(db, connection)
     expect(captured).toBe(1)
     expect(v1Calls).toBe(2)
     expect(getMock.mock.calls.filter((c) => c[0] === V1_PATH)[1]![1]).toMatchObject({
@@ -130,7 +125,7 @@ describe('syncConnection — v1 store', () => {
       return Promise.resolve({ records: [], syncInfo: { syncToken: 't' } })
     })
 
-    const { captured } = await syncConnection(db, config, connection)
+    const { captured } = await syncConnection(db, connection)
     expect(captured).toBe(1) // only the SMS
     expect(h.captureMessage).toHaveBeenCalledTimes(1)
   })
@@ -171,7 +166,7 @@ describe('syncConnection — thread store', () => {
       return Promise.reject(new Error(`unexpected path ${path}`))
     })
 
-    const { captured } = await syncConnection(db, config, connection)
+    const { captured } = await syncConnection(db, connection)
 
     expect(captured).toBe(2)
     // Read Thread called exactly once despite two entries on the same thread.

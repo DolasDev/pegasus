@@ -35,7 +35,7 @@ export async function handler(): Promise<void> {
   let failed = 0
   for (const conn of connections) {
     try {
-      const result = await syncConnection(db, config, conn)
+      const result = await syncConnection(db, conn)
       captured += result.captured
     } catch (err) {
       failed++

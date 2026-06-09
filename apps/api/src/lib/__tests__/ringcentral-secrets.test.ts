@@ -29,11 +29,13 @@ vi.mock('@aws-sdk/client-secrets-manager', () => ({
 }))
 
 import {
-  storeRefreshToken,
-  getRefreshToken,
-  refreshTokenSecretName,
+  storeConnectionCredentials,
+  getConnectionCredentials,
+  connectionSecretName,
   __resetSecretsClientForTests,
 } from '../ringcentral-secrets'
+
+const CREDS = { clientId: 'cid', clientSecret: 'csec', jwt: 'the-jwt' }
 
 beforeEach(() => {
   mockSend.mockReset()
@@ -42,20 +44,20 @@ beforeEach(() => {
   process.env['RINGCENTRAL_SECRET_PREFIX'] = 'pegasus/test/ringcentral'
 })
 
-describe('refreshTokenSecretName', () => {
+describe('connectionSecretName', () => {
   it('joins the configured prefix and connection id', () => {
-    expect(refreshTokenSecretName('conn-1')).toBe('pegasus/test/ringcentral/conn-1')
+    expect(connectionSecretName('conn-1')).toBe('pegasus/test/ringcentral/conn-1')
   })
 })
 
-describe('storeRefreshToken', () => {
-  it('creates a new secret and returns its ARN', async () => {
+describe('storeConnectionCredentials', () => {
+  it('creates a new secret with the JSON blob and returns its ARN', async () => {
     mockSend.mockResolvedValueOnce({ ARN: 'arn:aws:secretsmanager:::secret:rc/conn-1' })
-    const arn = await storeRefreshToken('conn-1', 'refresh-token-value')
+    const arn = await storeConnectionCredentials('conn-1', CREDS)
     expect(arn).toBe('arn:aws:secretsmanager:::secret:rc/conn-1')
     expect(commandInputs[0]).toEqual({
       type: 'CreateSecret',
-      input: { Name: 'pegasus/test/ringcentral/conn-1', SecretString: 'refresh-token-value' },
+      input: { Name: 'pegasus/test/ringcentral/conn-1', SecretString: JSON.stringify(CREDS) },
     })
   })
 
@@ -63,25 +65,25 @@ describe('storeRefreshToken', () => {
     mockSend
       .mockRejectedValueOnce(new FakeResourceExistsException('exists'))
       .mockResolvedValueOnce({ ARN: 'arn:aws:secretsmanager:::secret:rc/conn-1' })
-    const arn = await storeRefreshToken('conn-1', 'rotated-token')
+    const arn = await storeConnectionCredentials('conn-1', CREDS)
     expect(arn).toBe('arn:aws:secretsmanager:::secret:rc/conn-1')
     expect(commandInputs.map((c) => c.type)).toEqual(['CreateSecret', 'PutSecretValue'])
   })
 
   it('rethrows non-ResourceExists errors', async () => {
     mockSend.mockRejectedValueOnce(new Error('AccessDenied'))
-    await expect(storeRefreshToken('conn-1', 't')).rejects.toThrow(/AccessDenied/)
+    await expect(storeConnectionCredentials('conn-1', CREDS)).rejects.toThrow(/AccessDenied/)
   })
 })
 
-describe('getRefreshToken', () => {
-  it('returns the secret string', async () => {
-    mockSend.mockResolvedValueOnce({ SecretString: 'the-refresh-token' })
-    expect(await getRefreshToken('arn:secret')).toBe('the-refresh-token')
+describe('getConnectionCredentials', () => {
+  it('parses the stored JSON blob', async () => {
+    mockSend.mockResolvedValueOnce({ SecretString: JSON.stringify(CREDS) })
+    expect(await getConnectionCredentials('arn:secret')).toEqual(CREDS)
   })
 
   it('throws when the secret has no string value', async () => {
     mockSend.mockResolvedValueOnce({})
-    await expect(getRefreshToken('arn:secret')).rejects.toThrow(/no string value/)
+    await expect(getConnectionCredentials('arn:secret')).rejects.toThrow(/no string value/)
   })
 })

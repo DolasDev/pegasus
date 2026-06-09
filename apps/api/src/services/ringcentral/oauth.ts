@@ -1,138 +1,46 @@
 // ---------------------------------------------------------------------------
-// RingCentral 3-legged OAuth (connect flow).
+// RingCentral auth — per-tenant JWT-bearer (bring-your-own credentials).
 //
-// One platform-level RingCentral app; each tenant authorises it. The `start`
-// endpoint builds the authorize URL with a signed `state` carrying the tenant
-// identity (the callback is pre-tenant, so state is how we re-bind the tenant)
-// plus a nonce for CSRF. The `callback` exchanges the code for tokens and reads
-// the account/extension identity needed to record the connection.
-//
-// Access tokens are never persisted; only the rotating refresh token is stored
-// (in Secrets Manager — see lib/ringcentral-secrets.ts).
+// Each tenant registers their OWN RingCentral app, enables JWT auth on it, and
+// creates a JWT credential bound to that app. They paste the app's client id +
+// client secret + the JWT into Pegasus. We exchange those, server-to-server, for
+// a short-lived access token (RingCentral's `jwt-bearer` grant). There is no
+// refresh token — the JWT is the durable credential; we re-present it whenever
+// the cached access token expires. The per-connection credentials live in
+// Secrets Manager (see lib/ringcentral-secrets.ts), never in Postgres.
 // ---------------------------------------------------------------------------
 
-import { createHmac, timingSafeEqual } from 'node:crypto'
+export const DEFAULT_API_BASE = 'https://platform.ringcentral.com'
 
-const DEFAULT_API_BASE = 'https://platform.ringcentral.com'
+const JWT_BEARER_GRANT = 'urn:ietf:params:oauth:grant-type:jwt-bearer'
 
-export interface RingCentralOAuthConfig {
-  clientId: string
-  clientSecret: string
-  redirectUri: string
+/**
+ * Platform-level config. With bring-your-own credentials there is no platform
+ * client id/secret — only the default API base and the master enable switch.
+ */
+export interface RingCentralConfig {
   apiBase: string
-  stateSecret: string
 }
 
 /**
- * Reads RingCentral OAuth config from the environment. Returns null when the
- * integration is not fully configured (flag off or a missing var), so callers
- * fail closed (503) rather than half-initialising.
+ * Returns the platform config, or null when the integration is disabled
+ * (`RINGCENTRAL_ENABLED !== 'true'`), so the crons + connect endpoint fail
+ * closed. `apiBase` is the default RingCentral environment used at connect time
+ * when a tenant doesn't pin their own (sandbox vs production).
  */
-export function readOAuthConfig(
-  env: NodeJS.ProcessEnv = process.env,
-): RingCentralOAuthConfig | null {
+export function readOAuthConfig(env: NodeJS.ProcessEnv = process.env): RingCentralConfig | null {
   if (env['RINGCENTRAL_ENABLED'] !== 'true') return null
-  const clientId = env['RINGCENTRAL_CLIENT_ID']
-  const clientSecret = env['RINGCENTRAL_CLIENT_SECRET']
-  const redirectUri = env['RINGCENTRAL_OAUTH_REDIRECT_URI']
-  const stateSecret = env['RINGCENTRAL_OAUTH_STATE_SECRET']
-  if (!clientId || !clientSecret || !redirectUri || !stateSecret) return null
-  return {
-    clientId,
-    clientSecret,
-    redirectUri,
-    stateSecret,
-    apiBase: env['RINGCENTRAL_API_BASE'] ?? DEFAULT_API_BASE,
-  }
+  return { apiBase: env['RINGCENTRAL_API_BASE'] ?? DEFAULT_API_BASE }
 }
 
 // ---------------------------------------------------------------------------
-// State signing (HMAC-SHA256, URL-safe)
+// Errors
 // ---------------------------------------------------------------------------
-
-export interface OAuthState {
-  tenantId: string
-  /** The SMS-enabled number being connected (E.164), supplied at start. */
-  ownerNumber: string
-  /** CSRF nonce. */
-  nonce: string
-  /** Issued-at epoch ms — used to reject replays of a stale authorize URL. */
-  iat: number
-}
-
-/** Max age of a signed state before the callback rejects it (10 minutes). */
-export const STATE_MAX_AGE_MS = 10 * 60 * 1000
-
-const b64url = (buf: Buffer): string => buf.toString('base64url')
-
-/** Signs the state payload as `<base64url(json)>.<base64url(hmac)>`. */
-export function signState(state: OAuthState, secret: string): string {
-  const body = b64url(Buffer.from(JSON.stringify(state), 'utf8'))
-  const sig = b64url(createHmac('sha256', secret).update(body).digest())
-  return `${body}.${sig}`
-}
-
-/**
- * Verifies and decodes a signed state token, or returns null if tampered,
- * malformed, or older than `maxAgeMs` (replay protection for a leaked URL).
- */
-export function verifyState(
-  token: string,
-  secret: string,
-  maxAgeMs: number = STATE_MAX_AGE_MS,
-  now: number = Date.now(),
-): OAuthState | null {
-  const dot = token.indexOf('.')
-  if (dot <= 0) return null
-  const body = token.slice(0, dot)
-  const sig = token.slice(dot + 1)
-  const expected = b64url(createHmac('sha256', secret).update(body).digest())
-  const a = Buffer.from(sig)
-  const b = Buffer.from(expected)
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null
-  try {
-    const parsed = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as OAuthState
-    if (typeof parsed.tenantId !== 'string' || typeof parsed.ownerNumber !== 'string') return null
-    if (typeof parsed.iat !== 'number') return null
-    // Reject stale (or implausibly future-dated) states.
-    if (now - parsed.iat > maxAgeMs || parsed.iat - now > 60_000) return null
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Authorize URL
-// ---------------------------------------------------------------------------
-
-/** Builds the RingCentral authorize URL the admin's browser is redirected to. */
-export function buildAuthorizeUrl(config: RingCentralOAuthConfig, state: string): string {
-  const url = new URL('/restapi/oauth/authorize', config.apiBase)
-  url.searchParams.set('response_type', 'code')
-  url.searchParams.set('client_id', config.clientId)
-  url.searchParams.set('redirect_uri', config.redirectUri)
-  url.searchParams.set('state', state)
-  return url.toString()
-}
-
-// ---------------------------------------------------------------------------
-// Token exchange
-// ---------------------------------------------------------------------------
-
-export interface RcTokenResponse {
-  access_token: string
-  refresh_token: string
-  expires_in: number
-  refresh_token_expires_in: number
-  scope: string
-  owner_id: string
-}
 
 /**
  * A RingCentral OAuth/API error carrying the HTTP status, so callers can tell a
- * permanent failure (4xx — e.g. a dead refresh token, `invalid_grant`) from a
- * transient one (5xx / network) and avoid permanently sidelining a connection
+ * permanent failure (4xx — e.g. an invalid/revoked JWT, bad client secret) from
+ * a transient one (5xx / network) and avoid permanently sidelining a connection
  * on a blip. `status` is undefined for a network-level failure.
  */
 export class RingCentralOAuthError extends Error {
@@ -144,24 +52,49 @@ export class RingCentralOAuthError extends Error {
     this.name = 'RingCentralOAuthError'
   }
 
-  /** True for client errors (4xx) — the credential/grant is genuinely bad. */
+  /** True for client errors (4xx) — the credential is genuinely bad. */
   get isPermanent(): boolean {
     return this.status !== undefined && this.status >= 400 && this.status < 500
   }
 }
 
-function basicAuth(config: RingCentralOAuthConfig): string {
-  return Buffer.from(`${config.clientId}:${config.clientSecret}`).toString('base64')
+// ---------------------------------------------------------------------------
+// JWT-bearer token exchange
+// ---------------------------------------------------------------------------
+
+/** The per-tenant credentials a connection authenticates with. */
+export interface JwtCredentials {
+  clientId: string
+  clientSecret: string
+  jwt: string
+  /** Optional RingCentral environment override (sandbox vs production). */
+  apiBase?: string
 }
 
-async function postToken(
-  config: RingCentralOAuthConfig,
-  form: URLSearchParams,
-): Promise<RcTokenResponse> {
-  const res = await fetch(new URL('/restapi/oauth/token', config.apiBase), {
+/** JWT-bearer returns only an access token — no refresh token. */
+export interface JwtTokenResponse {
+  access_token: string
+  expires_in: number
+}
+
+function basicAuth(clientId: string, clientSecret: string): string {
+  return Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
+}
+
+/**
+ * Exchanges a tenant's JWT (+ their app's client id/secret) for a short-lived
+ * access token via RingCentral's `jwt-bearer` grant. Throws RingCentralOAuthError
+ * with the HTTP status on failure (a 400 here means the credentials are bad).
+ */
+export async function exchangeJwtForToken(
+  creds: JwtCredentials,
+  apiBase: string,
+): Promise<JwtTokenResponse> {
+  const form = new URLSearchParams({ grant_type: JWT_BEARER_GRANT, assertion: creds.jwt })
+  const res = await fetch(new URL('/restapi/oauth/token', apiBase), {
     method: 'POST',
     headers: {
-      Authorization: `Basic ${basicAuth(config)}`,
+      Authorization: `Basic ${basicAuth(creds.clientId, creds.clientSecret)}`,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: form,
@@ -173,32 +106,7 @@ async function postToken(
       res.status,
     )
   }
-  return (await res.json()) as RcTokenResponse
-}
-
-/** Exchanges an authorization code for access + refresh tokens. */
-export async function exchangeCodeForToken(
-  config: RingCentralOAuthConfig,
-  code: string,
-): Promise<RcTokenResponse> {
-  const form = new URLSearchParams({
-    grant_type: 'authorization_code',
-    code,
-    redirect_uri: config.redirectUri,
-  })
-  return postToken(config, form)
-}
-
-/** Refreshes an access token using the rotating refresh token. */
-export async function refreshAccessToken(
-  config: RingCentralOAuthConfig,
-  refreshToken: string,
-): Promise<RcTokenResponse> {
-  const form = new URLSearchParams({
-    grant_type: 'refresh_token',
-    refresh_token: refreshToken,
-  })
-  return postToken(config, form)
+  return (await res.json()) as JwtTokenResponse
 }
 
 // ---------------------------------------------------------------------------
@@ -212,19 +120,23 @@ export interface RcExtensionInfo {
 
 /**
  * Reads the authenticated account + extension ids via the extension-info
- * endpoint, used to key the RingCentralConnection. (The fuller RC client lands
- * in Unit 6; the connect flow needs only these identifiers.)
+ * endpoint, used to key the RingCentralConnection at connect time.
  */
 export async function fetchExtensionInfo(
-  config: RingCentralOAuthConfig,
+  apiBase: string,
   accessToken: string,
 ): Promise<RcExtensionInfo> {
-  const res = await fetch(new URL('/restapi/v1.0/account/~/extension/~', config.apiBase), {
+  const res = await fetch(new URL('/restapi/v1.0/account/~/extension/~', apiBase), {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (!res.ok) {
+    // Carry the status so the connect handler can tell a permanent failure (e.g.
+    // a 403 from a missing ReadAccounts scope) from a transient one.
     const text = await res.text().catch(() => '')
-    throw new Error(`RingCentral extension-info returned ${res.status}: ${text.slice(0, 200)}`)
+    throw new RingCentralOAuthError(
+      `RingCentral extension-info returned ${res.status}: ${text.slice(0, 200)}`,
+      res.status,
+    )
   }
   const body = (await res.json()) as { id?: number | string; account?: { id?: number | string } }
   if (body.id == null || body.account?.id == null) {

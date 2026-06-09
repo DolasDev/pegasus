@@ -1,4 +1,4 @@
-// Unit tests for the RingCentral token-refresh cron.
+// Unit tests for the RingCentral credential health-check cron.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const h = vi.hoisted(() => {
@@ -16,14 +16,14 @@ const h = vi.hoisted(() => {
   }
   return {
     readOAuthConfig: vi.fn(),
-    refreshAccessToken: vi.fn(),
-    getRefreshToken: vi.fn(),
-    storeRefreshToken: vi.fn(),
+    exchangeJwtForToken: vi.fn(),
+    getConnectionCredentials: vi.fn(),
     listActiveConnections: vi.fn(),
     markTokenRefreshed: vi.fn(),
     markTokenExpired: vi.fn(),
     updateConnectionHealth: vi.fn(),
     RingCentralOAuthError,
+    DEFAULT_API_BASE: 'https://platform.ringcentral.com',
   }
 })
 const { RingCentralOAuthError } = h
@@ -31,12 +31,12 @@ const { RingCentralOAuthError } = h
 vi.mock('../db', () => ({ db: {} }))
 vi.mock('../services/ringcentral/oauth', () => ({
   readOAuthConfig: h.readOAuthConfig,
-  refreshAccessToken: h.refreshAccessToken,
+  exchangeJwtForToken: h.exchangeJwtForToken,
   RingCentralOAuthError: h.RingCentralOAuthError,
+  DEFAULT_API_BASE: h.DEFAULT_API_BASE,
 }))
 vi.mock('../lib/ringcentral-secrets', () => ({
-  getRefreshToken: h.getRefreshToken,
-  storeRefreshToken: h.storeRefreshToken,
+  getConnectionCredentials: h.getConnectionCredentials,
 }))
 vi.mock('../repositories/messaging.repository', () => ({
   listActiveConnections: h.listActiveConnections,
@@ -47,47 +47,34 @@ vi.mock('../repositories/messaging.repository', () => ({
 
 import { handler } from '../lambda-ringcentral-token-refresh'
 
-const CONFIG = {
-  clientId: 'c',
-  clientSecret: 's',
-  redirectUri: 'r',
-  apiBase: 'b',
-  stateSecret: 'x',
-}
+const CONFIG = { apiBase: 'https://platform.ringcentral.com' }
 
 beforeEach(() => {
   for (const v of Object.values(h)) {
     if (typeof v === 'function' && 'mockReset' in v) (v as ReturnType<typeof vi.fn>).mockReset()
   }
+  h.getConnectionCredentials.mockResolvedValue({ clientId: 'c', clientSecret: 's', jwt: 'j' })
 })
 
-describe('lambda-ringcentral-token-refresh', () => {
+describe('lambda-ringcentral-credential-check', () => {
   it('no-ops when the integration is disabled', async () => {
     h.readOAuthConfig.mockReturnValue(null)
     await handler()
     expect(h.listActiveConnections).not.toHaveBeenCalled()
   })
 
-  it('refreshes each active connection and persists the rotated token', async () => {
+  it('verifies each active connection and restores HEALTHY on success', async () => {
     h.readOAuthConfig.mockReturnValue(CONFIG)
     h.listActiveConnections.mockResolvedValue([
       { id: 'conn-1', tokenSecretArn: 'arn:1' },
       { id: 'conn-2', tokenSecretArn: 'arn:2' },
     ])
-    h.getRefreshToken.mockResolvedValue('old-rt')
-    h.refreshAccessToken.mockResolvedValue({ refresh_token: 'new-rt' })
-    h.storeRefreshToken.mockResolvedValue('arn:rotated')
+    h.exchangeJwtForToken.mockResolvedValue({ access_token: 'at', expires_in: 3600 })
 
     await handler()
 
-    expect(h.refreshAccessToken).toHaveBeenCalledTimes(2)
-    expect(h.storeRefreshToken).toHaveBeenCalledWith('conn-1', 'new-rt')
-    expect(h.markTokenRefreshed).toHaveBeenCalledWith(
-      expect.anything(),
-      'conn-1',
-      expect.any(Date),
-      'arn:rotated',
-    )
+    expect(h.exchangeJwtForToken).toHaveBeenCalledTimes(2)
+    expect(h.markTokenRefreshed).toHaveBeenCalledWith(expect.anything(), 'conn-1', expect.any(Date))
     expect(h.markTokenExpired).not.toHaveBeenCalled()
   })
 
@@ -97,31 +84,21 @@ describe('lambda-ringcentral-token-refresh', () => {
       { id: 'bad', tokenSecretArn: 'arn:bad' },
       { id: 'good', tokenSecretArn: 'arn:good' },
     ])
-    h.getRefreshToken.mockResolvedValue('rt')
-    h.refreshAccessToken
+    h.exchangeJwtForToken
       .mockRejectedValueOnce(new RingCentralOAuthError('invalid_grant', 400))
-      .mockResolvedValueOnce({ refresh_token: 'new-rt' })
-    h.storeRefreshToken.mockResolvedValue('arn:rotated')
+      .mockResolvedValueOnce({ access_token: 'at', expires_in: 3600 })
 
     await handler()
 
     expect(h.markTokenExpired).toHaveBeenCalledWith(expect.anything(), 'bad')
     expect(h.updateConnectionHealth).not.toHaveBeenCalled()
-    expect(h.markTokenRefreshed).toHaveBeenCalledWith(
-      expect.anything(),
-      'good',
-      expect.any(Date),
-      'arn:rotated',
-    )
+    expect(h.markTokenRefreshed).toHaveBeenCalledWith(expect.anything(), 'good', expect.any(Date))
   })
 
-  it('keeps a connection ACTIVE (DEGRADED) on a transient (5xx) failure so it retries next run', async () => {
+  it('flags DEGRADED on a transient (5xx) failure so it retries next run', async () => {
     h.readOAuthConfig.mockReturnValue(CONFIG)
     h.listActiveConnections.mockResolvedValue([{ id: 'blip', tokenSecretArn: 'arn:blip' }])
-    h.getRefreshToken.mockResolvedValue('rt')
-    h.refreshAccessToken.mockRejectedValueOnce(
-      new RingCentralOAuthError('service unavailable', 503),
-    )
+    h.exchangeJwtForToken.mockRejectedValueOnce(new RingCentralOAuthError('unavailable', 503))
 
     await handler()
 
@@ -132,8 +109,7 @@ describe('lambda-ringcentral-token-refresh', () => {
   it('treats a network error (no status) as transient', async () => {
     h.readOAuthConfig.mockReturnValue(CONFIG)
     h.listActiveConnections.mockResolvedValue([{ id: 'net', tokenSecretArn: 'arn:net' }])
-    h.getRefreshToken.mockResolvedValue('rt')
-    h.refreshAccessToken.mockRejectedValueOnce(new RingCentralOAuthError('ECONNRESET'))
+    h.exchangeJwtForToken.mockRejectedValueOnce(new RingCentralOAuthError('ECONNRESET'))
 
     await handler()
 

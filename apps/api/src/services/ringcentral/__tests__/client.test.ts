@@ -1,22 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  getRefreshToken: vi.fn(),
-  storeRefreshToken: vi.fn(),
-  refreshAccessToken: vi.fn(),
-  markTokenRefreshed: vi.fn(),
+  getConnectionCredentials: vi.fn(),
+  exchangeJwtForToken: vi.fn(),
 }))
 
 vi.mock('../../../lib/ringcentral-secrets', () => ({
-  getRefreshToken: h.getRefreshToken,
-  storeRefreshToken: h.storeRefreshToken,
-}))
-vi.mock('../../../repositories/messaging.repository', () => ({
-  markTokenRefreshed: h.markTokenRefreshed,
+  getConnectionCredentials: h.getConnectionCredentials,
 }))
 vi.mock('../oauth', async (importActual) => {
   const actual = await importActual<typeof OAuthModule>()
-  return { ...actual, refreshAccessToken: h.refreshAccessToken }
+  return { ...actual, exchangeJwtForToken: h.exchangeJwtForToken }
 })
 
 import {
@@ -25,18 +19,8 @@ import {
   RateLimitError,
   __resetTokenCacheForTests,
 } from '../client'
-import { RingCentralOAuthError, type RingCentralOAuthConfig } from '../oauth'
+import { RingCentralOAuthError, DEFAULT_API_BASE } from '../oauth'
 import type * as OAuthModule from '../oauth'
-
-const config = {
-  clientId: 'c',
-  clientSecret: 's',
-  redirectUri: 'r',
-  apiBase: 'https://platform.devtest.ringcentral.com',
-  stateSecret: 'x',
-} satisfies RingCentralOAuthConfig
-
-const db = {} as never
 
 beforeEach(() => {
   Object.values(h).forEach((fn) => fn.mockReset())
@@ -44,46 +28,58 @@ beforeEach(() => {
 })
 
 // ---------------------------------------------------------------------------
-// acquireAccessToken
+// acquireAccessToken (jwt-bearer)
 // ---------------------------------------------------------------------------
 
 describe('acquireAccessToken', () => {
   const conn = { id: 'conn-1', tokenSecretArn: 'arn:1' }
 
   beforeEach(() => {
-    h.getRefreshToken.mockResolvedValue('rt')
-    h.refreshAccessToken.mockResolvedValue({
-      access_token: 'at',
-      refresh_token: 'new-rt',
-      expires_in: 3600,
+    h.getConnectionCredentials.mockResolvedValue({ clientId: 'c', clientSecret: 's', jwt: 'j' })
+    h.exchangeJwtForToken.mockResolvedValue({ access_token: 'at', expires_in: 3600 })
+  })
+
+  it('exchanges the JWT on first call and returns the token + default api base', async () => {
+    const res = await acquireAccessToken(conn, 1_000_000)
+    expect(res).toEqual({ accessToken: 'at', apiBase: DEFAULT_API_BASE })
+    expect(h.getConnectionCredentials).toHaveBeenCalledWith('arn:1')
+    expect(h.exchangeJwtForToken).toHaveBeenCalledWith(
+      { clientId: 'c', clientSecret: 's', jwt: 'j' },
+      DEFAULT_API_BASE,
+    )
+  })
+
+  it('returns the cached token without re-exchanging while it is valid', async () => {
+    await acquireAccessToken(conn, 1_000_000)
+    await acquireAccessToken(conn, 1_000_000 + 1000)
+    expect(h.exchangeJwtForToken).toHaveBeenCalledTimes(1) // cache hit
+  })
+
+  it('re-exchanges once the cached token is near expiry', async () => {
+    await acquireAccessToken(conn, 1_000_000)
+    await acquireAccessToken(conn, 1_000_000 + 3_600_000)
+    expect(h.exchangeJwtForToken).toHaveBeenCalledTimes(2)
+  })
+
+  it('honours a per-connection apiBase override', async () => {
+    h.getConnectionCredentials.mockResolvedValue({
+      clientId: 'c',
+      clientSecret: 's',
+      jwt: 'j',
+      apiBase: 'https://platform.devtest.ringcentral.com',
     })
-    h.storeRefreshToken.mockResolvedValue('arn:rotated')
+    const res = await acquireAccessToken(conn, 1_000_000)
+    expect(res.apiBase).toBe('https://platform.devtest.ringcentral.com')
+    expect(h.exchangeJwtForToken).toHaveBeenCalledWith(
+      expect.objectContaining({ apiBase: 'https://platform.devtest.ringcentral.com' }),
+      'https://platform.devtest.ringcentral.com',
+    )
   })
 
-  it('refreshes + rotates on first call and caches the access token', async () => {
-    const token = await acquireAccessToken(config, db, conn, 1_000_000)
-    expect(token).toBe('at')
-    expect(h.storeRefreshToken).toHaveBeenCalledWith('conn-1', 'new-rt')
-    expect(h.markTokenRefreshed).toHaveBeenCalledWith(db, 'conn-1', expect.any(Date), 'arn:rotated')
-  })
-
-  it('returns the cached token without refreshing while it is valid', async () => {
-    await acquireAccessToken(config, db, conn, 1_000_000)
-    await acquireAccessToken(config, db, conn, 1_000_000 + 1000)
-    expect(h.refreshAccessToken).toHaveBeenCalledTimes(1) // cache hit
-  })
-
-  it('re-refreshes once the cached token is near expiry', async () => {
-    await acquireAccessToken(config, db, conn, 1_000_000)
-    // 3600s later — past expiry minus the 60s skew.
-    await acquireAccessToken(config, db, conn, 1_000_000 + 3_600_000)
-    expect(h.refreshAccessToken).toHaveBeenCalledTimes(2)
-  })
-
-  it('throws when the connection has no stored refresh token', async () => {
-    await expect(
-      acquireAccessToken(config, db, { id: 'c2', tokenSecretArn: null }),
-    ).rejects.toThrow(/no stored refresh token/)
+  it('throws when the connection has no stored credentials', async () => {
+    await expect(acquireAccessToken({ id: 'c2', tokenSecretArn: null })).rejects.toThrow(
+      /no stored credentials/,
+    )
   })
 })
 

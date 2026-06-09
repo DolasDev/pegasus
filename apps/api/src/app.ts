@@ -65,10 +65,7 @@ import {
   longhaulUpdateTripHandler,
 } from './handlers/longhaul-cloud/trip-save'
 import { meHandler } from './handlers/me'
-import {
-  ringcentralOauthHandler,
-  ringcentralOauthCallbackHandler,
-} from './handlers/integrations/ringcentral-oauth'
+import { ringcentralOauthHandler } from './handlers/integrations/ringcentral-oauth'
 import { ringcentralWebhookHandler } from './handlers/integrations/ringcentral-webhook'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -158,14 +155,10 @@ app.route('/api/auth', authHandler)
 app.route('/api/admin', adminRouter)
 
 // ---------------------------------------------------------------------------
-// RingCentral OAuth callback — pre-tenant. The RingCentral redirect carries no
-// Cognito session or tenant subdomain, so the tenant is re-bound from the
-// HMAC-signed `state`. Flag-gated (RINGCENTRAL_ENABLED) inside the handler.
-// Mounted BEFORE the tenant-protected /api/v1 block.
+// RingCentral webhook — pre-tenant; the RingCentral delivery carries no Cognito
+// session or tenant subdomain, so the tenant is resolved from the payload's
+// subscriptionId. Mounted BEFORE the tenant-protected /api/v1 block.
 // ---------------------------------------------------------------------------
-app.route('/api/integrations/ringcentral', ringcentralOauthCallbackHandler)
-// RingCentral webhook — pre-tenant; tenant resolved from the payload's
-// subscriptionId. Mounted on the same prefix as the OAuth callback.
 app.route('/api/integrations/ringcentral', ringcentralWebhookHandler)
 
 // ---------------------------------------------------------------------------

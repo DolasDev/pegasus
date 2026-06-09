@@ -14,7 +14,7 @@
 import { randomBytes } from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
 import { createLogger } from '../../lib/logger'
-import { type RingCentralOAuthConfig, RingCentralOAuthError } from './oauth'
+import { RingCentralOAuthError } from './oauth'
 import { acquireAccessToken, makeClient, type RingCentralClient } from './client'
 import {
   findSubscriptionByConnection,
@@ -102,13 +102,12 @@ async function createSubscription(
  */
 export async function ensureForConnection(
   db: PrismaClient,
-  config: RingCentralOAuthConfig,
   connection: SubManagerConnection,
   webhookUrl: string,
   now: number = Date.now(),
 ): Promise<'created' | 'renewed' | 'recreated' | 'noop'> {
-  const accessToken = await acquireAccessToken(config, db, connection, now)
-  const client = makeClient(config.apiBase, accessToken)
+  const { accessToken, apiBase } = await acquireAccessToken(connection, now)
+  const client = makeClient(apiBase, accessToken)
   const existing = await findSubscriptionByConnection(db, connection.id)
 
   if (!existing) {

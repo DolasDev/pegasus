@@ -1,11 +1,13 @@
 // ---------------------------------------------------------------------------
-// Scheduled Lambda — refreshes RingCentral OAuth access/refresh tokens.
+// Scheduled Lambda — RingCentral connection credential health-check.
 //
-// RingCentral refresh tokens lapse if unused, and access tokens are short-lived.
-// This cron keeps every active connection's token warm: read the stored refresh
-// token, exchange it (RC rotates the refresh token on each use), and persist the
-// rotated value back to Secrets Manager. A failed refresh marks the connection
-// EXPIRED + UNHEALTHY so an operator (and the alarms in Unit 16) can react.
+// With per-tenant JWT auth there is no refresh token to rotate — access tokens
+// are minted on demand from the stored JWT. This cron proactively verifies each
+// active connection's credentials still work: it does a real jwt-bearer exchange
+// (bypassing the in-memory token cache) per connection. A permanent failure (4xx
+// — a revoked/expired JWT or bad client secret) marks the connection EXPIRED +
+// UNHEALTHY; a transient failure flags it DEGRADED; success restores HEALTHY.
+// This keeps the ConnectionsUnhealthy metric/alarm (Unit 16) meaningful.
 //
 // Scheduling lives in the CDK ApiStack (EventBridge rule). Inert until the
 // integration is enabled: readOAuthConfig() returns null when RINGCENTRAL_ENABLED
@@ -16,10 +18,11 @@ import { db } from './db'
 import { createLogger } from './lib/logger'
 import {
   readOAuthConfig,
-  refreshAccessToken,
+  exchangeJwtForToken,
   RingCentralOAuthError,
+  DEFAULT_API_BASE,
 } from './services/ringcentral/oauth'
-import { getRefreshToken, storeRefreshToken } from './lib/ringcentral-secrets'
+import { getConnectionCredentials } from './lib/ringcentral-secrets'
 import {
   listActiveConnections,
   markTokenRefreshed,
@@ -27,39 +30,36 @@ import {
   updateConnectionHealth,
 } from './repositories/messaging.repository'
 
-const logger = createLogger('pegasus-ringcentral-token-refresh')
+const logger = createLogger('pegasus-ringcentral-credential-check')
 
 export async function handler(): Promise<void> {
   const config = readOAuthConfig()
   if (!config) {
-    logger.info('RingCentral integration disabled — skipping token refresh')
+    logger.info('RingCentral integration disabled — skipping credential check')
     return
   }
 
   const connections = await listActiveConnections(db)
-  logger.info('Refreshing RingCentral tokens', { count: connections.length })
+  logger.info('Checking RingCentral connection credentials', { count: connections.length })
 
-  let refreshed = 0
+  let healthy = 0
   let failed = 0
   for (const conn of connections) {
     // listActiveConnections already filters tokenSecretArn != null; guard anyway.
     if (!conn.tokenSecretArn) continue
     try {
-      const refreshToken = await getRefreshToken(conn.tokenSecretArn)
-      const tokens = await refreshAccessToken(config, refreshToken)
-      // RC rotates the refresh token on use — persist the new value so the next
-      // run isn't using a consumed token.
-      const arn = await storeRefreshToken(conn.id, tokens.refresh_token)
-      await markTokenRefreshed(db, conn.id, new Date(), arn)
-      refreshed++
+      const creds = await getConnectionCredentials(conn.tokenSecretArn)
+      await exchangeJwtForToken(creds, creds.apiBase ?? DEFAULT_API_BASE)
+      // Credentials work — restore ACTIVE/HEALTHY + stamp lastRefreshedAt.
+      await markTokenRefreshed(db, conn.id, new Date())
+      healthy++
     } catch (err) {
       failed++
-      // Only a 4xx (e.g. invalid_grant — the refresh token is genuinely dead)
-      // means EXPIRED. A 5xx/network blip is transient: keep the connection
-      // ACTIVE (so the next run retries it) and just flag it DEGRADED. Marking
-      // it EXPIRED here would drop it from listActiveConnections permanently.
+      // Only a 4xx (a genuinely dead/revoked JWT or bad secret) means EXPIRED —
+      // the tenant must paste a new JWT. A 5xx/network blip is transient: keep
+      // the connection ACTIVE (so the next run retries) and flag it DEGRADED.
       const permanent = err instanceof RingCentralOAuthError && err.isPermanent
-      logger.error('RingCentral token refresh failed', {
+      logger.error('RingCentral credential check failed', {
         connectionId: conn.id,
         permanent,
         error: err instanceof Error ? err.message : String(err),
@@ -72,5 +72,5 @@ export async function handler(): Promise<void> {
     }
   }
 
-  logger.info('RingCentral token refresh complete', { refreshed, failed })
+  logger.info('RingCentral credential check complete', { healthy, failed })
 }

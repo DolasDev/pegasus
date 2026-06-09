@@ -1,24 +1,36 @@
-// Unit tests for the RingCentral OAuth callback — focus on backfill-on-connect.
+// Unit tests for the RingCentral connections handler (BYO JWT connect + list + disconnect).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Hono } from 'hono'
 import type { AppEnv } from '../../../types'
 
-const h = vi.hoisted(() => ({
-  readOAuthConfig: vi.fn(),
-  verifyState: vi.fn(),
-  exchangeCodeForToken: vi.fn(),
-  fetchExtensionInfo: vi.fn(),
-  signState: vi.fn(),
-  buildAuthorizeUrl: vi.fn(),
-  storeRefreshToken: vi.fn(),
-  deleteRefreshToken: vi.fn(),
-  upsertConnection: vi.fn(),
-  markTokenRefreshed: vi.fn(),
-  listConnectionsByTenant: vi.fn(),
-  findConnectionById: vi.fn(),
-  deleteConnectionForTenant: vi.fn(),
-  enqueueBackfill: vi.fn(),
-}))
+const h = vi.hoisted(() => {
+  class RingCentralOAuthError extends Error {
+    constructor(
+      message: string,
+      public readonly status?: number,
+    ) {
+      super(message)
+      this.name = 'RingCentralOAuthError'
+    }
+    get isPermanent(): boolean {
+      return this.status !== undefined && this.status >= 400 && this.status < 500
+    }
+  }
+  return {
+    RingCentralOAuthError,
+    readOAuthConfig: vi.fn(),
+    exchangeJwtForToken: vi.fn(),
+    fetchExtensionInfo: vi.fn(),
+    storeConnectionCredentials: vi.fn(),
+    deleteConnectionCredentials: vi.fn(),
+    upsertConnection: vi.fn(),
+    markTokenRefreshed: vi.fn(),
+    listConnectionsByTenant: vi.fn(),
+    findConnectionById: vi.fn(),
+    deleteConnectionForTenant: vi.fn(),
+    enqueueBackfill: vi.fn(),
+  }
+})
 
 vi.mock('../../../db', () => ({ db: {} }))
 vi.mock('../../../middleware/rbac', () => ({
@@ -26,15 +38,13 @@ vi.mock('../../../middleware/rbac', () => ({
 }))
 vi.mock('../../../services/ringcentral/oauth', () => ({
   readOAuthConfig: h.readOAuthConfig,
-  verifyState: h.verifyState,
-  exchangeCodeForToken: h.exchangeCodeForToken,
+  exchangeJwtForToken: h.exchangeJwtForToken,
   fetchExtensionInfo: h.fetchExtensionInfo,
-  signState: h.signState,
-  buildAuthorizeUrl: h.buildAuthorizeUrl,
+  RingCentralOAuthError: h.RingCentralOAuthError,
 }))
 vi.mock('../../../lib/ringcentral-secrets', () => ({
-  storeRefreshToken: h.storeRefreshToken,
-  deleteRefreshToken: h.deleteRefreshToken,
+  storeConnectionCredentials: h.storeConnectionCredentials,
+  deleteConnectionCredentials: h.deleteConnectionCredentials,
 }))
 vi.mock('../../../lib/ringcentral-queue', () => ({ enqueueBackfill: h.enqueueBackfill }))
 vi.mock('../../../repositories/messaging.repository', () => ({
@@ -45,78 +55,14 @@ vi.mock('../../../repositories/messaging.repository', () => ({
   deleteConnectionForTenant: h.deleteConnectionForTenant,
 }))
 
-import { ringcentralOauthHandler, ringcentralOauthCallbackHandler } from '../ringcentral-oauth'
+import { ringcentralOauthHandler } from '../ringcentral-oauth'
 
-const CONFIG = {
-  clientId: 'c',
-  clientSecret: 's',
-  redirectUri: 'r',
-  apiBase: 'b',
-  stateSecret: 'x',
+const VALID_BODY = {
+  clientId: 'cid',
+  clientSecret: 'csec',
+  jwt: 'the-jwt',
+  number: '+19085760908',
 }
-
-beforeEach(() => {
-  Object.values(h).forEach((fn) => fn.mockReset())
-  h.readOAuthConfig.mockReturnValue(CONFIG)
-  h.verifyState.mockReturnValue({
-    tenantId: 'tnt-1',
-    ownerNumber: '+19085760908',
-    nonce: 'n',
-    iat: 1,
-  })
-  h.exchangeCodeForToken.mockResolvedValue({
-    access_token: 'at',
-    refresh_token: 'rt',
-    scope: 'SMS',
-  })
-  h.fetchExtensionInfo.mockResolvedValue({ rcAccountId: 'acct', rcExtensionId: 'ext' })
-  h.upsertConnection.mockResolvedValue({ id: 'conn-1' })
-  h.storeRefreshToken.mockResolvedValue('arn:secret')
-  h.markTokenRefreshed.mockResolvedValue({})
-  h.enqueueBackfill.mockResolvedValue(true)
-  delete process.env['RINGCENTRAL_BACKFILL_DAYS']
-})
-
-afterEach(() => {
-  delete process.env['RINGCENTRAL_BACKFILL_DAYS']
-})
-
-function callback() {
-  return ringcentralOauthCallbackHandler.request('/oauth/callback?code=abc&state=xyz')
-}
-
-describe('ringcentral oauth callback — backfill on connect', () => {
-  it('enqueues a backfill for the new connection after connecting', async () => {
-    const res = await callback()
-    expect(res.status).toBe(200)
-    await expect(res.json()).resolves.toEqual({ status: 'connected', connectionId: 'conn-1' })
-    // Default (no env) → undefined days; the sync service applies its own default.
-    expect(h.enqueueBackfill).toHaveBeenCalledWith('tnt-1', 'conn-1', undefined)
-  })
-
-  it('caps RINGCENTRAL_BACKFILL_DAYS and passes it through', async () => {
-    process.env['RINGCENTRAL_BACKFILL_DAYS'] = '1000'
-    await callback()
-    expect(h.enqueueBackfill).toHaveBeenCalledWith('tnt-1', 'conn-1', 365)
-  })
-
-  it('ignores an invalid RINGCENTRAL_BACKFILL_DAYS', async () => {
-    process.env['RINGCENTRAL_BACKFILL_DAYS'] = 'not-a-number'
-    await callback()
-    expect(h.enqueueBackfill).toHaveBeenCalledWith('tnt-1', 'conn-1', undefined)
-  })
-
-  it('still returns connected when the backfill enqueue fails (cron backstops)', async () => {
-    h.enqueueBackfill.mockRejectedValue(new Error('SQS unavailable'))
-    const res = await callback()
-    expect(res.status).toBe(200)
-    await expect(res.json()).resolves.toMatchObject({ status: 'connected' })
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Connections list + disconnect
-// ---------------------------------------------------------------------------
 
 // Mounts the handler under a parent app that injects the tenantId the real RBAC
 // middleware would have set (the mocked requirePermission is a pass-through).
@@ -129,6 +75,123 @@ function appForTenant(tenantId = 'tnt-1') {
   app.route('/', ringcentralOauthHandler)
   return app
 }
+
+function postConnect(body: unknown, tenantId = 'tnt-1') {
+  return appForTenant(tenantId).request('/connections', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+beforeEach(() => {
+  for (const v of Object.values(h)) {
+    if (typeof v === 'function' && 'mockReset' in v) (v as ReturnType<typeof vi.fn>).mockReset()
+  }
+  h.readOAuthConfig.mockReturnValue({ apiBase: 'https://platform.devtest.ringcentral.com' })
+  h.exchangeJwtForToken.mockResolvedValue({ access_token: 'at', expires_in: 3600 })
+  h.fetchExtensionInfo.mockResolvedValue({ rcAccountId: 'acct', rcExtensionId: 'ext' })
+  h.upsertConnection.mockResolvedValue({ id: 'conn-1' })
+  h.storeConnectionCredentials.mockResolvedValue('arn:secret')
+  h.markTokenRefreshed.mockResolvedValue({})
+  h.enqueueBackfill.mockResolvedValue(true)
+  delete process.env['RINGCENTRAL_BACKFILL_DAYS']
+})
+
+afterEach(() => {
+  delete process.env['RINGCENTRAL_BACKFILL_DAYS']
+})
+
+describe('POST /connections (BYO JWT connect)', () => {
+  it('validates the JWT, records the connection, stores the secret, and backfills', async () => {
+    const res = await postConnect(VALID_BODY)
+    expect(res.status).toBe(201)
+    await expect(res.json()).resolves.toEqual({ data: { connectionId: 'conn-1' } })
+
+    expect(h.exchangeJwtForToken).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: 'cid', clientSecret: 'csec', jwt: 'the-jwt' }),
+      'https://platform.devtest.ringcentral.com',
+    )
+    expect(h.upsertConnection).toHaveBeenCalledWith(
+      expect.anything(),
+      'tnt-1',
+      expect.objectContaining({
+        rcAccountId: 'acct',
+        rcExtensionId: 'ext',
+        ownerNumber: '+19085760908',
+        scopes: [],
+      }),
+    )
+    expect(h.storeConnectionCredentials).toHaveBeenCalledWith(
+      'conn-1',
+      expect.objectContaining({ clientId: 'cid', clientSecret: 'csec', jwt: 'the-jwt' }),
+    )
+    expect(h.markTokenRefreshed).toHaveBeenCalledWith(
+      expect.anything(),
+      'conn-1',
+      expect.any(Date),
+      'arn:secret',
+    )
+    expect(h.enqueueBackfill).toHaveBeenCalledWith('tnt-1', 'conn-1', undefined)
+  })
+
+  it('400s with INVALID_CREDENTIALS and persists nothing when the JWT is rejected', async () => {
+    h.exchangeJwtForToken.mockRejectedValue(new h.RingCentralOAuthError('invalid_grant', 400))
+    const res = await postConnect(VALID_BODY)
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toMatchObject({ code: 'INVALID_CREDENTIALS' })
+    expect(h.upsertConnection).not.toHaveBeenCalled()
+    expect(h.storeConnectionCredentials).not.toHaveBeenCalled()
+  })
+
+  it('400s when extension-info fails permanently (e.g. a missing scope)', async () => {
+    h.fetchExtensionInfo.mockRejectedValue(new h.RingCentralOAuthError('insufficient scope', 403))
+    const res = await postConnect(VALID_BODY)
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toMatchObject({ code: 'INVALID_CREDENTIALS' })
+    expect(h.upsertConnection).not.toHaveBeenCalled()
+  })
+
+  it('502s with PERSIST_FAILED when storing the credential secret fails', async () => {
+    h.storeConnectionCredentials.mockRejectedValue(new Error('Secrets Manager down'))
+    const res = await postConnect(VALID_BODY)
+    expect(res.status).toBe(502)
+    await expect(res.json()).resolves.toMatchObject({ code: 'PERSIST_FAILED' })
+  })
+
+  it('502s on a transient exchange failure (does not sideline the creds)', async () => {
+    h.exchangeJwtForToken.mockRejectedValue(new h.RingCentralOAuthError('busy', 503))
+    const res = await postConnect(VALID_BODY)
+    expect(res.status).toBe(502)
+    await expect(res.json()).resolves.toMatchObject({ code: 'EXCHANGE_FAILED' })
+  })
+
+  it('400s on a missing field or a non-E.164 number', async () => {
+    const { jwt: _omit, ...noJwt } = VALID_BODY
+    expect((await postConnect(noJwt)).status).toBe(400)
+    expect((await postConnect({ ...VALID_BODY, number: 'not-a-number' })).status).toBe(400)
+    expect(h.exchangeJwtForToken).not.toHaveBeenCalled()
+  })
+
+  it('503s when the integration is disabled', async () => {
+    h.readOAuthConfig.mockReturnValue(null)
+    const res = await postConnect(VALID_BODY)
+    expect(res.status).toBe(503)
+    expect(h.exchangeJwtForToken).not.toHaveBeenCalled()
+  })
+
+  it('still 201s when the backfill enqueue fails (cron backstops); caps backfill days', async () => {
+    process.env['RINGCENTRAL_BACKFILL_DAYS'] = '1000'
+    h.enqueueBackfill.mockRejectedValue(new Error('SQS unavailable'))
+    const res = await postConnect(VALID_BODY)
+    expect(res.status).toBe(201)
+    expect(h.enqueueBackfill).toHaveBeenCalledWith('tnt-1', 'conn-1', 365)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Connections list + disconnect
+// ---------------------------------------------------------------------------
 
 const connectionRow = {
   id: 'conn-1',
@@ -165,7 +228,6 @@ describe('GET /connections', () => {
         createdAt: '2026-06-01T09:00:00.000Z',
       },
     ])
-    // Secret pointer + bookkeeping must not appear anywhere in the response.
     const raw = JSON.stringify(body)
     expect(raw).not.toContain('tokenSecretArn')
     expect(raw).not.toContain('updatedAt')
@@ -191,19 +253,19 @@ describe('DELETE /connections/:id', () => {
   it('deletes an owned connection and cleans up its secret', async () => {
     h.findConnectionById.mockResolvedValue(connectionRow)
     h.deleteConnectionForTenant.mockResolvedValue(1)
-    h.deleteRefreshToken.mockResolvedValue(undefined)
+    h.deleteConnectionCredentials.mockResolvedValue(undefined)
 
     const res = await appForTenant().request('/connections/conn-1', { method: 'DELETE' })
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ data: { disconnected: true } })
     expect(h.deleteConnectionForTenant).toHaveBeenCalledWith(expect.anything(), 'tnt-1', 'conn-1')
-    expect(h.deleteRefreshToken).toHaveBeenCalledWith(connectionRow.tokenSecretArn)
+    expect(h.deleteConnectionCredentials).toHaveBeenCalledWith(connectionRow.tokenSecretArn)
   })
 
   it('still succeeds when the secret delete fails (best-effort)', async () => {
     h.findConnectionById.mockResolvedValue(connectionRow)
     h.deleteConnectionForTenant.mockResolvedValue(1)
-    h.deleteRefreshToken.mockRejectedValue(new Error('SM down'))
+    h.deleteConnectionCredentials.mockRejectedValue(new Error('SM down'))
 
     const res = await appForTenant().request('/connections/conn-1', { method: 'DELETE' })
     expect(res.status).toBe(200)
@@ -216,12 +278,10 @@ describe('DELETE /connections/:id', () => {
 
     const res = await appForTenant().request('/connections/conn-1', { method: 'DELETE' })
     expect(res.status).toBe(200)
-    expect(h.deleteRefreshToken).not.toHaveBeenCalled()
+    expect(h.deleteConnectionCredentials).not.toHaveBeenCalled()
   })
 
   it('returns 404 for a foreign/missing id (deleteMany count 0) and skips the secret delete', async () => {
-    // Row belongs to another tenant → findConnectionById returns it but the
-    // tenant guard drops the ARN; deleteMany matches nothing → count 0.
     h.findConnectionById.mockResolvedValue({ ...connectionRow, tenantId: 'other-tnt' })
     h.deleteConnectionForTenant.mockResolvedValue(0)
 
@@ -231,6 +291,6 @@ describe('DELETE /connections/:id', () => {
       error: 'RingCentral connection not found',
       code: 'NOT_FOUND',
     })
-    expect(h.deleteRefreshToken).not.toHaveBeenCalled()
+    expect(h.deleteConnectionCredentials).not.toHaveBeenCalled()
   })
 })
