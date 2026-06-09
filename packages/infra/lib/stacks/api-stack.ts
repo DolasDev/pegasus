@@ -642,14 +642,15 @@ export class ApiStack extends cdk.Stack {
     })
 
     // ---------------------------------------------------------------------------
-    // RingCentral token-refresh cron
+    // RingCentral credential health-check cron
     //
-    // Keeps every active RingCentral connection's OAuth refresh token warm
-    // (RC refresh tokens lapse if unused). Reads + rotates the per-connection
-    // secret in Secrets Manager. Inert until RINGCENTRAL_ENABLED=true (the
-    // handler no-ops when readOAuthConfig() returns null), so it is safe to
-    // schedule now. RingCentral OAuth client id/secret + state secret are
-    // injected as env vars when the platform RC app is registered.
+    // With per-tenant JWT auth there is no refresh token to rotate; this cron
+    // verifies each active connection's stored credentials still work (a real
+    // jwt-bearer exchange), marking a connection EXPIRED/UNHEALTHY when its JWT
+    // is revoked/expired so the ConnectionsUnhealthy alarm fires. Reads the
+    // per-connection credential secret from Secrets Manager. Inert until
+    // RINGCENTRAL_ENABLED=true (the handler no-ops when readOAuthConfig() returns
+    // null), so it is safe to schedule now.
     // ---------------------------------------------------------------------------
     const ringcentralTokenRefreshLogGroup = new logs.LogGroup(
       this,
@@ -688,10 +689,10 @@ export class ApiStack extends cdk.Stack {
     ringcentralTokenRefreshFunction.addToRolePolicy(ringcentralSecretPolicy)
 
     new events.Rule(this, 'RingCentralTokenRefreshSchedule', {
-      // RC access tokens live ~1h and refresh tokens lapse after inactivity;
-      // refresh every 30 min to stay comfortably ahead of both.
+      // Half-hourly health check catches a revoked/expired tenant JWT well
+      // before the next reconciliation sync would surface it.
       schedule: events.Schedule.rate(cdk.Duration.minutes(30)),
-      description: 'Refreshes RingCentral OAuth tokens for active connections.',
+      description: 'Health-checks RingCentral connection credentials.',
       targets: [new eventsTargets.LambdaFunction(ringcentralTokenRefreshFunction)],
     })
 

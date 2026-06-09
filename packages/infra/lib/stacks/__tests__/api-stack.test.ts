@@ -511,13 +511,13 @@ describe('ApiStack — AVP store-count metric emitter', () => {
 })
 
 // ---------------------------------------------------------------------------
-describe('ApiStack — RingCentral token-refresh cron', () => {
-  it('schedules the token-refresh Lambda every 30 minutes', () => {
+describe('ApiStack — RingCentral credential health-check cron', () => {
+  it('schedules the credential health-check Lambda every 30 minutes', () => {
     const template = synthApiStack()
     template.hasResourceProperties('AWS::Events::Rule', {
       ScheduleExpression: 'rate(30 minutes)',
       State: 'ENABLED',
-      Description: 'Refreshes RingCentral OAuth tokens for active connections.',
+      Description: 'Health-checks RingCentral connection credentials.',
     })
   })
 
