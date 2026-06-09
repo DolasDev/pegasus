@@ -1,8 +1,8 @@
 # Pegasus Workflows — Phase 2: Server-Side Execution Runtime
 
-> ## 🚦 Resume Status (last updated 2026-06-07)
+> ## ✅ PHASE COMPLETE (last updated 2026-06-09)
 >
-> **Units 1-6 are MERGED AND LIVE on staging + prod.** **Resume at Unit 6.5 (fast-follow) OR Unit 7 (UI) — they're independent.**
+> **All units MERGED AND LIVE on staging + prod.** Units 6.5 + 7 landed in parallel via `/batch` on 2026-06-09 (#229 + #228). Phase 2 is feature-complete; this plan is archived to `plans/completed/`.
 >
 > | Unit                                       | Status               | Reference                     |
 > | ------------------------------------------ | -------------------- | ----------------------------- |
@@ -14,8 +14,8 @@
 > | 6 — Execution API                          | ✅ MERGED + DEPLOYED | #195 → `b55299e` (2026-06-07) |
 > | 6.1 — stdlib server args contract          | ✅ MERGED + DEPLOYED | #196 → `50d2659` (2026-06-07) |
 > | 6.2 — AVP bulk-sync throttle retry         | ✅ MERGED + DEPLOYED | #198 → `57e344b` (2026-06-07) |
-> | 6.5 — Reconcile poller (fast-follow)       | ⬜ READY TO START    | (spec below)                  |
-> | 7 — tenant-web execution UI                | ⬜ READY TO START    | (spec below)                  |
+> | 6.5 — Reconcile poller (fast-follow)       | ✅ MERGED + DEPLOYED | #229 (2026-06-09)             |
+> | 7 — tenant-web execution UI                | ✅ MERGED + DEPLOYED | #228 (2026-06-09)             |
 >
 > **Live runtime state (verified 2026-06-07):**
 >
