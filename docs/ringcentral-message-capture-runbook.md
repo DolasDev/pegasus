@@ -16,7 +16,7 @@ RingCentral ──webhook──▶ POST /api/integrations/ringcentral/webhook
                               ▼
                          capture queue ──▶ capture worker ──┐
    reconciliation sync (15-min cron) ──────────────────────┤ idempotent
-   backfill-on-connect (OAuth callback) ───────────────────┘ captureMessage
+   backfill-on-connect (connect endpoint) ─────────────────┘ captureMessage
                                                               upsert + outbox
                                                               │
                               forwarder cron (5-min) ─────────┘
@@ -31,31 +31,49 @@ Everything is gated behind `RINGCENTRAL_ENABLED`. While unset (every environment
 today) nothing runs: no RC API calls, empty queue/outbox, all crons no-op, all
 alarms green.
 
+## Auth model — per-tenant bring-your-own JWT
+
+There is **no platform RingCentral app**. Each tenant registers their **own**
+RingCentral app, enables **JWT auth** on it, creates a JWT credential bound to
+that app, and pastes the app's **client id + client secret + JWT** into the
+Settings UI. Pegasus exchanges those server-to-server (`grant_type=jwt-bearer`)
+for short-lived access tokens — no consent redirect, no refresh token. The three
+values are stored per connection in Secrets Manager (never in Postgres, never
+returned by the API).
+
 ## Enabling the feature (per environment)
 
-Set on the api Lambda + the RC cron Lambdas (ops step — not part of the rollout):
+The only platform-level config is the master switch + the shared webhook address
+(set on the api Lambda + the RC cron Lambdas):
 
-| Variable                                              | Required           | Notes                                                                                                               |
-| ----------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| `RINGCENTRAL_ENABLED`                                 | yes                | `true` turns the integration on.                                                                                    |
-| `RINGCENTRAL_CLIENT_ID` / `RINGCENTRAL_CLIENT_SECRET` | yes                | Platform RC app credentials.                                                                                        |
-| `RINGCENTRAL_OAUTH_REDIRECT_URI`                      | yes                | Must match the RC app + point at `/api/integrations/ringcentral/oauth/callback`.                                    |
-| `RINGCENTRAL_OAUTH_STATE_SECRET`                      | yes                | HMAC secret for the signed OAuth state.                                                                             |
-| `RINGCENTRAL_WEBHOOK_URL`                             | yes (for webhooks) | Public URL of `POST /api/integrations/ringcentral/webhook`. The renewal cron won't create subscriptions without it. |
-| `RINGCENTRAL_API_BASE`                                | no                 | Defaults to `https://platform.ringcentral.com`.                                                                     |
-| `RINGCENTRAL_BACKFILL_DAYS`                           | no                 | Backfill window on first connect. Defaults to 90; capped at 365.                                                    |
-| `RINGCENTRAL_SECRET_PREFIX`                           | injected           | Set by CDK (Secrets Manager name prefix).                                                                           |
-| `RINGCENTRAL_WEBHOOK_QUEUE_URL`                       | injected           | Set by CDK (capture queue URL).                                                                                     |
+| Variable                        | Required           | Notes                                                                                                               |
+| ------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `RINGCENTRAL_ENABLED`           | yes                | `true` turns the integration on (connect endpoint + crons). Unset ⇒ everything inert.                               |
+| `RINGCENTRAL_WEBHOOK_URL`       | yes (for webhooks) | Public URL of `POST /api/integrations/ringcentral/webhook`. The renewal cron won't create subscriptions without it. |
+| `RINGCENTRAL_API_BASE`          | no                 | Default RingCentral environment when a tenant doesn't pin one. Defaults to `https://platform.ringcentral.com`.      |
+| `RINGCENTRAL_BACKFILL_DAYS`     | no                 | Backfill window on first connect. Defaults to 90; capped at 365.                                                    |
+| `RINGCENTRAL_SECRET_PREFIX`     | injected           | Set by CDK (Secrets Manager name prefix).                                                                           |
+| `RINGCENTRAL_WEBHOOK_QUEUE_URL` | injected           | Set by CDK (capture queue URL).                                                                                     |
 
-The tenant's on-prem connection string comes from `Tenant.mssqlConnectionString`
-(configured via Settings). The on-prem target table DDL is in
+There are **no platform client id/secret/redirect/state-secret** — those were
+removed with the OAuth flow. The tenant's on-prem connection string comes from
+`Tenant.mssqlConnectionString` (Settings); the on-prem target table DDL is in
 [`ringcentral-onprem-inbound-messages.sql`](./ringcentral-onprem-inbound-messages.sql) —
 hand to the on-prem DBA before forwarding is expected to succeed.
 
-After enabling: hit `GET /api/v1/integrations/ringcentral/oauth/start?number=<E.164>`
-as a tenant admin, complete the RC consent, and the callback records the
-connection, stores the refresh token in Secrets Manager, and kicks an immediate
-backfill. The renewal cron then creates the webhook subscription within the hour.
+### How a tenant connects (Settings → Integrations → RingCentral)
+
+1. In the RingCentral Developer Console the tenant creates an app (Server-only,
+   **JWT auth** enabled, with read-messages + read-account/extension +
+   Subscriptions/WebHook permissions), and creates a **JWT credential** bound to
+   that app's client id.
+2. In Pegasus they paste **Client ID + Client Secret + JWT + owner number
+   (E.164)** and submit. `POST /api/v1/integrations/ringcentral/connections`
+   does a live `jwt-bearer` exchange to **validate** the credentials, reads the
+   account/extension identity, stores the credential secret, records the
+   connection, and kicks an immediate backfill. Bad credentials → `400
+INVALID_CREDENTIALS` (nothing is saved). The renewal cron then creates the
+   webhook subscription within the hour.
 
 ## Alarms (SNS topic `pegasus-alarms`)
 
@@ -70,7 +88,7 @@ publishes 0s) and only fire on a real value.
 | `pegasus-rc-outbox-dead`           | Any `MessageForwardOutbox` row is `DEAD` | A forward exhausted all retries. See **DEAD outbox** below.                                                                                                                                                                               |
 | `pegasus-rc-outbox-backlog`        | > 500 rows `PENDING`/`FAILED`            | On-prem is likely unreachable or the forwarder is stalled. Check WireGuard / `mssql-executor` health and `Tenant.mssqlConnectionString`. Rows park `PENDING` and drain automatically once on-prem recovers — no data loss.                |
 | `pegasus-rc-subscriptions-dead`    | A subscription is `DEAD`/`BLACKLISTED`   | Near-real-time delivery is down for a connection; the 15-min reconciliation sync still backstops capture. The renewal cron recreates it within the hour — investigate if it persists (bad `RINGCENTRAL_WEBHOOK_URL`, repeated slow acks). |
-| `pegasus-rc-connections-unhealthy` | A connection's `health` is `UNHEALTHY`   | Usually a failing token refresh. Capture for that tenant has stopped; re-run the OAuth connect flow to re-store a refresh token.                                                                                                          |
+| `pegasus-rc-connections-unhealthy` | A connection's `health` is `UNHEALTHY`   | The tenant's JWT credentials failed validation (revoked/expired JWT or bad secret). Capture for that tenant has stopped; the tenant must generate a fresh JWT and re-connect in Settings.                                                 |
 | `pegasus-rc-sync-lag`              | Oldest sync cursor > 1h stale            | Capture stalled. Check the sync cron (`RingCentralSyncFunction`) logs for RC rate-limiting or auth errors.                                                                                                                                |
 
 ## Capture DLQ
@@ -132,6 +150,6 @@ The buffer-purge cron (`RingCentralBufferPurgeFunction`, every 6h) enforces:
 
 ## Disabling
 
-Set `RINGCENTRAL_ENABLED` unset/false. New captures stop (the OAuth/webhook
+Set `RINGCENTRAL_ENABLED` unset/false. New captures stop (the connect/webhook
 paths fail closed). Already-captured messages still flush on-prem and the
 buffer-purge still runs — retention is intentionally not gated on the flag.
