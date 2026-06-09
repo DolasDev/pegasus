@@ -1,9 +1,9 @@
 # Pegasus Workflows — Phase 3: Sandboxed Tenant Code + Triggers
 
-**Status: SCOPED, not started** (scoped 2026-06-09, immediately after Phase 2
-archived). This is a scoping plan — design decisions below are marked
-**locked**, **proposed**, or **OPEN**. Resolve the OPEN questions (ideally with
-Steve) before promoting any unit to execution.
+**Status: SCOPED, ready for execution** (scoped 2026-06-09, immediately
+after Phase 2 archived; **all 5 open questions resolved with Steve the same
+day** — see "Resolved decisions" below). Recommended starting point:
+Track B Unit 1.
 
 **Predecessors:**
 
@@ -66,9 +66,13 @@ breaks that. Two consequences shape the whole design:
   tenant's runtime token (the endpoint only needs an executionId) or forge
   status PATCHes. The isolation boundary must be: **a runner container only
   ever holds credentials scoped to one tenant.**
-- **Static `workflow_runtime` role is too broad for untrusted code.**
-  Dynamic scoping from `requiredActions` graduates from nice-to-have to a
-  security control.
+- **Runtime-token permissions for untrusted code.** Dynamic scoping from
+  `requiredActions` was considered; **Steve decided (2026-06-09) to keep
+  the static `workflow_runtime` role** (see Resolved #5). Defensible
+  because the role is already narrow — read-only on
+  Quote/Move/Invoice/Customer/Event plus `CreateEvent`, no writes to
+  domain records, no admin actions. Revisit if the role ever needs to
+  grow.
 
 ---
 
@@ -128,35 +132,43 @@ breaks that. Two consequences shape the whole design:
   is the heavy lift. If this phase feels too big as one arc, split into
   **3A = triggers** and **3B = sandboxed tenant code** at promotion time.
 
-### OPEN — resolve before execution
+### Resolved decisions (Steve, 2026-06-09)
 
-1. **Runner compute shape.** ECS `RunTask` per demand-window (proposed) vs a
-   per-tenant ECS service with dispatcher-managed desiredCount vs
-   Lambda-container per execution. Phase 2 noted Lambda is wrong for
-   long-poll *workers*, but a "start runner, poll until idle, exit" model
-   blurs that. Cost at 10–50 tenants matters: N idle Fargate tasks ≈ $9/mo
-   each — scale-to-zero is likely mandatory, but cold-start (image pull +
-   venv install, ~30–60 s) then bounds trigger latency. Decide the
-   latency/cost tradeoff.
-2. **Egress policy for tenant code.** Tenant code calling external APIs is a
-   feature (that's the point of workflows) but also exfil/abuse surface.
-   Options: open egress via existing NAT (simplest, proposed for v1, log
-   flows) vs SG-restricted to Pegasus API + Temporal only (safe, crippling)
-   vs egress proxy with allowlist (right long-term, real work).
-3. **Resource/abuse limits.** Per-execution Temporal timeouts (must set —
-   today curated workflows are trusted to finish), per-tenant concurrent
-   execution cap, executions/day quota, artifact size cap, runner
-   CPU/memory. Which are v1-blocking vs dashboards-later?
-4. **Event taxonomy + emit points.** Which domain events exist at launch?
-   Proposed starter set: `quote.accepted`, `move.status_changed`,
-   `invoice.paid`, `customer.created`, plus `pegasus_event.received`
-   (bridging the existing inbound M2M queue so legacy/desktop events can
-   trigger workflows). Needs product sign-off — the taxonomy is a public
-   contract.
-5. **`requiredActions` cap.** Dynamic scoping needs an allowlist of actions
-   a workflow may request at all (e.g. read-mostly + `CreateEvent`; never
-   admin/tenant-management actions). Who defines the cap, and is exceeding
-   it an upload-time rejection (proposed) or a grant-time silent trim?
+1. **Runner compute shape → ECS `RunTask` + idle-exit.** A tenant's runner
+   launches on the first QUEUED execution for that tenant, polls its task
+   queue, and exits after an idle window (~10 min, tunable). True
+   scale-to-zero; the ~30–60 s cold start (image pull + venv install) on
+   the first execution after idle is accepted — workflows are async and
+   triggers aren't latency-sensitive. No always-on per-tenant services, no
+   Lambda-container redesign.
+2. **Egress policy → open egress via existing NAT + VPC flow logs.**
+   Runners get unrestricted outbound (calling external APIs is the point);
+   enable flow logs on the runner subnets for audit. Exfil risk is bounded
+   by the credential model: a runner only ever holds its own tenant's
+   credentials. Revisit with an egress proxy + allowlist only if abuse
+   shows up in the flow logs.
+3. **Resource/abuse limits → ALL FOUR are v1-blocking.** Track A does not
+   ship without: (a) per-execution Temporal workflow+activity timeouts
+   (15 min default; manifest may lower, not raise), (b) per-tenant
+   concurrent-execution cap (start at 5, enforced at the run path before
+   Temporal start), (c) per-tenant executions/day quota (counter + 429 +
+   UI surfacing), (d) artifact size cap at finalize (10 MB zip) + venv
+   install-size guard. Runner CPU/memory stays fixed by the task
+   definition.
+4. **Event taxonomy → the proposed five at launch:** `quote.accepted`,
+   `move.status_changed`, `invoice.paid`, `customer.created`,
+   `pegasus_event.received` (bridging the existing inbound M2M queue so
+   legacy/desktop events can trigger workflows). Additions are easy;
+   renames are breaking — treat these five names as a public contract.
+5. **`requiredActions` cap → none; static role parity.** No dynamic token
+   scoping in Phase 3. Every runtime token keeps the static
+   `workflow_runtime` Cedar role (read-only Quote/Move/Invoice/Customer/
+   Event + `CreateEvent`), which is already narrow. `requiredActions`
+   remains display-only manifest metadata. **Consequence:** the dynamic-
+   scoping work is dropped from Unit 10. **Guardrail:** any future
+   broadening of `workflow_runtime` (e.g. adding write actions) must
+   reopen this decision — at that point dynamic scoping becomes the
+   prerequisite, not an option.
 
 ---
 
@@ -167,8 +179,8 @@ breaks that. Two consequences shape the whole design:
 **Unit 1 — Domain-event outbox.** `DomainEvent` model
 (`id, tenantId, eventType, payload Json, occurredAt, dispatchedAt?`,
 indexed on `[dispatchedAt, occurredAt]`) + `emitDomainEvent(tx, ...)` helper
-+ first emit points inside the existing handler transactions for the starter
-taxonomy (OPEN #4). Purely additive; nothing consumes it yet.
++ emit points inside the existing handler transactions for the five
+launch events (Resolved #4). Purely additive; nothing consumes it yet.
 
 **Unit 2 — `WorkflowTrigger` schema + CRUD API.** Model
 (`id, tenantId, workflowId FK, kind EVENT|SCHEDULE, eventType?, filter Json?,
@@ -202,9 +214,9 @@ source. Follows the Unit-7 (Phase 2) executions-list patterns.
 
 **Unit 6 — Artifact integrity + eligibility.** sha256 recorded at finalize
 (verify S3 object before first registration), zip-structure validation
-(entry points resolvable, size cap, no deps per the v1 dependency
-decision), `Workflow.executable` derived server-side. Schema +
-finalize-handler change; nothing executes yet.
+(entry points resolvable, 10 MB size cap per Resolved #3, no deps per the
+v1 dependency decision), `Workflow.executable` derived server-side. Schema
++ finalize-handler change; nothing executes yet.
 
 **Unit 7 — Per-tenant broker credentials.** New credential type scoped to
 one tenantId; broker endpoints accept either (shared secret = legacy stdlib
@@ -221,18 +233,21 @@ subprocess. Local-dev story via `docker-compose.temporal.yml` (mirror the
 Phase-2 `temporal-worker` service).
 
 **Unit 9 — Runner orchestration (scale-to-zero).** Dispatcher (likely
-folded into the Unit-3 poller or the run path) ensures a runner task is up
-for a tenant with QUEUED work, per OPEN #1; idle-stop; CloudWatch metrics
-for cold-start latency + running-runner count. New/extended CDK stack —
-re-read `[[feedback_cdk_secret_complete_arn_for_ecs]]` and
+folded into the Unit-3 poller or the run path) launches a runner via ECS
+`RunTask` for any tenant with QUEUED work and none running (Resolved #1);
+the runner self-terminates after ~10 min idle; CloudWatch metrics for
+cold-start latency + running-runner count. VPC flow logs on the runner
+subnets (Resolved #2). New/extended CDK stack — re-read
+`[[feedback_cdk_secret_complete_arn_for_ecs]]` and
 `[[feedback_cdk_retain_orphans_on_rollback]]` before writing it.
 
-**Unit 10 — Run-path routing + dynamic token scoping.** Lift the
-curated-only gate: route `executable` tenant workflows to their tenant
-queue, curated names to the stdlib queue. Mint runtime accounts with a
-Cedar policy generated from `requiredActions` ∩ the cap allowlist (OPEN
-#5) instead of the static `workflow_runtime` role. Per-execution Temporal
-timeouts + per-tenant concurrency cap (OPEN #3).
+**Unit 10 — Run-path routing + execution limits.** Lift the curated-only
+gate: route `executable` tenant workflows to their tenant queue, curated
+names to the stdlib queue. Runtime accounts keep the static
+`workflow_runtime` role (Resolved #5 — no dynamic scoping;
+`requiredActions` stays display-only). Enforce the v1-blocking limits
+(Resolved #3): per-execution Temporal timeouts, per-tenant concurrency
+cap, executions/day quota with 429 surfacing.
 
 **Unit 11 — UX + operational guardrails.** Tenant-web: surface
 executability, requested permissions, and limit errors. Admin-web: per-tenant
@@ -244,8 +259,6 @@ executions.
 
 ## Operator prerequisites (before Track A Unit 8)
 
-- Decide OPEN #1–#3 (compute shape, egress, limits) — they change the CDK
-  surface.
 - New ECR repo for the runner image (if separate from
   `pegasus-temporal-worker`) + the same out-of-band CI IAM inline-policy
   step Phase 2 Unit 5 needed.
