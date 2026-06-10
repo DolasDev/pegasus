@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -20,6 +17,7 @@ jobs:
   secret-scan:
     name: Secret Scanning (Betterleaks)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
         with:
@@ -41,12 +39,13 @@ jobs:
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version-file: '.nvmrc'
           cache: 'npm'
 
       - name: Install dependencies
@@ -68,12 +67,13 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version-file: '.nvmrc'
           cache: 'npm'
 
       - name: Install dependencies
@@ -91,6 +91,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       postgres:
@@ -116,7 +117,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version-file: '.nvmrc'
           cache: 'npm'
 
       - name: Install dependencies
@@ -148,19 +149,15 @@ jobs:
       - name: Run Expo doctor
         working-directory: apps/mobile
         run: |
-          # Run expo-doctor but tolerate the duplicate-dependency check,
-          # which is a false positive in monorepos where mobile pins
-          # react@19.2.0 (Expo SDK 55) while web apps use 19.2.4.
+          # Tolerate the duplicate-dependency check (monorepo false positive:
+          # mobile pins react@19.2.0 for Expo SDK 55 while web apps use 19.2.4).
           output=$(npx expo-doctor 2>&1) || true
           echo "$output"
-          if echo "$output" | grep -q '✖' | grep -v 'duplicate dependencies'; then
-            # Check if any failure is NOT the duplicate deps check
-            failures=$(echo "$output" | grep '✖' | grep -v 'duplicate dependencies')
-            if [ -n "$failures" ]; then
-              echo "::error::Expo doctor found issues:"
-              echo "$failures"
-              exit 1
-            fi
+          failures=$(echo "$output" | grep '✖' | grep -v 'duplicate dependencies' || true)
+          if [ -n "$failures" ]; then
+            echo "::error::Expo doctor found issues:"
+            echo "$failures"
+            exit 1
           fi
 
       - name: Run tests
@@ -172,6 +169,7 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       postgres:
@@ -201,7 +199,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version-file: '.nvmrc'
           cache: 'npm'
 
       - name: Install dependencies
