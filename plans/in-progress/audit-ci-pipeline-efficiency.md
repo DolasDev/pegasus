@@ -37,7 +37,7 @@ Audit of `.github/workflows/ci.yml` (246 lines, 5 jobs) and `audit-ci.jsonc`, wi
 
 ### Phase 1 — Correctness & safety quick wins (~30 min total, do first, single PR)
 
-- [ ] **Fix the dead expo-doctor guard** (`ci.yml:148–164`). Effort: 10 min. Replace the broken pipeline with the already-correct inner logic:
+- [x] **Fix the dead expo-doctor guard** (`ci.yml:148–164`). Effort: 10 min. Replace the broken pipeline with the already-correct inner logic:
 
   ```yaml
   - name: Run Expo doctor
@@ -57,7 +57,7 @@ Audit of `.github/workflows/ci.yml` (246 lines, 5 jobs) and `audit-ci.jsonc`, wi
 
   **Heads-up:** the guard has been a no-op since it was written — expect this fix to potentially surface latent expo-doctor failures on the first run. Triage them in the same PR rather than reverting.
 
-- [ ] **Add `timeout-minutes` to all 5 jobs.** Effort: 5 min. Values sized at ~3× measured duration:
+- [x] **Add `timeout-minutes` to all 5 jobs.** Effort: 5 min. Values sized at ~3× measured duration:
 
   ```yaml
   secret-scan:  timeout-minutes: 5
@@ -69,7 +69,7 @@ Audit of `.github/workflows/ci.yml` (246 lines, 5 jobs) and `audit-ci.jsonc`, wi
 
   (One line under each `runs-on: ubuntu-latest`.)
 
-- [ ] **Bump Node 20 → 24 via a single source of truth.** Effort: 15 min + watch one green run. Create `.nvmrc` at repo root containing `24.16.0` (matches local dev), then in all four `setup-node` blocks replace `node-version: '20'` with `node-version-file: '.nvmrc'`. Delete the now-redundant `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` env (`ci.yml:9–10`) only after confirming actions run clean on node24 default; otherwise keep it one more cycle. Note: deploy workflows are Unit 2's scope — do **not** touch their node pins here, but flag the mismatch to Unit 2 if they still say 20.
+- [x] **Bump Node 20 → 24 via a single source of truth.** Effort: 15 min + watch one green run. Create `.nvmrc` at repo root containing `24.16.0` (matches local dev), then in all four `setup-node` blocks replace `node-version: '20'` with `node-version-file: '.nvmrc'`. Delete the now-redundant `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` env (`ci.yml:9–10`) only after confirming actions run clean on node24 default; otherwise keep it one more cycle. Note: deploy workflows are Unit 2's scope — do **not** touch their node pins here, but flag the mismatch to Unit 2 if they still say 20.
 
 ### Phase 2 — Setup dedup + caching (~1.5 h, second PR)
 

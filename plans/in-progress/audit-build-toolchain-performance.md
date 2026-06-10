@@ -67,7 +67,7 @@ Both hooks invoke `node node_modules/.bin/turbo` with whatever `node` is on PATH
 
 ### Phase 1 — Quick wins (~45 min total)
 
-- [ ] **P1.1 — Scope pre-push to affected packages** (15 min). Replace `.husky/pre-push` body:
+- [x] **P1.1 — Scope pre-push to affected packages** (15 min). Replace `.husky/pre-push` body:
 
   ```sh
   zero=0000000000000000000000000000000000000000
@@ -84,7 +84,7 @@ Both hooks invoke `node node_modules/.bin/turbo` with whatever `node` is on PATH
 
   `FULL_PREPUSH=1 git push` is the escape hatch for a deliberate whole-repo gate.
 
-- [ ] **P1.2 — Move shellcheck into lint-staged** (10 min). Delete line 2 of `.husky/pre-commit` (leave only `npx lint-staged`); add to the `lint-staged` block in root `package.json`:
+- [x] **P1.2 — Move shellcheck into lint-staged** (10 min). Delete line 2 of `.husky/pre-commit` (leave only `npx lint-staged`); add to the `lint-staged` block in root `package.json`:
 
   ```json
   "*.sh": ["shellcheck"]
@@ -92,12 +92,12 @@ Both hooks invoke `node node_modules/.bin/turbo` with whatever `node` is on PATH
 
   This widens coverage from one hardcoded script to every staged shell script, and only when one is actually staged. Verify `shellcheck` resolves (it currently runs via `npx`; if the npm wrapper package isn't a devDep, add `"shellcheck": "^4.1.0"` to root devDependencies so the hook never does a network npx install mid-commit).
 
-- [ ] **P1.3 — Delete the zero-violation exception + autofix the 10 fixable** (20 min). In `eslint.config.mjs` remove `'@typescript-eslint/no-unsafe-function-type': 'off'` (0 violations), then remove `prefer-const`, `no-var`, `consistent-type-imports` from the block and run `npx eslint --fix 'apps/tenant-web/src/features/driver-planning/**/*.{ts,tsx}'` from `apps/tenant-web` (10 auto-fixes). Run `npm test --workspace=@pegasus/tenant-web` after.
+- [x] **P1.3 — Delete the zero-violation exception + autofix the 10 fixable** (20 min). In `eslint.config.mjs` remove `'@typescript-eslint/no-unsafe-function-type': 'off'` (0 violations), then remove `prefer-const`, `no-var`, `consistent-type-imports` from the block and run `npx eslint --fix 'apps/tenant-web/src/features/driver-planning/**/*.{ts,tsx}'` from `apps/tenant-web` (10 auto-fixes). Run `npm test --workspace=@pegasus/tenant-web` after.
 
 ### Phase 2 — Vercel Remote Cache (~45 min, one-time)
 
-- [ ] **P2.1 — Link the repo** (15 min). From repo root: `npx turbo login` then `npx turbo link` (creates/uses a Vercel team; writes gitignored `.turbo/config.json`). Confirm `.turbo` is gitignored (it is the existing local cache dir — verify `git check-ignore .turbo` before committing anything).
-- [ ] **P2.2 — Enable artifact signing** (10 min). In `turbo.json` add:
+- [ ] **P2.1 — Link the repo** (15 min). From repo root: `npx turbo login` then `npx turbo link` (creates/uses a Vercel team; writes gitignored `.turbo/config.json`). Confirm `.turbo` is gitignored (it is the existing local cache dir — verify `git check-ignore .turbo` before committing anything). _(code wiring landed; Vercel login/link + secrets are pending user-manual steps)_
+- [x] **P2.2 — Enable artifact signing** (10 min). In `turbo.json` add:
 
   ```json
   "remoteCache": { "signature": true }
@@ -105,11 +105,11 @@ Both hooks invoke `node node_modules/.bin/turbo` with whatever `node` is on PATH
 
   Generate a key (`openssl rand -hex 32`) and export `TURBO_REMOTE_CACHE_SIGNATURE_KEY` in the local shell profile. Signing makes cache poisoning require the key, not just a leaked read/write token.
 
-- [ ] **P2.3 — Specify CI env vars (wiring is Unit 1's edit)** (5 min + Unit 1). CI jobs that run turbo (`ci.yml` typecheck/lint/test jobs, `_deploy.yml` build step) need:
+- [ ] **P2.3 — Specify CI env vars (wiring is Unit 1's edit)** (5 min + Unit 1). CI jobs that run turbo (`ci.yml` typecheck/lint/test jobs, `_deploy.yml` build step) need: _(code wiring landed; Vercel login/link + secrets are pending user-manual steps)_
   - secret `TURBO_TOKEN` (scoped Vercel token), secret `TURBO_REMOTE_CACHE_SIGNATURE_KEY`, repo variable `TURBO_TEAM` (team slug).
   - `gh secret set TURBO_TOKEN`, `gh secret set TURBO_REMOTE_CACHE_SIGNATURE_KEY`, `gh variable set TURBO_TEAM`.
     Once present, turbo picks them up from env — typecheck/lint/build replay warm artifacts across CI runs and from local pushes that already ran the same hash.
-- [ ] **P2.4 — Guard typecheck cache against stale Prisma client** (15 min). Create `apps/api/turbo.json`:
+- [x] **P2.4 — Guard typecheck cache against stale Prisma client** (15 min). Create `apps/api/turbo.json`:
 
   ```json
   {

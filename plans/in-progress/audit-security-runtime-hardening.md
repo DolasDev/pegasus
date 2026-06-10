@@ -63,7 +63,7 @@ Mostly **no AI needed** — CORS, headers, and throttling are one-time CDK/code 
 
 ### Phase 1 — Quick wins (~half day total)
 
-- [ ] **CORS allowlist, env-driven, both layers** (~1h). Single source of truth: a per-env origins array in `packages/infra/bin/app.ts` context, threaded into `ApiStackProps`.
+- [x] **CORS allowlist, env-driven, both layers** (~1h). Single source of truth: a per-env origins array in `packages/infra/bin/app.ts` context, threaded into `ApiStackProps`.
   - `api-stack.ts`: add `readonly corsAllowedOrigins?: string[]` to `ApiStackProps`; at `:1199` replace `allowOrigins: ['*']` with `allowOrigins: props.corsAllowedOrigins ?? ['*']` (dev fallback stays `*`); also inject `apiFunction.addEnvironment('CORS_ALLOWED_ORIGINS', (props.corsAllowedOrigins ?? []).join(','))`.
   - `bin/app.ts`: pass per env — prod `['https://pegasus.dolas.dev', 'https://<admin prod domain>']`, staging the `-qa` equivalents (confirm exact admin hostnames from the SSM params `/dolas/pegasus/admin/domain-name` in each account: `aws ssm get-parameter --name /dolas/pegasus/admin/domain-name --query Parameter.Value --output text`); dev: omit.
   - `apps/api/src/app.ts:83`:
@@ -80,14 +80,14 @@ Mostly **no AI needed** — CORS, headers, and throttling are one-time CDK/code 
     )
     ```
     Empty env (local dev/E2E) → reflect any origin, preserving current DX. Deployed envs get the allowlist at both API GW (authoritative) and Hono (defense in depth / direct-served path).
-- [ ] **SKIP_AUTH production fail-fast** (~15 min). In `apps/api/src/app.ts` just above line 228 (mirror in `app.server.ts:21`):
+- [x] **SKIP_AUTH production fail-fast** (~15 min). In `apps/api/src/app.ts` just above line 228 (mirror in `app.server.ts:21`):
   ```ts
   if (process.env['SKIP_AUTH'] === 'true' && process.env['NODE_ENV'] === 'production') {
     throw new Error('SKIP_AUTH=true is forbidden when NODE_ENV=production')
   }
   ```
   The Lambda always sets `NODE_ENV=production` (`api-stack.ts:232`), so a mis-set `SKIP_AUTH` now fails closed at cold start instead of silently opening the API.
-- [ ] **API Gateway stage throttling** (~30 min). In `api-stack.ts` immediately after the `HttpApi` construct (~line 1205):
+- [x] **API Gateway stage throttling** (~30 min). In `api-stack.ts` immediately after the `HttpApi` construct (~line 1205):
   ```ts
   const defaultStage = httpApi.defaultStage?.node.defaultChild as apigwv2.CfnStage
   defaultStage.defaultRouteSettings = {
@@ -96,7 +96,7 @@ Mostly **no AI needed** — CORS, headers, and throttling are one-time CDK/code 
   }
   ```
   Values sized to current real traffic (single-digit rps) with generous headroom; tune via context later if needed. Excess requests get 429 from API GW without consuming a Lambda slot — directly mitigating the concurrency-10 starvation. Honest limitation: this is a stage-wide token bucket, not per-IP; a targeted attacker still 429s legitimate users. Per-IP needs WAF (deferred, Phase 4).
-- [ ] **Hoist the schema-sync test out of the DB-gated block** (~15 min). Move the `describe('Schema-sync: …')` block (`prisma-tenant-isolation.test.ts:829-889`) outside `describe.skipIf(!hasDb)` (line 46) — it only reads `schema.prisma` and needs no DB. It then runs on every `npm test` everywhere, not just CI.
+- [x] **Hoist the schema-sync test out of the DB-gated block** (~15 min). Move the `describe('Schema-sync: …')` block (`prisma-tenant-isolation.test.ts:829-889`) outside `describe.skipIf(!hasDb)` (line 46) — it only reads `schema.prisma` and needs no DB. It then runs on every `npm test` everywhere, not just CI.
 
 ### Phase 2 — Security headers on all three distributions (~half day)
 

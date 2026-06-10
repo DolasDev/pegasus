@@ -34,8 +34,8 @@ Inventory (verified 2026-06-10): 11 npm workspaces run `vitest run`; 1 (`apps/mo
 
 ### Phase 1 — Quick wins (kill misdirection + close the silent-skip hole) — ~1h total
 
-- [ ] **Delete `vitest.workspace.ts`** at repo root. It references a nonexistent package, is unsupported by Vitest 4, and nothing invokes it. (Effort: 5 min. Verify nothing imports it: `grep -rn "vitest.workspace" --include='*.ts' --include='*.json' . | grep -v node_modules` → expect no hits besides the file itself.)
-- [ ] **CI fail-fast guard in `apps/api/vitest.global-setup.ts`**: at the top of `setup()`, before the Docker fallback logic, add:
+- [x] **Delete `vitest.workspace.ts`** at repo root. It references a nonexistent package, is unsupported by Vitest 4, and nothing invokes it. (Effort: 5 min. Verify nothing imports it: `grep -rn "vitest.workspace" --include='*.ts' --include='*.json' . | grep -v node_modules` → expect no hits besides the file itself.)
+- [x] **CI fail-fast guard in `apps/api/vitest.global-setup.ts`**: at the top of `setup()`, before the Docker fallback logic, add:
   ```ts
   if (process.env['CI'] && !process.env['DATABASE_URL']) {
     throw new Error(
@@ -44,8 +44,8 @@ Inventory (verified 2026-06-10): 11 npm workspaces run `vitest run`; 1 (`apps/mo
   }
   ```
   This turns the "CI env wiring regressed → half the suite skips green" failure mode into a hard failure. GitHub Actions always sets `CI=true`. (Effort: 10 min incl. a comment explaining why.)
-- [ ] **Loud local skip banner**: add a tiny custom reporter `apps/api/vitest.skip-reporter.ts` that, in `onTestRunEnd`, counts skipped test files/suites and prints a red multi-line banner when > 0, e.g. `⚠ 12 DB-dependent suites SKIPPED — start Docker or set DATABASE_URL; this run did NOT exercise the repository layer`. Wire it in `apps/api/vitest.config.ts` via `reporters: ['default', './vitest.skip-reporter.ts']`. Keep it dumb: count `module.state() === 'skipped'` (Vitest 4 reporter API) or fall back to scanning `testModules` for files where all tests skipped. (Effort: 30 min.)
-- [ ] **Remove `ts-jest` from `apps/mobile/package.json` devDependencies** after confirming zero references: `grep -rn "ts-jest" apps/mobile --include='*.js' --include='*.ts' --include='*.json' | grep -v node_modules` currently shows only the package.json line. Run `npm install` (Node 24 PATH pin per memory) and `npm test -w @pegasus/mobile` to confirm. (Effort: 15 min.)
+- [x] **Loud local skip banner**: add a tiny custom reporter `apps/api/vitest.skip-reporter.ts` that, in `onTestRunEnd`, counts skipped test files/suites and prints a red multi-line banner when > 0, e.g. `⚠ 12 DB-dependent suites SKIPPED — start Docker or set DATABASE_URL; this run did NOT exercise the repository layer`. Wire it in `apps/api/vitest.config.ts` via `reporters: ['default', './vitest.skip-reporter.ts']`. Keep it dumb: count `module.state() === 'skipped'` (Vitest 4 reporter API) or fall back to scanning `testModules` for files where all tests skipped. (Effort: 30 min.)
+- [x] **Remove `ts-jest` from `apps/mobile/package.json` devDependencies** after confirming zero references: `grep -rn "ts-jest" apps/mobile --include='*.js' --include='*.ts' --include='*.json' | grep -v node_modules` currently shows only the package.json line. Run `npm install` (Node 24 PATH pin per memory) and `npm test -w @pegasus/mobile` to confirm. (Effort: 15 min.)
 
 ### Phase 2 — Coverage: enable a ratchet where it pays, delete it where it doesn't — ~2h
 

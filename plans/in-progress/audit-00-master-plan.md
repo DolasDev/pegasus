@@ -23,7 +23,7 @@ Benefit therefore counts: latency removed per iteration × iteration frequency, 
 | ---- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1    | [audit-build-toolchain-performance.md](./audit-build-toolchain-performance.md) | **Inner loop, every push.** Pre-push hook drops from whole-repo 2–5 min to affected-only seconds; Vercel remote cache makes every CI run, fresh clone, and **multi-agent worktree** start warm (worktrees currently rebuild the world from cold — this directly speeds parallel-agent batches).                                                     | ~3 h (Phases 1–2)               | **Best ratio in the set.** Purest match to the axis: highest-frequency loop, biggest per-iteration cut, smallest effort.                                                                                        |
 | 2    | [audit-ci-pipeline-efficiency.md](./audit-ci-pipeline-efficiency.md)           | **CI loop, every push.** ~35 s wall + ~2 billed min off every run; docs/plans-only pushes (the most frequent commit type in this repo) drop from ~3.4 min to <1 min; fixes a false-green hole (dead expo-doctor guard) and adds timeouts so a hang can't block the ref for 6 h.                                                                     | ~3.5 h (Phases 1–3)             | **Do with #1 as a pair.** Same loop, complementary mechanisms (caching vs topology), measured baselines already in the plan.                                                                                    |
-| 3    | [audit-local-dev-experience.md](./audit-local-dev-experience.md)               | **Inner loop, foundational.** The Node-version footgun intermittently costs hours (corrupted node_modules, flaky pre-push) — 30 min kills it forever. Fixing the unrunnable seed restores _local_ verification of data-dependent work, replacing the slowest feedback loop that exists (test-in-staging round-trips).                               | ~6 h (Phases 1–4)               | **High.** Phase 1 alone (~30 min) has perhaps the best minutes-saved-per-minute-spent of any single item in the audit.                                                                                          |
+| 3    | [audit-local-dev-experience.md](./audit-local-dev-experience.md)               | **Inner loop, foundational.** The Node-version footgun intermittently costs hours (corrupted node*modules, flaky pre-push) — 30 min kills it forever. Fixing the unrunnable seed restores \_local* verification of data-dependent work, replacing the slowest feedback loop that exists (test-in-staging round-trips).                              | ~6 h (Phases 1–4)               | **High.** Phase 1 alone (~30 min) has perhaps the best minutes-saved-per-minute-spent of any single item in the audit.                                                                                          |
 | 4    | [audit-test-infrastructure.md](./audit-test-infrastructure.md)                 | **Truth loop.** Closes the silent-skip hole (12 DB-dependent suites can pass green while not running — false feedback at the cheapest-to-lie stage); deletes dead config that misdirects; coverage ratchet automates a signal that currently doesn't exist at all.                                                                                  | ~1 h (Phase 1); ~6.5 h full     | **High for Phase 1, moderate after.** Phases 3–5 (mutation cadence, mobile hygiene, shared config) are quality work, not loop speed — defer.                                                                    |
 | 5    | [audit-deploy-pipeline-reliability.md](./audit-deploy-pipeline-reliability.md) | **Deploy loop + a severe truth hole.** The queued-deploy cancellation bug means a merge can silently never ship — "it's deployed" feedback is currently _untrustworthy_ and has already cost re-dispatch toil. Skip-empty-migrations cuts ~5 min off most deploys; notifications convert deploy-watching (attention) into push-notification (free). | ~5 h (Phases 1–2); ~10 h full   | **Moderate-high.** Effort is real, but the cancellation fix removes the single most expensive _kind_ of false feedback in the pipeline. Phases 3–4 (stack manifest, dedup) are maintenance-cost items — defer.  |
 | 6    | [audit-e2e-strategy.md](./audit-e2e-strategy.md)                               | **Truth loop, large hole.** PR CI runs zero browser tests (the 7-second "pass" is mostly skips) and the staging gate can't catch write regressions — so UI/write defects get their first real test in staging or prod, the most expensive feedback there is. The minimum-executed-tests guard (Phase 1, ~1.5 h) kills the false-green cheaply.      | ~1.5 h (Phase 1); +2.5–3 d full | **Moderate.** Phase 1 is a quick win; Phases 2–3 buy early detection at meaningful effort (and add ~minutes to PR CI — a deliberate latency-for-truth trade). Do Phase 1 now, schedule Phases 2–3 after Tier 1. |
@@ -38,9 +38,9 @@ Benefit therefore counts: latency removed per iteration × iteration frequency, 
 
 These are cheap, urgent, and independent of the feedback-loop ordering. Slot them into the first working session regardless of rank:
 
-- [ ] Alarm email routing + OK-actions — `audit-observability-alerting.md` Phase 0 (~1 h)
-- [ ] Confirm repo visibility is intentional + enable free GitHub security features + SECURITY.md — `audit-security-supply-chain.md` Phase 0 (~30 min)
-- [ ] CORS allowlist (both layers), SKIP_AUTH prod fail-fast, API GW throttling — `audit-security-runtime-hardening.md` Phase 1 (~half day)
+- [x] Alarm email routing + OK-actions — `audit-observability-alerting.md` Phase 0 (~1 h)
+- [x] Confirm repo visibility is intentional + enable free GitHub security features + SECURITY.md — `audit-security-supply-chain.md` Phase 0 (~30 min)
+- [x] CORS allowlist (both layers), SKIP_AUTH prod fail-fast, API GW throttling — `audit-security-runtime-hardening.md` Phase 1 (~half day)
 
 ## Plan
 
@@ -48,13 +48,13 @@ Execution in three waves. Each checked item = execute that phase of the named pl
 
 ### Wave 1 — Quick-win sweep (~1.5 days total; do as one focused block)
 
-- [ ] Do-anyway shortlist above (~3.5 h)
-- [ ] `audit-local-dev-experience.md` Phase 1 — `.nvmrc` + engine-strict (~30 min)
-- [ ] `audit-ci-pipeline-efficiency.md` Phase 1 — dead-guard fix, timeouts, Node 24 (~30 min; coordinate Node pin with the `.nvmrc` item above)
-- [ ] `audit-build-toolchain-performance.md` Phases 1–2 — pre-push scoping + remote cache (~3 h)
-- [ ] `audit-test-infrastructure.md` Phase 1 — silent-skip guard + dead-config deletion (~1 h)
-- [ ] `audit-e2e-strategy.md` Phase 1 — minimum-executed-tests guard + ergonomics (~1.5 h)
-- [ ] `audit-deploy-pipeline-reliability.md` Phase 1 — timeouts, skip-empty-migrations, VPN pre-flight (~1.5 h)
+- [x] Do-anyway shortlist above (~3.5 h)
+- [x] `audit-local-dev-experience.md` Phase 1 — `.nvmrc` + engine-strict (~30 min)
+- [x] `audit-ci-pipeline-efficiency.md` Phase 1 — dead-guard fix, timeouts, Node 24 (~30 min; coordinate Node pin with the `.nvmrc` item above)
+- [x] `audit-build-toolchain-performance.md` Phases 1–2 — pre-push scoping + remote cache (~3 h)
+- [x] `audit-test-infrastructure.md` Phase 1 — silent-skip guard + dead-config deletion (~1 h)
+- [x] `audit-e2e-strategy.md` Phase 1 — minimum-executed-tests guard + ergonomics (~1.5 h)
+- [x] `audit-deploy-pipeline-reliability.md` Phase 1 — timeouts, skip-empty-migrations, VPN pre-flight (~1.5 h)
 
 ### Wave 2 — Structural feedback-loop work (~3–4 days)
 

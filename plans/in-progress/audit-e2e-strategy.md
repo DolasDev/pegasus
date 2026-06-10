@@ -140,68 +140,66 @@ being machine-dependent.
 
 ### Phase 1 — Quick wins (~1–2 h total, all independent)
 
-- [ ] **1.1 Add a minimum-executed-tests guard to both CI e2e runs.**
+- [x] **1.1 Add a minimum-executed-tests guard to both CI e2e runs.**
       (~30 min) Silent-skip false-positives (Finding 1) die here. Run
       Playwright with a JSON reporter alongside the list reporter, then
       assert a floor on executed (non-skipped) tests:
       `yaml
-    # ci.yml "Run E2E tests" step — add reporter + guard
-    - name: Run E2E tests
-      working-directory: apps/e2e
-      run: node ../../node_modules/.bin/playwright test --reporter=list,json
-      env:
-        PLAYWRIGHT_JSON_OUTPUT_NAME: results.json
-    - name: Guard against silent-skip false positives
-      working-directory: apps/e2e
-      run: |
-        ran=$(jq '.stats.expected + .stats.flaky' results.json)
+  # ci.yml "Run E2E tests" step — add reporter + guard
+  - name: Run E2E tests
+    working-directory: apps/e2e
+    run: node ../../node_modules/.bin/playwright test --reporter=list,json
+    env:
+    PLAYWRIGHT_JSON_OUTPUT_NAME: results.json
+  - name: Guard against silent-skip false positives
+    working-directory: apps/e2e
+    run: |
+    ran=$(jq '.stats.expected + .stats.flaky' results.json)
         echo "Executed (passed) tests: $ran"
         if [ "$ran" -lt 30 ]; then
-          echo "::error::Only $ran tests executed — the suite silently skipped (E2E_SKIP / missing env?). Floor is 30."
-          exit 1
-        fi
-    `
-      Same pattern in `deploy.yml` `e2e-staging` with floor **8** (current
-      remote set is ~10). Floors live as env vars at the top of each job so
-      they're greppable and easy to bump when specs are added.
-- [ ] **1.2 Cache Playwright browsers in all three workflows.** (~20 min;
+    echo "::error::Only $ran tests executed — the suite silently skipped (E2E_SKIP / missing env?). Floor is 30."
+    exit 1
+    fi
+    `  Same pattern in`deploy.yml` `e2e-staging` with floor **8** (current
+    remote set is ~10). Floors live as env vars at the top of each job so
+    they're greppable and easy to bump when specs are added.
+- [x] **1.2 Cache Playwright browsers in all three workflows.** (~20 min;
       saves 12–26 s/job — minor, but free and removes a network dependency
       from the deploy gate). Insert before each "Install Playwright
       browsers" step in `ci.yml`, `deploy.yml` (e2e-staging job), and
       `e2e-qa-longhaul.yml`:
       `yaml
-    - name: Resolve Playwright version
-      id: pw
-      run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-    - name: Cache Playwright browsers
-      id: pw-cache
-      uses: actions/cache@v4
-      with:
-        path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
-    - name: Install Playwright browsers
-      working-directory: apps/e2e
-      run: |
-        if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
-          node ../../node_modules/.bin/playwright install-deps chromium
-        else
-          node ../../node_modules/.bin/playwright install --with-deps chromium
-        fi
-    `
-      (Version-resolve step must run after `npm ci`. If Unit 1's setup-dedup
-      composite action lands first, fold this into it instead.)
-- [ ] **1.3 Add `e2e:remote` root script + `apps/e2e/README.md` front door.**
+  - name: Resolve Playwright version
+    id: pw
+    run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+  - name: Cache Playwright browsers
+    id: pw-cache
+    uses: actions/cache@v4
+    with:
+    path: ~/.cache/ms-playwright
+    key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+  - name: Install Playwright browsers
+    working-directory: apps/e2e
+    run: |
+    if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+    node ../../node_modules/.bin/playwright install-deps chromium
+    else
+    node ../../node_modules/.bin/playwright install --with-deps chromium
+    fi
+    `  (Version-resolve step must run after`npm ci`. If Unit 1's setup-dedup
+    composite action lands first, fold this into it instead.)
+- [x] **1.3 Add `e2e:remote` root script + `apps/e2e/README.md` front door.**
       (~30 min) Root `package.json` scripts block:
       `json
-    "e2e:remote": "E2E_TARGET=remote npm run e2e --workspace=@pegasus/e2e"
-    `
+  "e2e:remote": "E2E_TARGET=remote npm run e2e --workspace=@pegasus/e2e"
+  `
       (env vars still come from `apps/e2e/.env.test.local` per the loader at
       playwright.config.ts:37 — README documents that.) New
       `apps/e2e/README.md` (~30 lines): the three-mode table (lift from
       REMOTE.md), which script runs which mode, pointer to QA.md / REMOTE.md
       / `.env.test.example`, the `@local-only` / `@qa-mutating` tag contract,
       and the skip-guard floor from 1.1.
-- [ ] **1.4 Fix the stale CLAUDE.md E2E section.** (~10 min) Replace the
+- [x] **1.4 Fix the stale CLAUDE.md E2E section.** (~10 min) Replace the
       4-file spec list under "### E2E Suite" with a pointer to
       `apps/e2e/README.md` (don't enumerate specs in two places again).
 
@@ -267,20 +265,20 @@ being machine-dependent.
       failure streak rotted unseen (Finding 4). Append to
       `e2e-qa-longhaul.yml`:
       `yaml
-    - name: File/refresh failure issue
-      if: failure()
-      env:
-        GH_TOKEN: ${{ github.token }}
+  - name: File/refresh failure issue
+    if: failure()
+    env:
+    GH_TOKEN: ${{ github.token }}
       run: |
         title="QA longhaul nightly failed"
         existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number')
         body="Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} — report artifact: playwright-report-qa-longhaul. Traces are in the artifact (trace on-first-retry)."
         if [ -n "$existing" ]; then gh issue comment "$existing" --body "$body";
-        else gh issue create --title "$title" --label e2e-flake --body "$body"; fi
+    else gh issue create --title "$title" --label e2e-flake --body "$body"; fi
     `
-      One open issue, refreshed per failure — gives Unit 12's triage agent
-      (or a human) a single thread with artifact links. No further e2e-side
-      AI tooling needed (Finding 7).
+    One open issue, refreshed per failure — gives Unit 12's triage agent
+    (or a human) a single thread with artifact links. No further e2e-side
+    AI tooling needed (Finding 7).
 - [ ] **4.2 Adopt a written flake policy in `apps/e2e/README.md`.** (~30 min)
       Three rules: (1) a spec that fails-then-passes-on-retry twice in one
       week gets tagged `@flaky` and excluded from blocking runs via
@@ -295,7 +293,7 @@ being machine-dependent.
       mode only.** (~15 min) `trace: 'on-first-retry'` means a
       fail-fail-no-retry-left sequence in the gate ships no trace. In
       playwright.config.ts `use`: `trace: isDeployed ? 'retain-on-failure' :
-    'on-first-retry'`. Cost: trace overhead on every gate test (~10 tests,
+  'on-first-retry'`. Cost: trace overhead on every gate test (~10 tests,
       negligible at 19 s) in exchange for always-triageable prod-gate
       failures.
 

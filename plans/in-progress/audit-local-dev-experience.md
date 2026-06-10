@@ -68,10 +68,10 @@ So `npm run db:seed` (`apps/api/package.json:16`, runs `tsx prisma/seed.ts`) exi
 
 ### Phase 1 — Kill the Node-version footgun (quick wins, ~30 min total)
 
-- [ ] **Add `.nvmrc` at repo root containing `24.16.0`** (~2 min). Matches the known-good local toolchain. `nvm use` / `nvm install` then resolve from one file.
-- [ ] **Add root `.npmrc` with `engine-strict=true`** (~2 min). Makes `npm install` on a wrong node fail loudly instead of corrupting `node_modules`.
-- [ ] **Tighten root `package.json` `engines` to `"node": ">=24 <25", "npm": ">=10"`** (~5 min). Keep `packageManager: npm@10.8.2` as-is (node 24 bundles npm 11 — verify `>=10` admits it; it does).
-- [ ] **Switch all 10 CI `setup-node` pins from `node-version: '20'` to `node-version-file: .nvmrc`** (~20 min incl. CI watch). Files/lines: `ci.yml:49,76,119,204`, `deploy.yml:174`, `_deploy.yml:61,108`, `e2e-qa-longhaul.yml:49`, `mobile-build.yml:65`, `_publish-vpn-agent.yml:51`. Land this as its own PR and watch a full CI run before merging anything else (a dep that misbehaves on 24 would surface here; project memory says 24.16.0 is the proven local version, so risk is low). Coordinate with Unit 10 if it also touches workflows — this change is mechanical and conflict-light.
+- [x] **Add `.nvmrc` at repo root containing `24.16.0`** (~2 min). Matches the known-good local toolchain. `nvm use` / `nvm install` then resolve from one file.
+- [x] **Add root `.npmrc` with `engine-strict=true`** (~2 min). Makes `npm install` on a wrong node fail loudly instead of corrupting `node_modules`.
+- [x] **Tighten root `package.json` `engines` to `"node": ">=24 <25", "npm": ">=10"`** (~5 min). Keep `packageManager: npm@10.8.2` as-is (node 24 bundles npm 11 — verify `>=10` admits it; it does).
+- [x] **Switch all 10 CI `setup-node` pins from `node-version: '20'` to `node-version-file: .nvmrc`** (~20 min incl. CI watch). Files/lines: `ci.yml:49,76,119,204`, `deploy.yml:174`, `_deploy.yml:61,108`, `e2e-qa-longhaul.yml:49`, `mobile-build.yml:65`, `_publish-vpn-agent.yml:51`. Land this as its own PR and watch a full CI run before merging anything else (a dep that misbehaves on 24 would surface here; project memory says 24.16.0 is the proven local version, so risk is low). Coordinate with Unit 10 if it also touches workflows — this change is mechanical and conflict-light.
 
 ### Phase 2 — Fix the seed (TDD; ~2-3 h)
 

@@ -55,7 +55,7 @@ No Sentry (grep: only a comment in `apps/mobile/src/utils/logger.ts`), no `logs.
 
 ### Phase 0 — Route alarms to a human (quick win, ~1h) — DO THIS FIRST
 
-- [ ] **Add an email subscription to the alarm topic** (effort: ~30 min code + 2 confirm-clicks).
+- [x] **Add an email subscription to the alarm topic** (effort: ~30 min code + 2 confirm-clicks).
       In `monitoring-stack.ts`:
 
   ```ts
@@ -81,8 +81,8 @@ No Sentry (grep: only a comment in `apps/mobile/src/utils/logger.ts`), no `logs.
 
   Operational note: SNS email subscriptions require a **one-time confirmation click** per address per topic — after deploy, two "AWS Notification - Subscription Confirmation" emails arrive (staging + prod); CloudFormation cannot confirm them for you. Until clicked, the subscription is `PendingConfirmation` and deliveries drop.
 
-- [ ] **Add OK-actions so recovery is also notified** (effort: ~15 min). For a solo dev, "it self-healed at 3am" is as valuable as the page. Add `alarm.addOkAction(snsAction)` everywhere `addAlarmAction` is called (6 call sites in `monitoring-stack.ts`: :96, :120, :146, :183, :196, :282, :306 — consider a small `wire(alarm)` helper to dedupe).
-- [ ] **Update `packages/infra/lib/stacks/__tests__/monitoring-stack.test.ts`**: assert one `AWS::SNS::Subscription` with `Protocol: 'email'` when `alarmEmail` is set, zero when absent; assert alarms carry both `AlarmActions` and `OKActions`.
+- [x] **Add OK-actions so recovery is also notified** (effort: ~15 min). For a solo dev, "it self-healed at 3am" is as valuable as the page. Add `alarm.addOkAction(snsAction)` everywhere `addAlarmAction` is called (6 call sites in `monitoring-stack.ts`: :96, :120, :146, :183, :196, :282, :306 — consider a small `wire(alarm)` helper to dedupe).
+- [x] **Update `packages/infra/lib/stacks/__tests__/monitoring-stack.test.ts`**: assert one `AWS::SNS::Subscription` with `Protocol: 'email'` when `alarmEmail` is set, zero when absent; assert alarms carry both `AlarmActions` and `OKActions`.
 - [ ] _(Optional, deferred)_ AWS Chatbot → Slack: only if a Slack workspace is actually in daily use. The CDK is ~10 lines (`aws-chatbot.SlackChannelConfiguration` + `notificationTopics: [alarmTopic]`) but requires a one-time console OAuth of the Slack workspace. Email is sufficient to close the gap; do not block on this.
 
 ### Phase 1 — Close the highest-value alarm gaps (~half day)

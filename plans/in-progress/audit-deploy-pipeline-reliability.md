@@ -76,7 +76,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
 
 ### Phase 1 — Quick wins (≈1.5h total, each independently shippable)
 
-- [ ] **1.1 Add `timeout-minutes` to every job** (15 min). `_deploy.yml`: `migrate: 15`, `deploy: 45` (full `--all` dispatch took 18 min; CDK retries deserve headroom). `deploy.yml`: `changes: 5`, `e2e-staging: 25`. `temporal-worker.yml`: both jobs `30`. `_publish-vpn-agent.yml`: `publish: 30`. One line per job, e.g.:
+- [x] **1.1 Add `timeout-minutes` to every job** (15 min). `_deploy.yml`: `migrate: 15`, `deploy: 45` (full `--all` dispatch took 18 min; CDK retries deserve headroom). `deploy.yml`: `changes: 5`, `e2e-staging: 25`. `temporal-worker.yml`: both jobs `30`. `_publish-vpn-agent.yml`: `publish: 30`. One line per job, e.g.:
 
   ```yaml
   deploy:
@@ -84,7 +84,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
     timeout-minutes: 45
   ```
 
-- [ ] **1.2 Validate E2E URL extraction** (15 min). In `deploy.yml` "Extract staging URLs" step, assert required values after extraction:
+- [x] **1.2 Validate E2E URL extraction** (15 min). In `deploy.yml` "Extract staging URLs" step, assert required values after extraction:
 
   ```bash
   API_URL=$(jq -r '.["pegasus-staging-api"].ApiUrl // empty' "$F")
@@ -97,7 +97,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
 
   (Keep `CLIENT_ID`/`TENANT_CLIENT_ID` optional as today via `// empty`.)
 
-- [ ] **1.3 Poll ECS rollout in `temporal-worker.yml`** (15 min). After `update-service --force-new-deployment` in both jobs (collapses to one place after 4.2):
+- [x] **1.3 Poll ECS rollout in `temporal-worker.yml`** (15 min). After `update-service --force-new-deployment` in both jobs (collapses to one place after 4.2):
 
   ```bash
   aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
@@ -108,7 +108,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
 
   (`services-stable` waiter = 40×15s ≈ 10 min cap, inside the job timeout.)
 
-- [ ] **1.4 VPN agent: SSM apikey pre-flight + instance-refresh polling** (45 min). In `_publish-vpn-agent.yml`:
+- [x] **1.4 VPN agent: SSM apikey pre-flight + instance-refresh polling** (45 min). In `_publish-vpn-agent.yml`:
   - Before "Trigger ASG instance refresh", add (param name from `wireguard-stack.ts:147`):
     ```bash
     aws ssm get-parameter --name /pegasus/wireguard/agent/apikey --query 'Parameter.Name' --output text >/dev/null \
@@ -132,7 +132,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
     echo "::error::Instance refresh still $STATUS after 10m"; exit 1
     ```
 
-- [ ] **1.5 Pre-flight Temporal secret ARNs in `_deploy.yml`** (20 min). After "Configure AWS credentials", api deploys only:
+- [x] **1.5 Pre-flight Temporal secret ARNs in `_deploy.yml`** (20 min). After "Configure AWS credentials", api deploys only:
   ```yaml
   - name: Pre-flight Temporal secret ARNs
     if: inputs.deploy-api == 'true'
