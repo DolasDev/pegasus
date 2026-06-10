@@ -1,4 +1,4 @@
-import { createSlice, PayloadAction } from '@reduxjs/toolkit'
+import { createSlice, type PayloadAction } from '@reduxjs/toolkit'
 import { API } from '../../utils/api'
 import type { AppDispatch } from '../store'
 import { coerceListPayload as asArray } from '../lib/coerce-list-payload'

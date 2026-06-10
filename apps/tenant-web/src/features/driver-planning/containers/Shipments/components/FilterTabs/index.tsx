@@ -70,7 +70,7 @@ function renderFilterComponentByType(type: any, args: any, common_state: any) {
   }
 
   function addDays(date: any, days: any) {
-    var result = new Date(date)
+    const result = new Date(date)
     result.setDate(result.getDate() + days)
     if (result instanceof Date) {
       console.log(result, 'result')

@@ -41,13 +41,9 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
-      '@typescript-eslint/consistent-type-imports': 'off',
       '@typescript-eslint/no-wrapper-object-types': 'off',
-      '@typescript-eslint/no-unsafe-function-type': 'off',
-      'prefer-const': 'off',
       'no-useless-assignment': 'off',
       'no-prototype-builtins': 'off',
-      'no-var': 'off',
     },
   },
 )

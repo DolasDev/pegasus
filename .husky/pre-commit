@@ -1,2 +1,2 @@
+# shellcheck shell=sh
 npx lint-staged
-npx shellcheck packages/infra/deploy.sh

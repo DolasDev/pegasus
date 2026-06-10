@@ -1,6 +1,11 @@
+# shellcheck shell=sh
 zero=0000000000000000000000000000000000000000
 while read -r _local_ref local_sha _remote_ref _remote_sha; do
   if [ "$local_sha" != "$zero" ]; then
-    exec node node_modules/.bin/turbo run typecheck test
+    git fetch -q origin main || true
+    if [ "${FULL_PREPUSH:-}" = "1" ]; then
+      exec node node_modules/.bin/turbo run typecheck test
+    fi
+    exec env TURBO_SCM_BASE=origin/main node node_modules/.bin/turbo run typecheck test --affected
   fi
 done
