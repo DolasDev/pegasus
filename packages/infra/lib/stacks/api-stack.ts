@@ -432,14 +432,10 @@ export class ApiStack extends cdk.Stack {
       // env trio + secret the API Lambda just received. Bundled separately
       // (own log group) so a misbehaving poller can't crash the API Lambda.
       // -----------------------------------------------------------------------
-      const reconcileLogGroup = new logs.LogGroup(
-        this,
-        'ReconcileWorkflowExecutionsLogGroup',
-        {
-          retention: logs.RetentionDays.ONE_MONTH,
-          removalPolicy: cdk.RemovalPolicy.DESTROY,
-        },
-      )
+      const reconcileLogGroup = new logs.LogGroup(this, 'ReconcileWorkflowExecutionsLogGroup', {
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      })
 
       const reconcileFunction = new nodejs.NodejsFunction(
         this,
@@ -458,9 +454,7 @@ export class ApiStack extends cdk.Stack {
             TEMPORAL_ADDRESS: props.temporalAddress,
             TEMPORAL_NAMESPACE: props.temporalNamespace,
             TEMPORAL_TASK_QUEUE: props.temporalTaskQueue,
-            TEMPORAL_CLOUD_API_KEY: temporalSecret
-              .secretValueFromJson('apiKey')
-              .unsafeUnwrap(),
+            TEMPORAL_CLOUD_API_KEY: temporalSecret.secretValueFromJson('apiKey').unsafeUnwrap(),
           },
           bundling: {
             minify: true,
@@ -498,6 +492,87 @@ export class ApiStack extends cdk.Stack {
         description:
           'Reconciles orphaned RUNNING workflow executions against Temporal Cloud (crash-recovery backstop).',
         targets: [new eventsTargets.LambdaFunction(reconcileFunction)],
+      })
+
+      // -----------------------------------------------------------------------
+      // Workflow trigger dispatcher (Phase 3 Unit 3)
+      //
+      // Consumer half of the domain-event outbox: drains undispatched
+      // DomainEvent rows every minute, matches them against enabled EVENT
+      // triggers, and starts executions through the same run path as
+      // POST /workflows/:id/run — `client.workflow.start` against Temporal
+      // Cloud with a deterministic per-(trigger,event) workflow id.
+      //
+      // Lives inside this Temporal-configured branch because it cannot start
+      // anything without a Temporal Cloud connection (inert in dev) — it
+      // reuses the exact env trio + secret the reconcile poller gets, plus
+      // the workflow-token KMS key: the shared run path lazily mints runtime
+      // service accounts for pre-Phase-2 workflows, which KMS-encrypts the
+      // minted credential. Bundled separately (own log group) so a
+      // misbehaving dispatcher can't crash the API Lambda.
+      // -----------------------------------------------------------------------
+      const dispatchTriggersLogGroup = new logs.LogGroup(this, 'DispatchWorkflowTriggersLogGroup', {
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      })
+
+      const dispatchTriggersFunction = new nodejs.NodejsFunction(
+        this,
+        'DispatchWorkflowTriggersFunction',
+        {
+          runtime: lambda.Runtime.NODEJS_20_X,
+          entry: path.join(
+            __dirname,
+            '../../../../apps/api/src/lambda-dispatch-workflow-triggers.ts',
+          ),
+          handler: 'handler',
+          environment: {
+            NODE_ENV: 'production',
+            DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+            LOG_LEVEL: 'INFO',
+            TEMPORAL_ADDRESS: props.temporalAddress,
+            TEMPORAL_NAMESPACE: props.temporalNamespace,
+            TEMPORAL_TASK_QUEUE: props.temporalTaskQueue,
+            TEMPORAL_CLOUD_API_KEY: temporalSecret.secretValueFromJson('apiKey').unsafeUnwrap(),
+            WORKFLOW_TOKEN_KMS_KEY_ID: workflowTokenKey.keyId,
+          },
+          bundling: {
+            minify: true,
+            sourceMap: true,
+            externalModules: ['@aws-sdk/*'],
+          },
+          memorySize: 256,
+          // Up to 100 events × their matching triggers per tick, each a
+          // Temporal start round-trip — generous so a slow Cloud response
+          // can't truncate the batch.
+          timeout: cdk.Duration.minutes(2),
+          logGroup: dispatchTriggersLogGroup,
+        },
+      )
+
+      dbSecret.grantRead(dispatchTriggersFunction)
+      temporalSecret.grantRead(dispatchTriggersFunction)
+      // Lazy runtime-account mint encrypts the fresh vnd_ key with this key.
+      workflowTokenKey.grantEncryptDecrypt(dispatchTriggersFunction)
+
+      // Same namespace-scoped PutMetricData grant as the reconcile poller.
+      dispatchTriggersFunction.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ['cloudwatch:PutMetricData'],
+          resources: ['*'],
+          conditions: {
+            StringEquals: { 'cloudwatch:namespace': PEGASUS_WORKFLOWS_METRIC_NAMESPACE },
+          },
+        }),
+      )
+
+      new events.Rule(this, 'DispatchWorkflowTriggersSchedule', {
+        // Every minute: a domain event fires its matching triggers within
+        // ~1 min of the emitting transaction committing.
+        schedule: events.Schedule.rate(cdk.Duration.minutes(1)),
+        description:
+          'Dispatches undispatched domain events to matching workflow triggers (event-driven executions).',
+        targets: [new eventsTargets.LambdaFunction(dispatchTriggersFunction)],
       })
     }
 

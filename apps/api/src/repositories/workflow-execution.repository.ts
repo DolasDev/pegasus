@@ -93,6 +93,12 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
      * accepted from the caller — keeps the timeline honest if the API clock
      * and the worker clock drift.
      *
+     * Provenance defaults to the manual run path (USER, no trigger). The
+     * trigger dispatcher (Phase 3 Unit 3) passes EVENT + triggeredByTriggerId
+     * with a null triggeredByUserId, plus its deterministic temporalWorkflowId
+     * — persisting that id BEFORE the Temporal start is what makes domain-
+     * event redelivery idempotent (the dispatcher pre-checks it).
+     *
      * Tenant scope is applied implicitly via the extension; the caller still
      * passes tenantId because the column is non-null and the create path is
      * NOT rewritten by the extension (see lib/prisma.ts).
@@ -100,7 +106,14 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
     async create(input: {
       tenantId: string
       workflowId: string
-      triggeredByUserId: string
+      /** Null for trigger-fired executions (EVENT / SCHEDULE sources). */
+      triggeredByUserId: string | null
+      triggerSource?: WorkflowExecutionTriggerSource
+      /** WorkflowTrigger.id that fired this execution; null for USER source. */
+      triggeredByTriggerId?: string | null
+      /** Pre-assigned Temporal workflow id (dispatcher); null for manual runs
+       * — those only record it at markStarted. */
+      temporalWorkflowId?: string | null
       input: Prisma.InputJsonValue
     }): Promise<WorkflowExecutionRow> {
       return db.workflowExecution.create({
@@ -108,9 +121,9 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
           tenantId: input.tenantId,
           workflowId: input.workflowId,
           triggeredByUserId: input.triggeredByUserId,
-          // Manual run path — trigger-fired executions (Units 3/4) will use a
-          // dedicated create that sets EVENT/SCHEDULE + triggeredByTriggerId.
-          triggerSource: 'USER',
+          triggerSource: input.triggerSource ?? 'USER',
+          triggeredByTriggerId: input.triggeredByTriggerId ?? null,
+          temporalWorkflowId: input.temporalWorkflowId ?? null,
           input: input.input,
           status: 'QUEUED',
           queuedAt: new Date(),

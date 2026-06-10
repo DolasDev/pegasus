@@ -752,4 +752,60 @@ describe('ApiStack — workflow-execution reconcile poller (Phase 2 Unit 6.5)', 
       },
     })
   })
+
+  // ── Workflow trigger dispatcher (Phase 3 Unit 3) ──────────────────────────
+
+  it('does NOT synthesize the trigger dispatcher when Temporal is unconfigured', () => {
+    const template = synthApiStack()
+    const rules = template.findResources('AWS::Events::Rule')
+    const dispatchRules = Object.values(rules).filter((r) =>
+      String(r.Properties?.Description ?? '').includes('workflow triggers'),
+    )
+    if (dispatchRules.length !== 0) {
+      throw new Error(
+        `expected no dispatch Rule without Temporal config, found ${dispatchRules.length}`,
+      )
+    }
+  })
+
+  it('schedules the trigger dispatcher every minute via EventBridge', () => {
+    const template = synthTemporal()
+    template.hasResourceProperties('AWS::Events::Rule', {
+      ScheduleExpression: 'rate(1 minute)',
+      State: 'ENABLED',
+      Description:
+        'Dispatches undispatched domain events to matching workflow triggers (event-driven executions).',
+    })
+  })
+
+  it('wires the dispatcher Lambda with DATABASE_URL + Temporal env + the workflow-token KMS key', () => {
+    const template = synthTemporal()
+    // WORKFLOW_TOKEN_KMS_KEY_ID disambiguates the dispatcher from the
+    // reconcile poller (which shares the rest of the env surface) — the
+    // shared run path lazily mints + KMS-encrypts runtime credentials.
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.objectLike({
+          DATABASE_URL: Match.anyValue(),
+          TEMPORAL_ADDRESS: 'pegasus-staging.chgel.tmprl.cloud:7233',
+          TEMPORAL_NAMESPACE: 'pegasus-staging.chgel',
+          TEMPORAL_TASK_QUEUE: 'pegasus-stdlib-staging',
+          TEMPORAL_CLOUD_API_KEY: Match.anyValue(),
+          WORKFLOW_TOKEN_KMS_KEY_ID: Match.anyValue(),
+        }),
+      },
+      MemorySize: 256,
+      Timeout: 120,
+    })
+    const fns = template.findResources('AWS::Lambda::Function')
+    const dispatchers = Object.values(fns).filter(
+      (fn) =>
+        fn.Properties?.Environment?.Variables?.WORKFLOW_TOKEN_KMS_KEY_ID !== undefined &&
+        fn.Properties?.Environment?.Variables?.TEMPORAL_ADDRESS !== undefined &&
+        fn.Properties?.MemorySize === 256,
+    )
+    if (dispatchers.length !== 1) {
+      throw new Error(`expected exactly 1 dispatcher Lambda, found ${dispatchers.length}`)
+    }
+  })
 })

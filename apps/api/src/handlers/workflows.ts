@@ -34,16 +34,16 @@ import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { Actions, ALL_ACTIONS } from '../authz/actions'
 import { createWorkflowRepository } from '../repositories/workflow.repository'
 import type { WorkflowRow, WorkflowVisibility } from '../repositories/workflow.repository'
-import { createApiClientRepository } from '../repositories/api-client.repository'
 import { createWorkflowExecutionRepository } from '../repositories/workflow-execution.repository'
 import type { WorkflowExecutionRow } from '../repositories/workflow-execution.repository'
 import { createWorkflowTriggerRepository } from '../repositories/workflow-trigger.repository'
 import type { WorkflowTriggerRow } from '../repositories/workflow-trigger.repository'
 import type { AppEnv } from '../types'
 import { presignDownload, presignUpload } from '../lib/documents-s3'
-import { encryptRuntimeToken } from '../lib/runtime-token-crypto'
-import { getTemporalClient, temporalTaskQueue } from '../lib/temporal-client'
-import { CURATED_WORKFLOW_NAMES } from '../lib/curated-workflows'
+import {
+  provisionRuntimeServiceAccount,
+  startWorkflowExecution,
+} from '../lib/start-workflow-execution'
 import { DOMAIN_EVENT_TYPES } from '../lib/domain-events'
 import { logger } from '../lib/logger'
 
@@ -320,72 +320,10 @@ function buildArtifactKey(tenantId: string, workflowId: string, version: string)
   return `workflows/${tenantId}/${workflowId}/${version}.zip`
 }
 
-/**
- * Provisions the per-workflow runtime service account inside an open
- * transaction and persists the KMS-encrypted credential onto the workflow row.
- *
- * Mirrors the api-clients POST / pattern: create a cognito-less service-account
- * TenantUser (it cannot sign in via Cognito), then mint a scoped `vnd_` API key
- * bound to it. The plaintext key is KMS-encrypted via `encryptRuntimeToken` and
- * only the ciphertext + ApiClient.id are stored — the plaintext is discarded
- * here and never logged or returned.
- *
- * Runs in the SAME transaction as the workflow-row insert, so a failure
- * anywhere rolls back the workflow, the service account, and the key together.
- *
- * Returns the workflow row with the runtime columns populated.
- */
-async function provisionRuntimeServiceAccount(
-  tx: Prisma.TransactionClient,
-  opts: { tenantId: string; workflowId: string; createdById: string },
-): Promise<WorkflowRow> {
-  const { tenantId, workflowId, createdById } = opts
-  // Pre-generate the service-account user id so it can seed the synthetic
-  // email (per-tenant unique) without an extra round-trip after insert.
-  const serviceAccountId = randomUUID()
-
-  await tx.tenantUser.create({
-    data: {
-      id: serviceAccountId,
-      tenantId,
-      email: `svc-${serviceAccountId}@svc.invalid`,
-      cognitoSub: null,
-      isServiceAccount: true,
-      status: 'ACTIVE',
-      activatedAt: new Date(),
-      roleNames: ['workflow_runtime'],
-    },
-  })
-
-  const apiClientRepo = createApiClientRepository(tx as PrismaClient)
-  // Tenant-scoped clients leave `scopes` empty — the bound service-account
-  // user's roleNames drive Cedar authorization.
-  const { row, plainKey } = await apiClientRepo.create(
-    tenantId,
-    `wf-runtime-${workflowId}`,
-    [],
-    createdById,
-    serviceAccountId,
-  )
-
-  const ciphertext = await encryptRuntimeToken(plainKey)
-
-  const workflowRepo = createWorkflowRepository(tx as PrismaClient)
-  const updated = await workflowRepo.attachRuntimeToken(
-    workflowId,
-    { runtimeTokenCiphertext: ciphertext, runtimeApiClientId: row.id },
-    tx,
-  )
-
-  logger.info('Workflow runtime service account provisioned', {
-    workflowId,
-    tenantId,
-    runtimeApiClientId: row.id,
-    keyPrefix: row.keyPrefix,
-    serviceAccountId,
-  })
-  return updated
-}
+// provisionRuntimeServiceAccount + the shared run sequence live in
+// ../lib/start-workflow-execution.ts (Phase 3 Unit 3) so the trigger
+// dispatcher Lambda starts executions through the exact same path as
+// POST /:id/run below.
 
 // ---------------------------------------------------------------------------
 // Router
@@ -724,7 +662,18 @@ workflowsHandler.post(
     if (!workflow) {
       return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
     }
-    if (!CURATED_WORKFLOW_NAMES.has(workflow.name)) {
+
+    // The shared run path (curated gate → lazy runtime-account mint → QUEUED
+    // insert → Temporal start with REJECT_DUPLICATE → RUNNING/FAILED) — the
+    // same sequence the trigger dispatcher fires.
+    const result = await startWorkflowExecution(db, {
+      workflow,
+      tenantId,
+      input,
+      provenance: { triggerSource: 'USER', triggeredByUserId: userId },
+    })
+
+    if (result.outcome === 'NOT_EXECUTABLE') {
       return c.json(
         {
           error: `Workflow "${workflow.name}" is not in the executable allowlist (Phase 2 runs curated stdlib workflows only)`,
@@ -734,92 +683,22 @@ workflowsHandler.post(
       )
     }
 
-    // Single transaction: lazy-mint the runtime account if needed, then
-    // insert the QUEUED execution. A failure rolls back both.
-    const inserted = await db.$transaction(async (tx) => {
-      const txClient = tx as PrismaClient
-      if (!workflow.runtimeApiClientId || !workflow.runtimeTokenCiphertext) {
-        // Pre-Unit-3 workflow — provision its runtime account now.
-        await provisionRuntimeServiceAccount(tx, {
-          tenantId,
-          workflowId: workflow.id,
-          createdById: userId,
-        })
-      }
-      const execRepo = createWorkflowExecutionRepository(txClient)
-      return execRepo.create({
-        tenantId,
-        workflowId: workflow.id,
-        triggeredByUserId: userId,
-        input: input as Prisma.InputJsonValue,
-      })
-    })
-
-    // Start the Temporal workflow. If start_workflow throws, mark the
-    // execution FAILED with the error so we don't leak QUEUED rows for
-    // runtime failures.
-    const temporalWorkflowId = `wf/${tenantId}/${workflow.name}/${inserted.id}`
-    try {
-      const client = await getTemporalClient()
-      const handle = await client.workflow.start(workflow.name, {
-        args: [{ executionId: inserted.id, input }],
-        taskQueue: temporalTaskQueue(),
-        workflowId: temporalWorkflowId,
-        // Idempotent re-submit: if a previous call already started this id,
-        // we'd rather error here than start a second run. The catch below
-        // converts the WorkflowExecutionAlreadyStartedError into a 409.
-        workflowIdReusePolicy: 'REJECT_DUPLICATE',
-      })
-
-      // Eagerly transition QUEUED → RUNNING so the row reflects reality
-      // before the worker write-back lands. The worker's PATCH will be a
-      // RUNNING-self update (idempotent) once it sees the activity.
-      const execRepo = createWorkflowExecutionRepository(db)
-      const running = await execRepo.markStarted(inserted.id, {
-        temporalWorkflowId: handle.workflowId,
-        temporalRunId: handle.firstExecutionRunId ?? '',
-        startedAt: new Date(),
-      })
-
-      logger.info('Workflow execution started', {
-        executionId: inserted.id,
-        workflowId: workflow.id,
-        tenantId,
-        temporalWorkflowId: handle.workflowId,
-        temporalRunId: handle.firstExecutionRunId ?? null,
-      })
-
-      return c.json({ data: toExecutionResponse(running) }, 201)
-    } catch (err) {
-      // Roll the QUEUED row forward to FAILED so the operator + caller see
-      // the runtime failure cleanly. No transaction here — these are two
-      // independent failure surfaces (Temporal vs DB).
-      const message = err instanceof Error ? err.message : String(err)
-      const execRepo = createWorkflowExecutionRepository(db)
-      const failed = await execRepo
-        .markTerminal(inserted.id, {
-          status: 'FAILED',
-          errorMessage: `Temporal start_workflow failed: ${message}`,
-          finishedAt: new Date(),
-        })
-        .catch(() => null)
-
-      logger.error('Workflow execution start failed', {
-        executionId: inserted.id,
-        workflowId: workflow.id,
-        tenantId,
-        error: message,
-      })
-
-      return c.json(
-        {
-          error: `Failed to start workflow on Temporal: ${message}`,
-          code: 'TEMPORAL_START_FAILED',
-          data: failed ? toExecutionResponse(failed) : null,
-        },
-        502,
-      )
+    if (result.outcome === 'STARTED') {
+      return c.json({ data: toExecutionResponse(result.execution) }, 201)
     }
+
+    // START_FAILED — plus, unreachable on this path (the workflow id embeds a
+    // fresh execution UUID), ALREADY_STARTED mapped to the same 502 surface.
+    const message = result.outcome === 'START_FAILED' ? result.message : 'workflow already started'
+    const failed = result.outcome === 'START_FAILED' ? result.execution : null
+    return c.json(
+      {
+        error: `Failed to start workflow on Temporal: ${message}`,
+        code: 'TEMPORAL_START_FAILED',
+        data: failed ? toExecutionResponse(failed) : null,
+      },
+      502,
+    )
   },
 )
 
