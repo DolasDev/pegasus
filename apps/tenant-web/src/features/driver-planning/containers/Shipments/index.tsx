@@ -44,7 +44,7 @@ export const SearchDashboard = () => {
   const query = useSelector((state: RootState) => state.shipments.query)
   const loading = useSelector((state: RootState) => state.shipments.loading)
   const release_channel = useSelector((state: RootState) => (state as any).version.release_channel)
-  let [reload, setReload] = useState(0)
+  const [reload, setReload] = useState(0)
 
   const debouncedQuery = useDebounce(query, 1000)
   const dispatch = useAppDispatch()
@@ -53,7 +53,7 @@ export const SearchDashboard = () => {
     dispatch(changeShipmentQuery({ sortBy: getSortByValue(query, value) }))
   }
 
-  let countShipments = () => {
+  const countShipments = () => {
     return `(${shipments?.length})`
   }
 
@@ -62,8 +62,8 @@ export const SearchDashboard = () => {
       dispatch(fetchShipments(debouncedQuery) as any)
     }
     if (release_channel === 'latest') {
-      let reloadTimer = setTimeout(() => {
-        setReload((reload += 1))
+      const reloadTimer = setTimeout(() => {
+        setReload((r) => r + 1)
         console.log('reloading shipments...')
       }, 30000)
       return () => {

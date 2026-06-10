@@ -1,5 +1,5 @@
 import { API } from '../../utils/api'
-import { createSlice, PayloadAction } from '@reduxjs/toolkit'
+import { createSlice, type PayloadAction } from '@reduxjs/toolkit'
 import type { AppDispatch } from '../store'
 import { coerceListPayload } from '../lib/coerce-list-payload'
 import { notifyError } from '../../components/Snackbar/notify'

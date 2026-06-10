@@ -30,6 +30,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.0.0",
     "prettier": "^3.8.3",
+    "shellcheck": "^4.1.0",
     "turbo": "^2.9.6",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.59.0",
@@ -42,6 +43,9 @@
     ],
     "*.{json,md,yaml,yml}": [
       "prettier --write"
+    ],
+    "*.sh": [
+      "shellcheck"
     ]
   },
   "//overrides": {
