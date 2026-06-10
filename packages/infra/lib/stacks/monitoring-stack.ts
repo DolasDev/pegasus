@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib'
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch'
 import * as cloudwatch_actions from 'aws-cdk-lib/aws-cloudwatch-actions'
 import * as sns from 'aws-cdk-lib/aws-sns'
+import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions'
 import { type Construct } from 'constructs'
 import {
   AVP_POLICY_STORE_COUNT_METRIC_NAME,
@@ -39,6 +40,17 @@ export interface MonitoringStackProps extends cdk.StackProps {
    * in tests / environments that don't pass it.
    */
   readonly ringcentralCaptureDlqName?: string
+
+  /**
+   * Email address subscribed to all alarms (ALARM and OK transitions).
+   * Omit to skip the subscription entirely (dev stays silent).
+   *
+   * Operational note: SNS email subscriptions require a one-time
+   * confirmation click per address per topic — until the
+   * "AWS Notification - Subscription Confirmation" email is clicked the
+   * subscription sits in PendingConfirmation and deliveries drop.
+   */
+  readonly alarmEmail?: string
 }
 
 /**
@@ -60,7 +72,19 @@ export class MonitoringStack extends cdk.Stack {
       topicName: 'pegasus-alarms',
     })
 
+    if (props.alarmEmail) {
+      alarmTopic.addSubscription(new subscriptions.EmailSubscription(props.alarmEmail))
+    }
+
     const snsAction = new cloudwatch_actions.SnsAction(alarmTopic)
+
+    // Wire an alarm to the topic for BOTH state transitions: the ALARM page
+    // and the OK recovery notice ("it self-healed at 3am" is as valuable as
+    // the page itself for a solo operator).
+    const wire = (alarm: cloudwatch.Alarm): void => {
+      alarm.addAlarmAction(snsAction)
+      alarm.addOkAction(snsAction)
+    }
 
     // ── Lambda error alarm ─────────────────────────────────────────────────────
     const lambdaErrorsMetric = new cloudwatch.Metric({
@@ -93,7 +117,7 @@ export class MonitoringStack extends cdk.Stack {
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     })
 
-    lambdaErrorsAlarm.addAlarmAction(snsAction)
+    wire(lambdaErrorsAlarm)
 
     // ── API Gateway 5xx alarm ──────────────────────────────────────────────────
     const apigw5xxMetric = new cloudwatch.Metric({
@@ -117,7 +141,7 @@ export class MonitoringStack extends cdk.Stack {
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     })
 
-    apigw5xxAlarm.addAlarmAction(snsAction)
+    wire(apigw5xxAlarm)
 
     // ── Lambda p99 duration alarm ──────────────────────────────────────────────
     const lambdaDurationMetric = new cloudwatch.Metric({
@@ -143,7 +167,7 @@ export class MonitoringStack extends cdk.Stack {
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     })
 
-    lambdaDurationAlarm.addAlarmAction(snsAction)
+    wire(lambdaDurationAlarm)
 
     // ── AVP policy-store count alarms ─────────────────────────────────────────
     // AWS Verified Permissions has a soft quota of ~100 policy stores per
@@ -180,7 +204,7 @@ export class MonitoringStack extends cdk.Stack {
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
       treatMissingData: cloudwatch.TreatMissingData.BREACHING,
     })
-    avpStoreCountWarnAlarm.addAlarmAction(snsAction)
+    wire(avpStoreCountWarnAlarm)
 
     const avpStoreCountCriticalAlarm = new cloudwatch.Alarm(this, 'AvpStoreCountCriticalAlarm', {
       alarmName: 'pegasus-avp-store-count-critical',
@@ -193,7 +217,7 @@ export class MonitoringStack extends cdk.Stack {
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
       treatMissingData: cloudwatch.TreatMissingData.BREACHING,
     })
-    avpStoreCountCriticalAlarm.addAlarmAction(snsAction)
+    wire(avpStoreCountCriticalAlarm)
 
     // ── RingCentral capture-health alarms ──────────────────────────────────────
     // Gauges published every 15 min by the ringcentral-metrics emitter
@@ -279,7 +303,7 @@ export class MonitoringStack extends cdk.Stack {
         comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
         treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
       })
-      alarm.addAlarmAction(snsAction)
+      wire(alarm)
     }
 
     // ── RingCentral capture DLQ depth (native SQS metric) ──────────────────────
@@ -303,7 +327,7 @@ export class MonitoringStack extends cdk.Stack {
         comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
         treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
       })
-      rcCaptureDlqAlarm.addAlarmAction(snsAction)
+      wire(rcCaptureDlqAlarm)
     }
 
     // ── CloudWatch dashboard ───────────────────────────────────────────────────
