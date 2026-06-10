@@ -293,6 +293,12 @@ new MonitoringStack(app, `${stackIdPrefix}-MonitoringStack`, {
   httpApiId: apiStack.httpApiId,
   httpApiStage: apiStack.httpApiStage,
   ringcentralCaptureDlqName: apiStack.ringcentralCaptureDlqName,
+  // Alarm notifications go to a human on staging + prod; dev stays silent.
+  // Overridable per-synth via `-c alarmEmail=...`. NOTE: the SNS email
+  // subscription needs a one-time confirmation click per env after deploy.
+  alarmEmail:
+    (app.node.tryGetContext('alarmEmail') as string | undefined) ??
+    (envName === 'staging' || envName === 'prod' ? 'dolasllc@gmail.com' : undefined),
 })
 
 // ── Asset stacks (deployed last — depend on all upstream stacks) ──────────────

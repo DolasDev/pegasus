@@ -10,6 +10,7 @@ function synthMonitoringStack() {
     httpApiId: 'abc123def4',
     httpApiStage: '$default',
     ringcentralCaptureDlqName: 'test-rc-capture-dlq',
+    alarmEmail: 'alerts@example.com',
   })
   return Template.fromStack(stack)
 }
@@ -35,6 +36,34 @@ describe('MonitoringStack — SNS topic', () => {
     template.hasResourceProperties('AWS::SNS::Topic', {
       TopicName: 'pegasus-alarms',
     })
+  })
+})
+
+describe('MonitoringStack — alarm email subscription', () => {
+  it('subscribes the alarm email to the topic when alarmEmail is provided', () => {
+    const template = synthMonitoringStack()
+    template.resourceCountIs('AWS::SNS::Subscription', 1)
+    template.hasResourceProperties('AWS::SNS::Subscription', {
+      Protocol: 'email',
+      Endpoint: 'alerts@example.com',
+    })
+  })
+
+  it('creates no subscription when alarmEmail is absent (dev stays silent)', () => {
+    const template = synthMonitoringStackWithoutDlq()
+    template.resourceCountIs('AWS::SNS::Subscription', 0)
+  })
+})
+
+describe('MonitoringStack — OK actions', () => {
+  it('wires every alarm with both AlarmActions and OKActions', () => {
+    const template = synthMonitoringStack()
+    const alarms = template.findResources('AWS::CloudWatch::Alarm')
+    expect(Object.keys(alarms)).toHaveLength(11)
+    for (const [id, alarm] of Object.entries(alarms)) {
+      expect(alarm['Properties']?.['AlarmActions'], `${id} AlarmActions`).toHaveLength(1)
+      expect(alarm['Properties']?.['OKActions'], `${id} OKActions`).toHaveLength(1)
+    }
   })
 })
 
