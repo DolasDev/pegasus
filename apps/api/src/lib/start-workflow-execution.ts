@@ -37,12 +37,14 @@ import { logger } from './logger'
 
 /**
  * Who/what started this execution. USER = the manual `POST /:id/run` path;
- * EVENT = the trigger dispatcher (Phase 3 Unit 3). SCHEDULE joins in Unit 4.
+ * EVENT = the trigger dispatcher's domain-event phase (Phase 3 Unit 3);
+ * SCHEDULE = the same dispatcher's cron phase (Unit 4). Both trigger kinds
+ * share one shape — only the recorded `triggerSource` differs.
  */
 export type StartWorkflowExecutionProvenance =
   | { triggerSource: 'USER'; triggeredByUserId: string }
   | {
-      triggerSource: 'EVENT'
+      triggerSource: 'EVENT' | 'SCHEDULE'
       triggeredByTriggerId: string
       /**
        * TenantUser.id recorded as creator if a runtime service account must
@@ -210,7 +212,7 @@ export async function startWorkflowExecution(
       triggeredByUserId: provenance.triggerSource === 'USER' ? provenance.triggeredByUserId : null,
       triggerSource: provenance.triggerSource,
       triggeredByTriggerId:
-        provenance.triggerSource === 'EVENT' ? provenance.triggeredByTriggerId : null,
+        provenance.triggerSource === 'USER' ? null : provenance.triggeredByTriggerId,
       temporalWorkflowId: opts.temporalWorkflowId ?? null,
       input: input as Prisma.InputJsonValue,
     })

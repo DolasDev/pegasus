@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
-// Unit tests for the workflow-trigger dispatcher poller (Phase 3 Unit 3).
+// Unit tests for the workflow-trigger dispatcher poller (Phase 3 Units 3+4).
 //
-// Verifies the outbox-drain contract:
+// Verifies the outbox-drain contract (Unit 3):
 //   - undispatched DomainEvent rows are read oldest-first, bounded at 100
 //   - a matching enabled EVENT trigger starts an execution with EVENT
 //     provenance, the deterministic Temporal id (persisted at create), and
@@ -15,12 +15,21 @@
 //     other triggers nor the dispatchedAt stamp
 //   - a non-executable workflow (pre-Track-A tenant upload) is a logged skip
 //
+// And the schedule phase (Unit 4):
+//   - a SCHEDULE trigger whose cron matches the tick's UTC fire-minute fires
+//     with SCHEDULE provenance and the deterministic fire-minute id
+//     `wf/<tenantId>/<name>/trg/<triggerId>/<compact-minute>` (20260610T1604Z)
+//   - not-due triggers are silent (no execution, no skip metric)
+//   - re-evaluating the same fire-minute is a DUPLICATE skip (no second row)
+//   - an unparseable cron (pre-Unit-4 row) is an INVALID_CRON skip that never
+//     poisons the tick; disabled rows are filtered at the query
+//
 // The shared run path (lib/start-workflow-execution.ts) runs for REAL against
 // the mocked `../db`; Temporal is injected via _setTemporalClientForTesting
 // so no gRPC connection is opened. The CloudWatch SDK is mocked.
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Client } from '@temporalio/client'
 import { WorkflowExecutionAlreadyStartedError } from '@temporalio/client'
 import { _setTemporalClientForTesting } from '../lib/temporal-client'
@@ -119,6 +128,16 @@ function triggerRow(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function scheduleTriggerRow(overrides: Record<string, unknown> = {}) {
+  return triggerRow({
+    id: 'trg-sched-1',
+    kind: 'SCHEDULE',
+    eventType: null,
+    cronExpression: '4 16 * * *',
+    ...overrides,
+  })
+}
+
 function workflowRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'wf-1',
@@ -166,6 +185,17 @@ function queuedExecution(overrides: Record<string, unknown> = {}) {
 
 function fakeTemporalClient(start: ReturnType<typeof vi.fn>): Client {
   return { workflow: { start } } as unknown as Client
+}
+
+/**
+ * Kind-aware trigger query stub. The handler queries EVENT triggers once per
+ * event AND the cross-tenant SCHEDULE set once per tick, both through the
+ * same findMany — route on `where.kind` so each phase gets its own rows.
+ */
+function setTriggers(opts: { event?: unknown[]; schedule?: unknown[] }) {
+  mockTriggerFindMany.mockImplementation((args: { where: { kind: string } }) =>
+    Promise.resolve(args.where.kind === 'SCHEDULE' ? (opts.schedule ?? []) : (opts.event ?? [])),
+  )
 }
 
 /** Flattened MetricData entries across every PutMetricData call this tick. */
@@ -223,7 +253,7 @@ describe('matchesTriggerFilter', () => {
   })
 })
 
-// ── Handler ──────────────────────────────────────────────────────────────
+// ── Handler: domain-event phase ──────────────────────────────────────────
 
 describe('lambda-dispatch-workflow-triggers', () => {
   it('queries undispatched events oldest-first, bounded at 100', async () => {
@@ -236,21 +266,38 @@ describe('lambda-dispatch-workflow-triggers', () => {
     })
   })
 
-  it('does nothing (no trigger query, no metric) when there are no events', async () => {
+  it('an idle tick only sweeps SCHEDULE triggers and emits no metrics', async () => {
     const out = await handler()
 
-    expect(out).toEqual({ scanned: 0, dispatched: 0, fired: 0 })
-    expect(mockTriggerFindMany).not.toHaveBeenCalled()
+    expect(out).toEqual({
+      scanned: 0,
+      dispatched: 0,
+      fired: 0,
+      schedulesEvaluated: 0,
+      scheduleFired: 0,
+    })
+    // No events ⇒ no per-event EVENT-trigger queries; the only trigger query
+    // is the schedule sweep (Unit 4), which runs every tick.
+    expect(mockTriggerFindMany).toHaveBeenCalledTimes(1)
+    expect(mockTriggerFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { kind: 'SCHEDULE', enabled: true } }),
+    )
     expect(mockSend).not.toHaveBeenCalled()
   })
 
   it('fires a matching trigger: EVENT provenance, deterministic Temporal id, stamped event', async () => {
     mockDomainEventFindMany.mockResolvedValue([eventRow()])
-    mockTriggerFindMany.mockResolvedValue([triggerRow()])
+    setTriggers({ event: [triggerRow()] })
 
     const out = await handler()
 
-    expect(out).toEqual({ scanned: 1, dispatched: 1, fired: 1 })
+    expect(out).toEqual({
+      scanned: 1,
+      dispatched: 1,
+      fired: 1,
+      schedulesEvaluated: 0,
+      scheduleFired: 0,
+    })
 
     // Only enabled EVENT triggers of this (tenant, eventType) are considered.
     expect(mockTriggerFindMany).toHaveBeenCalledWith(
@@ -303,7 +350,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
 
   it('starts Temporal with the deterministic id and REJECT_DUPLICATE', async () => {
     mockDomainEventFindMany.mockResolvedValue([eventRow()])
-    mockTriggerFindMany.mockResolvedValue([triggerRow()])
+    setTriggers({ event: [triggerRow()] })
     const start = vi.fn().mockResolvedValue({
       workflowId: DETERMINISTIC_ID,
       firstExecutionRunId: 'run-1',
@@ -323,18 +370,24 @@ describe('lambda-dispatch-workflow-triggers', () => {
 
   it('filter mismatch: no execution, event still stamped', async () => {
     mockDomainEventFindMany.mockResolvedValue([eventRow()])
-    mockTriggerFindMany.mockResolvedValue([triggerRow({ filter: { quoteId: 'other' } })])
+    setTriggers({ event: [triggerRow({ filter: { quoteId: 'other' } })] })
 
     const out = await handler()
 
-    expect(out).toEqual({ scanned: 1, dispatched: 1, fired: 0 })
+    expect(out).toEqual({
+      scanned: 1,
+      dispatched: 1,
+      fired: 0,
+      schedulesEvaluated: 0,
+      scheduleFired: 0,
+    })
     expect(mockExecutionCreate).not.toHaveBeenCalled()
     expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
   })
 
   it('filter match (shallow equality) fires the trigger', async () => {
     mockDomainEventFindMany.mockResolvedValue([eventRow()])
-    mockTriggerFindMany.mockResolvedValue([triggerRow({ filter: { quoteId: 'q-1' } })])
+    setTriggers({ event: [triggerRow({ filter: { quoteId: 'q-1' } })] })
 
     const out = await handler()
 
@@ -343,12 +396,18 @@ describe('lambda-dispatch-workflow-triggers', () => {
 
   it('duplicate redelivery: an existing row with the deterministic id is skipped', async () => {
     mockDomainEventFindMany.mockResolvedValue([eventRow()])
-    mockTriggerFindMany.mockResolvedValue([triggerRow()])
+    setTriggers({ event: [triggerRow()] })
     mockExecutionFindFirst.mockResolvedValue({ id: 'exec-existing' })
 
     const out = await handler()
 
-    expect(out).toEqual({ scanned: 1, dispatched: 1, fired: 0 })
+    expect(out).toEqual({
+      scanned: 1,
+      dispatched: 1,
+      fired: 0,
+      schedulesEvaluated: 0,
+      scheduleFired: 0,
+    })
     expect(mockExecutionFindFirst).toHaveBeenCalledWith({
       where: { tenantId: 'tenant-1', temporalWorkflowId: DETERMINISTIC_ID },
       select: { id: true },
@@ -366,12 +425,18 @@ describe('lambda-dispatch-workflow-triggers', () => {
 
   it('non-executable workflow: logged skip, no FAILED row, event still stamped', async () => {
     mockDomainEventFindMany.mockResolvedValue([eventRow()])
-    mockTriggerFindMany.mockResolvedValue([triggerRow()])
+    setTriggers({ event: [triggerRow()] })
     mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'tenant_custom_workflow' }))
 
     const out = await handler()
 
-    expect(out).toEqual({ scanned: 1, dispatched: 1, fired: 0 })
+    expect(out).toEqual({
+      scanned: 1,
+      dispatched: 1,
+      fired: 0,
+      schedulesEvaluated: 0,
+      scheduleFired: 0,
+    })
     expect(mockExecutionCreate).not.toHaveBeenCalled()
     expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
     expect(emittedMetrics()).toContainEqual(
@@ -384,7 +449,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
 
   it('Temporal AlreadyStarted (pre-check raced): no FAILED row, event still stamped', async () => {
     mockDomainEventFindMany.mockResolvedValue([eventRow()])
-    mockTriggerFindMany.mockResolvedValue([triggerRow()])
+    setTriggers({ event: [triggerRow()] })
     const start = vi
       .fn()
       .mockRejectedValue(
@@ -398,7 +463,13 @@ describe('lambda-dispatch-workflow-triggers', () => {
 
     const out = await handler()
 
-    expect(out).toEqual({ scanned: 1, dispatched: 1, fired: 0 })
+    expect(out).toEqual({
+      scanned: 1,
+      dispatched: 1,
+      fired: 0,
+      schedulesEvaluated: 0,
+      scheduleFired: 0,
+    })
     // markTerminal would be an update with status FAILED — must not happen.
     expect(mockExecutionUpdate).not.toHaveBeenCalled()
     expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
@@ -412,14 +483,20 @@ describe('lambda-dispatch-workflow-triggers', () => {
 
   it('Temporal start failure: FAILED row recorded, event still stamped (no redelivery)', async () => {
     mockDomainEventFindMany.mockResolvedValue([eventRow()])
-    mockTriggerFindMany.mockResolvedValue([triggerRow()])
+    setTriggers({ event: [triggerRow()] })
     const start = vi.fn().mockRejectedValue(new Error('temporal down'))
     _setTemporalClientForTesting(fakeTemporalClient(start))
     mockExecutionUpdate.mockResolvedValue(queuedExecution({ status: 'FAILED', finishedAt: now }))
 
     const out = await handler()
 
-    expect(out).toEqual({ scanned: 1, dispatched: 1, fired: 0 })
+    expect(out).toEqual({
+      scanned: 1,
+      dispatched: 1,
+      fired: 0,
+      schedulesEvaluated: 0,
+      scheduleFired: 0,
+    })
     expect(mockExecutionUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -439,10 +516,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
 
   it('failure isolation: the first trigger throwing does not block the second or the stamp', async () => {
     mockDomainEventFindMany.mockResolvedValue([eventRow()])
-    mockTriggerFindMany.mockResolvedValue([
-      triggerRow({ id: 'trg-bad' }),
-      triggerRow({ id: 'trg-good' }),
-    ])
+    setTriggers({ event: [triggerRow({ id: 'trg-bad' }), triggerRow({ id: 'trg-good' })] })
     // First trigger's workflow lookup explodes; second resolves normally.
     mockWorkflowFindFirst
       .mockRejectedValueOnce(new Error('db hiccup'))
@@ -450,7 +524,13 @@ describe('lambda-dispatch-workflow-triggers', () => {
 
     const out = await handler()
 
-    expect(out).toEqual({ scanned: 1, dispatched: 1, fired: 1 })
+    expect(out).toEqual({
+      scanned: 1,
+      dispatched: 1,
+      fired: 1,
+      schedulesEvaluated: 0,
+      scheduleFired: 0,
+    })
     expect(mockExecutionCreate).toHaveBeenCalledTimes(1)
     expect(
       (mockExecutionCreate.mock.calls[0]![0] as { data: { triggeredByTriggerId: string } }).data
@@ -467,11 +547,19 @@ describe('lambda-dispatch-workflow-triggers', () => {
 
   it('a failed trigger lookup leaves the event unstamped for the next tick', async () => {
     mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    // Every trigger query fails — including the schedule sweep, which is
+    // isolated by its own catch (schedulesEvaluated stays 0).
     mockTriggerFindMany.mockRejectedValue(new Error('db down'))
 
     const out = await handler()
 
-    expect(out).toEqual({ scanned: 1, dispatched: 0, fired: 0 })
+    expect(out).toEqual({
+      scanned: 1,
+      dispatched: 0,
+      fired: 0,
+      schedulesEvaluated: 0,
+      scheduleFired: 0,
+    })
     expect(mockDomainEventUpdateMany).not.toHaveBeenCalled()
   })
 
@@ -484,7 +572,13 @@ describe('lambda-dispatch-workflow-triggers', () => {
 
     const out = await handler()
 
-    expect(out).toEqual({ scanned: 2, dispatched: 1, fired: 0 })
+    expect(out).toEqual({
+      scanned: 2,
+      dispatched: 1,
+      fired: 0,
+      schedulesEvaluated: 0,
+      scheduleFired: 0,
+    })
     expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
     expect(
       (mockDomainEventUpdateMany.mock.calls[0]![0] as { where: { id: string } }).where.id,
@@ -512,6 +606,196 @@ describe('lambda-dispatch-workflow-triggers', () => {
 
     const out = await handler()
 
-    expect(out).toEqual({ scanned: 1, dispatched: 0, fired: 0 })
+    expect(out).toEqual({
+      scanned: 1,
+      dispatched: 0,
+      fired: 0,
+      schedulesEvaluated: 0,
+      scheduleFired: 0,
+    })
+  })
+})
+
+// ── Handler: schedule phase (Phase 3 Unit 4) ─────────────────────────────
+
+describe('scheduled triggers', () => {
+  // The whole tick is pinned mid-minute: fire-minute = 2026-06-10T16:04 UTC.
+  const tickNow = new Date('2026-06-10T16:04:23.456Z')
+  const FIRE_MINUTE_ISO = '2026-06-10T16:04:00.000Z'
+  const SCHEDULE_ID = 'wf/tenant-1/send_quote_followup/trg/trg-sched-1/20260610T1604Z'
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(tickNow)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('a due trigger fires with SCHEDULE provenance and the deterministic fire-minute id', async () => {
+    setTriggers({ schedule: [scheduleTriggerRow()] }) // '4 16 * * *' — due
+    const start = vi.fn().mockResolvedValue({
+      workflowId: SCHEDULE_ID,
+      firstExecutionRunId: 'run-1',
+    })
+    _setTemporalClientForTesting(fakeTemporalClient(start))
+
+    const out = await handler()
+
+    expect(out).toEqual({
+      scanned: 0,
+      dispatched: 0,
+      fired: 0,
+      schedulesEvaluated: 1,
+      scheduleFired: 1,
+    })
+
+    // Disabled rows never reach the loop — filtered at the query.
+    expect(mockTriggerFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { kind: 'SCHEDULE', enabled: true } }),
+    )
+
+    // Execution row: SCHEDULE provenance + fire-minute deterministic id AT
+    // CREATE, with the scheduledFor envelope as input.
+    expect(mockExecutionCreate).toHaveBeenCalledTimes(1)
+    const createArg = mockExecutionCreate.mock.calls[0]![0] as { data: Record<string, unknown> }
+    expect(createArg.data).toMatchObject({
+      tenantId: 'tenant-1',
+      workflowId: 'wf-1',
+      status: 'QUEUED',
+      triggeredByUserId: null,
+      triggerSource: 'SCHEDULE',
+      triggeredByTriggerId: 'trg-sched-1',
+      temporalWorkflowId: SCHEDULE_ID,
+    })
+    expect(createArg.data['input']).toEqual({
+      scheduledFor: FIRE_MINUTE_ISO,
+      triggerId: 'trg-sched-1',
+    })
+
+    expect(start).toHaveBeenCalledWith(
+      'send_quote_followup',
+      expect.objectContaining({
+        workflowId: SCHEDULE_ID,
+        workflowIdReusePolicy: 'REJECT_DUPLICATE',
+      }),
+    )
+
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({ MetricName: 'WorkflowTriggerFired', Value: 1 }),
+    )
+  })
+
+  it('a not-due trigger does nothing — no execution, no skip metric, no log noise', async () => {
+    setTriggers({ schedule: [scheduleTriggerRow({ cronExpression: '5 16 * * *' })] })
+
+    const out = await handler()
+
+    expect(out).toEqual({
+      scanned: 0,
+      dispatched: 0,
+      fired: 0,
+      schedulesEvaluated: 1,
+      scheduleFired: 0,
+    })
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    // Nothing fired, nothing skipped ⇒ nothing to flush.
+    expect(mockSend).not.toHaveBeenCalled()
+  })
+
+  it('re-evaluating the same fire-minute is a DUPLICATE skip — no second row', async () => {
+    setTriggers({ schedule: [scheduleTriggerRow()] })
+    mockExecutionFindFirst.mockResolvedValue({ id: 'exec-existing' })
+
+    const out = await handler()
+
+    expect(out).toEqual({
+      scanned: 0,
+      dispatched: 0,
+      fired: 0,
+      schedulesEvaluated: 1,
+      scheduleFired: 0,
+    })
+    expect(mockExecutionFindFirst).toHaveBeenCalledWith({
+      where: { tenantId: 'tenant-1', temporalWorkflowId: SCHEDULE_ID },
+      select: { id: true },
+    })
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'DUPLICATE' }],
+      }),
+    )
+  })
+
+  it('an unparseable cron (pre-Unit-4 row) is an INVALID_CRON skip and the tick continues', async () => {
+    setTriggers({
+      schedule: [
+        scheduleTriggerRow({ id: 'trg-bad-cron', cronExpression: '61 * * * *' }),
+        scheduleTriggerRow({ id: 'trg-good', cronExpression: '* * * * *' }),
+      ],
+    })
+
+    const out = await handler()
+
+    expect(out).toEqual({
+      scanned: 0,
+      dispatched: 0,
+      fired: 0,
+      schedulesEvaluated: 2,
+      scheduleFired: 1,
+    })
+    expect(mockExecutionCreate).toHaveBeenCalledTimes(1)
+    expect(
+      (mockExecutionCreate.mock.calls[0]![0] as { data: { triggeredByTriggerId: string } }).data
+        .triggeredByTriggerId,
+    ).toBe('trg-good')
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'INVALID_CRON' }],
+      }),
+    )
+  })
+
+  it('a null cronExpression is an INVALID_CRON skip (defensive)', async () => {
+    setTriggers({ schedule: [scheduleTriggerRow({ cronExpression: null })] })
+
+    const out = await handler()
+
+    expect(out.scheduleFired).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'INVALID_CRON' }],
+      }),
+    )
+  })
+
+  it('event and schedule fires share one tick and one WorkflowTriggerFired metric', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    setTriggers({
+      event: [triggerRow()],
+      schedule: [scheduleTriggerRow({ cronExpression: '* * * * *' })],
+    })
+
+    const out = await handler()
+
+    expect(out).toEqual({
+      scanned: 1,
+      dispatched: 1,
+      fired: 1,
+      schedulesEvaluated: 1,
+      scheduleFired: 1,
+    })
+    expect(mockExecutionCreate).toHaveBeenCalledTimes(2)
+    // One undimensioned counter for both kinds — kind detail is in logs and
+    // the return value, not a metric dimension (see flushMetrics).
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({ MetricName: 'WorkflowTriggerFired', Value: 2 }),
+    )
   })
 })

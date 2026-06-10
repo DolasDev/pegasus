@@ -7,9 +7,9 @@
 // TENANT_SCOPED_MODELS — every read/write below automatically picks up the
 // current tenant via the Prisma extension.
 //
-// CRUD only in this unit: EVENT rows wait for the Unit 3 dispatcher to match
-// them against domain-event outbox rows; SCHEDULE rows are stored but inert
-// until Unit 4 realizes them as Temporal Schedules.
+// CRUD only here: the dispatcher Lambda (which reads via the tenant-agnostic
+// root `db`, not this repo) matches EVENT rows against domain-event outbox
+// rows (Unit 3) and cron-evaluates SCHEDULE rows each tick (Unit 4).
 // ---------------------------------------------------------------------------
 
 import type { PrismaClient, Prisma } from '@prisma/client'
