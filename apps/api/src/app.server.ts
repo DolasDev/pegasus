@@ -18,6 +18,12 @@ import { db as basePrisma } from './db'
 
 const onprem = new Hono<AppEnv>()
 
+// Fail-fast guard: SKIP_AUTH must never reach a production runtime. Mirrors
+// the guard in app.ts — fails closed at boot instead of silently opening the API.
+if (process.env['SKIP_AUTH'] === 'true' && process.env['NODE_ENV'] === 'production') {
+  throw new Error('SKIP_AUTH=true is forbidden when NODE_ENV=production')
+}
+
 if (process.env['SKIP_AUTH'] === 'true') {
   logger.warn('SKIP_AUTH is enabled — all authentication is bypassed. Do NOT use in production.')
   process.env['AUTHZ_OFFLINE'] = 'true'

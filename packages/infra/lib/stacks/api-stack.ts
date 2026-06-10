@@ -153,6 +153,19 @@ export interface ApiStackProps extends cdk.StackProps {
    * for prod in bin/app.ts.
    */
   readonly ringcentralEnabled?: boolean
+
+  /**
+   * Browser origins allowed to call the API cross-origin. Threaded from
+   * bin/app.ts per environment (tenant + admin SPA hostnames in staging/prod).
+   * Applied at BOTH layers from this single source of truth:
+   *   - API Gateway `corsPreflight.allowOrigins` (authoritative for OPTIONS in
+   *     deployed environments), and
+   *   - the Lambda env var `CORS_ALLOWED_ORIGINS` consumed by the Hono cors
+   *     middleware (defense in depth / direct-served path).
+   * Omit (dev) → `['*']` at API GW and an empty env var → Hono reflects any
+   * origin, preserving the original permissive dev behaviour.
+   */
+  readonly corsAllowedOrigins?: string[]
 }
 
 export class ApiStack extends cdk.Stack {
@@ -1272,12 +1285,31 @@ export class ApiStack extends cdk.Stack {
     const httpApi = new apigwv2.HttpApi(this, 'PegasusHttpApi', {
       apiName: 'Pegasus Move Management API',
       corsPreflight: {
-        allowOrigins: ['*'],
+        // Per-env allowlist from bin/app.ts (staging/prod); dev falls back to
+        // the original wildcard. API GW answers OPTIONS itself, so this is the
+        // authoritative CORS layer in deployed environments.
+        allowOrigins: props.corsAllowedOrigins ?? ['*'],
         allowMethods: [apigwv2.CorsHttpMethod.ANY],
-        allowHeaders: ['Content-Type', 'Authorization', 'x-correlation-id'],
+        allowHeaders: ['Content-Type', 'Authorization', 'x-correlation-id', 'X-Tenant-Slug'],
         exposeHeaders: ['x-correlation-id'],
       },
     })
+
+    // Mirror the allowlist into the Lambda so the Hono cors() middleware
+    // enforces the same origins on the non-preflight / direct-served path.
+    // Empty (dev) → Hono reflects any origin.
+    apiFunction.addEnvironment('CORS_ALLOWED_ORIGINS', (props.corsAllowedOrigins ?? []).join(','))
+
+    // Stage-wide throttling — a free token bucket at the API GW edge. Excess
+    // requests get 429 without consuming a Lambda slot, mitigating the
+    // account-wide Lambda concurrency cap (10) starvation vector. Sized to
+    // current real traffic (single-digit rps) with generous headroom; this is
+    // stage-wide, not per-IP (per-IP needs WAF — deliberately deferred).
+    const defaultStage = httpApi.defaultStage?.node.defaultChild as apigwv2.CfnStage
+    defaultStage.defaultRouteSettings = {
+      throttlingRateLimit: 25, // steady-state rps across all callers
+      throttlingBurstLimit: 50,
+    }
 
     httpApi.addRoutes({
       path: '/{proxy+}',

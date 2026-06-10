@@ -97,6 +97,18 @@ const sesFromEmail = sesEmailEnabled ? `no-reply@${SES_SENDER_DOMAIN[envName]}` 
 // no subscription, no webhook traffic. dev/staging stay off.
 const ringcentralEnabled = envName === 'prod'
 
+// ── CORS allowlist (staging/prod) ────────────────────────────────────────────
+// Browser origins allowed to call the API cross-origin. Tenant + admin SPA
+// hostnames per env (the same dolas-managed domains the frontend stacks attach
+// — see FrontendStack / AdminFrontendStack attachCustomDomain comments). Dev
+// has no custom domains (raw *.cloudfront.net) → omit, which keeps the
+// original wildcard behaviour at both API GW and the Hono layer.
+const CORS_ALLOWED_ORIGINS: Record<Exclude<EnvName, 'dev'>, string[]> = {
+  staging: ['https://pegasus-qa.dolas.dev', 'https://admin.pegasus-qa.dolas.dev'],
+  prod: ['https://pegasus.dolas.dev', 'https://admin.pegasus.dolas.dev'],
+}
+const corsAllowedOrigins = envName === 'dev' ? undefined : CORS_ALLOWED_ORIGINS[envName]
+
 // Temporal Cloud namespace gRPC endpoints, one per non-dev env. Consumed by:
 //   - TemporalWorkerStack (Phase 2 Unit 4) — Fargate worker env TEMPORAL_ADDRESS
 //   - ApiStack (Phase 2 Unit 6)            — API Lambda env TEMPORAL_ADDRESS
@@ -260,6 +272,7 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   temporalCloudSecretArn: apiTemporalCloudSecretArn,
   workflowBrokerSecretArn: apiWorkflowBrokerSecretArn,
   ringcentralEnabled,
+  corsAllowedOrigins,
 })
 apiStack.addDependency(cognitoStack)
 
