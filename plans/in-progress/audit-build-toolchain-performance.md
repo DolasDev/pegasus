@@ -30,7 +30,7 @@ Verified fix: `--affected` works on turbo 2.9.16 (dry-run on this branch, which 
 ### F4 — Lint coverage gaps + lint cacheability
 
 - The research note "lint has no cache" is **wrong**: `turbo.json:14-17` leaves `cache` enabled (log-replay caching, `outputs: []`). The actual problem is F1 — CI never has a warm cache to replay. No turbo.json change needed for lint caching; remote cache fixes CI.
-- Real gap found instead: **three packages have no `lint` script at all** — `packages/api-http`, `packages/auth`, `packages/theme` (also `apps/e2e` and `apps/mobile`). `turbo run lint` silently skips them, so their code is never linted anywhere (lint-staged only covers *changed* files, and only since the hooks were installed).
+- Real gap found instead: **three packages have no `lint` script at all** — `packages/api-http`, `packages/auth`, `packages/theme` (also `apps/e2e` and `apps/mobile`). `turbo run lint` silently skips them, so their code is never linted anywhere (lint-staged only covers _changed_ files, and only since the hooks were installed).
 
 ### F5 — `typecheck` cache staleness risk via generated Prisma client
 
@@ -43,17 +43,17 @@ Verified fix: `--affected` works on turbo 2.9.16 (dry-run on this branch, which 
 - Scope: **172** `.ts/.tsx` files, **19,764** LOC.
 - **771 violations in 82 files** (90 files are already clean):
 
-| Rule | Count | Fix path |
-| --- | ---: | --- |
-| `@typescript-eslint/no-explicit-any` | 727 | Manual/AI-assisted typing (the real debt) |
-| `@typescript-eslint/no-unused-vars` | 29 | Mostly deletions; feature has test coverage |
-| `prefer-const` | 5 | `--fix` |
-| `@typescript-eslint/consistent-type-imports` | 4 | `--fix` |
-| `no-prototype-builtins` | 2 | Trivial manual |
-| `@typescript-eslint/no-wrapper-object-types` | 2 | Trivial manual (`String`→`string` etc.) |
-| `no-var` | 1 | `--fix` |
-| `no-useless-assignment` | 1 | Trivial manual |
-| `@typescript-eslint/no-unsafe-function-type` | 0 | **Already clean — delete the exception now** |
+| Rule                                         | Count | Fix path                                     |
+| -------------------------------------------- | ----: | -------------------------------------------- |
+| `@typescript-eslint/no-explicit-any`         |   727 | Manual/AI-assisted typing (the real debt)    |
+| `@typescript-eslint/no-unused-vars`          |    29 | Mostly deletions; feature has test coverage  |
+| `prefer-const`                               |     5 | `--fix`                                      |
+| `@typescript-eslint/consistent-type-imports` |     4 | `--fix`                                      |
+| `no-prototype-builtins`                      |     2 | Trivial manual                               |
+| `@typescript-eslint/no-wrapper-object-types` |     2 | Trivial manual (`String`→`string` etc.)      |
+| `no-var`                                     |     1 | `--fix`                                      |
+| `no-useless-assignment`                      |     1 | Trivial manual                               |
+| `@typescript-eslint/no-unsafe-function-type` |     0 | **Already clean — delete the exception now** |
 
 So 8 of 9 disabled rules account for only **44** violations; the block exists almost entirely for `no-explicit-any`. The right mechanism is ESLint's native **bulk suppressions** (available in installed v10.4.1): re-enable all rules, grandfather existing violations into a committed `eslint-suppressions.json`, and the count can only ratchet **down** — new violations fail immediately, fixing one then forgetting to prune fails the lint with "unused suppression" (prune with `--prune-suppressions`). This replaces the blanket geographic exception with an exact, shrinking ledger. No custom ratchet tooling needed.
 
@@ -108,7 +108,7 @@ Both hooks invoke `node node_modules/.bin/turbo` with whatever `node` is on PATH
 - [ ] **P2.3 — Specify CI env vars (wiring is Unit 1's edit)** (5 min + Unit 1). CI jobs that run turbo (`ci.yml` typecheck/lint/test jobs, `_deploy.yml` build step) need:
   - secret `TURBO_TOKEN` (scoped Vercel token), secret `TURBO_REMOTE_CACHE_SIGNATURE_KEY`, repo variable `TURBO_TEAM` (team slug).
   - `gh secret set TURBO_TOKEN`, `gh secret set TURBO_REMOTE_CACHE_SIGNATURE_KEY`, `gh variable set TURBO_TEAM`.
-  Once present, turbo picks them up from env — typecheck/lint/build replay warm artifacts across CI runs and from local pushes that already ran the same hash.
+    Once present, turbo picks them up from env — typecheck/lint/build replay warm artifacts across CI runs and from local pushes that already ran the same hash.
 - [ ] **P2.4 — Guard typecheck cache against stale Prisma client** (15 min). Create `apps/api/turbo.json`:
 
   ```json
@@ -134,17 +134,17 @@ Both hooks invoke `node node_modules/.bin/turbo` with whatever `node` is on PATH
 
 ## Files to Modify / Create
 
-| File | Action |
-| --- | --- |
-| `.husky/pre-push` | Rewrite to `--affected` + `FULL_PREPUSH` escape hatch (P1.1) |
-| `.husky/pre-commit` | Drop unconditional shellcheck line (P1.2) |
-| `package.json` (root) | lint-staged `*.sh` entry; optional `shellcheck` devDep (P1.2) |
-| `eslint.config.mjs` | Shrink (P1.3) then delete (P3.2) the driver-planning block |
-| `turbo.json` | Add `remoteCache.signature` (P2.2) |
-| `apps/api/turbo.json` | **Create** — prisma input for typecheck (P2.4) |
-| `packages/api-http/package.json`, `packages/auth/package.json`, `packages/theme/package.json` | Add `lint` scripts (P3.1) |
-| `apps/tenant-web/eslint-suppressions.json` | **Create** (generated, committed) (P3.2) |
-| `plans/todo/driver-planning-any-burndown.md` | **Create** — session tracker (P4.1) |
+| File                                                                                          | Action                                                        |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `.husky/pre-push`                                                                             | Rewrite to `--affected` + `FULL_PREPUSH` escape hatch (P1.1)  |
+| `.husky/pre-commit`                                                                           | Drop unconditional shellcheck line (P1.2)                     |
+| `package.json` (root)                                                                         | lint-staged `*.sh` entry; optional `shellcheck` devDep (P1.2) |
+| `eslint.config.mjs`                                                                           | Shrink (P1.3) then delete (P3.2) the driver-planning block    |
+| `turbo.json`                                                                                  | Add `remoteCache.signature` (P2.2)                            |
+| `apps/api/turbo.json`                                                                         | **Create** — prisma input for typecheck (P2.4)                |
+| `packages/api-http/package.json`, `packages/auth/package.json`, `packages/theme/package.json` | Add `lint` scripts (P3.1)                                     |
+| `apps/tenant-web/eslint-suppressions.json`                                                    | **Create** (generated, committed) (P3.2)                      |
+| `plans/todo/driver-planning-any-burndown.md`                                                  | **Create** — session tracker (P4.1)                           |
 
 CI YAML (`ci.yml`, `_deploy.yml`) env-var wiring: **Unit 1**, per P2.3 spec.
 
@@ -152,7 +152,7 @@ CI YAML (`ci.yml`, `_deploy.yml`) env-var wiring: **Unit 1**, per P2.3 spec.
 
 - **Remote-cache poisoning / token leakage**: anyone with the Vercel token can write artifacts that other machines replay. Mitigations: `signature: true` (P2.2) so artifacts are HMAC-verified with a key the cache provider never sees; keep `TURBO_TOKEN` in GH secrets only; solo-dev threat model is low but signing is one config line.
 - **Stale-cache false greens**: `--affected` under-scopes if `origin/main` is stale → the hook fetches first; CI still runs the full graph, so misses are caught pre-merge. Root-config and lockfile changes invalidate all packages via turbo's global hash (verified `globalDependencies` includes `tsconfig.base.json`; turbo.json/root package.json/lockfile are always global hash inputs).
-- **Pre-push on `main` batch pushes**: with `TURBO_SCM_BASE=origin/main`, pushing main runs checks over exactly the unpushed commits — intended; but a push of *many* merged branches re-checks their union (can approach full-repo time; that is correct behavior, not a regression).
+- **Pre-push on `main` batch pushes**: with `TURBO_SCM_BASE=origin/main`, pushing main runs checks over exactly the unpushed commits — intended; but a push of _many_ merged branches re-checks their union (can approach full-repo time; that is correct behavior, not a regression).
 - **`exec` in the pre-push read-loop** processes only the first pushed ref (pre-existing behavior, preserved). Multi-ref pushes (`git push origin a b`) gate only on the first ref — acceptable; CI is the backstop.
 - **Suppressions-file merge conflicts**: `eslint-suppressions.json` is a JSON map keyed by file — conflicts are rare for a solo dev and resolve by rerunning `--suppress-all` is **forbidden** post-adoption (it would re-grandfather new violations); resolve conflicts by rerunning `--prune-suppressions` only.
 - **`no-unused-vars` deletions in ported legacy code** (P3.3) can remove vars with side-effectful initializers — rely on the existing driver-planning test suites (multiple `*.test.ts(x)` present) and the pinned-variant E2E (per project memory) before merging.

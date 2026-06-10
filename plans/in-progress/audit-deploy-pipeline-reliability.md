@@ -8,7 +8,7 @@ Audit scope: `.github/workflows/deploy.yml`, `_deploy.yml`, `temporal-worker.yml
 
 ### F1 — Queued-deploy cancellation silently drops code deploys (CRITICAL, verified live)
 
-`deploy.yml:33-35` uses `concurrency: group: deploy-${{ github.ref }}` with `cancel-in-progress: false`. GitHub keeps **at most one pending run per concurrency group**: when run A is in progress, run B is queued, and run C arrives, GitHub **cancels B** (replaced by C). Since `dorny/paths-filter@v4` (`deploy.yml:57-84`) on push events diffs only the *pushed range of the surviving run*, B's code changes are never evaluated by any run that actually executes. If C is plans-only, the path filter deploys nothing and code changes silently never reach staging/prod.
+`deploy.yml:33-35` uses `concurrency: group: deploy-${{ github.ref }}` with `cancel-in-progress: false`. GitHub keeps **at most one pending run per concurrency group**: when run A is in progress, run B is queued, and run C arrives, GitHub **cancels B** (replaced by C). Since `dorny/paths-filter@v4` (`deploy.yml:57-84`) on push events diffs only the _pushed range of the surviving run_, B's code changes are never evaluated by any run that actually executes. If C is plans-only, the path filter deploys nothing and code changes silently never reach staging/prod.
 
 Verified in run history (`gh run list --workflow deploy.yml`):
 
@@ -19,9 +19,9 @@ success    push              2026-06-09T21:48:13Z  feat(tenant-web): workflow ex
 success    workflow_dispatch 2026-06-09T21:52:09Z  Deploy   (18m — manual recovery)
 ```
 
-The reconcile-poller API change (#229) only deployed because the dev noticed and manually dispatched. Today the recovery protocol is *human discipline* (memory note: "after batch merges, check `gh run list` for cancelled runs and re-dispatch") — exactly the kind of toil this audit must eliminate.
+The reconcile-poller API change (#229) only deployed because the dev noticed and manually dispatched. Today the recovery protocol is _human discipline_ (memory note: "after batch merges, check `gh run list` for cancelled runs and re-dispatch") — exactly the kind of toil this audit must eliminate.
 
-**Root design flaw:** the diff base is "previous commit" rather than "last successfully deployed commit". Fixing the base makes cancellations *benign by construction* — the surviving newest run always covers everything since the last successful deploy. No re-dispatch logic, no accumulated-filter bookkeeping.
+**Root design flaw:** the diff base is "previous commit" rather than "last successfully deployed commit". Fixing the base makes cancellations _benign by construction_ — the surviving newest run always covers everything since the last successful deploy. No re-dispatch logic, no accumulated-filter bookkeeping.
 
 ### F2 — Stack lists duplicated across 4 places, and they have ALREADY drifted (HIGH)
 
@@ -44,7 +44,7 @@ The component→stack mapping is hand-maintained in:
 
 ### F5 — Zero deploy notifications; cancelled runs are completely invisible (HIGH for a solo dev)
 
-No workflow sends any notification on start/success/failure/cancellation, and the prod gate (`deploy.yml:240-259`, required-reviewer on the `prod` environment) sits silently waiting for approval until the dev happens to open the Actions tab. Critically, a **cancelled-while-queued run never executes any jobs**, so an in-workflow notification step can never report it — the notifier must live in a *separate* workflow triggered by `workflow_run: completed` (which does fire for cancelled runs).
+No workflow sends any notification on start/success/failure/cancellation, and the prod gate (`deploy.yml:240-259`, required-reviewer on the `prod` environment) sits silently waiting for approval until the dev happens to open the Actions tab. Critically, a **cancelled-while-queued run never executes any jobs**, so an in-workflow notification step can never report it — the notifier must live in a _separate_ workflow triggered by `workflow_run: completed` (which does fire for cancelled runs).
 
 ### F6 — `temporal-worker.yml` staging/prod jobs are copy-paste, and the "build once" comment is false (MEDIUM)
 
@@ -58,7 +58,7 @@ Lines 63-136 (staging) and 138-202 (prod) are near-identical. The header comment
 
 ### F8 — Temporal Cloud secret ARNs hardcoded with random suffixes (LOW, accepted with mitigation)
 
-`packages/infra/bin/app.ts:125-141` hardcodes complete Secrets Manager ARNs (with the 6-char suffix) per env. This is a *deliberate, well-documented* workaround (`fromSecretNameV2` ARNs are rejected by the SM API — see comment + memory). The suffix is stable for the secret's lifetime; the only failure mode is rotation-by-recreation, which today fails mid-deploy in ECS with an opaque error. Mitigation needed: a pre-flight `describe-secret` per ARN in the deploy job so a stale suffix fails in seconds with a clear message, not minutes into a CFN update.
+`packages/infra/bin/app.ts:125-141` hardcodes complete Secrets Manager ARNs (with the 6-char suffix) per env. This is a _deliberate, well-documented_ workaround (`fromSecretNameV2` ARNs are rejected by the SM API — see comment + memory). The suffix is stable for the secret's lifetime; the only failure mode is rotation-by-recreation, which today fails mid-deploy in ECS with an opaque error. Mitigation needed: a pre-flight `describe-secret` per ARN in the deploy job so a stale suffix fails in seconds with a clear message, not minutes into a CFN update.
 
 ### F9 — No `timeout-minutes` on any job in any of the 5 workflow files (LOW effort, real risk)
 
@@ -77,6 +77,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
 ### Phase 1 — Quick wins (≈1.5h total, each independently shippable)
 
 - [ ] **1.1 Add `timeout-minutes` to every job** (15 min). `_deploy.yml`: `migrate: 15`, `deploy: 45` (full `--all` dispatch took 18 min; CDK retries deserve headroom). `deploy.yml`: `changes: 5`, `e2e-staging: 25`. `temporal-worker.yml`: both jobs `30`. `_publish-vpn-agent.yml`: `publish: 30`. One line per job, e.g.:
+
   ```yaml
   deploy:
     name: Deploy to ${{ inputs.env-name }}
@@ -84,6 +85,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
   ```
 
 - [ ] **1.2 Validate E2E URL extraction** (15 min). In `deploy.yml` "Extract staging URLs" step, assert required values after extraction:
+
   ```bash
   API_URL=$(jq -r '.["pegasus-staging-api"].ApiUrl // empty' "$F")
   WEB_URL=$(jq -r '.["pegasus-staging-frontend"].DistributionUrl // empty' "$F")
@@ -92,15 +94,18 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
     [[ -n "${!v}" ]] || { echo "::error::$v missing from cdk-outputs-staging — output key renamed or stack not in deploy set?"; exit 1; }
   done
   ```
+
   (Keep `CLIENT_ID`/`TENANT_CLIENT_ID` optional as today via `// empty`.)
 
 - [ ] **1.3 Poll ECS rollout in `temporal-worker.yml`** (15 min). After `update-service --force-new-deployment` in both jobs (collapses to one place after 4.2):
+
   ```bash
   aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
   STATE=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
     --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' --output text)
   [[ "$STATE" == "COMPLETED" ]] || { echo "::error::Rollout state=$STATE — circuit breaker likely rolled back"; exit 1; }
   ```
+
   (`services-stable` waiter = 40×15s ≈ 10 min cap, inside the job timeout.)
 
 - [ ] **1.4 VPN agent: SSM apikey pre-flight + instance-refresh polling** (45 min). In `_publish-vpn-agent.yml`:
@@ -148,7 +153,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
 
 ### Phase 2 — Cancellation-proof change detection + notifications (the core reliability fix, ≈3-4h)
 
-- [ ] **2.1 Diff against the last *successfully deployed* SHA instead of the previous commit** (2-3h). This makes F1 cancellations benign by construction — the surviving newest run always covers every commit since the last green deploy; no re-dispatch automation needed. Design:
+- [ ] **2.1 Diff against the last _successfully deployed_ SHA instead of the previous commit** (2-3h). This makes F1 cancellations benign by construction — the surviving newest run always covers every commit since the last green deploy; no re-dispatch automation needed. Design:
   - **Marker:** a GitHub Actions repo variable `LAST_DEPLOY_SHA`, updated only by a new terminal job in `deploy.yml`:
     ```yaml
     record-deploy:
@@ -173,7 +178,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
     ```yaml
     - uses: actions/checkout@v6
       with:
-        fetch-depth: 0   # need history back to LAST_DEPLOY_SHA
+        fetch-depth: 0 # need history back to LAST_DEPLOY_SHA
     - name: Resolve diff base
       id: base
       env:
@@ -207,9 +212,10 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
         ... (existing output + summary block; also echo "Diff base: ${BASE:-<none — full deploy>}" into the step summary) ...
     ```
     (Path lists shown inline here; once 3.1 lands they are read from the manifest with `jq`.)
-  - **Behavioral consequences to accept:** after an E2E-gate failure or unapproved prod run, the next push re-deploys everything that changed since the last green run — idempotent CDK, slightly slower, strictly safer. The old failure mode (silently undeployed code) becomes impossible while runs keep landing; a cancelled run with *no* successor is covered by 2.2's notification.
+  - **Behavioral consequences to accept:** after an E2E-gate failure or unapproved prod run, the next push re-deploys everything that changed since the last green run — idempotent CDK, slightly slower, strictly safer. The old failure mode (silently undeployed code) becomes impossible while runs keep landing; a cancelled run with _no_ successor is covered by 2.2's notification.
 
 - [ ] **2.2 `deploy-watch.yml` — push notifications via ntfy.sh, covering cancelled runs** (45 min). New workflow; must be separate because cancelled-while-queued runs execute zero jobs of their own:
+
   ```yaml
   name: Deploy watch
   on:
@@ -236,9 +242,11 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
             curl -fsS -H "Title: $WF $CONCLUSION" -H "Priority: $PRIO" -H "Tags: $TAG" \
               -d "$TITLE — $URL" "https://ntfy.sh/${{ secrets.NTFY_TOPIC }}"
   ```
+
   One-time setup: pick a random topic string, `gh secret set NTFY_TOPIC`, subscribe in the ntfy mobile app. Zero infrastructure, free. After 2.1 lands, cancelled notifications are informational (superseded run covers the changes); failures are actionable alerts.
 
 - [ ] **2.3 "Prod approval waiting" ping** (15 min). The prod gate waits silently today. Add a final step to the `e2e-staging` job in `deploy.yml`:
+
   ```yaml
   - name: Notify — prod approval ready
     if: success()
@@ -275,14 +283,38 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
     "components": {
       "api": {
         "paths": ["apps/api", "apps/tunnel-proxy", "apps/mssql-executor", "packages/domain"],
-        "stacks": ["CognitoStack", "DocumentsStack", "WireGuardStack", "ApiStack", "ApiCdnStack", "MonitoringStack", "TemporalWorkerStack"]
+        "stacks": [
+          "CognitoStack",
+          "DocumentsStack",
+          "WireGuardStack",
+          "ApiStack",
+          "ApiCdnStack",
+          "MonitoringStack",
+          "TemporalWorkerStack"
+        ]
       },
-      "tenant-web": { "paths": ["apps/tenant-web"], "stacks": ["FrontendStack", "FrontendAssetsStack"] },
-      "admin-web":  { "paths": ["apps/admin-web"],  "stacks": ["AdminFrontendStack", "AdminFrontendAssetsStack"] }
+      "tenant-web": {
+        "paths": ["apps/tenant-web"],
+        "stacks": ["FrontendStack", "FrontendAssetsStack"]
+      },
+      "admin-web": {
+        "paths": ["apps/admin-web"],
+        "stacks": ["AdminFrontendStack", "AdminFrontendAssetsStack"]
+      }
     },
-    "forceAllPaths": ["packages/infra", "apps/temporal-worker", ".github/workflows/deploy.yml", ".github/workflows/_deploy.yml", ".github/deploy-manifest.json", "package-lock.json"],
+    "forceAllPaths": [
+      "packages/infra",
+      "apps/temporal-worker",
+      ".github/workflows/deploy.yml",
+      ".github/workflows/_deploy.yml",
+      ".github/deploy-manifest.json",
+      "package-lock.json"
+    ],
     "envExtraStacks": { "staging": ["E2EStagingRoleStack"] },
-    "envConditionalStacks": { "TemporalWorkerStack": ["staging", "prod"], "E2EStagingRoleStack": ["staging"] }
+    "envConditionalStacks": {
+      "TemporalWorkerStack": ["staging", "prod"],
+      "E2EStagingRoleStack": ["staging"]
+    }
   }
   ```
   (Paths as directory prefixes, consumed by `git diff -- <path>`; no glob expansion needed.)
@@ -317,13 +349,23 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
   import { execSync } from 'node:child_process'
   import manifest from '../../../../.github/deploy-manifest.json'
   test.each(['staging', 'prod', 'dev'] as const)('manifest matches cdk ls for %s', (env) => {
-    const actual = execSync(`npx cdk ls -c env=${env} --app "npx tsx bin/app.ts"`, { cwd: __dirname + '/../..' })
-      .toString().trim().split('\n').map((id) => id.split('-').slice(1).join('-')).sort()
-    const allowed = (s: string) => !(s in manifest.envConditionalStacks) || manifest.envConditionalStacks[s].includes(env)
+    const actual = execSync(`npx cdk ls -c env=${env} --app "npx tsx bin/app.ts"`, {
+      cwd: __dirname + '/../..',
+    })
+      .toString()
+      .trim()
+      .split('\n')
+      .map((id) => id.split('-').slice(1).join('-'))
+      .sort()
+    const allowed = (s: string) =>
+      !(s in manifest.envConditionalStacks) || manifest.envConditionalStacks[s].includes(env)
     const expected = [
       ...Object.values(manifest.components).flatMap((c) => c.stacks),
       ...(manifest.envExtraStacks[env] ?? []),
-    ].filter(allowed).filter((s, i, a) => a.indexOf(s) === i).sort()
+    ]
+      .filter(allowed)
+      .filter((s, i, a) => a.indexOf(s) === i)
+      .sort()
     expect(actual).toEqual(expected)
   })
   ```
@@ -332,6 +374,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
 ### Phase 4 — Pipeline speed & deduplication (≈3h)
 
 - [ ] **4.1 Skip the `migrate` job when no migration files changed** (45 min). In `deploy.yml` `changes` job add a `migrations` detection (`changed apps/api/prisma/migrations` against the same diff base — burst-safe thanks to 2.1); thread it through:
+
   ```yaml
   # deploy.yml → _deploy.yml call sites
   with:
@@ -340,14 +383,17 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
   migrate:
     if: inputs.deploy-api == 'true' && inputs.run-migrations == 'true'
   ```
+
   On `workflow_dispatch`, always set `migrations=true` (manual runs are recovery runs — be conservative). Belt-and-braces guard inside the `deploy` job so a skipped migrate can never strand pending migrations (cheap: client already generated):
+
   ```yaml
   - name: Assert no pending migrations
     if: inputs.deploy-api == 'true' && inputs.run-migrations != 'true'
     working-directory: apps/api
     env: { DIRECT_URL: '${{ secrets.DIRECT_URL }}' }
-    run: node ../../node_modules/.bin/prisma migrate status   # exits non-zero when migrations are pending
+    run: node ../../node_modules/.bin/prisma migrate status # exits non-zero when migrations are pending
   ```
+
   Saves ~2-3 min serial latency per env on the ~90% of API deploys that ship no migrations.
 
 - [ ] **4.2 Refactor `temporal-worker.yml` into a reusable `_temporal-worker.yml`** (1.5h), mirroring the `_deploy.yml` / `_publish-vpn-agent.yml` precedent. Reusable workflow takes `env-name`; the caller keeps the staging→prod chain (`prod` job `needs: staging` + `environment: prod` gate). Two deliberate fixes while refactoring:
@@ -377,21 +423,21 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
 
 ## Files to Modify / Create
 
-| File | Action | Phases |
-| --- | --- | --- |
-| `.github/workflows/deploy.yml` | modify — timeouts, URL validation, diff-base detection, `record-deploy` job, prod-approval ping, migrations output, composite action | 1.1, 1.2, 2.1, 2.3, 3.2, 4.1, 4.3 |
-| `.github/workflows/_deploy.yml` | modify — timeouts, secret-ARN pre-flight, manifest-driven stack target, `run-migrations` input + guard, composite action | 1.1, 1.5, 3.3, 4.1, 4.3 |
-| `.github/workflows/temporal-worker.yml` | modify — becomes thin caller of reusable workflow | 1.1, 1.3, 4.2 |
-| `.github/workflows/_temporal-worker.yml` | **create** — reusable per-env build+push+rollout-wait | 4.2 |
-| `.github/workflows/_publish-vpn-agent.yml` | modify — timeout, apikey pre-flight, refresh polling, composite action | 1.1, 1.4, 4.3 |
-| `.github/workflows/publish-vpn-agent.yml` | modify — fix stale bootstrap-script reference in header comment | 1.4 |
-| `.github/workflows/deploy-watch.yml` | **create** — workflow_run notifier (+ optional AI triage) | 2.2, 2.4 |
-| `.github/deploy-manifest.json` | **create** — single source for component→paths→stacks | 3.1 |
-| `packages/infra/test/deploy-manifest.test.ts` | **create** — drift guard vs `cdk ls` | 3.5 |
-| `packages/infra/deploy.sh` | modify — manifest-driven TARGET lists (fixes ApiCdnStack drift) | 3.4 |
-| `.github/actions/setup-node-workspace/action.yml` | **create** — shared setup composite | 4.3 |
-| `.nvmrc` | **create** — `20` (single-sourced node version) | 4.3 |
-| `packages/infra/bin/app.ts` | unchanged (stays source of truth; secret ARNs stay hardcoded per F8, now pre-flighted) | — |
+| File                                              | Action                                                                                                                               | Phases                            |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------- |
+| `.github/workflows/deploy.yml`                    | modify — timeouts, URL validation, diff-base detection, `record-deploy` job, prod-approval ping, migrations output, composite action | 1.1, 1.2, 2.1, 2.3, 3.2, 4.1, 4.3 |
+| `.github/workflows/_deploy.yml`                   | modify — timeouts, secret-ARN pre-flight, manifest-driven stack target, `run-migrations` input + guard, composite action             | 1.1, 1.5, 3.3, 4.1, 4.3           |
+| `.github/workflows/temporal-worker.yml`           | modify — becomes thin caller of reusable workflow                                                                                    | 1.1, 1.3, 4.2                     |
+| `.github/workflows/_temporal-worker.yml`          | **create** — reusable per-env build+push+rollout-wait                                                                                | 4.2                               |
+| `.github/workflows/_publish-vpn-agent.yml`        | modify — timeout, apikey pre-flight, refresh polling, composite action                                                               | 1.1, 1.4, 4.3                     |
+| `.github/workflows/publish-vpn-agent.yml`         | modify — fix stale bootstrap-script reference in header comment                                                                      | 1.4                               |
+| `.github/workflows/deploy-watch.yml`              | **create** — workflow_run notifier (+ optional AI triage)                                                                            | 2.2, 2.4                          |
+| `.github/deploy-manifest.json`                    | **create** — single source for component→paths→stacks                                                                                | 3.1                               |
+| `packages/infra/test/deploy-manifest.test.ts`     | **create** — drift guard vs `cdk ls`                                                                                                 | 3.5                               |
+| `packages/infra/deploy.sh`                        | modify — manifest-driven TARGET lists (fixes ApiCdnStack drift)                                                                      | 3.4                               |
+| `.github/actions/setup-node-workspace/action.yml` | **create** — shared setup composite                                                                                                  | 4.3                               |
+| `.nvmrc`                                          | **create** — `20` (single-sourced node version)                                                                                      | 4.3                               |
+| `packages/infra/bin/app.ts`                       | unchanged (stays source of truth; secret ARNs stay hardcoded per F8, now pre-flighted)                                               | —                                 |
 
 One-time operator setup (not files): `gh secret set NTFY_TOPIC` (+ subscribe in ntfy app); optional `gh secret set ANTHROPIC_API_KEY` (2.4); fine-grained PAT `DEPLOY_MARKER_TOKEN` only if `GITHUB_TOKEN` can't write repo variables (2.1); `ssm:GetParameter` on `/pegasus/wireguard/agent/apikey` + verify `secretsmanager:DescribeSecret` for the deploy roles (1.4, 1.5).
 
@@ -403,11 +449,11 @@ One-time operator setup (not files): `gh secret set NTFY_TOPIC` (+ subscribe in 
 - **2.1 `fetch-depth: 0`:** full-history checkout in the `changes` job adds ~5-15s on this repo size. Negligible.
 - **3.x manifest cutover:** behavior change risk if the manifest mistranscribes a stack list — mitigated by 3.5 running in the same PR's CI, and by validating with a staging `workflow_dispatch` before any prod approval.
 - **3.5 test cost:** `cdk ls` synthesizes the app 3× (~30-90s in CI test job). If too slow, drop the `dev` case (staging covers the superset minus E2E role nuance).
-- **1.4 IAM:** pre-flight needs `ssm:GetParameter` on the apikey param for the per-env deploy role; until granted, the step fails *closed* (treats permission error as "missing param"). Grant before merging or scope the first rollout to dev.
-- **4.1 migration skip:** the in-deploy-job `prisma migrate status` guard means a wrongly-skipped migrate job fails the deploy *before* CDK runs rather than shipping a Lambda against an unmigrated schema. Note: guard relies on `migrate status` exiting non-zero with pending migrations (true on Prisma 5.4+; this repo is on Prisma 7).
+- **1.4 IAM:** pre-flight needs `ssm:GetParameter` on the apikey param for the per-env deploy role; until granted, the step fails _closed_ (treats permission error as "missing param"). Grant before merging or scope the first rollout to dev.
+- **4.1 migration skip:** the in-deploy-job `prisma migrate status` guard means a wrongly-skipped migrate job fails the deploy _before_ CDK runs rather than shipping a Lambda against an unmigrated schema. Note: guard relies on `migrate status` exiting non-zero with pending migrations (true on Prisma 5.4+; this repo is on Prisma 7).
 - **4.2 cache scope merge:** staging and prod now share GHA buildx cache — intended; cache poisoning is not a concern (same repo, same trust domain).
 - **Notifications dependency:** ntfy.sh is a free third-party service; an outage only mutes alerts (steps are `curl -fsS` inside notify-only jobs — never blocks a deploy; 2.3's step should append `|| true` so a notify hiccup can't fail the E2E gate job).
-- **Concurrency semantics unchanged:** queued runs will still be *cancelled* by newer pushes (GitHub behavior, not configurable) — after 2.1 this is benign, and 2.2 makes each one visible.
+- **Concurrency semantics unchanged:** queued runs will still be _cancelled_ by newer pushes (GitHub behavior, not configurable) — after 2.1 this is benign, and 2.2 makes each one visible.
 
 ## Acceptance Criteria / Verification
 

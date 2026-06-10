@@ -17,13 +17,13 @@ entire code-security suite is **free** — and every piece of it is currently di
 (verified via `gh api repos/DolasDev/pegasus --jq .security_and_analysis` and
 `gh api repos/DolasDev/pegasus/code-scanning/default-setup`):
 
-| Feature | State 2026-06-10 | Cost on public repo |
-| --- | --- | --- |
-| CodeQL code scanning | `not-configured` (detected langs: `javascript-typescript`, `python`, `actions`) | Free |
-| GitHub secret scanning | `disabled` | Free |
-| Secret-scanning push protection | `disabled` | Free |
-| Dependabot security updates (auto-fix PRs) | `disabled` (alerts themselves ARE enabled — `vulnerability-alerts` returns 204) | Free |
-| Dependency review on PRs | no workflow exists | Free |
+| Feature                                    | State 2026-06-10                                                                | Cost on public repo |
+| ------------------------------------------ | ------------------------------------------------------------------------------- | ------------------- |
+| CodeQL code scanning                       | `not-configured` (detected langs: `javascript-typescript`, `python`, `actions`) | Free                |
+| GitHub secret scanning                     | `disabled`                                                                      | Free                |
+| Secret-scanning push protection            | `disabled`                                                                      | Free                |
+| Dependabot security updates (auto-fix PRs) | `disabled` (alerts themselves ARE enabled — `vulnerability-alerts` returns 204) | Free                |
+| Dependency review on PRs                   | no workflow exists                                                              | Free                |
 
 A second-order finding: a multi-tenant SaaS monorepo (incl. `packages/infra` CDK code and
 all workflow YAML) being world-readable is itself a decision worth confirming. The
@@ -51,15 +51,15 @@ history is instantly world-readable, not just org-readable.
 - **PyPI publishing** — `release-sdk-python.yml:69-89` uses OIDC trusted publishing, no
   long-lived token. Good.
 - **Overrides documentation** — every entry in `package.json` `overrides` (~16 CVE-driven
-  + react/jest ecosystem pins) has a matching `//overrides` comment explaining why.
+  - react/jest ecosystem pins) has a matching `//overrides` comment explaining why.
 
 ### Gaps (drive the plan)
 
 1. **No SAST at all.** No CodeQL, no Semgrep, nothing. Free CodeQL covers TS, Python,
-   *and* GitHub Actions workflows (the `actions` language catches `pull_request_target`
+   _and_ GitHub Actions workflows (the `actions` language catches `pull_request_target`
    footguns, script injection in `${{ }}`, etc.).
 2. **No gate against newly-introduced bad packages.** audit-ci catches known advisories
-   in the resolved tree, but nothing flags a PR that *adds* a vulnerable or
+   in the resolved tree, but nothing flags a PR that _adds_ a vulnerable or
    known-malicious package at review time. `dependency-review-action` (free, public
    repo) does exactly this, including the OpenSSF malicious-packages list and license
    checks.
@@ -97,9 +97,8 @@ history is instantly world-readable, not just org-readable.
       secret-scanning/dependency-review and most of this plan needs re-scoping; decide
       first.
 - [ ] **Enable GitHub secret scanning + push protection + validity checks.** (5 min)
-      ```
-      gh api -X PATCH repos/DolasDev/pegasus -F 'security_and_analysis[secret_scanning][status]=enabled' -F 'security_and_analysis[secret_scanning_push_protection][status]=enabled' -F 'security_and_analysis[secret_scanning_validity_checks][status]=enabled'
-      ```
+      `     gh api -X PATCH repos/DolasDev/pegasus -F 'security_and_analysis[secret_scanning][status]=enabled' -F 'security_and_analysis[secret_scanning_push_protection][status]=enabled' -F 'security_and_analysis[secret_scanning_validity_checks][status]=enabled'
+    `
       Keep Betterleaks as-is — the two are complementary (Betterleaks: full-history +
       custom allowlist + required check; GitHub: provider validation + push-time block).
       Expect GitHub's historical scan to re-flag the known Airbrake key — dismiss with
@@ -107,9 +106,8 @@ history is instantly world-readable, not just org-readable.
 - [ ] **Enable Dependabot security updates.** (2 min) Alerts are already on; this adds
       automatic fix-PRs, which then flow through the existing CI-gated auto-merge for
       minor/patch — closing vulns with zero manual steps.
-      ```
-      gh api -X PUT repos/DolasDev/pegasus/automated-security-fixes
-      ```
+      `     gh api -X PUT repos/DolasDev/pegasus/automated-security-fixes
+    `
 - [ ] **Add `SECURITY.md`.** (10 min) Repo root. Content: supported version = `main`
       (continuous deploy); report via GitHub private vulnerability reporting (enable it:
       `gh api -X PUT repos/DolasDev/pegasus/private-vulnerability-reporting`) with
@@ -118,42 +116,41 @@ history is instantly world-readable, not just org-readable.
 
 ### Phase 1 — SAST: CodeQL default setup (≈30 min, recommended primary path)
 
-- [ ] **Enable CodeQL *default setup*** — not an advanced workflow file. (15 min)
+- [ ] **Enable CodeQL _default setup_** — not an advanced workflow file. (15 min)
       Zero YAML to maintain, auto-tracks language list, runs on PRs to `main` + weekly
       schedule. Since the repo is public this costs nothing; **do not** add Semgrep CE
       or `eslint-plugin-security` alongside — they would duplicate findings for extra
-      triage toil. (Semgrep CE remains the documented fallback *only if* the repo ever
+      triage toil. (Semgrep CE remains the documented fallback _only if_ the repo ever
       goes private and GHAS isn't purchased.)
-      ```
-      gh api -X PATCH repos/DolasDev/pegasus/code-scanning/default-setup -f state=configured -f query_suite=default
-      ```
+      `     gh api -X PATCH repos/DolasDev/pegasus/code-scanning/default-setup -f state=configured -f query_suite=default
+    `
       Languages auto-detected: `javascript-typescript`, `python`, `actions`.
 - [ ] **Triage the initial scan; do NOT make CodeQL a required check yet.** (30-60 min,
       one-time) Review alerts at Security → Code scanning; dismiss false positives with
       reasons. Only consider promoting to a required branch-protection context after 2-4
       weeks of quiet operation — a noisy required SAST gate is the classic solo-dev
-      friction trap. PR-blocking behavior for *new* alerts on changed code happens by
+      friction trap. PR-blocking behavior for _new_ alerts on changed code happens by
       default via the check annotation even without "required" status.
 
 ### Phase 2 — Dependency gates on PRs (≈45 min)
 
 - [ ] **Add `dependency-review-action` as a standalone workflow.** (15 min) New file
       `.github/workflows/dependency-review.yml`:
-      ```yaml
-      name: Dependency Review
-      on: pull_request
-      permissions:
-        contents: read
-      jobs:
-        dependency-review:
-          runs-on: ubuntu-latest
-          steps:
-            - uses: actions/checkout@v6
-            - uses: actions/dependency-review-action@v4
-              with:
-                fail-on-severity: high
-                comment-summary-in-pr: on-failure
-      ```
+      `yaml
+    name: Dependency Review
+    on: pull_request
+    permissions:
+      contents: read
+    jobs:
+      dependency-review:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v6
+          - uses: actions/dependency-review-action@v4
+            with:
+              fail-on-severity: high
+              comment-summary-in-pr: on-failure
+    `
       This fails PRs that introduce packages with high/critical advisories or entries on
       the OpenSSF malicious-packages list — the gap audit-ci can't cover (audit-ci only
       sees the post-merge resolved tree; this sees the diff). Note: requires the
@@ -162,19 +159,19 @@ history is instantly world-readable, not just org-readable.
       the same dependency).
 - [ ] **Extend Dependabot to `github-actions` and `pip` ecosystems.** (10 min) Append to
       `.github/dependabot.yml`:
-      ```yaml
-        - package-ecosystem: 'github-actions'
-          directory: '/'
-          schedule:
-            interval: 'weekly'
-          groups:
-            actions:
-              patterns: ['*']
-        - package-ecosystem: 'pip'
-          directory: '/packages/workflows-sdk-python'
-          schedule:
-            interval: 'weekly'
-      ```
+      `yaml
+      - package-ecosystem: 'github-actions'
+        directory: '/'
+        schedule:
+          interval: 'weekly'
+        groups:
+          actions:
+            patterns: ['*']
+      - package-ecosystem: 'pip'
+        directory: '/packages/workflows-sdk-python'
+        schedule:
+          interval: 'weekly'
+    `
       Actions updates flow through the existing auto-merge gate. SHA-pinning every
       action ref is the stricter posture but adds churn; with Dependabot watching the
       tags, major-tag pinning is an acceptable lean middle ground — **except** consider
@@ -184,41 +181,41 @@ history is instantly world-readable, not just org-readable.
 - [ ] **Verify the Betterleaks download.** (10 min) In `ci.yml`, after the `curl`
       (line 31-33), add a checksum gate. Compute once from the official release asset
       (`sha256sum betterleaks.tar.gz`) and pin:
-      ```yaml
-      - name: Install Betterleaks
-        env:
-          BETTERLEAKS_VERSION: '1.1.1'
-          BETTERLEAKS_SHA256: '<sha256 of betterleaks_1.1.1_linux_x64.tar.gz>'
-        run: |
-          curl -sSfL -o betterleaks.tar.gz "https://github.com/betterleaks/betterleaks/releases/download/v${BETTERLEAKS_VERSION}/betterleaks_${BETTERLEAKS_VERSION}_linux_x64.tar.gz"
-          echo "${BETTERLEAKS_SHA256}  betterleaks.tar.gz" | sha256sum -c -
-          tar -xzf betterleaks.tar.gz -C /usr/local/bin betterleaks
-          rm betterleaks.tar.gz
-      ```
+      `yaml
+    - name: Install Betterleaks
+      env:
+        BETTERLEAKS_VERSION: '1.1.1'
+        BETTERLEAKS_SHA256: '<sha256 of betterleaks_1.1.1_linux_x64.tar.gz>'
+      run: |
+        curl -sSfL -o betterleaks.tar.gz "https://github.com/betterleaks/betterleaks/releases/download/v${BETTERLEAKS_VERSION}/betterleaks_${BETTERLEAKS_VERSION}_linux_x64.tar.gz"
+        echo "${BETTERLEAKS_SHA256}  betterleaks.tar.gz" | sha256sum -c -
+        tar -xzf betterleaks.tar.gz -C /usr/local/bin betterleaks
+        rm betterleaks.tar.gz
+    `
 
 ### Phase 3 — Python supply chain (≈30 min; pip-audit + pin policy only — the PR-time pytest/ruff job belongs to the Python-CI plan)
 
 - [ ] **Add `pip-audit` to the release build job.** (15 min) In
       `.github/workflows/release-sdk-python.yml`, after "Install package (for tests)"
       (line 55-56):
-      ```yaml
-      - name: Audit dependencies (pip-audit)
-        run: |
-          python -m pip install pip-audit
-          python -m pip-audit --skip-editable
-      ```
+      `yaml
+    - name: Audit dependencies (pip-audit)
+      run: |
+        python -m pip install pip-audit
+        python -m pip-audit --skip-editable
+    `
       This audits the resolved environment that actually ships in the wheel's dependency
       closure, at the moment of release — the minimum bar for a published SDK. (If the
       Python-CI plan later adds a PR-time job, move/duplicate this step there.)
 - [ ] **Add upper bounds to runtime deps.** (10 min) In
       `packages/workflows-sdk-python/pyproject.toml:18-22`:
-      ```toml
-      dependencies = [
-        "temporalio>=1.7,<2",
-        "httpx>=0.27,<1",
-        "typer>=0.12,<1",
-      ]
-      ```
+      `toml
+    dependencies = [
+      "temporalio>=1.7,<2",
+      "httpx>=0.27,<1",
+      "typer>=0.12,<1",
+    ]
+    `
       Rationale: this SDK is consumed by tenants; `temporalio` 2.x or `httpx` 1.x landing
       silently at install time is a real breakage vector, and (unlike a general-purpose
       library) the platform controls the supported matrix so caps are appropriate. Bump
@@ -235,43 +232,43 @@ history is instantly world-readable, not just org-readable.
       markdown report of overrides that look removable. This is mechanical — **no AI
       needed for the detection step.**
 - [ ] **Monthly scheduled workflow** (30 min): `.github/workflows/override-expiry.yml`:
-      ```yaml
-      name: Override Expiry Check
-      on:
-        schedule:
-          - cron: '0 6 1 * *'   # 1st of month, 06:00 UTC
-        workflow_dispatch: {}
-      permissions:
-        contents: read
-        issues: write
-      jobs:
-        check:
-          runs-on: ubuntu-latest
-          steps:
-            - uses: actions/checkout@v6
-            - uses: actions/setup-node@v6
-              with: { node-version: '20' }
-            - run: npm ci
-            - run: node scripts/check-overrides.mjs --report /tmp/report.md
-            - name: File issue if any override is removable
-              run: |
-                if [ -s /tmp/report.md ]; then
-                  gh issue create --title "Override expiry: $(date +%Y-%m) candidates" --body-file /tmp/report.md --label dependencies
-                fi
-              env:
-                GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      ```
-- [ ] **AI step — honest assessment: worth it, but as the *second* stage, not the
+      `yaml
+    name: Override Expiry Check
+    on:
+      schedule:
+        - cron: '0 6 1 * *'   # 1st of month, 06:00 UTC
+      workflow_dispatch: {}
+    permissions:
+      contents: read
+      issues: write
+    jobs:
+      check:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v6
+          - uses: actions/setup-node@v6
+            with: { node-version: '20' }
+          - run: npm ci
+          - run: node scripts/check-overrides.mjs --report /tmp/report.md
+          - name: File issue if any override is removable
+            run: |
+              if [ -s /tmp/report.md ]; then
+                gh issue create --title "Override expiry: $(date +%Y-%m) candidates" --body-file /tmp/report.md --label dependencies
+              fi
+            env:
+              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    `
+- [ ] **AI step — honest assessment: worth it, but as the _second_ stage, not the
       detector.** The judgment work ("is the `jest-runtime` pin's exit condition met?
       that requires checking which `jest-environment-node` the react-native preset now
       pulls, re-running the mobile suite, and reading the tracking plan") is exactly what
       went stale under the manual process, and is genuinely a good fit for an agent with
-      repo access. Recommendation: extend the workflow above so that *when the report is
-      non-empty*, a `anthropics/claude-code-action@v1` step (model `claude-opus-4-8`)
+      repo access. Recommendation: extend the workflow above so that _when the report is
+      non-empty_, a `anthropics/claude-code-action@v1` step (model `claude-opus-4-8`)
       runs with a prompt to: read `//overrides` + the report +
       `plans/todo/2026-05-09T0315-back-out-transitive-dep-workarounds.md`, attempt
       removal of each candidate on a branch (`rm -rf node_modules package-lock.json &&
-      npm install`, then `turbo run test`), and open a cleanup PR only for overrides that
+    npm install`, then `turbo run test`), and open a cleanup PR only for overrides that
       survive the full test suite — falling back to commenting findings on the issue.
       Cost: one monthly run, realistically a few dollars at Opus pricing — trivially
       cheaper than the half-day manual sessions the plans archive documents. The PR
@@ -299,18 +296,18 @@ history is instantly world-readable, not just org-readable.
 
 ## Files to Modify / Create
 
-| Path | Action |
-| --- | --- |
-| `SECURITY.md` | create (Phase 0) |
-| `.github/workflows/dependency-review.yml` | create (Phase 2) |
-| `.github/dependabot.yml` | modify — add `github-actions` + `pip` ecosystems (Phase 2) |
-| `.github/workflows/ci.yml` | modify — Betterleaks SHA-256 check (Phase 2) |
-| `.github/workflows/release-sdk-python.yml` | modify — pip-audit step (Phase 3) |
-| `packages/workflows-sdk-python/pyproject.toml` | modify — dependency upper bounds (Phase 3) |
-| `scripts/check-overrides.mjs` | create (Phase 4) |
-| `.github/workflows/override-expiry.yml` | create (Phase 4) |
-| `dolas/agents/project/GOTCHAS.md` | modify — SBOM export one-liner + secret-scan layering note (Phase 5) |
-| Repo settings via `gh api` (no file) | secret scanning, push protection, security updates, private vuln reporting, CodeQL default setup, dependency graph |
+| Path                                           | Action                                                                                                             |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `SECURITY.md`                                  | create (Phase 0)                                                                                                   |
+| `.github/workflows/dependency-review.yml`      | create (Phase 2)                                                                                                   |
+| `.github/dependabot.yml`                       | modify — add `github-actions` + `pip` ecosystems (Phase 2)                                                         |
+| `.github/workflows/ci.yml`                     | modify — Betterleaks SHA-256 check (Phase 2)                                                                       |
+| `.github/workflows/release-sdk-python.yml`     | modify — pip-audit step (Phase 3)                                                                                  |
+| `packages/workflows-sdk-python/pyproject.toml` | modify — dependency upper bounds (Phase 3)                                                                         |
+| `scripts/check-overrides.mjs`                  | create (Phase 4)                                                                                                   |
+| `.github/workflows/override-expiry.yml`        | create (Phase 4)                                                                                                   |
+| `dolas/agents/project/GOTCHAS.md`              | modify — SBOM export one-liner + secret-scan layering note (Phase 5)                                               |
+| Repo settings via `gh api` (no file)           | secret scanning, push protection, security updates, private vuln reporting, CodeQL default setup, dependency graph |
 
 ## Side Effects & Risks
 
@@ -339,26 +336,32 @@ history is instantly world-readable, not just org-readable.
 ## Acceptance Criteria / Verification
 
 Phase 0:
+
 - `gh api repos/DolasDev/pegasus --jq '.security_and_analysis.secret_scanning.status'` → `enabled`; same for `secret_scanning_push_protection`.
 - `gh api repos/DolasDev/pegasus/automated-security-fixes -i 2>&1 | head -1` → `204`.
 - `[ -f SECURITY.md ]` and it renders on the repo's Security tab.
 
 Phase 1:
+
 - `gh api repos/DolasDev/pegasus/code-scanning/default-setup --jq '.state'` → `configured`.
 - A test PR shows a "Code scanning" check; Security → Code scanning lists completed analyses for `javascript-typescript`, `python`, `actions`.
 
 Phase 2:
+
 - A test PR adding a package with a known high advisory (e.g., `npm i lodash@4.17.15` in a scratch branch) fails the `Dependency Review` check; reverting passes it.
 - `gh api repos/DolasDev/pegasus/dependabot/alerts?per_page=1` still 200 and Dependabot opens `github-actions`-ecosystem PRs on the next weekly run (`gh pr list --author 'app/dependabot'`).
 - CI Secret Scanning job green with the checksum line present; corrupting `BETTERLEAKS_SHA256` on a scratch branch fails that job.
 
 Phase 3:
+
 - Run the release workflow via `workflow_dispatch`; the `Audit dependencies (pip-audit)` step appears and passes.
 - `pip install 'pegasus-workflows-sdk @ file:packages/workflows-sdk-python'` in a fresh venv resolves `temporalio<2`, `httpx<1`.
 
 Phase 4:
+
 - `gh workflow run override-expiry.yml` completes; with a deliberately-stale override candidate (test by temporarily adding an already-satisfied override like `"minimatch": ">=3.0.0"`), an issue is filed; with none, no issue.
 - If the Claude step is enabled: the run opens a PR (never pushes `main`); PR passes the full required-check suite before any merge.
 
 Phase 5:
+
 - `gh api repos/DolasDev/pegasus/dependency-graph/sbom --jq '.sbom.name'` → returns the repo SBOM (currently 404).

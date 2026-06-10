@@ -47,7 +47,7 @@ it silently skips, and the green checkmark overstates what was tested.
   browser suite is QA-longhaul, which covers one module, nightly, against an
   environment that's down ~half the time.
 - Compounding it, the `E2E_SKIP` pattern (`apps/e2e/global-setup.ts:51-77`)
-  converts *infrastructure* failures (no Postgres, failed migrate) into a
+  converts _infrastructure_ failures (no Postgres, failed migrate) into a
   green run. Locally that's a nice ergonomic; in CI it's a false-positive
   machine — if the Postgres service container ever broke, the job would pass
   in seconds with 0 tests executed and nobody would notice.
@@ -80,6 +80,7 @@ already captures the eventual path.
 ### Finding 4 — flake management is good per-spec, absent as a process
 
 What already exists and works (keep):
+
 - Variant pinning: `/driver-planning` renders a RANDOM A/B/C variant per
   mount; `tests/browser/longhaul/pages/AvailabilityPage.ts:30-40`
   (`pinVariant`) pins C before asserting and re-pins after reload.
@@ -110,7 +111,7 @@ quarantine mechanism — a genuinely flaky spec's only options today are
 `tests/browser/trip-date-container.spec.ts` carries the only
 `toHaveScreenshot` usage, with a sane tolerance budget
 (`maxDiffPixelRatio: 0.01, threshold: 0.2`, config:115-117). It's
-`@local-only` *and* requires a manually-logged-in tenant-web dev server, so
+`@local-only` _and_ requires a manually-logged-in tenant-web dev server, so
 it never runs in CI. Verdict: **keep minimal — do not invest in visual
 tooling** (Percy/Chromatic-class spend isn't justified by one container).
 It earns its keep as a manual layout-drift checker; revisit only if a Neon
@@ -123,8 +124,8 @@ being machine-dependent.
   uses page objects (`tests/browser/longhaul/pages/`) with semantic
   locators; healing tools mostly mask real UI regressions and add a vendor.
 - **AI trace triage: defer to Unit 12's generic CI-failure triage.** The only
-  e2e-specific piece worth specifying here is making failures *triageable by
-  an agent at all*: the nightly auto-issue in Phase 4 below links the
+  e2e-specific piece worth specifying here is making failures _triageable by
+  an agent at all_: the nightly auto-issue in Phase 4 below links the
   Playwright HTML report + trace artifacts, which is precisely the input a
   triage agent (or Claude pointed at the artifact) needs. No bespoke e2e AI
   tool needed.
@@ -132,7 +133,7 @@ being machine-dependent.
   already a devDependency (`apps/e2e/package.json:13`). The browser-coverage
   gap (Finding 1) is exactly the toil AI removes well: drive the running app
   via Playwright MCP, then have Claude generate page objects + specs matching
-  the existing longhaul PO conventions. This is a *practice*, not
+  the existing longhaul PO conventions. This is a _practice_, not
   infrastructure — Phase 2 exploits it.
 
 ## Plan
@@ -143,23 +144,23 @@ being machine-dependent.
       (~30 min) Silent-skip false-positives (Finding 1) die here. Run
       Playwright with a JSON reporter alongside the list reporter, then
       assert a floor on executed (non-skipped) tests:
-      ```yaml
-      # ci.yml "Run E2E tests" step — add reporter + guard
-      - name: Run E2E tests
-        working-directory: apps/e2e
-        run: node ../../node_modules/.bin/playwright test --reporter=list,json
-        env:
-          PLAYWRIGHT_JSON_OUTPUT_NAME: results.json
-      - name: Guard against silent-skip false positives
-        working-directory: apps/e2e
-        run: |
-          ran=$(jq '.stats.expected + .stats.flaky' results.json)
-          echo "Executed (passed) tests: $ran"
-          if [ "$ran" -lt 30 ]; then
-            echo "::error::Only $ran tests executed — the suite silently skipped (E2E_SKIP / missing env?). Floor is 30."
-            exit 1
-          fi
-      ```
+      `yaml
+    # ci.yml "Run E2E tests" step — add reporter + guard
+    - name: Run E2E tests
+      working-directory: apps/e2e
+      run: node ../../node_modules/.bin/playwright test --reporter=list,json
+      env:
+        PLAYWRIGHT_JSON_OUTPUT_NAME: results.json
+    - name: Guard against silent-skip false positives
+      working-directory: apps/e2e
+      run: |
+        ran=$(jq '.stats.expected + .stats.flaky' results.json)
+        echo "Executed (passed) tests: $ran"
+        if [ "$ran" -lt 30 ]; then
+          echo "::error::Only $ran tests executed — the suite silently skipped (E2E_SKIP / missing env?). Floor is 30."
+          exit 1
+        fi
+    `
       Same pattern in `deploy.yml` `e2e-staging` with floor **8** (current
       remote set is ~10). Floors live as env vars at the top of each job so
       they're greppable and easy to bump when specs are added.
@@ -168,32 +169,32 @@ being machine-dependent.
       from the deploy gate). Insert before each "Install Playwright
       browsers" step in `ci.yml`, `deploy.yml` (e2e-staging job), and
       `e2e-qa-longhaul.yml`:
-      ```yaml
-      - name: Resolve Playwright version
-        id: pw
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-      - name: Cache Playwright browsers
-        id: pw-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
-      - name: Install Playwright browsers
-        working-directory: apps/e2e
-        run: |
-          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
-            node ../../node_modules/.bin/playwright install-deps chromium
-          else
-            node ../../node_modules/.bin/playwright install --with-deps chromium
-          fi
-      ```
+      `yaml
+    - name: Resolve Playwright version
+      id: pw
+      run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+    - name: Cache Playwright browsers
+      id: pw-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+    - name: Install Playwright browsers
+      working-directory: apps/e2e
+      run: |
+        if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+          node ../../node_modules/.bin/playwright install-deps chromium
+        else
+          node ../../node_modules/.bin/playwright install --with-deps chromium
+        fi
+    `
       (Version-resolve step must run after `npm ci`. If Unit 1's setup-dedup
       composite action lands first, fold this into it instead.)
 - [ ] **1.3 Add `e2e:remote` root script + `apps/e2e/README.md` front door.**
       (~30 min) Root `package.json` scripts block:
-      ```json
-      "e2e:remote": "E2E_TARGET=remote npm run e2e --workspace=@pegasus/e2e"
-      ```
+      `json
+    "e2e:remote": "E2E_TARGET=remote npm run e2e --workspace=@pegasus/e2e"
+    `
       (env vars still come from `apps/e2e/.env.test.local` per the loader at
       playwright.config.ts:37 — README documents that.) New
       `apps/e2e/README.md` (~30 lines): the three-mode table (lift from
@@ -236,17 +237,14 @@ being machine-dependent.
 
 - [ ] **3.1 Execute `plans/todo/neon-branches-for-e2e-isolation.md`
       (Pattern A) with these refinements.** (effort per that plan; the
-      refinements are ~0 extra)
-      - Its step 3 targets a `_e2e.yml` that doesn't exist — the reset step
-        goes in the `e2e-staging` job of `.github/workflows/deploy.yml`
-        (insert between "Extract staging URLs" and "Run E2E (remote)").
-      - Its step 4 ("what lives on `baseline`") should standardize on the
-        same fixtures `global-setup.ts` seeds locally (tenant
-        `e2e00000-...0001` + admin user), NOT `prisma db seed` — the seed
-        script is known-broken (omits tenantId; see memory). Concretely:
-        `prisma migrate deploy` + the two upserts from
-        `apps/e2e/global-setup.ts:91-105` replayed against `baseline` once.
-      - Move the plan file to `plans/in-progress/` when started.
+      refinements are ~0 extra) - Its step 3 targets a `_e2e.yml` that doesn't exist — the reset step
+      goes in the `e2e-staging` job of `.github/workflows/deploy.yml`
+      (insert between "Extract staging URLs" and "Run E2E (remote)"). - Its step 4 ("what lives on `baseline`") should standardize on the
+      same fixtures `global-setup.ts` seeds locally (tenant
+      `e2e00000-...0001` + admin user), NOT `prisma db seed` — the seed
+      script is known-broken (omits tenantId; see memory). Concretely:
+      `prisma migrate deploy` + the two upserts from
+      `apps/e2e/global-setup.ts:91-105` replayed against `baseline` once. - Move the plan file to `plans/in-progress/` when started.
 - [ ] **3.2 Introduce a `@smoke` promotion tag and run CRUD specs in the
       gate.** (~0.5 d, after 3.1) Once the gate DB resets per run, the
       `@local-only` tag is no longer the right filter — split it:
@@ -268,18 +266,18 @@ being machine-dependent.
 - [ ] **4.1 Auto-file an issue when the QA nightly fails.** (~1 h) The 3/5
       failure streak rotted unseen (Finding 4). Append to
       `e2e-qa-longhaul.yml`:
-      ```yaml
-      - name: File/refresh failure issue
-        if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          title="QA longhaul nightly failed"
-          existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number')
-          body="Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} — report artifact: playwright-report-qa-longhaul. Traces are in the artifact (trace on-first-retry)."
-          if [ -n "$existing" ]; then gh issue comment "$existing" --body "$body";
-          else gh issue create --title "$title" --label e2e-flake --body "$body"; fi
-      ```
+      `yaml
+    - name: File/refresh failure issue
+      if: failure()
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        title="QA longhaul nightly failed"
+        existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number')
+        body="Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} — report artifact: playwright-report-qa-longhaul. Traces are in the artifact (trace on-first-retry)."
+        if [ -n "$existing" ]; then gh issue comment "$existing" --body "$body";
+        else gh issue create --title "$title" --label e2e-flake --body "$body"; fi
+    `
       One open issue, refreshed per failure — gives Unit 12's triage agent
       (or a human) a single thread with artifact links. No further e2e-side
       AI tooling needed (Finding 7).
@@ -297,25 +295,25 @@ being machine-dependent.
       mode only.** (~15 min) `trace: 'on-first-retry'` means a
       fail-fail-no-retry-left sequence in the gate ships no trace. In
       playwright.config.ts `use`: `trace: isDeployed ? 'retain-on-failure' :
-      'on-first-retry'`. Cost: trace overhead on every gate test (~10 tests,
+    'on-first-retry'`. Cost: trace overhead on every gate test (~10 tests,
       negligible at 19 s) in exchange for always-triageable prod-gate
       failures.
 
 ## Files to Modify / Create
 
-| File | Action | Phase |
-| --- | --- | --- |
-| `.github/workflows/ci.yml` | skip-guard, browser cache, tenant-web build+serve in e2e job | 1.1, 1.2, 2.1 |
-| `.github/workflows/deploy.yml` | skip-guard + cache in `e2e-staging`; Neon reset step | 1.1, 1.2, 3.1 |
-| `.github/workflows/e2e-qa-longhaul.yml` | browser cache; failure auto-issue step | 1.2, 4.1 |
-| `package.json` (root) | add `e2e:remote` script | 1.3 |
-| `apps/e2e/README.md` | **create** — mode index, tag contract, flake policy | 1.3, 4.2 |
-| `CLAUDE.md` | de-stale E2E section → pointer to README | 1.4 |
-| `apps/e2e/playwright.config.ts` | `@flaky` grepInvert; remote `retain-on-failure` trace | 4.2, 4.3 |
-| `apps/tenant-web/` (auth guard) | E2E auth seam per 2.2 spike outcome | 2.2 |
-| `apps/e2e/tests/browser/pages/*` + 3 new specs | **create** — core-flow browser specs | 2.3 |
-| `apps/e2e/tests/api/{customers,moves,quotes}.spec.ts` | retag for gate inclusion | 3.2 |
-| `plans/todo/neon-branches-for-e2e-isolation.md` | execute (Pattern A) with §3.1 refinements; move to in-progress | 3.1 |
+| File                                                  | Action                                                         | Phase         |
+| ----------------------------------------------------- | -------------------------------------------------------------- | ------------- |
+| `.github/workflows/ci.yml`                            | skip-guard, browser cache, tenant-web build+serve in e2e job   | 1.1, 1.2, 2.1 |
+| `.github/workflows/deploy.yml`                        | skip-guard + cache in `e2e-staging`; Neon reset step           | 1.1, 1.2, 3.1 |
+| `.github/workflows/e2e-qa-longhaul.yml`               | browser cache; failure auto-issue step                         | 1.2, 4.1      |
+| `package.json` (root)                                 | add `e2e:remote` script                                        | 1.3           |
+| `apps/e2e/README.md`                                  | **create** — mode index, tag contract, flake policy            | 1.3, 4.2      |
+| `CLAUDE.md`                                           | de-stale E2E section → pointer to README                       | 1.4           |
+| `apps/e2e/playwright.config.ts`                       | `@flaky` grepInvert; remote `retain-on-failure` trace          | 4.2, 4.3      |
+| `apps/tenant-web/` (auth guard)                       | E2E auth seam per 2.2 spike outcome                            | 2.2           |
+| `apps/e2e/tests/browser/pages/*` + 3 new specs        | **create** — core-flow browser specs                           | 2.3           |
+| `apps/e2e/tests/api/{customers,moves,quotes}.spec.ts` | retag for gate inclusion                                       | 3.2           |
+| `plans/todo/neon-branches-for-e2e-isolation.md`       | execute (Pattern A) with §3.1 refinements; move to in-progress | 3.1           |
 
 ## Side Effects & Risks
 

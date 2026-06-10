@@ -31,7 +31,7 @@ monitoring/alarms (Unit 4), CI efficiency (Unit 1).
   (`packages/infra/package.json:12`) defaults `-c env=${ENV_NAME:-dev}`.
   So the "emergency" script can only deploy the **dev** env. A true prod
   emergency requires hand-assembling `ENV_NAME=prod STACK_PREFIX=PegasusProd
-  TARGET="..."` from memory — exactly the kind of under-pressure improvisation
+TARGET="..."` from memory — exactly the kind of under-pressure improvisation
   that goes wrong.
 
 ### Finding 3 — Migrations are forward-only with zero safety point; a half-failed deploy strands the DB ahead of the code.
@@ -332,12 +332,12 @@ reading). Scoped as Phase 2 item 2c. Everything else here is plain automation.
 
 - [ ] **2b. Expand-contract migration policy + deterministic guard** (effort: M, ~2 h)
   - Policy statement added to `dolas/agents/project/PATTERNS.md` (where agents
-    already look for conventions): *destructive DDL (`DROP TABLE`,
+    already look for conventions): _destructive DDL (`DROP TABLE`,
     `DROP COLUMN`, `RENAME`, `ALTER ... SET NOT NULL` on existing columns) must
     ship at least one release **after** the last code that reads the old shape;
     a migration PR is either expand-only or contract-only, never both with the
     code change that needs it. Consequence: rolling back code is always safe;
-    `rollback.yml` never has to touch the DB.*
+    `rollback.yml` never has to touch the DB._
   - Guard (automation over discipline): `scripts/check-migration-safety.sh` —
     diffs `apps/api/prisma/migrations/**/migration.sql` files added relative to
     `origin/main`, greps for the destructive patterns above, and fails unless
@@ -366,7 +366,7 @@ reading). Scoped as Phase 2 item 2c. Everything else here is plain automation.
 - [ ] **2c. AI migration review on migration PRs** (effort: S, ~1 h; genuinely valuable)
   - The grep guard catches syntax; it cannot catch semantics (NOT NULL without
     a default on a populated table, index builds without `CONCURRENTLY`
-    table-locking a hot table, a drop whose reader was removed in the *same*
+    table-locking a hot table, a drop whose reader was removed in the _same_
     PR). Add a step (same ci.yml job as 2b, gated on the same
     paths) running headless Claude:
     ```yaml
@@ -409,7 +409,7 @@ reading). Scoped as Phase 2 item 2c. Everything else here is plain automation.
     make every chunk immutable, so keeping old chunks alongside new ones is
     safe and `config.json` is still overwritten in place. (A blanket S3
     lifecycle `expiration` rule is NOT an option here: it would also delete the
-    *active* bundle's objects; versioning + `noncurrentVersionExpiration` would
+    _active_ bundle's objects; versioning + `noncurrentVersionExpiration` would
     work but adds machinery for no benefit over rebuild-based rollback.)
   - Effects: open SPA tabs stop 404ing on dynamic imports mid-deploy, and a
     frontend rollback via `rollback.yml` (which rebuilds at the old SHA) needs
@@ -427,20 +427,20 @@ reading). Scoped as Phase 2 item 2c. Everything else here is plain automation.
 
 ## Files to Modify / Create
 
-| File | Action |
-| --- | --- |
-| `.github/workflows/_deploy.yml` | Modify — `git-ref` + `skip-migrate` inputs (1a); Neon safety-branch step (2a) |
-| `.github/workflows/rollback.yml` | **Create** (1b) |
-| `.github/workflows/deploy.yml` | Modify — append `tag-release` job (1c) |
-| `docs/runbooks/rollback.md` | **Create** (1d) |
-| `dolas/agents/project/PATTERNS.md` | Modify — expand-contract policy (2b) |
-| `scripts/check-migration-safety.sh` | **Create** (2b) |
-| `.github/workflows/ci.yml` | Modify — guard + AI review steps (2b/2c; coordinate with Unit 1) |
-| `.github/workflows/temporal-worker.yml` | Modify — `rollback-to-sha` input (3a) |
-| `packages/infra/lib/stacks/temporal-worker-stack.ts` | Modify — comment correction only (3a) |
-| `packages/infra/lib/stacks/frontend-assets-stack.ts` | Modify — `prune: false` (3b) |
-| `packages/infra/lib/stacks/admin-frontend-assets-stack.ts` | Modify — `prune: false` (3b) |
-| `packages/infra/deploy.sh` | Modify — env parameterization + confirm gate (3c) |
+| File                                                       | Action                                                                        |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `.github/workflows/_deploy.yml`                            | Modify — `git-ref` + `skip-migrate` inputs (1a); Neon safety-branch step (2a) |
+| `.github/workflows/rollback.yml`                           | **Create** (1b)                                                               |
+| `.github/workflows/deploy.yml`                             | Modify — append `tag-release` job (1c)                                        |
+| `docs/runbooks/rollback.md`                                | **Create** (1d)                                                               |
+| `dolas/agents/project/PATTERNS.md`                         | Modify — expand-contract policy (2b)                                          |
+| `scripts/check-migration-safety.sh`                        | **Create** (2b)                                                               |
+| `.github/workflows/ci.yml`                                 | Modify — guard + AI review steps (2b/2c; coordinate with Unit 1)              |
+| `.github/workflows/temporal-worker.yml`                    | Modify — `rollback-to-sha` input (3a)                                         |
+| `packages/infra/lib/stacks/temporal-worker-stack.ts`       | Modify — comment correction only (3a)                                         |
+| `packages/infra/lib/stacks/frontend-assets-stack.ts`       | Modify — `prune: false` (3b)                                                  |
+| `packages/infra/lib/stacks/admin-frontend-assets-stack.ts` | Modify — `prune: false` (3b)                                                  |
+| `packages/infra/deploy.sh`                                 | Modify — env parameterization + confirm gate (3c)                             |
 
 One-time operator setup (not in repo): Neon API key → `NEON_API_KEY` secret +
 `NEON_PROJECT_ID` variable on `staging` and `prod` GitHub environments;
@@ -454,7 +454,7 @@ One-time operator setup (not in repo): Neon API key → `NEON_API_KEY` secret +
   memory note, rapid queueing can cancel pending runs only when
   `cancel-in-progress` flips — keep it `false` in rollback.yml exactly as in
   deploy.yml.
-- **1b** deploys old SHAs with the *current* `_deploy.yml` — if the old SHA's
+- **1b** deploys old SHAs with the _current_ `_deploy.yml` — if the old SHA's
   build contract changed (e.g. a workspace rename), the rollback build can
   fail. Mitigation: rollback drill (below) plus the tags from 1c keep rollback
   targets recent.

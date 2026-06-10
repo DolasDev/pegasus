@@ -16,7 +16,7 @@ Inventory (verified 2026-06-10): 11 npm workspaces run `vitest run`; 1 (`apps/mo
 2. **Coverage is configured but never collected — 100% dormant.** Five packages carry a `coverage: { provider: 'v8', reporter: ['text','lcov'] }` block (`packages/domain/vitest.config.ts:8-12`, `packages/infra/vitest.config.ts:14-18`, `apps/api/vitest.config.ts:11-15`, `apps/admin-web/vitest.config.ts:12-16`, `apps/tenant-web/vitest.config.ts:11-15`) and a `@vitest/coverage-v8` devDependency, but every `test` script is plain `vitest run` — no `--coverage` flag anywhere, no thresholds, no CI step reads lcov, no aggregation. Mobile has a `test:coverage` script that nothing invokes. The config blocks are dead weight that implies a discipline that doesn't exist.
 
 3. **DB-dependent integration tests skip quietly when Postgres is absent.** 12 of 118 `apps/api` test files (all repository + tenant-isolation integration suites) guard with `describe.skipIf(!hasDb)` where `hasDb = Boolean(process.env['DATABASE_URL'])` (e.g. `apps/api/src/repositories/__tests__/users.repository.test.ts:17,31`). `apps/api/vitest.global-setup.ts` does print a warning when Docker is unavailable (lines ~104-112) and the run summary shows "skipped", but the suite still **exits 0**, so a green local run can silently omit the entire repository layer.
-   - CI today is *not* exposed: `.github/workflows/ci.yml:95-112` provisions a Postgres service and exports `DATABASE_URL`, so skips can't happen there — **unless** the env wiring regresses (renamed var, new job, copied workflow), in which case CI would go green while running half the suite. There is no guard against that failure mode.
+   - CI today is _not_ exposed: `.github/workflows/ci.yml:95-112` provisions a Postgres service and exports `DATABASE_URL`, so skips can't happen there — **unless** the env wiring regresses (renamed var, new job, copied workflow), in which case CI would go green while running half the suite. There is no guard against that failure mode.
 
 4. **Stryker mutation testing exists but has never been operationalised.** `packages/domain/stryker.config.mjs` (thresholds `{ high: 80, low: 60, break: 50 }`, vitest runner, perTest coverage analysis) plus `npm run mutation-test` were added in the testing-infrastructure bootstrap commit (`f4ea9d2`) and never touched since; no `reports/` dir exists, no CI/scheduled job references stryker anywhere in `.github/workflows/`. Same story for the fast-check property tests (`packages/domain/src/shared/__tests__/properties.test.ts`) — they at least run with the normal suite. The domain package is the highest-value mutation target in the repo (pure logic, zero I/O, 9 test files → fast runs) and it's getting zero mutation signal.
 
@@ -38,7 +38,9 @@ Inventory (verified 2026-06-10): 11 npm workspaces run `vitest run`; 1 (`apps/mo
 - [ ] **CI fail-fast guard in `apps/api/vitest.global-setup.ts`**: at the top of `setup()`, before the Docker fallback logic, add:
   ```ts
   if (process.env['CI'] && !process.env['DATABASE_URL']) {
-    throw new Error('[test:db] CI run without DATABASE_URL — integration tests would silently skip. Failing fast.')
+    throw new Error(
+      '[test:db] CI run without DATABASE_URL — integration tests would silently skip. Failing fast.',
+    )
   }
   ```
   This turns the "CI env wiring regressed → half the suite skips green" failure mode into a hard failure. GitHub Actions always sets `CI=true`. (Effort: 10 min incl. a comment explaining why.)
@@ -68,7 +70,7 @@ Decision (recommended): **do not** build repo-wide coverage aggregation or blank
 ### Phase 3 — Mutation testing: scheduled, non-blocking, with an AI follow-up recipe — ~1.5h
 
 - [ ] **New workflow `.github/workflows/mutation-test.yml`**: `on: { schedule: [{ cron: '0 6 1 * *' }], workflow_dispatch: {} }` (monthly + manual; weekly is overkill for a package that changes a few times a month). Job: checkout, setup-node 20, `npm ci`, `npm run mutation-test -w @pegasus/domain`, then `actions/upload-artifact` of `packages/domain/reports/mutation/html`. Let the existing `thresholds.break: 50` in `packages/domain/stryker.config.mjs` fail the job — that's the alert. Do **not** add it to PR CI. (Effort: 45 min. Coordinate naming/conventions with Unit 1's CI plan but this is an independent additive workflow.)
-- [ ] **Add a summary step** that greps Stryker's clear-text output for the mutation score and surviving-mutant list and writes it to `$GITHUB_STEP_SUMMARY`, ending with the AI recipe line: *"To act on survivors: open Claude Code in `packages/domain`, paste the survivor list, ask for tests that kill each mutant, re-run `npm run mutation-test` to verify."* This is the entire AI integration for this unit — deliberate, ad hoc, verifiable. (Effort: 20 min.)
+- [ ] **Add a summary step** that greps Stryker's clear-text output for the mutation score and surviving-mutant list and writes it to `$GITHUB_STEP_SUMMARY`, ending with the AI recipe line: _"To act on survivors: open Claude Code in `packages/domain`, paste the survivor list, ask for tests that kill each mutant, re-run `npm run mutation-test` to verify."_ This is the entire AI integration for this unit — deliberate, ad hoc, verifiable. (Effort: 20 min.)
 - [ ] **First manual run** via `workflow_dispatch` (or locally: `npm run mutation-test -w @pegasus/domain`) to establish the baseline score and confirm runtime is acceptable (expect minutes, not hours, at 9 test files). If the score is below 50 the job will fail — triage survivors in one Claude Code session before enabling the cron. (Effort: depends on score; budget 1 session.)
 
 ### Phase 4 — Mobile Jest hygiene: contain the divergence — ~1-2h
@@ -95,19 +97,19 @@ Decision (recommended): **do not** build repo-wide coverage aggregation or blank
 
 ## Files to Modify / Create
 
-| Action | Path |
-| --- | --- |
-| Delete | `vitest.workspace.ts` (repo root) |
-| Modify | `apps/api/vitest.global-setup.ts` (CI fail-fast guard) |
-| Create | `apps/api/vitest.skip-reporter.ts` (loud skip banner) |
-| Modify | `apps/api/vitest.config.ts` (reporter wiring; coverage ratchet + `--coverage` script) |
-| Modify | `apps/api/package.json` (`test` script `--coverage`) |
-| Modify | `packages/domain/vitest.config.ts`, `packages/domain/package.json` (coverage ratchet) |
-| Modify | `packages/infra/vitest.config.ts`, `apps/admin-web/vitest.config.ts`, `apps/tenant-web/vitest.config.ts` (+ their `package.json`s) — remove dormant coverage |
-| Modify | `apps/mobile/package.json` (drop `ts-jest`; forceExit outcome) |
-| Create | `.github/workflows/mutation-test.yml` (scheduled, non-blocking) |
-| Modify | `dolas/agents/project/PATTERNS.md`, `dolas/agents/project/DECISIONS.md`, `dolas/agents/project/GOTCHAS.md` (policy/decision/trigger notes) |
-| Create (Phase 5, optional) | `vitest.shared.ts`, `packages/auth/vitest.config.ts`; modify remaining `vitest.config.ts` files |
+| Action                     | Path                                                                                                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Delete                     | `vitest.workspace.ts` (repo root)                                                                                                                            |
+| Modify                     | `apps/api/vitest.global-setup.ts` (CI fail-fast guard)                                                                                                       |
+| Create                     | `apps/api/vitest.skip-reporter.ts` (loud skip banner)                                                                                                        |
+| Modify                     | `apps/api/vitest.config.ts` (reporter wiring; coverage ratchet + `--coverage` script)                                                                        |
+| Modify                     | `apps/api/package.json` (`test` script `--coverage`)                                                                                                         |
+| Modify                     | `packages/domain/vitest.config.ts`, `packages/domain/package.json` (coverage ratchet)                                                                        |
+| Modify                     | `packages/infra/vitest.config.ts`, `apps/admin-web/vitest.config.ts`, `apps/tenant-web/vitest.config.ts` (+ their `package.json`s) — remove dormant coverage |
+| Modify                     | `apps/mobile/package.json` (drop `ts-jest`; forceExit outcome)                                                                                               |
+| Create                     | `.github/workflows/mutation-test.yml` (scheduled, non-blocking)                                                                                              |
+| Modify                     | `dolas/agents/project/PATTERNS.md`, `dolas/agents/project/DECISIONS.md`, `dolas/agents/project/GOTCHAS.md` (policy/decision/trigger notes)                   |
+| Create (Phase 5, optional) | `vitest.shared.ts`, `packages/auth/vitest.config.ts`; modify remaining `vitest.config.ts` files                                                              |
 
 ## Side Effects & Risks
 

@@ -20,11 +20,11 @@ toolchain-local.
 Three Python codebases exist, all invisible to Turbo (no `package.json`,
 documented in `CLAUDE.md` package map):
 
-| Tree | What | Tests |
-| --- | --- | --- |
-| `packages/workflows-sdk-python` | SDK + `pegasus-workflows` CLI (hatchling, `requires-python >=3.11`) | 5 test files, ~650 lines (`tests/test_api.py`, `test_manifest.py`, `test_cli_init.py`, `test_decorator.py`, `test_package.py`) |
-| `packages/workflows-stdlib` | Curated workflows (`send_quote_followup` only, manifest `pegasus-workflows.toml`) | **None** (but see worker e2e below) |
-| `apps/temporal-worker` | Fargate worker, Python 3.12 container (`apps/temporal-worker/Dockerfile`) | 5 test files, ~480 lines incl. a real `WorkflowEnvironment.start_local()` e2e (`tests/test_worker_e2e.py:45-79`) |
+| Tree                            | What                                                                              | Tests                                                                                                                          |
+| ------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `packages/workflows-sdk-python` | SDK + `pegasus-workflows` CLI (hatchling, `requires-python >=3.11`)               | 5 test files, ~650 lines (`tests/test_api.py`, `test_manifest.py`, `test_cli_init.py`, `test_decorator.py`, `test_package.py`) |
+| `packages/workflows-stdlib`     | Curated workflows (`send_quote_followup` only, manifest `pegasus-workflows.toml`) | **None** (but see worker e2e below)                                                                                            |
+| `apps/temporal-worker`          | Fargate worker, Python 3.12 container (`apps/temporal-worker/Dockerfile`)         | 5 test files, ~480 lines incl. a real `WorkflowEnvironment.start_local()` e2e (`tests/test_worker_e2e.py:45-79`)               |
 
 ### Findings (verified, with evidence)
 
@@ -179,7 +179,7 @@ documented in `CLAUDE.md` package map):
 
 - [ ] **1.2 Gate the worker image build on the same tests** (~20min). Because
       batch merges land on main without PRs, add a fast test step to the
-      `staging` job of `.github/workflows/temporal-worker.yml` *before* the
+      `staging` job of `.github/workflows/temporal-worker.yml` _before_ the
       Docker build (after the checkout at `temporal-worker.yml:74`):
 
       ```yaml
@@ -249,10 +249,8 @@ documented in `CLAUDE.md` package map):
       Dependabot pip PRs would be rubber stamps.
 
 - [ ] **2.3 Fix `release-sdk-python.yml` dep duplication + pin SDK install in
-      `publish-stdlib.yml`** (~20min).
-      - `release-sdk-python.yml:48-58`: replace the hand-rolled
-        `pip install --upgrade pip build pytest ruff temporalio httpx typer`
-        + later `-e .` with:
+      `publish-stdlib.yml`** (~20min). - `release-sdk-python.yml:48-58`: replace the hand-rolled
+      `pip install --upgrade pip build pytest ruff temporalio httpx typer` + later `-e .` with:
 
         ```yaml
         - name: Install package + dev tooling
@@ -270,26 +268,21 @@ documented in `CLAUDE.md` package map):
 ### Phase 3 — Stdlib validation harness (publish-time safety)
 
 - [ ] **3.1 Create `packages/workflows-stdlib/tests/test_manifest.py`** (~1.5h).
-      Pure-Python validation, no Temporal server needed:
-      - `load_manifest("pegasus-workflows.toml")` parses clean
-        (`pegasus_workflows.manifest:load_manifest`).
-      - Every `entry_points` string (`module:Class`) imports and resolves to a
-        class decorated by `@pegasus_workflow` (assert the attribute the
-        decorator sets — check `pegasus_workflows/__init__.py` for the exact
-        marker when implementing).
-      - **Drift check:** manifest workflow names ==
-        `pegasus_temporal_worker.registry._CURATED_WORKFLOWS.keys()`
-        (import via the same sys.path technique as
-        `apps/temporal-worker/tests/conftest.py:25-35`). This is the test
-        that catches "published but worker won't run it" (Finding 3).
-      - Smoke execution is intentionally NOT duplicated here — the worker's
-        `test_worker_e2e.py` already executes the registered workflow against
-        `WorkflowEnvironment.start_local`. Instead, generalize that test to
-        iterate `workflow_classes()` so future stdlib additions are
-        auto-covered (today it indexes `[0]`, `test_worker_e2e.py:65`).
-      - Wire into the Phase 1 `python` CI job (add
-        `python -m pytest -q packages/workflows-stdlib/tests` after the
-        worker tests; reuse the same env).
+      Pure-Python validation, no Temporal server needed: - `load_manifest("pegasus-workflows.toml")` parses clean
+      (`pegasus_workflows.manifest:load_manifest`). - Every `entry_points` string (`module:Class`) imports and resolves to a
+      class decorated by `@pegasus_workflow` (assert the attribute the
+      decorator sets — check `pegasus_workflows/__init__.py` for the exact
+      marker when implementing). - **Drift check:** manifest workflow names ==
+      `pegasus_temporal_worker.registry._CURATED_WORKFLOWS.keys()`
+      (import via the same sys.path technique as
+      `apps/temporal-worker/tests/conftest.py:25-35`). This is the test
+      that catches "published but worker won't run it" (Finding 3). - Smoke execution is intentionally NOT duplicated here — the worker's
+      `test_worker_e2e.py` already executes the registered workflow against
+      `WorkflowEnvironment.start_local`. Instead, generalize that test to
+      iterate `workflow_classes()` so future stdlib additions are
+      auto-covered (today it indexes `[0]`, `test_worker_e2e.py:65`). - Wire into the Phase 1 `python` CI job (add
+      `python -m pytest -q packages/workflows-stdlib/tests` after the
+      worker tests; reuse the same env).
 
 - [ ] **3.2 Pre-publish validation step in `publish-stdlib.yml`** (~30min).
       Before the `push` step (`publish-stdlib.yml:52`), insert:
@@ -312,25 +305,21 @@ documented in `CLAUDE.md` package map):
 ### Phase 4 — uv adoption for reproducible worker builds (assessed: adopt, narrowly)
 
 - [ ] **4.1 Adopt uv for `apps/temporal-worker` only; generate `uv.lock`** (~2h).
-      Honest cost/benefit:
-      - **Benefit:** the real win is a committed lockfile making the prod
-        worker image byte-reproducible (Finding 4) — pip alone has no
-        first-class lock. Secondary: 10-100x faster installs (shaves CI
-        minutes), one tool for venv+lock+run, and
-        `apps/temporal-worker/tests/conftest.py` docstring already assumes
-        `uv run pytest`.
-      - **Cost:** one more toolchain binary in CI and on dev machines;
-        `[tool.uv.sources]` path-dependency syntax to learn; lockfile churn
-        in diffs. The SDK is *published to PyPI* and consumed by tenants —
-        it must stay a plain, backend-agnostic pyproject (no uv-specific
-        metadata in its published form; `[tool.uv]` tables are ignored by
-        pip, so even that is safe, but there's nothing to gain — **do not**
-        lock the SDK package itself).
-      - **Verdict:** adopt for the worker (deployable artifact, wants
-        reproducibility); leave SDK and stdlib on plain pip.
-      Steps:
-      - In `apps/temporal-worker/pyproject.toml`, declare the SDK as a path
-        dependency for resolution:
+      Honest cost/benefit: - **Benefit:** the real win is a committed lockfile making the prod
+      worker image byte-reproducible (Finding 4) — pip alone has no
+      first-class lock. Secondary: 10-100x faster installs (shaves CI
+      minutes), one tool for venv+lock+run, and
+      `apps/temporal-worker/tests/conftest.py` docstring already assumes
+      `uv run pytest`. - **Cost:** one more toolchain binary in CI and on dev machines;
+      `[tool.uv.sources]` path-dependency syntax to learn; lockfile churn
+      in diffs. The SDK is _published to PyPI_ and consumed by tenants —
+      it must stay a plain, backend-agnostic pyproject (no uv-specific
+      metadata in its published form; `[tool.uv]` tables are ignored by
+      pip, so even that is safe, but there's nothing to gain — **do not**
+      lock the SDK package itself). - **Verdict:** adopt for the worker (deployable artifact, wants
+      reproducibility); leave SDK and stdlib on plain pip.
+      Steps: - In `apps/temporal-worker/pyproject.toml`, declare the SDK as a path
+      dependency for resolution:
 
         ```toml
         dependencies = [
@@ -361,6 +350,7 @@ documented in `CLAUDE.md` package map):
       - Optionally digest-pin `python:3.12-slim` at `Dockerfile:22,63`
         (`python:3.12-slim@sha256:...`) and let the Phase 2.2 Dependabot
         docker entry bump it.
+
 - [ ] **4.2 Switch CI installs to uv where the lockfile applies** (~30min).
       In the Phase 1 `python` job and the Phase 1.2 image gate, replace the
       worker's `pip install -e` with
@@ -371,19 +361,16 @@ documented in `CLAUDE.md` package map):
 ### Phase 5 — Turbo/npm integration (assessed: thin wrapper, conditional)
 
 - [ ] **5.1 Decide + (if adopted) add thin `package.json` wrappers** (~45min).
-      Honest assessment:
-      - **For:** `CLAUDE.md` promises "`npm test` — run all testing layers";
-        today that silently excludes ~1,100 lines of Python tests. A thin
-        `package.json` (`"private": true`, `"scripts": {"test": "...", "lint": "..."}`)
-        in `packages/workflows-sdk-python` and `apps/temporal-worker` makes
-        local `npm test` honest and gives agents one entry point.
-      - **Against:** Turbo gains nothing real (test caching is disabled
-        repo-wide; no build outputs to cache), and a wrapper that fails when
-        the contributor has no Python env would make `npm test` flaky for
-        pure-TS work — the opposite of lean.
-      - **Verdict:** adopt ONLY with a graceful no-op guard, and only after
-        Phase 4 (uv makes env bootstrap a single self-healing command).
-        Sketch (`apps/temporal-worker/package.json`):
+      Honest assessment: - **For:** `CLAUDE.md` promises "`npm test` — run all testing layers";
+      today that silently excludes ~1,100 lines of Python tests. A thin
+      `package.json` (`"private": true`, `"scripts": {"test": "...", "lint": "..."}`)
+      in `packages/workflows-sdk-python` and `apps/temporal-worker` makes
+      local `npm test` honest and gives agents one entry point. - **Against:** Turbo gains nothing real (test caching is disabled
+      repo-wide; no build outputs to cache), and a wrapper that fails when
+      the contributor has no Python env would make `npm test` flaky for
+      pure-TS work — the opposite of lean. - **Verdict:** adopt ONLY with a graceful no-op guard, and only after
+      Phase 4 (uv makes env bootstrap a single self-healing command).
+      Sketch (`apps/temporal-worker/package.json`):
 
         ```json
         {
@@ -418,21 +405,21 @@ documented in `CLAUDE.md` package map):
 
 ## Files to Modify / Create
 
-| Action | File |
-| --- | --- |
-| Modify | `.github/workflows/ci.yml` (add `python` job — 1.1, 2.x audit step) |
-| Modify | `.github/workflows/temporal-worker.yml` (pre-build test gate — 1.2) |
-| Modify | `.github/workflows/release-sdk-python.yml` (dep-list dedup — 2.3) |
-| Modify | `.github/workflows/publish-stdlib.yml` (SDK pin + pre-publish validation — 2.3, 3.2) |
-| Modify | `.github/dependabot.yml` (pip + docker ecosystems — 2.2) |
-| Modify | `packages/workflows-sdk-python/pyproject.toml` (upper bounds — 2.1) |
-| Modify | `apps/temporal-worker/pyproject.toml` (upper bounds, uv sources, marker — 2.1, 4.1, C.1) |
-| Modify | `apps/temporal-worker/Dockerfile` (uv-based resolve, base-image pin — 4.1) |
-| Modify | `apps/temporal-worker/tests/test_worker_e2e.py` (iterate all registry workflows; marker — 3.1, C.1) |
-| Create | `packages/workflows-stdlib/tests/__init__.py` + `tests/test_manifest.py` (3.1) |
-| Create | `apps/temporal-worker/uv.lock` (4.1) |
-| Create (conditional) | `apps/temporal-worker/package.json`, `packages/workflows-sdk-python/package.json` (5.1) |
-| Modify (conditional) | `CLAUDE.md`, `dolas/agents/project/DECISIONS.md` (5.1 decision record) |
+| Action               | File                                                                                                |
+| -------------------- | --------------------------------------------------------------------------------------------------- |
+| Modify               | `.github/workflows/ci.yml` (add `python` job — 1.1, 2.x audit step)                                 |
+| Modify               | `.github/workflows/temporal-worker.yml` (pre-build test gate — 1.2)                                 |
+| Modify               | `.github/workflows/release-sdk-python.yml` (dep-list dedup — 2.3)                                   |
+| Modify               | `.github/workflows/publish-stdlib.yml` (SDK pin + pre-publish validation — 2.3, 3.2)                |
+| Modify               | `.github/dependabot.yml` (pip + docker ecosystems — 2.2)                                            |
+| Modify               | `packages/workflows-sdk-python/pyproject.toml` (upper bounds — 2.1)                                 |
+| Modify               | `apps/temporal-worker/pyproject.toml` (upper bounds, uv sources, marker — 2.1, 4.1, C.1)            |
+| Modify               | `apps/temporal-worker/Dockerfile` (uv-based resolve, base-image pin — 4.1)                          |
+| Modify               | `apps/temporal-worker/tests/test_worker_e2e.py` (iterate all registry workflows; marker — 3.1, C.1) |
+| Create               | `packages/workflows-stdlib/tests/__init__.py` + `tests/test_manifest.py` (3.1)                      |
+| Create               | `apps/temporal-worker/uv.lock` (4.1)                                                                |
+| Create (conditional) | `apps/temporal-worker/package.json`, `packages/workflows-sdk-python/package.json` (5.1)             |
+| Modify (conditional) | `CLAUDE.md`, `dolas/agents/project/DECISIONS.md` (5.1 decision record)                              |
 
 ## Side Effects & Risks
 

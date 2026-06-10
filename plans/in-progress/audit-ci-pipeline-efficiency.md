@@ -8,13 +8,13 @@ Audit of `.github/workflows/ci.yml` (246 lines, 5 jobs) and `audit-ci.jsonc`, wi
 
 ### Measured baseline (run 27243490124, representative of the last ~15 runs)
 
-| Job | Duration | Notes |
-| --- | --- | --- |
-| Secret Scanning (Betterleaks) | 0m11s | downloads CLI fresh every run |
-| Typecheck | 1m20s | npm ci ≈ 38s |
-| Lint | 1m03s | npm ci ≈ 38s |
-| Test | **3m00s** | critical path; npm ci 38s, turbo test 109s, audit-ci 2s, expo checks 5s |
-| E2E Tests | 1m53s | npm ci 40s, Playwright install 29s, actual tests 7s |
+| Job                           | Duration  | Notes                                                                   |
+| ----------------------------- | --------- | ----------------------------------------------------------------------- |
+| Secret Scanning (Betterleaks) | 0m11s     | downloads CLI fresh every run                                           |
+| Typecheck                     | 1m20s     | npm ci ≈ 38s                                                            |
+| Lint                          | 1m03s     | npm ci ≈ 38s                                                            |
+| Test                          | **3m00s** | critical path; npm ci 38s, turbo test 109s, audit-ci 2s, expo checks 5s |
+| E2E Tests                     | 1m53s     | npm ci 40s, Playwright install 29s, actual tests 7s                     |
 
 - **Wall clock per run: 3m05s–3m33s** (jobs run in parallel; bounded by Test).
 - **Billed runner minutes per run: ~7.5** (sum of jobs). Last 60 runs: 53 success, 5 failure (all real failures — dependabot bumps / feature work, not infra flakes), 2 cancelled.
@@ -182,7 +182,7 @@ Audit of `.github/workflows/ci.yml` (246 lines, 5 jobs) and `audit-ci.jsonc`, wi
   if: needs.changes.outputs.code == 'true'
   ```
 
-  **Deliberately conservative:** the filter treats *anything* outside `plans/`, `dolas/`, and `*.md` as code — a `.md` inside `apps/` or `packages/` also skips, which is acceptable; if in doubt, narrow the negation to `!(plans/**|dolas/**)` only. **Keep secret-scan unconditional** (docs can leak secrets too). Pin `dorny/paths-filter` to a commit SHA (it's a third-party action): `dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2`.
+  **Deliberately conservative:** the filter treats _anything_ outside `plans/`, `dolas/`, and `*.md` as code — a `.md` inside `apps/` or `packages/` also skips, which is acceptable; if in doubt, narrow the negation to `!(plans/**|dolas/**)` only. **Keep secret-scan unconditional** (docs can leak secrets too). Pin `dorny/paths-filter` to a commit SHA (it's a third-party action): `dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2`.
 
 ### Phase 4 — Optional AI integration (~1–2 h, only if desired)
 
@@ -224,13 +224,13 @@ Audit of `.github/workflows/ci.yml` (246 lines, 5 jobs) and `audit-ci.jsonc`, wi
 
 ## Files to Modify / Create
 
-| File | Action |
-| --- | --- |
-| `.github/workflows/ci.yml` | Modify (all phases: guard fix, timeouts, node-version-file, composite-action adoption, caches, audit-ci move, paths-filter gating) |
-| `.github/actions/setup/action.yml` | **Create** (Phase 2 composite action; `.github/actions/` does not exist yet) |
-| `.nvmrc` | **Create** (Phase 1; content `24.16.0`) |
-| `.github/workflows/ci-triage.yml` | **Create** (Phase 4, optional) |
-| `audit-ci.jsonc` | No changes (config is sound) |
+| File                               | Action                                                                                                                             |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `.github/workflows/ci.yml`         | Modify (all phases: guard fix, timeouts, node-version-file, composite-action adoption, caches, audit-ci move, paths-filter gating) |
+| `.github/actions/setup/action.yml` | **Create** (Phase 2 composite action; `.github/actions/` does not exist yet)                                                       |
+| `.nvmrc`                           | **Create** (Phase 1; content `24.16.0`)                                                                                            |
+| `.github/workflows/ci-triage.yml`  | **Create** (Phase 4, optional)                                                                                                     |
+| `audit-ci.jsonc`                   | No changes (config is sound)                                                                                                       |
 
 Out of scope (other audit units): `deploy.yml`, `_deploy.yml`, `temporal-worker.yml`, VPN/publish workflows (Unit 2); rollback (Unit 3); Turbo remote caching & pre-push hooks (Unit 10); e2e test strategy beyond the browser cache above (Unit 9); new security scanners (Unit 5).
 
@@ -247,22 +247,26 @@ Out of scope (other audit units): `deploy.yml`, `_deploy.yml`, `temporal-worker.
 ## Acceptance Criteria / Verification
 
 Phase 1:
+
 - `grep -c 'timeout-minutes' .github/workflows/ci.yml` → `5` (or 6 after Phase 3's `changes` job).
 - `grep -n "node-version: '20'" .github/workflows/ci.yml` → no matches; `cat .nvmrc` → `24.16.0`.
 - Guard fix proven in CI: temporarily not needed — verify locally that the new pipeline fires: `output='✖ something broke'; failures=$(echo "$output" | grep '✖' | grep -v 'duplicate dependencies' || true); [ -n "$failures" ] && echo GUARD-FIRES` → prints `GUARD-FIRES`.
 - One green run on a real PR: `gh run list --workflow ci.yml --limit 1` → `success`.
 
 Phase 2:
+
 - Second consecutive run (warm cache): `gh run view <id> --json jobs` shows "Install dependencies" ≤ 5s (cache hit) in all 4 jobs and "Install Playwright browsers" skipped.
 - **Wall clock for a warm code-change run ≤ 2m45s** (baseline 3m20s); Test job ≤ 2m25s.
 - Billed minutes (sum of job durations in `gh run view --json jobs`) ≤ 5.5 min (baseline ~7.5).
 
 Phase 3:
+
 - audit-ci: `gh run view <id> --json jobs --jq '.jobs[] | select(.name=="Lint") | .steps[].name'` includes "Audit dependencies"; Test job no longer does. Force-verify the gate still bites: add a fake high advisory id to a scratch branch's allowlist removal test or simply confirm `npx --no-install audit-ci --config ./audit-ci.jsonc` exits 0 locally.
 - Docs-only commit (e.g. touch a file under `plans/`) → `gh run view <id> --json jobs` shows typecheck/lint/test/e2e `conclusion: skipped`, secret-scan + changes `success`, **wall clock < 1 min**, and the commit/PR is mergeable (required checks satisfied).
 - Code commit → all jobs run as before.
 
 Phase 4 (if implemented):
+
 - Intentionally break a test on a scratch branch → within ~3 min of CI failure, a triage comment appears on the PR naming the failing spec. `gh run list --workflow ci-triage.yml --limit 1` → `success`.
 
 Whole-plan regression gate: after each phase's PR merges, confirm the next `main` push produces a green CI run **and** an uncancelled Deploy run (`gh run list --workflow deploy.yml --limit 1`) per the known rapid-push cancellation gotcha.

@@ -31,7 +31,7 @@ Deployed origins to allow: `https://pegasus.dolas.dev` + admin domain (prod), `h
 - `apps/api/src/lib/prisma.ts:19-47` — `TENANT_SCOPED_MODELS` (17 models) + `createTenantDb` query extension scoping all read/update/delete ops (`prisma.ts:64-107`). Creates intentionally pass `tenantId` explicitly.
 - **The schema-sync test already exists**: `apps/api/src/lib/__tests__/prisma-tenant-isolation.test.ts:829-889` asserts every `schema.prisma` model with a `tenantId` column is in `TENANT_SCOPED_MODELS` or the documented `INTENTIONALLY_UNSCOPED` set. Gap: it is nested inside `describe.skipIf(!hasDb)` (line 46) even though it only reads files — it silently skips on any machine without `DATABASE_URL`. CI does set `DATABASE_URL` (`.github/workflows/ci.yml:111,192`), so it runs in CI today; hoisting it makes it run everywhere.
 - **Raw SQL footprint is tiny**: the only `$queryRaw`/`$executeRaw` in non-test API code is the health check (`apps/api/src/app.ts:121`, no user input). Nothing currently dangerous — the risk is future drift.
-- **`basePrisma` (direct `db` import) is used by 49 non-test files** — almost all legitimately (auth middleware, crons/`lambda-*.ts`, admin handlers, longhaul handlers that read tenant config then talk to MSSQL). No automation stops a future *tenant* handler from importing `db` and skipping scoping. Fix = a pure-file vitest guard with an explicit allowlist (Phase 3). ESLint `no-restricted-imports` was considered and rejected: per-file allowlisting in flat config means dozens of override blocks; a single test with a frozen file list is one file and reads better in review.
+- **`basePrisma` (direct `db` import) is used by 49 non-test files** — almost all legitimately (auth middleware, crons/`lambda-*.ts`, admin handlers, longhaul handlers that read tenant config then talk to MSSQL). No automation stops a future _tenant_ handler from importing `db` and skipping scoping. Fix = a pure-file vitest guard with an explicit allowlist (Phase 3). ESLint `no-restricted-imports` was considered and rejected: per-file allowlisting in flat config means dozens of override blocks; a single test with a frozen file list is one file and reads better in review.
 - **Postgres RLS assessment (Neon supports it)** — verdict: **defer**. It would require a per-request `SET app.current_tenant` inside a transaction wrapper around every query (awkward with Prisma + pooled Neon connections), a `BYPASSRLS`-style split for the 10+ cron Lambdas and auth middleware that legitimately query cross-tenant, and migration of all 49 base-client call sites. That is weeks of rework to defend against the same failure mode the extension + the two CI guards below already cover, with the guards costing ~2 hours total. Revisit only if a compliance driver (SOC 2 / enterprise customer DD) demands DB-enforced isolation.
 
 ### 4. Security headers — none, anywhere
@@ -68,9 +68,7 @@ Mostly **no AI needed** — CORS, headers, and throttling are one-time CDK/code 
   - `bin/app.ts`: pass per env — prod `['https://pegasus.dolas.dev', 'https://<admin prod domain>']`, staging the `-qa` equivalents (confirm exact admin hostnames from the SSM params `/dolas/pegasus/admin/domain-name` in each account: `aws ssm get-parameter --name /dolas/pegasus/admin/domain-name --query Parameter.Value --output text`); dev: omit.
   - `apps/api/src/app.ts:83`:
     ```ts
-    const allowedOrigins = (process.env['CORS_ALLOWED_ORIGINS'] ?? '')
-      .split(',')
-      .filter(Boolean)
+    const allowedOrigins = (process.env['CORS_ALLOWED_ORIGINS'] ?? '').split(',').filter(Boolean)
     app.use(
       '*',
       cors({
@@ -83,62 +81,62 @@ Mostly **no AI needed** — CORS, headers, and throttling are one-time CDK/code 
     ```
     Empty env (local dev/E2E) → reflect any origin, preserving current DX. Deployed envs get the allowlist at both API GW (authoritative) and Hono (defense in depth / direct-served path).
 - [ ] **SKIP_AUTH production fail-fast** (~15 min). In `apps/api/src/app.ts` just above line 228 (mirror in `app.server.ts:21`):
-    ```ts
-    if (process.env['SKIP_AUTH'] === 'true' && process.env['NODE_ENV'] === 'production') {
-      throw new Error('SKIP_AUTH=true is forbidden when NODE_ENV=production')
-    }
-    ```
-    The Lambda always sets `NODE_ENV=production` (`api-stack.ts:232`), so a mis-set `SKIP_AUTH` now fails closed at cold start instead of silently opening the API.
+  ```ts
+  if (process.env['SKIP_AUTH'] === 'true' && process.env['NODE_ENV'] === 'production') {
+    throw new Error('SKIP_AUTH=true is forbidden when NODE_ENV=production')
+  }
+  ```
+  The Lambda always sets `NODE_ENV=production` (`api-stack.ts:232`), so a mis-set `SKIP_AUTH` now fails closed at cold start instead of silently opening the API.
 - [ ] **API Gateway stage throttling** (~30 min). In `api-stack.ts` immediately after the `HttpApi` construct (~line 1205):
-    ```ts
-    const defaultStage = httpApi.defaultStage?.node.defaultChild as apigwv2.CfnStage
-    defaultStage.defaultRouteSettings = {
-      throttlingRateLimit: 25, // steady-state rps across all callers
-      throttlingBurstLimit: 50,
-    }
-    ```
-    Values sized to current real traffic (single-digit rps) with generous headroom; tune via context later if needed. Excess requests get 429 from API GW without consuming a Lambda slot — directly mitigating the concurrency-10 starvation. Honest limitation: this is a stage-wide token bucket, not per-IP; a targeted attacker still 429s legitimate users. Per-IP needs WAF (deferred, Phase 4).
+  ```ts
+  const defaultStage = httpApi.defaultStage?.node.defaultChild as apigwv2.CfnStage
+  defaultStage.defaultRouteSettings = {
+    throttlingRateLimit: 25, // steady-state rps across all callers
+    throttlingBurstLimit: 50,
+  }
+  ```
+  Values sized to current real traffic (single-digit rps) with generous headroom; tune via context later if needed. Excess requests get 429 from API GW without consuming a Lambda slot — directly mitigating the concurrency-10 starvation. Honest limitation: this is a stage-wide token bucket, not per-IP; a targeted attacker still 429s legitimate users. Per-IP needs WAF (deferred, Phase 4).
 - [ ] **Hoist the schema-sync test out of the DB-gated block** (~15 min). Move the `describe('Schema-sync: …')` block (`prisma-tenant-isolation.test.ts:829-889`) outside `describe.skipIf(!hasDb)` (line 46) — it only reads `schema.prisma` and needs no DB. It then runs on every `npm test` everywhere, not just CI.
 
 ### Phase 2 — Security headers on all three distributions (~half day)
 
 - [ ] **Add a `ResponseHeadersPolicy` to each stack** (~2h incl. snapshot updates). Identical block in `frontend-stack.ts`, `admin-frontend-stack.ts`, `api-cdn-stack.ts` (per-stack construct — cheap, avoids new cross-stack export coupling):
-    ```ts
-    const securityHeaders = new cloudfront.ResponseHeadersPolicy(this, 'SecurityHeaders', {
-      securityHeadersBehavior: {
-        strictTransportSecurity: {
-          accessControlMaxAge: cdk.Duration.days(365),
-          includeSubdomains: true,
-          override: true,
-        },
-        contentTypeOptions: { override: true }, // X-Content-Type-Options: nosniff
-        frameOptions: { frameOption: cloudfront.HeadersFrameOption.DENY, override: true },
-        referrerPolicy: {
-          referrerPolicy: cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
-          override: true,
-        },
-      },
-    })
-    ```
-    Attach `responseHeadersPolicy: securityHeaders` to: `frontend-stack.ts` `defaultBehavior` (line ~80) **and** the `/config.json` additional behavior (line ~89); `admin-frontend-stack.ts` equivalents; `api-cdn-stack.ts` `defaultBehavior` (line ~84). Note for the API CDN: CloudFront response-header policies do not clobber the CORS headers API GW emits unless `override: true` collides on the same header — the set above touches none of the ACAO family, so it composes safely.
-- [ ] **CSP — report-only first, tenant SPA only** (~1h now, enforce later). Add to the *frontend* policy only, via `customHeadersBehavior` so it ships as Report-Only:
-    ```ts
-    customHeadersBehavior: {
-      customHeaders: [{
-        header: 'Content-Security-Policy-Report-Only',
-        value: "default-src 'self'; connect-src 'self' https://api.pegasus.dolas.dev https://*.amazoncognito.com https://cognito-idp.us-east-1.amazonaws.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'",
+  ```ts
+  const securityHeaders = new cloudfront.ResponseHeadersPolicy(this, 'SecurityHeaders', {
+    securityHeadersBehavior: {
+      strictTransportSecurity: {
+        accessControlMaxAge: cdk.Duration.days(365),
+        includeSubdomains: true,
         override: true,
-      }],
-    }
-    ```
-    (Adjust the api hostname per env — thread it as a prop the same way `attachCustomDomain` works.) Run the app for a week, check the browser console for violations, then promote to enforced `contentSecurityPolicy` in `securityHeadersBehavior`. Do NOT enforce blind — Vite/TanStack inline chunks or third-party assets can break the whole SPA.
+      },
+      contentTypeOptions: { override: true }, // X-Content-Type-Options: nosniff
+      frameOptions: { frameOption: cloudfront.HeadersFrameOption.DENY, override: true },
+      referrerPolicy: {
+        referrerPolicy: cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
+        override: true,
+      },
+    },
+  })
+  ```
+  Attach `responseHeadersPolicy: securityHeaders` to: `frontend-stack.ts` `defaultBehavior` (line ~80) **and** the `/config.json` additional behavior (line ~89); `admin-frontend-stack.ts` equivalents; `api-cdn-stack.ts` `defaultBehavior` (line ~84). Note for the API CDN: CloudFront response-header policies do not clobber the CORS headers API GW emits unless `override: true` collides on the same header — the set above touches none of the ACAO family, so it composes safely.
+- [ ] **CSP — report-only first, tenant SPA only** (~1h now, enforce later). Add to the _frontend_ policy only, via `customHeadersBehavior` so it ships as Report-Only:
+  ```ts
+  customHeadersBehavior: {
+    customHeaders: [{
+      header: 'Content-Security-Policy-Report-Only',
+      value: "default-src 'self'; connect-src 'self' https://api.pegasus.dolas.dev https://*.amazoncognito.com https://cognito-idp.us-east-1.amazonaws.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'",
+      override: true,
+    }],
+  }
+  ```
+  (Adjust the api hostname per env — thread it as a prop the same way `attachCustomDomain` works.) Run the app for a week, check the browser console for violations, then promote to enforced `contentSecurityPolicy` in `securityHeadersBehavior`. Do NOT enforce blind — Vite/TanStack inline chunks or third-party assets can break the whole SPA.
 
 ### Phase 3 — Tenant-isolation CI guards (~2h)
 
 - [ ] **Raw-SQL + base-client allowlist guard test** (~2h). New pure-file test `apps/api/src/__tests__/db-access-guard.test.ts` (no DB needed, runs everywhere):
   1. Recursively scan `apps/api/src` (excluding `*.test.ts`, `__tests__`) for `$queryRaw`/`$executeRaw` — assert the set of matching files equals exactly `['app.ts']` (the health check).
   2. Scan `apps/api/src/handlers/**` for imports of the base client (regex `from '(\.\./)+db'`) — assert every match is in a frozen `ALLOWED_BASE_CLIENT_HANDLERS` list seeded with the current 23 handler files: `admin/tenants.ts`, `admin/tenant-users.ts`, `admin/vpn-diagnose.ts`, `admin/vpn.ts`, `admin/workflows.ts`, `auth.ts`, `integrations/ringcentral-oauth.ts`, `integrations/ringcentral-webhook.ts`, the 17 `longhaul-cloud/*.ts` files, `pegii/middleware.ts`, `settings.ts`, `vpn-agent.ts`, `workflow-internal.ts`. (Middleware, `lambda-*.ts` crons, and `lib/` are intentionally unguarded — they are the legitimate cross-tenant surface.)
-  3. Failure message must say: *"New handler imports the unscoped base Prisma client. Either use `c.get('db')` (tenant-scoped) or add the file to ALLOWED_BASE_CLIENT_HANDLERS with a justification comment."* — turning every future violation into a deliberate, reviewable decision instead of silent drift. No AI needed; deterministic is better here.
+  3. Failure message must say: _"New handler imports the unscoped base Prisma client. Either use `c.get('db')` (tenant-scoped) or add the file to ALLOWED_BASE_CLIENT_HANDLERS with a justification comment."_ — turning every future violation into a deliberate, reviewable decision instead of silent drift. No AI needed; deterministic is better here.
 - [ ] **Record the RLS verdict** (~10 min): add a short entry to `dolas/agents/project/DECISIONS.md` ("RLS deferred — app-layer extension + CI guards chosen; revisit on compliance driver") so the assessment isn't re-litigated next audit.
 
 ### Phase 4 — Deferred / ops follow-ups
@@ -150,19 +148,19 @@ Mostly **no AI needed** — CORS, headers, and throttling are one-time CDK/code 
 
 ## Files to Modify / Create
 
-| File | Change |
-| --- | --- |
-| `apps/api/src/app.ts` | CORS allowlist from `CORS_ALLOWED_ORIGINS` (line 83); SKIP_AUTH prod fail-fast (above line 228) |
-| `apps/api/src/app.server.ts` | Same SKIP_AUTH fail-fast (line 21) |
-| `packages/infra/lib/stacks/api-stack.ts` | `corsAllowedOrigins` prop → `corsPreflight.allowOrigins` (line 1200) + Lambda env; stage throttling after line 1205 |
-| `packages/infra/bin/app.ts` | Per-env `corsAllowedOrigins` wiring |
-| `packages/infra/lib/stacks/frontend-stack.ts` | ResponseHeadersPolicy + attach (lines ~74-96); CSP report-only header |
-| `packages/infra/lib/stacks/admin-frontend-stack.ts` | ResponseHeadersPolicy + attach (line ~73) |
-| `packages/infra/lib/stacks/api-cdn-stack.ts` | ResponseHeadersPolicy + attach (line ~84) |
-| `apps/api/src/lib/__tests__/prisma-tenant-isolation.test.ts` | Hoist schema-sync describe (829-889) out of `skipIf` (46) |
-| `apps/api/src/__tests__/db-access-guard.test.ts` | **NEW** — raw-SQL + base-client allowlist guard |
-| `packages/infra/lib/stacks/__tests__/*` | Snapshot updates for the three stacks + api-stack assertions |
-| `dolas/agents/project/DECISIONS.md` | RLS-deferred decision entry |
+| File                                                         | Change                                                                                                              |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/app.ts`                                        | CORS allowlist from `CORS_ALLOWED_ORIGINS` (line 83); SKIP_AUTH prod fail-fast (above line 228)                     |
+| `apps/api/src/app.server.ts`                                 | Same SKIP_AUTH fail-fast (line 21)                                                                                  |
+| `packages/infra/lib/stacks/api-stack.ts`                     | `corsAllowedOrigins` prop → `corsPreflight.allowOrigins` (line 1200) + Lambda env; stage throttling after line 1205 |
+| `packages/infra/bin/app.ts`                                  | Per-env `corsAllowedOrigins` wiring                                                                                 |
+| `packages/infra/lib/stacks/frontend-stack.ts`                | ResponseHeadersPolicy + attach (lines ~74-96); CSP report-only header                                               |
+| `packages/infra/lib/stacks/admin-frontend-stack.ts`          | ResponseHeadersPolicy + attach (line ~73)                                                                           |
+| `packages/infra/lib/stacks/api-cdn-stack.ts`                 | ResponseHeadersPolicy + attach (line ~84)                                                                           |
+| `apps/api/src/lib/__tests__/prisma-tenant-isolation.test.ts` | Hoist schema-sync describe (829-889) out of `skipIf` (46)                                                           |
+| `apps/api/src/__tests__/db-access-guard.test.ts`             | **NEW** — raw-SQL + base-client allowlist guard                                                                     |
+| `packages/infra/lib/stacks/__tests__/*`                      | Snapshot updates for the three stacks + api-stack assertions                                                        |
+| `dolas/agents/project/DECISIONS.md`                          | RLS-deferred decision entry                                                                                         |
 
 ## Side Effects & Risks
 

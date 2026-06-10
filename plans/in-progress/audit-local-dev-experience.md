@@ -10,17 +10,17 @@ Unit 7 of the lean-delivery audit batch. Scope: bootstrap (`scripts/setup.sh`), 
 
 `apps/api/prisma/seed.ts` instantiates a **raw, unscoped** `PrismaClient` (`seed.ts:8-14`) and never creates a `Tenant` row, yet every model it writes is tenant-scoped with a **required** `tenantId` column in `apps/api/prisma/schema.prisma`:
 
-| Model seeded | seed.ts call | schema.prisma required `tenantId` |
-| --- | --- | --- |
-| LeadSource | `:23-32` (no tenantId) | `:453` |
-| RateTable | `:38-54` | `:724` |
-| CrewMember | `:59-69` | `:621` |
-| Vehicle | `:71-82` | `:647` |
-| Customer | `:87-107`, `:248-268` | `:488` |
-| Move | `:129-146`, `:290-306`, `:346-361` | `:562` |
-| Quote | `:149-165`, `:309-324` | `:764` |
-| Invoice | `:168-177` | `:855` |
-| InventoryRoom | `:189-215` | `:811` |
+| Model seeded  | seed.ts call                       | schema.prisma required `tenantId` |
+| ------------- | ---------------------------------- | --------------------------------- |
+| LeadSource    | `:23-32` (no tenantId)             | `:453`                            |
+| RateTable     | `:38-54`                           | `:724`                            |
+| CrewMember    | `:59-69`                           | `:621`                            |
+| Vehicle       | `:71-82`                           | `:647`                            |
+| Customer      | `:87-107`, `:248-268`              | `:488`                            |
+| Move          | `:129-146`, `:290-306`, `:346-361` | `:562`                            |
+| Quote         | `:149-165`, `:309-324`             | `:764`                            |
+| Invoice       | `:168-177`                         | `:855`                            |
+| InventoryRoom | `:189-215`                         | `:811`                            |
 
 Two distinct failure modes, both fatal on the **first** query:
 
@@ -49,7 +49,7 @@ So `npm run db:seed` (`apps/api/package.json:16`, runs `tsx prisma/seed.ts`) exi
 
 ### Finding 3 — `scripts/setup.sh` stops far short of a running stack
 
-`scripts/setup.sh` does: copy `.env.example` → `.env` (`:49-59`), copy SPA `config.json.example` (`:63-69`), `prisma generate` (`:73-80`), WSL2 chmod fixes (`:84-88`). It does **not** start Docker postgres, run migrations, or seed — the developer must read `docker-compose.yml:1-14`'s comment block and execute 3-4 manual steps, plus *manually re-uncomment* `DATABASE_URL` because `comment_out_default_db_url` (`:40-47`) deliberately disables the working local default. Dead code: the dual-layout loops for the pre-restructure tree — `packages/api` (`:51`, `:74`), `packages/web` (`:54`, `:64`), `apps/admin` (`:57`, `:67`) — none of these directories exist.
+`scripts/setup.sh` does: copy `.env.example` → `.env` (`:49-59`), copy SPA `config.json.example` (`:63-69`), `prisma generate` (`:73-80`), WSL2 chmod fixes (`:84-88`). It does **not** start Docker postgres, run migrations, or seed — the developer must read `docker-compose.yml:1-14`'s comment block and execute 3-4 manual steps, plus _manually re-uncomment_ `DATABASE_URL` because `comment_out_default_db_url` (`:40-47`) deliberately disables the working local default. Dead code: the dual-layout loops for the pre-restructure tree — `packages/api` (`:51`, `:74`), `packages/web` (`:54`, `:64`), `apps/admin` (`:57`, `:67`) — none of these directories exist.
 
 `DEV-WORKFLOW.md` (root) is similarly stale: `:29` and `:41` still reference `packages/api`.
 
@@ -92,7 +92,7 @@ So `npm run db:seed` (`apps/api/package.json:16`, runs `tsx prisma/seed.ts`) exi
 
 - [ ] **Extend `scripts/setup.sh` to finish the job** (~1.5 h). After the existing env/prisma steps, append (each step skippable + idempotent, fail-soft with a clear warning when Docker is absent — same graceful degradation as `apps/e2e/global-setup.ts:24-47`):
   1. `docker info` probe → if available, `docker compose up -d postgres` + `pg_isready` wait loop (reuse the compose healthcheck params from `docker-compose.yml:28-32`);
-  2. **stop commenting out `DATABASE_URL`** — invert `comment_out_default_db_url` (`setup.sh:40-47`): the local-docker default should be *active* out of the box; Neon users are the exception who edit `.env` (print a one-line hint). Also un-comment an already-commented default when postgres comes up;
+  2. **stop commenting out `DATABASE_URL`** — invert `comment_out_default_db_url` (`setup.sh:40-47`): the local-docker default should be _active_ out of the box; Neon users are the exception who edit `.env` (print a one-line hint). Also un-comment an already-commented default when postgres comes up;
   3. `npx prisma migrate deploy` from `apps/api` (deploy, not `migrate dev` — non-interactive, no shadow DB prompt);
   4. `npm run db:seed --workspace=@pegasus/api` (or `cd apps/api && npm run db:seed`);
   5. final banner: "Stack ready → npm run dev (API on :3000 with SKIP_AUTH, tenant-web :5173, admin-web :5174). Admin-user creation (scripts/create-admin-user.ts) is NOT needed locally."
@@ -110,7 +110,7 @@ So `npm run db:seed` (`apps/api/package.json:16`, runs `tsx prisma/seed.ts`) exi
   - Prisma client generated (`[ -d node_modules/.prisma/client ]` or `node -e "require('@prisma/client')"`);
   - migrations up to date (`npx prisma migrate status` from `apps/api`, tolerate DB-down with a WARN);
   - turbo/esbuild binaries executable (the WSL2 issue `setup.sh:84-88` guards against).
-  Each FAIL line prints the exact fix command. This converts every "weird local breakage" debugging session into a 5-second triage.
+    Each FAIL line prints the exact fix command. This converts every "weird local breakage" debugging session into a 5-second triage.
 
 ### Phase 5 — Explicit non-actions (decided, no work)
 
@@ -118,25 +118,25 @@ So `npm run db:seed` (`apps/api/package.json:16`, runs `tsx prisma/seed.ts`) exi
 
 ## Files to Modify / Create
 
-| Path | Action |
-| --- | --- |
-| `.nvmrc` | **create** (`24.16.0`) |
-| `.npmrc` | **create** (`engine-strict=true`) |
-| `package.json` | modify (`engines` → `>=24 <25`; add `doctor` script) |
-| `.github/workflows/ci.yml`, `deploy.yml`, `_deploy.yml`, `e2e-qa-longhaul.yml`, `mobile-build.yml`, `_publish-vpn-agent.yml` | modify (`node-version: '20'` → `node-version-file: .nvmrc`, 10 sites) |
-| `apps/api/prisma/seed.ts` | modify (tenant bootstrap, tenantId threading, compound-unique upserts, deterministic-id idempotency, exported `main`) |
-| `apps/api/src/__tests__/seed.test.ts` | **create** (integration test, DATABASE_URL-gated) |
-| `apps/api/tsconfig.json` (and possibly a new `apps/api/tsconfig.build.json`) | modify (seed.ts into typecheck graph) |
-| `apps/api/.env.example` | modify (`DEFAULT_TENANT_ID`, active local `DATABASE_URL`) |
-| `scripts/setup.sh` | modify (docker up + migrate + seed; remove dead layouts; stop commenting out DATABASE_URL) |
-| `scripts/doctor.sh` | **create** |
-| `DEV-WORKFLOW.md` | modify (point at `npm run setup`, fix `packages/api` staleness) |
-| `dolas/agents/project/DECISIONS.md` | modify (Phase 5 record) |
+| Path                                                                                                                         | Action                                                                                                                |
+| ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `.nvmrc`                                                                                                                     | **create** (`24.16.0`)                                                                                                |
+| `.npmrc`                                                                                                                     | **create** (`engine-strict=true`)                                                                                     |
+| `package.json`                                                                                                               | modify (`engines` → `>=24 <25`; add `doctor` script)                                                                  |
+| `.github/workflows/ci.yml`, `deploy.yml`, `_deploy.yml`, `e2e-qa-longhaul.yml`, `mobile-build.yml`, `_publish-vpn-agent.yml` | modify (`node-version: '20'` → `node-version-file: .nvmrc`, 10 sites)                                                 |
+| `apps/api/prisma/seed.ts`                                                                                                    | modify (tenant bootstrap, tenantId threading, compound-unique upserts, deterministic-id idempotency, exported `main`) |
+| `apps/api/src/__tests__/seed.test.ts`                                                                                        | **create** (integration test, DATABASE_URL-gated)                                                                     |
+| `apps/api/tsconfig.json` (and possibly a new `apps/api/tsconfig.build.json`)                                                 | modify (seed.ts into typecheck graph)                                                                                 |
+| `apps/api/.env.example`                                                                                                      | modify (`DEFAULT_TENANT_ID`, active local `DATABASE_URL`)                                                             |
+| `scripts/setup.sh`                                                                                                           | modify (docker up + migrate + seed; remove dead layouts; stop commenting out DATABASE_URL)                            |
+| `scripts/doctor.sh`                                                                                                          | **create**                                                                                                            |
+| `DEV-WORKFLOW.md`                                                                                                            | modify (point at `npm run setup`, fix `packages/api` staleness)                                                       |
+| `dolas/agents/project/DECISIONS.md`                                                                                          | modify (Phase 5 record)                                                                                               |
 
 ## Side Effects & Risks
 
 - **CI node 20 → 24** is the only change with blast radius: a transitive dep could behave differently on 24. Mitigation: dedicated PR, full CI + one QA e2e run before merging the rest; local toolchain has run 24.16.0 for months. Rollback = revert one commit. Note `deploy.yml` is on the path — merge when not racing another deploy (see the rapid-main-pushes gotcha).
-- **`engine-strict=true`** will hard-fail `npm install` on any machine/agent still on node 25 or 20 — that is the *intended* behavior, but stale worktrees (which need their own `npm install`) will need `nvm use` first. The doctor script's mismatch message covers this.
+- **`engine-strict=true`** will hard-fail `npm install` on any machine/agent still on node 25 or 20 — that is the _intended_ behavior, but stale worktrees (which need their own `npm install`) will need `nvm use` first. The doctor script's mismatch message covers this.
 - **Lambda runtime vs CI node**: confirm `packages/infra` Lambda runtimes during the CI bump (if functions are on `nodejs20.x`, building with 24 is still fine for CJS bundles, but flag any runtime upgrade as a separate, deliberate change — do NOT bundle it here).
 - **Seed `update: {}` upserts** never refresh drifted dev data; `docker compose down -v` + re-setup is the documented reset path (already in `docker-compose.yml:6`).
 - **setup.sh now mutates DB state** (migrate + seed). Both steps are idempotent (`migrate deploy`, upsert-based seed), and the script remains safe to re-run — preserve the existing "safe to re-run at any time" contract (`setup.sh:4`).
