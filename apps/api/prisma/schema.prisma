@@ -254,6 +254,7 @@ model Tenant {
   pegasusEvents  PegasusEvent[]
   documents      Document[]
   workflows      Workflow[]
+  domainEvents   DomainEvent[]
   vpnPeer        VpnPeer?
 
   // Messaging context — RingCentral SMS capture
@@ -1221,6 +1222,45 @@ model WorkflowExecution {
   @@index([tenantId, workflowId])
   @@index([status])
   @@map("workflow_executions")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Domain-event outbox — transactional outbox for platform domain events.
+//
+// Rows are written by emitDomainEvent() (lib/domain-events.ts) inside the SAME
+// Prisma transaction as the domain state change they describe, which keeps
+// emission atomic with the write. Nothing consumes the table yet — the Phase 3
+// trigger dispatcher (a poller Lambda mirroring the reconcile-poller pattern)
+// will drain undispatched rows in (dispatchedAt, occurredAt) order and stamp
+// dispatchedAt. The five launch event types are a public contract; see
+// lib/domain-events.ts for the canonical taxonomy.
+// ---------------------------------------------------------------------------
+
+model DomainEvent {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// Event taxonomy name (e.g. "quote.accepted"). Canonical list lives in
+  /// apps/api/src/lib/domain-events.ts — renames are breaking.
+  eventType String @map("event_type")
+
+  /// Event-specific payload (entity ids + minimal context). Consumers must
+  /// refetch authoritative state; the payload is a pointer, not a snapshot.
+  payload Json
+
+  /// When the domain state change happened (transaction time).
+  occurredAt DateTime @default(now()) @map("occurred_at")
+
+  /// Stamped by the trigger dispatcher once the event has been processed.
+  /// Null = pending. Drain order is (dispatchedAt, occurredAt).
+  dispatchedAt DateTime? @map("dispatched_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([dispatchedAt, occurredAt])
+  @@index([tenantId])
+  @@map("domain_events")
   @@schema("public")
 }
 

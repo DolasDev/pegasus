@@ -25,6 +25,10 @@ vi.mock('../repositories', () => ({
   listQuotesByMoveId: vi.fn(),
 }))
 
+vi.mock('../lib/domain-events', () => ({
+  emitDomainEvent: vi.fn(),
+}))
+
 import type * as Domain from '@pegasus/domain'
 
 vi.mock('@pegasus/domain', async (importOriginal) => {
@@ -44,6 +48,7 @@ import {
 } from '../repositories'
 import { canDispatch, canTransition } from '@pegasus/domain'
 import { _clearAuthzCache } from '../lib/authz'
+import { emitDomainEvent } from '../lib/domain-events'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -89,7 +94,11 @@ function buildApp(principal: TestPrincipal = ADMIN_PRINCIPAL) {
   registerTestErrorHandler(app)
   app.use('*', async (c, next) => {
     c.set('tenantId', 'test-tenant-id')
-    c.set('db', {} as unknown as PrismaClient)
+    // `$transaction` runs the callback with `tx === fakeDb` itself, so mocked
+    // repository functions resolve identically inside the transaction wrapper.
+    const fakeDb = {} as Record<string, unknown>
+    fakeDb['$transaction'] = vi.fn((cb: (tx: unknown) => unknown) => cb(fakeDb))
+    c.set('db', fakeDb as unknown as PrismaClient)
     // requirePermission + the in-handler ReadMove ABAC check evaluate via the
     // offline Cedar backend (no policyStoreId set).
     c.set('principal', principal)
@@ -249,11 +258,27 @@ describe('moves handler', () => {
       expect(res.status).toBe(200)
     })
 
+    it('emits move.status_changed with previous and new status on success', async () => {
+      vi.mocked(findMoveById).mockResolvedValue(mockMove as never)
+      vi.mocked(canTransition).mockReturnValue(true)
+      vi.mocked(canDispatch).mockReturnValue(true)
+      vi.mocked(updateMoveStatus).mockResolvedValue({ ...mockMove, status: 'SCHEDULED' } as never)
+      const res = await buildApp().request('/move-1/status', put({ status: 'SCHEDULED' }))
+      expect(res.status).toBe(200)
+      expect(emitDomainEvent).toHaveBeenCalledTimes(1)
+      expect(emitDomainEvent).toHaveBeenCalledWith(expect.anything(), {
+        tenantId: 'test-tenant-id',
+        eventType: 'move.status_changed',
+        payload: { moveId: 'move-1', previousStatus: 'PENDING', newStatus: 'SCHEDULED' },
+      })
+    })
+
     it('returns 404 NOT_FOUND when move does not exist', async () => {
       vi.mocked(findMoveById).mockResolvedValue(null)
       const res = await buildApp().request('/move-1/status', put({ status: 'SCHEDULED' }))
       expect(res.status).toBe(404)
       expect((await json(res)).code).toBe('NOT_FOUND')
+      expect(emitDomainEvent).not.toHaveBeenCalled()
     })
 
     it('returns 422 INVALID_STATE when canTransition returns false', async () => {
@@ -262,6 +287,7 @@ describe('moves handler', () => {
       const res = await buildApp().request('/move-1/status', put({ status: 'COMPLETED' }))
       expect(res.status).toBe(422)
       expect((await json(res)).code).toBe('INVALID_STATE')
+      expect(emitDomainEvent).not.toHaveBeenCalled()
     })
 
     it('returns 422 PRECONDITION_FAILED when transitioning to IN_PROGRESS without crew', async () => {
@@ -271,6 +297,17 @@ describe('moves handler', () => {
       const res = await buildApp().request('/move-1/status', put({ status: 'IN_PROGRESS' }))
       expect(res.status).toBe(422)
       expect((await json(res)).code).toBe('PRECONDITION_FAILED')
+      expect(emitDomainEvent).not.toHaveBeenCalled()
+    })
+
+    it('does not emit when the status write fails', async () => {
+      vi.mocked(findMoveById).mockResolvedValue(mockMove as never)
+      vi.mocked(canTransition).mockReturnValue(true)
+      vi.mocked(canDispatch).mockReturnValue(true)
+      vi.mocked(updateMoveStatus).mockRejectedValue(new Error('db error'))
+      const res = await buildApp().request('/move-1/status', put({ status: 'SCHEDULED' }))
+      expect(res.status).toBe(500)
+      expect(emitDomainEvent).not.toHaveBeenCalled()
     })
   })
 

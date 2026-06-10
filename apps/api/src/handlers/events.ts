@@ -25,7 +25,9 @@
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
+import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../types'
+import { emitDomainEvent } from '../lib/domain-events'
 import { m2mAppAuthMiddleware } from '../middleware/m2m-app-auth'
 import { requirePermission } from '../middleware/rbac'
 import { Actions } from '../authz/actions'
@@ -109,12 +111,26 @@ eventsHandler.post(
     const body = c.req.valid('json')
 
     try {
-      const row = await createEvent(db, tenantId, {
-        eventApiId: body.eventApiId,
-        eventType: body.eventType,
-        ...(body.eventDatetime ? { eventDatetime: new Date(body.eventDatetime) } : {}),
-        ...(body.eventPublisher ? { eventPublisher: body.eventPublisher } : {}),
-        ...(body.eventData ? { eventData: body.eventData } : {}),
+      // The inbound-event write and the outbox row commit atomically, bridging
+      // the legacy M2M queue into the domain-event taxonomy.
+      const row = await db.$transaction(async (tx) => {
+        const created = await createEvent(tx as PrismaClient, tenantId, {
+          eventApiId: body.eventApiId,
+          eventType: body.eventType,
+          ...(body.eventDatetime ? { eventDatetime: new Date(body.eventDatetime) } : {}),
+          ...(body.eventPublisher ? { eventPublisher: body.eventPublisher } : {}),
+          ...(body.eventData ? { eventData: body.eventData } : {}),
+        })
+        await emitDomainEvent(tx, {
+          tenantId,
+          eventType: 'pegasus_event.received',
+          payload: {
+            pegasusEventId: created.id,
+            eventType: created.eventType,
+            eventPublisher: created.eventPublisher ?? null,
+          },
+        })
+        return created
       })
       logger.info('Event created', { id: row.id, eventType: row.eventType, tenantId })
       return c.json({ data: toResponse(row) }, 201)

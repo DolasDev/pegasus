@@ -5,8 +5,10 @@
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
+import type { PrismaClient } from '@prisma/client'
 import { hasPrimaryContact } from '@pegasus/domain'
 import type { AppEnv } from '../types'
+import { emitDomainEvent } from '../lib/domain-events'
 import {
   createCustomer,
   findCustomerById,
@@ -57,25 +59,36 @@ customersHandler.post(
     const db = c.get('db')
     const tenantId = c.get('tenantId')
     const body = c.req.valid('json')
-    const customer = await createCustomer(
-      db,
-      tenantId,
-      {
-        userId: body.userId,
-        firstName: body.firstName,
-        lastName: body.lastName,
-        email: body.email,
-        ...(body.phone !== undefined ? { phone: body.phone } : {}),
-        ...(body.accountId !== undefined ? { accountId: body.accountId } : {}),
-        ...(body.leadSourceId !== undefined ? { leadSourceId: body.leadSourceId } : {}),
-      },
-      {
-        firstName: body.primaryContact.firstName,
-        lastName: body.primaryContact.lastName,
-        email: body.primaryContact.email,
-        ...(body.primaryContact.phone !== undefined ? { phone: body.primaryContact.phone } : {}),
-      },
-    )
+    // The customer write and the outbox row commit atomically.
+    const customer = await db.$transaction(async (tx) => {
+      const created = await createCustomer(
+        tx as PrismaClient,
+        tenantId,
+        {
+          userId: body.userId,
+          firstName: body.firstName,
+          lastName: body.lastName,
+          email: body.email,
+          ...(body.phone !== undefined ? { phone: body.phone } : {}),
+          ...(body.accountId !== undefined ? { accountId: body.accountId } : {}),
+          ...(body.leadSourceId !== undefined ? { leadSourceId: body.leadSourceId } : {}),
+        },
+        {
+          firstName: body.primaryContact.firstName,
+          lastName: body.primaryContact.lastName,
+          email: body.primaryContact.email,
+          ...(body.primaryContact.phone !== undefined
+            ? { phone: body.primaryContact.phone }
+            : {}),
+        },
+      )
+      await emitDomainEvent(tx, {
+        tenantId,
+        eventType: 'customer.created',
+        payload: { customerId: created.id },
+      })
+      return created
+    })
     return c.json({ data: customer }, 201)
   },
 )

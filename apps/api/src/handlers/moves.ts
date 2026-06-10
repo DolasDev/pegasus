@@ -6,12 +6,14 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
+import type { PrismaClient } from '@prisma/client'
 import { canDispatch, canTransition } from '@pegasus/domain'
 import type { Move } from '@pegasus/domain'
 import type { AppEnv } from '../types'
 import { requirePermission } from '../middleware/rbac'
 import { Actions } from '../authz/actions'
 import { authorize } from '../lib/authz'
+import { emitDomainEvent } from '../lib/domain-events'
 import {
   createMove,
   findMoveById,
@@ -186,7 +188,16 @@ movesHandler.put(
         422,
       )
     }
-    const data = await updateMoveStatus(db, id, status)
+    // The status write and the outbox row commit atomically.
+    const data = await db.$transaction(async (tx) => {
+      const updated = await updateMoveStatus(tx as PrismaClient, id, status)
+      await emitDomainEvent(tx, {
+        tenantId: c.get('tenantId'),
+        eventType: 'move.status_changed',
+        payload: { moveId: id, previousStatus: move.status, newStatus: status },
+      })
+      return updated
+    })
     return c.json({ data })
   },
 )

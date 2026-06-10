@@ -68,6 +68,12 @@ vi.mock('../repositories/events.repository', () => ({
   deleteEvent: (...args: unknown[]) => mockEventsRepo.deleteEvent(...args),
 }))
 
+vi.mock('../lib/domain-events', () => ({
+  emitDomainEvent: vi.fn(),
+}))
+
+import { emitDomainEvent } from '../lib/domain-events'
+
 import { eventsHandler } from './events'
 import { m2mAppAuthMiddleware } from '../middleware/m2m-app-auth'
 
@@ -103,7 +109,11 @@ function buildApp(opts: BuildAppOpts = {}) {
       return c.json({ error: 'Missing or invalid API key', code: 'UNAUTHORIZED' }, 401)
     }
     c.set('tenantId', TENANT_ID)
-    c.set('db', {} as unknown as PrismaClient)
+    // `$transaction` runs the callback with `tx === fakeDb` itself, so mocked
+    // repository functions resolve identically inside the transaction wrapper.
+    const fakeDb = {} as Record<string, unknown>
+    fakeDb['$transaction'] = vi.fn((cb: (tx: unknown) => unknown) => cb(fakeDb))
+    c.set('db', fakeDb as unknown as PrismaClient)
     c.set('userId', SVC_USER_ID)
     c.set('principal', { sub: SVC_USER_ID, tenantId: TENANT_ID, roleNames: [...roles] })
     c.set('idToken', undefined)
@@ -247,6 +257,53 @@ describe('events handler', () => {
         eventType: 'LEAD_CREATED',
         eventStatus: 'NEW',
       })
+    })
+
+    it('emits pegasus_event.received with the created event id, type, and publisher', async () => {
+      mockEventsRepo.createEvent.mockResolvedValue(mockEventRow)
+      const app = buildApp()
+      const res = await app.request(
+        '/',
+        post({
+          eventApiId: 'ext-event-abc123',
+          eventType: 'LEAD_CREATED',
+          eventPublisher: 'legacy-system',
+        }),
+      )
+      expect(res.status).toBe(201)
+      expect(emitDomainEvent).toHaveBeenCalledTimes(1)
+      expect(emitDomainEvent).toHaveBeenCalledWith(expect.anything(), {
+        tenantId: TENANT_ID,
+        eventType: 'pegasus_event.received',
+        payload: {
+          pegasusEventId: 'evt-cuid-1',
+          eventType: 'LEAD_CREATED',
+          eventPublisher: 'legacy-system',
+        },
+      })
+    })
+
+    it('does not emit when createEvent fails (duplicate eventApiId)', async () => {
+      mockEventsRepo.createEvent.mockRejectedValue(
+        new Error('Unique constraint failed on the fields: (`event_api_id`)'),
+      )
+      const app = buildApp()
+      const res = await app.request(
+        '/',
+        post({ eventApiId: 'ext-event-abc123', eventType: 'LEAD_CREATED' }),
+      )
+      expect(res.status).toBe(409)
+      expect(emitDomainEvent).not.toHaveBeenCalled()
+    })
+
+    it('does not emit when the caller is denied CreateEvent', async () => {
+      const app = buildApp({ roles: ['reporting'] })
+      const res = await app.request(
+        '/',
+        post({ eventApiId: 'ext-123', eventType: 'LEAD_CREATED' }),
+      )
+      expect(res.status).toBe(403)
+      expect(emitDomainEvent).not.toHaveBeenCalled()
     })
 
     it('passes tenantId and eventApiId to the repository', async () => {

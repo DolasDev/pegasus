@@ -5,8 +5,10 @@
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
+import type { PrismaClient } from '@prisma/client'
 import { canFinalizeQuote } from '@pegasus/domain'
 import type { AppEnv } from '../types'
+import { emitDomainEvent } from '../lib/domain-events'
 import {
   createQuote,
   findQuoteById,
@@ -14,6 +16,7 @@ import {
   countQuotes,
   addLineItem,
   finalizeQuote,
+  acceptQuote,
 } from '../repositories'
 
 const LineItemSchema = z.object({
@@ -132,5 +135,35 @@ quotesHandler.post('/:id/finalize', async (c) => {
     )
   }
   const data = await finalizeQuote(db, id)
+  return c.json({ data })
+})
+
+quotesHandler.post('/:id/accept', async (c) => {
+  const db = c.get('db')
+  const tenantId = c.get('tenantId')
+  const id = c.req.param('id')
+  const quote = await findQuoteById(db, id)
+  if (!quote) return c.json({ error: 'Quote not found', code: 'NOT_FOUND' }, 404)
+  if (quote.status !== 'SENT') {
+    return c.json({ error: 'Only SENT quotes can be accepted', code: 'INVALID_STATE' }, 422)
+  }
+  // The status write and the outbox row commit atomically — the trigger
+  // dispatcher must never see a quote.accepted event without the ACCEPTED row.
+  // acceptQuote is a compare-and-set on status: SENT; null means a concurrent
+  // request changed the status between the precheck and the update, so no
+  // event is emitted and the request is rejected like the precheck would have.
+  const data = await db.$transaction(async (tx) => {
+    const accepted = await acceptQuote(tx as PrismaClient, id)
+    if (!accepted) return null
+    await emitDomainEvent(tx, {
+      tenantId,
+      eventType: 'quote.accepted',
+      payload: { quoteId: id, moveId: quote.moveId },
+    })
+    return accepted
+  })
+  if (!data) {
+    return c.json({ error: 'Only SENT quotes can be accepted', code: 'INVALID_STATE' }, 422)
+  }
   return c.json({ data })
 })
