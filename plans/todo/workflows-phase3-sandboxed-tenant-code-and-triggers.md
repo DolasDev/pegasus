@@ -221,20 +221,21 @@ record — no auto-redelivery). Metrics: `DomainEventsDispatched`,
 `DomainEventDispatchBacklog`. Post-merge follow-up: staging smoke
 (trigger on `quote.accepted` → accept quote → EVENT execution).
 
-**Unit 4 — Scheduled triggers. ⚠️ DESIGN REVISED at Unit-3 review
-(was: Temporal Schedules).** Temporal Schedule actions start workflows
-directly, bypassing the execution-row + broker contract every run depends
-on (the runtime-token endpoint requires a QUEUED/RUNNING execution row) —
-wiring Schedules in would need a shim workflow or row-less runs. Instead:
-the dispatcher Lambda also evaluates due SCHEDULE triggers each tick — a
-dependency-free 5-field cron matcher answers "does minute M match";
-deterministic id `wf/<tenantId>/<name>/trg/<triggerId>/<fire-minute>`
-gives idempotency via the existing pre-check machinery (no schema
-change). **No catch-up:** a missed tick (Lambda downtime) skips that
-fire-minute — documented v1 semantics. Temporal Schedules can be
+**Unit 4 — Scheduled triggers. ✅ DONE (#233 → `ca2611b`, 2026-06-10).
+⚠️ Design was revised at Unit-3 review (was: Temporal Schedules)** —
+Schedule actions start workflows directly, bypassing the execution-row +
+broker contract (runtime-token endpoint requires a QUEUED/RUNNING row).
+Shipped instead: the dispatcher evaluates due SCHEDULE triggers each tick
+via a dependency-free cron matcher (`apps/api/src/lib/cron.ts` — narrow
+v1 dialect: `* , - */n a-b/n` only, UTC, Vixie dom/dow OR rule with the
+documented deviation that `*/n` counts as restricted; everything else
+parses to null). Fire-minute deterministic id
+`wf/<tenantId>/<name>/trg/<triggerId>/<YYYYMMDDTHHMMZ>` rides Unit 3's
+pre-check idempotency — no schema change, no new infra. **No catch-up**
+(missed tick = skipped fire-minute, documented). Create/PATCH cron
+validation now uses the real parser (`61 * * * *` → 400); pre-tightening
+rows are skipped with `INVALID_CRON` metric. Temporal Schedules can be
 revisited if Track A's runner redesign changes the broker contract.
-(Allowed override: the trigger model was a "Proposed" decision, not
-locked.)
 
 **Unit 5 — Trigger UI.** `settings.workflows.tsx` per-workflow "Triggers"
 section: list/create/enable/disable (event-type dropdown from the taxonomy,
