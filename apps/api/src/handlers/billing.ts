@@ -5,8 +5,10 @@
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
+import type { PrismaClient } from '@prisma/client'
 import { calculateInvoiceBalance } from '@pegasus/domain'
 import type { AppEnv } from '../types'
+import { emitDomainEvent } from '../lib/domain-events'
 import {
   findMoveById,
   findAcceptedQuoteByMoveId,
@@ -104,18 +106,44 @@ billingHandler.post(
   }),
   async (c) => {
     const db = c.get('db')
+    const tenantId = c.get('tenantId')
     const id = c.req.param('id')
     const body = c.req.valid('json')
     const invoice = await findInvoiceById(db, id)
     if (!invoice) return c.json({ error: 'Invoice not found', code: 'NOT_FOUND' }, 404)
 
-    const updated = await recordPayment(db, {
-      invoiceId: id,
-      amount: body.amount,
-      method: body.method,
-      ...(body.currency !== undefined ? { currency: body.currency } : {}),
-      ...(body.paidAt !== undefined ? { paidAt: new Date(body.paidAt) } : {}),
-      ...(body.reference !== undefined ? { reference: body.reference } : {}),
+    // Invoice paid-ness is computed (calculateInvoiceBalance), never persisted
+    // past creation. Emit invoice.paid only when THIS payment crosses the
+    // boundary: outstanding balance before > 0 and after <= 0. Re-payments on
+    // an already-settled invoice emit nothing. The before-balance is computed
+    // from a refetch INSIDE the transaction (not the precheck fetch above) so
+    // concurrent payments racing across the boundary can't both observe a
+    // stale positive balance and double-emit.
+    const updated = await db.$transaction(async (tx) => {
+      const current = await findInvoiceById(tx as PrismaClient, id)
+      const balanceBefore = current ? calculateInvoiceBalance(current) : null
+      const result = await recordPayment(tx as PrismaClient, {
+        invoiceId: id,
+        amount: body.amount,
+        method: body.method,
+        ...(body.currency !== undefined ? { currency: body.currency } : {}),
+        ...(body.paidAt !== undefined ? { paidAt: new Date(body.paidAt) } : {}),
+        ...(body.reference !== undefined ? { reference: body.reference } : {}),
+      })
+      const balanceAfter = calculateInvoiceBalance(result)
+      if (balanceBefore !== null && balanceBefore.amount > 0 && balanceAfter.amount <= 0) {
+        await emitDomainEvent(tx, {
+          tenantId,
+          eventType: 'invoice.paid',
+          payload: {
+            invoiceId: id,
+            moveId: result.moveId,
+            totalAmount: result.total.amount,
+            totalCurrency: result.total.currency,
+          },
+        })
+      }
+      return result
     })
 
     const balance = calculateInvoiceBalance(updated)

@@ -25,6 +25,10 @@ vi.mock('../repositories', () => ({
   listQuotesByCustomerId: vi.fn(),
 }))
 
+vi.mock('../lib/domain-events', () => ({
+  emitDomainEvent: vi.fn(),
+}))
+
 import type * as Domain from '@pegasus/domain'
 
 vi.mock('@pegasus/domain', async (importOriginal) => {
@@ -43,6 +47,7 @@ import {
   listQuotesByCustomerId,
 } from '../repositories'
 import { hasPrimaryContact } from '@pegasus/domain'
+import { emitDomainEvent } from '../lib/domain-events'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -75,7 +80,11 @@ function buildApp() {
   registerTestErrorHandler(app)
   app.use('*', async (c, next) => {
     c.set('tenantId', 'test-tenant-id')
-    c.set('db', {} as unknown as PrismaClient)
+    // `$transaction` runs the callback with `tx === fakeDb` itself, so mocked
+    // repository functions resolve identically inside the transaction wrapper.
+    const fakeDb = {} as Record<string, unknown>
+    fakeDb['$transaction'] = vi.fn((cb: (tx: unknown) => unknown) => cb(fakeDb))
+    c.set('db', fakeDb as unknown as PrismaClient)
     await next()
   })
   app.route('/', customersHandler)
@@ -131,6 +140,32 @@ describe('customers handler', () => {
       expect(res.status).toBe(201)
       const body = await json(res)
       expect((body.data as JsonBody)['id']).toBe('cust-1')
+    })
+
+    it('emits customer.created with the new customer id on success', async () => {
+      vi.mocked(createCustomer).mockResolvedValue(mockCustomer as never)
+      const res = await buildApp().request('/', post(validCreateBody))
+      expect(res.status).toBe(201)
+      expect(emitDomainEvent).toHaveBeenCalledTimes(1)
+      expect(emitDomainEvent).toHaveBeenCalledWith(expect.anything(), {
+        tenantId: 'test-tenant-id',
+        eventType: 'customer.created',
+        payload: { customerId: 'cust-1' },
+      })
+    })
+
+    it('does not emit when validation fails', async () => {
+      const { firstName: _f, ...bodyWithout } = validCreateBody
+      const res = await buildApp().request('/', post(bodyWithout))
+      expect(res.status).toBe(400)
+      expect(emitDomainEvent).not.toHaveBeenCalled()
+    })
+
+    it('does not emit when the customer write fails', async () => {
+      vi.mocked(createCustomer).mockRejectedValue(new Error('db error'))
+      const res = await buildApp().request('/', post(validCreateBody))
+      expect(res.status).toBe(500)
+      expect(emitDomainEvent).not.toHaveBeenCalled()
     })
 
     it('returns 400 VALIDATION_ERROR when firstName is missing', async () => {

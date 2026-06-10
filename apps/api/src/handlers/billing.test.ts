@@ -26,6 +26,10 @@ vi.mock('../repositories', () => ({
   recordPayment: vi.fn(),
 }))
 
+vi.mock('../lib/domain-events', () => ({
+  emitDomainEvent: vi.fn(),
+}))
+
 import type * as Domain from '@pegasus/domain'
 
 vi.mock('@pegasus/domain', async (importOriginal) => {
@@ -44,6 +48,7 @@ import {
   recordPayment,
 } from '../repositories'
 import { calculateInvoiceBalance } from '@pegasus/domain'
+import { emitDomainEvent } from '../lib/domain-events'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -68,7 +73,11 @@ function buildApp() {
   registerTestErrorHandler(app)
   app.use('*', async (c, next) => {
     c.set('tenantId', 'test-tenant-id')
-    c.set('db', {} as unknown as PrismaClient)
+    // `$transaction` runs the callback with `tx === fakeDb` itself, so mocked
+    // repository functions resolve identically inside the transaction wrapper.
+    const fakeDb = {} as Record<string, unknown>
+    fakeDb['$transaction'] = vi.fn((cb: (tx: unknown) => unknown) => cb(fakeDb))
+    c.set('db', fakeDb as unknown as PrismaClient)
     await next()
   })
   app.route('/', billingHandler)
@@ -230,6 +239,7 @@ describe('billing handler', () => {
       const res = await buildApp().request('/inv-1/payments', post(validPayment))
       expect(res.status).toBe(404)
       expect((await json(res)).code).toBe('NOT_FOUND')
+      expect(emitDomainEvent).not.toHaveBeenCalled()
     })
 
     it('returns 400 VALIDATION_ERROR when method is invalid', async () => {
@@ -239,6 +249,62 @@ describe('billing handler', () => {
       )
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    // The handler computes balances in order: before the payment (from the
+    // pre-fetched invoice), after the payment (from recordPayment's refetch),
+    // then once more for the response body. mockReturnValueOnce chains model
+    // that sequence; the beforeEach mockReturnValue covers the response call.
+
+    it('does not emit invoice.paid for a partial payment (balance stays > 0)', async () => {
+      vi.mocked(findInvoiceById).mockResolvedValue(mockInvoice as never)
+      vi.mocked(recordPayment).mockResolvedValue(mockUpdatedInvoice as never)
+      vi.mocked(calculateInvoiceBalance)
+        .mockReturnValueOnce({ amount: 1000, currency: 'USD' } as never) // before
+        .mockReturnValueOnce({ amount: 500, currency: 'USD' } as never) // after
+      const res = await buildApp().request('/inv-1/payments', post(validPayment))
+      expect(res.status).toBe(201)
+      expect(emitDomainEvent).not.toHaveBeenCalled()
+    })
+
+    it('emits invoice.paid when the payment crosses the boundary to fully paid', async () => {
+      vi.mocked(findInvoiceById).mockResolvedValue(mockInvoice as never)
+      vi.mocked(recordPayment).mockResolvedValue(mockUpdatedInvoice as never)
+      vi.mocked(calculateInvoiceBalance)
+        .mockReturnValueOnce({ amount: 500, currency: 'USD' } as never) // before
+        .mockReturnValueOnce({ amount: 0, currency: 'USD' } as never) // after
+      const res = await buildApp().request('/inv-1/payments', post(validPayment))
+      expect(res.status).toBe(201)
+      expect(emitDomainEvent).toHaveBeenCalledTimes(1)
+      expect(emitDomainEvent).toHaveBeenCalledWith(expect.anything(), {
+        tenantId: 'test-tenant-id',
+        eventType: 'invoice.paid',
+        payload: {
+          invoiceId: 'inv-1',
+          moveId: 'move-1',
+          totalAmount: 1000,
+          totalCurrency: 'USD',
+        },
+      })
+    })
+
+    it('does not emit invoice.paid for a payment on an already-paid invoice', async () => {
+      vi.mocked(findInvoiceById).mockResolvedValue(mockInvoice as never)
+      vi.mocked(recordPayment).mockResolvedValue(mockUpdatedInvoice as never)
+      vi.mocked(calculateInvoiceBalance)
+        .mockReturnValueOnce({ amount: 0, currency: 'USD' } as never) // before
+        .mockReturnValueOnce({ amount: 0, currency: 'USD' } as never) // after
+      const res = await buildApp().request('/inv-1/payments', post(validPayment))
+      expect(res.status).toBe(201)
+      expect(emitDomainEvent).not.toHaveBeenCalled()
+    })
+
+    it('does not emit when the payment write fails', async () => {
+      vi.mocked(findInvoiceById).mockResolvedValue(mockInvoice as never)
+      vi.mocked(recordPayment).mockRejectedValue(new Error('db error'))
+      const res = await buildApp().request('/inv-1/payments', post(validPayment))
+      expect(res.status).toBe(500)
+      expect(emitDomainEvent).not.toHaveBeenCalled()
     })
   })
 })

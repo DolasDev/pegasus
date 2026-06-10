@@ -16,7 +16,13 @@ vi.mock('./middleware/tenant', () => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tenantMiddleware: async (c: any, next: () => Promise<void>) => {
     c.set('tenantId', 'test-tenant-id')
-    c.set('db', {})
+    // `$transaction` runs the callback with `tx === db` itself so mocked
+    // repository functions resolve identically inside transaction wrappers;
+    // `domainEvent.create` absorbs emitDomainEvent outbox writes.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db: any = { domainEvent: { create: vi.fn() } }
+    db.$transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(db))
+    c.set('db', db)
     // A tenant_admin principal so requirePermission-gated routes (incl. the
     // moves routes) pass via the offline Cedar backend.
     c.set('principal', {

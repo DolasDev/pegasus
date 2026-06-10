@@ -21,6 +21,11 @@ vi.mock('../repositories', () => ({
   countQuotes: vi.fn(),
   addLineItem: vi.fn(),
   finalizeQuote: vi.fn(),
+  acceptQuote: vi.fn(),
+}))
+
+vi.mock('../lib/domain-events', () => ({
+  emitDomainEvent: vi.fn(),
 }))
 
 import type * as Domain from '@pegasus/domain'
@@ -37,8 +42,10 @@ import {
   countQuotes,
   addLineItem,
   finalizeQuote,
+  acceptQuote,
 } from '../repositories'
 import { canFinalizeQuote } from '@pegasus/domain'
+import { emitDomainEvent } from '../lib/domain-events'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -63,7 +70,11 @@ function buildApp() {
   registerTestErrorHandler(app)
   app.use('*', async (c, next) => {
     c.set('tenantId', 'test-tenant-id')
-    c.set('db', {} as unknown as PrismaClient)
+    // `$transaction` runs the callback with `tx === fakeDb` itself, so mocked
+    // repository functions resolve identically inside the transaction wrapper.
+    const fakeDb = {} as Record<string, unknown>
+    fakeDb['$transaction'] = vi.fn((cb: (tx: unknown) => unknown) => cb(fakeDb))
+    c.set('db', fakeDb as unknown as PrismaClient)
     await next()
   })
   app.route('/', quotesHandler)
@@ -246,6 +257,76 @@ describe('quotes handler', () => {
       const res = await buildApp().request('/quote-1/finalize', post(null))
       expect(res.status).toBe(422)
       expect((await json(res)).code).toBe('INVALID_STATE')
+    })
+  })
+
+  // ── POST /:id/accept ──────────────────────────────────────────────────────
+
+  describe('POST /:id/accept', () => {
+    const mockSentQuote = { ...mockDraftQuote, status: 'SENT', lineItems: [mockLineItem] }
+
+    it('returns 200 with the accepted quote and emits quote.accepted', async () => {
+      vi.mocked(findQuoteById).mockResolvedValue(mockSentQuote as never)
+      vi.mocked(acceptQuote).mockResolvedValue({ ...mockSentQuote, status: 'ACCEPTED' } as never)
+      const res = await buildApp().request('/quote-1/accept', post(null))
+      expect(res.status).toBe(200)
+      const body = await json(res)
+      expect((body.data as JsonBody)['status']).toBe('ACCEPTED')
+      expect(acceptQuote).toHaveBeenCalledWith(expect.anything(), 'quote-1')
+      expect(emitDomainEvent).toHaveBeenCalledTimes(1)
+      expect(emitDomainEvent).toHaveBeenCalledWith(expect.anything(), {
+        tenantId: 'test-tenant-id',
+        eventType: 'quote.accepted',
+        payload: { quoteId: 'quote-1', moveId: 'move-1' },
+      })
+    })
+
+    it('returns 404 NOT_FOUND when quote does not exist and emits nothing', async () => {
+      vi.mocked(findQuoteById).mockResolvedValue(null)
+      const res = await buildApp().request('/quote-1/accept', post(null))
+      expect(res.status).toBe(404)
+      expect((await json(res)).code).toBe('NOT_FOUND')
+      expect(emitDomainEvent).not.toHaveBeenCalled()
+    })
+
+    it('returns 422 INVALID_STATE when quote is not SENT and emits nothing', async () => {
+      vi.mocked(findQuoteById).mockResolvedValue(mockDraftQuote as never)
+      const res = await buildApp().request('/quote-1/accept', post(null))
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('INVALID_STATE')
+      expect(acceptQuote).not.toHaveBeenCalled()
+      expect(emitDomainEvent).not.toHaveBeenCalled()
+    })
+
+    it('returns 422 INVALID_STATE for an already-ACCEPTED quote and emits nothing', async () => {
+      vi.mocked(findQuoteById).mockResolvedValue({
+        ...mockSentQuote,
+        status: 'ACCEPTED',
+      } as never)
+      const res = await buildApp().request('/quote-1/accept', post(null))
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('INVALID_STATE')
+      expect(emitDomainEvent).not.toHaveBeenCalled()
+    })
+
+    it('returns 422 and emits nothing when a concurrent request wins the accept race', async () => {
+      // Precheck sees SENT, but the conditional update inside the transaction
+      // finds the status already changed (acceptQuote CAS returns null).
+      vi.mocked(findQuoteById).mockResolvedValue(mockSentQuote as never)
+      vi.mocked(acceptQuote).mockResolvedValue(null)
+      const res = await buildApp().request('/quote-1/accept', post(null))
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('INVALID_STATE')
+      expect(emitDomainEvent).not.toHaveBeenCalled()
+    })
+
+    it('returns 500 INTERNAL_ERROR when the repository write fails (emit never reached)', async () => {
+      vi.mocked(findQuoteById).mockResolvedValue(mockSentQuote as never)
+      vi.mocked(acceptQuote).mockRejectedValue(new Error('db error'))
+      const res = await buildApp().request('/quote-1/accept', post(null))
+      expect(res.status).toBe(500)
+      expect((await json(res)).code).toBe('INTERNAL_ERROR')
+      expect(emitDomainEvent).not.toHaveBeenCalled()
     })
   })
 })

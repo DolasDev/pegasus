@@ -168,3 +168,19 @@ export async function finalizeQuote(db: PrismaClient, id: string): Promise<Quote
   await db.quote.update({ where: { id }, data: { status: 'SENT' } })
   return findQuoteById(db, id)
 }
+
+/**
+ * Transitions a SENT quote to ACCEPTED status. The update is a conditional
+ * compare-and-set on `status: SENT` so a concurrent accept (or any concurrent
+ * status change) cannot double-apply the transition — callers emit the
+ * quote.accepted domain event only when this returns a quote. Returns null
+ * when the quote does not exist or is no longer SENT.
+ */
+export async function acceptQuote(db: PrismaClient, id: string): Promise<Quote | null> {
+  const updated = await db.quote.updateMany({
+    where: { id, status: 'SENT' },
+    data: { status: 'ACCEPTED' },
+  })
+  if (updated.count === 0) return null
+  return findQuoteById(db, id)
+}

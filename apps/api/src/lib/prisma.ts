@@ -34,6 +34,11 @@ export const TENANT_SCOPED_MODELS = new Set([
   // WorkflowExecution is always tenant-owned (no GLOBAL case), so it is
   // auto-scoped here. Contrast with Workflow below.
   'WorkflowExecution',
+  // DomainEvent (outbox) rows are written by emitDomainEvent via the
+  // tenant-scoped client inside handler transactions. The future trigger
+  // dispatcher Lambda reads cross-tenant via the root `db`, which bypasses
+  // this extension — same precedent as the WorkflowExecution reconcile poller.
+  'DomainEvent',
   // Messaging — tenant-owned entities a tenant/admin handler reads via the
   // scoped client. The background capture/forward/purge jobs use the base
   // client (cross-tenant cron context) and are unaffected by this set.
