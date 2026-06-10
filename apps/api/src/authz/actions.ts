@@ -167,7 +167,7 @@ export const Actions = {
   ManageWorkflowTriggers: {
     id: 'ManageWorkflowTriggers',
     resourceType: 'Workflow',
-    permission: 'workflow:manage-triggers',
+    permission: 'workflow:manage_triggers',
   },
 } as const satisfies Record<string, ActionDef>
 
