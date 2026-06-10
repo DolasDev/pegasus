@@ -55,9 +55,25 @@ jobs:
       - name: Fix binary permissions
         run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
 
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
       - name: Install Playwright browsers
         working-directory: apps/e2e
-        run: node ../../node_modules/.bin/playwright install --with-deps chromium
+        run: |
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            node ../../node_modules/.bin/playwright install-deps chromium
+          else
+            node ../../node_modules/.bin/playwright install --with-deps chromium
+          fi
 
       - name: Sanity-check QA config is present
         run: |

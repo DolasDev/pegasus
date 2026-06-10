@@ -111,12 +111,11 @@ Models crew and vehicle availability.
 
 ### E2E Suite (`apps/e2e`)
 
-- **Run:** `npm run e2e` from `apps/e2e/`
+- **Run:** `npm run e2e` from `apps/e2e/` (root scripts: `e2e`, `e2e:remote`, `e2e:qa`)
 - **Config:** `apps/e2e/playwright.config.ts` — reads `.env.test` for `DATABASE_URL`, `TEST_TENANT_ID`, API base URL, etc.
 - **Setup:** `apps/e2e/global-setup.ts` — checks for Postgres via `pg_isready`; starts Docker Compose if needed.
 - **Install browsers (once):** `npm run install:browsers` from `apps/e2e/`
-- API spec files: `tests/api/{health,customers,moves,quotes}.spec.ts`
-- Browser spec files: `tests/browser/landing.spec.ts`
+- **Docs:** `apps/e2e/README.md` — execution modes, spec layout, tag contract, CI skip-guard floors. Don't enumerate spec files here; the README is the index.
 
 > **Note**: For code patterns, architectural decisions, and other system rules, see the agent files below.
 

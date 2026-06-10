@@ -193,6 +193,9 @@ jobs:
       TEST_TENANT_ID: e2e00000-0000-0000-0000-000000000001
       SKIP_AUTH: 'true'
       CI: 'true'
+      # Floor for the silent-skip guard below. ~34 tests execute today; keep
+      # the floor deliberately loose. Bump when specs are added/removed.
+      E2E_MIN_EXECUTED_TESTS: '30'
 
     steps:
       - uses: actions/checkout@v6
@@ -208,9 +211,25 @@ jobs:
       - name: Fix binary permissions
         run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
 
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
       - name: Install Playwright browsers
         working-directory: apps/e2e
-        run: node ../../node_modules/.bin/playwright install --with-deps chromium
+        run: |
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            node ../../node_modules/.bin/playwright install-deps chromium
+          else
+            node ../../node_modules/.bin/playwright install --with-deps chromium
+          fi
 
       - name: Initialise database schema and extensions
         run: |
@@ -230,9 +249,23 @@ jobs:
       - name: Build @pegasus/domain
         run: node node_modules/.bin/turbo run build --filter=@pegasus/domain
 
+      # `html` is kept in the reporter list so the failure artifact upload
+      # below still has a playwright-report/ to ship.
       - name: Run E2E tests
         working-directory: apps/e2e
-        run: node ../../node_modules/.bin/playwright test
+        run: node ../../node_modules/.bin/playwright test --reporter=list,html,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: results.json
+
+      - name: Guard against silent-skip false positives
+        working-directory: apps/e2e
+        run: |
+          ran=$(jq '.stats.expected + .stats.flaky' results.json)
+          echo "Executed (passed) tests: $ran"
+          if [ "$ran" -lt "$E2E_MIN_EXECUTED_TESTS" ]; then
+            echo "::error::Only $ran tests executed — the suite silently skipped (E2E_SKIP / missing env?). Floor is $E2E_MIN_EXECUTED_TESTS."
+            exit 1
+          fi
 
       - name: Upload Playwright report
         if: failure()

@@ -168,6 +168,10 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    env:
+      # Floor for the silent-skip guard below. ~10 tests run in remote mode
+      # today; keep the floor deliberately loose. Bump when specs are added.
+      E2E_MIN_EXECUTED_TESTS: '8'
     steps:
       - uses: actions/checkout@v6
 
@@ -182,9 +186,25 @@ jobs:
       - name: Fix binary permissions
         run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
 
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
       - name: Install Playwright browsers
         working-directory: apps/e2e
-        run: npm run install:browsers
+        run: |
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            node ../../node_modules/.bin/playwright install-deps chromium
+          else
+            node ../../node_modules/.bin/playwright install --with-deps chromium
+          fi
 
       - name: Download CDK outputs
         uses: actions/download-artifact@v8
@@ -237,7 +257,20 @@ jobs:
           E2E_STAGING_ADMIN_PASSWORD: ${{ secrets.E2E_STAGING_ADMIN_PASSWORD }}
           E2E_STAGING_TENANT_ID: ${{ vars.E2E_STAGING_TENANT_ID }}
           AWS_REGION: us-east-1
-        run: npx playwright test
+          PLAYWRIGHT_JSON_OUTPUT_NAME: results.json
+        # `html` is kept in the reporter list so the report artifact upload
+        # below still has a playwright-report/ to ship.
+        run: npx playwright test --reporter=list,html,json
+
+      - name: Guard against silent-skip false positives
+        working-directory: apps/e2e
+        run: |
+          ran=$(jq '.stats.expected + .stats.flaky' results.json)
+          echo "Executed (passed) tests: $ran"
+          if [ "$ran" -lt "$E2E_MIN_EXECUTED_TESTS" ]; then
+            echo "::error::Only $ran tests executed — the suite silently skipped (missing env / over-filtering?). Floor is $E2E_MIN_EXECUTED_TESTS."
+            exit 1
+          fi
 
       - name: Upload Playwright report
         if: always()
