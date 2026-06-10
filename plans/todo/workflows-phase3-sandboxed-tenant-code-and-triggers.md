@@ -50,7 +50,7 @@ four things, all of which are Phase 3:
   The zip contents are **never** validated or executed.
 - **Schema**: `Workflow` has no trigger/schedule/limit fields;
   `WorkflowExecution` has `triggeredByUserId` but no trigger provenance.
-- **Events**: the only event infrastructure is `PegasusEvent` — an *inbound*
+- **Events**: the only event infrastructure is `PegasusEvent` — an _inbound_
   M2M integration queue (`apps/api/src/handlers/events.ts`, poll-based).
   **The API emits no domain events anywhere** (no outbox, no EventBridge, no
   emission on quote-accept / move-status-change / invoice-paid).
@@ -62,7 +62,7 @@ breaks that. Two consequences shape the whole design:
 
 - **The shared broker secret cannot reach any process that imports tenant
   code.** Python import = arbitrary code execution in-process; tenant code
-  could read `WORKFLOW_BROKER_SECRET` from env and use it to mint *any*
+  could read `WORKFLOW_BROKER_SECRET` from env and use it to mint _any_
   tenant's runtime token (the endpoint only needs an executionId) or forge
   status PATCHes. The isolation boundary must be: **a runner container only
   ever holds credentials scoped to one tenant.**
@@ -83,11 +83,11 @@ breaks that. Two consequences shape the whole design:
 - Temporal Cloud remains the orchestrator; workers are self-hosted Fargate
   in the WireGuard VPC (`PRIVATE_WITH_EGRESS` subnets + existing NAT).
 - Upload path is unchanged — same SDK, manifest, finalize flow. Phase 3
-  changes what happens *after* upload, not authoring.
+  changes what happens _after_ upload, not authoring.
 - Runtime tokens stay per-workflow `vnd_` service accounts, KMS-encrypted at
   rest, fetched live via broker, never in Temporal history.
 - The curated stdlib keeps running exactly as today (shared
-  `pegasus-stdlib-<env>` queue, trusted image). Phase 3 adds a *parallel*
+  `pegasus-stdlib-<env>` queue, trusted image). Phase 3 adds a _parallel_
   untrusted lane; it does not rebuild the trusted one.
 
 ### Proposed (default unless overridden during planning)
@@ -117,7 +117,7 @@ breaks that. Two consequences shape the whole design:
 - **Trigger model: one `WorkflowTrigger` table for both kinds.**
   `kind: EVENT | SCHEDULE`; EVENT rows carry `eventType` + optional JSON
   filter; SCHEDULE rows carry a cron expression realized as a **Temporal
-  Schedule** (native, no new infra). Both fire through the *same* internal
+  Schedule** (native, no new infra). Both fire through the _same_ internal
   run path as `POST /:id/run`, with provenance recorded on the execution.
 - **Domain events via transactional outbox.** New `DomainEvent` table +
   `emitDomainEvent()` helper written in the same Prisma transaction as the
@@ -127,7 +127,7 @@ breaks that. Two consequences shape the whole design:
   — the outbox keeps emission atomic with the domain write, which a direct
   bus publish can't.
 - **Sequencing: triggers land first.** Track B is independent of the
-  sandbox, lower-risk, and immediately useful — triggers firing *curated*
+  sandbox, lower-risk, and immediately useful — triggers firing _curated_
   (incl. forked-curated) workflows is real tenant value on its own. Track A
   is the heavy lift. If this phase feels too big as one arc, split into
   **3A = triggers** and **3B = sandboxed tenant code** at promotion time.
@@ -176,11 +176,17 @@ breaks that. Two consequences shape the whole design:
 
 ### Track B — triggers (no sandbox dependency; fires curated/forked workflows)
 
-**Unit 1 — Domain-event outbox.** `DomainEvent` model
-(`id, tenantId, eventType, payload Json, occurredAt, dispatchedAt?`,
-indexed on `[dispatchedAt, occurredAt]`) + `emitDomainEvent(tx, ...)` helper
-+ emit points inside the existing handler transactions for the five
-launch events (Resolved #4). Purely additive; nothing consumes it yet.
+**Unit 1 — Domain-event outbox. ✅ DONE (#230 → `fb8ffc7`, deployed
+2026-06-10).** `DomainEvent` model + `emitDomainEvent(tx, ...)` helper
+(`apps/api/src/lib/domain-events.ts` is the canonical taxonomy) + emits
+inside handler transactions for the five launch events. **Scope addition
+during implementation:** nothing in the codebase ever wrote
+`QuoteStatus.ACCEPTED`, so a minimal `POST /quotes/:id/accept`
+(SENT → ACCEPTED via conditional-update CAS; 422 for the race loser) was
+added to host `quote.accepted`. `invoice.paid` emits only when a payment
+crosses the computed balance to <= 0, with the before-balance refetched
+inside the tx to prevent concurrent double-emits. Post-merge follow-up
+still open: staging smoke (accept a quote → `domain_events` row).
 
 **Unit 2 — `WorkflowTrigger` schema + CRUD API.** Model
 (`id, tenantId, workflowId FK, kind EVENT|SCHEDULE, eventType?, filter Json?,
@@ -216,7 +222,8 @@ source. Follows the Unit-7 (Phase 2) executions-list patterns.
 (verify S3 object before first registration), zip-structure validation
 (entry points resolvable, 10 MB size cap per Resolved #3, no deps per the
 v1 dependency decision), `Workflow.executable` derived server-side. Schema
-+ finalize-handler change; nothing executes yet.
+
+- finalize-handler change; nothing executes yet.
 
 **Unit 7 — Per-tenant broker credentials.** New credential type scoped to
 one tenantId; broker endpoints accept either (shared secret = legacy stdlib
