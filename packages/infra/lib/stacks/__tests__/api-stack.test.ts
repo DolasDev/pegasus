@@ -223,11 +223,46 @@ describe('ApiStack — HTTP API Gateway', () => {
     })
   })
 
-  it('configures CORS to allow all origins', () => {
+  it('configures CORS to allow all origins by default (dev — no corsAllowedOrigins prop)', () => {
     const template = synthApiStack()
     template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
       CorsConfiguration: Match.objectLike({
         AllowOrigins: Match.arrayWith(['*']),
+      }),
+    })
+  })
+
+  it('restricts CORS to the provided allowlist and mirrors it into the Lambda env', () => {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const apiStack = new ApiStack(app, 'TestApiWithCors', {
+      corsAllowedOrigins: ['https://pegasus.dolas.dev', 'https://admin.pegasus.dolas.dev'],
+    })
+    const template = Template.fromStack(apiStack)
+
+    template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
+      CorsConfiguration: Match.objectLike({
+        AllowOrigins: ['https://pegasus.dolas.dev', 'https://admin.pegasus.dolas.dev'],
+      }),
+    })
+
+    // The Hono layer reads the same allowlist from CORS_ALLOWED_ORIGINS.
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Handler: 'index.handler',
+      Environment: Match.objectLike({
+        Variables: Match.objectLike({
+          CORS_ALLOWED_ORIGINS: 'https://pegasus.dolas.dev,https://admin.pegasus.dolas.dev',
+        }),
+      }),
+    })
+  })
+
+  it('applies default-route throttling on the $default stage', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
+      StageName: '$default',
+      DefaultRouteSettings: Match.objectLike({
+        ThrottlingRateLimit: 25,
+        ThrottlingBurstLimit: 50,
       }),
     })
   })

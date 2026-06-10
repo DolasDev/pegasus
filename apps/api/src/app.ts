@@ -80,7 +80,21 @@ const app = new Hono<AppEnv>()
 // Correlation ID must be first so every subsequent log line and error response
 // carries the request-scoped trace identifier.
 app.use('*', correlationMiddleware)
-app.use('*', cors())
+// CORS allowlist — driven by CORS_ALLOWED_ORIGINS (comma-separated, injected by
+// the CDK ApiStack per environment). Empty/unset (local dev, E2E, on-prem) →
+// reflect any origin, preserving the previous permissive behaviour. In deployed
+// environments API Gateway's corsPreflight is authoritative for OPTIONS; this
+// Hono layer is defense in depth for the direct-served path.
+const allowedOrigins = (process.env['CORS_ALLOWED_ORIGINS'] ?? '').split(',').filter(Boolean)
+app.use(
+  '*',
+  cors({
+    origin: (origin) =>
+      allowedOrigins.length === 0 || allowedOrigins.includes(origin) ? origin : '',
+    allowHeaders: ['Content-Type', 'Authorization', 'x-correlation-id', 'X-Tenant-Slug'],
+    exposeHeaders: ['x-correlation-id'],
+  }),
+)
 
 // ---------------------------------------------------------------------------
 // Global error handler
@@ -224,6 +238,14 @@ app.route('/api/v1', m2mV1)
 //   })
 // ---------------------------------------------------------------------------
 const v1 = new Hono<AppEnv>()
+
+// Fail-fast guard: SKIP_AUTH must never reach a production runtime. The Lambda
+// always sets NODE_ENV=production (see packages/infra api-stack.ts), so a
+// mis-set SKIP_AUTH env var fails closed at cold start instead of silently
+// opening the entire API.
+if (process.env['SKIP_AUTH'] === 'true' && process.env['NODE_ENV'] === 'production') {
+  throw new Error('SKIP_AUTH=true is forbidden when NODE_ENV=production')
+}
 
 if (process.env['SKIP_AUTH'] === 'true') {
   logger.warn('SKIP_AUTH is enabled — all authentication is bypassed. Do NOT use in production.')

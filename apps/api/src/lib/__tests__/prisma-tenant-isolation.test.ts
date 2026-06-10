@@ -817,74 +817,78 @@ describe.skipIf(!hasDb)('createTenantDb — cross-tenant isolation (integration)
       expect(stillExists).not.toBeNull()
     })
   })
+})
 
-  // -------------------------------------------------------------------------
-  // Schema-sync assertion: TENANT_SCOPED_MODELS must not contain models that
-  // lack a tenantId column, and every NEW model with a tenantId column must
-  // either be added to TENANT_SCOPED_MODELS or to the explicit exclusion list
-  // below. This test fails immediately when a new model with tenantId is added
-  // to the schema but neither scoped nor acknowledged.
-  // -------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Schema-sync assertion: TENANT_SCOPED_MODELS must not contain models that
+// lack a tenantId column, and every NEW model with a tenantId column must
+// either be added to TENANT_SCOPED_MODELS or to the explicit exclusion list
+// below. This test fails immediately when a new model with tenantId is added
+// to the schema but neither scoped nor acknowledged.
+//
+// Deliberately OUTSIDE the skipIf(!hasDb) block above — it only reads
+// schema.prisma from disk, needs no database, and must run everywhere
+// (including machines/CI legs without DATABASE_URL).
+// ---------------------------------------------------------------------------
 
-  describe('Schema-sync: TENANT_SCOPED_MODELS matches schema.prisma', () => {
-    it('TENANT_SCOPED_MODELS contains only models that have a tenantId field, and all new tenantId models are acknowledged', () => {
-      const schemaPath = join(__dirname, '../../../prisma/schema.prisma')
-      const schemaText = readFileSync(schemaPath, 'utf-8')
+describe('Schema-sync: TENANT_SCOPED_MODELS matches schema.prisma', () => {
+  it('TENANT_SCOPED_MODELS contains only models that have a tenantId field, and all new tenantId models are acknowledged', () => {
+    const schemaPath = join(__dirname, '../../../prisma/schema.prisma')
+    const schemaText = readFileSync(schemaPath, 'utf-8')
 
-      // Models that have a tenantId field but are intentionally excluded from
-      // TENANT_SCOPED_MODELS because they are not queried via the tenant-scoped
-      // Prisma client (they use a separate auth/access path).
-      const INTENTIONALLY_UNSCOPED = new Set([
-        'TenantUser', // accessed via tenant middleware directly, not by tenant API handlers
-        'AuthSession', // short-lived auth handshake record — no tenant-API reads
-        'ApiClient', // M2M auth — accessed by api-client-auth middleware, not tenant handlers
-        'VpnPeer', // admin/platform-only — accessed by platform_admin routes and the hub reconcile agent (scope vpn:sync), never by tenant handlers
-        'Workflow', // visibility=GLOBAL requires reading rows owned by another tenant; the repo scopes manually via OR [{tenantId}, {visibility: 'GLOBAL'}]
-        // Messaging — background capture/forward path. The webhook (pre-tenant),
-        // capture worker, sync/renewal/token-refresh/purge crons all use the
-        // base client and resolve tenant from the subscriptionId / connection /
-        // row, so these are never read via the tenant-scoped client.
-        'RingCentralSubscription',
-        'RingCentralSyncCursor',
-        'InboundWebhookEvent',
-        'MessageForwardOutbox',
-      ])
+    // Models that have a tenantId field but are intentionally excluded from
+    // TENANT_SCOPED_MODELS because they are not queried via the tenant-scoped
+    // Prisma client (they use a separate auth/access path).
+    const INTENTIONALLY_UNSCOPED = new Set([
+      'TenantUser', // accessed via tenant middleware directly, not by tenant API handlers
+      'AuthSession', // short-lived auth handshake record — no tenant-API reads
+      'ApiClient', // M2M auth — accessed by api-client-auth middleware, not tenant handlers
+      'VpnPeer', // admin/platform-only — accessed by platform_admin routes and the hub reconcile agent (scope vpn:sync), never by tenant handlers
+      'Workflow', // visibility=GLOBAL requires reading rows owned by another tenant; the repo scopes manually via OR [{tenantId}, {visibility: 'GLOBAL'}]
+      // Messaging — background capture/forward path. The webhook (pre-tenant),
+      // capture worker, sync/renewal/token-refresh/purge crons all use the
+      // base client and resolve tenant from the subscriptionId / connection /
+      // row, so these are never read via the tenant-scoped client.
+      'RingCentralSubscription',
+      'RingCentralSyncCursor',
+      'InboundWebhookEvent',
+      'MessageForwardOutbox',
+    ])
 
-      // Extract model names that contain a tenantId field declaration.
-      // Strategy: parse model blocks, then check each block for "tenantId".
-      const modelBlockRegex = /^model\s+(\w+)\s*\{([^}]*)\}/gm
-      const modelsWithTenantId: string[] = []
+    // Extract model names that contain a tenantId field declaration.
+    // Strategy: parse model blocks, then check each block for "tenantId".
+    const modelBlockRegex = /^model\s+(\w+)\s*\{([^}]*)\}/gm
+    const modelsWithTenantId: string[] = []
 
-      let match: RegExpExecArray | null
-      while ((match = modelBlockRegex.exec(schemaText)) !== null) {
-        const modelName = match[1]!
-        const body = match[2]!
-        // Look for a tenantId field declaration line
-        if (/\btenantId\b/.test(body)) {
-          modelsWithTenantId.push(modelName)
-        }
+    let match: RegExpExecArray | null
+    while ((match = modelBlockRegex.exec(schemaText)) !== null) {
+      const modelName = match[1]!
+      const body = match[2]!
+      // Look for a tenantId field declaration line
+      if (/\btenantId\b/.test(body)) {
+        modelsWithTenantId.push(modelName)
       }
+    }
 
-      // Every model with tenantId must be either scoped or intentionally excluded.
-      // If neither, the developer forgot to update one of the two sets.
-      for (const model of modelsWithTenantId) {
-        const isScoped = TENANT_SCOPED_MODELS.has(model)
-        const isExcluded = INTENTIONALLY_UNSCOPED.has(model)
-        expect(
-          isScoped || isExcluded,
-          `Model "${model}" has a tenantId field but is neither in TENANT_SCOPED_MODELS nor INTENTIONALLY_UNSCOPED. ` +
-            `Add it to one of those sets in prisma.ts / this test.`,
-        ).toBe(true)
-      }
+    // Every model with tenantId must be either scoped or intentionally excluded.
+    // If neither, the developer forgot to update one of the two sets.
+    for (const model of modelsWithTenantId) {
+      const isScoped = TENANT_SCOPED_MODELS.has(model)
+      const isExcluded = INTENTIONALLY_UNSCOPED.has(model)
+      expect(
+        isScoped || isExcluded,
+        `Model "${model}" has a tenantId field but is neither in TENANT_SCOPED_MODELS nor INTENTIONALLY_UNSCOPED. ` +
+          `Add it to one of those sets in prisma.ts / this test.`,
+      ).toBe(true)
+    }
 
-      // TENANT_SCOPED_MODELS must not reference models that have no tenantId.
-      // This catches stale entries after a model is renamed or removed.
-      for (const scopedModel of TENANT_SCOPED_MODELS) {
-        expect(
-          modelsWithTenantId.includes(scopedModel),
-          `TENANT_SCOPED_MODELS contains "${scopedModel}" but that model has no tenantId in schema.prisma`,
-        ).toBe(true)
-      }
-    })
+    // TENANT_SCOPED_MODELS must not reference models that have no tenantId.
+    // This catches stale entries after a model is renamed or removed.
+    for (const scopedModel of TENANT_SCOPED_MODELS) {
+      expect(
+        modelsWithTenantId.includes(scopedModel),
+        `TENANT_SCOPED_MODELS contains "${scopedModel}" but that model has no tenantId in schema.prisma`,
+      ).toBe(true)
+    }
   })
 })
