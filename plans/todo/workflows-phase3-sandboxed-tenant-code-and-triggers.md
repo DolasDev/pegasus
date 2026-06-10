@@ -3,11 +3,37 @@
 **Status: IN PROGRESS — Track B (triggers, Units 1–5) ✅ COMPLETE and
 LIVE on staging + prod as of 2026-06-10** (PRs #230–#234). Scoped
 2026-06-09; all 5 open questions resolved with Steve — see "Resolved
-decisions". **Next: Track A (sandboxed tenant code), starting with
-Unit 6 (artifact integrity) and Unit 7 (per-tenant broker credentials —
-the security keystone; land + review it before any runner exists).**
-Outstanding non-blocking follow-up: the Track B staging UI smoke (see
-the Track B banner below).
+decisions". **Next: Track A Unit 6 (artifact integrity), then Unit 7
+(per-tenant broker credentials — the security keystone; land + review it
+before any runner exists).**
+
+## Resume-session checklist (session paused 2026-06-10, mid-Track-A)
+
+1. Read this file top-to-bottom + the `project_workflows_phase2_status`
+   memory (carries the Phase 3 ledger + Track B lessons).
+2. **Verify the last deploy finished green:** session ended with the
+   Unit 5 tenant-web deploy (`eccdf11`) in progress + a plans-only run
+   queued behind it. `gh run list --workflow deploy.yml --limit 3` —
+   if a run failed or was cancelled, fix/redispatch FIRST
+   (`[[feedback_rapid_main_pushes_cancel_deploy]]`).
+3. **Run the Track B staging smoke** (now fully exercisable through the
+   UI — see the Track B banner below). ~10 min, needs a staging login.
+4. **Unit 6 was in flight and was cleanly aborted** (worktree + branch
+   `phase3/06-artifact-integrity` deleted; no commits, no PR — nothing
+   on remote). Re-spawn it from scratch using the "Unit 6 worker
+   guidance" subsection below, which preserves the implementation notes
+   the aborted run was using.
+5. The session's execution pattern (worked 5-for-5): spawn ONE worker
+   agent per unit in an isolated worktree (units share `schema.prisma` —
+   never parallel), worker self-reviews via the code-review skill +
+   runs the unit's verification recipe + opens a PR; coordinator
+   re-reviews the diff (real bugs were found this way in Unit 1),
+   gates on the 5 required CI checks, squash-merges, deletes branch +
+   worktree, marks the unit done in this file, watches the deploy.
+   Known frictions: `gh` GraphQL intermittently 401s — REST fallbacks
+   work (`gh api -X PUT .../pulls/N/merge`); one Postgres
+   service-container CI flake (rerun fixed it); permission strings must
+   match `/^[a-z_]+:[a-z_]+$/` (underscores).
 
 **Predecessors:**
 
@@ -265,12 +291,42 @@ execution rows. v1 cut: no in-place filter/cron editing — PATCH is
 
 ### Track A — sandboxed tenant-code execution
 
-**Unit 6 — Artifact integrity + eligibility.** sha256 recorded at finalize
-(verify S3 object before first registration), zip-structure validation
+**Unit 6 — Artifact integrity + eligibility. ⬜ NEXT (a first attempt was
+cleanly aborted at session end 2026-06-10 — no commits/PR; re-spawn from
+scratch).** sha256 recorded at finalize, zip-structure validation
 (entry points resolvable, 10 MB size cap per Resolved #3, no deps per the
-v1 dependency decision), `Workflow.executable` derived server-side. Schema
+v1 dependency decision), `Workflow.executable` derived server-side.
+Schema + finalize-handler change; nothing executes differently yet (run
+path keeps the curated-names gate until Unit 10).
 
-- finalize-handler change; nothing executes yet.
+_Unit 6 worker guidance (preserved from the aborted run's brief):_
+
+- Schema: `Workflow.artifactSha256 String?`, `artifactSizeBytes Int?`,
+  `executable Boolean @default(false)` — nullable/default-false so every
+  pre-existing row stays valid (they become executable on re-upload; the
+  stdlib refreshes on its next publish; curated execution unaffected).
+  `Workflow` stays INTENTIONALLY_UNSCOPED. Hand-write the migration
+  (style: `20260610150000_add_workflow_triggers`).
+- New `apps/api/src/lib/workflow-artifact.ts`, **no new deps**: sha256
+  via node:crypto + a hand-written zip central-directory reader (EOCD
+  backward-scan within the last 65557 bytes; entry NAMES only, no
+  decompression; reject non-zip, zip64, >10k entries, `..`/absolute
+  paths). Commit small fixture zips under `__tests__/fixtures/`
+  (generate once with system `zip`/python3 zipfile).
+- Finalize: S3 HEAD size pre-check → 422 `ARTIFACT_TOO_LARGE`; GET +
+  validate → 422 `ARTIFACT_INVALID` with problems array, row NOT
+  created; success persists sha/size/`executable: true`. Fork: S3 copy
+  is byte-identical — propagate integrity fields from source, no
+  re-download. Response shapes stay additive.
+- **CRITICAL — SDK parity tripwire:** derive the entry-point→zip-path
+  mapping from what `pegasus-workflows package` (SDK) ACTUALLY produces
+  (ground truth: `packages/workflows-sdk-python/` packaging code +
+  `packages/workflows-stdlib/pegasus-workflows.toml`), and add a test
+  asserting the resolver accepts the real stdlib layout — otherwise the
+  next `publish-stdlib.yml` tag run breaks. The aborted run had just
+  confirmed this ground truth when stopped; re-derive it.
+- Verify: prisma validate/generate, root typecheck,
+  `npm test -w apps/api`, lint.
 
 **Unit 7 — Per-tenant broker credentials.** New credential type scoped to
 one tenantId; broker endpoints accept either (shared secret = legacy stdlib
