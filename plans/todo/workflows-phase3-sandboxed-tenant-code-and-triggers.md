@@ -116,9 +116,12 @@ breaks that. Two consequences shape the whole design:
   dispatcher owns this.
 - **Trigger model: one `WorkflowTrigger` table for both kinds.**
   `kind: EVENT | SCHEDULE`; EVENT rows carry `eventType` + optional JSON
-  filter; SCHEDULE rows carry a cron expression realized as a **Temporal
-  Schedule** (native, no new infra). Both fire through the _same_ internal
-  run path as `POST /:id/run`, with provenance recorded on the execution.
+  filter; SCHEDULE rows carry a cron expression. ~~Realized as a Temporal
+  Schedule~~ → **revised at Unit-3 review: the dispatcher Lambda evaluates
+  due cron triggers each tick** (see Unit 4 for why Temporal Schedules
+  don't fit the execution-row/broker contract). Both kinds fire through
+  the _same_ internal run path as `POST /:id/run`, with provenance
+  recorded on the execution.
 - **Domain events via transactional outbox.** New `DomainEvent` table +
   `emitDomainEvent()` helper written in the same Prisma transaction as the
   state change; a poller Lambda (mirror the reconcile-poller pattern,
@@ -202,18 +205,36 @@ nullable. SCHEDULE rows stored but INERT until Unit 4; EVENT rows wait
 for the Unit 3 dispatcher. Known v1 limitation: a set `filter` can't be
 PATCH-cleared to null (delete + recreate).
 
-**Unit 3 — Trigger dispatcher.** Poller Lambda (clone the reconcile-poller
-shape: EventBridge 1-min rate, root `db`, bounded batch) that drains
-undispatched `DomainEvent` rows, matches enabled EVENT triggers on
-`(tenantId, eventType)` + filter, and starts executions via a shared
-internal run function extracted from the `POST /:id/run` handler. Idempotency
-via the existing `REJECT_DUPLICATE` Temporal id scheme keyed on
-`(triggerId, domainEventId)`.
+**Unit 3 — Trigger dispatcher. ✅ DONE (#232 → `33afb07`, 2026-06-10).**
+`lambda-dispatch-workflow-triggers.ts` (EventBridge 1-min rate, root `db`,
+100-events/tick cap with backlog metric) + the shared run function
+extracted to `apps/api/src/lib/start-workflow-execution.ts` (manual
+endpoint wire-identical — handler tests unchanged). Idempotency layers:
+deterministic Temporal id `wf/<tenantId>/<name>/trg/<triggerId>/<eventId>`
+persisted on the row at create, row pre-check on redelivery,
+`REJECT_DUPLICATE` as backstop, conditional `dispatchedAt` stamp last.
+**v1 filter contract: shallow top-level strict equality, scalars only;
+empty/null filter = match-all** (Unit 5's UI explains this). Per-trigger
+failure isolation; `START_FAILED` stamps the event (the FAILED row is the
+record — no auto-redelivery). Metrics: `DomainEventsDispatched`,
+`WorkflowTriggerFired`, `WorkflowTriggerSkipped{Reason}`,
+`DomainEventDispatchBacklog`. Post-merge follow-up: staging smoke
+(trigger on `quote.accepted` → accept quote → EVENT execution).
 
-**Unit 4 — Scheduled triggers.** SCHEDULE-kind triggers create/update/delete
-a Temporal Schedule (`pegasus-trigger-<triggerId>`) targeting the same run
-path. Reconcile drift (DB row ↔ Temporal Schedule) in the dispatcher or a
-slow poller.
+**Unit 4 — Scheduled triggers. ⚠️ DESIGN REVISED at Unit-3 review
+(was: Temporal Schedules).** Temporal Schedule actions start workflows
+directly, bypassing the execution-row + broker contract every run depends
+on (the runtime-token endpoint requires a QUEUED/RUNNING execution row) —
+wiring Schedules in would need a shim workflow or row-less runs. Instead:
+the dispatcher Lambda also evaluates due SCHEDULE triggers each tick — a
+dependency-free 5-field cron matcher answers "does minute M match";
+deterministic id `wf/<tenantId>/<name>/trg/<triggerId>/<fire-minute>`
+gives idempotency via the existing pre-check machinery (no schema
+change). **No catch-up:** a missed tick (Lambda downtime) skips that
+fire-minute — documented v1 semantics. Temporal Schedules can be
+revisited if Track A's runner redesign changes the broker contract.
+(Allowed override: the trigger model was a "Proposed" decision, not
+locked.)
 
 **Unit 5 — Trigger UI.** `settings.workflows.tsx` per-workflow "Triggers"
 section: list/create/enable/disable (event-type dropdown from the taxonomy,
@@ -274,8 +295,8 @@ executions.
   `pegasus-temporal-worker`) + the same out-of-band CI IAM inline-policy
   step Phase 2 Unit 5 needed.
 - Temporal Cloud: confirm per-tenant task-queue count is uncapped on our
-  plan (queues are lightweight, but verify) and whether Schedules are
-  available on the current tier (Track B Unit 4).
+  plan (queues are lightweight, but verify). (Schedules-tier check dropped
+  — Unit 4 no longer uses Temporal Schedules.)
 - No new secrets expected — per-tenant broker creds are minted/KMS-wrapped
   by the API, not provisioned in Secrets Manager.
 
