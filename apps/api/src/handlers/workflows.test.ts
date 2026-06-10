@@ -1035,6 +1035,36 @@ describe('workflows handler', () => {
       expect(res.status).toBe(400)
     })
 
+    // Unit 4: validation is the dispatcher's real parser (lib/cron.ts), not
+    // the Unit-2 charset regex — semantically invalid expressions that the
+    // regex admitted are now 400s at create time.
+    it('rejects a semantically invalid cron expression (out-of-range minute)', async () => {
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'SCHEDULE', cronExpression: '61 * * * *' }),
+      )
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    it('rejects 7-as-Sunday (v1 dialect uses 0-6 only)', async () => {
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'SCHEDULE', cronExpression: '0 9 * * 7' }),
+      )
+      expect(res.status).toBe(400)
+    })
+
+    it('accepts a full-dialect cron expression (lists, ranges, steps)', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockTriggerRepo.create.mockResolvedValue(scheduleTriggerRow)
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'SCHEDULE', cronExpression: '*/15 9-17 1,15 * 1-5' }),
+      )
+      expect(res.status).toBe(201)
+    })
+
     it('rejects a filter that is an array', async () => {
       const res = await buildApp().request(
         '/wf-1/triggers',
@@ -1211,6 +1241,17 @@ describe('workflows handler', () => {
         patch({ cronExpression: 'not cron' }),
       )
       expect(res.status).toBe(400)
+    })
+
+    it('rejects a semantically invalid cronExpression on PATCH (parser-backed, Unit 4)', async () => {
+      mockTriggerRepo.findById.mockResolvedValue(scheduleTriggerRow)
+      const res = await buildApp().request(
+        '/wf-1/triggers/trig-2',
+        patch({ cronExpression: '61 * * * *' }),
+      )
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+      expect(mockTriggerRepo.update).not.toHaveBeenCalled()
     })
 
     it('rejects a kind change (strict body)', async () => {

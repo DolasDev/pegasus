@@ -44,6 +44,7 @@ import {
   provisionRuntimeServiceAccount,
   startWorkflowExecution,
 } from '../lib/start-workflow-execution'
+import { parseCronExpression } from '../lib/cron'
 import { DOMAIN_EVENT_TYPES } from '../lib/domain-events'
 import { logger } from '../lib/logger'
 
@@ -119,15 +120,14 @@ const LIST_MAX_LIMIT = 200
 const DOMAIN_EVENT_TYPE_SET: ReadonlySet<string> = new Set(DOMAIN_EVENT_TYPES)
 
 /**
- * Conservative shape check for a 5-field cron expression (minute, hour,
- * day-of-month, month, day-of-week): single-space-separated fields built from
- * digits, letters (month/day names), `*`, `,`, `-`, `/` and `?`. Deliberately
- * NOT a semantic validator — full validation (field ranges, step values,
- * impossible dates) happens when Unit 4 realizes the trigger as a Temporal
- * Schedule. No new dependencies.
+ * Validation error for a cronExpression the Unit-4 dispatcher cannot evaluate
+ * — semantic validation via the SAME parser (lib/cron.ts) the dispatcher uses
+ * each tick, so "stored" always means "fireable". (Unit 2 shipped a charset
+ * regex only; rows it admitted that the parser rejects are skipped by the
+ * dispatcher as INVALID_CRON rather than crashing the tick.)
  */
-const CRON_FIELD = '[0-9A-Za-z*,/?-]+'
-const CRON_EXPRESSION_REGEX = new RegExp(`^${CRON_FIELD}(?: ${CRON_FIELD}){4}$`)
+const INVALID_CRON_MESSAGE =
+  'cronExpression must be a valid 5-field cron expression (minute hour day-of-month month day-of-week, UTC) using *, numbers, commas, ranges (a-b), and steps (*/n, a-b/n)'
 
 /** True for a plain JSON object — rejects arrays, null, and primitives. */
 function isPlainJsonObject(value: unknown): value is Record<string, unknown> {
@@ -136,9 +136,10 @@ function isPlainJsonObject(value: unknown): value is Record<string, unknown> {
 
 // Trigger create body. Kind-conditional: EVENT rows subscribe to a domain
 // event (eventType required, optional filter, no cron); SCHEDULE rows carry a
-// cron expression (no eventType/filter). SCHEDULE rows are INERT in this unit
-// — stored but nothing creates Temporal Schedules until Phase 3 Unit 4, and
-// EVENT rows wait for the Unit 3 dispatcher.
+// cron expression (no eventType/filter). Both kinds are fired by the
+// dispatcher Lambda (lambda-dispatch-workflow-triggers.ts): EVENT against the
+// domain-event outbox (Unit 3), SCHEDULE against the current UTC minute
+// (Unit 4).
 const CreateTriggerBody = z
   .object({
     kind: z.enum(['EVENT', 'SCHEDULE']),
@@ -168,11 +169,10 @@ const CreateTriggerBody = z
         })
       }
     } else {
-      if (!body.cronExpression || !CRON_EXPRESSION_REGEX.test(body.cronExpression)) {
+      if (!body.cronExpression || parseCronExpression(body.cronExpression) === null) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message:
-            'SCHEDULE triggers require cronExpression: 5 space-separated cron fields (minute hour day-of-month month day-of-week)',
+          message: `SCHEDULE triggers require a cronExpression; ${INVALID_CRON_MESSAGE}`,
         })
       }
       if (body.eventType !== undefined) {
@@ -776,9 +776,9 @@ workflowsHandler.get(
 // GLOBAL — same visibility rule as GET /:id). The trigger row itself always
 // belongs to the caller's tenant, even on a GLOBAL workflow.
 //
-// Phase 3 Unit 2 contract: triggers are stored but NOTHING fires them yet.
-// EVENT rows wait for the Unit 3 dispatcher; SCHEDULE rows are inert until
-// Unit 4 realizes them as Temporal Schedules.
+// Stored triggers are fired by the dispatcher Lambda: EVENT rows match
+// domain-event outbox rows (Unit 3); SCHEDULE rows are cron-evaluated against
+// the current UTC minute each tick (Unit 4).
 //
 // Request:  { kind, eventType?, filter?, cronExpression?, enabled? }
 // Response: { data: WorkflowTriggerResponse } (201) | 400 | 404
@@ -924,15 +924,8 @@ workflowsHandler.patch(
           400,
         )
       }
-      if (body.cronExpression !== undefined && !CRON_EXPRESSION_REGEX.test(body.cronExpression)) {
-        return c.json(
-          {
-            error:
-              'cronExpression must be 5 space-separated cron fields (minute hour day-of-month month day-of-week)',
-            code: 'VALIDATION_ERROR',
-          },
-          400,
-        )
+      if (body.cronExpression !== undefined && parseCronExpression(body.cronExpression) === null) {
+        return c.json({ error: INVALID_CRON_MESSAGE, code: 'VALIDATION_ERROR' }, 400)
       }
     }
 
