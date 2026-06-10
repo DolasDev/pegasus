@@ -188,15 +188,19 @@ crosses the computed balance to <= 0, with the before-balance refetched
 inside the tx to prevent concurrent double-emits. Post-merge follow-up
 still open: staging smoke (accept a quote → `domain_events` row).
 
-**Unit 2 — `WorkflowTrigger` schema + CRUD API.** Model
-(`id, tenantId, workflowId FK, kind EVENT|SCHEDULE, eventType?, filter Json?,
-cronExpression?, enabled, createdByUserId`) + tenant-scoped CRUD under
-`/api/v1/workflows/:id/triggers`, gated by a new `ManageWorkflowTriggers`
-Cedar action (remember the AVP bulk-sync throttle lesson —
-`[[feedback_avp_bulk_sync_throttle_retry]]` — when the new action syncs).
-Add trigger provenance to `WorkflowExecution`
-(`triggeredByTriggerId?`; make `triggeredByUserId` nullable or introduce a
-`triggerSource USER|EVENT|SCHEDULE` enum).
+**Unit 2 — `WorkflowTrigger` schema + CRUD API. ✅ DONE (#231 →
+`c28306b`, 2026-06-10).** `WorkflowTrigger` model (kind EVENT|SCHEDULE,
+CASCADE on workflow delete, dispatcher match index
+`(kind, enabled, eventType)`) + CRUD under
+`/api/v1/workflows/:id/triggers` gated by new `ManageWorkflowTriggers`
+Cedar action (permission string `workflow:manage_triggers` —
+**underscore, not hyphen**: the `/me/permissions` e2e contract regex is
+`/^[a-z_]+:[a-z_]+$/`; a hyphen broke E2E on the first CI run).
+Provenance on `WorkflowExecution`: `triggerSource USER|EVENT|SCHEDULE`
+(default USER), `triggeredByTriggerId?`, `triggeredByUserId` now
+nullable. SCHEDULE rows stored but INERT until Unit 4; EVENT rows wait
+for the Unit 3 dispatcher. Known v1 limitation: a set `filter` can't be
+PATCH-cleared to null (delete + recreate).
 
 **Unit 3 — Trigger dispatcher.** Poller Lambda (clone the reconcile-poller
 shape: EventBridge 1-min rate, root `db`, bounded batch) that drains
