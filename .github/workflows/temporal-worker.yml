@@ -134,10 +134,19 @@ jobs:
         run: |
           set -euo pipefail
           aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
-          STATE=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
-            --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' --output text)
-          [[ "$STATE" == "COMPLETED" ]] || { echo "::error::Rollout state=$STATE — circuit breaker likely rolled back"; exit 1; }
-          echo "Rollout state: $STATE"
+          # rolloutState flips to COMPLETED asynchronously after the service
+          # stabilises — a one-shot read raced it (read IN_PROGRESS on a
+          # healthy rollout). Poll up to 2 min before judging.
+          STATE=UNKNOWN
+          for i in $(seq 1 8); do
+            STATE=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
+              --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' --output text)
+            echo "[$i/8] Rollout state: $STATE"
+            [[ "$STATE" == "COMPLETED" ]] && break
+            [[ "$STATE" == "FAILED" ]] && { echo "::error::Rollout FAILED — circuit breaker rolled back"; exit 1; }
+            sleep 15
+          done
+          [[ "$STATE" == "COMPLETED" ]] || { echo "::error::Rollout state=$STATE after stability + 2 min — circuit breaker likely rolled back"; exit 1; }
 
       - name: Summary
         if: success()
@@ -214,10 +223,19 @@ jobs:
         run: |
           set -euo pipefail
           aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
-          STATE=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
-            --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' --output text)
-          [[ "$STATE" == "COMPLETED" ]] || { echo "::error::Rollout state=$STATE — circuit breaker likely rolled back"; exit 1; }
-          echo "Rollout state: $STATE"
+          # rolloutState flips to COMPLETED asynchronously after the service
+          # stabilises — a one-shot read raced it (read IN_PROGRESS on a
+          # healthy rollout). Poll up to 2 min before judging.
+          STATE=UNKNOWN
+          for i in $(seq 1 8); do
+            STATE=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
+              --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' --output text)
+            echo "[$i/8] Rollout state: $STATE"
+            [[ "$STATE" == "COMPLETED" ]] && break
+            [[ "$STATE" == "FAILED" ]] && { echo "::error::Rollout FAILED — circuit breaker rolled back"; exit 1; }
+            sleep 15
+          done
+          [[ "$STATE" == "COMPLETED" ]] || { echo "::error::Rollout state=$STATE after stability + 2 min — circuit breaker likely rolled back"; exit 1; }
 
       - name: Summary
         if: success()

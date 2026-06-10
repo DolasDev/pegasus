@@ -145,12 +145,15 @@ jobs:
             --overwrite
           echo "SSM $PARAM → $S3_URI"
 
-      # A fresh hub instance's user-data hard-fails on a missing
+      # A fresh hub instance's hardened user-data hard-fails on a missing
       # /pegasus/wireguard/agent/apikey SSM param (wireguard-stack.ts
       # cloud-init exits 1), so verify it exists before replacing the
       # instance — otherwise the run goes green while the hub fails to boot.
+      # Dev is exempt: the param intentionally doesn't exist there (see the
+      # publish-vpn-agent.yml header — dev refresh "preserves prior
+      # behaviour") and dev publishes succeeded without it before this check.
       - name: Pre-flight agent apikey param
-        if: ${{ !inputs.skip-instance-refresh }}
+        if: ${{ !inputs.skip-instance-refresh && inputs.env-name != 'dev' }}
         run: |
           set -euo pipefail
           aws ssm get-parameter --name /pegasus/wireguard/agent/apikey --query 'Parameter.Name' --output text >/dev/null \

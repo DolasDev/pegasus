@@ -10,7 +10,8 @@
     "test": {
       "dependsOn": [],
       "outputs": [],
-      "cache": false
+      "cache": false,
+      "env": ["DATABASE_URL", "DIRECT_URL"]
     },
     "lint": {
       "dependsOn": [],

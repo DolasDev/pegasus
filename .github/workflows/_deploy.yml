@@ -194,9 +194,18 @@ jobs:
             exit 1
           fi
           for arn in "${ARNS[@]}"; do
-            aws secretsmanager describe-secret --secret-id "$arn" --query Name --output text >/dev/null \
-              || { echo "::error::Secret ARN stale (rotated-by-recreation?): $arn — update TEMPORAL_SECRET_ARNS in packages/infra/bin/app.ts"; exit 1; }
-            echo "OK: $arn"
+            # Distinguish a stale ARN (fail) from a missing IAM grant (warn):
+            # the deploy roles don't yet have secretsmanager:DescribeSecret,
+            # and an AccessDenied must not read as "secret rotated".
+            if err=$(aws secretsmanager describe-secret --secret-id "$arn" --query Name --output text 2>&1 >/dev/null); then
+              echo "OK: $arn"
+            elif grep -q 'AccessDenied' <<<"$err"; then
+              echo "::warning::Cannot verify $arn — deploy role lacks secretsmanager:DescribeSecret (grant it on pegasus/* to arm this pre-flight). Skipping."
+            else
+              echo "$err"
+              echo "::error::Secret ARN stale (rotated-by-recreation?): $arn — update TEMPORAL_SECRET_ARNS in packages/infra/bin/app.ts"
+              exit 1
+            fi
           done
 
       - name: Resolve CDK stack target
