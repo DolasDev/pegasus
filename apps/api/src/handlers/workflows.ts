@@ -13,6 +13,10 @@
 //   GET    /:id               — fetch one (visibility-checked)
 //   GET    /:id/download-url  — presigned GET for the source zip
 //   POST   /:id/fork          — copy a GLOBAL workflow into the caller's store
+//   POST   /:id/triggers      — attach an EVENT/SCHEDULE trigger (Phase 3 U2)
+//   GET    /:id/triggers      — list the caller-tenant's triggers
+//   PATCH  /:id/triggers/:triggerId   — partial update (kind immutable)
+//   DELETE /:id/triggers/:triggerId   — hard delete
 //
 // Visibility is derived server-side: tenants flagged isPlatformTenant=true
 // upload as GLOBAL; everyone else uploads as TENANT. There is no client-facing
@@ -33,11 +37,14 @@ import type { WorkflowRow, WorkflowVisibility } from '../repositories/workflow.r
 import { createApiClientRepository } from '../repositories/api-client.repository'
 import { createWorkflowExecutionRepository } from '../repositories/workflow-execution.repository'
 import type { WorkflowExecutionRow } from '../repositories/workflow-execution.repository'
+import { createWorkflowTriggerRepository } from '../repositories/workflow-trigger.repository'
+import type { WorkflowTriggerRow } from '../repositories/workflow-trigger.repository'
 import type { AppEnv } from '../types'
 import { presignDownload, presignUpload } from '../lib/documents-s3'
 import { encryptRuntimeToken } from '../lib/runtime-token-crypto'
 import { getTemporalClient, temporalTaskQueue } from '../lib/temporal-client'
 import { CURATED_WORKFLOW_NAMES } from '../lib/curated-workflows'
+import { DOMAIN_EVENT_TYPES } from '../lib/domain-events'
 import { logger } from '../lib/logger'
 
 // ---------------------------------------------------------------------------
@@ -108,6 +115,94 @@ const RunBody = z.object({
 const LIST_DEFAULT_LIMIT = 50
 const LIST_MAX_LIMIT = 200
 
+/** The five launch domain-event types as a Set for O(1) membership checks. */
+const DOMAIN_EVENT_TYPE_SET: ReadonlySet<string> = new Set(DOMAIN_EVENT_TYPES)
+
+/**
+ * Conservative shape check for a 5-field cron expression (minute, hour,
+ * day-of-month, month, day-of-week): single-space-separated fields built from
+ * digits, letters (month/day names), `*`, `,`, `-`, `/` and `?`. Deliberately
+ * NOT a semantic validator — full validation (field ranges, step values,
+ * impossible dates) happens when Unit 4 realizes the trigger as a Temporal
+ * Schedule. No new dependencies.
+ */
+const CRON_FIELD = '[0-9A-Za-z*,/?-]+'
+const CRON_EXPRESSION_REGEX = new RegExp(`^${CRON_FIELD}(?: ${CRON_FIELD}){4}$`)
+
+/** True for a plain JSON object — rejects arrays, null, and primitives. */
+function isPlainJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+// Trigger create body. Kind-conditional: EVENT rows subscribe to a domain
+// event (eventType required, optional filter, no cron); SCHEDULE rows carry a
+// cron expression (no eventType/filter). SCHEDULE rows are INERT in this unit
+// — stored but nothing creates Temporal Schedules until Phase 3 Unit 4, and
+// EVENT rows wait for the Unit 3 dispatcher.
+const CreateTriggerBody = z
+  .object({
+    kind: z.enum(['EVENT', 'SCHEDULE']),
+    eventType: z.string().optional(),
+    filter: z.unknown().optional(),
+    cronExpression: z.string().optional(),
+    enabled: z.boolean().optional().default(true),
+  })
+  .superRefine((body, ctx) => {
+    if (body.kind === 'EVENT') {
+      if (!body.eventType || !DOMAIN_EVENT_TYPE_SET.has(body.eventType)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `EVENT triggers require eventType, one of: ${DOMAIN_EVENT_TYPES.join(', ')}`,
+        })
+      }
+      if (body.filter !== undefined && !isPlainJsonObject(body.filter)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'filter must be a plain JSON object',
+        })
+      }
+      if (body.cronExpression !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'cronExpression is only valid for SCHEDULE triggers',
+        })
+      }
+    } else {
+      if (!body.cronExpression || !CRON_EXPRESSION_REGEX.test(body.cronExpression)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'SCHEDULE triggers require cronExpression: 5 space-separated cron fields (minute hour day-of-month month day-of-week)',
+        })
+      }
+      if (body.eventType !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'eventType is only valid for EVENT triggers',
+        })
+      }
+      if (body.filter !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'filter is only valid for EVENT triggers',
+        })
+      }
+    }
+  })
+
+// Trigger partial-update body. `.strict()` rejects unknown keys — notably
+// `kind`, which is immutable (delete + recreate to change a trigger's kind).
+// Kind-conditional checks (cron on EVENT etc.) need the existing row and run
+// in the PATCH handler after the trigger is loaded.
+const UpdateTriggerBody = z
+  .object({
+    enabled: z.boolean().optional(),
+    eventType: z.string().optional(),
+    filter: z.unknown().optional(),
+    cronExpression: z.string().optional(),
+  })
+  .strict()
+
 // ---------------------------------------------------------------------------
 // Response shapes
 // ---------------------------------------------------------------------------
@@ -136,7 +231,11 @@ type WorkflowExecutionResponse = {
   errorMessage: string | null
   temporalWorkflowId: string | null
   temporalRunId: string | null
-  triggeredByUserId: string
+  // Nullable since Phase 3 Unit 2: trigger-fired executions (Units 3/4) have
+  // no user. Manual runs keep setting it, so existing consumers see no change.
+  triggeredByUserId: string | null
+  triggerSource: WorkflowExecutionRow['triggerSource']
+  triggeredByTriggerId: string | null
   queuedAt: string
   startedAt: string | null
   finishedAt: string | null
@@ -156,9 +255,41 @@ function toExecutionResponse(row: WorkflowExecutionRow): WorkflowExecutionRespon
     temporalWorkflowId: row.temporalWorkflowId,
     temporalRunId: row.temporalRunId,
     triggeredByUserId: row.triggeredByUserId,
+    triggerSource: row.triggerSource,
+    triggeredByTriggerId: row.triggeredByTriggerId,
     queuedAt: row.queuedAt.toISOString(),
     startedAt: row.startedAt ? row.startedAt.toISOString() : null,
     finishedAt: row.finishedAt ? row.finishedAt.toISOString() : null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  }
+}
+
+type WorkflowTriggerResponse = {
+  id: string
+  tenantId: string
+  workflowId: string
+  kind: WorkflowTriggerRow['kind']
+  eventType: string | null
+  filter: WorkflowTriggerRow['filter']
+  cronExpression: string | null
+  enabled: boolean
+  createdByUserId: string
+  createdAt: string
+  updatedAt: string
+}
+
+function toTriggerResponse(row: WorkflowTriggerRow): WorkflowTriggerResponse {
+  return {
+    id: row.id,
+    tenantId: row.tenantId,
+    workflowId: row.workflowId,
+    kind: row.kind,
+    eventType: row.eventType,
+    filter: row.filter,
+    cronExpression: row.cronExpression,
+    enabled: row.enabled,
+    createdByUserId: row.createdByUserId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }
@@ -699,42 +830,35 @@ workflowsHandler.post(
 // `before` accepts the id of the last row on the previous page (cursor by
 // (queuedAt, id) — robust to inserts during pagination).
 // ---------------------------------------------------------------------------
-workflowsHandler.get(
-  '/:id/executions',
-  requirePermission(Actions.ReadWorkflow),
-  async (c) => {
-    const tenantId = c.get('tenantId')
-    const workflowId = c.req.param('id') ?? ''
-    const db = c.get('db')
+workflowsHandler.get('/:id/executions', requirePermission(Actions.ReadWorkflow), async (c) => {
+  const tenantId = c.get('tenantId')
+  const workflowId = c.req.param('id') ?? ''
+  const db = c.get('db')
 
-    const repo = createWorkflowRepository(db)
-    const workflow = await repo.findByIdForTenant(workflowId, tenantId)
-    if (!workflow) {
-      return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
+  const repo = createWorkflowRepository(db)
+  const workflow = await repo.findByIdForTenant(workflowId, tenantId)
+  if (!workflow) {
+    return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
+  }
+
+  const limitParam = c.req.query('limit')
+  const before = c.req.query('before') ?? null
+  let limit = LIST_DEFAULT_LIMIT
+  if (limitParam) {
+    const parsed = Number.parseInt(limitParam, 10)
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return c.json({ error: 'limit must be a positive integer', code: 'VALIDATION_ERROR' }, 400)
     }
+    limit = Math.min(parsed, LIST_MAX_LIMIT)
+  }
 
-    const limitParam = c.req.query('limit')
-    const before = c.req.query('before') ?? null
-    let limit = LIST_DEFAULT_LIMIT
-    if (limitParam) {
-      const parsed = Number.parseInt(limitParam, 10)
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        return c.json(
-          { error: 'limit must be a positive integer', code: 'VALIDATION_ERROR' },
-          400,
-        )
-      }
-      limit = Math.min(parsed, LIST_MAX_LIMIT)
-    }
-
-    const execRepo = createWorkflowExecutionRepository(db)
-    const rows = await execRepo.listByWorkflow(workflow.id, { limit, before })
-    return c.json({
-      data: rows.map(toExecutionResponse),
-      meta: { count: rows.length, limit },
-    })
-  },
-)
+  const execRepo = createWorkflowExecutionRepository(db)
+  const rows = await execRepo.listByWorkflow(workflow.id, { limit, before })
+  return c.json({
+    data: rows.map(toExecutionResponse),
+    meta: { count: rows.length, limit },
+  })
+})
 
 // ---------------------------------------------------------------------------
 // GET /:id/executions/:executionId
@@ -763,5 +887,229 @@ workflowsHandler.get(
       return c.json({ error: 'Execution not found', code: 'NOT_FOUND' }, 404)
     }
     return c.json({ data: toExecutionResponse(row) })
+  },
+)
+
+// ---------------------------------------------------------------------------
+// POST /:id/triggers
+//
+// Attach a trigger to a workflow the caller can see (own TENANT row or
+// GLOBAL — same visibility rule as GET /:id). The trigger row itself always
+// belongs to the caller's tenant, even on a GLOBAL workflow.
+//
+// Phase 3 Unit 2 contract: triggers are stored but NOTHING fires them yet.
+// EVENT rows wait for the Unit 3 dispatcher; SCHEDULE rows are inert until
+// Unit 4 realizes them as Temporal Schedules.
+//
+// Request:  { kind, eventType?, filter?, cronExpression?, enabled? }
+// Response: { data: WorkflowTriggerResponse } (201) | 400 | 404
+// ---------------------------------------------------------------------------
+workflowsHandler.post(
+  '/:id/triggers',
+  requirePermission(Actions.ManageWorkflowTriggers),
+  validator('json', (value, c) => {
+    const r = CreateTriggerBody.safeParse(value)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const userId = c.get('userId')
+    if (!userId) {
+      throw new DomainError('Authenticated user required to manage triggers', 'UNAUTHENTICATED')
+    }
+    const workflowId = c.req.param('id') ?? ''
+    const body = c.req.valid('json')
+    const db = c.get('db')
+
+    const repo = createWorkflowRepository(db)
+    const workflow = await repo.findByIdForTenant(workflowId, tenantId)
+    if (!workflow) {
+      return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
+    }
+
+    const triggerRepo = createWorkflowTriggerRepository(db)
+    const row = await triggerRepo.create({
+      tenantId,
+      workflowId: workflow.id,
+      kind: body.kind,
+      eventType: body.eventType ?? null,
+      filter: body.filter !== undefined ? (body.filter as Prisma.InputJsonValue) : null,
+      cronExpression: body.cronExpression ?? null,
+      enabled: body.enabled,
+      createdByUserId: userId,
+    })
+
+    logger.info('Workflow trigger created', {
+      triggerId: row.id,
+      workflowId: workflow.id,
+      tenantId,
+      kind: row.kind,
+      eventType: row.eventType,
+      enabled: row.enabled,
+    })
+    return c.json({ data: toTriggerResponse(row) }, 201)
+  },
+)
+
+// ---------------------------------------------------------------------------
+// GET /:id/triggers
+//
+// Tenant-scoped list of the caller's triggers on a workflow, newest first —
+// including triggers the tenant attached to a GLOBAL workflow (each tenant
+// only ever sees its own rows; the repo is auto-scoped via the extension).
+// Read-level gate, mirroring GET /:id/executions.
+// ---------------------------------------------------------------------------
+workflowsHandler.get('/:id/triggers', requirePermission(Actions.ReadWorkflow), async (c) => {
+  const tenantId = c.get('tenantId')
+  const workflowId = c.req.param('id') ?? ''
+  const db = c.get('db')
+
+  const repo = createWorkflowRepository(db)
+  const workflow = await repo.findByIdForTenant(workflowId, tenantId)
+  if (!workflow) {
+    return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
+  }
+
+  const triggerRepo = createWorkflowTriggerRepository(db)
+  const rows = await triggerRepo.listByWorkflow(workflow.id)
+  return c.json({ data: rows.map(toTriggerResponse), meta: { count: rows.length } })
+})
+
+// ---------------------------------------------------------------------------
+// PATCH /:id/triggers/:triggerId
+//
+// Partial update: enabled (both kinds), eventType/filter (EVENT only),
+// cronExpression (SCHEDULE only). `kind` is immutable — the body schema is
+// strict, so a kind key (or any unknown key) is a 400. 404 if the trigger is
+// not the caller-tenant's or does not belong to this workflow.
+//
+// Response: { data: WorkflowTriggerResponse } | 400 | 404
+// ---------------------------------------------------------------------------
+workflowsHandler.patch(
+  '/:id/triggers/:triggerId',
+  requirePermission(Actions.ManageWorkflowTriggers),
+  validator('json', (value, c) => {
+    const r = UpdateTriggerBody.safeParse(value)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const workflowId = c.req.param('id') ?? ''
+    const triggerId = c.req.param('triggerId') ?? ''
+    const body = c.req.valid('json')
+    const db = c.get('db')
+
+    const repo = createWorkflowRepository(db)
+    const workflow = await repo.findByIdForTenant(workflowId, tenantId)
+    if (!workflow) {
+      return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
+    }
+
+    const triggerRepo = createWorkflowTriggerRepository(db)
+    // findById is tenant-scoped — another tenant's trigger resolves to null,
+    // indistinguishable from "does not exist".
+    const trigger = await triggerRepo.findById(triggerId)
+    if (!trigger || trigger.workflowId !== workflow.id) {
+      return c.json({ error: 'Trigger not found', code: 'NOT_FOUND' }, 404)
+    }
+
+    // Kind-conditional field validation against the (immutable) stored kind.
+    if (trigger.kind === 'EVENT') {
+      if (body.cronExpression !== undefined) {
+        return c.json(
+          { error: 'cronExpression is only valid for SCHEDULE triggers', code: 'VALIDATION_ERROR' },
+          400,
+        )
+      }
+      if (body.eventType !== undefined && !DOMAIN_EVENT_TYPE_SET.has(body.eventType)) {
+        return c.json(
+          {
+            error: `eventType must be one of: ${DOMAIN_EVENT_TYPES.join(', ')}`,
+            code: 'VALIDATION_ERROR',
+          },
+          400,
+        )
+      }
+      if (body.filter !== undefined && !isPlainJsonObject(body.filter)) {
+        return c.json(
+          { error: 'filter must be a plain JSON object', code: 'VALIDATION_ERROR' },
+          400,
+        )
+      }
+    } else {
+      if (body.eventType !== undefined || body.filter !== undefined) {
+        return c.json(
+          { error: 'eventType/filter are only valid for EVENT triggers', code: 'VALIDATION_ERROR' },
+          400,
+        )
+      }
+      if (body.cronExpression !== undefined && !CRON_EXPRESSION_REGEX.test(body.cronExpression)) {
+        return c.json(
+          {
+            error:
+              'cronExpression must be 5 space-separated cron fields (minute hour day-of-month month day-of-week)',
+            code: 'VALIDATION_ERROR',
+          },
+          400,
+        )
+      }
+    }
+
+    const updateInput: {
+      enabled?: boolean
+      eventType?: string
+      filter?: Prisma.InputJsonValue
+      cronExpression?: string
+    } = {}
+    if (body.enabled !== undefined) updateInput.enabled = body.enabled
+    if (body.eventType !== undefined) updateInput.eventType = body.eventType
+    if (body.filter !== undefined) updateInput.filter = body.filter as Prisma.InputJsonValue
+    if (body.cronExpression !== undefined) updateInput.cronExpression = body.cronExpression
+
+    const updated = await triggerRepo.update(triggerId, updateInput)
+
+    logger.info('Workflow trigger updated', {
+      triggerId,
+      workflowId: workflow.id,
+      tenantId,
+      enabled: updated.enabled,
+    })
+    return c.json({ data: toTriggerResponse(updated) })
+  },
+)
+
+// ---------------------------------------------------------------------------
+// DELETE /:id/triggers/:triggerId
+//
+// Hard delete. Same scoping as PATCH: 404 if the trigger is not the
+// caller-tenant's or does not belong to this workflow. 204 on success.
+// ---------------------------------------------------------------------------
+workflowsHandler.delete(
+  '/:id/triggers/:triggerId',
+  requirePermission(Actions.ManageWorkflowTriggers),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const workflowId = c.req.param('id') ?? ''
+    const triggerId = c.req.param('triggerId') ?? ''
+    const db = c.get('db')
+
+    const repo = createWorkflowRepository(db)
+    const workflow = await repo.findByIdForTenant(workflowId, tenantId)
+    if (!workflow) {
+      return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
+    }
+
+    const triggerRepo = createWorkflowTriggerRepository(db)
+    const trigger = await triggerRepo.findById(triggerId)
+    if (!trigger || trigger.workflowId !== workflow.id) {
+      return c.json({ error: 'Trigger not found', code: 'NOT_FOUND' }, 404)
+    }
+
+    await triggerRepo.deleteById(triggerId)
+
+    logger.info('Workflow trigger deleted', { triggerId, workflowId: workflow.id, tenantId })
+    return c.body(null, 204)
   },
 )

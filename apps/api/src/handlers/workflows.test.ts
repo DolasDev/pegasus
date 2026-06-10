@@ -23,6 +23,7 @@ const {
   mockRepo,
   mockApiClientRepo,
   mockExecutionRepo,
+  mockTriggerRepo,
   mockTenantFindUnique,
   mockTenantUserCreate,
   mockPresignUpload,
@@ -53,6 +54,13 @@ const {
       markStarted: vi.fn(),
       markTerminal: vi.fn(),
     },
+    mockTriggerRepo: {
+      create: vi.fn(),
+      findById: vi.fn(),
+      listByWorkflow: vi.fn(),
+      update: vi.fn(),
+      deleteById: vi.fn(),
+    },
     mockTenantFindUnique: vi.fn(),
     mockTenantUserCreate: vi.fn(),
     mockPresignUpload: vi.fn(),
@@ -74,6 +82,10 @@ vi.mock('../repositories/api-client.repository', () => ({
 
 vi.mock('../repositories/workflow-execution.repository', () => ({
   createWorkflowExecutionRepository: vi.fn(() => mockExecutionRepo),
+}))
+
+vi.mock('../repositories/workflow-trigger.repository', () => ({
+  createWorkflowTriggerRepository: vi.fn(() => mockTriggerRepo),
 }))
 
 vi.mock('../lib/temporal-client', () => ({
@@ -120,6 +132,18 @@ function post(body: unknown): RequestInit {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   }
+}
+
+function patch(body: unknown): RequestInit {
+  return {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }
+}
+
+function del(): RequestInit {
+  return { method: 'DELETE' }
 }
 
 function buildApp(
@@ -662,6 +686,8 @@ describe('workflows handler', () => {
       temporalWorkflowId: null,
       temporalRunId: null,
       triggeredByUserId: 'user-1',
+      triggerSource: 'USER' as const,
+      triggeredByTriggerId: null,
       queuedAt: now,
       startedAt: null,
       finishedAt: null,
@@ -720,9 +746,7 @@ describe('workflows handler', () => {
       expect(data['id']).toBe(execId)
       expect(data['status']).toBe('RUNNING')
       // The runtime token MUST NOT appear in workflow args.
-      const startArgs = mockTemporalStart.mock.calls[0]?.[1]?.['args'] as
-        | unknown[]
-        | undefined
+      const startArgs = mockTemporalStart.mock.calls[0]?.[1]?.['args'] as unknown[] | undefined
       expect(startArgs).toBeDefined()
       expect(JSON.stringify(startArgs)).not.toContain('vnd_')
       expect(JSON.stringify(startArgs)).toContain(execId)
@@ -793,6 +817,8 @@ describe('workflows handler', () => {
       temporalWorkflowId: 'wf/test-tenant-id/send_quote_followup/exec-1',
       temporalRunId: 'run-123',
       triggeredByUserId: 'user-1',
+      triggerSource: 'USER' as const,
+      triggeredByTriggerId: null,
       queuedAt: now,
       startedAt: now,
       finishedAt: now,
@@ -826,10 +852,10 @@ describe('workflows handler', () => {
       mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
       mockExecutionRepo.listByWorkflow.mockResolvedValue([])
       await buildApp().request('/wf-1/executions?limit=10&before=exec-prev')
-      expect(mockExecutionRepo.listByWorkflow).toHaveBeenCalledWith(
-        'wf-1',
-        { limit: 10, before: 'exec-prev' },
-      )
+      expect(mockExecutionRepo.listByWorkflow).toHaveBeenCalledWith('wf-1', {
+        limit: 10,
+        before: 'exec-prev',
+      })
     })
   })
 
@@ -847,6 +873,8 @@ describe('workflows handler', () => {
       temporalWorkflowId: null,
       temporalRunId: null,
       triggeredByUserId: 'user-1',
+      triggerSource: 'USER' as const,
+      triggeredByTriggerId: null,
       queuedAt: now,
       startedAt: now,
       finishedAt: now,
@@ -877,6 +905,398 @@ describe('workflows handler', () => {
       expect(res.status).toBe(200)
       const data = (await json(res)).data as JsonBody
       expect(data['id']).toBe('exec-1')
+    })
+  })
+
+  // ── POST /:id/triggers ────────────────────────────────────────────────────
+
+  describe('POST /:id/triggers', () => {
+    const eventTriggerRow = {
+      id: 'trig-1',
+      tenantId: 'test-tenant-id',
+      workflowId: 'wf-1',
+      kind: 'EVENT' as const,
+      eventType: 'quote.accepted',
+      filter: null,
+      cronExpression: null,
+      enabled: true,
+      createdByUserId: 'user-1',
+      createdAt: now,
+      updatedAt: now,
+    }
+    const scheduleTriggerRow = {
+      ...eventTriggerRow,
+      id: 'trig-2',
+      kind: 'SCHEDULE' as const,
+      eventType: null,
+      cronExpression: '0 9 * * 1',
+    }
+
+    it('returns 403 without ManageWorkflowTriggers (viewer)', async () => {
+      const res = await buildApp(['viewer']).request(
+        '/wf-1/triggers',
+        post({ kind: 'EVENT', eventType: 'quote.accepted' }),
+      )
+      expect(res.status).toBe(403)
+      expect((await json(res)).code).toBe('FORBIDDEN')
+    })
+
+    it('allows workflow_developer to create a trigger', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockTriggerRepo.create.mockResolvedValue(eventTriggerRow)
+      const res = await buildApp(['workflow_developer']).request(
+        '/wf-1/triggers',
+        post({ kind: 'EVENT', eventType: 'quote.accepted' }),
+      )
+      expect(res.status).toBe(201)
+    })
+
+    it('creates an EVENT trigger on the happy path (201, defaults enabled)', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockTriggerRepo.create.mockResolvedValue(eventTriggerRow)
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'EVENT', eventType: 'quote.accepted', filter: { quoteId: 'q-1' } }),
+      )
+      expect(res.status).toBe(201)
+      const data = (await json(res)).data as JsonBody
+      expect(data['id']).toBe('trig-1')
+      expect(data['kind']).toBe('EVENT')
+      expect(mockTriggerRepo.create).toHaveBeenCalledWith({
+        tenantId: 'test-tenant-id',
+        workflowId: 'wf-1',
+        kind: 'EVENT',
+        eventType: 'quote.accepted',
+        filter: { quoteId: 'q-1' },
+        cronExpression: null,
+        enabled: true,
+        createdByUserId: 'user-1',
+      })
+    })
+
+    it('creates a SCHEDULE trigger on the happy path (201)', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockTriggerRepo.create.mockResolvedValue(scheduleTriggerRow)
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'SCHEDULE', cronExpression: '0 9 * * 1', enabled: false }),
+      )
+      expect(res.status).toBe(201)
+      expect(mockTriggerRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'SCHEDULE', cronExpression: '0 9 * * 1', enabled: false }),
+      )
+    })
+
+    it('rejects an unknown eventType', async () => {
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'EVENT', eventType: 'not.a.real.event' }),
+      )
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    it('rejects an EVENT trigger that carries a cronExpression', async () => {
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'EVENT', eventType: 'quote.accepted', cronExpression: '0 9 * * 1' }),
+      )
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    it('rejects a SCHEDULE trigger without a cronExpression', async () => {
+      const res = await buildApp().request('/wf-1/triggers', post({ kind: 'SCHEDULE' }))
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    it('rejects a SCHEDULE trigger that carries an eventType', async () => {
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'SCHEDULE', cronExpression: '0 9 * * 1', eventType: 'quote.accepted' }),
+      )
+      expect(res.status).toBe(400)
+    })
+
+    it('rejects a malformed cron expression (4 fields)', async () => {
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'SCHEDULE', cronExpression: '0 9 * *' }),
+      )
+      expect(res.status).toBe(400)
+    })
+
+    it('rejects a cron expression with illegal characters', async () => {
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'SCHEDULE', cronExpression: '0 9 * * 1; DROP TABLE' }),
+      )
+      expect(res.status).toBe(400)
+    })
+
+    it('rejects a filter that is an array', async () => {
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'EVENT', eventType: 'quote.accepted', filter: ['not', 'an', 'object'] }),
+      )
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    it('allows attaching a trigger to a visible GLOBAL workflow (row owned by caller tenant)', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(globalRow)
+      mockTriggerRepo.create.mockResolvedValue({ ...eventTriggerRow, workflowId: 'global-wf-1' })
+      const res = await buildApp().request(
+        '/global-wf-1/triggers',
+        post({ kind: 'EVENT', eventType: 'quote.accepted' }),
+      )
+      expect(res.status).toBe(201)
+      // The trigger belongs to the CALLER's tenant, not the platform tenant.
+      expect(mockTriggerRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: 'test-tenant-id', workflowId: 'global-wf-1' }),
+      )
+    })
+
+    it("returns 404 for another tenant's TENANT workflow (not visible)", async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(null)
+      const res = await buildApp().request(
+        '/other-wf/triggers',
+        post({ kind: 'EVENT', eventType: 'quote.accepted' }),
+      )
+      expect(res.status).toBe(404)
+      expect(mockTriggerRepo.create).not.toHaveBeenCalled()
+    })
+
+    it('returns 422 when no authenticated user', async () => {
+      const res = await buildApp(['tenant_admin'], null).request(
+        '/wf-1/triggers',
+        post({ kind: 'EVENT', eventType: 'quote.accepted' }),
+      )
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('UNAUTHENTICATED')
+    })
+  })
+
+  // ── GET /:id/triggers ─────────────────────────────────────────────────────
+
+  describe('GET /:id/triggers', () => {
+    const triggerRow = {
+      id: 'trig-1',
+      tenantId: 'test-tenant-id',
+      workflowId: 'wf-1',
+      kind: 'EVENT' as const,
+      eventType: 'quote.accepted',
+      filter: null,
+      cronExpression: null,
+      enabled: true,
+      createdByUserId: 'user-1',
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    it('returns 404 when the workflow is not visible', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(null)
+      const res = await buildApp().request('/wf-1/triggers')
+      expect(res.status).toBe(404)
+    })
+
+    it('returns the tenant-scoped trigger list (read-level gate: viewer allowed)', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockTriggerRepo.listByWorkflow.mockResolvedValue([triggerRow])
+      const res = await buildApp(['viewer']).request('/wf-1/triggers')
+      expect(res.status).toBe(200)
+      const body = await json(res)
+      expect((body['data'] as unknown[]).length).toBe(1)
+      expect((body['meta'] as JsonBody)['count']).toBe(1)
+      expect(mockTriggerRepo.listByWorkflow).toHaveBeenCalledWith('wf-1')
+    })
+  })
+
+  // ── PATCH /:id/triggers/:triggerId ────────────────────────────────────────
+
+  describe('PATCH /:id/triggers/:triggerId', () => {
+    const eventTriggerRow = {
+      id: 'trig-1',
+      tenantId: 'test-tenant-id',
+      workflowId: 'wf-1',
+      kind: 'EVENT' as const,
+      eventType: 'quote.accepted',
+      filter: null,
+      cronExpression: null,
+      enabled: true,
+      createdByUserId: 'user-1',
+      createdAt: now,
+      updatedAt: now,
+    }
+    const scheduleTriggerRow = {
+      ...eventTriggerRow,
+      id: 'trig-2',
+      kind: 'SCHEDULE' as const,
+      eventType: null,
+      cronExpression: '0 9 * * 1',
+    }
+
+    beforeEach(() => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+    })
+
+    it('returns 403 without ManageWorkflowTriggers', async () => {
+      const res = await buildApp(['viewer']).request(
+        '/wf-1/triggers/trig-1',
+        patch({ enabled: false }),
+      )
+      expect(res.status).toBe(403)
+    })
+
+    it('updates enabled on the happy path', async () => {
+      mockTriggerRepo.findById.mockResolvedValue(eventTriggerRow)
+      mockTriggerRepo.update.mockResolvedValue({ ...eventTriggerRow, enabled: false })
+      const res = await buildApp().request('/wf-1/triggers/trig-1', patch({ enabled: false }))
+      expect(res.status).toBe(200)
+      const data = (await json(res)).data as JsonBody
+      expect(data['enabled']).toBe(false)
+      expect(mockTriggerRepo.update).toHaveBeenCalledWith(
+        'trig-1',
+        expect.objectContaining({ enabled: false }),
+      )
+    })
+
+    it("returns 404 when the trigger is not the caller-tenant's (scoped findById → null)", async () => {
+      mockTriggerRepo.findById.mockResolvedValue(null)
+      const res = await buildApp().request('/wf-1/triggers/trig-x', patch({ enabled: false }))
+      expect(res.status).toBe(404)
+      expect(mockTriggerRepo.update).not.toHaveBeenCalled()
+    })
+
+    it('returns 404 when the trigger belongs to a different workflow', async () => {
+      mockTriggerRepo.findById.mockResolvedValue({ ...eventTriggerRow, workflowId: 'wf-other' })
+      const res = await buildApp().request('/wf-1/triggers/trig-1', patch({ enabled: false }))
+      expect(res.status).toBe(404)
+      expect(mockTriggerRepo.update).not.toHaveBeenCalled()
+    })
+
+    it('rejects cronExpression on an EVENT trigger', async () => {
+      mockTriggerRepo.findById.mockResolvedValue(eventTriggerRow)
+      const res = await buildApp().request(
+        '/wf-1/triggers/trig-1',
+        patch({ cronExpression: '0 9 * * 1' }),
+      )
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    it('rejects eventType / filter on a SCHEDULE trigger', async () => {
+      mockTriggerRepo.findById.mockResolvedValue(scheduleTriggerRow)
+      const res = await buildApp().request(
+        '/wf-1/triggers/trig-2',
+        patch({ eventType: 'quote.accepted' }),
+      )
+      expect(res.status).toBe(400)
+    })
+
+    it('rejects an unknown eventType on an EVENT trigger', async () => {
+      mockTriggerRepo.findById.mockResolvedValue(eventTriggerRow)
+      const res = await buildApp().request(
+        '/wf-1/triggers/trig-1',
+        patch({ eventType: 'nope.nope' }),
+      )
+      expect(res.status).toBe(400)
+    })
+
+    it('rejects a malformed cronExpression on a SCHEDULE trigger', async () => {
+      mockTriggerRepo.findById.mockResolvedValue(scheduleTriggerRow)
+      const res = await buildApp().request(
+        '/wf-1/triggers/trig-2',
+        patch({ cronExpression: 'not cron' }),
+      )
+      expect(res.status).toBe(400)
+    })
+
+    it('rejects a kind change (strict body)', async () => {
+      mockTriggerRepo.findById.mockResolvedValue(eventTriggerRow)
+      const res = await buildApp().request('/wf-1/triggers/trig-1', patch({ kind: 'SCHEDULE' }))
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+      expect(mockTriggerRepo.update).not.toHaveBeenCalled()
+    })
+
+    it('updates filter on an EVENT trigger', async () => {
+      mockTriggerRepo.findById.mockResolvedValue(eventTriggerRow)
+      mockTriggerRepo.update.mockResolvedValue({
+        ...eventTriggerRow,
+        filter: { status: 'ACCEPTED' },
+      })
+      const res = await buildApp().request(
+        '/wf-1/triggers/trig-1',
+        patch({ filter: { status: 'ACCEPTED' } }),
+      )
+      expect(res.status).toBe(200)
+      expect(mockTriggerRepo.update).toHaveBeenCalledWith(
+        'trig-1',
+        expect.objectContaining({ filter: { status: 'ACCEPTED' } }),
+      )
+    })
+
+    it('rejects a filter that is an array on an EVENT trigger', async () => {
+      mockTriggerRepo.findById.mockResolvedValue(eventTriggerRow)
+      const res = await buildApp().request('/wf-1/triggers/trig-1', patch({ filter: [1, 2] }))
+      expect(res.status).toBe(400)
+    })
+  })
+
+  // ── DELETE /:id/triggers/:triggerId ───────────────────────────────────────
+
+  describe('DELETE /:id/triggers/:triggerId', () => {
+    const triggerRow = {
+      id: 'trig-1',
+      tenantId: 'test-tenant-id',
+      workflowId: 'wf-1',
+      kind: 'EVENT' as const,
+      eventType: 'quote.accepted',
+      filter: null,
+      cronExpression: null,
+      enabled: true,
+      createdByUserId: 'user-1',
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    beforeEach(() => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+    })
+
+    it('returns 403 without ManageWorkflowTriggers', async () => {
+      const res = await buildApp(['viewer']).request('/wf-1/triggers/trig-1', del())
+      expect(res.status).toBe(403)
+    })
+
+    it('hard-deletes and returns 204', async () => {
+      mockTriggerRepo.findById.mockResolvedValue(triggerRow)
+      mockTriggerRepo.deleteById.mockResolvedValue(undefined)
+      const res = await buildApp().request('/wf-1/triggers/trig-1', del())
+      expect(res.status).toBe(204)
+      expect(mockTriggerRepo.deleteById).toHaveBeenCalledWith('trig-1')
+    })
+
+    it("returns 404 when the trigger is not the caller-tenant's", async () => {
+      mockTriggerRepo.findById.mockResolvedValue(null)
+      const res = await buildApp().request('/wf-1/triggers/trig-1', del())
+      expect(res.status).toBe(404)
+      expect(mockTriggerRepo.deleteById).not.toHaveBeenCalled()
+    })
+
+    it('returns 404 when the trigger belongs to a different workflow', async () => {
+      mockTriggerRepo.findById.mockResolvedValue({ ...triggerRow, workflowId: 'wf-other' })
+      const res = await buildApp().request('/wf-1/triggers/trig-1', del())
+      expect(res.status).toBe(404)
+      expect(mockTriggerRepo.deleteById).not.toHaveBeenCalled()
+    })
+
+    it('returns 404 when the workflow is not visible', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(null)
+      const res = await buildApp().request('/wf-1/triggers/trig-1', del())
+      expect(res.status).toBe(404)
     })
   })
 })

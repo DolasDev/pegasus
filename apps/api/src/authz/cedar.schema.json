@@ -205,6 +205,9 @@
       },
       "RunWorkflow": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
+      },
+      "ManageWorkflowTriggers": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
       }
     }
   }

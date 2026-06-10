@@ -253,9 +253,10 @@ model Tenant {
   apiClients     ApiClient[]
   pegasusEvents  PegasusEvent[]
   documents      Document[]
-  workflows      Workflow[]
-  domainEvents   DomainEvent[]
-  vpnPeer        VpnPeer?
+  workflows        Workflow[]
+  workflowTriggers WorkflowTrigger[]
+  domainEvents     DomainEvent[]
+  vpnPeer          VpnPeer?
 
   // Messaging context — RingCentral SMS capture
   ringCentralConnections   RingCentralConnection[]
@@ -1112,6 +1113,27 @@ enum WorkflowExecutionStatus {
   @@schema("public")
 }
 
+/// What kind of trigger a WorkflowTrigger row describes. EVENT rows match
+/// domain-event outbox rows; SCHEDULE rows are realized as Temporal Schedules
+/// (Phase 3 Unit 4 — inert until then).
+enum WorkflowTriggerKind {
+  EVENT
+  SCHEDULE
+
+  @@schema("public")
+}
+
+/// Provenance of a WorkflowExecution: started manually by a user (USER) or
+/// fired by a trigger (EVENT / SCHEDULE). Trigger-fired executions have no
+/// triggeredByUserId.
+enum WorkflowExecutionTriggerSource {
+  USER
+  EVENT
+  SCHEDULE
+
+  @@schema("public")
+}
+
 model Workflow {
   id       String @id @default(uuid())
   tenantId String @map("tenant_id")
@@ -1162,6 +1184,7 @@ model Workflow {
 
   tenant     Tenant              @relation(fields: [tenantId], references: [id])
   executions WorkflowExecution[]
+  triggers   WorkflowTrigger[]
 
   @@unique([tenantId, name, version])
   @@index([tenantId])
@@ -1206,9 +1229,19 @@ model WorkflowExecution {
   /// Temporal run identifier backing this execution. Null until queued.
   temporalRunId String? @map("temporal_run_id")
 
-  /// TenantUser.id of the principal that triggered this execution.
-  /// Denormalised; not an FK so the row survives user deletion.
-  triggeredByUserId String @map("triggered_by_user_id")
+  /// TenantUser.id of the principal that triggered this execution. Null for
+  /// trigger-fired executions (triggerSource EVENT / SCHEDULE) — those carry
+  /// triggeredByTriggerId instead. Denormalised; not an FK so the row
+  /// survives user deletion.
+  triggeredByUserId String? @map("triggered_by_user_id")
+
+  /// Provenance of this execution. USER = manual POST /:id/run; EVENT /
+  /// SCHEDULE = fired by a WorkflowTrigger (Phase 3 Units 3/4).
+  triggerSource WorkflowExecutionTriggerSource @default(USER) @map("trigger_source")
+
+  /// WorkflowTrigger.id that fired this execution. Null for USER-source
+  /// executions. Denormalised; not an FK so the row survives trigger deletion.
+  triggeredByTriggerId String? @map("triggered_by_trigger_id")
 
   queuedAt   DateTime  @map("queued_at")
   startedAt  DateTime? @map("started_at")
@@ -1222,6 +1255,65 @@ model WorkflowExecution {
   @@index([tenantId, workflowId])
   @@index([status])
   @@map("workflow_executions")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Workflow triggers — event / schedule subscriptions that fire a workflow.
+//
+// Each row attaches one trigger to one workflow. EVENT rows subscribe to a
+// domain-event type (canonical taxonomy in apps/api/src/lib/domain-events.ts)
+// with an optional payload-match filter; SCHEDULE rows carry a cron
+// expression realized as a Temporal Schedule in Phase 3 Unit 4 — until then
+// SCHEDULE rows are stored but inert. Nothing fires triggers yet: the Unit 3
+// dispatcher will match enabled EVENT rows against undispatched DomainEvent
+// rows via the (kind, enabled, eventType) index below.
+//
+// Always owned by a single tenant (a tenant's trigger on a GLOBAL workflow is
+// still the tenant's own row) — included in TENANT_SCOPED_MODELS (see
+// lib/prisma.ts) so reads/writes are auto-scoped.
+// ---------------------------------------------------------------------------
+
+model WorkflowTrigger {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// The workflow this trigger fires. Cascade so a deleted workflow's
+  /// triggers do not linger.
+  workflowId String @map("workflow_id")
+
+  /// EVENT (domain-event subscription) or SCHEDULE (cron).
+  kind WorkflowTriggerKind
+
+  /// EVENT kind: one of the five domain-event types (lib/domain-events.ts).
+  /// Null for SCHEDULE rows.
+  eventType String? @map("event_type")
+
+  /// EVENT kind: optional payload-match object. Opaque in this unit — the
+  /// Unit 3 dispatcher defines match semantics. Null for SCHEDULE rows.
+  filter Json?
+
+  /// SCHEDULE kind: 5-field cron expression. Shape-validated at the API;
+  /// full semantic validation happens when Unit 4 realizes it as a Temporal
+  /// Schedule. Null for EVENT rows.
+  cronExpression String? @map("cron_expression")
+
+  /// Disabled triggers are kept but never fired.
+  enabled Boolean @default(true)
+
+  /// TenantUser.id of the creator. Denormalised; not an FK so the row
+  /// survives user deletion (matches Workflow.createdByUserId).
+  createdByUserId String @map("created_by_user_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, workflowId])
+  @@index([kind, enabled, eventType])
+  @@map("workflow_triggers")
   @@schema("public")
 }
 

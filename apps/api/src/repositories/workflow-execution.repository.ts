@@ -36,6 +36,10 @@ export const TERMINAL_STATUSES: ReadonlySet<WorkflowExecutionStatus> = new Set([
   'CANCELLED',
 ])
 
+/** Execution provenance as it appears at the API boundary. Mirrors the
+ * Prisma enum: USER = manual run, EVENT / SCHEDULE = trigger-fired. */
+export type WorkflowExecutionTriggerSource = 'USER' | 'EVENT' | 'SCHEDULE'
+
 export type WorkflowExecutionRow = {
   id: string
   tenantId: string
@@ -46,7 +50,11 @@ export type WorkflowExecutionRow = {
   errorMessage: string | null
   temporalWorkflowId: string | null
   temporalRunId: string | null
-  triggeredByUserId: string
+  /** Null for trigger-fired executions (triggerSource EVENT / SCHEDULE). */
+  triggeredByUserId: string | null
+  triggerSource: WorkflowExecutionTriggerSource
+  /** WorkflowTrigger.id that fired this execution; null for USER source. */
+  triggeredByTriggerId: string | null
   queuedAt: Date
   startedAt: Date | null
   finishedAt: Date | null
@@ -65,6 +73,8 @@ const EXECUTION_SELECT = {
   temporalWorkflowId: true,
   temporalRunId: true,
   triggeredByUserId: true,
+  triggerSource: true,
+  triggeredByTriggerId: true,
   queuedAt: true,
   startedAt: true,
   finishedAt: true,
@@ -98,6 +108,9 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
           tenantId: input.tenantId,
           workflowId: input.workflowId,
           triggeredByUserId: input.triggeredByUserId,
+          // Manual run path — trigger-fired executions (Units 3/4) will use a
+          // dedicated create that sets EVENT/SCHEDULE + triggeredByTriggerId.
+          triggerSource: 'USER',
           input: input.input,
           status: 'QUEUED',
           queuedAt: new Date(),
@@ -192,10 +205,7 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
     async markTerminal(
       executionId: string,
       input: {
-        status: Extract<
-          WorkflowExecutionStatus,
-          'COMPLETED' | 'FAILED' | 'TIMED_OUT' | 'CANCELLED'
-        >
+        status: Extract<WorkflowExecutionStatus, 'COMPLETED' | 'FAILED' | 'TIMED_OUT' | 'CANCELLED'>
         finishedAt: Date
         result?: object | Prisma.InputJsonValue | null
         errorMessage?: string | null
@@ -224,6 +234,4 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
   }
 }
 
-export type WorkflowExecutionRepository = ReturnType<
-  typeof createWorkflowExecutionRepository
->
+export type WorkflowExecutionRepository = ReturnType<typeof createWorkflowExecutionRepository>
