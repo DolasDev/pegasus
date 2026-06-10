@@ -8,6 +8,8 @@ import {
   Loader2,
   Lock,
   Play,
+  Plus,
+  Trash2,
   Workflow as WorkflowIcon,
 } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
@@ -19,25 +21,58 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/ca
 import { Separator } from '@/components/ui/separator'
 import {
   executionsQueryOptions,
+  triggersQueryOptions,
+  useCreateTrigger,
+  useDeleteTrigger,
   useForkWorkflow,
   useRunWorkflow,
+  useUpdateTrigger,
   workflowsQueryOptions,
 } from '@/api/queries/workflows'
-import { getWorkflowDownloadUrl, type Workflow, type WorkflowExecution } from '@/api/workflows'
+import {
+  DOMAIN_EVENT_TYPES,
+  getWorkflowDownloadUrl,
+  type CreateWorkflowTriggerInput,
+  type DomainEventType,
+  type Workflow,
+  type WorkflowExecution,
+  type WorkflowTrigger,
+  type WorkflowTriggerKind,
+  type WorkflowTriggerSource,
+} from '@/api/workflows'
 import { ApiError } from '@/api/client'
 import { usePermissions } from '@/auth/permissions'
+import { formatFireTimeUtc, parseCronExpression, previewNextFires } from '@/lib/cron-preview'
+import { parseTriggerFilter } from '@/lib/trigger-filter'
+
+// Triggers are gated by this Cedar permission (underscore, not hyphen — the
+// /me/permissions contract only allows [a-z_]+:[a-z_]+ strings).
+const MANAGE_TRIGGERS_PERMISSION = 'workflow:manage_triggers'
+
+// SCHEDULE rows get a purple badge; the shared Badge component has no purple
+// variant, so this className mirrors its success/warning/info palette style.
+const SCHEDULE_BADGE_CLASS = 'border-transparent bg-purple-100 text-purple-800'
+
+// ---------------------------------------------------------------------------
+// Trigger badges — kind on trigger rows, source on execution rows
+// ---------------------------------------------------------------------------
+
+function TriggerKindBadge({ kind }: { kind: WorkflowTriggerKind }) {
+  if (kind === 'EVENT') return <Badge variant="info">Event</Badge>
+  return <Badge className={SCHEDULE_BADGE_CLASS}>Schedule</Badge>
+}
+
+function TriggerSourceBadge({ source }: { source: WorkflowTriggerSource }) {
+  if (source === 'EVENT') return <Badge variant="info">Event</Badge>
+  if (source === 'SCHEDULE') return <Badge className={SCHEDULE_BADGE_CLASS}>Schedule</Badge>
+  return <Badge variant="muted">Manual</Badge>
+}
 
 // ---------------------------------------------------------------------------
 // Run dialog — collects an optional JSON input object and triggers a run
 // ---------------------------------------------------------------------------
 
-function RunWorkflowDialog({
-  workflow,
-  onClose,
-}: {
-  workflow: Workflow
-  onClose: () => void
-}) {
+function RunWorkflowDialog({ workflow, onClose }: { workflow: Workflow; onClose: () => void }) {
   const [inputText, setInputText] = useState('{}')
   const [parseError, setParseError] = useState<string | null>(null)
   const runMutation = useRunWorkflow()
@@ -61,10 +96,7 @@ function RunWorkflowDialog({
       setParseError('Input must be a JSON object (e.g. {"key": "value"}).')
       return
     }
-    runMutation.mutate(
-      { id: workflow.id, input: parsed },
-      { onSuccess: () => onClose() },
-    )
+    runMutation.mutate({ id: workflow.id, input: parsed }, { onSuccess: () => onClose() })
   }
 
   return (
@@ -132,7 +164,9 @@ function RunWorkflowDialog({
 function ExecutionResult({ execution }: { execution: WorkflowExecution }) {
   if (execution.errorMessage) {
     return (
-      <p className="mt-1 break-words font-mono text-xs text-destructive">{execution.errorMessage}</p>
+      <p className="mt-1 break-words font-mono text-xs text-destructive">
+        {execution.errorMessage}
+      </p>
     )
   }
   if (execution.result != null) {
@@ -176,6 +210,7 @@ function ExecutionsList({ workflowId }: { workflowId: string }) {
         <li key={exec.id} className="rounded-md border border-border bg-background px-3 py-2">
           <div className="flex flex-wrap items-center gap-2">
             <WorkflowExecutionStatusBadge status={exec.status} />
+            <TriggerSourceBadge source={exec.triggerSource} />
             <span className="text-xs text-muted-foreground">
               Queued {new Date(exec.queuedAt).toLocaleString()}
             </span>
@@ -189,6 +224,443 @@ function ExecutionsList({ workflowId }: { workflowId: string }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Create-trigger dialog — kind selector, then EVENT (event type + optional
+// JSON filter) or SCHEDULE (cron expression + next-fire preview) fields
+// ---------------------------------------------------------------------------
+
+const CRON_PLACEHOLDER = '*/15 * * * *'
+
+function CronPreview({ expression }: { expression: string }) {
+  if (expression.trim() === '') return null
+  const preview = previewNextFires(expression)
+  if (preview.status === 'invalid') {
+    return (
+      <p className="mt-2 text-xs text-destructive" role="alert">
+        Invalid expression.
+      </p>
+    )
+  }
+  if (preview.status === 'none') {
+    return (
+      <p className="mt-2 text-xs text-yellow-700" role="alert">
+        This expression never fires within the next 366 days.
+      </p>
+    )
+  }
+  return (
+    <div className="mt-2 text-xs text-muted-foreground">
+      <p>Next fires:</p>
+      <ul className="mt-0.5 space-y-0.5 font-mono">
+        {preview.times.map((t) => (
+          <li key={t.getTime()}>{formatFireTimeUtc(t)}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function CreateTriggerDialog({ workflow, onClose }: { workflow: Workflow; onClose: () => void }) {
+  const [kind, setKind] = useState<WorkflowTriggerKind>('EVENT')
+  const [eventType, setEventType] = useState<DomainEventType>(DOMAIN_EVENT_TYPES[0])
+  const [filterText, setFilterText] = useState('')
+  const [cronExpression, setCronExpression] = useState('')
+  const [formError, setFormError] = useState<string | null>(null)
+  const createMutation = useCreateTrigger()
+
+  let serverError: string | null = null
+  if (createMutation.error) {
+    serverError =
+      createMutation.error instanceof ApiError
+        ? createMutation.error.message
+        : 'Failed to create trigger.'
+  }
+
+  function handleCreate() {
+    setFormError(null)
+    let input: CreateWorkflowTriggerInput
+    if (kind === 'EVENT') {
+      const validation = parseTriggerFilter(filterText)
+      if (!validation.ok) {
+        setFormError(validation.error)
+        return
+      }
+      input = { kind, eventType, ...(validation.filter ? { filter: validation.filter } : {}) }
+    } else {
+      const expr = cronExpression.trim()
+      if (parseCronExpression(expr) === null) {
+        setFormError('Invalid expression.')
+        return
+      }
+      input = { kind, cronExpression: expr }
+    }
+    createMutation.mutate({ workflowId: workflow.id, input }, { onSuccess: () => onClose() })
+  }
+
+  const selectClass =
+    'mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring'
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Add trigger to ${workflow.name}`}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-lg border border-border bg-card p-6 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+          <Plus className="h-4 w-4" />
+          Add trigger to <span className="font-mono">{workflow.name}</span>
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Triggers run this workflow automatically — either when a domain event fires or on a cron
+          schedule.
+        </p>
+
+        <label htmlFor="trigger-kind" className="mt-4 block text-xs font-medium text-foreground">
+          Kind
+        </label>
+        <select
+          id="trigger-kind"
+          className={selectClass}
+          value={kind}
+          onChange={(e) => {
+            setKind(e.target.value as WorkflowTriggerKind)
+            // Clear any validation error from the other kind's form.
+            setFormError(null)
+          }}
+        >
+          <option value="EVENT">Event — fire when a domain event occurs</option>
+          <option value="SCHEDULE">Schedule — fire on a cron schedule</option>
+        </select>
+
+        {kind === 'EVENT' ? (
+          <>
+            <label
+              htmlFor="trigger-event-type"
+              className="mt-4 block text-xs font-medium text-foreground"
+            >
+              Event type
+            </label>
+            <select
+              id="trigger-event-type"
+              className={selectClass}
+              value={eventType}
+              onChange={(e) => setEventType(e.target.value as DomainEventType)}
+            >
+              {DOMAIN_EVENT_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+
+            <label
+              htmlFor="trigger-filter"
+              className="mt-4 block text-xs font-medium text-foreground"
+            >
+              Filter (optional JSON)
+            </label>
+            <textarea
+              id="trigger-filter"
+              className="mt-1 h-24 w-full resize-y rounded-md border border-input bg-background px-3 py-2 font-mono text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              value={filterText}
+              spellCheck={false}
+              placeholder='{"status": "COMPLETED"}'
+              onChange={(e) => setFilterText(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Every filter key must exactly equal the same key in the event payload. Scalars only.
+              Leave empty to fire on every <code className="font-mono">{eventType}</code> event.
+            </p>
+          </>
+        ) : (
+          <>
+            <label
+              htmlFor="trigger-cron"
+              className="mt-4 block text-xs font-medium text-foreground"
+            >
+              Cron expression
+            </label>
+            <input
+              id="trigger-cron"
+              type="text"
+              className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              value={cronExpression}
+              spellCheck={false}
+              placeholder={CRON_PLACEHOLDER}
+              onChange={(e) => setCronExpression(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              5 fields (minute hour day-of-month month day-of-week), evaluated in UTC. Supports{' '}
+              <code className="font-mono">*</code>, numbers, commas, ranges (
+              <code className="font-mono">a-b</code>) and steps (
+              <code className="font-mono">*/n</code>, <code className="font-mono">a-b/n</code>)
+              only.
+            </p>
+            <CronPreview expression={cronExpression} />
+          </>
+        )}
+
+        {formError && (
+          <p className="mt-2 text-xs text-destructive" role="alert">
+            {formError}
+          </p>
+        )}
+        {serverError && (
+          <p className="mt-2 text-xs text-destructive" role="alert">
+            {serverError}
+          </p>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={createMutation.isPending}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={handleCreate} disabled={createMutation.isPending}>
+            {createMutation.isPending ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            Add trigger
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Delete-trigger confirm dialog
+// ---------------------------------------------------------------------------
+
+function DeleteTriggerDialog({
+  workflowId,
+  trigger,
+  onClose,
+}: {
+  workflowId: string
+  trigger: WorkflowTrigger
+  onClose: () => void
+}) {
+  const deleteMutation = useDeleteTrigger()
+
+  let deleteError: string | null = null
+  if (deleteMutation.error) {
+    deleteError =
+      deleteMutation.error instanceof ApiError
+        ? deleteMutation.error.message
+        : 'Failed to delete trigger.'
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Delete trigger"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-base font-semibold text-destructive">Delete trigger?</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          This {trigger.kind === 'EVENT' ? 'event' : 'schedule'} trigger (
+          <code className="font-mono">
+            {trigger.kind === 'EVENT' ? trigger.eventType : trigger.cronExpression}
+          </code>
+          ) will stop firing immediately. This cannot be undone.
+        </p>
+        {deleteError && (
+          <p className="mt-2 text-xs text-destructive" role="alert">
+            {deleteError}
+          </p>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={deleteMutation.isPending}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() =>
+              deleteMutation.mutate(
+                { workflowId, triggerId: trigger.id },
+                { onSuccess: () => onClose() },
+              )
+            }
+            disabled={deleteMutation.isPending}
+          >
+            {deleteMutation.isPending ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            Delete trigger
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Triggers section — list per workflow + enable/disable/delete/create
+// ---------------------------------------------------------------------------
+
+function TriggerSummary({ trigger }: { trigger: WorkflowTrigger }) {
+  if (trigger.kind === 'EVENT') {
+    const filterKeyCount = trigger.filter ? Object.keys(trigger.filter).length : 0
+    return (
+      <span className="text-xs text-muted-foreground">
+        <code className="font-mono text-foreground">{trigger.eventType}</code>
+        {filterKeyCount > 0
+          ? ` · ${filterKeyCount} filter ${filterKeyCount === 1 ? 'key' : 'keys'}`
+          : ' · all events'}
+      </span>
+    )
+  }
+  return <code className="font-mono text-xs text-foreground">{trigger.cronExpression}</code>
+}
+
+function TriggerRow({
+  workflowId,
+  trigger,
+  canManage,
+}: {
+  workflowId: string
+  trigger: WorkflowTrigger
+  canManage: boolean
+}) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const updateMutation = useUpdateTrigger()
+
+  let updateError: string | null = null
+  if (updateMutation.error) {
+    updateError =
+      updateMutation.error instanceof ApiError
+        ? updateMutation.error.message
+        : 'Failed to update trigger.'
+  }
+
+  return (
+    <li className="rounded-md border border-border bg-background px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <TriggerKindBadge kind={trigger.kind} />
+          {!trigger.enabled && <Badge variant="muted">Disabled</Badge>}
+          <TriggerSummary trigger={trigger} />
+          <span className="text-xs text-muted-foreground">
+            · Created {new Date(trigger.createdAt).toLocaleDateString()}
+          </span>
+        </div>
+        {canManage && (
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                updateMutation.mutate({
+                  workflowId,
+                  triggerId: trigger.id,
+                  input: { enabled: !trigger.enabled },
+                })
+              }
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+              {trigger.enabled ? 'Disable' : 'Enable'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label="Delete trigger"
+              onClick={() => setConfirmingDelete(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+            </Button>
+          </div>
+        )}
+      </div>
+      {updateError && (
+        <p className="mt-1 text-xs text-destructive" role="alert">
+          {updateError}
+        </p>
+      )}
+      {confirmingDelete && (
+        <DeleteTriggerDialog
+          workflowId={workflowId}
+          trigger={trigger}
+          onClose={() => setConfirmingDelete(false)}
+        />
+      )}
+    </li>
+  )
+}
+
+function TriggersSection({ workflow }: { workflow: Workflow }) {
+  const { data, isPending, isError, error } = useQuery(triggersQueryOptions(workflow.id))
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const perms = usePermissions()
+  const canManage = perms.has(MANAGE_TRIGGERS_PERMISSION)
+
+  const triggers = data ?? []
+
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Triggers
+        </h4>
+        {canManage && (
+          <Button variant="outline" size="sm" onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            Add trigger
+          </Button>
+        )}
+      </div>
+
+      {isPending && (
+        <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Loading triggers…
+        </div>
+      )}
+
+      {isError && (
+        <p className="py-2 text-xs text-destructive" role="alert">
+          {error instanceof Error ? error.message : 'Failed to load triggers.'}
+        </p>
+      )}
+
+      {!isPending && !isError && triggers.length === 0 && (
+        <p className="py-2 text-xs text-muted-foreground">
+          No triggers yet. Triggers run this workflow automatically when a domain event fires or on
+          a cron schedule.
+        </p>
+      )}
+
+      {!isPending && !isError && triggers.length > 0 && (
+        <ul className="space-y-2 py-1">
+          {triggers.map((t) => (
+            <TriggerRow key={t.id} workflowId={workflow.id} trigger={t} canManage={canManage} />
+          ))}
+        </ul>
+      )}
+
+      {createDialogOpen && (
+        <CreateTriggerDialog workflow={workflow} onClose={() => setCreateDialogOpen(false)} />
+      )}
+    </div>
   )
 }
 
@@ -302,6 +774,10 @@ function WorkflowRow({ workflow }: { workflow: Workflow }) {
           <ExecutionsList workflowId={workflow.id} />
         </div>
       )}
+
+      {/* Triggers render for GLOBAL rows too — the API scopes trigger rows to
+          the caller's tenant even when attached to a platform-library workflow. */}
+      <TriggersSection workflow={workflow} />
 
       {runDialogOpen && (
         <RunWorkflowDialog workflow={workflow} onClose={() => setRunDialogOpen(false)} />
