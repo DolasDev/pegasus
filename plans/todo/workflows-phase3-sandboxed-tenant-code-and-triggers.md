@@ -1,9 +1,13 @@
 # Pegasus Workflows — Phase 3: Sandboxed Tenant Code + Triggers
 
-**Status: SCOPED, ready for execution** (scoped 2026-06-09, immediately
-after Phase 2 archived; **all 5 open questions resolved with Steve the same
-day** — see "Resolved decisions" below). Recommended starting point:
-Track B Unit 1.
+**Status: IN PROGRESS — Track B (triggers, Units 1–5) ✅ COMPLETE and
+LIVE on staging + prod as of 2026-06-10** (PRs #230–#234). Scoped
+2026-06-09; all 5 open questions resolved with Steve — see "Resolved
+decisions". **Next: Track A (sandboxed tenant code), starting with
+Unit 6 (artifact integrity) and Unit 7 (per-tenant broker credentials —
+the security keystone; land + review it before any runner exists).**
+Outstanding non-blocking follow-up: the Track B staging UI smoke (see
+the Track B banner below).
 
 **Predecessors:**
 
@@ -177,7 +181,18 @@ breaks that. Two consequences shape the whole design:
 
 ## Units (proposed breakdown — Track B first)
 
-### Track B — triggers (no sandbox dependency; fires curated/forked workflows)
+### Track B — triggers ✅ COMPLETE (Units 1–5 merged + deployed 2026-06-10)
+
+> The full trigger engine is LIVE on staging + prod: domain events emit
+> transactionally at five points → tenants attach EVENT/SCHEDULE triggers
+> (API + UI) → the dispatcher Lambda fires matching workflows every minute
+> through the same idempotent run path as manual runs, with provenance.
+> **Outstanding follow-up (not blocking Track A): the staging UI smoke** —
+> create a `quote.accepted` trigger on a curated workflow via
+> `/settings/workflows`, accept a quote, watch an EVENT-badged execution;
+> create a `*/5 * * * *` SCHEDULE trigger, watch a SCHEDULE-badged
+> execution within 5 min; disable + delete. Also verify a `domain_events`
+> row appeared for the accepted quote (Unit 1 smoke, same flow).
 
 **Unit 1 — Domain-event outbox. ✅ DONE (#230 → `fb8ffc7`, deployed
 2026-06-10).** `DomainEvent` model + `emitDomainEvent(tx, ...)` helper
@@ -237,10 +252,16 @@ validation now uses the real parser (`61 * * * *` → 400); pre-tightening
 rows are skipped with `INVALID_CRON` metric. Temporal Schedules can be
 revisited if Track A's runner redesign changes the broker contract.
 
-**Unit 5 — Trigger UI.** `settings.workflows.tsx` per-workflow "Triggers"
-section: list/create/enable/disable (event-type dropdown from the taxonomy,
-cron editor with next-fire preview), execution rows badge their trigger
-source. Follows the Unit-7 (Phase 2) executions-list patterns.
+**Unit 5 — Trigger UI. ✅ DONE (#234 → `eccdf11`, 2026-06-10).**
+`settings.workflows.tsx` Triggers section (rendered for GLOBAL rows too):
+create dialog (five-event dropdown synced by comment to
+`apps/api/src/lib/domain-events.ts`; filter JSON editor rejecting
+nested/non-scalar values per the dispatcher contract; cron input with
+next-3-fires UTC preview from `src/lib/cron-preview.ts`, a documented
+line-for-line port of the backend matcher), enable/disable + delete
+gated on `workflow:manage_triggers`, Manual/Event/Schedule badges on
+execution rows. v1 cut: no in-place filter/cron editing — PATCH is
+`{enabled}` only; edit = delete + recreate.
 
 ### Track A — sandboxed tenant-code execution
 
