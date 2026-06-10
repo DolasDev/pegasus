@@ -32,13 +32,17 @@ permissions:
 #   - AWS_DEPLOY_ROLE_ARN — OIDC role with permissions to:
 #       * s3:PutObject on the WireGuardStack agent artifacts bucket
 #       * ssm:PutParameter on /pegasus/wireguard/agent/tarball-uri
-#       * autoscaling:StartInstanceRefresh on the hub ASG
+#       * ssm:GetParameter on /pegasus/wireguard/agent/apikey (pre-flight;
+#         no --with-decryption, so no KMS perm needed)
+#       * autoscaling:StartInstanceRefresh + DescribeInstanceRefreshes on
+#         the hub ASG
 #       * cloudformation:DescribeStacks on pegasus-${env}-wireguard
 
 jobs:
   publish:
     name: Build, upload, refresh (${{ inputs.env-name }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: ${{ inputs.env-name }}
     env:
       AWS_REGION: ${{ inputs.aws-region }}
@@ -141,16 +145,41 @@ jobs:
             --overwrite
           echo "SSM $PARAM → $S3_URI"
 
+      # A fresh hub instance's user-data hard-fails on a missing
+      # /pegasus/wireguard/agent/apikey SSM param (wireguard-stack.ts
+      # cloud-init exits 1), so verify it exists before replacing the
+      # instance — otherwise the run goes green while the hub fails to boot.
+      - name: Pre-flight agent apikey param
+        if: ${{ !inputs.skip-instance-refresh }}
+        run: |
+          set -euo pipefail
+          aws ssm get-parameter --name /pegasus/wireguard/agent/apikey --query 'Parameter.Name' --output text >/dev/null \
+            || { echo "::error::/pegasus/wireguard/agent/apikey missing in ${{ inputs.env-name }} — new hub instances will hard-fail on boot. Deploy WireGuardStack in this env first (its AgentKeyBootstrap custom resource creates the param)."; exit 1; }
+          echo "/pegasus/wireguard/agent/apikey present in ${{ inputs.env-name }}."
+
       - name: Trigger ASG instance refresh
         if: ${{ !inputs.skip-instance-refresh }}
         env:
           ASG: ${{ steps.stack.outputs.asg }}
         run: |
           set -euo pipefail
-          aws autoscaling start-instance-refresh \
+          REFRESH_ID=$(aws autoscaling start-instance-refresh \
             --auto-scaling-group-name "$ASG" \
-            --preferences '{"MinHealthyPercentage": 0, "InstanceWarmup": 60}'
-          echo "Instance refresh started on $ASG — the hub will replace itself in ~90s."
+            --preferences '{"MinHealthyPercentage": 0, "InstanceWarmup": 60}' \
+            --query InstanceRefreshId --output text)
+          echo "Instance refresh $REFRESH_ID started on $ASG — polling to completion."
+          STATUS=Pending
+          for i in $(seq 1 40); do
+            STATUS=$(aws autoscaling describe-instance-refreshes --auto-scaling-group-name "$ASG" \
+              --instance-refresh-ids "$REFRESH_ID" --query 'InstanceRefreshes[0].Status' --output text)
+            echo "[$i/40] Instance refresh status: $STATUS"
+            case "$STATUS" in
+              Successful) echo "Instance refresh complete."; exit 0 ;;
+              Failed|Cancelled|RollbackSuccessful|RollbackFailed) echo "::error::Instance refresh $STATUS"; exit 1 ;;
+            esac
+            sleep 15
+          done
+          echo "::error::Instance refresh still $STATUS after 10m"; exit 1
 
       - name: Summary
         if: success()

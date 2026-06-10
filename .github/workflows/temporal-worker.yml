@@ -64,6 +64,7 @@ jobs:
     name: Push image to staging ECR
     if: github.event_name == 'push' || inputs.env-name == 'both' || inputs.env-name == 'staging'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: staging
     env:
       AWS_REGION: us-east-1
@@ -125,6 +126,19 @@ jobs:
             --output json > /tmp/update-service.json
           echo "Forced redeploy of $ECS_SERVICE in $ECS_CLUSTER."
 
+      - name: Wait for ECS rollout
+        # services-stable waiter = 40×15s ≈ 10 min cap, inside the job
+        # timeout. "Stable" alone isn't enough: the circuit breaker can roll
+        # back to the old task set and the service still stabilises — assert
+        # the PRIMARY deployment actually COMPLETED.
+        run: |
+          set -euo pipefail
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+          STATE=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
+            --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' --output text)
+          [[ "$STATE" == "COMPLETED" ]] || { echo "::error::Rollout state=$STATE — circuit breaker likely rolled back"; exit 1; }
+          echo "Rollout state: $STATE"
+
       - name: Summary
         if: success()
         run: |
@@ -140,6 +154,7 @@ jobs:
     if: github.event_name == 'push' || inputs.env-name == 'both' || inputs.env-name == 'prod'
     needs: [staging]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: prod
     env:
       AWS_REGION: us-east-1
@@ -190,6 +205,19 @@ jobs:
             --force-new-deployment \
             --output json > /tmp/update-service.json
           echo "Forced redeploy of $ECS_SERVICE in $ECS_CLUSTER."
+
+      - name: Wait for ECS rollout
+        # services-stable waiter = 40×15s ≈ 10 min cap, inside the job
+        # timeout. "Stable" alone isn't enough: the circuit breaker can roll
+        # back to the old task set and the service still stabilises — assert
+        # the PRIMARY deployment actually COMPLETED.
+        run: |
+          set -euo pipefail
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+          STATE=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
+            --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' --output text)
+          [[ "$STATE" == "COMPLETED" ]] || { echo "::error::Rollout state=$STATE — circuit breaker likely rolled back"; exit 1; }
+          echo "Rollout state: $STATE"
 
       - name: Summary
         if: success()

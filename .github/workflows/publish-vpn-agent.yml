@@ -7,9 +7,10 @@ name: Publish VPN agent
 # - `workflow_dispatch`: manual run with an `env` input — choose one of
 #   dev, staging, or prod. Use this to roll out to staging/prod, which is
 #   intentionally NOT automatic because the new instance's user-data hard-
-#   fails on a missing /pegasus/wireguard/agent/apikey SSM param. Bootstrap
-#   the apikey first per apps/api/scripts/bootstrap-vpn-agent-apikey.ts,
-#   then dispatch this workflow against the env.
+#   fails on a missing /pegasus/wireguard/agent/apikey SSM param. The param
+#   is created by WireGuardStack's AgentKeyBootstrap custom resource —
+#   deploy that stack in the target env first, then dispatch this workflow
+#   against the env.
 #
 # The actual publish steps live in `_publish-vpn-agent.yml` (reusable).
 
