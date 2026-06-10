@@ -42,6 +42,10 @@ export type WorkflowExecutionStatus =
   | 'TIMED_OUT'
   | 'CANCELLED'
 
+/** How an execution was started: a user's manual run, an EVENT trigger
+ * matching a domain event, or a SCHEDULE trigger's cron fire. */
+export type WorkflowTriggerSource = 'USER' | 'EVENT' | 'SCHEDULE'
+
 export interface WorkflowExecution {
   id: string
   tenantId: string
@@ -55,13 +59,79 @@ export interface WorkflowExecution {
   errorMessage: string | null
   temporalWorkflowId: string | null
   temporalRunId: string | null
-  triggeredByUserId: string
+  /** Null for trigger-fired executions (no user behind EVENT/SCHEDULE runs). */
+  triggeredByUserId: string | null
+  triggerSource: WorkflowTriggerSource
+  /** The WorkflowTrigger that fired this run (EVENT/SCHEDULE), else null. */
+  triggeredByTriggerId: string | null
   /** ISO-8601 timestamps. */
   queuedAt: string
   startedAt: string | null
   finishedAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+// ---------------------------------------------------------------------------
+// Workflow triggers (Phase 3) — mirror the WorkflowTriggerResponse wire shape
+// in apps/api/src/handlers/workflows.ts
+// ---------------------------------------------------------------------------
+
+export type WorkflowTriggerKind = 'EVENT' | 'SCHEDULE'
+
+/**
+ * The five launch domain-event types an EVENT trigger can subscribe to.
+ * KEEP IN SYNC with `DOMAIN_EVENT_TYPES` in `apps/api/src/lib/domain-events.ts`
+ * — tenant-web cannot import from apps/api, so the taxonomy is duplicated
+ * here. The names are a public contract (renames are breaking), so drift
+ * should be rare; additions land in both places.
+ */
+export const DOMAIN_EVENT_TYPES = [
+  'quote.accepted',
+  'move.status_changed',
+  'invoice.paid',
+  'customer.created',
+  'pegasus_event.received',
+] as const
+
+export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number]
+
+export interface WorkflowTrigger {
+  id: string
+  tenantId: string
+  workflowId: string
+  kind: WorkflowTriggerKind
+  /** The subscribed domain event (EVENT triggers), else null. */
+  eventType: string | null
+  /** Shallow equality filter on the event payload (EVENT triggers), else
+   * null. Empty/null = match every event of the subscribed type. */
+  filter: Record<string, unknown> | null
+  /** 5-field UTC cron expression (SCHEDULE triggers), else null. */
+  cronExpression: string | null
+  enabled: boolean
+  createdByUserId: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateWorkflowTriggerInput {
+  kind: WorkflowTriggerKind
+  /** Required for EVENT triggers; rejected for SCHEDULE. */
+  eventType?: string
+  /** EVENT triggers only — plain JSON object, scalar values. */
+  filter?: Record<string, unknown>
+  /** Required for SCHEDULE triggers; rejected for EVENT. */
+  cronExpression?: string
+  enabled?: boolean
+}
+
+/** PATCH body — all fields optional; `kind` is immutable (delete + recreate).
+ * The v1 UI only ever sends `{ enabled }`. */
+export interface UpdateWorkflowTriggerInput {
+  enabled?: boolean
+  eventType?: string
+  filter?: Record<string, unknown>
+  cronExpression?: string
 }
 
 /** Pagination meta returned by the executions list endpoint (cursor-based). */
@@ -134,9 +204,53 @@ export async function listExecutions(
 }
 
 /** Fetch a single execution by id (scoped to the workflow + tenant). */
-export async function getExecution(
-  id: string,
-  executionId: string,
-): Promise<WorkflowExecution> {
+export async function getExecution(id: string, executionId: string): Promise<WorkflowExecution> {
   return apiFetch<WorkflowExecution>(`/api/v1/workflows/${id}/executions/${executionId}`)
+}
+
+// ---------------------------------------------------------------------------
+// Trigger CRUD — `/api/v1/workflows/:id/triggers[/:triggerId]`
+// ---------------------------------------------------------------------------
+
+/**
+ * List the caller-tenant's triggers on a workflow, newest first. Includes
+ * triggers the tenant attached to a GLOBAL workflow (each tenant only ever
+ * sees its own rows).
+ */
+export async function listTriggers(id: string): Promise<WorkflowTrigger[]> {
+  return apiFetch<WorkflowTrigger[]>(`/api/v1/workflows/${id}/triggers`)
+}
+
+/**
+ * Attach an EVENT or SCHEDULE trigger to a workflow. Requires
+ * `workflow:manage_triggers`. Returns the created row (201).
+ */
+export async function createTrigger(
+  id: string,
+  input: CreateWorkflowTriggerInput,
+): Promise<WorkflowTrigger> {
+  return apiFetch<WorkflowTrigger>(`/api/v1/workflows/${id}/triggers`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+/**
+ * Partial-update a trigger (`kind` is immutable — the API 400s on it).
+ * Requires `workflow:manage_triggers`.
+ */
+export async function updateTrigger(
+  id: string,
+  triggerId: string,
+  input: UpdateWorkflowTriggerInput,
+): Promise<WorkflowTrigger> {
+  return apiFetch<WorkflowTrigger>(`/api/v1/workflows/${id}/triggers/${triggerId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+}
+
+/** Hard-delete a trigger (204). Requires `workflow:manage_triggers`. */
+export async function deleteTrigger(id: string, triggerId: string): Promise<void> {
+  await apiFetch<null>(`/api/v1/workflows/${id}/triggers/${triggerId}`, { method: 'DELETE' })
 }

@@ -11,7 +11,15 @@ vi.mock('../api/client', () => ({
 }))
 
 import { apiFetch, apiFetchPaginated } from '../api/client'
-import { runWorkflow, listExecutions, getExecution } from '../api/workflows'
+import {
+  runWorkflow,
+  listExecutions,
+  getExecution,
+  listTriggers,
+  createTrigger,
+  updateTrigger,
+  deleteTrigger,
+} from '../api/workflows'
 
 const mockApiFetch = vi.mocked(apiFetch)
 const mockApiFetchPaginated = vi.mocked(apiFetchPaginated)
@@ -81,5 +89,59 @@ describe('workflows execution API', () => {
 
     expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/workflows/wf-1/executions/e-1')
     expect(result).toEqual(exec)
+  })
+})
+
+describe('workflows trigger API', () => {
+  it('listTriggers GETs /:id/triggers', async () => {
+    const triggers = [{ id: 't-1', kind: 'EVENT' }]
+    mockApiFetch.mockResolvedValueOnce(triggers)
+
+    const result = await listTriggers('wf-1')
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/workflows/wf-1/triggers')
+    expect(result).toEqual(triggers)
+  })
+
+  it('createTrigger POSTs the input to /:id/triggers', async () => {
+    const created = { id: 't-1', kind: 'EVENT' }
+    mockApiFetch.mockResolvedValueOnce(created)
+
+    const input = {
+      kind: 'EVENT' as const,
+      eventType: 'quote.accepted',
+      filter: { status: 'SENT' },
+    }
+    const result = await createTrigger('wf-1', input)
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/workflows/wf-1/triggers', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+    expect(result).toEqual(created)
+  })
+
+  it('updateTrigger PATCHes /:id/triggers/:triggerId', async () => {
+    const updated = { id: 't-1', enabled: false }
+    mockApiFetch.mockResolvedValueOnce(updated)
+
+    const result = await updateTrigger('wf-1', 't-1', { enabled: false })
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/workflows/wf-1/triggers/t-1', {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled: false }),
+    })
+    expect(result).toEqual(updated)
+  })
+
+  it('deleteTrigger DELETEs /:id/triggers/:triggerId and resolves void on 204', async () => {
+    // apiFetch returns null for 204 No Content.
+    mockApiFetch.mockResolvedValueOnce(null)
+
+    await expect(deleteTrigger('wf-1', 't-1')).resolves.toBeUndefined()
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/workflows/wf-1/triggers/t-1', {
+      method: 'DELETE',
+    })
   })
 })
