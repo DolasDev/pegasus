@@ -64,6 +64,18 @@ function loadDotEnv(filePath: string): void {
 }
 
 export async function setup(): Promise<void> {
+  // ── CI guard: never let DB-dependent suites skip silently in CI ───────────
+  // CI provisions Postgres and exports DATABASE_URL (.github/workflows/ci.yml).
+  // If that wiring ever regresses (renamed var, new job, copied workflow), the
+  // `describe.skipIf(!hasDb)` guards would skip the entire repository layer and
+  // the run would still exit 0 — green CI on half the suite. Fail hard instead.
+  // GitHub Actions always sets CI=true; any future non-GHA runner must too.
+  if (process.env['CI'] && !process.env['DATABASE_URL']) {
+    throw new Error(
+      '[test:db] CI run without DATABASE_URL — integration tests would silently skip. Failing fast.',
+    )
+  }
+
   // ── 0. Load .env so DATABASE_URL / DIRECT_URL are available ───────────────
   loadDotEnv(path.join(API_DIR, '.env'))
 

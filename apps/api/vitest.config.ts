@@ -7,6 +7,15 @@ export default defineConfig({
     environment: 'node',
     testTimeout: 15_000,
     globalSetup: './vitest.global-setup.ts',
+    // Loud banner when entire test files skip (DB-dependent suites without
+    // Postgres) — see vitest.skip-reporter.ts. Setting `reporters` explicitly
+    // disables Vitest's auto-enabled github-actions annotations reporter, so
+    // re-add it when running in GHA (mirrors Vitest's own default logic).
+    reporters: [
+      'default',
+      ...(process.env['GITHUB_ACTIONS'] === 'true' ? ['github-actions' as const] : []),
+      './vitest.skip-reporter.ts',
+    ],
     exclude: ['dist/**', 'node_modules/**'],
     coverage: {
       provider: 'v8',
