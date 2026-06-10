@@ -164,6 +164,11 @@ export const Actions = {
     resourceType: 'Workflow',
     permission: 'workflow:run',
   },
+  ManageWorkflowTriggers: {
+    id: 'ManageWorkflowTriggers',
+    resourceType: 'Workflow',
+    permission: 'workflow:manage-triggers',
+  },
 } as const satisfies Record<string, ActionDef>
 
 export type ActionKey = keyof typeof Actions

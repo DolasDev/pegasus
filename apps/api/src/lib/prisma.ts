@@ -34,6 +34,11 @@ export const TENANT_SCOPED_MODELS = new Set([
   // WorkflowExecution is always tenant-owned (no GLOBAL case), so it is
   // auto-scoped here. Contrast with Workflow below.
   'WorkflowExecution',
+  // WorkflowTrigger is always tenant-owned, same as WorkflowExecution — a
+  // tenant's trigger on a GLOBAL workflow is still the tenant's own row. The
+  // future Unit 3 dispatcher Lambda matches cross-tenant via the root `db`,
+  // which bypasses this extension.
+  'WorkflowTrigger',
   // DomainEvent (outbox) rows are written by emitDomainEvent via the
   // tenant-scoped client inside handler transactions. The future trigger
   // dispatcher Lambda reads cross-tenant via the root `db`, which bypasses
