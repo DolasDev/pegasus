@@ -46,6 +46,7 @@ jobs:
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       api: ${{ steps.decide.outputs.api }}
       tenant_web: ${{ steps.decide.outputs.tenant_web }}
@@ -162,6 +163,7 @@ jobs:
     needs: [changes, deploy-staging]
     if: needs.changes.outputs.any == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     environment: staging
     permissions:
       id-token: write
@@ -195,12 +197,21 @@ jobs:
         run: |
           set -euo pipefail
           F=/tmp/pegasus-cdk-outputs.json
-          echo "API_URL=$(jq -r '.["pegasus-staging-api"].ApiUrl' "$F")" >> "$GITHUB_OUTPUT"
-          echo "WEB_URL=$(jq -r '.["pegasus-staging-frontend"].DistributionUrl' "$F")" >> "$GITHUB_OUTPUT"
-          echo "USER_POOL_ID=$(jq -r '.["pegasus-staging-cognito"].UserPoolId' "$F")" >> "$GITHUB_OUTPUT"
-          echo "CLIENT_ID=$(jq -r '.["pegasus-staging-cognito"].MobileClientId // empty' "$F")" >> "$GITHUB_OUTPUT"
-          echo "TENANT_CLIENT_ID=$(jq -r '.["pegasus-staging-cognito"].TenantClientId // empty' "$F")" >> "$GITHUB_OUTPUT"
-          echo "E2E_ROLE_ARN=$(jq -r '.["pegasus-staging-e2e-role"].E2ERoleArn' "$F")" >> "$GITHUB_OUTPUT"
+          API_URL=$(jq -r '.["pegasus-staging-api"].ApiUrl // empty' "$F")
+          WEB_URL=$(jq -r '.["pegasus-staging-frontend"].DistributionUrl // empty' "$F")
+          USER_POOL_ID=$(jq -r '.["pegasus-staging-cognito"].UserPoolId // empty' "$F")
+          CLIENT_ID=$(jq -r '.["pegasus-staging-cognito"].MobileClientId // empty' "$F")
+          TENANT_CLIENT_ID=$(jq -r '.["pegasus-staging-cognito"].TenantClientId // empty' "$F")
+          E2E_ROLE_ARN=$(jq -r '.["pegasus-staging-e2e-role"].E2ERoleArn // empty' "$F")
+          # CLIENT_ID / TENANT_CLIENT_ID stay optional; everything else is
+          # required by the remote suite — fail loud instead of letting
+          # Playwright die on garbage env vars.
+          for v in API_URL WEB_URL USER_POOL_ID E2E_ROLE_ARN; do
+            [[ -n "${!v}" ]] || { echo "::error::$v missing from cdk-outputs-staging — output key renamed or stack not in deploy set?"; exit 1; }
+          done
+          for v in API_URL WEB_URL USER_POOL_ID CLIENT_ID TENANT_CLIENT_ID E2E_ROLE_ARN; do
+            echo "$v=${!v}" >> "$GITHUB_OUTPUT"
+          done
 
       # Persona-coverage tests in authz-smoke.spec.ts call AdminSetUserPassword
       # against the staging Cognito user pool. We assume a narrow, e2e-only

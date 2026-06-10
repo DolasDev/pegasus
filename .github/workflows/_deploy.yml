@@ -52,6 +52,7 @@ jobs:
     name: Migrate ${{ inputs.env-name }} database
     if: inputs.deploy-api == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: ${{ inputs.env-name }}
     steps:
       - uses: actions/checkout@v6
@@ -95,6 +96,7 @@ jobs:
     needs: [migrate]
     if: always() && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: ${{ inputs.env-name }}
     env:
       AWS_REGION: ${{ inputs.aws-region }}
@@ -168,6 +170,29 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: pegasus-deploy-${{ inputs.env-name }}-${{ github.run_id }}
+
+      # The complete Temporal/broker secret ARNs (with the 6-char random
+      # suffix) are hardcoded in packages/infra/bin/app.ts (see the
+      # TEMPORAL_SECRET_ARNS comment there for why). If a secret is ever
+      # rotated-by-recreation the suffix goes stale and the CFN update fails
+      # minutes in with an opaque ECS error — so validate each ARN up front.
+      # Filtering by the caller account ID naturally selects this env's ARNs.
+      - name: Pre-flight Temporal secret ARNs
+        if: inputs.deploy-api == 'true'
+        run: |
+          set -euo pipefail
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          mapfile -t ARNS < <(grep -oE "arn:aws:secretsmanager:[^'\"]*" packages/infra/bin/app.ts \
+            | { grep ":${ACCOUNT}:" || true; } | sort -u)
+          if [[ ${#ARNS[@]} -eq 0 ]]; then
+            echo "::error::No secretsmanager ARNs for account ${ACCOUNT} found in packages/infra/bin/app.ts — did TEMPORAL_SECRET_ARNS move? Update this pre-flight."
+            exit 1
+          fi
+          for arn in "${ARNS[@]}"; do
+            aws secretsmanager describe-secret --secret-id "$arn" --query Name --output text >/dev/null \
+              || { echo "::error::Secret ARN stale (rotated-by-recreation?): $arn — update TEMPORAL_SECRET_ARNS in packages/infra/bin/app.ts"; exit 1; }
+            echo "OK: $arn"
+          done
 
       - name: Resolve CDK stack target
         id: target
