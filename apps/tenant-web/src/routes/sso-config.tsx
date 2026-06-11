@@ -20,7 +20,18 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, ShieldCheck, Loader2, AlertCircle, KeyRound } from 'lucide-react'
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  ShieldCheck,
+  Loader2,
+  AlertCircle,
+  KeyRound,
+  Copy,
+  Check,
+  Info,
+} from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
@@ -40,6 +51,84 @@ import {
   type UpdateSsoProviderInput,
 } from '@/api/queries/sso'
 import { usePermissions } from '@/auth/permissions'
+import { getConfig } from '@/config'
+
+// ---------------------------------------------------------------------------
+// IdP setup hints — environment-specific values the admin must register at
+// their external identity provider before the form can be completed.
+// ---------------------------------------------------------------------------
+
+function CopyField({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard unavailable (e.g. insecure context) — ignore
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs">{label}</Label>
+      <div className="flex items-center gap-2">
+        <Input value={value} readOnly className="h-8 font-mono bg-muted/50 text-xs" />
+        <Button
+          type="button"
+          variant="secondary"
+          size="icon"
+          className="h-8 w-8 shrink-0"
+          onClick={() => void copyToClipboard()}
+          title="Copy to clipboard"
+        >
+          {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+export function IdpSetupHints({ type }: { type: 'OIDC' | 'SAML' }) {
+  const { cognito } = getConfig()
+
+  return (
+    <div className="space-y-3 rounded-md border bg-muted/30 p-4">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <Info size={14} className="shrink-0 text-muted-foreground" />
+        Configure your identity provider first
+      </div>
+      {type === 'OIDC' ? (
+        <>
+          <CopyField
+            label="Redirect / callback URI (allow at your IdP)"
+            value={`${cognito.domain}/oauth2/idpresponse`}
+          />
+          <CopyField label="Authorize scopes" value="openid email profile" />
+          <p className="text-xs text-muted-foreground">
+            Create an OAuth/OIDC client at your identity provider using this redirect URI, then
+            enter the issued client ID below. Your IdP must release the <code>email</code> claim —
+            it is mapped to the Cognito email attribute.
+          </p>
+        </>
+      ) : (
+        <>
+          <CopyField label="ACS / Reply URL" value={`${cognito.domain}/saml2/idpresponse`} />
+          <CopyField
+            label="SP Entity ID / Audience URI"
+            value={`urn:amazon:cognito:sp:${cognito.userPoolId}`}
+          />
+          <p className="text-xs text-muted-foreground">
+            Register a SAML application at your identity provider with these values, then paste its
+            metadata URL below. The assertion must include an <code>email</code> attribute.
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Add / Edit form
@@ -162,6 +251,9 @@ function ProviderForm({ mode, onDone }: ProviderFormProps) {
               </div>
             </div>
           )}
+
+          {/* Values to register at the external IdP for this environment */}
+          <IdpSetupHints type={type} />
 
           {/* Cognito provider name — immutable after creation */}
           {!isEdit && (
