@@ -3,6 +3,10 @@
 //
 // Covers:
 //   - Header-secret enforcement (missing / wrong / right) on BOTH endpoints.
+//   - Per-tenant `wbk_` token auth (Phase 3 Unit 7): full matrix — own-tenant
+//     success, cross-tenant 404 (indistinguishable from missing) on BOTH
+//     endpoints, malformed / wrong-prefix / unknown-tenant / rotated-hash
+//     401s, and shared-secret precedence when both headers are present.
 //   - POST /workflow-runtime-token: happy path, missing execution, terminal-
 //     execution refusal, no token in logs, Cache-Control: no-store.
 //   - PATCH /workflow-executions/:id: state-machine validation, idempotent
@@ -10,9 +14,12 @@
 //
 // Strategy: mock the `db` module (so no real Prisma is needed) and the
 // runtime-token-crypto + tenant-scoped Prisma helpers. The validator and
-// shared-secret middleware are exercised via real HTTP-shaped requests.
+// broker auth middleware are exercised via real HTTP-shaped requests; the
+// token path runs the REAL parse + SHA-256 + timingSafeEqual verification in
+// lib/tenant-broker-credential.ts against a mocked credential row.
 // ---------------------------------------------------------------------------
 
+import { createHash } from 'node:crypto'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
@@ -25,11 +32,13 @@ import type { AppEnv } from '../types'
 const {
   mockExecutionFindUnique,
   mockWorkflowFindUnique,
+  mockCredentialFindUnique,
   mockExecRepo,
   mockDecryptRuntimeToken,
 } = vi.hoisted(() => ({
   mockExecutionFindUnique: vi.fn(),
   mockWorkflowFindUnique: vi.fn(),
+  mockCredentialFindUnique: vi.fn(),
   mockExecRepo: {
     findById: vi.fn(),
     markStarted: vi.fn(),
@@ -42,6 +51,7 @@ vi.mock('../db', () => ({
   db: {
     workflowExecution: { findUnique: mockExecutionFindUnique },
     workflow: { findUnique: mockWorkflowFindUnique },
+    tenantBrokerCredential: { findUnique: mockCredentialFindUnique },
   } as unknown as PrismaClient,
 }))
 
@@ -67,6 +77,34 @@ import { workflowInternalHandler } from './workflow-internal'
 
 const BROKER_SECRET = 'a'.repeat(64)
 
+// Per-tenant token fixtures (Phase 3 Unit 7). The handler's token path runs
+// the real parse + hash + timing-safe compare, so these are valid-shape
+// tokens whose SHA-256 hashes the mocked credential lookup returns.
+const TENANT_A = '11111111-1111-4111-8111-111111111111'
+const TENANT_B = '22222222-2222-4222-8222-222222222222'
+const TENANT_A_TOKEN = `wbk_${TENANT_A}_${'ab'.repeat(24)}`
+const TENANT_B_TOKEN = `wbk_${TENANT_B}_${'cd'.repeat(24)}`
+
+function sha256(s: string): string {
+  return createHash('sha256').update(s).digest('hex')
+}
+
+/**
+ * Wires the mocked tenant_broker_credentials lookup: known tenants resolve to
+ * their stored (correct) token hash, everything else to null.
+ */
+function stubCredentials(): void {
+  mockCredentialFindUnique.mockImplementation(({ where }: { where: { tenantId: string } }) => {
+    if (where.tenantId === TENANT_A) {
+      return Promise.resolve({ tokenHash: sha256(TENANT_A_TOKEN) })
+    }
+    if (where.tenantId === TENANT_B) {
+      return Promise.resolve({ tokenHash: sha256(TENANT_B_TOKEN) })
+    }
+    return Promise.resolve(null)
+  })
+}
+
 function buildApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>()
   app.route('/', workflowInternalHandler)
@@ -79,6 +117,17 @@ function withSecret(secret: string | null, body: unknown, method: 'POST' | 'PATC
   return {
     method,
     headers,
+    body: JSON.stringify(body),
+  }
+}
+
+function withToken(token: string, body: unknown, method: 'POST' | 'PATCH' = 'POST') {
+  return {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Workflow-Broker-Token': token,
+    },
     body: JSON.stringify(body),
   }
 }
@@ -136,6 +185,193 @@ describe('workflow-internal handler', () => {
       )
       // 404 here means we got past the gate — the row doesn't exist.
       expect(res.status).toBe(404)
+    })
+  })
+
+  // ── Per-tenant broker tokens (Phase 3 Unit 7) ──────────────────────────────
+
+  describe('X-Workflow-Broker-Token auth', () => {
+    const executionOwnedBy = (tenantId: string, status = 'QUEUED') => ({
+      id: VALID_EXECUTION_ID,
+      tenantId,
+      workflowId: 'wf-1',
+      status,
+      finishedAt: null,
+    })
+
+    beforeEach(() => {
+      stubCredentials()
+    })
+
+    // ---- own tenant: both endpoints succeed -------------------------------
+
+    it("mints a runtime token for the holder tenant's own execution", async () => {
+      mockExecutionFindUnique.mockResolvedValue(executionOwnedBy(TENANT_A))
+      mockWorkflowFindUnique.mockResolvedValue({ runtimeTokenCiphertext: 'CT' })
+      mockDecryptRuntimeToken.mockResolvedValue('vnd_TENANT_A_RUNTIME')
+      const res = await buildApp().request(
+        '/workflow-runtime-token',
+        withToken(TENANT_A_TOKEN, { executionId: VALID_EXECUTION_ID }),
+      )
+      expect(res.status).toBe(200)
+      expect((await json(res))['token']).toBe('vnd_TENANT_A_RUNTIME')
+    })
+
+    it("PATCHes the holder tenant's own execution", async () => {
+      mockExecutionFindUnique.mockResolvedValue(executionOwnedBy(TENANT_A, 'RUNNING'))
+      mockExecRepo.markTerminal.mockResolvedValue({
+        ...executionOwnedBy(TENANT_A, 'COMPLETED'),
+        finishedAt: new Date('2026-06-11T10:05:00Z'),
+      })
+      const res = await buildApp().request(
+        `/workflow-executions/${VALID_EXECUTION_ID}`,
+        withToken(TENANT_A_TOKEN, { status: 'COMPLETED', result: { ok: true } }, 'PATCH'),
+      )
+      expect(res.status).toBe(200)
+      expect(mockExecRepo.markTerminal).toHaveBeenCalledWith(
+        VALID_EXECUTION_ID,
+        expect.objectContaining({ status: 'COMPLETED' }),
+      )
+    })
+
+    // ---- cross tenant: BOTH endpoints answer like the row doesn't exist ----
+
+    it("refuses to mint a runtime token for ANOTHER tenant's execution", async () => {
+      mockExecutionFindUnique.mockResolvedValue(executionOwnedBy(TENANT_B))
+      mockWorkflowFindUnique.mockResolvedValue({ runtimeTokenCiphertext: 'CT' })
+      mockDecryptRuntimeToken.mockResolvedValue('vnd_TENANT_B_RUNTIME')
+      const res = await buildApp().request(
+        '/workflow-runtime-token',
+        withToken(TENANT_A_TOKEN, { executionId: VALID_EXECUTION_ID }),
+      )
+      expect(res.status).toBe(404)
+      // No decrypt may even be attempted for a cross-tenant request.
+      expect(mockDecryptRuntimeToken).not.toHaveBeenCalled()
+    })
+
+    it("refuses to PATCH ANOTHER tenant's execution", async () => {
+      mockExecutionFindUnique.mockResolvedValue(executionOwnedBy(TENANT_B, 'RUNNING'))
+      const res = await buildApp().request(
+        `/workflow-executions/${VALID_EXECUTION_ID}`,
+        withToken(TENANT_A_TOKEN, { status: 'FAILED', errorMessage: 'forged' }, 'PATCH'),
+      )
+      expect(res.status).toBe(404)
+      expect(mockExecRepo.markTerminal).not.toHaveBeenCalled()
+      expect(mockExecRepo.markStarted).not.toHaveBeenCalled()
+    })
+
+    it('cross-tenant denial body is byte-identical to a missing execution', async () => {
+      mockExecutionFindUnique.mockResolvedValueOnce(executionOwnedBy(TENANT_B))
+      const crossTenant = await buildApp().request(
+        '/workflow-runtime-token',
+        withToken(TENANT_A_TOKEN, { executionId: VALID_EXECUTION_ID }),
+      )
+      mockExecutionFindUnique.mockResolvedValueOnce(null)
+      const missing = await buildApp().request(
+        '/workflow-runtime-token',
+        withToken(TENANT_A_TOKEN, { executionId: VALID_EXECUTION_ID }),
+      )
+      expect(crossTenant.status).toBe(404)
+      expect(missing.status).toBe(404)
+      expect(await crossTenant.text()).toBe(await missing.text())
+    })
+
+    it('cross-tenant PATCH cannot learn row state via INVALID_TRANSITION', async () => {
+      // Terminal row owned by tenant B + an invalid transition: a same-tenant
+      // caller would get 400 INVALID_TRANSITION; cross-tenant must get the
+      // anonymous 404 instead.
+      mockExecutionFindUnique.mockResolvedValue(executionOwnedBy(TENANT_B, 'COMPLETED'))
+      const res = await buildApp().request(
+        `/workflow-executions/${VALID_EXECUTION_ID}`,
+        withToken(TENANT_A_TOKEN, { status: 'FAILED' }, 'PATCH'),
+      )
+      expect(res.status).toBe(404)
+      expect((await json(res))['code']).toBe('NOT_FOUND')
+    })
+
+    // ---- invalid tokens: 401 on both endpoints -----------------------------
+
+    const INVALID_TOKENS: Array<[label: string, token: string]> = [
+      ['empty', ''],
+      ['garbage', 'definitely-not-a-token'],
+      ['wrong prefix (vnd_)', `vnd_${'ab'.repeat(24)}`],
+      ['shared-secret-shaped', BROKER_SECRET],
+      ['missing secret part', `wbk_${TENANT_A}`],
+      ['non-hex secret part', `wbk_${TENANT_A}_${'zz'.repeat(24)}`],
+      [
+        'valid shape, unknown tenant',
+        `wbk_33333333-3333-4333-8333-333333333333_${'ab'.repeat(24)}`,
+      ],
+      // The rotated-credential case: right shape + known tenant, but the
+      // stored hash no longer matches (stubCredentials stores TENANT_A_TOKEN's
+      // hash, this token has a different secret).
+      ['stale secret after rotation', `wbk_${TENANT_A}_${'ef'.repeat(24)}`],
+    ]
+
+    for (const [label, token] of INVALID_TOKENS) {
+      it(`401s a(n) ${label} token on the mint endpoint`, async () => {
+        mockExecutionFindUnique.mockResolvedValue(executionOwnedBy(TENANT_A))
+        const res = await buildApp().request(
+          '/workflow-runtime-token',
+          withToken(token, { executionId: VALID_EXECUTION_ID }),
+        )
+        expect(res.status).toBe(401)
+        expect((await json(res))['code']).toBe('INVALID_BROKER_TOKEN')
+        expect(mockExecutionFindUnique).not.toHaveBeenCalled()
+      })
+
+      it(`401s a(n) ${label} token on the PATCH endpoint`, async () => {
+        mockExecutionFindUnique.mockResolvedValue(executionOwnedBy(TENANT_A, 'RUNNING'))
+        const res = await buildApp().request(
+          `/workflow-executions/${VALID_EXECUTION_ID}`,
+          withToken(token, { status: 'COMPLETED' }, 'PATCH'),
+        )
+        expect(res.status).toBe(401)
+        expect(mockExecRepo.markTerminal).not.toHaveBeenCalled()
+      })
+    }
+
+    it('never queries credentials for a malformed token (parse rejects first)', async () => {
+      await buildApp().request(
+        '/workflow-runtime-token',
+        withToken('garbage', { executionId: VALID_EXECUTION_ID }),
+      )
+      expect(mockCredentialFindUnique).not.toHaveBeenCalled()
+    })
+
+    // ---- header precedence --------------------------------------------------
+
+    it('shared secret wins when both headers are present', async () => {
+      mockExecutionFindUnique.mockResolvedValue(executionOwnedBy(TENANT_B))
+      mockWorkflowFindUnique.mockResolvedValue({ runtimeTokenCiphertext: 'CT' })
+      mockDecryptRuntimeToken.mockResolvedValue('vnd_TENANT_B_RUNTIME')
+      const res = await buildApp().request('/workflow-runtime-token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Workflow-Broker-Secret': BROKER_SECRET,
+          // A token for tenant A alongside the (full-access) shared secret:
+          // the secret path authenticates, so tenant B's execution is reachable.
+          'X-Workflow-Broker-Token': TENANT_A_TOKEN,
+        },
+        body: JSON.stringify({ executionId: VALID_EXECUTION_ID }),
+      })
+      expect(res.status).toBe(200)
+    })
+
+    it('an invalid shared secret never falls through to a valid token', async () => {
+      mockExecutionFindUnique.mockResolvedValue(executionOwnedBy(TENANT_A))
+      const res = await buildApp().request('/workflow-runtime-token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Workflow-Broker-Secret': 'wrong-secret',
+          'X-Workflow-Broker-Token': TENANT_A_TOKEN,
+        },
+        body: JSON.stringify({ executionId: VALID_EXECUTION_ID }),
+      })
+      expect(res.status).toBe(401)
+      expect((await json(res))['code']).toBe('INVALID_BROKER_SECRET')
     })
   })
 
@@ -369,11 +605,7 @@ describe('workflow-internal handler', () => {
       })
       const res = await buildApp().request(
         `/workflow-executions/${VALID_EXECUTION_ID}`,
-        withSecret(
-          BROKER_SECRET,
-          { status: 'FAILED', errorMessage: 'boom' },
-          'PATCH',
-        ),
+        withSecret(BROKER_SECRET, { status: 'FAILED', errorMessage: 'boom' }, 'PATCH'),
       )
       expect(res.status).toBe(200)
       expect(mockExecRepo.markTerminal).toHaveBeenCalledWith(
@@ -391,11 +623,7 @@ describe('workflow-internal handler', () => {
       })
       const res = await buildApp().request(
         `/workflow-executions/${VALID_EXECUTION_ID}`,
-        withSecret(
-          BROKER_SECRET,
-          { status: 'FAILED', errorMessage: 'never started' },
-          'PATCH',
-        ),
+        withSecret(BROKER_SECRET, { status: 'FAILED', errorMessage: 'never started' }, 'PATCH'),
       )
       expect(res.status).toBe(200)
     })
