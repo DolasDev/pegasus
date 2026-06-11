@@ -18,26 +18,60 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------------------
+  # Path filter — docs/plans-only changes skip the heavy jobs below. Skipped
+  # required checks report success, so branch protection stays satisfied.
+  # secret-scan deliberately does NOT depend on this (docs can leak secrets).
+  # ---------------------------------------------------------------------------
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: filter
+        with:
+          # Single negated pattern: "code" = anything NOT under plans/ or
+          # dolas/ and NOT a markdown file. Verified against picomatch 2.3.1
+          # (dorny's pinned version, MatchOptions {dot: true}): extglob
+          # !(a|b) does NOT span path segments, so the leading-! + brace form
+          # is required. The extra `*.md` covers root-level files — `**/*.md`
+          # inside a negated brace does not match the zero-segment case.
+          filters: |
+            code:
+              - '!{plans/**,dolas/**,**/*.md,*.md}'
+
+  # ---------------------------------------------------------------------------
   # Secret scanning — runs first, fast, no deps
   # ---------------------------------------------------------------------------
   secret-scan:
     name: Secret Scanning (Betterleaks)
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      BETTERLEAKS_VERSION: '1.1.1'
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - name: Cache Betterleaks
+        id: bl-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/betterleaks-bin
+          key: betterleaks-${{ env.BETTERLEAKS_VERSION }}-linux-x64
       - name: Install Betterleaks
-        env:
-          BETTERLEAKS_VERSION: '1.1.1'
+        if: steps.bl-cache.outputs.cache-hit != 'true'
         run: |
+          mkdir -p ~/betterleaks-bin
           curl -sSfL -o betterleaks.tar.gz \
             "https://github.com/betterleaks/betterleaks/releases/download/v${BETTERLEAKS_VERSION}/betterleaks_${BETTERLEAKS_VERSION}_linux_x64.tar.gz"
-          tar -xzf betterleaks.tar.gz -C /usr/local/bin betterleaks
+          tar -xzf betterleaks.tar.gz -C ~/betterleaks-bin betterleaks
           rm betterleaks.tar.gz
       - name: Run Betterleaks
-        run: betterleaks git .
+        run: ~/betterleaks-bin/betterleaks git .
 
   # ---------------------------------------------------------------------------
   # Type-check
@@ -46,19 +80,12 @@ jobs:
     name: Typecheck
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Fix binary permissions
-        run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
+      - uses: ./.github/actions/setup
 
       - name: Generate Prisma client
         working-directory: apps/api
@@ -74,19 +101,17 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
+      - uses: ./.github/actions/setup
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Fix binary permissions
-        run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
+      # Dependency-security gate lives here (not in Test) so a new CVE fails
+      # fast and independently of the Postgres container spin-up.
+      - name: Audit dependencies
+        run: npx --no-install audit-ci --config ./audit-ci.jsonc
 
       - name: Lint
         run: node node_modules/.bin/turbo run lint
@@ -98,6 +123,8 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
 
     services:
       postgres:
@@ -121,19 +148,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Fix binary permissions
-        run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
-
-      - name: Audit dependencies
-        run: npx --no-install audit-ci --config ./audit-ci.jsonc
+      - uses: ./.github/actions/setup
 
       - name: Initialise database schema and extensions
         run: |
@@ -176,6 +191,8 @@ jobs:
     name: E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
 
     services:
       postgres:
@@ -209,16 +226,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Fix binary permissions
-        run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
+      - uses: ./.github/actions/setup
 
       - name: Resolve Playwright version
         id: pw
