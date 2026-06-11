@@ -20,6 +20,7 @@ import {
   Check,
   X,
   Truck,
+  KeyRound,
 } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Button } from '@/components/ui/button'
@@ -38,6 +39,7 @@ import {
   useUpdateUserLegacyWindowsUsername,
   useLinkCrewMember,
   useDeactivateUser,
+  useResetUserPassword,
   type TenantUser,
   type RoleOption,
 } from '@/api/queries/users'
@@ -265,6 +267,85 @@ function DeactivateConfirm({ user, onConfirm, onCancel, isPending }: DeactivateC
           {isPending && <Loader2 size={14} className="animate-spin" />}
           Deactivate
         </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Reset-password confirmation
+//
+// Admin-initiated reset: the user is emailed a confirmation code and completes
+// the reset via the "Forgot password?" flow on the login page. Self-contained
+// idle → pending → done state so the success notice replaces the prompt inline.
+// ---------------------------------------------------------------------------
+
+type ResetPasswordConfirmProps = {
+  user: TenantUser
+  onConfirm: () => Promise<void>
+  onCancel: () => void
+}
+
+function ResetPasswordConfirm({ user, onConfirm, onCancel }: ResetPasswordConfirmProps) {
+  const [state, setState] = useState<'idle' | 'pending' | 'done'>('idle')
+  const [error, setError] = useState<string | null>(null)
+
+  async function handle() {
+    setError(null)
+    setState('pending')
+    try {
+      await onConfirm()
+      setState('done')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred.')
+      setState('idle')
+    }
+  }
+
+  if (state === 'done') {
+    return (
+      <Card className="border-primary/40">
+        <CardHeader>
+          <CardTitle>Reset code sent</CardTitle>
+          <CardDescription>
+            A password reset code has been emailed to <strong>{user.email}</strong>. They can set a
+            new password from the &ldquo;Forgot password?&rdquo; link on the sign-in page.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex justify-end">
+          <Button variant="outline" onClick={onCancel}>
+            Close
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Reset password?</CardTitle>
+        <CardDescription>
+          <strong>{user.email}</strong> will be emailed a confirmation code to set a new password.
+          Their current password keeps working until they complete the reset.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {error && (
+          <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <AlertCircle size={14} className="shrink-0" />
+            {error}
+          </div>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onCancel} disabled={state === 'pending'}>
+            Cancel
+          </Button>
+          <Button onClick={() => void handle()} disabled={state === 'pending'} className="gap-2">
+            {state === 'pending' && <Loader2 size={14} className="animate-spin" />}
+            Send reset code
+          </Button>
+        </div>
       </CardContent>
     </Card>
   )
@@ -546,6 +627,7 @@ type UserRowProps = {
   canDeactivate: boolean
   onDeactivate: (user: TenantUser) => void
   onManageRoles: (user: TenantUser) => void
+  onResetPassword: (user: TenantUser) => void
   onSaveLegacyWindowsUsername: (
     user: TenantUser,
     legacyWindowsUsername: string | null,
@@ -562,6 +644,7 @@ function UserRow({
   canDeactivate,
   onDeactivate,
   onManageRoles,
+  onResetPassword,
   onSaveLegacyWindowsUsername,
   onLinkCrewMember,
 }: UserRowProps) {
@@ -621,6 +704,17 @@ function UserRow({
               Manage roles
             </Button>
           )}
+          {canManageRoles && user.status === 'ACTIVE' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={() => onResetPassword(user)}
+            >
+              <KeyRound size={13} />
+              Reset password
+            </Button>
+          )}
           {!isSelf && canDeactivate && (
             <Button
               variant="ghost"
@@ -647,6 +741,7 @@ type PanelState =
   | { kind: 'invite' }
   | { kind: 'deactivate'; user: TenantUser }
   | { kind: 'manage'; user: TenantUser }
+  | { kind: 'reset'; user: TenantUser }
 
 export function UsersPage() {
   const session = getSession()
@@ -670,6 +765,7 @@ export function UsersPage() {
   })
   const users = usersData ?? []
   const deactivateMutation = useDeactivateUser()
+  const resetPasswordMutation = useResetUserPassword()
   const roleMutation = useUpdateUserRole()
   const legacyWindowsUsernameMutation = useUpdateUserLegacyWindowsUsername()
   const linkCrewMutation = useLinkCrewMember()
@@ -731,6 +827,12 @@ export function UsersPage() {
     }
   }
 
+  async function handleResetPassword(user: TenantUser) {
+    // Throws on failure so ResetPasswordConfirm can surface the error and keep
+    // the panel open for retry; on success it shows its own "code sent" notice.
+    await resetPasswordMutation.mutateAsync(user.id)
+  }
+
   async function handleSaveRoles(user: TenantUser, roleNames: string[]) {
     await roleMutation.mutateAsync({ id: user.id, input: { roleNames } })
     setPanel({ kind: 'none' })
@@ -789,10 +891,24 @@ export function UsersPage() {
               canDeactivate={perms.has('user:deactivate')}
               onDeactivate={(u) => setPanel({ kind: 'deactivate', user: u })}
               onManageRoles={(u) => setPanel({ kind: 'manage', user: u })}
+              onResetPassword={(u) => setPanel({ kind: 'reset', user: u })}
               onSaveLegacyWindowsUsername={handleSaveLegacyWindowsUsername}
               onLinkCrewMember={handleLinkCrewMember}
             />
           )
+
+          if (panel.kind === 'reset' && panel.user.id === user.id) {
+            return (
+              <div key={user.id} className="space-y-2">
+                {row}
+                <ResetPasswordConfirm
+                  user={user}
+                  onConfirm={() => handleResetPassword(user)}
+                  onCancel={() => setPanel({ kind: 'none' })}
+                />
+              </div>
+            )
+          }
 
           if (panel.kind === 'deactivate' && panel.user.id === user.id) {
             return (

@@ -27,9 +27,17 @@ vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
   AdminDisableUserCommand: vi.fn().mockImplementation(function (input: unknown) {
     return input
   }),
+  AdminResetUserPasswordCommand: vi.fn().mockImplementation(function (input: unknown) {
+    return input
+  }),
 }))
 
-import { provisionCognitoUser, disableCognitoUser, getCognito } from './cognito'
+import {
+  provisionCognitoUser,
+  disableCognitoUser,
+  resetCognitoUserPassword,
+  getCognito,
+} from './cognito'
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -155,5 +163,38 @@ describe('disableCognitoUser', () => {
     mockSend.mockRejectedValue(new Error('Network error'))
 
     await expect(disableCognitoUser('user@acme.com')).rejects.toThrow('Network error')
+  })
+})
+
+describe('resetCognitoUserPassword', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('calls Cognito AdminResetUserPassword with the given email', async () => {
+    mockSend.mockResolvedValue({})
+
+    await resetCognitoUserPassword('user@acme.com')
+
+    expect(mockSend).toHaveBeenCalledOnce()
+    const sentCommand = mockSend.mock.calls[0]![0] as Record<string, unknown>
+    expect(sentCommand['Username']).toBe('user@acme.com')
+  })
+
+  it('resolves without throwing when Cognito returns UserNotFoundException (fail-open)', async () => {
+    mockSend.mockRejectedValue(
+      Object.assign(new Error('User not found'), { name: 'UserNotFoundException' }),
+    )
+
+    await expect(resetCognitoUserPassword('ghost@acme.com')).resolves.toBeUndefined()
+    expect(mockSend).toHaveBeenCalledOnce()
+  })
+
+  it('rethrows non-UserNotFoundException errors', async () => {
+    mockSend.mockRejectedValue(
+      Object.assign(new Error('Access denied'), { name: 'NotAuthorizedException' }),
+    )
+
+    await expect(resetCognitoUserPassword('user@acme.com')).rejects.toThrow('Access denied')
   })
 })

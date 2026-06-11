@@ -400,6 +400,7 @@ const COGNITO_INTROSPECTION_ACTIONS = [
   'cognito-idp:AdminCreateUser',
   'cognito-idp:AdminDisableUser',
   'cognito-idp:AdminEnableUser',
+  'cognito-idp:AdminResetUserPassword',
   'cognito-idp:AdminGetUser',
   'cognito-idp:CreateIdentityProvider',
   'cognito-idp:UpdateIdentityProvider',
