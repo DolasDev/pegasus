@@ -191,8 +191,8 @@ being machine-dependent.
 - [x] **1.3 Add `e2e:remote` root script + `apps/e2e/README.md` front door.**
       (~30 min) Root `package.json` scripts block:
       `json
-  "e2e:remote": "E2E_TARGET=remote npm run e2e --workspace=@pegasus/e2e"
-  `
+"e2e:remote": "E2E_TARGET=remote npm run e2e --workspace=@pegasus/e2e"
+`
       (env vars still come from `apps/e2e/.env.test.local` per the loader at
       playwright.config.ts:37 — README documents that.) New
       `apps/e2e/README.md` (~30 lines): the three-mode table (lift from
@@ -205,13 +205,13 @@ being machine-dependent.
 
 ### Phase 2 — Close the browser-coverage hole in PR CI (~1–1.5 d)
 
-- [ ] **2.1 Serve a built tenant-web in the CI e2e job.** (~0.5 d) In
+- [x] **2.1 Serve a built tenant-web in the CI e2e job.** (~0.5 d) In
       `ci.yml` e2e job: `turbo run build --filter=@pegasus/tenant-web`
       (Vite build with `VITE_API_BASE_URL=http://localhost:3001`), then
       `npx vite preview --port 4173 &` (or `npx serve -s dist`) and export
       `WEB_URL=http://localhost:4173`. This alone un-skips
       `landing.spec.ts`. Bump the 1.1 floor accordingly.
-- [ ] **2.2 Solve local browser auth.** (~0.5 d) The API already honors
+- [x] **2.2 Solve local browser auth.** (~0.5 d) The API already honors
       `SKIP_AUTH=true` in local mode; the SPA still needs a session to pass
       its auth guard. Two options — pick after a 1 h spike:
       (a) extend `SKIP_AUTH` handling so tenant-web (when
@@ -220,8 +220,8 @@ being machine-dependent.
       (b) mint a session the same way `apps/e2e/fixtures/hosted-ui-login.ts`
       does for QA and inject `storageState`, against a local stub. Option (a)
       is less machinery and mirrors the API's existing test seam — prefer it
-      unless the spike finds the guard too entangled.
-- [ ] **2.3 Author the first three core-flow browser specs with Playwright
+      unless the spike finds the guard too entangled. _(shipped as import.meta.env.MODE === 'e2e' seam — VITE_E2E_SKIP_AUTH shape failed the DCE spike)_
+- [x] **2.3 Author the first three core-flow browser specs with Playwright
       MCP + Claude.** (~0.5 d, AI-assisted — Finding 7) Flows, in order of
       regression value: login-shell loads + nav renders; create customer →
       appears in list; create quote from customer → line item math renders.
@@ -293,7 +293,7 @@ being machine-dependent.
       mode only.** (~15 min) `trace: 'on-first-retry'` means a
       fail-fail-no-retry-left sequence in the gate ships no trace. In
       playwright.config.ts `use`: `trace: isDeployed ? 'retain-on-failure' :
-  'on-first-retry'`. Cost: trace overhead on every gate test (~10 tests,
+'on-first-retry'`. Cost: trace overhead on every gate test (~10 tests,
       negligible at 19 s) in exchange for always-triageable prod-gate
       failures.
 

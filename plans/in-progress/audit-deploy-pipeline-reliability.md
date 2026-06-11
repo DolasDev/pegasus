@@ -153,7 +153,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
 
 ### Phase 2 — Cancellation-proof change detection + notifications (the core reliability fix, ≈3-4h)
 
-- [ ] **2.1 Diff against the last _successfully deployed_ SHA instead of the previous commit** (2-3h). This makes F1 cancellations benign by construction — the surviving newest run always covers every commit since the last green deploy; no re-dispatch automation needed. Design:
+- [x] **2.1 Diff against the last _successfully deployed_ SHA instead of the previous commit** (2-3h). This makes F1 cancellations benign by construction — the surviving newest run always covers every commit since the last green deploy; no re-dispatch automation needed. Design:
   - **Marker:** a GitHub Actions repo variable `LAST_DEPLOY_SHA`, updated only by a new terminal job in `deploy.yml`:
     ```yaml
     record-deploy:
@@ -214,7 +214,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
     (Path lists shown inline here; once 3.1 lands they are read from the manifest with `jq`.)
   - **Behavioral consequences to accept:** after an E2E-gate failure or unapproved prod run, the next push re-deploys everything that changed since the last green run — idempotent CDK, slightly slower, strictly safer. The old failure mode (silently undeployed code) becomes impossible while runs keep landing; a cancelled run with _no_ successor is covered by 2.2's notification.
 
-- [ ] **2.2 `deploy-watch.yml` — push notifications via ntfy.sh, covering cancelled runs** (45 min). New workflow; must be separate because cancelled-while-queued runs execute zero jobs of their own:
+- [ ] **2.2 `deploy-watch.yml` — push notifications via ntfy.sh, covering cancelled runs** (45 min). New workflow; must be separate because cancelled-while-queued runs execute zero jobs of their own: _(deferred by user 2026-06-11)_
 
   ```yaml
   name: Deploy watch
@@ -245,7 +245,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
 
   One-time setup: pick a random topic string, `gh secret set NTFY_TOPIC`, subscribe in the ntfy mobile app. Zero infrastructure, free. After 2.1 lands, cancelled notifications are informational (superseded run covers the changes); failures are actionable alerts.
 
-- [ ] **2.3 "Prod approval waiting" ping** (15 min). The prod gate waits silently today. Add a final step to the `e2e-staging` job in `deploy.yml`:
+- [ ] **2.3 "Prod approval waiting" ping** (15 min). The prod gate waits silently today. Add a final step to the `e2e-staging` job in `deploy.yml`: _(deferred by user 2026-06-11)_
 
   ```yaml
   - name: Notify — prod approval ready
@@ -256,7 +256,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
         "https://ntfy.sh/${{ secrets.NTFY_TOPIC }}"
   ```
 
-- [ ] **2.4 (AI, optional) Failure triage in deploy-watch** (1h). In `deploy-watch.yml`, on `conclusion == 'failure'`, fetch the failed job's log tail and include a Claude-generated 2-3 sentence diagnosis in the ntfy body:
+- [ ] **2.4 (AI, optional) Failure triage in deploy-watch** (1h). In `deploy-watch.yml`, on `conclusion == 'failure'`, fetch the failed job's log tail and include a Claude-generated 2-3 sentence diagnosis in the ntfy body: _(deferred by user 2026-06-11)_
   ```yaml
   - name: Fetch failed job logs
     if: env.CONCLUSION == 'failure'

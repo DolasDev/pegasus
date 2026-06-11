@@ -75,33 +75,33 @@ So `npm run db:seed` (`apps/api/package.json:16`, runs `tsx prisma/seed.ts`) exi
 
 ### Phase 2 — Fix the seed (TDD; ~2-3 h)
 
-- [ ] **Test first: add `apps/api/src/__tests__/seed.test.ts`** (~45 min). Vitest integration test following the repo convention (skips when `DATABASE_URL` unset). Refactor `seed.ts` to export `main(db)` (keep the CLI entry guard via `import.meta` check or a separate `prisma/seed-run.ts` wrapper referenced by `db:seed`). Assertions:
+- [x] **Test first: add `apps/api/src/__tests__/seed.test.ts`** (~45 min). Vitest integration test following the repo convention (skips when `DATABASE_URL` unset). Refactor `seed.ts` to export `main(db)` (keep the CLI entry guard via `import.meta` check or a separate `prisma/seed-run.ts` wrapper referenced by `db:seed`). Assertions:
   - `await main(db)` resolves (no PrismaClientValidationError);
   - a Tenant with the dev tenant id exists; every seeded `customer/move/quote/invoice/leadSource/rateTable/crewMember/vehicle/inventoryRoom` row has `tenantId` = dev tenant id;
   - **idempotency**: run `main(db)` twice, assert counts unchanged (3 moves, 2 customers, 6 addresses, 2 quotes, 1 invoice, etc.).
-- [ ] **Implement the seed fix in `apps/api/prisma/seed.ts`** (~1 h):
+- [x] **Implement the seed fix in `apps/api/prisma/seed.ts`** (~1 h):
   - At top of `main`: `const tenantId = process.env['DEFAULT_TENANT_ID'] ?? 'dev00000-0000-0000-0000-000000000001'`; `db.tenant.upsert({ where: { id: tenantId }, create: { id: tenantId, name: 'Dev Tenant', slug: 'dev' }, update: {} })`. Also upsert one `TenantUser` (`dev-admin@example.com`, `roleNames: ['tenant_admin']`, status ACTIVE) mirroring `apps/e2e/global-setup.ts:97-105`.
   - Thread `tenantId` into every create payload listed in Finding 1's table.
   - Fix the four upsert selectors to compound uniques: `tenantId_name` (LeadSource:24, RateTable:39), `tenantId_registrationPlate` (Vehicle:72), `tenantId_email` (Customer:88, :249).
   - True idempotency: give addresses, moves, quotes, invoices, payment, and inventory rooms deterministic ids (`seed-move-001` pattern already used for crew at seed.ts:60) and convert `create` → `upsert(where:{id}, update:{})`. Replace the `inventoryItem.createMany` with `skipDuplicates`-safe deterministic-id upserts or guard on existing-count.
   - Print the tenant id + "set DEFAULT_TENANT_ID=<id> in apps/api/.env (SKIP_AUTH dev)" in the success summary.
-- [ ] **Bring `prisma/seed.ts` into the typecheck graph** (~15 min). Change `apps/api/tsconfig.json:7` include to `["src/**/*", "prisma/seed.ts"]` (confirm `tsc` build output isn't polluted — `typecheck` is `--noEmit`, and `build`'s `tsc` honors the same include, so either add a `tsconfig.typecheck.json` or set `"noEmit"`-safe excludes for build; simplest: keep `build` on a dedicated `tsconfig.build.json` that includes only `src`, point `typecheck` at the widened config). This is the regression guard that prevents the seed rotting again.
-- [ ] **Ensure `apps/api/.env.example` documents `DEFAULT_TENANT_ID`** matching the seed default id, alongside the (uncommented) local-docker `DATABASE_URL` (~10 min).
+- [x] **Bring `prisma/seed.ts` into the typecheck graph** (~15 min). Change `apps/api/tsconfig.json:7` include to `["src/**/*", "prisma/seed.ts"]` (confirm `tsc` build output isn't polluted — `typecheck` is `--noEmit`, and `build`'s `tsc` honors the same include, so either add a `tsconfig.typecheck.json` or set `"noEmit"`-safe excludes for build; simplest: keep `build` on a dedicated `tsconfig.build.json` that includes only `src`, point `typecheck` at the widened config). This is the regression guard that prevents the seed rotting again.
+- [x] **Ensure `apps/api/.env.example` documents `DEFAULT_TENANT_ID`** matching the seed default id, alongside the (uncommented) local-docker `DATABASE_URL` (~10 min).
 
 ### Phase 3 — One-command bootstrap (`npm run setup` → running stack; ~2 h)
 
-- [ ] **Extend `scripts/setup.sh` to finish the job** (~1.5 h). After the existing env/prisma steps, append (each step skippable + idempotent, fail-soft with a clear warning when Docker is absent — same graceful degradation as `apps/e2e/global-setup.ts:24-47`):
+- [x] **Extend `scripts/setup.sh` to finish the job** (~1.5 h). After the existing env/prisma steps, append (each step skippable + idempotent, fail-soft with a clear warning when Docker is absent — same graceful degradation as `apps/e2e/global-setup.ts:24-47`):
   1. `docker info` probe → if available, `docker compose up -d postgres` + `pg_isready` wait loop (reuse the compose healthcheck params from `docker-compose.yml:28-32`);
   2. **stop commenting out `DATABASE_URL`** — invert `comment_out_default_db_url` (`setup.sh:40-47`): the local-docker default should be _active_ out of the box; Neon users are the exception who edit `.env` (print a one-line hint). Also un-comment an already-commented default when postgres comes up;
   3. `npx prisma migrate deploy` from `apps/api` (deploy, not `migrate dev` — non-interactive, no shadow DB prompt);
   4. `npm run db:seed --workspace=@pegasus/api` (or `cd apps/api && npm run db:seed`);
   5. final banner: "Stack ready → npm run dev (API on :3000 with SKIP_AUTH, tenant-web :5173, admin-web :5174). Admin-user creation (scripts/create-admin-user.ts) is NOT needed locally."
-- [ ] **Prune dead dual-layout code from `setup.sh`** (~15 min): drop `packages/api` (`:51`, `:74`), `packages/web` (`:54`, `:64`), `apps/admin` (`:57`, `:67`) loop branches; straight-line the script.
-- [ ] **Refresh `DEV-WORKFLOW.md` §1-2** (~15 min): replace the manual chmod/cp litany with "run `npm run setup`", fix stale `packages/api` references (`:29`, `:41`).
+- [x] **Prune dead dual-layout code from `setup.sh`** (~15 min): drop `packages/api` (`:51`, `:74`), `packages/web` (`:54`, `:64`), `apps/admin` (`:57`, `:67`) loop branches; straight-line the script.
+- [x] **Refresh `DEV-WORKFLOW.md` §1-2** (~15 min): replace the manual chmod/cp litany with "run `npm run setup`", fix stale `packages/api` references (`:29`, `:41`).
 
 ### Phase 4 — `npm run doctor` (~1 h)
 
-- [ ] **Add `scripts/doctor.sh` + root script `"doctor": "bash scripts/doctor.sh"`** (~1 h). Read-only checks, one line each, exit non-zero if any FAIL:
+- [x] **Add `scripts/doctor.sh` + root script `"doctor": "bash scripts/doctor.sh"`** (~1 h). Read-only checks, one line each, exit non-zero if any FAIL:
   - node version satisfies `.nvmrc` (compare `node -v` major.minor.patch prefix; on mismatch print `nvm install $(cat .nvmrc)`);
   - npm major ≥ 10;
   - docker daemon reachable (`docker info`), postgres container healthy (`docker compose ps --format json postgres` or `pg_isready -h localhost -p 5432 -U pegasus`);

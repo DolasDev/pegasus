@@ -73,7 +73,7 @@ Audit of `.github/workflows/ci.yml` (246 lines, 5 jobs) and `audit-ci.jsonc`, wi
 
 ### Phase 2 — Setup dedup + caching (~1.5 h, second PR)
 
-- [ ] **Create a composite setup action** `.github/actions/setup/action.yml` and replace the 4 duplicated blocks. Effort: 45 min. This both removes ~60 lines of YAML drift risk and adds a `node_modules` cache that skips the 38–40s `npm ci` on lockfile hit (~2.3 billed min/run saved; ~35s off the Test-job critical path → wall clock drops toward ~2m30s):
+- [x] **Create a composite setup action** `.github/actions/setup/action.yml` and replace the 4 duplicated blocks. Effort: 45 min. This both removes ~60 lines of YAML drift risk and adds a `node_modules` cache that skips the 38–40s `npm ci` on lockfile hit (~2.3 billed min/run saved; ~35s off the Test-job critical path → wall clock drops toward ~2m30s):
 
   ```yaml
   # .github/actions/setup/action.yml
@@ -105,7 +105,7 @@ Audit of `.github/workflows/ci.yml` (246 lines, 5 jobs) and `audit-ci.jsonc`, wi
   **Validation required before merging:** confirm postinstall-dependent artifacts survive the cache path — Prisma engines are regenerated explicitly per job (`prisma generate`), and `@playwright/test` does not download browsers on postinstall, so a restored `node_modules` should be complete. Verify by re-running a cached run and checking typecheck/test/e2e all pass on `cache-hit: true`.
   Note: workspace `node_modules` are hoisted to root in this repo; if any app keeps a nested `node_modules` (check `ls apps/*/node_modules packages/*/node_modules` locally), add those paths to `path:`.
 
-- [ ] **Cache Playwright browsers in the e2e job.** Effort: 30 min. Saves ~20s and removes a CDN download from every run:
+- [x] **Cache Playwright browsers in the e2e job.** Effort: 30 min. Saves ~20s and removes a CDN download from every run:
 
   ```yaml
   - name: Get Playwright version
@@ -129,7 +129,7 @@ Audit of `.github/workflows/ci.yml` (246 lines, 5 jobs) and `audit-ci.jsonc`, wi
 
   (apt packages aren't cacheable; `install-deps` on a hit takes ~5–10s on ubuntu-latest, which already ships most of them.)
 
-- [ ] **Cache the Betterleaks binary.** Effort: 15 min. Primarily a resilience fix (one less external download per run):
+- [x] **Cache the Betterleaks binary.** Effort: 15 min. Primarily a resilience fix (one less external download per run):
 
   ```yaml
   - name: Cache Betterleaks
@@ -154,9 +154,9 @@ Audit of `.github/workflows/ci.yml` (246 lines, 5 jobs) and `audit-ci.jsonc`, wi
 
 ### Phase 3 — Job topology (~1.5 h, third PR)
 
-- [ ] **Move the audit-ci step from the Test job to the Lint job.** Effort: 10 min. Cut lines `ci.yml:128–129` and paste after the Lint job's setup (before the lint step). Rationale: decouples the dependency-security gate from the 3-min Test job and the Postgres container; a new CVE now fails in ~50s with an honestly-named-enough job, **without renaming any job** (avoids branch-protection churn — keeping job names stable is why a dedicated `dependency-audit` job is NOT recommended right now; revisit if Unit 5 adds a security job). `audit-ci.jsonc` needs no changes.
+- [x] **Move the audit-ci step from the Test job to the Lint job.** Effort: 10 min. Cut lines `ci.yml:128–129` and paste after the Lint job's setup (before the lint step). Rationale: decouples the dependency-security gate from the 3-min Test job and the Postgres container; a new CVE now fails in ~50s with an honestly-named-enough job, **without renaming any job** (avoids branch-protection churn — keeping job names stable is why a dedicated `dependency-audit` job is NOT recommended right now; revisit if Unit 5 adds a security job). `audit-ci.jsonc` needs no changes.
 
-- [ ] **Skip heavy jobs on docs/plans-only changes** with `dorny/paths-filter`. Effort: 1 h. Saves the full ~3.4 min wall / ~7.3 billed min on every plans-archive or docs commit — the highest-frequency waste found in this audit. Skipped required checks report success, so branch protection stays satisfied.
+- [x] **Skip heavy jobs on docs/plans-only changes** with `dorny/paths-filter`. Effort: 1 h. Saves the full ~3.4 min wall / ~7.3 billed min on every plans-archive or docs commit — the highest-frequency waste found in this audit. Skipped required checks report success, so branch protection stays satisfied. _(plan's pattern was a picomatch no-op; shipped as '!{plans/**,dolas/**,\**/*.md,\*.md}' — verified against dorny's pinned picomatch)_
 
   ```yaml
   changes:
