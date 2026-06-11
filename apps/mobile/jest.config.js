@@ -19,6 +19,10 @@ function resolvePackage(name) {
 
 module.exports = {
   preset: 'react-native',
+  // Override the preset's testEnvironment (react-native pins its own
+  // jest-environment-node@^29, incompatible with jest >= 30.4's runtime).
+  // See jest.environment.js for the details.
+  testEnvironment: require.resolve('./jest.environment.js'),
   transformIgnorePatterns: [
     'node_modules/(?!(react-native|@react-native|@react-native-async-storage|expo|@expo|expo-status-bar|expo-router|expo-constants|expo-image-picker|expo-linking|expo-secure-store|react-native-web|react-native-safe-area-context|react-native-screens|react-native-get-random-values)/)',
   ],
