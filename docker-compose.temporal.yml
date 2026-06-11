@@ -5,14 +5,20 @@
 # workflows against a real Temporal server before publishing.
 #
 # Phase 2 Unit 5 added the `temporal-worker` service so the curated stdlib
-# worker can be run locally against the same Temporal dev server. Both
-# services are defined; the worker is OPT-IN — start what you need:
+# worker can be run locally against the same Temporal dev server. Phase 3
+# Unit 8 added `tenant-runner` (sandboxed tenant-code runner). All services
+# are OPT-IN — start what you need:
 #
 #   # SDK-only flow (Phase 1 behaviour, unchanged):
 #   docker compose -f docker-compose.temporal.yml up temporal
 #
-#   # Full curated-worker flow (Phase 2 Unit 5 onwards):
-#   docker compose -f docker-compose.temporal.yml up
+#   # Curated-worker flow (Phase 2 Unit 5 onwards):
+#   docker compose -f docker-compose.temporal.yml up temporal temporal-worker
+#
+#   # Tenant-runner flow (Phase 3 Unit 8 — needs a real tenant id + wbk_
+#   # token; see apps/tenant-runner/README.md "Local development"):
+#   PEGASUS_TENANT_ID=<uuid> PEGASUS_TENANT_BROKER_TOKEN=<wbk_...> \
+#     docker compose -f docker-compose.temporal.yml up temporal tenant-runner
 #
 # Stop:
 #   docker compose -f docker-compose.temporal.yml down
@@ -81,5 +87,42 @@ services:
     # the worker can reach `npm run dev`'s API on :3000. Docker Desktop
     # (macOS, Windows) does this automatically; the explicit mapping is
     # a no-op there.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+
+  # Pegasus tenant runner — Phase 3 Unit 8. The trusted shim that downloads
+  # the tenant's executable artifacts (via the local API's broker endpoint),
+  # sha256-verifies them, and runs tenant code in stripped-env subprocesses.
+  #
+  # Unlike the stdlib worker this service NEEDS real per-tenant inputs to do
+  # anything: a tenant id and that tenant's wbk_ broker token (mint it with
+  # the tsx one-liner in apps/tenant-runner/README.md). Without them the
+  # container exits 2 (config error) with a friendly message — the defaults
+  # below are well-formed placeholders so `docker compose config` validates.
+  #
+  # Note the runner is scale-to-zero by design: it exits 0 after 10 idle
+  # minutes (RUNNER_IDLE_TIMEOUT_SECONDS to tune) — `up` it again as needed.
+  tenant-runner:
+    build:
+      # Repo root context — the Dockerfile reaches into
+      # packages/workflows-sdk-python/ (see its header).
+      context: .
+      dockerfile: apps/tenant-runner/Dockerfile
+    container_name: pegasus-tenant-runner
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: 'temporal:7233'
+      # Local Temporal dev server only ships the `default` namespace.
+      TEMPORAL_NAMESPACE: 'default'
+      PEGASUS_API_BASE_URL: 'http://host.docker.internal:3000'
+      ENV_NAME: 'dev'
+      # Empty -> runner connects without auth + TLS (local Temporal mode).
+      TEMPORAL_CLOUD_API_KEY: ''
+      # REQUIRED real values — export these before `up` (placeholders parse
+      # but the broker will 401 them):
+      TENANT_ID: '${PEGASUS_TENANT_ID:-00000000-0000-4000-8000-000000000000}'
+      WORKFLOW_BROKER_TOKEN: '${PEGASUS_TENANT_BROKER_TOKEN:-wbk_00000000-0000-4000-8000-000000000000_000000000000000000000000000000000000000000000000}'
     extra_hosts:
       - 'host.docker.internal:host-gateway'
