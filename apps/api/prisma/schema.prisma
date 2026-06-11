@@ -1179,6 +1179,23 @@ model Workflow {
   /// runtime account is provisioned.
   runtimeApiClientId String? @map("runtime_api_client_id")
 
+  /// SHA-256 (hex) of the artifact zip, computed server-side at finalize
+  /// (Phase 3 Unit 6). Null for rows finalized before integrity validation
+  /// existed — they become executable on re-upload.
+  artifactSha256 String? @map("artifact_sha256")
+
+  /// Artifact zip size in bytes, recorded at finalize alongside the digest.
+  /// Null for pre-Unit-6 rows.
+  artifactSizeBytes Int? @map("artifact_size_bytes")
+
+  /// True when the artifact passed integrity validation at finalize (zip
+  /// structure sound, every manifest entry point resolves to a file in the
+  /// zip, no pip dependencies, within the 10 MB cap). Derived server-side
+  /// only — never client-settable. NOTE: the run path still enforces the
+  /// curated-names gate (lib/curated-workflows.ts) until Phase 3 Unit 10;
+  /// this flag records *eligibility*, it does not open execution yet.
+  executable Boolean @default(false)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
