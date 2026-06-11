@@ -49,6 +49,9 @@ vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
   AdminDisableUserCommand: vi.fn().mockImplementation(function (input: unknown) {
     return input
   }),
+  AdminResetUserPasswordCommand: vi.fn().mockImplementation(function (input: unknown) {
+    return input
+  }),
 }))
 
 vi.mock('../repositories/users', () => ({
@@ -356,6 +359,55 @@ describe('users handler', () => {
       expect(res.status).toBe(200)
       const body = await json(res)
       expect((body.data as JsonBody)['status']).toBe('DEACTIVATED')
+    })
+  })
+
+  // ── POST /:id/reset-password ───────────────────────────────────────────────
+
+  describe('POST /:id/reset-password', () => {
+    const activeUser = { ...mockUserRow, status: 'ACTIVE' as const, activatedAt: now }
+
+    it('returns 403 FORBIDDEN without user:update permission', async () => {
+      const res = await buildApp('viewer').request('/user-1/reset-password', post({}))
+      expect(res.status).toBe(403)
+      expect((await json(res)).code).toBe('FORBIDDEN')
+    })
+
+    it('returns 404 NOT_FOUND when the user does not exist', async () => {
+      mockRepo.findById.mockResolvedValue(null)
+      const res = await buildApp().request('/missing/reset-password', post({}))
+      expect(res.status).toBe(404)
+      expect((await json(res)).code).toBe('NOT_FOUND')
+    })
+
+    it('returns 422 INVALID_STATE when the user is not ACTIVE', async () => {
+      mockRepo.findById.mockResolvedValue(mockUserRow) // PENDING
+      const res = await buildApp().request('/user-1/reset-password', post({}))
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('INVALID_STATE')
+      expect(mockSend).not.toHaveBeenCalled()
+    })
+
+    it('returns 500 COGNITO_ERROR when AdminResetUserPassword fails', async () => {
+      mockRepo.findById.mockResolvedValue(activeUser)
+      mockSend.mockRejectedValue(
+        Object.assign(new Error('boom'), { name: 'InternalErrorException' }),
+      )
+      const res = await buildApp().request('/user-1/reset-password', post({}))
+      expect(res.status).toBe(500)
+      expect((await json(res)).code).toBe('COGNITO_ERROR')
+    })
+
+    it('returns 200 and calls Cognito with the user email on the happy path', async () => {
+      mockRepo.findById.mockResolvedValue(activeUser)
+      mockSend.mockResolvedValue({})
+      const res = await buildApp().request('/user-1/reset-password', post({}))
+      expect(res.status).toBe(200)
+      const body = await json(res)
+      expect((body.data as JsonBody)['email']).toBe('user@example.com')
+      expect(mockSend).toHaveBeenCalledOnce()
+      const sentCommand = mockSend.mock.calls[0]![0] as Record<string, unknown>
+      expect(sentCommand['Username']).toBe('user@example.com')
     })
   })
 })

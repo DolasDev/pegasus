@@ -143,3 +143,14 @@ export function useDeactivateUser() {
     },
   })
 }
+
+/**
+ * Admin-initiated password reset. The user is emailed a confirmation code and
+ * completes the reset through the "Forgot password" flow on the login page.
+ */
+export function useResetUserPassword() {
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<TenantUser>(`/api/v1/users/${id}/reset-password`, { method: 'POST' }),
+  })
+}

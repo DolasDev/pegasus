@@ -106,6 +106,39 @@ export async function respondToMfaChallenge(
   return tokens
 }
 
+// ---------------------------------------------------------------------------
+// Self-service password reset (ForgotPassword / ConfirmForgotPassword)
+//
+// Available on the public app client without any explicit auth flow — Cognito's
+// account recovery (EMAIL_ONLY) emails a confirmation code. The client sets
+// `preventUserExistenceErrors: true`, so ForgotPassword never reveals whether
+// the email exists; the UI must stay generic.
+// ---------------------------------------------------------------------------
+
+/** Starts a forgot-password flow — Cognito emails a confirmation code. */
+export async function forgotPassword(email: string): Promise<void> {
+  const region = parseRegion()
+  await cognitoApiRequest(region, 'ForgotPassword', {
+    ClientId: getConfig().cognito.clientId,
+    Username: email,
+  })
+}
+
+/** Completes a forgot-password flow with the emailed code and a new password. */
+export async function confirmForgotPassword(
+  email: string,
+  code: string,
+  newPassword: string,
+): Promise<void> {
+  const region = parseRegion()
+  await cognitoApiRequest(region, 'ConfirmForgotPassword', {
+    ClientId: getConfig().cognito.clientId,
+    Username: email,
+    ConfirmationCode: code,
+    Password: newPassword,
+  })
+}
+
 const STORAGE_KEY_ACCESS_TOKEN = 'pegasus_admin_access_token'
 const STORAGE_KEY_ID_TOKEN = 'pegasus_admin_id_token'
 const STORAGE_KEY_REFRESH_TOKEN = 'pegasus_admin_refresh_token'

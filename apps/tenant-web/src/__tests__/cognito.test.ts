@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { signIn, respondToNewPasswordChallenge, CognitoError } from '../auth/cognito'
+import {
+  signIn,
+  respondToNewPasswordChallenge,
+  forgotPassword,
+  confirmForgotPassword,
+  CognitoError,
+} from '../auth/cognito'
 
 // Mock getConfig so getCognitoConfig() works without a live config.json at boot.
 vi.mock('../config', () => ({
@@ -129,6 +135,70 @@ describe('respondToNewPasswordChallenge', () => {
 
     await expect(
       respondToNewPasswordChallenge('bad-session', 'user@example.com', 'weak'),
+    ).rejects.toThrow(CognitoError)
+  })
+})
+
+describe('forgotPassword', () => {
+  it('posts the ForgotPassword target with the client id and username', async () => {
+    mockCognitoResponse({ CodeDeliveryDetails: { Destination: 'u***@example.com' } })
+
+    await forgotPassword('user@example.com')
+
+    expect(mockFetch).toHaveBeenCalledOnce()
+    const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://cognito-idp.us-east-1.amazonaws.com/')
+    expect(init.headers).toMatchObject({
+      'X-Amz-Target': 'AWSCognitoIdentityProviderService.ForgotPassword',
+    })
+    const body = JSON.parse(init.body as string) as Record<string, unknown>
+    expect(body).toMatchObject({ ClientId: 'test-client-id', Username: 'user@example.com' })
+  })
+
+  it('throws CognitoError for a federated account with no password', async () => {
+    mockCognitoResponse(
+      {
+        __type: 'InvalidParameterException',
+        message: 'Cannot reset password in the current state.',
+      },
+      400,
+    )
+
+    const err = await forgotPassword('sso@example.com').catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(CognitoError)
+    expect((err as CognitoError).code).toBe('InvalidParameterException')
+  })
+})
+
+describe('confirmForgotPassword', () => {
+  it('posts the ConfirmForgotPassword target with code and new password', async () => {
+    mockCognitoResponse({})
+
+    await confirmForgotPassword('user@example.com', '123456', 'NewPassword1!')
+
+    expect(mockFetch).toHaveBeenCalledOnce()
+    const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://cognito-idp.us-east-1.amazonaws.com/')
+    expect(init.headers).toMatchObject({
+      'X-Amz-Target': 'AWSCognitoIdentityProviderService.ConfirmForgotPassword',
+    })
+    const body = JSON.parse(init.body as string) as Record<string, unknown>
+    expect(body).toMatchObject({
+      ClientId: 'test-client-id',
+      Username: 'user@example.com',
+      ConfirmationCode: '123456',
+      Password: 'NewPassword1!',
+    })
+  })
+
+  it('throws CognitoError on an invalid or expired code', async () => {
+    mockCognitoResponse(
+      { __type: 'CodeMismatchException', message: 'Invalid verification code provided.' },
+      400,
+    )
+
+    await expect(
+      confirmForgotPassword('user@example.com', '000000', 'NewPassword1!'),
     ).rejects.toThrow(CognitoError)
   })
 })

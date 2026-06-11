@@ -27,6 +27,7 @@ import {
 import { requirePermission } from '../middleware/rbac'
 import { Actions } from '../authz/actions'
 import { ROLE_OPTIONS } from '../authz/role-options'
+import { resetCognitoUserPassword } from './admin/cognito'
 import { createUsersRepository, type TenantUserRow } from '../repositories/users'
 import type { AppEnv } from '../types'
 import { logger } from '../lib/logger'
@@ -375,4 +376,58 @@ usersHandler.delete('/:id', requirePermission(Actions.DeactivateUser), async (c)
 
   const deactivated = await repo.deactivate(id)
   return c.json({ data: toResponse(deactivated) })
+})
+
+// ---------------------------------------------------------------------------
+// POST /:id/reset-password
+//
+// Admin-initiated password reset for an ACTIVE tenant user. Calls
+// cognito-idp:AdminResetUserPassword, which emails the user a confirmation code;
+// the user then sets a new password via the self-service "Forgot password"
+// confirm UI. The admin never handles a temporary secret.
+//
+// Gated on `user:update` (UpdateUser) — resetting a password is a user-
+// management mutation already granted to tenant admins; no new Cedar action.
+//
+// Response: { data: TenantUserResponse } (200)
+//           { error, code: NOT_FOUND }      (404)
+//           { error, code: INVALID_STATE }  (422) — user not ACTIVE
+//           { error, code: COGNITO_ERROR }  (500) — Cognito call failed
+// ---------------------------------------------------------------------------
+usersHandler.post('/:id/reset-password', requirePermission(Actions.UpdateUser), async (c) => {
+  const db = c.get('db')
+  const tenantId = c.get('tenantId')
+  const repo = createUsersRepository(db)
+  const id = c.req.param('id') ?? ''
+
+  const existing = await repo.findById(id, tenantId)
+  if (!existing) {
+    return c.json({ error: 'User not found', code: 'NOT_FOUND' }, 404)
+  }
+
+  // Only ACTIVE users have a usable password to reset. PENDING users re-resolve
+  // through the invite / first-login set-password path; DEACTIVATED users are
+  // blocked from signing in at all.
+  if (existing.status !== 'ACTIVE') {
+    return c.json(
+      { error: 'Only active users can have their password reset', code: 'INVALID_STATE' },
+      422,
+    )
+  }
+
+  try {
+    await resetCognitoUserPassword(existing.email)
+  } catch (err) {
+    logger.error('POST /users/:id/reset-password: Cognito AdminResetUserPassword failed', {
+      error: String(err),
+      id,
+      email: existing.email,
+    })
+    return c.json(
+      { error: 'Failed to reset the password. Please try again.', code: 'COGNITO_ERROR' },
+      500,
+    )
+  }
+
+  return c.json({ data: toResponse(existing) })
 })

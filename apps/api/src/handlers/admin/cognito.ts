@@ -11,6 +11,7 @@ import {
   AdminCreateUserCommand,
   AdminDisableUserCommand,
   AdminEnableUserCommand,
+  AdminResetUserPasswordCommand,
 } from '@aws-sdk/client-cognito-identity-provider'
 
 // ---------------------------------------------------------------------------
@@ -109,6 +110,34 @@ export async function disableCognitoUser(email: string): Promise<void> {
   try {
     await getCognito().send(
       new AdminDisableUserCommand({
+        UserPoolId: userPoolId,
+        Username: email,
+      }),
+    )
+  } catch (err) {
+    if ((err as { name?: string }).name === 'UserNotFoundException') return
+    throw err
+  }
+}
+
+/**
+ * Triggers an admin-initiated password reset (AdminResetUserPassword).
+ *
+ * Sets the user to RESET_REQUIRED and emails them a confirmation code. The user
+ * then completes the reset through the same self-service confirm UI
+ * (ConfirmForgotPassword) — the admin never handles a temporary secret.
+ *
+ * Fail-open: UserNotFoundException is silently ignored — the user may never
+ * have completed first login and therefore may not have a Cognito account yet.
+ *
+ * Throws for all other Cognito errors.
+ */
+export async function resetCognitoUserPassword(email: string): Promise<void> {
+  const userPoolId = process.env['COGNITO_USER_POOL_ID'] ?? ''
+
+  try {
+    await getCognito().send(
+      new AdminResetUserPasswordCommand({
         UserPoolId: userPoolId,
         Username: email,
       }),

@@ -17,6 +17,9 @@ import {
   signIn,
   respondToMfaChallenge,
   respondToNewPasswordChallenge,
+  forgotPassword,
+  confirmForgotPassword,
+  CognitoError,
 } from '@/auth/cognito'
 import {
   generateCodeVerifier,
@@ -41,9 +44,11 @@ type Step =
   | { name: 'select-tenant'; tenants: TenantResolution[] }
   | { name: 'select-provider'; resolution: TenantResolution }
   | { name: 'redirecting'; provider: TenantProvider; tenantId: string; email: string }
-  | { name: 'password' }
+  | { name: 'password'; notice?: string }
   | { name: 'mfa'; session: string; username: string }
   | { name: 'new-password'; session: string; username: string }
+  | { name: 'forgot-email' }
+  | { name: 'forgot-confirm'; email: string }
   | { name: 'error'; message: string }
 
 // ---------------------------------------------------------------------------
@@ -211,6 +216,38 @@ export function LoginPage() {
           err instanceof Error ? err.message : 'Failed to set new password. Please try again.',
       })
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Forgot-password — self-service reset via Cognito ForgotPassword
+  // -------------------------------------------------------------------------
+
+  /** Requests a reset code, then advances to the code-entry step. Throws a
+   *  user-ready Error on failure so the form surfaces it inline for retry. */
+  async function handleForgotSubmit(forgotEmail: string) {
+    try {
+      await forgotPassword(forgotEmail)
+    } catch (err) {
+      // Federated/SSO-only accounts have no password to reset.
+      const code = err instanceof CognitoError ? err.code : ''
+      if (code === 'NotAuthorizedException' || code === 'InvalidParameterException') {
+        throw new Error(
+          'This account signs in through your organisation’s identity provider and has no password to reset.',
+          { cause: err },
+        )
+      }
+      throw err instanceof Error
+        ? err
+        : new Error('Unable to start password reset. Please try again.', { cause: err })
+    }
+    setStep({ name: 'forgot-confirm', email: forgotEmail })
+  }
+
+  /** Confirms the emailed code + new password, then returns to the sign-in step
+   *  with a success notice. Throws on failure so the form can retry inline. */
+  async function handleForgotConfirm(forgotEmail: string, code: string, newPassword: string) {
+    await confirmForgotPassword(forgotEmail, code, newPassword)
+    setStep({ name: 'password', notice: 'Password updated — sign in with your new password.' })
   }
 
   /** Validates the ID token via the API and stores the session — mirrors the SSO callback. */
@@ -424,8 +461,28 @@ export function LoginPage() {
         {step.name === 'password' && (
           <PasswordForm
             email={email}
+            notice={step.notice}
             onSubmit={handlePasswordSubmit}
+            onForgot={() => setStep({ name: 'forgot-email' })}
             onBack={() => setStep({ name: 'email' })}
+          />
+        )}
+
+        {/* ── Step: forgot-email ─────────────────────────── */}
+        {step.name === 'forgot-email' && (
+          <ForgotPasswordEmailForm
+            initialEmail={email}
+            onSubmit={handleForgotSubmit}
+            onBack={() => setStep({ name: 'password' })}
+          />
+        )}
+
+        {/* ── Step: forgot-confirm ───────────────────────── */}
+        {step.name === 'forgot-confirm' && (
+          <ForgotPasswordConfirmForm
+            email={step.email}
+            onSubmit={handleForgotConfirm}
+            onBack={() => setStep({ name: 'forgot-email' })}
           />
         )}
 
@@ -481,11 +538,15 @@ export function LoginPage() {
 
 function PasswordForm({
   email,
+  notice,
   onSubmit,
+  onForgot,
   onBack,
 }: {
   email: string
+  notice?: string
   onSubmit: (e: FormEvent, password: string) => Promise<void>
+  onForgot: () => void
   onBack: () => void
 }) {
   const [password, setPassword] = useState('')
@@ -507,6 +568,11 @@ function PasswordForm({
         <CardDescription>{email}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {notice && (
+          <p className="rounded-md border border-primary/40 bg-primary/5 px-3 py-2 text-sm text-foreground">
+            {notice}
+          </p>
+        )}
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="password">Password</Label>
@@ -526,10 +592,184 @@ function PasswordForm({
         </form>
         <button
           type="button"
+          onClick={onForgot}
+          className="w-full text-center text-xs text-muted-foreground hover:underline"
+        >
+          Forgot password?
+        </button>
+        <button
+          type="button"
           onClick={onBack}
           className="w-full pt-1 text-center text-xs text-muted-foreground hover:underline"
         >
           Use a different email
+        </button>
+      </CardContent>
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ForgotPasswordEmailForm — step 1 of self-service reset: request a code
+// ---------------------------------------------------------------------------
+
+function ForgotPasswordEmailForm({
+  initialEmail,
+  onSubmit,
+  onBack,
+}: {
+  initialEmail: string
+  onSubmit: (email: string) => Promise<void>
+  onBack: () => void
+}) {
+  const [email, setEmail] = useState(initialEmail)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      await onSubmit(email.trim())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to start password reset.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <>
+      <CardHeader>
+        <CardTitle>Reset your password</CardTitle>
+        <CardDescription>
+          Enter your email and we&apos;ll send you a code to set a new password.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="forgot-email">Work email</Label>
+            <Input
+              id="forgot-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+              autoFocus
+            />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? <Loader2 size={16} className="animate-spin" /> : 'Send reset code'}
+          </Button>
+        </form>
+        <button
+          type="button"
+          onClick={onBack}
+          className="w-full pt-1 text-center text-xs text-muted-foreground hover:underline"
+        >
+          ← Back to sign in
+        </button>
+      </CardContent>
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// ForgotPasswordConfirmForm — step 2: enter the emailed code + new password
+// ---------------------------------------------------------------------------
+
+function ForgotPasswordConfirmForm({
+  email,
+  onSubmit,
+  onBack,
+}: {
+  email: string
+  onSubmit: (email: string, code: string, newPassword: string) => Promise<void>
+  onBack: () => void
+}) {
+  const [code, setCode] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    if (newPassword !== confirm) {
+      setError('Passwords do not match.')
+      return
+    }
+    setLoading(true)
+    try {
+      await onSubmit(email, code.trim(), newPassword)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reset password. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <>
+      <CardHeader>
+        <CardTitle>Enter your reset code</CardTitle>
+        <CardDescription>
+          We emailed a code to {email}. Enter it below with your new password.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="reset-code">Confirmation code</Label>
+            <Input
+              id="reset-code"
+              type="text"
+              inputMode="numeric"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              required
+              autoComplete="one-time-code"
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="reset-new-password">New password</Label>
+            <Input
+              id="reset-new-password"
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="reset-confirm-password">Confirm password</Label>
+            <Input
+              id="reset-confirm-password"
+              type="password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              required
+              autoComplete="new-password"
+            />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? <Loader2 size={16} className="animate-spin" /> : 'Set new password'}
+          </Button>
+        </form>
+        <button
+          type="button"
+          onClick={onBack}
+          className="w-full pt-1 text-center text-xs text-muted-foreground hover:underline"
+        >
+          ← Use a different email
         </button>
       </CardContent>
     </>

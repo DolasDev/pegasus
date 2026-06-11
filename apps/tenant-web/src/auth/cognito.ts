@@ -196,6 +196,43 @@ export async function respondToNewPasswordChallenge(
 }
 
 // ---------------------------------------------------------------------------
+// Self-service password reset (ForgotPassword / ConfirmForgotPassword)
+//
+// Available on the public app client without any explicit auth flow — Cognito's
+// account recovery (EMAIL_ONLY) delivers a confirmation code to the registered
+// email. `preventUserExistenceErrors: true` on the client means ForgotPassword
+// does not reveal whether the email exists, so the UI must stay generic.
+//
+// Federated/SSO-only users have no password; Cognito rejects these with
+// NotAuthorizedException / InvalidParameterException — the caller surfaces a
+// friendly "sign in through your identity provider" message.
+// ---------------------------------------------------------------------------
+
+/** Starts a forgot-password flow — Cognito emails a confirmation code. */
+export async function forgotPassword(email: string): Promise<void> {
+  const { region, clientId } = getCognitoConfig()
+  await cognitoApiRequest(region, 'ForgotPassword', {
+    ClientId: clientId,
+    Username: email,
+  })
+}
+
+/** Completes a forgot-password flow with the emailed code and a new password. */
+export async function confirmForgotPassword(
+  email: string,
+  code: string,
+  newPassword: string,
+): Promise<void> {
+  const { region, clientId } = getCognitoConfig()
+  await cognitoApiRequest(region, 'ConfirmForgotPassword', {
+    ClientId: clientId,
+    Username: email,
+    ConfirmationCode: code,
+    Password: newPassword,
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Logout URL
 // ---------------------------------------------------------------------------
 
