@@ -1,0 +1,34 @@
+name: 'Setup Node + dependencies'
+description: 'setup-node, cached node_modules, npm ci on miss, binary perms fix'
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/setup-node@v6
+      with:
+        node-version-file: '.nvmrc'
+        cache: 'npm'
+
+    # Workspace node_modules are mostly hoisted to root, but several
+    # apps/packages keep nested node_modules (version-conflicted deps),
+    # so cache those too. Jobs that need the Prisma client run an explicit
+    # `prisma generate` step after this action — the cache-hit path
+    # (skipped `npm ci`, hence skipped apps/api postinstall) relies on that.
+    - name: Cache node_modules
+      id: modules-cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          node_modules
+          apps/*/node_modules
+          packages/*/node_modules
+        key: ${{ runner.os }}-modules-${{ hashFiles('package-lock.json', '.nvmrc') }}
+
+    - name: Install dependencies
+      if: steps.modules-cache.outputs.cache-hit != 'true'
+      run: npm ci
+      shell: bash
+
+    - name: Fix binary permissions
+      run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true
+      shell: bash
