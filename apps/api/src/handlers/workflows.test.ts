@@ -8,6 +8,9 @@
 // requirePermission is NOT mocked — the real implementation enforces RBAC.
 // ---------------------------------------------------------------------------
 
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { createHash } from 'node:crypto'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
@@ -29,6 +32,8 @@ const {
   mockPresignUpload,
   mockPresignDownload,
   mockCopyObject,
+  mockHeadObject,
+  mockGetObjectBuffer,
   mockEncryptRuntimeToken,
   mockGetTemporalClient,
   mockTemporalStart,
@@ -66,6 +71,8 @@ const {
     mockPresignUpload: vi.fn(),
     mockPresignDownload: vi.fn(),
     mockCopyObject: vi.fn(),
+    mockHeadObject: vi.fn(),
+    mockGetObjectBuffer: vi.fn(),
     mockEncryptRuntimeToken: vi.fn(),
     mockGetTemporalClient: vi.fn(async () => client),
     mockTemporalStart: start,
@@ -97,6 +104,8 @@ vi.mock('../lib/documents-s3', () => ({
   presignUpload: mockPresignUpload,
   presignDownload: mockPresignDownload,
   copyObject: mockCopyObject,
+  headObject: mockHeadObject,
+  getObjectBuffer: mockGetObjectBuffer,
 }))
 
 // KMS crypto is mocked so no real AWS call is made — the handler must still
@@ -184,10 +193,27 @@ function buildApp(
 
 const now = new Date('2026-05-13T12:00:00Z')
 
+// A REAL artifact zip produced by the SDK packaging code against
+// packages/workflows-stdlib (see __tests__/fixtures/workflow-artifacts/).
+// The finalize path downloads + validates the artifact since Phase 3 Unit 6,
+// so the default S3 mocks below serve these bytes.
+const validArtifactZip = readFileSync(
+  join(
+    __dirname,
+    '..',
+    '__tests__',
+    'fixtures',
+    'workflow-artifacts',
+    'stdlib-send-quote-followup.zip',
+  ),
+)
+const validArtifactSha256 = createHash('sha256').update(validArtifactZip).digest('hex')
+
 const validManifest = {
   name: 'send_quote_followup',
   version: '1.0.0',
-  entryPoints: ['workflows.send_quote_followup:SendQuoteFollowup'],
+  // Must resolve inside validArtifactZip (send_quote_followup/workflow.py).
+  entryPoints: ['send_quote_followup.workflow:SendQuoteFollowup'],
   description: 'Email a follow-up to the customer 3 days after a quote is sent.',
 }
 
@@ -204,6 +230,9 @@ const mockRow = {
   forkedFromVersion: null,
   runtimeTokenCiphertext: null,
   runtimeApiClientId: null,
+  artifactSha256: validArtifactSha256,
+  artifactSizeBytes: validArtifactZip.length,
+  executable: true,
   createdAt: now,
   updatedAt: now,
 }
@@ -234,6 +263,10 @@ describe('workflows handler', () => {
     _clearAuthzCache()
     mockPresignUpload.mockResolvedValue('https://s3.example/put?sig=abc')
     mockPresignDownload.mockResolvedValue('https://s3.example/get?sig=xyz')
+    // Artifact-validation happy path: HEAD finds a small object, GET serves
+    // the real SDK-produced zip whose entry point matches validManifest.
+    mockHeadObject.mockResolvedValue({ sizeBytes: validArtifactZip.length })
+    mockGetObjectBuffer.mockResolvedValue(validArtifactZip)
     // Default runtime-provisioning happy path — the finalize/fork tests that
     // don't care about provisioning still need these to resolve.
     mockTenantUserCreate.mockResolvedValue({ id: 'svc-user-1' })
@@ -312,6 +345,15 @@ describe('workflows handler', () => {
         post({ name: 'wf', version: '1.0.0', sizeBytes: 999_999_999 }),
       )
       expect(res.status).toBe(400)
+    })
+
+    it('returns 400 just above the 10 MB cap (same cap finalize enforces)', async () => {
+      const res = await buildApp().request(
+        '/upload-url',
+        post({ name: 'wf', version: '1.0.0', sizeBytes: 10 * 1024 * 1024 + 1 }),
+      )
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
     })
 
     it('returns 409 when (tenant, name, version) already exists', async () => {
@@ -484,6 +526,91 @@ describe('workflows handler', () => {
       expect('runtimeApiClientId' in body).toBe(false)
       expect('plainKey' in body).toBe(false)
     })
+
+    // ── Artifact integrity (Phase 3 Unit 6) ────────────────────────────────
+
+    it('persists artifactSha256/artifactSizeBytes/executable on success', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
+      mockRepo.create.mockResolvedValue(mockRow)
+      const res = await buildApp().request('/', post({ workflowId, manifest: validManifest }))
+      expect(res.status).toBe(201)
+      expect(mockRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          artifactSha256: validArtifactSha256,
+          artifactSizeBytes: validArtifactZip.length,
+          executable: true,
+        }),
+      )
+      // Integrity facts are additive response fields.
+      const body = (await json(res)).data as JsonBody
+      expect(body['executable']).toBe(true)
+      expect(body['artifactSha256']).toBe(validArtifactSha256)
+      expect('artifactKey' in body).toBe(false)
+    })
+
+    it('returns 422 ARTIFACT_INVALID when the artifact was never uploaded', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
+      mockHeadObject.mockResolvedValue(null)
+      const res = await buildApp().request('/', post({ workflowId, manifest: validManifest }))
+      expect(res.status).toBe(422)
+      const body = await json(res)
+      expect(body.code).toBe('ARTIFACT_INVALID')
+      expect(Array.isArray(body.problems)).toBe(true)
+      expect(mockGetObjectBuffer).not.toHaveBeenCalled()
+      expect(mockRepo.create).not.toHaveBeenCalled()
+    })
+
+    it('returns 422 ARTIFACT_TOO_LARGE from the HEAD pre-check without downloading', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
+      mockHeadObject.mockResolvedValue({ sizeBytes: 10 * 1024 * 1024 + 1 })
+      const res = await buildApp().request('/', post({ workflowId, manifest: validManifest }))
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('ARTIFACT_TOO_LARGE')
+      expect(mockGetObjectBuffer).not.toHaveBeenCalled()
+      expect(mockRepo.create).not.toHaveBeenCalled()
+    })
+
+    it('returns 422 ARTIFACT_INVALID with problems when the artifact is not a zip', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
+      mockGetObjectBuffer.mockResolvedValue(Buffer.from('not a zip at all'))
+      const res = await buildApp().request('/', post({ workflowId, manifest: validManifest }))
+      expect(res.status).toBe(422)
+      const body = await json(res)
+      expect(body.code).toBe('ARTIFACT_INVALID')
+      expect((body.problems as string[])[0]).toContain('not a zip')
+      // The workflow row is NOT created on a failed artifact.
+      expect(mockRepo.create).not.toHaveBeenCalled()
+      expect(mockRepo.attachRuntimeToken).not.toHaveBeenCalled()
+    })
+
+    it('returns 422 ARTIFACT_INVALID when an entry point does not resolve in the zip', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
+      const res = await buildApp().request(
+        '/',
+        post({
+          workflowId,
+          manifest: { ...validManifest, entryPoints: ['workflows.send_quote_followup:X'] },
+        }),
+      )
+      expect(res.status).toBe(422)
+      const body = await json(res)
+      expect(body.code).toBe('ARTIFACT_INVALID')
+      expect((body.problems as string[])[0]).toContain('workflows.send_quote_followup:X')
+      expect(mockRepo.create).not.toHaveBeenCalled()
+    })
+
+    it('returns 400 VALIDATION_ERROR when the manifest declares dependencies', async () => {
+      const res = await buildApp().request(
+        '/',
+        post({
+          workflowId,
+          manifest: { ...validManifest, dependencies: ['requests==2.32.0'] },
+        }),
+      )
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+      expect(mockHeadObject).not.toHaveBeenCalled()
+    })
   })
 
   // ── GET / ─────────────────────────────────────────────────────────────────
@@ -616,6 +743,10 @@ describe('workflows handler', () => {
         'test-tenant-id',
         'user-1',
       )
+      // Fork never re-downloads or re-validates the artifact: the S3 copy is
+      // byte-identical, so the integrity fields propagate inside the repo.
+      expect(mockHeadObject).not.toHaveBeenCalled()
+      expect(mockGetObjectBuffer).not.toHaveBeenCalled()
     })
 
     it('strips artifactKey from the fork response', async () => {

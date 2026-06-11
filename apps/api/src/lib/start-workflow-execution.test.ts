@@ -80,6 +80,9 @@ const workflow: WorkflowRow = {
   forkedFromVersion: null,
   runtimeTokenCiphertext: 'CIPHERTEXT',
   runtimeApiClientId: 'api-client-1',
+  artifactSha256: null,
+  artifactSizeBytes: null,
+  executable: false,
   createdAt: now,
   updatedAt: now,
 }

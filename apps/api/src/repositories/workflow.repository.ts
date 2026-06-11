@@ -49,6 +49,15 @@ export type WorkflowRow = {
   runtimeTokenCiphertext: string | null
   /** ApiClient.id of the per-workflow runtime service account. Null until provisioned. */
   runtimeApiClientId: string | null
+  /** Hex SHA-256 of the artifact zip, recorded at finalize. Null for pre-Unit-6 rows. */
+  artifactSha256: string | null
+  /** Artifact zip size in bytes, recorded at finalize. Null for pre-Unit-6 rows. */
+  artifactSizeBytes: number | null
+  /**
+   * True when the artifact passed integrity validation at finalize. Derived
+   * server-side only; the run path keeps the curated-names gate until Unit 10.
+   */
+  executable: boolean
   createdAt: Date
   updatedAt: Date
 }
@@ -66,6 +75,9 @@ const WORKFLOW_SELECT = {
   forkedFromVersion: true,
   runtimeTokenCiphertext: true,
   runtimeApiClientId: true,
+  artifactSha256: true,
+  artifactSizeBytes: true,
+  executable: true,
   createdAt: true,
   updatedAt: true,
 } as const
@@ -94,6 +106,10 @@ export function createWorkflowRepository(db: PrismaClient) {
       artifactKey: string
       manifest: Prisma.InputJsonValue
       createdByUserId: string
+      /** Integrity facts from finalize-time artifact validation (Unit 6). */
+      artifactSha256: string
+      artifactSizeBytes: number
+      executable: boolean
     }): Promise<WorkflowRow> {
       return db.workflow.create({
         data: input,
@@ -184,6 +200,11 @@ export function createWorkflowRepository(db: PrismaClient) {
           createdByUserId,
           forkedFromWorkflowId: source.id,
           forkedFromVersion: source.version,
+          // The S3 copy above is byte-identical, so the integrity facts carry
+          // over verbatim — no re-download/re-validation on fork (Unit 6).
+          artifactSha256: source.artifactSha256,
+          artifactSizeBytes: source.artifactSizeBytes,
+          executable: source.executable,
         },
         select: WORKFLOW_SELECT,
       })
