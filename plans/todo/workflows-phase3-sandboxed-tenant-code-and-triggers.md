@@ -2,11 +2,12 @@
 
 **Status: IN PROGRESS — Track B (Units 1–5) ✅ + Unit 6 ✅ COMPLETE and
 LIVE** (PRs #230–#234, #239). Scoped 2026-06-09; all 5 open questions
-resolved with Steve — see "Resolved decisions". Unit 7 (per-tenant broker
-credentials, the security keystone) ✅ DONE (#240). **Next: Track A
-Unit 8 (tenant-runner image + harness) — check the "Operator
-prerequisites" section first (ECR repo + CI IAM step are needed by
-Unit 9's deploy, not Unit 8's code).**
+resolved with Steve — see "Resolved decisions". Units 7 (#240) + 8
+(#241) ✅ DONE. **Next: Track A Unit 9 (runner orchestration /
+scale-to-zero, CDK) — the "Operator prerequisites" section now bites:
+ECR repo (stack-created is fine, see Phase 2 precedent) + the
+out-of-band CI IAM inline-policy step + Temporal Cloud queue-count
+check.**
 
 ## Resume-session checklist
 
@@ -328,17 +329,35 @@ HTTP surface, no infra change. Legacy stdlib worker path wire-identical.
 Adversarial pass in PR #240: a `wbk_` holder cannot mint other tenants'
 tokens, PATCH other tenants' executions, or learn the shared secret.
 
-**Unit 8 — Tenant-runner image + harness.** New `apps/tenant-runner/` (or a
-mode of the existing worker — decide at planning): trusted shim downloads
-the tenant's executable artifacts from S3, installs each into an isolated
-venv, registers manifest entry points dynamically, polls
-`pegasus-tenant-<tenantId>-<env>`; tenant code runs in a stripped-env
-subprocess. Local-dev story via `docker-compose.temporal.yml` (mirror the
-Phase-2 `temporal-worker` service). **TOCTOU requirement (from Unit 6
-review): the runner MUST verify the downloaded zip's sha256 against the
-row's `artifactSha256` before installing/executing** — the presigned PUT
-URL outlives finalize validation (~15 min TTL), so S3 bytes can be
-overwritten after validation; the recorded digest is the defense.
+**Unit 8 — Tenant-runner image + harness. ✅ DONE (#241 → `e0b8aa2`,
+2026-06-11).** New `apps/tenant-runner/` (separate app, NOT a worker
+mode — opposite trust models; ~80 lines deliberately re-implemented).
+Runner holds **NO AWS credentials**: new broker endpoint
+`GET /internal/tenant-workflows` (wbk_-confined like Unit 7's) lists
+executable workflows + sha256 + short-lived presigned GET URLs. TOCTOU
+defense shipped: every download re-hashed against `artifactSha256`
+before extraction (`runner.artifact_sha_mismatch_SECURITY`); safe
+extraction with entry-count + decompressed-total-size caps (the
+install-size guard). Tenant code never imported by the shim —
+dynamically manufactured PROXY workflow classes (one per tenant
+workflow name, unsandboxed, single `run_tenant_entry_point` activity,
+maximum_attempts=1) wrap a stripped-env subprocess: allowlist-built env
+(9 keys, pinned by tests — no wbk_/TEMPORAL_*/AWS_*/metadata URIs);
+the tenant's own `vnd_` token travels over stdin, never argv/env.
+Direct-execution v1 semantics (driver patches execute_activity/sleep/
+now/uuid4 — no durable replay/signals for tenant code yet). Idle-exit
+watchdog (~10 min, RUNNER_* tunables). Compose service added; image
+builds + smoke-tested (non-root uid 999, venv-sees-SDK offline).
+**Unit 9 env contract (RunTask injection):** required `TENANT_ID`,
+`ENV_NAME`, `TEMPORAL_NAMESPACE`, `TEMPORAL_ADDRESS`,
+`PEGASUS_API_BASE_URL`, `WORKFLOW_BROKER_TOKEN` (KMS-recovered from
+`TenantBrokerCredential.tokenCiphertext`); optional
+`TEMPORAL_CLOUD_API_KEY`, `RUNNER_*`. Queue
+`pegasus-tenant-<TENANT_ID>-<ENV_NAME>`. Residual v1 risk accepted:
+same-container/same-uid kernel boundary (shim /proc readable by tenant
+code) — bounded by container-per-tenant + one-tenant creds; gVisor/
+separate-uid is a follow-up. No CI Python job yet (tests local-only) —
+add one in Unit 9 alongside the image-push workflow.
 
 **Unit 9 — Runner orchestration (scale-to-zero).** Dispatcher (likely
 folded into the Unit-3 poller or the run path) launches a runner via ECS
