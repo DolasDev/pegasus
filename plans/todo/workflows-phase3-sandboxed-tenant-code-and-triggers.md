@@ -2,9 +2,11 @@
 
 **Status: IN PROGRESS — Track B (Units 1–5) ✅ + Unit 6 ✅ COMPLETE and
 LIVE** (PRs #230–#234, #239). Scoped 2026-06-09; all 5 open questions
-resolved with Steve — see "Resolved decisions". **Next: Track A Unit 7
-(per-tenant broker credentials — the security keystone; land + review it
-before any runner exists), then Unit 8 (runner image).**
+resolved with Steve — see "Resolved decisions". Unit 7 (per-tenant broker
+credentials, the security keystone) ✅ DONE (#240). **Next: Track A
+Unit 8 (tenant-runner image + harness) — check the "Operator
+prerequisites" section first (ECR repo + CI IAM step are needed by
+Unit 9's deploy, not Unit 8's code).**
 
 ## Resume-session checklist
 
@@ -307,11 +309,24 @@ tightened 25→10 MB; manifest `dependencies` key now an explicit 400
 zip lands in S3 → 422 (previously created a row pointing at nothing).
 Run path unchanged — curated-names gate stays until Unit 10.
 
-**Unit 7 — Per-tenant broker credentials.** New credential type scoped to
-one tenantId; broker endpoints accept either (shared secret = legacy stdlib
-worker, tenant token = runners) and enforce tenant match on the execution
-row. This is the security keystone — land and review it before any runner
-exists.
+**Unit 7 — Per-tenant broker credentials. ✅ DONE (#240 → `42e4c72`,
+2026-06-11).** The security keystone, landed + reviewed before any runner
+exists. `TenantBrokerCredential` model (one row per tenant, RESTRICT FK)
+with two at-rest forms: `tokenHash` (SHA-256, what the broker verifies —
+plaintext never needed back) + `tokenCiphertext` (KMS-wrapped via the
+Phase 2 runtime-token key, ONLY for the Unit 9 dispatcher to recover at
+ECS task launch). Token format `wbk_<tenantId>_<48 hex>` — embedded id
+makes verification a unique-index hit, grants nothing by itself (full-
+token hash compare via `timingSafeEqual`). New header
+`X-Workflow-Broker-Token` (separate from the secret header; a present-
+but-invalid secret 401s and never falls through). Both broker endpoints
+enforce `execution.tenantId === token.tenantId`; **cross-tenant = 404
+byte-identical to missing, applied before state checks** (no probing).
+Lib-only provisioning: `getOrCreateTenantBrokerCredential` (idempotent,
+P2002 race-safe) + `rotateTenantBrokerCredential` (instant revoke). No
+HTTP surface, no infra change. Legacy stdlib worker path wire-identical.
+Adversarial pass in PR #240: a `wbk_` holder cannot mint other tenants'
+tokens, PATCH other tenants' executions, or learn the shared secret.
 
 **Unit 8 — Tenant-runner image + harness.** New `apps/tenant-runner/` (or a
 mode of the existing worker — decide at planning): trusted shim downloads
