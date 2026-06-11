@@ -3,9 +3,11 @@ name: Deploy
 # Canonical deploy path for Pegasus.
 #
 # - `push` to `main`: auto-deploys only the components whose source paths
-#   changed (api, tenant-web, admin-web). Infra/workflow changes trigger a
-#   full `--all` deploy. Staging deploys first, then prod (gated by the
-#   `prod` GitHub environment's required-reviewer rule).
+#   changed (api, tenant-web, admin-web) since the last successfully
+#   deployed SHA (`LAST_DEPLOY_SHA` repo variable — see the `changes` and
+#   `record-deploy` jobs). Infra/workflow changes trigger a full `--all`
+#   deploy. Staging deploys first, then prod (gated by the `prod` GitHub
+#   environment's required-reviewer rule).
 # - `workflow_dispatch`: manual run with a `target` input for forcing a
 #   specific component. Same staging→prod flow.
 #
@@ -41,12 +43,20 @@ permissions:
 jobs:
   # ---------------------------------------------------------------------------
   # Detect which components changed. On workflow_dispatch the `target` input
-  # wins; on push we use dorny/paths-filter against the previous commit.
+  # wins; on push we diff against the last *successfully deployed* SHA (the
+  # `LAST_DEPLOY_SHA` repo variable, advanced by the `record-deploy` job)
+  # rather than the previous commit. This makes queued-run cancellations
+  # benign by construction: the surviving newest run always covers every
+  # commit since the last green deploy, so cancelled-while-queued runs can
+  # no longer silently drop code deploys.
   # ---------------------------------------------------------------------------
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read # gh variable get LAST_DEPLOY_SHA
     outputs:
       api: ${{ steps.decide.outputs.api }}
       tenant_web: ${{ steps.decide.outputs.tenant_web }}
@@ -54,40 +64,38 @@ jobs:
       any: ${{ steps.decide.outputs.any }}
     steps:
       - uses: actions/checkout@v6
-
-      - name: Path filter
-        id: filter
-        if: github.event_name == 'push'
-        uses: dorny/paths-filter@v4
         with:
-          filters: |
-            api:
-              - 'apps/api/**'
-              - 'apps/tunnel-proxy/**'
-              - 'apps/mssql-executor/**'
-              - 'packages/domain/**'
-            tenant_web:
-              - 'apps/tenant-web/**'
-            admin_web:
-              - 'apps/admin-web/**'
-            infra:
-              - 'packages/infra/**'
-              # Phase 2 Unit 5 will introduce apps/temporal-worker/ with
-              # the Python worker source + Dockerfile. Listing it under
-              # the infra filter now is forward-looking: until Unit 5
-              # lands the directory does not exist, so this branch is a
-              # no-op. Infra changes already force --all, so once the
-              # worker app lands, edits to it will simply trigger the
-              # full deploy that the Unit-5 image build+push hooks into.
-              - 'apps/temporal-worker/**'
-              - '.github/workflows/deploy.yml'
-              - '.github/workflows/_deploy.yml'
-              - 'package-lock.json'
+          fetch-depth: 0 # need history back to LAST_DEPLOY_SHA
+
+      - name: Resolve diff base
+        id: base
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BASE=$(gh variable get LAST_DEPLOY_SHA --repo "${{ github.repository }}" 2>/dev/null || true)
+          # Fallbacks: unset variable (first run) or GC'd/force-pushed-away
+          # SHA → empty base → deploy everything.
+          if [[ -z "$BASE" ]] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "base=" >> "$GITHUB_OUTPUT"
+            if [[ "${{ github.event_name }}" == "push" ]]; then
+              echo "::warning::No usable LAST_DEPLOY_SHA — forcing full deploy."
+            fi
+          else
+            echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Decide components to deploy
         id: decide
+        env:
+          BASE: ${{ steps.base.outputs.base }}
         run: |
           set -euo pipefail
+          # changed <path>... — true when any path differs between the diff
+          # base and HEAD. An empty base means "no usable marker": treat
+          # everything as changed. (`git diff --quiet` avoids a pipe to grep,
+          # which could mis-report under pipefail via SIGPIPE.)
+          changed() { [[ -z "$BASE" ]] || ! git diff --quiet "$BASE..HEAD" -- "$@"; }
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             case "${{ inputs.target }}" in
               all)
@@ -102,13 +110,13 @@ jobs:
                 echo "Unknown target: ${{ inputs.target }}"; exit 1 ;;
             esac
           else
-            # push event — use path filter results, but infra changes force --all.
-            if [[ "${{ steps.filter.outputs.infra }}" == "true" ]]; then
+            # push event — diff since last deploy; infra changes force --all.
+            if changed packages/infra apps/temporal-worker .github/workflows/deploy.yml .github/workflows/_deploy.yml package-lock.json; then
               api=true; tenant=true; admin=true
             else
-              api="${{ steps.filter.outputs.api }}"
-              tenant="${{ steps.filter.outputs.tenant_web }}"
-              admin="${{ steps.filter.outputs.admin_web }}"
+              changed apps/api apps/tunnel-proxy apps/mssql-executor packages/domain && api=true || api=false
+              changed apps/tenant-web && tenant=true || tenant=false
+              changed apps/admin-web && admin=true || admin=false
             fi
           fi
           echo "api=${api}" >> "$GITHUB_OUTPUT"
@@ -121,6 +129,8 @@ jobs:
           fi
           {
             echo "### Deploy plan"
+            echo "Diff base: \`${BASE:-<none — full deploy>}\`"
+            echo ""
             echo "| Component | Deploy |"
             echo "|---|---|"
             echo "| api | ${api} |"
@@ -301,3 +311,25 @@ jobs:
     permissions:
       id-token: write
       contents: read
+
+  # ---------------------------------------------------------------------------
+  # Record the deployed SHA. Advances the LAST_DEPLOY_SHA repo variable that
+  # the `changes` job diffs against. Only push runs and dispatch target=all
+  # evaluated ALL components, so only they may advance the marker — a partial
+  # dispatch (e.g. target=api) must not, or it would swallow undeployed
+  # tenant/admin changes. A failed write here just leaves the older (more
+  # conservative) base in place; it can never corrupt detection.
+  # ---------------------------------------------------------------------------
+  record-deploy:
+    name: Record deployed SHA
+    needs: [changes, deploy-prod]
+    if: success() && (github.event_name == 'push' || inputs.target == 'all')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write # gh variable set LAST_DEPLOY_SHA
+    steps:
+      - name: Advance LAST_DEPLOY_SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh variable set LAST_DEPLOY_SHA --body "${{ github.sha }}" --repo "${{ github.repository }}"
