@@ -199,9 +199,12 @@ jobs:
       TEST_TENANT_ID: e2e00000-0000-0000-0000-000000000001
       SKIP_AUTH: 'true'
       CI: 'true'
-      # Floor for the silent-skip guard below. ~34 tests execute today; keep
-      # the floor deliberately loose. Bump when specs are added/removed.
-      E2E_MIN_EXECUTED_TESTS: '30'
+      # Floor for the silent-skip guard below. 34 tests execute today (30 API
+      # + 4 browser specs against the served tenant-web build). Floor 32 keeps
+      # a little slack but still fires if the browser specs silently skip
+      # (e.g. WEB_URL/serve step broken → back to 30). Bump when specs are
+      # added/removed.
+      E2E_MIN_EXECUTED_TESTS: '32'
 
     steps:
       - uses: actions/checkout@v6
@@ -255,6 +258,48 @@ jobs:
       - name: Build @pegasus/domain
         run: node node_modules/.bin/turbo run build --filter=@pegasus/domain
 
+      # Browser coverage (audit-e2e-strategy Phase 2): build tenant-web with
+      # the e2e auth seam compiled in (`--mode e2e` — see
+      # apps/tenant-web/src/auth/session.ts). Deliberately built with vite
+      # directly, NOT via turbo, so the seam bundle can never be written to the
+      # turbo remote cache that deploy builds read from. Workspace deps
+      # (@pegasus/domain via vite alias, auth/api-http via src entry points)
+      # need no prior builds.
+      - name: Build tenant-web (e2e auth-seam mode)
+        working-directory: apps/tenant-web
+        run: node ../../node_modules/.bin/vite build --mode e2e
+
+      # tenant-web reads /config.json at runtime; point it at the job's local
+      # API. The cognito block is shape-valid dummy data — the seam never
+      # initiates a Cognito flow and the API runs with SKIP_AUTH=true.
+      - name: Point tenant-web config at the local API
+        working-directory: apps/tenant-web
+        run: |
+          cat > dist/config.json <<'EOF'
+          {
+            "apiUrl": "http://localhost:3001",
+            "cognito": {
+              "region": "us-east-1",
+              "userPoolId": "local-e2e",
+              "clientId": "local-e2e",
+              "domain": "https://e2e.invalid",
+              "redirectUri": "http://localhost:4173/login/callback"
+            }
+          }
+          EOF
+
+      - name: Serve tenant-web build
+        working-directory: apps/tenant-web
+        run: |
+          nohup node ../../node_modules/.bin/vite preview --port 4173 --strictPort </dev/null >/tmp/vite-preview.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4173/ >/dev/null && exit 0
+            sleep 1
+          done
+          echo "::error::vite preview did not become ready on :4173"
+          cat /tmp/vite-preview.log
+          exit 1
+
       # `html` is kept in the reporter list so the failure artifact upload
       # below still has a playwright-report/ to ship.
       - name: Run E2E tests
@@ -262,6 +307,9 @@ jobs:
         run: node ../../node_modules/.bin/playwright test --reporter=list,html,json
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: results.json
+          # Un-skips the browser specs (landing + core flows) against the
+          # served e2e-mode tenant-web build above.
+          WEB_URL: http://localhost:4173
 
       - name: Guard against silent-skip false positives
         working-directory: apps/e2e

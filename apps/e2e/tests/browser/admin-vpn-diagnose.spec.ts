@@ -11,9 +11,12 @@ import { seedAdminAuth } from '../../fixtures/auth'
 // ---------------------------------------------------------------------------
 
 test.skip(!!process.env['E2E_SKIP'], 'Postgres unavailable — skipping E2E tests')
+// ADMIN_WEB_URL (not WEB_URL): this spec drives ADMIN-web. PR CI sets WEB_URL
+// to a served tenant-web build for the core-flow browser specs — keying this
+// spec on WEB_URL would point it at the wrong app there.
 test.skip(
-  !process.env['WEB_URL'],
-  'WEB_URL not set — skipping browser tests (start admin-web dev server first)',
+  !process.env['ADMIN_WEB_URL'],
+  'ADMIN_WEB_URL not set — skipping browser tests (start admin-web dev server first)',
 )
 
 const TENANT_ID = process.env['TEST_TENANT_ID'] ?? 'e2e00000-0000-0000-0000-000000000001'
@@ -110,7 +113,7 @@ async function loadTenantDetail(
     `**/api/admin/tenants/${TENANT_ID}/vpn/diagnose`,
     jsonRoute({ data: diagnoseFixture }),
   )
-  const webUrl = process.env['WEB_URL'] ?? 'http://localhost:5174'
+  const webUrl = process.env['ADMIN_WEB_URL'] ?? 'http://localhost:5174'
   await page.goto(`${webUrl}/tenants/${TENANT_ID}`)
   await page.getByTestId('vpn-diagnose-run').click()
 }

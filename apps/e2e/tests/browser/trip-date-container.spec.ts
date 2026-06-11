@@ -18,14 +18,16 @@ import { test, expect, type Page } from '@playwright/test'
 //
 // CI: tagged `@local-only` so the deployed E2E gates (remote/qa) exclude it via
 // `grepInvert: /@local-only/` — it needs a logged-in tenant-web dev server, which
-// those unauthenticated, API-only gates don't provide. The WEB_URL skip below
-// guards the default local run too (remote gates DO set WEB_URL, so the tag, not
-// WEB_URL, is what keeps this out of CI).
+// those unauthenticated, API-only gates don't provide. PR CI now serves a built
+// tenant-web at WEB_URL for the core-flow browser specs, but the screenshot
+// baselines here are recorded on a dev laptop and are machine-dependent (no
+// linux baselines committed), so this spec additionally requires the explicit
+// `E2E_VISUAL=true` opt-in and stays a manual layout-drift checker.
 //
 // RUNNING (manual):
 //   1. Start a logged-in tenant-web dev server:  cd apps/tenant-web && npm run dev
 //   2. First run records the golden baseline:
-//        cd apps/e2e && WEB_URL=http://localhost:5173 \
+//        cd apps/e2e && E2E_VISUAL=true WEB_URL=http://localhost:5173 \
 //          npx playwright test trip-date-container --update-snapshots
 //      Review the generated PNGs (fixed-column rows aligned to the gantt rows,
 //      bold/sized headings, Open Sans) before committing them. The original
@@ -33,14 +35,17 @@ import { test, expect, type Page } from '@playwright/test'
 //      these fixes — see its last state in git history if a visual diff is
 //      needed.
 //   3. Subsequent runs assert against the baseline:
-//        cd apps/e2e && WEB_URL=http://localhost:5173 \
+//        cd apps/e2e && E2E_VISUAL=true WEB_URL=http://localhost:5173 \
 //          npx playwright test trip-date-container
 // ---------------------------------------------------------------------------
 
 const WEB_URL = process.env['WEB_URL']
 const TRIP_ID = 4242
 
-test.skip(!WEB_URL, 'WEB_URL not set — start the tenant-web dev server first (see file header)')
+test.skip(
+  !WEB_URL || process.env['E2E_VISUAL'] !== 'true',
+  'E2E_VISUAL/WEB_URL not set — machine-dependent visual spec is manual-only (see file header)',
+)
 
 // Component-shaped trip (already nested → reshapeTrip no-ops). Two shipment
 // activities, one VIP, deterministic dates so day-headers and bar offsets are
