@@ -326,6 +326,9 @@ export class CognitoStack extends cdk.Stack {
       // it for PLATFORM_ADMIN users. SMS is disabled — no SNS setup required.
       mfa: cognito.Mfa.OPTIONAL,
       mfaSecondFactor: { sms: false, otp: true },
+      // Source of truth for the rules surfaced to users by
+      // PASSWORD_POLICY_MESSAGE in packages/auth/src/cognito-client.ts —
+      // update that sentence if these requirements change.
       passwordPolicy: {
         minLength: 12,
         requireLowercase: true,
