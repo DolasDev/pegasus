@@ -5,17 +5,23 @@ Pegasus Development Workflow
 1. Local Setup
 
 npm install # install all workspace dependencies
+npm run setup # one-command bootstrap → running stack
 
-On WSL2, fix binary permissions before running any scripts:
-chmod +x node_modules/turbo-linux-64/bin/turbo
-chmod +x node_modules/@esbuild/linux-x64/bin/esbuild
-find node_modules/.bin -type f | xargs chmod +x 2>/dev/null
+setup.sh copies every .env / config.json template, generates the Prisma
+client, fixes WSL2 binary permissions, starts Docker postgres (or reuses a
+running one), applies migrations, and seeds the dev tenant. It is idempotent —
+safe to re-run at any time. Using Neon instead of local Docker? Edit
+DATABASE_URL/DIRECT_URL in apps/api/.env after running it.
 
-Each SPA needs a local runtime config (not baked into the build):
-cp apps/tenant-web/public/config.json.example apps/tenant-web/public/config.json
-cp apps/admin-web/public/config.json.example apps/admin-web/public/config.json
+Something broken later? Triage in one command:
+npm run doctor # read-only checks; every FAIL prints the exact fix
 
-# Edit both files to point at your local/dev API and Cognito endpoints
+The SPA runtime configs (apps/tenant-web/public/config.json,
+apps/admin-web/public/config.json) point at your local/dev API and Cognito
+endpoints — edit them if you deviate from the defaults.
+
+Admin-user creation (npm run create-admin-user) is NOT needed for local dev —
+SKIP_AUTH=true in apps/api/.env injects a synthetic tenant_admin principal.
 
 ---
 
@@ -26,7 +32,7 @@ npm run dev # starts all packages in parallel via Turborepo
 ┌──────────────┬────────────────────────┬────────────────┐
 │ Package │ Port │ What it serves │
 ├──────────────┼────────────────────────┼────────────────┤
-│ packages/api │ Lambda (local adapter) │ Hono API │
+│ apps/api │ Lambda (local adapter) │ Hono API │
 ├──────────────┼────────────────────────┼────────────────┤
 │ apps/tenant-web │ 5173 │ Tenant SPA │
 ├─────────────────┼────────────────────────┼────────────────┤
@@ -37,7 +43,7 @@ Domain changes (packages/domain) are picked up automatically by the API and both
 @pegasus/domain directly to src/index.ts.
 
 Schema changes require regenerating the Prisma client:
-cd packages/api
+cd apps/api
 npm run db:migrate # applies migration to local DB (requires Docker)
 npm run db:generate # regenerates the Prisma client
 
@@ -54,7 +60,7 @@ parallel via Turborepo:
 │ packages/domain │ Unit — pure functions, no I/O, no │ None │
 │ │ mocks │ │
 ├─────────────────────────┼─────────────────────────────────────┼─────────────────────────────────────────────────┤
-│ packages/api │ Integration — handler + repository │ Docker (local Postgres); skipped if │
+│ apps/api │ Integration — handler + repository │ Docker (local Postgres); skipped if │
 │ │ tests │ DATABASE_URL unset │
 ├─────────────────────────┼─────────────────────────────────────┼─────────────────────────────────────────────────┤
 │ packages/infra │ CDK assertions + snapshots │ None │
