@@ -59,7 +59,7 @@ Execution in three waves. Each checked item = execute that phase of the named pl
 ### Wave 2 — Structural feedback-loop work (~3–4 days)
 
 - [x] `audit-ci-pipeline-efficiency.md` Phases 2–3 — composite setup action, caches, paths-filter (~3 h)
-- [x] `audit-deploy-pipeline-reliability.md` Phase 2 — cancellation-proof change detection + deploy notifications (~3–4 h) _(2.1 cancellation-proof detection shipped; 2.2–2.4 notifications deferred by user)_
+- [x] `audit-deploy-pipeline-reliability.md` Phase 2 — cancellation-proof change detection + deploy notifications (~3–4 h) _(2.1 cancellation-proof detection shipped — marker is a force-pushed `last-deploy` git tag, not a repo variable: GITHUB_TOKEN cannot write Actions variables (403, needs a fine-grained Variables PAT); 2.2–2.4 notifications deferred by user)_
 - [x] `audit-local-dev-experience.md` Phases 2–4 — seed fix (TDD), one-command bootstrap, doctor (~5 h)
 - [ ] `audit-ai-process-automation.md` Phases 0–3 — AI PR review + CI-failure triage (~2.5 h + tuning week) _(deferred by user 2026-06-11 — revisit later)_
 - [x] `audit-e2e-strategy.md` Phase 2 — browser coverage in PR CI (~1–1.5 d)
