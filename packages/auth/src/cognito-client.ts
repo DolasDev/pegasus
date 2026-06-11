@@ -34,6 +34,42 @@ export class CognitoError extends Error {
 }
 
 /**
+ * Human-readable summary of the Cognito User Pool password policy, shown when a
+ * user's new password is rejected for being too short or not complex enough.
+ *
+ * Source of truth: the `passwordPolicy` block in
+ * `packages/infra/lib/stacks/cognito-stack.ts`. Keep this sentence in sync if
+ * those rules change (minLength + require{Lowercase,Uppercase,Digits,Symbols}).
+ */
+export const PASSWORD_POLICY_MESSAGE =
+  'Your password must be at least 12 characters and include an uppercase letter, a lowercase letter, a number, and a symbol.'
+
+/**
+ * Returns {@link PASSWORD_POLICY_MESSAGE} when `err` is a Cognito rejection of a
+ * new password for failing the pool's length/complexity policy; otherwise null.
+ *
+ * Cognito reports these as `InvalidPasswordException` ("Password did not conform
+ * with policy") or, for the hard length floor, `InvalidParameterException` with
+ * a validation message naming the `password` field. Callers should prefer this
+ * message over the raw Cognito text so the user learns the actual rules:
+ *
+ *   setError(passwordPolicyMessage(err) ?? fallbackMessage)
+ *
+ * Only call this where a new password is being set (NEW_PASSWORD_REQUIRED or
+ * ConfirmForgotPassword). In the ForgotPassword *request* step an
+ * `InvalidParameterException` instead means a federated/SSO-only account, which
+ * callers map to a different message.
+ */
+export function passwordPolicyMessage(err: unknown): string | null {
+  if (!(err instanceof CognitoError)) return null
+  if (err.code === 'InvalidPasswordException') return PASSWORD_POLICY_MESSAGE
+  if (err.code === 'InvalidParameterException' && /password/i.test(err.message)) {
+    return PASSWORD_POLICY_MESSAGE
+  }
+  return null
+}
+
+/**
  * Sends a POST request to the Cognito Identity Provider API.
  *
  * @param region  AWS region (e.g. 'us-east-1')

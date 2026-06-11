@@ -2,6 +2,7 @@ import { getConfig } from '../config'
 import {
   cognitoApiRequest,
   CognitoError,
+  passwordPolicyMessage,
   generateCodeVerifier,
   generateCodeChallenge,
   generateState,
@@ -22,7 +23,7 @@ import {
 //    which redirects to the Cognito Hosted UI.
 // ---------------------------------------------------------------------------
 
-export { CognitoError }
+export { CognitoError, passwordPolicyMessage }
 
 // ---------------------------------------------------------------------------
 // Direct password auth (USER_PASSWORD_AUTH)

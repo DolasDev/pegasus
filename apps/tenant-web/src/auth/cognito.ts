@@ -1,5 +1,5 @@
 import { getConfig } from '../config'
-import { cognitoApiRequest, CognitoError } from '@pegasus/auth'
+import { cognitoApiRequest, CognitoError, passwordPolicyMessage } from '@pegasus/auth'
 
 // ---------------------------------------------------------------------------
 // Cognito — configuration and Hosted UI helpers for the tenant web app.
@@ -7,7 +7,7 @@ import { cognitoApiRequest, CognitoError } from '@pegasus/auth'
 // All configuration is read from the runtime /config.json (loaded at boot).
 // ---------------------------------------------------------------------------
 
-export { CognitoError }
+export { CognitoError, passwordPolicyMessage }
 
 export type CognitoConfig = {
   region: string

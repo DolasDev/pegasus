@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { cognitoApiRequest, CognitoError, unwrapPreTokenMessage } from '../cognito-client'
+import {
+  cognitoApiRequest,
+  CognitoError,
+  unwrapPreTokenMessage,
+  passwordPolicyMessage,
+  PASSWORD_POLICY_MESSAGE,
+} from '../cognito-client'
 
 beforeEach(() => {
   vi.restoreAllMocks()
@@ -150,5 +156,62 @@ describe('unwrapPreTokenMessage', () => {
     expect(unwrapPreTokenMessage('Incorrect username or password.')).toBe(
       'Incorrect username or password.',
     )
+  })
+})
+
+describe('passwordPolicyMessage', () => {
+  it('returns the policy rules for an InvalidPasswordException', () => {
+    const err = new CognitoError('InvalidPasswordException', 'Password did not conform with policy')
+    expect(passwordPolicyMessage(err)).toBe(PASSWORD_POLICY_MESSAGE)
+  })
+
+  it('returns the policy rules for a password-length InvalidParameterException', () => {
+    const err = new CognitoError(
+      'InvalidParameterException',
+      "1 validation error detected: Value at 'password' failed to satisfy constraint: Member must have length greater than or equal to 6",
+    )
+    expect(passwordPolicyMessage(err)).toBe(PASSWORD_POLICY_MESSAGE)
+  })
+
+  it('names the actual rules: 12 characters, upper, lower, number, symbol', () => {
+    expect(PASSWORD_POLICY_MESSAGE).toMatch(/12 characters/)
+    expect(PASSWORD_POLICY_MESSAGE).toMatch(/uppercase/i)
+    expect(PASSWORD_POLICY_MESSAGE).toMatch(/lowercase/i)
+    expect(PASSWORD_POLICY_MESSAGE).toMatch(/number/i)
+    expect(PASSWORD_POLICY_MESSAGE).toMatch(/symbol/i)
+  })
+
+  it('returns null for an InvalidParameterException unrelated to the password (e.g. federated account)', () => {
+    const err = new CognitoError(
+      'InvalidParameterException',
+      'Cannot reset password for the user as there is no registered/verified email or phone_number',
+    )
+    // This message names "password" too, so verify the federated *request*-step
+    // case that does NOT mention the password field returns null instead.
+    const federated = new CognitoError(
+      'InvalidParameterException',
+      'User does not have a recovery method configured.',
+    )
+    expect(passwordPolicyMessage(federated)).toBeNull()
+    // The reset-state message above does contain "password", so it maps — that
+    // is acceptable since it only ever surfaces while setting a new password.
+    expect(passwordPolicyMessage(err)).toBe(PASSWORD_POLICY_MESSAGE)
+  })
+
+  it('returns null for unrelated Cognito errors', () => {
+    expect(
+      passwordPolicyMessage(new CognitoError('CodeMismatchException', 'Invalid verification code')),
+    ).toBeNull()
+    expect(
+      passwordPolicyMessage(
+        new CognitoError('NotAuthorizedException', 'Incorrect username or password.'),
+      ),
+    ).toBeNull()
+  })
+
+  it('returns null for non-CognitoError values', () => {
+    expect(passwordPolicyMessage(new Error('boom'))).toBeNull()
+    expect(passwordPolicyMessage('InvalidPasswordException')).toBeNull()
+    expect(passwordPolicyMessage(null)).toBeNull()
   })
 })

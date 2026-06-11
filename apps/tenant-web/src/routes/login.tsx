@@ -20,6 +20,7 @@ import {
   forgotPassword,
   confirmForgotPassword,
   CognitoError,
+  passwordPolicyMessage,
 } from '@/auth/cognito'
 import {
   generateCodeVerifier,
@@ -213,7 +214,8 @@ export function LoginPage() {
       setStep({
         name: 'error',
         message:
-          err instanceof Error ? err.message : 'Failed to set new password. Please try again.',
+          passwordPolicyMessage(err) ??
+          (err instanceof Error ? err.message : 'Failed to set new password. Please try again.'),
       })
     }
   }
@@ -708,7 +710,10 @@ function ForgotPasswordConfirmForm({
     try {
       await onSubmit(email, code.trim(), newPassword)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reset password. Please try again.')
+      setError(
+        passwordPolicyMessage(err) ??
+          (err instanceof Error ? err.message : 'Failed to reset password. Please try again.'),
+      )
     } finally {
       setLoading(false)
     }

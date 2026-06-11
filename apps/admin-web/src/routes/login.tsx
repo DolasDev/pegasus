@@ -6,6 +6,7 @@ import {
   forgotPassword,
   confirmForgotPassword,
   CognitoError,
+  passwordPolicyMessage,
 } from '@/auth/cognito'
 
 type Step = 'credentials' | 'mfa' | 'forgot-email' | 'forgot-confirm'
@@ -118,7 +119,10 @@ export function LoginPage() {
       setStep('credentials')
     } catch (err) {
       setError(
-        err instanceof CognitoError ? err.message : 'Failed to reset password. Please try again.',
+        passwordPolicyMessage(err) ??
+          (err instanceof CognitoError
+            ? err.message
+            : 'Failed to reset password. Please try again.'),
       )
     } finally {
       setLoading(false)
