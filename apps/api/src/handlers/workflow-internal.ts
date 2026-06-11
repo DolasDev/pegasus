@@ -38,6 +38,8 @@
 // ─────────
 // POST   /workflow-runtime-token       — broker: KMS-decrypt + return token
 // PATCH  /workflow-executions/:id      — worker write-back: status / result
+// GET    /tenant-workflows             — runner artifact discovery (Unit 8):
+//                                        executable workflows + presigned GETs
 // ---------------------------------------------------------------------------
 
 import { timingSafeEqual } from 'node:crypto'
@@ -50,6 +52,7 @@ import { createTenantDb } from '../lib/prisma'
 import { createWorkflowExecutionRepository } from '../repositories/workflow-execution.repository'
 import type { WorkflowExecutionStatus } from '../repositories/workflow-execution.repository'
 import { decryptRuntimeToken } from '../lib/runtime-token-crypto'
+import { presignDownload } from '../lib/documents-s3'
 import { verifyTenantBrokerToken } from '../lib/tenant-broker-credential'
 import { logger } from '../lib/logger'
 import type { AppEnv, WorkflowBrokerAuth } from '../types'
@@ -382,3 +385,122 @@ workflowInternalHandler.patch(
     return c.json({ data: updated })
   },
 )
+
+// ---------------------------------------------------------------------------
+// GET /tenant-workflows
+//
+// Runner artifact discovery (Phase 3 Unit 8). The tenant-runner container
+// holds NO AWS credentials — this endpoint is its only path to artifacts:
+// it lists the tenant's `executable: true` workflows together with the
+// integrity digest recorded at finalize and a short-lived presigned GET URL
+// per artifact. The runner re-hashes each download against `artifactSha256`
+// before unpacking (the Unit 6 TOCTOU defence); rows without a digest are
+// excluded here because the runner could never verify them.
+//
+// Tenant confinement (same posture as the other two endpoints): a `wbk_`
+// token is pinned to its own tenant — a `tenantId` query param is only
+// accepted when it matches (anything else is a 400, leaking nothing about
+// other tenants). The shared secret must say which tenant it wants.
+//
+// Request:  GET /tenant-workflows[?tenantId=<uuid>]
+// Response: { data: [{ id, name, version, entryPoints, artifactSha256,
+//             artifactSizeBytes, createdAt, downloadUrl,
+//             downloadUrlExpiresInSeconds }] } | 400 | 401
+// ---------------------------------------------------------------------------
+
+/** TTL baked into lib/documents-s3.ts presignDownload — surfaced to the
+ * runner so it can reason about staleness without parsing the URL. */
+const DOWNLOAD_URL_TTL_SECONDS = 5 * 60
+
+/** Minimal shape pulled out of the stored (finalize-validated) manifest.
+ * A row whose manifest somehow lacks entry points is unusable by the runner
+ * and is skipped with a warning rather than failing the whole listing. */
+const ManifestEntryPoints = z.object({ entryPoints: z.array(z.string()).min(1) })
+
+workflowInternalHandler.get('/tenant-workflows', async (c) => {
+  const auth = c.get('brokerAuth')
+  const requestedTenantId = c.req.query('tenantId')
+
+  let tenantId: string
+  if (auth?.kind === 'tenant') {
+    // A per-tenant token may only ever list its own tenant. An explicit
+    // param is tolerated only when it agrees — anything else is rejected
+    // without revealing whether the other tenant exists.
+    if (requestedTenantId !== undefined && requestedTenantId !== auth.tenantId) {
+      return c.json(
+        { error: 'tenantId does not match the presented token', code: 'VALIDATION_ERROR' },
+        400,
+      )
+    }
+    tenantId = auth.tenantId
+  } else {
+    // Shared secret: full access, but it must say which tenant it wants.
+    const parsed = z.string().uuid().safeParse(requestedTenantId)
+    if (!parsed.success) {
+      return c.json(
+        { error: 'tenantId query param (uuid) is required', code: 'VALIDATION_ERROR' },
+        400,
+      )
+    }
+    tenantId = parsed.data
+  }
+
+  // Base client on purpose: this router sits outside the tenant middleware,
+  // and the where-clause IS the tenant scope (mirrors the other endpoints).
+  const rows = await basePrisma.workflow.findMany({
+    where: {
+      tenantId,
+      executable: true,
+      // executable:true implies a Unit-6 finalize, but the digest is what
+      // the runner's whole security model hangs on — filter explicitly.
+      artifactSha256: { not: null },
+    },
+    select: {
+      id: true,
+      name: true,
+      version: true,
+      manifest: true,
+      artifactKey: true,
+      artifactSha256: true,
+      artifactSizeBytes: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+
+  const data = []
+  for (const row of rows) {
+    const manifest = ManifestEntryPoints.safeParse(row.manifest)
+    if (!manifest.success) {
+      logger.warn('broker.tenant_workflows.row_skipped_no_entry_points', {
+        workflowId: row.id,
+        tenantId,
+      })
+      continue
+    }
+    data.push({
+      id: row.id,
+      name: row.name,
+      version: row.version,
+      entryPoints: manifest.data.entryPoints,
+      artifactSha256: row.artifactSha256,
+      artifactSizeBytes: row.artifactSizeBytes,
+      createdAt: row.createdAt.toISOString(),
+      // The presigned URL is the runner's entire authorization to the
+      // artifact bytes; the raw S3 key stays internal (it is embedded in
+      // the signed URL by construction, but never exposed as a field).
+      downloadUrl: await presignDownload(row.artifactKey),
+      downloadUrlExpiresInSeconds: DOWNLOAD_URL_TTL_SECONDS,
+    })
+  }
+
+  logger.info('broker.tenant_workflows.listed', {
+    tenantId,
+    count: data.length,
+    authKind: auth?.kind ?? 'unknown',
+  })
+
+  // Presigned URLs are short-lived credentials — keep every cache out.
+  c.header('Cache-Control', 'no-store')
+  return c.json({ data })
+})

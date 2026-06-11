@@ -11,6 +11,11 @@
 //     execution refusal, no token in logs, Cache-Control: no-store.
 //   - PATCH /workflow-executions/:id: state-machine validation, idempotent
 //     terminal-self transition, RUNNING write, terminal write.
+//   - GET /tenant-workflows (Phase 3 Unit 8): tenant-confined artifact
+//     listing — own-tenant scope is forced for wbk_ tokens, mismatched
+//     tenantId params 400, shared secret requires an explicit tenantId,
+//     non-executable / digest-less rows are excluded by the where clause,
+//     presigned URL + sha fields present, Cache-Control: no-store.
 //
 // Strategy: mock the `db` module (so no real Prisma is needed) and the
 // runtime-token-crypto + tenant-scoped Prisma helpers. The validator and
@@ -32,12 +37,15 @@ import type { AppEnv } from '../types'
 const {
   mockExecutionFindUnique,
   mockWorkflowFindUnique,
+  mockWorkflowFindMany,
   mockCredentialFindUnique,
   mockExecRepo,
   mockDecryptRuntimeToken,
+  mockPresignDownload,
 } = vi.hoisted(() => ({
   mockExecutionFindUnique: vi.fn(),
   mockWorkflowFindUnique: vi.fn(),
+  mockWorkflowFindMany: vi.fn(),
   mockCredentialFindUnique: vi.fn(),
   mockExecRepo: {
     findById: vi.fn(),
@@ -45,18 +53,23 @@ const {
     markTerminal: vi.fn(),
   },
   mockDecryptRuntimeToken: vi.fn(),
+  mockPresignDownload: vi.fn(),
 }))
 
 vi.mock('../db', () => ({
   db: {
     workflowExecution: { findUnique: mockExecutionFindUnique },
-    workflow: { findUnique: mockWorkflowFindUnique },
+    workflow: { findUnique: mockWorkflowFindUnique, findMany: mockWorkflowFindMany },
     tenantBrokerCredential: { findUnique: mockCredentialFindUnique },
   } as unknown as PrismaClient,
 }))
 
 vi.mock('../lib/runtime-token-crypto', () => ({
   decryptRuntimeToken: mockDecryptRuntimeToken,
+}))
+
+vi.mock('../lib/documents-s3', () => ({
+  presignDownload: mockPresignDownload,
 }))
 
 vi.mock('../lib/prisma', () => ({
@@ -626,6 +639,164 @@ describe('workflow-internal handler', () => {
         withSecret(BROKER_SECRET, { status: 'FAILED', errorMessage: 'never started' }, 'PATCH'),
       )
       expect(res.status).toBe(200)
+    })
+  })
+
+  // ── GET /tenant-workflows (Phase 3 Unit 8) ─────────────────────────────────
+
+  describe('GET /tenant-workflows', () => {
+    const workflowRow = (overrides: Record<string, unknown> = {}) => ({
+      id: 'wf-00000000-0000-4000-8000-00000000000a',
+      name: 'my_workflow',
+      version: '1.0.0',
+      manifest: {
+        name: 'my_workflow',
+        version: '1.0.0',
+        entryPoints: ['my_workflow.workflow:MyWorkflow'],
+      },
+      artifactKey: 'workflows/t/wf/1.0.0.zip',
+      artifactSha256: 'a'.repeat(64),
+      artifactSizeBytes: 12_345,
+      createdAt: new Date('2026-06-11T00:00:00Z'),
+      ...overrides,
+    })
+
+    function getTenantWorkflows(headers: Record<string, string>, query = '') {
+      return buildApp().request(`/tenant-workflows${query}`, { method: 'GET', headers })
+    }
+
+    beforeEach(() => {
+      stubCredentials()
+      mockWorkflowFindMany.mockResolvedValue([workflowRow()])
+      mockPresignDownload.mockResolvedValue('https://s3.example/presigned-get')
+    })
+
+    // ---- auth matrix --------------------------------------------------------
+
+    it('401s with no credential at all', async () => {
+      const res = await getTenantWorkflows({})
+      expect(res.status).toBe(401)
+      expect(mockWorkflowFindMany).not.toHaveBeenCalled()
+    })
+
+    it('401s an invalid token', async () => {
+      const res = await getTenantWorkflows({
+        'X-Workflow-Broker-Token': `wbk_${TENANT_A}_${'ef'.repeat(24)}`, // rotated/stale
+      })
+      expect(res.status).toBe(401)
+      expect((await json(res))['code']).toBe('INVALID_BROKER_TOKEN')
+      expect(mockWorkflowFindMany).not.toHaveBeenCalled()
+    })
+
+    it('401s an invalid shared secret without falling through to the token', async () => {
+      const res = await getTenantWorkflows({
+        'X-Workflow-Broker-Secret': 'wrong-secret',
+        'X-Workflow-Broker-Token': TENANT_A_TOKEN,
+      })
+      expect(res.status).toBe(401)
+      expect((await json(res))['code']).toBe('INVALID_BROKER_SECRET')
+    })
+
+    it("lists the token tenant's own executable workflows", async () => {
+      const res = await getTenantWorkflows({ 'X-Workflow-Broker-Token': TENANT_A_TOKEN })
+      expect(res.status).toBe(200)
+      // The where clause IS the tenant scope + executability + digest gate.
+      expect(mockWorkflowFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            tenantId: TENANT_A,
+            executable: true,
+            artifactSha256: { not: null },
+          },
+        }),
+      )
+      const body = await json(res)
+      const data = body['data'] as Array<Record<string, unknown>>
+      expect(data).toHaveLength(1)
+      expect(data[0]).toMatchObject({
+        name: 'my_workflow',
+        version: '1.0.0',
+        entryPoints: ['my_workflow.workflow:MyWorkflow'],
+        artifactSha256: 'a'.repeat(64),
+        artifactSizeBytes: 12_345,
+        downloadUrl: 'https://s3.example/presigned-get',
+        downloadUrlExpiresInSeconds: 300,
+      })
+      expect(mockPresignDownload).toHaveBeenCalledWith('workflows/t/wf/1.0.0.zip')
+      // The raw S3 key never appears as a response field.
+      expect(data[0]).not.toHaveProperty('artifactKey')
+    })
+
+    it("400s a token tenant asking for ANOTHER tenant's listing", async () => {
+      const res = await getTenantWorkflows(
+        { 'X-Workflow-Broker-Token': TENANT_A_TOKEN },
+        `?tenantId=${TENANT_B}`,
+      )
+      expect(res.status).toBe(400)
+      expect(mockWorkflowFindMany).not.toHaveBeenCalled()
+    })
+
+    it('accepts a token tenant naming ITSELF explicitly', async () => {
+      const res = await getTenantWorkflows(
+        { 'X-Workflow-Broker-Token': TENANT_A_TOKEN },
+        `?tenantId=${TENANT_A}`,
+      )
+      expect(res.status).toBe(200)
+      expect(mockWorkflowFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ tenantId: TENANT_A }) }),
+      )
+    })
+
+    it('lets the shared secret list any tenant via the query param', async () => {
+      const res = await getTenantWorkflows(
+        { 'X-Workflow-Broker-Secret': BROKER_SECRET },
+        `?tenantId=${TENANT_B}`,
+      )
+      expect(res.status).toBe(200)
+      expect(mockWorkflowFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ tenantId: TENANT_B }) }),
+      )
+    })
+
+    it('400s the shared secret without a tenantId param', async () => {
+      const res = await getTenantWorkflows({ 'X-Workflow-Broker-Secret': BROKER_SECRET })
+      expect(res.status).toBe(400)
+      expect(mockWorkflowFindMany).not.toHaveBeenCalled()
+    })
+
+    it('400s the shared secret with a non-uuid tenantId param', async () => {
+      const res = await getTenantWorkflows(
+        { 'X-Workflow-Broker-Secret': BROKER_SECRET },
+        '?tenantId=not-a-uuid',
+      )
+      expect(res.status).toBe(400)
+    })
+
+    // ---- response hygiene ---------------------------------------------------
+
+    it('skips rows whose stored manifest lacks entry points', async () => {
+      mockWorkflowFindMany.mockResolvedValue([
+        workflowRow(),
+        workflowRow({ id: 'wf-broken', name: 'broken_wf', manifest: { entryPoints: [] } }),
+        workflowRow({ id: 'wf-null-manifest', name: 'null_wf', manifest: null }),
+      ])
+      const res = await getTenantWorkflows({ 'X-Workflow-Broker-Token': TENANT_A_TOKEN })
+      expect(res.status).toBe(200)
+      const data = (await json(res))['data'] as Array<Record<string, unknown>>
+      expect(data.map((d) => d['name'])).toEqual(['my_workflow'])
+    })
+
+    it('returns an empty list when the tenant has no executable workflows', async () => {
+      mockWorkflowFindMany.mockResolvedValue([])
+      const res = await getTenantWorkflows({ 'X-Workflow-Broker-Token': TENANT_A_TOKEN })
+      expect(res.status).toBe(200)
+      expect((await json(res))['data']).toEqual([])
+      expect(mockPresignDownload).not.toHaveBeenCalled()
+    })
+
+    it('sets Cache-Control: no-store (presigned URLs are credentials)', async () => {
+      const res = await getTenantWorkflows({ 'X-Workflow-Broker-Token': TENANT_A_TOKEN })
+      expect(res.headers.get('cache-control')).toBe('no-store')
     })
   })
 })
