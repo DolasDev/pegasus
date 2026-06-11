@@ -4,7 +4,7 @@
   "private": true,
   "main": "./src/index.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
@@ -13,7 +13,7 @@
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "tsx prisma/seed.ts",
+    "db:seed": "tsx prisma/seed-run.ts",
     "db:studio": "prisma studio",
     "service:install": "node service/install.js",
     "service:uninstall": "node service/uninstall.js",
