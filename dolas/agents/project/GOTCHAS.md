@@ -262,3 +262,14 @@ from `dolas-infra:lib/pegasus/constructs/pegasus-github-oidc-role.ts` — never
 patch their IAM out-of-band; add grants there and deploy dolas-infra. Pending
 grant as of 2026-06-11: `secretsmanager:DescribeSecret` on `pegasus/*` (arms
 the temporal secret-ARN pre-flight, currently warn-only).
+
+## Two different "redirect URIs" in the SSO setup
+
+When a tenant registers Pegasus at an external OIDC IdP, the callback to
+whitelist there is the **Cognito hosted-UI endpoint**
+`{cognito.domain}/oauth2/idpresponse` — NOT the app's
+`config.cognito.redirectUri` (`…/login/callback`), which is only registered in
+Cognito's own app client. SAML equivalents: ACS = `{domain}/saml2/idpresponse`,
+SP entity ID = `urn:amazon:cognito:sp:{userPoolId}`. The tenant-web SSO form
+(`apps/tenant-web/src/routes/sso-config.tsx`, `IdpSetupHints`) surfaces the
+correct values per environment from `/config.json`.
