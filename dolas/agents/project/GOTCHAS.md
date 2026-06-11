@@ -221,3 +221,44 @@ font is bundled via `@fontsource/open-sans` (400/700) imported in
 `DriverPlanningLayout.tsx`. Verified by `Trip/index.test.tsx` (card-count ===
 gantt-row-count alignment invariant) + a WEB_URL-gated visual spec
 `apps/e2e/tests/browser/trip-date-container.spec.ts`.
+
+## Turbo strict env mode hides job env vars from tasks
+
+Turbo 2 runs tasks in `strict` env mode: a var set at the CI job level (or in
+your shell) is **invisible** to the task unless declared in `turbo.json`
+(`tasks.<task>.env` / `globalEnv` / `passThroughEnv`). This was the actual
+mechanism of the api test suite's silent-skip hole — ci.yml set `DATABASE_URL`
+at the job level, turbo stripped it, vitest's global setup saw it unset and
+skipped all 12 DB-backed suites green. `CI` itself IS passed through (turbo's
+built-in allowlist), which is why the fail-fast guard could fire. When a task
+"can't see" an env var that's clearly set, check `turbo.json` env declarations
+before debugging anything else.
+
+## Advisory CI pre-flights must fail only on their precise signal
+
+Two Wave-1 deploy pre-flights initially failed runs on the wrong signals:
+AccessDenied (missing IAM grant) and an AWS endpoint connect-hang (transient
+GitHub-runner network incident, 2026-06-10 ~23:00–23:40 UTC — also broke the
+e2e staging gate with raw `ConnectTimeoutError`s) were both classified as
+"stale secret ARN". Pattern: an advisory check greps for its ONE true positive
+(`ResourceNotFoundException`) and warns-and-continues on everything else, with
+`--cli-connect-timeout/--cli-read-timeout` + `AWS_MAX_ATTEMPTS` so a hung
+endpoint can't eat the job timeout (one hang burned 18 min). Related: ECS
+`rolloutState` flips to COMPLETED asynchronously _after_ `aws ecs wait
+services-stable` returns — poll it (≤2 min), never one-shot read it.
+
+## VPN agent: dev has no /pegasus/wireguard/agent/apikey param
+
+Only staging/prod hub user-data hard-fails on the missing apikey param; dev
+predates the AgentKeyBootstrap hardening and intentionally has no param (dev
+publishes succeeded without it for months). The publish pre-flight is scoped
+`env-name != 'dev'` — don't "fix" dev by creating the param or un-scoping the
+check without also deploying WireGuardStack's hardened user-data there.
+
+## GitHub deploy roles are CDK-managed in dolas-infra
+
+`pegasus-github-actions-deploy-{staging,prod}` (and their inline policies) come
+from `dolas-infra:lib/pegasus/constructs/pegasus-github-oidc-role.ts` — never
+patch their IAM out-of-band; add grants there and deploy dolas-infra. Pending
+grant as of 2026-06-11: `secretsmanager:DescribeSecret` on `pegasus/*` (arms
+the temporal secret-ARN pre-flight, currently warn-only).
