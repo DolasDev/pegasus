@@ -20,6 +20,19 @@ export type ApiClientContext = Omit<ApiClientRow, 'keyHash' | 'tenantId' | 'crea
 }
 
 /**
+ * Broker principal for the internal worker endpoints
+ * (handlers/workflow-internal.ts).
+ *
+ *   - `shared` — the legacy stdlib worker presented the global
+ *     X-Workflow-Broker-Secret. Trusted image; full access (any tenant's
+ *     execution rows), unchanged Phase 2 behavior.
+ *   - `tenant` — a runner presented a per-tenant `wbk_` token
+ *     (X-Workflow-Broker-Token). Every request is confined to execution rows
+ *     owned by `tenantId`; anything else is answered as if it didn't exist.
+ */
+export type WorkflowBrokerAuth = { kind: 'shared' } | { kind: 'tenant'; tenantId: string }
+
+/**
  * Variables injected into Hono context by the tenant middleware.
  * Every handler mounted under the /api/v1/* prefix can rely on these being
  * present — the middleware aborts with 4xx before reaching the handler if
@@ -75,6 +88,14 @@ export type AppVariables = {
    * Handlers that require scope enforcement read scopes from this field.
    */
   apiClient: ApiClientContext | undefined
+  /**
+   * Broker principal for the /api/v1/internal worker endpoints ONLY. Set by
+   * the broker auth middleware in handlers/workflow-internal.ts: `shared`
+   * (the legacy stdlib worker's shared secret — full access) or `tenant`
+   * (a per-tenant `wbk_` token — requests are confined to that tenant's
+   * execution rows). Undefined everywhere outside the internal router.
+   */
+  brokerAuth: WorkflowBrokerAuth | undefined
 }
 
 /** Hono environment type used when constructing the app and all sub-routers. */

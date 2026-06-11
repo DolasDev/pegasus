@@ -256,6 +256,7 @@ model Tenant {
   workflows        Workflow[]
   workflowTriggers WorkflowTrigger[]
   domainEvents     DomainEvent[]
+  brokerCredential TenantBrokerCredential?
   vpnPeer          VpnPeer?
 
   // Messaging context — RingCentral SMS capture
@@ -1370,6 +1371,57 @@ model DomainEvent {
   @@index([dispatchedAt, occurredAt])
   @@index([tenantId])
   @@map("domain_events")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Tenant broker credentials — per-tenant tokens for the workflow broker.
+//
+// Phase 3 Unit 7 (the sandbox security keystone). A tenant-runner container
+// (Unit 8) must never hold the global WORKFLOW_BROKER_SECRET — tenant code
+// imported by the runner could read it from the environment and mint ANY
+// tenant's runtime token. Instead each tenant gets exactly one opaque token
+// `wbk_<tenantId>_<48 hex>`; the broker endpoints accept it but enforce
+// `execution.tenantId === credential.tenantId` on every request, so a leaked
+// token only ever exposes the holding tenant's own executions.
+//
+// Two at-rest forms, deliberately:
+//   * tokenHash       — SHA-256 of the full token. The broker verifies against
+//                       this (timing-safe) and never needs the plaintext back.
+//   * tokenCiphertext — KMS-encrypted plaintext (same key as
+//                       Workflow.runtimeTokenCiphertext). Exists ONLY so the
+//                       Unit 9 dispatcher can recover the plaintext at ECS
+//                       task-launch time and inject it into the runner's env.
+//
+// Minted lazily by lib/tenant-broker-credential.ts (no HTTP surface). NOT in
+// TENANT_SCOPED_MODELS — only the broker auth path and the dispatcher touch
+// it, both via the root `db` (same precedent as ApiClient).
+// ---------------------------------------------------------------------------
+
+model TenantBrokerCredential {
+  id       String @id @default(uuid())
+  /// Owning tenant. Unique — at most one active credential per tenant, which
+  /// is also what makes rotation revoke the previous token (the row's hash is
+  /// replaced, so the old plaintext stops verifying).
+  tenantId String @unique @map("tenant_id")
+
+  /// SHA-256 hex digest of the full token — compared with timing-safe
+  /// equality at the broker. Never returned in API responses.
+  tokenHash String @map("token_hash")
+
+  /// KMS-encrypted token plaintext (base64 ciphertext), for the runner
+  /// dispatcher to decrypt at task launch. Never returned in API responses.
+  tokenCiphertext String @map("token_ciphertext")
+
+  /// Stamped whenever the credential is rotated. Null = never rotated.
+  rotatedAt DateTime? @map("rotated_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("tenant_broker_credentials")
   @@schema("public")
 }
 
