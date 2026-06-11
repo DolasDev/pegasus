@@ -65,21 +65,23 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0 # need history back to LAST_DEPLOY_SHA
+          fetch-depth: 0 # need history back to the last-deploy marker tag
 
       - name: Resolve diff base
         id: base
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          BASE=$(gh variable get LAST_DEPLOY_SHA --repo "${{ github.repository }}" 2>/dev/null || true)
-          # Fallbacks: unset variable (first run) or GC'd/force-pushed-away
-          # SHA → empty base → deploy everything.
-          if [[ -z "$BASE" ]] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+          # Marker is the `last-deploy` tag (advanced by record-deploy).
+          # GITHUB_TOKEN cannot write Actions variables (403 Resource not
+          # accessible by integration — needs a fine-grained Variables PAT),
+          # so the marker lives in git instead: contents:write suffices.
+          BASE=$(git rev-parse 'refs/tags/last-deploy^{commit}' 2>/dev/null || true)
+          # Fallbacks: missing tag (first run) or unresolvable commit →
+          # empty base → deploy everything.
+          if [[ -z "$BASE" ]]; then
             echo "base=" >> "$GITHUB_OUTPUT"
             if [[ "${{ github.event_name }}" == "push" ]]; then
-              echo "::warning::No usable LAST_DEPLOY_SHA — forcing full deploy."
+              echo "::warning::No usable last-deploy tag — forcing full deploy."
             fi
           else
             echo "base=$BASE" >> "$GITHUB_OUTPUT"
@@ -327,9 +329,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      actions: write # gh variable set LAST_DEPLOY_SHA
+      contents: write # force-push the last-deploy marker tag
     steps:
-      - name: Advance LAST_DEPLOY_SHA
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh variable set LAST_DEPLOY_SHA --body "${{ github.sha }}" --repo "${{ github.repository }}"
+      - uses: actions/checkout@v6
+      - name: Advance last-deploy tag
+        run: |
+          set -euo pipefail
+          git tag -f last-deploy "${{ github.sha }}"
+          git push -f origin refs/tags/last-deploy
