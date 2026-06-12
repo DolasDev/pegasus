@@ -5,12 +5,14 @@
 //  - A correlation ID from the request header is forwarded to the response.
 //  - A fresh UUID is generated when no header is present.
 //  - The correlation ID is stored in the Hono context for downstream handlers.
+//  - Logger keys are removed even when the downstream handler throws (no leak).
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { Hono } from 'hono'
 import type { AppEnv } from '../types'
 import { correlationMiddleware } from './correlation'
+import { logger } from '../lib/logger'
 
 // ---------------------------------------------------------------------------
 // Test helper
@@ -61,5 +63,26 @@ describe('correlationMiddleware', () => {
     const id1 = res1.headers.get('x-correlation-id')
     const id2 = res2.headers.get('x-correlation-id')
     expect(id1).not.toBe(id2)
+  })
+})
+
+describe('correlationMiddleware — key leak prevention', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('removes logger keys even when the handler throws (no warm-invocation leak)', async () => {
+    const removeKeysSpy = vi.spyOn(logger, 'removeKeys')
+
+    const app = new Hono<AppEnv>()
+    app.use('*', correlationMiddleware)
+    app.get('/explode', () => {
+      throw new Error('handler error')
+    })
+    // Hono's onError catches the throw and returns 500, so the response
+    // resolves — we're testing that removeKeys still ran despite the throw.
+    await app.request('/explode', { headers: { 'x-correlation-id': 'leaked-id-123' } })
+
+    expect(removeKeysSpy).toHaveBeenCalledWith(['correlationId', 'method', 'path'])
   })
 })
