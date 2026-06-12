@@ -273,3 +273,22 @@ Cognito's own app client. SAML equivalents: ACS = `{domain}/saml2/idpresponse`,
 SP entity ID = `urn:amazon:cognito:sp:{userPoolId}`. The tenant-web SSO form
 (`apps/tenant-web/src/routes/sso-config.tsx`, `IdpSetupHints`) surfaces the
 correct values per environment from `/config.json`.
+
+## Lockfile regeneration can nest packages that CDK bundling needs root-hoisted
+
+CDK `NodejsFunction` `nodeModules: [...]` staging writes a one-dep package.json
+next to a copy of the monorepo `package-lock.json` and runs `npm ci` — which
+only resolves entries at the lock's ROOT `node_modules/` path. Dependabot's
+lock regeneration (PR #235) nested `sharp` (+`@img/*`) and
+`@cedar-policy/cedar-wasm` under `apps/api/node_modules/`, so api-stack's
+bundle test failed locally (cedar) and the documents-stack sharp Lambda broke
+the real deploy (`EUSAGE: Missing: sharp@x from lock file`) — there is NO
+bundle test for the sharp Lambda. Spot-hoisting lock entries is whack-a-mole;
+the fix is `rm -rf node_modules apps/*/node_modules packages/*/node_modules
+package-lock.json && npm install` (Node 24) to restore npm's maximal hoisting,
+then the full gate. Same PR also taught: a stale nested `hono` copy breaks
+`@hono/swagger-ui` typings (targeted `npm dedupe hono`), and react-native's
+jest-preset pins `jest-environment-node@^29`, incompatible with jest ≥ 30.4's
+runtime (`clearMocksOnScope`) — apps/mobile overrides `testEnvironment` with a
+local equivalent env (`apps/mobile/jest.environment.js`) resolving its own
+jest-30-matched copy.

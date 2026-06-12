@@ -1,6 +1,31 @@
 # Master Plan — Remediation Ranking by Feedback-Loop Cost/Benefit
 
-> **Status: SCOPED** — 2026-06-10
+> **Status: WAVES 1–2 COMPLETE & DEPLOYED — Wave 3 next** — updated 2026-06-12
+
+## Execution status (resume here)
+
+Executed via parallel-worktree batch sessions (no PRs; merge locally on an
+integration branch — the harness blocks edits on `main` — gate, single push):
+
+- **Wave 1 (9 units) + Wave 2 (4 units): DONE**, deployed staging+prod, every
+  live acceptance check verified (alarm email round-trip, CORS allowlist,
+  throttling 25/50, e2e floors, docs-only CI skip in 15 s, `last-deploy` tag
+  advancing, Vercel remote cache replaying in CI and locally, Temporal
+  pre-flight armed and logging `OK:`). Checkboxes below + in the source plans
+  reflect per-item state, with deviation annotations inline.
+- **User-deferred (do NOT start without an explicit go):** all of
+  `audit-ai-process-automation.md`, and deploy-notification items 2.2–2.4 of
+  `audit-deploy-pipeline-reliability.md` (ntfy/AI-triage).
+- **Next: Wave 3 below** — pause for the user's go between waves; risk items
+  first per the wave note. Each phase still carries its own acceptance
+  criteria; archive a source plan to `plans/completed/` only when all its
+  phases are done or explicitly dropped.
+- One-time follow-ups already done out-of-band: GitHub security features
+  enabled (validity checks impossible on free tier); dolas-infra grants
+  deployed (`secretsmanager:DescribeSecret`, OIDC-role-only — the legacy
+  deploy user is at the 2048-byte IAM cap); dependabot PR #235 repaired and
+  merged (repo setting "Allow auto-merge" is OFF, which is why the
+  auto-merge workflow always fails — enable in Settings → General if wanted).
 
 ## Context
 
