@@ -2,12 +2,17 @@
 
 **Status: IN PROGRESS — Track B (Units 1–5) ✅ + Unit 6 ✅ COMPLETE and
 LIVE** (PRs #230–#234, #239). Scoped 2026-06-09; all 5 open questions
-resolved with Steve — see "Resolved decisions". Units 7 (#240) + 8
-(#241) ✅ DONE. **Next: Track A Unit 9 (runner orchestration /
-scale-to-zero, CDK) — the "Operator prerequisites" section now bites:
-ECR repo (stack-created is fine, see Phase 2 precedent) + the
-out-of-band CI IAM inline-policy step + Temporal Cloud queue-count
-check.**
+resolved with Steve — see "Resolved decisions". Units 7 (#240), 8
+(#241), 8.1 (#242) ✅ DONE. **PAUSED HERE 2026-06-12 (Steve: "stop
+after unit 8"). Unit 9 is implemented and waiting as OPEN PR #243
+(branch `phase3/09-runner-orchestration`, worktree
+`/home/steve/repos/pegasus-wt-unit9` kept) — DO NOT merge until the
+operator steps in the PR body are applied: (1) `put-role-policy`
+tenant-runner-image-deploy on both deploy roles (staging 248812875460 /
+prod 331145994639 — exact commands in the PR), (2) Temporal Cloud
+per-tenant queue-count check. PR CI was green at pause except Test
+in-flight. Coordinator re-review of #243 has NOT happened yet — do the
+usual diff review before merging. Then Units 10–11.**
 
 ## Resume-session checklist
 
