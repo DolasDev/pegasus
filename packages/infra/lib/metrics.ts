@@ -67,3 +67,30 @@ export const PEGASUS_WORKFLOWS_METRIC_NAMESPACE = 'Pegasus/Workflows'
  * non-zero value means workers are crashing mid-execution.
  */
 export const WORKFLOW_EXECUTION_RECONCILED_METRIC_NAME = 'WorkflowExecutionReconciled'
+
+// ---------------------------------------------------------------------------
+// Tenant-runner orchestration metrics (Phase 3 Unit 9).
+//
+// Emitted by apps/api/src/lib/tenant-runner.ts (from both the API Lambda's
+// run-path hook and the trigger dispatcher's per-minute sweep), which repeats
+// these strings literally for the same apps/api-can't-import-@pegasus/infra
+// reason as the emitters above. Keep both sides in sync. Alarms/dashboards
+// land in Phase 3 Unit 11; the metrics exist from Unit 9.
+// ---------------------------------------------------------------------------
+
+/** Count of tenant-runner ECS tasks successfully launched via RunTask. */
+export const TENANT_RUNNER_LAUNCHED_METRIC_NAME = 'TenantRunnerLaunched'
+
+/** Count of failed tenant-runner launches (RunTask failures[], SDK errors,
+ * broker-credential recovery failures). Sustained non-zero = QUEUED tenant
+ * executions are waiting on a runner that cannot start. */
+export const TENANT_RUNNER_LAUNCH_FAILED_METRIC_NAME = 'TenantRunnerLaunchFailed'
+
+/** Gauge: tenant-runner tasks with lastStatus RUNNING, published every
+ * dispatcher tick (0 included — scale-to-zero is the steady state). */
+export const TENANT_RUNNERS_RUNNING_METRIC_NAME = 'TenantRunnersRunning'
+
+/** Cold-start latency in seconds (RunTask accept → task RUNNING), emitted
+ * for tasks that reached RUNNING within the last tick window. The accepted
+ * Resolved-#1 budget is ~30–60 s. */
+export const TENANT_RUNNER_COLD_START_SECONDS_METRIC_NAME = 'TenantRunnerColdStartSeconds'

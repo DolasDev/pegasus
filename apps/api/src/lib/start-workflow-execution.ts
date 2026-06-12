@@ -29,6 +29,7 @@ import type { WorkflowExecutionRow } from '../repositories/workflow-execution.re
 import { encryptRuntimeToken } from './runtime-token-crypto'
 import { getTemporalClient, temporalTaskQueue } from './temporal-client'
 import { CURATED_WORKFLOW_NAMES } from './curated-workflows'
+import { ensureTenantRunner, executionNeedsTenantRunner } from './tenant-runner'
 import { logger } from './logger'
 
 // ---------------------------------------------------------------------------
@@ -188,6 +189,25 @@ export async function startWorkflowExecution(
 
   if (!CURATED_WORKFLOW_NAMES.has(workflow.name)) {
     return { outcome: 'NOT_EXECUTABLE' }
+  }
+
+  // Scale-to-zero runner hook (Phase 3 Unit 9). For executions that will
+  // route to a per-tenant runner task, kick the launch off NOW so the
+  // ~30–60 s cold start overlaps the insert + Temporal start below.
+  //
+  // INERT TODAY by construction: executionNeedsTenantRunner is the exact
+  // complement of the curated gate that just passed above, so this branch
+  // cannot be taken until Unit 10 replaces both with the real routing
+  // decision. It is wired (and tested) now so flipping the criterion is the
+  // only change Unit 10 needs on this path.
+  //
+  // A failed launch deliberately does NOT fail the run: the execution still
+  // starts on its Temporal queue and the dispatcher's per-minute runner
+  // sweep (lib/tenant-runner.ts sweepTenantRunners) retries while QUEUED
+  // work exists — degraded latency, never a lost run. ensureTenantRunner
+  // never throws for the failures it models and logs/metrics internally.
+  if (executionNeedsTenantRunner(workflow)) {
+    await ensureTenantRunner(db, tenantId)
   }
 
   // Single transaction: lazy-mint the runtime account if needed, then

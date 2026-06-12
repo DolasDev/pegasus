@@ -275,6 +275,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     // No events ⇒ no per-event EVENT-trigger queries; the only trigger query
     // is the schedule sweep (Unit 4), which runs every tick.
@@ -297,6 +298,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 1,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
 
     // Only enabled EVENT triggers of this (tenant, eventType) are considered.
@@ -380,6 +382,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockExecutionCreate).not.toHaveBeenCalled()
     expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
@@ -407,6 +410,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockExecutionFindFirst).toHaveBeenCalledWith({
       where: { tenantId: 'tenant-1', temporalWorkflowId: DETERMINISTIC_ID },
@@ -436,6 +440,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockExecutionCreate).not.toHaveBeenCalled()
     expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
@@ -469,6 +474,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     // markTerminal would be an update with status FAILED — must not happen.
     expect(mockExecutionUpdate).not.toHaveBeenCalled()
@@ -496,6 +502,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockExecutionUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -530,6 +537,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 1,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockExecutionCreate).toHaveBeenCalledTimes(1)
     expect(
@@ -559,6 +567,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockDomainEventUpdateMany).not.toHaveBeenCalled()
   })
@@ -578,6 +587,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
     expect(
@@ -612,6 +622,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
   })
 })
@@ -649,6 +660,7 @@ describe('scheduled triggers', () => {
       fired: 0,
       schedulesEvaluated: 1,
       scheduleFired: 1,
+      runnersLaunched: 0,
     })
 
     // Disabled rows never reach the loop — filtered at the query.
@@ -698,6 +710,7 @@ describe('scheduled triggers', () => {
       fired: 0,
       schedulesEvaluated: 1,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockExecutionCreate).not.toHaveBeenCalled()
     // Nothing fired, nothing skipped ⇒ nothing to flush.
@@ -716,6 +729,7 @@ describe('scheduled triggers', () => {
       fired: 0,
       schedulesEvaluated: 1,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockExecutionFindFirst).toHaveBeenCalledWith({
       where: { tenantId: 'tenant-1', temporalWorkflowId: SCHEDULE_ID },
@@ -746,6 +760,7 @@ describe('scheduled triggers', () => {
       fired: 0,
       schedulesEvaluated: 2,
       scheduleFired: 1,
+      runnersLaunched: 0,
     })
     expect(mockExecutionCreate).toHaveBeenCalledTimes(1)
     expect(
@@ -790,6 +805,7 @@ describe('scheduled triggers', () => {
       fired: 1,
       schedulesEvaluated: 1,
       scheduleFired: 1,
+      runnersLaunched: 0,
     })
     expect(mockExecutionCreate).toHaveBeenCalledTimes(2)
     // One undimensioned counter for both kinds — kind detail is in logs and

@@ -14,6 +14,7 @@ import * as sqs from 'aws-cdk-lib/aws-sqs'
 import * as ssm from 'aws-cdk-lib/aws-ssm'
 import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources'
 import * as triggers from 'aws-cdk-lib/triggers'
+import type * as ec2 from 'aws-cdk-lib/aws-ec2'
 import type * as s3 from 'aws-cdk-lib/aws-s3'
 import { type Construct } from 'constructs'
 import {
@@ -135,6 +136,24 @@ export interface ApiStackProps extends cdk.StackProps {
    * the `X-Workflow-Broker-Secret` request header against this value.
    */
   readonly workflowBrokerSecretArn?: string
+
+  /**
+   * WireGuard-VPC PRIVATE_WITH_EGRESS subnets tenant-runner tasks launch
+   * into (Phase 3 Unit 9) — `wireguardStack.temporalWorkerSubnets`, the same
+   * group the stdlib worker uses. Combined with `tenantRunnerSecurityGroup`
+   * and the Temporal config, these unlock the dispatcher's `ecs:RunTask`
+   * wiring (TENANT_RUNNER_* env + IAM). Omit in dev / Temporal-less envs —
+   * the dispatcher lib then no-ops cleanly (loadTenantRunnerConfig → null).
+   */
+  readonly tenantRunnerSubnets?: ec2.ISubnet[]
+
+  /**
+   * Egress-only security group for tenant-runner tasks
+   * (`wireguardStack.tenantRunnerSecurityGroup`). Lives on WireGuardStack —
+   * not TemporalWorkerStack — because TemporalWorkerStack depends on this
+   * stack, so referencing one of its constructs here would be a cycle.
+   */
+  readonly tenantRunnerSecurityGroup?: ec2.ISecurityGroup
 
   /**
    * Master switch for the RingCentral SMS capture integration. When true:
@@ -587,6 +606,107 @@ export class ApiStack extends cdk.Stack {
           'Dispatches undispatched domain events to matching workflow triggers (event-driven executions).',
         targets: [new eventsTargets.LambdaFunction(dispatchTriggersFunction)],
       })
+
+      // -----------------------------------------------------------------------
+      // Tenant-runner orchestration wiring (Phase 3 Unit 9 — scale-to-zero).
+      //
+      // The dispatcher logic lives in apps/api/src/lib/tenant-runner.ts and
+      // runs in TWO Lambdas: the API Lambda (the run path launches a runner
+      // the moment an execution routes to a tenant queue) and the trigger
+      // dispatcher above (per-minute sweep = crash-recovery backstop + pool
+      // metrics). Both therefore get the TENANT_RUNNER_* env contract and
+      // the same ECS/PassRole grants.
+      //
+      // INERT TODAY: until Unit 10 lifts the curated-names gate, no code
+      // path reaches RunTask (see executionNeedsTenantRunner in the lib) —
+      // this wiring exists so Unit 10 is a routing-decision flip, not an
+      // infra change.
+      //
+      // Cross-stack contract is BY NAME (cluster / task family / role names
+      // mirrored from temporal-worker-stack.ts) because TemporalWorkerStack
+      // depends on THIS stack — construct refs in this direction would be a
+      // dependency cycle. Change either side only together.
+      // -----------------------------------------------------------------------
+      if (props.tenantRunnerSubnets?.length && props.tenantRunnerSecurityGroup) {
+        const tenantRunnerClusterArn = `arn:aws:ecs:${this.region}:${this.account}:cluster/pegasus-temporal-worker-${envName}`
+        const tenantRunnerTaskFamily = `pegasus-tenant-runner-${envName}`
+
+        const tenantRunnerEnv: Record<string, string> = {
+          TENANT_RUNNER_CLUSTER_ARN: tenantRunnerClusterArn,
+          // Bare family name — RunTask resolves the latest ACTIVE revision,
+          // so task-def updates need no dispatcher re-wiring.
+          TENANT_RUNNER_TASK_DEFINITION: tenantRunnerTaskFamily,
+          TENANT_RUNNER_CONTAINER_NAME: 'tenant-runner',
+          TENANT_RUNNER_SUBNET_IDS: cdk.Fn.join(
+            ',',
+            props.tenantRunnerSubnets.map((s) => s.subnetId),
+          ),
+          TENANT_RUNNER_SECURITY_GROUP_ID: props.tenantRunnerSecurityGroup.securityGroupId,
+        }
+
+        const tenantRunnerStatements = [
+          // The dispatcher calls RunTask with the BARE family name; ECS
+          // resolves the latest ACTIVE revision before the IAM check, so the
+          // revisioned `:*` form is the one that normally matches. The
+          // unrevisioned ARN is included belt-and-braces — AWS has shipped
+          // both authorization shapes for family-name RunTask calls over
+          // time, and the extra resource grants nothing broader. The
+          // ecs:cluster condition pins launches to our cluster either way.
+          new iam.PolicyStatement({
+            actions: ['ecs:RunTask'],
+            resources: [
+              `arn:aws:ecs:${this.region}:${this.account}:task-definition/${tenantRunnerTaskFamily}:*`,
+              `arn:aws:ecs:${this.region}:${this.account}:task-definition/${tenantRunnerTaskFamily}`,
+            ],
+            conditions: { ArnEquals: { 'ecs:cluster': tenantRunnerClusterArn } },
+          }),
+          // ListTasks (startedBy dedupe + family-scoped pool gauge) and
+          // DescribeTasks (cold-start latency) take no useful resource-level
+          // scoping beyond the cluster condition.
+          new iam.PolicyStatement({
+            actions: ['ecs:ListTasks', 'ecs:DescribeTasks'],
+            resources: ['*'],
+            conditions: { ArnEquals: { 'ecs:cluster': tenantRunnerClusterArn } },
+          }),
+          // RunTask passes the task + execution roles defined on
+          // TemporalWorkerStack (deterministic names — see the contract
+          // note above). Confined to ECS task assumption.
+          new iam.PolicyStatement({
+            actions: ['iam:PassRole'],
+            resources: [
+              `arn:aws:iam::${this.account}:role/pegasus-tenant-runner-task-${envName}`,
+              `arn:aws:iam::${this.account}:role/pegasus-tenant-runner-exec-${envName}`,
+            ],
+            conditions: {
+              StringEquals: { 'iam:PassedToService': 'ecs-tasks.amazonaws.com' },
+            },
+          }),
+        ]
+
+        for (const fn of [apiFunction, dispatchTriggersFunction]) {
+          for (const [key, value] of Object.entries(tenantRunnerEnv)) {
+            fn.addEnvironment(key, value)
+          }
+          for (const statement of tenantRunnerStatements) {
+            fn.addToRolePolicy(statement)
+          }
+        }
+
+        // The run-path hook emits TenantRunnerLaunched/LaunchFailed from the
+        // API Lambda, which (unlike the dispatcher) has no Pegasus/Workflows
+        // PutMetricData grant yet. Same namespace-condition shape as the
+        // pollers'. (The wbk_ KMS-recovery grant already exists on both
+        // roles via workflowTokenKey.grantEncryptDecrypt above.)
+        apiFunction.addToRolePolicy(
+          new iam.PolicyStatement({
+            actions: ['cloudwatch:PutMetricData'],
+            resources: ['*'],
+            conditions: {
+              StringEquals: { 'cloudwatch:namespace': PEGASUS_WORKFLOWS_METRIC_NAMESPACE },
+            },
+          }),
+        )
+      }
     }
 
     // ---------------------------------------------------------------------------

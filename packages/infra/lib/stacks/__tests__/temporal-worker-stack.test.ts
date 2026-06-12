@@ -55,44 +55,61 @@ function synth(): { template: Template; stack: TemporalWorkerStack } {
   return { template: Template.fromStack(stack), stack }
 }
 
-describe('TemporalWorkerStack — ECR repository', () => {
-  it('creates exactly one ECR repository named pegasus-temporal-worker', () => {
+describe('TemporalWorkerStack — ECR repositories', () => {
+  it('creates the worker + tenant-runner ECR repositories (and no more)', () => {
     const { template } = synth()
-    template.resourceCountIs('AWS::ECR::Repository', 1)
+    template.resourceCountIs('AWS::ECR::Repository', 2)
     template.hasResourceProperties('AWS::ECR::Repository', {
       RepositoryName: 'pegasus-temporal-worker',
       ImageScanningConfiguration: { ScanOnPush: true },
     })
+    template.hasResourceProperties('AWS::ECR::Repository', {
+      RepositoryName: 'pegasus-tenant-runner',
+      ImageScanningConfiguration: { ScanOnPush: true },
+    })
   })
 
-  it('retains the ECR repo on stack delete (image loss would block Unit 5 rollback)', () => {
+  it('retains BOTH ECR repos on stack delete (image loss would force a re-publish)', () => {
     const tmpl = synth().template.toJSON() as {
       Resources?: Record<string, { Type: string; DeletionPolicy?: string }>
     }
-    const repo = Object.values(tmpl.Resources ?? {}).find(
+    const repos = Object.values(tmpl.Resources ?? {}).filter(
       (r) => r.Type === 'AWS::ECR::Repository',
     )
-    expect(repo?.DeletionPolicy).toBe('Retain')
+    expect(repos).toHaveLength(2)
+    for (const repo of repos) {
+      expect(repo.DeletionPolicy).toBe('Retain')
+    }
   })
 
-  it('keeps the most recent 20 images via a lifecycle policy', () => {
-    const { template } = synth()
-    template.hasResourceProperties('AWS::ECR::Repository', {
-      LifecyclePolicy: Match.objectLike({
-        LifecyclePolicyText: Match.stringLikeRegexp('"countNumber":\\s*20'),
-      }),
-    })
+  it('keeps the most recent 20 images via a lifecycle policy on both repos', () => {
+    const tmpl = synth().template.toJSON() as {
+      Resources?: Record<
+        string,
+        { Type: string; Properties?: { LifecyclePolicy?: { LifecyclePolicyText?: string } } }
+      >
+    }
+    const repos = Object.values(tmpl.Resources ?? {}).filter(
+      (r) => r.Type === 'AWS::ECR::Repository',
+    )
+    expect(repos).toHaveLength(2)
+    for (const repo of repos) {
+      expect(repo.Properties?.LifecyclePolicy?.LifecyclePolicyText).toMatch(/"countNumber":\s*20/)
+    }
   })
 })
 
 describe('TemporalWorkerStack — ECS cluster + Fargate service', () => {
-  it('creates exactly one ECS cluster', () => {
+  it('creates exactly one ECS cluster (the runner shares the worker cluster)', () => {
     synth().template.resourceCountIs('AWS::ECS::Cluster', 1)
   })
 
-  it('creates exactly one Fargate task definition + service', () => {
+  it('creates two task definitions (worker + tenant-runner) but exactly ONE service', () => {
     const { template } = synth()
-    template.resourceCountIs('AWS::ECS::TaskDefinition', 1)
+    template.resourceCountIs('AWS::ECS::TaskDefinition', 2)
+    // The tenant-runner MUST NOT have a service — runners are RunTask-only
+    // and scale to zero (Phase 3 Resolved #1). A second service appearing
+    // here means someone broke the scale-to-zero contract.
     template.resourceCountIs('AWS::ECS::Service', 1)
   })
 
@@ -113,6 +130,155 @@ describe('TemporalWorkerStack — ECS cluster + Fargate service', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Helpers for the two-task-def world: pull a specific task definition out of
+// the synthesized template by family name.
+// ---------------------------------------------------------------------------
+
+type TaskDefResource = {
+  Type: string
+  Properties?: {
+    Family?: string
+    Cpu?: string
+    Memory?: string
+    TaskRoleArn?: unknown
+    ExecutionRoleArn?: unknown
+    ContainerDefinitions?: Array<{
+      Name?: string
+      Environment?: Array<{ Name: string; Value: unknown }>
+      Secrets?: Array<{ Name: string; ValueFrom: unknown }>
+      LogConfiguration?: { LogDriver?: string; Options?: Record<string, unknown> }
+    }>
+  }
+}
+
+function findTaskDef(family: string): TaskDefResource {
+  const tmpl = synth().template.toJSON() as { Resources?: Record<string, TaskDefResource> }
+  const def = Object.values(tmpl.Resources ?? {}).find(
+    (r) => r.Type === 'AWS::ECS::TaskDefinition' && r.Properties?.Family === family,
+  )
+  expect(def, `no task definition with family ${family}`).toBeDefined()
+  return def as TaskDefResource
+}
+
+describe('TemporalWorkerStack — tenant-runner task definition (Phase 3 Unit 9)', () => {
+  it('registers family pegasus-tenant-runner-<env> at 512 CPU / 1024 MiB', () => {
+    const def = findTaskDef('pegasus-tenant-runner-staging')
+    expect(def.Properties?.Cpu).toBe('512')
+    expect(def.Properties?.Memory).toBe('1024')
+  })
+
+  it('sets the static env contract (per-launch TENANT_ID/WORKFLOW_BROKER_TOKEN come via RunTask overrides)', () => {
+    const container = findTaskDef('pegasus-tenant-runner-staging').Properties
+      ?.ContainerDefinitions?.[0]
+    expect(container?.Name).toBe('tenant-runner')
+    expect(container?.Environment).toEqual(
+      expect.arrayContaining([
+        { Name: 'ENV_NAME', Value: 'staging' },
+        { Name: 'TEMPORAL_NAMESPACE', Value: 'pegasus-staging.chgel' },
+        { Name: 'TEMPORAL_ADDRESS', Value: 'pegasus-staging.chgel.tmprl.cloud:7233' },
+        { Name: 'PEGASUS_API_BASE_URL', Value: 'https://api.pegasus-qa.dolas.dev' },
+      ]),
+    )
+    // The per-launch pair must NOT be baked into the shared task def.
+    const envNames = (container?.Environment ?? []).map((e) => e.Name)
+    expect(envNames).not.toContain('TENANT_ID')
+    expect(envNames).not.toContain('WORKFLOW_BROKER_TOKEN')
+  })
+
+  it('injects TEMPORAL_CLOUD_API_KEY from the COMPLETE (suffixed) secret ARN — and nothing else', () => {
+    const container = findTaskDef('pegasus-tenant-runner-staging').Properties
+      ?.ContainerDefinitions?.[0]
+    // Exactly one secret env var, sourced from the full ARN (with the
+    // 6-char suffix) + the apiKey JSON path. A no-suffix ARN here breaks
+    // both the IAM grant match and the runtime GetSecretValue — see
+    // [[feedback_cdk_secret_complete_arn_for_ecs]].
+    expect(container?.Secrets).toEqual([
+      {
+        Name: 'TEMPORAL_CLOUD_API_KEY',
+        ValueFrom:
+          'arn:aws:secretsmanager:us-east-1:111111111111:secret:pegasus/staging/temporal-cloud-TESTAB:apiKey::',
+      },
+    ])
+  })
+
+  it('NEVER injects the shared WORKFLOW_BROKER_SECRET into a tenant-runner task (Unit 7 keystone)', () => {
+    const container = findTaskDef('pegasus-tenant-runner-staging').Properties
+      ?.ContainerDefinitions?.[0]
+    const secretNames = (container?.Secrets ?? []).map((s) => s.Name)
+    const envNames = (container?.Environment ?? []).map((e) => e.Name)
+    expect(secretNames).not.toContain('WORKFLOW_BROKER_SECRET')
+    expect(envNames).not.toContain('WORKFLOW_BROKER_SECRET')
+  })
+
+  it('streams to the dedicated /pegasus/<env>/tenant-runner log group (RETAINed)', () => {
+    const { template } = synth()
+    template.hasResourceProperties('AWS::Logs::LogGroup', {
+      LogGroupName: '/pegasus/staging/tenant-runner',
+      RetentionInDays: 30,
+    })
+    const tmpl = template.toJSON() as {
+      Resources?: Record<
+        string,
+        { Type: string; DeletionPolicy?: string; Properties?: { LogGroupName?: string } }
+      >
+    }
+    const lg = Object.values(tmpl.Resources ?? {}).find(
+      (r) =>
+        r.Type === 'AWS::Logs::LogGroup' &&
+        r.Properties?.LogGroupName === '/pegasus/staging/tenant-runner',
+    )
+    expect(lg?.DeletionPolicy).toBe('Retain')
+    const container = findTaskDef('pegasus-tenant-runner-staging').Properties
+      ?.ContainerDefinitions?.[0]
+    expect(container?.LogConfiguration?.LogDriver).toBe('awslogs')
+  })
+
+  it('uses deterministically named task + execution roles (the ApiStack PassRole contract)', () => {
+    const { template } = synth()
+    template.hasResourceProperties('AWS::IAM::Role', {
+      RoleName: 'pegasus-tenant-runner-task-staging',
+      AssumeRolePolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({ Principal: { Service: 'ecs-tasks.amazonaws.com' } }),
+        ]),
+      }),
+    })
+    template.hasResourceProperties('AWS::IAM::Role', {
+      RoleName: 'pegasus-tenant-runner-exec-staging',
+    })
+  })
+
+  it('grants the runner TASK role nothing at all (the runner holds no AWS credentials)', () => {
+    const tmpl = synth().template.toJSON() as {
+      Resources?: Record<
+        string,
+        {
+          Type: string
+          Properties?: { Roles?: unknown[]; PolicyDocument?: unknown }
+        }
+      >
+    }
+    // No IAM::Policy may attach to the tenant-runner task role. (CDK names
+    // attached policies' Roles with a Ref to the role's logical id.)
+    const taskRoleLogicalIds = Object.entries(tmpl.Resources ?? {})
+      .filter(
+        ([, r]) =>
+          r.Type === 'AWS::IAM::Role' &&
+          (r.Properties as { RoleName?: string } | undefined)?.RoleName ===
+            'pegasus-tenant-runner-task-staging',
+      )
+      .map(([id]) => id)
+    expect(taskRoleLogicalIds).toHaveLength(1)
+    const policiesOnTaskRole = Object.values(tmpl.Resources ?? {}).filter(
+      (r) =>
+        r.Type === 'AWS::IAM::Policy' &&
+        JSON.stringify(r.Properties?.Roles ?? []).includes(taskRoleLogicalIds[0]!),
+    )
+    expect(policiesOnTaskRole).toHaveLength(0)
+  })
+})
+
 describe('TemporalWorkerStack — networking', () => {
   it('creates a worker security group named pegasus-temporal-worker', () => {
     synth().template.hasResourceProperties('AWS::EC2::SecurityGroup', {
@@ -127,7 +293,8 @@ describe('TemporalWorkerStack — networking', () => {
   it('uses ASCII-only in the SecurityGroup description', () => {
     const sgs = synth().template.findResources('AWS::EC2::SecurityGroup')
     const descriptions = Object.values(sgs).map(
-      (sg) => (sg as { Properties: { GroupDescription?: string } }).Properties.GroupDescription ?? '',
+      (sg) =>
+        (sg as { Properties: { GroupDescription?: string } }).Properties.GroupDescription ?? '',
     )
     expect(descriptions.length).toBeGreaterThan(0)
     for (const desc of descriptions) {
@@ -197,23 +364,8 @@ describe('TemporalWorkerStack — container env vars', () => {
     // No `:apiKey::` suffix on this one — the broker secret is stored as
     // a raw string in Secrets Manager, so ecs.Secret.fromSecretsManager
     // is called without a fieldName.
-    const tmpl = synth().template.toJSON() as {
-      Resources?: Record<
-        string,
-        {
-          Type: string
-          Properties?: {
-            ContainerDefinitions?: Array<{
-              Secrets?: Array<{ Name: string; ValueFrom: unknown }>
-            }>
-          }
-        }
-      >
-    }
-    const taskDef = Object.values(tmpl.Resources ?? {}).find(
-      (r) => r.Type === 'AWS::ECS::TaskDefinition',
-    )
-    const secrets = taskDef?.Properties?.ContainerDefinitions?.[0]?.Secrets ?? []
+    const taskDef = findTaskDef('pegasus-temporal-worker-staging')
+    const secrets = taskDef.Properties?.ContainerDefinitions?.[0]?.Secrets ?? []
     const broker = secrets.find((s) => s.Name === 'WORKFLOW_BROKER_SECRET')
     expect(broker).toBeDefined()
     // Sanity: the broker ARN reference should NOT carry the JSON-path
@@ -276,12 +428,12 @@ describe('TemporalWorkerStack — IAM grants', () => {
       'arn:aws:secretsmanager:us-east-1:111111111111:secret:pegasus/staging/workflow-broker-secret-TESTCD'
 
     // (1) Task def secrets reference the full ARN. The Temporal cloud one
-    // has `:apiKey::` appended for the JSON key path; broker is raw.
-    const taskDefs = Object.values(tmpl.Resources ?? {}).filter(
-      (r) => r.Type === 'AWS::ECS::TaskDefinition',
-    )
-    expect(taskDefs.length).toBe(1)
-    const secrets = taskDefs[0]?.Properties?.ContainerDefinitions?.[0]?.Secrets ?? []
+    // has `:apiKey::` appended for the JSON key path; broker is raw. The
+    // worker task def is checked here; the tenant-runner task def has its
+    // own complete-ARN assertion in the Unit-9 describe block above.
+    const secrets =
+      findTaskDef('pegasus-temporal-worker-staging').Properties?.ContainerDefinitions?.[0]
+        ?.Secrets ?? []
     const broker = secrets.find((s) => s.Name === 'WORKFLOW_BROKER_SECRET')
     const tcloud = secrets.find((s) => s.Name === 'TEMPORAL_CLOUD_API_KEY')
     expect(broker?.ValueFrom).toBe(fullBrokerArn)
@@ -305,9 +457,7 @@ describe('TemporalWorkerStack — IAM grants', () => {
           (a): a is string => typeof a === 'string',
         )
         for (const res of resources) {
-          expect(res, `SM grant resource should be a full ARN, not "${res}"`).not.toMatch(
-            /[?*]/,
-          )
+          expect(res, `SM grant resource should be a full ARN, not "${res}"`).not.toMatch(/[?*]/)
           expect(res).toMatch(/-[A-Za-z0-9]{6}$/)
           seenResources.add(res)
         }
@@ -384,5 +534,8 @@ describe('TemporalWorkerStack — CloudFormation outputs', () => {
     expect(outputs).toContain('WorkerClusterName')
     expect(outputs).toContain('WorkerServiceName')
     expect(outputs).toContain('WorkerLogGroupName')
+    expect(outputs).toContain('TenantRunnerRepositoryUri')
+    expect(outputs).toContain('TenantRunnerTaskDefinitionFamily')
+    expect(outputs).toContain('TenantRunnerLogGroupName')
   })
 })
