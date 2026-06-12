@@ -132,8 +132,11 @@ goal is **Fable 5's intelligence on the hard parts without burning Fable on rout
   opt-out: launch with `CLAUDE_CODE_SUBAGENT_MODEL=inherit claude`.
 
 **Requirements (provision per seat, or the advisor silently won't activate):** Claude Code
-**≥ v2.1.170**, **Anthropic API billing** (the advisor is server-side and is _not_ available on
-Bedrock / Vertex / Foundry), and **Fable 5 access**. Run `claude update` if you're behind.
+**≥ v2.1.170**, a **first-party Anthropic plan** — a Max / Team Premium subscription _or_ an API
+account (the advisor is server-side and runs on subscription usage _or_ API billing; it is _not_
+available on Bedrock / Vertex / Foundry), and **Fable 5 access** (included with Max / Team Premium /
+Enterprise pay-as-you-go / API — Pro seats don't have it). Fable advisor consults count toward your
+plan's usage limits, not a separate bill. Run `claude update` if you're behind.
 
 **Verify it's working:** run `/status` (no errors, main model = your default); during a hard task,
 watch for the `Advising` line in the transcript (press `Ctrl+O` to read Fable's guidance); trigger a
