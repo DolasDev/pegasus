@@ -1,11 +1,11 @@
 # Pegasus Workflows — Phase 3: Sandboxed Tenant Code + Triggers
 
-**Status: IN PROGRESS — Track B (Units 1–5) ✅ + Track A Units 6–10 ✅
-COMPLETE and LIVE** (PRs #230–#234, #239–#243, #248). **THE SANDBOX IS
-LIVE as of #248 (2026-06-12)**: executable tenant uploads route to
-per-tenant runner queues with all four v1 limits enforced. **Next:
-Unit 11 (UX + operational guardrails), then the staging E2E smoke of
-the full tenant-code lane.**
+**Status: ALL 12 UNITS ✅ COMPLETE AND MERGED (Track B 1–5, Track A
+6–11 incl. 8.1)** — PRs #230–#234, #239–#243, #248, #251; sandbox LIVE
+as of #248, guardrails live with #251 (2026-06-12). **The ONLY
+outstanding work is the staging smoke** (checklist item 3 below +
+"Staging smoke — full plane" at the bottom of this section). Once that
+passes, archive this plan to `plans/completed/`.
 
 Infra notes (2026-06-12): deploy-role publish policies are now
 IaC-managed in dolas-infra (#7, `github-workflow-publish`; hand-applied
@@ -25,10 +25,22 @@ gotcha obsolete).
    `gh run list --workflow deploy.yml --limit 3` —
    if a run failed or was cancelled, fix/redispatch FIRST
    (`[[feedback_rapid_main_pushes_cancel_deploy]]`).
-3. **Run the Track B staging smoke** (still outstanding as of
-   2026-06-11 — see the Track B banner below). ~10 min, needs a staging
-   login. Add to it now: re-publish the stdlib (or upload any artifact)
-   and confirm the row gets `executable: true` + a sha (Unit 6 smoke).
+3. **Run the staging smoke — full plane** (the one outstanding item,
+   needs a staging login, ~25 min):
+   - Track B (~10 min): `quote.accepted` trigger on a curated workflow
+     via `/settings/workflows` → accept a quote → EVENT-badged
+     execution; `*/5 * * * *` SCHEDULE trigger → SCHEDULE-badged
+     execution ≤5 min; disable + delete; `domain_events` row exists.
+   - Tenant-code lane (Units 6–10, ~15 min): `pegasus-workflows
+     package` + upload a trivial non-curated workflow → row shows
+     `executable: true` + sha (Unit 6); run it → runner cold-start
+     ≤~60 s (watch `TenantRunnersRunning` + the ECS task with
+     startedBy=tenantId) → execution COMPLETED; confirm runner
+     idle-exits ~10 min later; spot-check `/pegasus/staging/
+     tenant-runner` logs and the flow-log group.
+   - Unit 11 (~5 min): admin kill switch blocks a new run (423) then
+     re-enable; runner-status panel shows the task; `Pegasus-Workflows`
+     dashboard renders data.
 4. The session's execution pattern (worked 6-for-6): spawn ONE worker
    agent per unit in an isolated worktree (units share `schema.prisma` —
    never parallel), worker self-reviews via the code-review skill +
@@ -419,11 +431,24 @@ self-review caught a real bug: counts originally included curated
 executions (executable=true too) — fixed with `notIn` curated names.
 Interlude: esbuild advisory #249 (see status header).
 
-**Unit 11 — UX + operational guardrails.** Tenant-web: surface
-executability, requested permissions, and limit errors. Admin-web: per-tenant
-kill switch (disable all triggers + runners), runner status, quota view.
-Dashboards/alarms for runner crashes, trigger backlog, reconciled
-executions.
+**Unit 11 — UX + operational guardrails. ✅ DONE (#251 → `04626ec`,
+2026-06-12).** Tenant-web: `ExecutabilityBadge` per row (curated /
+ready / pending-reupload), Run disabled with tooltip for non-executable,
+`requiredActions` + `timeoutSeconds` display, friendly 429/423 messages
+(CONCURRENCY_LIMIT / DAILY_QUOTA_EXCEEDED / WORKFLOWS_DISABLED).
+Admin: `Tenant.workflowsDisabled` kill switch (additive migration) —
+enforced at run path (423, BOTH lanes, before any write/ECS/Temporal),
+dispatcher (skip metric reason), and ensure/sweep (`SKIPPED_DISABLED`);
+RUNNING executions finish (documented); idempotent audit-logged
+enable/disable endpoints + tenant-page UI; `GET /api/admin/workflows/
+runner-status` (ECS task list + per-tenant quota/concurrency rollup,
+degrades gracefully when ECS unavailable) + 30 s auto-refresh panel.
+Infra: 4 alarms on the existing ops SNS topic (launch-failed, dispatch
+backlog, reconciled>5/hr, START_FAILED skips) + `Pegasus-Workflows`
+dashboard. Review fix worth remembering: the reconcile emitter now
+publishes a dimensionless roll-up alongside the `{Status}`-dimensioned
+metric — CloudWatch alarms can't aggregate across dimensions, the alarm
+would never have fired.
 
 ---
 
