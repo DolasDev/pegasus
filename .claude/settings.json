@@ -2,10 +2,7 @@
   "mcpServers": {
     "playwright": {
       "command": "npx",
-      "args": [
-        "@playwright/mcp@latest",
-        "--headless"
-      ]
+      "args": ["@playwright/mcp@latest", "--headless"]
     }
   },
   "permissions": {
@@ -122,5 +119,9 @@
   "statusLine": {
     "type": "command",
     "command": "node .claude/hooks/gsd-statusline.js"
+  },
+  "advisorModel": "fable",
+  "env": {
+    "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet"
   }
 }
