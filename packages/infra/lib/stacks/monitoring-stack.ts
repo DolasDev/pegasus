@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib'
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch'
 import * as cloudwatch_actions from 'aws-cdk-lib/aws-cloudwatch-actions'
+import * as logs from 'aws-cdk-lib/aws-logs'
 import * as sns from 'aws-cdk-lib/aws-sns'
 import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions'
 import { type Construct } from 'constructs'
@@ -57,6 +58,42 @@ export interface MonitoringStackProps extends cdk.StackProps {
    * subscription sits in PendingConfirmation and deliveries drop.
    */
   readonly alarmEmail?: string
+
+  /**
+   * ECS cluster name for the Temporal worker
+   * (`pegasus-temporal-worker-${envName}`). When provided together with
+   * `temporalWorkerServiceName`, a `RunningTaskCount < 1` alarm is created.
+   * Omit for dev (no Fargate worker there).
+   */
+  readonly temporalWorkerClusterName?: string
+
+  /**
+   * ECS service name for the Temporal worker. Same value as
+   * `temporalWorkerClusterName` in the current naming convention
+   * (`pegasus-temporal-worker-${envName}`).
+   */
+  readonly temporalWorkerServiceName?: string
+
+  /**
+   * Main API Lambda log-group name — used to scope the `pegasus/api-errors-by-route`
+   * and `pegasus/trace-by-correlation-id` Insights query definitions. When absent
+   * (dev / test), those query definitions are omitted.
+   */
+  readonly apiLogGroupName?: string
+
+  /**
+   * Scheduled-Lambda log-group names (cron functions). Used to scope the
+   * `pegasus/cron-failures` Insights query definition. When absent or empty,
+   * the cron-failures query is omitted.
+   */
+  readonly cronLogGroupNames?: string[]
+
+  /**
+   * Temporal worker log-group name (`/pegasus/${envName}/temporal-worker`).
+   * Used to scope the `pegasus/temporal-worker-errors` Insights query.
+   * When absent (dev / no worker stack), the query is omitted.
+   */
+  readonly temporalWorkerLogGroupName?: string
 }
 
 /**
@@ -503,6 +540,157 @@ export class MonitoringStack extends cdk.Stack {
       cdk.Duration.minutes(15),
     )
 
+    // ── Account-wide Lambda Throttles alarm (Phase 1) ─────────────────────────
+    // Undimensioned → aggregates across ALL Lambda functions in the account/region.
+    // One alarm covers every current and future function — critical given the
+    // account-wide 10-concurrent-execution cap (Service Quotas L-B99A9384) that
+    // already caused the AppGuard incident.
+    const accountThrottlesMetric = new cloudwatch.Metric({
+      namespace: 'AWS/Lambda',
+      metricName: 'Throttles', // no dimensionsMap → account-wide
+      statistic: 'Sum',
+      period: cdk.Duration.minutes(1),
+    })
+
+    const accountThrottlesAlarm = new cloudwatch.Alarm(this, 'AccountLambdaThrottlesAlarm', {
+      alarmName: 'pegasus-lambda-throttles-account',
+      alarmDescription:
+        'Any Lambda in the account is being throttled — likely the 10-concurrent-execution ' +
+        'account cap (Service Quotas L-B99A9384). Symptoms cascade as 5xx (AppGuard incident).',
+      metric: accountThrottlesMetric,
+      threshold: 0,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    })
+    wire(accountThrottlesAlarm)
+
+    // ── Account-wide Lambda Errors alarm (Phase 1) ────────────────────────────
+    // Covers the 13+ functions not scoped by the per-API-fn alarm: 8 cron
+    // Lambdas, 3 Cognito triggers, document converter, mssql-executor, and any
+    // function added in the future. The existing per-API-fn alarm is retained —
+    // it has a sharper description and the API fn is the highest-traffic one.
+    const accountErrorsMetric = new cloudwatch.Metric({
+      namespace: 'AWS/Lambda',
+      metricName: 'Errors', // no dimensionsMap → account-wide
+      statistic: 'Sum',
+      period: cdk.Duration.minutes(1),
+    })
+
+    const accountErrorsAlarm = new cloudwatch.Alarm(this, 'AccountLambdaErrorsAlarm', {
+      alarmName: 'pegasus-lambda-errors-account',
+      alarmDescription:
+        'Any Lambda in the account reported errors in 3 of the last 5 minutes — covers ' +
+        'scheduled/cron functions (AVP, RingCentral, reconcile, document converter, ' +
+        'mssql-executor) whose failures are otherwise invisible.',
+      metric: accountErrorsMetric,
+      threshold: 0,
+      evaluationPeriods: 5,
+      datapointsToAlarm: 3,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    })
+    wire(accountErrorsAlarm)
+
+    // ── Temporal worker RunningTaskCount alarm (Phase 1) ──────────────────────
+    // Only created in staging/prod — dev has no Fargate worker.
+    // 5-of-5 evaluation window tolerates the brief task-count dip during
+    // rolling deploys (desiredCount: 1 — a normal image roll completes in well
+    // under 5 min). BREACHING on missing data: Container Insights emits no
+    // datapoint when zero tasks ran all period — missing data IS the failure mode.
+    let runningTasksMetric: cloudwatch.Metric | undefined
+    if (props.temporalWorkerClusterName && props.temporalWorkerServiceName) {
+      runningTasksMetric = new cloudwatch.Metric({
+        namespace: 'ECS/ContainerInsights',
+        metricName: 'RunningTaskCount',
+        dimensionsMap: {
+          ClusterName: props.temporalWorkerClusterName,
+          ServiceName: props.temporalWorkerServiceName,
+        },
+        statistic: 'Minimum',
+        period: cdk.Duration.minutes(1),
+      })
+      const temporalWorkerDownAlarm = new cloudwatch.Alarm(this, 'TemporalWorkerDownAlarm', {
+        alarmName: 'pegasus-temporal-worker-down',
+        alarmDescription:
+          'Temporal worker RunningTaskCount < 1 for 5 consecutive minutes — the worker is ' +
+          'crash-looping or stopped; workflow executions will sit RUNNING until reconciled.',
+        metric: runningTasksMetric,
+        threshold: 1,
+        evaluationPeriods: 5,
+        datapointsToAlarm: 5,
+        comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.BREACHING,
+      })
+      wire(temporalWorkerDownAlarm)
+    }
+
+    // (Workflow-execution-reconciled alarm lives in the Phase 3 Unit 11
+    // workflow-plane block above — pegasus-workflow-execution-reconciled — so
+    // this plan does not add a second one.)
+
+    // ── CloudWatch Logs Insights saved queries (Phase 2) ──────────────────────
+    // Appear in the console query picker so investigation is "pick query, set
+    // time range" rather than writing PPL from memory. Gated on the optional
+    // props so the stack synths cleanly in dev / tests without log-group tokens.
+
+    if (props.apiLogGroupName) {
+      new logs.QueryDefinition(this, 'QueryApiErrors', {
+        queryDefinitionName: 'pegasus/api-errors-by-route',
+        queryString: new logs.QueryString({
+          fields: ['@timestamp', 'level', 'path', 'message', 'correlationId'],
+          filterStatements: ['level = "ERROR"'],
+          statsStatements: ['count(*) as errors by path'],
+          sort: 'errors desc',
+        }),
+        logGroups: [logs.LogGroup.fromLogGroupName(this, 'ApiLogGroupRef', props.apiLogGroupName)],
+      })
+
+      new logs.QueryDefinition(this, 'QueryTraceByCorrelationId', {
+        queryDefinitionName: 'pegasus/trace-by-correlation-id',
+        queryString: new logs.QueryString({
+          fields: ['@timestamp', 'level', 'message'],
+          filterStatements: ['correlationId = "PASTE_ID"'],
+          sort: '@timestamp asc',
+        }),
+        logGroups: [
+          logs.LogGroup.fromLogGroupName(this, 'ApiLogGroupRefTrace', props.apiLogGroupName),
+        ],
+      })
+    }
+
+    if (props.cronLogGroupNames && props.cronLogGroupNames.length > 0) {
+      new logs.QueryDefinition(this, 'QueryCronFailures', {
+        queryDefinitionName: 'pegasus/cron-failures',
+        queryString: new logs.QueryString({
+          fields: ['@timestamp', '@log', '@message'],
+          filterStatements: ['@message like /ERROR|Task timed out/'],
+          sort: '@timestamp desc',
+        }),
+        logGroups: props.cronLogGroupNames.map((name, i) =>
+          logs.LogGroup.fromLogGroupName(this, `CronLogGroupRef${i}`, name),
+        ),
+      })
+    }
+
+    if (props.temporalWorkerLogGroupName) {
+      new logs.QueryDefinition(this, 'QueryTemporalWorkerErrors', {
+        queryDefinitionName: 'pegasus/temporal-worker-errors',
+        queryString: new logs.QueryString({
+          fields: ['@timestamp', 'level', 'message'],
+          filterStatements: ['level = "ERROR"'],
+          sort: '@timestamp desc',
+        }),
+        logGroups: [
+          logs.LogGroup.fromLogGroupName(
+            this,
+            'TemporalWorkerLogGroupRef',
+            props.temporalWorkerLogGroupName,
+          ),
+        ],
+      })
+    }
+
     // ── CloudWatch dashboard ───────────────────────────────────────────────────
     new cloudwatch.Dashboard(this, 'OperationsDashboard', {
       dashboardName: 'Pegasus-Operations',
@@ -562,6 +750,33 @@ export class MonitoringStack extends cdk.Stack {
             ...(rcCaptureDlqMetric ? { right: [rcCaptureDlqMetric] } : {}),
             width: 8,
           }),
+        ],
+        // ── Phase 1: account-wide + worker metrics ──────────────────────────
+        [
+          new cloudwatch.GraphWidget({
+            title: 'Account Lambda Errors (all functions)',
+            left: [accountErrorsMetric],
+            width: 8,
+          }),
+          new cloudwatch.GraphWidget({
+            title: 'Account Lambda Throttles (all functions)',
+            left: [accountThrottlesMetric],
+            width: 8,
+          }),
+          ...(runningTasksMetric
+            ? [
+                new cloudwatch.GraphWidget({
+                  title: 'Temporal Worker Running Tasks',
+                  left: [runningTasksMetric],
+                  leftAnnotations: [
+                    { value: 1, label: 'Alarm threshold (< 1)', color: cloudwatch.Color.RED },
+                  ],
+                  width: 8,
+                }),
+              ]
+            : []),
+          // Workflow-execution-reconciled is visualised on the dedicated
+          // Pegasus-Workflows dashboard (Phase 3 Unit 11), so no widget here.
         ],
       ],
     })

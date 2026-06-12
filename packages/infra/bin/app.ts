@@ -320,6 +320,20 @@ new MonitoringStack(app, `${stackIdPrefix}-MonitoringStack`, {
   alarmEmail:
     (app.node.tryGetContext('alarmEmail') as string | undefined) ??
     (envName === 'staging' || envName === 'prod' ? 'dolasllc@gmail.com' : undefined),
+  // Phase 1 — Temporal worker ECS alarm. Names are deterministic and equal:
+  // cluster + service both use `pegasus-temporal-worker-${envName}`.
+  // Staging/prod only; dev has no Fargate worker → props remain undefined.
+  temporalWorkerClusterName:
+    envName === 'staging' || envName === 'prod' ? `pegasus-temporal-worker-${envName}` : undefined,
+  temporalWorkerServiceName:
+    envName === 'staging' || envName === 'prod' ? `pegasus-temporal-worker-${envName}` : undefined,
+  // Phase 2 — Logs Insights query definitions. Pass log-group names from
+  // ApiStack (always available) and the temporal worker log group name
+  // (staging/prod only — matches temporal-worker-stack.ts :229).
+  apiLogGroupName: apiStack.apiLogGroupName,
+  cronLogGroupNames: apiStack.cronLogGroupNames,
+  temporalWorkerLogGroupName:
+    envName === 'staging' || envName === 'prod' ? `/pegasus/${envName}/temporal-worker` : undefined,
 })
 
 // ── Asset stacks (deployed last — depend on all upstream stacks) ──────────────

@@ -203,6 +203,22 @@ export class ApiStack extends cdk.Stack {
   /** The RingCentral capture DLQ name — used by MonitoringStack to alarm on depth. */
   public readonly ringcentralCaptureDlqName: string
 
+  /**
+   * Main API Lambda log-group name — passed to MonitoringStack for the
+   * `pegasus/api-errors-by-route` and `pegasus/trace-by-correlation-id`
+   * Insights query definitions.
+   */
+  public readonly apiLogGroupName: string
+
+  /**
+   * Scheduled-Lambda log-group names (cron functions) — passed to
+   * MonitoringStack for the `pegasus/cron-failures` Insights query. Includes
+   * every cron log group that is always created; Temporal-gated groups
+   * (reconcile, dispatch-triggers) are appended when a Temporal address is
+   * configured.
+   */
+  public readonly cronLogGroupNames: string[]
+
   constructor(scope: Construct, id: string, props: ApiStackProps = {}) {
     super(scope, id, props)
 
@@ -222,6 +238,11 @@ export class ApiStack extends cdk.Stack {
       retention: logs.RetentionDays.ONE_MONTH,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     })
+    this.apiLogGroupName = apiLogGroup.logGroupName
+
+    // Collected as cron log groups are created below; assigned to the public
+    // readonly prop at the end of the constructor.
+    const cronLogGroupNames: string[] = []
 
     // Cognito values via stable named imports — see CognitoStack for the
     // pinned CfnOutput declarations and the rationale. The COGNITO_* env vars
@@ -468,6 +489,7 @@ export class ApiStack extends cdk.Stack {
         retention: logs.RetentionDays.ONE_MONTH,
         removalPolicy: cdk.RemovalPolicy.DESTROY,
       })
+      cronLogGroupNames.push(reconcileLogGroup.logGroupName)
 
       const reconcileFunction = new nodejs.NodejsFunction(
         this,
@@ -547,6 +569,7 @@ export class ApiStack extends cdk.Stack {
         retention: logs.RetentionDays.ONE_MONTH,
         removalPolicy: cdk.RemovalPolicy.DESTROY,
       })
+      cronLogGroupNames.push(dispatchTriggersLogGroup.logGroupName)
 
       const dispatchTriggersFunction = new nodejs.NodejsFunction(
         this,
@@ -910,6 +933,7 @@ export class ApiStack extends cdk.Stack {
       retention: logs.RetentionDays.ONE_MONTH,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     })
+    cronLogGroupNames.push(avpStoreCountLogGroup.logGroupName)
 
     const avpStoreCountFunction = new nodejs.NodejsFunction(this, 'AvpStoreCountFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
@@ -972,6 +996,7 @@ export class ApiStack extends cdk.Stack {
         removalPolicy: cdk.RemovalPolicy.DESTROY,
       },
     )
+    cronLogGroupNames.push(ringcentralTokenRefreshLogGroup.logGroupName)
 
     const ringcentralTokenRefreshFunction = new nodejs.NodejsFunction(
       this,
@@ -1020,6 +1045,7 @@ export class ApiStack extends cdk.Stack {
       retention: logs.RetentionDays.ONE_MONTH,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     })
+    cronLogGroupNames.push(ringcentralSyncLogGroup.logGroupName)
 
     const ringcentralSyncFunction = new nodejs.NodejsFunction(this, 'RingCentralSyncFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
@@ -1064,6 +1090,7 @@ export class ApiStack extends cdk.Stack {
       retention: logs.RetentionDays.ONE_MONTH,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     })
+    cronLogGroupNames.push(ringcentralRenewLogGroup.logGroupName)
 
     const ringcentralRenewFunction = new nodejs.NodejsFunction(this, 'RingCentralRenewFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
@@ -1121,6 +1148,7 @@ export class ApiStack extends cdk.Stack {
       retention: logs.RetentionDays.ONE_MONTH,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     })
+    cronLogGroupNames.push(ringcentralCaptureLogGroup.logGroupName)
 
     const ringcentralCaptureFunction = new nodejs.NodejsFunction(
       this,
@@ -1169,6 +1197,7 @@ export class ApiStack extends cdk.Stack {
       retention: logs.RetentionDays.ONE_MONTH,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     })
+    cronLogGroupNames.push(ringcentralForwardLogGroup.logGroupName)
 
     const ringcentralForwardFunction = new nodejs.NodejsFunction(
       this,
@@ -1224,6 +1253,7 @@ export class ApiStack extends cdk.Stack {
         removalPolicy: cdk.RemovalPolicy.DESTROY,
       },
     )
+    cronLogGroupNames.push(ringcentralBufferPurgeLogGroup.logGroupName)
 
     const ringcentralBufferPurgeFunction = new nodejs.NodejsFunction(
       this,
@@ -1266,6 +1296,7 @@ export class ApiStack extends cdk.Stack {
       retention: logs.RetentionDays.ONE_MONTH,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     })
+    cronLogGroupNames.push(ringcentralMetricsLogGroup.logGroupName)
 
     const ringcentralMetricsFunction = new nodejs.NodejsFunction(
       this,
@@ -1512,5 +1543,7 @@ export class ApiStack extends cdk.Stack {
       stringValue: httpApi.apiEndpoint,
       description: 'API endpoint the WireGuard hub reconcile agent polls.',
     })
+
+    this.cronLogGroupNames = cronLogGroupNames
   }
 }
