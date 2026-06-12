@@ -11,6 +11,17 @@ export interface WorkflowManifest {
   version: string
   entryPoints: string[]
   description?: string
+  /**
+   * Cedar action ids the workflow needs at runtime (display-only — static
+   * role applies, no dynamic scoping in Phase 3). Present in manifests
+   * uploaded after Unit 10; absent in earlier rows.
+   */
+  requiredActions?: string[]
+  /**
+   * Per-execution Temporal workflow timeout the manifest declared (seconds).
+   * Absent means the platform default (900 s). Display-only.
+   */
+  timeoutSeconds?: number
 }
 
 export interface Workflow {
@@ -25,6 +36,18 @@ export interface Workflow {
   forkedFromWorkflowId?: string
   /** The source workflow's version at fork time. */
   forkedFromVersion?: string
+  /**
+   * SHA-256 hex digest of the artifact zip (Phase 3 Unit 6). Null on rows
+   * finalized before artifact validation existed.
+   */
+  artifactSha256: string | null
+  /**
+   * Whether the artifact has passed integrity validation and is eligible for
+   * execution on the TENANT_RUNNER lane. Always true for curated (STDLIB)
+   * workflows once they have a sha256. False/null on pre-Unit-6 rows — those
+   * need to be re-uploaded to become executable.
+   */
+  executable: boolean
   createdAt: string
   updatedAt: string
 }

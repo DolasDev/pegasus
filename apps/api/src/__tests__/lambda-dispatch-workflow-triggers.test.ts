@@ -45,6 +45,7 @@ const {
   mockExecutionCreate,
   mockExecutionUpdate,
   mockExecutionCount,
+  mockTenantFindUnique,
 } = vi.hoisted(() => ({
   mockSend: vi.fn(),
   putMetricDataInputs: [] as unknown[],
@@ -56,6 +57,9 @@ const {
   mockExecutionCreate: vi.fn(),
   mockExecutionUpdate: vi.fn(),
   mockExecutionCount: vi.fn(),
+  // Used by the kill-switch check in start-workflow-execution.ts.
+  // Default: workflowsDisabled=false (kill switch off).
+  mockTenantFindUnique: vi.fn(),
 }))
 
 vi.mock('@aws-sdk/client-cloudwatch', () => ({
@@ -88,6 +92,10 @@ vi.mock('../db', () => {
       create: mockExecutionCreate,
       update: mockExecutionUpdate,
       count: mockExecutionCount,
+    },
+    // Kill-switch check in start-workflow-execution.ts.
+    tenant: {
+      findUnique: mockTenantFindUnique,
     },
     // The shared run path wraps its insert in a transaction; run the callback
     // against the same fake so the model mocks above resolve.
@@ -225,6 +233,8 @@ beforeEach(() => {
   mockExecutionUpdate.mockResolvedValue(queuedExecution({ status: 'RUNNING', startedAt: now }))
   // Default: 0 active/daily executions (below any limit)
   mockExecutionCount.mockResolvedValue(0)
+  // Default: kill switch OFF (workflowsDisabled=false)
+  mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: false })
   const start = vi.fn().mockResolvedValue({
     workflowId: DETERMINISTIC_ID,
     firstExecutionRunId: 'run-1',
@@ -894,5 +904,81 @@ describe('limit-rejection skip reasons (Unit 10)', () => {
     expect(out.fired).toBe(1)
     // count is never called for STDLIB-routed executions
     expect(mockExecutionCount).not.toHaveBeenCalled()
+  })
+})
+
+// ── Dispatcher: kill-switch skip reason (Phase 3 Unit 11) ─────────────────
+//
+// When workflowsDisabled=true on the tenant row, the shared run path returns
+// WORKFLOWS_DISABLED and the dispatcher should:
+//   - emit WorkflowTriggerSkipped{Reason=WORKFLOWS_DISABLED}
+//   - still stamp the domain event (no redelivery semantics)
+//   - NOT create an execution row
+//
+// Curated (STDLIB-routed) triggers are also blocked by the kill switch — the
+// check runs after route resolution for BOTH routes. RUNNING executions that
+// started before the kill switch was set are unaffected.
+
+describe('kill-switch (WORKFLOWS_DISABLED) skip reason (Unit 11)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('EVENT trigger skipped with WORKFLOWS_DISABLED metric when kill switch is on', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow()] })
+    // Kill switch ON for tenant-1.
+    mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: true })
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    // Event is still stamped — operator kill switch is not a retriable error.
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'WORKFLOWS_DISABLED' }],
+      }),
+    )
+  })
+
+  it('curated (STDLIB) EVENT trigger is also blocked by the kill switch', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    // Curated workflow — but the kill switch still applies.
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'send_quote_followup' }))
+    setTriggers({ event: [triggerRow()] })
+    mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: true })
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'WORKFLOWS_DISABLED' }],
+      }),
+    )
+  })
+
+  it('kill switch OFF: trigger fires normally (regression guard)', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow()] })
+    // Kill switch OFF (default — explicitly confirming the mock).
+    mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: false })
+
+    const out = await handler()
+
+    expect(out.fired).toBe(1)
+    expect(mockExecutionCreate).toHaveBeenCalledTimes(1)
   })
 })

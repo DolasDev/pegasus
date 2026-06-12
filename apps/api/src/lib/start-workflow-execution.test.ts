@@ -31,6 +31,7 @@ const {
   mockExecutionRepo,
   mockTenantUserCreate,
   mockExecutionCount,
+  mockTenantFindUnique,
   mockEncryptRuntimeToken,
   mockTemporalStart,
   mockEnsureTenantRunner,
@@ -53,6 +54,8 @@ const {
     mockTenantUserCreate: vi.fn(),
     // db.workflowExecution.count — used for both concurrency + quota checks
     mockExecutionCount: vi.fn(),
+    // db.tenant.findUnique — used by the Phase 3 Unit 11 kill-switch check
+    mockTenantFindUnique: vi.fn(),
     mockEncryptRuntimeToken: vi.fn(),
     mockTemporalStart: vi.fn(),
     mockEnsureTenantRunner: vi.fn(),
@@ -192,15 +195,18 @@ const runningExecution = {
   temporalRunId: 'run-1',
 }
 
-function fakeDb(countValue = 0): PrismaClient {
+function fakeDb(countValue = 0, workflowsDisabled = false): PrismaClient {
   const db = {
     tenantUser: { create: mockTenantUserCreate },
     workflowExecution: { count: mockExecutionCount },
+    // Kill-switch check (Phase 3 Unit 11) — default OFF.
+    tenant: { findUnique: mockTenantFindUnique },
   } as unknown as PrismaClient
   ;(db as unknown as { $transaction: unknown }).$transaction = vi.fn(
     (cb: (tx: unknown) => unknown) => cb(db),
   )
   mockExecutionCount.mockResolvedValue(countValue)
+  mockTenantFindUnique.mockResolvedValue({ workflowsDisabled })
   return db
 }
 
@@ -227,6 +233,8 @@ beforeEach(() => {
   mockWorkflowRepo.attachRuntimeToken.mockResolvedValue(curatedWorkflow)
   mockEnsureTenantRunner.mockResolvedValue({ outcome: 'SKIPPED_UNCONFIGURED' })
   mockCwSend.mockResolvedValue({})
+  // Default: kill switch OFF.
+  mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: false })
 })
 
 // ---------------------------------------------------------------------------
@@ -357,6 +365,52 @@ describe('routing matrix', () => {
 
     expect(result.outcome).toBe('STARTED')
     expect(mockTemporalStart).toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Kill-switch (Phase 3 Unit 11)
+// ---------------------------------------------------------------------------
+
+describe('kill switch — WORKFLOWS_DISABLED outcome', () => {
+  it('returns WORKFLOWS_DISABLED and writes nothing when kill switch is on', async () => {
+    const result = await startWorkflowExecution(fakeDb(0, true), {
+      workflow: curatedWorkflow,
+      tenantId: 'tenant-1',
+      input: {},
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-1' },
+    })
+
+    expect(result).toEqual({ outcome: 'WORKFLOWS_DISABLED' })
+    expect(mockExecutionRepo.create).not.toHaveBeenCalled()
+    expect(mockTemporalStart).not.toHaveBeenCalled()
+    expect(mockEnsureTenantRunner).not.toHaveBeenCalled()
+  })
+
+  it('also blocks TENANT_RUNNER workflows (kill switch applies to both routes)', async () => {
+    const result = await startWorkflowExecution(fakeDb(0, true), {
+      workflow: tenantWorkflow,
+      tenantId: 'tenant-1',
+      input: {},
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-1' },
+    })
+
+    expect(result).toEqual({ outcome: 'WORKFLOWS_DISABLED' })
+    expect(mockExecutionRepo.create).not.toHaveBeenCalled()
+    expect(mockEnsureTenantRunner).not.toHaveBeenCalled()
+  })
+
+  it('kill switch OFF does not affect the happy path (regression guard)', async () => {
+    // workflowsDisabled=false — the default fakeDb(0, false).
+    const result = await startWorkflowExecution(fakeDb(0, false), {
+      workflow: curatedWorkflow,
+      tenantId: 'tenant-1',
+      input: {},
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-1' },
+    })
+
+    expect(result.outcome).toBe('STARTED')
+    expect(mockExecutionRepo.create).toHaveBeenCalledTimes(1)
   })
 })
 

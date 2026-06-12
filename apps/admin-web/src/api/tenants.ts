@@ -23,6 +23,13 @@ export interface Tenant {
    * routes (not via the generic edit form).
    */
   isPlatformTenant: boolean
+  /**
+   * Phase 3 Unit 11 — operator kill switch for workflow execution. When true,
+   * all new workflow starts (manual, triggers, runner sweep) are refused.
+   * Existing RUNNING executions are allowed to finish. Toggle via the
+   * disable-workflows / enable-workflows admin actions on the tenant page.
+   */
+  workflowsDisabled: boolean
   /** ISO 8601 string — Date fields are serialised by Prisma/JSON.stringify. */
   createdAt: string
   updatedAt: string
@@ -148,4 +155,21 @@ export async function demoteFromPlatform(id: string): Promise<TenantDetail> {
   return adminFetch<TenantDetail>(`/api/admin/tenants/${id}/demote-from-platform`, {
     method: 'POST',
   })
+}
+
+/**
+ * Sets workflowsDisabled=true. All new workflow starts are refused immediately.
+ * Existing RUNNING executions are allowed to finish.
+ * Idempotent: returns the unchanged row if already disabled.
+ */
+export async function disableWorkflows(id: string): Promise<TenantDetail> {
+  return adminFetch<TenantDetail>(`/api/admin/tenants/${id}/disable-workflows`, { method: 'POST' })
+}
+
+/**
+ * Clears workflowsDisabled (sets to false) — resumes normal workflow starts.
+ * Idempotent: returns the unchanged row if already enabled.
+ */
+export async function enableWorkflows(id: string): Promise<TenantDetail> {
+  return adminFetch<TenantDetail>(`/api/admin/tenants/${id}/enable-workflows`, { method: 'POST' })
 }

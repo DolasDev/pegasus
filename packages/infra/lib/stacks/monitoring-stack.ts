@@ -8,11 +8,17 @@ import {
   AVP_POLICY_STORE_COUNT_METRIC_NAME,
   PEGASUS_AUTHZ_METRIC_NAMESPACE,
   PEGASUS_RINGCENTRAL_METRIC_NAMESPACE,
+  PEGASUS_WORKFLOWS_METRIC_NAMESPACE,
   RC_OUTBOX_PENDING_METRIC_NAME,
   RC_OUTBOX_DEAD_METRIC_NAME,
   RC_SUBSCRIPTIONS_DEAD_METRIC_NAME,
   RC_CONNECTIONS_UNHEALTHY_METRIC_NAME,
   RC_SYNC_LAG_SECONDS_METRIC_NAME,
+  TENANT_RUNNER_LAUNCHED_METRIC_NAME,
+  TENANT_RUNNER_LAUNCH_FAILED_METRIC_NAME,
+  TENANT_RUNNERS_RUNNING_METRIC_NAME,
+  TENANT_RUNNER_COLD_START_SECONDS_METRIC_NAME,
+  WORKFLOW_EXECUTION_RECONCILED_METRIC_NAME,
 } from '../metrics'
 
 export interface MonitoringStackProps extends cdk.StackProps {
@@ -330,6 +336,173 @@ export class MonitoringStack extends cdk.Stack {
       wire(rcCaptureDlqAlarm)
     }
 
+    // ── Workflow plane alarms (Phase 3 Unit 11) ───────────────────────────────
+    //
+    // All four alarms emit into the Pegasus/Workflows namespace. The metric
+    // names are duplicated here (not imported) for the same apps/api-can't-
+    // import-@pegasus/infra reason as the emitters; this file IS in infra, so
+    // it uses the exported constants from metrics.ts.
+    //
+    // Alarm descriptions name the log group /aws/lambda/* and metric source so
+    // an operator paged at 3 am can find the relevant logs immediately.
+
+    const wfMetric = (
+      metricName: string,
+      dimensions: Record<string, string> = {},
+      statistic = 'Sum',
+      period = cdk.Duration.minutes(15),
+    ) =>
+      new cloudwatch.Metric({
+        namespace: PEGASUS_WORKFLOWS_METRIC_NAMESPACE,
+        metricName,
+        dimensionsMap: dimensions,
+        statistic,
+        period,
+      })
+
+    // TenantRunnerLaunchFailed > 0 in any 15-min window means QUEUED tenant
+    // executions are stranded (no runner). Source: the API Lambda + dispatcher
+    // Lambda emit this. Look in /aws/lambda/<api-function-name> for
+    // "Tenant-runner launch failed" or "Tenant-runner RunTask did not launch".
+    const runnerLaunchFailedMetric = wfMetric(TENANT_RUNNER_LAUNCH_FAILED_METRIC_NAME)
+    const runnerLaunchFailedAlarm = new cloudwatch.Alarm(this, 'TenantRunnerLaunchFailedAlarm', {
+      alarmName: 'pegasus-tenant-runner-launch-failed',
+      alarmDescription:
+        'One or more tenant-runner ECS task launches failed in the last 15 min — QUEUED ' +
+        'tenant-workflow executions may be stranded. Source: Pegasus/Workflows ' +
+        TENANT_RUNNER_LAUNCH_FAILED_METRIC_NAME +
+        '. Check /aws/lambda/* for "Tenant-runner launch failed" or RunTask failures[].',
+      metric: runnerLaunchFailedMetric,
+      threshold: 0,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    })
+    wire(runnerLaunchFailedAlarm)
+
+    // DomainEventDispatchBacklog > 0 means the dispatcher processed its 100-
+    // event tick cap without draining all pending events. If it fires on every
+    // tick it means the backlog is growing faster than the 1-min dispatcher
+    // can drain. Source: lambda-dispatch-workflow-triggers. Log group:
+    // /aws/lambda/<dispatcher-function-name>.
+    const dispatchBacklogMetric = wfMetric(
+      'DomainEventDispatchBacklog',
+      {},
+      'Sum',
+      cdk.Duration.minutes(5),
+    )
+    const dispatchBacklogAlarm = new cloudwatch.Alarm(this, 'DomainEventDispatchBacklogAlarm', {
+      alarmName: 'pegasus-domain-event-dispatch-backlog',
+      alarmDescription:
+        'Domain-event dispatch backlog hit the per-tick cap (100 events) at least once in the ' +
+        'last 5 min — the outbox is growing faster than the dispatcher drains it. ' +
+        'Source: Pegasus/Workflows DomainEventDispatchBacklog. Check /aws/lambda/* for ' +
+        '"tick cap reached" or high domain-events table row counts.',
+      metric: dispatchBacklogMetric,
+      threshold: 0,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    })
+    wire(dispatchBacklogAlarm)
+
+    // WorkflowExecutionReconciled > 5 in an hour means the reconcile poller is
+    // finding crashed workers at a concerning rate. A single occasional reconcile
+    // is normal (transient crash); sustained means runners are crashing mid-
+    // execution. Source: lambda-reconcile-workflow-executions. Log group:
+    // /aws/lambda/<reconcile-function-name>.
+    const reconciledMetric = wfMetric(
+      WORKFLOW_EXECUTION_RECONCILED_METRIC_NAME,
+      {},
+      'Sum',
+      cdk.Duration.hours(1),
+    )
+    const reconciledAlarm = new cloudwatch.Alarm(this, 'WorkflowExecutionReconciledAlarm', {
+      alarmName: 'pegasus-workflow-execution-reconciled',
+      alarmDescription:
+        'More than 5 workflow executions were reconciled (crashed-runner recovery) in the last ' +
+        'hour — tenant-runners are crashing mid-execution at an elevated rate. ' +
+        'Source: Pegasus/Workflows ' +
+        WORKFLOW_EXECUTION_RECONCILED_METRIC_NAME +
+        '. Check /aws/lambda/* for "Reconciled stale execution" log entries and ECS task ' +
+        'stop reasons in the ECS console (cluster: pegasus-temporal-worker-*).',
+      metric: reconciledMetric,
+      threshold: 5,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    })
+    wire(reconciledAlarm)
+
+    // WorkflowTriggerSkipped{Reason=START_FAILED} > 0 in 15 min means at least
+    // one trigger failed to start a workflow on Temporal. Persistent means a
+    // hard Temporal connectivity problem. Source: lambda-dispatch-workflow-
+    // triggers. Log group: /aws/lambda/<dispatcher-function-name>.
+    const triggerSkippedStartFailedMetric = wfMetric(
+      'WorkflowTriggerSkipped',
+      { Reason: 'START_FAILED' },
+      'Sum',
+      cdk.Duration.minutes(15),
+    )
+    const triggerSkippedAlarm = new cloudwatch.Alarm(
+      this,
+      'WorkflowTriggerSkippedStartFailedAlarm',
+      {
+        alarmName: 'pegasus-workflow-trigger-skipped-start-failed',
+        alarmDescription:
+          'One or more workflow triggers were skipped with reason START_FAILED in the last ' +
+          '15 min — Temporal workflow starts are failing. Source: Pegasus/Workflows ' +
+          'WorkflowTriggerSkipped{Reason=START_FAILED}. Check /aws/lambda/* for ' +
+          '"Workflow execution start failed" and verify Temporal Cloud connectivity.',
+        metric: triggerSkippedStartFailedMetric,
+        threshold: 0,
+        evaluationPeriods: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      },
+    )
+    wire(triggerSkippedAlarm)
+
+    // Helper metrics for the workflow dashboard (no alarm on these — used only
+    // for observability widgets).
+    const runnerLaunchedMetric = wfMetric(
+      TENANT_RUNNER_LAUNCHED_METRIC_NAME,
+      {},
+      'Sum',
+      cdk.Duration.minutes(15),
+    )
+    const runnersRunningMetric = wfMetric(
+      TENANT_RUNNERS_RUNNING_METRIC_NAME,
+      {},
+      'Maximum',
+      cdk.Duration.minutes(1),
+    )
+    const runnerColdStartMetric = wfMetric(
+      TENANT_RUNNER_COLD_START_SECONDS_METRIC_NAME,
+      {},
+      'p90',
+      cdk.Duration.minutes(15),
+    )
+    const triggerFiredMetric = wfMetric('WorkflowTriggerFired', {}, 'Sum', cdk.Duration.minutes(15))
+    const triggerSkippedAllMetric = wfMetric(
+      'WorkflowTriggerSkipped',
+      {},
+      'Sum',
+      cdk.Duration.minutes(15),
+    )
+    const executionRejectedConcurrency = wfMetric(
+      'WorkflowExecutionRejected',
+      { Reason: 'CONCURRENCY_LIMIT' },
+      'Sum',
+      cdk.Duration.minutes(15),
+    )
+    const executionRejectedQuota = wfMetric(
+      'WorkflowExecutionRejected',
+      { Reason: 'DAILY_QUOTA_EXCEEDED' },
+      'Sum',
+      cdk.Duration.minutes(15),
+    )
+
     // ── CloudWatch dashboard ───────────────────────────────────────────────────
     new cloudwatch.Dashboard(this, 'OperationsDashboard', {
       dashboardName: 'Pegasus-Operations',
@@ -388,6 +561,75 @@ export class MonitoringStack extends cdk.Stack {
             ],
             ...(rcCaptureDlqMetric ? { right: [rcCaptureDlqMetric] } : {}),
             width: 8,
+          }),
+        ],
+      ],
+    })
+
+    // ── Workflow execution plane dashboard (Phase 3 Unit 11) ─────────────────
+    new cloudwatch.Dashboard(this, 'WorkflowsDashboard', {
+      dashboardName: 'Pegasus-Workflows',
+      widgets: [
+        // Row 1: Runner pool health
+        [
+          new cloudwatch.SingleValueWidget({
+            title: 'Runners running (now)',
+            metrics: [runnersRunningMetric],
+            width: 6,
+          }),
+          new cloudwatch.GraphWidget({
+            title: 'Runner pool size (running count)',
+            left: [runnersRunningMetric],
+            width: 9,
+          }),
+          new cloudwatch.GraphWidget({
+            title: 'Runner cold start p90 (s)',
+            left: [runnerColdStartMetric],
+            leftAnnotations: [
+              { value: 60, label: 'Expected max (60s)', color: cloudwatch.Color.ORANGE },
+            ],
+            width: 9,
+          }),
+        ],
+        // Row 2: Launch outcomes
+        [
+          new cloudwatch.GraphWidget({
+            title: 'Runner launches / failures (15-min)',
+            left: [runnerLaunchedMetric],
+            right: [runnerLaunchFailedMetric],
+            leftAnnotations: [],
+            width: 12,
+          }),
+          new cloudwatch.GraphWidget({
+            title: 'Workflow execution rejections (15-min)',
+            left: [executionRejectedConcurrency, executionRejectedQuota],
+            width: 12,
+          }),
+        ],
+        // Row 3: Trigger throughput
+        [
+          new cloudwatch.GraphWidget({
+            title: 'Triggers fired / skipped (15-min)',
+            left: [triggerFiredMetric],
+            right: [triggerSkippedAllMetric],
+            width: 12,
+          }),
+          new cloudwatch.GraphWidget({
+            title: 'Domain event dispatch backlog (5-min)',
+            left: [dispatchBacklogMetric],
+            leftAnnotations: [{ value: 0, label: 'Alarm threshold', color: cloudwatch.Color.RED }],
+            width: 12,
+          }),
+        ],
+        // Row 4: Reconcile (crash indicator)
+        [
+          new cloudwatch.GraphWidget({
+            title: 'Executions reconciled by poller (hourly) — elevated = runner crashes',
+            left: [reconciledMetric],
+            leftAnnotations: [
+              { value: 5, label: 'Alarm threshold (5/hr)', color: cloudwatch.Color.RED },
+            ],
+            width: 24,
           }),
         ],
       ],

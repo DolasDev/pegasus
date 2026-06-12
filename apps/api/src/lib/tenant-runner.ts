@@ -210,6 +210,8 @@ export type EnsureTenantRunnerDeps = {
 export type EnsureTenantRunnerResult =
   /** No TENANT_RUNNER_* config in this environment — nothing to do. */
   | { outcome: 'SKIPPED_UNCONFIGURED' }
+  /** Operator kill switch — workflowsDisabled=true on the tenant. */
+  | { outcome: 'SKIPPED_DISABLED' }
   /** A runner task for this tenant is already RUNNING (or provisioning
    * toward RUNNING) — no launch needed. */
   | { outcome: 'ALREADY_RUNNING'; taskArns: string[] }
@@ -238,6 +240,19 @@ export async function ensureTenantRunner(
   const config = deps.config !== undefined ? deps.config : loadTenantRunnerConfig()
   if (!config) {
     return { outcome: 'SKIPPED_UNCONFIGURED' }
+  }
+
+  // Kill-switch: refuse to launch a runner for a disabled tenant. The check is
+  // a cheap primary-key lookup. We do NOT throw — callers treat this as a soft
+  // no-op (logged below; the QUEUED execution stays on its Temporal queue but
+  // cannot start until the operator re-enables the tenant).
+  const tenantRow = await db.tenant.findUnique({
+    where: { id: tenantId },
+    select: { workflowsDisabled: true },
+  })
+  if (tenantRow?.workflowsDisabled === true) {
+    logger.info('Tenant-runner launch skipped — workflows disabled for tenant', { tenantId })
+    return { outcome: 'SKIPPED_DISABLED' }
   }
 
   // startedBy carries the tenant id; ECS caps it at 36 chars. A canonical
@@ -405,6 +420,7 @@ export async function sweepTenantRunners(
   for (const tenantId of tenantIds) {
     const ensured = await ensureTenantRunner(db, tenantId, deps)
     if (ensured.outcome === 'LAUNCHED') result.launched += 1
+    // SKIPPED_DISABLED is a clean no-op — operator kill switch. Not a failure.
     if (ensured.outcome === 'LAUNCH_FAILED') result.launchFailed += 1
   }
 

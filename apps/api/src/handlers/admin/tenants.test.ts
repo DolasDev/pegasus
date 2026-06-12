@@ -102,6 +102,7 @@ const mockTenant = {
   contactEmail: 'jane@acme.com',
   cognitoAuthEnabled: true,
   isPlatformTenant: false,
+  workflowsDisabled: false,
   createdAt: now,
   updatedAt: now,
   deletedAt: null,
@@ -502,6 +503,93 @@ describe('admin tenants handler', () => {
     it('returns 404 NOT_FOUND when tenant does not exist', async () => {
       mockDb.tenant.findUnique.mockResolvedValue(null)
       const res = await buildApp().request(`${BASE}/unknown-id/demote-from-platform`, {
+        method: 'POST',
+      })
+      expect(res.status).toBe(404)
+      expect((await json(res)).code).toBe('NOT_FOUND')
+    })
+  })
+
+  // ── POST /:id/disable-workflows (Phase 3 Unit 11) ─────────────────────────
+
+  describe('POST /:id/disable-workflows', () => {
+    it('sets workflowsDisabled=true and returns 200 with updated row', async () => {
+      const before = { ...mockTenant, workflowsDisabled: false }
+      const after = { ...mockTenant, workflowsDisabled: true }
+      mockDb.tenant.findUnique.mockResolvedValue(before)
+      mockDb.tenant.update.mockResolvedValue(after)
+
+      const res = await buildApp().request(`${BASE}/tenant-1/disable-workflows`, {
+        method: 'POST',
+      })
+      expect(res.status).toBe(200)
+      expect(((await json(res)).data as JsonBody)['workflowsDisabled']).toBe(true)
+      expect(mockDb.tenant.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'tenant-1' },
+          data: { workflowsDisabled: true },
+        }),
+      )
+    })
+
+    it('is idempotent when already disabled (no update call)', async () => {
+      const already = { ...mockTenant, workflowsDisabled: true }
+      mockDb.tenant.findUnique.mockResolvedValue(already)
+
+      const res = await buildApp().request(`${BASE}/tenant-1/disable-workflows`, {
+        method: 'POST',
+      })
+      expect(res.status).toBe(200)
+      expect(((await json(res)).data as JsonBody)['workflowsDisabled']).toBe(true)
+      expect(mockDb.tenant.update).not.toHaveBeenCalled()
+    })
+
+    it('returns 404 NOT_FOUND when tenant does not exist', async () => {
+      mockDb.tenant.findUnique.mockResolvedValue(null)
+      const res = await buildApp().request(`${BASE}/unknown-id/disable-workflows`, {
+        method: 'POST',
+      })
+      expect(res.status).toBe(404)
+      expect((await json(res)).code).toBe('NOT_FOUND')
+    })
+  })
+
+  // ── POST /:id/enable-workflows (Phase 3 Unit 11) ──────────────────────────
+
+  describe('POST /:id/enable-workflows', () => {
+    it('clears workflowsDisabled (sets to false) and returns 200', async () => {
+      const before = { ...mockTenant, workflowsDisabled: true }
+      const after = { ...mockTenant, workflowsDisabled: false }
+      mockDb.tenant.findUnique.mockResolvedValue(before)
+      mockDb.tenant.update.mockResolvedValue(after)
+
+      const res = await buildApp().request(`${BASE}/tenant-1/enable-workflows`, {
+        method: 'POST',
+      })
+      expect(res.status).toBe(200)
+      expect(((await json(res)).data as JsonBody)['workflowsDisabled']).toBe(false)
+      expect(mockDb.tenant.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'tenant-1' },
+          data: { workflowsDisabled: false },
+        }),
+      )
+    })
+
+    it('is idempotent when already enabled (no update call)', async () => {
+      mockDb.tenant.findUnique.mockResolvedValue(mockTenant) // workflowsDisabled=false
+
+      const res = await buildApp().request(`${BASE}/tenant-1/enable-workflows`, {
+        method: 'POST',
+      })
+      expect(res.status).toBe(200)
+      expect(((await json(res)).data as JsonBody)['workflowsDisabled']).toBe(false)
+      expect(mockDb.tenant.update).not.toHaveBeenCalled()
+    })
+
+    it('returns 404 NOT_FOUND when tenant does not exist', async () => {
+      mockDb.tenant.findUnique.mockResolvedValue(null)
+      const res = await buildApp().request(`${BASE}/unknown-id/enable-workflows`, {
         method: 'POST',
       })
       expect(res.status).toBe(404)

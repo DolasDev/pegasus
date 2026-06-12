@@ -182,6 +182,12 @@ export type StartWorkflowExecutionResult =
   /** Route was NOT_EXECUTABLE — non-curated + non-executable. Nothing written. */
   | { outcome: 'NOT_EXECUTABLE' }
   /**
+   * Operator kill switch: workflowsDisabled=true on the tenant row. Nothing
+   * written or started. Existing RUNNING executions are unaffected (allowed to
+   * finish). The caller maps this to 423 Locked with code WORKFLOWS_DISABLED.
+   */
+  | { outcome: 'WORKFLOWS_DISABLED' }
+  /**
    * TENANT_RUNNER: tenant has ≥ TENANT_RUNNER_CONCURRENCY_CAP QUEUED/RUNNING
    * executions. Nothing written or started. See race posture note above.
    */
@@ -372,6 +378,32 @@ export async function startWorkflowExecution(
 
   if (route === 'NOT_EXECUTABLE') {
     return { outcome: 'NOT_EXECUTABLE' }
+  }
+
+  // ── Kill-switch check — applies to BOTH routes ───────────────────────────
+  //
+  // Read workflowsDisabled from the Tenant row. This is a cheap indexed
+  // primary-key lookup (tenantId is the PK). We do it here — after the route
+  // check so pure NOT_EXECUTABLE calls don't hit the DB — and before ANY write
+  // or ECS/Temporal interaction, so a disabled tenant never consumes a runner
+  // or Temporal start.
+  //
+  // The check runs for BOTH STDLIB and TENANT_RUNNER routes: the kill switch is
+  // an operator-level override that stops ALL new starts for a tenant regardless
+  // of workflow type. It does NOT stop already-RUNNING executions.
+  {
+    const tenantRow = await db.tenant.findUnique({
+      where: { id: tenantId },
+      select: { workflowsDisabled: true },
+    })
+    if (tenantRow?.workflowsDisabled === true) {
+      logger.warn('Workflow start blocked — tenant workflows disabled', {
+        tenantId,
+        workflowId: workflow.id,
+        workflowName: workflow.name,
+      })
+      return { outcome: 'WORKFLOWS_DISABLED' }
+    }
   }
 
   // ── TENANT_RUNNER-only pre-flight checks ──────────────────────────────────

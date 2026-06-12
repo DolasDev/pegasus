@@ -794,6 +794,17 @@ workflowsHandler.post(
       )
     }
 
+    if (result.outcome === 'WORKFLOWS_DISABLED') {
+      return c.json(
+        {
+          error:
+            'Workflow execution is currently disabled for your account. Contact the platform administrator.',
+          code: 'WORKFLOWS_DISABLED',
+        },
+        423,
+      )
+    }
+
     if (result.outcome === 'CONCURRENCY_LIMIT') {
       return c.json(
         {
