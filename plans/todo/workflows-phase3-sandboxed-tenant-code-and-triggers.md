@@ -3,16 +3,23 @@
 **Status: IN PROGRESS — Track B (Units 1–5) ✅ + Unit 6 ✅ COMPLETE and
 LIVE** (PRs #230–#234, #239). Scoped 2026-06-09; all 5 open questions
 resolved with Steve — see "Resolved decisions". Units 7 (#240), 8
-(#241), 8.1 (#242) ✅ DONE. **PAUSED HERE 2026-06-12 (Steve: "stop
-after unit 8"). Unit 9 is implemented and waiting as OPEN PR #243
+(#241), 8.1 (#242) ✅ DONE. **PAUSED 2026-06-12 (Steve: "stop after
+unit 8"). Unit 9 is implemented, CI-green, and waiting as OPEN PR #243
 (branch `phase3/09-runner-orchestration`, worktree
-`/home/steve/repos/pegasus-wt-unit9` kept) — DO NOT merge until the
-operator steps in the PR body are applied: (1) `put-role-policy`
-tenant-runner-image-deploy on both deploy roles (staging 248812875460 /
-prod 331145994639 — exact commands in the PR), (2) Temporal Cloud
-per-tenant queue-count check. PR CI was green at pause except Test
-in-flight. Coordinator re-review of #243 has NOT happened yet — do the
-usual diff review before merging. Then Units 10–11.**
+`/home/steve/repos/pegasus-wt-unit9` kept). Operator step 1 (ECR IAM)
+is ✅ DONE 2026-06-12 — handled via IaC instead of the PR's manual
+commands: dolas-infra#7 migrated the deploy-role publish policies into
+CDK (`github-workflow-publish` on both roles, covers
+`pegasus-tenant-runner` + `pegasus-temporal-worker` ECR; the
+hand-applied `temporal-worker-image-deploy` / `VpnAgentPublish` inline
+policies were deleted after verification — dolas-infra owns them now).
+Before merging #243: (a) coordinator diff re-review (NOT done yet),
+(b) the Temporal Cloud check — reframed: task queues are created
+implicitly, nothing to provision; just confirm the plan has no
+queue-count limit. Then Units 10–11. (Temporal Cloud IaC via the
+`temporalio/temporalcloud` Terraform provider was assessed 2026-06-12:
+viable for namespaces/service-accounts/API-keys, deferred — small
+surface, optional follow-up.)**
 
 ## Resume-session checklist
 
