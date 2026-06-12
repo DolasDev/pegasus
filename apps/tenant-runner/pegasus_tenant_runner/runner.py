@@ -10,7 +10,7 @@ Exit codes:
     0  clean shutdown (idle-exit or SIGTERM drain) — also the "nothing to
        run" case, which means the Unit 9 dispatcher launched a runner for a
        tenant with no executable workflows.
-    1  fatal runtime error.
+    1  fatal runtime error (including failed mandatory process hardening).
     2  configuration error.
 """
 
@@ -35,6 +35,7 @@ from .artifacts import (
 from .broker_client import TenantBrokerClient
 from .config import RunnerConfig, load_config
 from .executor import TenantCodeExecutor
+from .hardening import set_non_dumpable
 from .idle import IdleTracker, run_idle_watchdog
 from .logging_setup import configure_logging
 from .proxy import build_registrations
@@ -199,7 +200,20 @@ async def run_runner(config: RunnerConfig) -> None:
 
 
 def main() -> None:
-    """Process entrypoint — called by the Dockerfile ENTRYPOINT."""
+    """Process entrypoint — called by the Dockerfile ENTRYPOINT.
+
+    Hardening runs FIRST — before config parsing, long before any tenant
+    subprocess — so the shim is never observable via same-uid /proc reads
+    while it holds secrets (see hardening.py). A hardening failure on Linux
+    is fatal by design: the runner refuses to start dumpable.
+    """
+    try:
+        set_non_dumpable()
+    except Exception:  # HardeningError, or e.g. OSError loading libc —
+        # either way the shim must not start dumpable.
+        configure_logging()
+        log.exception("runner.hardening_failed")
+        sys.exit(1)
     configure_logging()
     try:
         config = load_config()
