@@ -30,6 +30,21 @@ The shim process itself holds exactly one credential: the per-tenant
 `wbk_` broker token (Unit 7). It holds **no AWS credentials at all** —
 artifact downloads use broker-issued presigned GET URLs.
 
+Because the tenant subprocess runs as the **same uid** as the shim (the
+container is non-root, so a setuid drop is unavailable), the shim marks
+itself **non-dumpable** (`prctl(PR_SET_DUMPABLE, 0)`,
+`pegasus_tenant_runner/hardening.py`) as the very first step of startup —
+Unit 8.1. A non-dumpable process fails the kernel's ptrace access-mode
+check for non-`CAP_SYS_PTRACE` same-uid readers, which blocks
+`/proc/<shim>/environ`, `/proc/<shim>/mem`, and same-uid ptrace attach in
+one move — tenant code can no longer scrape `WORKFLOW_BROKER_TOKEN` (or,
+post-Unit-9, the namespace-scoped `TEMPORAL_CLOUD_API_KEY`) out of the
+shim. Children are unaffected (dumpable resets on `execve`). If hardening
+fails on Linux the runner refuses to start (exit 1). **Residual risk** that
+this does *not* cover: the shared-kernel boundary — a kernel exploit
+escaping the process model is out of the shim's reach and is owned by the
+ECS task / image hardening layer.
+
 ## Process lifecycle
 
 1. `GET /api/v1/internal/tenant-workflows` (broker, `wbk_` auth) → the
