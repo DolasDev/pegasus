@@ -1,25 +1,21 @@
 # Pegasus Workflows — Phase 3: Sandboxed Tenant Code + Triggers
 
-**Status: IN PROGRESS — Track B (Units 1–5) ✅ + Unit 6 ✅ COMPLETE and
-LIVE** (PRs #230–#234, #239). Scoped 2026-06-09; all 5 open questions
-resolved with Steve — see "Resolved decisions". Units 7 (#240), 8
-(#241), 8.1 (#242) ✅ DONE. **PAUSED 2026-06-12 (Steve: "stop after
-unit 8"). Unit 9 is implemented, CI-green, and waiting as OPEN PR #243
-(branch `phase3/09-runner-orchestration`, worktree
-`/home/steve/repos/pegasus-wt-unit9` kept). Operator step 1 (ECR IAM)
-is ✅ DONE 2026-06-12 — handled via IaC instead of the PR's manual
-commands: dolas-infra#7 migrated the deploy-role publish policies into
-CDK (`github-workflow-publish` on both roles, covers
-`pegasus-tenant-runner` + `pegasus-temporal-worker` ECR; the
-hand-applied `temporal-worker-image-deploy` / `VpnAgentPublish` inline
-policies were deleted after verification — dolas-infra owns them now).
-Before merging #243: (a) coordinator diff re-review (NOT done yet),
-(b) the Temporal Cloud check — reframed: task queues are created
-implicitly, nothing to provision; just confirm the plan has no
-queue-count limit. Then Units 10–11. (Temporal Cloud IaC via the
-`temporalio/temporalcloud` Terraform provider was assessed 2026-06-12:
-viable for namespaces/service-accounts/API-keys, deferred — small
-surface, optional follow-up.)**
+**Status: IN PROGRESS — Track B (Units 1–5) ✅ + Track A Units 6–10 ✅
+COMPLETE and LIVE** (PRs #230–#234, #239–#243, #248). **THE SANDBOX IS
+LIVE as of #248 (2026-06-12)**: executable tenant uploads route to
+per-tenant runner queues with all four v1 limits enforced. **Next:
+Unit 11 (UX + operational guardrails), then the staging E2E smoke of
+the full tenant-code lane.**
+
+Infra notes (2026-06-12): deploy-role publish policies are now
+IaC-managed in dolas-infra (#7, `github-workflow-publish`; hand-applied
+inline policies deleted). Temporal: no task-queue-count limit (Steve
+confirmed); queues are implicit, nothing to provision. Temporal Cloud
+IaC (terraform `temporalio/temporalcloud`) assessed + deferred.
+Pipeline interlude: esbuild GHSA-gv7w-rqvm-qjhr (high, published
+2026-06-12) broke audit-ci on all branches — fixed by #249 (override
+>=0.28.1; note: overrides regenerate fine on node 24 now, old node-20
+gotcha obsolete).
 
 ## Resume-session checklist
 
@@ -381,22 +377,47 @@ read succeeds un-hardened; ptrace_scope=1). Children unaffected (flag
 resets on execve). Ops note: shim can't be py-spy'd by same-uid ECS exec
 and won't core-dump — intended. Remaining residual = shared kernel only.
 
-**Unit 9 — Runner orchestration (scale-to-zero).** Dispatcher (likely
-folded into the Unit-3 poller or the run path) launches a runner via ECS
-`RunTask` for any tenant with QUEUED work and none running (Resolved #1);
-the runner self-terminates after ~10 min idle; CloudWatch metrics for
-cold-start latency + running-runner count. VPC flow logs on the runner
-subnets (Resolved #2). New/extended CDK stack — re-read
-`[[feedback_cdk_secret_complete_arn_for_ecs]]` and
-`[[feedback_cdk_retain_orphans_on_rollback]]` before writing it.
+**Unit 9 — Runner orchestration (scale-to-zero). ✅ DONE (#243 →
+`f62667a`, deployed + infra-verified 2026-06-12).** Extended
+TemporalWorkerStack (no new stack — orphan-trap avoidance): runner ECR
+repo, RunTask-only task def (0.5 vCPU/1 GiB, empty task role — runner
+holds no AWS creds; TEMPORAL_CLOUD_API_KEY via complete-ARN secret; NO
+broker secret, CDK-test-asserted). Runner SG + subnet flow logs (ALL
+traffic, 90-day, unnamed group) on WireGuardStack. Dispatcher lib
+`apps/api/src/lib/tenant-runner.ts`: `startedBy = tenantId` (exactly 36
+chars) dedupe via ListTasks; check-then-act race accepted (idle-exit
+self-heals); wbk_ token KMS-recovered at launch, passed as RunTask
+override (DescribeTasks-visible, IAM-gated, accepted v1); soft-fail
+contract (failed launch → QUEUED + next-tick sweep retry). Call sites:
+run path + per-minute dispatcher sweep (crash-recovery backstop) + pool
+gauges (TenantRunnersRunning, ColdStartSeconds, Launched/LaunchFailed).
+Cross-stack contract BY NAME (cluster/family/roles — cycle avoidance),
+mirrored api-stack↔temporal-worker-stack. New tenant-runner.yml image
+workflow (no service roll — `:latest` resolved per launch) + ci.yml
+Python job. First image push raced repo creation exactly as predicted —
+re-dispatch fixed; images live in both accounts.
 
-**Unit 10 — Run-path routing + execution limits.** Lift the curated-only
-gate: route `executable` tenant workflows to their tenant queue, curated
-names to the stdlib queue. Runtime accounts keep the static
-`workflow_runtime` role (Resolved #5 — no dynamic scoping;
-`requiredActions` stays display-only). Enforce the v1-blocking limits
-(Resolved #3): per-execution Temporal timeouts, per-tenant concurrency
-cap, executions/day quota with 429 surfacing.
+**Unit 10 — Run-path routing + execution limits. ✅ DONE (#248 →
+`271737d`, 2026-06-12). THE SANDBOX IS LIVE.**
+`apps/api/src/lib/workflow-route.ts` = single routing source of truth:
+curated name → STDLIB queue (incl. forked-curated shadowing — stdlib
+baked code runs for curated names, documented); non-curated +
+executable → TENANT_RUNNER (queue `pegasus-tenant-<tenantId>-<env>`,
+suffix derived from the existing TEMPORAL_TASK_QUEUE var — a
+coordinator-review catch: the worker invented a suffix env var nothing
+injects, which would have stranded every tenant execution on `-dev`
+queues); else NOT_EXECUTABLE. Limits (TENANT_RUNNER lane ONLY — curated
+stdlib stays uncapped per locked scope): workflowExecutionTimeout 900 s
+default, manifest `timeoutSeconds` 1–900 may lower (SDK field added,
+bool-rejecting validation); concurrency cap 5 (in-tx count, overshoot-
+by-1 race accepted); daily quota 200 (`TENANT_WORKFLOW_DAILY_QUOTA`,
+UTC day, all statuses count, new `(tenantId, createdAt)` index —
+CONCURRENTLY, empirically verified under `prisma migrate deploy`).
+429 + `WorkflowExecutionRejected{Reason}` metrics; trigger fires
+hitting limits stamp the event like START_FAILED (no retry). Worker
+self-review caught a real bug: counts originally included curated
+executions (executable=true too) — fixed with `notIn` curated names.
+Interlude: esbuild advisory #249 (see status header).
 
 **Unit 11 — UX + operational guardrails.** Tenant-web: surface
 executability, requested permissions, and limit errors. Admin-web: per-tenant
