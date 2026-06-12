@@ -244,6 +244,34 @@ describe('users handler', () => {
       })
     })
 
+    it('lowercases a mixed-case email before creating the Cognito user and DB record', async () => {
+      // Cognito usernames are case-sensitive, so the username we create must
+      // match the lowercased address the user sees in the UI and types at
+      // login — otherwise a mixed-case invite locks the user out.
+      mockRepo.findByEmail.mockResolvedValue(null)
+      mockSend.mockResolvedValue({})
+      mockRepo.invite.mockResolvedValue(mockUserRow)
+
+      await buildApp().request('/invite', post({ email: '  John.Doe@Example.COM ' }))
+
+      const command = mockSend.mock.calls[0]![0] as {
+        Username?: string
+        UserAttributes?: Array<{ Name: string; Value: string }>
+      }
+      expect(command.Username).toBe('john.doe@example.com')
+      expect(command.UserAttributes).toContainEqual({
+        Name: 'email',
+        Value: 'john.doe@example.com',
+      })
+      // The existing-user check and the DB record use the canonical form too.
+      expect(mockRepo.findByEmail).toHaveBeenCalledWith('john.doe@example.com', 'test-tenant-id')
+      expect(mockRepo.invite).toHaveBeenCalledWith(
+        'test-tenant-id',
+        'john.doe@example.com',
+        expect.anything(),
+      )
+    })
+
     it('returns 409 CONFLICT on race condition (P2002 from invite)', async () => {
       mockRepo.findByEmail.mockResolvedValue(null)
       mockSend.mockResolvedValue({})
