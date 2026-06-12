@@ -47,7 +47,11 @@ const USER_POOL_ID = process.env['COGNITO_USER_POOL_ID'] ?? ''
 // ---------------------------------------------------------------------------
 
 const InviteUserBody = z.object({
-  email: z.string().email(),
+  // Normalise to a canonical lowercase form so the Cognito username (created
+  // here) matches what the user sees in the UI and types at login. Cognito
+  // usernames are case-sensitive, so a mixed-case invite would otherwise lock
+  // the user out — they'd log in with the lowercased address they see.
+  email: z.string().trim().email().toLowerCase(),
   /** Cedar role-group memberships. Defaults to ['viewer'] for the read-only
    *  baseline persona. Viewer is only ever granted by explicit assignment —
    *  no implicit role assignment when roleNames is empty (Cedar denies). */

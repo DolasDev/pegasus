@@ -50,7 +50,10 @@ const CreateTenantBody = z.object({
    * A Cognito user is created with FORCE_CHANGE_PASSWORD status and an invite
    * email is sent so the administrator can set their password and configure SSO.
    */
-  adminEmail: z.string().email(),
+  // Normalise to a canonical lowercase form so the Cognito username (created
+  // via provisionCognitoUser) matches what the admin sees and types at login.
+  // Cognito usernames are case-sensitive.
+  adminEmail: z.string().trim().email().toLowerCase(),
 })
 
 const PatchTenantBody = z.object({
