@@ -88,6 +88,7 @@ type TriggerSkipReason =
   | 'INVALID_CRON' // SCHEDULE row's expression no longer parses (pre-Unit-4 row)
   | 'CONCURRENCY_LIMIT' // Phase 3 Unit 10: tenant concurrent-execution cap reached
   | 'DAILY_QUOTA_EXCEEDED' // Phase 3 Unit 10: tenant daily execution quota reached
+  | 'WORKFLOWS_DISABLED' // Phase 3 Unit 11: operator kill switch
   | 'ERROR' // unexpected per-trigger exception
 
 /**
@@ -337,6 +338,16 @@ async function fireTrigger(opts: {
       // Phase 3 Unit 10: tenant hit the per-day execution quota.
       skip('DAILY_QUOTA_EXCEEDED')
       logger.warn('Trigger skipped — TENANT_RUNNER daily quota exceeded', {
+        triggerId: trigger.id,
+        tenantId: trigger.tenantId,
+        workflowId: workflow.id,
+        ...logContext,
+      })
+      break
+    case 'WORKFLOWS_DISABLED':
+      // Phase 3 Unit 11: operator kill switch.
+      skip('WORKFLOWS_DISABLED')
+      logger.info('Trigger skipped — workflows disabled for tenant', {
         triggerId: trigger.id,
         tenantId: trigger.tenantId,
         workflowId: workflow.id,

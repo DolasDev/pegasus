@@ -114,7 +114,12 @@ function fakeEcs(handlers: {
   return { client: { send } as unknown as ECSClient, calls, send }
 }
 
-const db = {} as PrismaClient
+// Minimal fake db used by ensureTenantRunner direct-call tests. Kill switch
+// is OFF by default — tests that need it on override tenantFindUnique per test.
+const mockTenantFindUnique = vi.fn().mockResolvedValue({ workflowsDisabled: false })
+const db = {
+  tenant: { findUnique: mockTenantFindUnique },
+} as unknown as PrismaClient
 
 function emittedMetricNames(): string[] {
   return putMetricDataInputs.flatMap((p) => (p.MetricData ?? []).map((m) => m.MetricName ?? ''))
@@ -125,6 +130,8 @@ beforeEach(() => {
   putMetricDataInputs.length = 0
   mockGetOrCreateCredential.mockResolvedValue(BROKER_TOKEN)
   mockCwSend.mockResolvedValue({})
+  // Reset kill switch to OFF (default safe state).
+  mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: false })
 })
 
 // ── loadTenantRunnerConfig ───────────────────────────────────────────────
@@ -319,6 +326,25 @@ describe('ensureTenantRunner', () => {
     expect(b.outcome).toBe('LAUNCHED')
     expect(ecs.calls.runTask).toHaveLength(2)
   })
+
+  // ── Kill switch (Phase 3 Unit 11) ──────────────────────────────────────
+
+  it('returns SKIPPED_DISABLED and never calls ECS when kill switch is on', async () => {
+    // Override the module-level mockTenantFindUnique for this test.
+    mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: true })
+    const ecs = fakeEcs({})
+    const result = await ensureTenantRunner(db, TENANT_ID, {
+      ecsClient: ecs.client,
+      config,
+    })
+
+    expect(result).toEqual({ outcome: 'SKIPPED_DISABLED' })
+    // No ECS interaction and no broker-token recovery when disabled.
+    expect(ecs.send).not.toHaveBeenCalled()
+    expect(mockGetOrCreateCredential).not.toHaveBeenCalled()
+    // Kill switch is a clean no-op — no failure metric emitted.
+    expect(emittedMetricNames()).not.toContain('TenantRunnerLaunchFailed')
+  })
 })
 
 // ── sweepTenantRunners ───────────────────────────────────────────────────
@@ -326,12 +352,25 @@ describe('ensureTenantRunner', () => {
 describe('sweepTenantRunners', () => {
   function dbWithOpenExecutions(
     rows: Array<{ tenantId: string; workflow: { name: string; executable: boolean } }>,
+    opts?: { workflowsDisabled?: boolean },
   ): {
     db: PrismaClient
     findMany: ReturnType<typeof vi.fn>
+    tenantFindUnique: ReturnType<typeof vi.fn>
   } {
     const findMany = vi.fn().mockResolvedValue(rows)
-    return { db: { workflowExecution: { findMany } } as unknown as PrismaClient, findMany }
+    // Default: kill switch OFF. Tests that need the kill switch on pass opts.
+    const tenantFindUnique = vi
+      .fn()
+      .mockResolvedValue({ workflowsDisabled: opts?.workflowsDisabled ?? false })
+    return {
+      db: {
+        workflowExecution: { findMany },
+        tenant: { findUnique: tenantFindUnique },
+      } as unknown as PrismaClient,
+      findMany,
+      tenantFindUnique,
+    }
   }
 
   it('no-ops (and never touches the DB) without config', async () => {
@@ -404,6 +443,31 @@ describe('sweepTenantRunners', () => {
 
     expect(result).toEqual({ tenantsNeedingRunner: 0, launched: 0, launchFailed: 0 })
     expect(ecs.calls.runTask).toHaveLength(0)
+  })
+
+  // ── Kill switch (Phase 3 Unit 11) ──────────────────────────────────────
+
+  it('skips SKIPPED_DISABLED tenants without counting as failures', async () => {
+    // One tenant has the kill switch on; the other is normal.
+    const { db: sweepDb, tenantFindUnique } = dbWithOpenExecutions([
+      { tenantId: TENANT_ID, workflow: { name: 'tenant_custom_workflow', executable: true } },
+      {
+        tenantId: OTHER_TENANT_ID,
+        workflow: { name: 'tenant_custom_workflow', executable: true },
+      },
+    ])
+    // First ensureTenantRunner call is for TENANT_ID (disabled); second for OTHER (enabled).
+    tenantFindUnique
+      .mockResolvedValueOnce({ workflowsDisabled: true }) // TENANT_ID disabled
+      .mockResolvedValueOnce({ workflowsDisabled: false }) // OTHER_TENANT_ID enabled
+    const ecs = fakeEcs({})
+
+    const result = await sweepTenantRunners(sweepDb, { ecsClient: ecs.client, config })
+
+    // tenantsNeedingRunner = 2 (both have open executions); launched = 1 (OTHER_TENANT_ID only);
+    // launchFailed = 0 — SKIPPED_DISABLED is NOT a failure.
+    expect(result).toEqual({ tenantsNeedingRunner: 2, launched: 1, launchFailed: 0 })
+    expect(ecs.calls.runTask.map((c) => c.startedBy)).toEqual([OTHER_TENANT_ID])
   })
 })
 

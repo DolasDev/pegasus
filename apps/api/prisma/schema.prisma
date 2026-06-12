@@ -223,6 +223,15 @@ model Tenant {
   /// an admin update; no API mutation. See handlers/workflows.ts.
   isPlatformTenant Boolean @default(false) @map("is_platform_tenant")
 
+  /// When true, an operator has disabled all new workflow execution for this
+  /// tenant. Existing RUNNING executions are allowed to finish. Blocked at:
+  ///   1. POST /workflows/:id/run (423 WORKFLOWS_DISABLED)
+  ///   2. Trigger dispatcher (skips firing, emits WorkflowTriggerSkipped)
+  ///   3. ensureTenantRunner / sweepTenantRunners (refuses runner launch)
+  /// Toggle via POST /api/admin/tenants/:id/disable-workflows and
+  /// POST /api/admin/tenants/:id/enable-workflows (platform-admin only).
+  workflowsDisabled Boolean @default(false) @map("workflows_disabled")
+
   /// Tenant-wide UI preferences edited via /settings/app (one nested object per
   /// main-menu section: dashboard, moves, quotes, customers, dispatch, billing,
   /// operations). The shape is defined by AppSettingsSchema in

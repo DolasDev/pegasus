@@ -89,6 +89,8 @@ const LIST_SELECT = {
   contactEmail: true,
   cognitoAuthEnabled: true,
   isPlatformTenant: true,
+  /** Phase 3 Unit 11 — operator kill switch for workflow execution. */
+  workflowsDisabled: true,
   createdAt: true,
   updatedAt: true,
   deletedAt: true,
@@ -662,6 +664,101 @@ adminTenantsRouter.post('/:id/demote-from-platform', async (c) => {
       return t
     })
 
+    return c.json({ data: updated })
+  } catch {
+    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+  }
+})
+
+// ---------------------------------------------------------------------------
+// POST /api/admin/tenants/:id/disable-workflows
+//
+// Sets workflowsDisabled=true for this tenant. All NEW workflow starts (manual
+// POST /:id/run, trigger dispatcher, runner sweep) are refused immediately.
+// Existing RUNNING executions are allowed to finish — this flag only blocks
+// new starts.
+//
+// Idempotent: disabling an already-disabled tenant is a no-op (returns the
+// unchanged row; no audit log written).
+// ---------------------------------------------------------------------------
+adminTenantsRouter.post('/:id/disable-workflows', async (c) => {
+  const id = c.req.param('id')
+  const adminSub = c.get('adminSub')
+  const adminEmail = c.get('adminEmail')
+  const ipAddress = c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip')
+  const userAgent = c.req.header('user-agent')
+
+  const current = await db.tenant.findUnique({ where: { id }, select: LIST_SELECT })
+  if (!current) return c.json({ error: 'Tenant not found', code: 'NOT_FOUND' }, 404)
+  // Idempotent — return the row unchanged if already disabled.
+  if (current.workflowsDisabled) return c.json({ data: current })
+
+  try {
+    const updated = await db.$transaction(async (tx) => {
+      const t = await tx.tenant.update({
+        where: { id },
+        data: { workflowsDisabled: true },
+        select: LIST_SELECT,
+      })
+      await writeAuditLog(
+        tx,
+        adminSub,
+        adminEmail,
+        'DISABLE_WORKFLOWS',
+        'TENANT',
+        id,
+        toSnapshot(current),
+        toSnapshot(t),
+        ipAddress,
+        userAgent,
+      )
+      return t
+    })
+    return c.json({ data: updated })
+  } catch {
+    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+  }
+})
+
+// ---------------------------------------------------------------------------
+// POST /api/admin/tenants/:id/enable-workflows
+//
+// Clears workflowsDisabled (sets to false) — resumes normal workflow starts.
+// Idempotent: enabling an already-enabled tenant is a no-op.
+// ---------------------------------------------------------------------------
+adminTenantsRouter.post('/:id/enable-workflows', async (c) => {
+  const id = c.req.param('id')
+  const adminSub = c.get('adminSub')
+  const adminEmail = c.get('adminEmail')
+  const ipAddress = c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip')
+  const userAgent = c.req.header('user-agent')
+
+  const current = await db.tenant.findUnique({ where: { id }, select: LIST_SELECT })
+  if (!current) return c.json({ error: 'Tenant not found', code: 'NOT_FOUND' }, 404)
+  // Idempotent — return the row unchanged if already enabled.
+  if (!current.workflowsDisabled) return c.json({ data: current })
+
+  try {
+    const updated = await db.$transaction(async (tx) => {
+      const t = await tx.tenant.update({
+        where: { id },
+        data: { workflowsDisabled: false },
+        select: LIST_SELECT,
+      })
+      await writeAuditLog(
+        tx,
+        adminSub,
+        adminEmail,
+        'ENABLE_WORKFLOWS',
+        'TENANT',
+        id,
+        toSnapshot(current),
+        toSnapshot(t),
+        ipAddress,
+        userAgent,
+      )
+      return t
+    })
     return c.json({ data: updated })
   } catch {
     return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)

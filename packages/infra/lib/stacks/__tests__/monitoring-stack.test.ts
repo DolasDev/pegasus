@@ -59,7 +59,8 @@ describe('MonitoringStack — OK actions', () => {
   it('wires every alarm with both AlarmActions and OKActions', () => {
     const template = synthMonitoringStack()
     const alarms = template.findResources('AWS::CloudWatch::Alarm')
-    expect(Object.keys(alarms)).toHaveLength(11)
+    // 11 original + 4 workflow-plane alarms (Phase 3 Unit 11) = 15
+    expect(Object.keys(alarms)).toHaveLength(15)
     for (const [id, alarm] of Object.entries(alarms)) {
       expect(alarm['Properties']?.['AlarmActions'], `${id} AlarmActions`).toHaveLength(1)
       expect(alarm['Properties']?.['OKActions'], `${id} OKActions`).toHaveLength(1)
@@ -203,16 +204,23 @@ describe('MonitoringStack — AVP policy-store count alarms', () => {
   })
 })
 
-describe('MonitoringStack — CloudWatch dashboard', () => {
-  it('creates exactly one CloudWatch dashboard', () => {
+describe('MonitoringStack — CloudWatch dashboards', () => {
+  it('creates exactly two CloudWatch dashboards', () => {
     const template = synthMonitoringStack()
-    template.resourceCountIs('AWS::CloudWatch::Dashboard', 1)
+    template.resourceCountIs('AWS::CloudWatch::Dashboard', 2)
   })
 
-  it('names the dashboard correctly', () => {
+  it('names the operations dashboard correctly', () => {
     const template = synthMonitoringStack()
     template.hasResourceProperties('AWS::CloudWatch::Dashboard', {
       DashboardName: 'Pegasus-Operations',
+    })
+  })
+
+  it('names the workflows dashboard correctly', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Dashboard', {
+      DashboardName: 'Pegasus-Workflows',
     })
   })
 })
@@ -278,13 +286,79 @@ describe('MonitoringStack — RingCentral capture-health alarms', () => {
 })
 
 describe('MonitoringStack — alarm count', () => {
-  it('creates 11 alarms (3 service + 2 AVP + 5 RingCentral gauges + 1 capture DLQ)', () => {
+  it('creates 15 alarms (3 service + 2 AVP + 5 RingCentral gauges + 1 capture DLQ + 4 workflows)', () => {
     const template = synthMonitoringStack()
-    template.resourceCountIs('AWS::CloudWatch::Alarm', 11)
+    template.resourceCountIs('AWS::CloudWatch::Alarm', 15)
   })
 
-  it('creates 10 alarms when the capture DLQ name is absent', () => {
+  it('creates 14 alarms when the capture DLQ name is absent', () => {
     const template = synthMonitoringStackWithoutDlq()
-    template.resourceCountIs('AWS::CloudWatch::Alarm', 10)
+    template.resourceCountIs('AWS::CloudWatch::Alarm', 14)
+  })
+})
+
+describe('MonitoringStack — workflow execution-plane alarms (Phase 3 Unit 11)', () => {
+  it('alarms on any tenant-runner launch failure in 15 min', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-tenant-runner-launch-failed',
+      Namespace: 'Pegasus/Workflows',
+      MetricName: 'TenantRunnerLaunchFailed',
+      Threshold: 0,
+      ComparisonOperator: 'GreaterThanThreshold',
+      TreatMissingData: 'notBreaching',
+    })
+  })
+
+  it('alarms on a non-zero domain-event dispatch backlog in 5 min', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-domain-event-dispatch-backlog',
+      Namespace: 'Pegasus/Workflows',
+      MetricName: 'DomainEventDispatchBacklog',
+      Threshold: 0,
+      ComparisonOperator: 'GreaterThanThreshold',
+      TreatMissingData: 'notBreaching',
+    })
+  })
+
+  it('alarms when more than 5 executions are reconciled in an hour (elevated crash rate)', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-workflow-execution-reconciled',
+      Namespace: 'Pegasus/Workflows',
+      MetricName: 'WorkflowExecutionReconciled',
+      Threshold: 5,
+      ComparisonOperator: 'GreaterThanThreshold',
+      TreatMissingData: 'notBreaching',
+    })
+  })
+
+  it('alarms on any trigger skipped with START_FAILED reason in 15 min', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-workflow-trigger-skipped-start-failed',
+      Namespace: 'Pegasus/Workflows',
+      MetricName: 'WorkflowTriggerSkipped',
+      Threshold: 0,
+      ComparisonOperator: 'GreaterThanThreshold',
+      TreatMissingData: 'notBreaching',
+    })
+  })
+
+  it('wires all four workflow alarms to the SNS topic', () => {
+    const template = synthMonitoringStack()
+    for (const name of [
+      'pegasus-tenant-runner-launch-failed',
+      'pegasus-domain-event-dispatch-backlog',
+      'pegasus-workflow-execution-reconciled',
+      'pegasus-workflow-trigger-skipped-start-failed',
+    ]) {
+      template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+        AlarmName: name,
+        AlarmActions: Match.arrayWith([Match.objectLike({})]),
+        OKActions: Match.arrayWith([Match.objectLike({})]),
+      })
+    }
   })
 })

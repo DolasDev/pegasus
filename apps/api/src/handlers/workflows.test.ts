@@ -935,6 +935,18 @@ describe('workflows handler', () => {
       expect(res.status).toBe(422)
       expect((await json(res)).code).toBe('UNAUTHENTICATED')
     })
+
+    it('returns 423 WORKFLOWS_DISABLED with code when operator kill switch is on', async () => {
+      // Kill switch ON for this tenant.
+      mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: true })
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      const res = await buildApp().request('/wf-1/run', post({ input: {} }))
+      expect(res.status).toBe(423)
+      const body = await json(res)
+      expect(body['code']).toBe('WORKFLOWS_DISABLED')
+      // No execution row should be created.
+      expect(mockExecutionRepo.create).not.toHaveBeenCalled()
+    })
   })
 
   // ── GET /:id/executions ───────────────────────────────────────────────────

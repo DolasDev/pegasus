@@ -75,16 +75,28 @@ function mapTemporalStatus(name: WorkflowExecutionStatusName): TerminalStatus | 
 }
 
 async function emitReconciledMetric(status: TerminalStatus): Promise<void> {
+  const timestamp = new Date()
   await cloudwatch.send(
     new PutMetricDataCommand({
       Namespace: METRIC_NAMESPACE,
       MetricData: [
+        // Dimensioned metric — breakdown per terminal status for dashboards.
         {
           MetricName: METRIC_NAME,
           Value: 1,
           Unit: 'Count',
-          Timestamp: new Date(),
+          Timestamp: timestamp,
           Dimensions: [{ Name: 'Status', Value: status }],
+        },
+        // Undimensioned metric — total roll-up consumed by the CloudWatch alarm.
+        // CloudWatch does NOT automatically aggregate dimensioned metrics into the
+        // undimensioned (no-dimension) series, so we publish both explicitly.
+        {
+          MetricName: METRIC_NAME,
+          Value: 1,
+          Unit: 'Count',
+          Timestamp: timestamp,
+          Dimensions: [],
         },
       ],
     }),

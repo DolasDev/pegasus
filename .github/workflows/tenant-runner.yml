@@ -13,14 +13,11 @@ name: Tenant runner image
 # a freshly pushed image automatically, and already-running runners keep
 # their old image only until their next idle-exit (≤ ~10 min of quiet).
 #
-# ── OPERATOR PREREQUISITE (one-time, BEFORE the first run) ─────────────────
-# The OIDC deploy role (`AWS_DEPLOY_ROLE_ARN` per env environment) needs ECR
-# push permissions on `arn:aws:ecr:us-east-1:*:repository/pegasus-tenant-runner`
-# — the same shape as the `temporal-worker-image-deploy` inline policy from
-# Phase 2 Unit 5, minus the ecs:UpdateService/DescribeServices statements
-# (no service here). The exact policy JSON + attach commands are in the
-# Unit 9 PR body. Until it is attached, this workflow fails at "Login to
-# ECR"/push with AccessDenied — cleanly, before anything is half-published.
+# ── IAM permission note ────────────────────────────────────────────────────
+# ECR push permissions for the OIDC deploy role are provisioned automatically
+# by TemporalWorkerStack (packages/infra) via CDK — no manual put-role-policy
+# is required. The repo `pegasus-tenant-runner` and its associated IAM grant
+# are created/updated on every `npm run deploy` or CI CDK deploy run.
 # ---------------------------------------------------------------------------
 
 on:

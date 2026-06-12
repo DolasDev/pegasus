@@ -8,6 +8,8 @@ import {
   offboardTenant,
   promoteToPlatform,
   demoteFromPlatform,
+  disableWorkflows,
+  enableWorkflows,
 } from '@/api/tenants'
 import type { TenantDetail } from '@/api/tenants'
 import { TenantFormDialog } from '@/components/TenantFormDialog'
@@ -393,6 +395,89 @@ function PlatformTenantSection({ tenant }: { tenant: TenantDetail }) {
 }
 
 // ---------------------------------------------------------------------------
+// Workflow kill switch — per-tenant disable/enable all workflow execution
+// ---------------------------------------------------------------------------
+
+function WorkflowKillSwitchSection({ tenant }: { tenant: TenantDetail }) {
+  const queryClient = useQueryClient()
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  const disableMutation = useMutation({
+    mutationFn: () => disableWorkflows(tenant.id),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['tenant', tenant.id], updated)
+      void queryClient.invalidateQueries({ queryKey: ['tenants'] })
+      setActionError(null)
+    },
+    onError: (err) => {
+      setActionError(err instanceof ApiError ? err.message : 'An unexpected error occurred.')
+    },
+  })
+
+  const enableMutation = useMutation({
+    mutationFn: () => enableWorkflows(tenant.id),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['tenant', tenant.id], updated)
+      void queryClient.invalidateQueries({ queryKey: ['tenants'] })
+      setActionError(null)
+    },
+    onError: (err) => {
+      setActionError(err instanceof ApiError ? err.message : 'An unexpected error occurred.')
+    },
+  })
+
+  const isPending = disableMutation.isPending || enableMutation.isPending
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center gap-3">
+        <h2 className="text-sm font-semibold text-foreground">Workflow execution</h2>
+        <span
+          className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
+            tenant.workflowsDisabled ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+          }`}
+          data-testid="workflow-kill-switch-badge"
+        >
+          {tenant.workflowsDisabled ? 'Disabled' : 'Enabled'}
+        </span>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        When disabled, all new workflow starts (manual, event-triggered, and scheduled) are refused
+        immediately. Existing <span className="font-mono">RUNNING</span> executions are allowed to
+        finish. Toggle this switch to block or unblock workflow execution for this tenant without
+        offboarding them.
+      </p>
+      {tenant.workflowsDisabled ? (
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => enableMutation.mutate()}
+            disabled={isPending}
+            className="rounded-md border border-green-300 bg-green-50 px-4 py-2 text-sm font-medium text-green-800 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {enableMutation.isPending ? 'Enabling…' : 'Enable workflows'}
+          </button>
+          <p className="text-sm text-muted-foreground">Resumes normal workflow execution.</p>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => disableMutation.mutate()}
+            disabled={isPending}
+            className="rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-800 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {disableMutation.isPending ? 'Disabling…' : 'Disable workflows'}
+          </button>
+          <p className="text-sm text-muted-foreground">
+            Blocks all new workflow starts. Running executions finish normally.
+          </p>
+        </div>
+      )}
+      {actionError && <p className="text-sm text-destructive">{actionError}</p>}
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -503,6 +588,9 @@ export function TenantDetailPage() {
 
         {/* Platform tenant */}
         {tenant.status !== 'OFFBOARDED' && <PlatformTenantSection tenant={tenant} />}
+
+        {/* Workflow execution kill switch */}
+        {tenant.status !== 'OFFBOARDED' && <WorkflowKillSwitchSection tenant={tenant} />}
 
         {/* Users */}
         {tenant.status !== 'OFFBOARDED' && (
