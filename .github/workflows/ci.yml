@@ -45,10 +45,12 @@ jobs:
               - '!{plans/**,dolas/**,**/*.md,*.md}'
             # Python tests for the tenant runner (Phase 3 Unit 9) — only run
             # when the runner or its bundled SDK changes. The SDK is included
-            # because tests import pegasus_workflows via tests/conftest.py.
+            # because tests import pegasus_workflows via tests/conftest.py;
+            # ci.yml itself is included so changes to this job self-validate.
             tenant_runner:
               - 'apps/tenant-runner/**'
               - 'packages/workflows-sdk-python/**'
+              - '.github/workflows/ci.yml'
 
   # ---------------------------------------------------------------------------
   # Secret scanning — runs first, fast, no deps
