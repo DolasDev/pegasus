@@ -359,6 +359,16 @@ code) — bounded by container-per-tenant + one-tenant creds; gVisor/
 separate-uid is a follow-up. No CI Python job yet (tests local-only) —
 add one in Unit 9 alongside the image-push workflow.
 
+**Unit 8.1 — Shim non-dumpable hardening. ✅ DONE (#242 → `a325c61`,
+2026-06-12).** Closed the same-uid /proc residual before Unit 9 puts a
+namespace-scoped Temporal credential in the shim env: `prctl(
+PR_SET_DUMPABLE, 0)` first thing in the entrypoint (with PR_GET readback;
+failure = refuse to start; non-Linux dev no-op). Real integration test
+proves a same-uid child gets EACCES on `/proc/<shim>/environ` (control
+read succeeds un-hardened; ptrace_scope=1). Children unaffected (flag
+resets on execve). Ops note: shim can't be py-spy'd by same-uid ECS exec
+and won't core-dump — intended. Remaining residual = shared kernel only.
+
 **Unit 9 — Runner orchestration (scale-to-zero).** Dispatcher (likely
 folded into the Unit-3 poller or the run path) launches a runner via ECS
 `RunTask` for any tenant with QUEUED work and none running (Resolved #1);
