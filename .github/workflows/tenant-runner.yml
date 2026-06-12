@@ -72,14 +72,14 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # Build context = repo root, NOT apps/tenant-runner/. The Dockerfile
       # reaches into packages/workflows-sdk-python/ via a sibling COPY (see
       # apps/tenant-runner/Dockerfile header).
       - name: Build + push image
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/tenant-runner/Dockerfile
@@ -135,11 +135,11 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build + push image
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/tenant-runner/Dockerfile

@@ -31,7 +31,7 @@ jobs:
       tenant_runner: ${{ steps.filter.outputs.tenant_runner }}
     steps:
       - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         id: filter
         with:
           # Single negated pattern: "code" = anything NOT under plans/ or
@@ -67,7 +67,7 @@ jobs:
           fetch-depth: 0
       - name: Cache Betterleaks
         id: bl-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/betterleaks-bin
           key: betterleaks-${{ env.BETTERLEAKS_VERSION }}-linux-x64
@@ -303,7 +303,7 @@ jobs:
 
       - name: Cache Playwright browsers
         id: pw-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
