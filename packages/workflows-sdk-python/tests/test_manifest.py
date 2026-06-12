@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from pegasus_workflows.manifest import (
+    MANIFEST_TIMEOUT_MAX_SECONDS,
     NAME_REGEX,
     VERSION_REGEX,
     ManifestError,
@@ -190,3 +191,136 @@ def test_source_dir_defaults_to_name(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert load_manifest(tmp_path)[0].source_dir == "demo"
+
+
+# ---------------------------------------------------------------------------
+# timeout_seconds (Phase 3 Unit 10)
+# ---------------------------------------------------------------------------
+
+
+def test_load_manifest_parses_timeout_seconds(tmp_path: Path) -> None:
+    (tmp_path / "pegasus-workflows.toml").write_text(
+        textwrap.dedent(
+            """
+            [[workflow]]
+            name = "demo"
+            version = "0.1.0"
+            entry_points = ["demo.workflow:Hello"]
+            timeout_seconds = 300
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    m = load_manifest(tmp_path)[0]
+    assert m.timeout_seconds == 300
+
+
+def test_to_api_manifest_includes_timeout_seconds_when_set(tmp_path: Path) -> None:
+    (tmp_path / "pegasus-workflows.toml").write_text(
+        textwrap.dedent(
+            """
+            [[workflow]]
+            name = "demo"
+            version = "0.1.0"
+            entry_points = ["demo.workflow:Hello"]
+            timeout_seconds = 300
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    m = load_manifest(tmp_path)[0]
+    api = m.to_api_manifest()
+    assert api["timeoutSeconds"] == 300
+
+
+def test_to_api_manifest_omits_timeout_seconds_when_absent(workflow_project: Path) -> None:
+    """The fixture has no timeout_seconds — it must be absent from to_api_manifest."""
+    m = load_manifest(workflow_project)[0]
+    api = m.to_api_manifest()
+    assert "timeoutSeconds" not in api
+
+
+def test_load_manifest_timeout_seconds_at_max_boundary(tmp_path: Path) -> None:
+    (tmp_path / "pegasus-workflows.toml").write_text(
+        textwrap.dedent(
+            f"""
+            [[workflow]]
+            name = "demo"
+            version = "0.1.0"
+            entry_points = ["demo.workflow:Hello"]
+            timeout_seconds = {MANIFEST_TIMEOUT_MAX_SECONDS}
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    m = load_manifest(tmp_path)[0]
+    assert m.timeout_seconds == MANIFEST_TIMEOUT_MAX_SECONDS
+
+
+def test_load_manifest_timeout_seconds_at_min_boundary(tmp_path: Path) -> None:
+    (tmp_path / "pegasus-workflows.toml").write_text(
+        textwrap.dedent(
+            """
+            [[workflow]]
+            name = "demo"
+            version = "0.1.0"
+            entry_points = ["demo.workflow:Hello"]
+            timeout_seconds = 1
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    m = load_manifest(tmp_path)[0]
+    assert m.timeout_seconds == 1
+
+
+@pytest.mark.parametrize("bad_value", [901, 1200, 0, -1])
+def test_load_manifest_rejects_out_of_range_timeout_seconds(
+    tmp_path: Path, bad_value: int
+) -> None:
+    (tmp_path / "pegasus-workflows.toml").write_text(
+        textwrap.dedent(
+            f"""
+            [[workflow]]
+            name = "demo"
+            version = "0.1.0"
+            entry_points = ["demo.workflow:Hello"]
+            timeout_seconds = {bad_value}
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ManifestError, match="timeout_seconds"):
+        load_manifest(tmp_path)
+
+
+def test_load_manifest_rejects_non_integer_timeout_seconds(tmp_path: Path) -> None:
+    (tmp_path / "pegasus-workflows.toml").write_text(
+        textwrap.dedent(
+            """
+            [[workflow]]
+            name = "demo"
+            version = "0.1.0"
+            entry_points = ["demo.workflow:Hello"]
+            timeout_seconds = "300"
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ManifestError, match="timeout_seconds"):
+        load_manifest(tmp_path)
+
+
+def test_validate_manifest_fields_rejects_non_integer_timeout_seconds() -> None:
+    with pytest.raises(ManifestError, match="timeout_seconds"):
+        validate_manifest_fields("demo", "0.1.0", ["a:B"], timeout_seconds=3.5)  # type: ignore[arg-type]
+
+
+def test_validate_manifest_fields_accepts_valid_timeout_seconds() -> None:
+    validate_manifest_fields("demo", "0.1.0", ["a:B"], timeout_seconds=300)
+
+
+def test_validate_manifest_fields_rejects_bool_as_timeout_seconds() -> None:
+    # bool is a subclass of int in Python — must be explicitly rejected.
+    with pytest.raises(ManifestError, match="timeout_seconds"):
+        validate_manifest_fields("demo", "0.1.0", ["a:B"], timeout_seconds=True)  # type: ignore[arg-type]

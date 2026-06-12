@@ -93,6 +93,24 @@ const ManifestSchema = z.object({
         }
       }
     }),
+  // Per-execution Temporal workflow timeout in seconds (Phase 3 Unit 10).
+  // Optional; when present the runner honours it as the maximum wall-clock
+  // budget for the execution (default: 900 s = 15 min). The manifest may
+  // LOWER the default, never raise it — values > 900 are rejected at finalize
+  // (422 VALIDATION_ERROR) rather than silently clamped, so authors know their
+  // manifest is out of range. Absent from the manifest = use the platform
+  // default (900 s). Zero and negative values are also rejected.
+  // Only applies to TENANT_RUNNER-routed executions; curated (STDLIB) runs are
+  // unaffected.
+  timeoutSeconds: z
+    .number()
+    .int({ message: 'timeoutSeconds must be an integer' })
+    .min(1, { message: 'timeoutSeconds must be at least 1' })
+    .max(900, {
+      message:
+        'timeoutSeconds exceeds the platform maximum of 900 s — the manifest may lower the default, not raise it',
+    })
+    .optional(),
   // v1 no-arbitrary-deps decision (Phase 3): the manifest deliberately has no
   // dependency field. Reject any attempt to declare one explicitly rather
   // than silently stripping it — the artifact-level check in
@@ -769,10 +787,32 @@ workflowsHandler.post(
     if (result.outcome === 'NOT_EXECUTABLE') {
       return c.json(
         {
-          error: `Workflow "${workflow.name}" is not in the executable allowlist (Phase 2 runs curated stdlib workflows only)`,
+          error: `Workflow "${workflow.name}" is not executable — re-upload the artifact to enable execution`,
           code: 'WORKFLOW_NOT_EXECUTABLE',
         },
         400,
+      )
+    }
+
+    if (result.outcome === 'CONCURRENCY_LIMIT') {
+      return c.json(
+        {
+          error:
+            'Concurrent execution limit reached — this tenant already has the maximum number of active workflow executions. Wait for one to complete before starting another.',
+          code: 'CONCURRENCY_LIMIT',
+        },
+        429,
+      )
+    }
+
+    if (result.outcome === 'DAILY_QUOTA_EXCEEDED') {
+      return c.json(
+        {
+          error:
+            'Daily execution quota exceeded — this tenant has reached the maximum number of workflow executions for today (UTC). The quota resets at midnight UTC.',
+          code: 'DAILY_QUOTA_EXCEEDED',
+        },
+        429,
       )
     }
 

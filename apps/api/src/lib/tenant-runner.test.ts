@@ -149,11 +149,29 @@ describe('loadTenantRunnerConfig', () => {
 
 describe('executionNeedsTenantRunner', () => {
   it('is false for curated stdlib names (they run on the shared worker fleet)', () => {
-    expect(executionNeedsTenantRunner({ name: 'send_quote_followup' })).toBe(false)
+    // executable=true doesn't matter — curated name → STDLIB, not TENANT_RUNNER
+    expect(executionNeedsTenantRunner({ name: 'send_quote_followup', executable: true })).toBe(
+      false,
+    )
   })
 
-  it('is true for non-curated names — the curated-gate complement Unit 10 will flip', () => {
-    expect(executionNeedsTenantRunner({ name: 'tenant_custom_workflow' })).toBe(true)
+  it('is false for a curated name even when executable=false', () => {
+    expect(executionNeedsTenantRunner({ name: 'send_quote_followup', executable: false })).toBe(
+      false,
+    )
+  })
+
+  it('is true for a non-curated executable workflow (Unit 10 routing live)', () => {
+    expect(executionNeedsTenantRunner({ name: 'tenant_custom_workflow', executable: true })).toBe(
+      true,
+    )
+  })
+
+  it('is false for a non-curated NON-executable workflow (NOT_EXECUTABLE route)', () => {
+    // Pre-Unit-6 or failed-validation rows — routes NOT_EXECUTABLE, not TENANT_RUNNER
+    expect(executionNeedsTenantRunner({ name: 'tenant_custom_workflow', executable: false })).toBe(
+      false,
+    )
   })
 })
 
@@ -306,7 +324,9 @@ describe('ensureTenantRunner', () => {
 // ── sweepTenantRunners ───────────────────────────────────────────────────
 
 describe('sweepTenantRunners', () => {
-  function dbWithOpenExecutions(rows: Array<{ tenantId: string; workflow: { name: string } }>): {
+  function dbWithOpenExecutions(
+    rows: Array<{ tenantId: string; workflow: { name: string; executable: boolean } }>,
+  ): {
     db: PrismaClient
     findMany: ReturnType<typeof vi.fn>
   } {
@@ -325,11 +345,14 @@ describe('sweepTenantRunners', () => {
   it('ensures one runner per unique tenant with non-curated open work', async () => {
     const { db: sweepDb, findMany } = dbWithOpenExecutions([
       // Curated rows never need a runner — filtered out.
-      { tenantId: TENANT_ID, workflow: { name: 'send_quote_followup' } },
+      { tenantId: TENANT_ID, workflow: { name: 'send_quote_followup', executable: true } },
       // Two open executions for the same tenant — deduped to one ensure.
-      { tenantId: TENANT_ID, workflow: { name: 'tenant_custom_workflow' } },
-      { tenantId: TENANT_ID, workflow: { name: 'another_tenant_workflow' } },
-      { tenantId: OTHER_TENANT_ID, workflow: { name: 'tenant_custom_workflow' } },
+      { tenantId: TENANT_ID, workflow: { name: 'tenant_custom_workflow', executable: true } },
+      { tenantId: TENANT_ID, workflow: { name: 'another_tenant_workflow', executable: true } },
+      {
+        tenantId: OTHER_TENANT_ID,
+        workflow: { name: 'tenant_custom_workflow', executable: true },
+      },
     ])
     const ecs = fakeEcs({})
 
@@ -337,7 +360,7 @@ describe('sweepTenantRunners', () => {
 
     expect(findMany).toHaveBeenCalledWith({
       where: { status: { in: ['QUEUED', 'RUNNING'] } },
-      select: { tenantId: true, workflow: { select: { name: true } } },
+      select: { tenantId: true, workflow: { select: { name: true, executable: true } } },
     })
     expect(result).toEqual({ tenantsNeedingRunner: 2, launched: 2, launchFailed: 0 })
     expect(ecs.calls.runTask.map((c) => c.startedBy)).toEqual([TENANT_ID, OTHER_TENANT_ID])
@@ -347,8 +370,11 @@ describe('sweepTenantRunners', () => {
 
   it('isolates per-tenant failures — one broken launch never skips the next tenant', async () => {
     const { db: sweepDb } = dbWithOpenExecutions([
-      { tenantId: TENANT_ID, workflow: { name: 'tenant_custom_workflow' } },
-      { tenantId: OTHER_TENANT_ID, workflow: { name: 'tenant_custom_workflow' } },
+      { tenantId: TENANT_ID, workflow: { name: 'tenant_custom_workflow', executable: true } },
+      {
+        tenantId: OTHER_TENANT_ID,
+        workflow: { name: 'tenant_custom_workflow', executable: true },
+      },
     ])
     let listCalls = 0
     const ecs = fakeEcs({
@@ -367,9 +393,10 @@ describe('sweepTenantRunners', () => {
     expect(ecs.calls.runTask.map((c) => c.startedBy)).toEqual([OTHER_TENANT_ID])
   })
 
-  it('finds nothing to do today (curated-only open work) — the inert posture', async () => {
+  it('finds nothing to do today (curated-only open work) — both executable=true and false)', async () => {
     const { db: sweepDb } = dbWithOpenExecutions([
-      { tenantId: TENANT_ID, workflow: { name: 'send_quote_followup' } },
+      { tenantId: TENANT_ID, workflow: { name: 'send_quote_followup', executable: true } },
+      { tenantId: TENANT_ID, workflow: { name: 'old_wf', executable: false } },
     ])
     const ecs = fakeEcs({})
 

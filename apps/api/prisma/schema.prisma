@@ -1272,6 +1272,10 @@ model WorkflowExecution {
 
   @@index([tenantId, workflowId])
   @@index([status])
+  /// Composite index for the TENANT_RUNNER daily-quota count (Phase 3 Unit 10):
+  /// `WHERE tenantId = $1 AND createdAt >= $utcDayStart`. The tenantId-first
+  /// ordering means the query touches only one tenant's rows.
+  @@index([tenantId, createdAt])
   @@map("workflow_executions")
   @@schema("public")
 }
