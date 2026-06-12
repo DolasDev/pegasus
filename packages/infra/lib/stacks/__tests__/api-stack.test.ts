@@ -54,7 +54,7 @@ describe('ApiStack — Lambda function', () => {
   it('uses Node.js 20.x runtime', () => {
     const template = synthApiStack()
     template.hasResourceProperties('AWS::Lambda::Function', {
-      Runtime: 'nodejs20.x',
+      Runtime: 'nodejs24.x',
     })
   })
 

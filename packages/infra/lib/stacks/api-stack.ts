@@ -256,7 +256,7 @@ export class ApiStack extends cdk.Stack {
       : ''
 
     const apiFunction = new nodejs.NodejsFunction(this, 'ApiFunction', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       // Entry resolved relative to this file at deploy time by esbuild
       entry: path.join(__dirname, '../../../../apps/api/src/lambda.ts'),
       handler: 'handler',
@@ -473,7 +473,7 @@ export class ApiStack extends cdk.Stack {
         this,
         'ReconcileWorkflowExecutionsFunction',
         {
-          runtime: lambda.Runtime.NODEJS_20_X,
+          runtime: lambda.Runtime.NODEJS_24_X,
           entry: path.join(
             __dirname,
             '../../../../apps/api/src/lambda-reconcile-workflow-executions.ts',
@@ -552,7 +552,7 @@ export class ApiStack extends cdk.Stack {
         this,
         'DispatchWorkflowTriggersFunction',
         {
-          runtime: lambda.Runtime.NODEJS_20_X,
+          runtime: lambda.Runtime.NODEJS_24_X,
           entry: path.join(
             __dirname,
             '../../../../apps/api/src/lambda-dispatch-workflow-triggers.ts',
@@ -912,7 +912,7 @@ export class ApiStack extends cdk.Stack {
     })
 
     const avpStoreCountFunction = new nodejs.NodejsFunction(this, 'AvpStoreCountFunction', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       entry: path.join(__dirname, '../../../../apps/api/src/lambda-avp-store-count.ts'),
       handler: 'handler',
       environment: {
@@ -977,7 +977,7 @@ export class ApiStack extends cdk.Stack {
       this,
       'RingCentralTokenRefreshFunction',
       {
-        runtime: lambda.Runtime.NODEJS_20_X,
+        runtime: lambda.Runtime.NODEJS_24_X,
         entry: path.join(__dirname, '../../../../apps/api/src/lambda-ringcentral-token-refresh.ts'),
         handler: 'handler',
         environment: {
@@ -1022,7 +1022,7 @@ export class ApiStack extends cdk.Stack {
     })
 
     const ringcentralSyncFunction = new nodejs.NodejsFunction(this, 'RingCentralSyncFunction', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       entry: path.join(__dirname, '../../../../apps/api/src/lambda-ringcentral-sync.ts'),
       handler: 'handler',
       environment: {
@@ -1066,7 +1066,7 @@ export class ApiStack extends cdk.Stack {
     })
 
     const ringcentralRenewFunction = new nodejs.NodejsFunction(this, 'RingCentralRenewFunction', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       entry: path.join(__dirname, '../../../../apps/api/src/lambda-ringcentral-renew.ts'),
       handler: 'handler',
       environment: {
@@ -1126,7 +1126,7 @@ export class ApiStack extends cdk.Stack {
       this,
       'RingCentralCaptureFunction',
       {
-        runtime: lambda.Runtime.NODEJS_20_X,
+        runtime: lambda.Runtime.NODEJS_24_X,
         entry: path.join(__dirname, '../../../../apps/api/src/lambda-ringcentral-capture.ts'),
         handler: 'handler',
         environment: {
@@ -1174,7 +1174,7 @@ export class ApiStack extends cdk.Stack {
       this,
       'RingCentralForwardFunction',
       {
-        runtime: lambda.Runtime.NODEJS_20_X,
+        runtime: lambda.Runtime.NODEJS_24_X,
         entry: path.join(__dirname, '../../../../apps/api/src/lambda-ringcentral-forward.ts'),
         handler: 'handler',
         environment: {
@@ -1229,7 +1229,7 @@ export class ApiStack extends cdk.Stack {
       this,
       'RingCentralBufferPurgeFunction',
       {
-        runtime: lambda.Runtime.NODEJS_20_X,
+        runtime: lambda.Runtime.NODEJS_24_X,
         entry: path.join(__dirname, '../../../../apps/api/src/lambda-ringcentral-buffer-purge.ts'),
         handler: 'handler',
         environment: {
@@ -1271,7 +1271,7 @@ export class ApiStack extends cdk.Stack {
       this,
       'RingCentralMetricsFunction',
       {
-        runtime: lambda.Runtime.NODEJS_20_X,
+        runtime: lambda.Runtime.NODEJS_24_X,
         entry: path.join(__dirname, '../../../../apps/api/src/lambda-ringcentral-metrics.ts'),
         handler: 'handler',
         environment: {
@@ -1334,7 +1334,7 @@ export class ApiStack extends cdk.Stack {
     })
 
     const syncAvpPoliciesFunction = new nodejs.NodejsFunction(this, 'SyncAvpPoliciesFunction', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       entry: path.join(__dirname, '../../../../apps/api/src/lambda-sync-avp-policies.ts'),
       handler: 'handler',
       environment: {

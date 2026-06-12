@@ -74,7 +74,7 @@ export class DocumentsStack extends cdk.Stack {
     })
 
     const converterFn = new nodejs.NodejsFunction(this, 'ConverterFunction', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       entry: path.join(__dirname, '../../../../apps/api/src/lambda-document-converter.ts'),
       handler: 'handler',
       environment: {

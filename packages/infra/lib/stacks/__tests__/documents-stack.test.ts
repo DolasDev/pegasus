@@ -105,7 +105,7 @@ describe('DocumentsStack — bucket', () => {
 describe('DocumentsStack — converter Lambda', () => {
   it('creates a Lambda function for the converter', () => {
     synth().hasResourceProperties('AWS::Lambda::Function', {
-      Runtime: 'nodejs20.x',
+      Runtime: 'nodejs24.x',
       MemorySize: 1024,
       Timeout: 300,
     })
