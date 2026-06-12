@@ -23,6 +23,7 @@ import { workflowInternalHandler } from './handlers/workflow-internal'
 import { eventsHandler } from './handlers/events'
 import { ordersHandler } from './handlers/orders'
 import { vpnAgentHandler } from './handlers/vpn-agent'
+import { dashboardPegiiHandler } from './handlers/dashboard-pegii'
 import { longhaulVersionHandler } from './handlers/longhaul-cloud/version'
 import { longhaulStatesHandler } from './handlers/longhaul-cloud/states'
 import { longhaulDriversHandler } from './handlers/longhaul-cloud/drivers'
@@ -280,6 +281,11 @@ v1.route('/settings', settingsHandler)
 // flag-gated inside the handler; list/disconnect are not.
 v1.route('/integrations/ringcentral', ringcentralOauthHandler)
 v1.route('/documents', documentsHandler)
+// PegII dashboard: served cloud-direct from three on-prem MSSQL views
+// (v_dashboard1/2/3) via the in-VPC mssql-executor Lambda. Same pattern as the
+// longhaul-cloud reference handlers; powers the tenant dashboard's "Use PegII
+// Data" toggle. See handlers/dashboard-pegii.ts.
+v1.get('/dashboard/pegii', dashboardPegiiHandler)
 // Note: /workflows is mounted on the m2mV1 router above (dual-auth: Cognito
 // sessions + vnd_ vendor keys) — it must be matched before tenantMiddleware.
 // Longhaul strangler-fig migration (Phase 1): /version is served cloud-direct
