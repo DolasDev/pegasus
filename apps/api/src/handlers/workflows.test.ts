@@ -859,10 +859,13 @@ describe('workflows handler', () => {
       expect(res.status).toBe(404)
     })
 
-    it('returns 400 WORKFLOW_NOT_EXECUTABLE for non-curated workflow names', async () => {
+    it('returns 400 WORKFLOW_NOT_EXECUTABLE when executable=false and non-curated name', async () => {
+      // Pre-Track-A tenant workflow: not yet executable → route = NOT_EXECUTABLE.
+      // A non-curated name with executable=true would instead route to TENANT_RUNNER.
       mockRepo.findByIdForTenant.mockResolvedValue({
         ...provisionedRow,
         name: 'some_other_workflow',
+        executable: false,
       })
       const res = await buildApp().request('/wf-1/run', post({ input: {} }))
       expect(res.status).toBe(400)

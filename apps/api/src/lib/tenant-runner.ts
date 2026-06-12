@@ -71,7 +71,7 @@ import {
 import { CloudWatchClient, PutMetricDataCommand } from '@aws-sdk/client-cloudwatch'
 import type { PrismaClient } from '@prisma/client'
 import { getOrCreateTenantBrokerCredential } from './tenant-broker-credential'
-import { CURATED_WORKFLOW_NAMES } from './curated-workflows'
+import { resolveWorkflowRoute } from './workflow-route'
 import { logger } from './logger'
 
 // Duplicated literally from packages/infra/lib/metrics.ts for the same
@@ -134,22 +134,27 @@ export function loadTenantRunnerConfig(
 }
 
 // ---------------------------------------------------------------------------
-// Activation criterion (Unit 10 flips this)
+// Activation criterion — delegates to resolveWorkflowRoute (Unit 10)
 // ---------------------------------------------------------------------------
 
 /**
  * Whether an execution of `workflow` will run on a per-tenant runner task
  * (vs the curated stdlib worker fleet).
  *
- * v1 (Unit 9): the exact complement of the curated-names gate. Because the
- * gate in start-workflow-execution.ts rejects non-curated names before any
- * execution exists, this returns true only on paths that are unreachable in
- * production today — the wiring is deliberately inert-but-ready. Unit 10
- * replaces this with the real routing decision (executable tenant uploads →
- * tenant queue) at the same time it lifts the gate.
+ * Unit 10: delegates entirely to resolveWorkflowRoute so there is ONE source
+ * of truth for the routing decision. Callers (sweepTenantRunners, any future
+ * per-execution hooks) that need "does this workflow need a runner?" now get
+ * exactly the same answer as the run path.
+ *
+ * The `executable` field is required here (previously only `name` was needed)
+ * because the real routing decision also checks eligibility. Code that calls
+ * this function must supply both fields; the WorkflowRow type already does.
  */
-export function executionNeedsTenantRunner(workflow: { name: string }): boolean {
-  return !CURATED_WORKFLOW_NAMES.has(workflow.name)
+export function executionNeedsTenantRunner(workflow: {
+  name: string
+  executable: boolean
+}): boolean {
+  return resolveWorkflowRoute(workflow) === 'TENANT_RUNNER'
 }
 
 // ---------------------------------------------------------------------------
@@ -382,9 +387,11 @@ export async function sweepTenantRunners(
   // Tenants with outstanding runner-bound work. The row count here is small
   // by construction (Resolved #3 caps concurrent executions per tenant), so
   // an unaggregated select + in-process filter is fine.
+  // `executable` is required by executionNeedsTenantRunner (Unit 10: the
+  // routing decision also checks eligibility, not just name).
   const open = await db.workflowExecution.findMany({
     where: { status: { in: ['QUEUED', 'RUNNING'] } },
-    select: { tenantId: true, workflow: { select: { name: true } } },
+    select: { tenantId: true, workflow: { select: { name: true, executable: true } } },
   })
   const tenantIds = [
     ...new Set(

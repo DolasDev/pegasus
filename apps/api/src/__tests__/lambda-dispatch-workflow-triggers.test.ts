@@ -44,6 +44,7 @@ const {
   mockExecutionFindFirst,
   mockExecutionCreate,
   mockExecutionUpdate,
+  mockExecutionCount,
 } = vi.hoisted(() => ({
   mockSend: vi.fn(),
   putMetricDataInputs: [] as unknown[],
@@ -54,6 +55,7 @@ const {
   mockExecutionFindFirst: vi.fn(),
   mockExecutionCreate: vi.fn(),
   mockExecutionUpdate: vi.fn(),
+  mockExecutionCount: vi.fn(),
 }))
 
 vi.mock('@aws-sdk/client-cloudwatch', () => ({
@@ -85,6 +87,7 @@ vi.mock('../db', () => {
       findFirst: mockExecutionFindFirst,
       create: mockExecutionCreate,
       update: mockExecutionUpdate,
+      count: mockExecutionCount,
     },
     // The shared run path wraps its insert in a transaction; run the callback
     // against the same fake so the model mocks above resolve.
@@ -220,6 +223,8 @@ beforeEach(() => {
   mockExecutionFindFirst.mockResolvedValue(null)
   mockExecutionCreate.mockResolvedValue(queuedExecution())
   mockExecutionUpdate.mockResolvedValue(queuedExecution({ status: 'RUNNING', startedAt: now }))
+  // Default: 0 active/daily executions (below any limit)
+  mockExecutionCount.mockResolvedValue(0)
   const start = vi.fn().mockResolvedValue({
     workflowId: DETERMINISTIC_ID,
     firstExecutionRunId: 'run-1',
@@ -813,5 +818,81 @@ describe('scheduled triggers', () => {
     expect(emittedMetrics()).toContainEqual(
       expect.objectContaining({ MetricName: 'WorkflowTriggerFired', Value: 2 }),
     )
+  })
+})
+
+// ── Dispatcher: limit-rejection skip reasons (Phase 3 Unit 10) ────────────
+//
+// These tests verify that TENANT_RUNNER-lane limit rejections produce the
+// right WorkflowTriggerSkipped{Reason=...} metrics and still stamp the
+// domain event (no redelivery semantics — the tenant is over-capacity, not
+// failing). Per the spec, the dispatcher treats limit outcomes the same as
+// START_FAILED: logged skip, event stamped, tick continues.
+
+describe('limit-rejection skip reasons (Unit 10)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('CONCURRENCY_LIMIT: trigger skipped, WorkflowTriggerSkipped{CONCURRENCY_LIMIT} emitted, event stamped', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    // Executable tenant workflow (routes TENANT_RUNNER).
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow()] })
+    // Concurrency cap hit (first count call = 5 active)
+    mockExecutionCount.mockResolvedValueOnce(5)
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    // Event is still stamped — no redelivery.
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'CONCURRENCY_LIMIT' }],
+      }),
+    )
+  })
+
+  it('DAILY_QUOTA_EXCEEDED: trigger skipped, WorkflowTriggerSkipped{DAILY_QUOTA_EXCEEDED} emitted, event stamped', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow()] })
+    // Concurrency: 0; daily quota: 200 (at quota)
+    mockExecutionCount.mockResolvedValueOnce(0).mockResolvedValueOnce(200)
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'DAILY_QUOTA_EXCEEDED' }],
+      }),
+    )
+  })
+
+  it('curated triggers are never limit-rejected (no count calls for curated workflow)', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    // Curated workflow (routes STDLIB) — limits are never checked.
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'send_quote_followup' }))
+    setTriggers({ event: [triggerRow()] })
+    // Even if count would return "over limit", the curated run is not checked.
+    mockExecutionCount.mockResolvedValue(9999)
+
+    const out = await handler()
+
+    expect(out.fired).toBe(1)
+    // count is never called for STDLIB-routed executions
+    expect(mockExecutionCount).not.toHaveBeenCalled()
   })
 })

@@ -80,12 +80,14 @@ const BATCH_SIZE = 100
 
 /** Why a matching trigger did not fire — the `Reason` metric dimension. */
 type TriggerSkipReason =
-  | 'NOT_EXECUTABLE' // workflow not in the curated allowlist (pre-Track-A)
+  | 'NOT_EXECUTABLE' // workflow not executable (non-curated, no valid artifact)
   | 'WORKFLOW_NOT_FOUND' // trigger's workflow no longer visible (defensive)
   | 'DUPLICATE' // execution row with this deterministic id already exists
   | 'ALREADY_STARTED' // Temporal REJECT_DUPLICATE fired (pre-check raced)
   | 'START_FAILED' // Temporal start threw; FAILED row records the error
   | 'INVALID_CRON' // SCHEDULE row's expression no longer parses (pre-Unit-4 row)
+  | 'CONCURRENCY_LIMIT' // Phase 3 Unit 10: tenant concurrent-execution cap reached
+  | 'DAILY_QUOTA_EXCEEDED' // Phase 3 Unit 10: tenant daily execution quota reached
   | 'ERROR' // unexpected per-trigger exception
 
 /**
@@ -308,14 +310,36 @@ async function fireTrigger(opts: {
       })
       break
     case 'NOT_EXECUTABLE':
-      // Expected for tenant-uploaded workflows until Track A lands — a
-      // logged skip, never an error, never blocks the event stamp.
+      // Non-curated + non-executable (no valid artifact yet). Logged skip;
+      // never blocks the event stamp.
       skip('NOT_EXECUTABLE')
       logger.info('Trigger workflow is not executable — skipping', {
         triggerId: trigger.id,
         tenantId: trigger.tenantId,
         workflowId: workflow.id,
         workflowName: workflow.name,
+        ...logContext,
+      })
+      break
+    case 'CONCURRENCY_LIMIT':
+      // Phase 3 Unit 10: tenant hit the TENANT_RUNNER concurrent-execution cap.
+      // Treat the same as START_FAILED for the dispatcher: logged skip, event
+      // is still stamped (no retry — the tenant is over-capacity, not failing).
+      skip('CONCURRENCY_LIMIT')
+      logger.warn('Trigger skipped — TENANT_RUNNER concurrency cap reached', {
+        triggerId: trigger.id,
+        tenantId: trigger.tenantId,
+        workflowId: workflow.id,
+        ...logContext,
+      })
+      break
+    case 'DAILY_QUOTA_EXCEEDED':
+      // Phase 3 Unit 10: tenant hit the per-day execution quota.
+      skip('DAILY_QUOTA_EXCEEDED')
+      logger.warn('Trigger skipped — TENANT_RUNNER daily quota exceeded', {
+        triggerId: trigger.id,
+        tenantId: trigger.tenantId,
+        workflowId: workflow.id,
         ...logContext,
       })
       break
