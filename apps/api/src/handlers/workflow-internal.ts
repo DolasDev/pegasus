@@ -8,18 +8,38 @@
 //
 // Auth model
 // ──────────
-// A single shared-secret header (`X-Workflow-Broker-Secret`, env
-// `WORKFLOW_BROKER_SECRET`) gates BOTH endpoints. There is no Cedar layer
-// here — the worker has no Cognito session and no per-tenant vnd_ key (it
-// would need one per tenant, defeating the broker design entirely). The
-// secret is generated out-of-band, lives in Secrets Manager
-// `pegasus/{env}/workflow-broker-secret`, and is injected at Lambda startup.
-// Mismatched / missing → 401, no further detail to avoid helping a probe.
+// Two credential kinds gate BOTH endpoints (Phase 3 Unit 7). There is no
+// Cedar layer here — workers have no Cognito session.
+//
+//   1. Shared secret (`X-Workflow-Broker-Secret`, env
+//      `WORKFLOW_BROKER_SECRET`) — the legacy stdlib worker. Trusted image;
+//      full access to any tenant's executions, wire-identical to Phase 2.
+//      The secret is generated out-of-band, lives in Secrets Manager
+//      `pegasus/{env}/workflow-broker-secret`, and is injected at Lambda
+//      startup.
+//
+//   2. Per-tenant token (`X-Workflow-Broker-Token`, format
+//      `wbk_<tenantId>_<48 hex>`) — tenant-runner containers (Unit 8+).
+//      Minted/verified by lib/tenant-broker-credential.ts. Both endpoints
+//      enforce `execution.tenantId === token.tenantId`; a mismatch is
+//      answered 404 exactly like a nonexistent execution, so a token holder
+//      cannot probe whether another tenant's executionId exists (matches the
+//      tenant-scoping convention everywhere else: cross-tenant rows are
+//      invisible, not forbidden).
+//
+// A separate header (rather than prefix-sniffing one header) keeps the
+// legacy worker's path byte-for-byte unchanged and makes which-credential-
+// was-presented explicit in code and in probes' failure modes. If the shared
+// secret header is present it is validated strictly — an invalid value never
+// falls through to the token path. Mismatched / missing → 401, no further
+// detail to avoid helping a probe.
 //
 // Endpoints
 // ─────────
 // POST   /workflow-runtime-token       — broker: KMS-decrypt + return token
 // PATCH  /workflow-executions/:id      — worker write-back: status / result
+// GET    /tenant-workflows             — runner artifact discovery (Unit 8):
+//                                        executable workflows + presigned GETs
 // ---------------------------------------------------------------------------
 
 import { timingSafeEqual } from 'node:crypto'
@@ -32,8 +52,10 @@ import { createTenantDb } from '../lib/prisma'
 import { createWorkflowExecutionRepository } from '../repositories/workflow-execution.repository'
 import type { WorkflowExecutionStatus } from '../repositories/workflow-execution.repository'
 import { decryptRuntimeToken } from '../lib/runtime-token-crypto'
+import { presignDownload } from '../lib/documents-s3'
+import { verifyTenantBrokerToken } from '../lib/tenant-broker-credential'
 import { logger } from '../lib/logger'
-import type { AppEnv } from '../types'
+import type { AppEnv, WorkflowBrokerAuth } from '../types'
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -44,14 +66,7 @@ const BrokerBody = z.object({
 })
 
 const PatchBody = z.object({
-  status: z.enum([
-    'QUEUED',
-    'RUNNING',
-    'COMPLETED',
-    'FAILED',
-    'TIMED_OUT',
-    'CANCELLED',
-  ] as const),
+  status: z.enum(['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED', 'TIMED_OUT', 'CANCELLED'] as const),
   // The worker passes JSON-shaped result payloads opaquely. We don't
   // re-validate them here; the SDK that wrote them is trusted.
   result: z.unknown().optional(),
@@ -70,10 +85,11 @@ const TERMINAL_STATUSES: ReadonlySet<WorkflowExecutionStatus> = new Set([
 ])
 
 // ---------------------------------------------------------------------------
-// Shared-secret middleware
+// Broker auth middleware — shared secret OR per-tenant token
 // ---------------------------------------------------------------------------
 
 const BROKER_HEADER = 'X-Workflow-Broker-Secret'
+const BROKER_TOKEN_HEADER = 'X-Workflow-Broker-Token'
 
 function constantTimeEquals(a: string, b: string): boolean {
   if (a.length !== b.length) return false
@@ -82,22 +98,64 @@ function constantTimeEquals(a: string, b: string): boolean {
 }
 
 /**
- * Reject everything that does not present the matching shared-secret header.
- * 401 INVALID_BROKER_SECRET with no further body so the worker can log it
- * cleanly while an attacker probing the endpoint sees nothing of value.
+ * Authenticates every request as either the legacy shared-secret worker
+ * (full access) or a per-tenant `wbk_` token (confined to its tenant), and
+ * stamps the resulting principal on the context as `brokerAuth`.
+ *
+ * Precedence: a present shared-secret header is validated strictly — wrong
+ * values 401 immediately and never fall through to the token path. Requests
+ * with neither header 401 with the same INVALID_BROKER_SECRET code as before
+ * Unit 7 (wire-identical for the legacy worker). All failures carry no
+ * further detail so an attacker probing the endpoint learns nothing.
  */
-function requireBrokerSecret(): (
-  c: { req: { header: (name: string) => string | undefined }; json: (body: unknown, status: 401) => Response },
+function requireBrokerAuth(): (
+  c: {
+    req: { header: (name: string) => string | undefined }
+    json: (body: unknown, status: 401) => Response
+    set: (key: 'brokerAuth', value: WorkflowBrokerAuth) => void
+  },
   next: () => Promise<void>,
 ) => Promise<Response | void> {
   return async (c, next) => {
-    const expected = process.env['WORKFLOW_BROKER_SECRET'] ?? ''
-    const presented = c.req.header(BROKER_HEADER) ?? ''
-    if (!expected || !presented || !constantTimeEquals(expected, presented)) {
-      return c.json({ error: 'unauthorized', code: 'INVALID_BROKER_SECRET' }, 401)
+    const presentedSecret = c.req.header(BROKER_HEADER)
+    if (presentedSecret !== undefined) {
+      const expected = process.env['WORKFLOW_BROKER_SECRET'] ?? ''
+      if (!expected || !presentedSecret || !constantTimeEquals(expected, presentedSecret)) {
+        return c.json({ error: 'unauthorized', code: 'INVALID_BROKER_SECRET' }, 401)
+      }
+      c.set('brokerAuth', { kind: 'shared' })
+      await next()
+      return
     }
-    await next()
+
+    const presentedToken = c.req.header(BROKER_TOKEN_HEADER)
+    if (presentedToken !== undefined) {
+      const verified = presentedToken
+        ? await verifyTenantBrokerToken(basePrisma, presentedToken)
+        : null
+      if (!verified) {
+        return c.json({ error: 'unauthorized', code: 'INVALID_BROKER_TOKEN' }, 401)
+      }
+      c.set('brokerAuth', { kind: 'tenant', tenantId: verified.tenantId })
+      await next()
+      return
+    }
+
+    return c.json({ error: 'unauthorized', code: 'INVALID_BROKER_SECRET' }, 401)
   }
+}
+
+/**
+ * True when `auth` is NOT allowed to touch an execution row owned by
+ * `executionTenantId`. Shared-secret principals may touch anything; tenant
+ * principals only their own tenant's rows. Callers answer a denial with the
+ * same 404 body as a nonexistent execution — see the module header.
+ */
+function deniedForTenant(auth: WorkflowBrokerAuth | undefined, executionTenantId: string): boolean {
+  // brokerAuth is always set by requireBrokerAuth before any route runs;
+  // treat an impossible-missing value as a denial, never as shared access.
+  if (!auth) return true
+  return auth.kind === 'tenant' && auth.tenantId !== executionTenantId
 }
 
 // ---------------------------------------------------------------------------
@@ -106,8 +164,8 @@ function requireBrokerSecret(): (
 
 export const workflowInternalHandler = new Hono<AppEnv>()
 
-// Every route in this router goes through the shared-secret gate.
-workflowInternalHandler.use('*', requireBrokerSecret())
+// Every route in this router goes through the broker auth gate.
+workflowInternalHandler.use('*', requireBrokerAuth())
 
 // ---------------------------------------------------------------------------
 // POST /workflow-runtime-token
@@ -147,23 +205,24 @@ workflowInternalHandler.post(
     if (!execution) {
       return c.json({ error: 'execution not found', code: 'NOT_FOUND' }, 404)
     }
+    // Tenant confinement (Unit 7): a per-tenant token may only mint runtime
+    // tokens for its own tenant's executions. Cross-tenant rows are answered
+    // exactly like missing rows so the executionId namespace can't be probed.
+    if (deniedForTenant(c.get('brokerAuth'), execution.tenantId)) {
+      logger.warn('broker.token_denied_cross_tenant', { executionId })
+      return c.json({ error: 'execution not found', code: 'NOT_FOUND' }, 404)
+    }
     // Terminal executions don't get fresh tokens issued — defence-in-depth
     // against a late retry from a worker that lost track of state.
     if (execution.status !== 'QUEUED' && execution.status !== 'RUNNING') {
-      return c.json(
-        { error: 'execution not in an issuable state', code: 'NOT_FOUND' },
-        404,
-      )
+      return c.json({ error: 'execution not in an issuable state', code: 'NOT_FOUND' }, 404)
     }
     const workflow = await basePrisma.workflow.findUnique({
       where: { id: execution.workflowId },
       select: { runtimeTokenCiphertext: true },
     })
     if (!workflow?.runtimeTokenCiphertext) {
-      return c.json(
-        { error: 'runtime token not provisioned', code: 'NOT_FOUND' },
-        404,
-      )
+      return c.json({ error: 'runtime token not provisioned', code: 'NOT_FOUND' }, 404)
     }
 
     const token = await decryptRuntimeToken(workflow.runtimeTokenCiphertext)
@@ -216,15 +275,20 @@ workflowInternalHandler.patch(
     if (!existing) {
       return c.json({ error: 'execution not found', code: 'NOT_FOUND' }, 404)
     }
+    // Tenant confinement (Unit 7): a per-tenant token may only write back to
+    // its own tenant's executions. Answered like a missing row, and BEFORE
+    // transition validation so a cross-tenant probe can't learn row state
+    // from an INVALID_TRANSITION 400.
+    if (deniedForTenant(c.get('brokerAuth'), existing.tenantId)) {
+      logger.warn('broker.patch_denied_cross_tenant', { executionId })
+      return c.json({ error: 'execution not found', code: 'NOT_FOUND' }, 404)
+    }
 
     const fromStatus = existing.status as WorkflowExecutionStatus
     const toStatus = body.status as WorkflowExecutionStatus
 
     // Idempotent terminal: same terminal status already recorded → no-op.
-    if (
-      TERMINAL_STATUSES.has(fromStatus) &&
-      fromStatus === toStatus
-    ) {
+    if (TERMINAL_STATUSES.has(fromStatus) && fromStatus === toStatus) {
       logger.info('broker.patch.idempotent_noop', {
         executionId,
         status: fromStatus,
@@ -247,8 +311,7 @@ workflowInternalHandler.patch(
       if (toStatus === 'QUEUED') return false
       if (TERMINAL_STATUSES.has(fromStatus)) return false
       if (fromStatus === 'QUEUED') return toStatus === 'RUNNING' || TERMINAL_STATUSES.has(toStatus)
-      if (fromStatus === 'RUNNING')
-        return toStatus === 'RUNNING' || TERMINAL_STATUSES.has(toStatus)
+      if (fromStatus === 'RUNNING') return toStatus === 'RUNNING' || TERMINAL_STATUSES.has(toStatus)
       return false
     })()
     if (!valid) {
@@ -322,3 +385,122 @@ workflowInternalHandler.patch(
     return c.json({ data: updated })
   },
 )
+
+// ---------------------------------------------------------------------------
+// GET /tenant-workflows
+//
+// Runner artifact discovery (Phase 3 Unit 8). The tenant-runner container
+// holds NO AWS credentials — this endpoint is its only path to artifacts:
+// it lists the tenant's `executable: true` workflows together with the
+// integrity digest recorded at finalize and a short-lived presigned GET URL
+// per artifact. The runner re-hashes each download against `artifactSha256`
+// before unpacking (the Unit 6 TOCTOU defence); rows without a digest are
+// excluded here because the runner could never verify them.
+//
+// Tenant confinement (same posture as the other two endpoints): a `wbk_`
+// token is pinned to its own tenant — a `tenantId` query param is only
+// accepted when it matches (anything else is a 400, leaking nothing about
+// other tenants). The shared secret must say which tenant it wants.
+//
+// Request:  GET /tenant-workflows[?tenantId=<uuid>]
+// Response: { data: [{ id, name, version, entryPoints, artifactSha256,
+//             artifactSizeBytes, createdAt, downloadUrl,
+//             downloadUrlExpiresInSeconds }] } | 400 | 401
+// ---------------------------------------------------------------------------
+
+/** TTL baked into lib/documents-s3.ts presignDownload — surfaced to the
+ * runner so it can reason about staleness without parsing the URL. */
+const DOWNLOAD_URL_TTL_SECONDS = 5 * 60
+
+/** Minimal shape pulled out of the stored (finalize-validated) manifest.
+ * A row whose manifest somehow lacks entry points is unusable by the runner
+ * and is skipped with a warning rather than failing the whole listing. */
+const ManifestEntryPoints = z.object({ entryPoints: z.array(z.string()).min(1) })
+
+workflowInternalHandler.get('/tenant-workflows', async (c) => {
+  const auth = c.get('brokerAuth')
+  const requestedTenantId = c.req.query('tenantId')
+
+  let tenantId: string
+  if (auth?.kind === 'tenant') {
+    // A per-tenant token may only ever list its own tenant. An explicit
+    // param is tolerated only when it agrees — anything else is rejected
+    // without revealing whether the other tenant exists.
+    if (requestedTenantId !== undefined && requestedTenantId !== auth.tenantId) {
+      return c.json(
+        { error: 'tenantId does not match the presented token', code: 'VALIDATION_ERROR' },
+        400,
+      )
+    }
+    tenantId = auth.tenantId
+  } else {
+    // Shared secret: full access, but it must say which tenant it wants.
+    const parsed = z.string().uuid().safeParse(requestedTenantId)
+    if (!parsed.success) {
+      return c.json(
+        { error: 'tenantId query param (uuid) is required', code: 'VALIDATION_ERROR' },
+        400,
+      )
+    }
+    tenantId = parsed.data
+  }
+
+  // Base client on purpose: this router sits outside the tenant middleware,
+  // and the where-clause IS the tenant scope (mirrors the other endpoints).
+  const rows = await basePrisma.workflow.findMany({
+    where: {
+      tenantId,
+      executable: true,
+      // executable:true implies a Unit-6 finalize, but the digest is what
+      // the runner's whole security model hangs on — filter explicitly.
+      artifactSha256: { not: null },
+    },
+    select: {
+      id: true,
+      name: true,
+      version: true,
+      manifest: true,
+      artifactKey: true,
+      artifactSha256: true,
+      artifactSizeBytes: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+
+  const data = []
+  for (const row of rows) {
+    const manifest = ManifestEntryPoints.safeParse(row.manifest)
+    if (!manifest.success) {
+      logger.warn('broker.tenant_workflows.row_skipped_no_entry_points', {
+        workflowId: row.id,
+        tenantId,
+      })
+      continue
+    }
+    data.push({
+      id: row.id,
+      name: row.name,
+      version: row.version,
+      entryPoints: manifest.data.entryPoints,
+      artifactSha256: row.artifactSha256,
+      artifactSizeBytes: row.artifactSizeBytes,
+      createdAt: row.createdAt.toISOString(),
+      // The presigned URL is the runner's entire authorization to the
+      // artifact bytes; the raw S3 key stays internal (it is embedded in
+      // the signed URL by construction, but never exposed as a field).
+      downloadUrl: await presignDownload(row.artifactKey),
+      downloadUrlExpiresInSeconds: DOWNLOAD_URL_TTL_SECONDS,
+    })
+  }
+
+  logger.info('broker.tenant_workflows.listed', {
+    tenantId,
+    count: data.length,
+    authKind: auth?.kind ?? 'unknown',
+  })
+
+  // Presigned URLs are short-lived credentials — keep every cache out.
+  c.header('Cache-Control', 'no-store')
+  return c.json({ data })
+})

@@ -42,6 +42,7 @@ function makeTenant(overrides: Partial<TenantDetail> = {}): TenantDetail {
     contactName: null,
     contactEmail: null,
     isPlatformTenant: false,
+    workflowsDisabled: false,
     createdAt: '2025-01-01T00:00:00.000Z',
     updatedAt: '2025-01-01T00:00:00.000Z',
     deletedAt: null,

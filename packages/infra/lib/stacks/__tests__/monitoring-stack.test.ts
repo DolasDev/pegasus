@@ -25,6 +25,34 @@ function synthMonitoringStackWithoutDlq() {
   return Template.fromStack(stack)
 }
 
+function synthMonitoringStackWithWorker() {
+  const app = new cdk.App()
+  const stack = new MonitoringStack(app, 'TestMonitoringWorker', {
+    lambdaFunctionName: 'test-api-function',
+    httpApiId: 'abc123def4',
+    httpApiStage: '$default',
+    ringcentralCaptureDlqName: 'test-rc-capture-dlq',
+    alarmEmail: 'alerts@example.com',
+    temporalWorkerClusterName: 'pegasus-temporal-worker-staging',
+    temporalWorkerServiceName: 'pegasus-temporal-worker-staging',
+  })
+  return Template.fromStack(stack)
+}
+
+function synthMonitoringStackWithQueries() {
+  const app = new cdk.App()
+  const stack = new MonitoringStack(app, 'TestMonitoringQueries', {
+    lambdaFunctionName: 'test-api-function',
+    httpApiId: 'abc123def4',
+    httpApiStage: '$default',
+    alarmEmail: 'alerts@example.com',
+    apiLogGroupName: '/aws/lambda/test-api-function',
+    cronLogGroupNames: ['/aws/lambda/cron-one', '/aws/lambda/cron-two'],
+    temporalWorkerLogGroupName: '/pegasus/staging/temporal-worker',
+  })
+  return Template.fromStack(stack)
+}
+
 describe('MonitoringStack — SNS topic', () => {
   it('creates exactly one SNS topic for alarm notifications', () => {
     const template = synthMonitoringStack()
@@ -59,7 +87,10 @@ describe('MonitoringStack — OK actions', () => {
   it('wires every alarm with both AlarmActions and OKActions', () => {
     const template = synthMonitoringStack()
     const alarms = template.findResources('AWS::CloudWatch::Alarm')
-    expect(Object.keys(alarms)).toHaveLength(11)
+    // 11 original + 4 workflow-plane (Unit 11) + 2 account-wide (throttles,
+    // errors) = 17. No worker-down alarm here (default synth has no worker
+    // props); reconcile alarm is Unit 11's, not duplicated by this plan.
+    expect(Object.keys(alarms)).toHaveLength(17)
     for (const [id, alarm] of Object.entries(alarms)) {
       expect(alarm['Properties']?.['AlarmActions'], `${id} AlarmActions`).toHaveLength(1)
       expect(alarm['Properties']?.['OKActions'], `${id} OKActions`).toHaveLength(1)
@@ -203,16 +234,23 @@ describe('MonitoringStack — AVP policy-store count alarms', () => {
   })
 })
 
-describe('MonitoringStack — CloudWatch dashboard', () => {
-  it('creates exactly one CloudWatch dashboard', () => {
+describe('MonitoringStack — CloudWatch dashboards', () => {
+  it('creates exactly two CloudWatch dashboards', () => {
     const template = synthMonitoringStack()
-    template.resourceCountIs('AWS::CloudWatch::Dashboard', 1)
+    template.resourceCountIs('AWS::CloudWatch::Dashboard', 2)
   })
 
-  it('names the dashboard correctly', () => {
+  it('names the operations dashboard correctly', () => {
     const template = synthMonitoringStack()
     template.hasResourceProperties('AWS::CloudWatch::Dashboard', {
       DashboardName: 'Pegasus-Operations',
+    })
+  })
+
+  it('names the workflows dashboard correctly', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Dashboard', {
+      DashboardName: 'Pegasus-Workflows',
     })
   })
 })
@@ -278,13 +316,217 @@ describe('MonitoringStack — RingCentral capture-health alarms', () => {
 })
 
 describe('MonitoringStack — alarm count', () => {
-  it('creates 11 alarms (3 service + 2 AVP + 5 RingCentral gauges + 1 capture DLQ)', () => {
+  it('creates 17 alarms (3 service + 2 AVP + 5 RC gauges + 1 DLQ + 4 workflow-plane + 2 account-wide)', () => {
     const template = synthMonitoringStack()
-    template.resourceCountIs('AWS::CloudWatch::Alarm', 11)
+    template.resourceCountIs('AWS::CloudWatch::Alarm', 17)
   })
 
-  it('creates 10 alarms when the capture DLQ name is absent', () => {
+  it('creates 16 alarms when the capture DLQ name is absent', () => {
     const template = synthMonitoringStackWithoutDlq()
-    template.resourceCountIs('AWS::CloudWatch::Alarm', 10)
+    template.resourceCountIs('AWS::CloudWatch::Alarm', 16)
+  })
+
+  it('creates 18 alarms when the temporal worker props are provided (+1 RunningTaskCount)', () => {
+    const template = synthMonitoringStackWithWorker()
+    template.resourceCountIs('AWS::CloudWatch::Alarm', 18)
+  })
+})
+
+describe('MonitoringStack — workflow execution-plane alarms (Phase 3 Unit 11)', () => {
+  it('alarms on any tenant-runner launch failure in 15 min', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-tenant-runner-launch-failed',
+      Namespace: 'Pegasus/Workflows',
+      MetricName: 'TenantRunnerLaunchFailed',
+      Threshold: 0,
+      ComparisonOperator: 'GreaterThanThreshold',
+      TreatMissingData: 'notBreaching',
+    })
+  })
+
+  it('alarms on a non-zero domain-event dispatch backlog in 5 min', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-domain-event-dispatch-backlog',
+      Namespace: 'Pegasus/Workflows',
+      MetricName: 'DomainEventDispatchBacklog',
+      Threshold: 0,
+      ComparisonOperator: 'GreaterThanThreshold',
+      TreatMissingData: 'notBreaching',
+    })
+  })
+
+  it('alarms when more than 5 executions are reconciled in an hour (elevated crash rate)', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-workflow-execution-reconciled',
+      Namespace: 'Pegasus/Workflows',
+      MetricName: 'WorkflowExecutionReconciled',
+      Threshold: 5,
+      ComparisonOperator: 'GreaterThanThreshold',
+      TreatMissingData: 'notBreaching',
+    })
+  })
+
+  it('alarms on any trigger skipped with START_FAILED reason in 15 min', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-workflow-trigger-skipped-start-failed',
+      Namespace: 'Pegasus/Workflows',
+      MetricName: 'WorkflowTriggerSkipped',
+      Threshold: 0,
+      ComparisonOperator: 'GreaterThanThreshold',
+      TreatMissingData: 'notBreaching',
+    })
+  })
+
+  it('wires all four workflow alarms to the SNS topic', () => {
+    const template = synthMonitoringStack()
+    for (const name of [
+      'pegasus-tenant-runner-launch-failed',
+      'pegasus-domain-event-dispatch-backlog',
+      'pegasus-workflow-execution-reconciled',
+      'pegasus-workflow-trigger-skipped-start-failed',
+    ]) {
+      template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+        AlarmName: name,
+        AlarmActions: Match.arrayWith([Match.objectLike({})]),
+        OKActions: Match.arrayWith([Match.objectLike({})]),
+      })
+    }
+  })
+})
+
+describe('MonitoringStack — account-wide Lambda Throttles alarm (Phase 1)', () => {
+  it('creates an account-wide Throttles alarm on the AWS/Lambda namespace without dimensions', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-lambda-throttles-account',
+      Namespace: 'AWS/Lambda',
+      MetricName: 'Throttles',
+      Statistic: 'Sum',
+      Threshold: 0,
+      EvaluationPeriods: 1,
+      ComparisonOperator: 'GreaterThanThreshold',
+      TreatMissingData: 'notBreaching',
+    })
+  })
+
+  it('wires the account-wide Throttles alarm to the SNS topic', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-lambda-throttles-account',
+      AlarmActions: Match.arrayWith([Match.objectLike({})]),
+      OKActions: Match.arrayWith([Match.objectLike({})]),
+    })
+  })
+})
+
+describe('MonitoringStack — account-wide Lambda Errors alarm (Phase 1)', () => {
+  it('creates an account-wide Lambda Errors alarm covering all functions', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-lambda-errors-account',
+      Namespace: 'AWS/Lambda',
+      MetricName: 'Errors',
+      Statistic: 'Sum',
+      Threshold: 0,
+      EvaluationPeriods: 5,
+      DatapointsToAlarm: 3,
+      ComparisonOperator: 'GreaterThanThreshold',
+      TreatMissingData: 'notBreaching',
+    })
+  })
+
+  it('wires the account-wide Errors alarm to the SNS topic', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-lambda-errors-account',
+      AlarmActions: Match.arrayWith([Match.objectLike({})]),
+      OKActions: Match.arrayWith([Match.objectLike({})]),
+    })
+  })
+})
+
+describe('MonitoringStack — Temporal worker RunningTaskCount alarm (Phase 1)', () => {
+  it('creates a RunningTaskCount alarm when temporal worker props are provided', () => {
+    const template = synthMonitoringStackWithWorker()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-temporal-worker-down',
+      Namespace: 'ECS/ContainerInsights',
+      MetricName: 'RunningTaskCount',
+      Statistic: 'Minimum',
+      Threshold: 1,
+      EvaluationPeriods: 5,
+      DatapointsToAlarm: 5,
+      ComparisonOperator: 'LessThanThreshold',
+      TreatMissingData: 'breaching',
+      Dimensions: [
+        { Name: 'ClusterName', Value: 'pegasus-temporal-worker-staging' },
+        { Name: 'ServiceName', Value: 'pegasus-temporal-worker-staging' },
+      ],
+    })
+  })
+
+  it('omits the RunningTaskCount alarm when temporal worker props are absent', () => {
+    const template = synthMonitoringStackWithoutDlq()
+    const alarms = template.findResources('AWS::CloudWatch::Alarm', {
+      Properties: { AlarmName: 'pegasus-temporal-worker-down' },
+    })
+    expect(Object.keys(alarms)).toHaveLength(0)
+  })
+
+  it('wires the RunningTaskCount alarm to the SNS topic', () => {
+    const template = synthMonitoringStackWithWorker()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-temporal-worker-down',
+      AlarmActions: Match.arrayWith([Match.objectLike({})]),
+      OKActions: Match.arrayWith([Match.objectLike({})]),
+    })
+  })
+})
+
+describe('MonitoringStack — Logs Insights query definitions (Phase 2)', () => {
+  it('creates 4 query definitions when all log-group props are provided', () => {
+    const template = synthMonitoringStackWithQueries()
+    template.resourceCountIs('AWS::Logs::QueryDefinition', 4)
+  })
+
+  it('creates the api-errors-by-route query scoped to the api log group', () => {
+    const template = synthMonitoringStackWithQueries()
+    template.hasResourceProperties('AWS::Logs::QueryDefinition', {
+      Name: 'pegasus/api-errors-by-route',
+      LogGroupNames: ['/aws/lambda/test-api-function'],
+    })
+  })
+
+  it('creates the trace-by-correlation-id query scoped to the api log group', () => {
+    const template = synthMonitoringStackWithQueries()
+    template.hasResourceProperties('AWS::Logs::QueryDefinition', {
+      Name: 'pegasus/trace-by-correlation-id',
+      LogGroupNames: ['/aws/lambda/test-api-function'],
+    })
+  })
+
+  it('creates the cron-failures query scoped to the cron log groups', () => {
+    const template = synthMonitoringStackWithQueries()
+    template.hasResourceProperties('AWS::Logs::QueryDefinition', {
+      Name: 'pegasus/cron-failures',
+      LogGroupNames: ['/aws/lambda/cron-one', '/aws/lambda/cron-two'],
+    })
+  })
+
+  it('creates the temporal-worker-errors query scoped to the worker log group', () => {
+    const template = synthMonitoringStackWithQueries()
+    template.hasResourceProperties('AWS::Logs::QueryDefinition', {
+      Name: 'pegasus/temporal-worker-errors',
+      LogGroupNames: ['/pegasus/staging/temporal-worker'],
+    })
+  })
+
+  it('creates no query definitions when log-group props are absent', () => {
+    const template = synthMonitoringStackWithoutDlq()
+    template.resourceCountIs('AWS::Logs::QueryDefinition', 0)
   })
 })

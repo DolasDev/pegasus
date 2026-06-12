@@ -2,15 +2,18 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   AlertCircle,
+  CheckCircle2,
   Copy,
   Download,
   Globe,
+  Info,
   Loader2,
   Lock,
   Play,
   Plus,
   Trash2,
   Workflow as WorkflowIcon,
+  XCircle,
 } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
@@ -49,6 +52,75 @@ import { parseTriggerFilter } from '@/lib/trigger-filter'
 // /me/permissions contract only allows [a-z_]+:[a-z_]+ strings).
 const MANAGE_TRIGGERS_PERMISSION = 'workflow:manage_triggers'
 
+// ---------------------------------------------------------------------------
+// Executability helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the effective executability state of a workflow:
+ *   'curated'       — GLOBAL platform-library workflow (runs on the shared
+ *                     stdlib worker; always executable).
+ *   'executable'    — TENANT-visibility workflow whose artifact passed
+ *                     integrity validation (executable=true).
+ *   'not-executable'— TENANT-visibility workflow that has not yet been
+ *                     validated (pre-Unit-6 upload or upload that failed
+ *                     validation); must be re-uploaded to become executable.
+ */
+function workflowExecutability(workflow: Workflow): 'curated' | 'executable' | 'not-executable' {
+  if (workflow.visibility === 'GLOBAL') return 'curated'
+  if (workflow.executable) return 'executable'
+  return 'not-executable'
+}
+
+function ExecutabilityBadge({ workflow }: { workflow: Workflow }) {
+  const state = workflowExecutability(workflow)
+  if (state === 'curated') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+        <CheckCircle2 className="h-3 w-3" />
+        Curated
+      </span>
+    )
+  }
+  if (state === 'executable') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+        <CheckCircle2 className="h-3 w-3" />
+        Executable
+      </span>
+    )
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+      title="This workflow has not passed artifact validation. Re-upload the artifact to enable execution."
+    >
+      <XCircle className="h-3 w-3" />
+      Not executable
+    </span>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Friendly run-error messages for limit / kill-switch outcomes
+// ---------------------------------------------------------------------------
+
+/** Translates an API error code or message into a friendly human string. */
+function friendlyRunError(error: unknown): string {
+  if (!(error instanceof ApiError)) return 'Failed to start run.'
+  // Map structured error codes to specific messages (spec: Resolved #3 + Unit 11)
+  if (error.code === 'CONCURRENCY_LIMIT') {
+    return 'Your account has 5 concurrent executions running. Wait for one to finish before starting another.'
+  }
+  if (error.code === 'DAILY_QUOTA_EXCEEDED') {
+    return 'Your account has reached the daily execution quota. The quota resets at midnight UTC.'
+  }
+  if (error.code === 'WORKFLOWS_DISABLED') {
+    return 'Workflow execution is currently disabled for your account. Contact your platform administrator.'
+  }
+  return error.message || 'Failed to start run.'
+}
+
 // SCHEDULE rows get a purple badge; the shared Badge component has no purple
 // variant, so this className mirrors its success/warning/info palette style.
 const SCHEDULE_BADGE_CLASS = 'border-transparent bg-purple-100 text-purple-800'
@@ -79,8 +151,7 @@ function RunWorkflowDialog({ workflow, onClose }: { workflow: Workflow; onClose:
 
   let runError: string | null = null
   if (runMutation.error) {
-    runError =
-      runMutation.error instanceof ApiError ? runMutation.error.message : 'Failed to start run.'
+    runError = friendlyRunError(runMutation.error)
   }
 
   function handleRun() {
@@ -677,6 +748,13 @@ function WorkflowRow({ workflow }: { workflow: Workflow }) {
   const canRun = perms.has('workflow:run')
 
   const isGlobal = workflow.visibility === 'GLOBAL'
+  const executability = workflowExecutability(workflow)
+  // The Run button is shown when the user has the run permission, but
+  // disabled (with tooltip) for not-executable tenant workflows.
+  const runDisabled = executability === 'not-executable'
+
+  const requiredActions: string[] = workflow.manifest.requiredActions ?? []
+  const timeoutSeconds: number | undefined = workflow.manifest.timeoutSeconds
 
   async function handleDownload() {
     setDownloading(true)
@@ -710,9 +788,34 @@ function WorkflowRow({ workflow }: { workflow: Workflow }) {
             <Badge variant="outline" className="font-mono text-xs">
               {workflow.version}
             </Badge>
+            <ExecutabilityBadge workflow={workflow} />
           </div>
           {workflow.manifest.description && (
             <p className="text-sm text-muted-foreground">{workflow.manifest.description}</p>
+          )}
+          {/* Manifest metadata — requested permissions + timeout */}
+          {requiredActions.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              <span className="font-medium">Required permissions:</span>{' '}
+              {requiredActions.map((a) => (
+                <code key={a} className="mr-1 rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
+                  {a}
+                </code>
+              ))}
+            </p>
+          )}
+          {timeoutSeconds !== undefined && (
+            <p className="text-xs text-muted-foreground">
+              <span className="font-medium">Timeout:</span> {timeoutSeconds}s
+            </p>
+          )}
+          {/* Hint for not-executable tenant workflows */}
+          {executability === 'not-executable' && (
+            <p className="mt-1 flex items-center gap-1 text-xs text-amber-700">
+              <Info className="h-3 w-3 shrink-0" />
+              This workflow has not passed artifact validation. Re-upload the artifact to enable
+              execution.
+            </p>
           )}
           <p className="text-xs text-muted-foreground">
             Uploaded {new Date(workflow.createdAt).toLocaleString()}
@@ -730,10 +833,23 @@ function WorkflowRow({ workflow }: { workflow: Workflow }) {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {canRun && (
-            <Button variant="default" size="sm" onClick={() => setRunDialogOpen(true)}>
-              <Play className="mr-1.5 h-3.5 w-3.5" />
-              Run
-            </Button>
+            <span
+              title={
+                runDisabled
+                  ? 'Re-upload the artifact to enable execution for this workflow.'
+                  : undefined
+              }
+            >
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => setRunDialogOpen(true)}
+                disabled={runDisabled}
+              >
+                <Play className="mr-1.5 h-3.5 w-3.5" />
+                Run
+              </Button>
+            </span>
           )}
           {isGlobal && (
             <Button

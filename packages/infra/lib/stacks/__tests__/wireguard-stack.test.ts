@@ -71,9 +71,7 @@ describe('WireGuardStack — EC2 hub', () => {
 
   it('still creates the named pegasus-wireguard-hub EIP (Phase 2 NAT EIP is additive, not a replacement)', () => {
     synth().hasResourceProperties('AWS::EC2::EIP', {
-      Tags: Match.arrayWith([
-        Match.objectLike({ Key: 'Name', Value: 'pegasus-wireguard-hub' }),
-      ]),
+      Tags: Match.arrayWith([Match.objectLike({ Key: 'Name', Value: 'pegasus-wireguard-hub' })]),
     })
   })
 
@@ -328,5 +326,73 @@ describe('WireGuardStack — CloudWatch alarms', () => {
         }),
       ]),
     })
+  })
+})
+
+describe('WireGuardStack — tenant-runner plane (Phase 3 Unit 9)', () => {
+  it('enables VPC flow logs (ALL traffic) on both temporal-worker-egress subnets', () => {
+    const template = synth()
+    // One FlowLog per worker-egress subnet (2 AZs), each capturing ALL
+    // traffic — Resolved decision #2: runners get open egress, flow logs
+    // are the compensating audit control.
+    template.resourceCountIs('AWS::EC2::FlowLog', 2)
+    const flowLogs = template.findResources('AWS::EC2::FlowLog')
+    for (const flowLog of Object.values(flowLogs)) {
+      expect(flowLog.Properties?.ResourceType).toBe('Subnet')
+      expect(flowLog.Properties?.TrafficType).toBe('ALL')
+      expect(flowLog.Properties?.LogDestinationType ?? 'cloud-watch-logs').toBe('cloud-watch-logs')
+    }
+  })
+
+  it('flow logs target the temporal-worker-egress subnets specifically', () => {
+    const template = synth().toJSON() as {
+      Resources?: Record<string, { Type: string; Properties?: { ResourceId?: { Ref?: string } } }>
+    }
+    const flowLogs = Object.values(template.Resources ?? {}).filter(
+      (r) => r.Type === 'AWS::EC2::FlowLog',
+    )
+    for (const flowLog of flowLogs) {
+      // The subnet refs must point at temporalworkeregress subnets, not the
+      // hub-public or private-lambda groups.
+      expect(flowLog.Properties?.ResourceId?.Ref ?? '').toMatch(/temporalworkeregress/i)
+    }
+  })
+
+  it('retains the flow-log group for three months (audit trail, unnamed to avoid orphan collisions)', () => {
+    const template = synth().toJSON() as {
+      Resources?: Record<
+        string,
+        {
+          Type: string
+          DeletionPolicy?: string
+          Properties?: { RetentionInDays?: number; LogGroupName?: string }
+        }
+      >
+    }
+    const groups = Object.entries(template.Resources ?? {}).filter(
+      ([id, r]) => r.Type === 'AWS::Logs::LogGroup' && id.startsWith('TenantRunnerFlowLogGroup'),
+    )
+    expect(groups).toHaveLength(1)
+    const [, group] = groups[0]!
+    expect(group.Properties?.RetentionInDays).toBe(90)
+    // Unnamed by design: a rollback-orphaned retained copy can never block a
+    // retry with a name collision.
+    expect(group.Properties?.LogGroupName).toBeUndefined()
+    expect(group.DeletionPolicy).toBe('Retain')
+  })
+
+  it('creates the egress-only pegasus-tenant-runner security group (ASCII description)', () => {
+    const template = synth()
+    template.hasResourceProperties('AWS::EC2::SecurityGroup', {
+      GroupName: 'pegasus-tenant-runner',
+    })
+    const sgs = template.findResources('AWS::EC2::SecurityGroup')
+    const runnerSg = Object.values(sgs).find(
+      (sg) => sg.Properties?.GroupName === 'pegasus-tenant-runner',
+    )
+    // Egress-only: no ingress rules at all.
+    expect(runnerSg?.Properties?.SecurityGroupIngress).toBeUndefined()
+    // eslint-disable-next-line no-control-regex
+    expect(String(runnerSg?.Properties?.GroupDescription ?? '')).toMatch(/^[\x00-\x7F]*$/)
   })
 })

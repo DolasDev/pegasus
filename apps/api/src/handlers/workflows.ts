@@ -39,7 +39,8 @@ import type { WorkflowExecutionRow } from '../repositories/workflow-execution.re
 import { createWorkflowTriggerRepository } from '../repositories/workflow-trigger.repository'
 import type { WorkflowTriggerRow } from '../repositories/workflow-trigger.repository'
 import type { AppEnv } from '../types'
-import { presignDownload, presignUpload } from '../lib/documents-s3'
+import { getObjectBuffer, headObject, presignDownload, presignUpload } from '../lib/documents-s3'
+import { MAX_EXECUTABLE_ARTIFACT_BYTES, validateWorkflowArtifact } from '../lib/workflow-artifact'
 import {
   provisionRuntimeServiceAccount,
   startWorkflowExecution,
@@ -52,7 +53,6 @@ import { logger } from '../lib/logger'
 // Validation
 // ---------------------------------------------------------------------------
 
-const MAX_ARTIFACT_BYTES = 25 * 1024 * 1024 // 25 MB
 const ARTIFACT_MIME_TYPE = 'application/zip'
 const UPLOAD_URL_TTL_SECONDS = 15 * 60
 const DOWNLOAD_URL_TTL_SECONDS = 5 * 60
@@ -93,12 +93,43 @@ const ManifestSchema = z.object({
         }
       }
     }),
+  // Per-execution Temporal workflow timeout in seconds (Phase 3 Unit 10).
+  // Optional; when present the runner honours it as the maximum wall-clock
+  // budget for the execution (default: 900 s = 15 min). The manifest may
+  // LOWER the default, never raise it — values > 900 are rejected at finalize
+  // (422 VALIDATION_ERROR) rather than silently clamped, so authors know their
+  // manifest is out of range. Absent from the manifest = use the platform
+  // default (900 s). Zero and negative values are also rejected.
+  // Only applies to TENANT_RUNNER-routed executions; curated (STDLIB) runs are
+  // unaffected.
+  timeoutSeconds: z
+    .number()
+    .int({ message: 'timeoutSeconds must be an integer' })
+    .min(1, { message: 'timeoutSeconds must be at least 1' })
+    .max(900, {
+      message:
+        'timeoutSeconds exceeds the platform maximum of 900 s — the manifest may lower the default, not raise it',
+    })
+    .optional(),
+  // v1 no-arbitrary-deps decision (Phase 3): the manifest deliberately has no
+  // dependency field. Reject any attempt to declare one explicitly rather
+  // than silently stripping it — the artifact-level check in
+  // lib/workflow-artifact.ts catches requirement files inside the zip.
+  dependencies: z
+    .undefined({
+      message:
+        'dependencies are not supported — workflows may use the Python stdlib and the Pegasus SDK only',
+    })
+    .optional(),
 })
 
 const UploadUrlBody = z.object({
   name: z.string().regex(NAME_REGEX),
   version: z.string().regex(VERSION_REGEX),
-  sizeBytes: z.number().int().positive().max(MAX_ARTIFACT_BYTES),
+  // Same 10 MB cap the finalize HEAD pre-check enforces (Resolved decision
+  // #3) — reject oversized artifacts before the bytes are ever uploaded
+  // instead of letting the upload succeed and finalize fail.
+  sizeBytes: z.number().int().positive().max(MAX_EXECUTABLE_ARTIFACT_BYTES),
 })
 
 const FinalizeBody = z.object({
@@ -217,6 +248,11 @@ type WorkflowResponse = {
   createdByUserId: string
   forkedFromWorkflowId: string | null
   forkedFromVersion: string | null
+  // Integrity facts (Phase 3 Unit 6) — additive. Null/false on rows finalized
+  // before artifact validation existed.
+  artifactSha256: string | null
+  artifactSizeBytes: number | null
+  executable: boolean
   createdAt: string
   updatedAt: string
 }
@@ -306,6 +342,9 @@ function toResponse(row: WorkflowRow): WorkflowResponse {
     createdByUserId: row.createdByUserId,
     forkedFromWorkflowId: row.forkedFromWorkflowId,
     forkedFromVersion: row.forkedFromVersion,
+    artifactSha256: row.artifactSha256,
+    artifactSizeBytes: row.artifactSizeBytes,
+    executable: row.executable,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }
@@ -408,8 +447,14 @@ workflowsHandler.post(
 // Finalize an upload by recording the row. Visibility is derived from the
 // uploading tenant's isPlatformTenant flag — the client cannot influence it.
 //
+// Since Phase 3 Unit 6 the artifact zip is validated before the row is
+// written: S3 HEAD size pre-check (10 MB cap → 422 ARTIFACT_TOO_LARGE), then
+// GET + integrity validation (sha256, zip structure, entry-point resolution,
+// no pip dependencies → 422 ARTIFACT_INVALID with a `problems` array). On
+// success the row records artifactSha256/artifactSizeBytes/executable=true.
+//
 // Request:  { workflowId, manifest }
-// Response: { data: WorkflowResponse } (201) | 409 (duplicate)
+// Response: { data: WorkflowResponse } (201) | 409 (duplicate) | 422 (artifact)
 // ---------------------------------------------------------------------------
 workflowsHandler.post(
   '/',
@@ -438,6 +483,66 @@ workflowsHandler.post(
     }
     const visibility: WorkflowVisibility = tenant.isPlatformTenant ? 'GLOBAL' : 'TENANT'
 
+    // ── Artifact integrity validation (Phase 3 Unit 6) ──────────────────────
+    // The zip must already be in S3 (the client PUT it via the presigned URL)
+    // and must pass validation BEFORE any row is written: a failed artifact
+    // leaves no workflow row at all.
+    const artifactKey = buildArtifactKey(tenantId, workflowId, manifest.version)
+
+    // Cheap HEAD pre-check so an oversized artifact is rejected without
+    // downloading it (Resolved decision #3: 10 MB cap is v1-blocking).
+    const head = await headObject(artifactKey)
+    if (!head) {
+      return c.json(
+        {
+          error: 'Artifact not found in storage — upload the zip before finalizing',
+          code: 'ARTIFACT_INVALID',
+          problems: ['artifact zip was never uploaded (or the upload URL expired)'],
+        },
+        422,
+      )
+    }
+    if (head.sizeBytes > MAX_EXECUTABLE_ARTIFACT_BYTES) {
+      return c.json(
+        {
+          error: `Artifact exceeds the ${MAX_EXECUTABLE_ARTIFACT_BYTES / (1024 * 1024)} MB size cap (got ${head.sizeBytes} bytes)`,
+          code: 'ARTIFACT_TOO_LARGE',
+        },
+        422,
+      )
+    }
+
+    const artifact = await getObjectBuffer(artifactKey)
+    // Re-check on the actual bytes — the object can change between HEAD and GET.
+    if (artifact.length > MAX_EXECUTABLE_ARTIFACT_BYTES) {
+      return c.json(
+        {
+          error: `Artifact exceeds the ${MAX_EXECUTABLE_ARTIFACT_BYTES / (1024 * 1024)} MB size cap (got ${artifact.length} bytes)`,
+          code: 'ARTIFACT_TOO_LARGE',
+        },
+        422,
+      )
+    }
+
+    const validation = validateWorkflowArtifact(artifact, manifest)
+    if (!validation.ok) {
+      logger.warn('Workflow artifact failed validation', {
+        workflowId,
+        tenantId,
+        name: manifest.name,
+        version: manifest.version,
+        problems: validation.problems,
+      })
+      return c.json(
+        {
+          error: 'Artifact failed validation',
+          code: 'ARTIFACT_INVALID',
+          problems: validation.problems,
+        },
+        422,
+      )
+    }
+
     // Create the workflow row and provision its runtime service account in one
     // transaction: the service-account TenantUser, its scoped vnd_ key, and the
     // KMS-encrypted credential columns all commit together or roll back together.
@@ -450,9 +555,15 @@ workflowsHandler.post(
           name: manifest.name,
           version: manifest.version,
           visibility,
-          artifactKey: buildArtifactKey(tenantId, workflowId, manifest.version),
+          artifactKey,
           manifest,
           createdByUserId: userId,
+          // Integrity facts from the validation above. `executable` records
+          // eligibility only — the run path keeps the curated-names gate
+          // until Unit 10.
+          artifactSha256: validation.sha256,
+          artifactSizeBytes: validation.sizeBytes,
+          executable: true,
         })
         // Returns the row with the runtime columns the provisioning step wrote.
         return provisionRuntimeServiceAccount(tx, {
@@ -676,10 +787,43 @@ workflowsHandler.post(
     if (result.outcome === 'NOT_EXECUTABLE') {
       return c.json(
         {
-          error: `Workflow "${workflow.name}" is not in the executable allowlist (Phase 2 runs curated stdlib workflows only)`,
+          error: `Workflow "${workflow.name}" is not executable — re-upload the artifact to enable execution`,
           code: 'WORKFLOW_NOT_EXECUTABLE',
         },
         400,
+      )
+    }
+
+    if (result.outcome === 'WORKFLOWS_DISABLED') {
+      return c.json(
+        {
+          error:
+            'Workflow execution is currently disabled for your account. Contact the platform administrator.',
+          code: 'WORKFLOWS_DISABLED',
+        },
+        423,
+      )
+    }
+
+    if (result.outcome === 'CONCURRENCY_LIMIT') {
+      return c.json(
+        {
+          error:
+            'Concurrent execution limit reached — this tenant already has the maximum number of active workflow executions. Wait for one to complete before starting another.',
+          code: 'CONCURRENCY_LIMIT',
+        },
+        429,
+      )
+    }
+
+    if (result.outcome === 'DAILY_QUOTA_EXCEEDED') {
+      return c.json(
+        {
+          error:
+            'Daily execution quota exceeded — this tenant has reached the maximum number of workflow executions for today (UTC). The quota resets at midnight UTC.',
+          code: 'DAILY_QUOTA_EXCEEDED',
+        },
+        429,
       )
     }
 

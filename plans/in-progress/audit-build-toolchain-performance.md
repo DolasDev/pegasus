@@ -96,7 +96,7 @@ Both hooks invoke `node node_modules/.bin/turbo` with whatever `node` is on PATH
 
 ### Phase 2 — Vercel Remote Cache (~45 min, one-time)
 
-- [ ] **P2.1 — Link the repo** (15 min). From repo root: `npx turbo login` then `npx turbo link` (creates/uses a Vercel team; writes gitignored `.turbo/config.json`). Confirm `.turbo` is gitignored (it is the existing local cache dir — verify `git check-ignore .turbo` before committing anything). _(code wiring landed; Vercel login/link + secrets are pending user-manual steps)_
+- [x] **P2.1 — Link the repo** (15 min). From repo root: `npx turbo login` then `npx turbo link` (creates/uses a Vercel team; writes gitignored `.turbo/config.json`). Confirm `.turbo` is gitignored (it is the existing local cache dir — verify `git check-ignore .turbo` before committing anything). _(done 2026-06-11: linked to team steve-dolatowski-s-projects; TURBO_TOKEN/TURBO_REMOTE_CACHE_SIGNATURE_KEY secrets + TURBO_TEAM variable set; remote replay verified locally — FULL TURBO after local-cache wipe)_
 - [x] **P2.2 — Enable artifact signing** (10 min). In `turbo.json` add:
 
   ```json
@@ -105,7 +105,7 @@ Both hooks invoke `node node_modules/.bin/turbo` with whatever `node` is on PATH
 
   Generate a key (`openssl rand -hex 32`) and export `TURBO_REMOTE_CACHE_SIGNATURE_KEY` in the local shell profile. Signing makes cache poisoning require the key, not just a leaked read/write token.
 
-- [ ] **P2.3 — Specify CI env vars (wiring is Unit 1's edit)** (5 min + Unit 1). CI jobs that run turbo (`ci.yml` typecheck/lint/test jobs, `_deploy.yml` build step) need: _(code wiring landed; Vercel login/link + secrets are pending user-manual steps)_
+- [x] **P2.3 — Specify CI env vars (wiring is Unit 1's edit)** (5 min + Unit 1). CI jobs that run turbo (`ci.yml` typecheck/lint/test jobs, `_deploy.yml` build step) need: _(done 2026-06-11: linked to team steve-dolatowski-s-projects; TURBO_TOKEN/TURBO_REMOTE_CACHE_SIGNATURE_KEY secrets + TURBO_TEAM variable set; remote replay verified locally — FULL TURBO after local-cache wipe)_
   - secret `TURBO_TOKEN` (scoped Vercel token), secret `TURBO_REMOTE_CACHE_SIGNATURE_KEY`, repo variable `TURBO_TEAM` (team slug).
   - `gh secret set TURBO_TOKEN`, `gh secret set TURBO_REMOTE_CACHE_SIGNATURE_KEY`, `gh variable set TURBO_TEAM`.
     Once present, turbo picks them up from env — typecheck/lint/build replay warm artifacts across CI runs and from local pushes that already ran the same hash.

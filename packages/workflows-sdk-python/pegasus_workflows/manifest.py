@@ -17,11 +17,17 @@ from pathlib import Path
 __all__ = [
     "NAME_REGEX",
     "VERSION_REGEX",
+    "MANIFEST_TIMEOUT_MAX_SECONDS",
     "Manifest",
     "ManifestError",
     "load_manifest",
     "validate_manifest_fields",
 ]
+
+#: Maximum allowed value for ``timeout_seconds`` in the manifest. Mirrors the
+#: server's ``ManifestSchema.timeoutSeconds.max(900)`` (Phase 3 Unit 10).
+#: The manifest may LOWER the platform default (900 s), never raise it.
+MANIFEST_TIMEOUT_MAX_SECONDS = 900
 
 #: Allowed workflow names. Mirrors the server's ``NAME_REGEX``.
 NAME_REGEX = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -51,6 +57,11 @@ class Manifest:
         description: Optional human-readable description.
         required_actions: Cedar action ids the workflow needs at runtime.
             Defaults to an empty list.
+        timeout_seconds: Optional per-execution Temporal workflow timeout in
+            seconds (Phase 3 Unit 10). When set, the platform uses this value
+            instead of the default 900 s. Must be 1–900 (inclusive): the
+            manifest may LOWER the platform default, never raise it. Absent
+            from the TOML → use the platform default.
     """
 
     name: str
@@ -59,6 +70,7 @@ class Manifest:
     source_dir: str
     description: str | None = None
     required_actions: list[str] = field(default_factory=list)
+    timeout_seconds: int | None = None
 
     def to_api_manifest(self) -> dict[str, object]:
         """Return the dict shape the finalize endpoint expects.
@@ -74,6 +86,8 @@ class Manifest:
         }
         if self.description is not None:
             manifest["description"] = self.description
+        if self.timeout_seconds is not None:
+            manifest["timeoutSeconds"] = self.timeout_seconds
         return manifest
 
 
@@ -83,6 +97,7 @@ def validate_manifest_fields(
     entry_points: object,
     description: object = None,
     required_actions: object = None,
+    timeout_seconds: object = None,
 ) -> None:
     """Validate raw manifest field values, raising :class:`ManifestError`.
 
@@ -95,6 +110,7 @@ def validate_manifest_fields(
         entry_points: Candidate entry-point list.
         description: Optional description.
         required_actions: Optional list of Cedar action ids.
+        timeout_seconds: Optional per-execution timeout (1–900 seconds).
 
     Raises:
         ManifestError: If any field is missing or invalid.
@@ -122,6 +138,17 @@ def validate_manifest_fields(
                 raise ManifestError(
                     f"every required action must be a non-empty string (got {action!r})"
                 )
+    if timeout_seconds is not None:
+        if not isinstance(timeout_seconds, int) or isinstance(timeout_seconds, bool):
+            raise ManifestError(
+                f"timeout_seconds must be an integer (got {timeout_seconds!r})"
+            )
+        if timeout_seconds < 1 or timeout_seconds > MANIFEST_TIMEOUT_MAX_SECONDS:
+            raise ManifestError(
+                f"timeout_seconds must be between 1 and {MANIFEST_TIMEOUT_MAX_SECONDS} "
+                f"(got {timeout_seconds}) — the manifest may lower the platform default, "
+                "not raise it"
+            )
 
 
 def load_manifest(path: str | Path) -> list[Manifest]:
@@ -173,7 +200,10 @@ def load_manifest(path: str | Path) -> list[Manifest]:
         entry_points = entry.get("entry_points")
         description = entry.get("description")
         required_actions = entry.get("required_actions")
-        validate_manifest_fields(name, version, entry_points, description, required_actions)
+        timeout_seconds = entry.get("timeout_seconds")
+        validate_manifest_fields(
+            name, version, entry_points, description, required_actions, timeout_seconds
+        )
         source_dir = entry.get("source_dir", name)
         if not isinstance(source_dir, str) or source_dir == "":
             raise ManifestError(f"source_dir must be a non-empty string (got {source_dir!r})")
@@ -185,6 +215,7 @@ def load_manifest(path: str | Path) -> list[Manifest]:
                 source_dir=source_dir,
                 description=description,
                 required_actions=list(required_actions) if required_actions else [],
+                timeout_seconds=timeout_seconds,
             )
         )
 

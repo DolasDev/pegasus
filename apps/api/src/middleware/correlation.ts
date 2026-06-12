@@ -25,8 +25,11 @@ export async function correlationMiddleware(c: Context<AppEnv>, next: Next): Pro
   // emitted during this request lifecycle.
   logger.appendKeys({ correlationId, method: c.req.method, path: c.req.path })
 
-  await next()
-
-  // Clear per-request keys so they don't bleed into the next warm invocation.
-  logger.removeKeys(['correlationId', 'method', 'path'])
+  try {
+    await next()
+  } finally {
+    // Clear per-request keys unconditionally — a throwing handler must not
+    // leak its correlationId/path into the next warm invocation's log lines.
+    logger.removeKeys(['correlationId', 'method', 'path'])
+  }
 }

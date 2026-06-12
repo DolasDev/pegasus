@@ -44,6 +44,8 @@ const {
   mockExecutionFindFirst,
   mockExecutionCreate,
   mockExecutionUpdate,
+  mockExecutionCount,
+  mockTenantFindUnique,
 } = vi.hoisted(() => ({
   mockSend: vi.fn(),
   putMetricDataInputs: [] as unknown[],
@@ -54,6 +56,10 @@ const {
   mockExecutionFindFirst: vi.fn(),
   mockExecutionCreate: vi.fn(),
   mockExecutionUpdate: vi.fn(),
+  mockExecutionCount: vi.fn(),
+  // Used by the kill-switch check in start-workflow-execution.ts.
+  // Default: workflowsDisabled=false (kill switch off).
+  mockTenantFindUnique: vi.fn(),
 }))
 
 vi.mock('@aws-sdk/client-cloudwatch', () => ({
@@ -85,6 +91,11 @@ vi.mock('../db', () => {
       findFirst: mockExecutionFindFirst,
       create: mockExecutionCreate,
       update: mockExecutionUpdate,
+      count: mockExecutionCount,
+    },
+    // Kill-switch check in start-workflow-execution.ts.
+    tenant: {
+      findUnique: mockTenantFindUnique,
     },
     // The shared run path wraps its insert in a transaction; run the callback
     // against the same fake so the model mocks above resolve.
@@ -220,6 +231,10 @@ beforeEach(() => {
   mockExecutionFindFirst.mockResolvedValue(null)
   mockExecutionCreate.mockResolvedValue(queuedExecution())
   mockExecutionUpdate.mockResolvedValue(queuedExecution({ status: 'RUNNING', startedAt: now }))
+  // Default: 0 active/daily executions (below any limit)
+  mockExecutionCount.mockResolvedValue(0)
+  // Default: kill switch OFF (workflowsDisabled=false)
+  mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: false })
   const start = vi.fn().mockResolvedValue({
     workflowId: DETERMINISTIC_ID,
     firstExecutionRunId: 'run-1',
@@ -275,6 +290,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     // No events ⇒ no per-event EVENT-trigger queries; the only trigger query
     // is the schedule sweep (Unit 4), which runs every tick.
@@ -297,6 +313,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 1,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
 
     // Only enabled EVENT triggers of this (tenant, eventType) are considered.
@@ -380,6 +397,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockExecutionCreate).not.toHaveBeenCalled()
     expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
@@ -407,6 +425,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockExecutionFindFirst).toHaveBeenCalledWith({
       where: { tenantId: 'tenant-1', temporalWorkflowId: DETERMINISTIC_ID },
@@ -436,6 +455,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockExecutionCreate).not.toHaveBeenCalled()
     expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
@@ -469,6 +489,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     // markTerminal would be an update with status FAILED — must not happen.
     expect(mockExecutionUpdate).not.toHaveBeenCalled()
@@ -496,6 +517,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockExecutionUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -530,6 +552,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 1,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockExecutionCreate).toHaveBeenCalledTimes(1)
     expect(
@@ -559,6 +582,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockDomainEventUpdateMany).not.toHaveBeenCalled()
   })
@@ -578,6 +602,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
     expect(
@@ -612,6 +637,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       fired: 0,
       schedulesEvaluated: 0,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
   })
 })
@@ -649,6 +675,7 @@ describe('scheduled triggers', () => {
       fired: 0,
       schedulesEvaluated: 1,
       scheduleFired: 1,
+      runnersLaunched: 0,
     })
 
     // Disabled rows never reach the loop — filtered at the query.
@@ -698,6 +725,7 @@ describe('scheduled triggers', () => {
       fired: 0,
       schedulesEvaluated: 1,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockExecutionCreate).not.toHaveBeenCalled()
     // Nothing fired, nothing skipped ⇒ nothing to flush.
@@ -716,6 +744,7 @@ describe('scheduled triggers', () => {
       fired: 0,
       schedulesEvaluated: 1,
       scheduleFired: 0,
+      runnersLaunched: 0,
     })
     expect(mockExecutionFindFirst).toHaveBeenCalledWith({
       where: { tenantId: 'tenant-1', temporalWorkflowId: SCHEDULE_ID },
@@ -746,6 +775,7 @@ describe('scheduled triggers', () => {
       fired: 0,
       schedulesEvaluated: 2,
       scheduleFired: 1,
+      runnersLaunched: 0,
     })
     expect(mockExecutionCreate).toHaveBeenCalledTimes(1)
     expect(
@@ -790,6 +820,7 @@ describe('scheduled triggers', () => {
       fired: 1,
       schedulesEvaluated: 1,
       scheduleFired: 1,
+      runnersLaunched: 0,
     })
     expect(mockExecutionCreate).toHaveBeenCalledTimes(2)
     // One undimensioned counter for both kinds — kind detail is in logs and
@@ -797,5 +828,157 @@ describe('scheduled triggers', () => {
     expect(emittedMetrics()).toContainEqual(
       expect.objectContaining({ MetricName: 'WorkflowTriggerFired', Value: 2 }),
     )
+  })
+})
+
+// ── Dispatcher: limit-rejection skip reasons (Phase 3 Unit 10) ────────────
+//
+// These tests verify that TENANT_RUNNER-lane limit rejections produce the
+// right WorkflowTriggerSkipped{Reason=...} metrics and still stamp the
+// domain event (no redelivery semantics — the tenant is over-capacity, not
+// failing). Per the spec, the dispatcher treats limit outcomes the same as
+// START_FAILED: logged skip, event stamped, tick continues.
+
+describe('limit-rejection skip reasons (Unit 10)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('CONCURRENCY_LIMIT: trigger skipped, WorkflowTriggerSkipped{CONCURRENCY_LIMIT} emitted, event stamped', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    // Executable tenant workflow (routes TENANT_RUNNER).
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow()] })
+    // Concurrency cap hit (first count call = 5 active)
+    mockExecutionCount.mockResolvedValueOnce(5)
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    // Event is still stamped — no redelivery.
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'CONCURRENCY_LIMIT' }],
+      }),
+    )
+  })
+
+  it('DAILY_QUOTA_EXCEEDED: trigger skipped, WorkflowTriggerSkipped{DAILY_QUOTA_EXCEEDED} emitted, event stamped', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow()] })
+    // Concurrency: 0; daily quota: 200 (at quota)
+    mockExecutionCount.mockResolvedValueOnce(0).mockResolvedValueOnce(200)
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'DAILY_QUOTA_EXCEEDED' }],
+      }),
+    )
+  })
+
+  it('curated triggers are never limit-rejected (no count calls for curated workflow)', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    // Curated workflow (routes STDLIB) — limits are never checked.
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'send_quote_followup' }))
+    setTriggers({ event: [triggerRow()] })
+    // Even if count would return "over limit", the curated run is not checked.
+    mockExecutionCount.mockResolvedValue(9999)
+
+    const out = await handler()
+
+    expect(out.fired).toBe(1)
+    // count is never called for STDLIB-routed executions
+    expect(mockExecutionCount).not.toHaveBeenCalled()
+  })
+})
+
+// ── Dispatcher: kill-switch skip reason (Phase 3 Unit 11) ─────────────────
+//
+// When workflowsDisabled=true on the tenant row, the shared run path returns
+// WORKFLOWS_DISABLED and the dispatcher should:
+//   - emit WorkflowTriggerSkipped{Reason=WORKFLOWS_DISABLED}
+//   - still stamp the domain event (no redelivery semantics)
+//   - NOT create an execution row
+//
+// Curated (STDLIB-routed) triggers are also blocked by the kill switch — the
+// check runs after route resolution for BOTH routes. RUNNING executions that
+// started before the kill switch was set are unaffected.
+
+describe('kill-switch (WORKFLOWS_DISABLED) skip reason (Unit 11)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('EVENT trigger skipped with WORKFLOWS_DISABLED metric when kill switch is on', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow()] })
+    // Kill switch ON for tenant-1.
+    mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: true })
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    // Event is still stamped — operator kill switch is not a retriable error.
+    expect(mockDomainEventUpdateMany).toHaveBeenCalledTimes(1)
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'WORKFLOWS_DISABLED' }],
+      }),
+    )
+  })
+
+  it('curated (STDLIB) EVENT trigger is also blocked by the kill switch', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    // Curated workflow — but the kill switch still applies.
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'send_quote_followup' }))
+    setTriggers({ event: [triggerRow()] })
+    mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: true })
+
+    const out = await handler()
+
+    expect(out.fired).toBe(0)
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'WORKFLOWS_DISABLED' }],
+      }),
+    )
+  })
+
+  it('kill switch OFF: trigger fires normally (regression guard)', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow()])
+    mockWorkflowFindFirst.mockResolvedValue(workflowRow({ name: 'my_custom_wf', executable: true }))
+    setTriggers({ event: [triggerRow()] })
+    // Kill switch OFF (default — explicitly confirming the mock).
+    mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: false })
+
+    const out = await handler()
+
+    expect(out.fired).toBe(1)
+    expect(mockExecutionCreate).toHaveBeenCalledTimes(1)
   })
 })

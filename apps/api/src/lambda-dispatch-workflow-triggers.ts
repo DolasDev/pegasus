@@ -1,5 +1,7 @@
 // ---------------------------------------------------------------------------
-// Scheduled Lambda — dispatches workflow triggers. Two phases per tick:
+// Scheduled Lambda — dispatches workflow triggers. Three phases per tick
+// (events, schedules, then the Unit-9 tenant-runner sweep — see the sweep
+// block at the bottom of the handler):
 //
 // PHASE 1 — domain events (Phase 3 Unit 3). The consumer half of the outbox:
 // handlers write DomainEvent rows in the same transaction as the state change
@@ -61,6 +63,7 @@ import { db } from './db'
 import { cronMatchesMinute, parseCronExpression } from './lib/cron'
 import { createLogger } from './lib/logger'
 import { startWorkflowExecution } from './lib/start-workflow-execution'
+import { sweepTenantRunners } from './lib/tenant-runner'
 import { createWorkflowRepository } from './repositories/workflow.repository'
 
 const logger = createLogger('pegasus-dispatch-workflow-triggers')
@@ -77,12 +80,15 @@ const BATCH_SIZE = 100
 
 /** Why a matching trigger did not fire — the `Reason` metric dimension. */
 type TriggerSkipReason =
-  | 'NOT_EXECUTABLE' // workflow not in the curated allowlist (pre-Track-A)
+  | 'NOT_EXECUTABLE' // workflow not executable (non-curated, no valid artifact)
   | 'WORKFLOW_NOT_FOUND' // trigger's workflow no longer visible (defensive)
   | 'DUPLICATE' // execution row with this deterministic id already exists
   | 'ALREADY_STARTED' // Temporal REJECT_DUPLICATE fired (pre-check raced)
   | 'START_FAILED' // Temporal start threw; FAILED row records the error
   | 'INVALID_CRON' // SCHEDULE row's expression no longer parses (pre-Unit-4 row)
+  | 'CONCURRENCY_LIMIT' // Phase 3 Unit 10: tenant concurrent-execution cap reached
+  | 'DAILY_QUOTA_EXCEEDED' // Phase 3 Unit 10: tenant daily execution quota reached
+  | 'WORKFLOWS_DISABLED' // Phase 3 Unit 11: operator kill switch
   | 'ERROR' // unexpected per-trigger exception
 
 /**
@@ -305,14 +311,46 @@ async function fireTrigger(opts: {
       })
       break
     case 'NOT_EXECUTABLE':
-      // Expected for tenant-uploaded workflows until Track A lands — a
-      // logged skip, never an error, never blocks the event stamp.
+      // Non-curated + non-executable (no valid artifact yet). Logged skip;
+      // never blocks the event stamp.
       skip('NOT_EXECUTABLE')
       logger.info('Trigger workflow is not executable — skipping', {
         triggerId: trigger.id,
         tenantId: trigger.tenantId,
         workflowId: workflow.id,
         workflowName: workflow.name,
+        ...logContext,
+      })
+      break
+    case 'CONCURRENCY_LIMIT':
+      // Phase 3 Unit 10: tenant hit the TENANT_RUNNER concurrent-execution cap.
+      // Treat the same as START_FAILED for the dispatcher: logged skip, event
+      // is still stamped (no retry — the tenant is over-capacity, not failing).
+      skip('CONCURRENCY_LIMIT')
+      logger.warn('Trigger skipped — TENANT_RUNNER concurrency cap reached', {
+        triggerId: trigger.id,
+        tenantId: trigger.tenantId,
+        workflowId: workflow.id,
+        ...logContext,
+      })
+      break
+    case 'DAILY_QUOTA_EXCEEDED':
+      // Phase 3 Unit 10: tenant hit the per-day execution quota.
+      skip('DAILY_QUOTA_EXCEEDED')
+      logger.warn('Trigger skipped — TENANT_RUNNER daily quota exceeded', {
+        triggerId: trigger.id,
+        tenantId: trigger.tenantId,
+        workflowId: workflow.id,
+        ...logContext,
+      })
+      break
+    case 'WORKFLOWS_DISABLED':
+      // Phase 3 Unit 11: operator kill switch.
+      skip('WORKFLOWS_DISABLED')
+      logger.info('Trigger skipped — workflows disabled for tenant', {
+        triggerId: trigger.id,
+        tenantId: trigger.tenantId,
+        workflowId: workflow.id,
         ...logContext,
       })
       break
@@ -350,6 +388,7 @@ export async function handler(): Promise<{
   fired: number
   schedulesEvaluated: number
   scheduleFired: number
+  runnersLaunched: number
 }> {
   const counts: MetricCounts = {
     dispatched: 0,
@@ -529,6 +568,28 @@ export async function handler(): Promise<{
     })
   }
 
+  // ── Phase 3: tenant-runner sweep (Phase 3 Unit 9) ─────────────────────────
+  //
+  // Scale-to-zero backstop: ensure a runner task is up for every tenant with
+  // outstanding QUEUED/RUNNING runner-bound work (crash/idle-exit recovery),
+  // and publish the runner pool gauges (TenantRunnersRunning + cold-start
+  // latency). No-op when TENANT_RUNNER_* env is absent (dev) and — until
+  // Unit 10 lifts the curated gate — finds no runner-bound work by
+  // construction. Failure-isolated like the phases above: a broken sweep
+  // never poisons event dispatch or schedule evaluation.
+  let runnersLaunched = 0
+  try {
+    const sweep = await sweepTenantRunners(db)
+    runnersLaunched = sweep.launched
+    if (sweep.tenantsNeedingRunner > 0) {
+      logger.info('Tenant-runner sweep finished', { ...sweep })
+    }
+  } catch (err) {
+    logger.error('Tenant-runner sweep failed — next tick retries', {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
   await flushMetrics(counts)
 
   logger.info('Dispatch tick finished', {
@@ -537,6 +598,7 @@ export async function handler(): Promise<{
     fired: counts.fired,
     schedulesEvaluated,
     scheduleFired: counts.scheduleFired,
+    runnersLaunched,
   })
   return {
     scanned: events.length,
@@ -544,5 +606,6 @@ export async function handler(): Promise<{
     fired: counts.fired,
     schedulesEvaluated,
     scheduleFired: counts.scheduleFired,
+    runnersLaunched,
   }
 }

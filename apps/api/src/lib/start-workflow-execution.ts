@@ -3,22 +3,53 @@
 //
 // Extracted from `POST /workflows/:id/run` (Phase 3 Unit 3) so the trigger
 // dispatcher Lambda fires executions through the exact same sequence the
-// manual endpoint uses:
+// manual endpoint uses.
 //
-//   1. curated-executability gate (CURATED_WORKFLOW_NAMES)
-//   2. lazy runtime-service-account mint when the workflow predates Phase 2
-//      Unit 3 (same transaction as the execution insert)
-//   3. insert the QUEUED WorkflowExecution row with provenance
-//   4. Temporal `workflow.start` with REJECT_DUPLICATE
-//   5. eager QUEUED → RUNNING on success / FAILED on Temporal start error
+// Unit 10 (routing + limits) replaces the old curated-only gate with the
+// full routing decision and enforces all four v1-blocking abuse limits on the
+// TENANT_RUNNER lane:
+//
+//   1. resolveWorkflowRoute(workflow)          — routing decision (one place)
+//   2. TENANT_RUNNER only: concurrency cap     — count before insert, 429 if over
+//   3. TENANT_RUNNER only: daily quota         — count before insert, 429 if over
+//   4. ensureTenantRunner (per-tenant runner)  — kick off before Temporal start
+//   5. lazy runtime-service-account mint       — same transaction as insert
+//   6. insert the QUEUED WorkflowExecution row with provenance
+//   7. Temporal `workflow.start` with REJECT_DUPLICATE
+//      - STDLIB: stdlib task queue (unchanged Phase-2 behavior)
+//      - TENANT_RUNNER: per-tenant queue + workflowExecutionTimeout
+//   8. eager QUEUED → RUNNING on success / FAILED on Temporal start error
 //
 // Callers own everything around this sequence: authz, validation, and HTTP
 // response shapes (the manual handler); event/trigger matching and dispatch
 // stamping (the dispatcher Lambda). Results are returned as a discriminated
 // union — this module never throws for the outcomes it models.
+//
+// ## Limit scope — TENANT_RUNNER only
+//
+// Resolved decision #3 scopes all four limits to the TENANT_RUNNER lane
+// exclusively. The curated stdlib lane (STDLIB route) keeps running exactly
+// as before Unit 10: no concurrency cap, no daily quota, no per-execution
+// Temporal timeout set here. This is the literal "the curated stdlib keeps
+// running exactly as today" commitment in the plan.
+//
+// ## Concurrency cap race posture (documented contract)
+//
+// The cap check (count QUEUED+RUNNING) is done OUTSIDE the insert transaction,
+// so two concurrent starts for the same tenant can both pass the check and
+// both insert — briefly overshooting the cap by 1. This is accepted for v1:
+// the cap is a soft abuse guardrail, not a hard resource lock. Adding a
+// serialization (SELECT FOR UPDATE / advisory lock) would hurt the common case
+// for a rare edge. Document this in the result type.
+//
+// ## Daily quota race posture
+//
+// Same as concurrency: two concurrent starts can both pass the quota check
+// and both increment the day counter, briefly overshooting by 1. Accepted.
 // ---------------------------------------------------------------------------
 
 import { randomUUID } from 'node:crypto'
+import { CloudWatchClient, PutMetricDataCommand } from '@aws-sdk/client-cloudwatch'
 import type { PrismaClient, Prisma } from '@prisma/client'
 import { WorkflowExecutionAlreadyStartedError } from '@temporalio/client'
 import { createApiClientRepository } from '../repositories/api-client.repository'
@@ -28,8 +59,78 @@ import { createWorkflowExecutionRepository } from '../repositories/workflow-exec
 import type { WorkflowExecutionRow } from '../repositories/workflow-execution.repository'
 import { encryptRuntimeToken } from './runtime-token-crypto'
 import { getTemporalClient, temporalTaskQueue } from './temporal-client'
+import { resolveWorkflowRoute, tenantTaskQueue } from './workflow-route'
+import { ensureTenantRunner } from './tenant-runner'
 import { CURATED_WORKFLOW_NAMES } from './curated-workflows'
 import { logger } from './logger'
+
+// ---------------------------------------------------------------------------
+// Constants / env
+// ---------------------------------------------------------------------------
+
+/** Platform default per-execution Temporal workflow timeout (seconds). */
+const DEFAULT_EXECUTION_TIMEOUT_SECONDS = 900
+
+/**
+ * Per-tenant concurrent-execution cap for the TENANT_RUNNER lane.
+ * Curated (STDLIB) executions are never counted toward or capped by this.
+ */
+const TENANT_RUNNER_CONCURRENCY_CAP = 5
+
+/**
+ * Per-tenant executions-per-UTC-day quota for the TENANT_RUNNER lane.
+ * Defaults to TENANT_WORKFLOW_DAILY_QUOTA env (0/unset → use default).
+ * All statuses count — a failed run still consumed resources.
+ */
+const DEFAULT_DAILY_QUOTA = 200
+
+function dailyQuotaLimit(env: Record<string, string | undefined> = process.env): number {
+  const raw = (env['TENANT_WORKFLOW_DAILY_QUOTA'] ?? '').trim()
+  if (!raw) return DEFAULT_DAILY_QUOTA
+  const n = Number.parseInt(raw, 10)
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_DAILY_QUOTA
+  return n
+}
+
+// ---------------------------------------------------------------------------
+// CloudWatch metrics (limits)
+// ---------------------------------------------------------------------------
+
+// Namespace is duplicated from packages/infra/lib/metrics.ts for the same
+// apps/api-can't-import-@pegasus/infra reason as every other emitter.
+const METRIC_NAMESPACE = 'Pegasus/Workflows'
+
+const cloudwatch = new CloudWatchClient({})
+
+type RejectionReason = 'CONCURRENCY_LIMIT' | 'DAILY_QUOTA_EXCEEDED'
+
+/**
+ * Emits WorkflowExecutionRejected{Reason=<reason>} to CloudWatch.
+ * Observability, not correctness — a CloudWatch hiccup never fails the run.
+ */
+async function emitRejectionMetric(reason: RejectionReason): Promise<void> {
+  try {
+    await cloudwatch.send(
+      new PutMetricDataCommand({
+        Namespace: METRIC_NAMESPACE,
+        MetricData: [
+          {
+            MetricName: 'WorkflowExecutionRejected',
+            Value: 1,
+            Unit: 'Count',
+            Timestamp: new Date(),
+            Dimensions: [{ Name: 'Reason', Value: reason }],
+          },
+        ],
+      }),
+    )
+  } catch (err) {
+    logger.error('Failed to publish execution-rejected metric', {
+      reason,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -78,8 +179,24 @@ export type StartWorkflowExecutionOptions = {
 export type StartWorkflowExecutionResult =
   /** Temporal accepted the start; the row is RUNNING. */
   | { outcome: 'STARTED'; execution: WorkflowExecutionRow }
-  /** Curated-allowlist gate: nothing was written or started. */
+  /** Route was NOT_EXECUTABLE — non-curated + non-executable. Nothing written. */
   | { outcome: 'NOT_EXECUTABLE' }
+  /**
+   * Operator kill switch: workflowsDisabled=true on the tenant row. Nothing
+   * written or started. Existing RUNNING executions are unaffected (allowed to
+   * finish). The caller maps this to 423 Locked with code WORKFLOWS_DISABLED.
+   */
+  | { outcome: 'WORKFLOWS_DISABLED' }
+  /**
+   * TENANT_RUNNER: tenant has ≥ TENANT_RUNNER_CONCURRENCY_CAP QUEUED/RUNNING
+   * executions. Nothing written or started. See race posture note above.
+   */
+  | { outcome: 'CONCURRENCY_LIMIT' }
+  /**
+   * TENANT_RUNNER: tenant has reached the per-UTC-day execution quota. Nothing
+   * written or started. See race posture note above.
+   */
+  | { outcome: 'DAILY_QUOTA_EXCEEDED' }
   /**
    * Temporal rejected the start with WorkflowExecutionAlreadyStartedError —
    * a deterministic-id redelivery raced us; the workflow IS running under
@@ -163,22 +280,93 @@ export async function provisionRuntimeServiceAccount(
 }
 
 // ---------------------------------------------------------------------------
+// Limit helpers (TENANT_RUNNER lane only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Count of this tenant's QUEUED and RUNNING TENANT_RUNNER-lane executions.
+ *
+ * "TENANT_RUNNER-lane" means the workflow was non-curated + executable.
+ * Both conditions are checked explicitly:
+ *   - workflow.executable=true   — excludes pre-upload / non-eligible rows
+ *   - workflow.name NOT IN (CURATED_WORKFLOW_NAMES) — excludes STDLIB-lane
+ *     executions; curated GLOBAL workflows have executable=true after their
+ *     own finalize, so omitting this filter would count STDLIB runs against
+ *     the TENANT_RUNNER cap (false throttle).
+ */
+async function countTenantRunnerActiveExecutions(
+  db: PrismaClient,
+  tenantId: string,
+): Promise<number> {
+  return db.workflowExecution.count({
+    where: {
+      tenantId,
+      status: { in: ['QUEUED', 'RUNNING'] },
+      workflow: {
+        executable: true,
+        name: { notIn: [...CURATED_WORKFLOW_NAMES] },
+      },
+    },
+  })
+}
+
+/**
+ * UTC-day start for the given date (midnight UTC).
+ */
+function utcDayStart(now: Date): Date {
+  const d = new Date(now)
+  d.setUTCHours(0, 0, 0, 0)
+  return d
+}
+
+/**
+ * Count of this tenant's TENANT_RUNNER-lane executions created today (UTC).
+ * All terminal statuses count — a failed run still consumed resources.
+ *
+ * Same lane filter as countTenantRunnerActiveExecutions: executable=true AND
+ * name NOT IN curated names, so STDLIB-lane runs do not consume TENANT_RUNNER
+ * daily quota.
+ */
+async function countTenantRunnerDailyExecutions(
+  db: PrismaClient,
+  tenantId: string,
+  now: Date,
+): Promise<number> {
+  return db.workflowExecution.count({
+    where: {
+      tenantId,
+      createdAt: { gte: utcDayStart(now) },
+      workflow: {
+        executable: true,
+        name: { notIn: [...CURATED_WORKFLOW_NAMES] },
+      },
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
 
 /**
  * Starts a server-side execution of `workflow`. See the module header for the
- * exact sequence. Phase-2 contract notes (unchanged by the extraction):
+ * full sequence. Key contracts:
  *
- *   - Only curated names (CURATED_WORKFLOW_NAMES) are executable. The worker
- *     refuses to register anything else, so we bail here for a clean error
- *     story instead of letting the row sit QUEUED forever.
+ *   - resolveWorkflowRoute determines the lane. NOT_EXECUTABLE → immediate
+ *     return, nothing written.
+ *   - TENANT_RUNNER lane only: concurrency cap and daily quota are checked
+ *     before any write. Both use counts that race — see the module header's
+ *     race posture note.
  *   - The runtime token is NOT placed in Temporal workflow args (Temporal
  *     history is durable; a credential there outlives the run). The worker
  *     fetches the token from the broker by `executionId` at activity start.
  *   - REJECT_DUPLICATE makes re-submission of the same Temporal workflow id
  *     an error rather than a second run; for the dispatcher's deterministic
  *     ids that error is mapped to ALREADY_STARTED (success-already-handled).
+ *   - workflowExecutionTimeout is set only for TENANT_RUNNER lane: defaults
+ *     to DEFAULT_EXECUTION_TIMEOUT_SECONDS; the manifest's timeoutSeconds (if
+ *     present and ≤ default) overrides it. Values > 900 are rejected at
+ *     finalize (ManifestSchema validation), never silently clamped here.
  */
 export async function startWorkflowExecution(
   db: PrismaClient,
@@ -186,8 +374,89 @@ export async function startWorkflowExecution(
 ): Promise<StartWorkflowExecutionResult> {
   const { workflow, tenantId, input, provenance } = opts
 
-  if (!CURATED_WORKFLOW_NAMES.has(workflow.name)) {
+  const route = resolveWorkflowRoute(workflow)
+
+  if (route === 'NOT_EXECUTABLE') {
     return { outcome: 'NOT_EXECUTABLE' }
+  }
+
+  // ── Kill-switch check — applies to BOTH routes ───────────────────────────
+  //
+  // Read workflowsDisabled from the Tenant row. This is a cheap indexed
+  // primary-key lookup (tenantId is the PK). We do it here — after the route
+  // check so pure NOT_EXECUTABLE calls don't hit the DB — and before ANY write
+  // or ECS/Temporal interaction, so a disabled tenant never consumes a runner
+  // or Temporal start.
+  //
+  // The check runs for BOTH STDLIB and TENANT_RUNNER routes: the kill switch is
+  // an operator-level override that stops ALL new starts for a tenant regardless
+  // of workflow type. It does NOT stop already-RUNNING executions.
+  {
+    const tenantRow = await db.tenant.findUnique({
+      where: { id: tenantId },
+      select: { workflowsDisabled: true },
+    })
+    if (tenantRow?.workflowsDisabled === true) {
+      logger.warn('Workflow start blocked — tenant workflows disabled', {
+        tenantId,
+        workflowId: workflow.id,
+        workflowName: workflow.name,
+      })
+      return { outcome: 'WORKFLOWS_DISABLED' }
+    }
+  }
+
+  // ── TENANT_RUNNER-only pre-flight checks ──────────────────────────────────
+  //
+  // Both checks happen BEFORE the insert and BEFORE ensureTenantRunner —
+  // cheap reads that reject abusively-frequent callers without touching ECS,
+  // Temporal, or the broker.
+
+  if (route === 'TENANT_RUNNER') {
+    const now = new Date()
+
+    // (b) Concurrency cap
+    const activeConcurrent = await countTenantRunnerActiveExecutions(db, tenantId)
+    if (activeConcurrent >= TENANT_RUNNER_CONCURRENCY_CAP) {
+      logger.warn('TENANT_RUNNER concurrency cap reached', {
+        tenantId,
+        workflowId: workflow.id,
+        workflowName: workflow.name,
+        activeConcurrent,
+        cap: TENANT_RUNNER_CONCURRENCY_CAP,
+      })
+      await emitRejectionMetric('CONCURRENCY_LIMIT')
+      return { outcome: 'CONCURRENCY_LIMIT' }
+    }
+
+    // (c) Daily quota
+    const dailyCount = await countTenantRunnerDailyExecutions(db, tenantId, now)
+    const quota = dailyQuotaLimit()
+    if (dailyCount >= quota) {
+      logger.warn('TENANT_RUNNER daily quota reached', {
+        tenantId,
+        workflowId: workflow.id,
+        workflowName: workflow.name,
+        dailyCount,
+        quota,
+      })
+      await emitRejectionMetric('DAILY_QUOTA_EXCEEDED')
+      return { outcome: 'DAILY_QUOTA_EXCEEDED' }
+    }
+  }
+
+  // Scale-to-zero runner hook (Phase 3 Unit 9). Only reached for TENANT_RUNNER
+  // routes (STDLIB was already the only live route until Unit 10). Kick the
+  // launch off NOW so the ~30–60 s cold start overlaps the insert + Temporal
+  // start below.
+  //
+  // A failed launch deliberately does NOT fail the run: the execution still
+  // starts on its Temporal queue and the dispatcher's per-minute runner
+  // sweep (lib/tenant-runner.ts sweepTenantRunners) retries while QUEUED
+  // work exists — degraded latency, never a lost run. ensureTenantRunner
+  // never throws for the failures it models and logs/metrics internally.
+  if (route === 'TENANT_RUNNER') {
+    await ensureTenantRunner(db, tenantId)
   }
 
   // Single transaction: lazy-mint the runtime account if needed, then
@@ -218,20 +487,43 @@ export async function startWorkflowExecution(
     })
   })
 
+  // Derive the Temporal start options based on route.
+  const temporalWorkflowId =
+    opts.temporalWorkflowId ?? `wf/${tenantId}/${workflow.name}/${inserted.id}`
+
+  // (a) Per-execution workflow timeout — TENANT_RUNNER only.
+  // Manifest may provide timeoutSeconds (already validated: 1..900) to lower
+  // the default. Never raise it (values > 900 are rejected at finalize).
+  let workflowExecutionTimeout: number | undefined
+  if (route === 'TENANT_RUNNER') {
+    const manifestTimeout =
+      typeof (workflow.manifest as Record<string, unknown>)['timeoutSeconds'] === 'number'
+        ? ((workflow.manifest as Record<string, unknown>)['timeoutSeconds'] as number)
+        : undefined
+    workflowExecutionTimeout =
+      manifestTimeout !== undefined
+        ? Math.min(manifestTimeout, DEFAULT_EXECUTION_TIMEOUT_SECONDS)
+        : DEFAULT_EXECUTION_TIMEOUT_SECONDS
+  }
+
+  const taskQueue = route === 'TENANT_RUNNER' ? tenantTaskQueue(tenantId) : temporalTaskQueue()
+
   // Start the Temporal workflow. If start_workflow throws, mark the
   // execution FAILED with the error so we don't leak QUEUED rows for
   // runtime failures.
-  const temporalWorkflowId =
-    opts.temporalWorkflowId ?? `wf/${tenantId}/${workflow.name}/${inserted.id}`
   try {
     const client = await getTemporalClient()
     const handle = await client.workflow.start(workflow.name, {
       args: [{ executionId: inserted.id, input }],
-      taskQueue: temporalTaskQueue(),
+      taskQueue,
       workflowId: temporalWorkflowId,
       // Idempotent re-submit: if a previous call already started this id,
       // we'd rather error here than start a second run.
       workflowIdReusePolicy: 'REJECT_DUPLICATE',
+      // (a) Timeout — TENANT_RUNNER only (undefined = Temporal default for STDLIB)
+      ...(workflowExecutionTimeout !== undefined
+        ? { workflowExecutionTimeout: `${workflowExecutionTimeout}s` }
+        : {}),
     })
 
     // Eagerly transition QUEUED → RUNNING so the row reflects reality
@@ -248,8 +540,11 @@ export async function startWorkflowExecution(
       executionId: inserted.id,
       workflowId: workflow.id,
       tenantId,
+      route,
+      taskQueue,
       temporalWorkflowId: handle.workflowId,
       temporalRunId: handle.firstExecutionRunId ?? null,
+      workflowExecutionTimeout: workflowExecutionTimeout ?? null,
     })
 
     return { outcome: 'STARTED', execution: running }
@@ -287,6 +582,7 @@ export async function startWorkflowExecution(
       executionId: inserted.id,
       workflowId: workflow.id,
       tenantId,
+      route,
       error: message,
     })
 

@@ -14,6 +14,7 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   CopyObjectCommand,
+  HeadObjectCommand,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
@@ -97,6 +98,39 @@ export async function presignDownload(key: string): Promise<string> {
   return getSignedUrl(client(), new GetObjectCommand({ Bucket: documentsBucketName(), Key: key }), {
     expiresIn: 5 * 60,
   })
+}
+
+/**
+ * HEAD an object in the documents bucket. Returns its size, or `null` when
+ * the object does not exist. Used by the workflow finalize flow as a cheap
+ * size pre-check before downloading an artifact for validation.
+ */
+export async function headObject(key: string): Promise<{ sizeBytes: number } | null> {
+  try {
+    const res = await client().send(
+      new HeadObjectCommand({ Bucket: documentsBucketName(), Key: key }),
+    )
+    return { sizeBytes: res.ContentLength ?? 0 }
+  } catch (err: unknown) {
+    // HeadObject surfaces a missing key as `NotFound` (no body on HEAD, so
+    // the SDK cannot parse a NoSuchKey error shape).
+    const name = (err as { name?: string }).name
+    if (name === 'NotFound' || name === 'NoSuchKey') return null
+    throw err
+  }
+}
+
+/**
+ * Fetch an object's full contents from the documents bucket. Only used for
+ * workflow artifacts, which are capped at a few MB by the finalize size
+ * pre-check — never call this for arbitrary documents.
+ */
+export async function getObjectBuffer(key: string): Promise<Buffer> {
+  const res = await client().send(new GetObjectCommand({ Bucket: documentsBucketName(), Key: key }))
+  if (!res.Body) {
+    throw new Error(`S3 GetObject returned no body for key ${key}`)
+  }
+  return Buffer.from(await res.Body.transformToByteArray())
 }
 
 /**

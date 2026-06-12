@@ -1,29 +1,47 @@
 # Pegasus Workflows — Phase 3: Sandboxed Tenant Code + Triggers
 
-**Status: IN PROGRESS — Track B (triggers, Units 1–5) ✅ COMPLETE and
-LIVE on staging + prod as of 2026-06-10** (PRs #230–#234). Scoped
-2026-06-09; all 5 open questions resolved with Steve — see "Resolved
-decisions". **Next: Track A Unit 6 (artifact integrity), then Unit 7
-(per-tenant broker credentials — the security keystone; land + review it
-before any runner exists).**
+**Status: ALL 12 UNITS ✅ COMPLETE AND MERGED (Track B 1–5, Track A
+6–11 incl. 8.1)** — PRs #230–#234, #239–#243, #248, #251; sandbox LIVE
+as of #248, guardrails live with #251 (2026-06-12). **The ONLY
+outstanding work is the staging smoke** (checklist item 3 below +
+"Staging smoke — full plane" at the bottom of this section). Once that
+passes, archive this plan to `plans/completed/`.
 
-## Resume-session checklist (session paused 2026-06-10, mid-Track-A)
+Infra notes (2026-06-12): deploy-role publish policies are now
+IaC-managed in dolas-infra (#7, `github-workflow-publish`; hand-applied
+inline policies deleted). Temporal: no task-queue-count limit (Steve
+confirmed); queues are implicit, nothing to provision. Temporal Cloud
+IaC (terraform `temporalio/temporalcloud`) assessed + deferred.
+Pipeline interlude: esbuild GHSA-gv7w-rqvm-qjhr (high, published
+2026-06-12) broke audit-ci on all branches — fixed by #249 (override
+>=0.28.1; note: overrides regenerate fine on node 24 now, old node-20
+gotcha obsolete).
+
+## Resume-session checklist
 
 1. Read this file top-to-bottom + the `project_workflows_phase2_status`
    memory (carries the Phase 3 ledger + Track B lessons).
-2. **Verify the last deploy finished green:** session ended with the
-   Unit 5 tenant-web deploy (`eccdf11`) in progress + a plans-only run
-   queued behind it. `gh run list --workflow deploy.yml --limit 3` —
+2. **Verify the last deploy finished green:**
+   `gh run list --workflow deploy.yml --limit 3` —
    if a run failed or was cancelled, fix/redispatch FIRST
    (`[[feedback_rapid_main_pushes_cancel_deploy]]`).
-3. **Run the Track B staging smoke** (now fully exercisable through the
-   UI — see the Track B banner below). ~10 min, needs a staging login.
-4. **Unit 6 was in flight and was cleanly aborted** (worktree + branch
-   `phase3/06-artifact-integrity` deleted; no commits, no PR — nothing
-   on remote). Re-spawn it from scratch using the "Unit 6 worker
-   guidance" subsection below, which preserves the implementation notes
-   the aborted run was using.
-5. The session's execution pattern (worked 5-for-5): spawn ONE worker
+3. **Run the staging smoke — full plane** (the one outstanding item,
+   needs a staging login, ~25 min):
+   - Track B (~10 min): `quote.accepted` trigger on a curated workflow
+     via `/settings/workflows` → accept a quote → EVENT-badged
+     execution; `*/5 * * * *` SCHEDULE trigger → SCHEDULE-badged
+     execution ≤5 min; disable + delete; `domain_events` row exists.
+   - Tenant-code lane (Units 6–10, ~15 min): `pegasus-workflows
+     package` + upload a trivial non-curated workflow → row shows
+     `executable: true` + sha (Unit 6); run it → runner cold-start
+     ≤~60 s (watch `TenantRunnersRunning` + the ECS task with
+     startedBy=tenantId) → execution COMPLETED; confirm runner
+     idle-exits ~10 min later; spot-check `/pegasus/staging/
+     tenant-runner` logs and the flow-log group.
+   - Unit 11 (~5 min): admin kill switch blocks a new run (423) then
+     re-enable; runner-status panel shows the task; `Pegasus-Workflows`
+     dashboard renders data.
+4. The session's execution pattern (worked 6-for-6): spawn ONE worker
    agent per unit in an isolated worktree (units share `schema.prisma` —
    never parallel), worker self-reviews via the code-review skill +
    runs the unit's verification recipe + opens a PR; coordinator
@@ -291,79 +309,146 @@ execution rows. v1 cut: no in-place filter/cron editing — PATCH is
 
 ### Track A — sandboxed tenant-code execution
 
-**Unit 6 — Artifact integrity + eligibility. ⬜ NEXT (a first attempt was
-cleanly aborted at session end 2026-06-10 — no commits/PR; re-spawn from
-scratch).** sha256 recorded at finalize, zip-structure validation
-(entry points resolvable, 10 MB size cap per Resolved #3, no deps per the
-v1 dependency decision), `Workflow.executable` derived server-side.
-Schema + finalize-handler change; nothing executes differently yet (run
-path keeps the curated-names gate until Unit 10).
+**Unit 6 — Artifact integrity + eligibility. ✅ DONE (#239 → `1f42c8e`,
+2026-06-11).** Schema fields (`artifactSha256`, `artifactSizeBytes`,
+`executable @default(false)` — pre-existing rows stay valid, become
+executable on re-upload), hand-written zip central-directory reader in
+`apps/api/src/lib/workflow-artifact.ts` (EOCD backward-scan, names only,
+rejects non-zip/zip64/>10k entries/`..`/absolute paths), finalize flow:
+S3 HEAD 10 MB pre-check → 422 `ARTIFACT_TOO_LARGE`, GET + validate →
+422 `ARTIFACT_INVALID` with `problems[]` and NO row created. Fork
+propagates integrity fields (S3 copy is byte-identical). SDK parity
+pinned two ways: the committed fixture was generated by executing the
+real SDK `package_project()` against the stdlib, and a test pins the
+stdlib toml's `entry_points`/`source_dir`. **Layout ground truth:**
+entries are `<source_dir>/...` relative to project root +
+`pegasus-workflows.toml` at zip root; `a.b.c:Attr` → `a/b/c.py` or
+`a/b/c/__init__.py`. Deviations (all reviewed): upload-url cap
+tightened 25→10 MB; manifest `dependencies` key now an explicit 400
+(was silently stripped) + dependency files in the zip
+(`requirements.txt`, `pyproject.toml`, etc.) → 422; finalize before the
+zip lands in S3 → 422 (previously created a row pointing at nothing).
+Run path unchanged — curated-names gate stays until Unit 10.
 
-_Unit 6 worker guidance (preserved from the aborted run's brief):_
+**Unit 7 — Per-tenant broker credentials. ✅ DONE (#240 → `42e4c72`,
+2026-06-11).** The security keystone, landed + reviewed before any runner
+exists. `TenantBrokerCredential` model (one row per tenant, RESTRICT FK)
+with two at-rest forms: `tokenHash` (SHA-256, what the broker verifies —
+plaintext never needed back) + `tokenCiphertext` (KMS-wrapped via the
+Phase 2 runtime-token key, ONLY for the Unit 9 dispatcher to recover at
+ECS task launch). Token format `wbk_<tenantId>_<48 hex>` — embedded id
+makes verification a unique-index hit, grants nothing by itself (full-
+token hash compare via `timingSafeEqual`). New header
+`X-Workflow-Broker-Token` (separate from the secret header; a present-
+but-invalid secret 401s and never falls through). Both broker endpoints
+enforce `execution.tenantId === token.tenantId`; **cross-tenant = 404
+byte-identical to missing, applied before state checks** (no probing).
+Lib-only provisioning: `getOrCreateTenantBrokerCredential` (idempotent,
+P2002 race-safe) + `rotateTenantBrokerCredential` (instant revoke). No
+HTTP surface, no infra change. Legacy stdlib worker path wire-identical.
+Adversarial pass in PR #240: a `wbk_` holder cannot mint other tenants'
+tokens, PATCH other tenants' executions, or learn the shared secret.
 
-- Schema: `Workflow.artifactSha256 String?`, `artifactSizeBytes Int?`,
-  `executable Boolean @default(false)` — nullable/default-false so every
-  pre-existing row stays valid (they become executable on re-upload; the
-  stdlib refreshes on its next publish; curated execution unaffected).
-  `Workflow` stays INTENTIONALLY_UNSCOPED. Hand-write the migration
-  (style: `20260610150000_add_workflow_triggers`).
-- New `apps/api/src/lib/workflow-artifact.ts`, **no new deps**: sha256
-  via node:crypto + a hand-written zip central-directory reader (EOCD
-  backward-scan within the last 65557 bytes; entry NAMES only, no
-  decompression; reject non-zip, zip64, >10k entries, `..`/absolute
-  paths). Commit small fixture zips under `__tests__/fixtures/`
-  (generate once with system `zip`/python3 zipfile).
-- Finalize: S3 HEAD size pre-check → 422 `ARTIFACT_TOO_LARGE`; GET +
-  validate → 422 `ARTIFACT_INVALID` with problems array, row NOT
-  created; success persists sha/size/`executable: true`. Fork: S3 copy
-  is byte-identical — propagate integrity fields from source, no
-  re-download. Response shapes stay additive.
-- **CRITICAL — SDK parity tripwire:** derive the entry-point→zip-path
-  mapping from what `pegasus-workflows package` (SDK) ACTUALLY produces
-  (ground truth: `packages/workflows-sdk-python/` packaging code +
-  `packages/workflows-stdlib/pegasus-workflows.toml`), and add a test
-  asserting the resolver accepts the real stdlib layout — otherwise the
-  next `publish-stdlib.yml` tag run breaks. The aborted run had just
-  confirmed this ground truth when stopped; re-derive it.
-- Verify: prisma validate/generate, root typecheck,
-  `npm test -w apps/api`, lint.
+**Unit 8 — Tenant-runner image + harness. ✅ DONE (#241 → `e0b8aa2`,
+2026-06-11).** New `apps/tenant-runner/` (separate app, NOT a worker
+mode — opposite trust models; ~80 lines deliberately re-implemented).
+Runner holds **NO AWS credentials**: new broker endpoint
+`GET /internal/tenant-workflows` (wbk_-confined like Unit 7's) lists
+executable workflows + sha256 + short-lived presigned GET URLs. TOCTOU
+defense shipped: every download re-hashed against `artifactSha256`
+before extraction (`runner.artifact_sha_mismatch_SECURITY`); safe
+extraction with entry-count + decompressed-total-size caps (the
+install-size guard). Tenant code never imported by the shim —
+dynamically manufactured PROXY workflow classes (one per tenant
+workflow name, unsandboxed, single `run_tenant_entry_point` activity,
+maximum_attempts=1) wrap a stripped-env subprocess: allowlist-built env
+(9 keys, pinned by tests — no wbk_/TEMPORAL_*/AWS_*/metadata URIs);
+the tenant's own `vnd_` token travels over stdin, never argv/env.
+Direct-execution v1 semantics (driver patches execute_activity/sleep/
+now/uuid4 — no durable replay/signals for tenant code yet). Idle-exit
+watchdog (~10 min, RUNNER_* tunables). Compose service added; image
+builds + smoke-tested (non-root uid 999, venv-sees-SDK offline).
+**Unit 9 env contract (RunTask injection):** required `TENANT_ID`,
+`ENV_NAME`, `TEMPORAL_NAMESPACE`, `TEMPORAL_ADDRESS`,
+`PEGASUS_API_BASE_URL`, `WORKFLOW_BROKER_TOKEN` (KMS-recovered from
+`TenantBrokerCredential.tokenCiphertext`); optional
+`TEMPORAL_CLOUD_API_KEY`, `RUNNER_*`. Queue
+`pegasus-tenant-<TENANT_ID>-<ENV_NAME>`. Residual v1 risk accepted:
+same-container/same-uid kernel boundary (shim /proc readable by tenant
+code) — bounded by container-per-tenant + one-tenant creds; gVisor/
+separate-uid is a follow-up. No CI Python job yet (tests local-only) —
+add one in Unit 9 alongside the image-push workflow.
 
-**Unit 7 — Per-tenant broker credentials.** New credential type scoped to
-one tenantId; broker endpoints accept either (shared secret = legacy stdlib
-worker, tenant token = runners) and enforce tenant match on the execution
-row. This is the security keystone — land and review it before any runner
-exists.
+**Unit 8.1 — Shim non-dumpable hardening. ✅ DONE (#242 → `a325c61`,
+2026-06-12).** Closed the same-uid /proc residual before Unit 9 puts a
+namespace-scoped Temporal credential in the shim env: `prctl(
+PR_SET_DUMPABLE, 0)` first thing in the entrypoint (with PR_GET readback;
+failure = refuse to start; non-Linux dev no-op). Real integration test
+proves a same-uid child gets EACCES on `/proc/<shim>/environ` (control
+read succeeds un-hardened; ptrace_scope=1). Children unaffected (flag
+resets on execve). Ops note: shim can't be py-spy'd by same-uid ECS exec
+and won't core-dump — intended. Remaining residual = shared kernel only.
 
-**Unit 8 — Tenant-runner image + harness.** New `apps/tenant-runner/` (or a
-mode of the existing worker — decide at planning): trusted shim downloads
-the tenant's executable artifacts from S3, installs each into an isolated
-venv, registers manifest entry points dynamically, polls
-`pegasus-tenant-<tenantId>-<env>`; tenant code runs in a stripped-env
-subprocess. Local-dev story via `docker-compose.temporal.yml` (mirror the
-Phase-2 `temporal-worker` service).
+**Unit 9 — Runner orchestration (scale-to-zero). ✅ DONE (#243 →
+`f62667a`, deployed + infra-verified 2026-06-12).** Extended
+TemporalWorkerStack (no new stack — orphan-trap avoidance): runner ECR
+repo, RunTask-only task def (0.5 vCPU/1 GiB, empty task role — runner
+holds no AWS creds; TEMPORAL_CLOUD_API_KEY via complete-ARN secret; NO
+broker secret, CDK-test-asserted). Runner SG + subnet flow logs (ALL
+traffic, 90-day, unnamed group) on WireGuardStack. Dispatcher lib
+`apps/api/src/lib/tenant-runner.ts`: `startedBy = tenantId` (exactly 36
+chars) dedupe via ListTasks; check-then-act race accepted (idle-exit
+self-heals); wbk_ token KMS-recovered at launch, passed as RunTask
+override (DescribeTasks-visible, IAM-gated, accepted v1); soft-fail
+contract (failed launch → QUEUED + next-tick sweep retry). Call sites:
+run path + per-minute dispatcher sweep (crash-recovery backstop) + pool
+gauges (TenantRunnersRunning, ColdStartSeconds, Launched/LaunchFailed).
+Cross-stack contract BY NAME (cluster/family/roles — cycle avoidance),
+mirrored api-stack↔temporal-worker-stack. New tenant-runner.yml image
+workflow (no service roll — `:latest` resolved per launch) + ci.yml
+Python job. First image push raced repo creation exactly as predicted —
+re-dispatch fixed; images live in both accounts.
 
-**Unit 9 — Runner orchestration (scale-to-zero).** Dispatcher (likely
-folded into the Unit-3 poller or the run path) launches a runner via ECS
-`RunTask` for any tenant with QUEUED work and none running (Resolved #1);
-the runner self-terminates after ~10 min idle; CloudWatch metrics for
-cold-start latency + running-runner count. VPC flow logs on the runner
-subnets (Resolved #2). New/extended CDK stack — re-read
-`[[feedback_cdk_secret_complete_arn_for_ecs]]` and
-`[[feedback_cdk_retain_orphans_on_rollback]]` before writing it.
+**Unit 10 — Run-path routing + execution limits. ✅ DONE (#248 →
+`271737d`, 2026-06-12). THE SANDBOX IS LIVE.**
+`apps/api/src/lib/workflow-route.ts` = single routing source of truth:
+curated name → STDLIB queue (incl. forked-curated shadowing — stdlib
+baked code runs for curated names, documented); non-curated +
+executable → TENANT_RUNNER (queue `pegasus-tenant-<tenantId>-<env>`,
+suffix derived from the existing TEMPORAL_TASK_QUEUE var — a
+coordinator-review catch: the worker invented a suffix env var nothing
+injects, which would have stranded every tenant execution on `-dev`
+queues); else NOT_EXECUTABLE. Limits (TENANT_RUNNER lane ONLY — curated
+stdlib stays uncapped per locked scope): workflowExecutionTimeout 900 s
+default, manifest `timeoutSeconds` 1–900 may lower (SDK field added,
+bool-rejecting validation); concurrency cap 5 (in-tx count, overshoot-
+by-1 race accepted); daily quota 200 (`TENANT_WORKFLOW_DAILY_QUOTA`,
+UTC day, all statuses count, new `(tenantId, createdAt)` index —
+CONCURRENTLY, empirically verified under `prisma migrate deploy`).
+429 + `WorkflowExecutionRejected{Reason}` metrics; trigger fires
+hitting limits stamp the event like START_FAILED (no retry). Worker
+self-review caught a real bug: counts originally included curated
+executions (executable=true too) — fixed with `notIn` curated names.
+Interlude: esbuild advisory #249 (see status header).
 
-**Unit 10 — Run-path routing + execution limits.** Lift the curated-only
-gate: route `executable` tenant workflows to their tenant queue, curated
-names to the stdlib queue. Runtime accounts keep the static
-`workflow_runtime` role (Resolved #5 — no dynamic scoping;
-`requiredActions` stays display-only). Enforce the v1-blocking limits
-(Resolved #3): per-execution Temporal timeouts, per-tenant concurrency
-cap, executions/day quota with 429 surfacing.
-
-**Unit 11 — UX + operational guardrails.** Tenant-web: surface
-executability, requested permissions, and limit errors. Admin-web: per-tenant
-kill switch (disable all triggers + runners), runner status, quota view.
-Dashboards/alarms for runner crashes, trigger backlog, reconciled
-executions.
+**Unit 11 — UX + operational guardrails. ✅ DONE (#251 → `04626ec`,
+2026-06-12).** Tenant-web: `ExecutabilityBadge` per row (curated /
+ready / pending-reupload), Run disabled with tooltip for non-executable,
+`requiredActions` + `timeoutSeconds` display, friendly 429/423 messages
+(CONCURRENCY_LIMIT / DAILY_QUOTA_EXCEEDED / WORKFLOWS_DISABLED).
+Admin: `Tenant.workflowsDisabled` kill switch (additive migration) —
+enforced at run path (423, BOTH lanes, before any write/ECS/Temporal),
+dispatcher (skip metric reason), and ensure/sweep (`SKIPPED_DISABLED`);
+RUNNING executions finish (documented); idempotent audit-logged
+enable/disable endpoints + tenant-page UI; `GET /api/admin/workflows/
+runner-status` (ECS task list + per-tenant quota/concurrency rollup,
+degrades gracefully when ECS unavailable) + 30 s auto-refresh panel.
+Infra: 4 alarms on the existing ops SNS topic (launch-failed, dispatch
+backlog, reconciled>5/hr, START_FAILED skips) + `Pegasus-Workflows`
+dashboard. Review fix worth remembering: the reconcile emitter now
+publishes a dimensionless roll-up alongside the `{Status}`-dimensioned
+metric — CloudWatch alarms can't aggregate across dimensions, the alarm
+would never have fired.
 
 ---
 

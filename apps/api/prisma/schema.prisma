@@ -223,6 +223,15 @@ model Tenant {
   /// an admin update; no API mutation. See handlers/workflows.ts.
   isPlatformTenant Boolean @default(false) @map("is_platform_tenant")
 
+  /// When true, an operator has disabled all new workflow execution for this
+  /// tenant. Existing RUNNING executions are allowed to finish. Blocked at:
+  ///   1. POST /workflows/:id/run (423 WORKFLOWS_DISABLED)
+  ///   2. Trigger dispatcher (skips firing, emits WorkflowTriggerSkipped)
+  ///   3. ensureTenantRunner / sweepTenantRunners (refuses runner launch)
+  /// Toggle via POST /api/admin/tenants/:id/disable-workflows and
+  /// POST /api/admin/tenants/:id/enable-workflows (platform-admin only).
+  workflowsDisabled Boolean @default(false) @map("workflows_disabled")
+
   /// Tenant-wide UI preferences edited via /settings/app (one nested object per
   /// main-menu section: dashboard, moves, quotes, customers, dispatch, billing,
   /// operations). The shape is defined by AppSettingsSchema in
@@ -256,6 +265,7 @@ model Tenant {
   workflows        Workflow[]
   workflowTriggers WorkflowTrigger[]
   domainEvents     DomainEvent[]
+  brokerCredential TenantBrokerCredential?
   vpnPeer          VpnPeer?
 
   // Messaging context — RingCentral SMS capture
@@ -1179,6 +1189,23 @@ model Workflow {
   /// runtime account is provisioned.
   runtimeApiClientId String? @map("runtime_api_client_id")
 
+  /// SHA-256 (hex) of the artifact zip, computed server-side at finalize
+  /// (Phase 3 Unit 6). Null for rows finalized before integrity validation
+  /// existed — they become executable on re-upload.
+  artifactSha256 String? @map("artifact_sha256")
+
+  /// Artifact zip size in bytes, recorded at finalize alongside the digest.
+  /// Null for pre-Unit-6 rows.
+  artifactSizeBytes Int? @map("artifact_size_bytes")
+
+  /// True when the artifact passed integrity validation at finalize (zip
+  /// structure sound, every manifest entry point resolves to a file in the
+  /// zip, no pip dependencies, within the 10 MB cap). Derived server-side
+  /// only — never client-settable. NOTE: the run path still enforces the
+  /// curated-names gate (lib/curated-workflows.ts) until Phase 3 Unit 10;
+  /// this flag records *eligibility*, it does not open execution yet.
+  executable Boolean @default(false)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -1254,6 +1281,10 @@ model WorkflowExecution {
 
   @@index([tenantId, workflowId])
   @@index([status])
+  /// Composite index for the TENANT_RUNNER daily-quota count (Phase 3 Unit 10):
+  /// `WHERE tenantId = $1 AND createdAt >= $utcDayStart`. The tenantId-first
+  /// ordering means the query touches only one tenant's rows.
+  @@index([tenantId, createdAt])
   @@map("workflow_executions")
   @@schema("public")
 }
@@ -1353,6 +1384,57 @@ model DomainEvent {
   @@index([dispatchedAt, occurredAt])
   @@index([tenantId])
   @@map("domain_events")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Tenant broker credentials — per-tenant tokens for the workflow broker.
+//
+// Phase 3 Unit 7 (the sandbox security keystone). A tenant-runner container
+// (Unit 8) must never hold the global WORKFLOW_BROKER_SECRET — tenant code
+// imported by the runner could read it from the environment and mint ANY
+// tenant's runtime token. Instead each tenant gets exactly one opaque token
+// `wbk_<tenantId>_<48 hex>`; the broker endpoints accept it but enforce
+// `execution.tenantId === credential.tenantId` on every request, so a leaked
+// token only ever exposes the holding tenant's own executions.
+//
+// Two at-rest forms, deliberately:
+//   * tokenHash       — SHA-256 of the full token. The broker verifies against
+//                       this (timing-safe) and never needs the plaintext back.
+//   * tokenCiphertext — KMS-encrypted plaintext (same key as
+//                       Workflow.runtimeTokenCiphertext). Exists ONLY so the
+//                       Unit 9 dispatcher can recover the plaintext at ECS
+//                       task-launch time and inject it into the runner's env.
+//
+// Minted lazily by lib/tenant-broker-credential.ts (no HTTP surface). NOT in
+// TENANT_SCOPED_MODELS — only the broker auth path and the dispatcher touch
+// it, both via the root `db` (same precedent as ApiClient).
+// ---------------------------------------------------------------------------
+
+model TenantBrokerCredential {
+  id       String @id @default(uuid())
+  /// Owning tenant. Unique — at most one active credential per tenant, which
+  /// is also what makes rotation revoke the previous token (the row's hash is
+  /// replaced, so the old plaintext stops verifying).
+  tenantId String @unique @map("tenant_id")
+
+  /// SHA-256 hex digest of the full token — compared with timing-safe
+  /// equality at the broker. Never returned in API responses.
+  tokenHash String @map("token_hash")
+
+  /// KMS-encrypted token plaintext (base64 ciphertext), for the runner
+  /// dispatcher to decrypt at task launch. Never returned in API responses.
+  tokenCiphertext String @map("token_ciphertext")
+
+  /// Stamped whenever the credential is rotated. Null = never rotated.
+  rotatedAt DateTime? @map("rotated_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("tenant_broker_credentials")
   @@schema("public")
 }
 

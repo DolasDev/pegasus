@@ -23,19 +23,19 @@
     "e2e:remote": "E2E_TARGET=remote npm run e2e --workspace=@pegasus/e2e"
   },
   "devDependencies": {
-    "@aws-sdk/client-ssm": "^3.1034.0",
-    "@aws-sdk/credential-providers": "^3.1037.0",
+    "@aws-sdk/client-ssm": "^3.1067.0",
+    "@aws-sdk/credential-providers": "^3.1067.0",
     "@eslint/js": "^10.0.0",
     "audit-ci": "^7.1.0",
     "eslint": "^10.2.1",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
     "lint-staged": "^16.0.0",
-    "prettier": "^3.8.3",
+    "prettier": "^3.8.4",
     "shellcheck": "^4.1.0",
-    "turbo": "^2.9.6",
+    "turbo": "^2.9.18",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.59.0",
+    "typescript-eslint": "^8.61.0",
     "vitest": "^4.1.5"
   },
   "lint-staged": {
@@ -64,7 +64,7 @@
     "ajv": "prototype pollution",
     "eslint.ajv": "ESLint uses ajv v6 internally",
     "effect": "compatibility fix",
-    "esbuild": "GHSA-67mh-4wv8-2f99 moderate CVE",
+    "esbuild": "GHSA-67mh-4wv8-2f99 moderate CVE; raised to >=0.28.1 for GHSA-gv7w-rqvm-qjhr (high, binary-integrity RCE, fixed 0.28.1)",
     "react": "Expo SDK 55 pins to 19.2.0. React must be one version tree-wide (singleton peer), so every workspace + transitive gets this version.",
     "react-dom": "Matches react override.",
     "react-native": "Expo SDK 55 expects 0.83.6; transitive bumps via @react-navigation would otherwise pull 0.85.x.",
@@ -100,7 +100,7 @@
       }
     },
     "effect": ">=3.20.0",
-    "esbuild": ">=0.25.0",
+    "esbuild": ">=0.28.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native": "0.83.6",

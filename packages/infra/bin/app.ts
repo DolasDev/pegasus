@@ -271,6 +271,14 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   temporalTaskQueue: apiTemporalTaskQueue,
   temporalCloudSecretArn: apiTemporalCloudSecretArn,
   workflowBrokerSecretArn: apiWorkflowBrokerSecretArn,
+  // Phase 3 Unit 9 — tenant-runner orchestration. Runner tasks launch into
+  // the same PRIVATE_WITH_EGRESS subnets the stdlib worker uses, behind an
+  // egress-only SG owned by WireGuardStack (see ApiStackProps for why the
+  // SG cannot live on TemporalWorkerStack). ApiStack only activates the
+  // RunTask wiring when its Temporal props are also set, so dev (which gets
+  // these refs but no Temporal config) stays inert.
+  tenantRunnerSubnets: wireguardStack.temporalWorkerSubnets,
+  tenantRunnerSecurityGroup: wireguardStack.tenantRunnerSecurityGroup,
   ringcentralEnabled,
   corsAllowedOrigins,
 })
@@ -312,6 +320,20 @@ new MonitoringStack(app, `${stackIdPrefix}-MonitoringStack`, {
   alarmEmail:
     (app.node.tryGetContext('alarmEmail') as string | undefined) ??
     (envName === 'staging' || envName === 'prod' ? 'dolasllc@gmail.com' : undefined),
+  // Phase 1 — Temporal worker ECS alarm. Names are deterministic and equal:
+  // cluster + service both use `pegasus-temporal-worker-${envName}`.
+  // Staging/prod only; dev has no Fargate worker → props remain undefined.
+  temporalWorkerClusterName:
+    envName === 'staging' || envName === 'prod' ? `pegasus-temporal-worker-${envName}` : undefined,
+  temporalWorkerServiceName:
+    envName === 'staging' || envName === 'prod' ? `pegasus-temporal-worker-${envName}` : undefined,
+  // Phase 2 — Logs Insights query definitions. Pass log-group names from
+  // ApiStack (always available) and the temporal worker log group name
+  // (staging/prod only — matches temporal-worker-stack.ts :229).
+  apiLogGroupName: apiStack.apiLogGroupName,
+  cronLogGroupNames: apiStack.cronLogGroupNames,
+  temporalWorkerLogGroupName:
+    envName === 'staging' || envName === 'prod' ? `/pegasus/${envName}/temporal-worker` : undefined,
 })
 
 // ── Asset stacks (deployed last — depend on all upstream stacks) ──────────────

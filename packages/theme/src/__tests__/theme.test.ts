@@ -3,7 +3,7 @@ import { colors, spacing, fontSize, borderRadius, touchTarget } from '../index'
 
 describe('colors', () => {
   it('exports primary color', () => {
-    expect(colors.primary).toBe('#FF6B35')
+    expect(colors.primary).toBe('#0F172A')
   })
 
   it('exports all status colors', () => {
@@ -14,8 +14,8 @@ describe('colors', () => {
   })
 
   it('exports semantic colors', () => {
-    expect(colors.success).toBe('#10AC84')
-    expect(colors.error).toBe('#EE5A6F')
+    expect(colors.success).toBe('#16A34A')
+    expect(colors.error).toBe('#EF4444')
   })
 })
 
