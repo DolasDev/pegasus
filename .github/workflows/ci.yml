@@ -160,6 +160,32 @@ jobs:
         run: python -m pytest -q
 
   # ---------------------------------------------------------------------------
+  # Migration safety — enforce the expand-contract policy (PATTERNS.md):
+  # newly-added migrations with destructive DDL must carry the explicit
+  # `-- expand-contract: contract approved` marker. Cheap, deterministic; the
+  # AI semantic review (rollback-plan 2c) slots in as a follow-up step here.
+  # ---------------------------------------------------------------------------
+  migration-safety:
+    name: Migration Safety
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # need origin/main / PR base to diff added migrations
+
+      - name: Check expand-contract migration policy
+        run: |
+          set -euo pipefail
+          base="origin/main"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          fi
+          scripts/check-migration-safety.sh "$base"
+
+  # ---------------------------------------------------------------------------
   # Unit + integration tests (Vitest across all packages)
   # ---------------------------------------------------------------------------
   test:

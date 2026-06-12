@@ -22,6 +22,35 @@ OUTPUTS_FILE="/tmp/pegasus-cdk-outputs.json"
 
 cd "$INFRA_DIR"
 
+# Env is dev-by-default but parameterizable so the documented "CI is down"
+# emergency path (docs/runbooks/rollback.md scenario 6) is a real command, not
+# folklore. STACK_PREFIX mirrors deploy.yml: PegasusDev / PegasusStaging /
+# PegasusProd. `deploy:ci` reads `-c env=${ENV_NAME:-dev}`, so exporting
+# ENV_NAME below routes CDK to the right account/env.
+ENV_NAME="${ENV_NAME:-dev}"
+export ENV_NAME
+STACK_PREFIX="Pegasus$(tr '[:lower:]' '[:upper:]' <<< "${ENV_NAME:0:1}")${ENV_NAME:1}"
+
+# A non-dev deploy hits staging/prod accounts — demand an explicit, matching
+# confirmation and the right AWS profile so nobody nukes prod by reflex.
+# A --dry-run only previews (no AWS calls), so it shows the banner but never
+# needs CONFIRM_ENV.
+if [[ "$ENV_NAME" != "dev" ]]; then
+  echo ""
+  echo "╔═════════════════════════════════════════════════════════════╗"
+  echo "║  ⚠  NON-DEV DEPLOY: ENV_NAME=${ENV_NAME} (stacks: ${STACK_PREFIX}-*)"
+  echo "║  This deploys to the ${ENV_NAME} AWS account. CI is the canonical"
+  echo "║  path — only do this when GitHub Actions is genuinely down."
+  echo "║  Ensure AWS_PROFILE points at the ${ENV_NAME} account."
+  echo "║  To proceed, re-run with:  CONFIRM_ENV=${ENV_NAME}"
+  echo "╚═════════════════════════════════════════════════════════════╝"
+  if [[ " $* " != *" --dry-run "* && "${CONFIRM_ENV:-}" != "$ENV_NAME" ]]; then
+    echo "✖  CONFIRM_ENV is not '${ENV_NAME}' — aborting." >&2
+    exit 1
+  fi
+fi
+
+# Default profile suits dev; non-dev deploys must set AWS_PROFILE explicitly.
 AWS_PROFILE="${AWS_PROFILE:-admin-dev}"
 export AWS_PROFILE
 
@@ -64,10 +93,10 @@ fi
 
 # ── 2. Resolve TARGET (mirror deploy.yml's mapping) ───────────────────────────
 if [[ "$API_ONLY" == "true" ]]; then
-  TARGET="PegasusDev-FrontendStack PegasusDev-AdminFrontendStack PegasusDev-CognitoStack PegasusDev-DocumentsStack PegasusDev-WireGuardStack PegasusDev-ApiStack PegasusDev-MonitoringStack"
+  TARGET="${STACK_PREFIX}-FrontendStack ${STACK_PREFIX}-AdminFrontendStack ${STACK_PREFIX}-CognitoStack ${STACK_PREFIX}-DocumentsStack ${STACK_PREFIX}-WireGuardStack ${STACK_PREFIX}-ApiStack ${STACK_PREFIX}-MonitoringStack"
   echo "▶  [2/2] Deploying API stacks..."
 elif [[ "$ADMIN_ONLY" == "true" ]]; then
-  TARGET="PegasusDev-AdminFrontendStack PegasusDev-CognitoStack PegasusDev-ApiStack PegasusDev-AdminFrontendAssetsStack"
+  TARGET="${STACK_PREFIX}-AdminFrontendStack ${STACK_PREFIX}-CognitoStack ${STACK_PREFIX}-ApiStack ${STACK_PREFIX}-AdminFrontendAssetsStack"
   echo "▶  [2/2] Deploying admin stacks..."
 else
   TARGET="--all"
@@ -75,6 +104,7 @@ else
 fi
 
 export TARGET
+echo "   CDK target: $TARGET"
 run npm run deploy:ci
 
 echo ""
@@ -83,21 +113,24 @@ echo ""
 
 # ── 3. Print URLs + generate mobile .env.deploy ───────────────────────────────
 if [[ "$DRY_RUN" == "false" && -f "$OUTPUTS_FILE" ]]; then
-  WEB_URL=$(jq -r '.["pegasus-dev-frontend"].DistributionUrl // empty' "$OUTPUTS_FILE" 2>/dev/null || true)
-  ADMIN_URL=$(jq -r '.["pegasus-dev-admin-frontend"].AdminDistributionUrl // empty' "$OUTPUTS_FILE" 2>/dev/null || true)
-  API_URL=$(jq -r '.["pegasus-dev-api"].ApiUrl // empty' "$OUTPUTS_FILE" 2>/dev/null || true)
+  OUT_PREFIX="pegasus-${ENV_NAME}"
+  WEB_URL=$(jq -r ".[\"${OUT_PREFIX}-frontend\"].DistributionUrl // empty" "$OUTPUTS_FILE" 2>/dev/null || true)
+  ADMIN_URL=$(jq -r ".[\"${OUT_PREFIX}-admin-frontend\"].AdminDistributionUrl // empty" "$OUTPUTS_FILE" 2>/dev/null || true)
+  API_URL=$(jq -r ".[\"${OUT_PREFIX}-api\"].ApiUrl // empty" "$OUTPUTS_FILE" 2>/dev/null || true)
 
   [[ -n "$WEB_URL" ]]   && echo "   Client app:      $WEB_URL"
   [[ -n "$ADMIN_URL" ]] && echo "   Admin portal:    $ADMIN_URL"
   [[ -n "$API_URL" ]]   && echo "   API:             $API_URL"
 
-  COGNITO_USER_POOL_ID=$(jq -r '.["pegasus-dev-cognito"].UserPoolId // empty' "$OUTPUTS_FILE" 2>/dev/null || true)
-  COGNITO_MOBILE_CLIENT_ID=$(jq -r '.["pegasus-dev-cognito"].MobileClientId // empty' "$OUTPUTS_FILE" 2>/dev/null || true)
-  COGNITO_HOSTED_UI_DOMAIN=$(jq -r '.["pegasus-dev-cognito"].HostedUiBaseUrl // empty' "$OUTPUTS_FILE" 2>/dev/null || true)
+  COGNITO_USER_POOL_ID=$(jq -r ".[\"${OUT_PREFIX}-cognito\"].UserPoolId // empty" "$OUTPUTS_FILE" 2>/dev/null || true)
+  COGNITO_MOBILE_CLIENT_ID=$(jq -r ".[\"${OUT_PREFIX}-cognito\"].MobileClientId // empty" "$OUTPUTS_FILE" 2>/dev/null || true)
+  COGNITO_HOSTED_UI_DOMAIN=$(jq -r ".[\"${OUT_PREFIX}-cognito\"].HostedUiBaseUrl // empty" "$OUTPUTS_FILE" 2>/dev/null || true)
 
   MOBILE_ENV_FILE="$REPO_ROOT/apps/mobile/.env.deploy"
 
-  if [[ -n "$API_URL" && -n "$COGNITO_USER_POOL_ID" && -n "$COGNITO_MOBILE_CLIENT_ID" ]]; then
+  # The mobile .env.deploy is a dev convenience — never overwrite it with
+  # staging/prod values from an emergency deploy.
+  if [[ "$ENV_NAME" == "dev" && -n "$API_URL" && -n "$COGNITO_USER_POOL_ID" && -n "$COGNITO_MOBILE_CLIENT_ID" ]]; then
     cat > "$MOBILE_ENV_FILE" <<ENVEOF
 # Generated by deploy.sh — do not edit manually
 EXPO_PUBLIC_API_URL=$API_URL

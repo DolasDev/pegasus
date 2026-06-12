@@ -62,7 +62,17 @@ Every migration must therefore be safe for the previous deployed version of the 
 - **Dropping a column waits one deploy** after the code that referenced it has shipped.
 - **Type changes** (e.g. `int → bigint`) follow the same add-new / dual-write / cut-over / drop-old pattern.
 
-A failed migration aborts the env's deploy (intended). Recovery is revert-PR + redeploy; Prisma has no generic rollback, so don't write migrations you can't roll forward through.
+A failed migration aborts the env's deploy (intended). Recovery is revert-PR + redeploy; Prisma has no generic rollback, so don't write migrations you can't roll forward through. For the full bad-deploy / failed-migration / Neon-restore decision tree, see `docs/runbooks/rollback.md`.
+
+**Destructive DDL is contract-only and gated.** A single migration PR is either _expand-only_ (additive — new tables/columns, nullable) or _contract-only_ (the drop/rename/tighten), **never both alongside the code change that needs it**. Destructive statements (`DROP TABLE`, `DROP COLUMN`, `ALTER TABLE … RENAME`, `… SET NOT NULL` on an existing column) must ship at least one release **after** the last code that reads the old shape. Consequence: rolling code back to the previous SHA is **always** safe — the emergency `rollback.yml` path never has to touch the DB.
+
+`scripts/check-migration-safety.sh` enforces this in CI: a newly-added `migration.sql` containing destructive DDL fails the build unless it carries an explicit acknowledgement marker comment:
+
+```sql
+-- expand-contract: contract approved
+```
+
+The marker is a deliberate "yes, the old code is already gone" sign-off — only add it when that's true.
 
 ## Shared Packages
 

@@ -154,6 +154,11 @@ export class AdminFrontendAssetsStack extends cdk.Stack {
         destinationBucket: adminBucket,
         distribution,
         distributionPaths: ['/*'],
+        // prune:false — keep prior hashed chunks so open admin tabs don't 404
+        // on dynamic imports mid-deploy and rollbacks need no bucket
+        // archaeology. See the tenant FrontendAssetsStack for the full
+        // rationale and docs/runbooks/rollback.md for the quarterly prune.
+        prune: false,
       })
     }
   }

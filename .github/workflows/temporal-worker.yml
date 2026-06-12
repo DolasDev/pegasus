@@ -44,6 +44,10 @@ on:
           - both
           - staging
           - prod
+      rollback-to-sha:
+        description: 'Roll back: retag this already-pushed :<sha> image as :latest (no rebuild). Empty = normal build+push.'
+        type: string
+        default: ''
 
 concurrency:
   group: temporal-worker-${{ github.ref }}
@@ -86,12 +90,14 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set up Docker Buildx
+        if: inputs.rollback-to-sha == ''
         uses: docker/setup-buildx-action@v3
 
       # Build context = repo root, NOT apps/temporal-worker/. The Dockerfile
       # reaches into packages/workflows-sdk-python/ + packages/workflows-stdlib/
       # via sibling COPY lines (see apps/temporal-worker/Dockerfile header).
       - name: Build + push image
+        if: inputs.rollback-to-sha == ''
         id: build
         uses: docker/build-push-action@v6
         with:
@@ -103,6 +109,26 @@ jobs:
             ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ github.sha }}
           cache-from: type=gha,scope=temporal-worker-staging
           cache-to: type=gha,scope=temporal-worker-staging,mode=max
+
+      # Image rollback (no rebuild): the ECS circuit breaker can't restore a
+      # previous IMAGE for image-only rolls (`:latest` is mutable — "previous
+      # task def" re-pulls the same broken image). So retag a known-good
+      # already-pushed `:<sha>` as `:latest` server-side, then the unconditional
+      # force-redeploy below pulls it. See docs/runbooks/rollback.md scenario 4.
+      - name: Retag image for rollback
+        if: inputs.rollback-to-sha != ''
+        run: |
+          set -euo pipefail
+          manifest=$(aws ecr batch-get-image --repository-name "$ECR_REPO_NAME" \
+            --image-ids imageTag="${{ inputs.rollback-to-sha }}" \
+            --query 'images[0].imageManifest' --output text)
+          if [[ -z "$manifest" || "$manifest" == "None" ]]; then
+            echo "::error::No image tagged '${{ inputs.rollback-to-sha }}' in $ECR_REPO_NAME — cannot roll back."
+            exit 1
+          fi
+          aws ecr put-image --repository-name "$ECR_REPO_NAME" \
+            --image-tag latest --image-manifest "$manifest"
+          echo "Retagged $ECR_REPO_NAME:${{ inputs.rollback-to-sha }} as :latest (staging)."
 
       - name: Force Fargate redeploy
         # `:latest` is mutable, so ECS won't pull the new image on its own.
@@ -185,9 +211,11 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set up Docker Buildx
+        if: inputs.rollback-to-sha == ''
         uses: docker/setup-buildx-action@v3
 
       - name: Build + push image
+        if: inputs.rollback-to-sha == ''
         id: build
         uses: docker/build-push-action@v6
         with:
@@ -199,6 +227,22 @@ jobs:
             ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ github.sha }}
           cache-from: type=gha,scope=temporal-worker-prod
           cache-to: type=gha,scope=temporal-worker-prod,mode=max
+
+      # Image rollback (no rebuild) — see the staging job's step for the why.
+      - name: Retag image for rollback
+        if: inputs.rollback-to-sha != ''
+        run: |
+          set -euo pipefail
+          manifest=$(aws ecr batch-get-image --repository-name "$ECR_REPO_NAME" \
+            --image-ids imageTag="${{ inputs.rollback-to-sha }}" \
+            --query 'images[0].imageManifest' --output text)
+          if [[ -z "$manifest" || "$manifest" == "None" ]]; then
+            echo "::error::No image tagged '${{ inputs.rollback-to-sha }}' in $ECR_REPO_NAME — cannot roll back."
+            exit 1
+          fi
+          aws ecr put-image --repository-name "$ECR_REPO_NAME" \
+            --image-tag latest --image-manifest "$manifest"
+          echo "Retagged $ECR_REPO_NAME:${{ inputs.rollback-to-sha }} as :latest (prod)."
 
       - name: Force Fargate redeploy
         run: |

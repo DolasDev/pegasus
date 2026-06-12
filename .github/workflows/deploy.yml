@@ -337,3 +337,37 @@ jobs:
           set -euo pipefail
           git tag -f last-deploy "${{ github.sha }}"
           git push -f origin refs/tags/last-deploy
+
+  # ---------------------------------------------------------------------------
+  # Record the last-known-good prod release as movable tags so rollback.yml can
+  # resolve `prod-previous` with a blank `sha` input (two-click incident
+  # recovery, zero `gh run list` spelunking). Unlike `last-deploy` (the
+  # change-detection marker, advanced on every push) these track *prod*
+  # releases only: `prod-current` = the SHA just deployed to prod,
+  # `prod-previous` = the one before it. Runs on any successful prod deploy,
+  # including a partial `target=api` dispatch — prod-current then tracks the
+  # newest SHA actually pushed to prod, which is the right rollback target.
+  # ---------------------------------------------------------------------------
+  tag-release:
+    name: Tag prod release
+    needs: [changes, deploy-prod]
+    if: success() && needs.changes.outputs.any == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # force-push the prod-current / prod-previous tags
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Move prod-current / prod-previous tags
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          prev=$(git rev-parse --verify -q prod-current^{commit} || true)
+          if [[ -n "$prev" && "$prev" != "${{ github.sha }}" ]]; then
+            git tag -f prod-previous "$prev"
+            git push -f origin refs/tags/prod-previous
+          fi
+          git tag -f prod-current "${{ github.sha }}"
+          git push -f origin refs/tags/prod-current

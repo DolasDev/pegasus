@@ -1,0 +1,121 @@
+name: Rollback
+
+# Emergency rollback path. Deploys an arbitrary SHA to staging and/or prod via
+# the same reusable `_deploy.yml` that powers normal deploys, but WITHOUT the
+# staging-first chain or the E2E gate — when prod is broken, those add latency
+# you don't have. The `prod` GitHub environment's required-reviewer rule still
+# gates `rollback-prod` (one approval click), so prod is never unguarded.
+#
+# Rollbacks are code-only by policy: `skip-migrate: 'true'`. The expand-contract
+# migration policy (docs/runbooks/rollback.md + scripts/check-migration-safety.sh)
+# guarantees the previous SHA's code runs against the current schema. If a
+# destructive migration must be undone, that is a Neon restore — see the runbook.
+#
+# Blank `sha` resolves the `prod-previous` tag (advanced by deploy.yml's
+# `tag-release` job): two-click recovery with zero `gh run list` spelunking.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Commit SHA to roll back to (empty = prod-previous tag)'
+        type: string
+        default: ''
+      environment:
+        description: 'Which env(s) to roll back'
+        type: choice
+        required: true
+        options:
+          - staging
+          - prod
+          - both
+      target:
+        description: 'Component to roll back'
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - api
+          - tenant-web
+          - admin-web
+
+# Serialize against normal deploys — same group deploy.yml uses for main, so a
+# rollback queues behind an in-flight deploy rather than racing it. Keep
+# cancel-in-progress:false (matching deploy.yml) so a queued rollback is never
+# silently dropped.
+concurrency:
+  group: deploy-refs/heads/main
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolve rollback target
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.r.outputs.sha }}
+      api: ${{ steps.r.outputs.api }}
+      tenant: ${{ steps.r.outputs.tenant }}
+      admin: ${{ steps.r.outputs.admin }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: r
+        run: |
+          set -euo pipefail
+          sha="${{ inputs.sha }}"
+          if [[ -z "$sha" ]]; then
+            git fetch --tags --force
+            sha=$(git rev-parse --verify prod-previous^{commit})
+          fi
+          git cat-file -e "${sha}^{commit}"   # fail fast on bogus input
+          case "${{ inputs.target }}" in
+            all)        api=true;  tenant=true;  admin=true ;;
+            api)        api=true;  tenant=false; admin=false ;;
+            tenant-web) api=false; tenant=true;  admin=false ;;
+            admin-web)  api=false; tenant=false; admin=true ;;
+          esac
+          { echo "sha=$sha"; echo "api=$api"; echo "tenant=$tenant"; echo "admin=$admin"; } >> "$GITHUB_OUTPUT"
+          echo "### Rolling back to \`$sha\` (${{ inputs.environment }} / ${{ inputs.target }})" >> "$GITHUB_STEP_SUMMARY"
+
+  rollback-staging:
+    name: Roll back staging
+    needs: resolve
+    if: inputs.environment == 'staging' || inputs.environment == 'both'
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      env-name: staging
+      stack-prefix: PegasusStaging
+      deploy-api: ${{ needs.resolve.outputs.api }}
+      deploy-tenant: ${{ needs.resolve.outputs.tenant }}
+      deploy-admin: ${{ needs.resolve.outputs.admin }}
+      git-ref: ${{ needs.resolve.outputs.sha }}
+      skip-migrate: 'true'
+    secrets: inherit
+    permissions:
+      id-token: write
+      contents: read
+
+  rollback-prod:
+    name: Roll back prod
+    needs: resolve
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && (inputs.environment == 'prod' || inputs.environment == 'both') }}
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      env-name: prod
+      stack-prefix: PegasusProd
+      deploy-api: ${{ needs.resolve.outputs.api }}
+      deploy-tenant: ${{ needs.resolve.outputs.tenant }}
+      deploy-admin: ${{ needs.resolve.outputs.admin }}
+      git-ref: ${{ needs.resolve.outputs.sha }}
+      skip-migrate: 'true'
+    secrets: inherit
+    permissions:
+      id-token: write
+      contents: read

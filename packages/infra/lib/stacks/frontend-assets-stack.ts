@@ -190,6 +190,15 @@ export class FrontendAssetsStack extends cdk.Stack {
         destinationBucket: siteBucket,
         distribution,
         distributionPaths: ['/*'],
+        // prune:false (default is true) — keep the previous build's hashed
+        // Vite chunks instead of deleting them. Vite's content-hashed
+        // filenames are immutable, so old + new chunks coexist safely, and
+        // config.json is still overwritten in place. Two wins: (a) open SPA
+        // tabs stop 404ing on dynamic imports mid-deploy; (b) a frontend
+        // rollback (rebuild at the old SHA) needs no bucket archaeology.
+        // Cost: slow bucket growth (KBs/deploy) — quarterly prune per
+        // docs/runbooks/rollback.md.
+        prune: false,
       })
     }
   }
