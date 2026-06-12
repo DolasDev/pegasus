@@ -161,7 +161,7 @@ export class CognitoStack extends cdk.Stack {
     // -------------------------------------------------------------------------
     const preAuthFn = new nodejs.NodejsFunction(this, 'PreAuthFunction', {
       functionName: `pegasus-cognito-pre-auth-${this.stackName}`,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       // Entry point is in apps/api so Lambda code stays alongside app code.
       entry: path.join(__dirname, '../../../../apps/api/src/cognito/pre-auth.ts'),
       handler: 'handler',
@@ -194,7 +194,7 @@ export class CognitoStack extends cdk.Stack {
     // -------------------------------------------------------------------------
     const preTokenFn = new nodejs.NodejsFunction(this, 'PreTokenFunction', {
       functionName: `pegasus-cognito-pre-token-${this.stackName}`,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       entry: path.join(__dirname, '../../../../apps/api/src/cognito/pre-token.ts'),
       handler: 'handler',
       environment: {
@@ -226,7 +226,7 @@ export class CognitoStack extends cdk.Stack {
     // -------------------------------------------------------------------------
     const customMessageFn = new nodejs.NodejsFunction(this, 'CustomMessageFunction', {
       functionName: `pegasus-cognito-custom-message-${this.stackName}`,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       entry: path.join(__dirname, '../../../../apps/api/src/cognito/custom-message.ts'),
       handler: 'handler',
       environment: {

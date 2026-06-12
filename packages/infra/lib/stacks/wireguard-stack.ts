@@ -413,7 +413,7 @@ export class WireGuardStack extends cdk.Stack {
     const keyBootstrapFn = new nodejs.NodejsFunction(this, 'HubKeyBootstrapFn', {
       entry: path.join(__dirname, 'wireguard-key-bootstrap.handler.ts'),
       handler: 'handler',
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       logGroup: keyBootstrapFnLogGroup,
@@ -481,7 +481,7 @@ export class WireGuardStack extends cdk.Stack {
     const agentKeyBootstrapFn = new nodejs.NodejsFunction(this, 'AgentKeyBootstrapFn', {
       entry: path.join(__dirname, 'wireguard-agent-key-bootstrap.handler.ts'),
       handler: 'handler',
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       logGroup: agentKeyBootstrapFnLogGroup,
@@ -552,7 +552,7 @@ export class WireGuardStack extends cdk.Stack {
       // the ASG below). Without cfn-signal in $PATH, the trap installed
       // by addSignalOnExitCommand() silently no-ops, defeating the
       // whole point of waitOnResourceSignals=true.
-      'dnf install -y wireguard-tools chrony aws-cli nodejs20 tar iptables-nft iptables-services aws-cfn-bootstrap',
+      'dnf install -y wireguard-tools chrony aws-cli nodejs22 tar iptables-nft iptables-services aws-cfn-bootstrap',
       'systemctl enable --now chronyd',
       // Resolve hub privkey. Bash's `set -e` does NOT abort on a failed
       // command substitution in an assignment, so we read into a variable
@@ -824,7 +824,7 @@ export class WireGuardStack extends cdk.Stack {
     const tunnelProxyFn = new nodejs.NodejsFunction(this, 'TunnelProxyFn', {
       entry: path.join(__dirname, '../../../../apps/tunnel-proxy/src/index.ts'),
       handler: 'handler',
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       memorySize: 256,
       timeout: cdk.Duration.seconds(30),
       vpc,
@@ -849,7 +849,7 @@ export class WireGuardStack extends cdk.Stack {
     const mssqlExecutorFn = new nodejs.NodejsFunction(this, 'MssqlExecutorFn', {
       entry: path.join(__dirname, '../../../../apps/mssql-executor/src/index.ts'),
       handler: 'handler',
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       memorySize: 256,
       timeout: cdk.Duration.seconds(30),
       vpc,

@@ -235,7 +235,7 @@ describe('CognitoStack — Lambda triggers', () => {
   it('pre-auth Lambda uses Node.js 20.x runtime', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
       MemorySize: 128,
-      Runtime: 'nodejs20.x',
+      Runtime: 'nodejs24.x',
     })
   })
 
@@ -249,7 +249,7 @@ describe('CognitoStack — Lambda triggers', () => {
   it('pre-token Lambda uses Node.js 20.x runtime', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
       MemorySize: 256,
-      Runtime: 'nodejs20.x',
+      Runtime: 'nodejs24.x',
     })
   })
 
