@@ -64,31 +64,39 @@ describe('resolveWorkflowRoute', () => {
 // ---------------------------------------------------------------------------
 
 describe('tenantTaskQueue', () => {
-  it('produces the correct queue name in dev (env suffix unset)', () => {
-    vi.stubEnv('TEMPORAL_TASK_QUEUE_ENV_SUFFIX', '')
+  // The suffix is derived from the DEPLOYED TEMPORAL_TASK_QUEUE value
+  // (pegasus-stdlib-<env>, injected by CDK ApiStack) — there is no separate
+  // suffix variable. These tests pin the exact deployed shapes.
+  it('produces the correct queue name in dev (TEMPORAL_TASK_QUEUE unset)', () => {
+    vi.stubEnv('TEMPORAL_TASK_QUEUE', '')
     const tenantId = '0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0'
     expect(tenantTaskQueue(tenantId)).toBe(`pegasus-tenant-${tenantId}-dev`)
   })
 
-  it('produces the correct queue name for staging', () => {
-    vi.stubEnv('TEMPORAL_TASK_QUEUE_ENV_SUFFIX', 'staging')
+  it('produces the correct queue name for staging (deployed value)', () => {
+    vi.stubEnv('TEMPORAL_TASK_QUEUE', 'pegasus-stdlib-staging')
     const tenantId = '0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0'
     expect(tenantTaskQueue(tenantId)).toBe(`pegasus-tenant-${tenantId}-staging`)
   })
 
-  it('produces the correct queue name for prod', () => {
-    vi.stubEnv('TEMPORAL_TASK_QUEUE_ENV_SUFFIX', 'prod')
+  it('produces the correct queue name for prod (deployed value)', () => {
+    vi.stubEnv('TEMPORAL_TASK_QUEUE', 'pegasus-stdlib-prod')
     const tenantId = 'aaaabbbb-cccc-4ddd-8eee-ffffffffffff'
     expect(tenantTaskQueue(tenantId)).toBe(`pegasus-tenant-${tenantId}-prod`)
   })
 
-  it('falls back to dev for an unset env suffix', () => {
-    vi.stubEnv('TEMPORAL_TASK_QUEUE_ENV_SUFFIX', undefined)
+  it('falls back to dev when TEMPORAL_TASK_QUEUE is unset', () => {
+    vi.stubEnv('TEMPORAL_TASK_QUEUE', undefined)
     expect(tenantTaskQueueEnv()).toBe('dev')
   })
 
-  it('falls back to dev for a whitespace-only env suffix', () => {
-    vi.stubEnv('TEMPORAL_TASK_QUEUE_ENV_SUFFIX', '  ')
+  it('falls back to dev when TEMPORAL_TASK_QUEUE does not match the stdlib shape', () => {
+    vi.stubEnv('TEMPORAL_TASK_QUEUE', 'some-custom-queue')
+    expect(tenantTaskQueueEnv()).toBe('dev')
+  })
+
+  it('matches the local-compose default (pegasus-stdlib-dev -> dev)', () => {
+    vi.stubEnv('TEMPORAL_TASK_QUEUE', 'pegasus-stdlib-dev')
     expect(tenantTaskQueueEnv()).toBe('dev')
   })
 })

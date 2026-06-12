@@ -54,11 +54,11 @@
 //
 // ## Per-env tenant task-queue name
 //
-// The API derives the queue at start time from TEMPORAL_TASK_QUEUE_ENV_SUFFIX
-// (the env suffix injected by the CDK ApiStack alongside the stdlib
-// TEMPORAL_TASK_QUEUE). When unset, falls back to "dev" — matching the runner's
-// default ENV_NAME fallback. The stdlib task queue is still read from
-// TEMPORAL_TASK_QUEUE (unchanged).
+// The API derives the env suffix at start time from the EXISTING
+// TEMPORAL_TASK_QUEUE value (pegasus-stdlib-<env>, injected by CDK ApiStack)
+// — no separate variable to mis-deploy. When unset/non-standard, falls back
+// to "dev" — matching the runner's default ENV_NAME fallback. The stdlib
+// task queue itself is still read from TEMPORAL_TASK_QUEUE (unchanged).
 // ---------------------------------------------------------------------------
 
 import { CURATED_WORKFLOW_NAMES } from './curated-workflows'
@@ -82,11 +82,21 @@ export type WorkflowRoute = 'STDLIB' | 'TENANT_RUNNER' | 'NOT_EXECUTABLE'
 
 /**
  * The per-env suffix used to build the tenant task-queue name.
- * CDK ApiStack injects TEMPORAL_TASK_QUEUE_ENV_SUFFIX (e.g. "staging", "prod");
- * "dev" is the fallback matching the runner's default ENV_NAME.
+ *
+ * Derived from the EXISTING `TEMPORAL_TASK_QUEUE` env var (CDK ApiStack
+ * injects e.g. `pegasus-stdlib-staging`; the `pegasus-stdlib-<env>` shape is
+ * the documented contract in temporal-client.ts), so the tenant queue suffix
+ * can never diverge from the env the rest of the Temporal wiring was
+ * deployed for. There is deliberately NO separate suffix variable — a second
+ * knob would be a second thing to mis-deploy.
+ *
+ * "dev" is the fallback when TEMPORAL_TASK_QUEUE is unset or non-standard,
+ * matching the runner's local-compose default ENV_NAME.
  */
 export function tenantTaskQueueEnv(env: Record<string, string | undefined> = process.env): string {
-  return (env['TEMPORAL_TASK_QUEUE_ENV_SUFFIX'] ?? '').trim() || 'dev'
+  const stdlibQueue = (env['TEMPORAL_TASK_QUEUE'] ?? '').trim()
+  const match = /^pegasus-stdlib-(.+)$/.exec(stdlibQueue)
+  return match?.[1] ?? 'dev'
 }
 
 /**
