@@ -32,6 +32,14 @@ on:
         description: 'AWS region (defaults to us-east-1)'
         type: string
         default: us-east-1
+      git-ref:
+        description: 'Commit SHA/ref to check out and deploy (empty = workflow ref)'
+        type: string
+        default: ''
+      skip-migrate:
+        description: 'true to skip the prisma migrate job (rollbacks are code-only)'
+        type: string
+        default: 'false'
 
 permissions:
   id-token: write
@@ -50,12 +58,14 @@ permissions:
 jobs:
   migrate:
     name: Migrate ${{ inputs.env-name }} database
-    if: inputs.deploy-api == 'true'
+    if: inputs.deploy-api == 'true' && inputs.skip-migrate != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: ${{ inputs.env-name }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.git-ref }}
 
       - uses: actions/setup-node@v6
         with:
@@ -104,6 +114,8 @@ jobs:
       STACK_PREFIX: ${{ inputs.stack-prefix }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.git-ref }}
 
       - uses: actions/setup-node@v6
         with:
