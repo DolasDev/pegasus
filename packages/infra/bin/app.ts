@@ -271,6 +271,14 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   temporalTaskQueue: apiTemporalTaskQueue,
   temporalCloudSecretArn: apiTemporalCloudSecretArn,
   workflowBrokerSecretArn: apiWorkflowBrokerSecretArn,
+  // Phase 3 Unit 9 — tenant-runner orchestration. Runner tasks launch into
+  // the same PRIVATE_WITH_EGRESS subnets the stdlib worker uses, behind an
+  // egress-only SG owned by WireGuardStack (see ApiStackProps for why the
+  // SG cannot live on TemporalWorkerStack). ApiStack only activates the
+  // RunTask wiring when its Temporal props are also set, so dev (which gets
+  // these refs but no Temporal config) stays inert.
+  tenantRunnerSubnets: wireguardStack.temporalWorkerSubnets,
+  tenantRunnerSecurityGroup: wireguardStack.tenantRunnerSecurityGroup,
   ringcentralEnabled,
   corsAllowedOrigins,
 })

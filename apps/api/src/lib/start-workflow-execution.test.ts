@@ -20,6 +20,8 @@ const {
   mockTenantUserCreate,
   mockEncryptRuntimeToken,
   mockTemporalStart,
+  mockEnsureTenantRunner,
+  mockExecutionNeedsTenantRunner,
 } = vi.hoisted(() => ({
   mockWorkflowRepo: {
     attachRuntimeToken: vi.fn(),
@@ -35,6 +37,8 @@ const {
   mockTenantUserCreate: vi.fn(),
   mockEncryptRuntimeToken: vi.fn(),
   mockTemporalStart: vi.fn(),
+  mockEnsureTenantRunner: vi.fn(),
+  mockExecutionNeedsTenantRunner: vi.fn(),
 }))
 
 vi.mock('../repositories/workflow.repository', () => ({
@@ -56,6 +60,14 @@ vi.mock('./runtime-token-crypto', () => ({
 vi.mock('./temporal-client', () => ({
   getTemporalClient: vi.fn(async () => ({ workflow: { start: mockTemporalStart } })),
   temporalTaskQueue: () => 'pegasus-stdlib-test',
+}))
+
+// Tenant-runner orchestration (Phase 3 Unit 9). Both halves are mocked so
+// the wiring tests below can flip the activation criterion: the REAL
+// criterion (curated complement) is pinned by lib/tenant-runner.test.ts.
+vi.mock('./tenant-runner', () => ({
+  ensureTenantRunner: mockEnsureTenantRunner,
+  executionNeedsTenantRunner: mockExecutionNeedsTenantRunner,
 }))
 
 import { startWorkflowExecution } from './start-workflow-execution'
@@ -147,6 +159,9 @@ beforeEach(() => {
   })
   mockEncryptRuntimeToken.mockResolvedValue('CIPHERTEXT')
   mockWorkflowRepo.attachRuntimeToken.mockResolvedValue(workflow)
+  // Today's production posture: curated workflows never need a runner.
+  mockExecutionNeedsTenantRunner.mockReturnValue(false)
+  mockEnsureTenantRunner.mockResolvedValue({ outcome: 'SKIPPED_UNCONFIGURED' })
 })
 
 // ---------------------------------------------------------------------------
@@ -165,6 +180,73 @@ describe('startWorkflowExecution', () => {
     expect(result).toEqual({ outcome: 'NOT_EXECUTABLE' })
     expect(mockExecutionRepo.create).not.toHaveBeenCalled()
     expect(mockTemporalStart).not.toHaveBeenCalled()
+    // The runner hook sits AFTER the curated gate, so a rejected run can
+    // never launch a tenant-runner task (or even evaluate the criterion).
+    expect(mockExecutionNeedsTenantRunner).not.toHaveBeenCalled()
+    expect(mockEnsureTenantRunner).not.toHaveBeenCalled()
+  })
+
+  // ── Tenant-runner hook (Phase 3 Unit 9 — inert until Unit 10) ───────────
+
+  it('does NOT launch a tenant runner for curated runs (criterion false — today, always)', async () => {
+    const result = await startWorkflowExecution(fakeDb(), {
+      workflow,
+      tenantId: 'tenant-1',
+      input: {},
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-1' },
+    })
+
+    expect(result.outcome).toBe('STARTED')
+    expect(mockExecutionNeedsTenantRunner).toHaveBeenCalledWith(workflow)
+    expect(mockEnsureTenantRunner).not.toHaveBeenCalled()
+  })
+
+  it('ensures a tenant runner BEFORE the Temporal start when the criterion is met (Unit 10 preview)', async () => {
+    // Simulates Unit 10 flipping the routing decision: the gate passes AND
+    // the workflow routes to a tenant queue.
+    mockExecutionNeedsTenantRunner.mockReturnValue(true)
+    mockEnsureTenantRunner.mockResolvedValue({ outcome: 'LAUNCHED', taskArn: 'arn:task/1' })
+
+    const db = fakeDb()
+    const callOrder: string[] = []
+    mockEnsureTenantRunner.mockImplementation(async () => {
+      callOrder.push('ensureTenantRunner')
+      return { outcome: 'LAUNCHED', taskArn: 'arn:task/1' }
+    })
+    mockTemporalStart.mockImplementation(async () => {
+      callOrder.push('temporalStart')
+      return { workflowId: 'wf/tenant-1/send_quote_followup/exec-1', firstExecutionRunId: 'run-1' }
+    })
+
+    const result = await startWorkflowExecution(db, {
+      workflow,
+      tenantId: 'tenant-1',
+      input: {},
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-1' },
+    })
+
+    expect(result.outcome).toBe('STARTED')
+    expect(mockEnsureTenantRunner).toHaveBeenCalledWith(db, 'tenant-1')
+    // Launch overlaps the cold start with the insert + Temporal start.
+    expect(callOrder).toEqual(['ensureTenantRunner', 'temporalStart'])
+  })
+
+  it('a failed runner launch never fails the run (sweep retries each minute)', async () => {
+    mockExecutionNeedsTenantRunner.mockReturnValue(true)
+    mockEnsureTenantRunner.mockResolvedValue({
+      outcome: 'LAUNCH_FAILED',
+      reason: 'RESOURCE:FARGATE',
+    })
+
+    const result = await startWorkflowExecution(fakeDb(), {
+      workflow,
+      tenantId: 'tenant-1',
+      input: {},
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-1' },
+    })
+
+    expect(result.outcome).toBe('STARTED')
+    expect(mockTemporalStart).toHaveBeenCalled()
   })
 
   it('USER provenance: inserts a USER row and uses the manual workflow-id scheme', async () => {

@@ -1,6 +1,7 @@
 import { describe, it } from 'vitest'
 import * as cdk from 'aws-cdk-lib'
 import { Template, Match } from 'aws-cdk-lib/assertions'
+import * as ec2 from 'aws-cdk-lib/aws-ec2'
 import * as s3 from 'aws-cdk-lib/aws-s3'
 import { ApiStack } from '../api-stack'
 
@@ -842,6 +843,198 @@ describe('ApiStack — workflow-execution reconcile poller (Phase 2 Unit 6.5)', 
     )
     if (dispatchers.length !== 1) {
       throw new Error(`expected exactly 1 dispatcher Lambda, found ${dispatchers.length}`)
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+describe('ApiStack — tenant-runner orchestration wiring (Phase 3 Unit 9)', () => {
+  // Runner wiring needs the Temporal branch active PLUS the network refs
+  // (subnets + SG) WireGuardStack provides in production. A sibling network
+  // stack stands in for WireGuardStack here, mirroring the
+  // temporal-worker-stack.test.ts trick.
+  function synthTenantRunner() {
+    const app = new cdk.App({
+      // env=staging context pins the by-name cross-stack contract
+      // (pegasus-temporal-worker-staging cluster etc.) the assertions check.
+      context: { 'aws:cdk:bundling-stacks': [], env: 'staging' },
+    })
+    const networkStack = new cdk.Stack(app, 'TestRunnerNetwork', {
+      env: { account: '111111111111', region: 'us-east-1' },
+    })
+    const vpc = new ec2.Vpc(networkStack, 'TestVpc', {
+      maxAzs: 2,
+      natGateways: 1,
+      subnetConfiguration: [
+        { name: 'public', subnetType: ec2.SubnetType.PUBLIC, cidrMask: 24 },
+        {
+          name: 'temporal-worker-egress',
+          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+          cidrMask: 24,
+        },
+      ],
+    })
+    const apiStack = new ApiStack(app, 'TestApiTenantRunner', {
+      env: { account: '111111111111', region: 'us-east-1' },
+      temporalAddress: 'pegasus-staging.chgel.tmprl.cloud:7233',
+      temporalNamespace: 'pegasus-staging.chgel',
+      temporalTaskQueue: 'pegasus-stdlib-staging',
+      temporalCloudSecretArn:
+        'arn:aws:secretsmanager:us-east-1:111111111111:secret:pegasus/staging/temporal-cloud-aBcDeF',
+      tenantRunnerSubnets: vpc.selectSubnets({ subnetGroupName: 'temporal-worker-egress' }).subnets,
+      tenantRunnerSecurityGroup: new ec2.SecurityGroup(networkStack, 'TestRunnerSg', { vpc }),
+    })
+    return Template.fromStack(apiStack)
+  }
+
+  it('stays inert without the runner network props (no TENANT_RUNNER_* env anywhere)', () => {
+    // The plain Temporal synth (used by the poller tests above) passes no
+    // subnets/SG — exactly the dev shape. Nothing runner-related may leak in.
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const template = Template.fromStack(
+      new ApiStack(app, 'TestApiNoRunner', {
+        env: { account: '111111111111', region: 'us-east-1' },
+        temporalAddress: 'pegasus-staging.chgel.tmprl.cloud:7233',
+        temporalNamespace: 'pegasus-staging.chgel',
+        temporalTaskQueue: 'pegasus-stdlib-staging',
+        temporalCloudSecretArn:
+          'arn:aws:secretsmanager:us-east-1:111111111111:secret:pegasus/staging/temporal-cloud-aBcDeF',
+      }),
+    )
+    const fns = template.findResources('AWS::Lambda::Function')
+    for (const fn of Object.values(fns)) {
+      const vars = fn.Properties?.Environment?.Variables ?? {}
+      if ('TENANT_RUNNER_CLUSTER_ARN' in vars) {
+        throw new Error('TENANT_RUNNER_* env must not be set without the runner network props')
+      }
+    }
+  })
+
+  it('injects the TENANT_RUNNER_* env contract into exactly the API + dispatcher Lambdas', () => {
+    const template = synthTenantRunner()
+    const fns = template.findResources('AWS::Lambda::Function')
+    const wired = Object.values(fns).filter(
+      (fn) => fn.Properties?.Environment?.Variables?.TENANT_RUNNER_CLUSTER_ARN !== undefined,
+    )
+    // The API Lambda (run-path hook) + the trigger dispatcher (sweep). The
+    // reconcile poller and the other crons must NOT get launch powers.
+    if (wired.length !== 2) {
+      throw new Error(`expected exactly 2 Lambdas with TENANT_RUNNER_* env, found ${wired.length}`)
+    }
+    for (const fn of wired) {
+      const vars = fn.Properties?.Environment?.Variables ?? {}
+      if (
+        vars.TENANT_RUNNER_CLUSTER_ARN !==
+        'arn:aws:ecs:us-east-1:111111111111:cluster/pegasus-temporal-worker-staging'
+      ) {
+        throw new Error(`unexpected cluster ARN: ${JSON.stringify(vars.TENANT_RUNNER_CLUSTER_ARN)}`)
+      }
+      if (vars.TENANT_RUNNER_TASK_DEFINITION !== 'pegasus-tenant-runner-staging') {
+        throw new Error('TENANT_RUNNER_TASK_DEFINITION must be the bare family name')
+      }
+      if (vars.TENANT_RUNNER_CONTAINER_NAME !== 'tenant-runner') {
+        throw new Error('TENANT_RUNNER_CONTAINER_NAME mismatch')
+      }
+      if (vars.TENANT_RUNNER_SECURITY_GROUP_ID === undefined) {
+        throw new Error('TENANT_RUNNER_SECURITY_GROUP_ID missing')
+      }
+      // Subnet ids are cross-stack tokens joined with ','.
+      if (vars.TENANT_RUNNER_SUBNET_IDS === undefined) {
+        throw new Error('TENANT_RUNNER_SUBNET_IDS missing')
+      }
+    }
+  })
+
+  it('grants ecs:RunTask on the runner task-definition family, cluster-conditioned', () => {
+    synthTenantRunner().hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'ecs:RunTask',
+            Effect: 'Allow',
+            // Revisioned pattern (ECS normally authorizes the resolved
+            // revision) + the bare-family form, belt-and-braces — see the
+            // statement comment in api-stack.ts.
+            Resource: [
+              'arn:aws:ecs:us-east-1:111111111111:task-definition/pegasus-tenant-runner-staging:*',
+              'arn:aws:ecs:us-east-1:111111111111:task-definition/pegasus-tenant-runner-staging',
+            ],
+            Condition: {
+              ArnEquals: {
+                'ecs:cluster':
+                  'arn:aws:ecs:us-east-1:111111111111:cluster/pegasus-temporal-worker-staging',
+              },
+            },
+          }),
+        ]),
+      }),
+    })
+  })
+
+  it('grants ecs:ListTasks + ecs:DescribeTasks confined to the worker cluster', () => {
+    synthTenantRunner().hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: ['ecs:ListTasks', 'ecs:DescribeTasks'],
+            Effect: 'Allow',
+            Resource: '*',
+            Condition: {
+              ArnEquals: {
+                'ecs:cluster':
+                  'arn:aws:ecs:us-east-1:111111111111:cluster/pegasus-temporal-worker-staging',
+              },
+            },
+          }),
+        ]),
+      }),
+    })
+  })
+
+  it('grants iam:PassRole on ONLY the two runner roles, confined to ecs-tasks', () => {
+    synthTenantRunner().hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'iam:PassRole',
+            Effect: 'Allow',
+            Resource: [
+              'arn:aws:iam::111111111111:role/pegasus-tenant-runner-task-staging',
+              'arn:aws:iam::111111111111:role/pegasus-tenant-runner-exec-staging',
+            ],
+            Condition: {
+              StringEquals: { 'iam:PassedToService': 'ecs-tasks.amazonaws.com' },
+            },
+          }),
+        ]),
+      }),
+    })
+  })
+
+  it('both launch-capable roles carry the RunTask statement (api + dispatcher)', () => {
+    const template = synthTenantRunner().toJSON() as {
+      Resources?: Record<
+        string,
+        {
+          Type: string
+          Properties?: {
+            PolicyDocument?: { Statement?: Array<{ Action?: string | string[] }> }
+          }
+        }
+      >
+    }
+    const policiesWithRunTask = Object.values(template.Resources ?? {}).filter(
+      (r) =>
+        r.Type === 'AWS::IAM::Policy' &&
+        (r.Properties?.PolicyDocument?.Statement ?? []).some((s) =>
+          (Array.isArray(s.Action) ? s.Action : [s.Action]).includes('ecs:RunTask'),
+        ),
+    )
+    // One default policy per role — API Lambda role + dispatcher role.
+    if (policiesWithRunTask.length !== 2) {
+      throw new Error(
+        `expected ecs:RunTask in exactly 2 role policies, found ${policiesWithRunTask.length}`,
+      )
     }
   })
 })

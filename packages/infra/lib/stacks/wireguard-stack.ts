@@ -102,6 +102,18 @@ export class WireGuardStack extends cdk.Stack {
    */
   public readonly temporalWorkerSubnets: ec2.ISubnet[]
 
+  /**
+   * Egress-only security group for tenant-runner Fargate tasks (Phase 3
+   * Unit 9). Runner tasks are launched into `temporalWorkerSubnets` by the
+   * API-side dispatcher via `ecs:RunTask` — the SG is created HERE (the VPC
+   * owner) rather than on TemporalWorkerStack because ApiStack must
+   * reference its id in the dispatcher's RunTask network configuration, and
+   * TemporalWorkerStack already depends on ApiStack (construct refs in the
+   * other direction would be a dependency cycle). ApiStack already depends
+   * on this stack, so the ref is safe.
+   */
+  public readonly tenantRunnerSecurityGroup: ec2.ISecurityGroup
+
   /** ASG name - used by CI to trigger an instance refresh after publishing a new agent. */
   public readonly hubAsgName: string
 
@@ -209,6 +221,59 @@ export class WireGuardStack extends cdk.Stack {
     for (const subnet of vpc.isolatedSubnets) {
       cdk.Tags.of(subnet).add('pegasus:subnet-role', 'private-lambda')
     }
+
+    // -----------------------------------------------------------------------
+    // Tenant-runner plane additions (Phase 3 Unit 9).
+    //
+    // (1) VPC flow logs on the temporal-worker-egress subnets — Resolved
+    // decision #2: tenant-runner tasks get OPEN egress via the existing NAT
+    // (calling external APIs is the point of tenant workflows), and the
+    // compensating control is an audit trail of every connection from those
+    // subnets. ALL traffic (not just rejects) because the audit question is
+    // "what did tenant code talk to?", not "what was blocked?". Three-month
+    // retention: long enough to investigate an abuse report after the fact,
+    // bounded so cost stays flat. The log group is deliberately UNNAMED so a
+    // rollback-orphaned copy can never collide with a retry
+    // ([[feedback_cdk_retain_orphans_on_rollback]]).
+    //
+    // The stdlib worker shares these subnets, so its (trusted) traffic is
+    // captured too — harmless, and carving a fourth subnet group would
+    // renumber nothing but cost CIDR space and a second NAT route for no
+    // isolation gain (flow logs are per-ENI records either way).
+    // -----------------------------------------------------------------------
+    const runnerFlowLogGroup = new logs.LogGroup(this, 'TenantRunnerFlowLogGroup', {
+      retention: logs.RetentionDays.THREE_MONTHS,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    })
+    // One delivery role shared by both FlowLogs (the per-destination default
+    // would synthesize an identical role per subnet). CDK grants it write on
+    // the log group at bind time.
+    const runnerFlowLogRole = new iam.Role(this, 'TenantRunnerFlowLogRole', {
+      assumedBy: new iam.ServicePrincipal('vpc-flow-logs.amazonaws.com'),
+    })
+    this.temporalWorkerSubnets.forEach((subnet, i) => {
+      new ec2.FlowLog(this, `TenantRunnerSubnetFlowLog${i + 1}`, {
+        resourceType: ec2.FlowLogResourceType.fromSubnet(subnet),
+        destination: ec2.FlowLogDestination.toCloudWatchLogs(runnerFlowLogGroup, runnerFlowLogRole),
+        trafficType: ec2.FlowLogTrafficType.ALL,
+      })
+    })
+
+    // (2) Egress-only SG for tenant-runner tasks. Same shape as the worker's
+    // SG on TemporalWorkerStack (runners are poll-only: Temporal Cloud, ECR,
+    // CloudWatch Logs, S3 presigned URLs, the public API, plus whatever
+    // external APIs tenant code calls — Resolved #2 open-egress). Created
+    // here, not on TemporalWorkerStack, for the dependency-direction reason
+    // on the public property's doc comment.
+    const tenantRunnerSg = new ec2.SecurityGroup(this, 'TenantRunnerSg', {
+      vpc,
+      securityGroupName: 'pegasus-tenant-runner',
+      // Keep this string plain ASCII - EC2 rejects non-ASCII GroupDescriptions.
+      description:
+        'Tenant-runner Fargate tasks - egress only (Temporal Cloud + ECR + Logs + S3 + Pegasus API + tenant-code egress).',
+      allowAllOutbound: true,
+    })
+    this.tenantRunnerSecurityGroup = tenantRunnerSg
 
     // -----------------------------------------------------------------------
     // Security groups

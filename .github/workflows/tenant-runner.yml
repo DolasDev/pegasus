@@ -1,0 +1,164 @@
+name: Tenant runner image
+
+# Builds + pushes the Pegasus tenant-runner container image (Phase 3 Unit 9)
+# to the per-env `pegasus-tenant-runner` ECR repositories created by
+# TemporalWorkerStack.
+#
+# Mirrors .github/workflows/temporal-worker.yml (same pattern-A rationale:
+# Python-only build, path-filtered, separate from the JS/TS deploy pipeline)
+# with ONE deliberate difference: there is NO "force Fargate redeploy" step,
+# because the tenant runner has NO ECS service. Runners are launched on
+# demand via `ecs:RunTask` against the `:latest` tag and self-terminate when
+# idle (scale-to-zero, Phase 3 Resolved #1) — so every future launch picks up
+# a freshly pushed image automatically, and already-running runners keep
+# their old image only until their next idle-exit (≤ ~10 min of quiet).
+#
+# ── OPERATOR PREREQUISITE (one-time, BEFORE the first run) ─────────────────
+# The OIDC deploy role (`AWS_DEPLOY_ROLE_ARN` per env environment) needs ECR
+# push permissions on `arn:aws:ecr:us-east-1:*:repository/pegasus-tenant-runner`
+# — the same shape as the `temporal-worker-image-deploy` inline policy from
+# Phase 2 Unit 5, minus the ecs:UpdateService/DescribeServices statements
+# (no service here). The exact policy JSON + attach commands are in the
+# Unit 9 PR body. Until it is attached, this workflow fails at "Login to
+# ECR"/push with AccessDenied — cleanly, before anything is half-published.
+# ---------------------------------------------------------------------------
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/tenant-runner/**'
+      - 'packages/workflows-sdk-python/**'
+      - '.github/workflows/tenant-runner.yml'
+  workflow_dispatch:
+    inputs:
+      env-name:
+        description: 'Target env (defaults to both)'
+        type: choice
+        required: true
+        default: both
+        options:
+          - both
+          - staging
+          - prod
+
+concurrency:
+  group: tenant-runner-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  staging:
+    name: Push image to staging ECR
+    if: github.event_name == 'push' || inputs.env-name == 'both' || inputs.env-name == 'staging'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    env:
+      AWS_REGION: us-east-1
+      ECR_REPO_NAME: pegasus-tenant-runner
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: tenant-runner-staging-${{ github.run_id }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build context = repo root, NOT apps/tenant-runner/. The Dockerfile
+      # reaches into packages/workflows-sdk-python/ via a sibling COPY (see
+      # apps/tenant-runner/Dockerfile header).
+      - name: Build + push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/tenant-runner/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:latest
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ github.sha }}
+          cache-from: type=gha,scope=tenant-runner-staging
+          cache-to: type=gha,scope=tenant-runner-staging,mode=max
+
+      # No ECS rollout step on purpose — see the file header. The next
+      # RunTask launch resolves `:latest` fresh.
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### Tenant-runner image pushed to staging"
+            echo "- Image: \`${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}\`"
+            echo "- Tags: \`latest\`, \`${{ github.sha }}\`"
+            echo "- No service roll needed: runners are RunTask-launched and pick up :latest on next launch."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  prod:
+    name: Push image to prod ECR
+    # Deviation from temporal-worker.yml's plain `if`: a job whose `needs` was
+    # skipped is itself skipped unless the condition says otherwise, so a
+    # `workflow_dispatch` with env-name=prod (staging job skipped) would never
+    # run. Accepting an explicitly skipped staging keeps prod-only dispatch
+    # working while still hard-blocking prod after a staging FAILURE on push.
+    if: >-
+      !cancelled() &&
+      (needs.staging.result == 'success' || needs.staging.result == 'skipped') &&
+      (github.event_name == 'push' || inputs.env-name == 'both' || inputs.env-name == 'prod')
+    needs: [staging]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: prod
+    env:
+      AWS_REGION: us-east-1
+      ECR_REPO_NAME: pegasus-tenant-runner
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: tenant-runner-prod-${{ github.run_id }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build + push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/tenant-runner/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:latest
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ github.sha }}
+          cache-from: type=gha,scope=tenant-runner-prod
+          cache-to: type=gha,scope=tenant-runner-prod,mode=max
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### Tenant-runner image pushed to prod"
+            echo "- Image: \`${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}\`"
+            echo "- Tags: \`latest\`, \`${{ github.sha }}\`"
+            echo "- No service roll needed: runners are RunTask-launched and pick up :latest on next launch."
+          } >> "$GITHUB_STEP_SUMMARY"

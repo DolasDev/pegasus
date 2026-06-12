@@ -1,5 +1,7 @@
 // ---------------------------------------------------------------------------
-// Scheduled Lambda — dispatches workflow triggers. Two phases per tick:
+// Scheduled Lambda — dispatches workflow triggers. Three phases per tick
+// (events, schedules, then the Unit-9 tenant-runner sweep — see the sweep
+// block at the bottom of the handler):
 //
 // PHASE 1 — domain events (Phase 3 Unit 3). The consumer half of the outbox:
 // handlers write DomainEvent rows in the same transaction as the state change
@@ -61,6 +63,7 @@ import { db } from './db'
 import { cronMatchesMinute, parseCronExpression } from './lib/cron'
 import { createLogger } from './lib/logger'
 import { startWorkflowExecution } from './lib/start-workflow-execution'
+import { sweepTenantRunners } from './lib/tenant-runner'
 import { createWorkflowRepository } from './repositories/workflow.repository'
 
 const logger = createLogger('pegasus-dispatch-workflow-triggers')
@@ -350,6 +353,7 @@ export async function handler(): Promise<{
   fired: number
   schedulesEvaluated: number
   scheduleFired: number
+  runnersLaunched: number
 }> {
   const counts: MetricCounts = {
     dispatched: 0,
@@ -529,6 +533,28 @@ export async function handler(): Promise<{
     })
   }
 
+  // ── Phase 3: tenant-runner sweep (Phase 3 Unit 9) ─────────────────────────
+  //
+  // Scale-to-zero backstop: ensure a runner task is up for every tenant with
+  // outstanding QUEUED/RUNNING runner-bound work (crash/idle-exit recovery),
+  // and publish the runner pool gauges (TenantRunnersRunning + cold-start
+  // latency). No-op when TENANT_RUNNER_* env is absent (dev) and — until
+  // Unit 10 lifts the curated gate — finds no runner-bound work by
+  // construction. Failure-isolated like the phases above: a broken sweep
+  // never poisons event dispatch or schedule evaluation.
+  let runnersLaunched = 0
+  try {
+    const sweep = await sweepTenantRunners(db)
+    runnersLaunched = sweep.launched
+    if (sweep.tenantsNeedingRunner > 0) {
+      logger.info('Tenant-runner sweep finished', { ...sweep })
+    }
+  } catch (err) {
+    logger.error('Tenant-runner sweep failed — next tick retries', {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
   await flushMetrics(counts)
 
   logger.info('Dispatch tick finished', {
@@ -537,6 +563,7 @@ export async function handler(): Promise<{
     fired: counts.fired,
     schedulesEvaluated,
     scheduleFired: counts.scheduleFired,
+    runnersLaunched,
   })
   return {
     scanned: events.length,
@@ -544,5 +571,6 @@ export async function handler(): Promise<{
     fired: counts.fired,
     schedulesEvaluated,
     scheduleFired: counts.scheduleFired,
+    runnersLaunched,
   }
 }
