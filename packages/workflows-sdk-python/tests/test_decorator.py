@@ -49,3 +49,12 @@ def test_decorator_defaults_description_to_none() -> None:
 def test_decorator_registers_temporal_definition() -> None:
     # temporalio.workflow.defn attaches its definition marker.
     assert hasattr(PlainWorkflow, "__temporal_workflow_definition")
+
+
+def test_decorator_registers_under_pegasus_name_not_class_name() -> None:
+    # The Temporal workflow TYPE must be the pegasus name: the API starts
+    # executions by `Workflow.name`, and the stdlib worker/tenant-runner
+    # resolve tasks by that registered type. Class-name registration breaks
+    # every server-side execution (latent until the Phase 3 staging smoke).
+    defn = getattr(PlainWorkflow, "__temporal_workflow_definition")
+    assert defn.name == "demo2"

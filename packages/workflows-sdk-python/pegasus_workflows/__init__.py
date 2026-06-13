@@ -95,7 +95,14 @@ def pegasus_workflow(
     """
 
     def decorator(cls: _T) -> _T:
-        defined: Any = workflow.defn(cls)  # type: ignore[arg-type]
+        # Register under the PEGASUS name, not the Python class name: the
+        # API starts executions with `client.workflow.start(workflow.name,
+        # ...)` (apps/api/src/lib/start-workflow-execution.ts), so the
+        # Temporal workflow *type* must equal the manifest name or the
+        # worker rejects every task with "Workflow class <name> is not
+        # registered". (Caught live in the Phase 3 staging smoke — the
+        # class-name registration had been latent since Phase 1.)
+        defined: Any = workflow.defn(name=name)(cls)  # type: ignore[arg-type]
         setattr(
             defined,
             WORKFLOW_META_ATTR,
