@@ -2,10 +2,37 @@
 
 **Status: ALL 12 UNITS ✅ COMPLETE AND MERGED (Track B 1–5, Track A
 6–11 incl. 8.1)** — PRs #230–#234, #239–#243, #248, #251; sandbox LIVE
-as of #248, guardrails live with #251 (2026-06-12). **The ONLY
-outstanding work is the staging smoke** (checklist item 3 below +
-"Staging smoke — full plane" at the bottom of this section). Once that
-passes, archive this plan to `plans/completed/`.
+as of #248, guardrails live with #251 (2026-06-12).
+
+**STAGING SMOKE: engine portions ✅ PASSED 2026-06-13** (driven via a
+temp Playwright spec on the qa e2e target + AWS verification):
+- Tenant-code lane ✅: SDK push → `executable:true`+sha → run →
+  runner RunTask (startedBy=tenantId) → **cold start 18 s** →
+  sha-verified artifact prepare → subprocess exit 0 → COMPLETED with
+  result round-trip → **idle-exit ~10 min** (two full scale-to-zero
+  cycles observed). Runner logs show the whole designed lifecycle
+  (wbk_-authed discovery, presigned S3, token mint, status PATCH).
+- Track B ✅: EVENT (quote.accepted via real customer→move→quote→
+  finalize→accept chain) + SCHEDULE (*/5) both fired curated
+  executions; triggers disabled+deleted clean.
+- **The smoke caught a REAL latent Phase-1 bug, fixed as #256
+  (`56bf174`)**: `@pegasus_workflow` registered the Temporal type as
+  the Python CLASS name, not the manifest name → the STDLIB lane had
+  NEVER executed end-to-end (worker rejected every task; executions
+  stuck RUNNING in task-retry). One-line fix (`workflow.defn(name=
+  name)(cls)`) + regression test; rebuilt worker self-healed the stuck
+  executions to COMPLETED (Temporal task retry). Tenant-runner lane was
+  unaffected (Unit 8 proxies always used manifest names).
+- Remaining: the Unit-11 admin-UI clicks (kill switch 423 round-trip,
+  runner-status panel, dashboard render) — pending Steve. Then archive
+  this plan to `plans/completed/`.
+- Cosmetic follow-ups (non-blocking): stdlib followup message prints
+  "quote quote-unknown" for trigger-fired runs (payload key casing);
+  **product gap: a tenant directly running a non-curated GLOBAL row
+  routes to its own runner, which can't fetch another tenant's
+  artifact → execution would strand** (fork-then-run is the supported
+  path; consider rejecting direct cross-tenant runs of non-curated
+  GLOBAL rows in a follow-up).
 
 Infra notes (2026-06-12): deploy-role publish policies are now
 IaC-managed in dolas-infra (#7, `github-workflow-publish`; hand-applied
