@@ -1,6 +1,11 @@
 # Audit: Rollback & Release Safety
 
-> **Status: SCOPED** — 2026-06-10
+> **Status: MOSTLY COMPLETE & DEPLOYED** — Phase 1 (1a–1d), Phase 2b, and Phase 3
+> (3a–3c) shipped via #252 and live in prod (rollback.yml, check-migration-safety.sh,
+> prod-current/prod-previous tags, worker/frontend rollback fidelity). **Outstanding
+> two items:** 2a automated Neon safety branch (blocked on
+> `plans/todo/neon-branches-for-e2e-isolation.md`) and 2c AI migration review (deferred
+> under the AI-automation hold). Keep in-progress until 2a/2c land or are dropped. — updated 2026-06-13
 
 Unit 3 of the CI/CD + DevOps audit batch. Scope: what happens when a deploy or
 migration goes BAD — the detection-to-recovery path for the API Lambda, both
@@ -108,7 +113,7 @@ reading). Scoped as Phase 2 item 2c. Everything else here is plain automation.
 
 ### Phase 1 — One-click rollback to SHA X (quick wins, ~half a day total)
 
-- [ ] **1a. Add `git-ref` + `skip-migrate` inputs to `_deploy.yml`** (effort: S, ~30 min)
+- [x] **1a. Add `git-ref` + `skip-migrate` inputs to `_deploy.yml`** (effort: S, ~30 min)
   - New `workflow_call` inputs:
     ```yaml
     git-ref:
@@ -132,7 +137,7 @@ reading). Scoped as Phase 2 item 2c. Everything else here is plain automation.
     The deploy job already tolerates a skipped migrate (`_deploy.yml:96`).
   - Backwards-compatible: `deploy.yml` callers pass neither input, nothing changes.
 
-- [ ] **1b. New `.github/workflows/rollback.yml`** (effort: M, ~2 h incl. staging drill)
+- [x] **1b. New `.github/workflows/rollback.yml`** (effort: M, ~2 h incl. staging drill)
   - `workflow_dispatch` only. Sketch:
     ```yaml
     name: Rollback
@@ -224,7 +229,7 @@ reading). Scoped as Phase 2 item 2c. Everything else here is plain automation.
     resolves from main HEAD, so fixes to `_deploy.yml` always apply even when
     deploying old SHAs.
 
-- [ ] **1c. Record last-known-good: moving `prod-current` / `prod-previous` tags** (effort: S, ~45 min)
+- [x] **1c. Record last-known-good: moving `prod-current` / `prod-previous` tags** (effort: S, ~45 min)
   - Append a `tag-release` job to `deploy.yml`:
     ```yaml
     tag-release:
@@ -254,7 +259,7 @@ reading). Scoped as Phase 2 item 2c. Everything else here is plain automation.
     `contents: read` (`deploy.yml:37-39`) — the job-level `contents: write`
     override above is required.
 
-- [ ] **1d. Write `docs/runbooks/rollback.md`** (effort: M, ~1.5 h)
+- [x] **1d. Write `docs/runbooks/rollback.md`** (effort: M, ~1.5 h)
   - Follows the existing convention (`docs/runbooks/wireguard/`,
     `docs/ringcentral-message-capture-runbook.md`). Scenarios, each with exact
     commands:
@@ -330,7 +335,7 @@ reading). Scoped as Phase 2 item 2c. Everything else here is plain automation.
     safety window. Zero added latency on the (common) no-pending-migrations
     path.
 
-- [ ] **2b. Expand-contract migration policy + deterministic guard** (effort: M, ~2 h)
+- [x] **2b. Expand-contract migration policy + deterministic guard** (effort: M, ~2 h)
   - Policy statement added to `dolas/agents/project/PATTERNS.md` (where agents
     already look for conventions): _destructive DDL (`DROP TABLE`,
     `DROP COLUMN`, `RENAME`, `ALTER ... SET NOT NULL` on existing columns) must
@@ -384,7 +389,7 @@ reading). Scoped as Phase 2 item 2c. Everything else here is plain automation.
 
 ### Phase 3 — Worker + frontend rollback fidelity (~half a day, lower urgency)
 
-- [ ] **3a. Worker image rollback input on `temporal-worker.yml`** (effort: S, ~1 h)
+- [x] **3a. Worker image rollback input on `temporal-worker.yml`** (effort: S, ~1 h)
   - Add a `rollback-to-sha` dispatch input. When set, skip the build job steps
     and instead retag server-side (no docker pull needed) per env:
     ```bash
@@ -401,7 +406,7 @@ reading). Scoped as Phase 2 item 2c. Everything else here is plain automation.
     (Finding 4) — document that `rollback-to-sha` is the real image-rollback
     path. (Comment-only change to the stack; no infra mutation.)
 
-- [ ] **3b. Stop deleting the live frontend bundle out from under users** (effort: S, ~45 min)
+- [x] **3b. Stop deleting the live frontend bundle out from under users** (effort: S, ~45 min)
   - Add `prune: false` to both `BucketDeployment`s
     (`frontend-assets-stack.ts:170-193`, `admin-frontend-assets-stack.ts:142-157`).
     Leave the buckets `versioned: false` (`frontend-stack.ts:62`,
@@ -416,7 +421,7 @@ reading). Scoped as Phase 2 item 2c. Everything else here is plain automation.
     no bucket archaeology. Cost: slow bucket growth (KBs/deploy) — add a
     quarterly manual prune note to the runbook.
 
-- [ ] **3c. Make deploy.sh honest** (effort: S, ~30 min)
+- [x] **3c. Make deploy.sh honest** (effort: S, ~30 min)
   - Parameterize the env: `ENV_NAME="${ENV_NAME:-dev}"`,
     `STACK_PREFIX="Pegasus$(tr '[:lower:]' '[:upper:]' <<< ${ENV_NAME:0:1})${ENV_NAME:1}"`,
     replace the hardcoded `PegasusDev-` literals at `deploy.sh:67,70` with

@@ -1,6 +1,10 @@
 # Audit: Observability & Alerting — Remediation Plan
 
-> **Status: SCOPED** — 2026-06-10
+> **Status: COMPLETE & DEPLOYED** — Phases 0–2 shipped (Phase 0 in Wave 1;
+> Phases 1–2 via #253, reconcile alarm via #251 Unit 11), live in prod. Remaining
+> boxes are explicitly optional/deferred: Slack (Phase 0), Cognito-throttle alarm
+> (Phase 1, justified skip), dashboard-link footer (Phase 2, optional), and Phase 3
+> AI triage (deferred under the AI-automation hold). Ready to archive. — updated 2026-06-13
 
 **Branch:** `worktree-agent-abb662dad2acdc8a7`
 **Goal:** Make production incidents actually reach Steve (alarms currently fire into an unsubscribed SNS topic), close the highest-value alarm coverage gaps (throttles, ECS worker, workflows reconcile), and make alarm investigation fast (saved Insights queries; optional AI triage).
@@ -89,7 +93,7 @@ No Sentry (grep: only a comment in `apps/mobile/src/utils/logger.ts`), no `logs.
 
 All in `monitoring-stack.ts` + props threaded from `bin/app.ts`; each alarm wired to the same topic via the Phase-0 helper.
 
-- [ ] **Account-wide Lambda Throttles alarm** (effort: ~30 min). Undimensioned `AWS/Lambda` metrics aggregate across ALL functions in the account/region — one alarm covers every current and future Lambda:
+- [x] **Account-wide Lambda Throttles alarm** (effort: ~30 min). Undimensioned `AWS/Lambda` metrics aggregate across ALL functions in the account/region — one alarm covers every current and future Lambda:
 
   ```ts
   const accountThrottles = new cloudwatch.Metric({
@@ -111,8 +115,8 @@ All in `monitoring-stack.ts` + props threaded from `bin/app.ts`; each alarm wire
   })
   ```
 
-- [ ] **Account-wide Lambda Errors alarm** (effort: ~30 min). Same undimensioned pattern, `metricName: 'Errors'`, 3-of-5×1-min datapoints (mirror :89-93) — covers the 13+ uncovered functions from Finding 3.2 (crons, Cognito triggers, document converter, mssql-executor) in one resource. Keep the existing per-API-fn alarm (it has a sharper description and the API fn is the highest-traffic one); name the new one `pegasus-lambda-errors-account` and note in its description that it includes scheduled/cron functions whose failures otherwise go unseen.
-- [ ] **Temporal worker RunningTaskCount alarm** (effort: ~1h). Names are deterministic (`pegasus-temporal-worker-${envName}`, `temporal-worker-stack.ts:183/342`), so pass plain strings — no cross-stack construct refs and no ordering problem (MonitoringStack at `bin/app.ts:288` is created before TemporalWorkerStack at :372, which is staging/prod-only):
+- [x] **Account-wide Lambda Errors alarm** (effort: ~30 min). Same undimensioned pattern, `metricName: 'Errors'`, 3-of-5×1-min datapoints (mirror :89-93) — covers the 13+ uncovered functions from Finding 3.2 (crons, Cognito triggers, document converter, mssql-executor) in one resource. Keep the existing per-API-fn alarm (it has a sharper description and the API fn is the highest-traffic one); name the new one `pegasus-lambda-errors-account` and note in its description that it includes scheduled/cron functions whose failures otherwise go unseen.
+- [x] **Temporal worker RunningTaskCount alarm** (effort: ~1h). Names are deterministic (`pegasus-temporal-worker-${envName}`, `temporal-worker-stack.ts:183/342`), so pass plain strings — no cross-stack construct refs and no ordering problem (MonitoringStack at `bin/app.ts:288` is created before TemporalWorkerStack at :372, which is staging/prod-only):
 
   ```ts
   // MonitoringStackProps: readonly temporalWorkerClusterName?: string  (+ serviceName)
@@ -149,16 +153,16 @@ All in `monitoring-stack.ts` + props threaded from `bin/app.ts`; each alarm wire
 
   5-of-5 minutes tolerates the brief task-count dip during rolling deploys (`minHealthyPercent: 0`, single task — a normal image roll replaces the task in well under 5 min). **Note:** dev has no worker stack → props undefined → no alarm (correct). Temporal Cloud queue-lag: explicitly deferred (requires scraping Temporal Cloud's metrics endpoint; the reconcile alarm below is the cheap proxy).
 
-- [ ] **Workflows reconcile alarm** (effort: ~30 min). Import `PEGASUS_WORKFLOWS_METRIC_NAMESPACE` / `WORKFLOW_EXECUTION_RECONCILED_METRIC_NAME` from `../metrics`; alarm on `Sum > 2` over 15 min (one-off orphan = noise; a stream of them = workers dying mid-execution), `NOT_BREACHING` (no data = nothing reconciled = healthy). Add a dashboard widget alongside.
-- [ ] **Dashboard row** for the new metrics (account Errors/Throttles graph, RunningTaskCount, WorkflowExecutionReconciled) appended to the `widgets` array at :312.
-- [ ] **Update `monitoring-stack.test.ts`** fine-grained assertions for each new alarm (existing test style: `template.hasResourceProperties('AWS::CloudWatch::Alarm', {...})`).
+- [x] **Workflows reconcile alarm** (effort: ~30 min). Import `PEGASUS_WORKFLOWS_METRIC_NAMESPACE` / `WORKFLOW_EXECUTION_RECONCILED_METRIC_NAME` from `../metrics`; alarm on `Sum > 2` over 15 min (one-off orphan = noise; a stream of them = workers dying mid-execution), `NOT_BREACHING` (no data = nothing reconciled = healthy). Add a dashboard widget alongside.
+- [x] **Dashboard row** for the new metrics (account Errors/Throttles graph, RunningTaskCount, WorkflowExecutionReconciled) appended to the `widgets` array at :312.
+- [x] **Update `monitoring-stack.test.ts`** fine-grained assertions for each new alarm (existing test style: `template.hasResourceProperties('AWS::CloudWatch::Alarm', {...})`).
 - [ ] _(Deferred, justified)_ Cognito throttle alarms: Cognito sign-in volume is tiny (tens of users); the account-wide Lambda Errors alarm already catches trigger-Lambda failures, which is the realistic Cognito failure mode here. Skip until user volume justifies it.
 
 ### Phase 2 — Error visibility: saved Insights queries + correlation fix (~2-3h)
 
 **Decision: CloudWatch Logs Insights saved queries, not Sentry.** Reasoning: (a) the logs are already structured JSON with `correlationId` — exactly what Insights queries exploit; Sentry would duplicate that with an SDK that adds cold-start weight to a Lambda already alarmed on p99 duration; (b) the backend error path is already alarmed (5xx + Errors alarms) — what's missing is fast _investigation_, which saved queries solve at $0 with zero new accounts/DSNs/envs to manage; (c) Sentry's real differentiator is **frontend** error aggregation (sourcemapped browser stacks, session replay) — tenant-web/admin-web currently have no error reporting at all, but that is a product-maturity call to make when tenant-facing bugs become the pain point, not part of closing this gap. Revisit Sentry (free tier, browser SDK only, no Lambda SDK) if/when frontend blindness bites.
 
-- [ ] **Add `logs.QueryDefinition` resources to MonitoringStack** (effort: ~1.5h). Saved queries appear in the console's Insights query picker — investigation becomes "pick query, set time range" instead of writing PPL from memory. Thread the api log-group name in via props (or query across `/aws/lambda/*` name patterns). Four queries:
+- [x] **Add `logs.QueryDefinition` resources to MonitoringStack** (effort: ~1.5h). Saved queries appear in the console's Insights query picker — investigation becomes "pick query, set time range" instead of writing PPL from memory. Thread the api log-group name in via props (or query across `/aws/lambda/*` name patterns). Four queries:
 
   ```ts
   new logs.QueryDefinition(this, 'QueryApiErrors', {
@@ -178,7 +182,7 @@ All in `monitoring-stack.ts` + props threaded from `bin/app.ts`; each alarm wire
   - `pegasus/cron-failures` — `fields @timestamp, @log, @message | filter @message like /ERROR|Task timed out/` across the 8 cron log groups (pass names via props array).
   - `pegasus/temporal-worker-errors` — `fields @timestamp, level, message | filter level = "ERROR"` on `/pegasus/${envName}/temporal-worker` (staging/prod only — gate on the same optional props as the ECS alarm).
 
-- [ ] **Fix the correlation-key leak** (effort: 15 min, `apps/api/src/middleware/correlation.ts:28-31`):
+- [x] **Fix the correlation-key leak** (effort: 15 min, `apps/api/src/middleware/correlation.ts:28-31`):
 
   ```ts
   try {

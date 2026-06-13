@@ -1,0 +1,18 @@
+# Fails a PR that introduces a dependency with a high/critical advisory or an
+# entry on the OpenSSF malicious-packages list. Complements the audit-ci gate in
+# ci.yml: audit-ci only sees the post-merge resolved tree, this sees the diff.
+# Requires the repo's dependency graph (Settings -> Advanced Security).
+name: Dependency Review
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure

@@ -1,0 +1,37 @@
+# Monthly check for stale entries in package.json `overrides`. The detector
+# (scripts/check-overrides.mjs) surfaces overrides that no longer force anything;
+# this workflow files an issue listing the candidates so they don't accumulate.
+# The judgement/removal step is intentionally manual (no auto-PR, no AI here).
+name: Override Expiry Check
+on:
+  schedule:
+    - cron: '0 6 1 * *' # 1st of month, 06:00 UTC
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  issues: write
+jobs:
+  check:
+    name: Check overrides
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+      - run: npm ci
+      - name: Detect stale overrides
+        run: node scripts/check-overrides.mjs --report "$RUNNER_TEMP/report.md"
+      - name: File issue if any override is removable
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -s "$RUNNER_TEMP/report.md" ]; then
+            gh issue create \
+              --title "Override expiry: $(date +%Y-%m) candidates" \
+              --body-file "$RUNNER_TEMP/report.md" \
+              --label dependencies
+          else
+            echo "No removal candidates — no issue filed."
+          fi

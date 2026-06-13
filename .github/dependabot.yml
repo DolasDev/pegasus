@@ -26,3 +26,22 @@ updates:
       - dependency-name: 'react-native-screens'
       - dependency-name: '@react-navigation/drawer'
     target-branch: 'main'
+
+  # GitHub Actions: 35+ action refs pinned by mutable major tag (e.g. @v6).
+  # Dependabot watches the tags so the major-tag pinning posture stays current;
+  # minor/patch bumps flow through the CI-gated auto-merge, majors need a human.
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    groups:
+      actions:
+        patterns: ['*']
+    target-branch: 'main'
+
+  # Python SDK published to PyPI for tenant use. No coverage before this.
+  - package-ecosystem: 'pip'
+    directory: '/packages/workflows-sdk-python'
+    schedule:
+      interval: 'weekly'
+    target-branch: 'main'
