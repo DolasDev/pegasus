@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import { swaggerUI } from '@hono/swagger-ui'
 import type { AppEnv } from './types'
 import { correlationMiddleware } from './middleware/correlation'
+import { requestTimingMiddleware } from './middleware/request-timing'
 import { tenantMiddleware } from './middleware/tenant'
 import { skipAuthMiddleware } from './middleware/skip-auth'
 import { adminRouter } from './handlers/admin'
@@ -83,6 +84,11 @@ const app = new Hono<AppEnv>()
 // Correlation ID must be first so every subsequent log line and error response
 // carries the request-scoped trace identifier.
 app.use('*', correlationMiddleware)
+// Per-request timing — registered right after correlation so its structured
+// completion log inherits the correlationId/method/path keys, and early enough
+// that durationMs spans the whole middleware + handler chain. Emits the one
+// log line that makes a latency spike attributable to a specific downstream.
+app.use('*', requestTimingMiddleware)
 // CORS allowlist — driven by CORS_ALLOWED_ORIGINS (comma-separated, injected by
 // the CDK ApiStack per environment). Empty/unset (local dev, E2E, on-prem) →
 // reflect any origin, preserving the previous permissive behaviour. In deployed

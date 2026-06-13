@@ -8,6 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { type PrismaClient } from '@prisma/client'
+import { recordDownstream } from './request-timing'
 
 /**
  * The set of Prisma model names that carry a tenantId column.
@@ -96,7 +97,7 @@ export function createTenantDb(basePrisma: PrismaClient, tenantId: string) {
           query: (args: Record<string, any>) => Promise<any>
         }) {
           if (!TENANT_SCOPED_MODELS.has(model)) {
-            return query(args)
+            return recordDownstream('db', () => query(args))
           }
 
           if (
@@ -116,7 +117,7 @@ export function createTenantDb(basePrisma: PrismaClient, tenantId: string) {
             args['where'] = { ...args['where'], tenantId }
           }
 
-          return query(args)
+          return recordDownstream('db', () => query(args))
         },
       },
     },

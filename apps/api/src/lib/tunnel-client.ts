@@ -14,6 +14,8 @@
 // ---------------------------------------------------------------------------
 
 import { LambdaClient, InvokeCommand, type LambdaClientConfig } from '@aws-sdk/client-lambda'
+import { captureAWSv3Client } from 'aws-xray-sdk-core'
+import { recordDownstream } from './request-timing'
 
 export class TunnelError extends Error {
   readonly code: 'TUNNEL_NOT_CONFIGURED' | 'TUNNEL_INVOKE_FAILED' | 'TUNNEL_PROXY_ERROR'
@@ -60,7 +62,12 @@ let _client: LambdaClient | null = null
 function getClient(): LambdaClient {
   if (_client === null) {
     const config: LambdaClientConfig = {}
-    _client = new LambdaClient(config)
+    const client = new LambdaClient(config)
+    // In Lambda (active X-Ray tracing → a request segment exists) wrap the
+    // client so each tunnel-proxy Invoke renders as its own X-Ray subsegment.
+    // Skipped outside Lambda (local dev, tests) where there is no segment and
+    // captureAWSv3Client would raise the X-Ray "context missing" error.
+    _client = process.env['AWS_LAMBDA_FUNCTION_NAME'] ? captureAWSv3Client(client) : client
   }
   return _client
 }
@@ -97,13 +104,14 @@ export async function tunnelFetch(
     ...(init.timeoutMs !== undefined ? { timeoutMs: init.timeoutMs } : {}),
   }
 
-  const client = getClient()
-  const res = await client.send(
-    new InvokeCommand({
-      FunctionName: fnName,
-      InvocationType: 'RequestResponse',
-      Payload: new TextEncoder().encode(JSON.stringify(payload)),
-    }),
+  const res = await recordDownstream('tunnel', () =>
+    getClient().send(
+      new InvokeCommand({
+        FunctionName: fnName,
+        InvocationType: 'RequestResponse',
+        Payload: new TextEncoder().encode(JSON.stringify(payload)),
+      }),
+    ),
   )
 
   if (res.FunctionError) {
