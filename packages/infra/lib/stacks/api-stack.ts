@@ -1238,6 +1238,44 @@ export class ApiStack extends cdk.Stack {
     })
 
     // ---------------------------------------------------------------------------
+    // Push-notification forwarder — drains PushNotificationOutbox and delivers
+    // via the Expo push service. Cross-tenant DB reader; no provider secret is
+    // required (Expo push works unauthenticated). To enable Expo's enhanced push
+    // security later, store an access token in Secrets Manager and surface it as
+    // the EXPO_ACCESS_TOKEN env var here (lib/push-expo reads it when present).
+    // ---------------------------------------------------------------------------
+    const pushForwardLogGroup = new logs.LogGroup(this, 'PushForwardLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+    cronLogGroupNames.push(pushForwardLogGroup.logGroupName)
+
+    const pushForwardFunction = new nodejs.NodejsFunction(this, 'PushForwardFunction', {
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: path.join(__dirname, '../../../../apps/api/src/lambda-push-forward.ts'),
+      handler: 'handler',
+      environment: {
+        NODE_ENV: 'production',
+        DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+        LOG_LEVEL: 'INFO',
+      },
+      bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+      memorySize: 512,
+      timeout: cdk.Duration.minutes(5),
+      logGroup: pushForwardLogGroup,
+    })
+
+    dbSecret.grantRead(pushForwardFunction)
+
+    new events.Rule(this, 'PushForwardSchedule', {
+      // Near-real-time: drivers expect assignment/request pushes promptly.
+      // Backoff/jitter inside the Lambda spaces out retries for failing rows.
+      schedule: events.Schedule.rate(cdk.Duration.minutes(1)),
+      description: 'Delivers queued push notifications to drivers via Expo.',
+      targets: [new eventsTargets.LambdaFunction(pushForwardFunction)],
+    })
+
+    // ---------------------------------------------------------------------------
     // RingCentral buffer-purge cron (PII retention)
     //
     // Neon is a transient buffer; on-prem is authoritative once SENT. This cron

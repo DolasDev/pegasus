@@ -246,22 +246,22 @@ model Tenant {
   // Relations
   // -------------------------------------------------------------------------
 
-  customers      Customer[]
-  moves          Move[]
-  quotes         Quote[]
-  invoices       Invoice[]
-  crewMembers    CrewMember[]
-  vehicles       Vehicle[]
-  availabilities Availability[]
-  inventoryRooms InventoryRoom[]
-  leadSources    LeadSource[]
-  accounts       Account[]
-  rateTables     RateTable[]
-  ssoProviders   TenantSsoProvider[]
-  users          TenantUser[]
-  apiClients     ApiClient[]
-  pegasusEvents  PegasusEvent[]
-  documents      Document[]
+  customers        Customer[]
+  moves            Move[]
+  quotes           Quote[]
+  invoices         Invoice[]
+  crewMembers      CrewMember[]
+  vehicles         Vehicle[]
+  availabilities   Availability[]
+  inventoryRooms   InventoryRoom[]
+  leadSources      LeadSource[]
+  accounts         Account[]
+  rateTables       RateTable[]
+  ssoProviders     TenantSsoProvider[]
+  users            TenantUser[]
+  apiClients       ApiClient[]
+  pegasusEvents    PegasusEvent[]
+  documents        Document[]
   workflows        Workflow[]
   workflowTriggers WorkflowTrigger[]
   domainEvents     DomainEvent[]
@@ -275,6 +275,10 @@ model Tenant {
   inboundWebhookEvents     InboundWebhookEvent[]
   messages                 Message[]
   messageForwardOutbox     MessageForwardOutbox[]
+
+  // Push notifications
+  deviceTokens           DeviceToken[]
+  pushNotificationOutbox PushNotificationOutbox[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -378,6 +382,9 @@ model TenantUser {
   createdApiClients ApiClient[] @relation("ApiClientCreatedBy")
   apiClientsActedAs ApiClient[] @relation("ApiClientActsAs")
   crewMember        CrewMember?
+
+  deviceTokens      DeviceToken[]
+  pushNotifications PushNotificationOutbox[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -641,10 +648,11 @@ model CrewMember {
   /// list/detail can be scoped to their own trips. Nullable, no backfill.
   tenantUserId String? @unique @map("tenant_user_id")
 
-  tenant          Tenant               @relation(fields: [tenantId], references: [id])
-  tenantUser      TenantUser?          @relation(fields: [tenantUserId], references: [id], onDelete: SetNull)
-  moveAssignments MoveCrewAssignment[]
-  availabilities  Availability[]
+  tenant            Tenant                   @relation(fields: [tenantId], references: [id])
+  tenantUser        TenantUser?              @relation(fields: [tenantUserId], references: [id], onDelete: SetNull)
+  moveAssignments   MoveCrewAssignment[]
+  availabilities    Availability[]
+  pushNotifications PushNotificationOutbox[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1548,6 +1556,16 @@ enum ForwardStatus {
   @@schema("public")
 }
 
+/// Mobile OS a registered push device runs. Stored on DeviceToken so the
+/// forwarder and analytics can distinguish APNs- vs FCM-backed deliveries even
+/// though Expo abstracts the transport.
+enum DevicePlatform {
+  IOS
+  ANDROID
+
+  @@schema("public")
+}
+
 enum RcTokenStatus {
   ACTIVE
   EXPIRED
@@ -1637,11 +1655,11 @@ model RingCentralSubscription {
   /// RingCentral's subscription id — the key the webhook payload resolves on.
   subscriptionId String @map("subscription_id")
 
-  eventFilters     String[] @map("event_filters")
-  transport        String   @default("WebHook")
-  deliveryAddress  String   @map("delivery_address")
+  eventFilters      String[] @map("event_filters")
+  transport         String   @default("WebHook")
+  deliveryAddress   String   @map("delivery_address")
   /// Shared secret echoed by RC on each delivery; compared on the webhook leg.
-  verificationToken String  @map("verification_token")
+  verificationToken String   @map("verification_token")
 
   expiresAt     DateTime             @map("expires_at")
   status        RcSubscriptionStatus @default(ACTIVE)
@@ -1736,7 +1754,7 @@ model Message {
   /// Set when the PII body is nulled (72h after the forward succeeds).
   bodyPurgedAt DateTime? @map("body_purged_at") @db.Timestamptz(6)
   /// When the body becomes eligible for purge (forward time + 72h).
-  purgeAfter DateTime? @map("purge_after") @db.Timestamptz(6)
+  purgeAfter   DateTime? @map("purge_after") @db.Timestamptz(6)
 
   capturedAt DateTime @default(now()) @map("captured_at") @db.Timestamptz(6)
   updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -1775,5 +1793,86 @@ model MessageForwardOutbox {
   @@unique([messageId])
   @@index([tenantId, status, nextAttemptAt])
   @@map("message_forward_outbox")
+  @@schema("public")
+}
+
+/// A push-notification device registration. One row per (tenant, Expo push
+/// token), written by the mobile app via POST /api/v1/device-tokens once the
+/// driver grants notification permission. The push forwarder resolves a target
+/// user/crew member into the active tokens here. Tokens that Expo reports as
+/// DeviceNotRegistered are deactivated (isActive=false) rather than deleted,
+/// preserving history. Tenant-scoped via lib/prisma.ts.
+model DeviceToken {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// The tenant login this device belongs to. A driver's CrewMember row links
+  /// to this user via CrewMember.tenantUserId, so crew targeting resolves
+  /// through here.
+  userId String @map("user_id")
+
+  platform      DevicePlatform
+  expoPushToken String         @map("expo_push_token")
+  isActive      Boolean        @default(true) @map("is_active")
+
+  /// Refreshed each time the app re-registers (login / foreground resume), so
+  /// stale devices can be aged out.
+  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user   TenantUser @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, expoPushToken])
+  @@index([tenantId, userId, isActive])
+  @@map("device_tokens")
+  @@schema("public")
+}
+
+/// Transactional outbox driving reliable push delivery. One row per logical
+/// notification; the push forwarder drains PENDING rows (nextAttemptAt <= now),
+/// resolves the target into active DeviceToken rows, sends via Expo, records the
+/// ticket, backs off on failure and dead-letters after N attempts — the same
+/// shape as MessageForwardOutbox. `payload` carries a generic { title, body,
+/// data } envelope so notification copy/actions live outside the schema.
+model PushNotificationOutbox {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// Target. Exactly one of userId / crewMemberId is set; the forwarder
+  /// resolves either into that principal's active DeviceToken rows.
+  userId       String? @map("user_id")
+  crewMemberId String? @map("crew_member_id")
+
+  /// Generic notification envelope: { title, body, data: { ...deep link } }.
+  payload Json
+
+  /// Optional idempotency key. A non-null value is unique per tenant, so a
+  /// retried enqueue for the same logical event (e.g.
+  /// "move.assigned:<moveId>:<crewMemberId>") collapses to one row. NULLs are
+  /// distinct in Postgres, so ad-hoc sends omit it.
+  dedupeKey String? @map("dedupe_key")
+
+  attempts      Int           @default(0)
+  nextAttemptAt DateTime      @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  status        ForwardStatus @default(PENDING)
+  lastError     String?       @map("last_error")
+
+  /// Expo push ticket id from send; used to poll the delivery receipt later.
+  expoTicketId  String? @map("expo_ticket_id")
+  expoReceiptId String? @map("expo_receipt_id")
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user       TenantUser? @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  crewMember CrewMember? @relation(fields: [crewMemberId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, status, nextAttemptAt])
+  @@map("push_notification_outbox")
   @@schema("public")
 }

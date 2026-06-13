@@ -14,6 +14,7 @@ import { requirePermission } from '../middleware/rbac'
 import { Actions } from '../authz/actions'
 import { authorize } from '../lib/authz'
 import { emitDomainEvent } from '../lib/domain-events'
+import { enqueueCrewAssignmentPush } from '../lib/push-triggers'
 import {
   createMove,
   findMoveById,
@@ -214,7 +215,14 @@ movesHandler.post(
     const db = c.get('db')
     const id = c.req.param('id')
     const { crewMemberId } = c.req.valid('json')
-    const data = await assignCrewMember(db, id, crewMemberId)
+    // The assignment and the push-notification outbox row commit atomically:
+    // either the driver is assigned AND queued to be notified, or neither.
+    const data = await db.$transaction(async (tx) => {
+      const updated = await assignCrewMember(tx as PrismaClient, id, crewMemberId)
+      if (!updated) return null
+      await enqueueCrewAssignmentPush(tx, c.get('tenantId'), { moveId: id, crewMemberId })
+      return updated
+    })
     if (!data) return c.json({ error: 'Move not found', code: 'NOT_FOUND' }, 404)
     return c.json({ data })
   },

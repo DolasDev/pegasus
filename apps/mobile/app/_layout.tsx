@@ -1,19 +1,47 @@
 import React, { useEffect, useMemo } from 'react'
 import { View, Text, StyleSheet } from 'react-native'
-import { Stack, SplashScreen } from 'expo-router'
+import { Stack, SplashScreen, useRouter } from 'expo-router'
 import { AuthProvider, useAuth } from '../src/context/AuthContext'
 import { isConfigValid } from '../src/config'
 import { getAuthService } from '../src/auth/authServiceInstance'
+import { setTokenProvider } from '../src/api/client'
+import {
+  initNotifications,
+  registerForPush,
+  setupNotificationTapHandler,
+} from '../src/services/pushNotifications'
 import { colors, fontSize, spacing } from '../src/theme/colors'
 
 SplashScreen.preventAutoHideAsync()
 
 function RootLayoutNav() {
-  const { isAuthenticated, isLoading } = useAuth()
+  const { isAuthenticated, isLoading, session } = useAuth()
+  const router = useRouter()
 
   useEffect(() => {
     if (!isLoading) SplashScreen.hideAsync()
   }, [isLoading])
+
+  // Bind the API client's bearer token to the current session. Without this no
+  // authenticated request (including push registration) can attach a token.
+  useEffect(() => {
+    setTokenProvider(() => session?.token ?? null)
+  }, [session])
+
+  // One-time notification setup: foreground handler + Android channel, and route
+  // notification taps to their deep-link target.
+  useEffect(() => {
+    initNotifications()
+    const sub = setupNotificationTapHandler((path) => router.push(path))
+    return () => sub.remove()
+  }, [router])
+
+  // Register this device for push once the driver is authenticated (and again on
+  // any later auth transition). Logout-side deactivation lives in AuthContext so
+  // it runs while the session token is still valid.
+  useEffect(() => {
+    if (isAuthenticated) registerForPush()
+  }, [isAuthenticated])
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
