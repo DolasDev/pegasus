@@ -1,6 +1,6 @@
 # Master Plan — Remediation Ranking by Feedback-Loop Cost/Benefit
 
-> **Status: WAVES 1–2 COMPLETE & DEPLOYED — Wave 3 next** — updated 2026-06-12
+> **Status: WAVES 1–2 COMPLETE & DEPLOYED — Wave 3 in progress** — updated 2026-06-13
 
 ## Execution status (resume here)
 
@@ -91,10 +91,10 @@ Execution in three waves. Each checked item = execute that phase of the named pl
 
 ### Wave 3 — Insurance, depth, and the rest (as capacity allows; risk items first)
 
-- [ ] `audit-rollback-release-safety.md` Phases 1–3 (~1.5 d)
-- [ ] `audit-observability-alerting.md` Phases 1–2 (~1 d)
+- [x] `audit-rollback-release-safety.md` Phases 1–3 (~1.5 d) _(shipped & deployed via #252: Phase 1 1a–1d, Phase 2b, Phase 3 3a–3c. **Outstanding:** 2a Neon safety branch (blocked on `plans/todo/neon-branches-for-e2e-isolation.md`) + 2c AI migration review (AI-automation hold). Source plan stays in-progress until those land/drop.)_
+- [x] `audit-observability-alerting.md` Phases 1–2 (~1 d) _(shipped & deployed via #253; reconcile alarm via #251 Unit 11. Source plan archived to `plans/completed/`. Optional Slack/dashboard-footer + Phase 3 AI triage left undone by design.)_
 - [ ] `audit-security-runtime-hardening.md` Phases 2–3 (~1 d)
-- [ ] `audit-security-supply-chain.md` Phases 1–4 (~4 h)
+- [x] `audit-security-supply-chain.md` Phases 1–4 (~4 h) _(implemented on branch `audit/security-supply-chain` — CodeQL default setup, dependency-review.yml, Dependabot actions+pip ecosystems, Betterleaks SHA-256 gate, pip-audit, pyproject caps, deterministic override-expiry checker+workflow. **Deferred:** Phase 4 AI override-agent (AI hold). **Pending:** Phase 5 SBOM export until dependency graph populates post-merge. CodeQL not yet a required check (triage window).)_
 - [ ] `audit-python-toolchain.md` Phase 1 now if Phase-3 workflows work resumes; remainder with that work (~1 d)
 - [ ] `audit-test-infrastructure.md` Phases 2–3, `audit-e2e-strategy.md` Phases 3–4, `audit-ai-process-automation.md` Phases 4–5, deferred phases of deploy/toolchain plans
 - [ ] `audit-build-toolchain-performance.md` Phase 4 — AI-assisted driver-planning lint burn-down (recurring sessions)

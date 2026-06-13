@@ -128,6 +128,27 @@ CI job `Secret Scanning (Betterleaks)` (`.github/workflows/ci.yml`) runs `better
 
 **Never** blanket-allowlist a file, directory, or rule. Always fingerprint-scope.
 
+**Two layers, on purpose.** GitHub native secret scanning + push protection is also
+enabled (repo Settings → Security). It is complementary, not redundant: Betterleaks is
+CI-time, full-history, pattern-based, with the custom `.betterleaksignore`; GitHub adds
+provider-validated patterns and **push-time** blocking before a secret enters the
+(world-readable, public repo) history. A push blocked by push protection can be bypassed
+with a reason in the CLI output — same triage discipline as the Betterleaks runbook above.
+The known Airbrake client key is dismissed in both (`.betterleaksignore:10-13` rationale).
+
+## SBOM Export (on demand, no recurring artifacts)
+
+We deliberately do **not** attach CycloneDX/syft SBOMs to releases — ceremony with no
+consumer today. For any ad-hoc "send us your SBOM" request, export GitHub's free
+dependency-graph SBOM instead:
+
+```
+gh api repos/DolasDev/pegasus/dependency-graph/sbom > sbom.spdx.json
+```
+
+(Requires the repo dependency graph enabled — it is, alongside Dependabot alerts and the
+`Dependency Review` PR check. If the command 404s, re-check Settings → Advanced Security.)
+
 ## WireGuard Hub: Manual Peer Break-Glass
 
 The reconcile agent (`apps/vpn-agent`) is the source of truth for hub peer state — it polls the admin API and applies `wg set` every ~30s. If the agent is wedged (process down, API unreachable, kernel disagreeing with desired state) and a tenant needs the tunnel up _now_, you can add a peer manually:
