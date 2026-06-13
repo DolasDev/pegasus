@@ -121,31 +121,27 @@ Models crew and vehicle availability.
 
 ## Claude Code Model Routing
 
-`.claude/settings.json` ships two committed, team-wide model-routing keys. They are intentional — the
-goal is **Fable 5's intelligence on the hard parts without burning Fable on routine work**:
+`.claude/settings.json` ships one committed, team-wide model-routing key — the goal is to keep
+fan-out off the expensive model without burning it on routine work:
 
-- **`"advisorModel": "fable"`** — your main loop stays on its default (Opus/Sonnet); Claude consults
-  **Fable 5 as an advisor** at decision points (before committing to an approach, on recurring errors,
-  before declaring a task done). Fable is billed only for those consults, not the whole session.
 - **`"env": { "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet" }`** — every spawned subagent (search, mechanical
   edits, `gsd-*` agents) runs on Sonnet, so fan-out never burns the expensive model. Per-session
   opt-out: launch with `CLAUDE_CODE_SUBAGENT_MODEL=inherit claude`.
 
-**Requirements (provision per seat, or the advisor silently won't activate):** Claude Code
-**≥ v2.1.170**, a **first-party Anthropic plan** — a Max / Team Premium subscription _or_ an API
-account (the advisor is server-side and runs on subscription usage _or_ API billing; it is _not_
-available on Bedrock / Vertex / Foundry), and **Fable 5 access** (included with Max / Team Premium /
-Enterprise pay-as-you-go / API — Pro seats don't have it). Fable advisor consults count toward your
-plan's usage limits, not a separate bill. Run `claude update` if you're behind.
+> **Note:** the always-on **`"advisorModel": "fable"`** key was removed (see git history) — the main
+> loop no longer consults Fable 5 at decision points. Fable is now used only via the optional
+> plan/execute split below.
 
-**Verify it's working:** run `/status` (no errors, main model = your default); during a hard task,
-watch for the `Advising` line in the transcript (press `Ctrl+O` to read Fable's guidance); trigger a
-broad search and confirm the spawned subagent runs Sonnet, not your main model.
+**Verify it's working:** run `/status` (no errors, main model = your default), then trigger a broad
+search and confirm the spawned subagent runs Sonnet, not your main model.
 
 **Optional — plan/execute split:** `scripts/fableplan.sh` (or `scripts/fableplan.ps1` on Windows)
 launches a session that plans on Fable and executes on Sonnet. It's _try-and-verify_ — opusplan's
 plan-phase switch is unreliable with a custom model override (anthropics/claude-code#16982); confirm
-`/status` shows Fable in plan mode, else fall back to manual `/model fable` → `/model sonnet`.
+`/status` shows Fable in plan mode, else fall back to manual `/model fable` → `/model sonnet`. This
+flow needs **Fable 5 access** (included with Max / Team Premium / Enterprise pay-as-you-go / API —
+Pro seats don't have it) on a **first-party Anthropic plan** (not Bedrock / Vertex / Foundry), and
+Claude Code **≥ v2.1.170** (`claude update` if you're behind).
 
 > ⚠️ This repo's security work (tenant-runner `/proc` reads, `PR_SET_DUMPABLE`, pentest-adjacent
 > units) trips Fable's cyber/bio safety classifiers, which auto-fall-back to Opus — sometimes on the
