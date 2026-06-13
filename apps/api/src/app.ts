@@ -66,6 +66,8 @@ import {
   longhaulUpdateTripHandler,
 } from './handlers/longhaul-cloud/trip-save'
 import { meHandler } from './handlers/me'
+import { deviceTokensHandler } from './handlers/device-tokens'
+import { notificationsHandler } from './handlers/notifications'
 import { ringcentralOauthHandler } from './handlers/integrations/ringcentral-oauth'
 import { ringcentralWebhookHandler } from './handlers/integrations/ringcentral-webhook'
 import { logger } from './lib/logger'
@@ -263,6 +265,10 @@ if (process.env['SKIP_AUTH'] === 'true') {
 
 // Bounded-context routers
 v1.route('/me', meHandler)
+// Push notifications: device-tokens is self-service (driver registers their own
+// device, no permission gate); notifications/send is staff-gated (SendNotification).
+v1.route('/device-tokens', deviceTokensHandler)
+v1.route('/notifications', notificationsHandler)
 v1.route('/sso', ssoHandler)
 v1.route('/users', usersHandler)
 v1.route('/customers', customersHandler)

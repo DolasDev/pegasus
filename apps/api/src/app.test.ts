@@ -18,9 +18,16 @@ vi.mock('./middleware/tenant', () => ({
     c.set('tenantId', 'test-tenant-id')
     // `$transaction` runs the callback with `tx === db` itself so mocked
     // repository functions resolve identically inside transaction wrappers;
-    // `domainEvent.create` absorbs emitDomainEvent outbox writes.
+    // `domainEvent.create` absorbs emitDomainEvent outbox writes and
+    // `pushNotificationOutbox` absorbs push-trigger enqueues.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db: any = { domainEvent: { create: vi.fn() } }
+    const db: any = {
+      domainEvent: { create: vi.fn() },
+      pushNotificationOutbox: {
+        create: vi.fn(async () => ({ id: 'pn-1' })),
+        upsert: vi.fn(async () => ({ id: 'pn-1' })),
+      },
+    }
     db.$transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(db))
     c.set('db', db)
     // A tenant_admin principal so requirePermission-gated routes (incl. the

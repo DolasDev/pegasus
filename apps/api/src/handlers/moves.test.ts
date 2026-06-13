@@ -29,6 +29,10 @@ vi.mock('../lib/domain-events', () => ({
   emitDomainEvent: vi.fn(),
 }))
 
+vi.mock('../lib/push-triggers', () => ({
+  enqueueCrewAssignmentPush: vi.fn(),
+}))
+
 import type * as Domain from '@pegasus/domain'
 
 vi.mock('@pegasus/domain', async (importOriginal) => {
@@ -49,6 +53,7 @@ import {
 import { canDispatch, canTransition } from '@pegasus/domain'
 import { _clearAuthzCache } from '../lib/authz'
 import { emitDomainEvent } from '../lib/domain-events'
+import { enqueueCrewAssignmentPush } from '../lib/push-triggers'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -314,17 +319,23 @@ describe('moves handler', () => {
   // ── POST /:id/crew ────────────────────────────────────────────────────────
 
   describe('POST /:id/crew', () => {
-    it('returns 200 when crew assigned successfully', async () => {
+    it('returns 200 and enqueues an assignment push when crew assigned successfully', async () => {
       vi.mocked(assignCrewMember).mockResolvedValue(mockMove as never)
       const res = await buildApp().request('/move-1/crew', post({ crewMemberId: 'crew-1' }))
       expect(res.status).toBe(200)
+      expect(enqueueCrewAssignmentPush).toHaveBeenCalledTimes(1)
+      expect(enqueueCrewAssignmentPush).toHaveBeenCalledWith(expect.anything(), 'test-tenant-id', {
+        moveId: 'move-1',
+        crewMemberId: 'crew-1',
+      })
     })
 
-    it('returns 404 NOT_FOUND when assignCrewMember returns null', async () => {
+    it('returns 404 NOT_FOUND and enqueues nothing when assignCrewMember returns null', async () => {
       vi.mocked(assignCrewMember).mockResolvedValue(null)
       const res = await buildApp().request('/move-1/crew', post({ crewMemberId: 'crew-1' }))
       expect(res.status).toBe(404)
       expect((await json(res)).code).toBe('NOT_FOUND')
+      expect(enqueueCrewAssignmentPush).not.toHaveBeenCalled()
     })
   })
 

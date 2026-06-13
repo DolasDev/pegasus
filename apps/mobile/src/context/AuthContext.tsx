@@ -3,6 +3,7 @@ import { AppState, type AppStateStatus } from 'react-native'
 import type { Session } from '../auth/types'
 import { logger } from '../utils/logger'
 import { storage } from '../utils/storage'
+import { unregisterForPush } from '../services/pushNotifications'
 
 const SESSION_KEY = 'pegasus_session'
 
@@ -88,6 +89,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ authService, childre
   const logout = async (): Promise<void> => {
     try {
       const email = session?.email ?? ''
+      // Deactivate this device's push token BEFORE the session is cleared, so the
+      // authenticated DELETE still carries a valid bearer. Best-effort.
+      await unregisterForPush()
       await storage.deleteItem(SESSION_KEY)
       setSession(null)
       logger.logAuth('logout', email)

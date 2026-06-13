@@ -30,6 +30,7 @@ export type ResourceType =
   | 'Order'
   | 'Event'
   | 'Workflow'
+  | 'Notification'
 
 export interface ActionDef {
   /** Cedar action identifier (without namespace prefix). */
@@ -168,6 +169,12 @@ export const Actions = {
     id: 'ManageWorkflowTriggers',
     resourceType: 'Workflow',
     permission: 'workflow:manage_triggers',
+  },
+  // ── Notifications (staff-initiated push to drivers/crew) ────────────────────
+  SendNotification: {
+    id: 'SendNotification',
+    resourceType: 'Notification',
+    permission: 'notification:send',
   },
 } as const satisfies Record<string, ActionDef>
 

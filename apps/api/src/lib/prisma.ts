@@ -49,6 +49,13 @@ export const TENANT_SCOPED_MODELS = new Set([
   // client (cross-tenant cron context) and are unaffected by this set.
   'RingCentralConnection',
   'Message',
+  // Push notifications — DeviceToken rows are read/written by the tenant-scoped
+  // device-token handler; PushNotificationOutbox rows are enqueued by handlers
+  // and domain-event emitters via the scoped client inside transactions. The
+  // background push-forward Lambda reads cross-tenant via the base client, which
+  // bypasses this extension — same precedent as the messaging forward job.
+  'DeviceToken',
+  'PushNotificationOutbox',
   // Workflow is intentionally NOT scoped here — the GLOBAL visibility case
   // requires reading rows owned by a different tenant (the platform tenant).
   // The extension's top-level `tenantId = current` merge would neutralise the

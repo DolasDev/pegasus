@@ -92,6 +92,13 @@
           "type": "Record",
           "attributes": {}
         }
+      },
+      "Notification": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
       }
     },
     "actions": {
@@ -208,6 +215,9 @@
       },
       "ManageWorkflowTriggers": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
+      },
+      "SendNotification": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Notification"] }
       }
     }
   }
