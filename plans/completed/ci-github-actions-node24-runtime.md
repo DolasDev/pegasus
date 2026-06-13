@@ -25,7 +25,8 @@ change `.nvmrc` or `engines`.** The only remaining `node20` surface is third-par
 - [x] Read live deprecation annotations across CI / Deploy / Temporal-worker runs (authoritative list)
 - [x] Verify each candidate target version's `runs.using` is actually `node24` before bumping
 - [x] Bump all node20 actions; re-pin SHA-pinned `dorny/paths-filter` to a node24 release SHA
-- [ ] Open PR; confirm **zero** `node20` deprecation annotations across all workflows; all jobs green
+- [x] Open PR; confirm **zero** `node20` deprecation annotations across all workflows; all jobs green
+      — done via PR #255 (`62b0aa6`, merged 2026-06-12); latest main `ci.yml` run `27473340592` green with no node20/node16 annotations.
 - [x] Diff contains **no** `.nvmrc` / `engines` change (toolchain already node24)
 
 ## Authoritative audit result (from live run annotations + `runs.using` checks)
