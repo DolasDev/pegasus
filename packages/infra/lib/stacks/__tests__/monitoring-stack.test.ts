@@ -174,14 +174,15 @@ describe('MonitoringStack — Lambda p99 duration alarm', () => {
     })
   })
 
-  it('evaluates the Lambda p99 duration alarm over a 5-minute period', () => {
+  it('de-flaps the p99 duration alarm with a 2-of-3 five-minute window', () => {
     const template = synthMonitoringStack()
     template.hasResourceProperties('AWS::CloudWatch::Alarm', {
       Namespace: 'AWS/Lambda',
       MetricName: 'Duration',
       ExtendedStatistic: 'p99',
       Period: 300,
-      EvaluationPeriods: 1,
+      EvaluationPeriods: 3,
+      DatapointsToAlarm: 2,
     })
   })
 

@@ -201,11 +201,22 @@ export class MonitoringStack extends cdk.Stack {
 
     const lambdaDurationAlarm = new cloudwatch.Alarm(this, 'LambdaDurationP99Alarm', {
       alarmName: 'pegasus-lambda-duration-p99',
-      alarmDescription: 'Lambda p99 duration exceeds 10 seconds.',
+      alarmDescription:
+        'Lambda p99 duration exceeded 10 seconds in 2 of the last 3 five-minute ' +
+        'periods — a sustained latency regression, not a single tail request. On a ' +
+        'low-traffic stage one 16s request dominates the 5-minute p99, so a single ' +
+        'datapoint is too flap-prone to page on (it self-clears the next period); the ' +
+        'M-of-N window pages on a real regression while ignoring isolated tail events.',
       metric: lambdaDurationMetric,
       // 10 000 ms = 10 seconds. Lambda Duration metric is in milliseconds.
       threshold: 10000,
-      evaluationPeriods: 1,
+      // De-flap: require 2 of 3 five-minute periods over threshold rather than a
+      // single datapoint. Widens detection of a *sustained* regression by up to
+      // ~2 periods (~10 min) — an accepted trade for killing single-event pages.
+      // Deliberately NOT raising the threshold: a 16s request is worth knowing
+      // about; the fix is not paging on one of them.
+      evaluationPeriods: 3,
+      datapointsToAlarm: 2,
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     })
