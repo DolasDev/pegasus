@@ -1,8 +1,15 @@
 # Pegasus Workflows — Phase 3: Sandboxed Tenant Code + Triggers
 
-**Status: ALL 12 UNITS ✅ COMPLETE AND MERGED (Track B 1–5, Track A
-6–11 incl. 8.1)** — PRs #230–#234, #239–#243, #248, #251; sandbox LIVE
-as of #248, guardrails live with #251 (2026-06-12).
+**Status: PHASE 3 FULLY COMPLETE — ALL 12 UNITS MERGED + STAGING SMOKE
+PASSED 2026-06-13. Plan archived.** Track B 1–5, Track A 6–11 incl. 8.1
+— PRs #230–#234, #239–#243, #248, #251 (+ #256 stdlib-name fix). Sandbox
+LIVE as of #248, guardrails #251.
+
+**Unit-11 admin UI verified with Steve 2026-06-13:** runner-status panel
+showed the live RUNNING task; kill switch round-trip = disable → API run
+423 `WORKFLOWS_DISABLED` with NO row created → enable → run COMPLETED.
+Leftover staging test data (harmless — no workflow-delete endpoint
+exists): `smoke_canary` GLOBAL workflow + one test customer/move/quote.
 
 **STAGING SMOKE: engine portions ✅ PASSED 2026-06-13** (driven via a
 temp Playwright spec on the qa e2e target + AWS verification):
