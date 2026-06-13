@@ -287,6 +287,11 @@ export class ApiStack extends cdk.Stack {
         DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
         // Structured log level consumed by @aws-lambda-powertools/logger.
         LOG_LEVEL: 'INFO',
+        // Defensive: if an X-Ray-captured downstream client (mssql-executor /
+        // tunnel-proxy invoke) is ever called outside an active segment, log
+        // the context-missing condition instead of throwing a runtime error
+        // (the SDK default). Active tracing normally guarantees a segment.
+        AWS_XRAY_CONTEXT_MISSING: 'LOG_ERROR',
         // Cognito JWKS endpoint for JWT verification. Used by:
         //   - adminAuthMiddleware: verifies admin access tokens
         //   - /api/auth/validate-token: verifies tenant ID tokens
@@ -365,6 +370,12 @@ export class ApiStack extends cdk.Stack {
       memorySize: 512,
       timeout: cdk.Duration.seconds(29),
       logGroup: apiLogGroup,
+      // Active X-Ray tracing so the next p99 spike is attributable to a
+      // downstream segment (Neon vs mssql-executor invoke vs tunnel invoke)
+      // rather than a 16-29s black box. The two Lambda-invoke clients are
+      // wrapped with captureAWSv3Client (see mssql-executor-client.ts /
+      // tunnel-client.ts) so each downstream call renders as its own subsegment.
+      tracing: lambda.Tracing.ACTIVE,
     })
 
     // ---------------------------------------------------------------------------
@@ -1499,6 +1510,42 @@ export class ApiStack extends cdk.Stack {
     defaultStage.defaultRouteSettings = {
       throttlingRateLimit: 25, // steady-state rps across all callers
       throttlingBurstLimit: 50,
+    }
+
+    // ---------------------------------------------------------------------------
+    // Access logging on the $default stage.
+    //
+    // The API is a single `ANY /{proxy+}` route, so per-route CloudWatch metrics
+    // don't exist — without access logs there is no way to learn *which* endpoint
+    // was slow during a latency spike. `integrationLatency` is the time the
+    // Lambda itself took (vs `responseLatency` end-to-end), so the two together
+    // separate gateway overhead from in-handler downstream stalls. Logs-Insights
+    // can then rank endpoints by p99. Set via the CfnStage escape hatch because
+    // the stable apigwv2 L2 stage doesn't expose accessLogSettings.
+    // ---------------------------------------------------------------------------
+    const apiAccessLogGroup = new logs.LogGroup(this, 'ApiAccessLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+    // API Gateway (HTTP API) writes access logs via a CloudWatch Logs resource
+    // policy rather than the account-level role REST APIs use. grantWrite to the
+    // service principal renders that resource policy on the log group.
+    apiAccessLogGroup.grantWrite(new iam.ServicePrincipal('apigateway.amazonaws.com'))
+    defaultStage.accessLogSettings = {
+      destinationArn: apiAccessLogGroup.logGroupArn,
+      format: JSON.stringify({
+        requestId: '$context.requestId',
+        routeKey: '$context.routeKey',
+        path: '$context.path',
+        method: '$context.httpMethod',
+        status: '$context.status',
+        responseLatency: '$context.responseLatency',
+        integrationLatency: '$context.integrationLatency',
+        integrationStatus: '$context.integrationStatus',
+        ip: '$context.identity.sourceIp',
+        requestTime: '$context.requestTime',
+        protocol: '$context.protocol',
+      }),
     }
 
     httpApi.addRoutes({

@@ -73,6 +73,15 @@ describe('ApiStack — Lambda function', () => {
     })
   })
 
+  it('enables active X-Ray tracing on the API Lambda', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      MemorySize: 512,
+      Timeout: 29,
+      TracingConfig: { Mode: 'Active' },
+    })
+  })
+
   it('sets NODE_ENV to production', () => {
     const template = synthApiStack()
     template.hasResourceProperties('AWS::Lambda::Function', {
@@ -266,6 +275,28 @@ describe('ApiStack — HTTP API Gateway', () => {
         ThrottlingRateLimit: 25,
         ThrottlingBurstLimit: 50,
       }),
+    })
+  })
+
+  it('enables access logging on the $default stage with integration latency', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
+      StageName: '$default',
+      AccessLogSettings: {
+        DestinationArn: Match.anyValue(),
+        // Format is a JSON string; assert the two latency fields the latency
+        // investigation depends on are present.
+        Format: Match.stringLikeRegexp('.*integrationLatency.*'),
+      },
+    })
+  })
+
+  it('grants API Gateway write access to the access-log group', () => {
+    const template = synthApiStack()
+    // grantWrite to the apigateway service principal renders a CloudWatch Logs
+    // resource policy scoped to the access-log group.
+    template.hasResourceProperties('AWS::Logs::ResourcePolicy', {
+      PolicyName: Match.stringLikeRegexp('.*ApiAccessLogGroupPolicy.*'),
     })
   })
 
