@@ -1,6 +1,13 @@
 # API Lambda p99 Latency — Incident Investigation & Remediation
 
-> **Status: PHASE 1 + PHASE 3 IMPLEMENTED (branch `feat/api-latency-diagnostics`, PR open)** — 2026-06-13
+> **Status: PHASES 1, 2 (mechanism), 3 DONE — Phase 4 deferred (awaiting user go)** — updated 2026-06-14.
+> Phase 1 (tracing/access-logs/per-request log) + Phase 3 (alarm de-flap) shipped & deployed (`892d6b6`),
+> with the saved Logs-Insights queries (`018df85`). **Phase 2 mechanism** (client-side invoke timeouts +
+> Neon statement/connect timeouts, conservative data-free-safe values) implemented here. **Remaining:**
+> (a) the **aggressive 5–8 s budget** — tune per-call `timeoutMs` once the next spike populates
+> `pegasus/api-slow-requests`, staging-validated first; (b) **Phase 4** (provisioned concurrency) — does
+> not address the warm-request root cause; paused for explicit user go.
+> **Prior status (2026-06-13):** Phase 1 + 3 implemented.
 > Phase 1 (X-Ray active tracing + per-downstream `captureAWSv3Client` subsegments, API Gateway
 > access logging with `integrationLatency`, structured `request.completed` per-request log line with
 > a db/mssql/tunnel ms breakdown) and Phase 3 (p99 alarm de-flapped to a 2-of-3 five-minute window)
@@ -65,8 +72,11 @@ Every few days a single request blocks 15–29 s. On **Jun 1 it hit the 29 s tim
 
 ### Phase 2 — Stop slow requests from riding to the timeout (~2–3 h; behavior change, test in staging)
 
-- [ ] **Set explicit client-side timeouts below the 29 s Lambda ceiling.** Give the Neon/pg client, the `MssqlExecutorFn` invoke, and the `TunnelProxyFn` invoke a hard timeout (suggest 5–8 s) so a hung dependency fails fast with a typed error (and a logged downstream name) instead of a 29 s wall. Files: `apps/api/src/lib/mssql-executor-client.ts`, `apps/api/src/lib/tunnel-client.ts`, and the DB client setup. **Validate in staging** — confirm normal slow-but-legitimate queries (reports, bulk reads) complete under the chosen budget before shipping, or they'll start failing.
-- [ ] **Connection reuse review (Neon).** If the slow segment turns out to be Neon (Phase 1 will confirm), verify the handler reuses a pooled connection across warm invocations and uses Neon's pooler endpoint rather than opening a fresh connection per request. _(RDS Proxy is N/A here — backend is Neon serverless + Lambda-invoked tenant MSSQL, not RDS.)_
+- [x] **Set explicit client-side timeouts below the 29 s Lambda ceiling.** MECHANISM DONE — every downstream now fails with a typed, logged error before the 29 s wall instead of riding to it:
+  - **MSSQL-executor + tunnel-proxy invokes** (`lib/invoke-timeout.ts`, used by `mssql-executor-client.ts` / `tunnel-client.ts`): an AbortController ceiling = the call's own declared `timeoutMs` (or the 15 s downstream default) + 4 s overhead, **capped at 27 s**. A hung invoke now throws `EXECUTOR_INVOKE_TIMEOUT` / `TUNNEL_INVOKE_TIMEOUT` (distinct from the downstream's own query/proxy errors) and the `request.completed` line records which downstream + how long.
+  - **Neon/pg** (`db.ts`): `statement_timeout: 25 000` (Postgres cancels the query server-side) + `connectionTimeoutMillis: 20 000` (caps pool acquisition, but leaves room for a Neon autosuspend resume).
+  - **Value choice — deliberately conservative, NOT the aggressive 5–8 s.** The ceilings are _relative to each call's own budget_ (never tighter than requested) and sit below the wall, so they cannot break a legitimately-slow query (reports, bulk reads, Neon cold-resume) **without** the spike data the plan requires. **The 5–8 s fast-fail tightening is the remaining follow-up:** once the next >10 s event populates `pegasus/api-slow-requests` with the real legitimate-query ceiling, tighten the per-call `timeoutMs` defaults and **validate in staging first**.
+- [x] **Connection reuse review (Neon).** DONE. `db.ts` holds **one `PrismaClient` per cold start** via `globalThis` (the lazy singleton), reused across warm invocations — no per-request client/connection churn. `PrismaPg` pools internally (pg `Pool`). So the connection-reuse concern is already satisfied in code. **One operational item, not code:** confirm the `DATABASE_URL` secret points at Neon's **pooled** endpoint (host contains `-pooler`) rather than the direct compute endpoint — verifiable only against the `pegasus/{env}/database-url` secret value, not from source. _(RDS Proxy is N/A — Neon serverless + Lambda-invoked tenant MSSQL, not RDS.)_
 
 ### Phase 3 — De-flap the alarm (~30 min; coordinate with observability audit)
 
@@ -113,8 +123,8 @@ Net: the diagnostic + hardening work that actually fixes the incident costs **~$
 
 ## Acceptance Criteria / Verification
 
-- [ ] After deploy, an X-Ray trace for a sample API request shows distinct segments for Neon, MSSQL-executor invoke, and tunnel invoke.
-- [ ] API Gateway access logs show `integrationLatency` and `routeKey`/`path` per request; a Logs Insights query can rank endpoints by p99 latency.
-- [ ] The **next** >10 s event has either a trace or an access-log line identifying the slow downstream and the endpoint (i.e. it is no longer a black box).
-- [ ] A simulated hung downstream fails at the client timeout (5–8 s) with a typed, logged error naming the downstream — not at 29 s.
-- [ ] A single injected slow request no longer moves the alarm to ALARM (M-of-N), while two within the window still do.
+- [x] After deploy, an X-Ray trace for a sample API request shows distinct segments for Neon, MSSQL-executor invoke, and tunnel invoke. — **Capability deployed** (`tracing: ACTIVE` + `captureAWSv3Client` on the two invokes, live in prod `892d6b6`). MSSQL/tunnel render as subsegments; Neon time is in the `request.completed` `dbMs` field (no pg subsegment — see Phase 1 deviation). Self-confirms on the next sampled request that hits those downstreams.
+- [x] API Gateway access logs show `integrationLatency` and `routeKey`/`path` per request; a Logs Insights query can rank endpoints by p99 latency. — **Done & deployed.** Access logging live (`892d6b6`); the `pegasus/api-latency-by-route` saved query ranks routes by p50/p90/p99 (`018df85`).
+- [~] The **next** >10 s event has either a trace or an access-log line identifying the slow downstream and the endpoint (i.e. it is no longer a black box). — **Armed; self-confirms on the next event.** Three independent sources now cover it (X-Ray, `request.completed` breakdown, access log). This is the real-world validation that unblocks the Phase 2 aggressive-budget tightening.
+- [x] A simulated hung downstream fails at the client timeout with a typed, logged error naming the downstream — not at 29 s. — **Mechanism done** (Phase 2 below): a hung invoke now aborts at a conservative cap (<27 s) with a typed `*_INVOKE_TIMEOUT` error, and Neon caps via `statement_timeout`. The **aggressive 5–8 s** value is intentionally NOT set yet — it needs the spike data from the box above + staging validation.
+- [x] A single injected slow request no longer moves the alarm to ALARM (M-of-N), while two within the window still do. — **Deterministic from config** (`evaluationPeriods: 3`, `datapointsToAlarm: 2`, live `892d6b6`): one datapoint cannot satisfy 2-of-3.

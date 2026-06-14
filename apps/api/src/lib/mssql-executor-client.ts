@@ -12,11 +12,20 @@
 import { LambdaClient, InvokeCommand, type LambdaClientConfig } from '@aws-sdk/client-lambda'
 import { captureAWSv3Client } from 'aws-xray-sdk-core'
 import { recordDownstream } from './request-timing'
+import { withInvokeTimeout, invokeTimeoutMs, InvokeTimeoutError } from './invoke-timeout'
 
 export class MssqlExecError extends Error {
-  readonly code: 'EXECUTOR_NOT_CONFIGURED' | 'EXECUTOR_INVOKE_FAILED' | 'EXECUTOR_QUERY_ERROR'
+  readonly code:
+    | 'EXECUTOR_NOT_CONFIGURED'
+    | 'EXECUTOR_INVOKE_FAILED'
+    | 'EXECUTOR_INVOKE_TIMEOUT'
+    | 'EXECUTOR_QUERY_ERROR'
   constructor(
-    code: 'EXECUTOR_NOT_CONFIGURED' | 'EXECUTOR_INVOKE_FAILED' | 'EXECUTOR_QUERY_ERROR',
+    code:
+      | 'EXECUTOR_NOT_CONFIGURED'
+      | 'EXECUTOR_INVOKE_FAILED'
+      | 'EXECUTOR_INVOKE_TIMEOUT'
+      | 'EXECUTOR_QUERY_ERROR',
     message: string,
   ) {
     super(message)
@@ -115,14 +124,27 @@ export async function executeSql(
   }
 
   const res = await recordDownstream('mssql', () =>
-    getClient().send(
-      new InvokeCommand({
-        FunctionName: fnName,
-        InvocationType: 'RequestResponse',
-        Payload: new TextEncoder().encode(JSON.stringify(payload)),
-      }),
+    withInvokeTimeout(invokeTimeoutMs(opts.timeoutMs), (abortSignal) =>
+      getClient().send(
+        new InvokeCommand({
+          FunctionName: fnName,
+          InvocationType: 'RequestResponse',
+          Payload: new TextEncoder().encode(JSON.stringify(payload)),
+        }),
+        { abortSignal },
+      ),
     ),
-  )
+  ).catch((err: unknown) => {
+    if (err instanceof InvokeTimeoutError) {
+      throw new MssqlExecError(
+        'EXECUTOR_INVOKE_TIMEOUT',
+        `mssql-executor invoke exceeded the ${err.timeoutMs}ms client-side timeout — ` +
+          'the executor Lambda did not respond (cold start under the concurrency cap, ' +
+          'throttle, or network), not a query-level error',
+      )
+    }
+    throw err
+  })
 
   if (res.FunctionError) {
     const errBody = res.Payload ? new TextDecoder().decode(res.Payload) : '<empty>'
