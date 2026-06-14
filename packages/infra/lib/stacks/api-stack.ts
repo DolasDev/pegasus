@@ -211,6 +211,13 @@ export class ApiStack extends cdk.Stack {
   public readonly apiLogGroupName: string
 
   /**
+   * API Gateway access-log group name — passed to MonitoringStack for the
+   * `pegasus/api-access-by-route` Insights query (gateway-side per-endpoint
+   * status + traffic view, complementing the in-handler latency queries).
+   */
+  public readonly apiAccessLogGroupName: string
+
+  /**
    * Scheduled-Lambda log-group names (cron functions) — passed to
    * MonitoringStack for the `pegasus/cron-failures` Insights query. Includes
    * every cron log group that is always created; Temporal-gated groups
@@ -1527,6 +1534,7 @@ export class ApiStack extends cdk.Stack {
       retention: logs.RetentionDays.ONE_MONTH,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     })
+    this.apiAccessLogGroupName = apiAccessLogGroup.logGroupName
     // API Gateway (HTTP API) writes access logs via a CloudWatch Logs resource
     // policy rather than the account-level role REST APIs use. grantWrite to the
     // service principal renders that resource policy on the log group.

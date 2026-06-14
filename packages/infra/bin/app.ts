@@ -331,6 +331,7 @@ new MonitoringStack(app, `${stackIdPrefix}-MonitoringStack`, {
   // ApiStack (always available) and the temporal worker log group name
   // (staging/prod only — matches temporal-worker-stack.ts :229).
   apiLogGroupName: apiStack.apiLogGroupName,
+  apiAccessLogGroupName: apiStack.apiAccessLogGroupName,
   cronLogGroupNames: apiStack.cronLogGroupNames,
   temporalWorkerLogGroupName:
     envName === 'staging' || envName === 'prod' ? `/pegasus/${envName}/temporal-worker` : undefined,

@@ -47,6 +47,7 @@ function synthMonitoringStackWithQueries() {
     httpApiStage: '$default',
     alarmEmail: 'alerts@example.com',
     apiLogGroupName: '/aws/lambda/test-api-function',
+    apiAccessLogGroupName: '/pegasus/staging/api-access',
     cronLogGroupNames: ['/aws/lambda/cron-one', '/aws/lambda/cron-two'],
     temporalWorkerLogGroupName: '/pegasus/staging/temporal-worker',
   })
@@ -489,9 +490,9 @@ describe('MonitoringStack — Temporal worker RunningTaskCount alarm (Phase 1)',
 })
 
 describe('MonitoringStack — Logs Insights query definitions (Phase 2)', () => {
-  it('creates 4 query definitions when all log-group props are provided', () => {
+  it('creates 7 query definitions when all log-group props are provided', () => {
     const template = synthMonitoringStackWithQueries()
-    template.resourceCountIs('AWS::Logs::QueryDefinition', 4)
+    template.resourceCountIs('AWS::Logs::QueryDefinition', 7)
   })
 
   it('creates the api-errors-by-route query scoped to the api log group', () => {
@@ -523,6 +524,34 @@ describe('MonitoringStack — Logs Insights query definitions (Phase 2)', () => 
     template.hasResourceProperties('AWS::Logs::QueryDefinition', {
       Name: 'pegasus/temporal-worker-errors',
       LogGroupNames: ['/pegasus/staging/temporal-worker'],
+    })
+  })
+
+  it('creates the api-latency-by-route query ranking routes by p99 durationMs', () => {
+    const template = synthMonitoringStackWithQueries()
+    template.hasResourceProperties('AWS::Logs::QueryDefinition', {
+      Name: 'pegasus/api-latency-by-route',
+      LogGroupNames: ['/aws/lambda/test-api-function'],
+      QueryString: Match.stringLikeRegexp(
+        '[\\s\\S]*request\\.completed[\\s\\S]*pct\\(durationMs, 99\\)[\\s\\S]*',
+      ),
+    })
+  })
+
+  it('creates the api-slow-requests triage query over 5s', () => {
+    const template = synthMonitoringStackWithQueries()
+    template.hasResourceProperties('AWS::Logs::QueryDefinition', {
+      Name: 'pegasus/api-slow-requests',
+      LogGroupNames: ['/aws/lambda/test-api-function'],
+      QueryString: Match.stringLikeRegexp('[\\s\\S]*durationMs > 5000[\\s\\S]*'),
+    })
+  })
+
+  it('creates the api-access-by-route query scoped to the access-log group', () => {
+    const template = synthMonitoringStackWithQueries()
+    template.hasResourceProperties('AWS::Logs::QueryDefinition', {
+      Name: 'pegasus/api-access-by-route',
+      LogGroupNames: ['/pegasus/staging/api-access'],
     })
   })
 
