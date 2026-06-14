@@ -16,11 +16,20 @@
 import { LambdaClient, InvokeCommand, type LambdaClientConfig } from '@aws-sdk/client-lambda'
 import { captureAWSv3Client } from 'aws-xray-sdk-core'
 import { recordDownstream } from './request-timing'
+import { withInvokeTimeout, invokeTimeoutMs, InvokeTimeoutError } from './invoke-timeout'
 
 export class TunnelError extends Error {
-  readonly code: 'TUNNEL_NOT_CONFIGURED' | 'TUNNEL_INVOKE_FAILED' | 'TUNNEL_PROXY_ERROR'
+  readonly code:
+    | 'TUNNEL_NOT_CONFIGURED'
+    | 'TUNNEL_INVOKE_FAILED'
+    | 'TUNNEL_INVOKE_TIMEOUT'
+    | 'TUNNEL_PROXY_ERROR'
   constructor(
-    code: 'TUNNEL_NOT_CONFIGURED' | 'TUNNEL_INVOKE_FAILED' | 'TUNNEL_PROXY_ERROR',
+    code:
+      | 'TUNNEL_NOT_CONFIGURED'
+      | 'TUNNEL_INVOKE_FAILED'
+      | 'TUNNEL_INVOKE_TIMEOUT'
+      | 'TUNNEL_PROXY_ERROR',
     message: string,
   ) {
     super(message)
@@ -105,14 +114,27 @@ export async function tunnelFetch(
   }
 
   const res = await recordDownstream('tunnel', () =>
-    getClient().send(
-      new InvokeCommand({
-        FunctionName: fnName,
-        InvocationType: 'RequestResponse',
-        Payload: new TextEncoder().encode(JSON.stringify(payload)),
-      }),
+    withInvokeTimeout(invokeTimeoutMs(init.timeoutMs), (abortSignal) =>
+      getClient().send(
+        new InvokeCommand({
+          FunctionName: fnName,
+          InvocationType: 'RequestResponse',
+          Payload: new TextEncoder().encode(JSON.stringify(payload)),
+        }),
+        { abortSignal },
+      ),
     ),
-  )
+  ).catch((err: unknown) => {
+    if (err instanceof InvokeTimeoutError) {
+      throw new TunnelError(
+        'TUNNEL_INVOKE_TIMEOUT',
+        `tunnel-proxy invoke exceeded the ${err.timeoutMs}ms client-side timeout — ` +
+          'the proxy Lambda did not respond (cold start under the concurrency cap, ' +
+          'throttle, or network), not a proxy-level error',
+      )
+    }
+    throw err
+  })
 
   if (res.FunctionError) {
     const errBody = res.Payload ? new TextDecoder().decode(res.Payload) : '<empty>'

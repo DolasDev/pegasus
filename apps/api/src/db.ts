@@ -24,7 +24,20 @@ function createPrismaClient(): PrismaClient {
   if (!connectionString) {
     throw new Error('DATABASE_URL environment variable is not set')
   }
-  const adapter = new PrismaPg({ connectionString })
+  // Phase 2 latency hardening (plans/.../api-p99-latency-remediation.md): bound
+  // the Neon downstream so a hung DB call fails with a typed error well before
+  // the 29s API Lambda wall (the Jun-1 timeout). Conservative, data-free-safe
+  // values — both sit below the wall but above any query/connect that currently
+  // succeeds, so legitimate traffic (incl. Neon serverless cold-resume) is
+  // unaffected. Tighten only with real spike data + staging validation.
+  //   - statement_timeout: Postgres cancels a query server-side at 25s.
+  //   - connectionTimeoutMillis: cap pool connection acquisition at 20s — long
+  //     enough for a Neon autosuspend resume, short enough to fail before 29s.
+  const adapter = new PrismaPg({
+    connectionString,
+    statement_timeout: 25_000,
+    connectionTimeoutMillis: 20_000,
+  })
   return new PrismaClient({
     adapter,
     log: process.env['NODE_ENV'] === 'development' ? ['query', 'warn', 'error'] : ['warn', 'error'],
