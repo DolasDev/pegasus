@@ -42,6 +42,7 @@
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.0",
     "@temporalio/client": "1.18.0",
+    "aws-xray-sdk-core": "^3.10.0",
     "dotenv": "^16.4.5",
     "expo-server-sdk": "^6.1.0",
     "fast-xml-parser": "^5.8.0",

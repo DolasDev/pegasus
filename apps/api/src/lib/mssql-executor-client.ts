@@ -10,6 +10,8 @@
 // ---------------------------------------------------------------------------
 
 import { LambdaClient, InvokeCommand, type LambdaClientConfig } from '@aws-sdk/client-lambda'
+import { captureAWSv3Client } from 'aws-xray-sdk-core'
+import { recordDownstream } from './request-timing'
 
 export class MssqlExecError extends Error {
   readonly code: 'EXECUTOR_NOT_CONFIGURED' | 'EXECUTOR_INVOKE_FAILED' | 'EXECUTOR_QUERY_ERROR'
@@ -53,7 +55,13 @@ let _client: LambdaClient | null = null
 function getClient(): LambdaClient {
   if (_client === null) {
     const config: LambdaClientConfig = {}
-    _client = new LambdaClient(config)
+    const client = new LambdaClient(config)
+    // In Lambda (where active X-Ray tracing guarantees a request segment) wrap
+    // the client so each Invoke renders as its own X-Ray subsegment — making
+    // the executor a visible edge on the service map. Skipped outside Lambda
+    // (local dev, tests): there is no segment, and captureAWSv3Client would
+    // otherwise raise the X-Ray "context missing" error on every call.
+    _client = process.env['AWS_LAMBDA_FUNCTION_NAME'] ? captureAWSv3Client(client) : client
   }
   return _client
 }
@@ -106,12 +114,14 @@ export async function executeSql(
     ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
   }
 
-  const res = await getClient().send(
-    new InvokeCommand({
-      FunctionName: fnName,
-      InvocationType: 'RequestResponse',
-      Payload: new TextEncoder().encode(JSON.stringify(payload)),
-    }),
+  const res = await recordDownstream('mssql', () =>
+    getClient().send(
+      new InvokeCommand({
+        FunctionName: fnName,
+        InvocationType: 'RequestResponse',
+        Payload: new TextEncoder().encode(JSON.stringify(payload)),
+      }),
+    ),
   )
 
   if (res.FunctionError) {
