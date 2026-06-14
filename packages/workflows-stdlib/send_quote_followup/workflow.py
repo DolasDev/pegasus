@@ -8,18 +8,32 @@ a Pegasus workflow:
   follow-up message — in a real deployment it would call the Pegasus API
   via :class:`pegasus_workflows.PegasusClient`).
 
-Args contract (Phase 2 Unit 6, see plans/in-progress/workflows-phase2-…):
+Args contract (three supported shapes):
 
-  The server-side ``POST /api/v1/workflows/:id/run`` endpoint starts the
-  Temporal workflow with a single positional dict argument of the shape
-  ``{"executionId": <uuid>, "input": <user-supplied dict>}``. The
-  ``executionId`` is used by the worker's activity infrastructure (broker
-  fetch + status PATCH); workflow business logic should read from
-  ``input``.
+1. **EVENT envelope** — when fired by a domain-event trigger (e.g.
+   ``quote.accepted``), the dispatcher starts the execution with the workflow's
+   ``run()`` argument set to the full event envelope::
 
-  ``pegasus-workflows test send_quote_followup`` (Phase 1 local-dev flow)
-  starts the workflow with a raw positional string for backwards compat —
-  the ``run()`` signature accepts both shapes.
+       {
+           "domainEventId": "<uuid>",
+           "eventType": "quote.accepted",
+           "occurredAt": "<ISO-8601>",
+           "payload": {"quoteId": "<id>", "moveId": "<id>"}
+       }
+
+   The quote id is at ``arg["payload"]["quoteId"]`` (camelCase). Workflows
+   receiving an event envelope should read ``arg["payload"]`` for entity ids
+   and re-fetch authoritative state via the API rather than trusting the
+   snapshot.
+
+2. **Manual run** — ``POST /api/v1/workflows/:id/run`` starts the execution
+   with ``{"executionId": "<uuid>", "input": {"quote_id": "<id>"}}``. The
+   quote id is at ``arg["input"]["quote_id"]`` (snake_case).
+
+3. **CLI test** — ``pegasus-workflows test send_quote_followup`` passes a raw
+   positional string as the argument for local-dev parity.
+
+Resolution order: EVENT envelope → manual run → raw string → ``"quote-unknown"``.
 """
 
 from __future__ import annotations
@@ -28,6 +42,30 @@ from datetime import timedelta
 from typing import Any
 
 from pegasus_workflows import activity, pegasus_workflow, workflow
+
+
+def _resolve_quote_id(payload: dict[str, Any] | str) -> str:
+    """Resolve the quote id from any of the real input shapes.
+
+    Resolution order (first match wins):
+
+    1. EVENT envelope: ``payload["payload"]["quoteId"]``
+    2. Manual run: ``payload["input"]["quote_id"]``
+    3. Raw string passthrough (CLI test mode).
+    4. Fallback: ``"quote-unknown"``.
+    """
+    if isinstance(payload, str):
+        return payload
+    if isinstance(payload, dict):
+        # EVENT envelope: {domainEventId, eventType, occurredAt, payload: {quoteId, moveId}}
+        event_payload = payload.get("payload")
+        if isinstance(event_payload, dict) and event_payload.get("quoteId"):
+            return str(event_payload["quoteId"])
+        # Manual run: {executionId, input: {quote_id}}
+        inner = payload.get("input")
+        if isinstance(inner, dict) and inner.get("quote_id"):
+            return str(inner["quote_id"])
+    return "quote-unknown"
 
 
 @activity.defn
@@ -56,20 +94,14 @@ class SendQuoteFollowup:
     async def run(self, payload: dict[str, Any] | str = "quote-unknown") -> str:
         """Run the follow-up workflow.
 
-        Accepts either:
-
-        * a server-side payload ``{"executionId": str, "input": {...}}`` from
-          ``POST /api/v1/workflows/:id/run`` — reads ``input.quote_id``;
-        * a raw ``quote_id`` string from ``pegasus-workflows test`` (local
-          dev parity).
+        Accepts any of the three input shapes described in the module docstring
+        (EVENT envelope, manual run, raw string). Resolution is delegated to
+        :func:`_resolve_quote_id` which can be unit-tested without a Temporal
+        worker context.
 
         Returns the composed follow-up message.
         """
-        if isinstance(payload, dict):
-            inner = payload.get("input") or {}
-            quote_id = str(inner.get("quote_id", "quote-unknown"))
-        else:
-            quote_id = payload
+        quote_id = _resolve_quote_id(payload)
         return await workflow.execute_activity(
             compose_followup,
             quote_id,
