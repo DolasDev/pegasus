@@ -879,3 +879,99 @@ describe('startWorkflowExecution (inherited Unit 3 contracts)', () => {
     expect(mockExecutionRepo.markStarted).not.toHaveBeenCalled()
   })
 })
+
+// ---------------------------------------------------------------------------
+// MUST_FORK run-path matrix (cross-tenant GLOBAL guard)
+// ---------------------------------------------------------------------------
+
+describe('MUST_FORK — cross-tenant GLOBAL workflow guard', () => {
+  /** Non-curated GLOBAL workflow owned by the platform tenant. */
+  const platformGlobalWorkflow: WorkflowRow = {
+    ...tenantWorkflow,
+    id: 'wf-platform-global',
+    tenantId: 'platform-tenant',
+    name: 'custom_platform_tool', // NOT in CURATED_WORKFLOW_NAMES → routes TENANT_RUNNER
+    visibility: 'GLOBAL',
+    manifest: { name: 'custom_platform_tool', version: '1.0.0' },
+    executable: true,
+  }
+
+  it('non-owning tenant directly running a non-curated GLOBAL workflow → MUST_FORK', async () => {
+    const result = await startWorkflowExecution(fakeDb(0), {
+      workflow: platformGlobalWorkflow,
+      tenantId: 'tenant-b', // different from platformGlobalWorkflow.tenantId = 'platform-tenant'
+      input: {},
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-b' },
+    })
+
+    expect(result).toEqual({ outcome: 'MUST_FORK' })
+  })
+
+  it('MUST_FORK: nothing written and ensureTenantRunner not called', async () => {
+    const result = await startWorkflowExecution(fakeDb(0), {
+      workflow: platformGlobalWorkflow,
+      tenantId: 'tenant-b',
+      input: {},
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-b' },
+    })
+
+    expect(result.outcome).toBe('MUST_FORK')
+    expect(mockExecutionRepo.create).not.toHaveBeenCalled()
+    expect(mockEnsureTenantRunner).not.toHaveBeenCalled()
+    expect(mockTemporalStart).not.toHaveBeenCalled()
+  })
+
+  it('owner running its own non-curated GLOBAL row → STARTED (not MUST_FORK)', async () => {
+    const result = await startWorkflowExecution(fakeDb(0), {
+      workflow: platformGlobalWorkflow,
+      tenantId: 'platform-tenant', // same as workflow.tenantId
+      input: {},
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-platform' },
+    })
+
+    expect(result.outcome).toBe('STARTED')
+    expect(mockEnsureTenantRunner).toHaveBeenCalledWith(expect.anything(), 'platform-tenant')
+    expect(mockExecutionRepo.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('curated GLOBAL workflow run by a non-owning tenant → STDLIB route, not MUST_FORK', async () => {
+    // send_quote_followup is curated → routes STDLIB regardless of visibility/ownership.
+    // The guard never fires for STDLIB-routed workflows.
+    const result = await startWorkflowExecution(fakeDb(), {
+      workflow: curatedWorkflow, // tenantId='tenant-1', visibility='GLOBAL', name='send_quote_followup'
+      tenantId: 'tenant-other', // different from curatedWorkflow.tenantId
+      input: {},
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-other' },
+    })
+
+    expect(result.outcome).toBe('STARTED')
+    // Ran on the stdlib queue, not the tenant queue.
+    expect(mockTemporalStart).toHaveBeenCalledWith(
+      'send_quote_followup',
+      expect.objectContaining({ taskQueue: 'pegasus-stdlib-test' }),
+    )
+    expect(mockEnsureTenantRunner).not.toHaveBeenCalled()
+  })
+
+  it('forked TENANT-visibility copy of a GLOBAL workflow (tenantId = caller) → STARTED', async () => {
+    // After fork, the row has visibility=TENANT and tenantId = the forking tenant.
+    const forkedGlobal: WorkflowRow = {
+      ...platformGlobalWorkflow,
+      id: 'wf-forked',
+      tenantId: 'tenant-b', // now owned by the forking tenant
+      visibility: 'TENANT',
+      forkedFromWorkflowId: platformGlobalWorkflow.id,
+      forkedFromVersion: '1.0.0',
+    }
+
+    const result = await startWorkflowExecution(fakeDb(0), {
+      workflow: forkedGlobal,
+      tenantId: 'tenant-b',
+      input: {},
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-b' },
+    })
+
+    expect(result.outcome).toBe('STARTED')
+    expect(mockEnsureTenantRunner).toHaveBeenCalledWith(expect.anything(), 'tenant-b')
+  })
+})

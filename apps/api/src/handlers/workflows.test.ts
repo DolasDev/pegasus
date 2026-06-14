@@ -947,6 +947,28 @@ describe('workflows handler', () => {
       // No execution row should be created.
       expect(mockExecutionRepo.create).not.toHaveBeenCalled()
     })
+
+    it('returns 403 WORKFLOW_MUST_FORK when a non-owning tenant tries to run a non-curated GLOBAL workflow', async () => {
+      // The caller is 'test-tenant-id' (injected by buildApp's dualAuthMiddleware stub).
+      // The workflow is owned by 'platform-tenant-id' and has visibility=GLOBAL.
+      // A non-curated name (not in CURATED_WORKFLOW_NAMES) routes TENANT_RUNNER,
+      // hitting the cross-tenant guard before any DB write.
+      mockTenantFindUnique.mockResolvedValue({ workflowsDisabled: false })
+      mockRepo.findByIdForTenant.mockResolvedValue({
+        ...provisionedRow,
+        id: 'global-platform-wf',
+        tenantId: 'platform-tenant-id', // owned by a different tenant
+        name: 'custom_platform_tool', // not curated → routes TENANT_RUNNER
+        visibility: 'GLOBAL' as const,
+      })
+      const res = await buildApp().request('/global-platform-wf/run', post({ input: {} }))
+      expect(res.status).toBe(403)
+      const body = await json(res)
+      expect(body['code']).toBe('WORKFLOW_MUST_FORK')
+      // No execution row should be created, no Temporal start.
+      expect(mockExecutionRepo.create).not.toHaveBeenCalled()
+      expect(mockTemporalStart).not.toHaveBeenCalled()
+    })
   })
 
   // ── GET /:id/executions ───────────────────────────────────────────────────

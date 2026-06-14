@@ -827,6 +827,16 @@ workflowsHandler.post(
       )
     }
 
+    if (result.outcome === 'MUST_FORK') {
+      return c.json(
+        {
+          error: 'Fork this workflow into your tenant before running it.',
+          code: 'WORKFLOW_MUST_FORK',
+        },
+        403,
+      )
+    }
+
     if (result.outcome === 'STARTED') {
       return c.json({ data: toExecutionResponse(result.execution) }, 201)
     }
