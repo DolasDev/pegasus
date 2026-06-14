@@ -1,5 +1,17 @@
 # Workflows Phase 3 — Follow-ups (cosmetic + product gap)
 
+> **STATUS: COMPLETE (2026-06-14).** Both units shipped via parallel worktree PRs,
+> merged to `main`, CI green, deployed.
+> - Unit A → **#268** `fix(workflows-stdlib): send_quote_followup reads the EVENT envelope`
+>   (helper + 8 tests + new `workflows-stdlib-python` CI job + SDK/template README docs).
+>   No api/web deploy path (stdlib publishes on tag); worker image picks it up on next stdlib publish.
+> - Unit B → **#269** `fix(workflows): reject cross-tenant direct run of non-curated GLOBAL workflow`
+>   (`MUST_FORK` outcome + guard + 403 handler mapping + dispatcher skip + 5-case matrix).
+>   Full staging→prod deploy succeeded (E2E gate passed) — guard is LIVE in prod.
+>
+> Deferred (non-blocking): live `quote.accepted` trigger re-confirm on the redeployed worker
+> image (Unit A); multi-tenant staging E2E of the cross-tenant reject (Unit B).
+
 **Branch:** `plans/workflows-phase3-followups`
 **Goal:** Close the two non-blocking issues surfaced by the Phase 3 staging
 smoke (2026-06-13): (A) trigger-fired `send_quote_followup` prints
@@ -91,10 +103,10 @@ filter) — same deploy path that shipped #256.
 
 ### Checklist
 
-- [ ] Deepen `send_quote_followup` id resolution (envelope + manual + raw)
-- [ ] Tests for all three input shapes
-- [ ] Document the EVENT envelope in the SDK README
-- [ ] stdlib/SDK pytest green; (optional) staging re-confirm
+- [x] Deepen `send_quote_followup` id resolution (envelope + manual + raw)
+- [x] Tests for all three input shapes
+- [x] Document the EVENT envelope in the SDK README
+- [x] stdlib/SDK pytest green; (optional) staging re-confirm
 
 ---
 
@@ -196,13 +208,13 @@ matrix pins all four.
 
 ### Checklist
 
-- [ ] `MUST_FORK` outcome + owning-tenant guard in `startWorkflowExecution`
-- [ ] 4xx `WORKFLOW_MUST_FORK` mapping in the run handler
-- [ ] Dispatcher defensive skip + metric
-- [ ] `WorkflowRow` exposes owning `tenantId` (if not already)
-- [ ] Run-path test matrix (4 cases) + handler test
-- [ ] (optional) tenant-web run-dialog message
-- [ ] typecheck / lint / `npm test -w apps/api` green
+- [x] `MUST_FORK` outcome + owning-tenant guard in `startWorkflowExecution`
+- [x] 4xx `WORKFLOW_MUST_FORK` mapping in the run handler
+- [x] Dispatcher defensive skip + metric
+- [x] `WorkflowRow` exposes owning `tenantId` (if not already)
+- [x] Run-path test matrix (4 cases) + handler test
+- [x] (optional) tenant-web run-dialog message
+- [x] typecheck / lint / `npm test -w apps/api` green
 
 ---
 
