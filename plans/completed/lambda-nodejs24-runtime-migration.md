@@ -18,8 +18,11 @@ already exists in the installed `aws-cdk-lib` — no CDK upgrade needed.
 - [x] Update 4 CDK fine-grained assertion tests `'nodejs20.x'` → `'nodejs24.x'`
 - [x] Verify: `npm run typecheck` clean, `npm test` green (283/283), `npm run synth` OK
 - [x] Verify synthesized templates: dev + prod each = 20 `nodejs24.x` runtimes, **zero** `nodejs20`
-- [ ] PR → merge to `main` → watch `deploy.yml` (infra path filter rolls affected stacks)
-- [ ] Post-deploy spot-check: `aws lambda get-function-configuration --function-name <fn> --query Runtime` → `nodejs24.x`
+- [x] PR → merge to `main` → watch `deploy.yml` (infra path filter rolls affected stacks) — merged via **#254** (`0015873`); `deploy.yml` run `27449089347` succeeded (15m47s real rollout): staging → E2E gate → prod.
+- [x] Post-deploy spot-check (2026-06-13, read-only profiles) — both envs clean, **zero `nodejs20.x`**:
+  - staging (`248812875460`): 21 × `nodejs24.x`, 5 × `nodejs22.x` (CDK-internal providers only).
+  - prod (`331145994639`): 21 × `nodejs24.x`, 5 × `nodejs22.x` (CDK-internal providers only).
+  - The 5 `nodejs22.x` per env are CDK custom-resource/provider-framework Lambdas (runtime pinned by `aws-cdk-lib`, not our `lambda.Runtime` decls) → correctly out of scope. Count is 21 (not the planned 20) because later PRs (#253, #257) added Lambdas that inherited `nodejs24.x` from the migrated source.
 
 ## Files modified
 
