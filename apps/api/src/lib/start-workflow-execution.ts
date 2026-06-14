@@ -198,6 +198,18 @@ export type StartWorkflowExecutionResult =
    */
   | { outcome: 'DAILY_QUOTA_EXCEEDED' }
   /**
+   * TENANT_RUNNER: the caller tried to directly run a non-curated GLOBAL
+   * workflow it does not own (workflow.tenantId !== caller's tenantId). Nothing
+   * written or started. The caller must fork the workflow into their own tenant
+   * first (`POST /:id/fork`), then run the fork. The handler maps this to 403
+   * with code WORKFLOW_MUST_FORK.
+   *
+   * Curated (STDLIB-routed) GLOBAL workflows are unaffected — they never reach
+   * this guard. The platform tenant running its own GLOBAL row is also
+   * unaffected (tenantId matches).
+   */
+  | { outcome: 'MUST_FORK' }
+  /**
    * Temporal rejected the start with WorkflowExecutionAlreadyStartedError —
    * a deterministic-id redelivery raced us; the workflow IS running under
    * another execution row. The (orphaned QUEUED) row inserted by this call
@@ -408,11 +420,35 @@ export async function startWorkflowExecution(
 
   // ── TENANT_RUNNER-only pre-flight checks ──────────────────────────────────
   //
-  // Both checks happen BEFORE the insert and BEFORE ensureTenantRunner —
-  // cheap reads that reject abusively-frequent callers without touching ECS,
-  // Temporal, or the broker.
+  // All checks happen BEFORE the insert and BEFORE ensureTenantRunner —
+  // cheap reads that reject invalid or abusively-frequent callers without
+  // touching ECS, Temporal, or the broker.
 
   if (route === 'TENANT_RUNNER') {
+    // ── Cross-tenant GLOBAL run guard ───────────────────────────────────────
+    //
+    // A non-curated GLOBAL workflow owned by a different tenant (e.g. the
+    // platform tenant) cannot be run directly from a non-owning tenant's queue:
+    // the runner discovers artifacts by `tenantId = caller`, so a GLOBAL row
+    // owned by another tenant is never registered on the caller's queue →
+    // the Temporal workflow strands RUNNING until the 15-min timeout → FAILED
+    // with no useful error.
+    //
+    // Supported path: fork first (`POST /:id/fork` creates a TENANT-owned copy),
+    // then run the fork. Fork-then-run routes and discovers correctly.
+    //
+    // Curated (STDLIB-routed) GLOBAL workflows never reach this guard.
+    // The owner running its own GLOBAL row is also unaffected (tenantId matches).
+    if (workflow.visibility === 'GLOBAL' && workflow.tenantId !== tenantId) {
+      logger.warn('Cross-tenant GLOBAL workflow run rejected — fork required', {
+        tenantId,
+        workflowId: workflow.id,
+        workflowName: workflow.name,
+        workflowOwnerTenantId: workflow.tenantId,
+      })
+      return { outcome: 'MUST_FORK' }
+    }
+
     const now = new Date()
 
     // (b) Concurrency cap

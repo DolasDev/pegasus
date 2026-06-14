@@ -89,6 +89,7 @@ type TriggerSkipReason =
   | 'CONCURRENCY_LIMIT' // Phase 3 Unit 10: tenant concurrent-execution cap reached
   | 'DAILY_QUOTA_EXCEEDED' // Phase 3 Unit 10: tenant daily execution quota reached
   | 'WORKFLOWS_DISABLED' // Phase 3 Unit 11: operator kill switch
+  | 'MUST_FORK' // defensive: trigger on a cross-tenant GLOBAL workflow (config mistake)
   | 'ERROR' // unexpected per-trigger exception
 
 /**
@@ -351,6 +352,21 @@ async function fireTrigger(opts: {
         triggerId: trigger.id,
         tenantId: trigger.tenantId,
         workflowId: workflow.id,
+        ...logContext,
+      })
+      break
+    case 'MUST_FORK':
+      // Defensive: a trigger is attached to a cross-tenant GLOBAL workflow it
+      // does not own. Triggers should only be attached to a tenant's own or
+      // forked rows, so this indicates a configuration mistake — log a warning
+      // and skip. The supported path is to fork first, then attach triggers to
+      // the fork.
+      skip('MUST_FORK')
+      logger.warn('Trigger skipped — cross-tenant GLOBAL workflow requires fork first', {
+        triggerId: trigger.id,
+        tenantId: trigger.tenantId,
+        workflowId: workflow.id,
+        workflowName: workflow.name,
         ...logContext,
       })
       break
