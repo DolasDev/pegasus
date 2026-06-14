@@ -58,7 +58,9 @@ export const db: PrismaClient = new Proxy({} as PrismaClient, {
   get(_target, prop) {
     const client = getPrismaClient()
     const value = Reflect.get(client, prop, client) as unknown
-    return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(client) : value
+    return typeof value === 'function'
+      ? (value as (...args: unknown[]) => unknown).bind(client)
+      : value
   },
   has(_target, prop) {
     return Reflect.has(getPrismaClient(), prop)

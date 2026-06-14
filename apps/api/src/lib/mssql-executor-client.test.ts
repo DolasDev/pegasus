@@ -40,7 +40,12 @@ describe('executeSql', () => {
     const recordsets = [[{ id: 1 }], [{ id: 2 }, { id: 3 }], [{ id: 4 }]]
     setMssqlExecutorLambdaClient(
       stubClient(() => ({
-        Payload: encode({ ok: true, recordset: recordsets[0], recordsets, rowsAffected: [1, 2, 1] }),
+        Payload: encode({
+          ok: true,
+          recordset: recordsets[0],
+          recordsets,
+          rowsAffected: [1, 2, 1],
+        }),
       })),
     )
     const res = await executeSql('Server=a,1433', 'SELECT 1; SELECT 2; SELECT 3;')
