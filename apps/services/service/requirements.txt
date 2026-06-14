@@ -5,7 +5,7 @@ idna==3.7
 Nuitka==2.4.5
 ordered-set==4.1.0
 pyodbc==5.1.0
-requests==2.32.3
+requests==2.33.0
 SQLAlchemy==2.0.31
 typing-extensions==4.12.2
 urllib3==2.2.2
