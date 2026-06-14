@@ -1,0 +1,9 @@
+[project]
+name = "pegasus-workflows-stdlib"
+version = "0.1.0"
+description = "Curated Pegasus workflow library — dogfoods the SDK and is published under the platform tenant."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

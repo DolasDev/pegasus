@@ -52,6 +52,52 @@ class HelloWorkflow:
 `@pegasus_workflow` wraps `temporalio.workflow.defn` and records the
 `(name, version)` used by the manifest.
 
+### Input contract: how `run()` receives its argument
+
+Your `run()` method receives a **single positional argument** whose shape depends on how the workflow
+was started:
+
+**1. Trigger-fired (domain-event trigger)** — the dispatcher passes the full event envelope:
+
+```python
+{
+    "domainEventId": "<uuid>",
+    "eventType": "quote.accepted",      # the event type that fired the trigger
+    "occurredAt": "<ISO-8601>",
+    "payload": {"quoteId": "<id>", "moveId": "<id>"}   # entity ids, camelCase
+}
+```
+
+Read entity ids from `arg["payload"]["quoteId"]` etc. The `payload` is a pointer, not a full snapshot
+— always re-fetch authoritative state from the Pegasus API using those ids rather than relying on the
+payload alone.
+
+**2. Manual run** — `POST /api/v1/workflows/:id/run` passes:
+
+```python
+{"executionId": "<uuid>", "input": <user-supplied dict>}
+```
+
+Read your business data from `arg["input"]` (e.g. `arg["input"]["quote_id"]`).
+
+**3. CLI test** — `pegasus-workflows test <name>` passes a raw string for local-dev parity.
+
+Your `run()` should handle all three shapes. A module-level helper (not a method) is the recommended
+pattern — it stays unit-testable without a Temporal worker context:
+
+```python
+def _resolve_quote_id(payload: dict | str) -> str:
+    if isinstance(payload, str):
+        return payload
+    event_payload = payload.get("payload") if isinstance(payload, dict) else None
+    if isinstance(event_payload, dict) and event_payload.get("quoteId"):
+        return str(event_payload["quoteId"])
+    inner = payload.get("input") if isinstance(payload, dict) else None
+    if isinstance(inner, dict) and inner.get("quote_id"):
+        return str(inner["quote_id"])
+    return "quote-unknown"
+```
+
 ## The manifest — `pegasus-workflows.toml`
 
 Every project has a `pegasus-workflows.toml` at its root. Each `[[workflow]]`
