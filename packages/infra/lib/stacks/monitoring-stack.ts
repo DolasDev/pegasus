@@ -75,11 +75,19 @@ export interface MonitoringStackProps extends cdk.StackProps {
   readonly temporalWorkerServiceName?: string
 
   /**
-   * Main API Lambda log-group name — used to scope the `pegasus/api-errors-by-route`
-   * and `pegasus/trace-by-correlation-id` Insights query definitions. When absent
+   * Main API Lambda log-group name — used to scope the `pegasus/api-errors-by-route`,
+   * `pegasus/trace-by-correlation-id`, `pegasus/api-latency-by-route`, and
+   * `pegasus/api-slow-requests` Insights query definitions. When absent
    * (dev / test), those query definitions are omitted.
    */
   readonly apiLogGroupName?: string
+
+  /**
+   * API Gateway access-log group name — used to scope the
+   * `pegasus/api-access-by-route` Insights query definition. When absent
+   * (dev / test), that query definition is omitted.
+   */
+  readonly apiAccessLogGroupName?: string
 
   /**
    * Scheduled-Lambda log-group names (cron functions). Used to scope the
@@ -666,6 +674,75 @@ export class MonitoringStack extends cdk.Stack {
         }),
         logGroups: [
           logs.LogGroup.fromLogGroupName(this, 'ApiLogGroupRefTrace', props.apiLogGroupName),
+        ],
+      })
+
+      // Rank endpoints by latency from the per-request `request.completed` line
+      // emitted by requestTimingMiddleware. durationMs / dbMs / mssqlMs /
+      // tunnelMs are real JSON numbers (powertools logger), so pct()/avg()
+      // aggregate correctly — answering "which route is slow, and on which
+      // downstream" for the p99-latency investigation.
+      new logs.QueryDefinition(this, 'QueryApiLatencyByRoute', {
+        queryDefinitionName: 'pegasus/api-latency-by-route',
+        queryString: new logs.QueryString({
+          fields: ['durationMs', 'dbMs', 'mssqlMs', 'tunnelMs', 'unattributedMs'],
+          filterStatements: ['message = "request.completed"'],
+          statsStatements: [
+            'count(*) as requests, pct(durationMs, 50) as p50, pct(durationMs, 90) as p90, ' +
+              'pct(durationMs, 99) as p99, max(durationMs) as maxMs, avg(dbMs) as avgDbMs, ' +
+              'avg(mssqlMs) as avgMssqlMs, avg(tunnelMs) as avgTunnelMs by route',
+          ],
+          sort: 'p99 desc',
+        }),
+        logGroups: [
+          logs.LogGroup.fromLogGroupName(this, 'ApiLogGroupRefLatency', props.apiLogGroupName),
+        ],
+      })
+
+      // The slow-request triage query: every request over 5s with its
+      // downstream breakdown + correlationId, newest-slowest first. This is the
+      // "a spike just fired — what stalled and where" query. unattributedMs
+      // large => not Neon/MSSQL/tunnel (compute/auth/cold path).
+      new logs.QueryDefinition(this, 'QueryApiSlowRequests', {
+        queryDefinitionName: 'pegasus/api-slow-requests',
+        queryString: new logs.QueryString({
+          fields: [
+            '@timestamp',
+            'route',
+            'status',
+            'durationMs',
+            'dbMs',
+            'mssqlMs',
+            'tunnelMs',
+            'unattributedMs',
+            'correlationId',
+          ],
+          filterStatements: ['message = "request.completed"', 'durationMs > 5000'],
+          sort: 'durationMs desc',
+          limit: 50,
+        }),
+        logGroups: [
+          logs.LogGroup.fromLogGroupName(this, 'ApiLogGroupRefSlow', props.apiLogGroupName),
+        ],
+      })
+    }
+
+    if (props.apiAccessLogGroupName) {
+      // Gateway-side per-endpoint view from the API Gateway access log. Counts
+      // by routeKey + status (string fields — count/group works regardless of
+      // the quoted-number access-log values) surface endpoints that error or
+      // never reach the handler (integration failures, 4xx/5xx at the edge) —
+      // complementing the in-handler latency queries above.
+      new logs.QueryDefinition(this, 'QueryApiAccessByRoute', {
+        queryDefinitionName: 'pegasus/api-access-by-route',
+        queryString: new logs.QueryString({
+          fields: ['routeKey', 'status', 'integrationStatus', 'integrationLatency', 'requestId'],
+          filterStatements: ['ispresent(routeKey)'],
+          statsStatements: ['count(*) as requests by routeKey, status'],
+          sort: 'requests desc',
+        }),
+        logGroups: [
+          logs.LogGroup.fromLogGroupName(this, 'ApiAccessLogGroupRef', props.apiAccessLogGroupName),
         ],
       })
     }
