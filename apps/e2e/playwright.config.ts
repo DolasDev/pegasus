@@ -95,7 +95,10 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 1 : 0,
-  workers: 1,
+  // qa mode: qa-api and qa-browser both run after qa-setup; keep them serial (workers: 1)
+  // so they don't hit the on-prem WireGuard tunnel concurrently.
+  // local/remote: api and browser projects don't share write paths → 2 workers is safe.
+  workers: isQa ? 1 : 2,
   reporter: [['list'], ['html', { open: 'never' }]],
   outputDir: 'test-results',
 
