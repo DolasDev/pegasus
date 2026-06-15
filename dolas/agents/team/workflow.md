@@ -73,6 +73,28 @@ Every plan file must contain:
 
 **Write and get the plan approved before implementing.** Update it after every completed subtask — it is the source of truth for progress.
 
+## Concurrent Work & The Merge Queue
+
+When multiple sessions run in parallel, each works in its own worktree on its own branch (see `scripts/new-worktree.sh`). Sessions never share a working directory and never coordinate directly — the merge queue is the coordination point.
+
+### Landing work — canonical path
+
+1. Open a PR for the branch: `gh pr create`.
+2. Enable auto-merge: `gh pr merge --auto --squash` (or `--merge`/`--rebase` per project convention). This enqueues the PR.
+3. GitHub's native **merge queue** rebases each PR against the current tip of `main`, runs the required-check matrix, and merges serially. Multiple enqueued PRs are processed in order — no manual cross-session coordination needed. Note: rapid queue merges can still trigger the deploy-cancellation race described in project memory (`feedback_rapid_main_pushes_cancel_deploy.md`); if several PRs merge in quick succession, check `gh run list --workflow deploy.yml` and re-dispatch if a run was cancelled.
+4. "Merged" means the queue finished, not the instant `--auto` was set. The PR page shows queue position.
+
+**Agents do not run `git merge`, `git rebase`, or `git push origin main` themselves.** Those operations are forbidden by Branch Discipline. Drive the merge exclusively through `gh pr merge --auto` — this is a GitHub API call via the `gh` CLI, not a git push, and is explicitly permitted within these rules.
+
+### Direct push to `main` — break-glass only
+
+Pushing directly to `main` (the old batch-merge-locally protocol) bypasses the queue and can cancel a neighbour's already-running deploy job (`deploy.yml` concurrency cancels a pending run when a new push races it). Use it only when:
+
+- The merge queue itself is broken and a fix must land immediately, **and**
+- The developer has explicitly approved the direct push.
+
+When in doubt, use the queue.
+
 ## Archiving Completed Plans
 
 After developer approval and commit, move the plan file from `plans/in-progress/` to `plans/completed/`:
