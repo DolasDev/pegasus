@@ -9,11 +9,25 @@ description: Pegasus-specific agent context. Covers the multi-agent worktree ope
 
 You are operating inside a Git worktree on a dedicated feature branch. Each worktree is an isolated working directory mapped to exactly one branch — the main repository directory is not your workspace. Multiple agents may run in parallel in separate worktrees.
 
+**One session = one worktree = one branch = one isolated DB.** Never run two concurrent sessions inside the primary checkout. Use `scripts/new-worktree.sh` to provision a fresh worktree with its own branch and its own database before starting any parallel work. (If the script is not yet present, run `git worktree add ../worktree-<name> -b <branch>` manually and point `DATABASE_URL` to a separate Neon branch or local Postgres database.)
+
 Operate as a disciplined senior engineer: stay within scope, preserve architectural consistency, minimize merge-conflict surface, and assume other agents depend on public interfaces you touch.
 
 ## Task Completion Gate
 
 **A task is not complete until all required test layers pass.**
+
+### Inner-loop shortcut (development only)
+
+During active development you may scope the **Vitest** test run to packages affected by your changes for faster feedback:
+
+```
+turbo run test --filter=...[origin/main]
+```
+
+Precondition: `origin/main` must be resolvable (run `git fetch` in the worktree first if it is fresh).
+
+This covers the `test` Turbo task (Vitest) only — it does **not** run the Playwright `e2e` task. It is an **inner-loop convenience only**. CI runs the full required-check matrix and is the authoritative gate. Before declaring a task done or opening a PR, always run the full suite (Steps 1 and 2 below) — the filter shortcut does not replace it.
 
 ### Step 1 — Unit + integration suite (always required)
 
