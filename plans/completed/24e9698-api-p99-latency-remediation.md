@@ -1,13 +1,14 @@
 # API Lambda p99 Latency — Incident Investigation & Remediation
 
-> **Status: PHASES 1, 2 (mechanism), 3 DONE — Phase 4 deferred (awaiting user go)** — updated 2026-06-14.
-> Phase 1 (tracing/access-logs/per-request log) + Phase 3 (alarm de-flap) shipped & deployed (`892d6b6`),
-> with the saved Logs-Insights queries (`018df85`). **Phase 2 mechanism** (client-side invoke timeouts +
-> Neon statement/connect timeouts, conservative data-free-safe values) implemented here. **Remaining:**
-> (a) the **aggressive 5–8 s budget** — tune per-call `timeoutMs` once the next spike populates
-> `pegasus/api-slow-requests`, staging-validated first; (b) **Phase 4** (provisioned concurrency) — does
-> not address the warm-request root cause; paused for explicit user go.
-> **Prior status (2026-06-13):** Phase 1 + 3 implemented.
+> **Status: COMPLETE & ARCHIVED 2026-06-15.** All active work shipped & deployed to prod: Phase 1
+> (tracing / access logs / per-request log, `892d6b6`), the saved Logs-Insights queries (`018df85`),
+> Phase 2 timeout mechanism (`24e9698`), and Phase 3 alarm de-flap (`892d6b6`). **Two deferred,
+> event-gated follow-ups were spun out to `plans/deferred/api-latency-deferred-followups.md`** so this
+> plan can close: (a) the **aggressive 5–8 s timeout budget** (data-gated — needs the next spike's
+> `pegasus/api-slow-requests` breakdown, staging-validated first); (b) **Phase 4 provisioned
+> concurrency** (deferred — does not fix the warm-request root cause and is contraindicated until the
+> account concurrency quota is raised). Nothing actively in flight here.
+> **Prior status (2026-06-13/14):** Phase 1 + 3 implemented; Phase 2 mechanism added.
 > Phase 1 (X-Ray active tracing + per-downstream `captureAWSv3Client` subsegments, API Gateway
 > access logging with `integrationLatency`, structured `request.completed` per-request log line with
 > a db/mssql/tunnel ms breakdown) and Phase 3 (p99 alarm de-flapped to a 2-of-3 five-minute window)
@@ -84,11 +85,11 @@ Every few days a single request blocks 15–29 s. On **Jun 1 it hit the 29 s tim
   - ~~Move to `evaluationPeriods: 3`, `datapointsToAlarm: 2` (M-of-N)~~ — chosen.
   - Or alarm on a **count of slow invocations** (metric-math: count of Duration samples > 10 s ≥ N per period), which is more intuitive than p99 on low traffic.
   - Keep `TreatMissingData.NOT_BREACHING`. Do **not** simply raise the threshold — 16 s requests are worth knowing about; the problem is _paging on one of them_, not the threshold value.
-- [ ] Confirm this alarm's SNS topic actually has a subscriber (the email arrived today, so it does now — but `audit-observability-alerting.md` Finding 1 flagged zero subscribers; verify it's truly fixed and not a one-off manual sub).
+- [x] Confirm this alarm's SNS topic actually has a subscriber. **Confirmed:** the subscription is CDK-managed in `MonitoringStack` (`alarmEmail` prop → `dolasllc@gmail.com` for staging/prod, set in `bin/app.ts`), not a one-off manual sub — and the original incident alarm did deliver an email, proving end-to-end delivery. Ongoing alarm-routing coverage is owned by `audit-observability-alerting.md`.
 
 ### Phase 4 — Optional, only if cold starts become the complaint (not today's issue)
 
-- [ ] Provisioned concurrency would remove the 2.6–4.4 s cold starts but does **not** address the 16.8 s warm-request root cause. Defer unless cold-start p99 (separate from this incident) becomes a product problem. Cost noted below.
+- [x] **DEFERRED 2026-06-15 (user-approved hold) — spun out to `plans/deferred/api-latency-deferred-followups.md`.** Provisioned concurrency would remove the 2.6–4.4 s cold starts but does **not** address the 16.8 s warm-request root cause, so it does not fix this incident. It is also the one costly item (~$5.40/unit/mo, continuous). **Hard prerequisite / contraindication:** PC reserves from the account concurrency pool, and **both accounts are capped at an unraised limit of 10** (`L-B99A9384`) while the api Lambda *synchronously* invokes the executor/tunnel Lambdas from that same pool (see [[project_lambda_concurrency_throttle]]). Reserving PC units would tighten that budget and likely **worsen** the existing self-throttle. Correct order if cold-start p99 ever becomes a distinct product complaint: **(a) raise the concurrency quota on both accounts → (b) then add PC with autoscaling** — not before.
 
 ## Costs
 
