@@ -66,6 +66,7 @@ describe('PATCH longhaul/driver-planning/:driverId (cloud-direct)', () => {
       equipment: 'Tractor Trailer',
       homeCity: 'Austin',
       homeState: 'TX',
+      wgs: true,
     })
 
     expect(res.status).toBe(200)
@@ -83,6 +84,7 @@ describe('PATCH longhaul/driver-planning/:driverId (cloud-direct)', () => {
       { name: 'equipment', value: 'Tractor Trailer' },
       { name: 'home_city', value: 'Austin' },
       { name: 'home_state', value: 'TX' },
+      { name: 'wgs', value: true },
       { name: 'updated_by', value: 7 },
     ])
   })
@@ -98,6 +100,8 @@ describe('PATCH longhaul/driver-planning/:driverId (cloud-direct)', () => {
     expect(opts.params).toContainEqual({ name: 'equipment', value: null })
     expect(opts.params).toContainEqual({ name: 'home_city', value: null })
     expect(opts.params).toContainEqual({ name: 'home_state', value: null })
+    // Omitted wgs defaults to null (the Maybe / unset state).
+    expect(opts.params).toContainEqual({ name: 'wgs', value: null })
   })
 
   it('returns 400 for a non-numeric driver id', async () => {

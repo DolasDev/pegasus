@@ -130,7 +130,7 @@ FROM ranked WHERE rn = 1;
 // try/catch by the caller for genuinely-absent tables on M2M-only tenants.
 const CONFIRMED_SQL = `
 SELECT driver_id, confirmed_date, confirmed_location, notes,
-       canada, california, rating, equipment, home_city, home_state
+       canada, california, rating, equipment, home_city, home_state, wgs
 FROM DriverConfirmedAvailability
 `
 
@@ -174,6 +174,7 @@ interface ConfirmedRow {
   equipment: string | null
   home_city: string | null
   home_state: string | null
+  wgs: boolean | number | null
 }
 
 interface Delivery {
@@ -210,6 +211,8 @@ interface DriverPlanningRow {
   equipment: string | null
   homeCity: string | null
   homeState: string | null
+  /** Tri-state: true = Yes, false = No, null = Maybe (the unset default). */
+  wgs: boolean | null
   deliveries: Delivery[]
   shipments: Shipment[]
 }
@@ -231,6 +234,14 @@ function sortDeliveries(deliveries: Delivery[]): Delivery[] {
 /** MSSQL bit may surface as boolean | 0 | 1 | null — normalise to boolean. */
 function toBool(v: boolean | number | null | undefined): boolean {
   return v === true || v === 1
+}
+
+/** Tri-state bit: 1/true = Yes, 0/false = No, NULL/absent = Maybe. Unlike
+ *  `toBool`, NULL is preserved (the "Maybe" state) rather than coerced to No. */
+function toTriBool(v: boolean | number | null | undefined): boolean | null {
+  if (v === true || v === 1) return true
+  if (v === false || v === 0) return false
+  return null
 }
 
 export const longhaulDriverPlanningHandler: Handler<AppEnv> = async (c) => {
@@ -393,6 +404,7 @@ export const longhaulDriverPlanningHandler: Handler<AppEnv> = async (c) => {
         equipment: conf?.equipment ?? null,
         homeCity: conf?.home_city ?? null,
         homeState: conf?.home_state ?? null,
+        wgs: toTriBool(conf?.wgs),
         deliveries,
         shipments,
       }

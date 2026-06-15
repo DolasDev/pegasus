@@ -46,6 +46,8 @@ export interface DriverPlanningRow {
   equipment: string | null
   homeCity: string | null
   homeState: string | null
+  /** Tri-state WGS flag: true = Yes, false = No, null = Maybe (the unset default). */
+  wgs: boolean | null
   /** Every RDEL activity on the driver's current trip, sorted by effective date. */
   deliveries: Delivery[]
   /** One row per shipment, dates from the final activity on each. */
@@ -82,6 +84,7 @@ type UpdateConfirmedInput = {
   equipment?: string | null
   homeCity?: string | null
   homeState?: string | null
+  wgs?: boolean | null
 }
 
 export function useUpdateConfirmedAvailability() {

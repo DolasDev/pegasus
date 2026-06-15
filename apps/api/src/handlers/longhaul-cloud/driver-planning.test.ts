@@ -375,6 +375,7 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
             equipment: 'Straight Truck',
             home_city: 'Austin',
             home_state: 'TX',
+            wgs: 1,
           },
         ],
         rowsAffected: [],
@@ -393,6 +394,24 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
     expect(body.data[0]!.equipment).toBe('Straight Truck')
     expect(body.data[0]!.homeCity).toBe('Austin')
     expect(body.data[0]!.homeState).toBe('TX')
+    // WGS is tri-state: 1 -> Yes (true).
+    expect(body.data[0]!.wgs).toBe(true)
+  })
+
+  it('maps a NULL wgs override to the Maybe state (null)', async () => {
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    executeSqlMock
+      .mockResolvedValueOnce({ recordset: [planningRow()], rowsAffected: [] })
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // no deliveries
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // ensure
+      .mockResolvedValueOnce({
+        recordset: [{ driver_id: 1, wgs: null }],
+        rowsAffected: [],
+      })
+
+    const res = await buildApp().request('/onprem/longhaul/driver-planning')
+    const body = (await res.json()) as { data: Array<Record<string, unknown>> }
+    expect(body.data[0]!.wgs).toBeNull()
   })
 
   it('soft-fails when the DriverConfirmedAvailability table is missing', async () => {
