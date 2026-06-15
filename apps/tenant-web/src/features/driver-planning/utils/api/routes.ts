@@ -93,8 +93,13 @@ export function resolveRoute(routeName: string, args: unknown[]): HttpRequest {
     }
 
     // ---- Shipment filters ----
-    case 'fetchSavedShipmentFilters':
-      return { method: 'GET', path: '/shipment-filters' }
+    case 'fetchSavedShipmentFilters': {
+      // arg0: { type: 'self' | 'public', userCode }. The API scopes filters by
+      // the authenticated user server-side, so only `type` needs forwarding —
+      // without it the "All Filters" (public) tab defaults to self filters.
+      const qs = arg0?.type ? `?type=${encodeURIComponent(arg0.type)}` : ''
+      return { method: 'GET', path: `/shipment-filters${qs}` }
+    }
     case 'fetchShipmentDefaultFilterForUser':
       return { method: 'GET', path: '/shipment-filters/default' }
     case 'saveShipmentsFilter':

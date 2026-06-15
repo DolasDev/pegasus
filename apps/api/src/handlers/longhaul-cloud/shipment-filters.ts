@@ -52,17 +52,26 @@ function transformTimeDiffToDate(query: Record<string, unknown>): Record<string,
 //   self   → owner_code = @ownerCode AND is_public = 0
 //   public → is_public = 1 (regardless of owner)
 // ordered by name ascending in both cases.
-const SELF_FILTERS_SQL =
-  'SELECT * FROM longhaul_shipment_filter ' +
-  'WHERE owner_code = @ownerCode AND is_public = 0 ORDER BY name ASC'
-const PUBLIC_FILTERS_SQL =
-  'SELECT * FROM longhaul_shipment_filter WHERE is_public = 1 ORDER BY name ASC'
+//
+// Each row LEFT JOINs v_longhaul_salesman on owner_code = code to resolve the
+// creator's name — mirroring the planner/dispatcher joins in trips-list.ts. The
+// "Created By" column in the FilterModal reads `owner.first_name`/`owner.last_name`,
+// so without this join those names render blank (the table only stores owner_code).
+// The join is a LEFT join so a filter whose owner no longer exists still returns.
+const FILTERS_SELECT =
+  'SELECT f.*, s.first_name AS owner_first_name, s.last_name AS owner_last_name ' +
+  'FROM longhaul_shipment_filter f ' +
+  'LEFT JOIN v_longhaul_salesman s ON f.owner_code = s.code'
+const SELF_FILTERS_SQL = `${FILTERS_SELECT} WHERE f.owner_code = @ownerCode AND f.is_public = 0 ORDER BY f.name ASC`
+const PUBLIC_FILTERS_SQL = `${FILTERS_SELECT} WHERE f.is_public = 1 ORDER BY f.name ASC`
 
 // SQL mirrors getUserByWindowsUsername in reference.repository.ts.
 const SALESMAN_SQL = 'SELECT * FROM v_longhaul_salesman WHERE LOWER(win_username) = LOWER(@u)'
 
 interface ShipmentFilterRow {
   query?: unknown
+  owner_first_name?: string | null
+  owner_last_name?: string | null
   [key: string]: unknown
 }
 
@@ -149,15 +158,26 @@ export const longhaulShipmentFiltersHandler: Handler<AppEnv> = async (c) => {
             params: [{ name: 'ownerCode', value: ownerCode }],
           })
 
-    // On-prem transform: parse the stored `query` JSON and convert stored date
-    // offsets back to absolute dates. Rows whose `query` is not valid JSON pass
-    // through unchanged.
-    const data = (recordset as ShipmentFilterRow[]).map((f) => {
+    // Reshape each row: fold the joined salesman columns into a nested `owner`
+    // object (what the FilterModal "Created By" column reads), then apply the
+    // on-prem `query` transform — parse the stored JSON and convert stored date
+    // offsets back to absolute dates. Rows whose `query` is not valid JSON keep
+    // their raw query string but still get the `owner` object.
+    const data = (recordset as ShipmentFilterRow[]).map((row) => {
+      const { owner_first_name, owner_last_name, ...rest } = row
+      const owner =
+        owner_first_name != null || owner_last_name != null
+          ? {
+              code: rest['owner_code'] ?? null,
+              first_name: owner_first_name ?? null,
+              last_name: owner_last_name ?? null,
+            }
+          : null
       try {
-        const parsed = JSON.parse(f.query as string)
-        return { ...f, query: JSON.stringify(transformTimeDiffToDate(parsed)) }
+        const parsed = JSON.parse(rest.query as string)
+        return { ...rest, owner, query: JSON.stringify(transformTimeDiffToDate(parsed)) }
       } catch {
-        return f
+        return { ...rest, owner }
       }
     })
 
