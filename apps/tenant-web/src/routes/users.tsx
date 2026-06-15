@@ -630,10 +630,18 @@ function CrewMemberLinker({ user, crewMembers, onSave }: CrewMemberLinkerProps) 
 type LonghaulDriverLinkerProps = {
   user: TenantUser
   drivers: LonghaulDriver[]
+  driversLoading: boolean
+  driversError: boolean
   onSave: (longhaulDriverId: number | null) => Promise<void>
 }
 
-function LonghaulDriverLinker({ user, drivers, onSave }: LonghaulDriverLinkerProps) {
+function LonghaulDriverLinker({
+  user,
+  drivers,
+  driversLoading,
+  driversError,
+  onSave,
+}: LonghaulDriverLinkerProps) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(
     user.longhaulDriverId == null ? '' : String(user.longhaulDriverId),
@@ -698,6 +706,21 @@ function LonghaulDriverLinker({ user, drivers, onSave }: LonghaulDriverLinkerPro
         className="h-6 rounded-md border border-input bg-background px-2 py-0 text-xs disabled:cursor-not-allowed disabled:opacity-50"
       >
         <option value="">— Not linked —</option>
+        {driversLoading && (
+          <option value="" disabled>
+            Loading drivers…
+          </option>
+        )}
+        {driversError && (
+          <option value="" disabled>
+            Failed to load drivers
+          </option>
+        )}
+        {!driversLoading && !driversError && drivers.length === 0 && (
+          <option value="" disabled>
+            No drivers found
+          </option>
+        )}
         {drivers.map((d) => (
           <option key={d.driver_id} value={d.driver_id}>
             {d.driver_name}
@@ -736,6 +759,8 @@ type UserRowProps = {
   roleOptions: RoleOption[]
   crewMembers: CrewMember[]
   longhaulDrivers: LonghaulDriver[]
+  longhaulDriversLoading: boolean
+  longhaulDriversError: boolean
   canManageRoles: boolean
   canDeactivate: boolean
   onDeactivate: (user: TenantUser) => void
@@ -755,6 +780,8 @@ function UserRow({
   roleOptions,
   crewMembers,
   longhaulDrivers,
+  longhaulDriversLoading,
+  longhaulDriversError,
   canManageRoles,
   canDeactivate,
   onDeactivate,
@@ -808,6 +835,8 @@ function UserRow({
               <LonghaulDriverLinker
                 user={user}
                 drivers={longhaulDrivers}
+                driversLoading={longhaulDriversLoading}
+                driversError={longhaulDriversError}
                 onSave={(longhaulDriverId) => onSaveLonghaulDriverId(user, longhaulDriverId)}
               />
             )}
@@ -886,7 +915,11 @@ export function UsersPage() {
     ...crewMembersQueryOptions,
     enabled: canList,
   })
-  const { data: longhaulDrivers } = useQuery({
+  const {
+    data: longhaulDrivers,
+    isLoading: longhaulDriversLoading,
+    isError: longhaulDriversError,
+  } = useQuery({
     ...longhaulDriversQueryOptions,
     enabled: canList,
   })
@@ -1020,6 +1053,8 @@ export function UsersPage() {
               roleOptions={roleOptions ?? []}
               crewMembers={crewMembers ?? []}
               longhaulDrivers={longhaulDrivers ?? []}
+              longhaulDriversLoading={longhaulDriversLoading}
+              longhaulDriversError={longhaulDriversError}
               canManageRoles={perms.has('user:update')}
               canDeactivate={perms.has('user:deactivate')}
               onDeactivate={(u) => setPanel({ kind: 'deactivate', user: u })}
