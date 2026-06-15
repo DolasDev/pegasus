@@ -1,8 +1,18 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { View, Text, StyleSheet, ScrollView, RefreshControl, ActivityIndicator } from 'react-native'
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  RefreshControl,
+  ActivityIndicator,
+  TouchableOpacity,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { useRouter } from 'expo-router'
 import { MetricCard } from '../../src/components/MetricCard'
 import { getDriverMetrics } from '../../src/services/driverMetrics'
+import { useTrips } from '../../src/context/TripsContext'
 import type { DriverMetrics } from '../../src/types'
 import { colors, fontSize, spacing } from '../../src/theme/colors'
 
@@ -12,6 +22,8 @@ export default function DashboardScreen() {
   const [metrics, setMetrics] = useState<DriverMetrics | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const router = useRouter()
+  const { offeredCount, refresh: refreshTrips } = useTrips()
 
   const load = useCallback(async () => {
     try {
@@ -29,6 +41,7 @@ export default function DashboardScreen() {
 
   const onRefresh = () => {
     setIsRefreshing(true)
+    void refreshTrips()
     load()
   }
 
@@ -57,25 +70,41 @@ export default function DashboardScreen() {
         <Text style={styles.sectionTitle}>TODAY AT A GLANCE</Text>
 
         <View style={styles.row}>
-          <MetricCard
-            label="Account Balance"
-            value={currency.format(metrics.accountBalance)}
-            subtitle="Available"
-            accent={colors.primary}
-          />
+          <TouchableOpacity
+            style={styles.tappable}
+            activeOpacity={0.7}
+            onPress={() => router.push('/trips')}
+            accessibilityRole="button"
+            accessibilityLabel={`Offered trips: ${offeredCount}. Open My Trips.`}
+          >
+            <MetricCard
+              label="Offered Trips"
+              value={String(offeredCount)}
+              subtitle={offeredCount > 0 ? 'Tap to review' : 'None queued'}
+              accent={offeredCount > 0 ? colors.warning : undefined}
+            />
+          </TouchableOpacity>
           <View style={styles.gap} />
-          <MetricCard
-            label="Active Shipments"
-            value={String(metrics.activeShipments)}
-            subtitle="Assigned to you"
-          />
+          <TouchableOpacity
+            style={styles.tappable}
+            activeOpacity={0.7}
+            onPress={() => router.push('/trips')}
+            accessibilityRole="button"
+            accessibilityLabel="Open My Trips"
+          >
+            <MetricCard
+              label="Active Shipments"
+              value={String(metrics.activeShipments)}
+              subtitle="Assigned to you"
+            />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.row}>
           <MetricCard
-            label="Pending Settlement"
-            value={currency.format(metrics.pendingSettlementTotal)}
-            subtitle="Awaiting payout"
+            label="Account Balance"
+            value={currency.format(metrics.accountBalance)}
+            subtitle="Available"
             accent={colors.primary}
           />
           <View style={styles.gap} />
@@ -88,12 +117,17 @@ export default function DashboardScreen() {
 
         <View style={styles.row}>
           <MetricCard
+            label="Pending Settlement"
+            value={currency.format(metrics.pendingSettlementTotal)}
+            subtitle="Awaiting payout"
+            accent={colors.primary}
+          />
+          <View style={styles.gap} />
+          <MetricCard
             label="Miles (wk)"
             value={metrics.milesThisWeek.toLocaleString('en-US')}
             subtitle="This week"
           />
-          <View style={styles.gap} />
-          <View style={styles.filler} />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -121,6 +155,9 @@ const styles = StyleSheet.create({
   },
   gap: {
     width: spacing.md,
+  },
+  tappable: {
+    flex: 1,
   },
   filler: {
     flex: 1,

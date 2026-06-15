@@ -38,12 +38,14 @@ import {
   useUpdateUserRole,
   useUpdateUserLegacyWindowsUsername,
   useLinkCrewMember,
+  useUpdateUserLonghaulDriverId,
   useDeactivateUser,
   useResetUserPassword,
   type TenantUser,
   type RoleOption,
 } from '@/api/queries/users'
 import { crewMembersQueryOptions, type CrewMember } from '@/api/queries/crew'
+import { longhaulDriversQueryOptions, type LonghaulDriver } from '@/api/queries/longhaul-drivers'
 import { getSession } from '@/auth/session'
 import { usePermissions } from '@/auth/permissions'
 
@@ -618,11 +620,122 @@ function CrewMemberLinker({ user, crewMembers, onSave }: CrewMemberLinkerProps) 
   )
 }
 
+// ---------------------------------------------------------------------------
+// Longhaul-driver linker — shown only for users with the `driver` role. Maps
+// the login to a v_longhaul_drivers row so the mobile "My Trips" screen can
+// scope the longhaul trips list to the logged-in driver. An unmapped driver
+// gets a prominent warning badge (they see no trips on mobile).
+// ---------------------------------------------------------------------------
+
+type LonghaulDriverLinkerProps = {
+  user: TenantUser
+  drivers: LonghaulDriver[]
+  onSave: (longhaulDriverId: number | null) => Promise<void>
+}
+
+function LonghaulDriverLinker({ user, drivers, onSave }: LonghaulDriverLinkerProps) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(
+    user.longhaulDriverId == null ? '' : String(user.longhaulDriverId),
+  )
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!editing) setValue(user.longhaulDriverId == null ? '' : String(user.longhaulDriverId))
+  }, [user.longhaulDriverId, editing])
+
+  const currentName = drivers.find((d) => d.driver_id === user.longhaulDriverId)?.driver_name
+
+  async function handleSave() {
+    setError(null)
+    setSaving(true)
+    try {
+      await onSave(value === '' ? null : Number(value))
+      setEditing(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!editing) {
+    return user.longhaulDriverId != null ? (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="inline-flex items-center gap-1 rounded text-xs text-muted-foreground hover:text-foreground"
+      >
+        <Truck size={11} />
+        Driver: <span className="font-medium">{currentName ?? `#${user.longhaulDriverId}`}</span>
+        <Pencil size={11} />
+      </button>
+    ) : (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="inline-flex items-center gap-1"
+        title="This driver is not mapped to a longhaul driver — they will see no trips on mobile."
+      >
+        <Badge variant="outline" className="gap-1 border-amber-500/50 text-xs text-amber-600">
+          <AlertCircle size={11} />
+          No longhaul driver linked
+        </Badge>
+        <Pencil size={11} className="text-muted-foreground" />
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-xs text-muted-foreground">Driver:</span>
+      <select
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        disabled={saving}
+        autoFocus
+        className="h-6 rounded-md border border-input bg-background px-2 py-0 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <option value="">— Not linked —</option>
+        {drivers.map((d) => (
+          <option key={d.driver_id} value={d.driver_id}>
+            {d.driver_name}
+            {d.agent_code ? ` (${d.agent_code})` : ''}
+          </option>
+        ))}
+      </select>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-6 w-6 p-0"
+        onClick={() => void handleSave()}
+        disabled={saving}
+      >
+        {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-6 w-6 p-0"
+        onClick={() => setEditing(false)}
+        disabled={saving}
+      >
+        <X size={12} />
+      </Button>
+      {error && <span className="ml-1 text-xs text-destructive">{error}</span>}
+    </div>
+  )
+}
+
 type UserRowProps = {
   user: TenantUser
   currentUserEmail: string
   roleOptions: RoleOption[]
   crewMembers: CrewMember[]
+  longhaulDrivers: LonghaulDriver[]
   canManageRoles: boolean
   canDeactivate: boolean
   onDeactivate: (user: TenantUser) => void
@@ -633,6 +746,7 @@ type UserRowProps = {
     legacyWindowsUsername: string | null,
   ) => Promise<void>
   onLinkCrewMember: (user: TenantUser, crewMemberId: string | null) => Promise<void>
+  onSaveLonghaulDriverId: (user: TenantUser, longhaulDriverId: number | null) => Promise<void>
 }
 
 function UserRow({
@@ -640,6 +754,7 @@ function UserRow({
   currentUserEmail,
   roleOptions,
   crewMembers,
+  longhaulDrivers,
   canManageRoles,
   canDeactivate,
   onDeactivate,
@@ -647,6 +762,7 @@ function UserRow({
   onResetPassword,
   onSaveLegacyWindowsUsername,
   onLinkCrewMember,
+  onSaveLonghaulDriverId,
 }: UserRowProps) {
   const isSelf = user.email === currentUserEmail
   const isDeactivated = user.status === 'DEACTIVATED'
@@ -686,6 +802,13 @@ function UserRow({
                 user={user}
                 crewMembers={crewMembers}
                 onSave={(crewMemberId) => onLinkCrewMember(user, crewMemberId)}
+              />
+            )}
+            {!isDeactivated && isDriver && (
+              <LonghaulDriverLinker
+                user={user}
+                drivers={longhaulDrivers}
+                onSave={(longhaulDriverId) => onSaveLonghaulDriverId(user, longhaulDriverId)}
               />
             )}
           </div>
@@ -763,12 +886,17 @@ export function UsersPage() {
     ...crewMembersQueryOptions,
     enabled: canList,
   })
+  const { data: longhaulDrivers } = useQuery({
+    ...longhaulDriversQueryOptions,
+    enabled: canList,
+  })
   const users = usersData ?? []
   const deactivateMutation = useDeactivateUser()
   const resetPasswordMutation = useResetUserPassword()
   const roleMutation = useUpdateUserRole()
   const legacyWindowsUsernameMutation = useUpdateUserLegacyWindowsUsername()
   const linkCrewMutation = useLinkCrewMember()
+  const longhaulDriverMutation = useUpdateUserLonghaulDriverId()
   const [panel, setPanel] = useState<PanelState>({ kind: 'none' })
 
   // Count of currently-active tenant_admins. Used by ManageRolesPanel to
@@ -849,6 +977,10 @@ export function UsersPage() {
     await linkCrewMutation.mutateAsync({ id: user.id, crewMemberId })
   }
 
+  async function handleSaveLonghaulDriverId(user: TenantUser, longhaulDriverId: number | null) {
+    await longhaulDriverMutation.mutateAsync({ id: user.id, longhaulDriverId })
+  }
+
   return (
     <div>
       <PageHeader
@@ -887,6 +1019,7 @@ export function UsersPage() {
               currentUserEmail={session?.email ?? ''}
               roleOptions={roleOptions ?? []}
               crewMembers={crewMembers ?? []}
+              longhaulDrivers={longhaulDrivers ?? []}
               canManageRoles={perms.has('user:update')}
               canDeactivate={perms.has('user:deactivate')}
               onDeactivate={(u) => setPanel({ kind: 'deactivate', user: u })}
@@ -894,6 +1027,7 @@ export function UsersPage() {
               onResetPassword={(u) => setPanel({ kind: 'reset', user: u })}
               onSaveLegacyWindowsUsername={handleSaveLegacyWindowsUsername}
               onLinkCrewMember={handleLinkCrewMember}
+              onSaveLonghaulDriverId={handleSaveLonghaulDriverId}
             />
           )
 

@@ -32,6 +32,7 @@ const { mockSend, mockRepo, mockTenantFindUnique } = vi.hoisted(() => ({
     invite: vi.fn(),
     updateRoleNames: vi.fn(),
     updateLegacyWindowsUsername: vi.fn(),
+    updateLonghaulDriverId: vi.fn(),
     deactivate: vi.fn(),
     reactivate: vi.fn(),
     countAdmins: vi.fn(),
@@ -112,6 +113,7 @@ const mockUserRow = {
   email: 'user@example.com',
   cognitoSub: null,
   legacyWindowsUsername: null,
+  longhaulDriverId: null,
   role: 'USER' as const,
   roleNames: ['viewer'],
   status: 'PENDING' as const,
@@ -318,6 +320,33 @@ describe('users handler', () => {
       const body = await json(res)
       expect((body.data as JsonBody)['roleNames']).toEqual(['tenant_admin'])
       expect((body.data as JsonBody)['role']).toBe('ADMIN')
+    })
+
+    it('sets the longhaul driver id and returns it in the response', async () => {
+      mockRepo.findById.mockResolvedValue(mockUserRow)
+      mockRepo.updateLonghaulDriverId.mockResolvedValue({
+        ...mockUserRow,
+        longhaulDriverId: 4231,
+      })
+      const res = await buildApp().request('/user-1', patch({ longhaulDriverId: 4231 }))
+      expect(res.status).toBe(200)
+      expect(mockRepo.updateLonghaulDriverId).toHaveBeenCalledWith('user-1', 4231)
+      expect(((await json(res)).data as JsonBody)['longhaulDriverId']).toBe(4231)
+    })
+
+    it('clears the longhaul driver id when null', async () => {
+      mockRepo.findById.mockResolvedValue({ ...mockUserRow, longhaulDriverId: 4231 })
+      mockRepo.updateLonghaulDriverId.mockResolvedValue({ ...mockUserRow, longhaulDriverId: null })
+      const res = await buildApp().request('/user-1', patch({ longhaulDriverId: null }))
+      expect(res.status).toBe(200)
+      expect(mockRepo.updateLonghaulDriverId).toHaveBeenCalledWith('user-1', null)
+      expect(((await json(res)).data as JsonBody)['longhaulDriverId']).toBeNull()
+    })
+
+    it('rejects a non-positive longhaul driver id', async () => {
+      const res = await buildApp().request('/user-1', patch({ longhaulDriverId: 0 }))
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
     })
   })
 

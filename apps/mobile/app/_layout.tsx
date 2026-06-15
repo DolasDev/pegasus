@@ -48,6 +48,8 @@ function RootLayoutNav() {
       <Stack.Protected guard={isAuthenticated}>
         <Stack.Screen name="(drawer)" />
         <Stack.Screen name="order" />
+        <Stack.Screen name="trip" />
+        <Stack.Screen name="shipment" />
       </Stack.Protected>
       <Stack.Protected guard={!isAuthenticated}>
         <Stack.Screen name="(auth)" />

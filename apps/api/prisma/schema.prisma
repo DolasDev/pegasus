@@ -364,6 +364,12 @@ model TenantUser {
   /// longhaul middleware uses to resolve the legacy user identity.
   legacyWindowsUsername String? @map("legacy_windows_username")
 
+  /// Legacy longhaul driver id (v_longhaul_drivers.driver_id). Set by tenant
+  /// admins via the user management UI so a driver login can be scoped to the
+  /// trips assigned to them. Nullable, no backfill — an unmapped driver sees
+  /// no trips in the mobile app.
+  longhaulDriverId Int? @map("longhaul_driver_id")
+
   /// Cedar role-group memberships. Authoritative source for the
   /// `custom:roles` Cognito claim emitted by the pre-token Lambda.
   roleNames     String[]         @default([]) @map("role_names")
