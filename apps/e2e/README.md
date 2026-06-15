@@ -92,3 +92,5 @@ each job. This catches the
 `E2E_SKIP` / missing-env false-positive class where the suite "passes" by
 skipping everything. If you add or remove specs and the guard fires, bump the
 floor in the workflow — don't delete the guard.
+
+The `local` and `remote` suites run with `workers: 2` — the `api` and `browser` projects run in separate workers and use unique-per-run identifiers with count-agnostic assertions, so concurrent writes don't cause interference. `qa` mode keeps `workers: 1` so `qa-api` and `qa-browser` don't hit the on-prem WireGuard tunnel simultaneously. The MIN-EXECUTED floors above are unaffected by worker count.
