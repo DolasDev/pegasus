@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  merge_group:
 
 env:
   # Turbo remote cache (Vercel). Harmless while the secrets/variable are
@@ -103,7 +104,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' || github.event_name == 'merge_group'
     steps:
       - uses: actions/checkout@v6
 
@@ -124,7 +125,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' || github.event_name == 'merge_group'
     steps:
       - uses: actions/checkout@v6
 
@@ -211,7 +212,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' || github.event_name == 'merge_group'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -223,6 +224,8 @@ jobs:
           base="origin/main"
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             base="${{ github.event.pull_request.base.sha }}"
+          elif [ "${{ github.event_name }}" = "merge_group" ]; then
+            base="${{ github.event.merge_group.base_sha }}"
           fi
           scripts/check-migration-safety.sh "$base"
 
@@ -234,7 +237,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' || github.event_name == 'merge_group'
 
     services:
       postgres:
@@ -302,7 +305,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' || github.event_name == 'merge_group'
 
     services:
       postgres:
