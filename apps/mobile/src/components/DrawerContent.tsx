@@ -6,10 +6,12 @@ import {
   type DrawerContentComponentProps,
 } from '@react-navigation/drawer'
 import { useAuth } from '../context/AuthContext'
+import { useTrips } from '../context/TripsContext'
 import { colors, fontSize, spacing } from '../theme/colors'
 
 export function DrawerContent(props: DrawerContentComponentProps) {
   const { session } = useAuth()
+  const { offeredCount } = useTrips()
 
   return (
     <DrawerContentScrollView {...props} contentContainerStyle={styles.container}>
@@ -23,6 +25,19 @@ export function DrawerContent(props: DrawerContentComponentProps) {
       </View>
 
       <View style={styles.items}>
+        <DrawerItem
+          label={() => (
+            <View style={styles.itemRow}>
+              <Text style={styles.itemLabel}>My Trips</Text>
+              {offeredCount > 0 ? (
+                <View style={styles.badge} accessibilityLabel={`${offeredCount} offered trips`}>
+                  <Text style={styles.badgeText}>{offeredCount}</Text>
+                </View>
+              ) : null}
+            </View>
+          )}
+          onPress={() => props.navigation.navigate('trips')}
+        />
         <DrawerItem
           label="Paperwork"
           labelStyle={styles.itemLabel}
@@ -57,9 +72,28 @@ const styles = StyleSheet.create({
   items: {
     flex: 1,
   },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   itemLabel: {
     fontSize: fontSize.large,
     fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  badge: {
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 6,
+    borderRadius: 11,
+    backgroundColor: colors.warning,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    fontSize: fontSize.small,
+    fontWeight: '700',
     color: colors.textPrimary,
   },
 })

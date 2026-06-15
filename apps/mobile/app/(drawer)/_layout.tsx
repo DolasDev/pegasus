@@ -4,46 +4,50 @@ import { Drawer } from 'expo-router/drawer'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { DrawerContent } from '../../src/components/DrawerContent'
 import { UserMenuButton } from '../../src/components/UserMenuButton'
+import { TripsProvider } from '../../src/context/TripsContext'
 import { colors, fontSize } from '../../src/theme/colors'
 
 export default function DrawerLayout() {
   return (
     <GestureHandlerRootView style={styles.root}>
-      <Drawer
-        drawerContent={(props) => <DrawerContent {...props} />}
-        screenOptions={({ navigation }) => ({
-          headerStyle: { backgroundColor: colors.backgroundDark },
-          headerTintColor: colors.textLight,
-          headerTitleStyle: {
-            fontWeight: '700',
-            fontSize: fontSize.xlarge,
-          },
-          headerLeft: () => (
-            <Pressable
-              onPress={() => navigation.openDrawer()}
-              style={styles.headerButton}
-              accessibilityRole="button"
-              accessibilityLabel="Open navigation drawer"
-              hitSlop={12}
-            >
-              <Text style={styles.hamburger}>☰</Text>
-            </Pressable>
-          ),
-          headerRight: () => <UserMenuButton />,
-          drawerActiveTintColor: colors.primary,
-          drawerInactiveTintColor: colors.textPrimary,
-        })}
-      >
-        <Drawer.Screen name="index" options={{ title: 'Dashboard' }} />
-        <Drawer.Screen name="paperwork" options={{ title: 'Paperwork' }} />
-        <Drawer.Screen
-          name="settings"
-          options={{
-            title: 'Settings',
-            drawerItemStyle: { display: 'none' },
-          }}
-        />
-      </Drawer>
+      <TripsProvider>
+        <Drawer
+          drawerContent={(props) => <DrawerContent {...props} />}
+          screenOptions={({ navigation }) => ({
+            headerStyle: { backgroundColor: colors.backgroundDark },
+            headerTintColor: colors.textLight,
+            headerTitleStyle: {
+              fontWeight: '700',
+              fontSize: fontSize.xlarge,
+            },
+            headerLeft: () => (
+              <Pressable
+                onPress={() => navigation.openDrawer()}
+                style={styles.headerButton}
+                accessibilityRole="button"
+                accessibilityLabel="Open navigation drawer"
+                hitSlop={12}
+              >
+                <Text style={styles.hamburger}>☰</Text>
+              </Pressable>
+            ),
+            headerRight: () => <UserMenuButton />,
+            drawerActiveTintColor: colors.primary,
+            drawerInactiveTintColor: colors.textPrimary,
+          })}
+        >
+          <Drawer.Screen name="index" options={{ title: 'Dashboard' }} />
+          <Drawer.Screen name="trips" options={{ title: 'My Trips' }} />
+          <Drawer.Screen name="paperwork" options={{ title: 'Paperwork' }} />
+          <Drawer.Screen
+            name="settings"
+            options={{
+              title: 'Settings',
+              drawerItemStyle: { display: 'none' },
+            }}
+          />
+        </Drawer>
+      </TripsProvider>
     </GestureHandlerRootView>
   )
 }

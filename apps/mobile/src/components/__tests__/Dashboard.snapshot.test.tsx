@@ -5,6 +5,9 @@ import { getDriverMetrics } from '../../services/driverMetrics'
 
 jest.mock('../../services/driverMetrics')
 jest.mock('../../utils/logger')
+jest.mock('../../context/TripsContext', () => ({
+  useTrips: () => ({ offeredCount: 0, refresh: jest.fn() }),
+}))
 
 const mockMetrics = {
   accountBalance: 1234.56,
