@@ -1,0 +1,19 @@
+{
+  "name": "R3 — removing an activity that already has an actual date is rejected",
+  "input": {
+    "action": "save",
+    "order": {
+      "id": 50,
+      "TripStatus_id": 1,
+      "shipments": [{ "order_num": 100 }],
+      "activities": []
+    },
+    "prior": {
+      "id": 50,
+      "TripStatus_id": 1,
+      "shipments": [{ "order_num": 100 }],
+      "activities": [{ "order_num": 100, "ActivityType_code": "LOAD", "actual_date": "2026-01-01" }]
+    }
+  },
+  "expected": { "valid": false, "ruleIds": ["no-remove-activity-with-actual-date"] }
+}

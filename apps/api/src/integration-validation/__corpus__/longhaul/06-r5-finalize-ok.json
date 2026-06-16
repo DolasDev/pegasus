@@ -1,0 +1,16 @@
+{
+  "name": "R5 ok — finalizing with every activity actualized passes",
+  "input": {
+    "action": "save",
+    "order": {
+      "TripStatus_id": 5,
+      "driver": { "id": 7 },
+      "shipments": [{ "order_num": 100 }],
+      "activities": [
+        { "order_num": 100, "ActivityType_code": "LOAD", "actual_date": "2026-01-01" },
+        { "order_num": 100, "ActivityType_code": "DELIVER", "actual_date": "2026-01-03" }
+      ]
+    }
+  },
+  "expected": { "valid": true, "ruleIds": [] }
+}

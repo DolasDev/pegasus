@@ -1,0 +1,13 @@
+{
+  "name": "R4 ok — status 3 with a driver assigned passes",
+  "input": {
+    "action": "save",
+    "order": {
+      "TripStatus_id": 3,
+      "driver": { "id": 7 },
+      "shipments": [{ "order_num": 100 }],
+      "activities": []
+    }
+  },
+  "expected": { "valid": true, "ruleIds": [] }
+}

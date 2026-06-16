@@ -1,0 +1,16 @@
+{
+  "name": "R5 — finalizing (status 5) with an activity missing its actual date is rejected",
+  "input": {
+    "action": "save",
+    "order": {
+      "TripStatus_id": 5,
+      "driver": { "id": 7 },
+      "shipments": [{ "order_num": 100 }],
+      "activities": [
+        { "order_num": 100, "ActivityType_code": "LOAD", "actual_date": "2026-01-01" },
+        { "order_num": 100, "ActivityType_code": "DELIVER", "actual_date": null }
+      ]
+    }
+  },
+  "expected": { "valid": false, "ruleIds": ["no-finalize-without-actual-dates"] }
+}

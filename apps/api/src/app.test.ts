@@ -41,6 +41,18 @@ vi.mock('./middleware/tenant', () => ({
   },
 }))
 
+// Bypass M2M API-key auth — injects a synthetic authenticated API client so the
+// integration-validation route (which gates on apiClientAuthMiddleware) is
+// reachable in these handler-layer smoke tests without a real vnd_ key.
+vi.mock('./middleware/api-client-auth', () => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  apiClientAuthMiddleware: async (c: any, next: () => Promise<void>) => {
+    c.set('apiClient', { id: 'test-client', tenantId: 'test-tenant-id', scopes: [], roleNames: [] })
+    c.set('tenantId', 'test-tenant-id')
+    await next()
+  },
+}))
+
 // Bypass admin JWT verification — sets the admin identity claims directly.
 vi.mock('./middleware/admin-auth', () => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -284,6 +296,70 @@ describe('Unknown routes', () => {
     expect(res.status).toBe(404)
     const body = (await res.json()) as Record<string, unknown>
     expect(body['code']).toBe('NOT_FOUND')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Declarative integration validation (POC) — real-app smoke through the full
+// router. Proves the route is mounted pre-tenant (reachable with NO tenant
+// session) and validates real longhaul order shapes end-to-end.
+// ---------------------------------------------------------------------------
+
+describe('POST /api/v1/integrations/:integrationId/validate', () => {
+  it('returns 200 valid:true for a clean longhaul order (no tenant session needed)', async () => {
+    const res = await app.request('/api/v1/integrations/longhaul/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'save',
+        order: {
+          id: 50,
+          TripStatus_id: 3,
+          driver: { id: 7 },
+          dispatcher: { code: 5 },
+          shipments: [{ order_num: 100 }],
+          activities: [],
+        },
+      }),
+    })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ valid: true, issues: [], degraded: false })
+  })
+
+  it('returns 200 valid:false with a field-mapped issue for a real longhaul rule violation', async () => {
+    // status 5 (finalized) with an activity still missing its actual date → R5.
+    const res = await app.request('/api/v1/integrations/longhaul/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'save',
+        order: {
+          TripStatus_id: 5,
+          driver: { id: 7 },
+          shipments: [{ order_num: 100 }],
+          activities: [{ order_num: 100, ActivityType_code: 'DELIVER', actual_date: null }],
+        },
+      }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      valid: boolean
+      issues: Array<{ ruleId: string; field: string }>
+    }
+    expect(body.valid).toBe(false)
+    expect(body.issues).toEqual([
+      expect.objectContaining({ ruleId: 'no-finalize-without-actual-dates', field: 'activities' }),
+    ])
+  })
+
+  it('returns 404 for an unknown integration', async () => {
+    const res = await app.request('/api/v1/integrations/ghost/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order: {} }),
+    })
+    expect(res.status).toBe(404)
+    expect(((await res.json()) as Record<string, unknown>)['code']).toBe('NOT_FOUND')
   })
 })
 

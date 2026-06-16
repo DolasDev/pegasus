@@ -1,0 +1,12 @@
+{
+  "name": "structural — a non-numeric status fails the contract before any rule runs",
+  "input": {
+    "action": "save",
+    "order": {
+      "TripStatus_id": "not-a-number",
+      "shipments": [{ "order_num": 100 }],
+      "activities": []
+    }
+  },
+  "expected": { "valid": false, "ruleIds": ["structural-contract"] }
+}
