@@ -26,6 +26,8 @@ interface NotesProps {
   tripId: string
   notes: Note[]
   reloadTrip(): void
+  /** When true (rejected-trip view) notes are display-only — no add/edit. */
+  readOnly?: boolean
 }
 
 // TODO fix this, not sure why forwarding react refs seem to be making the types fail
@@ -38,7 +40,7 @@ enum NoteModalType {
 
 type EditNoteProps = Pick<Note, 'id' | 'note'>
 
-export const Notes: React.FC<NotesProps> = ({ notes, tripId, reloadTrip }) => {
+export const Notes: React.FC<NotesProps> = ({ notes, tripId, reloadTrip, readOnly = false }) => {
   const [noteModalType, setNoteModalType] = useState<NoteModalType | null>(null)
   const [noteToEdit, setNoteToEdit] = useState<EditNoteProps | null>(null)
   const openNoteModal = () => {
@@ -69,15 +71,17 @@ export const Notes: React.FC<NotesProps> = ({ notes, tripId, reloadTrip }) => {
         title={
           <>
             <span className={styles.noteTitle}>Notes ({notes.length})</span>
-            <Button
-              data-target="add-note"
-              onClick={(e: any) => {
-                e.stopPropagation()
-                openNoteModal()
-              }}
-            >
-              Add Note
-            </Button>
+            {!readOnly && (
+              <Button
+                data-target="add-note"
+                onClick={(e: any) => {
+                  e.stopPropagation()
+                  openNoteModal()
+                }}
+              >
+                Add Note
+              </Button>
+            )}
           </>
         }
       >
@@ -94,13 +98,15 @@ export const Notes: React.FC<NotesProps> = ({ notes, tripId, reloadTrip }) => {
                        : ''
                    }`}
               </span>
-              <Button
-                className={styles.editButton}
-                data-target="edit-note"
-                onClick={() => editNote({ id, note })}
-              >
-                Edit
-              </Button>
+              {!readOnly && (
+                <Button
+                  className={styles.editButton}
+                  data-target="edit-note"
+                  onClick={() => editNote({ id, note })}
+                >
+                  Edit
+                </Button>
+              )}
             </div>
           ))}
         </div>

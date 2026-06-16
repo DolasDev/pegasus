@@ -53,6 +53,19 @@ export const API = {
       notifyError((e as any).message)
     }
   },
+  // Rejected-trip snapshots — stored cloud-side in Postgres (not MSSQL). The
+  // create reads the live trip server-side, so the dispatcher's pre-change
+  // (old-driver) state is what gets captured. The list/detail reshape through
+  // the same helpers as live trips so TripCard / the trip-detail view render
+  // them unchanged.
+  createRejectedTrip: (payload: {
+    tripId: number
+    rejections: Array<{ driverId: number; driverName?: string; reason?: string }>
+  }) => fetchHelper('createRejectedTrip', payload),
+  fetchRejectedTrips: async (args: { driverId?: number; originalTripId?: number }) =>
+    reshapeTripList(await fetchHelper('fetchRejectedTrips', args)),
+  fetchRejectedTrip: async (rejectedTripId: string) =>
+    reshapeTrip(await fetchHelper('fetchRejectedTrip', rejectedTripId)),
   fetchDrivers: () => fetchHelper('fetchDrivers'),
   fetchTripStatuses: () => fetchHelper('fetchTripStatuses'),
   saveActivity: (activityId: string, activityData: any) =>

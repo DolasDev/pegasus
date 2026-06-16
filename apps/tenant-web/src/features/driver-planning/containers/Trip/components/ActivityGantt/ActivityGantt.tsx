@@ -40,7 +40,7 @@ function getOffset(targetDay: any, days: any[]): number {
   return index
 }
 
-export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip }: any) {
+export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip, readOnly }: any) {
   const [selectedActivity, setSelectedActivity] = useState<any>(null)
   const { refs, floatingStyles } = useFloating({
     middleware: [offset(5)],
@@ -49,6 +49,9 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip }: 
   const dispatch = useAppDispatch()
 
   const onActivityClick = (activity: any) => {
+    // Rejected-trip view is read-only — never open the date-edit popover (which
+    // would otherwise write back to the ORIGINAL live trip's activities).
+    if (readOnly) return
     setSelectedActivity(() => (selectedActivity === activity.activityId ? null : activity))
   }
 

@@ -22,6 +22,8 @@ import { TripDetail, DriverTripDetail, NameTripDetail, DispatcherTripDetail } fr
 import { InputField } from '../../components/InputField'
 import { Snackbar } from '../../components/Snackbar'
 import { useConfirm } from '../../components/ConfirmDialog'
+import { RejectedTripDialog, type RejectionDraft } from '../../components/RejectedTripDialog'
+import { API } from '../../utils/api'
 import { DriverTypeahead } from '../DriverTypeahead'
 import { formatDate } from '../../utils/format-date'
 import { AddActivity } from './components/AddActivity'
@@ -183,9 +185,10 @@ const MoreTripActions: React.FC<{ tripId: any }> = ({ tripId }) => {
 }
 
 const PendingTripsInternal = (_props: any) => {
-  const { trip: currentTrip } = useSelector((state: RootState) => state.tripPlanning)
+  const { trip: currentTrip, unsavedTrip } = useSelector((state: RootState) => state.tripPlanning)
   const { user: planner } = useSelector((state: RootState) => state.user)
   const [saveDisabled, setSaveDisabled] = useState(false)
+  const [rejectOpen, setRejectOpen] = useState(false)
   const confirm = useConfirm()
 
   const [snackBarConfig, setShowSnackbar] = useState<any>({
@@ -251,6 +254,78 @@ const PendingTripsInternal = (_props: any) => {
       })
     }
     dispatch(reloadShipmentsAction({}))
+    setSaveDisabled(false)
+  }
+
+  // ---- Rejected-trip prompt on save ----------------------------------------
+  // When a driver who was offered/pending/accepted a (saved) trip is removed or
+  // swapped out, offer to capture a read-only "rejected trip" copy for them.
+  // The baseline (pre-edit) driver/status come from `unsavedTrip`, which is set
+  // when the trip is loaded and is NOT touched by editTrip (which mutates only
+  // `trip`). Removal sets driver_id to null; a swap sets a different id.
+  const baselineDriverId: number | null =
+    unsavedTrip?.driver_id ?? unsavedTrip?.driver?.driver_id ?? null
+  const currentDriverId: number | null =
+    currentTrip?.driver_id ?? currentTrip?.driver?.driver_id ?? null
+  const status: string | undefined = currentTrip?.status?.status
+  const isPromptableStatus = status === 'Pending' || status === 'Offered' || status === 'Accepted'
+  const isRejectionWorthy =
+    Boolean(currentTrip?.id) &&
+    baselineDriverId != null &&
+    baselineDriverId !== 0 &&
+    isPromptableStatus &&
+    currentDriverId !== baselineDriverId
+
+  const baselineDriver =
+    baselineDriverId != null
+      ? {
+          driverId: baselineDriverId,
+          driverName:
+            unsavedTrip?.driver?.driver_name ?? driversMap.get(baselineDriverId)?.driver_name,
+        }
+      : null
+
+  const handleSaveClick = async () => {
+    setSaveDisabled(true)
+    if (isRejectionWorthy) {
+      setRejectOpen(true)
+      return // dialog drives the save; saveDisabled stays true until it resolves
+    }
+    await saveTrip(currentTrip)
+  }
+
+  const recordRejectionAndSave = async (rejections: RejectionDraft[]) => {
+    setRejectOpen(false)
+    try {
+      await API.createRejectedTrip({
+        tripId: currentTrip.id,
+        rejections: rejections.map((r) => ({
+          driverId: r.driverId,
+          driverName: r.driverName,
+          reason: r.reason,
+        })),
+      })
+    } catch (e: any) {
+      setShowSnackbar({
+        show: true,
+        message: (
+          <>
+            Failed to record rejected trip! <br /> {e.message}
+          </>
+        ),
+        type: 'error',
+      })
+    }
+    await saveTrip(currentTrip)
+  }
+
+  const skipRejectionAndSave = async () => {
+    setRejectOpen(false)
+    await saveTrip(currentTrip)
+  }
+
+  const cancelRejection = () => {
+    setRejectOpen(false)
     setSaveDisabled(false)
   }
 
@@ -342,15 +417,7 @@ const PendingTripsInternal = (_props: any) => {
                   New Trip
                 </Button>
               ) : null}
-              <Button
-                disabled={saveDisabled}
-                data-target="save-trip"
-                onClick={() => {
-                  setSaveDisabled(true)
-                  console.log('saving...')
-                  saveTrip(currentTrip)
-                }}
-              >
+              <Button disabled={saveDisabled} data-target="save-trip" onClick={handleSaveClick}>
                 Save
               </Button>
               {currentTrip?.id ? <MoreTripActions tripId={currentTrip?.id} /> : null}
@@ -427,6 +494,14 @@ const PendingTripsInternal = (_props: any) => {
           message={snackBarConfig.message}
         />
       </Lane>
+      <RejectedTripDialog
+        open={rejectOpen}
+        tripTitle={currentTrip?.trip_title}
+        initialDrivers={baselineDriver ? [baselineDriver] : []}
+        onRecord={recordRejectionAndSave}
+        onSkip={skipRejectionAndSave}
+        onCancel={cancelRejection}
+      />
     </div>
   )
 }

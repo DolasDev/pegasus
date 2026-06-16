@@ -279,6 +279,16 @@ const dpTripDetailRoute = createRoute({
   component: TripDetailLazy,
 })
 
+// Read-only view of a rejected-trip snapshot. The static `rejected` segment
+// wins over `trips/$tripId` (TanStack prefers literal over param segments), so
+// `$rejectedId` never collides with a live trip id. Reuses the Trip component,
+// which switches to read-only mode when the `rejectedId` param is present.
+const dpRejectedTripRoute = createRoute({
+  getParentRoute: () => driverPlanningRoute,
+  path: 'trips/rejected/$rejectedId',
+  component: TripDetailLazy,
+})
+
 const dpShipmentsRoute = createRoute({
   getParentRoute: () => driverPlanningRoute,
   path: 'shipments',
@@ -306,6 +316,7 @@ const routeTree = rootRoute.addChildren([
       dpAvailabilityRoute,
       dpPlanningRoute,
       dpTripsIndexRoute,
+      dpRejectedTripRoute,
       dpTripDetailRoute,
       dpShipmentsRoute,
     ]),

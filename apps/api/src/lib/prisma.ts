@@ -57,6 +57,13 @@ export const TENANT_SCOPED_MODELS = new Set([
   // bypasses this extension — same precedent as the messaging forward job.
   'DeviceToken',
   'PushNotificationOutbox',
+  // ArchivedTrip (rejected/cancelled longhaul trip snapshots). The longhaul
+  // cloud handlers read/write via the base client and pass tenantId explicitly
+  // (the longhaul convention — same as trip-detail/trips-list), so the manual
+  // scoping is what enforces isolation today. Listed here so any future access
+  // via the tenant-scoped client is auto-scoped too. ArchivedTripDriver has no
+  // tenantId (it links via archivedTripId) and is isolated transitively.
+  'ArchivedTrip',
   // Workflow is intentionally NOT scoped here — the GLOBAL visibility case
   // requires reading rows owned by a different tenant (the platform tenant).
   // The extension's top-level `tenantId = current` merge would neutralise the

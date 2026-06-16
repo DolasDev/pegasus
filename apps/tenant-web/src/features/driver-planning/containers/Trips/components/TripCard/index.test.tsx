@@ -76,4 +76,20 @@ describe('TripCard', () => {
     // Three id-badge icons total
     expect(container.querySelectorAll('i.fa-id-badge').length).toBe(3)
   })
+
+  it('badges rejected snapshots and links to the read-only rejected view', () => {
+    const { container } = renderWithStore(
+      <TripCard trip={{ ...baseTrip, isRejected: true, archivedTripId: 'arch-1' }} />,
+    )
+    expect(screen.getByText(/REJECTED/)).toBeInTheDocument()
+    const link = container.querySelector('a')
+    // router-compat translates /trips/* → /driver-planning/trips/*
+    expect(link?.getAttribute('href')).toBe('/driver-planning/trips/rejected/arch-1')
+    expect(container.querySelector('[data-rejected="true"]')).toBeTruthy()
+  })
+
+  it('links live trips to the editable trip-detail route', () => {
+    const { container } = renderWithStore(<TripCard trip={baseTrip} />)
+    expect(container.querySelector('a')?.getAttribute('href')).toBe('/driver-planning/trips/99')
+  })
 })

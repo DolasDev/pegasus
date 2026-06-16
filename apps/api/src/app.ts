@@ -42,6 +42,11 @@ import { longhaulShipmentFiltersHandler } from './handlers/longhaul-cloud/shipme
 import { longhaulTripsListHandler } from './handlers/longhaul-cloud/trips-list'
 import { longhaulDriverPlanningHandler } from './handlers/longhaul-cloud/driver-planning'
 import { longhaulTripDetailHandler } from './handlers/longhaul-cloud/trip-detail'
+import {
+  createRejectedTripHandler,
+  listRejectedTripsHandler,
+  getRejectedTripHandler,
+} from './handlers/longhaul-cloud/rejected-trips'
 import { longhaulDriverPlanningPatchHandler } from './handlers/longhaul-cloud/driver-planning-patch'
 import {
   longhaulShipmentShadowHandler,
@@ -379,6 +384,15 @@ v1.get('/onprem/longhaul/driver-planning', longhaulDriverPlanningHandler)
 // separate soft-failing query (→ []), mirroring the on-prem repo and the cloud
 // shipments-list handler. See handlers/longhaul-cloud/trip-detail.ts.
 v1.get('/onprem/longhaul/trips/:id', longhaulTripDetailHandler)
+// Rejected-trip snapshots — stored cloud-side in Postgres (NOT MSSQL) so the
+// activity table's enabled triggers never re-fire when a trip is copied. The
+// create handler reads the live trip via the shared lib/longhaul-trip-fetch and
+// persists an immutable snapshot + per-driver rejection rows. List/detail are
+// pure Postgres reads. Registered before the /onprem wildcard proxy. See
+// handlers/longhaul-cloud/rejected-trips.ts.
+v1.post('/onprem/longhaul/rejected-trips', createRejectedTripHandler)
+v1.get('/onprem/longhaul/rejected-trips', listRejectedTripsHandler)
+v1.get('/onprem/longhaul/rejected-trips/:id', getRejectedTripHandler)
 // Phase 3: GET /shipments LIST is served cloud-direct. Its Is_Trip_Planning
 // filter uses per-client import/export codes resolved from the tenant's
 // longhaulClient column. Write routes (POST/PATCH /shipments/*) still proxy.
