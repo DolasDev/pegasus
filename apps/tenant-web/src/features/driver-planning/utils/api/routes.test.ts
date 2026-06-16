@@ -187,10 +187,26 @@ describe('resolveRoute', () => {
   })
 
   describe('shipment filters', () => {
-    it('fetchSavedShipmentFilters → GET /shipment-filters', () => {
+    it('fetchSavedShipmentFilters → GET /shipment-filters (no arg)', () => {
       expect(resolveRoute('fetchSavedShipmentFilters', [])).toEqual({
         method: 'GET',
         path: '/shipment-filters',
+      })
+    })
+
+    it('fetchSavedShipmentFilters forwards the type param → GET /shipment-filters?type=public', () => {
+      expect(resolveRoute('fetchSavedShipmentFilters', [{ type: 'public', userCode: 42 }])).toEqual(
+        {
+          method: 'GET',
+          path: '/shipment-filters?type=public',
+        },
+      )
+    })
+
+    it('fetchSavedShipmentFilters with type=self → GET /shipment-filters?type=self', () => {
+      expect(resolveRoute('fetchSavedShipmentFilters', [{ type: 'self', userCode: 7 }])).toEqual({
+        method: 'GET',
+        path: '/shipment-filters?type=self',
       })
     })
 

@@ -48,13 +48,66 @@ describe('GET longhaul/shipment-filters (cloud-direct)', () => {
     vi.clearAllMocks()
   })
 
-  it('returns the saved filters in { data: [...] } shape (self scope)', async () => {
+  it('returns the saved filters in { data: [...] } shape, folding the joined owner name (self scope)', async () => {
     tenantFind.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
     tenantUserFind.mockResolvedValue({ legacyWindowsUsername: 'DOMAIN\\ada' })
     executeSqlMock
       .mockResolvedValueOnce({ recordset: [ACTIVE_SALESMAN], rowsAffected: [] })
       .mockResolvedValueOnce({
-        recordset: [{ filter_id: 1, name: 'Mine', owner_code: 42, query: 'not-json' }],
+        recordset: [
+          {
+            filter_id: 1,
+            name: 'Mine',
+            owner_code: 42,
+            query: 'not-json',
+            owner_first_name: 'Ada',
+            owner_last_name: 'Lovelace',
+          },
+        ],
+        rowsAffected: [],
+      })
+
+    const res = await buildApp().request('/onprem/longhaul/shipment-filters')
+
+    expect(res.status).toBe(200)
+    // the flat owner_first_name/owner_last_name columns are folded into a nested
+    // `owner` object — what the FilterModal "Created By" column renders
+    expect(await res.json()).toEqual({
+      data: [
+        {
+          filter_id: 1,
+          name: 'Mine',
+          owner_code: 42,
+          query: 'not-json',
+          owner: { code: 42, first_name: 'Ada', last_name: 'Lovelace' },
+        },
+      ],
+    })
+    // one executor call to resolve the user, one to fetch the filters
+    expect(executeSqlMock).toHaveBeenCalledTimes(2)
+    // the filters query joins v_longhaul_salesman to resolve the owner name
+    expect(executeSqlMock.mock.calls[1]?.[1]).toContain('LEFT JOIN v_longhaul_salesman')
+    expect(executeSqlMock.mock.calls[1]?.[2]).toEqual({
+      params: [{ name: 'ownerCode', value: 42 }],
+    })
+  })
+
+  it('returns owner: null when the joined salesman row is absent (LEFT JOIN miss)', async () => {
+    tenantFind.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    tenantUserFind.mockResolvedValue({ legacyWindowsUsername: 'DOMAIN\\ada' })
+    executeSqlMock
+      .mockResolvedValueOnce({ recordset: [ACTIVE_SALESMAN], rowsAffected: [] })
+      .mockResolvedValueOnce({
+        recordset: [
+          {
+            filter_id: 2,
+            name: 'Orphan',
+            owner_code: 999,
+            query: 'not-json',
+            owner_first_name: null,
+            owner_last_name: null,
+          },
+        ],
         rowsAffected: [],
       })
 
@@ -62,12 +115,7 @@ describe('GET longhaul/shipment-filters (cloud-direct)', () => {
 
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({
-      data: [{ filter_id: 1, name: 'Mine', owner_code: 42, query: 'not-json' }],
-    })
-    // one executor call to resolve the user, one to fetch the filters
-    expect(executeSqlMock).toHaveBeenCalledTimes(2)
-    expect(executeSqlMock.mock.calls[1]?.[2]).toEqual({
-      params: [{ name: 'ownerCode', value: 42 }],
+      data: [{ filter_id: 2, name: 'Orphan', owner_code: 999, query: 'not-json', owner: null }],
     })
   })
 
