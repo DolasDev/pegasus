@@ -63,23 +63,30 @@ export function TripCard({ trip }: { trip: any }) {
 
   const status = trip.status ? trip.status.status : 'pending'
   const isCanceled = trip?.internal_status === 'canceled' // TODO constants
+  const isRejected = Boolean(trip?.isRejected)
+
+  // Rejected snapshots link to their read-only view; live trips to the editable
+  // trip-detail. (router-compat translates /trips/* to /driver-planning/trips/*.)
+  const linkTo = isRejected ? `/trips/rejected/${trip.archivedTripId}` : `/trip/${trip.id}`
 
   return (
-    <Link to={`/trip/${trip.id}`} className={isCanceled ? styles.canceled : ''}>
+    <Link to={linkTo} className={isCanceled ? styles.canceled : ''}>
       <Card
-        key={trip.id}
+        key={trip.archivedTripId ?? trip.id}
         className={styles['trip-card']}
-        data-target="trip-card"
+        data-target={isRejected ? 'rejected-trip-card' : 'trip-card'}
         data-trip-id={String(trip.id)}
         data-trip-status={status}
         data-canceled={isCanceled ? 'true' : 'false'}
+        data-rejected={isRejected ? 'true' : 'false'}
         title={
           <>
-            <span>{`Trip 
-        ${trip.id} | 
-        ${getTripTitle(trip.trip_title)} | 
+            <span>{`Trip
+        ${trip.id} |
+        ${getTripTitle(trip.trip_title)} |
         ${getDriverName(trip?.driver?.driver_name)}
         ${isCanceled ? ' - CANCELED' : ''}
+        ${isRejected ? ' - REJECTED' : ''}
         `}</span>
             {trip.vip_count || trip.supervip_count ? ' | ' : ''}
             {[...Array(trip.vip_count).keys()].map((x, i) => (

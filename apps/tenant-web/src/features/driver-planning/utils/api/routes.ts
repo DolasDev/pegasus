@@ -54,6 +54,19 @@ export function resolveRoute(routeName: string, args: unknown[]): HttpRequest {
     }
     case 'updateTripSummaryInfo':
       return { method: 'PATCH', path: `/trips/${arg0}/summary`, body: {} }
+    // ---- Rejected trips (archived snapshots, stored cloud-side in Postgres) ----
+    case 'createRejectedTrip':
+      // arg0: { tripId, rejections: [{ driverId, driverName?, reason? }] }
+      return { method: 'POST', path: '/rejected-trips', body: arg0 }
+    case 'fetchRejectedTrips': {
+      const params = new URLSearchParams()
+      if (arg0?.driverId != null) params.set('driverId', String(arg0.driverId))
+      if (arg0?.originalTripId != null) params.set('originalTripId', String(arg0.originalTripId))
+      const qs = params.toString()
+      return { method: 'GET', path: `/rejected-trips${qs ? `?${qs}` : ''}` }
+    }
+    case 'fetchRejectedTrip':
+      return { method: 'GET', path: `/rejected-trips/${arg0}` }
     case 'createTripNote': {
       const { tripId, createdBy, note } = arg0
       return { method: 'POST', path: `/trips/${tripId}/notes`, body: { note, createdBy } }

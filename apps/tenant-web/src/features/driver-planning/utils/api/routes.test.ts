@@ -83,6 +83,36 @@ describe('resolveRoute', () => {
       })
     })
 
+    it('createRejectedTrip → POST /rejected-trips with body', () => {
+      const arg = { tripId: 42, rejections: [{ driverId: 7, reason: 'too far' }] }
+      expect(resolveRoute('createRejectedTrip', [arg])).toEqual({
+        method: 'POST',
+        path: '/rejected-trips',
+        body: arg,
+      })
+    })
+
+    it('fetchRejectedTrips with driverId → GET /rejected-trips?driverId=', () => {
+      expect(resolveRoute('fetchRejectedTrips', [{ driverId: 7 }])).toEqual({
+        method: 'GET',
+        path: '/rejected-trips?driverId=7',
+      })
+    })
+
+    it('fetchRejectedTrips with no args → GET /rejected-trips', () => {
+      expect(resolveRoute('fetchRejectedTrips', [{}])).toEqual({
+        method: 'GET',
+        path: '/rejected-trips',
+      })
+    })
+
+    it('fetchRejectedTrip → GET /rejected-trips/:id', () => {
+      expect(resolveRoute('fetchRejectedTrip', ['archived-1'])).toEqual({
+        method: 'GET',
+        path: '/rejected-trips/archived-1',
+      })
+    })
+
     it('createTripNote → POST /trips/:tripId/notes with note+createdBy', () => {
       const arg = { tripId: 't9', createdBy: 'u1', note: 'hello' }
       expect(resolveRoute('createTripNote', [arg])).toEqual({

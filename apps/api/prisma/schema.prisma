@@ -280,12 +280,78 @@ model Tenant {
   deviceTokens           DeviceToken[]
   pushNotificationOutbox PushNotificationOutbox[]
 
+  // Longhaul — archived (rejected/cancelled) trip snapshots
+  archivedTrips ArchivedTrip[]
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([status])
   @@index([deletedAt])
   @@map("tenants")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Longhaul — archived trip snapshots
+//
+// Live trips + activities live in the tenant's on-prem MSSQL (TripMaster,
+// LongDistanceDispatchActivity — the latter carries enabled AFTER triggers).
+// When a driver rejects an offered/pending/accepted trip, the dispatcher can
+// capture an immutable historical copy here in Postgres rather than re-writing
+// MSSQL (which would re-fire those triggers). The snapshot is the exact
+// `{ ...trip, activities, notes, shipments }` shape the trip-detail handler
+// returns, so the read-only trip view can render it without an MSSQL call.
+//
+// `kind` is generic ("rejected" today) so cancelled-trip retention can reuse
+// the same tables later with no migration.
+// ---------------------------------------------------------------------------
+
+model ArchivedTrip {
+  id             String @id @default(uuid())
+  tenantId       String @map("tenant_id")
+  kind           String @default("rejected") // "rejected" | (future) "cancelled"
+  originalTripId Int    @map("original_trip_id") // MSSQL TripMaster.id
+  tripTitle      String? @map("trip_title")
+
+  // Denormalized columns for list cards / filtering (avoids parsing snapshot).
+  originalDriverId          Int?     @map("original_driver_id")
+  originalDriverName        String?  @map("original_driver_name")
+  plannedFirstDay           DateTime? @map("planned_first_day")
+  plannedLastDay            DateTime? @map("planned_last_day")
+  originStateCode           String?  @map("origin_state_code")
+  destStateCode             String?  @map("dest_state_code")
+  totalEstimatedLbs         Int?     @map("total_estimated_lbs")
+  totalEstimatedLinehaulUsd Decimal? @map("total_estimated_linehaul_usd")
+
+  /// Full reshaped trip: { ...trip, activities, notes, shipments }.
+  snapshot Json
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  createdById String?  @map("created_by_id")
+
+  tenant  Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  drivers ArchivedTripDriver[]
+
+  @@index([tenantId, kind])
+  @@index([tenantId, originalTripId])
+  @@map("archived_trips")
+  @@schema("public")
+}
+
+model ArchivedTripDriver {
+  id             String  @id @default(uuid())
+  archivedTripId String  @map("archived_trip_id")
+  driverId       Int     @map("driver_id") // v_longhaul_drivers.driver_id
+  driverName     String? @map("driver_name") // denormalized for display
+  reason         String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  archivedTrip ArchivedTrip @relation(fields: [archivedTripId], references: [id], onDelete: Cascade)
+
+  @@index([driverId])
+  @@index([archivedTripId])
+  @@map("archived_trip_drivers")
   @@schema("public")
 }
 

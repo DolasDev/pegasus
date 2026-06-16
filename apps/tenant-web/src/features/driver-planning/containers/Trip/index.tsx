@@ -26,7 +26,12 @@ function getColor(index: number): string {
 }
 
 function TripInternal() {
-  const { tripId } = useParams<{ tripId: string }>()
+  // The rejected-trip view reuses this component via the
+  // /driver-planning/trips/rejected/$rejectedId route. When `rejectedId` is
+  // present we load an immutable Postgres snapshot and render read-only — no
+  // status changes, no activity/notes edits, no "Edit planning".
+  const { tripId, rejectedId } = useParams<{ tripId?: string; rejectedId?: string }>()
+  const isRejected = Boolean(rejectedId)
   const navigate = useNavigate()
   const [trip, setTrip] = useState<any>(null)
   const [showError, setShowError] = useState<any>(false)
@@ -40,6 +45,11 @@ function TripInternal() {
   useEffect(() => {
     async function fetchTrip() {
       try {
+        if (isRejected) {
+          const trip = await API.fetchRejectedTrip(String(rejectedId))
+          setTrip(trip)
+          return
+        }
         await API.updateTripSummaryInfo(Number(tripId))
         const trip = await API.fetchTrip(Number(tripId))
         setTrip(trip)
@@ -48,7 +58,7 @@ function TripInternal() {
       }
     }
     fetchTrip()
-  }, [tripId])
+  }, [tripId, rejectedId, isRejected])
 
   let sortedActivities: any[] = []
   let days: any[] = []
@@ -65,7 +75,9 @@ function TripInternal() {
   function reloadTrip() {
     async function fetchTrip() {
       console.time('trip reload')
-      const trip = await API.fetchTrip(Number(tripId))
+      const trip = isRejected
+        ? await API.fetchRejectedTrip(String(rejectedId))
+        : await API.fetchTrip(Number(tripId))
       console.timeEnd('trip reload')
       setTrip(trip)
     }
@@ -85,7 +97,9 @@ function TripInternal() {
   }
 
   useStatusPredictionPrompt({
-    trip,
+    // Disabled in rejected (read-only) mode — these prompts would offer to
+    // mutate a live trip. Both hooks no-op when trip is falsy.
+    trip: isRejected ? null : trip,
     changeStatus,
   })
 
@@ -97,7 +111,7 @@ function TripInternal() {
   }
 
   useDateChangePrompt({
-    trip,
+    trip: isRejected ? null : trip,
     hasDateChange,
     updateActivityDates,
   })
@@ -122,20 +136,44 @@ function TripInternal() {
           {trip && (
             <>
               <div className={styles.noteContainer}>
-                <Notes notes={trip.notes} tripId={trip.id} reloadTrip={reloadTrip} />
+                <Notes
+                  notes={trip.notes}
+                  tripId={trip.id}
+                  reloadTrip={reloadTrip}
+                  readOnly={isRejected}
+                />
               </div>
               <div className={styles.buttonContainer}>
                 <Button data-target="trip-back-to-trips" onClick={() => navigate('/trips')}>
                   <i className="fas fa-arrow-left"></i> All trips
                 </Button>
-                <Button
-                  className={styles.editTripButton}
-                  data-target="trip-edit-planning"
-                  onClick={() => navigate(`/planning?tripId=${tripId}`)}
-                >
-                  <i className="fas fa-pencil"></i> &nbsp;Edit planning
-                </Button>
+                {!isRejected && (
+                  <Button
+                    className={styles.editTripButton}
+                    data-target="trip-edit-planning"
+                    onClick={() => navigate(`/planning?tripId=${tripId}`)}
+                  >
+                    <i className="fas fa-pencil"></i> &nbsp;Edit planning
+                  </Button>
+                )}
               </div>
+              {isRejected && (
+                <div className={styles.headerInfo} data-target="rejected-trip-banner">
+                  <span>
+                    <b>Rejected Trip</b> (read-only copy
+                    {trip.createdAt
+                      ? ` — saved ${new Date(trip.createdAt).toLocaleDateString()}`
+                      : ''}
+                    )
+                  </span>
+                  {(trip.rejection?.drivers ?? []).map((d: any) => (
+                    <span key={d.driverId} data-target="rejected-trip-driver">
+                      <b>{d.driverName || `Driver ${d.driverId}`}</b>
+                      {d.reason ? `: ${d.reason}` : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className={` ${styles.headerInfo}`}>
                 <span>
                   <b>Trip</b> {`${'#' + trip.id} ${trip.trip_title}`}
@@ -174,7 +212,11 @@ function TripInternal() {
                         data-active={
                           trip.status && trip.status.status === status ? 'true' : 'false'
                         }
-                        onClick={() => promptAndChangeStatus(status, status_id)}
+                        style={isRejected ? { cursor: 'default' } : undefined}
+                        onClick={() => {
+                          if (isRejected) return
+                          promptAndChangeStatus(status, status_id)
+                        }}
                       >
                         <div
                           className={cn(
@@ -217,6 +259,7 @@ function TripInternal() {
                         data-order-num={String(activity.shipment?.order_num)}
                         onClick={(e: React.MouseEvent) => {
                           e.stopPropagation()
+                          if (isRejected) return
                           const shipment = activity.shipment
                           selectShipment(shipment)
                         }}
@@ -238,6 +281,7 @@ function TripInternal() {
                   days={days.sort()}
                   activities={sortedActivities}
                   orderIdToColor={orderIdToColor}
+                  readOnly={isRejected}
                 />
               </div>
             </>
