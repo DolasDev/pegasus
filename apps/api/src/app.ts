@@ -66,6 +66,7 @@ import {
   longhaulCreateTripHandler,
   longhaulUpdateTripHandler,
 } from './handlers/longhaul-cloud/trip-save'
+import { integrationValidationHandler } from './handlers/integration-validation/validate'
 import { meHandler } from './handlers/me'
 import { deviceTokensHandler } from './handlers/device-tokens'
 import { notificationsHandler } from './handlers/notifications'
@@ -225,6 +226,13 @@ m2mV1.route('/workflows', workflowsHandler)
 // middleware involvement; tenant scope is derived from the WorkflowExecution
 // row each call references.
 m2mV1.route('/internal', workflowInternalHandler)
+// Declarative integration validation (POC) — synchronous, STATELESS order
+// validation against a global declarative definition. Mounted on the pre-tenant
+// m2m router because the caller (the legacy desktop / an M2M client) has no
+// Cognito tenant session. Auth is API-key (any valid vnd_ key, any tenant),
+// applied route-level inside the handler so other /integrations/* paths still
+// fall through to the tenant routes below. See src/integration-validation/.
+m2mV1.route('/', integrationValidationHandler)
 
 app.route('/api/v1', m2mV1)
 

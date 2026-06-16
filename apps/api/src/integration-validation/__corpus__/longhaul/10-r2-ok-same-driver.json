@@ -1,0 +1,21 @@
+{
+  "name": "R2 ok — in-progress trip saved with the same driver passes",
+  "input": {
+    "action": "save",
+    "order": {
+      "id": 50,
+      "TripStatus_id": 4,
+      "driver": { "id": 7 },
+      "shipments": [{ "order_num": 100 }],
+      "activities": []
+    },
+    "prior": {
+      "id": 50,
+      "TripStatus_id": 4,
+      "driver": { "id": 7 },
+      "shipments": [{ "order_num": 100 }],
+      "activities": []
+    }
+  },
+  "expected": { "valid": true, "ruleIds": [] }
+}

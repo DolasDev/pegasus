@@ -1,0 +1,8 @@
+{
+  "name": "R1 — trip with zero shipments is rejected",
+  "input": {
+    "action": "save",
+    "order": { "TripStatus_id": 1, "shipments": [], "activities": [] }
+  },
+  "expected": { "valid": false, "ruleIds": ["trip-must-have-shipments"] }
+}
