@@ -78,6 +78,7 @@ describe('driverPlanningQueryOptions', () => {
         equipment: null,
         homeCity: null,
         homeState: null,
+        wgs: null,
         deliveries: [
           {
             activityId: 999,
@@ -123,6 +124,7 @@ describe('driverPlanningQueryOptions', () => {
         equipment: 'Tractor Trailer',
         homeCity: 'Dallas',
         homeState: 'TX',
+        wgs: true,
         deliveries: [],
         shipments: [],
       },

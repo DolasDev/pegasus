@@ -100,6 +100,20 @@ interface EditState {
   equipment: string
   homeCity: string
   homeState: string
+  // Tri-state: true = Yes, false = No, null = Maybe (the unset default).
+  wgs: boolean | null
+}
+
+// WGS cycles Maybe -> Yes -> No -> Maybe on each click. Yes/No render as a
+// ticked / empty checkbox; Maybe renders as a question mark (most compact).
+const WGS_CYCLE: (boolean | null)[] = [null, true, false]
+
+function wgsLabel(v: boolean | null): string {
+  return v === true ? 'Yes' : v === false ? 'No' : 'Maybe'
+}
+
+function wgsGlyph(v: boolean | null): string {
+  return v === true ? '☑' : v === false ? '☐' : '?'
 }
 
 type ReadyTier = 'confirmed' | 'actual' | 'estimated' | 'spread' | 'none'
@@ -251,6 +265,7 @@ function DriverRow({ driver, stateList }: { driver: DriverPlanningRow; stateList
     equipment: driver.equipment ?? '',
     homeCity: driver.homeCity ?? '',
     homeState: driver.homeState ?? '',
+    wgs: driver.wgs,
   }))
   const [snapshot, setSnapshot] = useState('')
   const skipBlur = useRef(false)
@@ -280,6 +295,7 @@ function DriverRow({ driver, stateList }: { driver: DriverPlanningRow; stateList
         equipment: f.equipment || null,
         homeCity: f.homeCity || null,
         homeState: f.homeState || null,
+        wgs: f.wgs,
       },
       { onSuccess: () => setEditingField(null) },
     )
@@ -291,6 +307,13 @@ function DriverRow({ driver, stateList }: { driver: DriverPlanningRow; stateList
 
   function toggleBool(key: 'canada' | 'california') {
     const next = { ...form, [key]: !form[key] }
+    setForm(next)
+    commitWith(next)
+  }
+
+  function cycleWgs() {
+    const idx = WGS_CYCLE.findIndex((v) => v === form.wgs)
+    const next = { ...form, wgs: WGS_CYCLE[(idx + 1) % WGS_CYCLE.length]! }
     setForm(next)
     commitWith(next)
   }
@@ -373,13 +396,32 @@ function DriverRow({ driver, stateList }: { driver: DriverPlanningRow; stateList
     )
   }
 
+  function wgsCell() {
+    const label = wgsLabel(form.wgs)
+    return (
+      <TableCell
+        className="cursor-pointer select-none text-center text-base"
+        data-testid="driver-wgs"
+        data-wgs={label.toLowerCase()}
+        title={`WGS: ${label}`}
+        aria-label={`WGS: ${label}`}
+        onClick={cycleWgs}
+      >
+        {wgsGlyph(form.wgs)}
+      </TableCell>
+    )
+  }
+
   return (
     <TableRow data-testid="driver-row" data-driver-id={driver.driverId} className={CARD_ROW_CLASS}>
       <TableCell
         className={`font-bold ${agencyBgClass(driver.agentCode)}`}
         data-testid="driver-name"
+        data-agency={agency}
       >
-        {formatDriverName(driver.driverName)}
+        <HoverToolTip content={`Agency: ${agency}`} direction="top">
+          <span>{formatDriverName(driver.driverName)}</span>
+        </HoverToolTip>
       </TableCell>
 
       <TableCell data-testid="driver-code">{driver.driverId}</TableCell>
@@ -410,6 +452,7 @@ function DriverRow({ driver, stateList }: { driver: DriverPlanningRow; stateList
 
       {boolCell('canada', 'driver-canada')}
       {boolCell('california', 'driver-california')}
+      {wgsCell()}
 
       <TableCell
         className={`cursor-pointer ${ratingClass(driver.rating)}`}
@@ -477,8 +520,6 @@ function DriverRow({ driver, stateList }: { driver: DriverPlanningRow; stateList
           <span className="hover:underline">{driver.homeState || '-'}</span>
         )}
       </TableCell>
-
-      <TableCell data-testid="driver-agency">{agency}</TableCell>
     </TableRow>
   )
 }
@@ -625,12 +666,12 @@ export function AvailabilityViewB() {
                   </TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Canada?</TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>California?</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>WGS</TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Rating</TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Equipment</TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Notes</TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Home City</TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Home State</TableHead>
-                  <TableHead className={CARD_TEXT_CLASS}>Agency</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

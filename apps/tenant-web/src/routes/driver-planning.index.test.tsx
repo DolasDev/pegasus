@@ -111,6 +111,7 @@ function makeDriver(overrides?: Partial<DriverPlanningRow>): DriverPlanningRow {
     equipment: null,
     homeCity: null,
     homeState: null,
+    wgs: null,
     deliveries: [],
     shipments: [],
     ...overrides,
@@ -861,7 +862,7 @@ describe('DriverPlanningPage', () => {
       vi.spyOn(Math, 'random').mockReturnValue(0.5)
     })
 
-    it('renders the roster headers and Driver Code / Agency from driver data', () => {
+    it('renders the roster headers and Driver Code from driver data', () => {
       driverPlanningReturn = {
         data: [makeDriver({ driverId: 4502, driverName: 'Hauler, Alice', agentCode: '1545' })],
         isLoading: false,
@@ -879,37 +880,44 @@ describe('DriverPlanningPage', () => {
         'Empty Date',
         'Canada?',
         'California?',
+        'WGS',
         'Rating',
         'Equipment',
         'Notes',
         'Home City',
         'Home State',
-        'Agency',
       ]) {
         expect(table.getByText(header)).toBeInTheDocument()
       }
       expect(screen.getByTestId('driver-code')).toHaveTextContent('4502')
-      expect(screen.getByTestId('driver-agency')).toHaveTextContent('1545')
+      // The agency column was removed; agency now lives on the driver-name cell.
+      expect(screen.queryByTestId('driver-agency')).not.toBeInTheDocument()
     })
 
-    it('falls back to the 1111 placeholder when the driver has no agent code', () => {
-      driverPlanningReturn = {
-        data: [makeDriver({ agentCode: null })],
-        isLoading: false,
-        isError: false,
-      }
-      renderPage()
-      expect(screen.getByTestId('driver-agency')).toHaveTextContent('1111')
-    })
-
-    it('colours the driver-name cell by agency', () => {
+    it('colours the driver-name cell by agency and exposes the agency in a tooltip', async () => {
       driverPlanningReturn = {
         data: [makeDriver({ agentCode: '1511' })],
         isLoading: false,
         isError: false,
       }
       renderPage()
-      expect(screen.getByTestId('driver-name').className).toMatch(/bg-red-300/)
+      const cell = screen.getByTestId('driver-name')
+      expect(cell.className).toMatch(/bg-red-300/)
+      expect(cell).toHaveAttribute('data-agency', '1511')
+
+      // The styled tooltip reveals the agency on hover (400ms delay).
+      fireEvent.mouseEnter(within(cell).getByText('Driver, A.').parentElement!)
+      expect(await screen.findByText('Agency: 1511')).toBeInTheDocument()
+    })
+
+    it('falls back to the 1111 placeholder in the agency tooltip when no agent code', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ agentCode: null })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      expect(screen.getByTestId('driver-name')).toHaveAttribute('data-agency', '1111')
     })
 
     it('derives State and Zone from the ready location / stateList', () => {
@@ -939,6 +947,40 @@ describe('DriverPlanningPage', () => {
       )
       expect(screen.getByTestId('driver-canada').className).toMatch(/bg-yellow-200/)
       expect(screen.getByTestId('driver-canada')).toHaveTextContent('Yes')
+    })
+
+    it('cycles WGS Maybe -> Yes -> No -> Maybe and commits each state', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ driverId: 11, wgs: null })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      const cell = screen.getByTestId('driver-wgs')
+      // Unset default is Maybe (question mark).
+      expect(cell).toHaveAttribute('data-wgs', 'maybe')
+      expect(cell).toHaveTextContent('?')
+
+      fireEvent.click(cell)
+      expect(mutateMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ driverId: 11, wgs: true }),
+        expect.anything(),
+      )
+      expect(screen.getByTestId('driver-wgs')).toHaveAttribute('data-wgs', 'yes')
+
+      fireEvent.click(screen.getByTestId('driver-wgs'))
+      expect(mutateMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ driverId: 11, wgs: false }),
+        expect.anything(),
+      )
+      expect(screen.getByTestId('driver-wgs')).toHaveAttribute('data-wgs', 'no')
+
+      fireEvent.click(screen.getByTestId('driver-wgs'))
+      expect(mutateMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ driverId: 11, wgs: null }),
+        expect.anything(),
+      )
+      expect(screen.getByTestId('driver-wgs')).toHaveAttribute('data-wgs', 'maybe')
     })
 
     it('highlights Rating red when below 4.5', () => {

@@ -27,6 +27,7 @@ IF OBJECT_ID('DriverConfirmedAvailability', 'U') IS NULL
     equipment varchar(50) NULL,
     home_city varchar(100) NULL,
     home_state varchar(50) NULL,
+    wgs bit NULL,
     updated_by int NULL,
     updated_at datetime NULL DEFAULT GETDATE()
   );
@@ -38,5 +39,7 @@ BEGIN
   IF COL_LENGTH('DriverConfirmedAvailability','equipment')  IS NULL ALTER TABLE DriverConfirmedAvailability ADD equipment varchar(50) NULL;
   IF COL_LENGTH('DriverConfirmedAvailability','home_city')  IS NULL ALTER TABLE DriverConfirmedAvailability ADD home_city varchar(100) NULL;
   IF COL_LENGTH('DriverConfirmedAvailability','home_state') IS NULL ALTER TABLE DriverConfirmedAvailability ADD home_state varchar(50) NULL;
+  -- WGS is tri-state: 1 = Yes, 0 = No, NULL = Maybe (the unset default).
+  IF COL_LENGTH('DriverConfirmedAvailability','wgs')        IS NULL ALTER TABLE DriverConfirmedAvailability ADD wgs bit NULL;
 END
 `

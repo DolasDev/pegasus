@@ -32,6 +32,8 @@ const PatchConfirmedBody = z.object({
   equipment: z.string().nullable().optional(),
   homeCity: z.string().nullable().optional(),
   homeState: z.string().nullable().optional(),
+  // Tri-state: true = Yes, false = No, null = Maybe (the unset default).
+  wgs: z.boolean().nullable().optional(),
 })
 
 // IF EXISTS upsert. ENSURE_CONFIRMED_TABLE_SQL must run in a SEPARATE
@@ -52,16 +54,17 @@ IF EXISTS (SELECT 1 FROM DriverConfirmedAvailability WHERE driver_id = @driver_i
       equipment = @equipment,
       home_city = @home_city,
       home_state = @home_state,
+      wgs = @wgs,
       updated_by = @updated_by,
       updated_at = GETDATE()
   WHERE driver_id = @driver_id;
 ELSE
   INSERT INTO DriverConfirmedAvailability
     (driver_id, confirmed_date, confirmed_location, notes,
-     canada, california, rating, equipment, home_city, home_state,
+     canada, california, rating, equipment, home_city, home_state, wgs,
      updated_by, updated_at)
   VALUES (@driver_id, @confirmed_date, @confirmed_location, @notes,
-     @canada, @california, @rating, @equipment, @home_city, @home_state,
+     @canada, @california, @rating, @equipment, @home_city, @home_state, @wgs,
      @updated_by, GETDATE());
 `
 
@@ -103,6 +106,7 @@ export const longhaulDriverPlanningPatchHandler: Handler<AppEnv> = async (c) => 
         { name: 'equipment', value: parsed.data.equipment ?? null },
         { name: 'home_city', value: parsed.data.homeCity ?? null },
         { name: 'home_state', value: parsed.data.homeState ?? null },
+        { name: 'wgs', value: parsed.data.wgs ?? null },
         { name: 'updated_by', value: resolved.code },
       ],
     })
