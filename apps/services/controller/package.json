@@ -20,7 +20,7 @@
   "devDependencies": {
     "cross-env": "^5.2.1",
     "electron": "^4.0.1",
-    "electron-builder": "^20.44.4"
+    "electron-builder": "^26.15.3"
   },
   "dependencies": {
     "electron-log": "^2.2.17"
