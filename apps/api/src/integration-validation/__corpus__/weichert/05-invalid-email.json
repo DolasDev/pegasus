@@ -1,0 +1,20 @@
+{
+  "name": "invalid supplier contact email",
+  "input": {
+    "order": {
+      "Id": "SHIP-1",
+      "InvolvedParties": {
+        "ShipperEmployer": { "Identity": { "Description": "O-60232" } },
+        "Coordinator": {
+          "Identity": { "Description": "Suzanne Polo" },
+          "EmailAddress": "not-an-email"
+        }
+      },
+      "Survey": { "SerivceStatus": "Accepted", "Storage1stDay": 100 },
+      "DocumentationDates": ["2024-05-25"],
+      "KeyMoveDates": { "Survey": { "Planned": "2024-05-25" } },
+      "Financials": { "EstimatedWeight": 5000 }
+    }
+  },
+  "expected": { "valid": false, "ruleIds": ["invalid-supplier-email"] }
+}

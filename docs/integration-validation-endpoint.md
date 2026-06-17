@@ -217,12 +217,28 @@ Using client As New Net.Http.HttpClient()
 End Using
 ```
 
+## Registered integrations
+
+Two integrations are registered (use the id in the URL):
+
+- **`longhaul`** — the on-prem dispatch system (see the rule table above).
+- **`weichert`** — the Weichert Supplier Move Network (Salesforce-backed). Current
+  rules: serviceStatus must be supplier-settable (not Requested/Awarded/Cancelled/
+  Declined); submitting an estimate (serviceStatus `Submitted`) requires supplier
+  contact, contact-made date, survey date, and a non-zero estimated total cost;
+  supplier email must be well-formed. **Deferred** until the mapping carries the
+  fields: pack/load/delivery actual-date gating for In Progress / Delivered /
+  Completed, "In Progress requires Awarded by WMN", Move On-Hold/Closed/Cancelled
+  lock, shipmentStatus picklist, and storage-close requirements (see
+  `rules/weichert.rules.ts`). The Weichert mapping is authored in the output-shaped
+  format — see [`integration-mapping-format.md`](./integration-mapping-format.md).
+
 ## Notes & limits (POC)
 
-- **One integration:** only `longhaul` is registered. Other ids → `404`.
-- **Global, not per-tenant:** a single shared rule definition; tenant-specific
-  rules are out of scope for the POC.
+- **Global, not per-tenant:** a single shared rule definition per integration;
+  tenant-specific rules are out of scope for the POC.
 - **No persistence / side effects:** the call is pure validation.
-- Source of truth for the rules: `apps/api/src/integration-validation/` (rules in
-  `rules/longhaul.rules.ts`, contract in `canonical-order.ts`). Updating a rule is
-  a data change in that folder, not a handler change.
+- Source of truth: `apps/api/src/integration-validation/` — rules in
+  `rules/<integration>.rules.ts`, canonical contract in `canonical-<integration>.ts`,
+  mapping in `transform/<integration>.transform.ts`. Updating a rule or mapping is a
+  data change in that folder, not a handler change.

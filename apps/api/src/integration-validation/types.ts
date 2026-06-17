@@ -3,7 +3,6 @@
 // ---------------------------------------------------------------------------
 
 import type { z } from 'zod'
-import type { CanonicalOrder } from './canonical-order'
 import type { TransformSpec } from './transform/engine'
 import type { MappingTemplate } from './transform/mapping-format'
 import type { RuleSet, FactCatalog, Facts } from './rules/types'
@@ -45,22 +44,31 @@ export interface ValidationInput {
 
 export type OrderAction = 'save' | 'cancel' | 'status-change'
 
-/** Canonical-shaped context handed to fact derivation. */
-export interface CanonicalContext {
-  order: CanonicalOrder
-  prior: CanonicalOrder | null
+/**
+ * Canonical-shaped context handed to fact derivation. Generic over the canonical
+ * order type, which differs per integration (longhaul ≠ weichert). Each
+ * integration's `deriveFacts` narrows `order`/`prior` to its own canonical type.
+ */
+export interface CanonicalContext<T = unknown> {
+  order: T
+  prior: T | null
   action: OrderAction
 }
 
 /**
  * A complete, declarative description of one integration. The validator is
- * generic over this — nothing about "longhaul" is hardcoded in the engine.
- * Keyed by `id` in the registry so adding integration #2 is data, not code.
+ * generic over this — nothing about a specific integration is hardcoded in the
+ * engine. Keyed by `id` in the registry so adding integration #2 is data, not code.
+ *
+ * The canonical type varies per integration, so the canonical-typed members use
+ * `any`: the structural contract validates the real shape at runtime, and each
+ * integration's `deriveFacts` narrows to its own canonical type internally.
  */
 export interface IntegrationDefinition {
   id: string
   /** Structural contract: the canonical Zod schema the transform output must satisfy. */
-  structuralContract: z.ZodType<CanonicalOrder>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  structuralContract: z.ZodType<any>
   /** Declarative legacy → canonical mapping, in the output-shaped format (authoring source). */
   mapping: MappingTemplate
   /** The mapping compiled to the engine's per-field spec (derived from `mapping`). */
@@ -68,7 +76,8 @@ export interface IntegrationDefinition {
   /** Top-level input field roots the mapping may read (mapping static-check guard). */
   inputFieldRoots?: string[]
   /** Pure derivation of neutral facts from the canonical context. */
-  deriveFacts: (ctx: CanonicalContext) => Facts
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  deriveFacts: (ctx: CanonicalContext<any>) => Facts
   /** The facts this integration's rules may reference (for static checking). */
   factCatalog: FactCatalog
   /** Declarative behavioral rules evaluated against the derived facts. */

@@ -36,12 +36,24 @@ const COERCIONS: Record<CoerceName, (v: unknown) => unknown> = {
   toNumberOrNull: (v) => (v == null ? null : Number(v)),
 }
 
+// Dotted access with two extensions used by real integration mappings:
+//   - "."        — identity: resolves to the whole input object (e.g. mapping a
+//                  single root object into a one-element array via `$each`).
+//   - "a.b[0].c" — array index access on a path segment (e.g. `DocumentationDates[0]`).
 function getPath(obj: unknown, path: string): unknown {
+  if (path === '.' || path === '') return obj
   if (obj == null) return undefined
   let cur: unknown = obj
-  for (const key of path.split('.')) {
-    if (cur == null || typeof cur !== 'object') return undefined
-    cur = (cur as Record<string, unknown>)[key]
+  for (const segment of path.split('.')) {
+    const key = segment.replace(/\[\d+\]/g, '')
+    if (key) {
+      if (cur == null || typeof cur !== 'object') return undefined
+      cur = (cur as Record<string, unknown>)[key]
+    }
+    for (const m of segment.matchAll(/\[(\d+)\]/g)) {
+      if (!Array.isArray(cur)) return undefined
+      cur = cur[Number(m[1])]
+    }
   }
   return cur
 }
@@ -71,7 +83,14 @@ function applyOne(input: unknown, m: FieldMapping): unknown {
   let resolved = found ? value : m.default
 
   if (m.each) {
-    const arr = Array.isArray(resolved) ? resolved : []
+    // An array source maps element-wise; a single object source is treated as a
+    // one-element collection (the root-object-as-one-shipment pattern, used with
+    // `$from: "."`); anything else yields an empty list.
+    const arr = Array.isArray(resolved)
+      ? resolved
+      : resolved != null && typeof resolved === 'object'
+        ? [resolved]
+        : []
     return arr.map((el) => applyMapping(m.each!, el))
   }
 

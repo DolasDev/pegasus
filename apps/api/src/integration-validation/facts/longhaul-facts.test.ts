@@ -13,7 +13,7 @@ const order = (o: Partial<CanonicalOrder>): CanonicalOrder => ({
   ...o,
 })
 
-const ctx = (c: Partial<CanonicalContext>): CanonicalContext => ({
+const ctx = (c: Partial<CanonicalContext<CanonicalOrder>>): CanonicalContext<CanonicalOrder> => ({
   order: order({}),
   prior: null,
   action: 'save',

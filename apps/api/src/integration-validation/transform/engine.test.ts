@@ -43,6 +43,27 @@ describe('transform engine', () => {
     expect(applyMapping(spec, { rows: 5 })).toEqual({ items: [] })
   })
 
+  it('resolves "." to the whole input (identity)', () => {
+    const spec: TransformSpec = [{ to: 'self', from: ['.'] }]
+    expect(applyMapping(spec, { a: 1 })).toEqual({ self: { a: 1 } })
+  })
+
+  it('resolves array-index access in a path segment', () => {
+    const spec: TransformSpec = [
+      { to: 'first', from: ['dates[0]'] },
+      { to: 'deep', from: ['a.b[1].c'] },
+    ]
+    expect(applyMapping(spec, { dates: ['x', 'y'], a: { b: [{ c: 1 }, { c: 2 }] } })).toEqual({
+      first: 'x',
+      deep: 2,
+    })
+  })
+
+  it('wraps a single object source as a one-element list under $each', () => {
+    const spec: TransformSpec = [{ to: 'items', from: ['.'], each: [{ to: 'n', from: ['id'] }] }]
+    expect(applyMapping(spec, { id: 7 })).toEqual({ items: [{ n: 7 }] })
+  })
+
   it('throws on an unknown coercion (caught upstream as fail-open)', () => {
     const spec = [{ to: 'x', from: ['a'], coerce: 'bogus' }] as unknown as TransformSpec
     expect(() => applyMapping(spec, { a: 1 })).toThrow(/Unknown coercion/)
