@@ -71,6 +71,32 @@ export class FrontendStack extends cdk.Stack {
     // call so we create it once and reuse it across all cache behaviours.
     const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(this.siteBucket)
 
+    const securityHeaders = new cloudfront.ResponseHeadersPolicy(this, 'SecurityHeaders', {
+      securityHeadersBehavior: {
+        strictTransportSecurity: {
+          accessControlMaxAge: cdk.Duration.days(365),
+          includeSubdomains: true,
+          override: true,
+        },
+        contentTypeOptions: { override: true }, // X-Content-Type-Options: nosniff
+        frameOptions: { frameOption: cloudfront.HeadersFrameOption.DENY, override: true },
+        referrerPolicy: {
+          referrerPolicy: cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
+          override: true,
+        },
+      },
+      customHeadersBehavior: {
+        customHeaders: [
+          {
+            header: 'Content-Security-Policy-Report-Only',
+            value:
+              "default-src 'self'; connect-src 'self' https://*.pegasus.dolas.dev https://*.amazoncognito.com https://cognito-idp.us-east-1.amazonaws.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'",
+            override: true,
+          },
+        ],
+      },
+    })
+
     this.distribution = new cloudfront.Distribution(this, 'SiteDistribution', {
       ...(customDomain && {
         domainNames: [customDomain.domainName],
@@ -83,6 +109,7 @@ export class FrontendStack extends cdk.Stack {
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
         allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
         compress: true,
+        responseHeadersPolicy: securityHeaders,
       },
       // /config.json is served without caching so updates take effect immediately.
       additionalBehaviors: {
@@ -92,6 +119,7 @@ export class FrontendStack extends cdk.Stack {
           cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
           originRequestPolicy: cloudfront.OriginRequestPolicy.CORS_S3_ORIGIN,
           allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+          responseHeadersPolicy: securityHeaders,
         },
       },
       // Serve index.html for the root path

@@ -76,6 +76,25 @@ export class ApiCdnStack extends cdk.Stack {
       originSslProtocols: [cloudfront.OriginSslPolicy.TLS_V1_2],
     })
 
+    // Security headers — HSTS, nosniff, frame-deny, referrer-policy only.
+    // No CORS headers here: API Gateway emits Access-Control-Allow-Origin and
+    // composing them at CloudFront would conflict with the origin's values.
+    const securityHeaders = new cloudfront.ResponseHeadersPolicy(this, 'SecurityHeaders', {
+      securityHeadersBehavior: {
+        strictTransportSecurity: {
+          accessControlMaxAge: cdk.Duration.days(365),
+          includeSubdomains: true,
+          override: true,
+        },
+        contentTypeOptions: { override: true }, // X-Content-Type-Options: nosniff
+        frameOptions: { frameOption: cloudfront.HeadersFrameOption.DENY, override: true },
+        referrerPolicy: {
+          referrerPolicy: cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
+          override: true,
+        },
+      },
+    })
+
     this.distribution = new cloudfront.Distribution(this, 'ApiDistribution', {
       ...(customDomain && {
         domainNames: [customDomain.domainName],
@@ -88,6 +107,7 @@ export class ApiCdnStack extends cdk.Stack {
         cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
         originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
         compress: true,
+        responseHeadersPolicy: securityHeaders,
       },
       httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
       minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
