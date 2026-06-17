@@ -78,3 +78,7 @@ The marker is a deliberate "yes, the old code is already gone" sign-off — only
 
 - **All frontend HTTP calls go through `@pegasus/api-http`** (`createApiClient`). Never use raw `fetch()` for API calls in any frontend app. This ensures correlation-id injection, token attachment, and envelope unwrapping are consistent.
 - **PKCE and Cognito REST primitives** belong in `@pegasus/auth` (when extracted). App-specific flows (sign-in orchestration, token storage, redirect handling) stay in each app.
+
+## Test Coverage Policy
+
+Coverage is collected on **`packages/domain`** and **`apps/api`** only — these are the packages where untested logic directly causes data corruption or incorrect business outcomes. Coverage is deliberately **not** collected on `packages/infra` (CDK stack tests use assertion checks against synthesised CloudFormation, where line-coverage percentages are meaningless), `apps/admin-web`, or `apps/tenant-web` (the SPAs' coverage was never consumed and the infrastructure to gate on it was never wired into CI). Do not add `@vitest/coverage-v8` back to those three packages, and do not add a `coverage:` block to their `vitest.config.ts` files, without first establishing a pipeline that enforces and gates on the numbers. Threshold ratcheting (`thresholds` + `autoUpdate: true`) on `packages/domain` and `apps/api` is the intended next step but is not yet configured.
