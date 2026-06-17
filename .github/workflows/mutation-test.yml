@@ -1,0 +1,55 @@
+name: Mutation Test (domain)
+
+on:
+  schedule:
+    - cron: '0 6 1 * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    name: Stryker Mutation Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup
+
+      - name: Run Stryker mutation tests
+        working-directory: packages/domain
+        run: npm run mutation-test 2>&1 | tee mutation-output.txt
+
+      - name: Write job summary
+        if: always()
+        working-directory: packages/domain
+        run: |
+          {
+            echo "## Mutation Test Results"
+            echo ""
+            # Extract the mutation score line (e.g. "Mutation score: 75.00 %")
+            score_line=$(grep -iE 'mutation score|All mutants' mutation-output.txt | head -5 || echo "(score line not found)")
+            echo "### Score"
+            echo '```'
+            echo "$score_line"
+            echo '```'
+            echo ""
+            # Extract surviving mutants block
+            echo "### Surviving Mutants"
+            echo '```'
+            grep -A 5 'Survived' mutation-output.txt || echo "(no surviving mutants listed, or all killed)"
+            echo '```'
+            echo ""
+            echo "To act on survivors: open Claude Code in \`packages/domain\`, paste the survivor list, ask for tests that kill each mutant, then re-run \`npm run mutation-test\` to verify."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutation-report
+          path: packages/domain/reports/mutation/html/
+          retention-days: 30
