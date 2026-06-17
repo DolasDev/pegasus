@@ -1,4 +1,4 @@
-import { describe, it } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import * as cdk from 'aws-cdk-lib'
 import { Template, Match } from 'aws-cdk-lib/assertions'
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront'
@@ -47,6 +47,93 @@ describe('ApiCdnStack — origin request policy', () => {
         }),
       }),
     })
+  })
+})
+
+describe('ApiCdnStack — ResponseHeadersPolicy', () => {
+  it('synthesizes exactly one ResponseHeadersPolicy', () => {
+    const template = synth(false)
+    template.resourceCountIs('AWS::CloudFront::ResponseHeadersPolicy', 1)
+  })
+
+  it('sets HSTS with a 1-year max-age and includeSubDomains', () => {
+    const template = synth(false)
+    template.hasResourceProperties(
+      'AWS::CloudFront::ResponseHeadersPolicy',
+      Match.objectLike({
+        ResponseHeadersPolicyConfig: Match.objectLike({
+          SecurityHeadersConfig: Match.objectLike({
+            StrictTransportSecurity: Match.objectLike({
+              AccessControlMaxAgeSec: 31536000,
+              IncludeSubdomains: true,
+              Override: true,
+            }),
+          }),
+        }),
+      }),
+    )
+  })
+
+  it('sets X-Content-Type-Options: nosniff', () => {
+    const template = synth(false)
+    template.hasResourceProperties(
+      'AWS::CloudFront::ResponseHeadersPolicy',
+      Match.objectLike({
+        ResponseHeadersPolicyConfig: Match.objectLike({
+          SecurityHeadersConfig: Match.objectLike({
+            ContentTypeOptions: Match.objectLike({
+              Override: true,
+            }),
+          }),
+        }),
+      }),
+    )
+  })
+
+  it('sets X-Frame-Options: DENY', () => {
+    const template = synth(false)
+    template.hasResourceProperties(
+      'AWS::CloudFront::ResponseHeadersPolicy',
+      Match.objectLike({
+        ResponseHeadersPolicyConfig: Match.objectLike({
+          SecurityHeadersConfig: Match.objectLike({
+            FrameOptions: Match.objectLike({
+              FrameOption: 'DENY',
+              Override: true,
+            }),
+          }),
+        }),
+      }),
+    )
+  })
+
+  it('sets Referrer-Policy: strict-origin-when-cross-origin', () => {
+    const template = synth(false)
+    template.hasResourceProperties(
+      'AWS::CloudFront::ResponseHeadersPolicy',
+      Match.objectLike({
+        ResponseHeadersPolicyConfig: Match.objectLike({
+          SecurityHeadersConfig: Match.objectLike({
+            ReferrerPolicy: Match.objectLike({
+              ReferrerPolicy: 'strict-origin-when-cross-origin',
+              Override: true,
+            }),
+          }),
+        }),
+      }),
+    )
+  })
+
+  it('does not add CORS headers (API Gateway handles CORS)', () => {
+    const template = synth(false)
+    // CorsConfig should not be present — CORS headers come from API Gateway origin
+    const resources = template.findResources('AWS::CloudFront::ResponseHeadersPolicy')
+    const policies = Object.values(resources)
+    expect(policies.length).toBeGreaterThan(0)
+    for (const policy of policies) {
+      const config = policy.Properties?.ResponseHeadersPolicyConfig ?? {}
+      expect(config.CorsConfig).toBeUndefined()
+    }
   })
 })
 

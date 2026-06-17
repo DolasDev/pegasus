@@ -70,6 +70,22 @@ export class AdminFrontendStack extends cdk.Stack {
     // call so we create it once and reuse it across all cache behaviours.
     const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(this.adminBucket)
 
+    const securityHeaders = new cloudfront.ResponseHeadersPolicy(this, 'SecurityHeaders', {
+      securityHeadersBehavior: {
+        strictTransportSecurity: {
+          accessControlMaxAge: cdk.Duration.days(365),
+          includeSubdomains: true,
+          override: true,
+        },
+        contentTypeOptions: { override: true }, // X-Content-Type-Options: nosniff
+        frameOptions: { frameOption: cloudfront.HeadersFrameOption.DENY, override: true },
+        referrerPolicy: {
+          referrerPolicy: cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
+          override: true,
+        },
+      },
+    })
+
     this.distribution = new cloudfront.Distribution(this, 'AdminDistribution', {
       ...(customDomain && {
         domainNames: [customDomain.domainName],
@@ -81,6 +97,7 @@ export class AdminFrontendStack extends cdk.Stack {
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
         allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
         compress: true,
+        responseHeadersPolicy: securityHeaders,
       },
       // /config.json is served without caching so updates take effect immediately.
       additionalBehaviors: {
@@ -90,6 +107,7 @@ export class AdminFrontendStack extends cdk.Stack {
           cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
           originRequestPolicy: cloudfront.OriginRequestPolicy.CORS_S3_ORIGIN,
           allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+          responseHeadersPolicy: securityHeaders,
         },
       },
       defaultRootObject: 'index.html',

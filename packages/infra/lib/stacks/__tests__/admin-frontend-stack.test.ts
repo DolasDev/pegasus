@@ -135,6 +135,81 @@ describe('AdminFrontendStack — CloudFront distribution', () => {
   })
 })
 
+describe('AdminFrontendStack — ResponseHeadersPolicy', () => {
+  it('synthesizes exactly one ResponseHeadersPolicy', () => {
+    const template = synthAdminStack()
+    template.resourceCountIs('AWS::CloudFront::ResponseHeadersPolicy', 1)
+  })
+
+  it('sets HSTS with a 1-year max-age and includeSubDomains', () => {
+    const template = synthAdminStack()
+    template.hasResourceProperties(
+      'AWS::CloudFront::ResponseHeadersPolicy',
+      Match.objectLike({
+        ResponseHeadersPolicyConfig: Match.objectLike({
+          SecurityHeadersConfig: Match.objectLike({
+            StrictTransportSecurity: Match.objectLike({
+              AccessControlMaxAgeSec: 31536000,
+              IncludeSubdomains: true,
+              Override: true,
+            }),
+          }),
+        }),
+      }),
+    )
+  })
+
+  it('sets X-Content-Type-Options: nosniff', () => {
+    const template = synthAdminStack()
+    template.hasResourceProperties(
+      'AWS::CloudFront::ResponseHeadersPolicy',
+      Match.objectLike({
+        ResponseHeadersPolicyConfig: Match.objectLike({
+          SecurityHeadersConfig: Match.objectLike({
+            ContentTypeOptions: Match.objectLike({
+              Override: true,
+            }),
+          }),
+        }),
+      }),
+    )
+  })
+
+  it('sets X-Frame-Options: DENY', () => {
+    const template = synthAdminStack()
+    template.hasResourceProperties(
+      'AWS::CloudFront::ResponseHeadersPolicy',
+      Match.objectLike({
+        ResponseHeadersPolicyConfig: Match.objectLike({
+          SecurityHeadersConfig: Match.objectLike({
+            FrameOptions: Match.objectLike({
+              FrameOption: 'DENY',
+              Override: true,
+            }),
+          }),
+        }),
+      }),
+    )
+  })
+
+  it('sets Referrer-Policy: strict-origin-when-cross-origin', () => {
+    const template = synthAdminStack()
+    template.hasResourceProperties(
+      'AWS::CloudFront::ResponseHeadersPolicy',
+      Match.objectLike({
+        ResponseHeadersPolicyConfig: Match.objectLike({
+          SecurityHeadersConfig: Match.objectLike({
+            ReferrerPolicy: Match.objectLike({
+              ReferrerPolicy: 'strict-origin-when-cross-origin',
+              Override: true,
+            }),
+          }),
+        }),
+      }),
+    )
+  })
+})
+
 describe('AdminFrontendStack — Origin Access Control', () => {
   it('creates an Origin Access Control resource', () => {
     const template = synthAdminStack()
