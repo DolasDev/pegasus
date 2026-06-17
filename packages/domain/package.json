@@ -6,7 +6,7 @@
   "types": "./src/index.ts",
   "scripts": {
     "build": "tsc",
-    "test": "vitest run",
+    "test": "vitest run --coverage",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "mutation-test": "stryker run"
