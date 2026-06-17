@@ -51,6 +51,20 @@ describe('ApiCdnStack — origin request policy', () => {
 })
 
 describe('ApiCdnStack — ResponseHeadersPolicy', () => {
+  it('wires the ResponseHeadersPolicy to the Distribution defaultBehavior', () => {
+    const template = synth(false)
+    // Guard: if responseHeadersPolicy is removed from defaultBehavior, the policy
+    // still synthesizes and all policy-resource tests pass — this assertion catches
+    // the wiring gap by asserting the Distribution references a policy ID.
+    template.hasResourceProperties('AWS::CloudFront::Distribution', {
+      DistributionConfig: Match.objectLike({
+        DefaultCacheBehavior: Match.objectLike({
+          ResponseHeadersPolicyId: Match.anyValue(),
+        }),
+      }),
+    })
+  })
+
   it('synthesizes exactly one ResponseHeadersPolicy', () => {
     const template = synth(false)
     template.resourceCountIs('AWS::CloudFront::ResponseHeadersPolicy', 1)
