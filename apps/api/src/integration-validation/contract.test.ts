@@ -8,7 +8,10 @@
 import { describe, it, expect } from 'vitest'
 import { CanonicalOrderSchema, canonicalOrderJsonSchema } from './canonical-order'
 import { applyMapping } from './transform/engine'
-import { longhaulTransform } from './transform/longhaul.transform'
+import { compileMapping } from './transform/mapping-format'
+import { longhaulMapping } from './transform/longhaul.transform'
+
+const longhaulTransform = compileMapping(longhaulMapping)
 
 // A recorded, real-shaped longhaul trip DTO (the shape tenant-web / WinForms send).
 const recordedLonghaulOrder = {

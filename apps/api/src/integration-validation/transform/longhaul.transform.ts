@@ -1,45 +1,60 @@
 // ---------------------------------------------------------------------------
-// Longhaul: legacy trip DTO → CanonicalOrder mapping (DATA).
+// Longhaul: legacy trip DTO → CanonicalOrder mapping, authored in the
+// OUTPUT-SHAPED mapping format (see mapping-format.ts). This is the worked
+// reference for the format — a new integration (e.g. weichert) is authored the
+// same way. The document is COMPILED to the engine's TransformSpec by the
+// registry; the validator itself is unchanged.
 //
-// Source shape is the same trip DTO the cloud save path consumes
-// (handlers/longhaul-cloud/trip-save.ts → computeTripSavePlan), which itself
-// mirrors the legacy saveTripLogic input — so this transform is exactly the
-// inbound translation the WinForms caller (and tenant-web) would feed in.
-//
-// Fallback chains mirror the guards' own `?? ` reads, e.g. status comes from
-// `TripStatus_id` or the nested `status.status_id`; driver from `driver.id` or
-// the flat `driver_id`.
+// Source shape is the same trip DTO the cloud save path consumes. Fallback chains
+// mirror the guards' own `??` reads (status from `TripStatus_id` or the nested
+// `status.status_id`; driver from `driver.id` or the flat `driver_id`).
 // ---------------------------------------------------------------------------
 
-import type { TransformSpec } from './engine'
+import type { MappingTemplate } from './mapping-format'
 
-export const longhaulTransform: TransformSpec = [
-  { to: 'id', from: ['id'], default: null, coerce: 'toNumberOrNull' },
-  { to: 'status.id', from: ['TripStatus_id', 'status.status_id'], default: 1, coerce: 'toNumber' },
-  { to: 'status.name', from: ['status.status'], default: null },
-  { to: 'driver.id', from: ['driver.id', 'driver_id'], default: null, coerce: 'toNumberOrNull' },
-  // Dispatcher code is an identifier that the legacy DTO carries as either a
-  // string or a number; coerce to a stable string so the canonical type is fixed.
-  {
-    to: 'dispatcher.code',
-    from: ['dispatcher.code', 'dispatcher_id'],
-    default: null,
-    coerce: 'toString',
+export const longhaulMapping: MappingTemplate = {
+  id: { $from: 'id', coerce: 'toNumberOrNull', default: null },
+  status: {
+    id: { $from: ['TripStatus_id', 'status.status_id'], coerce: 'toNumber', default: 1 },
+    name: { $from: 'status.status', default: null },
   },
-  {
-    to: 'shipments',
-    from: ['shipments'],
+  driver: {
+    id: { $from: ['driver.id', 'driver_id'], coerce: 'toNumberOrNull', default: null },
+  },
+  dispatcher: {
+    // Dispatcher code is an identifier the legacy DTO carries as string or number;
+    // coerce to a stable string so the canonical type is fixed.
+    code: { $from: ['dispatcher.code', 'dispatcher_id'], coerce: 'toString', default: null },
+  },
+  shipments: {
+    $from: 'shipments',
     default: [],
-    each: [{ to: 'orderNum', from: ['order_num'], default: null, coerce: 'toNumberOrNull' }],
+    $each: { orderNum: { $from: 'order_num', coerce: 'toNumberOrNull', default: null } },
   },
-  {
-    to: 'activities',
-    from: ['activities'],
+  activities: {
+    $from: 'activities',
     default: [],
-    each: [
-      { to: 'orderNum', from: ['order_num'], default: null, coerce: 'toNumberOrNull' },
-      { to: 'typeCode', from: ['ActivityType_code', 'activityType.code'], default: null },
-      { to: 'actualDate', from: ['actual_date'], default: null },
-    ],
+    $each: {
+      orderNum: { $from: 'order_num', coerce: 'toNumberOrNull', default: null },
+      typeCode: { $from: ['ActivityType_code', 'activityType.code'], default: null },
+      actualDate: { $from: 'actual_date', default: null },
+    },
   },
+}
+
+/**
+ * Top-level keys the legacy longhaul DTO is allowed to provide. Used by the
+ * mapping static checker to flag a `$from` that reads a field the input never
+ * sends (a typo guard). The legacy trip DTO is otherwise loose/passthrough.
+ */
+export const longhaulInputFieldRoots = [
+  'id',
+  'TripStatus_id',
+  'status',
+  'driver',
+  'driver_id',
+  'dispatcher',
+  'dispatcher_id',
+  'shipments',
+  'activities',
 ]

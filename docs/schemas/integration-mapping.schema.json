@@ -1,0 +1,52 @@
+{
+  "$id": "https://pegasus.dolas.dev/schemas/integration-mapping/v1.json",
+  "title": "Pegasus Integration Mapping (output-shaped) v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "propertyNames": {
+    "type": "string",
+    "pattern": "^[^$]"
+  },
+  "additionalProperties": {
+    "anyOf": [
+      {
+        "type": "string",
+        "minLength": 1
+      },
+      {
+        "type": "object",
+        "properties": {
+          "$from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            ]
+          },
+          "default": {},
+          "coerce": {
+            "type": "string",
+            "enum": ["toNumber", "toNumberOrNull", "toString", "identity"]
+          },
+          "$each": {
+            "$ref": "#"
+          }
+        },
+        "required": ["$from"],
+        "additionalProperties": false
+      },
+      {
+        "$ref": "#"
+      }
+    ]
+  }
+}

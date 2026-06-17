@@ -5,6 +5,7 @@
 import type { z } from 'zod'
 import type { CanonicalOrder } from './canonical-order'
 import type { TransformSpec } from './transform/engine'
+import type { MappingTemplate } from './transform/mapping-format'
 import type { RuleSet, FactCatalog, Facts } from './rules/types'
 
 /** A single validation finding, mapped back onto a canonical order field. */
@@ -60,8 +61,12 @@ export interface IntegrationDefinition {
   id: string
   /** Structural contract: the canonical Zod schema the transform output must satisfy. */
   structuralContract: z.ZodType<CanonicalOrder>
-  /** Declarative legacy → canonical mapping. */
+  /** Declarative legacy → canonical mapping, in the output-shaped format (authoring source). */
+  mapping: MappingTemplate
+  /** The mapping compiled to the engine's per-field spec (derived from `mapping`). */
   transform: TransformSpec
+  /** Top-level input field roots the mapping may read (mapping static-check guard). */
+  inputFieldRoots?: string[]
   /** Pure derivation of neutral facts from the canonical context. */
   deriveFacts: (ctx: CanonicalContext) => Facts
   /** The facts this integration's rules may reference (for static checking). */

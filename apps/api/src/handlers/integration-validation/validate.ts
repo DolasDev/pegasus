@@ -27,6 +27,7 @@ import { apiClientAuthMiddleware } from '../../middleware/api-client-auth'
 import type { ApiClientVariables } from '../../types'
 import { validateOrder, UnknownIntegrationError } from '../../integration-validation/validate'
 import type { ValidationInput } from '../../integration-validation/types'
+import { mappingFormatJsonSchema } from '../../integration-validation/transform/mapping-format'
 
 // correlationId is injected by the root correlationMiddleware on every request;
 // declare it alongside the API-key vars this route relies on.
@@ -39,6 +40,14 @@ const ValidateBody = z.object({
 })
 
 export const integrationValidationHandler = new Hono<IntegrationValidationEnv>()
+
+// Published mapping-format JSON Schema — the documented standard a mapping
+// document is authored against. PUBLIC (no auth): it is non-sensitive and
+// authoring tools fetch it. Served with a 1-day cache hint.
+integrationValidationHandler.get('/integrations/mapping-schema', (c) => {
+  c.header('Cache-Control', 'public, max-age=86400')
+  return c.json(mappingFormatJsonSchema() as object)
+})
 
 integrationValidationHandler.post(
   '/integrations/:integrationId/validate',
