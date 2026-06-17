@@ -18,7 +18,6 @@ import { getIntegrationDefinition } from './registry'
 import { applyMapping } from './transform/engine'
 import { evaluateRules } from './rules/engine'
 import { logger } from '../lib/logger'
-import type { CanonicalOrder } from './canonical-order'
 import type {
   CanonicalContext,
   IntegrationDefinition,
@@ -39,7 +38,7 @@ const OK: ValidationResult = { valid: true, issues: [], degraded: false }
 function transformToCanonical(
   def: IntegrationDefinition,
   native: unknown,
-): { ok: true; order: CanonicalOrder } | { ok: false; issues: ValidationIssue[] } {
+): { ok: true; order: unknown } | { ok: false; issues: ValidationIssue[] } {
   const mapped = applyMapping(def.transform, native)
   const parsed = def.structuralContract.safeParse(mapped)
   if (parsed.success) return { ok: true, order: parsed.data }
@@ -69,7 +68,7 @@ export function validateOrder(integrationId: string, input: ValidationInput): Va
       return { valid: false, issues: orderResult.issues, degraded: false }
     }
 
-    let prior: CanonicalOrder | null = null
+    let prior: unknown = null
     if (input.prior !== undefined && input.prior !== null) {
       const priorResult = transformToCanonical(def, input.prior)
       // A malformed PRIOR is not the caller's fault to fix here; skip transition

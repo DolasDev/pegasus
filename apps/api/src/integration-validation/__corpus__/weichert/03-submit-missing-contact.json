@@ -1,0 +1,20 @@
+{
+  "name": "submit estimate — missing supplier contact (dates + cost present, so only contact fires)",
+  "input": {
+    "order": {
+      "Id": "SHIP-1",
+      "InvolvedParties": {
+        "ShipperEmployer": { "Identity": { "Description": "O-60232" } },
+        "Coordinator": {
+          "Identity": { "Description": "" },
+          "EmailAddress": "noreply@weichertwm.com"
+        }
+      },
+      "Survey": { "SerivceStatus": "Submitted", "Storage1stDay": 250 },
+      "DocumentationDates": ["2024-05-25"],
+      "KeyMoveDates": { "Survey": { "Planned": "2024-05-25" } },
+      "Financials": { "EstimatedWeight": 5000 }
+    }
+  },
+  "expected": { "valid": false, "ruleIds": ["submit-requires-supplier-contact"] }
+}

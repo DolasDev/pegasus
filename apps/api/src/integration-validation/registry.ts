@@ -9,10 +9,14 @@
 // ---------------------------------------------------------------------------
 
 import { CanonicalOrderSchema } from './canonical-order'
+import { WeichertOrderSchema } from './canonical-weichert'
 import { compileMapping } from './transform/mapping-format'
 import { longhaulMapping, longhaulInputFieldRoots } from './transform/longhaul.transform'
+import { weichertMapping, weichertInputFieldRoots } from './transform/weichert.transform'
 import { deriveLonghaulFacts, longhaulFactCatalog } from './facts/longhaul-facts'
+import { deriveWeichertFacts, weichertFactCatalog } from './facts/weichert-facts'
 import { longhaulRules } from './rules/longhaul.rules'
+import { weichertRules } from './rules/weichert.rules'
 import type { IntegrationDefinition } from './types'
 
 const longhaulDefinition: IntegrationDefinition = {
@@ -27,8 +31,21 @@ const longhaulDefinition: IntegrationDefinition = {
   defaultAction: 'save',
 }
 
+const weichertDefinition: IntegrationDefinition = {
+  id: 'weichert',
+  structuralContract: WeichertOrderSchema,
+  mapping: weichertMapping,
+  transform: compileMapping(weichertMapping),
+  inputFieldRoots: weichertInputFieldRoots,
+  deriveFacts: deriveWeichertFacts,
+  factCatalog: weichertFactCatalog,
+  rules: weichertRules,
+  defaultAction: 'save',
+}
+
 const REGISTRY: Record<string, IntegrationDefinition> = {
   longhaul: longhaulDefinition,
+  weichert: weichertDefinition,
 }
 
 export function getIntegrationDefinition(id: string): IntegrationDefinition | undefined {

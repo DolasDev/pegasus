@@ -179,7 +179,9 @@ export function collectSourcePaths(template: MappingTemplate): string[] {
 export function collectTopLevelSourceRoots(template: MappingTemplate): string[] {
   const roots = new Set<string>()
   const add = (path: string): void => {
-    roots.add(path.split('.')[0]!)
+    // First segment, minus any `[idx]` suffix. "." (root identity) has no root field.
+    const root = path.split('.')[0]!.replace(/\[\d+\]/g, '')
+    if (root) roots.add(root)
   }
   const visit = (obj: MappingObject): void => {
     for (const node of Object.values(obj)) {

@@ -9,7 +9,7 @@
 // ---------------------------------------------------------------------------
 
 import type { CanonicalContext } from '../types'
-import type { CanonicalActivity } from '../canonical-order'
+import type { CanonicalActivity, CanonicalOrder } from '../canonical-order'
 import type { Facts, FactCatalog } from '../rules/types'
 
 /** Identity of an activity "slot" for diffing prior vs proposed (orderNum + type). */
@@ -28,7 +28,7 @@ export const longhaulFactCatalog: FactCatalog = {
   action: 'string',
 }
 
-export function deriveLonghaulFacts(ctx: CanonicalContext): Facts {
+export function deriveLonghaulFacts(ctx: CanonicalContext<CanonicalOrder>): Facts {
   const { order, prior, action } = ctx
 
   const proposedSlots = new Set(order.activities.map(slotKey))
