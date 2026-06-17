@@ -13,6 +13,19 @@ const config = getDefaultConfig(projectRoot);
 // Watch all files in the monorepo (merge with Expo defaults)
 config.watchFolders = [...(config.watchFolders || []), monorepoRoot];
 
+// Watching the whole monorepo root pulls in volatile paths that other tools
+// create/delete underneath the watcher — most notably concurrent agent
+// worktrees under .claude/worktrees and CDK's transient cdk.out/bundling-temp-*
+// dirs. When one of those vanishes mid-walk, metro-file-map throws an uncaught
+// ENOENT and kills the dev server. Exclude them from the watch.
+config.resolver.blockList = [
+  ...(Array.isArray(config.resolver.blockList)
+    ? config.resolver.blockList
+    : [config.resolver.blockList].filter(Boolean)),
+  /[/\\]\.claude[/\\]worktrees[/\\].*/,
+  /[/\\]cdk\.out[/\\].*/,
+];
+
 // Resolve modules from both the app and the monorepo root node_modules
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
