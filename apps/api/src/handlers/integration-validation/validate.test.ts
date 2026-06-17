@@ -45,6 +45,14 @@ describe('POST /integrations/:integrationId/validate', () => {
     delete process.env['VPN_AGENT_APIKEY_HASH']
   })
 
+  it('serves the published mapping schema with NO auth (GET mapping-schema)', async () => {
+    const res = await buildApp().request('/api/v1/integrations/mapping-schema')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body['$schema']).toContain('2020-12')
+    expect(body['$id']).toContain('integration-mapping')
+  })
+
   it('returns 401 when no API key is supplied', async () => {
     const res = await post(PATH, { order: { TripStatus_id: 1, shipments: [{ order_num: 1 }] } })
     expect(res.status).toBe(401)

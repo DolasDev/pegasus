@@ -9,7 +9,8 @@
 // ---------------------------------------------------------------------------
 
 import { CanonicalOrderSchema } from './canonical-order'
-import { longhaulTransform } from './transform/longhaul.transform'
+import { compileMapping } from './transform/mapping-format'
+import { longhaulMapping, longhaulInputFieldRoots } from './transform/longhaul.transform'
 import { deriveLonghaulFacts, longhaulFactCatalog } from './facts/longhaul-facts'
 import { longhaulRules } from './rules/longhaul.rules'
 import type { IntegrationDefinition } from './types'
@@ -17,7 +18,9 @@ import type { IntegrationDefinition } from './types'
 const longhaulDefinition: IntegrationDefinition = {
   id: 'longhaul',
   structuralContract: CanonicalOrderSchema,
-  transform: longhaulTransform,
+  mapping: longhaulMapping,
+  transform: compileMapping(longhaulMapping),
+  inputFieldRoots: longhaulInputFieldRoots,
   deriveFacts: deriveLonghaulFacts,
   factCatalog: longhaulFactCatalog,
   rules: longhaulRules,
