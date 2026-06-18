@@ -114,12 +114,24 @@ jobs:
             esac
           else
             # push event — diff since last deploy; infra changes force --all.
-            if changed packages/infra apps/temporal-worker .github/workflows/deploy.yml .github/workflows/_deploy.yml package-lock.json; then
+            # Path lists are read from .github/deploy-manifest.json so there is
+            # one source of truth for component→paths→stacks (Phase 3.2).
+            MANIFEST=.github/deploy-manifest.json
+            # Use // [] to null-safe iterate — an absent/null key returns empty
+            # rather than a jq error; empty paths would silently diff the whole
+            # tree via changed() so this also makes the failure mode explicit.
+            mapfile -t FORCE_ALL < <(jq -r '.forceAllPaths // [] | .[]' "$MANIFEST")
+            mapfile -t API_PATHS < <(jq -r '.components.api.paths // [] | .[]' "$MANIFEST")
+            mapfile -t TENANT_PATHS < <(jq -r '.components["tenant-web"].paths // [] | .[]' "$MANIFEST")
+            mapfile -t ADMIN_PATHS < <(jq -r '.components["admin-web"].paths // [] | .[]' "$MANIFEST")
+            [[ ${#FORCE_ALL[@]} -gt 0 && ${#API_PATHS[@]} -gt 0 && ${#TENANT_PATHS[@]} -gt 0 && ${#ADMIN_PATHS[@]} -gt 0 ]] \
+              || { echo "::error::deploy-manifest.json missing required path entries — check forceAllPaths and all component paths"; exit 1; }
+            if changed "${FORCE_ALL[@]}"; then
               api=true; tenant=true; admin=true
             else
-              changed apps/api apps/tunnel-proxy apps/mssql-executor packages/domain && api=true || api=false
-              changed apps/tenant-web && tenant=true || tenant=false
-              changed apps/admin-web && admin=true || admin=false
+              changed "${API_PATHS[@]}" && api=true || api=false
+              changed "${TENANT_PATHS[@]}" && tenant=true || tenant=false
+              changed "${ADMIN_PATHS[@]}" && admin=true || admin=false
             fi
             migrations=$(changed apps/api/prisma/migrations && echo true || echo false)
           fi

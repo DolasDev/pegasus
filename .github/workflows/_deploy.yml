@@ -237,44 +237,32 @@ jobs:
           if [[ "$API" == "true" && "$TENANT" == "true" && "$ADMIN" == "true" ]]; then
             target="--all"
           else
+            # Stack lists are driven by .github/deploy-manifest.json (Phase 3.3)
+            # so component→stack mapping has one source of truth.
+            MANIFEST=.github/deploy-manifest.json
             stacks=()
-            if [[ "$API" == "true" ]]; then
-              stacks+=( \
-                "${STACK_PREFIX}-CognitoStack" \
-                "${STACK_PREFIX}-DocumentsStack" \
-                "${STACK_PREFIX}-WireGuardStack" \
-                "${STACK_PREFIX}-ApiStack" \
-                "${STACK_PREFIX}-ApiCdnStack" \
-                "${STACK_PREFIX}-MonitoringStack" \
-                "${STACK_PREFIX}-TemporalWorkerStack" \
-              )
-            fi
+            add_stacks() {
+              while read -r s; do
+                stacks+=("${STACK_PREFIX}-${s}")
+              done < <(jq -r ".components[\"$1\"].stacks // [] | .[]" "$MANIFEST")
+            }
+            [[ "$API"    == "true" ]] && add_stacks api
             # TemporalWorkerStack: Phase 2 Unit 4 added the Fargate worker
             # plane in the WireGuard VPC. It's logically an api-side concern
             # — the API Lambda starts workflows that the worker executes —
             # so it deploys with the api bucket. Synth is a no-op for dev
             # (the stack only instantiates for staging/prod), so the dev
             # path is unaffected.
-            if [[ "$TENANT" == "true" ]]; then
-              stacks+=( \
-                "${STACK_PREFIX}-FrontendStack" \
-                "${STACK_PREFIX}-FrontendAssetsStack" \
-              )
-            fi
-            if [[ "$ADMIN" == "true" ]]; then
-              stacks+=( \
-                "${STACK_PREFIX}-AdminFrontendStack" \
-                "${STACK_PREFIX}-AdminFrontendAssetsStack" \
-              )
-            fi
+            [[ "$TENANT" == "true" ]] && add_stacks tenant-web
+            [[ "$ADMIN"  == "true" ]] && add_stacks admin-web
             # The staging-only E2E role stack is read by the post-deploy
             # gate via the cdk-outputs artifact. `cdk deploy <subset>` only
             # writes outputs for the named stacks, so include it on every
             # partial staging deploy or the gate fails with an empty
             # E2E_ROLE_ARN.
-            if [[ "$ENV_NAME" == "staging" ]]; then
-              stacks+=( "${STACK_PREFIX}-E2EStagingRoleStack" )
-            fi
+            while read -r s; do
+              stacks+=("${STACK_PREFIX}-${s}")
+            done < <(jq -r ".envExtraStacks[\"$ENV_NAME\"] // [] | .[]" "$MANIFEST")
             target="${stacks[*]}"
           fi
           echo "target=${target}" >> "$GITHUB_OUTPUT"

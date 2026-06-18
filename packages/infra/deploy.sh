@@ -91,12 +91,27 @@ if [[ "$API_ONLY" == "false" ]]; then
   run npm run build --workspace=@pegasus/admin-web --prefix "$REPO_ROOT"
 fi
 
-# ── 2. Resolve TARGET (mirror deploy.yml's mapping) ───────────────────────────
+# ── 2. Resolve TARGET (driven by .github/deploy-manifest.json) ───────────────
+# Single source of truth for component→stack mapping (Phase 3.4). This fixes
+# the previously documented drift where --api-only was missing ApiCdnStack.
+# envConditionalStacks entries whose allowed-env list excludes this env are
+# filtered out (e.g. TemporalWorkerStack is staging/prod only, never dev).
+MANIFEST="$REPO_ROOT/.github/deploy-manifest.json"
 if [[ "$API_ONLY" == "true" ]]; then
-  TARGET="${STACK_PREFIX}-FrontendStack ${STACK_PREFIX}-AdminFrontendStack ${STACK_PREFIX}-CognitoStack ${STACK_PREFIX}-DocumentsStack ${STACK_PREFIX}-WireGuardStack ${STACK_PREFIX}-ApiStack ${STACK_PREFIX}-MonitoringStack"
+  TARGET=$(jq -r --arg prefix "${STACK_PREFIX}" --arg env "$ENV_NAME" '
+    . as $doc |
+    .components.api.stacks[] |
+    . as $s |
+    if ($doc.envConditionalStacks[$s] // null) == null or
+       (($doc.envConditionalStacks[$s]) | index($env) != null)
+    then "\($prefix)-\($s)"
+    else empty end
+  ' "$MANIFEST" | tr '\n' ' ')
   echo "▶  [2/2] Deploying API stacks..."
 elif [[ "$ADMIN_ONLY" == "true" ]]; then
-  TARGET="${STACK_PREFIX}-AdminFrontendStack ${STACK_PREFIX}-CognitoStack ${STACK_PREFIX}-ApiStack ${STACK_PREFIX}-AdminFrontendAssetsStack"
+  TARGET=$(jq -r --arg prefix "${STACK_PREFIX}" \
+    '(.components["admin-web"].stacks + ["CognitoStack","ApiStack"])[] | "\($prefix)-\(.)"' \
+    "$MANIFEST" | tr '\n' ' ')
   echo "▶  [2/2] Deploying admin stacks..."
 else
   TARGET="--all"
