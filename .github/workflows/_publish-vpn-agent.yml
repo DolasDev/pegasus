@@ -50,13 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
-
-      - name: Install dependencies (full workspace)
-        run: npm ci
+      - uses: ./.github/actions/setup
 
       - name: Typecheck + test agent
         run: |
