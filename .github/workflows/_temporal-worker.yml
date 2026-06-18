@@ -1,0 +1,155 @@
+name: _Temporal worker — per-env build/push/redeploy
+
+# Reusable per-env build+push+ECS-redeploy workflow for the Temporal worker image.
+# Called by temporal-worker.yml (once per env, staging → prod).
+#
+# Two deliberate improvements vs the previous copy-pasted staging/prod jobs:
+#   1. Shared buildx cache scope (no per-env suffix) — prod reuses staging's
+#      layers, so the staging→prod cache hit rate is high and the two images
+#      for the same SHA are effectively identical (makes the "build once"
+#      intent real without the artifact-upload overhead).
+#   2. ECS rollout-wait logic written once here, not duplicated per env.
+
+on:
+  workflow_call:
+    inputs:
+      env-name:
+        description: 'Target environment (staging | prod)'
+        type: string
+        required: true
+      rollback-to-sha:
+        description: 'Retag this already-pushed :<sha> as :latest instead of rebuilding. Empty = normal build+push.'
+        type: string
+        default: ''
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Push image to ${{ inputs.env-name }} ECR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ inputs.env-name }}
+    env:
+      AWS_REGION: us-east-1
+      ECR_REPO_NAME: pegasus-temporal-worker
+      ECS_CLUSTER: pegasus-temporal-worker-${{ inputs.env-name }}
+      ECS_SERVICE: pegasus-temporal-worker-${{ inputs.env-name }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: temporal-worker-${{ inputs.env-name }}-${{ github.run_id }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        if: inputs.rollback-to-sha == ''
+        uses: docker/setup-buildx-action@v4
+
+      # Build context = repo root, NOT apps/temporal-worker/. The Dockerfile
+      # reaches into packages/workflows-sdk-python/ + packages/workflows-stdlib/
+      # via sibling COPY lines (see apps/temporal-worker/Dockerfile header).
+      #
+      # Shared cache scope (no per-env suffix): prod always reads from staging's
+      # warm cache, so the two images for the same SHA are effectively identical.
+      - name: Build + push image
+        if: inputs.rollback-to-sha == ''
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/temporal-worker/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:latest
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}:${{ github.sha }}
+          cache-from: type=gha,scope=temporal-worker
+          cache-to: type=gha,scope=temporal-worker,mode=max
+
+      # Image rollback (no rebuild): the ECS circuit breaker can't restore a
+      # previous IMAGE for image-only rolls (`:latest` is mutable — "previous
+      # task def" re-pulls the same broken image). So retag a known-good
+      # already-pushed `:<sha>` as `:latest` server-side, then the unconditional
+      # force-redeploy below pulls it. See docs/runbooks/rollback.md scenario 4.
+      - name: Retag image for rollback
+        if: inputs.rollback-to-sha != ''
+        run: |
+          set -euo pipefail
+          manifest=$(aws ecr batch-get-image --repository-name "$ECR_REPO_NAME" \
+            --image-ids imageTag="${{ inputs.rollback-to-sha }}" \
+            --query 'images[0].imageManifest' --output text)
+          if [[ -z "$manifest" || "$manifest" == "None" ]]; then
+            echo "::error::No image tagged '${{ inputs.rollback-to-sha }}' in $ECR_REPO_NAME — cannot roll back."
+            exit 1
+          fi
+          aws ecr put-image --repository-name "$ECR_REPO_NAME" \
+            --image-tag latest --image-manifest "$manifest"
+          echo "Retagged $ECR_REPO_NAME:${{ inputs.rollback-to-sha }} as :latest (${{ inputs.env-name }})."
+
+      - name: Force Fargate redeploy
+        # `:latest` is mutable, so ECS won't pull the new image on its own.
+        # --force-new-deployment makes the service start fresh tasks against
+        # the latest tag; the circuit breaker on the service auto-rolls-back
+        # if the new image fails health checks.
+        # || true on describe-services: if the service has not been deployed
+        # yet (e.g. first ever run on a fresh account), update-service will
+        # 400, which we want to surface — the describe is informational only.
+        run: |
+          set -euo pipefail
+          aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].{Status:status,Desired:desiredCount,Running:runningCount,TaskDef:taskDefinition}' \
+            --output table || true
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --force-new-deployment \
+            --output json > /tmp/update-service.json
+          echo "Forced redeploy of $ECS_SERVICE in $ECS_CLUSTER."
+
+      - name: Wait for ECS rollout
+        # services-stable waiter = 40×15s ≈ 10 min cap, inside the job
+        # timeout. "Stable" alone isn't enough: the circuit breaker can roll
+        # back to the old task set and the service still stabilises — assert
+        # the PRIMARY deployment actually COMPLETED.
+        run: |
+          set -euo pipefail
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+          # rolloutState flips to COMPLETED asynchronously after the service
+          # stabilises — a one-shot read raced it (read IN_PROGRESS on a
+          # healthy rollout). Poll up to 2 min before judging.
+          STATE=UNKNOWN
+          for i in $(seq 1 8); do
+            STATE=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
+              --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' --output text)
+            echo "[$i/8] Rollout state: $STATE"
+            [[ "$STATE" == "COMPLETED" ]] && break
+            [[ "$STATE" == "FAILED" ]] && { echo "::error::Rollout FAILED — circuit breaker rolled back"; exit 1; }
+            sleep 15
+          done
+          [[ "$STATE" == "COMPLETED" ]] || { echo "::error::Rollout state=$STATE after stability + 2 min — circuit breaker likely rolled back"; exit 1; }
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### Temporal worker image pushed to ${{ inputs.env-name }}"
+            echo "- Image: \`${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPO_NAME }}\`"
+            if [[ -n "${{ inputs.rollback-to-sha }}" ]]; then
+              echo "- Tags: \`latest\` ← retagged from \`${{ inputs.rollback-to-sha }}\` (rollback)"
+            else
+              echo "- Tags: \`latest\`, \`${{ github.sha }}\`"
+            fi
+            echo "- ECS service: \`${ECS_SERVICE}\` (force-new-deployment triggered)"
+          } >> "$GITHUB_STEP_SUMMARY"
