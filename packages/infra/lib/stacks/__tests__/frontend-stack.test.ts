@@ -220,6 +220,11 @@ describe('FrontendStack — ResponseHeadersPolicy', () => {
               Match.objectLike({
                 Header: 'Content-Security-Policy-Report-Only',
                 Override: true,
+                // connect-src must cover BOTH prod and QA API hosts (different
+                // parent domains) so the policy stays correct if ever enforced.
+                Value: Match.stringLikeRegexp(
+                  'connect-src[^;]*https://\\*\\.pegasus-qa\\.dolas\\.dev',
+                ),
               }),
             ]),
           }),
