@@ -90,7 +90,7 @@ export class FrontendStack extends cdk.Stack {
           {
             header: 'Content-Security-Policy-Report-Only',
             value:
-              "default-src 'self'; connect-src 'self' https://*.pegasus.dolas.dev https://*.amazoncognito.com https://cognito-idp.us-east-1.amazonaws.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'",
+              "default-src 'self'; connect-src 'self' https://*.pegasus.dolas.dev https://*.pegasus-qa.dolas.dev https://*.amazoncognito.com https://cognito-idp.us-east-1.amazonaws.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'",
             override: true,
           },
         ],
