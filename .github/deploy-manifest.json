@@ -1,0 +1,37 @@
+{
+  "components": {
+    "api": {
+      "paths": ["apps/api", "apps/tunnel-proxy", "apps/mssql-executor", "packages/domain"],
+      "stacks": [
+        "CognitoStack",
+        "DocumentsStack",
+        "WireGuardStack",
+        "ApiStack",
+        "ApiCdnStack",
+        "MonitoringStack",
+        "TemporalWorkerStack"
+      ]
+    },
+    "tenant-web": {
+      "paths": ["apps/tenant-web"],
+      "stacks": ["FrontendStack", "FrontendAssetsStack"]
+    },
+    "admin-web": {
+      "paths": ["apps/admin-web"],
+      "stacks": ["AdminFrontendStack", "AdminFrontendAssetsStack"]
+    }
+  },
+  "forceAllPaths": [
+    "packages/infra",
+    "apps/temporal-worker",
+    ".github/workflows/deploy.yml",
+    ".github/workflows/_deploy.yml",
+    ".github/deploy-manifest.json",
+    "package-lock.json"
+  ],
+  "envExtraStacks": { "staging": ["E2EStagingRoleStack"] },
+  "envConditionalStacks": {
+    "TemporalWorkerStack": ["staging", "prod"],
+    "E2EStagingRoleStack": ["staging"]
+  }
+}
