@@ -1,0 +1,23 @@
+{
+  "name": "Delivered with Pack+Load but no Delivery Date 1 Actual is rejected",
+  "input": {
+    "order": {
+      "Id": "SHIP-1",
+      "InvolvedParties": {
+        "ShipperEmployer": { "Identity": { "Description": "O-60232" } },
+        "Coordinator": {
+          "Identity": { "Description": "Suzanne Polo" },
+          "EmailAddress": "noreply@weichertwm.com"
+        }
+      },
+      "Survey": { "SerivceStatus": "Delivered" },
+      "DocumentationDates": ["2024-05-25"],
+      "KeyMoveDates": {
+        "Pack": { "Actual": "2024-06-01" },
+        "Load": { "Actual": "2024-06-02" }
+      },
+      "Financials": { "EstimatedWeight": 5000 }
+    }
+  },
+  "expected": { "valid": false, "ruleIds": ["delivered-requires-pack-load-delivery-actuals"] }
+}
