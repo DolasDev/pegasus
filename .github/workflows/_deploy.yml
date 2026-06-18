@@ -67,9 +67,11 @@ jobs:
         with:
           ref: ${{ inputs.git-ref }}
 
-      - uses: ./.github/actions/setup-node-workspace
-        with:
-          prisma-generate: 'true'
+      - uses: ./.github/actions/setup
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: node ../../node_modules/.bin/prisma generate
 
       - name: Show pending migrations
         working-directory: apps/api
@@ -106,9 +108,11 @@ jobs:
         with:
           ref: ${{ inputs.git-ref }}
 
-      - uses: ./.github/actions/setup-node-workspace
-        with:
-          prisma-generate: 'true'
+      - uses: ./.github/actions/setup
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: node ../../node_modules/.bin/prisma generate
 
       # ---------------------------------------------------------------------
       # Build workspace assets via Turbo so transitive `^build` dependencies

@@ -50,7 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: ./.github/actions/setup-node-workspace
+      - uses: ./.github/actions/setup
 
       - name: Typecheck + test agent
         run: |
