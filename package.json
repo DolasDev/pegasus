@@ -87,7 +87,7 @@
       "@xmldom/xmldom": "^0.8.10"
     },
     "defu": ">=6.1.5",
-    "undici": ">=7.24.0 <8.0.0",
+    "undici": ">=7.28.0 <8.0.0",
     "path-to-regexp": ">=8.4.0",
     "picomatch": ">=4.0.4",
     "rollup": ">=4.58.1",
