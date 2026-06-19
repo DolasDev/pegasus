@@ -31,6 +31,7 @@ export type ResourceType =
   | 'Event'
   | 'Workflow'
   | 'Notification'
+  | 'IntegrationConfig'
 
 export interface ActionDef {
   /** Cedar action identifier (without namespace prefix). */
@@ -175,6 +176,17 @@ export const Actions = {
     id: 'SendNotification',
     resourceType: 'Notification',
     permission: 'notification:send',
+  },
+  // ── Integration validator config (mapping + rules; SDK/CLI publish) ──────
+  ReadIntegrationConfig: {
+    id: 'ReadIntegrationConfig',
+    resourceType: 'IntegrationConfig',
+    permission: 'integration_config:read',
+  },
+  PublishIntegrationConfig: {
+    id: 'PublishIntegrationConfig',
+    resourceType: 'IntegrationConfig',
+    permission: 'integration_config:publish',
   },
 } as const satisfies Record<string, ActionDef>
 
