@@ -277,7 +277,14 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
 
 ### Phase 3 — Single-source deploy manifest (≈2-3h)
 
-- [ ] **3.1 Create `.github/deploy-manifest.json`** (30 min) — the one place mapping components → watched paths → stack suffixes:
+> **DONE — shipped & deployed 2026-06-19 via #308.** All five items (3.1–3.5) landed:
+> `.github/deploy-manifest.json` is the single source; the `changes` job, `_deploy.yml`
+> "Resolve CDK stack target", and `deploy.sh` all read it via `jq`; `deploy.sh --api-only`
+> now includes `ApiCdnStack` (drift fixed); `packages/infra/lib/stacks/__tests__/deploy-manifest.test.ts`
+> guards drift via `cdk ls`. Live-verified: the post-merge staging→prod Deploy resolved the
+> correct stack set from the manifest. Test path is `lib/stacks/__tests__/` (not `lib/__tests__/`).
+
+- [x] **3.1 Create `.github/deploy-manifest.json`** (30 min) — the one place mapping components → watched paths → stack suffixes:
   ```json
   {
     "components": {
@@ -318,13 +325,13 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
   }
   ```
   (Paths as directory prefixes, consumed by `git diff -- <path>`; no glob expansion needed.)
-- [ ] **3.2 Consume the manifest in `deploy.yml` `changes` job** (30 min). Replace the inline path lists from 2.1 with jq reads:
+- [x] **3.2 Consume the manifest in `deploy.yml` `changes` job** (30 min). Replace the inline path lists from 2.1 with jq reads:
   ```bash
   mapfile -t API_PATHS < <(jq -r '.components.api.paths[]' .github/deploy-manifest.json)
   mapfile -t FORCE_ALL < <(jq -r '.forceAllPaths[]' .github/deploy-manifest.json)
   changed "${FORCE_ALL[@]}" && { api=true; tenant=true; admin=true; } || { changed "${API_PATHS[@]}" && api=true || api=false; ... }
   ```
-- [ ] **3.3 Consume the manifest in `_deploy.yml` "Resolve CDK stack target"** (30 min). Replace the bash-case stack arrays (lines 181-223):
+- [x] **3.3 Consume the manifest in `_deploy.yml` "Resolve CDK stack target"** (30 min). Replace the bash-case stack arrays (lines 181-223):
   ```bash
   add_stacks() { while read -r s; do stacks+=("${STACK_PREFIX}-${s}"); done < <(jq -r ".components[\"$1\"].stacks[]" .github/deploy-manifest.json); }
   stacks=()
@@ -334,7 +341,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
   while read -r s; do stacks+=("${STACK_PREFIX}-${s}"); done < <(jq -r ".envExtraStacks[\"$ENV_NAME\"] // [] | .[]" .github/deploy-manifest.json)
   ```
   (Keep the existing `--all` short-circuit when all three are true.)
-- [ ] **3.4 Consume the manifest in `deploy.sh`** (20 min) — replaces the hardcoded `TARGET` lists at lines 66-75 and **fixes the existing ApiCdnStack drift**:
+- [x] **3.4 Consume the manifest in `deploy.sh`** (20 min) — replaces the hardcoded `TARGET` lists at lines 66-75 and **fixes the existing ApiCdnStack drift**:
   ```bash
   MANIFEST="$REPO_ROOT/.github/deploy-manifest.json"
   if [[ "$API_ONLY" == "true" ]]; then
@@ -344,7 +351,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
   ...
   ```
   (Dev-only exclusions like TemporalWorkerStack come from `envConditionalStacks` — filter suffixes whose allowed-env list exists and excludes `dev`.)
-- [ ] **3.5 Drift-guard test in `packages/infra`** (45 min). New `packages/infra/lib/__tests__/deploy-manifest.test.ts` — the location matters: `vitest.config.ts` only includes `lib/**/__tests__/**/*.test.ts`. Runs in the existing CI test job, so drift is caught at PR time, not deploy time:
+- [x] **3.5 Drift-guard test in `packages/infra`** (45 min). New `packages/infra/lib/__tests__/deploy-manifest.test.ts` — the location matters: `vitest.config.ts` only includes `lib/**/__tests__/**/*.test.ts`. Runs in the existing CI test job, so drift is caught at PR time, not deploy time:
   ```ts
   import { execSync } from 'node:child_process'
   import manifest from '../../../../.github/deploy-manifest.json'
@@ -373,7 +380,19 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
 
 ### Phase 4 — Pipeline speed & deduplication (≈3h)
 
-- [ ] **4.1 Skip the `migrate` job when no migration files changed** (45 min). In `deploy.yml` `changes` job add a `migrations` detection (`changed apps/api/prisma/migrations` against the same diff base — burst-safe thanks to 2.1); thread it through:
+> **DONE — 2026-06-19.** 4.1 was already live (shipped earlier with the 2.1 change-detection
+> rework: the `changes` job emits a `migrations` output and threads `skip-migrate` to `_deploy.yml`,
+> whose `migrate` job gates on it). 4.2 shipped via #306 + a follow-up #310 — extracted the reusable
+> `_temporal-worker.yml` (shared buildx cache `scope=temporal-worker`, single rollout-wait); #310 added
+> the `permissions: { id-token, contents }` block on the caller jobs that #306 omitted (the reusable
+> requests `id-token: write` and the run `startup_failure`d without it — verified fixed: both
+> staging+prod image jobs now succeed). 4.3 shipped via #307 but **deviated from the plan**: instead of
+> a new `setup-node-workspace` action, it reuses the **existing** `./.github/actions/setup` composite
+> (already used by ci.yml/mutation-test, and it carries a node_modules cache) with explicit
+> `prisma generate` steps in the two `_deploy.yml` jobs — one composite tree-wide, which is the actual
+> F10 dedup goal. **Phase 4 complete. Remaining in this plan: 2.2–2.4 (ntfy notifications) — user-deferred.**
+
+- [x] **4.1 Skip the `migrate` job when no migration files changed** (45 min). In `deploy.yml` `changes` job add a `migrations` detection (`changed apps/api/prisma/migrations` against the same diff base — burst-safe thanks to 2.1); thread it through:
 
   ```yaml
   # deploy.yml → _deploy.yml call sites
@@ -396,11 +415,11 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
 
   Saves ~2-3 min serial latency per env on the ~90% of API deploys that ship no migrations.
 
-- [ ] **4.2 Refactor `temporal-worker.yml` into a reusable `_temporal-worker.yml`** (1.5h), mirroring the `_deploy.yml` / `_publish-vpn-agent.yml` precedent. Reusable workflow takes `env-name`; the caller keeps the staging→prod chain (`prod` job `needs: staging` + `environment: prod` gate). Two deliberate fixes while refactoring:
+- [x] **4.2 Refactor `temporal-worker.yml` into a reusable `_temporal-worker.yml`** (1.5h), mirroring the `_deploy.yml` / `_publish-vpn-agent.yml` precedent. Reusable workflow takes `env-name`; the caller keeps the staging→prod chain (`prod` job `needs: staging` + `environment: prod` gate). Two deliberate fixes while refactoring:
   - **Shared buildx cache scope** — `cache-from/to: type=gha,scope=temporal-worker` (drop the per-env suffix) so the prod build reuses staging's layers: faster, and staging/prod images for a SHA become effectively identical (makes the "build once" header comment true in practice; full build-once-via-`docker save` artifact is possible later but not worth the artifact upload cost now).
   - Fold in the 1.3 `ecs wait services-stable` rollout check (write it once instead of twice).
 
-- [ ] **4.3 Composite setup action + single-sourced node version** (45 min). New `.github/actions/setup-node-workspace/action.yml`:
+- [x] **4.3 Composite setup action + single-sourced node version** (45 min). New `.github/actions/setup-node-workspace/action.yml`:
   ```yaml
   name: Setup node workspace
   inputs:
