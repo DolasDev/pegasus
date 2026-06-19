@@ -342,10 +342,38 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Advance last-deploy tag
+        env:
+          # Optional fine-grained PAT with `contents:write` + `workflows:write`.
+          # When set, tag pushes onto workflow-touching commits succeed; when
+          # absent, GITHUB_TOKEN is used and such pushes warn-and-skip (below).
+          GH_PAT: ${{ secrets.DEPLOY_MARKER_TOKEN }}
+          REPO: ${{ github.repository }}
+        # NOTE: -e is intentionally omitted. A tag push can be *rejected* by
+        # GitHub when the target commit modifies .github/workflows/** and the
+        # pusher is GITHUB_TOKEN (a GitHub App, which has no `workflows`
+        # permission). That rejection must NOT fail the deploy — the marker
+        # simply catches up on the next non-workflow deploy. Set
+        # DEPLOY_MARKER_TOKEN (a PAT) to push reliably in all cases.
         run: |
-          set -euo pipefail
-          git tag -f last-deploy "${{ github.sha }}"
-          git push -f origin refs/tags/last-deploy
+          set -uo pipefail
+          if [[ -n "${GH_PAT:-}" ]]; then
+            git remote set-url origin "https://x-access-token:${GH_PAT}@github.com/${REPO}.git"
+          fi
+          push_tag() {
+            local tag=$1 sha=$2
+            git tag -f "$tag" "$sha"
+            for attempt in 1 2 3; do
+              if git push -f origin "refs/tags/${tag}"; then
+                echo "Moved ${tag} -> ${sha}"; return 0
+              fi
+              echo "::warning::push of ${tag} failed (attempt ${attempt}/3) — refetching and retrying"
+              git fetch --tags --force || true
+              sleep 3
+            done
+            echo "::warning::Could not move ${tag} to ${sha}. If the deployed commit touches .github/workflows/**, GITHUB_TOKEN cannot push a tag onto it (set DEPLOY_MARKER_TOKEN, a PAT with the workflows scope). The marker self-heals on the next non-workflow deploy; this never blocks the deploy."
+            return 0
+          }
+          push_tag last-deploy "${{ github.sha }}"
 
   # ---------------------------------------------------------------------------
   # Record the last-known-good prod release as movable tags so rollback.yml can
@@ -370,13 +398,35 @@ jobs:
         with:
           fetch-depth: 0
       - name: Move prod-current / prod-previous tags
+        env:
+          # Optional PAT (contents:write + workflows:write); see record-deploy.
+          GH_PAT: ${{ secrets.DEPLOY_MARKER_TOKEN }}
+          REPO: ${{ github.repository }}
+        # -e omitted on purpose: a force-push onto a workflow-touching commit is
+        # rejected for GITHUB_TOKEN (no `workflows` permission). That is a
+        # cosmetic rollback-pointer lag, never a reason to fail a green deploy.
         run: |
-          set -euo pipefail
-          git fetch --tags --force
+          set -uo pipefail
+          if [[ -n "${GH_PAT:-}" ]]; then
+            git remote set-url origin "https://x-access-token:${GH_PAT}@github.com/${REPO}.git"
+          fi
+          git fetch --tags --force || true
+          push_tag() {
+            local tag=$1 sha=$2
+            git tag -f "$tag" "$sha"
+            for attempt in 1 2 3; do
+              if git push -f origin "refs/tags/${tag}"; then
+                echo "Moved ${tag} -> ${sha}"; return 0
+              fi
+              echo "::warning::push of ${tag} failed (attempt ${attempt}/3) — refetching and retrying"
+              git fetch --tags --force || true
+              sleep 3
+            done
+            echo "::warning::Could not move ${tag} to ${sha}. If the deployed commit touches .github/workflows/**, GITHUB_TOKEN cannot push a tag onto it (set DEPLOY_MARKER_TOKEN, a PAT with the workflows scope). prod-current/prod-previous reconcile on the next non-workflow prod deploy; this never blocks the deploy."
+            return 0
+          }
           prev=$(git rev-parse --verify -q prod-current^{commit} || true)
           if [[ -n "$prev" && "$prev" != "${{ github.sha }}" ]]; then
-            git tag -f prod-previous "$prev"
-            git push -f origin refs/tags/prod-previous
+            push_tag prod-previous "$prev"
           fi
-          git tag -f prod-current "${{ github.sha }}"
-          git push -f origin refs/tags/prod-current
+          push_tag prod-current "${{ github.sha }}"
