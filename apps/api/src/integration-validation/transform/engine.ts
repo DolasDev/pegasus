@@ -21,6 +21,14 @@ export interface FieldMapping {
   from: string[]
   /** Value used when no `from` path resolves (and there is no value). */
   default?: unknown
+  /**
+   * Value-translation lookup: when the source value (stringified) is a key here,
+   * the mapped value replaces it (e.g. `{ "Active": "A" }`). A miss falls back to
+   * `default` if one is declared, else passes the source value through. Applied to
+   * a resolved source value only (never to `default`) and BEFORE `coerce`. A finite
+   * lookup — still pure projection, no conditionals/loops.
+   */
+  map?: Record<string, unknown>
   /** Optional coercion applied to the resolved (or default) value. */
   coerce?: CoerceName
   /** For array targets: map each source element through this sub-spec. */
@@ -92,6 +100,18 @@ function applyOne(input: unknown, m: FieldMapping): unknown {
         ? [resolved]
         : []
     return arr.map((el) => applyMapping(m.each!, el))
+  }
+
+  // Value translation: only on a resolved (found, non-null) source value; never
+  // translates the `default`. Hit → mapped value; miss → `default` if declared,
+  // else passthrough. Runs before coercion so a coerce still applies to the result.
+  if (m.map && found && value != null) {
+    const key = String(value)
+    if (Object.prototype.hasOwnProperty.call(m.map, key)) {
+      resolved = m.map[key]
+    } else if ('default' in m) {
+      resolved = m.default
+    }
   }
 
   if (m.coerce) {

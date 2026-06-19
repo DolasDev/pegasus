@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { z } from 'zod'
 import { analyzeMapping } from './mapping-static-check'
 import { CanonicalOrderSchema, canonicalOrderJsonSchema } from '../canonical-order'
+import { WeichertOrderSchema } from '../canonical-weichert'
 import { longhaulMapping, longhaulInputFieldRoots } from './longhaul.transform'
 import { listIntegrationIds, getIntegrationDefinition } from '../registry'
 
 const canonicalJsonSchema = canonicalOrderJsonSchema()
+const weichertJsonSchema = z.toJSONSchema(WeichertOrderSchema)
 
 describe('analyzeMapping', () => {
   it('reports zero problems for the shipped longhaul mapping', () => {
@@ -50,6 +52,36 @@ describe('analyzeMapping', () => {
   it('flags an ill-formed mapping document', () => {
     const problems = analyzeMapping({ a: { $from: '' } }, { canonicalJsonSchema })
     expect(problems[0]?.problem).toMatch(/invalid mapping format/)
+  })
+
+  it('accepts a $map whose outputs are all members of the target field enum', () => {
+    const problems = analyzeMapping(
+      { serviceStatus: { $from: 'Survey.SerivceStatus', $map: { active: 'Accepted' } } },
+      { canonicalJsonSchema: weichertJsonSchema },
+    )
+    expect(problems).toEqual([])
+  })
+
+  it('flags a $map output that is not a valid value for an enum target field', () => {
+    const problems = analyzeMapping(
+      { serviceStatus: { $from: 'Survey.SerivceStatus', $map: { active: 'Bogus' } } },
+      { canonicalJsonSchema: weichertJsonSchema },
+    )
+    expect(problems).toContainEqual({
+      where: 'serviceStatus',
+      problem: expect.stringMatching(/\$map output "Bogus" is not a valid "serviceStatus" value/),
+    })
+  })
+
+  it('flags $map combined with $each (value translation is scalar-only)', () => {
+    const problems = analyzeMapping(
+      { shipments: { $from: 'shipments', $map: { a: 'b' }, $each: { supplierShipmentId: 'Id' } } },
+      { canonicalJsonSchema: weichertJsonSchema },
+    )
+    expect(problems).toContainEqual({
+      where: 'shipments',
+      problem: expect.stringMatching(/scalar-only/),
+    })
   })
 })
 
