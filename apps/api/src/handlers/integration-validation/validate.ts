@@ -26,8 +26,10 @@ import { z } from 'zod'
 import { apiClientAuthMiddleware } from '../../middleware/api-client-auth'
 import type { ApiClientVariables } from '../../types'
 import { validateOrder, UnknownIntegrationError } from '../../integration-validation/validate'
+import { loadRegistryOverlayIfStale } from '../../integration-validation/registry'
 import type { ValidationInput } from '../../integration-validation/types'
 import { mappingFormatJsonSchema } from '../../integration-validation/transform/mapping-format'
+import { db as basePrisma } from '../../db'
 
 // correlationId is injected by the root correlationMiddleware on every request;
 // declare it alongside the API-key vars this route relies on.
@@ -60,6 +62,10 @@ integrationValidationHandler.post(
     if (!parsed.success) {
       return c.json({ error: parsed.error.message, code: 'VALIDATION_ERROR', correlationId }, 400)
     }
+
+    // Warm the registry overlay so any published config is reflected. Best-effort
+    // and TTL-throttled; failures fall back to the built-in baseline.
+    await loadRegistryOverlayIfStale(basePrisma)
 
     try {
       const result = validateOrder(integrationId, parsed.data as ValidationInput)

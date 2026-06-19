@@ -99,6 +99,13 @@
           "type": "Record",
           "attributes": {}
         }
+      },
+      "IntegrationConfig": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
       }
     },
     "actions": {
@@ -218,6 +225,12 @@
       },
       "SendNotification": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Notification"] }
+      },
+      "ReadIntegrationConfig": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["IntegrationConfig"] }
+      },
+      "PublishIntegrationConfig": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["IntegrationConfig"] }
       }
     }
   }

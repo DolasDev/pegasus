@@ -72,6 +72,7 @@ import {
   longhaulUpdateTripHandler,
 } from './handlers/longhaul-cloud/trip-save'
 import { integrationValidationHandler } from './handlers/integration-validation/validate'
+import { integrationConfigHandler } from './handlers/integration-validation/config'
 import { meHandler } from './handlers/me'
 import { deviceTokensHandler } from './handlers/device-tokens'
 import { notificationsHandler } from './handlers/notifications'
@@ -238,6 +239,10 @@ m2mV1.route('/internal', workflowInternalHandler)
 // applied route-level inside the handler so other /integrations/* paths still
 // fall through to the tenant routes below. See src/integration-validation/.
 m2mV1.route('/', integrationValidationHandler)
+// Integration-validator config authoring (publish/validate/versions/rollback).
+// Uses dualAuthMiddleware internally (RBAC-gated) — distinct from the stateless
+// validate route above. See src/handlers/integration-validation/config.ts.
+m2mV1.route('/', integrationConfigHandler)
 
 app.route('/api/v1', m2mV1)
 

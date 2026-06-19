@@ -154,6 +154,11 @@ const ALLOWED_BASE_CLIENT_HANDLERS: ReadonlySet<string> = new Set([
   'admin/workflows.ts',
   'auth.ts',
   'dashboard-pegii.ts',
+  // Integration-validator config: both read the base client only for the
+  // cross-tenant registry overlay (GLOBAL configs span tenants) — tenant data
+  // still flows through c.get('db'). See integration-validation/registry.ts.
+  'integration-validation/config.ts',
+  'integration-validation/validate.ts',
   'integrations/ringcentral-oauth.ts',
   'integrations/ringcentral-webhook.ts',
   'longhaul-cloud/activity-types.ts',

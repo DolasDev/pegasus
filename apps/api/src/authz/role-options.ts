@@ -129,4 +129,9 @@ export const ROLE_OPTIONS: readonly RoleOption[] = [
     description:
       'Service-account persona for the workflow runtime worker: reads operational entities and creates events.',
   },
+  {
+    name: 'integration_publisher',
+    label: 'Integration Pub',
+    description: 'Publish and read integration-validator config (mapping + rules) via the SDK/CLI.',
+  },
 ] as const
