@@ -49,6 +49,16 @@ export interface MonitoringStackProps extends cdk.StackProps {
   readonly ringcentralCaptureDlqName?: string
 
   /**
+   * Legacy shipment-event relay (OutboxRelayStack) queue / DLQ / topic names.
+   * When provided, three alarms are created: DLQ depth, oldest-message age
+   * (consumer stalled), and SNS publish failures. Optional so the stack still
+   * synths in dev / tests that don't pass them.
+   */
+  readonly outboxQueueName?: string
+  readonly outboxDlqName?: string
+  readonly outboxTopicName?: string
+
+  /**
    * Email address subscribed to all alarms (ALARM and OK transitions).
    * Omit to skip the subscription entirely (dev stays silent).
    *
@@ -390,6 +400,70 @@ export class MonitoringStack extends cdk.Stack {
         treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
       })
       wire(rcCaptureDlqAlarm)
+    }
+
+    // ── Outbox relay alarms (legacy shipment-event pipeline) ───────────────────
+    if (props.outboxDlqName) {
+      const outboxDlqAlarm = new cloudwatch.Alarm(this, 'OutboxDlqAlarm', {
+        alarmName: 'pegasus-outbox-dlq',
+        alarmDescription:
+          'Shipment-event SQS DLQ has messages — events failed past their redrive ' +
+          'limit (poison messages). Inspect the DLQ and redrive after fixing the cause.',
+        metric: new cloudwatch.Metric({
+          namespace: 'AWS/SQS',
+          metricName: 'ApproximateNumberOfMessagesVisible',
+          dimensionsMap: { QueueName: props.outboxDlqName },
+          statistic: 'Maximum',
+          period: cdk.Duration.minutes(5),
+        }),
+        threshold: 0,
+        evaluationPeriods: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      })
+      wire(outboxDlqAlarm)
+    }
+    if (props.outboxQueueName) {
+      // Oldest-message age is the consumer-stalled signal: messages arriving but
+      // not draining. 15 min ≈ a few hundred poll cycles for a healthy consumer.
+      const outboxAgeAlarm = new cloudwatch.Alarm(this, 'OutboxAgeAlarm', {
+        alarmName: 'pegasus-outbox-age',
+        alarmDescription:
+          'Shipment-event queue oldest message is aging — the consumer Lambda is ' +
+          'stalled or erroring. Check ShipmentEventConsumeFunction logs.',
+        metric: new cloudwatch.Metric({
+          namespace: 'AWS/SQS',
+          metricName: 'ApproximateAgeOfOldestMessage',
+          dimensionsMap: { QueueName: props.outboxQueueName },
+          statistic: 'Maximum',
+          period: cdk.Duration.minutes(5),
+        }),
+        threshold: cdk.Duration.minutes(15).toSeconds(),
+        evaluationPeriods: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      })
+      wire(outboxAgeAlarm)
+    }
+    if (props.outboxTopicName) {
+      const outboxSnsFailedAlarm = new cloudwatch.Alarm(this, 'OutboxSnsFailedAlarm', {
+        alarmName: 'pegasus-outbox-sns-failed',
+        alarmDescription:
+          'SNS failed to deliver shipment events to a subscriber — check the topic ' +
+          'subscription / SQS access policy / KMS grants.',
+        metric: new cloudwatch.Metric({
+          namespace: 'AWS/SNS',
+          metricName: 'NumberOfNotificationsFailed',
+          dimensionsMap: { TopicName: props.outboxTopicName },
+          statistic: 'Sum',
+          period: cdk.Duration.minutes(5),
+        }),
+        threshold: 0,
+        evaluationPeriods: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      })
+      wire(outboxSnsFailedAlarm)
     }
 
     // ── Workflow plane alarms (Phase 3 Unit 11) ───────────────────────────────
