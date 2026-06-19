@@ -12,6 +12,7 @@ import { DocumentsStack } from '../lib/stacks/documents-stack'
 import { WireGuardStack } from '../lib/stacks/wireguard-stack'
 import { E2EStagingRoleStack } from '../lib/stacks/e2e-staging-role-stack'
 import { TemporalWorkerStack } from '../lib/stacks/temporal-worker-stack'
+import { OutboxRelayStack } from '../lib/stacks/outbox-relay-stack'
 
 const app = new cdk.App()
 
@@ -149,6 +150,27 @@ export const TEMPORAL_SECRET_ARNS: Record<
       'arn:aws:secretsmanager:us-east-1:331145994639:secret:pegasus/prod/temporal-cloud-f4IFFF',
     workflowBroker:
       'arn:aws:secretsmanager:us-east-1:331145994639:secret:pegasus/prod/workflow-broker-secret-VJPAmr',
+  },
+}
+
+// Legacy shipment-event relay (OutboxRelayStack) — SNS FIFO topic + SQS FIFO
+// names per non-dev env. The on-prem Pegasus.Outbox.Relay publishes to the
+// topic; the shipment-event consumer Lambda drains the queue. FIFO names MUST
+// end in `.fifo`. Dev has no entry (no relay there). Runbook:
+// plans/in-progress/legacy-outbox-relay-setup.md
+export const OUTBOX_RELAY: Record<
+  Exclude<EnvName, 'dev'>,
+  { topicName: string; queueName: string; dlqName: string }
+> = {
+  staging: {
+    topicName: 'pegasus-staging-outbox-events.fifo',
+    queueName: 'pegasus-staging-outbox-events.fifo',
+    dlqName: 'pegasus-staging-outbox-events-dlq.fifo',
+  },
+  prod: {
+    topicName: 'pegasus-prod-outbox-events.fifo',
+    queueName: 'pegasus-prod-outbox-events.fifo',
+    dlqName: 'pegasus-prod-outbox-events-dlq.fifo',
   },
 }
 
@@ -303,6 +325,30 @@ const apiCdnStack = new ApiCdnStack(app, `${stackIdPrefix}-ApiCdnStack`, {
 })
 apiCdnStack.addDependency(apiStack)
 
+// ── OutboxRelayStack ──────────────────────────────────────────────────────────
+// Legacy shipment-event pipeline (SNS FIFO topic + SQS FIFO queue/DLQ + consumer
+// Lambda). Staging/prod only — dev has no on-prem relay. IAM Roles Anywhere for
+// the relay's publish identity is opt-in: `-c outboxRolesAnywhere=true` plus
+// `-c outboxAcmPcaArn=<acm-pca-arn>` (ship the topic/queue first, add the CA
+// later). No deploy dependency on other stacks.
+const outboxConfig = envName === 'dev' ? undefined : OUTBOX_RELAY[envName]
+if (outboxConfig) {
+  const outboxRolesAnywhereEnabled =
+    app.node.tryGetContext('outboxRolesAnywhere') === true ||
+    app.node.tryGetContext('outboxRolesAnywhere') === 'true'
+  const outboxAcmPcaArn = app.node.tryGetContext('outboxAcmPcaArn') as string | undefined
+  new OutboxRelayStack(app, `${stackIdPrefix}-OutboxRelayStack`, {
+    env,
+    stackName: `${stackNamePrefix}-outbox-relay`,
+    description: `${descPrefix} — legacy shipment-event SNS FIFO topic + SQS consumer`,
+    topicName: outboxConfig.topicName,
+    queueName: outboxConfig.queueName,
+    dlqName: outboxConfig.dlqName,
+    rolesAnywhere:
+      outboxRolesAnywhereEnabled && outboxAcmPcaArn ? { acmPcaArn: outboxAcmPcaArn } : undefined,
+  })
+}
+
 // ── MonitoringStack ───────────────────────────────────────────────────────────
 // CDK deployment order: ApiStack → MonitoringStack.
 
@@ -314,6 +360,11 @@ new MonitoringStack(app, `${stackIdPrefix}-MonitoringStack`, {
   httpApiId: apiStack.httpApiId,
   httpApiStage: apiStack.httpApiStage,
   ringcentralCaptureDlqName: apiStack.ringcentralCaptureDlqName,
+  // Outbox relay (OutboxRelayStack) queue/dlq/topic names for the three
+  // shipment-event alarms. Staging/prod only; dev leaves them undefined.
+  outboxQueueName: outboxConfig?.queueName,
+  outboxDlqName: outboxConfig?.dlqName,
+  outboxTopicName: outboxConfig?.topicName,
   // Alarm notifications go to a human on staging + prod; dev stays silent.
   // Overridable per-synth via `-c alarmEmail=...`. NOTE: the SNS email
   // subscription needs a one-time confirmation click per env after deploy.

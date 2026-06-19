@@ -9,7 +9,8 @@
         "ApiStack",
         "ApiCdnStack",
         "MonitoringStack",
-        "TemporalWorkerStack"
+        "TemporalWorkerStack",
+        "OutboxRelayStack"
       ]
     },
     "tenant-web": {
@@ -32,6 +33,7 @@
   "envExtraStacks": { "staging": ["E2EStagingRoleStack"] },
   "envConditionalStacks": {
     "TemporalWorkerStack": ["staging", "prod"],
+    "OutboxRelayStack": ["staging", "prod"],
     "E2EStagingRoleStack": ["staging"]
   }
 }

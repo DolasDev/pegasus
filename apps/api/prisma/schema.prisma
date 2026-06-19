@@ -1948,3 +1948,47 @@ model PushNotificationOutbox {
   @@map("push_notification_outbox")
   @@schema("public")
 }
+
+// ---------------------------------------------------------------------------
+// Shipment-event inbox — idempotent landing for legacy MoveManager events.
+//
+// The on-prem Pegasus.Outbox.Relay (a separate .NET service) drains the legacy
+// `dbo.Outbox` table and publishes Shipment.Opened / Shipment.Closed to an SNS
+// FIFO topic, which fans out to an SQS FIFO queue. lambda-shipment-event-consume
+// drains that queue. Delivery is at-least-once, so the consumer dedupes on the
+// relay's `messageId` (the Outbox row's MessageId GUID) — this table IS the
+// dedupe gate: a row's presence means the message was already accepted.
+//
+// Not tenant-facing (legacy events carry no Pegasus tenant id — MoveManager is
+// per-site), so it lives in the `platform` schema with no tenant relation.
+// `dispatchedAt` is the onward-dispatch hook for a later slice (e.g. fan-out to
+// a partner consumer); null = ingested-but-not-forwarded.
+// ---------------------------------------------------------------------------
+model ShipmentEventInbox {
+  /// Relay-supplied MessageId (the legacy Outbox row's GUID). The idempotency key.
+  messageId String @id @map("message_id")
+
+  aggregateType String @map("aggregate_type")
+  aggregateId   String @map("aggregate_id")
+  eventType     String @map("event_type")
+  schemaVersion Int    @map("schema_version")
+
+  /// SNS `source` message attribute (Relay `Source` config, e.g. "MoveManager").
+  source String
+
+  /// The event body as published by the relay (pointer, not authoritative state).
+  payload Json
+
+  /// When the domain change happened on-prem (the Outbox row's OccurredAtUtc).
+  occurredAtUtc DateTime @map("occurred_at_utc") @db.Timestamptz(6)
+
+  /// When this cloud consumer first accepted the message.
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz(6)
+
+  /// Onward-dispatch hook (later slice). Null = ingested, not yet forwarded.
+  dispatchedAt DateTime? @map("dispatched_at") @db.Timestamptz(6)
+
+  @@index([dispatchedAt, occurredAtUtc])
+  @@map("shipment_event_inbox")
+  @@schema("platform")
+}

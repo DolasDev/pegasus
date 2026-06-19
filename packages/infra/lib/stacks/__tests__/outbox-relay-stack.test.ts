@@ -1,0 +1,155 @@
+import { describe, it, expect } from 'vitest'
+import * as cdk from 'aws-cdk-lib'
+import { Template, Match } from 'aws-cdk-lib/assertions'
+import { OutboxRelayStack, type OutboxRelayStackProps } from '../outbox-relay-stack'
+import { MonitoringStack } from '../monitoring-stack'
+
+function synth(overrides: Partial<OutboxRelayStackProps> = {}) {
+  // Disable asset bundling so the consumer NodejsFunction isn't esbuild'd in tests.
+  const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [], env: 'staging' } })
+  const stack = new OutboxRelayStack(app, 'TestOutboxRelay', {
+    env: { account: '111111111111', region: 'us-east-1' },
+    topicName: 'pegasus-staging-outbox-events.fifo',
+    queueName: 'pegasus-staging-outbox-events.fifo',
+    dlqName: 'pegasus-staging-outbox-events-dlq.fifo',
+    ...overrides,
+  })
+  return Template.fromStack(stack)
+}
+
+describe('OutboxRelayStack — SNS FIFO topic', () => {
+  it('creates a FIFO topic encrypted with a customer-managed key', () => {
+    synth().hasResourceProperties('AWS::SNS::Topic', {
+      TopicName: 'pegasus-staging-outbox-events.fifo',
+      FifoTopic: true,
+      ContentBasedDeduplication: false,
+      KmsMasterKeyId: Match.anyValue(),
+    })
+  })
+
+  it('creates a KMS key with rotation enabled', () => {
+    synth().hasResourceProperties('AWS::KMS::Key', { EnableKeyRotation: true })
+  })
+
+  it('rejects a topic name that is not FIFO', () => {
+    expect(() => synth({ topicName: 'pegasus-staging-outbox-events' })).toThrow(/\.fifo/)
+  })
+})
+
+describe('OutboxRelayStack — SQS FIFO queue + DLQ', () => {
+  it('creates a FIFO queue and a FIFO DLQ with redrive (maxReceiveCount 5)', () => {
+    const t = synth()
+    t.resourceCountIs('AWS::SQS::Queue', 2)
+    t.hasResourceProperties('AWS::SQS::Queue', {
+      QueueName: 'pegasus-staging-outbox-events.fifo',
+      FifoQueue: true,
+      RedrivePolicy: { maxReceiveCount: 5 },
+    })
+    t.hasResourceProperties('AWS::SQS::Queue', {
+      QueueName: 'pegasus-staging-outbox-events-dlq.fifo',
+      FifoQueue: true,
+    })
+  })
+
+  it('subscribes the queue to the topic and drains it with a consumer Lambda', () => {
+    const t = synth()
+    t.resourceCountIs('AWS::SNS::Subscription', 1)
+    t.hasResourceProperties('AWS::SNS::Subscription', { Protocol: 'sqs' })
+    t.resourceCountIs('AWS::Lambda::EventSourceMapping', 1)
+    t.hasResourceProperties('AWS::Lambda::EventSourceMapping', {
+      FunctionResponseTypes: ['ReportBatchItemFailures'],
+    })
+  })
+})
+
+describe('OutboxRelayStack — relay publish identity (IAM Roles Anywhere)', () => {
+  it('creates NO Roles Anywhere resources by default (flag off)', () => {
+    const t = synth()
+    t.resourceCountIs('AWS::RolesAnywhere::TrustAnchor', 0)
+    t.resourceCountIs('AWS::RolesAnywhere::Profile', 0)
+  })
+
+  it('creates a trust anchor + profile + least-privilege role when configured', () => {
+    const t = synth({
+      rolesAnywhere: {
+        acmPcaArn: 'arn:aws:acm-pca:us-east-1:111111111111:certificate-authority/abc',
+      },
+    })
+    t.resourceCountIs('AWS::RolesAnywhere::TrustAnchor', 1)
+    t.resourceCountIs('AWS::RolesAnywhere::Profile', 1)
+    t.hasResourceProperties('AWS::RolesAnywhere::TrustAnchor', {
+      Source: { SourceType: 'AWS_ACM_PCA' },
+    })
+    // sns:Publish is scoped to the topic ARN (a Ref, never "*").
+    t.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Sid: 'PublishShipmentEvents',
+            Action: 'sns:Publish',
+            Resource: Match.objectLike({ Ref: Match.anyValue() }),
+          }),
+        ]),
+      }),
+    })
+    // KMS grant present and scoped (the encrypted topic needs it).
+    t.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Sid: 'PublishKms',
+            // Scoped to the topic's CMK (a GetAtt of the key), never "*".
+            Resource: Match.objectLike({ 'Fn::GetAtt': Match.anyValue() }),
+          }),
+        ]),
+      }),
+    })
+  })
+})
+
+// ── Outbox alarms live in MonitoringStack (fed by props from bin/app.ts) ───────
+function synthMonitoring(withOutbox: boolean) {
+  const app = new cdk.App()
+  const stack = new MonitoringStack(app, withOutbox ? 'MonOutbox' : 'MonNoOutbox', {
+    lambdaFunctionName: 'test-api-function',
+    httpApiId: 'abc123def4',
+    httpApiStage: '$default',
+    ...(withOutbox
+      ? {
+          outboxQueueName: 'pegasus-staging-outbox-events.fifo',
+          outboxDlqName: 'pegasus-staging-outbox-events-dlq.fifo',
+          outboxTopicName: 'pegasus-staging-outbox-events.fifo',
+        }
+      : {}),
+  })
+  return Template.fromStack(stack)
+}
+
+describe('MonitoringStack — outbox alarms', () => {
+  it('creates the three outbox alarms with the right metric namespaces', () => {
+    const t = synthMonitoring(true)
+    t.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-outbox-dlq',
+      Namespace: 'AWS/SQS',
+      MetricName: 'ApproximateNumberOfMessagesVisible',
+    })
+    t.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-outbox-age',
+      Namespace: 'AWS/SQS',
+      MetricName: 'ApproximateAgeOfOldestMessage',
+    })
+    t.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-outbox-sns-failed',
+      Namespace: 'AWS/SNS',
+      MetricName: 'NumberOfNotificationsFailed',
+    })
+  })
+
+  it('creates none of the outbox alarms when the props are absent (dev gate)', () => {
+    const t = synthMonitoring(false)
+    const alarms = t.findResources('AWS::CloudWatch::Alarm', {
+      Properties: { AlarmName: Match.stringLikeRegexp('pegasus-outbox-.*') },
+    })
+    expect(Object.keys(alarms)).toHaveLength(0)
+  })
+})
