@@ -1,0 +1,171 @@
+// ---------------------------------------------------------------------------
+// IntegrationConfig repository
+//
+// Manages IntegrationConfig rows — published, versioned integration-validator
+// config (mapping + rules + golden corpus). Append-only: each publish inserts a
+// new immutable (integrationId, tenantId, version) row and supersedes prior
+// PUBLISHED rows for the same scope.
+//
+// Visibility is derived server-side at publish time from the publishing tenant
+// (GLOBAL for the platform tenant, TENANT otherwise) — exactly like Workflow.
+// IntegrationConfig is intentionally NOT in TENANT_SCOPED_MODELS: the GLOBAL
+// case reads rows owned by the platform tenant, which the auto-scoping extension
+// would hide. Every query here scopes manually via explicit
+// `tenantId` / `visibility` predicates.
+// ---------------------------------------------------------------------------
+
+import type { PrismaClient, Prisma } from '@prisma/client'
+
+export type IntegrationConfigVisibility = 'GLOBAL' | 'TENANT'
+export type IntegrationConfigStatus = 'PUBLISHED' | 'SUPERSEDED'
+
+/** A read projection of an integration_configs row. */
+export type IntegrationConfigRow = {
+  id: string
+  tenantId: string
+  integrationId: string
+  version: number
+  visibility: IntegrationConfigVisibility
+  status: IntegrationConfigStatus
+  mapping: Prisma.JsonValue
+  rules: Prisma.JsonValue
+  corpus: Prisma.JsonValue
+  gateReport: Prisma.JsonValue
+  publishedBy: string
+  createdAt: Date
+}
+
+const SELECT = {
+  id: true,
+  tenantId: true,
+  integrationId: true,
+  version: true,
+  visibility: true,
+  status: true,
+  mapping: true,
+  rules: true,
+  corpus: true,
+  gateReport: true,
+  publishedBy: true,
+  createdAt: true,
+} as const
+
+export interface PublishConfigInput {
+  integrationId: string
+  /** Owning tenant. The platform tenant owns GLOBAL rows. */
+  tenantId: string
+  /** Derived server-side from the publishing tenant's isPlatformTenant flag. */
+  visibility: IntegrationConfigVisibility
+  mapping: Prisma.InputJsonValue
+  rules: Prisma.InputJsonValue
+  corpus: Prisma.InputJsonValue
+  gateReport: Prisma.InputJsonValue
+  publishedBy: string
+}
+
+export function createIntegrationConfigRepository(db: PrismaClient) {
+  return {
+    /**
+     * Publish a new immutable config version for (integrationId, tenantId).
+     * In one transaction: compute the next version, supersede any prior
+     * PUBLISHED rows for the scope, and insert the new PUBLISHED row.
+     */
+    async publish(input: PublishConfigInput): Promise<IntegrationConfigRow> {
+      return db.$transaction(async (tx) => {
+        const max = await tx.integrationConfig.aggregate({
+          where: { integrationId: input.integrationId, tenantId: input.tenantId },
+          _max: { version: true },
+        })
+        const version = (max._max.version ?? 0) + 1
+
+        await tx.integrationConfig.updateMany({
+          where: {
+            integrationId: input.integrationId,
+            tenantId: input.tenantId,
+            status: 'PUBLISHED',
+          },
+          data: { status: 'SUPERSEDED' },
+        })
+
+        return tx.integrationConfig.create({
+          data: { ...input, version, status: 'PUBLISHED' },
+          select: SELECT,
+        })
+      })
+    },
+
+    /**
+     * Resolve the live config for an integration in a tenant's scope: the
+     * tenant's own latest PUBLISHED row wins; otherwise the GLOBAL (platform)
+     * latest PUBLISHED row. Null when neither exists (caller falls back to the
+     * built-in code definition).
+     */
+    async findActiveForScope(
+      integrationId: string,
+      tenantId: string,
+    ): Promise<IntegrationConfigRow | null> {
+      const own = await db.integrationConfig.findFirst({
+        where: { integrationId, tenantId, status: 'PUBLISHED' },
+        orderBy: { version: 'desc' },
+        select: SELECT,
+      })
+      if (own) return own
+      return db.integrationConfig.findFirst({
+        where: { integrationId, visibility: 'GLOBAL', status: 'PUBLISHED' },
+        orderBy: { version: 'desc' },
+        select: SELECT,
+      })
+    },
+
+    /** The latest PUBLISHED GLOBAL row per integration — used to warm the registry overlay. */
+    async listActiveGlobal(): Promise<IntegrationConfigRow[]> {
+      const rows = await db.integrationConfig.findMany({
+        where: { visibility: 'GLOBAL', status: 'PUBLISHED' },
+        orderBy: { version: 'desc' },
+        select: SELECT,
+      })
+      // One (latest) per integrationId — rows are version-desc, so first wins.
+      const seen = new Set<string>()
+      const latest: IntegrationConfigRow[] = []
+      for (const row of rows) {
+        if (seen.has(row.integrationId)) continue
+        seen.add(row.integrationId)
+        latest.push(row)
+      }
+      return latest
+    },
+
+    /** Fetch one row by id, visible to the tenant (own ∪ GLOBAL); null otherwise. */
+    async findByIdForScope(id: string, tenantId: string): Promise<IntegrationConfigRow | null> {
+      return db.integrationConfig.findFirst({
+        where: { id, OR: [{ tenantId }, { visibility: 'GLOBAL' }] },
+        select: SELECT,
+      })
+    },
+
+    /** Version history for (integrationId, tenantId), newest first. */
+    async listVersions(integrationId: string, tenantId: string): Promise<IntegrationConfigRow[]> {
+      return db.integrationConfig.findMany({
+        where: { integrationId, tenantId },
+        orderBy: { version: 'desc' },
+        select: SELECT,
+      })
+    },
+
+    /** A specific version within a scope (used by rollback to source a prior config). */
+    async findVersion(
+      integrationId: string,
+      tenantId: string,
+      version: number,
+    ): Promise<IntegrationConfigRow | null> {
+      return db.integrationConfig.findUnique({
+        where: {
+          integrationId_tenantId_version: { integrationId, tenantId, version },
+        },
+        select: SELECT,
+      })
+    },
+  }
+}
+
+export type IntegrationConfigRepository = ReturnType<typeof createIntegrationConfigRepository>

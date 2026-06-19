@@ -246,27 +246,28 @@ model Tenant {
   // Relations
   // -------------------------------------------------------------------------
 
-  customers        Customer[]
-  moves            Move[]
-  quotes           Quote[]
-  invoices         Invoice[]
-  crewMembers      CrewMember[]
-  vehicles         Vehicle[]
-  availabilities   Availability[]
-  inventoryRooms   InventoryRoom[]
-  leadSources      LeadSource[]
-  accounts         Account[]
-  rateTables       RateTable[]
-  ssoProviders     TenantSsoProvider[]
-  users            TenantUser[]
-  apiClients       ApiClient[]
-  pegasusEvents    PegasusEvent[]
-  documents        Document[]
-  workflows        Workflow[]
-  workflowTriggers WorkflowTrigger[]
-  domainEvents     DomainEvent[]
-  brokerCredential TenantBrokerCredential?
-  vpnPeer          VpnPeer?
+  customers          Customer[]
+  moves              Move[]
+  quotes             Quote[]
+  invoices           Invoice[]
+  crewMembers        CrewMember[]
+  vehicles           Vehicle[]
+  availabilities     Availability[]
+  inventoryRooms     InventoryRoom[]
+  leadSources        LeadSource[]
+  accounts           Account[]
+  rateTables         RateTable[]
+  ssoProviders       TenantSsoProvider[]
+  users              TenantUser[]
+  apiClients         ApiClient[]
+  pegasusEvents      PegasusEvent[]
+  documents          Document[]
+  workflows          Workflow[]
+  workflowTriggers   WorkflowTrigger[]
+  integrationConfigs IntegrationConfig[]
+  domainEvents       DomainEvent[]
+  brokerCredential   TenantBrokerCredential?
+  vpnPeer            VpnPeer?
 
   // Messaging context — RingCentral SMS capture
   ringCentralConnections   RingCentralConnection[]
@@ -308,21 +309,21 @@ model Tenant {
 // ---------------------------------------------------------------------------
 
 model ArchivedTrip {
-  id             String @id @default(uuid())
-  tenantId       String @map("tenant_id")
-  kind           String @default("rejected") // "rejected" | (future) "cancelled"
-  originalTripId Int    @map("original_trip_id") // MSSQL TripMaster.id
+  id             String  @id @default(uuid())
+  tenantId       String  @map("tenant_id")
+  kind           String  @default("rejected") // "rejected" | (future) "cancelled"
+  originalTripId Int     @map("original_trip_id") // MSSQL TripMaster.id
   tripTitle      String? @map("trip_title")
 
   // Denormalized columns for list cards / filtering (avoids parsing snapshot).
-  originalDriverId          Int?     @map("original_driver_id")
-  originalDriverName        String?  @map("original_driver_name")
+  originalDriverId          Int?      @map("original_driver_id")
+  originalDriverName        String?   @map("original_driver_name")
   plannedFirstDay           DateTime? @map("planned_first_day")
   plannedLastDay            DateTime? @map("planned_last_day")
-  originStateCode           String?  @map("origin_state_code")
-  destStateCode             String?  @map("dest_state_code")
-  totalEstimatedLbs         Int?     @map("total_estimated_lbs")
-  totalEstimatedLinehaulUsd Decimal? @map("total_estimated_linehaul_usd")
+  originStateCode           String?   @map("origin_state_code")
+  destStateCode             String?   @map("dest_state_code")
+  totalEstimatedLbs         Int?      @map("total_estimated_lbs")
+  totalEstimatedLinehaulUsd Decimal?  @map("total_estimated_linehaul_usd")
 
   /// Full reshaped trip: { ...trip, activities, notes, shipments }.
   snapshot Json
@@ -340,10 +341,10 @@ model ArchivedTrip {
 }
 
 model ArchivedTripDriver {
-  id             String  @id @default(uuid())
-  archivedTripId String  @map("archived_trip_id")
-  driverId       Int     @map("driver_id") // v_longhaul_drivers.driver_id
-  driverName     String? @map("driver_name") // denormalized for display
+  id             String   @id @default(uuid())
+  archivedTripId String   @map("archived_trip_id")
+  driverId       Int      @map("driver_id") // v_longhaul_drivers.driver_id
+  driverName     String?  @map("driver_name") // denormalized for display
   reason         String?
   createdAt      DateTime @default(now()) @map("created_at")
 
@@ -1185,6 +1186,75 @@ enum WorkflowVisibility {
   GLOBAL
   /// Owned by a single tenant; readable only by that tenant.
   TENANT
+
+  @@schema("public")
+}
+
+/// A published, versioned integration-validator config: the output-shaped
+/// mapping template, the decision-table rule set, and the golden corpus bundled
+/// with it. Append-only — each publish inserts a new immutable
+/// (integrationId, tenantId, version) row; a publish marks prior PUBLISHED rows
+/// SUPERSEDED. Visibility is derived server-side from the publishing tenant's
+/// isPlatformTenant flag (GLOBAL ⇒ platform tenant, readable by all), exactly
+/// like Workflow. NOT in TENANT_SCOPED_MODELS — the repository hand-scopes reads
+/// to (owner ∪ GLOBAL).
+model IntegrationConfig {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// Target integration id (e.g. "longhaul", "weichert"). Matches a built-in
+  /// IntegrationDefinition id; not an FK — integration ids are code-defined.
+  integrationId String @map("integration_id")
+
+  /// Monotonic version per (integrationId, tenantId). Uploads are immutable.
+  version Int
+
+  /// Derived server-side from the publishing tenant's isPlatformTenant flag.
+  visibility IntegrationConfigVisibility @default(TENANT)
+
+  /// Lifecycle status; a publish supersedes prior PUBLISHED rows for the scope.
+  status IntegrationConfigStatus @default(PUBLISHED)
+
+  /// Output-shaped mapping template (validated against the published schema).
+  mapping Json
+
+  /// Decision-table rule set.
+  rules Json
+
+  /// Golden-corpus fixtures bundled with this config and run by the gate.
+  corpus Json
+
+  /// Full gate-pipeline report captured at publish (static checks + corpus run).
+  gateReport Json @map("gate_report")
+
+  /// TenantUser.id (or service-account id) of the publisher. Denormalised; not an FK.
+  publishedBy String @map("published_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([integrationId, tenantId, version])
+  @@index([integrationId, visibility])
+  @@index([tenantId])
+  @@map("integration_configs")
+  @@schema("public")
+}
+
+enum IntegrationConfigVisibility {
+  /// Owned by the platform tenant; readable by every tenant.
+  GLOBAL
+  /// Owned by a single tenant; readable only by that tenant.
+  TENANT
+
+  @@schema("public")
+}
+
+enum IntegrationConfigStatus {
+  /// The current live config for its (integrationId, scope).
+  PUBLISHED
+  /// Replaced by a newer published version.
+  SUPERSEDED
 
   @@schema("public")
 }
