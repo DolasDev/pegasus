@@ -25,10 +25,19 @@ export const weichertMapping: MappingTemplate = {
     $from: '.',
     $each: {
       supplierShipmentId: { $from: 'Id', coerce: 'toString' },
+      shipmentStatus: { $from: 'Survey.ShipmentStatus', default: null },
       netWeight: {
         estimated: { $from: 'Financials.EstimatedWeight', coerce: 'toNumberOrNull' },
         actual: { $from: 'Financials.ActualWeight', coerce: 'toNumberOrNull' },
       },
+      // NOTE: the legacy source paths for the pack/load/delivery actuals and
+      // shipmentStatus are INFERRED from the existing convention
+      // (KeyMoveDates.<milestone>.Actual, mirroring KeyMoveDates.Survey.Planned)
+      // — the Weichert OUTPUT fields are documented, but confirm/adjust these
+      // legacy-side `$from` paths against the actual client payload.
+      packDate1: { actual: { $from: 'KeyMoveDates.Pack.Actual', default: null } },
+      loadDate1: { actual: { $from: 'KeyMoveDates.Load.Actual', default: null } },
+      deliveryDate1: { actual: { $from: 'KeyMoveDates.Delivery.Actual', default: null } },
       surveyedStorageCostFirstDay: { $from: 'Survey.Storage1stDay', coerce: 'toNumberOrNull' },
       surveyedStorageCostAdditionalDays: {
         $from: 'Survey.StorageAdditionalDays',

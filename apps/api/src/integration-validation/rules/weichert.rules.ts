@@ -2,17 +2,20 @@
 // Weichert behavioral rules — derived from the live API's rejection messages.
 // Each `sourceRef` quotes the API error this rule reproduces at save time.
 //
-// SCOPE (this first cut covers the rules expressible from the fields the supplier
-// mapping currently produces):
+// SCOPE (covered):
 //   - serviceStatus must be supplier-settable.
 //   - submitting an estimate (serviceStatus = Submitted) requires supplier
 //     contact, contact-made date, survey date, and a non-zero estimated total cost.
 //   - supplier contact email must be well-formed.
+//   - In Progress requires Pack + Load Date 1 Actual on a shipment order.
+//   - Delivered / Completed requires Pack + Load + Delivery Date 1 Actual.
+//   - shipmentStatus is a restricted picklist (enforced structurally by the
+//     canonical enum — a bad value yields a `structural-contract` issue).
 //
-// DEFERRED until the mapping carries the needed fields (documented for the next
-// pass): pack/load/delivery actual-date gating for In Progress / Delivered /
-// Completed; "In Progress requires Awarded by WMN"; Move-status On Hold/Closed/
-// Cancelled lock; shipmentStatus picklist; storage-service close requirements.
+// STILL DEFERRED (the Weichert HHG payload has no field for these, per the API
+// guide): "In Progress requires Awarded by WMN" (needs prior/award state);
+// Move-status On Hold/Closed/Cancelled lock (an Auto-order concept, not HHG);
+// storage-service close (a separate LTS Order payload / integration).
 // ---------------------------------------------------------------------------
 
 import type { RuleSet } from './types'
@@ -84,6 +87,33 @@ export const weichertRules: RuleSet = [
     when: [
       { fact: 'serviceStatus', op: 'eq', value: 'Submitted' },
       { fact: 'estimatedTotalCost', op: 'lte', value: 0 },
+    ],
+  },
+  {
+    id: 'in-progress-requires-pack-load-actuals',
+    description: 'Advancing to In Progress requires Pack + Load Date 1 Actual on a shipment order.',
+    field: 'shipments',
+    message:
+      'Please update Pack Date 1 Actual and Load Date 1 Actual for at least one of the related Shipment Orders before updating Service Status to In Progress.',
+    sourceRef:
+      'Weichert API: "Please update Pack Date 1 Actual and Load Date 1 Actual for at least one of the related Shipment Orders before updating Service Status to In Progress."',
+    when: [
+      { fact: 'serviceStatus', op: 'eq', value: 'In Progress' },
+      { fact: 'shipmentsWithPackLoadActual', op: 'lte', value: 0 },
+    ],
+  },
+  {
+    id: 'delivered-requires-pack-load-delivery-actuals',
+    description:
+      'Advancing to Delivered or Completed requires Pack + Load + Delivery Date 1 Actual.',
+    field: 'shipments',
+    message:
+      'Please update Pack Date 1 Actual, Load Date 1 Actual, and Delivery Date 1 Actual on the related Shipment Orders before updating Service Status to either Delivered or Completed.',
+    sourceRef:
+      'Weichert API: "Please update Pack Date 1 Actual, Load Date 1 Actual, and Delivery Date 1 Actual on this record\'s Shipment Orders before updating Service Status to either Delivered or Completed."',
+    when: [
+      { fact: 'serviceStatus', op: 'in', value: ['Delivered', 'Completed'] },
+      { fact: 'shipmentsWithPackLoadDeliveryActual', op: 'lte', value: 0 },
     ],
   },
 ]

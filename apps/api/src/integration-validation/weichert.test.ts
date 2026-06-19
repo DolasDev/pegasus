@@ -68,3 +68,32 @@ describe('weichert transform — engine extensions', () => {
     })
   })
 })
+
+describe('weichert shipmentStatus restricted picklist', () => {
+  // Structural (NOT a gate-corpus case — the gate's round-trip stage requires
+  // corpus inputs to be structurally valid). A bad shipmentStatus reproduces the
+  // live "bad value for restricted picklist" rejection.
+  const order = (shipmentStatus: string) => ({
+    Id: 'S1',
+    InvolvedParties: {
+      ShipperEmployer: { Identity: { Description: 'O-1' } },
+      Coordinator: { Identity: { Description: 'C' }, EmailAddress: 'c@d.com' },
+    },
+    Survey: { SerivceStatus: 'Accepted', ShipmentStatus: shipmentStatus },
+    DocumentationDates: ['2024-01-01'],
+    KeyMoveDates: { Survey: { Planned: '2024-01-01' } },
+    Financials: { EstimatedWeight: 1000 },
+  })
+
+  it('rejects a bad shipmentStatus as a structural-contract issue', () => {
+    const res = validateOrder('weichert', { order: order('Under Reivew') })
+    expect(res.valid).toBe(false)
+    expect(res.issues).toEqual([
+      expect.objectContaining({ kind: 'structural', field: 'shipments.0.shipmentStatus' }),
+    ])
+  })
+
+  it('accepts a valid shipmentStatus', () => {
+    expect(validateOrder('weichert', { order: order('In Process') }).valid).toBe(true)
+  })
+})

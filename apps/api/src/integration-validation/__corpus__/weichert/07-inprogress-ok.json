@@ -1,0 +1,24 @@
+{
+  "name": "In Progress with Pack + Load Date 1 Actual passes",
+  "input": {
+    "order": {
+      "Id": "SHIP-1",
+      "InvolvedParties": {
+        "ShipperEmployer": { "Identity": { "Description": "O-60232" } },
+        "Coordinator": {
+          "Identity": { "Description": "Suzanne Polo" },
+          "EmailAddress": "noreply@weichertwm.com"
+        }
+      },
+      "Survey": { "SerivceStatus": "In Progress" },
+      "DocumentationDates": ["2024-05-25"],
+      "KeyMoveDates": {
+        "Survey": { "Planned": "2024-05-25" },
+        "Pack": { "Actual": "2024-06-01" },
+        "Load": { "Actual": "2024-06-02" }
+      },
+      "Financials": { "EstimatedWeight": 5000 }
+    }
+  },
+  "expected": { "valid": true, "ruleIds": [] }
+}
