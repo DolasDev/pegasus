@@ -61,9 +61,26 @@ setx Relay__TopicArn "arn:aws:sns:us-east-1:123456789012:movemanager-domain-even
 
 The relay creates the SNS client with the **default credential and region resolution chain** — it does _not_ hard-code keys. Provide credentials by **one** of (preference order, per handoff §7 / decision **D4**):
 
-1. **IAM Roles Anywhere** (preferred) — X.509 trust anchor; no long-lived keys on the host. Configure the AWS SDK credential profile to use the Roles Anywhere helper.
+1. **IAM Roles Anywhere** (preferred) — X.509 trust anchor; no long-lived keys on the host. Configure the AWS SDK credential profile to use the `aws_signing_helper` (Roles Anywhere credential helper). The AWS side (trust anchor + profile + least-privilege role) is provisioned by `OutboxRelayStack` — see **"Self-managed CA setup"** below.
 2. **Shared profile** — `%UserProfile%\.aws\credentials` for the service account.
-3. **Static access key** via env vars (least preferred): `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (store outside `appsettings.json`).
+3. **Static access key** via env vars (least preferred): `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (store outside `appsettings.json`). Needs a hand-made IAM user/role with the least-privilege policy below — `OutboxRelayStack` only creates an IAM principal on the Roles Anywhere path.
+
+### Self-managed CA setup (the wired default for Roles Anywhere)
+
+We use a **self-managed CA** (no ACM Private CA, no monthly cost). Ops owns one CA key and renews the relay's leaf cert; everything else is IaC. One-time:
+
+1. **Generate the CA** (once; keep the private key secret — vault / SSM SecureString / offline). Long-lived, e.g. 10 yr:
+   ```
+   step certificate create "Pegasus Outbox Relay Root CA" ca.crt ca.key --profile root-ca --no-password --insecure --not-after 87600h
+   ```
+2. **Publish the CA's PUBLIC cert** to SSM (the trust anchor reads it; it is not secret):
+   ```
+   aws ssm put-parameter --name /pegasus/<env>/outbox-relay-ca-pem --type String --value file://ca.crt --region us-east-1
+   ```
+3. **Deploy with Roles Anywhere on:** `npx cdk deploy PegasusStaging-OutboxRelayStack -c env=<env> -c outboxRolesAnywhere=true` (override the param name with `-c outboxCaCertParam=...`, or use ACM-PCA instead with `-c outboxAcmPcaArn=<arn>`). Until the SSM parameter is populated the stack **skips** the trust anchor (logs a warning) and the topic/queue still deploy — so you can run on the static-key fallback in the interim.
+4. **Issue + install the relay's leaf cert** on the Windows host (shorter-lived, e.g. 1 yr), signed by the CA, and point `aws_signing_helper` at it. **Automate renewal** (the one recurring task) — e.g. `step-ca` with ACME (`step ca renew` on a scheduled task) — or the leaf silently expires and the relay stops publishing.
+
+Read the trust-anchor + role ARNs the relay needs from the stack outputs `RelayTrustAnchorArn` / `RelayRoleArn`.
 
 **Region is required** and is resolved the same way — set it explicitly:
 

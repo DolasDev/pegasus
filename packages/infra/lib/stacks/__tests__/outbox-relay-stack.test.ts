@@ -105,6 +105,32 @@ describe('OutboxRelayStack — relay publish identity (IAM Roles Anywhere)', () 
       }),
     })
   })
+
+  it('uses a CERTIFICATE_BUNDLE trust anchor for the self-managed CA path', () => {
+    const t = synth({
+      rolesAnywhere: {
+        certificateBundlePem:
+          '-----BEGIN CERTIFICATE-----\nMIIBfakeCAcert\n-----END CERTIFICATE-----\n',
+      },
+    })
+    t.resourceCountIs('AWS::RolesAnywhere::TrustAnchor', 1)
+    t.resourceCountIs('AWS::RolesAnywhere::Profile', 1)
+    t.hasResourceProperties('AWS::RolesAnywhere::TrustAnchor', {
+      Source: Match.objectLike({
+        SourceType: 'CERTIFICATE_BUNDLE',
+        SourceData: Match.objectLike({ X509CertificateData: Match.stringLikeRegexp('BEGIN CERT') }),
+      }),
+    })
+  })
+
+  it('skips the trust anchor when Roles Anywhere is requested but no CA is resolved', () => {
+    // Empty rolesAnywhere (e.g. SSM param not populated yet) → topic + queue only.
+    const t = synth({ rolesAnywhere: {} })
+    t.resourceCountIs('AWS::RolesAnywhere::TrustAnchor', 0)
+    t.resourceCountIs('AWS::RolesAnywhere::Profile', 0)
+    t.resourceCountIs('AWS::SNS::Topic', 1)
+    t.resourceCountIs('AWS::SQS::Queue', 2)
+  })
 })
 
 // ── Outbox alarms live in MonitoringStack (fed by props from bin/app.ts) ───────

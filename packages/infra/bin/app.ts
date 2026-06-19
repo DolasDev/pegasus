@@ -327,16 +327,30 @@ apiCdnStack.addDependency(apiStack)
 
 // ── OutboxRelayStack ──────────────────────────────────────────────────────────
 // Legacy shipment-event pipeline (SNS FIFO topic + SQS FIFO queue/DLQ + consumer
-// Lambda). Staging/prod only — dev has no on-prem relay. IAM Roles Anywhere for
-// the relay's publish identity is opt-in: `-c outboxRolesAnywhere=true` plus
-// `-c outboxAcmPcaArn=<acm-pca-arn>` (ship the topic/queue first, add the CA
-// later). No deploy dependency on other stacks.
+// Lambda). Staging/prod only — dev has no on-prem relay. No deploy dependency on
+// other stacks.
+//
+// The relay's publish identity (IAM Roles Anywhere) is opt-in via
+// `-c outboxRolesAnywhere=true`. The trust anchor's CA defaults to the
+// SELF-MANAGED path: ops generates a CA once and stores its PUBLIC cert (PEM) in
+// the SSM String parameter `/pegasus/<env>/outbox-relay-ca-pem` (override with
+// `-c outboxCaCertParam=...`). Until that parameter is populated the trust anchor
+// is skipped and the topic/queue still deploy (use a static-key fallback
+// meanwhile). Pass `-c outboxAcmPcaArn=<arn>` to use ACM Private CA instead.
 const outboxConfig = envName === 'dev' ? undefined : OUTBOX_RELAY[envName]
 if (outboxConfig) {
   const outboxRolesAnywhereEnabled =
     app.node.tryGetContext('outboxRolesAnywhere') === true ||
     app.node.tryGetContext('outboxRolesAnywhere') === 'true'
   const outboxAcmPcaArn = app.node.tryGetContext('outboxAcmPcaArn') as string | undefined
+  const outboxCaCertParam =
+    (app.node.tryGetContext('outboxCaCertParam') as string | undefined) ??
+    `/pegasus/${envName}/outbox-relay-ca-pem`
+  const outboxRolesAnywhere = !outboxRolesAnywhereEnabled
+    ? undefined
+    : outboxAcmPcaArn
+      ? { acmPcaArn: outboxAcmPcaArn }
+      : { caCertSsmParameterName: outboxCaCertParam }
   new OutboxRelayStack(app, `${stackIdPrefix}-OutboxRelayStack`, {
     env,
     stackName: `${stackNamePrefix}-outbox-relay`,
@@ -344,8 +358,7 @@ if (outboxConfig) {
     topicName: outboxConfig.topicName,
     queueName: outboxConfig.queueName,
     dlqName: outboxConfig.dlqName,
-    rolesAnywhere:
-      outboxRolesAnywhereEnabled && outboxAcmPcaArn ? { acmPcaArn: outboxAcmPcaArn } : undefined,
+    rolesAnywhere: outboxRolesAnywhere,
   })
 }
 

@@ -35,6 +35,7 @@ import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
 import * as sns from 'aws-cdk-lib/aws-sns'
 import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions'
 import * as sqs from 'aws-cdk-lib/aws-sqs'
+import * as ssm from 'aws-cdk-lib/aws-ssm'
 import { type Construct } from 'constructs'
 
 export interface OutboxRelayStackProps extends cdk.StackProps {
@@ -47,13 +48,21 @@ export interface OutboxRelayStackProps extends cdk.StackProps {
   /**
    * IAM Roles Anywhere config for the on-prem relay's publish identity. When
    * omitted, the trust anchor / profile / role are not created (interim
-   * static-key path). The CA cert is supplied either as an ACM Private CA ARN
-   * or a self-managed CA certificate bundle (PEM).
+   * static-key path). The trust anchor's CA comes from exactly one of:
+   *  - `caCertSsmParameterName` — SELF-MANAGED CA (default path). An SSM String
+   *    parameter holding the CA's PUBLIC certificate (PEM). Ops generates the CA
+   *    once and `aws ssm put-parameter`s the public cert; the value is inlined
+   *    into the trust anchor at synth. If the parameter isn't populated yet, the
+   *    trust anchor/profile/role are skipped (topic + queue still deploy).
+   *  - `acmPcaArn` — managed-CA path (ACM Private CA).
+   *  - `certificateBundlePem` — inline PEM (mainly for tests).
    */
   readonly rolesAnywhere?: {
+    /** SSM String parameter holding the self-managed CA's PUBLIC cert (PEM). */
+    readonly caCertSsmParameterName?: string
     /** ARN of an ACM Private CA acting as the trust anchor. */
     readonly acmPcaArn?: string
-    /** Self-managed CA certificate bundle (PEM) — used when `acmPcaArn` is unset. */
+    /** Self-managed CA certificate bundle (PEM) — inline; mainly for tests. */
     readonly certificateBundlePem?: string
   }
 }
@@ -146,62 +155,93 @@ export class OutboxRelayStack extends cdk.Stack {
 
     // ── IAM Roles Anywhere — relay publish identity (optional) ─────────────────
     if (props.rolesAnywhere) {
-      const { acmPcaArn, certificateBundlePem } = props.rolesAnywhere
-      if (!acmPcaArn && !certificateBundlePem) {
-        throw new Error('OutboxRelayStack: rolesAnywhere needs acmPcaArn or certificateBundlePem')
+      const { acmPcaArn, caCertSsmParameterName, certificateBundlePem } = props.rolesAnywhere
+
+      // Self-managed CA: resolve the PUBLIC cert PEM (inline > SSM). valueFromLookup
+      // inlines the literal at synth, so the trust anchor never carries a CFN token.
+      // Until the SSM parameter is populated it resolves to a dummy, so we gate on
+      // the value actually looking like a certificate.
+      let caPem = certificateBundlePem
+      if (!acmPcaArn && !caPem && caCertSsmParameterName) {
+        caPem = ssm.StringParameter.valueFromLookup(this, caCertSsmParameterName)
       }
+      const usingAcmPca = !!acmPcaArn
+      const haveCaBundle = !usingAcmPca && !!caPem && caPem.includes('BEGIN CERTIFICATE')
 
-      const relayRole = new iam.Role(this, 'RelayPublishRole', {
-        roleName: `pegasus-${envName}-outbox-relay-publish`,
-        assumedBy: new iam.ServicePrincipal('rolesanywhere.amazonaws.com'),
-        description: 'Assumed via IAM Roles Anywhere by the on-prem Outbox Relay to publish.',
-      })
-      // Roles Anywhere needs session-tagging + source-identity on top of AssumeRole.
-      relayRole.assumeRolePolicy?.addStatements(
-        new iam.PolicyStatement({
-          actions: ['sts:TagSession', 'sts:SetSourceIdentity'],
-          principals: [new iam.ServicePrincipal('rolesanywhere.amazonaws.com')],
-        }),
-      )
-      // Least privilege: publish to THIS topic only…
-      relayRole.addToPolicy(
-        new iam.PolicyStatement({
-          sid: 'PublishShipmentEvents',
-          actions: ['sns:Publish'],
-          resources: [topic.topicArn],
-        }),
-      )
-      // …plus the KMS the encrypted topic requires (else publishes fail at SNS).
-      relayRole.addToPolicy(
-        new iam.PolicyStatement({
-          sid: 'PublishKms',
-          actions: ['kms:GenerateDataKey*', 'kms:Decrypt'],
-          resources: [outboxKey.keyArn],
-        }),
-      )
-
-      const trustAnchor = new rolesanywhere.CfnTrustAnchor(this, 'RelayTrustAnchor', {
-        name: `pegasus-${envName}-outbox-relay`,
-        enabled: true,
-        source: {
-          sourceType: acmPcaArn ? 'AWS_ACM_PCA' : 'CERTIFICATE_BUNDLE',
-          sourceData: acmPcaArn ? { acmPcaArn } : { x509CertificateData: certificateBundlePem },
-        },
-      })
-
-      new rolesanywhere.CfnProfile(this, 'RelayProfile', {
-        name: `pegasus-${envName}-outbox-relay`,
-        enabled: true,
-        roleArns: [relayRole.roleArn],
-      })
-
-      new cdk.CfnOutput(this, 'RelayRoleArn', { value: relayRole.roleArn })
-      new cdk.CfnOutput(this, 'RelayTrustAnchorArn', { value: trustAnchor.attrTrustAnchorArn })
+      if (!usingAcmPca && !haveCaBundle) {
+        // Flag on but no usable CA yet (e.g. the SSM parameter isn't populated).
+        // Skip the trust anchor/profile/role so the topic + queue still deploy; the
+        // relay can use the static-key fallback meanwhile (runbook §2).
+        cdk.Annotations.of(this).addWarning(
+          'OutboxRelayStack: Roles Anywhere requested but no CA certificate resolved' +
+            (caCertSsmParameterName ? ` (populate SSM ${caCertSsmParameterName})` : '') +
+            '; skipping trust anchor/profile/role — topic + queue still deploy.',
+        )
+      } else {
+        this.wireRolesAnywhere({ envName, topic, outboxKey, acmPcaArn, caPem })
+      }
     }
 
     // ── Outputs (consumed by the relay deploy/config — runbook §1/§2) ──────────
     new cdk.CfnOutput(this, 'OutboxTopicArn', { value: topic.topicArn })
     new cdk.CfnOutput(this, 'OutboxQueueUrl', { value: queue.queueUrl })
     new cdk.CfnOutput(this, 'OutboxDlqArn', { value: dlq.queueArn })
+  }
+
+  /** Builds the relay role + trust anchor + profile once a CA source is known. */
+  private wireRolesAnywhere(args: {
+    envName: string
+    topic: sns.ITopic
+    outboxKey: kms.IKey
+    acmPcaArn?: string
+    caPem?: string
+  }): void {
+    const { envName, topic, outboxKey, acmPcaArn, caPem } = args
+
+    const relayRole = new iam.Role(this, 'RelayPublishRole', {
+      roleName: `pegasus-${envName}-outbox-relay-publish`,
+      assumedBy: new iam.ServicePrincipal('rolesanywhere.amazonaws.com'),
+      description: 'Assumed via IAM Roles Anywhere by the on-prem Outbox Relay to publish.',
+    })
+    // Roles Anywhere needs session-tagging + source-identity on top of AssumeRole.
+    relayRole.assumeRolePolicy?.addStatements(
+      new iam.PolicyStatement({
+        actions: ['sts:TagSession', 'sts:SetSourceIdentity'],
+        principals: [new iam.ServicePrincipal('rolesanywhere.amazonaws.com')],
+      }),
+    )
+    // Least privilege: publish to THIS topic only…
+    relayRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'PublishShipmentEvents',
+        actions: ['sns:Publish'],
+        resources: [topic.topicArn],
+      }),
+    )
+    // …plus the KMS the encrypted topic requires (else publishes fail at SNS).
+    relayRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'PublishKms',
+        actions: ['kms:GenerateDataKey*', 'kms:Decrypt'],
+        resources: [outboxKey.keyArn],
+      }),
+    )
+
+    const trustAnchor = new rolesanywhere.CfnTrustAnchor(this, 'RelayTrustAnchor', {
+      name: `pegasus-${envName}-outbox-relay`,
+      enabled: true,
+      source: acmPcaArn
+        ? { sourceType: 'AWS_ACM_PCA', sourceData: { acmPcaArn } }
+        : { sourceType: 'CERTIFICATE_BUNDLE', sourceData: { x509CertificateData: caPem } },
+    })
+
+    new rolesanywhere.CfnProfile(this, 'RelayProfile', {
+      name: `pegasus-${envName}-outbox-relay`,
+      enabled: true,
+      roleArns: [relayRole.roleArn],
+    })
+
+    new cdk.CfnOutput(this, 'RelayRoleArn', { value: relayRole.roleArn })
+    new cdk.CfnOutput(this, 'RelayTrustAnchorArn', { value: trustAnchor.attrTrustAnchorArn })
   }
 }
