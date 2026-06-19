@@ -25,6 +25,8 @@ function shipmentSurveyedCost(s: WeichertShipment): number {
   )
 }
 
+const has = (v: string | null | undefined): boolean => v != null && v !== ''
+
 export const weichertFactCatalog: FactCatalog = {
   serviceStatus: 'string',
   supplierContactPresent: 'boolean',
@@ -33,6 +35,10 @@ export const weichertFactCatalog: FactCatalog = {
   surveyDatePresent: 'boolean',
   estimatedTotalCost: 'number',
   shipmentCount: 'number',
+  // Counts of shipments whose required actual dates are all present (the live API
+  // requires "at least one of the related Shipment Orders" to be complete).
+  shipmentsWithPackLoadActual: 'number',
+  shipmentsWithPackLoadDeliveryActual: 'number',
   action: 'string',
 }
 
@@ -40,14 +46,21 @@ export function deriveWeichertFacts(ctx: CanonicalContext<WeichertOrder>): Facts
   const { order, action } = ctx
   const email = order.supplierContactEmail
 
+  const packLoad = (s: WeichertShipment): boolean =>
+    has(s.packDate1.actual) && has(s.loadDate1.actual)
+
   return {
     serviceStatus: order.serviceStatus,
     supplierContactPresent: order.supplierContactName.trim().length > 0,
     supplierContactEmailValid: email === '' || EMAIL_RE.test(email),
-    contactMadeDatePresent: order.contactMadeDate != null && order.contactMadeDate !== '',
-    surveyDatePresent: order.surveyDate != null && order.surveyDate !== '',
+    contactMadeDatePresent: has(order.contactMadeDate),
+    surveyDatePresent: has(order.surveyDate),
     estimatedTotalCost: order.shipments.reduce((t, s) => t + shipmentSurveyedCost(s), 0),
     shipmentCount: order.shipments.length,
+    shipmentsWithPackLoadActual: order.shipments.filter(packLoad).length,
+    shipmentsWithPackLoadDeliveryActual: order.shipments.filter(
+      (s) => packLoad(s) && has(s.deliveryDate1.actual),
+    ).length,
     action,
   }
 }

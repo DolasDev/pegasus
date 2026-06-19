@@ -44,13 +44,30 @@ export const WEICHERT_SUPPLIER_FORBIDDEN_STATUSES = [
   'Declined',
 ] as const
 
+/** Per-shipment status picklist (distinct from the order-level serviceStatus). */
+export const WEICHERT_SHIPMENT_STATUSES = [
+  'Under Review',
+  'In Process',
+  'In Storage',
+  'Delivered',
+  'Completed',
+  'Cancelled',
+] as const
+
 const moneyOrNull = z.number().nullable()
 const optDate = z.string().nullish()
 const optStr = z.string().nullish()
+// Weichert models pack/load/delivery dates as objects with estimated + actual;
+// we validate only the actual, so we model `{ actual }` (mirrors the API path).
+const actualDate = z.object({ actual: optDate })
 
 export const WeichertShipmentSchema = z.object({
   supplierShipmentId: z.string(),
+  shipmentStatus: z.enum(WEICHERT_SHIPMENT_STATUSES).nullish(),
   netWeight: z.object({ estimated: moneyOrNull, actual: moneyOrNull }),
+  packDate1: actualDate,
+  loadDate1: actualDate,
+  deliveryDate1: actualDate,
   surveyedStorageCostFirstDay: moneyOrNull,
   surveyedStorageCostAdditionalDays: moneyOrNull,
   surveyedStorageCostDeliveryOut: moneyOrNull,

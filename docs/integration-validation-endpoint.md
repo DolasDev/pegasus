@@ -222,15 +222,17 @@ End Using
 Two integrations are registered (use the id in the URL):
 
 - **`longhaul`** — the on-prem dispatch system (see the rule table above).
-- **`weichert`** — the Weichert Supplier Move Network (Salesforce-backed). Current
-  rules: serviceStatus must be supplier-settable (not Requested/Awarded/Cancelled/
-  Declined); submitting an estimate (serviceStatus `Submitted`) requires supplier
-  contact, contact-made date, survey date, and a non-zero estimated total cost;
-  supplier email must be well-formed. **Deferred** until the mapping carries the
-  fields: pack/load/delivery actual-date gating for In Progress / Delivered /
-  Completed, "In Progress requires Awarded by WMN", Move On-Hold/Closed/Cancelled
-  lock, shipmentStatus picklist, and storage-close requirements (see
-  `rules/weichert.rules.ts`). The Weichert mapping is authored in the output-shaped
+- **`weichert`** — the Weichert Supplier Move Network (Salesforce-backed). Rules:
+  serviceStatus must be supplier-settable (not Requested/Awarded/Cancelled/Declined);
+  submitting an estimate (`Submitted`) requires supplier contact, contact-made date,
+  survey date, and a non-zero estimated total cost; supplier email must be
+  well-formed; **In Progress** requires Pack + Load Date 1 Actual on a shipment;
+  **Delivered/Completed** requires Pack + Load + Delivery Date 1 Actual; the
+  per-shipment `shipmentStatus` is a restricted picklist (Under Review/In Process/
+  In Storage/Delivered/Completed/Cancelled). **Still deferred** (no field on the HHG
+  payload): "In Progress requires Awarded by WMN", Move On-Hold/Closed/Cancelled lock
+  (an Auto-order concept), and storage-service close (a separate LTS Order payload).
+  See `rules/weichert.rules.ts`. The Weichert mapping is authored in the output-shaped
   format — see [`integration-mapping-format.md`](./integration-mapping-format.md).
 
 ## Notes & limits (POC)
