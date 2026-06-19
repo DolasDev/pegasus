@@ -1,8 +1,14 @@
 import { describe, it, expect } from 'vitest'
+import { z } from 'zod'
 import { analyzeRuleSet } from './static-check'
+import { canonicalSchemaPaths } from './transform/mapping-static-check'
+import { canonicalOrderJsonSchema } from './canonical-order'
 import { longhaulRules } from './rules/longhaul.rules'
 import { longhaulFactCatalog } from './facts/longhaul-facts'
+import { listIntegrationIds, getIntegrationDefinition } from './registry'
 import type { RuleSet } from './rules/types'
+
+const longhaulFields = canonicalSchemaPaths(canonicalOrderJsonSchema())
 
 describe('static-check — the AI loop pre-gate', () => {
   it('reports zero problems for the shipped longhaul rule set', () => {
@@ -89,4 +95,47 @@ describe('static-check — the AI loop pre-gate', () => {
       problem: 'shadowed by earlier rule "broad" on field "driver"',
     })
   })
+
+  it('accepts canonical rule fields when validFields is supplied', () => {
+    expect(analyzeRuleSet(longhaulRules, longhaulFactCatalog, longhaulFields)).toEqual([])
+  })
+
+  it('flags a rule whose field is not a canonical field', () => {
+    const rules: RuleSet = [
+      {
+        id: 'r',
+        description: 'd',
+        field: 'not_a_real_field',
+        message: 'm',
+        when: [{ fact: 'statusId', op: 'eq', value: 1 }],
+      },
+    ]
+    expect(analyzeRuleSet(rules, longhaulFactCatalog, longhaulFields)).toContainEqual({
+      ruleId: 'r',
+      problem: 'field "not_a_real_field" is not a canonical field',
+    })
+  })
+
+  it('skips the canonical-field check when validFields is omitted (back-compat)', () => {
+    const rules: RuleSet = [
+      {
+        id: 'r',
+        description: 'd',
+        field: 'not_a_real_field',
+        message: 'm',
+        when: [{ fact: 'statusId', op: 'eq', value: 1 }],
+      },
+    ]
+    expect(analyzeRuleSet(rules, longhaulFactCatalog)).toEqual([])
+  })
+})
+
+describe('every registered integration has canonical rule fields', () => {
+  for (const id of listIntegrationIds()) {
+    it(`${id}: every rule field exists in its canonical contract`, () => {
+      const def = getIntegrationDefinition(id)!
+      const fields = canonicalSchemaPaths(z.toJSONSchema(def.structuralContract))
+      expect(analyzeRuleSet(def.rules, def.factCatalog, fields)).toEqual([])
+    })
+  }
 })
