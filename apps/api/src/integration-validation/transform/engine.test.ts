@@ -64,6 +64,36 @@ describe('transform engine', () => {
     expect(applyMapping(spec, { id: 7 })).toEqual({ items: [{ n: 7 }] })
   })
 
+  it('translates a resolved source value via $map (hit)', () => {
+    const spec: TransformSpec = [{ to: 'status', from: ['s'], map: { Active: 'A', Inactive: 'I' } }]
+    expect(applyMapping(spec, { s: 'Active' })).toEqual({ status: 'A' })
+  })
+
+  it('falls back to default on a $map miss when a default is declared', () => {
+    const spec: TransformSpec = [{ to: 'status', from: ['s'], map: { Active: 'A' }, default: '?' }]
+    expect(applyMapping(spec, { s: 'Unknown' })).toEqual({ status: '?' })
+  })
+
+  it('passes the source through on a $map miss when no default is declared', () => {
+    const spec: TransformSpec = [{ to: 'status', from: ['s'], map: { Active: 'A' } }]
+    expect(applyMapping(spec, { s: 'Unknown' })).toEqual({ status: 'Unknown' })
+  })
+
+  it('uses default directly (never $map-translates it) when no source resolves', () => {
+    const spec: TransformSpec = [{ to: 'status', from: ['s'], map: { Active: 'A' }, default: 'D' }]
+    expect(applyMapping(spec, {})).toEqual({ status: 'D' })
+  })
+
+  it('applies $map before coerce', () => {
+    const spec: TransformSpec = [{ to: 'n', from: ['s'], map: { '1': '10' }, coerce: 'toNumber' }]
+    expect(applyMapping(spec, { s: 1 })).toEqual({ n: 10 })
+  })
+
+  it('skips $map for a null source value', () => {
+    const spec: TransformSpec = [{ to: 'x', from: ['s'], map: { Active: 'A' }, default: '?' }]
+    expect(applyMapping(spec, { s: null })).toEqual({ x: null })
+  })
+
   it('throws on an unknown coercion (caught upstream as fail-open)', () => {
     const spec = [{ to: 'x', from: ['a'], coerce: 'bogus' }] as unknown as TransformSpec
     expect(() => applyMapping(spec, { a: 1 })).toThrow(/Unknown coercion/)

@@ -32,11 +32,22 @@ import type { CoerceName, FieldMapping, TransformSpec } from './engine'
 
 // --- Types -----------------------------------------------------------------
 
+/** A JSON scalar — the only thing a `$map` may translate a value to. */
+export type MapScalar = string | number | boolean | null
+
 export interface MappingDirective {
   /** Source path, or a fallback chain (first path that resolves wins). */
   $from: string | string[]
   /** Value used when no `$from` path resolves. */
   default?: unknown
+  /**
+   * Value-translation table: source value (stringified) → output value, e.g.
+   * `{ "Active": "A" }`. Scalar-leaf only (not with `$each`). A miss falls back to
+   * `default` if present, else passes the value through. Bounded — a finite lookup,
+   * not an expression language; the static checker validates outputs against the
+   * target field's enum when the canonical contract declares one.
+   */
+  $map?: Record<string, MapScalar> | undefined
   /** Coercion applied to the resolved (or default) value. */
   coerce?: CoerceName | undefined
   /** For an array target: map each source element through this sub-template. */
@@ -54,11 +65,14 @@ export type MappingTemplate = MappingObject
 
 const CoerceSchema = z.enum(['toNumber', 'toNumberOrNull', 'toString', 'identity'])
 
+const MapScalarSchema = z.union([z.string(), z.number(), z.boolean(), z.null()])
+
 const DirectiveSchema: z.ZodType<MappingDirective> = z.lazy(() =>
   z
     .object({
       $from: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]),
       default: z.unknown().optional(),
+      $map: z.record(z.string(), MapScalarSchema).optional(),
       coerce: CoerceSchema.optional(),
       $each: MappingObjectSchema.optional(),
     })
@@ -81,9 +95,11 @@ const MappingObjectSchema: z.ZodType<MappingObject> = z.lazy(() =>
 
 export const MappingTemplateSchema: z.ZodType<MappingTemplate> = MappingObjectSchema
 
-/** Stable identifier for the published mapping-format schema. Bump on a breaking change. */
+// Stable identifier for the published mapping-format schema. Bumped on a format
+// change consumers must notice — v2 adds the `$map` value-translation directive
+// (a directive `.strict()` means v1 validators reject a `$map`-using document).
 export const MAPPING_FORMAT_SCHEMA_ID =
-  'https://pegasus.dolas.dev/schemas/integration-mapping/v1.json'
+  'https://pegasus.dolas.dev/schemas/integration-mapping/v2.json'
 
 /** The published JSON Schema for the mapping format (the documented standard). */
 export function mappingFormatJsonSchema(): Record<string, unknown> {
@@ -93,7 +109,7 @@ export function mappingFormatJsonSchema(): Record<string, unknown> {
   >
   return {
     $id: MAPPING_FORMAT_SCHEMA_ID,
-    title: 'Pegasus Integration Mapping (output-shaped) v1',
+    title: 'Pegasus Integration Mapping (output-shaped) v2',
     ...schema,
   }
 }
@@ -114,6 +130,7 @@ function compileNode(node: MappingNode, to: string): FieldMapping[] {
     }
     const fm: FieldMapping = { to, from }
     if ('default' in node) fm.default = node.default
+    if (node.$map) fm.map = node.$map
     if (node.coerce) fm.coerce = node.coerce
     return [fm]
   }
@@ -151,6 +168,37 @@ function walkTargets(obj: MappingObject, prefix: string, acc: string[]): void {
 export function collectTargetPaths(template: MappingTemplate): string[] {
   const acc: string[] = []
   walkTargets(template, '', acc)
+  return acc
+}
+
+/** A `$map` value-translation directive located at a target leaf. */
+export interface MapDirectiveAt {
+  /** Canonical target path the `$map` writes to (arrays marked with `[]`). */
+  to: string
+  /** The translation table's output values (right-hand sides). */
+  outputs: MapScalar[]
+  /** True when `$map` is (invalidly) combined with `$each` — scalar-only violation. */
+  withEach: boolean
+}
+
+/** Locate every `$map` directive in a mapping, with its target path and outputs. */
+export function collectMapDirectives(template: MappingTemplate): MapDirectiveAt[] {
+  const acc: MapDirectiveAt[] = []
+  const visit = (obj: MappingObject, prefix: string): void => {
+    for (const [key, node] of Object.entries(obj)) {
+      const to = prefix ? `${prefix}.${key}` : key
+      if (typeof node === 'string') continue
+      if (isDirective(node)) {
+        if (node.$map) {
+          acc.push({ to, outputs: Object.values(node.$map), withEach: node.$each != null })
+        }
+        if (node.$each) visit(node.$each, `${to}[]`)
+      } else {
+        visit(node, to)
+      }
+    }
+  }
+  visit(template, '')
   return acc
 }
 

@@ -31,6 +31,17 @@ describe('mapping format — parsing', () => {
   it('rejects an empty $from', () => {
     expect(MappingTemplateSchema.safeParse({ a: { $from: '' } }).success).toBe(false)
   })
+
+  it('accepts a $map value-translation table of scalar outputs', () => {
+    const tmpl: MappingTemplate = { status: { $from: 's', $map: { Active: 'A', Gone: null } } }
+    expect(MappingTemplateSchema.safeParse(tmpl).success).toBe(true)
+  })
+
+  it('rejects a $map whose output value is not a scalar', () => {
+    expect(
+      MappingTemplateSchema.safeParse({ a: { $from: 's', $map: { X: { nested: 1 } } } }).success,
+    ).toBe(false)
+  })
 })
 
 describe('mapping format — compile', () => {
@@ -56,6 +67,12 @@ describe('mapping format — compile', () => {
     ).toEqual([
       { to: 'list', from: ['rows'], default: [], each: [{ to: 'n', from: ['order_num'] }] },
     ])
+  })
+
+  it('compiles a $map directive to a field mapping with a value-translation table', () => {
+    expect(
+      compileMapping({ status: { $from: 's', $map: { Active: 'A' }, default: null } }),
+    ).toEqual([{ to: 'status', from: ['s'], default: null, map: { Active: 'A' } }])
   })
 
   it('compiled longhaul mapping transforms a real DTO to the canonical shape', () => {

@@ -1,6 +1,6 @@
 {
-  "$id": "https://pegasus.dolas.dev/schemas/integration-mapping/v1.json",
-  "title": "Pegasus Integration Mapping (output-shaped) v1",
+  "$id": "https://pegasus.dolas.dev/schemas/integration-mapping/v2.json",
+  "title": "Pegasus Integration Mapping (output-shaped) v2",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "propertyNames": {
@@ -33,6 +33,28 @@
             ]
           },
           "default": {},
+          "$map": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
           "coerce": {
             "type": "string",
             "enum": ["toNumber", "toNumberOrNull", "toString", "identity"]

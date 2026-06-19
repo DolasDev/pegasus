@@ -16,6 +16,7 @@
 
 import {
   MappingTemplateSchema,
+  collectMapDirectives,
   collectTargetPaths,
   collectTopLevelSourceRoots,
   type MappingTemplate,
@@ -57,6 +58,48 @@ function canonicalSchemaPaths(schema: unknown): Set<string> {
   return out
 }
 
+/** The enum `const` set at a node, looking through `anyOf`/`oneOf`/`allOf` branches. */
+function enumOf(node: unknown): string[] | null {
+  if (!node || typeof node !== 'object') return null
+  const n = node as Record<string, unknown>
+  if (Array.isArray(n['enum'])) return (n['enum'] as unknown[]).map(String)
+  for (const comb of ['anyOf', 'oneOf', 'allOf'] as const) {
+    const branches = n[comb]
+    if (Array.isArray(branches)) {
+      for (const b of branches) {
+        const e = enumOf(b)
+        if (e) return e
+      }
+    }
+  }
+  return null
+}
+
+/** Map every enum-constrained leaf path to its allowed (string-coerced) values. */
+function canonicalSchemaEnums(schema: unknown): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>()
+  const walk = (node: unknown, prefix: string): void => {
+    if (!node || typeof node !== 'object') return
+    const n = node as Record<string, unknown>
+    for (const comb of ['anyOf', 'oneOf', 'allOf'] as const) {
+      const branches = n[comb]
+      if (Array.isArray(branches)) branches.forEach((s) => walk(s, prefix))
+    }
+    const props = n['properties']
+    if (props && typeof props === 'object') {
+      for (const [key, sub] of Object.entries(props)) {
+        const path = prefix ? `${prefix}.${key}` : key
+        const e = enumOf(sub)
+        if (e) out.set(path, new Set(e))
+        walk(sub, path)
+      }
+    }
+    if (n['items']) walk(n['items'], `${prefix}[]`)
+  }
+  walk(schema, '')
+  return out
+}
+
 /** Analyze a mapping document; returns [] when it is statically valid. */
 export function analyzeMapping(template: unknown, opts: AnalyzeMappingOptions): MappingProblem[] {
   const parsed = MappingTemplateSchema.safeParse(template)
@@ -82,6 +125,29 @@ export function analyzeMapping(template: unknown, opts: AnalyzeMappingOptions): 
     for (const root of collectTopLevelSourceRoots(tmpl)) {
       if (!allowed.has(root)) {
         problems.push({ where: root, problem: `reads undeclared input field "${root}"` })
+      }
+    }
+  }
+
+  // `$map` value translation: scalar-leaf only, and (when the target field is an
+  // enum in the contract) every output must be a member of that enum.
+  const enums = canonicalSchemaEnums(opts.canonicalJsonSchema)
+  for (const md of collectMapDirectives(tmpl)) {
+    if (md.withEach) {
+      problems.push({
+        where: md.to,
+        problem: '$map cannot be combined with $each (value translation is scalar-only)',
+      })
+      continue
+    }
+    const allowed = enums.get(md.to)
+    if (!allowed) continue
+    for (const out of md.outputs) {
+      if (out != null && !allowed.has(String(out))) {
+        problems.push({
+          where: md.to,
+          problem: `$map output "${String(out)}" is not a valid "${md.to}" value (allowed: ${[...allowed].join(', ')})`,
+        })
       }
     }
   }
