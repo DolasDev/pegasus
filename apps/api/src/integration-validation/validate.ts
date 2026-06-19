@@ -53,14 +53,15 @@ function transformToCanonical(
 }
 
 /**
- * Validate a native order payload against an integration's declarative
- * definition. Throws only `UnknownIntegrationError` (a caller mistake); every
- * other failure fails open.
+ * Validate a native order payload against an EXPLICIT integration definition —
+ * the registry-free core. Used by `validateOrder` (after registry lookup) and by
+ * the gate pipeline, which validates a *candidate* config that isn't registered.
+ * Fails open on any internal error (`valid: true, degraded: true`).
  */
-export function validateOrder(integrationId: string, input: ValidationInput): ValidationResult {
-  const def = getIntegrationDefinition(integrationId)
-  if (!def) throw new UnknownIntegrationError(integrationId)
-
+export function validateWithDefinition(
+  def: IntegrationDefinition,
+  input: ValidationInput,
+): ValidationResult {
   try {
     const orderResult = transformToCanonical(def, input.order)
     if (!orderResult.ok) {
@@ -85,9 +86,20 @@ export function validateOrder(integrationId: string, input: ValidationInput): Va
     return { valid: issues.length === 0, issues, degraded: false }
   } catch (err) {
     logger.error('integration validation failed open', {
-      integrationId,
+      integrationId: def.id,
       error: err instanceof Error ? err.message : String(err),
     })
     return { ...OK, degraded: true }
   }
+}
+
+/**
+ * Validate a native order payload against an integration's registered
+ * definition. Throws only `UnknownIntegrationError` (a caller mistake); every
+ * other failure fails open.
+ */
+export function validateOrder(integrationId: string, input: ValidationInput): ValidationResult {
+  const def = getIntegrationDefinition(integrationId)
+  if (!def) throw new UnknownIntegrationError(integrationId)
+  return validateWithDefinition(def, input)
 }
