@@ -35,7 +35,7 @@ export interface AnalyzeMappingOptions {
 }
 
 /** Collect every property/array path in a JSON Schema (arrays marked `[]`). */
-function canonicalSchemaPaths(schema: unknown): Set<string> {
+export function canonicalSchemaPaths(schema: unknown): Set<string> {
   const out = new Set<string>()
   const walk = (node: unknown, prefix: string): void => {
     if (!node || typeof node !== 'object') return

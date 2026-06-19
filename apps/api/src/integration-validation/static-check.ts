@@ -11,6 +11,9 @@
 //     `eq true/false` targets boolean facts — a type mismatch is a dead rule.
 //   - shadowing: a rule whose `when` is a superset of an earlier rule's `when`
 //     on the same field can never add information beyond it (conflict/redundancy).
+//   - canonical field: when `validFields` is supplied (the canonical contract's
+//     paths), every rule's `field` must name a real canonical field — otherwise
+//     the issue points at a field the validator/output doesn't know.
 // ---------------------------------------------------------------------------
 
 import { RuleSchema, type FactCatalog, type Predicate, type RuleSet } from './rules/types'
@@ -24,7 +27,16 @@ function predicateKey(p: Predicate): string {
   return `${p.fact}|${p.op}|${JSON.stringify(p.value)}`
 }
 
-export function analyzeRuleSet(rules: RuleSet, catalog: FactCatalog): StaticProblem[] {
+/**
+ * @param validFields when provided, the set of canonical field paths a rule's
+ *   `field` may reference (e.g. `canonicalSchemaPaths(z.toJSONSchema(contract))`).
+ *   Omit to skip the canonical-field check (back-compat).
+ */
+export function analyzeRuleSet(
+  rules: RuleSet,
+  catalog: FactCatalog,
+  validFields?: ReadonlySet<string>,
+): StaticProblem[] {
   const problems: StaticProblem[] = []
   const seenIds = new Set<string>()
   const predicateSets: Array<{ id: string; field: string; keys: Set<string> }> = []
@@ -41,6 +53,13 @@ export function analyzeRuleSet(rules: RuleSet, catalog: FactCatalog): StaticProb
 
     if (seenIds.has(rule.id)) problems.push({ ruleId: rule.id, problem: 'duplicate rule id' })
     seenIds.add(rule.id)
+
+    if (validFields && !validFields.has(rule.field)) {
+      problems.push({
+        ruleId: rule.id,
+        problem: `field "${rule.field}" is not a canonical field`,
+      })
+    }
 
     for (const p of rule.when) {
       const factType = catalog[p.fact]
