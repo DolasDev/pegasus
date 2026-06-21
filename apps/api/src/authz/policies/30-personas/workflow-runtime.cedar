@@ -5,10 +5,11 @@
 // workflow's behalf.
 //
 // The grant is deliberately narrow: read access to the operational entities a
-// workflow inspects, plus CreateEvent so a workflow can record its own
-// outcomes. It does NOT include write access to quotes, moves, invoices, or
-// customers - a runtime workflow observes and emits events, it does not mutate
-// core records directly.
+// workflow inspects, plus CreateEvent so a workflow can record its own outcomes
+// and EmitTenantEvent so a workflow can fire a tenant-defined custom event
+// (workflow-to-workflow chaining). It does NOT include write access to quotes,
+// moves, invoices, or customers - a runtime workflow observes and emits events,
+// it does not mutate core records directly.
 permit (
   principal in Pegasus::Group::"workflow_runtime",
   action in [
@@ -17,7 +18,8 @@ permit (
     Pegasus::Action::"ReadInvoice",
     Pegasus::Action::"ReadCustomer",
     Pegasus::Action::"ReadEvent",
-    Pegasus::Action::"CreateEvent"
+    Pegasus::Action::"CreateEvent",
+    Pegasus::Action::"EmitTenantEvent"
   ],
   resource
 );
