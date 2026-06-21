@@ -46,6 +46,8 @@ const {
   mockExecutionUpdate,
   mockExecutionCount,
   mockTenantFindUnique,
+  mockEventTypeFindMany,
+  mockDomainEventCreate,
 } = vi.hoisted(() => ({
   mockSend: vi.fn(),
   putMetricDataInputs: [] as unknown[],
@@ -60,6 +62,9 @@ const {
   // Used by the kill-switch check in start-workflow-execution.ts.
   // Default: workflowsDisabled=false (kill switch off).
   mockTenantFindUnique: vi.fn(),
+  // Unit 8 domain-condition derivation.
+  mockEventTypeFindMany: vi.fn(),
+  mockDomainEventCreate: vi.fn(),
 }))
 
 vi.mock('@aws-sdk/client-cloudwatch', () => ({
@@ -80,9 +85,13 @@ vi.mock('../db', () => {
     domainEvent: {
       findMany: mockDomainEventFindMany,
       updateMany: mockDomainEventUpdateMany,
+      create: mockDomainEventCreate,
     },
     workflowTrigger: {
       findMany: mockTriggerFindMany,
+    },
+    tenantEventType: {
+      findMany: mockEventTypeFindMany,
     },
     workflow: {
       findFirst: mockWorkflowFindFirst,
@@ -227,6 +236,9 @@ beforeEach(() => {
   mockDomainEventFindMany.mockResolvedValue([])
   mockDomainEventUpdateMany.mockResolvedValue({ count: 1 })
   mockTriggerFindMany.mockResolvedValue([])
+  // Default: no custom event types with domain conditions (no derivation).
+  mockEventTypeFindMany.mockResolvedValue([])
+  mockDomainEventCreate.mockResolvedValue({ id: 'derived-1' })
   mockWorkflowFindFirst.mockResolvedValue(workflowRow())
   mockExecutionFindFirst.mockResolvedValue(null)
   mockExecutionCreate.mockResolvedValue(queuedExecution())
@@ -289,6 +301,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       dispatched: 0,
       fired: 0,
       schedulesEvaluated: 0,
+      derived: 0,
       scheduleFired: 0,
       runnersLaunched: 0,
     })
@@ -312,6 +325,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       dispatched: 1,
       fired: 1,
       schedulesEvaluated: 0,
+      derived: 0,
       scheduleFired: 0,
       runnersLaunched: 0,
     })
@@ -396,6 +410,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       dispatched: 1,
       fired: 0,
       schedulesEvaluated: 0,
+      derived: 0,
       scheduleFired: 0,
       runnersLaunched: 0,
     })
@@ -424,6 +439,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       dispatched: 1,
       fired: 0,
       schedulesEvaluated: 0,
+      derived: 0,
       scheduleFired: 0,
       runnersLaunched: 0,
     })
@@ -454,6 +470,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       dispatched: 1,
       fired: 0,
       schedulesEvaluated: 0,
+      derived: 0,
       scheduleFired: 0,
       runnersLaunched: 0,
     })
@@ -488,6 +505,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       dispatched: 1,
       fired: 0,
       schedulesEvaluated: 0,
+      derived: 0,
       scheduleFired: 0,
       runnersLaunched: 0,
     })
@@ -516,6 +534,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       dispatched: 1,
       fired: 0,
       schedulesEvaluated: 0,
+      derived: 0,
       scheduleFired: 0,
       runnersLaunched: 0,
     })
@@ -551,6 +570,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       dispatched: 1,
       fired: 1,
       schedulesEvaluated: 0,
+      derived: 0,
       scheduleFired: 0,
       runnersLaunched: 0,
     })
@@ -581,6 +601,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       dispatched: 0,
       fired: 0,
       schedulesEvaluated: 0,
+      derived: 0,
       scheduleFired: 0,
       runnersLaunched: 0,
     })
@@ -601,6 +622,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       dispatched: 1,
       fired: 0,
       schedulesEvaluated: 0,
+      derived: 0,
       scheduleFired: 0,
       runnersLaunched: 0,
     })
@@ -636,6 +658,7 @@ describe('lambda-dispatch-workflow-triggers', () => {
       dispatched: 0,
       fired: 0,
       schedulesEvaluated: 0,
+      derived: 0,
       scheduleFired: 0,
       runnersLaunched: 0,
     })
@@ -674,6 +697,7 @@ describe('scheduled triggers', () => {
       dispatched: 0,
       fired: 0,
       schedulesEvaluated: 1,
+      derived: 0,
       scheduleFired: 1,
       runnersLaunched: 0,
     })
@@ -724,6 +748,7 @@ describe('scheduled triggers', () => {
       dispatched: 0,
       fired: 0,
       schedulesEvaluated: 1,
+      derived: 0,
       scheduleFired: 0,
       runnersLaunched: 0,
     })
@@ -743,6 +768,7 @@ describe('scheduled triggers', () => {
       dispatched: 0,
       fired: 0,
       schedulesEvaluated: 1,
+      derived: 0,
       scheduleFired: 0,
       runnersLaunched: 0,
     })
@@ -774,6 +800,7 @@ describe('scheduled triggers', () => {
       dispatched: 0,
       fired: 0,
       schedulesEvaluated: 2,
+      derived: 0,
       scheduleFired: 1,
       runnersLaunched: 0,
     })
@@ -819,6 +846,7 @@ describe('scheduled triggers', () => {
       dispatched: 1,
       fired: 1,
       schedulesEvaluated: 1,
+      derived: 0,
       scheduleFired: 1,
       runnersLaunched: 0,
     })
@@ -980,5 +1008,104 @@ describe('kill-switch (WORKFLOWS_DISABLED) skip reason (Unit 11)', () => {
 
     expect(out.fired).toBe(1)
     expect(mockExecutionCreate).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ── Domain-condition derivation (Unit 8) ─────────────────────────────────────
+
+function eventTypeRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'et-1',
+    tenantId: 'tenant-1',
+    name: 'lead.qualified',
+    description: null,
+    payloadSchema: null,
+    domainCondition: { sourceEventType: 'quote.accepted' },
+    hasDomainCondition: true,
+    enabled: true,
+    createdByUserId: 'u1',
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  }
+}
+
+describe('domain-condition derivation', () => {
+  it('derives a custom event when a built-in event matches the condition', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow({ eventType: 'quote.accepted' })])
+    mockEventTypeFindMany.mockResolvedValue([eventTypeRow()])
+
+    const out = await handler()
+
+    expect(out.derived).toBe(1)
+    expect(mockDomainEventCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tenantId: 'tenant-1',
+        eventType: 'lead.qualified',
+        payload: expect.objectContaining({ _derivedFrom: 'evt-1', quoteId: 'q-1' }),
+      }),
+    })
+  })
+
+  it('does not derive when the condition filter does not match', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow({ eventType: 'quote.accepted' })])
+    mockEventTypeFindMany.mockResolvedValue([
+      eventTypeRow({
+        domainCondition: {
+          sourceEventType: 'quote.accepted',
+          filter: { path: 'quoteId', op: 'eq', value: 'OTHER' },
+        },
+      }),
+    ])
+
+    const out = await handler()
+
+    expect(out.derived).toBe(0)
+    expect(mockDomainEventCreate).not.toHaveBeenCalled()
+  })
+
+  it('does not derive when the sourceEventType differs from the event', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow({ eventType: 'quote.accepted' })])
+    mockEventTypeFindMany.mockResolvedValue([
+      eventTypeRow({ domainCondition: { sourceEventType: 'invoice.paid' } }),
+    ])
+
+    const out = await handler()
+
+    expect(out.derived).toBe(0)
+    expect(mockDomainEventCreate).not.toHaveBeenCalled()
+  })
+
+  it('never scans for derivations on a non-built-in (custom) source event', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow({ eventType: 'lead.qualified' })])
+
+    const out = await handler()
+
+    expect(mockEventTypeFindMany).not.toHaveBeenCalled()
+    expect(out.derived).toBe(0)
+  })
+
+  it('isolates a failed derivation query — the event is still stamped', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow({ eventType: 'quote.accepted' })])
+    mockEventTypeFindMany.mockRejectedValue(new Error('db down'))
+
+    const out = await handler()
+
+    expect(out.dispatched).toBe(1) // stamp still happened
+    expect(out.derived).toBe(0)
+  })
+
+  it('isolates a failed emit — other conditions still derive', async () => {
+    mockDomainEventFindMany.mockResolvedValue([eventRow({ eventType: 'quote.accepted' })])
+    mockEventTypeFindMany.mockResolvedValue([
+      eventTypeRow({ id: 'et-bad', name: 'bad.one' }),
+      eventTypeRow({ id: 'et-ok', name: 'good.one' }),
+    ])
+    mockDomainEventCreate.mockRejectedValueOnce(new Error('insert failed')) // first one fails
+
+    const out = await handler()
+
+    expect(out.derived).toBe(1) // the second succeeded
+    expect(out.dispatched).toBe(1)
   })
 })

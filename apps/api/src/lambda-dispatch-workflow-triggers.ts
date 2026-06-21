@@ -58,8 +58,10 @@
 // ---------------------------------------------------------------------------
 
 import { CloudWatchClient, PutMetricDataCommand } from '@aws-sdk/client-cloudwatch'
+import type { Prisma } from '@prisma/client'
 import { db } from './db'
 import { cronMatchesMinute, parseCronExpression } from './lib/cron'
+import { DOMAIN_EVENT_TYPES, emitTenantEvent } from './lib/domain-events'
 // Trigger-filter matching lives in lib/event-filter.ts so the dispatcher and
 // the trigger create/update validation share ONE contract — the v1
 // shallow-equality dialect AND the v2 structured dialect (dot-paths, operators,
@@ -99,6 +101,75 @@ type TriggerSkipReason =
 
 export { matchesTriggerFilter }
 
+/** Built-in event names — the only valid domain-condition derivation sources. */
+const DOMAIN_EVENT_TYPES_SET: ReadonlySet<string> = new Set(DOMAIN_EVENT_TYPES)
+
+/**
+ * Domain-condition derivation (Unit 8). After a BUILT-IN domain event is
+ * processed + stamped, emit a derived CUSTOM event for every enabled
+ * TenantEventType whose domainCondition matches it. The derived event is a NEW
+ * outbox row — picked up on the NEXT tick by the unchanged EVENT path — rather
+ * than fired inline, which keeps derivation a simple append.
+ *
+ * Loop-safety: domainCondition.sourceEventType is validated at registry-create
+ * to be a built-in name, and this only runs for built-in source events, so a
+ * custom event can never feed another derivation — cycles are impossible.
+ *
+ * The (hasDomainCondition, enabled) index backs the pre-filter, so a tenant with
+ * no conditions costs one empty indexed query. Per-condition try/catch keeps one
+ * bad derivation from blocking the others or the event stamp. At-least-once: if
+ * the tick crashes after deriving but before the source stamp, redelivery
+ * re-derives — each derived row has its own id, so the downstream trigger's
+ * deterministic Temporal id still guarantees at-most-one execution per row.
+ */
+async function deriveTenantEvents(
+  event: { id: string; tenantId: string; eventType: string; payload: Prisma.JsonValue },
+  counts: MetricCounts,
+): Promise<void> {
+  const candidates = await db.tenantEventType.findMany({
+    where: { tenantId: event.tenantId, enabled: true, hasDomainCondition: true },
+  })
+  const basePayload =
+    typeof event.payload === 'object' && event.payload !== null && !Array.isArray(event.payload)
+      ? (event.payload as Record<string, unknown>)
+      : {}
+
+  for (const et of candidates) {
+    const cond = et.domainCondition as {
+      sourceEventType?: string
+      filter?: Prisma.JsonValue
+    } | null
+    if (!cond || cond.sourceEventType !== event.eventType) continue
+    if (cond.filter !== undefined && !matchesTriggerFilter(cond.filter ?? null, event.payload)) {
+      continue
+    }
+    try {
+      await db.$transaction(async (tx) => {
+        await emitTenantEvent(tx, {
+          tenantId: event.tenantId,
+          eventType: et.name,
+          payload: { ...basePayload, _derivedFrom: event.id },
+        })
+      })
+      counts.derived += 1
+      logger.info('Derived tenant event from domain condition', {
+        tenantEventTypeId: et.id,
+        derivedEventType: et.name,
+        sourceEventId: event.id,
+        sourceEventType: event.eventType,
+        tenantId: event.tenantId,
+      })
+    } catch (err) {
+      logger.error('Failed to derive tenant event from domain condition', {
+        tenantEventTypeId: et.id,
+        sourceEventId: event.id,
+        tenantId: event.tenantId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+}
+
 /**
  * Deterministic Temporal workflow id for one trigger occurrence. The dedupe
  * key is the DomainEvent id (EVENT) or the compact fire-minute stamp
@@ -128,6 +199,7 @@ type MetricCounts = {
   dispatched: number
   fired: number // EVENT-trigger fires
   scheduleFired: number // SCHEDULE-trigger fires
+  derived: number // custom events derived from a domain condition (Unit 8)
   skipped: Map<TriggerSkipReason, number>
   backlog: boolean
 }
@@ -152,6 +224,14 @@ async function flushMetrics(counts: MetricCounts): Promise<void> {
     metricData.push({
       MetricName: 'WorkflowTriggerFired',
       Value: totalFired,
+      Unit: 'Count' as const,
+      Timestamp: timestamp,
+    })
+  }
+  if (counts.derived > 0) {
+    metricData.push({
+      MetricName: 'TenantEventsDerived',
+      Value: counts.derived,
       Unit: 'Count' as const,
       Timestamp: timestamp,
     })
@@ -376,6 +456,7 @@ export async function handler(): Promise<{
   scanned: number
   dispatched: number
   fired: number
+  derived: number
   schedulesEvaluated: number
   scheduleFired: number
   runnersLaunched: number
@@ -384,6 +465,7 @@ export async function handler(): Promise<{
     dispatched: 0,
     fired: 0,
     scheduleFired: 0,
+    derived: 0,
     skipped: new Map(),
     backlog: false,
   }
@@ -476,6 +558,21 @@ export async function handler(): Promise<{
       })
       if (count > 0) {
         counts.dispatched += 1
+      }
+
+      // Domain-condition derivation (Unit 8): only BUILT-IN events can be a
+      // derivation source (cycle-safety). Isolated from the stamp above — a
+      // derivation failure never un-stamps the event or aborts the batch.
+      if (DOMAIN_EVENT_TYPES_SET.has(event.eventType)) {
+        try {
+          await deriveTenantEvents(event, counts)
+        } catch (err) {
+          logger.error('Domain-condition derivation query failed', {
+            domainEventId: event.id,
+            tenantId: event.tenantId,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
       }
     } catch (err) {
       // Trigger lookup / stamping failed — leave the event undispatched for
@@ -586,6 +683,7 @@ export async function handler(): Promise<{
     scanned: events.length,
     dispatched: counts.dispatched,
     fired: counts.fired,
+    derived: counts.derived,
     schedulesEvaluated,
     scheduleFired: counts.scheduleFired,
     runnersLaunched,
@@ -594,6 +692,7 @@ export async function handler(): Promise<{
     scanned: events.length,
     dispatched: counts.dispatched,
     fired: counts.fired,
+    derived: counts.derived,
     schedulesEvaluated,
     scheduleFired: counts.scheduleFired,
     runnersLaunched,
