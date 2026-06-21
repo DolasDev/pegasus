@@ -45,6 +45,12 @@ export const TENANT_SCOPED_MODELS = new Set([
   // dispatcher Lambda reads cross-tenant via the root `db`, which bypasses
   // this extension — same precedent as the WorkflowExecution reconcile poller.
   'DomainEvent',
+  // TenantEventType — the custom-event registry. Purely tenant-owned (no GLOBAL
+  // case, unlike Workflow/IntegrationConfig): a tenant defines its own event
+  // names. Registry CRUD goes through the tenant-scoped client; the trigger
+  // dispatcher's domain-condition deriver reads cross-tenant via the root `db`,
+  // which bypasses this extension — same precedent as DomainEvent above.
+  'TenantEventType',
   // Messaging — tenant-owned entities a tenant/admin handler reads via the
   // scoped client. The background capture/forward/purge jobs use the base
   // client (cross-tenant cron context) and are unaffected by this set.

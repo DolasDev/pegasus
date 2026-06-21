@@ -89,6 +89,7 @@ describe.skipIf(!hasDb)('createTenantDb — cross-tenant isolation (integration)
     await db.vehicle.deleteMany({ where: { tenantId: { in: [tenantAId, tenantBId] } } })
     await db.rateTable.deleteMany({ where: { tenantId: { in: [tenantAId, tenantBId] } } })
     await db.tenantSsoProvider.deleteMany({ where: { tenantId: { in: [tenantAId, tenantBId] } } })
+    await db.tenantEventType.deleteMany({ where: { tenantId: { in: [tenantAId, tenantBId] } } })
     await db.contact.deleteMany({
       where: { customer: { tenantId: { in: [tenantAId, tenantBId] } } },
     })
@@ -814,6 +815,59 @@ describe.skipIf(!hasDb)('createTenantDb — cross-tenant isolation (integration)
     it('delete via dbA cannot remove a Tenant B SSO provider', async () => {
       await dbA.tenantSsoProvider.delete({ where: { id: providerBId } }).catch(() => {})
       const stillExists = await db.tenantSsoProvider.findUnique({ where: { id: providerBId } })
+      expect(stillExists).not.toBeNull()
+    })
+  })
+
+  describe('TenantEventType', () => {
+    let typeAId: string
+    let typeBId: string
+
+    beforeAll(async () => {
+      const ts = Date.now()
+      const [tA, tB] = await Promise.all([
+        db.tenantEventType.create({
+          data: {
+            tenantId: tenantAId,
+            name: `lead.qualified.a.${ts}`,
+            createdByUserId: 'user-iso-a',
+          },
+        }),
+        db.tenantEventType.create({
+          data: {
+            tenantId: tenantBId,
+            name: `lead.qualified.b.${ts}`,
+            createdByUserId: 'user-iso-b',
+          },
+        }),
+      ])
+      typeAId = tA.id
+      typeBId = tB.id
+    })
+
+    it('findMany via dbA returns only Tenant A event types', async () => {
+      const rows = await dbA.tenantEventType.findMany()
+      const ids = rows.map((r: { id: string }) => r.id)
+      expect(ids).toContain(typeAId)
+      expect(ids).not.toContain(typeBId)
+    })
+
+    it('findUnique via dbA returns null for a Tenant B event type', async () => {
+      const result = await dbA.tenantEventType.findUnique({ where: { id: typeBId } })
+      expect(result).toBeNull()
+    })
+
+    it('update via dbA cannot mutate a Tenant B event type', async () => {
+      await dbA.tenantEventType
+        .update({ where: { id: typeBId }, data: { description: 'HACKED' } })
+        .catch(() => {})
+      const unchanged = await db.tenantEventType.findUnique({ where: { id: typeBId } })
+      expect(unchanged?.description).not.toBe('HACKED')
+    })
+
+    it('delete via dbA cannot remove a Tenant B event type', async () => {
+      await dbA.tenantEventType.delete({ where: { id: typeBId } }).catch(() => {})
+      const stillExists = await db.tenantEventType.findUnique({ where: { id: typeBId } })
       expect(stillExists).not.toBeNull()
     })
   })

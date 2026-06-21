@@ -266,6 +266,7 @@ model Tenant {
   workflowTriggers   WorkflowTrigger[]
   integrationConfigs IntegrationConfig[]
   domainEvents       DomainEvent[]
+  tenantEventTypes   TenantEventType[]
   brokerCredential   TenantBrokerCredential?
   vpnPeer            VpnPeer?
 
@@ -1534,6 +1535,66 @@ model DomainEvent {
   @@index([dispatchedAt, occurredAt])
   @@index([tenantId])
   @@map("domain_events")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Tenant event-type registry — tenant-defined custom event names that custom
+// workflows can trigger on.
+//
+// The built-in event taxonomy (DOMAIN_EVENT_TYPES in lib/domain-events.ts) is a
+// fixed 5-name platform contract. This table lets a tenant register ADDITIONAL
+// event names (e.g. "lead.qualified") that flow through the very same
+// DomainEvent outbox + dispatcher — the dispatcher already matches eventType by
+// raw string equality, so a custom name routes with no dispatcher change. A
+// custom name must not collide with a built-in DOMAIN_EVENT_TYPES member (the
+// handler enforces the reserved-name guard).
+//
+// Three things may emit an instance of a custom type: an external system (the
+// POST /event-types/:name/emit endpoint), a workflow itself (the SDK emit_event
+// action — workflow-to-workflow chaining), or a Pegasus domain condition
+// (`domainCondition` below) evaluated by the dispatcher.
+// ---------------------------------------------------------------------------
+
+model TenantEventType {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// Tenant-defined event name. Unique per tenant; must NOT collide with a
+  /// built-in DOMAIN_EVENT_TYPES member. Slug: [a-z][a-z0-9_.-]{0,127}.
+  name String
+
+  description String?
+
+  /// Optional JSON Schema (draft-07). When set, the emit endpoint validates the
+  /// instance payload against it and rejects a mismatch.
+  payloadSchema Json? @map("payload_schema")
+
+  /// Optional derivation rule `{ sourceEventType, filter }`. When a built-in
+  /// domain event of `sourceEventType` matches `filter`, the dispatcher emits an
+  /// instance of THIS custom type. `sourceEventType` is validated at create time
+  /// to be a built-in name only, so custom events can never be a derivation
+  /// source — derivation cycles are structurally impossible.
+  domainCondition Json? @map("domain_condition")
+
+  /// Cheap pre-filter for the dispatcher's per-event derivation sweep: true iff
+  /// domainCondition is set. Lets the common (no-condition) tick short-circuit.
+  hasDomainCondition Boolean @default(false) @map("has_domain_condition")
+
+  enabled         Boolean @default(true)
+  createdByUserId String  @map("created_by_user_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, name])
+  @@index([tenantId, enabled])
+  // Supports the dispatcher's cross-tenant derivation sweep (Unit 8): only rows
+  // that actually carry a condition are scanned.
+  @@index([hasDomainCondition, enabled])
+  @@map("tenant_event_types")
   @@schema("public")
 }
 
