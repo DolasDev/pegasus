@@ -6,6 +6,8 @@ Uses ``httpx.MockTransport`` so the client exercises real request building
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 
@@ -317,3 +319,71 @@ def test_get_execution_uses_nested_path() -> None:
 
     assert row["id"] == "exec-1"
     assert captured["path"] == "/api/v1/workflows/wf-1/executions/exec-1"
+
+
+def test_emit_event_posts_payload_to_emit_endpoint() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["method"] = request.method
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            201,
+            json={
+                "data": {
+                    "emitted": True,
+                    "eventType": "lead.qualified",
+                    "occurredAt": "2026-06-21T00:00:00.000Z",
+                }
+            },
+        )
+
+    client = _client_with(handler)
+    result = client.emit_event("lead.qualified", {"leadId": "lead-1"})
+
+    assert result["emitted"] is True
+    assert result["eventType"] == "lead.qualified"
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/api/v1/event-types/lead.qualified/emit"
+    assert captured["body"] == {"payload": {"leadId": "lead-1"}}
+
+
+def test_emit_event_defaults_payload_to_empty_object() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            201,
+            json={"data": {"emitted": True, "eventType": "ping", "occurredAt": "x"}},
+        )
+
+    client = _client_with(handler)
+    client.emit_event("ping")
+
+    assert captured["body"] == {"payload": {}}
+
+
+def test_emit_event_schema_mismatch_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400, json={"error": "payload failed schema", "code": "VALIDATION_ERROR"}
+        )
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.emit_event("lead.qualified", {"wrong": 1})
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.code == "VALIDATION_ERROR"
+
+
+def test_emit_event_unknown_type_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"error": "event type not found", "code": "NOT_FOUND"})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.emit_event("nope")
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.code == "NOT_FOUND"

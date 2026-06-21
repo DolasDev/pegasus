@@ -356,3 +356,43 @@ class PegasusClient:
     def list_events(self, **params: Any) -> Any:
         """Read the events stream. For use inside workflow activities."""
         return self._get_json("/api/v1/events", **params)
+
+    def emit_event(
+        self,
+        name: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Emit an instance of a tenant-defined custom event by name.
+
+        Fires a custom event into the tenant's workflow engine — the same
+        DomainEvent outbox the dispatcher drains — so any workflow whose EVENT
+        trigger subscribes to ``name`` will run. This is the workflow-to-workflow
+        chaining primitive: one workflow emits ``name`` and another, triggered on
+        it, picks up the work.
+
+        The event type must already be registered in the tenant's event-type
+        registry. If that type declares a payload JSON Schema, ``payload`` is
+        validated against it server-side and a mismatch raises ``PegasusApiError``
+        (400).
+
+        Requires the workflow's manifest to declare
+        ``required_actions = ["EmitTenantEvent"]``.
+
+        Args:
+            name: The registered ``TenantEventType`` name (e.g. ``"lead.qualified"``).
+            payload: Arbitrary JSON payload. Defaults to ``{}``.
+
+        Returns:
+            ``{emitted: True, eventType: name, occurredAt: <ISO-8601>}``.
+
+        Raises:
+            PegasusApiError: On 400 (payload fails the type's schema),
+                404 (event type not found or disabled), or any other non-2xx.
+        """
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/event-types/{name}/emit",
+                json={"payload": payload or {}},
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
