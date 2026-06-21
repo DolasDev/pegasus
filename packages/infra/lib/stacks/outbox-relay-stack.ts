@@ -235,13 +235,16 @@ export class OutboxRelayStack extends cdk.Stack {
         : { sourceType: 'CERTIFICATE_BUNDLE', sourceData: { x509CertificateData: caPem } },
     })
 
-    new rolesanywhere.CfnProfile(this, 'RelayProfile', {
+    const profile = new rolesanywhere.CfnProfile(this, 'RelayProfile', {
       name: `pegasus-${envName}-outbox-relay`,
       enabled: true,
       roleArns: [relayRole.roleArn],
     })
 
+    // The on-prem aws_signing_helper needs all three ARNs (--trust-anchor-arn,
+    // --profile-arn, --role-arn) to mint credentials — export each.
     new cdk.CfnOutput(this, 'RelayRoleArn', { value: relayRole.roleArn })
     new cdk.CfnOutput(this, 'RelayTrustAnchorArn', { value: trustAnchor.attrTrustAnchorArn })
+    new cdk.CfnOutput(this, 'RelayProfileArn', { value: profile.attrProfileArn })
   }
 }
