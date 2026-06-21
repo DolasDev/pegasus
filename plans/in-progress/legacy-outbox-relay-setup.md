@@ -69,26 +69,27 @@ The relay creates the SNS client with the **default credential and region resolu
 
 We use a **self-managed CA** (no ACM Private CA, no monthly cost). Ops owns one CA key and renews the relay's leaf cert; everything else is IaC. The relay never holds a long-lived AWS key — the `aws_signing_helper` presents the host's X.509 leaf cert and exchanges it for **temporary** STS credentials (access key + secret + **session token**) on every refresh. The emitter must consume credentials from an AWS profile / the SDK default chain (it gets a session token — it must NOT be hardwired to a bare access-key/secret pair).
 
-Examples below use `step` (smallstep CLI) and `<env>` ∈ {`staging`,`prod`}; commands run from a machine with admin AWS creds for that env's account (staging `248812875460`, prod `331145994639`, region `us-east-1`).
+**Enablement is durable, not a one-shot flag.** Roles Anywhere is provisioned for an env whenever that env's CA **public** cert is committed at `packages/infra/config/outbox-relay/<env>-ca.pem` — the stack inlines it into a `CERTIFICATE_BUNDLE` trust anchor on EVERY synth, so routine CI deploys keep it (a `-c` flag CI never passes would silently tear it down on the next deploy — the RingCentral lesson). No committed cert → Roles Anywhere is skipped, topic/queue still deploy.
+
+> **Staging (dolios) is already wired** (2026-06-21): CA generated, private key stored in SSM SecureString `/pegasus/staging/outbox-relay-ca-key`, public cert committed at `packages/infra/config/outbox-relay/staging-ca.pem`. The trust anchor/profile/role land on the next CI deploy of the api component. To do another env, repeat §A–B with `<env>` and account (staging `248812875460`, prod `331145994639`, region `us-east-1`).
+
+Examples use **openssl** (EC P-256, what staging was built with).
 
 #### A. CA — one-time, on a trusted admin machine (not the relay host)
 
-1. **Generate the root CA.** Keep `ca.key` secret (vault / SSM SecureString / offline); only `ca.crt` (public) leaves this box. Long-lived, e.g. 10 yr:
+1. **Generate the root CA** (10 yr). Keep `ca.key` secret:
    ```
-   step certificate create "Pegasus Outbox Relay Root CA" ca.crt ca.key --profile root-ca --no-password --insecure --not-after 87600h
+   openssl ecparam -name prime256v1 -genkey -noout -out ca.key && openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -out ca.crt -subj "/O=Dolas/CN=Pegasus Outbox Relay <env> Root CA" -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign"
    ```
-2. **Publish the CA's PUBLIC cert to SSM** (the trust anchor reads it; it is not secret):
+2. **Stash the CA private key** (SSM SecureString, for leaf renewal) and **commit the public cert** as the trust-anchor source:
    ```
-   aws ssm put-parameter --name /pegasus/<env>/outbox-relay-ca-pem --type String --value file://ca.crt --region us-east-1
+   aws ssm put-parameter --name /pegasus/<env>/outbox-relay-ca-key --type SecureString --value file://ca.key --region us-east-1
    ```
+   Then `cp ca.crt packages/infra/config/outbox-relay/<env>-ca.pem` and commit it.
 
 #### B. AWS side — deploy the Roles Anywhere principal
 
-3. **Deploy with Roles Anywhere on.** CI is the canonical path (`workflow_dispatch` with the context), or locally:
-   ```
-   npx cdk deploy PegasusStaging-OutboxRelayStack -c env=staging -c outboxRolesAnywhere=true
-   ```
-   (Override the param name with `-c outboxCaCertParam=...`, or use ACM Private CA instead with `-c outboxAcmPcaArn=<arn>`.) Until the SSM parameter is populated the stack **skips** the trust anchor (logs a warning) and the topic/queue still deploy — so the pipeline never blocks.
+3. **Deploy.** Just merge the committed cert — the canonical CI deploy provisions the trust anchor/profile/role (no flag needed). (`-c outboxAcmPcaArn=<arn>` still selects ACM Private CA if ever preferred.)
 4. **Read the three ARNs the relay needs** from the stack outputs:
    ```
    aws cloudformation describe-stacks --stack-name pegasus-<env>-outbox-relay --query "Stacks[0].Outputs" --output table --region us-east-1
@@ -99,16 +100,16 @@ Examples below use `step` (smallstep CLI) and `<env>` ∈ {`staging`,`prod`}; co
 
 #### C. On-prem relay host — issue the leaf cert + wire the credential helper
 
-5. **Issue the host's leaf cert**, signed by the CA, shorter-lived (e.g. 1 yr). Run where `ca.key` lives, then copy `relay.crt` + `relay.key` to the host:
+5. **Issue the host's leaf cert** (1 yr), signed by the CA, where `ca.key` lives (or `aws ssm get-parameter --name /pegasus/<env>/outbox-relay-ca-key --with-decryption` to retrieve it), then copy `leaf.pem` + `leaf.key` to `C:\Services\Pegasus.Outbox.Relay\.aws\` on the host:
    ```
-   step certificate create "pegasus-<env>-outbox-relay" relay.crt relay.key --ca ca.crt --ca-key ca.key --no-password --insecure --not-after 8760h
+   openssl ecparam -name prime256v1 -genkey -noout -out leaf.key && openssl req -new -key leaf.key -subj "/O=Dolas/CN=pegasus-<env>-outbox-relay-dolios" | openssl x509 -req -CA ca.crt -CAkey ca.key -CAcreateserial -sha256 -days 365 -out leaf.pem -extfile <(printf "basicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth\n")
    ```
-   On the host, store the key readable **only** by the service account (NTFS ACL, or import into its cert store).
+   On the host, restrict the key to the service account: `icacls "...\.aws\leaf.key" /inheritance:r /grant:r "<RelayServiceAccount>:R"`.
 6. **Install the credential helper** `aws_signing_helper` (AWS IAM Roles Anywhere Credential Helper) on the host.
 7. **Configure the AWS profile** the relay's Windows service account will use (`%UserProfile%\.aws\config` for that account, or `C:\Windows\System32\config\systemprofile\.aws\config` if it runs as `LocalSystem`). The `credential_process` shells out to the helper, which returns fresh temp creds on demand:
    ```
    [profile pegasus-outbox-relay]
-   credential_process = "C:\\Tools\\aws_signing_helper.exe" credential-process --certificate C:\\Services\\Pegasus.Outbox.Relay\\relay.crt --private-key C:\\Services\\Pegasus.Outbox.Relay\\relay.key --trust-anchor-arn <RelayTrustAnchorArn> --profile-arn <RelayProfileArn> --role-arn <RelayRoleArn>
+   credential_process = "C:\\Tools\\aws_signing_helper.exe" credential-process --certificate C:\\Services\\Pegasus.Outbox.Relay\\.aws\\leaf.pem --private-key C:\\Services\\Pegasus.Outbox.Relay\\.aws\\leaf.key --trust-anchor-arn <RelayTrustAnchorArn> --profile-arn <RelayProfileArn> --role-arn <RelayRoleArn>
    region = us-east-1
    ```
 8. **Point the relay at the profile** (service-scoped env, machine-wide with `/M`):
@@ -121,7 +122,7 @@ Examples below use `step` (smallstep CLI) and `<env>` ∈ {`staging`,`prod`}; co
    aws sts get-caller-identity --profile pegasus-outbox-relay
    ```
    Expect an assumed-role ARN containing `pegasus-<env>-outbox-relay-publish`. If this fails, fix it here — don't debug it through the relay.
-10. **Automate leaf renewal** — the one recurring task. Re-issue/replace `relay.crt` before it expires (e.g. a scheduled task re-running step 5, or `step-ca` + ACME `step ca renew`). The CA cert (10 yr) and the trust anchor need no routine maintenance; only the 1-yr leaf does. If the leaf expires, `get-caller-identity` starts failing and the relay silently stops publishing — alarm on outbox depth (§5) is your backstop.
+10. **Automate leaf renewal** — the one recurring task. Re-issue/replace `leaf.pem`/`leaf.key` before the 1-yr expiry (a scheduled task re-running step 5 against the SSM-stored CA key). The CA cert (10 yr) and the trust anchor need no routine maintenance; only the leaf does. If the leaf expires, `get-caller-identity` starts failing and the relay silently stops publishing — alarm on outbox depth (§5) is your backstop.
 
 > **Hardening (optional):** the relay role currently trusts **any** cert that chains to the CA. Because this CA is dedicated to the relay (it only ever signs the one leaf), that's acceptable. To tighten, add a trust-policy condition on the cert subject CN (`aws:PrincipalTag/x509Subject/CN`) in `OutboxRelayStack`.
 
