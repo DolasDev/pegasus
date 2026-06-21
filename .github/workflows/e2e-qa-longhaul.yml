@@ -42,7 +42,7 @@ jobs:
       QA_USER_PASSWORD: ${{ secrets.QA_USER_PASSWORD }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v6
         with:

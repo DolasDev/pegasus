@@ -64,7 +64,7 @@ jobs:
       any: ${{ steps.decide.outputs.any }}
       migrations: ${{ steps.decide.outputs.migrations }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # need history back to the last-deploy marker tag
 
@@ -202,7 +202,7 @@ jobs:
       # today; keep the floor deliberately loose. Bump when specs are added.
       E2E_MIN_EXECUTED_TESTS: '8'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup
 
@@ -340,7 +340,7 @@ jobs:
     permissions:
       contents: write # force-push the last-deploy marker tag
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Advance last-deploy tag
         env:
           # Optional fine-grained PAT with `contents:write` + `workflows:write`.
@@ -394,7 +394,7 @@ jobs:
     permissions:
       contents: write # force-push the prod-current / prod-previous tags
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Move prod-current / prod-previous tags
