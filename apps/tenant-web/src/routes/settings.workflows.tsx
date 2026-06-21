@@ -36,7 +36,6 @@ import {
   DOMAIN_EVENT_TYPES,
   getWorkflowDownloadUrl,
   type CreateWorkflowTriggerInput,
-  type DomainEventType,
   type Workflow,
   type WorkflowExecution,
   type WorkflowTrigger,
@@ -47,6 +46,7 @@ import { ApiError } from '@/api/client'
 import { usePermissions } from '@/auth/permissions'
 import { formatFireTimeUtc, parseCronExpression, previewNextFires } from '@/lib/cron-preview'
 import { parseTriggerFilter } from '@/lib/trigger-filter'
+import { eventTypesQueryOptions } from '@/api/queries/event-types'
 
 // Triggers are gated by this Cedar permission (underscore, not hyphen — the
 // /me/permissions contract only allows [a-z_]+:[a-z_]+ strings).
@@ -336,11 +336,15 @@ function CronPreview({ expression }: { expression: string }) {
 
 function CreateTriggerDialog({ workflow, onClose }: { workflow: Workflow; onClose: () => void }) {
   const [kind, setKind] = useState<WorkflowTriggerKind>('EVENT')
-  const [eventType, setEventType] = useState<DomainEventType>(DOMAIN_EVENT_TYPES[0])
+  const [eventType, setEventType] = useState<string>(DOMAIN_EVENT_TYPES[0])
   const [filterText, setFilterText] = useState('')
   const [cronExpression, setCronExpression] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const createMutation = useCreateTrigger()
+  // Custom event types the tenant has registered — selectable alongside the
+  // built-in taxonomy. Only the enabled ones can back a new trigger.
+  const { data: customEventTypes } = useQuery(eventTypesQueryOptions)
+  const enabledCustomTypes = (customEventTypes ?? []).filter((t) => t.enabled)
 
   let serverError: string | null = null
   if (createMutation.error) {
@@ -424,13 +428,24 @@ function CreateTriggerDialog({ workflow, onClose }: { workflow: Workflow; onClos
               id="trigger-event-type"
               className={selectClass}
               value={eventType}
-              onChange={(e) => setEventType(e.target.value as DomainEventType)}
+              onChange={(e) => setEventType(e.target.value)}
             >
-              {DOMAIN_EVENT_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
+              <optgroup label="Built-in">
+                {DOMAIN_EVENT_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </optgroup>
+              {enabledCustomTypes.length > 0 && (
+                <optgroup label="Custom">
+                  {enabledCustomTypes.map((t) => (
+                    <option key={t.id} value={t.name}>
+                      {t.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
 
             <label
@@ -444,12 +459,14 @@ function CreateTriggerDialog({ workflow, onClose }: { workflow: Workflow; onClos
               className="mt-1 h-24 w-full resize-y rounded-md border border-input bg-background px-3 py-2 font-mono text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               value={filterText}
               spellCheck={false}
-              placeholder='{"status": "COMPLETED"}'
+              placeholder='{"status": "COMPLETED"} or {"path":"status","op":"eq","value":"DONE"}'
               onChange={(e) => setFilterText(e.target.value)}
             />
             <p className="mt-1 text-xs text-muted-foreground">
-              Every filter key must exactly equal the same key in the event payload. Scalars only.
-              Leave empty to fire on every <code className="font-mono">{eventType}</code> event.
+              Simple form: every key must equal the same key in the payload (scalars only).
+              Structured form: <code className="font-mono">{'{"path","op","value"}'}</code> with
+              all/any groups. Leave empty to fire on every{' '}
+              <code className="font-mono">{eventType}</code> event.
             </p>
           </>
         ) : (
