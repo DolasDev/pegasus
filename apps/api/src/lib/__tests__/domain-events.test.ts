@@ -11,6 +11,7 @@ import { describe, it, expect, vi } from 'vitest'
 import type { Prisma } from '@prisma/client'
 import {
   emitDomainEvent,
+  emitTenantEvent,
   DOMAIN_EVENT_TYPES,
   type DomainEventType,
 } from '../domain-events'
@@ -70,5 +71,36 @@ describe('emitDomainEvent', () => {
       'pegasus_event.received',
     ]
     expect([...DOMAIN_EVENT_TYPES]).toEqual([...expected])
+  })
+})
+
+describe('emitTenantEvent', () => {
+  it('writes a DomainEvent row for an arbitrary custom event name', async () => {
+    const { tx, create } = fakeTx()
+    await emitTenantEvent(tx, {
+      tenantId: 'tenant-1',
+      eventType: 'lead.qualified',
+      payload: { leadId: 'lead-1' },
+    })
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(create).toHaveBeenCalledWith({
+      data: {
+        tenantId: 'tenant-1',
+        eventType: 'lead.qualified',
+        payload: { leadId: 'lead-1' },
+      },
+    })
+  })
+
+  it('writes through the given client and propagates failures', async () => {
+    const { tx, create } = fakeTx()
+    create.mockRejectedValueOnce(new Error('insert failed'))
+    await expect(
+      emitTenantEvent(tx, {
+        tenantId: 'tenant-2',
+        eventType: 'my.custom',
+        payload: {},
+      }),
+    ).rejects.toThrow('insert failed')
   })
 })
