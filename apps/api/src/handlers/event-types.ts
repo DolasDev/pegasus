@@ -34,9 +34,9 @@ import type { AppEnv } from '../types'
 import { Actions } from '../authz/actions'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { requirePermission } from '../middleware/rbac'
-import { DOMAIN_EVENT_TYPES } from '../lib/domain-events'
+import { DOMAIN_EVENT_TYPES, emitTenantEvent } from '../lib/domain-events'
 import { validateFilterExpr } from '../lib/event-filter'
-import { validatePayloadSchema } from '../lib/payload-schema-validator'
+import { validatePayloadSchema, validatePayload } from '../lib/payload-schema-validator'
 import { isCustomEventsEnabled } from '../lib/custom-events-feature'
 import {
   createTenantEventTypeRepository,
@@ -65,6 +65,12 @@ const UpdateBody = z
     payloadSchema: z.record(z.string(), z.unknown()).nullable().optional(),
     domainCondition: z.record(z.string(), z.unknown()).nullable().optional(),
     enabled: z.boolean().optional(),
+  })
+  .strict()
+
+const EmitBody = z
+  .object({
+    payload: z.record(z.string(), z.unknown()).optional(),
   })
   .strict()
 
@@ -258,3 +264,49 @@ eventTypesHandler.delete('/:name', requirePermission(Actions.ManageEventTypes), 
   logger.info('Custom event type deleted', { id: existing.id, name: existing.name })
   return c.body(null, 204)
 })
+
+// ── POST /:name/emit — fire an instance of a custom event ──────────────────────
+//
+// The third emit source alongside the dispatcher's domain-condition derivation
+// (Unit 8) and a workflow's own SDK call: an authenticated external system (or a
+// workflow's runtime token, via EmitTenantEvent) writes one custom event to the
+// DomainEvent outbox under its own name. Any workflow whose EVENT trigger
+// subscribes to that name then runs. NOT idempotent — each POST is a distinct
+// occurrence. If the type declares a payloadSchema, the payload is validated.
+eventTypesHandler.post(
+  '/:name/emit',
+  requirePermission(Actions.EmitTenantEvent),
+  validator('json', (value, c) => {
+    const r = EmitBody.safeParse(value)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const name = c.req.param('name') ?? ''
+    const payload = c.req.valid('json').payload ?? {}
+    const db = c.get('db')
+
+    const eventType = await createTenantEventTypeRepository(db).findByName(name)
+    if (!eventType || !eventType.enabled) {
+      return c.json({ error: 'Event type not found', code: 'NOT_FOUND' }, 404)
+    }
+
+    if (eventType.payloadSchema) {
+      const r = validatePayload(eventType.payloadSchema as Record<string, unknown>, payload)
+      if (!r.ok) {
+        return c.json(
+          { error: `payload failed schema: ${r.errors.join('; ')}`, code: 'VALIDATION_ERROR' },
+          400,
+        )
+      }
+    }
+
+    const occurredAt = new Date().toISOString()
+    await db.$transaction(async (tx) => {
+      await emitTenantEvent(tx, { tenantId, eventType: name, payload })
+    })
+    logger.info('Custom event emitted', { name, tenantId })
+    return c.json({ data: { emitted: true, eventType: name, occurredAt } }, 201)
+  },
+)
