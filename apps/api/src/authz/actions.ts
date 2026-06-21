@@ -32,6 +32,7 @@ export type ResourceType =
   | 'Workflow'
   | 'Notification'
   | 'IntegrationConfig'
+  | 'EventType'
 
 export interface ActionDef {
   /** Cedar action identifier (without namespace prefix). */
@@ -187,6 +188,17 @@ export const Actions = {
     id: 'PublishIntegrationConfig',
     resourceType: 'IntegrationConfig',
     permission: 'integration_config:publish',
+  },
+  // ── Custom event types (tenant-defined event registry for workflows) ─────
+  ManageEventTypes: {
+    id: 'ManageEventTypes',
+    resourceType: 'EventType',
+    permission: 'event_type:manage',
+  },
+  EmitTenantEvent: {
+    id: 'EmitTenantEvent',
+    resourceType: 'EventType',
+    permission: 'event_type:emit',
   },
 } as const satisfies Record<string, ActionDef>
 

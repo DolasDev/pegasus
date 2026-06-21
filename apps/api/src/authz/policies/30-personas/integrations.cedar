@@ -9,7 +9,8 @@ permit (
     Pegasus::Action::"ReadEvent",
     Pegasus::Action::"CreateEvent",
     Pegasus::Action::"UpdateEvent",
-    Pegasus::Action::"DeleteEvent"
+    Pegasus::Action::"DeleteEvent",
+    Pegasus::Action::"EmitTenantEvent"
   ],
   resource
 );
