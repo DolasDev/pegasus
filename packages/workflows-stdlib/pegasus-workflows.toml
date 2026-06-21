@@ -12,3 +12,11 @@ entry_points = ["send_quote_followup.workflow:SendQuoteFollowup"]
 source_dir = "send_quote_followup"
 description = "Follow up on a quote that has not been accepted."
 required_actions = ["ReadQuote", "ReadCustomer", "CreateEvent"]
+
+[[workflow]]
+name = "emit_custom_event"
+version = "0.1.0"
+entry_points = ["emit_custom_event.workflow:EmitCustomEvent"]
+source_dir = "emit_custom_event"
+description = "Emit a tenant-defined custom event when a quote is accepted."
+required_actions = ["EmitTenantEvent"]
