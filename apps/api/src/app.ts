@@ -22,6 +22,7 @@ import { documentsHandler } from './handlers/documents'
 import { workflowsHandler } from './handlers/workflows'
 import { workflowInternalHandler } from './handlers/workflow-internal'
 import { eventsHandler } from './handlers/events'
+import { eventTypesHandler } from './handlers/event-types'
 import { ordersHandler } from './handlers/orders'
 import { vpnAgentHandler } from './handlers/vpn-agent'
 import { dashboardPegiiHandler } from './handlers/dashboard-pegii'
@@ -225,6 +226,7 @@ app.route('/api/vpn', vpnAgentHandler)
 // ---------------------------------------------------------------------------
 const m2mV1 = new Hono<AppEnv>()
 m2mV1.route('/events', eventsHandler)
+m2mV1.route('/event-types', eventTypesHandler)
 m2mV1.route('/orders', ordersHandler)
 m2mV1.route('/workflows', workflowsHandler)
 // Worker-only internal endpoints — gated by the shared-secret header
