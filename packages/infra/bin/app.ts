@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import * as fs from 'fs'
+import * as path from 'path'
 import * as cdk from 'aws-cdk-lib'
 import { CognitoStack } from '../lib/stacks/cognito-stack'
 import { ApiStack } from '../lib/stacks/api-stack'
@@ -330,27 +332,36 @@ apiCdnStack.addDependency(apiStack)
 // Lambda). Staging/prod only — dev has no on-prem relay. No deploy dependency on
 // other stacks.
 //
-// The relay's publish identity (IAM Roles Anywhere) is opt-in via
-// `-c outboxRolesAnywhere=true`. The trust anchor's CA defaults to the
-// SELF-MANAGED path: ops generates a CA once and stores its PUBLIC cert (PEM) in
-// the SSM String parameter `/pegasus/<env>/outbox-relay-ca-pem` (override with
-// `-c outboxCaCertParam=...`). Until that parameter is populated the trust anchor
-// is skipped and the topic/queue still deploy (use a static-key fallback
-// meanwhile). Pass `-c outboxAcmPcaArn=<arn>` to use ACM Private CA instead.
+// The relay's publish identity (IAM Roles Anywhere) is enabled DURABLY per env by
+// committing the self-managed CA's PUBLIC cert at
+// `config/outbox-relay/<env>-ca.pem` (it is not secret). When that file exists the
+// trust anchor is provisioned on EVERY synth — including routine CI deploys — so it
+// can't be silently torn down the way a one-shot `-c` flag would be (cf. the
+// RingCentral env-gate lesson). No committed cert (e.g. prod today) → Roles Anywhere
+// is skipped and the topic/queue still deploy. Overrides for non-committed setups:
+// `-c outboxAcmPcaArn=<arn>` (ACM Private CA), or `-c outboxRolesAnywhere=true`
+// with the SSM-lookup path (`-c outboxCaCertParam=...`).
 const outboxConfig = envName === 'dev' ? undefined : OUTBOX_RELAY[envName]
 if (outboxConfig) {
-  const outboxRolesAnywhereEnabled =
+  const committedCaPath = path.join(__dirname, `../config/outbox-relay/${envName}-ca.pem`)
+  const committedCaPem = fs.existsSync(committedCaPath)
+    ? fs.readFileSync(committedCaPath, 'utf8')
+    : undefined
+  const outboxAcmPcaArn = app.node.tryGetContext('outboxAcmPcaArn') as string | undefined
+  const outboxRolesAnywhereFlag =
     app.node.tryGetContext('outboxRolesAnywhere') === true ||
     app.node.tryGetContext('outboxRolesAnywhere') === 'true'
-  const outboxAcmPcaArn = app.node.tryGetContext('outboxAcmPcaArn') as string | undefined
-  const outboxCaCertParam =
-    (app.node.tryGetContext('outboxCaCertParam') as string | undefined) ??
-    `/pegasus/${envName}/outbox-relay-ca-pem`
-  const outboxRolesAnywhere = !outboxRolesAnywhereEnabled
-    ? undefined
-    : outboxAcmPcaArn
-      ? { acmPcaArn: outboxAcmPcaArn }
-      : { caCertSsmParameterName: outboxCaCertParam }
+  const outboxRolesAnywhere = outboxAcmPcaArn
+    ? { acmPcaArn: outboxAcmPcaArn }
+    : committedCaPem
+      ? { certificateBundlePem: committedCaPem }
+      : outboxRolesAnywhereFlag
+        ? {
+            caCertSsmParameterName:
+              (app.node.tryGetContext('outboxCaCertParam') as string | undefined) ??
+              `/pegasus/${envName}/outbox-relay-ca-pem`,
+          }
+        : undefined
   new OutboxRelayStack(app, `${stackIdPrefix}-OutboxRelayStack`, {
     env,
     stackName: `${stackNamePrefix}-outbox-relay`,
