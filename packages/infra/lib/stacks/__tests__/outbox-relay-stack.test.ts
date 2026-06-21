@@ -80,6 +80,11 @@ describe('OutboxRelayStack — relay publish identity (IAM Roles Anywhere)', () 
     t.hasResourceProperties('AWS::RolesAnywhere::TrustAnchor', {
       Source: { SourceType: 'AWS_ACM_PCA' },
     })
+    // The on-prem aws_signing_helper needs all three ARNs — each must be exported.
+    const outputs = t.findOutputs('*')
+    expect(Object.keys(outputs)).toEqual(
+      expect.arrayContaining(['RelayTrustAnchorArn', 'RelayProfileArn', 'RelayRoleArn']),
+    )
     // sns:Publish is scoped to the topic ARN (a Ref, never "*").
     t.hasResourceProperties('AWS::IAM::Policy', {
       PolicyDocument: Match.objectLike({
