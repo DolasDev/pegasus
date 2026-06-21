@@ -27,6 +27,7 @@ const {
   mockApiClientRepo,
   mockExecutionRepo,
   mockTriggerRepo,
+  mockEventTypeRepo,
   mockTenantFindUnique,
   mockTenantUserCreate,
   mockPresignUpload,
@@ -66,6 +67,9 @@ const {
       update: vi.fn(),
       deleteById: vi.fn(),
     },
+    mockEventTypeRepo: {
+      findByName: vi.fn(),
+    },
     mockTenantFindUnique: vi.fn(),
     mockTenantUserCreate: vi.fn(),
     mockPresignUpload: vi.fn(),
@@ -93,6 +97,10 @@ vi.mock('../repositories/workflow-execution.repository', () => ({
 
 vi.mock('../repositories/workflow-trigger.repository', () => ({
   createWorkflowTriggerRepository: vi.fn(() => mockTriggerRepo),
+}))
+
+vi.mock('../repositories/tenant-event-type.repository', () => ({
+  createTenantEventTypeRepository: vi.fn(() => mockEventTypeRepo),
 }))
 
 vi.mock('../lib/temporal-client', () => ({
@@ -276,6 +284,9 @@ describe('workflows handler', () => {
     })
     mockEncryptRuntimeToken.mockResolvedValue('BASE64-CIPHERTEXT')
     mockRepo.attachRuntimeToken.mockResolvedValue(provisionedRow)
+    // Custom event-type registry: default to "not registered" so a non-built-in
+    // eventType is rejected unless a test opts in by returning an enabled row.
+    mockEventTypeRepo.findByName.mockResolvedValue(null)
   })
 
   // ── RBAC ──────────────────────────────────────────────────────────────────
@@ -1155,13 +1166,60 @@ describe('workflows handler', () => {
       )
     })
 
-    it('rejects an unknown eventType', async () => {
+    it('rejects an eventType that is neither built-in nor a registered custom type', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockEventTypeRepo.findByName.mockResolvedValue(null) // not in the registry
       const res = await buildApp().request(
         '/wf-1/triggers',
         post({ kind: 'EVENT', eventType: 'not.a.real.event' }),
       )
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    it('accepts an EVENT trigger on a registered custom event type (201)', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockEventTypeRepo.findByName.mockResolvedValue({ name: 'lead.qualified', enabled: true })
+      mockTriggerRepo.create.mockResolvedValue(eventTriggerRow)
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'EVENT', eventType: 'lead.qualified' }),
+      )
+      expect(res.status).toBe(201)
+      expect(mockEventTypeRepo.findByName).toHaveBeenCalledWith('lead.qualified')
+    })
+
+    it('rejects a registered-but-DISABLED custom event type (400)', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockEventTypeRepo.findByName.mockResolvedValue({ name: 'lead.qualified', enabled: false })
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'EVENT', eventType: 'lead.qualified' }),
+      )
+      expect(res.status).toBe(400)
+    })
+
+    it('accepts a v2 structured filter (operators + combinators)', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockTriggerRepo.create.mockResolvedValue(eventTriggerRow)
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({
+          kind: 'EVENT',
+          eventType: 'move.status_changed',
+          filter: { all: [{ path: 'newStatus', op: 'eq', value: 'COMPLETED' }] },
+        }),
+      )
+      expect(res.status).toBe(201)
+    })
+
+    it('rejects a structurally invalid filter (400)', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'EVENT', eventType: 'quote.accepted', filter: { op: 'bogus', path: 'x' } }),
+      )
+      expect(res.status).toBe(400)
     })
 
     it('rejects an EVENT trigger that carries a cronExpression', async () => {
