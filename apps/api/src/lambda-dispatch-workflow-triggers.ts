@@ -58,9 +58,14 @@
 // ---------------------------------------------------------------------------
 
 import { CloudWatchClient, PutMetricDataCommand } from '@aws-sdk/client-cloudwatch'
-import type { Prisma } from '@prisma/client'
 import { db } from './db'
 import { cronMatchesMinute, parseCronExpression } from './lib/cron'
+// Trigger-filter matching lives in lib/event-filter.ts so the dispatcher and
+// the trigger create/update validation share ONE contract — the v1
+// shallow-equality dialect AND the v2 structured dialect (dot-paths, operators,
+// all/any). matchesFilter never throws; see that module's header. Re-exported
+// under its historical name for callers/tests that import it from here.
+import { matchesFilter as matchesTriggerFilter } from './lib/event-filter'
 import { createLogger } from './lib/logger'
 import { startWorkflowExecution } from './lib/start-workflow-execution'
 import { sweepTenantRunners } from './lib/tenant-runner'
@@ -92,38 +97,7 @@ type TriggerSkipReason =
   | 'MUST_FORK' // defensive: trigger on a cross-tenant GLOBAL workflow (config mistake)
   | 'ERROR' // unexpected per-trigger exception
 
-/**
- * v1 trigger-filter match semantics — THE PUBLIC CONTRACT the trigger UI
- * (Phase 3 Unit 5) explains to tenants:
- *
- *   - A trigger with a null (or empty-object) filter matches every event of
- *     its eventType.
- *   - Otherwise the match is SHALLOW TOP-LEVEL EQUALITY: every key in the
- *     filter must be present in the event payload with a strictly equal
- *     (===) value. Extra payload keys are ignored.
- *   - Strict equality means scalar values only (string / number / boolean /
- *     null); an object or array filter value never matches in v1.
- *   - No nesting, no operators, no partial/regex matching in v1.
- */
-export function matchesTriggerFilter(
-  filter: Prisma.JsonValue | null,
-  payload: Prisma.JsonValue,
-): boolean {
-  if (filter === null || typeof filter !== 'object' || Array.isArray(filter)) {
-    // Null / non-object filters mean "no filter". (The API only persists
-    // plain objects; anything else is treated as match-all defensively.)
-    return true
-  }
-  const keys = Object.keys(filter)
-  if (keys.length === 0) return true
-  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
-    // A non-empty filter can never match a non-object payload.
-    return false
-  }
-  const payloadRecord = payload as Record<string, unknown>
-  const filterRecord = filter as Record<string, unknown>
-  return keys.every((key) => filterRecord[key] === payloadRecord[key])
-}
+export { matchesTriggerFilter }
 
 /**
  * Deterministic Temporal workflow id for one trigger occurrence. The dedupe
