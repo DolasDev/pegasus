@@ -163,7 +163,7 @@ def load_manifest(path: str | Path) -> list[Manifest]:
         entry_points = ["send_quote_followup.workflow:SendQuoteFollowup"]
         source_dir = "send_quote_followup"   # optional, defaults to name
         description = "..."                   # optional
-        required_actions = ["ReadQuote"]      # optional, defaults to []
+        required_actions = ["ReadQuote", "EmitTenantEvent"]  # optional, defaults to []
 
     Args:
         path: Path to a ``pegasus-workflows.toml`` file *or* to a directory
