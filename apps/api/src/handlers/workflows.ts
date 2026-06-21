@@ -37,6 +37,8 @@ import type { WorkflowRow, WorkflowVisibility } from '../repositories/workflow.r
 import { createWorkflowExecutionRepository } from '../repositories/workflow-execution.repository'
 import type { WorkflowExecutionRow } from '../repositories/workflow-execution.repository'
 import { createWorkflowTriggerRepository } from '../repositories/workflow-trigger.repository'
+import { createTenantEventTypeRepository } from '../repositories/tenant-event-type.repository'
+import { validateFilterExpr } from '../lib/event-filter'
 import type { WorkflowTriggerRow } from '../repositories/workflow-trigger.repository'
 import type { AppEnv } from '../types'
 import { getObjectBuffer, headObject, presignDownload, presignUpload } from '../lib/documents-s3'
@@ -160,9 +162,25 @@ const DOMAIN_EVENT_TYPE_SET: ReadonlySet<string> = new Set(DOMAIN_EVENT_TYPES)
 const INVALID_CRON_MESSAGE =
   'cronExpression must be a valid 5-field cron expression (minute hour day-of-month month day-of-week, UTC) using *, numbers, commas, ranges (a-b), and steps (*/n, a-b/n)'
 
-/** True for a plain JSON object — rejects arrays, null, and primitives. */
-function isPlainJsonObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+/**
+ * Validate an EVENT trigger's eventType. A built-in DOMAIN_EVENT_TYPES name is
+ * always allowed; any other name must be a registered, ENABLED TenantEventType
+ * for this tenant (the custom-event registry, Unit 5). Returns an error message
+ * string, or null when valid. Async because the registry lookup hits the DB —
+ * which is why this runs in the handler body, not the (sync) Zod schema.
+ */
+async function validateTriggerEventType(
+  db: PrismaClient,
+  eventType: string,
+): Promise<string | null> {
+  if (DOMAIN_EVENT_TYPE_SET.has(eventType)) return null
+  const custom = await createTenantEventTypeRepository(db).findByName(eventType)
+  if (!custom || !custom.enabled) {
+    return `Unknown event type "${eventType}". Use a built-in type (${DOMAIN_EVENT_TYPES.join(
+      ', ',
+    )}) or a registered, enabled custom event type.`
+  }
+  return null
 }
 
 // Trigger create body. Kind-conditional: EVENT rows subscribe to a domain
@@ -181,17 +199,19 @@ const CreateTriggerBody = z
   })
   .superRefine((body, ctx) => {
     if (body.kind === 'EVENT') {
-      if (!body.eventType || !DOMAIN_EVENT_TYPE_SET.has(body.eventType)) {
+      // Presence only here; built-in-vs-registered membership needs a DB lookup
+      // and runs in the handler body (validateTriggerEventType).
+      if (!body.eventType) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `EVENT triggers require eventType, one of: ${DOMAIN_EVENT_TYPES.join(', ')}`,
+          message: 'EVENT triggers require an eventType',
         })
       }
-      if (body.filter !== undefined && !isPlainJsonObject(body.filter)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'filter must be a plain JSON object',
-        })
+      if (body.filter !== undefined) {
+        const r = validateFilterExpr(body.filter)
+        if (!r.ok) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: `filter is invalid: ${r.error}` })
+        }
       }
       if (body.cronExpression !== undefined) {
         ctx.addIssue({
@@ -961,6 +981,16 @@ workflowsHandler.post(
       return c.json({ error: 'Workflow not found', code: 'NOT_FOUND' }, 404)
     }
 
+    // EVENT triggers may subscribe to a built-in OR a registered custom event
+    // type (Unit 6). The Zod schema only checked presence; the membership check
+    // is here because it needs the tenant's event-type registry.
+    if (body.kind === 'EVENT' && body.eventType) {
+      const eventTypeError = await validateTriggerEventType(db, body.eventType)
+      if (eventTypeError) {
+        return c.json({ error: eventTypeError, code: 'VALIDATION_ERROR' }, 400)
+      }
+    }
+
     const triggerRepo = createWorkflowTriggerRepository(db)
     const row = await triggerRepo.create({
       tenantId,
@@ -1056,20 +1086,17 @@ workflowsHandler.patch(
           400,
         )
       }
-      if (body.eventType !== undefined && !DOMAIN_EVENT_TYPE_SET.has(body.eventType)) {
-        return c.json(
-          {
-            error: `eventType must be one of: ${DOMAIN_EVENT_TYPES.join(', ')}`,
-            code: 'VALIDATION_ERROR',
-          },
-          400,
-        )
+      if (body.eventType !== undefined) {
+        const eventTypeError = await validateTriggerEventType(db, body.eventType)
+        if (eventTypeError) {
+          return c.json({ error: eventTypeError, code: 'VALIDATION_ERROR' }, 400)
+        }
       }
-      if (body.filter !== undefined && !isPlainJsonObject(body.filter)) {
-        return c.json(
-          { error: 'filter must be a plain JSON object', code: 'VALIDATION_ERROR' },
-          400,
-        )
+      if (body.filter !== undefined) {
+        const r = validateFilterExpr(body.filter)
+        if (!r.ok) {
+          return c.json({ error: `filter is invalid: ${r.error}`, code: 'VALIDATION_ERROR' }, 400)
+        }
       }
     } else {
       if (body.eventType !== undefined || body.filter !== undefined) {
