@@ -15,7 +15,7 @@ import type { AppEnv } from '../types'
 import { registerTestErrorHandler } from '../test-helpers'
 import { _clearAuthzCache } from '../lib/authz'
 
-const { mockRepo } = vi.hoisted(() => ({
+const { mockRepo, mockDomainEventCreate } = vi.hoisted(() => ({
   mockRepo: {
     create: vi.fn(),
     findById: vi.fn(),
@@ -24,6 +24,7 @@ const { mockRepo } = vi.hoisted(() => ({
     update: vi.fn(),
     deleteById: vi.fn(),
   },
+  mockDomainEventCreate: vi.fn(),
 }))
 
 vi.mock('../repositories/tenant-event-type.repository', () => ({
@@ -56,7 +57,12 @@ function buildApp(
   roleNames: readonly string[] = ['tenant_admin'],
   userId: string | null = 'user-1',
 ) {
-  const fakeDb = {} as unknown as PrismaClient
+  const fakeDb = {
+    domainEvent: { create: mockDomainEventCreate },
+  } as unknown as PrismaClient
+  ;(fakeDb as unknown as { $transaction: unknown }).$transaction = vi.fn(
+    (cb: (tx: unknown) => unknown) => cb(fakeDb),
+  )
   vi.mocked(dualAuthMiddleware).mockImplementation(async (c, next) => {
     c.set('tenantId', 'test-tenant-id')
     c.set('principal', { sub: 'test-sub', tenantId: 'test-tenant-id', roleNames: [...roleNames] })
@@ -279,6 +285,81 @@ describe('DELETE /event-types/:name', () => {
   it('404 when the type does not exist', async () => {
     mockRepo.findByName.mockResolvedValue(null)
     const res = await buildApp().request('/event-types/missing', { method: 'DELETE' })
+    expect(res.status).toBe(404)
+  })
+})
+
+describe('POST /event-types/:name/emit', () => {
+  it('emits a custom event (201) and writes one outbox row', async () => {
+    mockRepo.findByName.mockResolvedValue(row({ enabled: true }))
+    mockDomainEventCreate.mockResolvedValue({ id: 'evt-1' })
+    const res = await buildApp().request(
+      '/event-types/lead.qualified/emit',
+      post({ payload: { leadId: 'lead-1' } }),
+    )
+    expect(res.status).toBe(201)
+    const body = await json(res)
+    expect((body['data'] as JsonBody)['emitted']).toBe(true)
+    expect(mockDomainEventCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tenantId: 'test-tenant-id',
+        eventType: 'lead.qualified',
+        payload: { leadId: 'lead-1' },
+      }),
+    })
+  })
+
+  it('defaults the payload to {} when omitted', async () => {
+    mockRepo.findByName.mockResolvedValue(row({ enabled: true }))
+    mockDomainEventCreate.mockResolvedValue({ id: 'evt-1' })
+    const res = await buildApp().request('/event-types/lead.qualified/emit', post({}))
+    expect(res.status).toBe(201)
+    expect(mockDomainEventCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ payload: {} }),
+    })
+  })
+
+  it('404 when the type does not exist', async () => {
+    mockRepo.findByName.mockResolvedValue(null)
+    const res = await buildApp().request('/event-types/missing/emit', post({}))
+    expect(res.status).toBe(404)
+    expect(mockDomainEventCreate).not.toHaveBeenCalled()
+  })
+
+  it('404 when the type is disabled', async () => {
+    mockRepo.findByName.mockResolvedValue(row({ enabled: false }))
+    const res = await buildApp().request('/event-types/lead.qualified/emit', post({}))
+    expect(res.status).toBe(404)
+  })
+
+  it('400 when the payload fails the type schema', async () => {
+    mockRepo.findByName.mockResolvedValue(
+      row({
+        enabled: true,
+        payloadSchema: { type: 'object', required: ['leadId'] },
+      }),
+    )
+    const res = await buildApp().request(
+      '/event-types/lead.qualified/emit',
+      post({ payload: { wrong: 1 } }),
+    )
+    expect(res.status).toBe(400)
+    expect(mockDomainEventCreate).not.toHaveBeenCalled()
+  })
+
+  it('emits regardless of payload when no schema is configured', async () => {
+    mockRepo.findByName.mockResolvedValue(row({ enabled: true, payloadSchema: null }))
+    mockDomainEventCreate.mockResolvedValue({ id: 'evt-1' })
+    const res = await buildApp().request(
+      '/event-types/lead.qualified/emit',
+      post({ payload: { anything: [1, 2, 3] } }),
+    )
+    expect(res.status).toBe(201)
+  })
+
+  it('404 when the feature flag is off', async () => {
+    delete process.env['CUSTOM_EVENTS_ENABLED']
+    const res = await buildApp().request('/event-types/lead.qualified/emit', post({}))
     expect(res.status).toBe(404)
   })
 })
