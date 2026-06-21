@@ -52,3 +52,36 @@ export async function emitDomainEvent(
     },
   })
 }
+
+export type EmitTenantEventInput = {
+  tenantId: string
+  /** A tenant-defined custom event name (a TenantEventType.name). Unlike the
+   * platform taxonomy above this is an arbitrary string, NOT a DomainEventType. */
+  eventType: string
+  payload: Record<string, unknown>
+}
+
+/**
+ * Appends one row to the SAME domain-event outbox as emitDomainEvent, but for a
+ * tenant-defined CUSTOM event type. Kept separate so platform emitters stay
+ * compile-time typed against DomainEventType while this path accepts the open
+ * string set of the tenant registry.
+ *
+ * The eventType is NOT validated against any allowlist here — callers (the emit
+ * handler, the dispatcher's domain-condition deriver) validate against the
+ * tenant's TenantEventType registry before calling. Same transaction contract
+ * as emitDomainEvent: pass the `tx` from `db.$transaction(...)` so the outbox
+ * row commits or rolls back with its surrounding write.
+ */
+export async function emitTenantEvent(
+  tx: Prisma.TransactionClient,
+  input: EmitTenantEventInput,
+): Promise<void> {
+  await tx.domainEvent.create({
+    data: {
+      tenantId: input.tenantId,
+      eventType: input.eventType,
+      payload: input.payload as Prisma.InputJsonValue,
+    },
+  })
+}
