@@ -21,6 +21,7 @@ import { SsoConfigPage } from '@/routes/sso-config'
 import { UsersPage } from '@/routes/users'
 import { DeveloperSettingsPage } from '@/routes/settings.developer'
 import { WorkflowsSettingsPage } from '@/routes/settings.workflows'
+import { EventTypesSettingsPage } from '@/routes/settings.event-types'
 import { RingCentralIntegrationPage } from '@/routes/settings.integrations.ringcentral'
 import { AppSettingsLayout } from '@/features/settings/app/AppSettingsLayout'
 import { AppSettingsIndexPage } from '@/routes/settings.app.index'
@@ -183,6 +184,12 @@ const workflowsSettingsRoute = createRoute({
   component: WorkflowsSettingsPage,
 })
 
+const eventTypesSettingsRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: '/settings/event-types',
+  component: EventTypesSettingsPage,
+})
+
 const ringCentralRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: '/settings/integrations/ringcentral',
@@ -325,6 +332,7 @@ const routeTree = rootRoute.addChildren([
       usersRoute,
       developerSettingsRoute,
       workflowsSettingsRoute,
+      eventTypesSettingsRoute,
       ringCentralRoute,
       appSettingsLayoutRoute.addChildren([
         appSettingsIndexRoute,

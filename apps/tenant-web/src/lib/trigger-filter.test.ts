@@ -61,3 +61,44 @@ describe('parseTriggerFilter', () => {
     expect(result.error).toContain('an array')
   })
 })
+
+describe('parseTriggerFilter — v2 structured dialect', () => {
+  it('accepts a field rule', () => {
+    const r = parseTriggerFilter('{"path":"status","op":"eq","value":"DONE"}')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.filter).toEqual({ path: 'status', op: 'eq', value: 'DONE' })
+  })
+
+  it('accepts all/any groups', () => {
+    expect(
+      parseTriggerFilter(
+        '{"all":[{"path":"a","op":"eq","value":1},{"path":"b","op":"gt","value":2}]}',
+      ).ok,
+    ).toBe(true)
+    expect(parseTriggerFilter('{"any":[{"path":"a","op":"exists"}]}').ok).toBe(true)
+  })
+
+  it('accepts in/nin with a scalar array', () => {
+    expect(parseTriggerFilter('{"path":"s","op":"in","value":["A","B"]}').ok).toBe(true)
+  })
+
+  it('rejects an unknown operator', () => {
+    const r = parseTriggerFilter('{"path":"s","op":"regex","value":".*"}')
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.error).toMatch(/operator/i)
+  })
+
+  it('rejects in without a scalar array', () => {
+    expect(parseTriggerFilter('{"path":"s","op":"in","value":"A"}').ok).toBe(false)
+  })
+
+  it('rejects a field rule without a path', () => {
+    expect(parseTriggerFilter('{"op":"eq","value":1}').ok).toBe(false)
+  })
+
+  it('rejects a group that is both all and any', () => {
+    expect(parseTriggerFilter('{"all":[],"any":[]}').ok).toBe(false)
+  })
+})
