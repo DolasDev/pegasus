@@ -1,17 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { runGatePipeline, type GateCorpusCase } from './gate-pipeline'
+import { runGatePipeline } from './gate-pipeline'
 import { getIntegrationDefinition } from './registry'
+import { weichertCorpus } from './corpus'
 
 const base = getIntegrationDefinition('weichert')!
 
-// vitest runs with cwd = the apps/api package root.
-const corpusDir = join(process.cwd(), 'src/integration-validation/__corpus__/weichert')
-const corpus: GateCorpusCase[] = readdirSync(corpusDir)
-  .filter((f) => f.endsWith('.json'))
-  .sort()
-  .map((f) => JSON.parse(readFileSync(join(corpusDir, f), 'utf8')) as GateCorpusCase)
+// The typed corpus export (corpus.test.ts asserts it equals the on-disk files).
+const corpus = weichertCorpus
 
 describe('runGatePipeline', () => {
   it('passes for the shipped weichert mapping + rules against its own corpus', () => {
