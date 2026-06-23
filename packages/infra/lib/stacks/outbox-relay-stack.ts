@@ -24,6 +24,8 @@
 
 import * as path from 'path'
 import * as cdk from 'aws-cdk-lib'
+import * as events from 'aws-cdk-lib/aws-events'
+import * as eventsTargets from 'aws-cdk-lib/aws-events-targets'
 import * as iam from 'aws-cdk-lib/aws-iam'
 import * as kms from 'aws-cdk-lib/aws-kms'
 import * as lambda from 'aws-cdk-lib/aws-lambda'
@@ -246,5 +248,98 @@ export class OutboxRelayStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'RelayRoleArn', { value: relayRole.roleArn })
     new cdk.CfnOutput(this, 'RelayTrustAnchorArn', { value: trustAnchor.attrTrustAnchorArn })
     new cdk.CfnOutput(this, 'RelayProfileArn', { value: profile.attrProfileArn })
+
+    // Self-managed CA only — ACM PCA manages its own cert lifecycle.
+    if (!acmPcaArn) this.wireLeafRenewal({ envName, outboxKey, relayRole })
+  }
+
+  /**
+   * Automated leaf renewal for the self-managed CA path. A monthly Lambda mints a
+   * fresh leaf signed by the CA key (SSM SecureString) and writes leaf.pem/.key
+   * back to SSM; the on-prem host pulls + swaps them with its own creds. AWS can't
+   * push to the host, so this is the cloud half — see runbook §2 step 10.
+   *
+   * SSM layout (per env):
+   *   outbox-relay-ca-pem   (String)        CA public cert      — Lambda reads
+   *   outbox-relay-ca-key   (SecureString)  CA private key      — Lambda reads
+   *   outbox-relay-leaf-pem (String)        current leaf cert   — Lambda writes, host reads
+   *   outbox-relay-leaf-key (SecureString)  current leaf key    — Lambda writes, host reads
+   * SecureStrings are encrypted with OutboxEventsKey, which the relay role can
+   * already decrypt — so the host pull needs no extra KMS grant.
+   */
+  private wireLeafRenewal(args: {
+    envName: string
+    outboxKey: kms.IKey
+    relayRole: iam.IRole
+  }): void {
+    const { envName, outboxKey, relayRole } = args
+    const p = (suffix: string): string => `/pegasus/${envName}/outbox-relay-${suffix}`
+    const caCertParam = p('ca-pem')
+    const caKeyParam = p('ca-key')
+    const leafCertParam = p('leaf-pem')
+    const leafKeyParam = p('leaf-key')
+    const arn = (name: string): string =>
+      `arn:aws:ssm:${this.region}:${this.account}:parameter${name}`
+
+    const renewLogGroup = new logs.LogGroup(this, 'LeafRenewLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+    const renewFn = new nodejs.NodejsFunction(this, 'LeafRenewFunction', {
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: path.join(__dirname, '../../../../apps/api/src/lambda-outbox-leaf-renew.ts'),
+      handler: 'handler',
+      environment: {
+        NODE_ENV: 'production',
+        LOG_LEVEL: 'INFO',
+        OUTBOX_CA_CERT_PARAM: caCertParam,
+        OUTBOX_CA_KEY_PARAM: caKeyParam,
+        OUTBOX_LEAF_CERT_PARAM: leafCertParam,
+        OUTBOX_LEAF_KEY_PARAM: leafKeyParam,
+        OUTBOX_LEAF_CN: `pegasus-${envName}-outbox-relay-dolios`,
+        OUTBOX_LEAF_DAYS: '365',
+        OUTBOX_KMS_KEY_ID: outboxKey.keyArn,
+      },
+      bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+      memorySize: 256,
+      timeout: cdk.Duration.minutes(1),
+      logGroup: renewLogGroup,
+    })
+    renewFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: 'ReadCa',
+        actions: ['ssm:GetParameter'],
+        resources: [arn(caCertParam), arn(caKeyParam)],
+      }),
+    )
+    renewFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: 'WriteLeaf',
+        actions: ['ssm:PutParameter'],
+        resources: [arn(leafCertParam), arn(leafKeyParam)],
+      }),
+    )
+    // Decrypt the CA key, encrypt the new leaf key — both under OutboxEventsKey.
+    outboxKey.grantEncryptDecrypt(renewFn)
+
+    // Monthly — huge slack on a 1-yr cert, so a missed run is harmless.
+    new events.Rule(this, 'LeafRenewSchedule', {
+      description: 'Monthly Outbox Relay leaf-cert renewal',
+      schedule: events.Schedule.rate(cdk.Duration.days(30)),
+      targets: [new eventsTargets.LambdaFunction(renewFn)],
+    })
+
+    // Host pull: the relay role reads the current leaf (its KMS decrypt on
+    // OutboxEventsKey already covers the SecureString key).
+    relayRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'PullLeaf',
+        actions: ['ssm:GetParameter'],
+        resources: [arn(leafCertParam), arn(leafKeyParam)],
+      }),
+    )
+
+    new cdk.CfnOutput(this, 'LeafCertParam', { value: leafCertParam })
+    new cdk.CfnOutput(this, 'LeafKeyParam', { value: leafKeyParam })
   }
 }
