@@ -1,11 +1,54 @@
 # Dogfood: publish built-in integration configs to the platform tenant (GLOBAL)
 
-> **Status:** TODO — pick up in a new session. Two outcomes: (1) expose each
-> integration's golden corpus as importable data; (2) publish the built-in
-> `longhaul` + `weichert` definitions as **GLOBAL** `IntegrationConfig` rows via
-> the publish endpoint — QA first, behind `INTEGRATION_CONFIG_PUBLISH_ENABLED`,
-> proving gate → publish → overlay → validate end-to-end with **zero behavior
-> change** (the published config is identical to the code floor).
+> **Status:** CODE SHIPPED — live run pending. The buildable engineering for
+> Phases 1–4 plus the Phase-2 infra flag is done (branch
+> `integration-config-dogfood-publish`). What remains is the live operational run
+> (provision the platform-tenant key, deploy, publish to QA, verify, then prod) —
+> it needs AWS/DB credentials and is tracked in **Remaining live steps** below.
+
+## Built in this session (branch `integration-config-dogfood-publish`)
+
+- **Phase 1 ✅** — `apps/api/src/integration-validation/corpus/`: typed
+  `longhaulCorpus` / `weichertCorpus` exports (static JSON imports), `getBuiltinCorpus`
+  (full, for validate-path parity) + `getGateCorpus` (drops structural-rejection
+  fixtures the gate's round-trip stage can't accept). `corpus.test.ts` asserts the
+  exports equal the on-disk files and the gate passes for both built-ins;
+  `gate-pipeline.test.ts` switched off its `fs` read onto the export.
+- **Phase 3+4 ✅ (code)** — `apps/api/scripts/publish-builtin-configs.ts`: a tsx
+  script that assembles `{ mapping, rules, corpus }` from the built-in exports and
+  drives `/config/validate` (default dry-run), `/config` (`--publish`), and a
+  `--verify` mode (GET config/versions + replay the FULL corpus through `/validate`,
+  diffing `{ valid, ruleIds }` vs expected — expected diff = none). Env:
+  `API_BASE_URL` + `PEGASUS_PUBLISH_KEY` (platform-tenant `vnd_` key).
+- **Phase 2 ✅ (infra wiring)** — `packages/infra`:
+  `INTEGRATION_CONFIG_PUBLISH_ENABLED=true` set on the api Lambda when
+  `integrationConfigPublishEnabled` is true; `bin/app.ts` enables it for `staging`
+  (QA) only (prod stays off for Phase 5). Inert until a platform-tenant key
+  publishes; the dry-run validate + read paths are never gated.
+
+> **Open questions resolved while building:** (1) **no SDK/CLI `push` exists** for
+> integration configs → the node script is the vehicle. (2) Platform tenant is the
+> `isPlatformTenant=true` DB flag (admin `PROMOTE_PLATFORM_TENANT`), not a hardcoded
+> id; the script never needs the id — visibility=GLOBAL is derived server-side from
+> the key's tenant. (3) Kept publishing **external** (script); did **not** attach
+> `corpus` to the built-in `IntegrationDefinition` / bundle it into the Lambda.
+
+## Remaining live steps (need AWS/DB credentials — not done in-session)
+
+1. **Merge the PR.** Because it touches `packages/infra`, the deploy pipeline runs a
+   full `--all` CDK deploy (staging then prod-gated). This sets the QA flag on; prod
+   is unaffected (flag is `staging`-only). The endpoint stays inert until step 2.
+2. **Provision the platform-tenant `vnd_` key (QA).** Confirm which tenant has
+   `isPlatformTenant=true` in QA (promote one via admin if needed); ensure its
+   acts-as service account carries `Actions.PublishIntegrationConfig` (RBAC role map
+   / Cedar). Mint a `vnd_` key for it.
+3. **Dry-run, then publish (QA).** `API_BASE_URL=<qa> PEGASUS_PUBLISH_KEY=vnd_xxx npx tsx scripts/publish-builtin-configs.ts`
+   (gate pre-check), then `... --publish` → GLOBAL rows v1 for both integrations.
+4. **Verify (QA).** `... --verify` → GET config/versions show the rows; zero
+   validation diffs (the safety proof). Confirm the `integration config published`
+   log fired.
+5. **Prod (Phase 5).** Flip the flag to include `prod` in `bin/app.ts`, deploy, then
+   run steps 2–4 against prod.
 
 ## Where things stand (context)
 
@@ -26,7 +69,7 @@ The integration-config platform is fully built on `main` (PRs #314–#321):
 **Current reality:** the validator runs **entirely off the built-in code** — there
 are **no GLOBAL rows** in the store yet, and the golden corpus exists only as
 `__corpus__/<id>/*.json` (read by tests via `fs`). This plan changes neither the
-engine nor the built-ins; it just gets the built-ins *into* the store via the real
+engine nor the built-ins; it just gets the built-ins _into_ the store via the real
 publish path.
 
 ## Publish endpoint contract (don't re-derive — from `handlers/integration-validation/config.ts`)
@@ -34,13 +77,13 @@ publish path.
 All under `/api/v1/integrations/:integrationId/config*`, mounted on `m2mV1`
 (`dualAuthMiddleware` → a `vnd_` key or Cognito), RBAC-gated:
 
-| Route | Method | Gate? | Flag-gated? | Permission |
-| --- | --- | --- | --- | --- |
-| `/config/validate` | POST | dry-run (no write) | **no** | `PublishIntegrationConfig` |
-| `/config` | POST | gate → publish → `refreshRegistryOverlay` | **yes** | `PublishIntegrationConfig` |
-| `/config` | GET | — | no | `ReadIntegrationConfig` |
-| `/config/versions` | GET | — | no | `ReadIntegrationConfig` |
-| `/config/rollback/:version` | POST | re-gate → publish | yes | `PublishIntegrationConfig` |
+| Route                       | Method | Gate?                                     | Flag-gated? | Permission                 |
+| --------------------------- | ------ | ----------------------------------------- | ----------- | -------------------------- |
+| `/config/validate`          | POST   | dry-run (no write)                        | **no**      | `PublishIntegrationConfig` |
+| `/config`                   | POST   | gate → publish → `refreshRegistryOverlay` | **yes**     | `PublishIntegrationConfig` |
+| `/config`                   | GET    | —                                         | no          | `ReadIntegrationConfig`    |
+| `/config/versions`          | GET    | —                                         | no          | `ReadIntegrationConfig`    |
+| `/config/rollback/:version` | POST   | re-gate → publish                         | yes         | `PublishIntegrationConfig` |
 
 - **Body** (validate + publish): `{ mapping, rules, corpus: GateCorpusCase[] }` —
   the **caller supplies the corpus**; the gate runs server-side; publish writes
@@ -70,7 +113,7 @@ never in the hot `validate` path (the overlay uses only `mapping` + `rules`). So
 - **Deliverables:** `<integration>Corpus` exports; gate-pipeline test switched to the
   export (optional); a test asserting the export equals the `__corpus__` files.
 - **DoD:** `import { weichertCorpus }` returns the cases; `runGatePipeline(base,
-  { mapping, rules, corpus })` is `ok` for both integrations using the exports.
+{ mapping, rules, corpus })` is `ok` for both integrations using the exports.
 - **When launched, cover:** whether to also attach `corpus` to `IntegrationDefinition`
   (only if the API should ever self-publish built-ins), and the `resolveJsonModule`
   / esbuild include for the JSON.
@@ -129,12 +172,12 @@ never in the hot `validate` path (the overlay uses only `mapping` + `rules`). So
 
 ## Risks → mitigations
 
-| Risk | Mitigation |
-| --- | --- |
-| Published config diverges from / breaks behavior | Publish configs **identical** to the built-ins (Phase 4 diff = none); built-in code stays the fallback floor if the overlay row is missing/unparseable |
-| No platform-tenant key with publish rights | Phase 2 provisions it before any publish; dry-run `/config/validate` confirms before mutating |
-| Corpus mistakenly assumed needed at runtime | It isn't — overlay uses only mapping/rules; corpus is request-supplied at publish only (no Lambda bundling) |
-| Canonical contract changes in code later → a stored config fails the gate | By design (gate re-runs on rollback); built-in floor protects the live path |
+| Risk                                                                                            | Mitigation                                                                                                                                                          |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Published config diverges from / breaks behavior                                                | Publish configs **identical** to the built-ins (Phase 4 diff = none); built-in code stays the fallback floor if the overlay row is missing/unparseable              |
+| No platform-tenant key with publish rights                                                      | Phase 2 provisions it before any publish; dry-run `/config/validate` confirms before mutating                                                                       |
+| Corpus mistakenly assumed needed at runtime                                                     | It isn't — overlay uses only mapping/rules; corpus is request-supplied at publish only (no Lambda bundling)                                                         |
+| Canonical contract changes in code later → a stored config fails the gate                       | By design (gate re-runs on rollback); built-in floor protects the live path                                                                                         |
 | Weichert legacy `$from` paths still INFERRED (`KeyMoveDates.*.Actual`, `Survey.ShipmentStatus`) | Doesn't block publishing identical-to-floor; confirm against the real client payload before relying on the date rules in anger (flagged in `weichert.transform.ts`) |
 
 ## Open questions / decisions
@@ -148,4 +191,7 @@ never in the hot `validate` path (the overlay uses only `mapping` + `rules`). So
 3. **API self-publish?** Keep publishing external (script/SDK), or add an admin
    "publish built-in as GLOBAL" path inside the API (would require attaching `corpus`
    to the built-in definition / bundling — Phase 1 optional extension)?
+
+```
+
 ```
