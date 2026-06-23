@@ -747,6 +747,44 @@ describe('ApiStack — RingCentral master switch (ringcentralEnabled)', () => {
   })
 })
 
+describe('ApiStack — integration-config publish switch (integrationConfigPublishEnabled)', () => {
+  function synthEnabled() {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const apiStack = new ApiStack(app, 'TestApiIcEnabled', {
+      env: { account: '111111111111', region: 'us-east-1' },
+      integrationConfigPublishEnabled: true,
+    })
+    return Template.fromStack(apiStack)
+  }
+
+  it('leaves INTEGRATION_CONFIG_PUBLISH_ENABLED unset on every Lambda by default', () => {
+    const template = synthApiStack()
+    const fns = template.findResources('AWS::Lambda::Function')
+    const withFlag = Object.values(fns).filter(
+      (fn) =>
+        fn.Properties?.Environment?.Variables?.INTEGRATION_CONFIG_PUBLISH_ENABLED !== undefined,
+    )
+    if (withFlag.length !== 0) {
+      throw new Error(
+        `expected no Lambda to carry INTEGRATION_CONFIG_PUBLISH_ENABLED, found ${withFlag.length}`,
+      )
+    }
+  })
+
+  it('sets INTEGRATION_CONFIG_PUBLISH_ENABLED=true only on the api Lambda when enabled', () => {
+    const template = synthEnabled()
+    const fns = template.findResources('AWS::Lambda::Function')
+    const enabled = Object.values(fns).filter(
+      (fn) => fn.Properties?.Environment?.Variables?.INTEGRATION_CONFIG_PUBLISH_ENABLED === 'true',
+    )
+    if (enabled.length !== 1) {
+      throw new Error(
+        `expected exactly 1 Lambda with INTEGRATION_CONFIG_PUBLISH_ENABLED=true, found ${enabled.length}`,
+      )
+    }
+  })
+})
+
 // ---------------------------------------------------------------------------
 describe('ApiStack — workflow-execution reconcile poller (Phase 2 Unit 6.5)', () => {
   // A complete secret ARN (with the random 6-char suffix) is required by

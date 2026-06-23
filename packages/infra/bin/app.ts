@@ -100,6 +100,18 @@ const sesFromEmail = sesEmailEnabled ? `no-reply@${SES_SENDER_DOMAIN[envName]}` 
 // no subscription, no webhook traffic. dev/staging stay off.
 const ringcentralEnabled = envName === 'prod'
 
+// ── Integration-config publishing master switch (QA first) ───────────────────
+// Ungates the mutating integration-validator config endpoints (POST /config +
+// rollback) behind INTEGRATION_CONFIG_PUBLISH_ENABLED on the api Lambda. Enabled
+// in staging (QA) only — that is where we dogfood publishing the built-in
+// longhaul + weichert configs as GLOBAL rows (see
+// plans/todo/integration-config-dogfood-publish.md). Prod stays off until the QA
+// run is clean (plan Phase 5). Env-gated rather than a one-shot context flag so
+// it stays on across routine main-push deploys. Inert until a platform-tenant
+// vnd_ key with Actions.PublishIntegrationConfig actually publishes: the dry-run
+// /config/validate and read paths are never gated by this switch.
+const integrationConfigPublishEnabled = envName === 'staging'
+
 // ── CORS allowlist (staging/prod) ────────────────────────────────────────────
 // Browser origins allowed to call the API cross-origin. Tenant + admin SPA
 // hostnames per env (the same dolas-managed domains the frontend stacks attach
@@ -304,6 +316,7 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   tenantRunnerSubnets: wireguardStack.temporalWorkerSubnets,
   tenantRunnerSecurityGroup: wireguardStack.tenantRunnerSecurityGroup,
   ringcentralEnabled,
+  integrationConfigPublishEnabled,
   corsAllowedOrigins,
 })
 apiStack.addDependency(cognitoStack)

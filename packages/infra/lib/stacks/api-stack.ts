@@ -174,6 +174,20 @@ export interface ApiStackProps extends cdk.StackProps {
   readonly ringcentralEnabled?: boolean
 
   /**
+   * Master switch for publishing integration-validator config from the DB-backed
+   * store. When true, `INTEGRATION_CONFIG_PUBLISH_ENABLED=true` is set on the api
+   * Lambda, ungating the mutating endpoints (`POST /config`, rollback). The
+   * dry-run `/config/validate` and read paths are never gated by it.
+   *
+   * Inert-safe: publishing GLOBAL requires a platform-tenant `vnd_` key carrying
+   * `Actions.PublishIntegrationConfig`; until one publishes, the validator keeps
+   * serving the built-in code config. Default off; enabled for staging (QA) in
+   * bin/app.ts — see plans/todo/integration-config-dogfood-publish.md (prod is a
+   * separate Phase-5 rollout).
+   */
+  readonly integrationConfigPublishEnabled?: boolean
+
+  /**
    * Browser origins allowed to call the API cross-origin. Threaded from
    * bin/app.ts per environment (tenant + admin SPA hostnames in staging/prod).
    * Applied at BOTH layers from this single source of truth:
@@ -413,6 +427,17 @@ export class ApiStack extends cdk.Stack {
     })
     apiFunction.addToRolePolicy(ringcentralSecretPolicy)
     apiFunction.addEnvironment('RINGCENTRAL_SECRET_PREFIX', ringcentralSecretPrefix)
+
+    // ---------------------------------------------------------------------------
+    // Integration-config publishing master switch. Ungates the mutating config
+    // endpoints (publish + rollback); the dry-run validate and read paths stay
+    // open regardless. Inert until a platform-tenant vnd_ key publishes (see
+    // ApiStackProps.integrationConfigPublishEnabled). Only the env var is set —
+    // no IAM/secret wiring is needed (the store is the shared Neon DB).
+    // ---------------------------------------------------------------------------
+    if (props.integrationConfigPublishEnabled) {
+      apiFunction.addEnvironment('INTEGRATION_CONFIG_PUBLISH_ENABLED', 'true')
+    }
 
     // ---------------------------------------------------------------------------
     // S3 documents bucket — grant scoped read/write/delete and inject the
