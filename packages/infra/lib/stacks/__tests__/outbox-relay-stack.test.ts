@@ -128,6 +128,34 @@ describe('OutboxRelayStack — relay publish identity (IAM Roles Anywhere)', () 
     })
   })
 
+  it('wires monthly leaf renewal (Lambda + schedule) on the self-managed CA path', () => {
+    const t = synth({
+      rolesAnywhere: {
+        certificateBundlePem:
+          '-----BEGIN CERTIFICATE-----\nMIIBfakeCAcert\n-----END CERTIFICATE-----\n',
+      },
+    })
+    // consumer + renew = 2 functions; a monthly schedule drives the renew one.
+    t.resourceCountIs('AWS::Lambda::Function', 2)
+    t.hasResourceProperties('AWS::Events::Rule', {
+      ScheduleExpression: 'rate(30 days)',
+    })
+    t.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: Match.objectLike({
+        Variables: Match.objectLike({
+          OUTBOX_CA_KEY_PARAM: '/pegasus/staging/outbox-relay-ca-key',
+          OUTBOX_LEAF_KEY_PARAM: '/pegasus/staging/outbox-relay-leaf-key',
+        }),
+      }),
+    })
+  })
+
+  it('does NOT wire leaf renewal when Roles Anywhere is off (no renewal Lambda/schedule)', () => {
+    const t = synth()
+    t.resourceCountIs('AWS::Lambda::Function', 1) // consumer only
+    t.resourceCountIs('AWS::Events::Rule', 0)
+  })
+
   it('skips the trust anchor when Roles Anywhere is requested but no CA is resolved', () => {
     // Empty rolesAnywhere (e.g. SSM param not populated yet) → topic + queue only.
     const t = synth({ rolesAnywhere: {} })
