@@ -146,7 +146,7 @@ const SETTINGS_NAV_ITEMS = [
   },
   {
     to: '/settings/developer' as const,
-    label: 'Developer Settings',
+    label: 'Developer',
     icon: Key,
     exact: false,
     roles: ADMIN_ONLY,

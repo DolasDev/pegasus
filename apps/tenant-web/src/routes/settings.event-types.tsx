@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { Plus, Trash2 } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
@@ -315,6 +316,18 @@ export function EventTypesSettingsPage() {
         breadcrumbs={[{ label: 'Settings' }, { label: 'Event Types' }]}
         action={createButton}
       />
+
+      <p className="mt-2 text-sm text-muted-foreground">
+        Custom events extend the built-in taxonomy that{' '}
+        <Link to="/settings/workflows" className="text-primary hover:underline">
+          workflows
+        </Link>{' '}
+        can trigger on. Author and push them with the{' '}
+        <Link to="/settings/developer" className="text-primary hover:underline">
+          SDK
+        </Link>
+        .
+      </p>
 
       <div className="mt-6">
         {isPending ? (
