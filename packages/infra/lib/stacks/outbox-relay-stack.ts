@@ -271,6 +271,40 @@ export class OutboxRelayStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'IntegrationBufferQueueUrl', { value: bufferQueue.queueUrl })
     new cdk.CfnOutput(this, 'IntegrationBufferDlqArn', { value: bufferDlq.queueArn })
 
+    // ── Mapper Lambda — buffer → tenant-scoped DomainEvent ─────────────────────
+    // Drains the buffer and writes a DomainEvent per legacy event; the existing
+    // workflow-trigger dispatcher then matches + starts workflows (no new trigger
+    // code). maxConcurrency caps how many invocations the SQS poller runs at once
+    // (min 2) so a relay backlog can't consume all of the account's 10 Lambda
+    // slots and starve the rest of the fleet — without reserving capacity away
+    // from the pool. Reuses the consumer's DB secret + DATABASE_URL wiring.
+    const mapperLogGroup = new logs.LogGroup(this, 'IntegrationEventMapLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+    const mapperFunction = new nodejs.NodejsFunction(this, 'IntegrationEventMapFunction', {
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: path.join(__dirname, '../../../../apps/api/src/lambda-integration-event-map.ts'),
+      handler: 'handler',
+      environment: {
+        NODE_ENV: 'production',
+        DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+        LOG_LEVEL: 'INFO',
+      },
+      bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+      memorySize: 512,
+      timeout: cdk.Duration.minutes(5),
+      logGroup: mapperLogGroup,
+    })
+    dbSecret.grantRead(mapperFunction)
+    mapperFunction.addEventSource(
+      new lambdaEventSources.SqsEventSource(bufferQueue, {
+        batchSize: 10,
+        reportBatchItemFailures: true,
+        maxConcurrency: 2,
+      }),
+    )
+
     // ── IAM Roles Anywhere — relay publish identity (optional) ─────────────────
     if (props.rolesAnywhere) {
       const { acmPcaArn, caCertSsmParameterName, certificateBundlePem } = props.rolesAnywhere

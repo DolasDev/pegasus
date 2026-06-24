@@ -59,7 +59,8 @@ describe('OutboxRelayStack — SQS FIFO queue + DLQ', () => {
     const t = synth()
     t.resourceCountIs('AWS::SNS::Subscription', 1)
     t.hasResourceProperties('AWS::SNS::Subscription', { Protocol: 'sqs' })
-    t.resourceCountIs('AWS::Lambda::EventSourceMapping', 1)
+    // Two SQS event sources: the SNS-path consumer and the buffer mapper.
+    t.resourceCountIs('AWS::Lambda::EventSourceMapping', 2)
     t.hasResourceProperties('AWS::Lambda::EventSourceMapping', {
       FunctionResponseTypes: ['ReportBatchItemFailures'],
     })
@@ -146,10 +147,14 @@ describe('OutboxRelayStack — pegii.* routing rule + buffer queue', () => {
     })
   })
 
-  it('has no consumer yet — the buffer fills until the unit-4 mapper drains it', () => {
-    // Only the SNS consumer Lambda exists; the buffer has no EventSourceMapping.
+  it('drains the buffer with the mapper Lambda, capped at maxConcurrency 2', () => {
     const t = synth()
-    t.resourceCountIs('AWS::Lambda::EventSourceMapping', 1)
+    // The mapper's event source caps concurrent invocations so a relay backlog
+    // can't consume all 10 of the account's Lambda slots.
+    t.hasResourceProperties('AWS::Lambda::EventSourceMapping', {
+      ScalingConfig: { MaximumConcurrency: 2 },
+      FunctionResponseTypes: ['ReportBatchItemFailures'],
+    })
   })
 })
 
@@ -226,8 +231,8 @@ describe('OutboxRelayStack — relay publish identity (IAM Roles Anywhere)', () 
           '-----BEGIN CERTIFICATE-----\nMIIBfakeCAcert\n-----END CERTIFICATE-----\n',
       },
     })
-    // consumer + renew = 2 functions; a monthly schedule drives the renew one.
-    t.resourceCountIs('AWS::Lambda::Function', 2)
+    // consumer + mapper + renew = 3 functions; a monthly schedule drives renew.
+    t.resourceCountIs('AWS::Lambda::Function', 3)
     t.hasResourceProperties('AWS::Events::Rule', {
       ScheduleExpression: 'rate(30 days)',
     })
@@ -243,7 +248,7 @@ describe('OutboxRelayStack — relay publish identity (IAM Roles Anywhere)', () 
 
   it('does NOT wire leaf renewal when Roles Anywhere is off (no renewal Lambda/schedule)', () => {
     const t = synth()
-    t.resourceCountIs('AWS::Lambda::Function', 1) // consumer only
+    t.resourceCountIs('AWS::Lambda::Function', 2) // SNS consumer + buffer mapper (no renew)
     // The only rule is the pegii.* routing rule — no rate()/schedule rule.
     t.resourceCountIs('AWS::Events::Rule', 1)
     const scheduled = t.findResources('AWS::Events::Rule', {
