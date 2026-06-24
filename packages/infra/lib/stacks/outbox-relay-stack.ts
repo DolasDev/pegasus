@@ -330,7 +330,7 @@ export class OutboxRelayStack extends cdk.Stack {
             '; skipping trust anchor/profile/role — topic + queue still deploy.',
         )
       } else {
-        this.wireRolesAnywhere({ envName, topic, outboxKey, acmPcaArn, caPem })
+        this.wireRolesAnywhere({ envName, topic, eventBus, outboxKey, acmPcaArn, caPem })
       }
     }
 
@@ -344,11 +344,12 @@ export class OutboxRelayStack extends cdk.Stack {
   private wireRolesAnywhere(args: {
     envName: string
     topic: sns.ITopic
+    eventBus: events.IEventBus
     outboxKey: kms.IKey
     acmPcaArn?: string
     caPem?: string
   }): void {
-    const { envName, topic, outboxKey, acmPcaArn, caPem } = args
+    const { envName, topic, eventBus, outboxKey, acmPcaArn, caPem } = args
 
     const relayRole = new iam.Role(this, 'RelayPublishRole', {
       roleName: `pegasus-${envName}-outbox-relay-publish`,
@@ -363,6 +364,10 @@ export class OutboxRelayStack extends cdk.Stack {
       }),
     )
     // Least privilege: publish to THIS topic only…
+    // KEPT during the SNS→EventBridge cutover: the relay still publishes to SNS
+    // until it flips to PutEvents and is confirmed live (then unit 6 retires both
+    // this grant and the topic). Removing it before the relay cuts over would
+    // break the live SNS path.
     relayRole.addToPolicy(
       new iam.PolicyStatement({
         sid: 'PublishShipmentEvents',
@@ -370,7 +375,18 @@ export class OutboxRelayStack extends cdk.Stack {
         resources: [topic.topicArn],
       }),
     )
-    // …plus the KMS the encrypted topic requires (else publishes fail at SNS).
+    // …and PutEvents to the integration bus (the relay's next-gen target). Granted
+    // additively so the relay can cut over from sns:Publish without an IAM change
+    // racing the deploy. The bus reuses outboxKey, so the PublishKms grant below
+    // already covers the kms:GenerateDataKey PutEvents needs on the CMK bus.
+    relayRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'PublishIntegrationEvents',
+        actions: ['events:PutEvents'],
+        resources: [eventBus.eventBusArn],
+      }),
+    )
+    // …plus the KMS the encrypted topic + bus require (else publishes fail).
     relayRole.addToPolicy(
       new iam.PolicyStatement({
         sid: 'PublishKms',

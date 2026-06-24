@@ -193,6 +193,19 @@ describe('OutboxRelayStack — relay publish identity (IAM Roles Anywhere)', () 
         ]),
       }),
     })
+    // events:PutEvents granted additively (alongside sns:Publish) on the bus ARN,
+    // so the relay can cut over without an IAM change racing the deploy.
+    t.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Sid: 'PublishIntegrationEvents',
+            Action: 'events:PutEvents',
+            Resource: Match.objectLike({ 'Fn::GetAtt': Match.anyValue() }),
+          }),
+        ]),
+      }),
+    })
     // KMS grant present and scoped (the encrypted topic needs it).
     t.hasResourceProperties('AWS::IAM::Policy', {
       PolicyDocument: Match.objectLike({
