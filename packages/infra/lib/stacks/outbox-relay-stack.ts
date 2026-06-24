@@ -63,6 +63,15 @@ export interface OutboxRelayStackProps extends cdk.StackProps {
    */
   readonly busName: string
   /**
+   * Standard SQS buffer queue the bus rule delivers `pegii.*` events into. The
+   * mapper Lambda (unit 4) drains it; buffering decouples the bus from the
+   * 10-concurrent-exec Lambda cap so a burst can't throttle the rest of the
+   * fleet. Standard (not FIFO) — ordering isn't required, consumers idempotent.
+   */
+  readonly bufferQueueName: string
+  /** Redrive DLQ for the buffer queue — poison messages land here after retries. */
+  readonly bufferDlqName: string
+  /**
    * IAM Roles Anywhere config for the on-prem relay's publish identity. When
    * omitted, the trust anchor / profile / role are not created (interim
    * static-key path). The trust anchor's CA comes from exactly one of:
@@ -228,6 +237,39 @@ export class OutboxRelayStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, 'IntegrationEventBusArn', { value: eventBus.eventBusArn })
     new cdk.CfnOutput(this, 'IntegrationEventBusName', { value: eventBus.eventBusName })
+
+    // ── Route pegii.* → SQS buffer (mapper Lambda drains it in unit 4) ──────────
+    // Buffer first, never EB→Lambda direct: both accounts cap Lambda at 10
+    // concurrent execs, so a relay backlog draining all at once must not starve
+    // the rest of the fleet. The mapper (unit 4) sets reserved concurrency on the
+    // SqsEventSource side. Standard queue + redrive DLQ — ordering isn't required
+    // and the mapper is idempotent (dedupes on the legacy eventId).
+    const bufferDlq = new sqs.Queue(this, 'IntegrationBufferDLQ', {
+      queueName: props.bufferDlqName,
+      retentionPeriod: cdk.Duration.days(14),
+      enforceSSL: true,
+    })
+    const bufferQueue = new sqs.Queue(this, 'IntegrationBufferQueue', {
+      queueName: props.bufferQueueName,
+      // Must be >= the mapper Lambda's timeout (unit 4) so an in-flight message
+      // isn't redelivered mid-processing.
+      visibilityTimeout: cdk.Duration.minutes(6),
+      enforceSSL: true,
+      deadLetterQueue: { queue: bufferDlq, maxReceiveCount: 5 },
+    })
+
+    // Coarse routing: every legacy pegII source (pegii.movemanager today, more as
+    // the registry grows) → the buffer. All FINE filtering stays in the v2
+    // WorkflowTrigger.filter model on the resulting DomainEvent, not here.
+    new events.Rule(this, 'IntegrationEventRule', {
+      eventBus,
+      description: 'Route all pegII integration events to the mapper buffer queue.',
+      eventPattern: { source: events.Match.prefix('pegii.') },
+      targets: [new eventsTargets.SqsQueue(bufferQueue)],
+    })
+
+    new cdk.CfnOutput(this, 'IntegrationBufferQueueUrl', { value: bufferQueue.queueUrl })
+    new cdk.CfnOutput(this, 'IntegrationBufferDlqArn', { value: bufferDlq.queueArn })
 
     // ── IAM Roles Anywhere — relay publish identity (optional) ─────────────────
     if (props.rolesAnywhere) {

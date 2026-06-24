@@ -174,19 +174,30 @@ export const TEMPORAL_SECRET_ARNS: Record<
 // plans/in-progress/legacy-outbox-relay-setup.md
 export const OUTBOX_RELAY: Record<
   Exclude<EnvName, 'dev'>,
-  { topicName: string; queueName: string; dlqName: string; busName: string }
+  {
+    topicName: string
+    queueName: string
+    dlqName: string
+    busName: string
+    bufferQueueName: string
+    bufferDlqName: string
+  }
 > = {
   staging: {
     topicName: 'pegasus-staging-outbox-events.fifo',
     queueName: 'pegasus-staging-outbox-events.fifo',
     dlqName: 'pegasus-staging-outbox-events-dlq.fifo',
     busName: 'pegasus-staging-integration-events',
+    bufferQueueName: 'pegasus-staging-integration-events-buffer',
+    bufferDlqName: 'pegasus-staging-integration-events-buffer-dlq',
   },
   prod: {
     topicName: 'pegasus-prod-outbox-events.fifo',
     queueName: 'pegasus-prod-outbox-events.fifo',
     dlqName: 'pegasus-prod-outbox-events-dlq.fifo',
     busName: 'pegasus-prod-integration-events',
+    bufferQueueName: 'pegasus-prod-integration-events-buffer',
+    bufferDlqName: 'pegasus-prod-integration-events-buffer-dlq',
   },
 }
 
@@ -385,6 +396,8 @@ if (outboxConfig) {
     queueName: outboxConfig.queueName,
     dlqName: outboxConfig.dlqName,
     busName: outboxConfig.busName,
+    bufferQueueName: outboxConfig.bufferQueueName,
+    bufferDlqName: outboxConfig.bufferDlqName,
     rolesAnywhere: outboxRolesAnywhere,
   })
 }

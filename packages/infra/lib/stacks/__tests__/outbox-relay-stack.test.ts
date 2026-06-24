@@ -13,6 +13,8 @@ function synth(overrides: Partial<OutboxRelayStackProps> = {}) {
     queueName: 'pegasus-staging-outbox-events.fifo',
     dlqName: 'pegasus-staging-outbox-events-dlq.fifo',
     busName: 'pegasus-staging-integration-events',
+    bufferQueueName: 'pegasus-staging-integration-events-buffer',
+    bufferDlqName: 'pegasus-staging-integration-events-buffer-dlq',
     ...overrides,
   })
   return Template.fromStack(stack)
@@ -40,7 +42,8 @@ describe('OutboxRelayStack — SNS FIFO topic', () => {
 describe('OutboxRelayStack — SQS FIFO queue + DLQ', () => {
   it('creates a FIFO queue and a FIFO DLQ with redrive (maxReceiveCount 5)', () => {
     const t = synth()
-    t.resourceCountIs('AWS::SQS::Queue', 2)
+    // 4 total: SNS FIFO queue + its DLQ, plus the EventBridge buffer + its DLQ.
+    t.resourceCountIs('AWS::SQS::Queue', 4)
     t.hasResourceProperties('AWS::SQS::Queue', {
       QueueName: 'pegasus-staging-outbox-events.fifo',
       FifoQueue: true,
@@ -97,8 +100,56 @@ describe('OutboxRelayStack — EventBridge bus (relay cutover target)', () => {
     const t = synth()
     t.resourceCountIs('AWS::SNS::Topic', 1)
     t.resourceCountIs('AWS::SNS::Subscription', 1)
-    // The bus brings no Events::Rule (coarse routing arrives in a later unit).
-    t.resourceCountIs('AWS::Events::Rule', 0)
+    // SNS FIFO queue + its DLQ still present alongside the new buffer pair.
+    t.hasResourceProperties('AWS::SQS::Queue', {
+      QueueName: 'pegasus-staging-outbox-events.fifo',
+      FifoQueue: true,
+    })
+  })
+})
+
+describe('OutboxRelayStack — pegii.* routing rule + buffer queue', () => {
+  it('routes every pegii.* source to the buffer queue (coarse, prefix match)', () => {
+    const t = synth()
+    t.resourceCountIs('AWS::Events::Rule', 1)
+    t.hasResourceProperties('AWS::Events::Rule', {
+      EventBusName: Match.anyValue(),
+      EventPattern: { source: [{ prefix: 'pegii.' }] },
+      Targets: Match.arrayWith([Match.objectLike({ Arn: Match.anyValue() })]),
+    })
+  })
+
+  it('creates a STANDARD buffer queue + DLQ with redrive (not FIFO)', () => {
+    const t = synth()
+    t.hasResourceProperties('AWS::SQS::Queue', {
+      QueueName: 'pegasus-staging-integration-events-buffer',
+      FifoQueue: Match.absent(),
+      RedrivePolicy: { maxReceiveCount: 5 },
+    })
+    t.hasResourceProperties('AWS::SQS::Queue', {
+      QueueName: 'pegasus-staging-integration-events-buffer-dlq',
+      FifoQueue: Match.absent(),
+    })
+  })
+
+  it('grants EventBridge SendMessage on the buffer queue (target policy)', () => {
+    const t = synth()
+    t.hasResourceProperties('AWS::SQS::QueuePolicy', {
+      PolicyDocument: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith(['sqs:SendMessage']),
+            Principal: { Service: 'events.amazonaws.com' },
+          }),
+        ]),
+      }),
+    })
+  })
+
+  it('has no consumer yet — the buffer fills until the unit-4 mapper drains it', () => {
+    // Only the SNS consumer Lambda exists; the buffer has no EventSourceMapping.
+    const t = synth()
+    t.resourceCountIs('AWS::Lambda::EventSourceMapping', 1)
   })
 })
 
@@ -193,7 +244,12 @@ describe('OutboxRelayStack — relay publish identity (IAM Roles Anywhere)', () 
   it('does NOT wire leaf renewal when Roles Anywhere is off (no renewal Lambda/schedule)', () => {
     const t = synth()
     t.resourceCountIs('AWS::Lambda::Function', 1) // consumer only
-    t.resourceCountIs('AWS::Events::Rule', 0)
+    // The only rule is the pegii.* routing rule — no rate()/schedule rule.
+    t.resourceCountIs('AWS::Events::Rule', 1)
+    const scheduled = t.findResources('AWS::Events::Rule', {
+      Properties: { ScheduleExpression: Match.anyValue() },
+    })
+    expect(Object.keys(scheduled)).toHaveLength(0)
   })
 
   it('skips the trust anchor when Roles Anywhere is requested but no CA is resolved', () => {
@@ -202,7 +258,8 @@ describe('OutboxRelayStack — relay publish identity (IAM Roles Anywhere)', () 
     t.resourceCountIs('AWS::RolesAnywhere::TrustAnchor', 0)
     t.resourceCountIs('AWS::RolesAnywhere::Profile', 0)
     t.resourceCountIs('AWS::SNS::Topic', 1)
-    t.resourceCountIs('AWS::SQS::Queue', 2)
+    // SNS FIFO queue + DLQ and the EventBridge buffer queue + DLQ.
+    t.resourceCountIs('AWS::SQS::Queue', 4)
   })
 })
 
