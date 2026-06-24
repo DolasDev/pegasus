@@ -27,6 +27,9 @@ vi.mock('./middleware/tenant', () => ({
         create: vi.fn(async () => ({ id: 'pn-1' })),
         upsert: vi.fn(async () => ({ id: 'pn-1' })),
       },
+      // Read by the integrations list handler's repo (findActiveForScope); null
+      // = no published config, so each integration reports its built-in baseline.
+      integrationConfig: { findFirst: vi.fn(async () => null) },
     }
     db.$transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(db))
     c.set('db', db)
@@ -360,6 +363,25 @@ describe('POST /api/v1/integrations/:integrationId/validate', () => {
     })
     expect(res.status).toBe(404)
     expect(((await res.json()) as Record<string, unknown>)['code']).toBe('NOT_FOUND')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Integrations list (session plane) — also guards against the GET /integrations
+// mount shadowing the more-specific /integrations/* routes (validate above).
+// ---------------------------------------------------------------------------
+
+describe('GET /api/v1/integrations', () => {
+  it('lists the registered integrations with display metadata', async () => {
+    const res = await app.request('/api/v1/integrations')
+    expect(res.status).toBe(200)
+    const data = ((await res.json()) as { data: Array<Record<string, unknown>> }).data
+    const ids = data.map((d) => d['id'])
+    expect(ids).toEqual(expect.arrayContaining(['longhaul', 'weichert']))
+    const longhaul = data.find((d) => d['id'] === 'longhaul')!
+    expect(longhaul['name']).toBe('LongHaul')
+    expect(typeof longhaul['description']).toBe('string')
+    expect(longhaul).toMatchObject({ published: false, version: null, visibility: null })
   })
 })
 
