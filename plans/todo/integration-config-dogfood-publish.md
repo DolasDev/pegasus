@@ -26,8 +26,11 @@
   (QA) only (prod stays off for Phase 5). Inert until a platform-tenant key
   publishes; the dry-run validate + read paths are never gated.
 
-> **Open questions resolved while building:** (1) **no SDK/CLI `push` exists** for
-> integration configs → the node script is the vehicle. (2) Platform tenant is the
+> **Open questions resolved while building:** (1) there was **no SDK/CLI** for
+> integration configs at first → the node script was built as the vehicle; the SDK
+> `integration-config` group (`validate`/`publish`/`pull`/`versions`/`rollback`) was
+> then **added to `pegasus-workflows`** and is now the preferred author-facing path
+> (the script remains the simplest path for the built-ins specifically). (2) Platform tenant is the
 > `isPlatformTenant=true` DB flag (admin `PROMOTE_PLATFORM_TENANT`), not a hardcoded
 > id; the script never needs the id — visibility=GLOBAL is derived server-side from
 > the key's tenant. (3) Kept publishing **external** (script); did **not** attach
@@ -42,8 +45,15 @@
    `isPlatformTenant=true` in QA (promote one via admin if needed); ensure its
    acts-as service account carries `Actions.PublishIntegrationConfig` (RBAC role map
    / Cedar). Mint a `vnd_` key for it.
-3. **Dry-run, then publish (QA).** `API_BASE_URL=<qa> PEGASUS_PUBLISH_KEY=vnd_xxx npx tsx scripts/publish-builtin-configs.ts`
-   (gate pre-check), then `... --publish` → GLOBAL rows v1 for both integrations.
+3. **Dry-run, then publish (QA).** Two equivalent vehicles:
+   - **SDK (preferred):** `pegasus-workflows integration-config pull <id>` →
+     `... validate <id>` → `... publish <id>` (token via `PEGASUS_WORKFLOW_TOKEN`).
+     For the built-ins, materialise `mapping.json`/`rules.json`/`corpus.json` from
+     the built-in exports first, or `pull` an already-published version to seed them.
+   - **Script:** `API_BASE_URL=<qa> PEGASUS_PUBLISH_KEY=vnd_xxx npx tsx scripts/publish-builtin-configs.ts`
+     (gate pre-check), then `... --publish` → GLOBAL rows v1. Self-assembles the
+     body from the built-in exports (no files needed), so it's the simplest path
+     for the _built-ins_ specifically.
 4. **Verify (QA).** `... --verify` → GET config/versions show the rows; zero
    validation diffs (the safety proof). Confirm the `integration config published`
    log fired.
