@@ -59,7 +59,9 @@ jobs:
         # closure, at release time — the minimum bar for a published SDK.
         run: |
           python -m pip install pip-audit
-          python -m pip-audit --skip-editable
+          # Module name is pip_audit (underscore); `python -m pip-audit` errors
+          # with "No module named pip-audit".
+          python -m pip_audit --skip-editable
 
       - name: Unit tests
         run: python -m pytest -q
