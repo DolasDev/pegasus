@@ -387,3 +387,135 @@ def test_emit_event_unknown_type_raises() -> None:
         client.emit_event("nope")
     assert exc_info.value.status_code == 404
     assert exc_info.value.code == "NOT_FOUND"
+
+
+# ---------------------------------------------------------------------------
+# Integration-validator config (publish / pull / versions / rollback)
+# ---------------------------------------------------------------------------
+
+
+def test_validate_integration_config_posts_surface() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["method"] = request.method
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={"data": {"ok": True, "problems": [], "corpus": {"total": 2, "passed": 2}}},
+        )
+
+    client = _client_with(handler)
+    report = client.validate_integration_config(
+        "weichert",
+        mapping={"a": "x"},
+        rules=[{"id": "r"}],
+        corpus=[{"name": "c"}],
+    )
+
+    assert report["ok"] is True
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/api/v1/integrations/weichert/config/validate"
+    assert captured["body"] == {
+        "mapping": {"a": "x"},
+        "rules": [{"id": "r"}],
+        "corpus": [{"name": "c"}],
+    }
+
+
+def test_publish_integration_config_returns_row() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        return httpx.Response(
+            201,
+            json={"data": {"id": "cfg-1", "version": 1, "visibility": "GLOBAL"}},
+        )
+
+    client = _client_with(handler)
+    row = client.publish_integration_config(
+        "weichert", mapping={}, rules=[], corpus=[]
+    )
+
+    assert row["version"] == 1
+    assert row["visibility"] == "GLOBAL"
+    assert captured["path"] == "/api/v1/integrations/weichert/config"
+
+
+def test_publish_integration_config_gate_failure_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            422,
+            json={"error": "Config failed the validation gate", "code": "GATE_FAILED"},
+        )
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.publish_integration_config("weichert", mapping={}, rules=[], corpus=[])
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.code == "GATE_FAILED"
+
+
+def test_get_integration_config_returns_full_projection() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/integrations/weichert/config"
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "version": 3,
+                    "visibility": "GLOBAL",
+                    "mapping": {"a": "x"},
+                    "rules": [],
+                    "corpus": [],
+                }
+            },
+        )
+
+    client = _client_with(handler)
+    config = client.get_integration_config("weichert")
+    assert config["version"] == 3
+    assert config["mapping"] == {"a": "x"}
+
+
+def test_get_integration_config_not_found_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"error": "No published config", "code": "NOT_FOUND"})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.get_integration_config("weichert")
+    assert exc_info.value.status_code == 404
+
+
+def test_list_integration_config_versions_returns_data_array() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/integrations/weichert/config/versions"
+        return httpx.Response(
+            200,
+            json={"data": [{"version": 2}, {"version": 1}], "meta": {"count": 2}},
+        )
+
+    client = _client_with(handler)
+    assert client.list_integration_config_versions("weichert") == [
+        {"version": 2},
+        {"version": 1},
+    ]
+
+
+def test_rollback_integration_config_posts_to_version_path() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["method"] = request.method
+        return httpx.Response(201, json={"data": {"version": 4, "visibility": "GLOBAL"}})
+
+    client = _client_with(handler)
+    row = client.rollback_integration_config("weichert", 2)
+
+    assert row["version"] == 4
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/api/v1/integrations/weichert/config/rollback/2"
