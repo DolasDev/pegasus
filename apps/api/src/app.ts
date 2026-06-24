@@ -79,6 +79,7 @@ import { deviceTokensHandler } from './handlers/device-tokens'
 import { notificationsHandler } from './handlers/notifications'
 import { ringcentralOauthHandler } from './handlers/integrations/ringcentral-oauth'
 import { ringcentralWebhookHandler } from './handlers/integrations/ringcentral-webhook'
+import { integrationsHandler } from './handlers/integrations/list'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
 import { DomainError } from '@pegasus/domain'
@@ -312,6 +313,10 @@ v1.route('/settings', settingsHandler)
 // and no consent redirect. The webhook is mounted pre-tenant above. Connect is
 // flag-gated inside the handler; list/disconnect are not.
 v1.route('/integrations/ringcentral', ringcentralOauthHandler)
+// Read-only list of integration-validator integrations for the Developer page's
+// Integrations card. Mounted AFTER the more-specific /integrations/ringcentral
+// route; this sub-app only registers GET /, so it never shadows ringcentral.
+v1.route('/integrations', integrationsHandler)
 v1.route('/documents', documentsHandler)
 // PegII dashboard: served cloud-direct from three on-prem MSSQL views
 // (v_dashboard1/2/3) via the in-VPC mssql-executor Lambda. Same pattern as the

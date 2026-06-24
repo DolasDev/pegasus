@@ -48,6 +48,7 @@ import {
 } from '@/api/queries/settings'
 import type { MssqlTestResult } from '@/api/settings'
 import { roleOptionsQueryOptions, type RoleOption } from '@/api/queries/users'
+import { integrationsQueryOptions } from '@/api/queries/integrations'
 import type { ApiClient, ApiClientWithKey } from '@/api/api-clients'
 import { getConfig } from '@/config'
 import { usePermissions } from '@/auth/permissions'
@@ -477,24 +478,12 @@ function WorkflowsSdkCard() {
 // Integrations (view-only)
 // ---------------------------------------------------------------------------
 
-// Published integrations are the declarative order validators the platform
-// ships (see apps/api/src/integration-validation/registry.ts). There is no
-// tenant-session list endpoint yet, so this mirrors the built-in registry as a
-// read-only list — wire it to an API once one is exposed.
-const PUBLISHED_INTEGRATIONS: { id: string; name: string; description: string }[] = [
-  {
-    id: 'longhaul',
-    name: 'LongHaul',
-    description: 'Validates LongHaul trip/order payloads before they are saved.',
-  },
-  {
-    id: 'weichert',
-    name: 'Weichert',
-    description: 'Validates Weichert order payloads before they are saved.',
-  },
-]
-
 function IntegrationsCard() {
+  // The integration-validator integrations the platform checks inbound orders
+  // against (apps/api/src/handlers/integrations/list.ts). Read-only.
+  const { data, isLoading, isError } = useQuery(integrationsQueryOptions)
+  const integrations = data ?? []
+
   return (
     <Card>
       <CardHeader>
@@ -503,26 +492,44 @@ function IntegrationsCard() {
           <CardTitle>Integrations</CardTitle>
         </div>
         <CardDescription>
-          Published integrations the platform validates inbound orders against. View-only for now.
+          Published integrations the platform validates inbound orders against. View-only.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {PUBLISHED_INTEGRATIONS.length === 0 ? (
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 size={14} className="animate-spin" />
+            Loading integrations…
+          </div>
+        ) : isError ? (
+          <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <AlertCircle size={14} className="shrink-0" />
+            Failed to load integrations.
+          </div>
+        ) : integrations.length === 0 ? (
           <EmptyState
-            title="No published integrations"
+            title="No integrations"
             description="The platform team hasn't published any integrations yet."
           />
         ) : (
           <ul className="divide-y rounded-md border">
-            {PUBLISHED_INTEGRATIONS.map((it) => (
+            {integrations.map((it) => (
               <li key={it.id} className="flex items-start gap-3 px-4 py-3">
                 <Blocks size={16} className="mt-0.5 shrink-0 text-muted-foreground" />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium">{it.name}</span>
                     <Badge variant="outline" className="font-mono text-xs">
                       {it.id}
                     </Badge>
+                    {it.published ? (
+                      <Badge variant="secondary" className="text-xs">
+                        Published v{it.version}
+                        {it.visibility ? ` · ${it.visibility}` : ''}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic">Built-in</span>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground">{it.description}</p>
                 </div>

@@ -66,6 +66,10 @@ export interface CanonicalContext<T = unknown> {
  */
 export interface IntegrationDefinition {
   id: string
+  /** Human-facing label for UI/list surfaces (e.g. "LongHaul"). */
+  displayName: string
+  /** One-line description of what the integration validates. */
+  description: string
   /** Structural contract: the canonical Zod schema the transform output must satisfy. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   structuralContract: z.ZodType<any>

@@ -97,6 +97,7 @@ vi.mock('@/config', () => ({
 const apiClientsQueryKey = ['api-clients', 'list']
 const mssqlSettingsQueryKey = ['settings', 'mssql']
 const roleOptionsQueryKey = ['users', 'role-options']
+const integrationsQueryKey = ['integrations', 'list']
 
 const defaultRoleOptions = [
   { name: 'reporting', label: 'Reporting', description: 'Read-only across resources.' },
@@ -114,6 +115,7 @@ let roleOptionsReturn: Record<string, unknown> = {
   isLoading: false,
   isError: false,
 }
+let integrationsReturn: Record<string, unknown> = { data: [], isLoading: false, isError: false }
 
 vi.mock('@tanstack/react-query', async () => {
   const actual = await vi.importActual('@tanstack/react-query')
@@ -137,6 +139,12 @@ vi.mock('@tanstack/react-query', async () => {
         options.queryKey[1] === roleOptionsQueryKey[1]
       ) {
         return roleOptionsReturn
+      }
+      if (
+        options.queryKey[0] === integrationsQueryKey[0] &&
+        options.queryKey[1] === integrationsQueryKey[1]
+      ) {
+        return integrationsReturn
       }
       return { data: undefined, isLoading: false, isError: false }
     },
@@ -203,6 +211,7 @@ describe('DeveloperSettingsPage', () => {
       isError: false,
     }
     roleOptionsReturn = { data: defaultRoleOptions, isLoading: false, isError: false }
+    integrationsReturn = { data: [], isLoading: false, isError: false }
   })
 
   it('shows loading state', () => {
@@ -377,6 +386,54 @@ describe('DeveloperSettingsPage', () => {
     apiClientsReturn = { data: [], isLoading: false, isError: false }
     renderPage()
     expect(screen.getAllByText('Developer').length).toBeGreaterThanOrEqual(1)
+  })
+
+  // -------------------------------------------------------------------------
+  // Integrations section
+  // -------------------------------------------------------------------------
+
+  describe('Integrations', () => {
+    it('renders fetched integrations with name, id and published badge', () => {
+      integrationsReturn = {
+        data: [
+          {
+            id: 'longhaul',
+            name: 'LongHaul',
+            description: 'Validates LongHaul orders.',
+            published: true,
+            version: 4,
+            visibility: 'GLOBAL',
+          },
+          {
+            id: 'weichert',
+            name: 'Weichert',
+            description: 'Validates Weichert orders.',
+            published: false,
+            version: null,
+            visibility: null,
+          },
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      expect(screen.getByText('LongHaul')).toBeInTheDocument()
+      expect(screen.getByText('Published v4 · GLOBAL')).toBeInTheDocument()
+      expect(screen.getByText('Weichert')).toBeInTheDocument()
+      expect(screen.getByText('Built-in')).toBeInTheDocument()
+    })
+
+    it('shows the empty state when no integrations are returned', () => {
+      integrationsReturn = { data: [], isLoading: false, isError: false }
+      renderPage()
+      expect(screen.getByText('No integrations')).toBeInTheDocument()
+    })
+
+    it('shows an error state when the integrations query fails', () => {
+      integrationsReturn = { data: undefined, isLoading: false, isError: true }
+      renderPage()
+      expect(screen.getByText('Failed to load integrations.')).toBeInTheDocument()
+    })
   })
 
   // -------------------------------------------------------------------------

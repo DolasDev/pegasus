@@ -30,6 +30,8 @@ import type { IntegrationDefinition } from './types'
 
 const longhaulDefinition: IntegrationDefinition = {
   id: 'longhaul',
+  displayName: 'LongHaul',
+  description: 'Validates LongHaul trip/order payloads before they are saved.',
   structuralContract: CanonicalOrderSchema,
   mapping: longhaulMapping,
   transform: compileMapping(longhaulMapping),
@@ -42,6 +44,8 @@ const longhaulDefinition: IntegrationDefinition = {
 
 const weichertDefinition: IntegrationDefinition = {
   id: 'weichert',
+  displayName: 'Weichert',
+  description: 'Validates Weichert order payloads before they are saved.',
   structuralContract: WeichertOrderSchema,
   mapping: weichertMapping,
   transform: compileMapping(weichertMapping),
