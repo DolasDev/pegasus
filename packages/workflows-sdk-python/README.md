@@ -15,7 +15,23 @@ execution yet — the API stores the artifact and lists it.
 pip install pegasus-workflows-sdk
 ```
 
-This installs the `pegasus-workflows` CLI. Python 3.11+ is required.
+This installs the `pegasus-workflows` CLI. **Python 3.11+** is required. Pin the
+version in your project's requirements for reproducible builds, e.g.
+`pegasus-workflows-sdk==0.1.0`.
+
+### Interim / unreleased install (git)
+
+The repository is public, so you can install straight from a tagged commit
+without waiting for a PyPI release — useful for an unreleased fix, or before the
+first PyPI publish lands:
+
+```
+pip install "pegasus-workflows-sdk @ git+https://github.com/DolasDev/pegasus@sdk-python-v0.1.0#subdirectory=packages/workflows-sdk-python"
+```
+
+Swap the `@sdk-python-v0.1.0` tag for `@main` to track the latest unreleased
+SDK. This clones the whole monorepo to build one subdirectory, so prefer the
+PyPI install for everyday use.
 
 ## Quick start
 
@@ -173,4 +189,18 @@ The Temporal Web UI is then at <http://localhost:8080>.
 ## Release
 
 The SDK is published to PyPI by `.github/workflows/release-sdk-python.yml` on
-`sdk-python-v*` tags via PyPI trusted publishing.
+`sdk-python-v*` tags via PyPI **trusted publishing** (OIDC — no API token).
+
+To cut a release:
+
+1. Bump `version` in `pyproject.toml` and commit it on `main`.
+2. Tag the release commit and push the tag, e.g.
+   `git tag sdk-python-v0.1.0 && git push origin sdk-python-v0.1.0`.
+
+The workflow then lints, audits, tests, builds, and uploads the sdist + wheel.
+
+**One-time setup (before the first release):** a PyPI project owner must add a
+pending publisher at `pegasus-workflows-sdk` → Publishing → owner `DolasDev`,
+repo `pegasus`, workflow `release-sdk-python.yml`, environment `pypi`. Until
+that exists the `publish` job fails at the upload step, and tenants must use the
+[git install](#interim--unreleased-install-git) above.
