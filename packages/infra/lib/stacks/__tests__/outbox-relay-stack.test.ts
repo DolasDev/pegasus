@@ -90,6 +90,26 @@ describe('OutboxRelayStack — EventBridge bus (relay cutover target)', () => {
     })
   })
 
+  it('grants events.amazonaws.com kms:DescribeKey WITHOUT an encryption-context condition', () => {
+    // Regression: DescribeKey is a metadata call carrying no encryption context,
+    // so it can't be gated by kms:EncryptionContext (doing so denies the call and
+    // fails archive creation). It must live in its own account-scoped statement,
+    // separate from the context-gated data-plane grant.
+    const t = synth()
+    t.hasResourceProperties('AWS::KMS::Key', {
+      KeyPolicy: Match.objectLike({
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Sid: 'AllowEventBridgeArchiveDescribeKey',
+            Action: 'kms:DescribeKey',
+            Principal: { Service: 'events.amazonaws.com' },
+            Condition: { StringEquals: { 'aws:SourceAccount': '111111111111' } },
+          }),
+        ]),
+      }),
+    })
+  })
+
   it('exports the bus ARN + name for downstream wiring', () => {
     const outputs = synth().findOutputs('*')
     expect(Object.keys(outputs)).toEqual(

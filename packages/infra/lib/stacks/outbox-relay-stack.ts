@@ -213,15 +213,34 @@ export class OutboxRelayStack extends cdk.Stack {
       resource: 'event-bus',
       resourceName: props.busName,
     })
+    // Data-plane ops (Decrypt/GenerateDataKey/ReEncrypt) carry the bus encryption
+    // context, so they stay tightly scoped to it.
     outboxKey.addToResourcePolicy(
       new iam.PolicyStatement({
         sid: 'AllowEventBridgeArchiveKms',
         effect: iam.Effect.ALLOW,
         principals: [new iam.ServicePrincipal('events.amazonaws.com')],
-        actions: ['kms:Decrypt', 'kms:GenerateDataKey', 'kms:ReEncrypt*', 'kms:DescribeKey'],
+        actions: ['kms:Decrypt', 'kms:GenerateDataKey', 'kms:ReEncrypt*'],
         resources: ['*'],
         conditions: {
           StringEquals: { 'kms:EncryptionContext:aws:events:event-bus:arn': busArnLiteral },
+        },
+      }),
+    )
+    // DescribeKey is a metadata call that carries NO encryption context, so it can
+    // never satisfy the kms:EncryptionContext condition above — gating it there
+    // denies the call and fails archive creation ("KMS access denied calling
+    // DescribeKey ... ensure events.amazonaws.com has permissions"). Grant it in a
+    // separate statement scoped to this account instead.
+    outboxKey.addToResourcePolicy(
+      new iam.PolicyStatement({
+        sid: 'AllowEventBridgeArchiveDescribeKey',
+        effect: iam.Effect.ALLOW,
+        principals: [new iam.ServicePrincipal('events.amazonaws.com')],
+        actions: ['kms:DescribeKey'],
+        resources: ['*'],
+        conditions: {
+          StringEquals: { 'aws:SourceAccount': this.account },
         },
       }),
     )
