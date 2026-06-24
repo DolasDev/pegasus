@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import {
   AlertCircle,
   CheckCircle2,
@@ -945,6 +946,14 @@ export function WorkflowsSettingsPage() {
             The platform team publishes a shared library you can use as-is, or download the source
             and re-upload your own customized version.
           </CardDescription>
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            <Link to="/settings/developer" className="text-primary hover:underline">
+              SDK &amp; API keys
+            </Link>
+            <Link to="/settings/event-types" className="text-primary hover:underline">
+              Event types
+            </Link>
+          </div>
         </CardHeader>
       </Card>
 

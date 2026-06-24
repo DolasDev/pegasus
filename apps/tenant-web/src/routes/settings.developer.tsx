@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import {
   Plus,
   Pencil,
@@ -15,6 +16,8 @@ import {
   ExternalLink,
   Stethoscope,
   CheckCircle2,
+  Package,
+  Blocks,
 } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
@@ -364,6 +367,169 @@ function ApiUsageCard() {
             OpenAPI spec (JSON)
           </a>
         </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Copyable code block (shared)
+// ---------------------------------------------------------------------------
+
+function CopyableBlock({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false)
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Ignore
+    }
+  }
+
+  return (
+    <div className="relative">
+      <pre className="overflow-x-auto rounded-md border bg-muted/50 p-3 pr-12 text-xs font-mono">
+        {code}
+      </pre>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="absolute right-1.5 top-1.5 h-7 w-7"
+        onClick={() => void copy()}
+        title="Copy to clipboard"
+      >
+        {copied ? (
+          <Check className="h-3.5 w-3.5 text-green-500" />
+        ) : (
+          <Copy className="h-3.5 w-3.5" />
+        )}
+      </Button>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Workflows SDK instructions
+// ---------------------------------------------------------------------------
+
+function WorkflowsSdkCard() {
+  const apiUrl = getConfig().apiUrl.replace(/\/$/, '')
+  const installCmd = 'pip install pegasus-workflows-sdk'
+  const quickStartCmd = [
+    'pegasus-workflows init demo',
+    'cd demo',
+    'pegasus-workflows test demo',
+    'pegasus-workflows package',
+    `pegasus-workflows push --token=<vnd_…> --base-url=${apiUrl}`,
+  ].join('\n')
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Package size={18} className="text-muted-foreground" />
+          <CardTitle>Workflows SDK</CardTitle>
+        </div>
+        <CardDescription>
+          Workflows are Python programs you author locally with the Pegasus Workflows SDK, then
+          package and upload with the <code className="font-mono">pegasus-workflows</code> CLI. They
+          run server-side and can call the Pegasus API on your tenant&rsquo;s behalf. Manage
+          uploaded workflows under{' '}
+          <Link to="/settings/workflows" className="text-primary hover:underline">
+            Settings → Workflows
+          </Link>
+          .
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium">1. Install the CLI (Python 3.11+)</p>
+          <CopyableBlock code={installCmd} />
+        </div>
+
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium">2. Scaffold, test, package, and push</p>
+          <CopyableBlock code={quickStartCmd} />
+          <p className="text-xs text-muted-foreground">
+            <code className="font-mono">test</code> runs the workflow against a local Dockerized
+            Temporal; <code className="font-mono">package</code> zips each workflow declared in{' '}
+            <code className="font-mono">pegasus-workflows.toml</code>;{' '}
+            <code className="font-mono">push</code> uploads it to this tenant.
+          </p>
+        </div>
+
+        <div className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+          <strong>Token:</strong> <code className="font-mono">push</code> needs a{' '}
+          <code className="font-mono">vnd_…</code> API key whose service account holds the{' '}
+          <code className="font-mono">workflow_developer</code> role. Create one above, then pass it
+          via <code className="font-mono">--token</code> or the{' '}
+          <code className="font-mono">PEGASUS_WORKFLOW_TOKEN</code> environment variable.
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Integrations (view-only)
+// ---------------------------------------------------------------------------
+
+// Published integrations are the declarative order validators the platform
+// ships (see apps/api/src/integration-validation/registry.ts). There is no
+// tenant-session list endpoint yet, so this mirrors the built-in registry as a
+// read-only list — wire it to an API once one is exposed.
+const PUBLISHED_INTEGRATIONS: { id: string; name: string; description: string }[] = [
+  {
+    id: 'longhaul',
+    name: 'LongHaul',
+    description: 'Validates LongHaul trip/order payloads before they are saved.',
+  },
+  {
+    id: 'weichert',
+    name: 'Weichert',
+    description: 'Validates Weichert order payloads before they are saved.',
+  },
+]
+
+function IntegrationsCard() {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Blocks size={18} className="text-muted-foreground" />
+          <CardTitle>Integrations</CardTitle>
+        </div>
+        <CardDescription>
+          Published integrations the platform validates inbound orders against. View-only for now.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {PUBLISHED_INTEGRATIONS.length === 0 ? (
+          <EmptyState
+            title="No published integrations"
+            description="The platform team hasn't published any integrations yet."
+          />
+        ) : (
+          <ul className="divide-y rounded-md border">
+            {PUBLISHED_INTEGRATIONS.map((it) => (
+              <li key={it.id} className="flex items-start gap-3 px-4 py-3">
+                <Blocks size={16} className="mt-0.5 shrink-0 text-muted-foreground" />
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">{it.name}</span>
+                    <Badge variant="outline" className="font-mono text-xs">
+                      {it.id}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{it.description}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </CardContent>
     </Card>
   )
@@ -827,8 +993,8 @@ export function DeveloperSettingsPage() {
     return (
       <div>
         <PageHeader
-          title="Developer Settings"
-          breadcrumbs={[{ label: 'Settings' }, { label: 'Developer Settings' }]}
+          title="Developer"
+          breadcrumbs={[{ label: 'Settings' }, { label: 'Developer' }]}
         />
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 size={16} className="animate-spin" />
@@ -842,8 +1008,8 @@ export function DeveloperSettingsPage() {
     return (
       <div>
         <PageHeader
-          title="Developer Settings"
-          breadcrumbs={[{ label: 'Settings' }, { label: 'Developer Settings' }]}
+          title="Developer"
+          breadcrumbs={[{ label: 'Settings' }, { label: 'Developer' }]}
         />
         <div className="flex items-center gap-2 text-sm text-destructive">
           <AlertCircle size={16} />
@@ -857,8 +1023,8 @@ export function DeveloperSettingsPage() {
     <>
       <div>
         <PageHeader
-          title="Developer Settings"
-          breadcrumbs={[{ label: 'Settings' }, { label: 'Developer Settings' }]}
+          title="Developer"
+          breadcrumbs={[{ label: 'Settings' }, { label: 'Developer' }]}
           action={
             panel.kind !== 'add' && (
               <Button
@@ -982,6 +1148,14 @@ export function DeveloperSettingsPage() {
             />
           )}
         </div>
+
+        <Separator className="my-6" />
+
+        <WorkflowsSdkCard />
+
+        <Separator className="my-6" />
+
+        <IntegrationsCard />
 
         <Separator className="my-6" />
 

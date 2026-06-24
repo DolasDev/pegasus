@@ -19,10 +19,25 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DeveloperSettingsPage } from '../routes/settings.developer'
 import type { ApiClient } from '../api/api-clients'
+import type { ReactNode } from 'react'
 
 // ---------------------------------------------------------------------------
 // Mock dependencies
 // ---------------------------------------------------------------------------
+
+// The SDK card uses a router <Link>; render it as a plain anchor so the page
+// mounts without a RouterProvider.
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({
+    to,
+    children,
+    ...rest
+  }: { to: string; children: ReactNode } & Record<string, unknown>) => (
+    <a href={to} {...rest}>
+      {children}
+    </a>
+  ),
+}))
 
 // Mock the React Query hooks from our api-clients query module
 const mockUseCreateApiClient = vi.fn()
@@ -258,7 +273,9 @@ describe('DeveloperSettingsPage', () => {
     // role title plus description, so query by the label text directly.
     expect(screen.getByText('Roles')).toBeInTheDocument()
     expect(screen.getByText('Reporting')).toBeInTheDocument()
-    expect(screen.getByText('Integrations')).toBeInTheDocument()
+    // Scope to the role-label span so the "Integrations" card title elsewhere
+    // on the page doesn't make this an ambiguous match.
+    expect(screen.getByText('Integrations', { selector: 'span' })).toBeInTheDocument()
   })
 
   it('opens the edit form when "Edit" is clicked', () => {
@@ -340,8 +357,10 @@ describe('DeveloperSettingsPage', () => {
     renderPage()
 
     // The row renders one Badge per role using the label from the role catalog.
+    // Badge renders a <div>; scope the "Integrations" match to it so it isn't
+    // confused with the "Integrations" card title (an <h3>) elsewhere on the page.
     expect(screen.getByText('Reporting')).toBeInTheDocument()
-    expect(screen.getByText('Integrations')).toBeInTheDocument()
+    expect(screen.getByText('Integrations', { selector: 'div' })).toBeInTheDocument()
   })
 
   it('marks rows with no bound service account as Stale', () => {
@@ -357,7 +376,7 @@ describe('DeveloperSettingsPage', () => {
   it('renders the page header with correct title', () => {
     apiClientsReturn = { data: [], isLoading: false, isError: false }
     renderPage()
-    expect(screen.getAllByText('Developer Settings').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Developer').length).toBeGreaterThanOrEqual(1)
   })
 
   // -------------------------------------------------------------------------
