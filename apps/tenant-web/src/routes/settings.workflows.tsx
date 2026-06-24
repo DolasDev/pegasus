@@ -35,6 +35,7 @@ import {
 } from '@/api/queries/workflows'
 import {
   DOMAIN_EVENT_TYPES,
+  INTEGRATION_EVENT_TYPES,
   getWorkflowDownloadUrl,
   type CreateWorkflowTriggerInput,
   type Workflow,
@@ -433,6 +434,13 @@ function CreateTriggerDialog({ workflow, onClose }: { workflow: Workflow; onClos
             >
               <optgroup label="Built-in">
                 {DOMAIN_EVENT_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Integration (pegII)">
+                {INTEGRATION_EVENT_TYPES.map((t) => (
                   <option key={t} value={t}>
                     {t}
                   </option>

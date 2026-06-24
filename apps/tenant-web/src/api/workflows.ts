@@ -119,6 +119,17 @@ export const DOMAIN_EVENT_TYPES = [
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number]
 
+/**
+ * Platform-provided integration event types (legacy pegII / MoveManager) an
+ * EVENT trigger can subscribe to, globally available to every tenant. KEEP IN
+ * SYNC with `INTEGRATION_EVENT_TYPES` in `apps/api/src/lib/domain-events.ts`
+ * (tenant-web cannot import from apps/api). Names are the lowercased pegII
+ * catalogue DetailTypes under the `pegii.` namespace.
+ */
+export const INTEGRATION_EVENT_TYPES = ['pegii.shipment.opened', 'pegii.shipment.closed'] as const
+
+export type IntegrationEventType = (typeof INTEGRATION_EVENT_TYPES)[number]
+
 export interface WorkflowTrigger {
   id: string
   tenantId: string

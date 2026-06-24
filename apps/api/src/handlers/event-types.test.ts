@@ -123,6 +123,12 @@ describe('POST /event-types', () => {
     expect(mockRepo.create).not.toHaveBeenCalled()
   })
 
+  it('rejects a name in the reserved pegii. integration namespace (400)', async () => {
+    const res = await buildApp().request('/event-types', post({ name: 'pegii.shipment.opened' }))
+    expect(res.status).toBe(400)
+    expect(mockRepo.create).not.toHaveBeenCalled()
+  })
+
   it('rejects an invalid slug (400)', async () => {
     const res = await buildApp().request('/event-types', post({ name: 'Not A Slug!' }))
     expect(res.status).toBe(400)

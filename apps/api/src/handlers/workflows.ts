@@ -48,7 +48,7 @@ import {
   startWorkflowExecution,
 } from '../lib/start-workflow-execution'
 import { parseCronExpression } from '../lib/cron'
-import { DOMAIN_EVENT_TYPES } from '../lib/domain-events'
+import { DOMAIN_EVENT_TYPES, INTEGRATION_EVENT_TYPES } from '../lib/domain-events'
 import { logger } from '../lib/logger'
 
 // ---------------------------------------------------------------------------
@@ -152,6 +152,9 @@ const LIST_MAX_LIMIT = 200
 /** The five launch domain-event types as a Set for O(1) membership checks. */
 const DOMAIN_EVENT_TYPE_SET: ReadonlySet<string> = new Set(DOMAIN_EVENT_TYPES)
 
+/** Platform-provided integration event types (pegII), globally triggerable. */
+const INTEGRATION_EVENT_TYPE_SET: ReadonlySet<string> = new Set(INTEGRATION_EVENT_TYPES)
+
 /**
  * Validation error for a cronExpression the Unit-4 dispatcher cannot evaluate
  * — semantic validation via the SAME parser (lib/cron.ts) the dispatcher uses
@@ -163,22 +166,24 @@ const INVALID_CRON_MESSAGE =
   'cronExpression must be a valid 5-field cron expression (minute hour day-of-month month day-of-week, UTC) using *, numbers, commas, ranges (a-b), and steps (*/n, a-b/n)'
 
 /**
- * Validate an EVENT trigger's eventType. A built-in DOMAIN_EVENT_TYPES name is
- * always allowed; any other name must be a registered, ENABLED TenantEventType
- * for this tenant (the custom-event registry, Unit 5). Returns an error message
- * string, or null when valid. Async because the registry lookup hits the DB —
- * which is why this runs in the handler body, not the (sync) Zod schema.
+ * Validate an EVENT trigger's eventType. A built-in DOMAIN_EVENT_TYPES name or a
+ * platform-provided INTEGRATION_EVENT_TYPES name (pegII) is always allowed; any
+ * other name must be a registered, ENABLED TenantEventType for this tenant (the
+ * custom-event registry). Returns an error message string, or null when valid.
+ * Async because the registry lookup hits the DB — which is why this runs in the
+ * handler body, not the (sync) Zod schema.
  */
 async function validateTriggerEventType(
   db: PrismaClient,
   eventType: string,
 ): Promise<string | null> {
-  if (DOMAIN_EVENT_TYPE_SET.has(eventType)) return null
+  if (DOMAIN_EVENT_TYPE_SET.has(eventType) || INTEGRATION_EVENT_TYPE_SET.has(eventType)) return null
   const custom = await createTenantEventTypeRepository(db).findByName(eventType)
   if (!custom || !custom.enabled) {
-    return `Unknown event type "${eventType}". Use a built-in type (${DOMAIN_EVENT_TYPES.join(
-      ', ',
-    )}) or a registered, enabled custom event type.`
+    return `Unknown event type "${eventType}". Use a built-in type (${[
+      ...DOMAIN_EVENT_TYPES,
+      ...INTEGRATION_EVENT_TYPES,
+    ].join(', ')}) or a registered, enabled custom event type.`
   }
   return null
 }
