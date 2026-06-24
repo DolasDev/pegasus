@@ -174,7 +174,13 @@ jobs:
         run: python -m pytest -q
 
   # ---------------------------------------------------------------------------
-  # Stdlib workflow tests — pytest for packages/workflows-stdlib.
+  # SDK + stdlib workflow tests — ruff + pytest for packages/workflows-sdk-python
+  # and pytest for packages/workflows-stdlib (which imports the SDK).
+  #
+  # The SDK steps mirror release-sdk-python.yml's lint+test gate so a ruff/test
+  # failure surfaces on the PR, not at tag time — previously the SDK was only
+  # linted at release, and an E501 reached the release job before being caught.
+  #
   # The stdlib imports temporalio + pegasus_workflows, so the SDK must be
   # installed first (same pattern as release-sdk-python.yml). No Temporal
   # server required — tests only exercise the pure _resolve_quote_id helper.
@@ -197,7 +203,15 @@ jobs:
         # convention as the tenant-runner-python job above.
         run: python -m pip install --upgrade pip && python -m pip install -e 'packages/workflows-sdk-python[dev]'
 
-      - name: Pytest
+      - name: Ruff (SDK)
+        working-directory: packages/workflows-sdk-python
+        run: python -m ruff check .
+
+      - name: Pytest (SDK)
+        working-directory: packages/workflows-sdk-python
+        run: python -m pytest -q
+
+      - name: Pytest (stdlib)
         working-directory: packages/workflows-stdlib
         run: python -m pytest -q
 
