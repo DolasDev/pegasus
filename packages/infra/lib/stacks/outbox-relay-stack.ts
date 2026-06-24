@@ -63,6 +63,15 @@ export interface OutboxRelayStackProps extends cdk.StackProps {
    */
   readonly busName: string
   /**
+   * Standard SQS buffer queue the bus rule delivers `pegii.*` events into. The
+   * mapper Lambda (unit 4) drains it; buffering decouples the bus from the
+   * 10-concurrent-exec Lambda cap so a burst can't throttle the rest of the
+   * fleet. Standard (not FIFO) — ordering isn't required, consumers idempotent.
+   */
+  readonly bufferQueueName: string
+  /** Redrive DLQ for the buffer queue — poison messages land here after retries. */
+  readonly bufferDlqName: string
+  /**
    * IAM Roles Anywhere config for the on-prem relay's publish identity. When
    * omitted, the trust anchor / profile / role are not created (interim
    * static-key path). The trust anchor's CA comes from exactly one of:
@@ -229,6 +238,73 @@ export class OutboxRelayStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'IntegrationEventBusArn', { value: eventBus.eventBusArn })
     new cdk.CfnOutput(this, 'IntegrationEventBusName', { value: eventBus.eventBusName })
 
+    // ── Route pegii.* → SQS buffer (mapper Lambda drains it in unit 4) ──────────
+    // Buffer first, never EB→Lambda direct: both accounts cap Lambda at 10
+    // concurrent execs, so a relay backlog draining all at once must not starve
+    // the rest of the fleet. The mapper (unit 4) sets reserved concurrency on the
+    // SqsEventSource side. Standard queue + redrive DLQ — ordering isn't required
+    // and the mapper is idempotent (dedupes on the legacy eventId).
+    const bufferDlq = new sqs.Queue(this, 'IntegrationBufferDLQ', {
+      queueName: props.bufferDlqName,
+      retentionPeriod: cdk.Duration.days(14),
+      enforceSSL: true,
+    })
+    const bufferQueue = new sqs.Queue(this, 'IntegrationBufferQueue', {
+      queueName: props.bufferQueueName,
+      // Must be >= the mapper Lambda's timeout (unit 4) so an in-flight message
+      // isn't redelivered mid-processing.
+      visibilityTimeout: cdk.Duration.minutes(6),
+      enforceSSL: true,
+      deadLetterQueue: { queue: bufferDlq, maxReceiveCount: 5 },
+    })
+
+    // Coarse routing: every legacy pegII source (pegii.movemanager today, more as
+    // the registry grows) → the buffer. All FINE filtering stays in the v2
+    // WorkflowTrigger.filter model on the resulting DomainEvent, not here.
+    new events.Rule(this, 'IntegrationEventRule', {
+      eventBus,
+      description: 'Route all pegII integration events to the mapper buffer queue.',
+      eventPattern: { source: events.Match.prefix('pegii.') },
+      targets: [new eventsTargets.SqsQueue(bufferQueue)],
+    })
+
+    new cdk.CfnOutput(this, 'IntegrationBufferQueueUrl', { value: bufferQueue.queueUrl })
+    new cdk.CfnOutput(this, 'IntegrationBufferDlqArn', { value: bufferDlq.queueArn })
+
+    // ── Mapper Lambda — buffer → tenant-scoped DomainEvent ─────────────────────
+    // Drains the buffer and writes a DomainEvent per legacy event; the existing
+    // workflow-trigger dispatcher then matches + starts workflows (no new trigger
+    // code). maxConcurrency caps how many invocations the SQS poller runs at once
+    // (min 2) so a relay backlog can't consume all of the account's 10 Lambda
+    // slots and starve the rest of the fleet — without reserving capacity away
+    // from the pool. Reuses the consumer's DB secret + DATABASE_URL wiring.
+    const mapperLogGroup = new logs.LogGroup(this, 'IntegrationEventMapLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+    const mapperFunction = new nodejs.NodejsFunction(this, 'IntegrationEventMapFunction', {
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: path.join(__dirname, '../../../../apps/api/src/lambda-integration-event-map.ts'),
+      handler: 'handler',
+      environment: {
+        NODE_ENV: 'production',
+        DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+        LOG_LEVEL: 'INFO',
+      },
+      bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+      memorySize: 512,
+      timeout: cdk.Duration.minutes(5),
+      logGroup: mapperLogGroup,
+    })
+    dbSecret.grantRead(mapperFunction)
+    mapperFunction.addEventSource(
+      new lambdaEventSources.SqsEventSource(bufferQueue, {
+        batchSize: 10,
+        reportBatchItemFailures: true,
+        maxConcurrency: 2,
+      }),
+    )
+
     // ── IAM Roles Anywhere — relay publish identity (optional) ─────────────────
     if (props.rolesAnywhere) {
       const { acmPcaArn, caCertSsmParameterName, certificateBundlePem } = props.rolesAnywhere
@@ -254,7 +330,7 @@ export class OutboxRelayStack extends cdk.Stack {
             '; skipping trust anchor/profile/role — topic + queue still deploy.',
         )
       } else {
-        this.wireRolesAnywhere({ envName, topic, outboxKey, acmPcaArn, caPem })
+        this.wireRolesAnywhere({ envName, topic, eventBus, outboxKey, acmPcaArn, caPem })
       }
     }
 
@@ -268,11 +344,12 @@ export class OutboxRelayStack extends cdk.Stack {
   private wireRolesAnywhere(args: {
     envName: string
     topic: sns.ITopic
+    eventBus: events.IEventBus
     outboxKey: kms.IKey
     acmPcaArn?: string
     caPem?: string
   }): void {
-    const { envName, topic, outboxKey, acmPcaArn, caPem } = args
+    const { envName, topic, eventBus, outboxKey, acmPcaArn, caPem } = args
 
     const relayRole = new iam.Role(this, 'RelayPublishRole', {
       roleName: `pegasus-${envName}-outbox-relay-publish`,
@@ -287,6 +364,10 @@ export class OutboxRelayStack extends cdk.Stack {
       }),
     )
     // Least privilege: publish to THIS topic only…
+    // KEPT during the SNS→EventBridge cutover: the relay still publishes to SNS
+    // until it flips to PutEvents and is confirmed live (then unit 6 retires both
+    // this grant and the topic). Removing it before the relay cuts over would
+    // break the live SNS path.
     relayRole.addToPolicy(
       new iam.PolicyStatement({
         sid: 'PublishShipmentEvents',
@@ -294,7 +375,18 @@ export class OutboxRelayStack extends cdk.Stack {
         resources: [topic.topicArn],
       }),
     )
-    // …plus the KMS the encrypted topic requires (else publishes fail at SNS).
+    // …and PutEvents to the integration bus (the relay's next-gen target). Granted
+    // additively so the relay can cut over from sns:Publish without an IAM change
+    // racing the deploy. The bus reuses outboxKey, so the PublishKms grant below
+    // already covers the kms:GenerateDataKey PutEvents needs on the CMK bus.
+    relayRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'PublishIntegrationEvents',
+        actions: ['events:PutEvents'],
+        resources: [eventBus.eventBusArn],
+      }),
+    )
+    // …plus the KMS the encrypted topic + bus require (else publishes fail).
     relayRole.addToPolicy(
       new iam.PolicyStatement({
         sid: 'PublishKms',

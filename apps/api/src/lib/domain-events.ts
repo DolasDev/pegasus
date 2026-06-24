@@ -25,6 +25,28 @@ export const DOMAIN_EVENT_TYPES = [
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number]
 
+/**
+ * Platform-provided INTEGRATION event types: legacy pegII / MoveManager events
+ * that arrive over the integration EventBridge bus and are mapped to DomainEvents
+ * by lambda-integration-event-map.ts. These are globally triggerable (every
+ * tenant may build a WorkflowTrigger on them) but kept SEPARATE from the
+ * DOMAIN_EVENT_TYPES platform taxonomy above — they are not emitted by Pegasus
+ * domain writes, they're ingested from on-prem.
+ *
+ * Each name is the lowercased pegII catalogue DetailType under the `pegii.`
+ * namespace (Shipment.Opened → pegii.shipment.opened). This list MUST stay in
+ * sync with the mapper's deriveEventType output as the catalogue grows; the
+ * `pegii.` prefix is reserved (see handlers/event-types.ts) so a tenant can't
+ * register a colliding custom event. Catalogue source of truth:
+ * GET /api/v1/pegii/events/catalogue.
+ */
+export const INTEGRATION_EVENT_TYPES = ['pegii.shipment.opened', 'pegii.shipment.closed'] as const
+
+export type IntegrationEventType = (typeof INTEGRATION_EVENT_TYPES)[number]
+
+/** Reserved event-name namespace owned by the integration pipeline. */
+export const INTEGRATION_EVENT_TYPE_PREFIX = 'pegii.'
+
 export type EmitDomainEventInput = {
   tenantId: string
   eventType: DomainEventType

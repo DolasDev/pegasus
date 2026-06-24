@@ -1189,6 +1189,18 @@ describe('workflows handler', () => {
       expect(mockEventTypeRepo.findByName).toHaveBeenCalledWith('lead.qualified')
     })
 
+    it('accepts a built-in pegII integration event type without a registry lookup (201)', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockTriggerRepo.create.mockResolvedValue(eventTriggerRow)
+      const res = await buildApp().request(
+        '/wf-1/triggers',
+        post({ kind: 'EVENT', eventType: 'pegii.shipment.opened' }),
+      )
+      expect(res.status).toBe(201)
+      // Integration types are globally built-in — no per-tenant registry lookup.
+      expect(mockEventTypeRepo.findByName).not.toHaveBeenCalled()
+    })
+
     it('rejects a registered-but-DISABLED custom event type (400)', async () => {
       mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
       mockEventTypeRepo.findByName.mockResolvedValue({ name: 'lead.qualified', enabled: false })

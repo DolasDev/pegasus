@@ -34,7 +34,11 @@ import type { AppEnv } from '../types'
 import { Actions } from '../authz/actions'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { requirePermission } from '../middleware/rbac'
-import { DOMAIN_EVENT_TYPES, emitTenantEvent } from '../lib/domain-events'
+import {
+  DOMAIN_EVENT_TYPES,
+  INTEGRATION_EVENT_TYPE_PREFIX,
+  emitTenantEvent,
+} from '../lib/domain-events'
 import { validateFilterExpr } from '../lib/event-filter'
 import { validatePayloadSchema, validatePayload } from '../lib/payload-schema-validator'
 import { isCustomEventsEnabled } from '../lib/custom-events-feature'
@@ -147,6 +151,17 @@ eventTypesHandler.post(
     if (DOMAIN_EVENT_TYPE_SET.has(body.name)) {
       return c.json(
         { error: `"${body.name}" is a reserved built-in event type`, code: 'VALIDATION_ERROR' },
+        400,
+      )
+    }
+    // The `pegii.` namespace is owned by the platform integration pipeline
+    // (INTEGRATION_EVENT_TYPES) — a custom event must not shadow it.
+    if (body.name.startsWith(INTEGRATION_EVENT_TYPE_PREFIX)) {
+      return c.json(
+        {
+          error: `"${body.name}" uses the reserved "${INTEGRATION_EVENT_TYPE_PREFIX}" integration namespace`,
+          code: 'VALIDATION_ERROR',
+        },
         400,
       )
     }
