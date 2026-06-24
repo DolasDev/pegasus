@@ -396,3 +396,134 @@ class PegasusClient:
             )
         _raise_for_status(response)
         return response.json()["data"]
+
+    # -- integration-validator config (publish / pull / versions / rollback) --
+    #
+    # The DB-backed authoring surface for an integration's declarative mapping +
+    # rules (apps/api/src/handlers/integration-validation/config.ts). A candidate
+    # supplies only the editable surface — ``mapping`` + ``rules`` — plus a golden
+    # ``corpus`` the server gates it against. Visibility is derived server-side
+    # from the caller's tenant (GLOBAL for the platform tenant, TENANT otherwise);
+    # the token must carry the ``PublishIntegrationConfig`` action to mutate.
+
+    def validate_integration_config(
+        self,
+        integration_id: str,
+        *,
+        mapping: Any,
+        rules: Any,
+        corpus: Any,
+    ) -> dict[str, Any]:
+        """Dry-run the publish gate for a candidate config. No write.
+
+        Runs the deterministic gate (mapping/rule static checks + golden-corpus
+        round-trip) server-side and returns the full report. Not flag-gated — a
+        usable pre-check anywhere. Inspect ``report["ok"]``.
+
+        Args:
+            integration_id: The integration to gate against (e.g. ``"weichert"``).
+            mapping: The mapping document (editable surface).
+            rules: The rule set (editable surface).
+            corpus: The golden corpus — a list of ``GateCorpusCase`` objects.
+
+        Returns:
+            The ``GateReport``: ``{ok, problems, corpus: {total, passed, failures}}``.
+
+        Raises:
+            PegasusApiError: On 404 (unknown integration) or any other non-2xx.
+        """
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/integrations/{integration_id}/config/validate",
+                json={"mapping": mapping, "rules": rules, "corpus": corpus},
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def publish_integration_config(
+        self,
+        integration_id: str,
+        *,
+        mapping: Any,
+        rules: Any,
+        corpus: Any,
+    ) -> dict[str, Any]:
+        """Gate then publish a config, creating a new version.
+
+        The server re-runs the gate and writes nothing if it fails (returns 422
+        ``GATE_FAILED`` with the report). On success the live registry overlay is
+        refreshed so the new config serves immediately. Flag-gated behind the
+        server's ``INTEGRATION_CONFIG_PUBLISH_ENABLED`` switch.
+
+        Args:
+            integration_id: The integration to publish.
+            mapping: The mapping document.
+            rules: The rule set.
+            corpus: The golden corpus the gate runs against.
+
+        Returns:
+            The created config row: ``{id, integrationId, version, visibility,
+            status, mapping, rules, corpus, publishedBy, createdAt}``.
+
+        Raises:
+            PegasusApiError: On 403 (feature disabled), 404, 422 (gate failed —
+                the ``report`` is in the error body), or any other non-2xx.
+        """
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/integrations/{integration_id}/config",
+                json={"mapping": mapping, "rules": rules, "corpus": corpus},
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def get_integration_config(self, integration_id: str) -> dict[str, Any]:
+        """Fetch the active config for the caller's scope (TENANT ∪ GLOBAL).
+
+        The full projection — including the editable surface (mapping/rules/corpus)
+        — so a pulled config can be edited and republished (round-trip).
+
+        Raises:
+            PegasusApiError: On 404 (no published config for this scope).
+        """
+        return self._get_json(f"/api/v1/integrations/{integration_id}/config")["data"]
+
+    def list_integration_config_versions(self, integration_id: str) -> list[dict[str, Any]]:
+        """List the config version history for the caller's scope, newest first.
+
+        Returns:
+            A list of compact summaries (no mapping/rules/corpus blobs):
+            ``{id, integrationId, version, visibility, status, publishedBy, createdAt}``.
+        """
+        return self._get_json(
+            f"/api/v1/integrations/{integration_id}/config/versions"
+        )["data"]
+
+    def rollback_integration_config(
+        self,
+        integration_id: str,
+        version: int,
+    ) -> dict[str, Any]:
+        """Re-publish a prior version as a new version.
+
+        The server re-runs the gate against the rolled-back config: one that
+        passed when first published may no longer pass if the canonical contract
+        has since changed in code, in which case it returns 422. Flag-gated.
+
+        Args:
+            integration_id: The integration to roll back.
+            version: The existing version number to re-publish.
+
+        Returns:
+            The newly-created config row (a fresh version number).
+
+        Raises:
+            PegasusApiError: On 403 (feature disabled), 404 (version not found),
+                422 (gate failed), or any other non-2xx.
+        """
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/integrations/{integration_id}/config/rollback/{version}",
+            )
+        _raise_for_status(response)
+        return response.json()["data"]

@@ -7,6 +7,8 @@ A Typer application wiring together the workflow developer flow:
 * ``push`` — package, then upload + finalize against the Pegasus API.
 * ``run`` — trigger a server-side execution of a curated workflow.
 * ``test`` — start local Temporal and run a workflow with stubbed inputs.
+* ``integration-config`` — author the integration-validator config (mapping +
+  rules) for an integration (publish / pull / versions / rollback).
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from __future__ import annotations
 import typer
 
 from .init import init_command
+from .integration_config import integration_config_app
 from .package import package_command
 from .push import push_command
 from .run import run_command
@@ -31,6 +34,7 @@ app.command("package")(package_command)
 app.command("push")(push_command)
 app.command("run")(run_command)
 app.command("test")(test_command)
+app.add_typer(integration_config_app)
 
 
 def main() -> None:

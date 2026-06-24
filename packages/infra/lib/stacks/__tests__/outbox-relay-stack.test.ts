@@ -12,6 +12,7 @@ function synth(overrides: Partial<OutboxRelayStackProps> = {}) {
     topicName: 'pegasus-staging-outbox-events.fifo',
     queueName: 'pegasus-staging-outbox-events.fifo',
     dlqName: 'pegasus-staging-outbox-events-dlq.fifo',
+    busName: 'pegasus-staging-integration-events',
     ...overrides,
   })
   return Template.fromStack(stack)
@@ -59,6 +60,45 @@ describe('OutboxRelayStack — SQS FIFO queue + DLQ', () => {
     t.hasResourceProperties('AWS::Lambda::EventSourceMapping', {
       FunctionResponseTypes: ['ReportBatchItemFailures'],
     })
+  })
+})
+
+describe('OutboxRelayStack — EventBridge bus (relay cutover target)', () => {
+  it('creates a custom CMK-encrypted bus with the configured name', () => {
+    const t = synth()
+    t.resourceCountIs('AWS::Events::EventBus', 1)
+    t.hasResourceProperties('AWS::Events::EventBus', {
+      Name: 'pegasus-staging-integration-events',
+      KmsKeyIdentifier: Match.anyValue(),
+    })
+  })
+
+  it('archives all bus events for replay (account-scoped, 90-day retention, same CMK)', () => {
+    const t = synth()
+    t.resourceCountIs('AWS::Events::Archive', 1)
+    t.hasResourceProperties('AWS::Events::Archive', {
+      ArchiveName: 'pegasus-staging-integration-events-archive',
+      RetentionDays: 90,
+      EventPattern: { account: ['111111111111'] },
+      // Must reuse the bus CMK (never the eventBus.archive() empty-string default)
+      // or EventBridge can't decrypt CMK-encrypted events to archive them.
+      KmsKeyIdentifier: Match.anyValue(),
+    })
+  })
+
+  it('exports the bus ARN + name for downstream wiring', () => {
+    const outputs = synth().findOutputs('*')
+    expect(Object.keys(outputs)).toEqual(
+      expect.arrayContaining(['IntegrationEventBusArn', 'IntegrationEventBusName']),
+    )
+  })
+
+  it('ships additively — the SNS FIFO path is untouched', () => {
+    const t = synth()
+    t.resourceCountIs('AWS::SNS::Topic', 1)
+    t.resourceCountIs('AWS::SNS::Subscription', 1)
+    // The bus brings no Events::Rule (coarse routing arrives in a later unit).
+    t.resourceCountIs('AWS::Events::Rule', 0)
   })
 })
 

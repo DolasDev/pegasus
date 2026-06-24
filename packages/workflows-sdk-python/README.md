@@ -118,16 +118,43 @@ fail fast locally before any HTTP call.
 
 ## CLI
 
-| Command | What it does |
-| --- | --- |
-| `pegasus-workflows init <name>` | Scaffold a new workflow project. |
-| `pegasus-workflows package` | Zip each declared workflow into `dist/<name>-<version>.zip`. |
-| `pegasus-workflows push --token=<vnd_…> [--base-url=…]` | Package, then `upload-url` → S3 PUT → finalize. |
-| `pegasus-workflows test <workflow>` | Start local Temporal and run the workflow with a stub input. |
+| Command                                                                | What it does                                                 |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `pegasus-workflows init <name>`                                        | Scaffold a new workflow project.                             |
+| `pegasus-workflows package`                                            | Zip each declared workflow into `dist/<name>-<version>.zip`. |
+| `pegasus-workflows push --token=<vnd_…> [--base-url=…]`                | Package, then `upload-url` → S3 PUT → finalize.              |
+| `pegasus-workflows test <workflow>`                                    | Start local Temporal and run the workflow with a stub input. |
+| `pegasus-workflows integration-config validate <id> [-C <dir>]`        | Dry-run the publish gate for a config (no write).            |
+| `pegasus-workflows integration-config publish <id> [-C <dir>]`         | Gate then publish a new config version.                      |
+| `pegasus-workflows integration-config pull <id> [-C <dir>] [--stdout]` | Fetch the active config; write the editable surface to disk. |
+| `pegasus-workflows integration-config versions <id>`                   | List the config version history (newest first).              |
+| `pegasus-workflows integration-config rollback <id> <version>`         | Re-publish a prior version (re-runs the gate).               |
 
 `push` reads the token from `--token` or the `PEGASUS_WORKFLOW_TOKEN`
 environment variable. The token is a `vnd_*` Pegasus API key whose service
 account holds the `workflow_developer` role.
+
+### Authoring an integration-validator config
+
+The `integration-config` group manages an integration's declarative **mapping +
+rules** (the DB-backed authoring surface; see
+`apps/api/src/handlers/integration-validation/config.ts`). The editable surface
+lives as three JSON files in a working directory (`-C`, default `.`):
+`mapping.json`, `rules.json`, `corpus.json`. The round-trip is pull → edit →
+validate → publish:
+
+```
+pegasus-workflows integration-config pull weichert -C ./weichert
+# …edit mapping.json / rules.json…
+pegasus-workflows integration-config validate weichert -C ./weichert
+pegasus-workflows integration-config publish weichert -C ./weichert
+```
+
+`publish`/`rollback` require the token's tenant to be the **platform tenant** to
+write GLOBAL (visibility is derived server-side) and to carry the
+`PublishIntegrationConfig` action; they are gated by the server's
+`INTEGRATION_CONFIG_PUBLISH_ENABLED` switch. `validate` and `pull` are
+read-level and never gated.
 
 ## Local Temporal
 
