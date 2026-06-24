@@ -11,6 +11,13 @@
 // This is the first FIFO topic/queue in the codebase: the relay always sets
 // MessageGroupId + MessageDeduplicationId, so neither uses content-based dedup.
 //
+// MIGRATION IN PROGRESS: this stack also owns a custom EventBridge bus
+// (`IntegrationEventBus`) that the relay will publish to instead of SNS once it
+// switches to events:PutEvents. The bus is additive and ships ahead of the relay
+// cutover; the SNS path above keeps running until the relay is confirmed live on
+// EventBridge, after which the topic/queue/consumer are retired. See
+// plans/in-progress/pegii-eventbridge-integration.md.
+//
 // The relay authenticates with IAM Roles Anywhere (X.509 trust anchor → no
 // long-lived keys on the on-prem host). That path is optional: it's only wired
 // when `props.rolesAnywhere` is supplied (gated in bin/app.ts behind a context
@@ -48,6 +55,14 @@ export interface OutboxRelayStackProps extends cdk.StackProps {
   /** FIFO dead-letter queue name — must end in `.fifo`. */
   readonly dlqName: string
   /**
+   * Custom EventBridge bus the relay will publish legacy MoveManager events to
+   * once it switches from `sns:Publish` to `events:PutEvents` (see
+   * plans/in-progress/pegii-eventbridge-integration.md). The bus is additive —
+   * it ships ahead of the relay cutover and the SNS path keeps running until
+   * the relay is confirmed live on EventBridge.
+   */
+  readonly busName: string
+  /**
    * IAM Roles Anywhere config for the on-prem relay's publish identity. When
    * omitted, the trust anchor / profile / role are not created (interim
    * static-key path). The trust anchor's CA comes from exactly one of:
@@ -71,6 +86,7 @@ export interface OutboxRelayStackProps extends cdk.StackProps {
 
 export class OutboxRelayStack extends cdk.Stack {
   public readonly topicArn: string
+  public readonly eventBusArn: string
 
   constructor(scope: Construct, id: string, props: OutboxRelayStackProps) {
     super(scope, id, props)
@@ -154,6 +170,64 @@ export class OutboxRelayStack extends cdk.Stack {
         reportBatchItemFailures: true,
       }),
     )
+
+    // ── EventBridge bus (next-gen relay target) ────────────────────────────────
+    // Additive: the relay still publishes to the SNS FIFO topic above. This bus
+    // ships ahead of the relay cutover (sns:Publish → events:PutEvents); once the
+    // relay is live on it, the SNS topic/queue/consumer are retired. Custom bus so
+    // legacy MoveManager events get their own routing namespace + replay archive,
+    // and so future "other situations" can fan out from rules rather than new SNS
+    // subscriptions. CMK-encrypted — payloads carry light PII (shippedTo/driver).
+    // Plan: plans/in-progress/pegii-eventbridge-integration.md
+    const eventBus = new events.EventBus(this, 'IntegrationEventBus', {
+      eventBusName: props.busName,
+      description: 'Legacy pegII / MoveManager domain events (relay PutEvents target).',
+      kmsKey: outboxKey,
+    })
+    this.eventBusArn = eventBus.eventBusArn
+
+    // Archive every event on the bus so new consumers can be onboarded via replay
+    // (the growth lever that justified EventBridge over SNS). 90 days is ample for
+    // backfilling a freshly-added workflow trigger without unbounded retention.
+    //
+    // An archive of a CMK-encrypted bus must use the SAME CMK or EventBridge can't
+    // decrypt events to store them — so kmsKeyIdentifier is required, not optional.
+    // We can't use the L2 events.Archive / eventBus.archive() here: its KMS grant
+    // pins the EncryptionContext to a GetAtt of the bus, which — combined with the
+    // bus's GetAtt reference to the key — makes the key and bus mutually dependent
+    // (an undeployable CloudFormation cycle). Instead, grant the events service on
+    // the key ourselves using the bus ARN as a LITERAL (formatArn, no GetAtt), and
+    // create the archive via L1 CfnArchive. The grant omits a SourceArn condition
+    // because archive KMS calls carry the archive's ARN, not the bus's.
+    const busArnLiteral = this.formatArn({
+      service: 'events',
+      resource: 'event-bus',
+      resourceName: props.busName,
+    })
+    outboxKey.addToResourcePolicy(
+      new iam.PolicyStatement({
+        sid: 'AllowEventBridgeArchiveKms',
+        effect: iam.Effect.ALLOW,
+        principals: [new iam.ServicePrincipal('events.amazonaws.com')],
+        actions: ['kms:Decrypt', 'kms:GenerateDataKey', 'kms:ReEncrypt*', 'kms:DescribeKey'],
+        resources: ['*'],
+        conditions: {
+          StringEquals: { 'kms:EncryptionContext:aws:events:event-bus:arn': busArnLiteral },
+        },
+      }),
+    )
+    new events.CfnArchive(this, 'IntegrationEventArchive', {
+      archiveName: `${props.busName}-archive`,
+      description: 'Replayable archive of all pegII integration events.',
+      sourceArn: eventBus.eventBusArn,
+      // Account-scoped pattern = archive everything published to this bus.
+      eventPattern: { account: [this.account] },
+      retentionDays: 90,
+      kmsKeyIdentifier: outboxKey.keyArn,
+    })
+
+    new cdk.CfnOutput(this, 'IntegrationEventBusArn', { value: eventBus.eventBusArn })
+    new cdk.CfnOutput(this, 'IntegrationEventBusName', { value: eventBus.eventBusName })
 
     // ── IAM Roles Anywhere — relay publish identity (optional) ─────────────────
     if (props.rolesAnywhere) {
