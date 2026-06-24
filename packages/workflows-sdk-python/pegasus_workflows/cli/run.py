@@ -68,7 +68,10 @@ def _find_workflow(
 def run_command(
     workflow: str = typer.Argument(
         ...,
-        help="Workflow name or name@version (e.g. send_quote_followup or send_quote_followup@0.1.0).",
+        help=(
+            "Workflow name or name@version "
+            "(e.g. send_quote_followup or send_quote_followup@0.1.0)."
+        ),
     ),
     input_json: str = typer.Option(
         "{}",
