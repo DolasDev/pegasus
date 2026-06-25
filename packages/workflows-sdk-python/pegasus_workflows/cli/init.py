@@ -27,6 +27,13 @@ def _template_files() -> dict[str, str]:
 
     def _walk(node: resources.abc.Traversable, prefix: str) -> None:
         for child in node.iterdir():
+            # Skip compiled-bytecode artifacts. An installed package can carry a
+            # ``__pycache__`` dir (with non-UTF-8 ``.pyc`` files) inside the
+            # templates tree; reading those as text raises UnicodeDecodeError.
+            if child.name == "__pycache__":
+                continue
+            if child.name.endswith((".pyc", ".pyo")):
+                continue
             rel = f"{prefix}{child.name}"
             if child.is_dir():
                 _walk(child, f"{rel}/")
