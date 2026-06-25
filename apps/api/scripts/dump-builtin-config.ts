@@ -20,14 +20,11 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { longhaulMapping } from '../src/integration-validation/transform/longhaul.transform'
 import { weichertMapping } from '../src/integration-validation/transform/weichert.transform'
-import { longhaulRules } from '../src/integration-validation/rules/longhaul.rules'
 import { weichertRules } from '../src/integration-validation/rules/weichert.rules'
 import { getGateCorpus } from '../src/integration-validation/corpus'
 
 const BUILTINS: Record<string, { mapping: unknown; rules: unknown }> = {
-  longhaul: { mapping: longhaulMapping, rules: longhaulRules },
   weichert: { mapping: weichertMapping, rules: weichertRules },
 }
 

@@ -1,46 +1,29 @@
 // ---------------------------------------------------------------------------
 // Integration registry — the multi-integration seam, kept as DATA from day one.
 //
-// The POC ships exactly ONE entry (longhaul), supported globally (a single
-// shared definition, not per-tenant — POC plan, Open Question #2). Adding
-// integration #2 is a new entry here plus its own transform/rules files; the
-// engine and the endpoint never change. Nothing about "longhaul" is referenced
-// outside this map.
+// Ships one entry (weichert), supported globally (a single shared definition,
+// not per-tenant). Adding an integration is a new entry here plus its own
+// transform/rules/facts files; the engine and the endpoint never change. Nothing
+// about a specific integration is referenced outside this map. (The original
+// longhaul POC entry was removed — see git history — and can be re-added the same
+// way if needed.)
 // ---------------------------------------------------------------------------
 
 import type { PrismaClient } from '@prisma/client'
-import { CanonicalOrderSchema } from './canonical-order'
 import { WeichertOrderSchema } from './canonical-weichert'
 import {
   compileMapping,
   MappingTemplateSchema,
   type MappingTemplate,
 } from './transform/mapping-format'
-import { longhaulMapping, longhaulInputFieldRoots } from './transform/longhaul.transform'
 import { weichertMapping, weichertInputFieldRoots } from './transform/weichert.transform'
-import { deriveLonghaulFacts, longhaulFactCatalog } from './facts/longhaul-facts'
 import { deriveWeichertFacts, weichertFactCatalog } from './facts/weichert-facts'
-import { longhaulRules } from './rules/longhaul.rules'
 import { weichertRules } from './rules/weichert.rules'
 import { RuleSetSchema, type RuleSet } from './rules/types'
 import { createIntegrationConfigRepository } from '../repositories/integration-config.repository'
 import { logger } from '../lib/logger'
 import type { TransformSpec } from './transform/engine'
 import type { IntegrationDefinition } from './types'
-
-const longhaulDefinition: IntegrationDefinition = {
-  id: 'longhaul',
-  displayName: 'LongHaul',
-  description: 'Validates LongHaul trip/order payloads before they are saved.',
-  structuralContract: CanonicalOrderSchema,
-  mapping: longhaulMapping,
-  transform: compileMapping(longhaulMapping),
-  inputFieldRoots: longhaulInputFieldRoots,
-  deriveFacts: deriveLonghaulFacts,
-  factCatalog: longhaulFactCatalog,
-  rules: longhaulRules,
-  defaultAction: 'save',
-}
 
 const weichertDefinition: IntegrationDefinition = {
   id: 'weichert',
@@ -60,7 +43,6 @@ const weichertDefinition: IntegrationDefinition = {
 // supply the CODE ground truth — structuralContract, deriveFacts, factCatalog,
 // inputFieldRoots — that a DB-published config can never override.
 const REGISTRY: Record<string, IntegrationDefinition> = {
-  longhaul: longhaulDefinition,
   weichert: weichertDefinition,
 }
 

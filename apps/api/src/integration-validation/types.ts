@@ -46,7 +46,7 @@ export type OrderAction = 'save' | 'cancel' | 'status-change'
 
 /**
  * Canonical-shaped context handed to fact derivation. Generic over the canonical
- * order type, which differs per integration (longhaul ≠ weichert). Each
+ * order type, which differs per integration (each has its own canonical). Each
  * integration's `deriveFacts` narrows `order`/`prior` to its own canonical type.
  */
 export interface CanonicalContext<T = unknown> {
@@ -66,7 +66,7 @@ export interface CanonicalContext<T = unknown> {
  */
 export interface IntegrationDefinition {
   id: string
-  /** Human-facing label for UI/list surfaces (e.g. "LongHaul"). */
+  /** Human-facing label for UI/list surfaces (e.g. "Weichert"). */
   displayName: string
   /** One-line description of what the integration validates. */
   description: string

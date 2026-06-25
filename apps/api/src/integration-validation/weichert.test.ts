@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { validateOrder } from './validate'
+import { validateOrder, UnknownIntegrationError } from './validate'
 import { compileMapping } from './transform/mapping-format'
 import { weichertMapping } from './transform/weichert.transform'
 import { applyMapping } from './transform/engine'
@@ -95,5 +95,54 @@ describe('weichert shipmentStatus restricted picklist', () => {
 
   it('accepts a valid shipmentStatus', () => {
     expect(validateOrder('weichert', { order: order('In Process') }).valid).toBe(true)
+  })
+})
+
+// Integration-agnostic orchestration behaviour of validateOrder, exercised via
+// weichert (the registered integration). Mirrors the checks the longhaul POC test
+// used to cover before that integration was removed.
+describe('validateOrder — orchestration', () => {
+  const validOrder = {
+    Id: 'S1',
+    InvolvedParties: {
+      ShipperEmployer: { Identity: { Description: 'O-1' } },
+      Coordinator: { Identity: { Description: 'Cora' }, EmailAddress: 'c@d.com' },
+    },
+    Survey: { SerivceStatus: 'Accepted' },
+    DocumentationDates: ['2024-01-01'],
+    KeyMoveDates: { Survey: { Planned: '2024-01-01' } },
+    Financials: { EstimatedWeight: 1000 },
+  }
+
+  it('throws UnknownIntegrationError for an unregistered integration', () => {
+    expect(() => validateOrder('nope', { order: {} })).toThrow(UnknownIntegrationError)
+  })
+
+  it('attaches a stable ruleId, field and kind to a behavioral issue', () => {
+    const result = validateOrder('weichert', {
+      order: { ...validOrder, Survey: { SerivceStatus: 'Awarded' } },
+    })
+    expect(result.valid).toBe(false)
+    expect(result.issues).toContainEqual(
+      expect.objectContaining({
+        ruleId: 'service-status-not-supplier-settable',
+        field: 'serviceStatus',
+        kind: 'behavioral',
+      }),
+    )
+  })
+
+  it('skips a malformed prior (rather than blocking the save on it)', () => {
+    // The prior's mapped output fails the contract (bad shipmentStatus enum), so
+    // the validator drops it and validates the order alone — no throw, not degraded.
+    const result = validateOrder('weichert', {
+      order: validOrder,
+      prior: {
+        ...validOrder,
+        Survey: { SerivceStatus: 'Accepted', ShipmentStatus: 'NOT_A_STATUS' },
+      },
+    })
+    expect(result.degraded).toBe(false)
+    expect(result.valid).toBe(true)
   })
 })

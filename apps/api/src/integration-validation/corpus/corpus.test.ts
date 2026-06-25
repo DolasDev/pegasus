@@ -3,13 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { runGatePipeline, type GateCorpusCase } from '../gate-pipeline'
 import { getIntegrationDefinition } from '../registry'
-import {
-  BUILTIN_CORPORA,
-  getBuiltinCorpus,
-  getGateCorpus,
-  longhaulCorpus,
-  weichertCorpus,
-} from './index'
+import { BUILTIN_CORPORA, getBuiltinCorpus, getGateCorpus, weichertCorpus } from './index'
 
 // vitest runs with cwd = the apps/api package root.
 function readCorpusFromDisk(integrationId: string): GateCorpusCase[] {
@@ -32,8 +26,7 @@ describe('built-in corpus exports', () => {
     },
   )
 
-  it('exposes a non-empty corpus for both shipped integrations', () => {
-    expect(longhaulCorpus.length).toBeGreaterThan(0)
+  it('exposes a non-empty corpus for the shipped integration', () => {
     expect(weichertCorpus.length).toBeGreaterThan(0)
   })
 
@@ -55,13 +48,15 @@ describe('built-in corpus exports', () => {
     },
   )
 
-  it('drops structural-rejection fixtures from the gate corpus but keeps them in the full corpus', () => {
-    // longhaul ships 12-structural-bad-status (expects structural-contract); it
-    // must survive in the full corpus and be absent from the gate corpus.
-    const full = getBuiltinCorpus('longhaul')!
-    const gate = getGateCorpus('longhaul')!
-    expect(full.some((c) => c.expected.ruleIds.includes('structural-contract'))).toBe(true)
-    expect(gate.some((c) => c.expected.ruleIds.includes('structural-contract'))).toBe(false)
-    expect(gate.length).toBe(full.length - 1)
+  it('gate corpus excludes any structural-rejection fixture; weichert has none so it equals the full corpus', () => {
+    // getGateCorpus drops cases that expect a structural-contract rejection (the
+    // gate's round-trip stage cannot accept them). weichert ships no such fixture,
+    // so its gate corpus is identical to the full corpus. (The filter is exercised
+    // generically below; a future integration with a structural fixture would
+    // re-add a data-level case.)
+    const full = getBuiltinCorpus('weichert')!
+    const gate = getGateCorpus('weichert')!
+    expect(full.some((c) => c.expected.ruleIds.includes('structural-contract'))).toBe(false)
+    expect(gate).toEqual(full)
   })
 })

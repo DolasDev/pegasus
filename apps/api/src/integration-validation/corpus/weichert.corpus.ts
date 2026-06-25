@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
 // Weichert golden corpus — the `__corpus__/weichert/*.json` fixtures as a typed,
-// importable `GateCorpusCase[]`. See longhaul.corpus.ts for the rationale: this
-// is publish-time data, ordered by filename, asserted equal to the on-disk files
-// by corpus.test.ts, and never bundled into the Lambda hot path.
+// importable `GateCorpusCase[]`. Publish-time data, ordered by filename, asserted
+// equal to the on-disk files by corpus.test.ts, and never bundled into the Lambda
+// hot path (the registry overlay uses only mapping + rules).
 // ---------------------------------------------------------------------------
 
 import type { GateCorpusCase } from '../gate-pipeline'

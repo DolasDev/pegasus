@@ -35,7 +35,23 @@ function post(path: string, body?: unknown, headers: Record<string, string> = {}
 
 const authed = (token: string = PLATFORM_TOKEN) => ({ Authorization: `Bearer ${token}` })
 
-const PATH = '/api/v1/integrations/longhaul/validate'
+const PATH = '/api/v1/integrations/weichert/validate'
+
+// A known-valid weichert order (mirrors __corpus__/weichert/01-valid-accepted).
+const validWeichertOrder = {
+  Id: 'SHIP-1',
+  InvolvedParties: {
+    ShipperEmployer: { Identity: { Description: 'O-60232' } },
+    Coordinator: {
+      Identity: { Description: 'Suzanne Polo' },
+      EmailAddress: 'noreply@weichertwm.com',
+    },
+  },
+  Survey: { SerivceStatus: 'Accepted', Storage1stDay: 100, GeneralComments: 'ok' },
+  DocumentationDates: ['2024-05-25'],
+  KeyMoveDates: { Survey: { Planned: '2024-05-25' } },
+  Financials: { EstimatedWeight: 5000, ActualWeight: null },
+}
 
 describe('POST /integrations/:integrationId/validate', () => {
   beforeAll(() => {
@@ -54,7 +70,7 @@ describe('POST /integrations/:integrationId/validate', () => {
   })
 
   it('returns 401 when no API key is supplied', async () => {
-    const res = await post(PATH, { order: { TripStatus_id: 1, shipments: [{ order_num: 1 }] } })
+    const res = await post(PATH, { order: validWeichertOrder })
     expect(res.status).toBe(401)
     expect((await res.json()) as Record<string, unknown>).toMatchObject({ code: 'UNAUTHORIZED' })
   })
@@ -65,19 +81,16 @@ describe('POST /integrations/:integrationId/validate', () => {
   })
 
   it('returns 200 valid:true for a clean order with a valid key', async () => {
-    const res = await post(
-      PATH,
-      { action: 'save', order: { TripStatus_id: 1, shipments: [{ order_num: 1 }] } },
-      authed(),
-    )
+    const res = await post(PATH, { action: 'save', order: validWeichertOrder }, authed())
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ valid: true, issues: [], degraded: false })
   })
 
   it('returns 200 valid:false with field-mapped issues for a rule violation', async () => {
+    // A supplier may not set serviceStatus to Awarded — the live rejection.
     const res = await post(
       PATH,
-      { action: 'save', order: { TripStatus_id: 1, shipments: [] } },
+      { action: 'save', order: { ...validWeichertOrder, Survey: { SerivceStatus: 'Awarded' } } },
       authed(),
     )
     expect(res.status).toBe(200)
@@ -87,7 +100,10 @@ describe('POST /integrations/:integrationId/validate', () => {
     }
     expect(body.valid).toBe(false)
     expect(body.issues).toEqual([
-      expect.objectContaining({ ruleId: 'trip-must-have-shipments', field: 'shipments' }),
+      expect.objectContaining({
+        ruleId: 'service-status-not-supplier-settable',
+        field: 'serviceStatus',
+      }),
     ])
   })
 
