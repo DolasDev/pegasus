@@ -1,26 +1,18 @@
 import { describe, it, expect } from 'vitest'
 import { z } from 'zod'
 import { analyzeMapping } from './mapping-static-check'
-import { CanonicalOrderSchema, canonicalOrderJsonSchema } from '../canonical-order'
 import { WeichertOrderSchema } from '../canonical-weichert'
-import { longhaulMapping, longhaulInputFieldRoots } from './longhaul.transform'
+import { weichertInputFieldRoots } from './weichert.transform'
 import { listIntegrationIds, getIntegrationDefinition } from '../registry'
 
-const canonicalJsonSchema = canonicalOrderJsonSchema()
 const weichertJsonSchema = z.toJSONSchema(WeichertOrderSchema)
 
 describe('analyzeMapping', () => {
-  it('reports zero problems for the shipped longhaul mapping', () => {
-    expect(
-      analyzeMapping(longhaulMapping, {
-        canonicalJsonSchema,
-        inputFieldRoots: longhaulInputFieldRoots,
-      }),
-    ).toEqual([])
-  })
-
   it('flags a mapping to a field the canonical contract does not have', () => {
-    const problems = analyzeMapping({ bogusField: 'x' }, { canonicalJsonSchema })
+    const problems = analyzeMapping(
+      { bogusField: 'x' },
+      { canonicalJsonSchema: weichertJsonSchema },
+    )
     expect(problems).toContainEqual({
       where: 'bogusField',
       problem: 'maps to unknown canonical field "bogusField"',
@@ -30,7 +22,7 @@ describe('analyzeMapping', () => {
   it('flags a $each element mapping to an unknown canonical sub-field', () => {
     const problems = analyzeMapping(
       { shipments: { $from: 'shipments', $each: { ghost: 'order_num' } } },
-      { canonicalJsonSchema },
+      { canonicalJsonSchema: weichertJsonSchema },
     )
     expect(problems).toContainEqual({
       where: 'shipments[].ghost',
@@ -40,8 +32,8 @@ describe('analyzeMapping', () => {
 
   it('flags a $from that reads an undeclared input field root', () => {
     const problems = analyzeMapping(
-      { status: { id: { $from: 'totally_made_up' } } },
-      { canonicalJsonSchema, inputFieldRoots: longhaulInputFieldRoots },
+      { serviceStatus: { $from: 'totally_made_up' } },
+      { canonicalJsonSchema: weichertJsonSchema, inputFieldRoots: weichertInputFieldRoots },
     )
     expect(problems).toContainEqual({
       where: 'totally_made_up',
@@ -50,7 +42,10 @@ describe('analyzeMapping', () => {
   })
 
   it('flags an ill-formed mapping document', () => {
-    const problems = analyzeMapping({ a: { $from: '' } }, { canonicalJsonSchema })
+    const problems = analyzeMapping(
+      { a: { $from: '' } },
+      { canonicalJsonSchema: weichertJsonSchema },
+    )
     expect(problems[0]?.problem).toMatch(/invalid mapping format/)
   })
 
@@ -96,24 +91,4 @@ describe('every registered integration has a statically valid mapping', () => {
       expect(problems).toEqual([])
     })
   }
-})
-
-// Guard: the compiled mapping output still satisfies the canonical contract.
-describe('compiled mapping output satisfies the canonical contract', () => {
-  it('longhaul', () => {
-    const def = getIntegrationDefinition('longhaul')!
-    // (validate.test.ts + the golden corpus exercise this end-to-end; this is a
-    // direct shape check on a representative order.)
-    expect(def.transform.length).toBeGreaterThan(0)
-    expect(
-      CanonicalOrderSchema.safeParse({
-        id: 1,
-        status: { id: 1, name: null },
-        driver: { id: null },
-        dispatcher: { code: null },
-        shipments: [],
-        activities: [],
-      }).success,
-    ).toBe(true)
-  })
 })

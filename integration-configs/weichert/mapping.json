@@ -1,0 +1,80 @@
+{
+  "serviceOrderNumber": "InvolvedParties.ShipperEmployer.Identity.Description",
+  "supplierContactName": "InvolvedParties.Coordinator.Identity.Description",
+  "supplierContactEmail": {
+    "$from": "InvolvedParties.Coordinator.EmailAddress",
+    "default": "",
+    "coerce": "toString"
+  },
+  "serviceStatus": "Survey.SerivceStatus",
+  "contactMadeDate": "DocumentationDates[0]",
+  "surveyDate": "KeyMoveDates.Survey.Planned",
+  "shipments": {
+    "$from": ".",
+    "$each": {
+      "supplierShipmentId": {
+        "$from": "Id",
+        "coerce": "toString"
+      },
+      "shipmentStatus": {
+        "$from": "Survey.ShipmentStatus",
+        "default": null
+      },
+      "netWeight": {
+        "estimated": {
+          "$from": "Financials.EstimatedWeight",
+          "coerce": "toNumberOrNull"
+        },
+        "actual": {
+          "$from": "Financials.ActualWeight",
+          "coerce": "toNumberOrNull"
+        }
+      },
+      "packDate1": {
+        "actual": {
+          "$from": "KeyMoveDates.Pack.Actual",
+          "default": null
+        }
+      },
+      "loadDate1": {
+        "actual": {
+          "$from": "KeyMoveDates.Load.Actual",
+          "default": null
+        }
+      },
+      "deliveryDate1": {
+        "actual": {
+          "$from": "KeyMoveDates.Delivery.Actual",
+          "default": null
+        }
+      },
+      "surveyedStorageCostFirstDay": {
+        "$from": "Survey.Storage1stDay",
+        "coerce": "toNumberOrNull"
+      },
+      "surveyedStorageCostAdditionalDays": {
+        "$from": "Survey.StorageAdditionalDays",
+        "coerce": "toNumberOrNull"
+      },
+      "surveyedStorageCostDeliveryOut": {
+        "$from": "Survey.StorageOut",
+        "coerce": "toNumberOrNull"
+      },
+      "surveyedThirdPartyCrateAndUncrateCosts": {
+        "$from": "Survey.ThirdPartyCrate",
+        "coerce": "toNumberOrNull"
+      },
+      "surveyedThirdPartyCosts": {
+        "$from": "Survey.ThirdPartyCost",
+        "coerce": "toNumberOrNull"
+      },
+      "surveyedThirdPartyOtherCosts": {
+        "$from": "Survey.ThirdPartyOtherCost",
+        "coerce": "toNumberOrNull"
+      },
+      "notIncludedComments": "Survey.NotIncludedComments",
+      "thirdPartyAndOtherCostsComments": "Survey.OtherCostComments",
+      "comments": "Survey.GeneralComments"
+    }
+  }
+}

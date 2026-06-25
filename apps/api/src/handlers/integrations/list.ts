@@ -3,7 +3,7 @@
 //
 // Read-only, tenant-session surface for the Developer settings "Integrations"
 // card. Lists the integrations the platform validates inbound orders against —
-// the integration-validator registry (longhaul, weichert, …) — joined with each
+// the integration-validator registry (weichert, …) — joined with each
 // integration's active published config (version + visibility) for the caller's
 // tenant, when one exists.
 //

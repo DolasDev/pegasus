@@ -1,9 +1,11 @@
-# Integration Validation Endpoint — Legacy App Handoff
+# Integration Validation Endpoint — Integration Client Handoff
 
-> **Audience:** the legacy desktop app (Pegasus.MoveManager / WinForms) team.
-> **Status:** POC. One integration supported: `longhaul`. The endpoint is live
-> behind API-key auth; wiring the desktop app's save flow to call it is the
-> legacy-side task this doc describes.
+> **Audience:** a system that submits orders to Pegasus on a partner integration's
+> behalf and wants them checked before they are written.
+> **Status:** POC. One integration supported: `weichert`. The endpoint is live
+> behind API-key auth; wiring a client's save flow to call it is the task this doc
+> describes. (The original `longhaul` POC integration was removed — see git
+> history; another integration is re-added as data, not new endpoint code.)
 
 ## What it is
 
@@ -19,11 +21,11 @@ issues, and block the save on a hard failure. If the call fails or times out,
 ## Endpoint
 
 ```
-POST {API_BASE_URL}/api/v1/integrations/longhaul/validate
+POST {API_BASE_URL}/api/v1/integrations/weichert/validate
 ```
 
-`{API_BASE_URL}` is the same API host the rest of `/api/v1/*` uses (the same base
-the legacy API bridge already talks to — prod and QA each have their own).
+`{API_BASE_URL}` is the same API host the rest of `/api/v1/*` uses (prod and QA
+each have their own).
 
 ### Auth
 
@@ -47,36 +49,30 @@ Content-Type: application/json
 {
   "action": "save", // "save" | "cancel" | "status-change"  (default: "save")
   "order": {
-    /* the proposed trip, legacy DTO shape — see below */
+    /* the proposed order, in the integration's native payload shape */
   },
   "prior": {
-    /* OPTIONAL: the trip's current persisted state, same shape */
+    /* OPTIONAL: the order's current persisted state, same shape */
   },
 }
 ```
 
-- **`order`** — the trip as it _will be_ after the save. Required.
-- **`action`** — what the user is doing. Drives action-scoped rules (cancel).
-  Omit for a normal save.
-- **`prior`** — the trip's _current_ persisted state. Only needed for the
-  **transition** rules (driver-change, removing actualized activities). Omit it
-  and those two rules simply don't run; the rest still do. A malformed `prior`
+- **`order`** — the order as it _will be_ after the save. Required.
+- **`action`** — what the user is doing. Drives action-scoped rules. Omit for a
+  normal save.
+- **`prior`** — the order's _current_ persisted state, for any transition rules.
+  Omit it and those rules simply don't run; the rest still do. A malformed `prior`
   is ignored, not an error.
 
 ### Order shape (what the validator reads)
 
-The `order` (and `prior`) use the **same trip DTO the save path already
-produces** — you can send the object you're about to persist as-is. Only these
-fields are read; everything else is ignored:
-
-| Field (any of)                                                                         | Meaning                                                             |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `TripStatus_id` or `status.status_id`                                                  | numeric trip status (1 = pending, ≥4 = in-progress, ≥5 = finalized) |
-| `driver.id` or `driver_id`                                                             | assigned driver id (`null`/absent = unassigned)                     |
-| `dispatcher.code` or `dispatcher_id`                                                   | dispatcher code                                                     |
-| `shipments[].order_num`                                                                | the trip's shipments                                                |
-| `activities[].order_num`, `activities[].ActivityType_code`, `activities[].actual_date` | the trip's activities                                               |
-| `id`                                                                                   | trip id (absent/null = create)                                      |
+The `order` (and `prior`) use the integration's **native legacy payload shape**;
+you can send the object you're about to persist as-is — only the fields the
+mapping reads are used, everything else is ignored. For `weichert` that is the
+Weichert move object (`InvolvedParties` / `Survey` / `KeyMoveDates` /
+`DocumentationDates` / `Financials`). The authoritative field list is the mapping
+itself: `transform/weichert.transform.ts`. The examples below are complete,
+copy-pasteable payloads.
 
 ## Response
 
@@ -88,9 +84,9 @@ Always `200` when validation ran, regardless of pass/fail:
   "issues": [
     // empty when valid
     {
-      "ruleId": "no-finalize-without-actual-dates",
-      "field": "activities", // the order field the issue maps to
-      "message": "Advancing trip to finalized is not allowed until all activities have actual dates",
+      "ruleId": "service-status-not-supplier-settable",
+      "field": "serviceStatus", // the order field the issue maps to
+      "message": "The supplier cannot change the Service Status to Requested, Awarded, Cancelled, or Declined…",
       "kind": "behavioral", // or "structural" (bad shape)
       "severity": "error",
     },
@@ -109,29 +105,35 @@ Other responses:
 | `403`  | `FORBIDDEN`        | API key revoked                   |
 | `404`  | `NOT_FOUND`        | unknown integration id in the URL |
 
-## Rules currently enforced (longhaul)
+## Rules currently enforced (weichert)
 
-These mirror the existing longhaul save-time guards, one-for-one:
+These reproduce the live Weichert Move Network rejections, one-for-one. Source:
+`rules/weichert.rules.ts`.
 
-| `ruleId`                              | Fires when                                                                   | `field`      |
-| ------------------------------------- | ---------------------------------------------------------------------------- | ------------ |
-| `trip-must-have-shipments`            | the trip has no shipments                                                    | `shipments`  |
-| `no-advance-without-driver`           | status > 1 (past pending) and no driver assigned                             | `driver`     |
-| `no-finalize-without-actual-dates`    | status ≥ 5 (finalize) and any activity has no `actual_date`                  | `activities` |
-| `no-driver-change-in-progress`        | `prior` given, status ≥ 4, and the driver changed                            | `driver`     |
-| `no-remove-activity-with-actual-date` | `prior` given and an activity with an `actual_date` was dropped from `order` | `activities` |
-| `no-cancel-after-in-progress`         | `action: "cancel"` and status ≥ 4                                            | `status`     |
+| `ruleId`                                        | Fires when                                                                     | `field`                |
+| ----------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------- |
+| `service-status-not-supplier-settable`          | `serviceStatus` is set to Requested, Awarded, Cancelled, or Declined           | `serviceStatus`        |
+| `invalid-supplier-email`                        | the supplier contact email is malformed                                        | `supplierContactEmail` |
+| `submit-requires-supplier-contact`              | `serviceStatus` = Submitted with no supplier contact                           | `supplierContactName`  |
+| `submit-requires-contact-made-date`             | `serviceStatus` = Submitted with no contact-made date                          | `contactMadeDate`      |
+| `submit-requires-survey-date`                   | `serviceStatus` = Submitted with no survey date                                | `surveyDate`           |
+| `submit-requires-estimated-total-cost`          | `serviceStatus` = Submitted with a zero/absent estimated total cost            | `shipments`            |
+| `in-progress-requires-pack-load-actuals`        | a shipment is In Progress without Pack + Load Date 1 Actual                    | `shipments`            |
+| `delivered-requires-pack-load-delivery-actuals` | a shipment is Delivered/Completed without Pack + Load + Delivery Date 1 Actual | `shipments`            |
 
-`structural` issues (e.g. a non-numeric status) use `ruleId: "structural-contract"`
-and a `field` pointing at the offending path.
+`structural` issues (e.g. a `shipmentStatus` outside the restricted picklist) use
+`ruleId: "structural-contract"` and a `field` pointing at the offending path.
 
-## How the legacy app should integrate
+> **Still deferred** (no field on the HHG payload): "In Progress requires Awarded
+> by WMN", Move On-Hold/Closed/Cancelled lock (an Auto-order concept), and
+> storage-service close (a separate LTS Order payload).
+
+## How a client should integrate
 
 At the point the user clicks **Save** (or **Cancel**):
 
-1. Build the order DTO you're about to persist.
-2. POST it to the endpoint with the API key. Use a **tight timeout** (e.g.
-   2–3 s).
+1. Build the order payload you're about to persist.
+2. POST it to the endpoint with the API key. Use a **tight timeout** (e.g. 2–3 s).
 3. Branch on the response:
    - **`200` and `valid: true`** → proceed with the save.
    - **`200` and `valid: false`** → **block the save**; show `issues[].message`,
@@ -143,45 +145,34 @@ At the point the user clicks **Save** (or **Cancel**):
      silently block users. (Treat as fail-open for the save, fix the key.)
 
 > The endpoint is **advisory** by construction: it can't stop a write you choose
-> to make. Enforcement = the desktop app honoring `valid: false` and aborting its
-> own save. That contract lives on your side.
+> to make. Enforcement = the client honoring `valid: false` and aborting its own
+> save. That contract lives on your side.
 
 ### Timeout & fail-open
 
-A validator outage must never freeze saves. Default to **fail-open**: on
-timeout, network failure, `5xx`, or `degraded: true`, let the save through and
-record a warning. Only `valid: false` should block, and only when the call
-clearly succeeded.
+A validator outage must never freeze saves. Default to **fail-open**: on timeout,
+network failure, `5xx`, or `degraded: true`, let the save through and record a
+warning. Only `valid: false` should block, and only when the call clearly
+succeeded.
 
 ## Examples
 
-**Pass** — pending create with one shipment:
+**Pass** — a well-formed Accepted order:
 
 ```bash
-curl -sS -X POST "{API_BASE_URL}/api/v1/integrations/longhaul/validate" \
+curl -sS -X POST "{API_BASE_URL}/api/v1/integrations/weichert/validate" \
   -H "Authorization: Bearer vnd_xxx" -H "Content-Type: application/json" \
-  -d '{"action":"save","order":{"TripStatus_id":1,"shipments":[{"order_num":100}],"activities":[]}}'
+  -d '{"action":"save","order":{"Id":"SHIP-1","InvolvedParties":{"ShipperEmployer":{"Identity":{"Description":"O-60232"}},"Coordinator":{"Identity":{"Description":"Suzanne Polo"},"EmailAddress":"noreply@weichertwm.com"}},"Survey":{"SerivceStatus":"Accepted"},"DocumentationDates":["2024-05-25"],"KeyMoveDates":{"Survey":{"Planned":"2024-05-25"}},"Financials":{"EstimatedWeight":5000}}}'
 # → {"valid":true,"issues":[],"degraded":false}
 ```
 
-**Fail** — finalizing with an activity missing its actual date:
+**Fail** — a supplier-forbidden service status (`Awarded`):
 
 ```bash
-curl -sS -X POST "{API_BASE_URL}/api/v1/integrations/longhaul/validate" \
+curl -sS -X POST "{API_BASE_URL}/api/v1/integrations/weichert/validate" \
   -H "Authorization: Bearer vnd_xxx" -H "Content-Type: application/json" \
-  -d '{"action":"save","order":{"TripStatus_id":5,"driver":{"id":7},"shipments":[{"order_num":100}],"activities":[{"order_num":100,"ActivityType_code":"DELIVER","actual_date":null}]}}'
-# → {"valid":false,"issues":[{"ruleId":"no-finalize-without-actual-dates","field":"activities","message":"…","kind":"behavioral","severity":"error"}],"degraded":false}
-```
-
-**Transition** — driver change on an in-progress trip (needs `prior`):
-
-```bash
-curl -sS -X POST "{API_BASE_URL}/api/v1/integrations/longhaul/validate" \
-  -H "Authorization: Bearer vnd_xxx" -H "Content-Type: application/json" \
-  -d '{"action":"save",
-       "order": {"id":50,"TripStatus_id":4,"driver":{"id":99},"shipments":[{"order_num":100}],"activities":[]},
-       "prior": {"id":50,"TripStatus_id":4,"driver":{"id":7},"shipments":[{"order_num":100}],"activities":[]}}'
-# → valid:false, ruleId "no-driver-change-in-progress"
+  -d '{"action":"save","order":{"Id":"SHIP-1","InvolvedParties":{"ShipperEmployer":{"Identity":{"Description":"O-60232"}},"Coordinator":{"Identity":{"Description":"Suzanne Polo"},"EmailAddress":"noreply@weichertwm.com"}},"Survey":{"SerivceStatus":"Awarded"}}}'
+# → {"valid":false,"issues":[{"ruleId":"service-status-not-supplier-settable","field":"serviceStatus","message":"…","kind":"behavioral","severity":"error"}],"degraded":false}
 ```
 
 ### VB.NET sketch
@@ -199,7 +190,7 @@ Using client As New Net.Http.HttpClient()
 
     Try
         Dim resp = Await client.PostAsync(
-            apiBase & "/api/v1/integrations/longhaul/validate", content)
+            apiBase & "/api/v1/integrations/weichert/validate", content)
         If resp.IsSuccessStatusCode Then
             Dim result = Newtonsoft.Json.JsonConvert.DeserializeObject(Of ValidationResult)(
                 Await resp.Content.ReadAsStringAsync())
@@ -219,28 +210,26 @@ End Using
 
 ## Registered integrations
 
-Two integrations are registered (use the id in the URL):
+One integration is registered (use the id in the URL):
 
-- **`longhaul`** — the on-prem dispatch system (see the rule table above).
-- **`weichert`** — the Weichert Supplier Move Network (Salesforce-backed). Rules:
-  serviceStatus must be supplier-settable (not Requested/Awarded/Cancelled/Declined);
-  submitting an estimate (`Submitted`) requires supplier contact, contact-made date,
-  survey date, and a non-zero estimated total cost; supplier email must be
-  well-formed; **In Progress** requires Pack + Load Date 1 Actual on a shipment;
-  **Delivered/Completed** requires Pack + Load + Delivery Date 1 Actual; the
-  per-shipment `shipmentStatus` is a restricted picklist (Under Review/In Process/
-  In Storage/Delivered/Completed/Cancelled). **Still deferred** (no field on the HHG
-  payload): "In Progress requires Awarded by WMN", Move On-Hold/Closed/Cancelled lock
-  (an Auto-order concept), and storage-service close (a separate LTS Order payload).
-  See `rules/weichert.rules.ts`. The Weichert mapping is authored in the output-shaped
-  format — see [`integration-mapping-format.md`](./integration-mapping-format.md).
+- **`weichert`** — the Weichert Supplier Move Network (Salesforce-backed). See the
+  rule table above. The Weichert mapping is authored in the output-shaped format —
+  see [`integration-mapping-format.md`](./integration-mapping-format.md). Source:
+  `rules/weichert.rules.ts`, `canonical-weichert.ts`, `transform/weichert.transform.ts`.
+
+The live, machine-readable list is `GET /api/v1/integrations`.
 
 ## Notes & limits (POC)
 
 - **Global, not per-tenant:** a single shared rule definition per integration;
-  tenant-specific rules are out of scope for the POC.
+  tenant-specific rules are out of scope for the POC. (A DB-published GLOBAL config
+  can override the editable surface — see the integration-config authoring flow.)
 - **No persistence / side effects:** the call is pure validation.
 - Source of truth: `apps/api/src/integration-validation/` — rules in
   `rules/<integration>.rules.ts`, canonical contract in `canonical-<integration>.ts`,
   mapping in `transform/<integration>.transform.ts`. Updating a rule or mapping is a
   data change in that folder, not a handler change.
+
+```
+
+```

@@ -1,10 +1,12 @@
 # Dogfood: publish built-in integration configs to the platform tenant (GLOBAL)
 
-> **Status:** CODE SHIPPED — live run pending. The buildable engineering for
-> Phases 1–4 plus the Phase-2 infra flag is done (branch
-> `integration-config-dogfood-publish`). What remains is the live operational run
-> (provision the platform-tenant key, deploy, publish to QA, verify, then prod) —
-> it needs AWS/DB credentials and is tracked in **Remaining live steps** below.
+> **Status:** weichert SHIPPED to QA; longhaul dropped. The buildable engineering
+> (Phases 1–4 + the Phase-2 infra flag) shipped, and **weichert was published GLOBAL
+> v1 to QA via the SDK and verified (zero validation diffs)** on 2026-06-25. The
+> **longhaul POC integration was then removed entirely** (see git history), so it is
+> no longer a publish target — weichert is the sole integration. Remaining: prod
+> rollout (Phase 5). The original two-target framing below is kept for context;
+> read "longhaul + weichert" as "weichert" throughout.
 
 ## Built in this session (branch `integration-config-dogfood-publish`)
 

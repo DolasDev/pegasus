@@ -42,7 +42,6 @@ type JsonBody = Record<string, unknown>
 const json = (res: Response) => res.json() as Promise<JsonBody>
 
 const DEFS: Record<string, { id: string; displayName: string; description: string }> = {
-  longhaul: { id: 'longhaul', displayName: 'LongHaul', description: 'Validates LongHaul orders.' },
   weichert: { id: 'weichert', displayName: 'Weichert', description: 'Validates Weichert orders.' },
 }
 
@@ -72,7 +71,7 @@ describe('integrations list handler', () => {
     vi.clearAllMocks()
     process.env['AUTHZ_OFFLINE'] = 'true'
     _clearAuthzCache()
-    mockListIntegrationIds.mockReturnValue(['longhaul', 'weichert'])
+    mockListIntegrationIds.mockReturnValue(['weichert'])
     mockGetIntegrationDefinition.mockImplementation((id: string) => DEFS[id])
     mockRepo.findActiveForScope.mockResolvedValue(null)
   })
@@ -90,14 +89,6 @@ describe('integrations list handler', () => {
     const body = await json(res)
     expect(body.data).toEqual([
       {
-        id: 'longhaul',
-        name: 'LongHaul',
-        description: 'Validates LongHaul orders.',
-        published: false,
-        version: null,
-        visibility: null,
-      },
-      {
         id: 'weichert',
         name: 'Weichert',
         description: 'Validates Weichert orders.',
@@ -110,22 +101,16 @@ describe('integrations list handler', () => {
 
   it('reflects an active published config (version + visibility) when one exists', async () => {
     mockRepo.findActiveForScope.mockImplementation(async (id: string) =>
-      id === 'longhaul' ? { version: 4, visibility: 'GLOBAL' as const } : null,
+      id === 'weichert' ? { version: 4, visibility: 'GLOBAL' as const } : null,
     )
     const res = await buildApp(['tenant_admin']).request('/integrations')
     expect(res.status).toBe(200)
     const data = (await json(res)).data as Array<Record<string, unknown>>
     expect(data[0]).toMatchObject({
-      id: 'longhaul',
+      id: 'weichert',
       published: true,
       version: 4,
       visibility: 'GLOBAL',
-    })
-    expect(data[1]).toMatchObject({
-      id: 'weichert',
-      published: false,
-      version: null,
-      visibility: null,
     })
   })
 })

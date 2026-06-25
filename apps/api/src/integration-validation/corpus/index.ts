@@ -6,13 +6,11 @@
 // ---------------------------------------------------------------------------
 
 import type { GateCorpusCase } from '../gate-pipeline'
-import { longhaulCorpus } from './longhaul.corpus'
 import { weichertCorpus } from './weichert.corpus'
 
-export { longhaulCorpus, weichertCorpus }
+export { weichertCorpus }
 
 export const BUILTIN_CORPORA: Record<string, GateCorpusCase[]> = {
-  longhaul: longhaulCorpus,
   weichert: weichertCorpus,
 }
 

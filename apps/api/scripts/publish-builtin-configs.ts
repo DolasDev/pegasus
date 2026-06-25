@@ -33,9 +33,7 @@
 // Exit code is non-zero if any gate fails, any publish errors, or --verify finds a diff.
 // ---------------------------------------------------------------------------
 
-import { longhaulMapping } from '../src/integration-validation/transform/longhaul.transform'
 import { weichertMapping } from '../src/integration-validation/transform/weichert.transform'
-import { longhaulRules } from '../src/integration-validation/rules/longhaul.rules'
 import { weichertRules } from '../src/integration-validation/rules/weichert.rules'
 import { getBuiltinCorpus, getGateCorpus } from '../src/integration-validation/corpus'
 import type { GateCorpusCase, GateReport } from '../src/integration-validation/gate-pipeline'
@@ -47,7 +45,6 @@ interface BuiltinConfig {
 }
 
 const BUILTINS: BuiltinConfig[] = [
-  { id: 'longhaul', mapping: longhaulMapping, rules: longhaulRules },
   { id: 'weichert', mapping: weichertMapping, rules: weichertRules },
 ]
 

@@ -303,45 +303,46 @@ describe('Unknown routes', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Declarative integration validation (POC) — real-app smoke through the full
-// router. Proves the route is mounted pre-tenant (reachable with NO tenant
-// session) and validates real longhaul order shapes end-to-end.
+// Declarative integration validation — real-app smoke through the full router.
+// Proves the route is mounted pre-tenant (reachable with NO tenant session) and
+// validates real weichert order shapes end-to-end.
 // ---------------------------------------------------------------------------
 
 describe('POST /api/v1/integrations/:integrationId/validate', () => {
-  it('returns 200 valid:true for a clean longhaul order (no tenant session needed)', async () => {
-    const res = await app.request('/api/v1/integrations/longhaul/validate', {
+  // A known-valid weichert order (mirrors __corpus__/weichert/01-valid-accepted).
+  const validWeichertOrder = {
+    Id: 'SHIP-1',
+    InvolvedParties: {
+      ShipperEmployer: { Identity: { Description: 'O-60232' } },
+      Coordinator: {
+        Identity: { Description: 'Suzanne Polo' },
+        EmailAddress: 'noreply@weichertwm.com',
+      },
+    },
+    Survey: { SerivceStatus: 'Accepted', Storage1stDay: 100, GeneralComments: 'ok' },
+    DocumentationDates: ['2024-05-25'],
+    KeyMoveDates: { Survey: { Planned: '2024-05-25' } },
+    Financials: { EstimatedWeight: 5000, ActualWeight: null },
+  }
+
+  it('returns 200 valid:true for a clean weichert order (no tenant session needed)', async () => {
+    const res = await app.request('/api/v1/integrations/weichert/validate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'save',
-        order: {
-          id: 50,
-          TripStatus_id: 3,
-          driver: { id: 7 },
-          dispatcher: { code: 5 },
-          shipments: [{ order_num: 100 }],
-          activities: [],
-        },
-      }),
+      body: JSON.stringify({ action: 'save', order: validWeichertOrder }),
     })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ valid: true, issues: [], degraded: false })
   })
 
-  it('returns 200 valid:false with a field-mapped issue for a real longhaul rule violation', async () => {
-    // status 5 (finalized) with an activity still missing its actual date → R5.
-    const res = await app.request('/api/v1/integrations/longhaul/validate', {
+  it('returns 200 valid:false with a field-mapped issue for a real weichert rule violation', async () => {
+    // A supplier may not set serviceStatus to Awarded — the live rejection.
+    const res = await app.request('/api/v1/integrations/weichert/validate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'save',
-        order: {
-          TripStatus_id: 5,
-          driver: { id: 7 },
-          shipments: [{ order_num: 100 }],
-          activities: [{ order_num: 100, ActivityType_code: 'DELIVER', actual_date: null }],
-        },
+        order: { ...validWeichertOrder, Survey: { SerivceStatus: 'Awarded' } },
       }),
     })
     expect(res.status).toBe(200)
@@ -351,7 +352,10 @@ describe('POST /api/v1/integrations/:integrationId/validate', () => {
     }
     expect(body.valid).toBe(false)
     expect(body.issues).toEqual([
-      expect.objectContaining({ ruleId: 'no-finalize-without-actual-dates', field: 'activities' }),
+      expect.objectContaining({
+        ruleId: 'service-status-not-supplier-settable',
+        field: 'serviceStatus',
+      }),
     ])
   })
 
@@ -377,11 +381,11 @@ describe('GET /api/v1/integrations', () => {
     expect(res.status).toBe(200)
     const data = ((await res.json()) as { data: Array<Record<string, unknown>> }).data
     const ids = data.map((d) => d['id'])
-    expect(ids).toEqual(expect.arrayContaining(['longhaul', 'weichert']))
-    const longhaul = data.find((d) => d['id'] === 'longhaul')!
-    expect(longhaul['name']).toBe('LongHaul')
-    expect(typeof longhaul['description']).toBe('string')
-    expect(longhaul).toMatchObject({ published: false, version: null, visibility: null })
+    expect(ids).toEqual(expect.arrayContaining(['weichert']))
+    const weichert = data.find((d) => d['id'] === 'weichert')!
+    expect(weichert['name']).toBe('Weichert')
+    expect(typeof weichert['description']).toBe('string')
+    expect(weichert).toMatchObject({ published: false, version: null, visibility: null })
   })
 })
 

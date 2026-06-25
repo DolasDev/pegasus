@@ -2,19 +2,17 @@ import { describe, it, expect } from 'vitest'
 import { z } from 'zod'
 import { analyzeRuleSet } from './static-check'
 import { canonicalSchemaPaths } from './transform/mapping-static-check'
-import { canonicalOrderJsonSchema } from './canonical-order'
-import { longhaulRules } from './rules/longhaul.rules'
-import { longhaulFactCatalog } from './facts/longhaul-facts'
 import { listIntegrationIds, getIntegrationDefinition } from './registry'
-import type { RuleSet } from './rules/types'
+import type { FactCatalog, RuleSet } from './rules/types'
 
-const longhaulFields = canonicalSchemaPaths(canonicalOrderJsonSchema())
+// Synthetic, integration-agnostic fixtures: analyzeRuleSet is generic engine
+// code, so it is exercised against a stand-alone fact catalog + canonical field
+// list rather than any one integration's. (Each shipped integration's own rule
+// set is checked end-to-end by the data-driven block at the bottom.)
+const facts: FactCatalog = { statusId: 'number', action: 'string', driverAssigned: 'boolean' }
+const validFields = new Set(['driver', 'shipments', 'status.id'])
 
 describe('static-check — the AI loop pre-gate', () => {
-  it('reports zero problems for the shipped longhaul rule set', () => {
-    expect(analyzeRuleSet(longhaulRules, longhaulFactCatalog)).toEqual([])
-  })
-
   it('flags an unknown fact', () => {
     const rules: RuleSet = [
       {
@@ -25,7 +23,7 @@ describe('static-check — the AI loop pre-gate', () => {
         when: [{ fact: 'ghost', op: 'eq', value: 1 }],
       },
     ]
-    expect(analyzeRuleSet(rules, longhaulFactCatalog)).toContainEqual({
+    expect(analyzeRuleSet(rules, facts)).toContainEqual({
       ruleId: 'r',
       problem: 'unknown fact "ghost"',
     })
@@ -48,7 +46,7 @@ describe('static-check — the AI loop pre-gate', () => {
         when: [{ fact: 'statusId', op: 'eq', value: 2 }],
       },
     ]
-    expect(analyzeRuleSet(rules, longhaulFactCatalog)).toContainEqual({
+    expect(analyzeRuleSet(rules, facts)).toContainEqual({
       ruleId: 'dup',
       problem: 'duplicate rule id',
     })
@@ -64,7 +62,7 @@ describe('static-check — the AI loop pre-gate', () => {
         when: [{ fact: 'action', op: 'gt', value: 1 }],
       },
     ]
-    expect(analyzeRuleSet(rules, longhaulFactCatalog)).toContainEqual({
+    expect(analyzeRuleSet(rules, facts)).toContainEqual({
       ruleId: 'r',
       problem: 'ordered op "gt" on non-numeric fact "action"',
     })
@@ -90,14 +88,10 @@ describe('static-check — the AI loop pre-gate', () => {
         ],
       },
     ]
-    expect(analyzeRuleSet(rules, longhaulFactCatalog)).toContainEqual({
+    expect(analyzeRuleSet(rules, facts)).toContainEqual({
       ruleId: 'narrow',
       problem: 'shadowed by earlier rule "broad" on field "driver"',
     })
-  })
-
-  it('accepts canonical rule fields when validFields is supplied', () => {
-    expect(analyzeRuleSet(longhaulRules, longhaulFactCatalog, longhaulFields)).toEqual([])
   })
 
   it('flags a rule whose field is not a canonical field', () => {
@@ -110,7 +104,7 @@ describe('static-check — the AI loop pre-gate', () => {
         when: [{ fact: 'statusId', op: 'eq', value: 1 }],
       },
     ]
-    expect(analyzeRuleSet(rules, longhaulFactCatalog, longhaulFields)).toContainEqual({
+    expect(analyzeRuleSet(rules, facts, validFields)).toContainEqual({
       ruleId: 'r',
       problem: 'field "not_a_real_field" is not a canonical field',
     })
@@ -126,7 +120,7 @@ describe('static-check — the AI loop pre-gate', () => {
         when: [{ fact: 'statusId', op: 'eq', value: 1 }],
       },
     ]
-    expect(analyzeRuleSet(rules, longhaulFactCatalog)).toEqual([])
+    expect(analyzeRuleSet(rules, facts)).toEqual([])
   })
 })
 

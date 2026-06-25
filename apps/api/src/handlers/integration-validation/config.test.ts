@@ -126,7 +126,7 @@ const now = new Date('2026-06-19T12:00:00Z')
 
 // A sentinel "base definition" — getIntegrationDefinition is mocked, so the
 // handler only checks truthiness; the real shape is exercised by the gate tests.
-const baseDef = { id: 'longhaul' } as unknown
+const baseDef = { id: 'weichert' } as unknown
 
 const okReport = { ok: true, problems: [], corpus: { total: 1, passed: 1, failures: [] } }
 const failReport = {
@@ -146,7 +146,7 @@ const validBody = {
 const configRow = {
   id: 'cfg-1',
   tenantId: 'test-tenant-id',
-  integrationId: 'longhaul',
+  integrationId: 'weichert',
   version: 3,
   visibility: 'TENANT' as const,
   status: 'PUBLISHED' as const,
@@ -158,7 +158,7 @@ const configRow = {
   createdAt: now,
 }
 
-const PATH = '/integrations/longhaul/config'
+const PATH = '/integrations/weichert/config'
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -305,7 +305,7 @@ describe('integration-config handler', () => {
       expect(body['version']).toBe(3)
       expect(mockRepo.publish).toHaveBeenCalledWith(
         expect.objectContaining({
-          integrationId: 'longhaul',
+          integrationId: 'weichert',
           tenantId: 'test-tenant-id',
           visibility: 'TENANT',
           publishedBy: 'user-1',
@@ -455,7 +455,7 @@ describe('integration-config handler', () => {
       // The source version's mapping/rules/corpus are re-published verbatim.
       expect(mockRepo.publish).toHaveBeenCalledWith(
         expect.objectContaining({
-          integrationId: 'longhaul',
+          integrationId: 'weichert',
           mapping: configRow.mapping,
           rules: configRow.rules,
           publishedBy: 'user-1',

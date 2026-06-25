@@ -7,8 +7,13 @@ import {
   mappingFormatJsonSchema,
   type MappingTemplate,
 } from './mapping-format'
-import { applyMapping } from './engine'
-import { longhaulMapping } from './longhaul.transform'
+
+// A synthetic mapping exercising nesting + $each, independent of any integration.
+const sampleMapping: MappingTemplate = {
+  id: 'id',
+  status: { id: 'TripStatus_id', name: 'status.name' },
+  list: { $from: 'rows', $each: { n: { $from: 'order_num' } } },
+}
 
 describe('mapping format — parsing', () => {
   it('accepts plain-string leaves, directives, nesting and $each', () => {
@@ -74,48 +79,19 @@ describe('mapping format — compile', () => {
       compileMapping({ status: { $from: 's', $map: { Active: 'A' }, default: null } }),
     ).toEqual([{ to: 'status', from: ['s'], default: null, map: { Active: 'A' } }])
   })
-
-  it('compiled longhaul mapping transforms a real DTO to the canonical shape', () => {
-    const out = applyMapping(compileMapping(longhaulMapping), {
-      id: 50,
-      TripStatus_id: 4,
-      driver: { id: 7 },
-      dispatcher: { code: 5 },
-      shipments: [{ order_num: 100 }],
-      activities: [{ order_num: 100, ActivityType_code: 'LOAD', actual_date: '2026-01-01' }],
-    })
-    expect(out).toEqual({
-      id: 50,
-      status: { id: 4, name: null },
-      driver: { id: 7 },
-      dispatcher: { code: '5' },
-      shipments: [{ orderNum: 100 }],
-      activities: [{ orderNum: 100, typeCode: 'LOAD', actualDate: '2026-01-01' }],
-    })
-  })
 })
 
 describe('mapping format — path collection', () => {
   it('collects produced target paths (arrays marked with [])', () => {
-    expect(collectTargetPaths(longhaulMapping).sort()).toEqual(
-      [
-        'activities[].actualDate',
-        'activities[].orderNum',
-        'activities[].typeCode',
-        'dispatcher.code',
-        'driver.id',
-        'id',
-        'shipments[].orderNum',
-        'status.id',
-        'status.name',
-      ].sort(),
+    expect(collectTargetPaths(sampleMapping).sort()).toEqual(
+      ['id', 'list[].n', 'status.id', 'status.name'].sort(),
     )
   })
 
   it('collects top-level source roots without descending into $each', () => {
-    const roots = collectTopLevelSourceRoots(longhaulMapping).sort()
+    const roots = collectTopLevelSourceRoots(sampleMapping).sort()
     expect(roots).toContain('TripStatus_id')
-    expect(roots).toContain('shipments')
+    expect(roots).toContain('rows')
     // order_num lives inside $each (element scope) — must NOT surface as an order root.
     expect(roots).not.toContain('order_num')
   })
