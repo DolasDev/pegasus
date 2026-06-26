@@ -383,7 +383,7 @@ export class OutboxRelayStack extends cdk.Stack {
         OUTBOX_CA_KEY_PARAM: caKeyParam,
         OUTBOX_LEAF_CERT_PARAM: leafCertParam,
         OUTBOX_LEAF_KEY_PARAM: leafKeyParam,
-        OUTBOX_LEAF_CN: `pegasus-${envName}-outbox-relay-dolios`,
+        OUTBOX_LEAF_CN: `pegasus-${envName}-outbox-relay`,
         OUTBOX_LEAF_DAYS: '365',
         OUTBOX_KMS_KEY_ID: outboxKey.keyArn,
       },
