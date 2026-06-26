@@ -584,8 +584,8 @@ workflowsHandler.post(
           manifest,
           createdByUserId: userId,
           // Integrity facts from the validation above. `executable` records
-          // eligibility only — the run path keeps the curated-names gate
-          // until Unit 10.
+          // eligibility; since Unit 10 the run path routes an executable
+          // non-curated row to the tenant runner (curated names → stdlib lane).
           artifactSha256: validation.sha256,
           artifactSizeBytes: validation.sizeBytes,
           executable: true,

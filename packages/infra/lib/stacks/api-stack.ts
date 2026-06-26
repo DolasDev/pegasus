@@ -683,10 +683,10 @@ export class ApiStack extends cdk.Stack {
       // metrics). Both therefore get the TENANT_RUNNER_* env contract and
       // the same ECS/PassRole grants.
       //
-      // INERT TODAY: until Unit 10 lifts the curated-names gate, no code
-      // path reaches RunTask (see executionNeedsTenantRunner in the lib) —
-      // this wiring exists so Unit 10 is a routing-decision flip, not an
-      // infra change.
+      // LIVE since Unit 10: the run path reaches RunTask whenever an
+      // executable non-curated workflow runs (see executionNeedsTenantRunner /
+      // resolveWorkflowRoute in the lib). This wiring made that a
+      // routing-decision flip rather than an infra change.
       //
       // Cross-stack contract is BY NAME (cluster / task family / role names
       // mirrored from temporal-worker-stack.ts) because TemporalWorkerStack

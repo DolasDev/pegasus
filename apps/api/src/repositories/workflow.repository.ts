@@ -55,7 +55,8 @@ export type WorkflowRow = {
   artifactSizeBytes: number | null
   /**
    * True when the artifact passed integrity validation at finalize. Derived
-   * server-side only; the run path keeps the curated-names gate until Unit 10.
+   * server-side only; since Unit 10 the run path routes executable non-curated
+   * rows to the tenant runner (curated names → stdlib lane).
    */
   executable: boolean
   createdAt: Date

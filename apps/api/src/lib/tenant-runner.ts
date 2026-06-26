@@ -45,17 +45,16 @@
 // the old plaintext stops verifying. The token is intentionally NEVER logged
 // here.
 //
-// Inert-until-Unit-10 activation criterion
-// ────────────────────────────────────────
-// `executionNeedsTenantRunner` is the routing predicate: it is the exact
-// complement of the curated-names gate that still owns the run path
-// (lib/start-workflow-execution.ts returns NOT_EXECUTABLE for non-curated
-// names BEFORE any runner logic runs). Today, therefore, no production code
-// path ever reaches RunTask: curated workflows don't need a runner, and
-// non-curated workflows never get past the gate. Unit 10 replaces both the
-// gate and this predicate with the real routing decision (executable tenant
-// workflows → tenant queue + runner; curated names → stdlib queue) in ONE
-// place, flipping this machinery live without re-plumbing.
+// Activation criterion (live since Unit 10)
+// ─────────────────────────────────────────
+// `executionNeedsTenantRunner` is the routing predicate, and it now delegates
+// to `resolveWorkflowRoute` (lib/workflow-route.ts) so there is ONE source of
+// truth for the run path and this orchestration. Unit 10 removed the old
+// curated-only gate: the run path (lib/start-workflow-execution.ts) routes
+// executable non-curated workflows to the tenant queue + runner, curated names
+// to the stdlib queue, and only rejects non-curated AND non-executable rows as
+// NOT_EXECUTABLE. So RunTask IS reached in production whenever an executable
+// tenant workflow runs — this machinery is live, not inert.
 //
 // Config comes from TENANT_RUNNER_* env vars injected by the CDK ApiStack
 // (packages/infra/lib/stacks/api-stack.ts); when absent (dev, tests, any
@@ -376,9 +375,9 @@ export type SweepTenantRunnersResult = {
  * without it, a lost runner would strand QUEUED executions until a human
  * noticed.
  *
- * Inert today: non-curated workflows cannot acquire QUEUED/RUNNING execution
- * rows (the curated gate refuses them before insert), so the scan finds
- * nothing until Unit 10 lifts the gate.
+ * Live since Unit 10: executable non-curated workflows route to the tenant
+ * runner and acquire QUEUED/RUNNING execution rows, so this scan picks them up
+ * and relaunches a crashed/idle-exited runner while their work is outstanding.
  *
  * Also publishes the pool gauges every tick (even when 0, so the metric
  * exists and alarms in Unit 11 can use missing-data semantics deliberately):
