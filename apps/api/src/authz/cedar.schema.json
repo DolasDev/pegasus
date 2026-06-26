@@ -233,6 +233,9 @@
       "SendNotification": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Notification"] }
       },
+      "SendSms": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Notification"] }
+      },
       "ReadIntegrationConfig": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["IntegrationConfig"] }
       },

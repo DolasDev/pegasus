@@ -178,6 +178,12 @@ export const Actions = {
     resourceType: 'Notification',
     permission: 'notification:send',
   },
+  // ── SMS (outbound RingCentral SMS via the workflow runtime) ─────────────────
+  SendSms: {
+    id: 'SendSms',
+    resourceType: 'Notification',
+    permission: 'sms:send',
+  },
   // ── Integration validator config (mapping + rules; SDK/CLI publish) ──────
   ReadIntegrationConfig: {
     id: 'ReadIntegrationConfig',
