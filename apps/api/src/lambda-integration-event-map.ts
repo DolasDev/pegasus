@@ -23,7 +23,7 @@
 // re-deliveries (and any inbox row the SNS consumer ingested but never
 // dispatched during the cutover window) yield exactly one DomainEvent.
 //
-// Plan: plans/in-progress/pegii-eventbridge-integration.md (unit 4)
+// Plan: plans/completed/pegii-eventbridge-integration.md (unit 4)
 // ---------------------------------------------------------------------------
 
 import type { SQSEvent, SQSBatchResponse, SQSRecord } from 'aws-lambda'

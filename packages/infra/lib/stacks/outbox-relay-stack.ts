@@ -17,7 +17,7 @@
 // HISTORY: this stack used to publish to an SNS FIFO topic → SQS FIFO queue →
 // shipment-event consumer. That SNS path was retired (unit 6) once the relay
 // cut over to events:PutEvents on staging + prod; the EventBridge path above is
-// now the only one. See plans/in-progress/pegii-eventbridge-integration.md.
+// now the only one. See plans/completed/pegii-eventbridge-integration.md.
 //
 // The relay authenticates with IAM Roles Anywhere (X.509 trust anchor → no
 // long-lived keys on the on-prem host). That path is optional: it's only wired
@@ -48,7 +48,7 @@ import { type Construct } from 'constructs'
 export interface OutboxRelayStackProps extends cdk.StackProps {
   /**
    * Custom EventBridge bus the relay publishes legacy MoveManager events to via
-   * `events:PutEvents` (see plans/in-progress/pegii-eventbridge-integration.md).
+   * `events:PutEvents` (see plans/completed/pegii-eventbridge-integration.md).
    */
   readonly busName: string
   /**
@@ -108,7 +108,7 @@ export class OutboxRelayStack extends cdk.Stack {
     // Custom bus so legacy events get their own routing namespace + replay
     // archive, and so future "other situations" can fan out from rules.
     // CMK-encrypted — payloads carry light PII (shippedTo/driver).
-    // Plan: plans/in-progress/pegii-eventbridge-integration.md
+    // Plan: plans/completed/pegii-eventbridge-integration.md
     const eventBus = new events.EventBus(this, 'IntegrationEventBus', {
       eventBusName: props.busName,
       description: 'Legacy pegII / MoveManager domain events (relay PutEvents target).',
