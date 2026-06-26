@@ -1,5 +1,11 @@
 # PegII → EventBridge integration
 
+> ✅ **COMPLETE — all 6 cloud units shipped + deployed to staging and prod, and
+> the on-prem relay cut over to EventBridge.** PRs #345 (units 2–5), #346 (archive
+> KMS fix), #358 (unit 6 — SNS retired). EventBridge is now the only path. The
+> per-unit "done (local)" markers below predate the merges; treat the whole plan
+> as delivered. Companion: `pegii-relay-eventbridge-cutover-checklist.md`.
+
 Bring legacy **pegII / MoveManager** domain events into Pegasus as a first-class
 event source — consumable by **workflows** (via the existing v2 trigger model) and
 by future "other situations" — over a custom **EventBridge** bus.
