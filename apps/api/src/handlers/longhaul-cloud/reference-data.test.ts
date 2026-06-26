@@ -98,8 +98,10 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
     expect(sql).toContain('v_longhaul_states')
     expect(sql).toContain('v_longhaul_zones')
     expect(sql).toContain('v_longhaul_salesman')
-    // nwi-specific fragments must appear when client = nwi.
-    expect(sql).toContain('managed_by_id = 2021')
+    // nwi-specific fragments must appear when client = nwi. The dispatcher
+    // filter ORs in the 'LO' short-haul/local-dispatch role alongside the
+    // long-haul managed_by_id, so both groups list in the planning system.
+    expect(sql).toContain("(managed_by_id = 2021 OR roles like '%LO%')")
     expect(sql).toContain('MoveType')
     expect(sql).toContain('1=1')
   })
