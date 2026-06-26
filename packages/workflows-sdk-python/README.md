@@ -114,6 +114,40 @@ def _resolve_quote_id(payload: dict | str) -> str:
     return "quote-unknown"
 ```
 
+### Sending an SMS
+
+Inside a workflow activity, call `client.send_sms` to send an outbound text message
+via the tenant's configured SMS provider. The platform holds the provider credentials —
+no credential needs to appear in the workflow source or manifest.
+
+```python
+from pegasus_workflows import activity
+from pegasus_workflows.api import PegasusClient
+import os
+
+@activity.defn
+async def send_alert_sms(to: str, message: str) -> dict:
+    client = PegasusClient(
+        base_url=os.environ["PEGASUS_BASE_URL"],
+        token=os.environ["PEGASUS_WORKFLOW_TOKEN"],
+    )
+    return client.send_sms(to=to, body=message)
+```
+
+Declare the capability in `pegasus-workflows.toml`:
+
+```toml
+[[workflow]]
+name = "order-saved-notify"
+version = "0.1.0"
+entry_points = ["order_saved.workflow:OrderSavedWorkflow"]
+required_actions = ["SendSms"]
+```
+
+`send_sms` raises `PegasusApiError` (403) if `SendSms` is absent from `required_actions`,
+or (404) if the tenant has no SMS provider connected. The `to` number must be E.164
+(e.g. `"+16308868537"`).
+
 ## The manifest — `pegasus-workflows.toml`
 
 Every project has a `pegasus-workflows.toml` at its root. Each `[[workflow]]`

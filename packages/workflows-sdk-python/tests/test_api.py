@@ -519,3 +519,43 @@ def test_rollback_integration_config_posts_to_version_path() -> None:
     assert row["version"] == 4
     assert captured["method"] == "POST"
     assert captured["path"] == "/api/v1/integrations/weichert/config/rollback/2"
+
+
+# ---------------------------------------------------------------------------
+# SMS primitive
+# ---------------------------------------------------------------------------
+
+
+def test_send_sms_posts_to_and_body_to_sms_send_endpoint() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            202,
+            json={"data": {"id": "msg-1", "status": "Queued"}},
+        )
+
+    client = _client_with(handler)
+    result = client.send_sms(to="+16308868537", body="hello")
+
+    assert result == {"data": {"id": "msg-1", "status": "Queued"}}
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/api/v1/sms/send"
+    assert captured["body"] == {"to": "+16308868537", "body": "hello"}
+
+
+def test_send_sms_non_2xx_raises_pegasus_api_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            403,
+            json={"error": "manifest lacks SendSms action", "code": "FORBIDDEN"},
+        )
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.send_sms(to="+16308868537", body="hello")
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.code == "FORBIDDEN"

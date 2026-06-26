@@ -397,6 +397,29 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
+    def send_sms(self, to: str, body: str) -> dict[str, Any]:
+        """Send an outbound SMS via the tenant's configured provider.
+
+        For use inside workflow activities only (never in workflow code —
+        httpx is sandboxed there). Requires the workflow's manifest to declare
+        ``required_actions = ["SendSms"]``.
+
+        Args:
+            to: Destination phone number in E.164 form (e.g. ``"+16308868537"``).
+            body: Message text.
+
+        Returns:
+            The API's parsed JSON, e.g. ``{"data": {"id": ..., "status": ...}}``.
+
+        Raises:
+            PegasusApiError: On 404 (no provider connected for the tenant),
+                403 (manifest lacks ``SendSms``), or any other non-2xx.
+        """
+        with self._client() as client:
+            response = client.post("/api/v1/sms/send", json={"to": to, "body": body})
+        _raise_for_status(response)
+        return response.json()
+
     # -- integration-validator config (publish / pull / versions / rollback) --
     #
     # The DB-backed authoring surface for an integration's declarative mapping +
