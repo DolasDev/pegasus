@@ -60,7 +60,12 @@ const CONFIGS: Record<LonghaulClient, LonghaulClientConfig> = {
   nwi: {
     importExportTypes: ['H', 'HA', 'M', 'A', 'SS'],
     moveTypesWhere: '1=1',
-    dispatcherQuery: 'managed_by_id = 2021',
+    // Central-planning (long-haul) dispatchers are identified by managed_by_id;
+    // short-haul / local-dispatch staff carry the 'LO' role tag instead. We OR
+    // both in so the planning-system dispatcher filter lists both groups. The
+    // fragment is the sole WHERE clause at every call site, but we parenthesise
+    // it so an OR can never leak past an AND if a future caller composes it.
+    dispatcherQuery: "(managed_by_id = 2021 OR roles like '%LO%')",
   },
   qmm: {
     importExportTypes: ['N', 'S', 'C', 'U', 'M'],

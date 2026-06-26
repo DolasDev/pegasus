@@ -33,7 +33,7 @@ describe('getLonghaulClientConfig', () => {
       const cfg = getLonghaulClientConfig()
       expect(cfg.importExportTypes).toEqual(['H', 'HA', 'M', 'A', 'SS'])
       expect(cfg.moveTypesWhere).toBe('1=1')
-      expect(cfg.dispatcherQuery).toBe('managed_by_id = 2021')
+      expect(cfg.dispatcherQuery).toBe("(managed_by_id = 2021 OR roles like '%LO%')")
     })
   })
 
@@ -88,7 +88,7 @@ describe('getLonghaulClientConfig', () => {
 describe('getLonghaulClientConfigFor', () => {
   it('resolves an explicit client without touching process.env', () => {
     const nwi = getLonghaulClientConfigFor('nwi')
-    expect(nwi.dispatcherQuery).toBe('managed_by_id = 2021')
+    expect(nwi.dispatcherQuery).toBe("(managed_by_id = 2021 OR roles like '%LO%')")
     const qmm = getLonghaulClientConfigFor('qmm')
     expect(qmm.dispatcherQuery).toBe("roles like ('%cpd%')")
   })
