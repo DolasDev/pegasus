@@ -19,7 +19,8 @@ permit (
     Pegasus::Action::"ReadCustomer",
     Pegasus::Action::"ReadEvent",
     Pegasus::Action::"CreateEvent",
-    Pegasus::Action::"EmitTenantEvent"
+    Pegasus::Action::"EmitTenantEvent",
+    Pegasus::Action::"SendSms"
   ],
   resource
 );

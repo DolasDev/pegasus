@@ -77,6 +77,7 @@ import { integrationConfigHandler } from './handlers/integration-validation/conf
 import { meHandler } from './handlers/me'
 import { deviceTokensHandler } from './handlers/device-tokens'
 import { notificationsHandler } from './handlers/notifications'
+import { smsHandler } from './handlers/sms'
 import { ringcentralOauthHandler } from './handlers/integrations/ringcentral-oauth'
 import { ringcentralWebhookHandler } from './handlers/integrations/ringcentral-webhook'
 import { integrationsHandler } from './handlers/integrations/list'
@@ -296,6 +297,7 @@ v1.route('/me', meHandler)
 // device, no permission gate); notifications/send is staff-gated (SendNotification).
 v1.route('/device-tokens', deviceTokensHandler)
 v1.route('/notifications', notificationsHandler)
+v1.route('/sms', smsHandler)
 v1.route('/sso', ssoHandler)
 v1.route('/users', usersHandler)
 v1.route('/customers', customersHandler)
