@@ -49,14 +49,14 @@ export interface MonitoringStackProps extends cdk.StackProps {
   readonly ringcentralCaptureDlqName?: string
 
   /**
-   * Legacy shipment-event relay (OutboxRelayStack) queue / DLQ / topic names.
-   * When provided, three alarms are created: DLQ depth, oldest-message age
-   * (consumer stalled), and SNS publish failures. Optional so the stack still
-   * synths in dev / tests that don't pass them.
+   * Integration-event buffer (OutboxRelayStack) queue / DLQ names — the
+   * EventBridge mapper's SQS pipeline. When provided, two alarms are created:
+   * DLQ depth (poison / unknown-tenant messages) and oldest-message age (mapper
+   * stalled). Optional so the stack still synths in dev / tests that don't pass
+   * them. (Replaced the retired SNS-era outbox topic/queue alarms — unit 6.)
    */
-  readonly outboxQueueName?: string
-  readonly outboxDlqName?: string
-  readonly outboxTopicName?: string
+  readonly integrationBufferQueueName?: string
+  readonly integrationBufferDlqName?: string
 
   /**
    * Email address subscribed to all alarms (ALARM and OK transitions).
@@ -402,17 +402,18 @@ export class MonitoringStack extends cdk.Stack {
       wire(rcCaptureDlqAlarm)
     }
 
-    // ── Outbox relay alarms (legacy shipment-event pipeline) ───────────────────
-    if (props.outboxDlqName) {
-      const outboxDlqAlarm = new cloudwatch.Alarm(this, 'OutboxDlqAlarm', {
-        alarmName: 'pegasus-outbox-dlq',
+    // ── Integration-event buffer alarms (EventBridge mapper pipeline) ──────────
+    if (props.integrationBufferDlqName) {
+      const bufferDlqAlarm = new cloudwatch.Alarm(this, 'IntegrationBufferDlqAlarm', {
+        alarmName: 'pegasus-integration-buffer-dlq',
         alarmDescription:
-          'Shipment-event SQS DLQ has messages — events failed past their redrive ' +
-          'limit (poison messages). Inspect the DLQ and redrive after fixing the cause.',
+          'Integration-event buffer DLQ has messages — pegII events failed past their ' +
+          'redrive limit (e.g. an unknown/inactive tenantId, or a malformed envelope). ' +
+          'Inspect the DLQ and redrive after fixing the cause.',
         metric: new cloudwatch.Metric({
           namespace: 'AWS/SQS',
           metricName: 'ApproximateNumberOfMessagesVisible',
-          dimensionsMap: { QueueName: props.outboxDlqName },
+          dimensionsMap: { QueueName: props.integrationBufferDlqName },
           statistic: 'Maximum',
           period: cdk.Duration.minutes(5),
         }),
@@ -421,20 +422,20 @@ export class MonitoringStack extends cdk.Stack {
         comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
         treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
       })
-      wire(outboxDlqAlarm)
+      wire(bufferDlqAlarm)
     }
-    if (props.outboxQueueName) {
-      // Oldest-message age is the consumer-stalled signal: messages arriving but
-      // not draining. 15 min ≈ a few hundred poll cycles for a healthy consumer.
-      const outboxAgeAlarm = new cloudwatch.Alarm(this, 'OutboxAgeAlarm', {
-        alarmName: 'pegasus-outbox-age',
+    if (props.integrationBufferQueueName) {
+      // Oldest-message age is the mapper-stalled signal: events arriving but not
+      // draining. 15 min ≈ a few hundred poll cycles for a healthy mapper.
+      const bufferAgeAlarm = new cloudwatch.Alarm(this, 'IntegrationBufferAgeAlarm', {
+        alarmName: 'pegasus-integration-buffer-age',
         alarmDescription:
-          'Shipment-event queue oldest message is aging — the consumer Lambda is ' +
-          'stalled or erroring. Check ShipmentEventConsumeFunction logs.',
+          'Integration-event buffer oldest message is aging — the mapper Lambda is ' +
+          'stalled or erroring. Check IntegrationEventMapFunction logs.',
         metric: new cloudwatch.Metric({
           namespace: 'AWS/SQS',
           metricName: 'ApproximateAgeOfOldestMessage',
-          dimensionsMap: { QueueName: props.outboxQueueName },
+          dimensionsMap: { QueueName: props.integrationBufferQueueName },
           statistic: 'Maximum',
           period: cdk.Duration.minutes(5),
         }),
@@ -443,27 +444,7 @@ export class MonitoringStack extends cdk.Stack {
         comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
         treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
       })
-      wire(outboxAgeAlarm)
-    }
-    if (props.outboxTopicName) {
-      const outboxSnsFailedAlarm = new cloudwatch.Alarm(this, 'OutboxSnsFailedAlarm', {
-        alarmName: 'pegasus-outbox-sns-failed',
-        alarmDescription:
-          'SNS failed to deliver shipment events to a subscriber — check the topic ' +
-          'subscription / SQS access policy / KMS grants.',
-        metric: new cloudwatch.Metric({
-          namespace: 'AWS/SNS',
-          metricName: 'NumberOfNotificationsFailed',
-          dimensionsMap: { TopicName: props.outboxTopicName },
-          statistic: 'Sum',
-          period: cdk.Duration.minutes(5),
-        }),
-        threshold: 0,
-        evaluationPeriods: 1,
-        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
-        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-      })
-      wire(outboxSnsFailedAlarm)
+      wire(bufferAgeAlarm)
     }
 
     // ── Workflow plane alarms (Phase 3 Unit 11) ───────────────────────────────

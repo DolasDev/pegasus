@@ -167,34 +167,24 @@ export const TEMPORAL_SECRET_ARNS: Record<
   },
 }
 
-// Legacy shipment-event relay (OutboxRelayStack) — SNS FIFO topic + SQS FIFO
-// names per non-dev env. The on-prem Pegasus.Outbox.Relay publishes to the
-// topic; the shipment-event consumer Lambda drains the queue. FIFO names MUST
-// end in `.fifo`. Dev has no entry (no relay there). Runbook:
-// plans/in-progress/legacy-outbox-relay-setup.md
+// pegII integration-event relay (OutboxRelayStack) — EventBridge bus + SQS
+// buffer names per non-dev env. The on-prem Pegasus.Outbox.Relay PutEvents to
+// the bus; the mapper Lambda drains the buffer. Dev has no entry (no relay
+// there). Runbook: plans/in-progress/legacy-outbox-relay-setup.md
 export const OUTBOX_RELAY: Record<
   Exclude<EnvName, 'dev'>,
   {
-    topicName: string
-    queueName: string
-    dlqName: string
     busName: string
     bufferQueueName: string
     bufferDlqName: string
   }
 > = {
   staging: {
-    topicName: 'pegasus-staging-outbox-events.fifo',
-    queueName: 'pegasus-staging-outbox-events.fifo',
-    dlqName: 'pegasus-staging-outbox-events-dlq.fifo',
     busName: 'pegasus-staging-integration-events',
     bufferQueueName: 'pegasus-staging-integration-events-buffer',
     bufferDlqName: 'pegasus-staging-integration-events-buffer-dlq',
   },
   prod: {
-    topicName: 'pegasus-prod-outbox-events.fifo',
-    queueName: 'pegasus-prod-outbox-events.fifo',
-    dlqName: 'pegasus-prod-outbox-events-dlq.fifo',
     busName: 'pegasus-prod-integration-events',
     bufferQueueName: 'pegasus-prod-integration-events-buffer',
     bufferDlqName: 'pegasus-prod-integration-events-buffer-dlq',
@@ -354,17 +344,17 @@ const apiCdnStack = new ApiCdnStack(app, `${stackIdPrefix}-ApiCdnStack`, {
 apiCdnStack.addDependency(apiStack)
 
 // ── OutboxRelayStack ──────────────────────────────────────────────────────────
-// Legacy shipment-event pipeline (SNS FIFO topic + SQS FIFO queue/DLQ + consumer
-// Lambda). Staging/prod only — dev has no on-prem relay. No deploy dependency on
-// other stacks.
+// pegII integration-event pipeline (EventBridge bus + archive + SQS buffer/DLQ +
+// mapper Lambda). Staging/prod only — dev has no on-prem relay. No deploy
+// dependency on other stacks.
 //
 // The relay's publish identity (IAM Roles Anywhere) is enabled DURABLY per env by
 // committing the self-managed CA's PUBLIC cert at
 // `config/outbox-relay/<env>-ca.pem` (it is not secret). When that file exists the
 // trust anchor is provisioned on EVERY synth — including routine CI deploys — so it
 // can't be silently torn down the way a one-shot `-c` flag would be (cf. the
-// RingCentral env-gate lesson). No committed cert (e.g. prod today) → Roles Anywhere
-// is skipped and the topic/queue still deploy. Overrides for non-committed setups:
+// RingCentral env-gate lesson). No committed cert → Roles Anywhere is skipped and
+// the bus still deploys. Overrides for non-committed setups:
 // `-c outboxAcmPcaArn=<arn>` (ACM Private CA), or `-c outboxRolesAnywhere=true`
 // with the SSM-lookup path (`-c outboxCaCertParam=...`).
 const outboxConfig = envName === 'dev' ? undefined : OUTBOX_RELAY[envName]
@@ -391,10 +381,7 @@ if (outboxConfig) {
   new OutboxRelayStack(app, `${stackIdPrefix}-OutboxRelayStack`, {
     env,
     stackName: `${stackNamePrefix}-outbox-relay`,
-    description: `${descPrefix} — legacy shipment-event SNS FIFO topic + SQS consumer`,
-    topicName: outboxConfig.topicName,
-    queueName: outboxConfig.queueName,
-    dlqName: outboxConfig.dlqName,
+    description: `${descPrefix} — pegII integration EventBridge bus + SQS mapper`,
     busName: outboxConfig.busName,
     bufferQueueName: outboxConfig.bufferQueueName,
     bufferDlqName: outboxConfig.bufferDlqName,
@@ -413,11 +400,10 @@ new MonitoringStack(app, `${stackIdPrefix}-MonitoringStack`, {
   httpApiId: apiStack.httpApiId,
   httpApiStage: apiStack.httpApiStage,
   ringcentralCaptureDlqName: apiStack.ringcentralCaptureDlqName,
-  // Outbox relay (OutboxRelayStack) queue/dlq/topic names for the three
-  // shipment-event alarms. Staging/prod only; dev leaves them undefined.
-  outboxQueueName: outboxConfig?.queueName,
-  outboxDlqName: outboxConfig?.dlqName,
-  outboxTopicName: outboxConfig?.topicName,
+  // Integration-event buffer (OutboxRelayStack) queue/dlq names for the two
+  // mapper-pipeline alarms. Staging/prod only; dev leaves them undefined.
+  integrationBufferQueueName: outboxConfig?.bufferQueueName,
+  integrationBufferDlqName: outboxConfig?.bufferDlqName,
   // Alarm notifications go to a human on staging + prod; dev stays silent.
   // Overridable per-synth via `-c alarmEmail=...`. NOTE: the SNS email
   // subscription needs a one-time confirmation click per env after deploy.

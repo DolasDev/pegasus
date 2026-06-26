@@ -5,13 +5,10 @@ import { OutboxRelayStack, type OutboxRelayStackProps } from '../outbox-relay-st
 import { MonitoringStack } from '../monitoring-stack'
 
 function synth(overrides: Partial<OutboxRelayStackProps> = {}) {
-  // Disable asset bundling so the consumer NodejsFunction isn't esbuild'd in tests.
+  // Disable asset bundling so the mapper NodejsFunction isn't esbuild'd in tests.
   const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [], env: 'staging' } })
   const stack = new OutboxRelayStack(app, 'TestOutboxRelay', {
     env: { account: '111111111111', region: 'us-east-1' },
-    topicName: 'pegasus-staging-outbox-events.fifo',
-    queueName: 'pegasus-staging-outbox-events.fifo',
-    dlqName: 'pegasus-staging-outbox-events-dlq.fifo',
     busName: 'pegasus-staging-integration-events',
     bufferQueueName: 'pegasus-staging-integration-events-buffer',
     bufferDlqName: 'pegasus-staging-integration-events-buffer-dlq',
@@ -20,54 +17,7 @@ function synth(overrides: Partial<OutboxRelayStackProps> = {}) {
   return Template.fromStack(stack)
 }
 
-describe('OutboxRelayStack — SNS FIFO topic', () => {
-  it('creates a FIFO topic encrypted with a customer-managed key', () => {
-    synth().hasResourceProperties('AWS::SNS::Topic', {
-      TopicName: 'pegasus-staging-outbox-events.fifo',
-      FifoTopic: true,
-      ContentBasedDeduplication: false,
-      KmsMasterKeyId: Match.anyValue(),
-    })
-  })
-
-  it('creates a KMS key with rotation enabled', () => {
-    synth().hasResourceProperties('AWS::KMS::Key', { EnableKeyRotation: true })
-  })
-
-  it('rejects a topic name that is not FIFO', () => {
-    expect(() => synth({ topicName: 'pegasus-staging-outbox-events' })).toThrow(/\.fifo/)
-  })
-})
-
-describe('OutboxRelayStack — SQS FIFO queue + DLQ', () => {
-  it('creates a FIFO queue and a FIFO DLQ with redrive (maxReceiveCount 5)', () => {
-    const t = synth()
-    // 4 total: SNS FIFO queue + its DLQ, plus the EventBridge buffer + its DLQ.
-    t.resourceCountIs('AWS::SQS::Queue', 4)
-    t.hasResourceProperties('AWS::SQS::Queue', {
-      QueueName: 'pegasus-staging-outbox-events.fifo',
-      FifoQueue: true,
-      RedrivePolicy: { maxReceiveCount: 5 },
-    })
-    t.hasResourceProperties('AWS::SQS::Queue', {
-      QueueName: 'pegasus-staging-outbox-events-dlq.fifo',
-      FifoQueue: true,
-    })
-  })
-
-  it('subscribes the queue to the topic and drains it with a consumer Lambda', () => {
-    const t = synth()
-    t.resourceCountIs('AWS::SNS::Subscription', 1)
-    t.hasResourceProperties('AWS::SNS::Subscription', { Protocol: 'sqs' })
-    // Two SQS event sources: the SNS-path consumer and the buffer mapper.
-    t.resourceCountIs('AWS::Lambda::EventSourceMapping', 2)
-    t.hasResourceProperties('AWS::Lambda::EventSourceMapping', {
-      FunctionResponseTypes: ['ReportBatchItemFailures'],
-    })
-  })
-})
-
-describe('OutboxRelayStack — EventBridge bus (relay cutover target)', () => {
+describe('OutboxRelayStack — EventBridge bus + archive', () => {
   it('creates a custom CMK-encrypted bus with the configured name', () => {
     const t = synth()
     t.resourceCountIs('AWS::Events::EventBus', 1)
@@ -77,6 +27,10 @@ describe('OutboxRelayStack — EventBridge bus (relay cutover target)', () => {
     })
   })
 
+  it('creates a KMS key with rotation enabled', () => {
+    synth().hasResourceProperties('AWS::KMS::Key', { EnableKeyRotation: true })
+  })
+
   it('archives all bus events for replay (account-scoped, 90-day retention, same CMK)', () => {
     const t = synth()
     t.resourceCountIs('AWS::Events::Archive', 1)
@@ -84,8 +38,7 @@ describe('OutboxRelayStack — EventBridge bus (relay cutover target)', () => {
       ArchiveName: 'pegasus-staging-integration-events-archive',
       RetentionDays: 90,
       EventPattern: { account: ['111111111111'] },
-      // Must reuse the bus CMK (never the eventBus.archive() empty-string default)
-      // or EventBridge can't decrypt CMK-encrypted events to archive them.
+      // Must reuse the bus CMK or EventBridge can't decrypt CMK events to archive.
       KmsKeyIdentifier: Match.anyValue(),
     })
   })
@@ -117,15 +70,12 @@ describe('OutboxRelayStack — EventBridge bus (relay cutover target)', () => {
     )
   })
 
-  it('ships additively — the SNS FIFO path is untouched', () => {
+  it('owns NO SNS resources — the legacy topic/queue path was retired (unit 6)', () => {
     const t = synth()
-    t.resourceCountIs('AWS::SNS::Topic', 1)
-    t.resourceCountIs('AWS::SNS::Subscription', 1)
-    // SNS FIFO queue + its DLQ still present alongside the new buffer pair.
-    t.hasResourceProperties('AWS::SQS::Queue', {
-      QueueName: 'pegasus-staging-outbox-events.fifo',
-      FifoQueue: true,
-    })
+    t.resourceCountIs('AWS::SNS::Topic', 0)
+    t.resourceCountIs('AWS::SNS::Subscription', 0)
+    // Only the buffer queue + its DLQ remain (no SNS FIFO queue/DLQ).
+    t.resourceCountIs('AWS::SQS::Queue', 2)
   })
 })
 
@@ -142,6 +92,7 @@ describe('OutboxRelayStack — pegii.* routing rule + buffer queue', () => {
 
   it('creates a STANDARD buffer queue + DLQ with redrive (not FIFO)', () => {
     const t = synth()
+    t.resourceCountIs('AWS::SQS::Queue', 2)
     t.hasResourceProperties('AWS::SQS::Queue', {
       QueueName: 'pegasus-staging-integration-events-buffer',
       FifoQueue: Match.absent(),
@@ -169,8 +120,9 @@ describe('OutboxRelayStack — pegii.* routing rule + buffer queue', () => {
 
   it('drains the buffer with the mapper Lambda, capped at maxConcurrency 2', () => {
     const t = synth()
-    // The mapper's event source caps concurrent invocations so a relay backlog
-    // can't consume all 10 of the account's Lambda slots.
+    // One event source (the mapper); capped so a relay backlog can't consume all
+    // 10 of the account's Lambda slots.
+    t.resourceCountIs('AWS::Lambda::EventSourceMapping', 1)
     t.hasResourceProperties('AWS::Lambda::EventSourceMapping', {
       ScalingConfig: { MaximumConcurrency: 2 },
       FunctionResponseTypes: ['ReportBatchItemFailures'],
@@ -201,20 +153,8 @@ describe('OutboxRelayStack — relay publish identity (IAM Roles Anywhere)', () 
     expect(Object.keys(outputs)).toEqual(
       expect.arrayContaining(['RelayTrustAnchorArn', 'RelayProfileArn', 'RelayRoleArn']),
     )
-    // sns:Publish is scoped to the topic ARN (a Ref, never "*").
-    t.hasResourceProperties('AWS::IAM::Policy', {
-      PolicyDocument: Match.objectLike({
-        Statement: Match.arrayWith([
-          Match.objectLike({
-            Sid: 'PublishShipmentEvents',
-            Action: 'sns:Publish',
-            Resource: Match.objectLike({ Ref: Match.anyValue() }),
-          }),
-        ]),
-      }),
-    })
-    // events:PutEvents granted additively (alongside sns:Publish) on the bus ARN,
-    // so the relay can cut over without an IAM change racing the deploy.
+    // events:PutEvents is scoped to the bus ARN (a GetAtt, never "*"). The retired
+    // SNS path's sns:Publish grant is gone.
     t.hasResourceProperties('AWS::IAM::Policy', {
       PolicyDocument: Match.objectLike({
         Statement: Match.arrayWith([
@@ -226,13 +166,16 @@ describe('OutboxRelayStack — relay publish identity (IAM Roles Anywhere)', () 
         ]),
       }),
     })
-    // KMS grant present and scoped (the encrypted topic needs it).
+    // No sns:Publish statement survives.
+    const policies = t.findResources('AWS::IAM::Policy')
+    const hasSnsPublish = JSON.stringify(policies).includes('sns:Publish')
+    expect(hasSnsPublish).toBe(false)
+    // KMS grant present and scoped to the bus's CMK (a GetAtt of the key), never "*".
     t.hasResourceProperties('AWS::IAM::Policy', {
       PolicyDocument: Match.objectLike({
         Statement: Match.arrayWith([
           Match.objectLike({
             Sid: 'PublishKms',
-            // Scoped to the topic's CMK (a GetAtt of the key), never "*".
             Resource: Match.objectLike({ 'Fn::GetAtt': Match.anyValue() }),
           }),
         ]),
@@ -264,8 +207,8 @@ describe('OutboxRelayStack — relay publish identity (IAM Roles Anywhere)', () 
           '-----BEGIN CERTIFICATE-----\nMIIBfakeCAcert\n-----END CERTIFICATE-----\n',
       },
     })
-    // consumer + mapper + renew = 3 functions; a monthly schedule drives renew.
-    t.resourceCountIs('AWS::Lambda::Function', 3)
+    // mapper + renew = 2 functions; a monthly schedule drives renew.
+    t.resourceCountIs('AWS::Lambda::Function', 2)
     t.hasResourceProperties('AWS::Events::Rule', {
       ScheduleExpression: 'rate(30 days)',
     })
@@ -281,7 +224,7 @@ describe('OutboxRelayStack — relay publish identity (IAM Roles Anywhere)', () 
 
   it('does NOT wire leaf renewal when Roles Anywhere is off (no renewal Lambda/schedule)', () => {
     const t = synth()
-    t.resourceCountIs('AWS::Lambda::Function', 2) // SNS consumer + buffer mapper (no renew)
+    t.resourceCountIs('AWS::Lambda::Function', 1) // mapper only
     // The only rule is the pegii.* routing rule — no rate()/schedule rule.
     t.resourceCountIs('AWS::Events::Rule', 1)
     const scheduled = t.findResources('AWS::Events::Rule', {
@@ -291,58 +234,51 @@ describe('OutboxRelayStack — relay publish identity (IAM Roles Anywhere)', () 
   })
 
   it('skips the trust anchor when Roles Anywhere is requested but no CA is resolved', () => {
-    // Empty rolesAnywhere (e.g. SSM param not populated yet) → topic + queue only.
+    // Empty rolesAnywhere (e.g. SSM param not populated yet) → the bus still deploys.
     const t = synth({ rolesAnywhere: {} })
     t.resourceCountIs('AWS::RolesAnywhere::TrustAnchor', 0)
     t.resourceCountIs('AWS::RolesAnywhere::Profile', 0)
-    t.resourceCountIs('AWS::SNS::Topic', 1)
-    // SNS FIFO queue + DLQ and the EventBridge buffer queue + DLQ.
-    t.resourceCountIs('AWS::SQS::Queue', 4)
+    t.resourceCountIs('AWS::Events::EventBus', 1)
+    t.resourceCountIs('AWS::SQS::Queue', 2)
   })
 })
 
-// ── Outbox alarms live in MonitoringStack (fed by props from bin/app.ts) ───────
-function synthMonitoring(withOutbox: boolean) {
+// ── Integration-buffer alarms live in MonitoringStack (props from bin/app.ts) ──
+function synthMonitoring(withBuffer: boolean) {
   const app = new cdk.App()
-  const stack = new MonitoringStack(app, withOutbox ? 'MonOutbox' : 'MonNoOutbox', {
+  const stack = new MonitoringStack(app, withBuffer ? 'MonBuffer' : 'MonNoBuffer', {
     lambdaFunctionName: 'test-api-function',
     httpApiId: 'abc123def4',
     httpApiStage: '$default',
-    ...(withOutbox
+    ...(withBuffer
       ? {
-          outboxQueueName: 'pegasus-staging-outbox-events.fifo',
-          outboxDlqName: 'pegasus-staging-outbox-events-dlq.fifo',
-          outboxTopicName: 'pegasus-staging-outbox-events.fifo',
+          integrationBufferQueueName: 'pegasus-staging-integration-events-buffer',
+          integrationBufferDlqName: 'pegasus-staging-integration-events-buffer-dlq',
         }
       : {}),
   })
   return Template.fromStack(stack)
 }
 
-describe('MonitoringStack — outbox alarms', () => {
-  it('creates the three outbox alarms with the right metric namespaces', () => {
+describe('MonitoringStack — integration-buffer alarms', () => {
+  it('creates the buffer DLQ + age alarms with the right metric namespaces', () => {
     const t = synthMonitoring(true)
     t.hasResourceProperties('AWS::CloudWatch::Alarm', {
-      AlarmName: 'pegasus-outbox-dlq',
+      AlarmName: 'pegasus-integration-buffer-dlq',
       Namespace: 'AWS/SQS',
       MetricName: 'ApproximateNumberOfMessagesVisible',
     })
     t.hasResourceProperties('AWS::CloudWatch::Alarm', {
-      AlarmName: 'pegasus-outbox-age',
+      AlarmName: 'pegasus-integration-buffer-age',
       Namespace: 'AWS/SQS',
       MetricName: 'ApproximateAgeOfOldestMessage',
     })
-    t.hasResourceProperties('AWS::CloudWatch::Alarm', {
-      AlarmName: 'pegasus-outbox-sns-failed',
-      Namespace: 'AWS/SNS',
-      MetricName: 'NumberOfNotificationsFailed',
-    })
   })
 
-  it('creates none of the outbox alarms when the props are absent (dev gate)', () => {
+  it('creates none of the buffer alarms when the props are absent (dev gate)', () => {
     const t = synthMonitoring(false)
     const alarms = t.findResources('AWS::CloudWatch::Alarm', {
-      Properties: { AlarmName: Match.stringLikeRegexp('pegasus-outbox-.*') },
+      Properties: { AlarmName: Match.stringLikeRegexp('pegasus-integration-buffer-.*') },
     })
     expect(Object.keys(alarms)).toHaveLength(0)
   })

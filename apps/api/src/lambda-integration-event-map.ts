@@ -8,8 +8,8 @@
 // dispatcher then matches against WorkflowTrigger.filter and starts workflows —
 // so legacy events light up workflows with ZERO new trigger code.
 //
-// Unlike the SNS-era consumer (lambda-shipment-event-consume.ts), legacy events
-// now carry a Pegasus tenantId: the per-site relay stamps it from appsettings.
+// Legacy events now carry a Pegasus tenantId: the per-site relay stamps it from
+// appsettings (the retired SNS-era consumer could not, as events were tenantless).
 // We validate it is a real, ACTIVE tenant before emitting (a bad tenantId is a
 // poison message — it retries then dead-letters, surfaced by the buffer-DLQ
 // alarm).
