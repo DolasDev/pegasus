@@ -10,22 +10,30 @@
 # Auth: uses the relay's own `pegasus-outbox-relay` profile (Roles Anywhere with
 # the CURRENT leaf, still valid since renewal runs with ~11 months of slack).
 #
-# Install (elevated, once) — monthly scheduled task running as the service acct:
+# Pass -Env staging|prod to select the SSM param prefix (defaults to staging).
+#
+# Install (elevated, once) — daily scheduled task running as the service acct.
+# Note the -Env in the argument and the per-env task name:
 #   $a = New-ScheduledTaskAction -Execute 'powershell.exe' `
-#     -Argument '-NonInteractive -File C:\Services\Pegasus.Outbox.Relay\host-pull-leaf.ps1'
+#     -Argument '-NonInteractive -File C:\Services\Pegasus.Outbox.Relay\host-pull-leaf.ps1 -Env prod'
 #   $t = New-ScheduledTaskTrigger -Daily -At 3am   # daily is fine; pull is idempotent
-#   Register-ScheduledTask -TaskName 'PegasusOutboxRelayLeafPull' -Action $a -Trigger $t `
+#   Register-ScheduledTask -TaskName 'PegasusOutboxRelayLeafPull-prod' -Action $a -Trigger $t `
 #     -User '<RelayServiceAccount>' -Password '<pw>' -RunLevel Highest
 # =============================================================================
 
+param(
+  [ValidateSet('staging', 'prod')]
+  [string]$Env = 'staging'
+)
+
 $ErrorActionPreference = 'Stop'
 
-# --- Config (staging / dolios). For another env, change the param prefix. ---
+# --- Config — SSM param prefix is per-env (see -Env). ---
 $AwsDir       = 'C:\Services\Pegasus.Outbox.Relay\.aws'
 $Profile      = 'pegasus-outbox-relay'
 $Region       = 'us-east-1'
-$LeafCertParam = '/pegasus/staging/outbox-relay-leaf-pem'
-$LeafKeyParam  = '/pegasus/staging/outbox-relay-leaf-key'
+$LeafCertParam = "/pegasus/$Env/outbox-relay-leaf-pem"
+$LeafKeyParam  = "/pegasus/$Env/outbox-relay-leaf-key"
 
 $env:AWS_PROFILE = $Profile
 $env:AWS_REGION  = $Region

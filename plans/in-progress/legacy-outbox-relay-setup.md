@@ -71,21 +71,25 @@ We use a **self-managed CA** (no ACM Private CA, no monthly cost). Ops owns one 
 
 **Enablement is durable, not a one-shot flag.** Roles Anywhere is provisioned for an env whenever that env's CA **public** cert is committed at `packages/infra/config/outbox-relay/<env>-ca.pem` — the stack inlines it into a `CERTIFICATE_BUNDLE` trust anchor on EVERY synth, so routine CI deploys keep it (a `-c` flag CI never passes would silently tear it down on the next deploy — the RingCentral lesson). No committed cert → Roles Anywhere is skipped, topic/queue still deploy.
 
-> **Staging (dolios) is already wired** (2026-06-21): CA generated, private key stored in SSM SecureString `/pegasus/staging/outbox-relay-ca-key`, public cert committed at `packages/infra/config/outbox-relay/staging-ca.pem`. The trust anchor/profile/role land on the next CI deploy of the api component. To do another env, repeat §A–B with `<env>` and account (staging `248812875460`, prod `331145994639`, region `us-east-1`).
+> **Staging (dolios) and prod are both wired** — staging 2026-06-21, prod 2026-06-26. Each env's full SSM param set (per `aws ssm get-parameters-by-path --path /pegasus/<env>/ --recursive`): `outbox-relay-ca-key` (SecureString), `outbox-relay-ca-pem` (String), and — once the renewal Lambda has run — `outbox-relay-leaf-pem` (String) + `outbox-relay-leaf-key` (SecureString). The public CA cert is also committed at `packages/infra/config/outbox-relay/<env>-ca.pem`. To do another env, repeat §A–B with `<env>` and account (staging `248812875460`, prod `331145994639`, region `us-east-1`).
 
 Examples use **openssl** (EC P-256, what staging was built with).
 
 #### A. CA — one-time, on a trusted admin machine (not the relay host)
 
-1. **Generate the root CA** (10 yr). Keep `ca.key` secret:
+1. **Generate the root CA** (10 yr). Keep `ca.key` secret. Use `genpkey` (NOT `ecparam -genkey`) so the key is **PKCS#8** (`BEGIN PRIVATE KEY`) — the renewal Lambda imports it via Node WebCrypto, which rejects the SEC1 (`BEGIN EC PRIVATE KEY`) format `ecparam` emits with `DataError: Invalid keyData`:
    ```
-   openssl ecparam -name prime256v1 -genkey -noout -out ca.key && openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -out ca.crt -subj "/O=Dolas/CN=Pegasus Outbox Relay <env> Root CA" -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign"
+   openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out ca.key && openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -out ca.crt -subj "/O=Dolas/CN=Pegasus Outbox Relay <env> Root CA" -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign"
    ```
-2. **Stash the CA private key** (SSM SecureString, for leaf renewal) and **commit the public cert** as the trust-anchor source:
+   (If you already have a SEC1 key, convert it: `openssl pkcs8 -topk8 -nocrypt -in ca.key -out ca.pkcs8.key`.)
+2. **Stash the CA private key AND public cert in SSM**, and **commit the public cert** as the trust-anchor source. The renewal Lambda reads BOTH the key and the cert from SSM (the cert is the issuer it builds the leaf chain from) — committing the cert alone is not enough; a missing `outbox-relay-ca-pem` fails the Lambda with `ParameterNotFound`:
    ```
    aws ssm put-parameter --name /pegasus/<env>/outbox-relay-ca-key --type SecureString --value file://ca.key --region us-east-1
    ```
-   Then `cp ca.crt packages/infra/config/outbox-relay/<env>-ca.pem` and commit it.
+   ```
+   aws ssm put-parameter --name /pegasus/<env>/outbox-relay-ca-pem --type String --value file://ca.crt --region us-east-1
+   ```
+   Then `cp ca.crt packages/infra/config/outbox-relay/<env>-ca.pem` and commit it. (The committed `.pem` feeds the trust anchor at synth; the SSM `outbox-relay-ca-pem` feeds the renewal Lambda — keep both in sync.)
 
 #### B. AWS side — deploy the Roles Anywhere principal
 
@@ -97,12 +101,16 @@ Examples use **openssl** (EC P-256, what staging was built with).
    - `RelayTrustAnchorArn` — carries a generated UUID; read it here.
    - `RelayProfileArn` — carries a generated UUID; read it here.
    - `RelayRoleArn` — deterministic: `arn:aws:iam::<account>:role/pegasus-<env>-outbox-relay-publish`.
-
-#### C. On-prem relay host — issue the leaf cert + wire the credential helper
-
-5. **Issue the host's leaf cert** (1 yr), signed by the CA, where `ca.key` lives (or `aws ssm get-parameter --name /pegasus/<env>/outbox-relay-ca-key --with-decryption` to retrieve it), then copy `leaf.pem` + `leaf.key` to `C:\Services\Pegasus.Outbox.Relay\.aws\` on the host:
+     4b. **Mint the first leaf now** (don't wait for the monthly schedule). Invoke the renewal Lambda once; it writes `leaf-pem` + `leaf-key` to SSM. A `{"rotated":true,...}` response means success (a `ParameterNotFound` means the `ca-pem`/`ca-key` params from §A.2 are missing; `DataError: Invalid keyData` means the CA key is SEC1, not PKCS#8 — see §A.1):
    ```
-   openssl ecparam -name prime256v1 -genkey -noout -out leaf.key && openssl req -new -key leaf.key -subj "/O=Dolas/CN=pegasus-<env>-outbox-relay-dolios" | openssl x509 -req -CA ca.crt -CAkey ca.key -CAcreateserial -sha256 -days 365 -out leaf.pem -extfile <(printf "basicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth\n")
+   aws lambda invoke --function-name $(aws cloudformation describe-stack-resources --stack-name pegasus-<env>-outbox-relay --query "StackResources[?ResourceType=='AWS::Lambda::Function' && contains(LogicalResourceId,'LeafRenew')].PhysicalResourceId" --output text --region us-east-1) --region us-east-1 /tmp/leaf.json --query StatusCode --output text
+   ```
+
+#### C. On-prem relay host — install the leaf + wire the credential helper
+
+5. **Get the leaf onto the host.** Preferred (matches the steady state): the first leaf is already in SSM from step 4b — pull `/pegasus/<env>/outbox-relay-leaf-pem` + `-leaf-key` and write them to `C:\Services\Pegasus.Outbox.Relay\.aws\leaf.pem` / `leaf.key` (this is a one-time bootstrap; the scheduled `host-pull-leaf.ps1 -Env <env>` task takes over afterward, but it can't run until the leaf exists because it authenticates with that very leaf). Fallback (offline issuance), signed by the CA where `ca.key` lives:
+   ```
+   openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out leaf.key && openssl req -new -key leaf.key -subj "/O=Dolas/CN=pegasus-<env>-outbox-relay-dolios" | openssl x509 -req -CA ca.crt -CAkey ca.key -CAcreateserial -sha256 -days 365 -out leaf.pem -extfile <(printf "basicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=clientAuth\n")
    ```
    On the host, restrict the key to the service account: `icacls "...\.aws\leaf.key" /inheritance:r /grant:r "<RelayServiceAccount>:R"`.
 6. **Install the credential helper** `aws_signing_helper` (AWS IAM Roles Anywhere Credential Helper) on the host.
@@ -122,7 +130,7 @@ Examples use **openssl** (EC P-256, what staging was built with).
    aws sts get-caller-identity --profile pegasus-outbox-relay
    ```
    Expect an assumed-role ARN containing `pegasus-<env>-outbox-relay-publish`. If this fails, fix it here — don't debug it through the relay.
-10. **Leaf renewal is automated.** A monthly cloud Lambda (`lambda-outbox-leaf-renew`, in `OutboxRelayStack`) mints a fresh 1-yr leaf signed by the CA key in SSM and writes it to `/pegasus/<env>/outbox-relay-leaf-pem` + `-leaf-key`. AWS can't push to the host, so the host runs **`packages/infra/config/outbox-relay/host-pull-leaf.ps1`** on a daily/weekly scheduled task (as the relay service account) to pull + atomically swap the files — the helper re-reads them per call, so no restart. Monthly mint × frequent pull on a 1-yr cert = months of slack; a missed run is harmless. The CA cert (10 yr) and trust anchor need no routine maintenance. Backstop: if renewal ever fully lapses the leaf expires, `get-caller-identity` fails, and the relay stops publishing → the outbox-depth alarm (§5) fires.
+10. **Leaf renewal is automated.** A monthly cloud Lambda (`lambda-outbox-leaf-renew`, in `OutboxRelayStack`) mints a fresh 1-yr leaf signed by the CA key in SSM and writes it to `/pegasus/<env>/outbox-relay-leaf-pem` + `-leaf-key`. AWS can't push to the host, so the host runs **`packages/infra/config/outbox-relay/host-pull-leaf.ps1 -Env <env>`** on a daily scheduled task (as the relay service account) to pull + atomically swap the files — the helper re-reads them per call, so no restart. Monthly mint × frequent pull on a 1-yr cert = months of slack; a missed run is harmless. The CA cert (10 yr) and trust anchor need no routine maintenance. Backstop: if renewal ever fully lapses the leaf expires, `get-caller-identity` fails, and the relay stops publishing → the outbox-depth alarm (§5) fires.
     - **Staging (dolios) is wired** (2026-06-23): renew Lambda live, first managed leaf minted + verified to assume the role. Install the host pull task to close the loop.
 
 > **Hardening (optional):** the relay role currently trusts **any** cert that chains to the CA. Because this CA is dedicated to the relay (it only ever signs the one leaf), that's acceptable. To tighten, add a trust-policy condition on the cert subject CN (`aws:PrincipalTag/x509Subject/CN`) in `OutboxRelayStack`.
