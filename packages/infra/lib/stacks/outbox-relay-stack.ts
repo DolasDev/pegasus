@@ -4,27 +4,27 @@
 // AWS side of the legacy shipment-event pipeline. The on-prem
 // `Pegasus.Outbox.Relay` Windows service (a separate .NET repo) drains the
 // legacy MoveManager `dbo.Outbox` table and publishes Shipment.Opened /
-// Shipment.Closed to the SNS FIFO topic this stack owns. The topic fans out to
-// an SQS FIFO queue, drained by the shipment-event consumer Lambda
-// (apps/api/src/lambda-shipment-event-consume.ts) into platform.shipment_event_inbox.
+// Shipment.Closed to the custom EventBridge bus (`IntegrationEventBus`) this
+// stack owns. A `source: pegii.*` rule routes them to an SQS buffer queue,
+// drained by the mapper Lambda (apps/api/src/lambda-integration-event-map.ts)
+// which writes a tenant-scoped DomainEvent per event; the workflow-trigger
+// dispatcher then matches WorkflowTrigger.filter and starts workflows.
 //
-// This is the first FIFO topic/queue in the codebase: the relay always sets
-// MessageGroupId + MessageDeduplicationId, so neither uses content-based dedup.
+// The bus is CMK-encrypted with a 90-day replay archive. The buffer is a
+// standard queue (not FIFO) — ordering isn't required and the mapper is
+// idempotent (dedupes on the legacy eventId via platform.shipment_event_inbox).
 //
-// MIGRATION IN PROGRESS: this stack also owns a custom EventBridge bus
-// (`IntegrationEventBus`) that the relay will publish to instead of SNS once it
-// switches to events:PutEvents. The bus is additive and ships ahead of the relay
-// cutover; the SNS path above keeps running until the relay is confirmed live on
-// EventBridge, after which the topic/queue/consumer are retired. See
-// plans/in-progress/pegii-eventbridge-integration.md.
+// HISTORY: this stack used to publish to an SNS FIFO topic → SQS FIFO queue →
+// shipment-event consumer. That SNS path was retired (unit 6) once the relay
+// cut over to events:PutEvents on staging + prod; the EventBridge path above is
+// now the only one. See plans/in-progress/pegii-eventbridge-integration.md.
 //
 // The relay authenticates with IAM Roles Anywhere (X.509 trust anchor → no
 // long-lived keys on the on-prem host). That path is optional: it's only wired
 // when `props.rolesAnywhere` is supplied (gated in bin/app.ts behind a context
-// flag + per-env CA config), so the topic/queue can ship ahead of the CA and a
-// static-key fallback can be used in the interim. The relay role is
-// least-privilege: sns:Publish on this topic only, plus the KMS grants the
-// encrypted topic requires.
+// flag + per-env CA config), so the bus can ship ahead of the CA. The relay
+// role is least-privilege: events:PutEvents on this bus only, plus the KMS
+// grants the encrypted bus requires.
 //
 // Runbook: plans/in-progress/legacy-outbox-relay-setup.md
 // ---------------------------------------------------------------------------
@@ -41,25 +41,14 @@ import * as logs from 'aws-cdk-lib/aws-logs'
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs'
 import * as rolesanywhere from 'aws-cdk-lib/aws-rolesanywhere'
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
-import * as sns from 'aws-cdk-lib/aws-sns'
-import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions'
 import * as sqs from 'aws-cdk-lib/aws-sqs'
 import * as ssm from 'aws-cdk-lib/aws-ssm'
 import { type Construct } from 'constructs'
 
 export interface OutboxRelayStackProps extends cdk.StackProps {
-  /** FIFO topic name — must end in `.fifo` (e.g. `pegasus-outbox-events.fifo`). */
-  readonly topicName: string
-  /** FIFO queue name — must end in `.fifo`. */
-  readonly queueName: string
-  /** FIFO dead-letter queue name — must end in `.fifo`. */
-  readonly dlqName: string
   /**
-   * Custom EventBridge bus the relay will publish legacy MoveManager events to
-   * once it switches from `sns:Publish` to `events:PutEvents` (see
-   * plans/in-progress/pegii-eventbridge-integration.md). The bus is additive —
-   * it ships ahead of the relay cutover and the SNS path keeps running until
-   * the relay is confirmed live on EventBridge.
+   * Custom EventBridge bus the relay publishes legacy MoveManager events to via
+   * `events:PutEvents` (see plans/in-progress/pegii-eventbridge-integration.md).
    */
   readonly busName: string
   /**
@@ -79,7 +68,7 @@ export interface OutboxRelayStackProps extends cdk.StackProps {
    *    parameter holding the CA's PUBLIC certificate (PEM). Ops generates the CA
    *    once and `aws ssm put-parameter`s the public cert; the value is inlined
    *    into the trust anchor at synth. If the parameter isn't populated yet, the
-   *    trust anchor/profile/role are skipped (topic + queue still deploy).
+   *    trust anchor/profile/role are skipped (the bus still deploys).
    *  - `acmPcaArn` — managed-CA path (ACM Private CA).
    *  - `certificateBundlePem` — inline PEM (mainly for tests).
    */
@@ -94,99 +83,31 @@ export interface OutboxRelayStackProps extends cdk.StackProps {
 }
 
 export class OutboxRelayStack extends cdk.Stack {
-  public readonly topicArn: string
   public readonly eventBusArn: string
 
   constructor(scope: Construct, id: string, props: OutboxRelayStackProps) {
     super(scope, id, props)
 
-    if (!props.topicName.endsWith('.fifo')) {
-      throw new Error(`OutboxRelayStack topicName must end in .fifo (got "${props.topicName}")`)
-    }
-
     const envName = (this.node.tryGetContext('env') as string | undefined) ?? 'dev'
 
-    // ── KMS CMK — encrypts the SNS topic at rest ───────────────────────────────
+    // ── KMS CMK — encrypts the integration EventBridge bus + archive at rest ────
     const outboxKey = new kms.Key(this, 'OutboxEventsKey', {
-      description: 'Encrypts the legacy shipment-event SNS FIFO topic.',
+      description: 'Encrypts the pegII integration EventBridge bus + replay archive.',
       enableKeyRotation: true,
     })
 
-    // ── SNS FIFO topic (relay publish target) ──────────────────────────────────
-    // contentBasedDeduplication is OFF: the relay always sets an explicit
-    // MessageDeduplicationId per published event.
-    const topic = new sns.Topic(this, 'OutboxEventsTopic', {
-      topicName: props.topicName,
-      displayName: 'Legacy MoveManager shipment events',
-      fifo: true,
-      contentBasedDeduplication: false,
-      masterKey: outboxKey,
-    })
-    this.topicArn = topic.topicArn
-
-    // ── SQS FIFO queue + FIFO DLQ (subscriber) ─────────────────────────────────
-    const dlq = new sqs.Queue(this, 'OutboxEventsDLQ', {
-      queueName: props.dlqName,
-      fifo: true,
-      contentBasedDeduplication: false,
-      retentionPeriod: cdk.Duration.days(14),
-      enforceSSL: true,
-    })
-    const queue = new sqs.Queue(this, 'OutboxEventsQueue', {
-      queueName: props.queueName,
-      fifo: true,
-      contentBasedDeduplication: false,
-      // Must be >= the consumer's timeout so an in-flight message isn't redelivered.
-      visibilityTimeout: cdk.Duration.minutes(6),
-      enforceSSL: true,
-      deadLetterQueue: { queue: dlq, maxReceiveCount: 5 },
-    })
-
-    // SNS → SQS. Raw delivery OFF so the SNS envelope (incl. the `source` message
-    // attribute) reaches the consumer, which JSON-parses it.
-    topic.addSubscription(new subscriptions.SqsSubscription(queue, { rawMessageDelivery: false }))
-
-    // ── Consumer Lambda ────────────────────────────────────────────────────────
+    // ── DB secret — read by the mapper Lambda for DATABASE_URL ──────────────────
     const dbSecret = secretsmanager.Secret.fromSecretNameV2(
       this,
       'NeonDatabaseUrl',
       `pegasus/${envName}/database-url`,
     )
 
-    const consumerLogGroup = new logs.LogGroup(this, 'ShipmentEventConsumeLogGroup', {
-      retention: logs.RetentionDays.ONE_MONTH,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    })
-
-    const consumerFunction = new nodejs.NodejsFunction(this, 'ShipmentEventConsumeFunction', {
-      runtime: lambda.Runtime.NODEJS_24_X,
-      entry: path.join(__dirname, '../../../../apps/api/src/lambda-shipment-event-consume.ts'),
-      handler: 'handler',
-      environment: {
-        NODE_ENV: 'production',
-        DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
-        LOG_LEVEL: 'INFO',
-      },
-      bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
-      memorySize: 512,
-      timeout: cdk.Duration.minutes(5),
-      logGroup: consumerLogGroup,
-    })
-    dbSecret.grantRead(consumerFunction)
-    consumerFunction.addEventSource(
-      new lambdaEventSources.SqsEventSource(queue, {
-        batchSize: 10,
-        reportBatchItemFailures: true,
-      }),
-    )
-
-    // ── EventBridge bus (next-gen relay target) ────────────────────────────────
-    // Additive: the relay still publishes to the SNS FIFO topic above. This bus
-    // ships ahead of the relay cutover (sns:Publish → events:PutEvents); once the
-    // relay is live on it, the SNS topic/queue/consumer are retired. Custom bus so
-    // legacy MoveManager events get their own routing namespace + replay archive,
-    // and so future "other situations" can fan out from rules rather than new SNS
-    // subscriptions. CMK-encrypted — payloads carry light PII (shippedTo/driver).
+    // ── EventBridge bus (relay publish target) ─────────────────────────────────
+    // The relay publishes legacy MoveManager events here via events:PutEvents.
+    // Custom bus so legacy events get their own routing namespace + replay
+    // archive, and so future "other situations" can fan out from rules.
+    // CMK-encrypted — payloads carry light PII (shippedTo/driver).
     // Plan: plans/in-progress/pegii-eventbridge-integration.md
     const eventBus = new events.EventBus(this, 'IntegrationEventBus', {
       eventBusName: props.busName,
@@ -341,34 +262,28 @@ export class OutboxRelayStack extends cdk.Stack {
 
       if (!usingAcmPca && !haveCaBundle) {
         // Flag on but no usable CA yet (e.g. the SSM parameter isn't populated).
-        // Skip the trust anchor/profile/role so the topic + queue still deploy; the
-        // relay can use the static-key fallback meanwhile (runbook §2).
+        // Skip the trust anchor/profile/role so the bus still deploys; the relay
+        // can use the static-key fallback meanwhile (runbook §2).
         cdk.Annotations.of(this).addWarning(
           'OutboxRelayStack: Roles Anywhere requested but no CA certificate resolved' +
             (caCertSsmParameterName ? ` (populate SSM ${caCertSsmParameterName})` : '') +
-            '; skipping trust anchor/profile/role — topic + queue still deploy.',
+            '; skipping trust anchor/profile/role — the bus still deploys.',
         )
       } else {
-        this.wireRolesAnywhere({ envName, topic, eventBus, outboxKey, acmPcaArn, caPem })
+        this.wireRolesAnywhere({ envName, eventBus, outboxKey, acmPcaArn, caPem })
       }
     }
-
-    // ── Outputs (consumed by the relay deploy/config — runbook §1/§2) ──────────
-    new cdk.CfnOutput(this, 'OutboxTopicArn', { value: topic.topicArn })
-    new cdk.CfnOutput(this, 'OutboxQueueUrl', { value: queue.queueUrl })
-    new cdk.CfnOutput(this, 'OutboxDlqArn', { value: dlq.queueArn })
   }
 
   /** Builds the relay role + trust anchor + profile once a CA source is known. */
   private wireRolesAnywhere(args: {
     envName: string
-    topic: sns.ITopic
     eventBus: events.IEventBus
     outboxKey: kms.IKey
     acmPcaArn?: string
     caPem?: string
   }): void {
-    const { envName, topic, eventBus, outboxKey, acmPcaArn, caPem } = args
+    const { envName, eventBus, outboxKey, acmPcaArn, caPem } = args
 
     const relayRole = new iam.Role(this, 'RelayPublishRole', {
       roleName: `pegasus-${envName}-outbox-relay-publish`,
@@ -382,22 +297,8 @@ export class OutboxRelayStack extends cdk.Stack {
         principals: [new iam.ServicePrincipal('rolesanywhere.amazonaws.com')],
       }),
     )
-    // Least privilege: publish to THIS topic only…
-    // KEPT during the SNS→EventBridge cutover: the relay still publishes to SNS
-    // until it flips to PutEvents and is confirmed live (then unit 6 retires both
-    // this grant and the topic). Removing it before the relay cuts over would
-    // break the live SNS path.
-    relayRole.addToPolicy(
-      new iam.PolicyStatement({
-        sid: 'PublishShipmentEvents',
-        actions: ['sns:Publish'],
-        resources: [topic.topicArn],
-      }),
-    )
-    // …and PutEvents to the integration bus (the relay's next-gen target). Granted
-    // additively so the relay can cut over from sns:Publish without an IAM change
-    // racing the deploy. The bus reuses outboxKey, so the PublishKms grant below
-    // already covers the kms:GenerateDataKey PutEvents needs on the CMK bus.
+    // Least privilege: PutEvents to THIS bus only. (The retired SNS path's
+    // sns:Publish grant was removed in unit 6 once the relay cut over.)
     relayRole.addToPolicy(
       new iam.PolicyStatement({
         sid: 'PublishIntegrationEvents',
@@ -405,7 +306,8 @@ export class OutboxRelayStack extends cdk.Stack {
         resources: [eventBus.eventBusArn],
       }),
     )
-    // …plus the KMS the encrypted topic + bus require (else publishes fail).
+    // …plus the KMS the encrypted bus requires (else PutEvents fails). The bus
+    // reuses outboxKey, so this covers the kms:GenerateDataKey PutEvents needs.
     relayRole.addToPolicy(
       new iam.PolicyStatement({
         sid: 'PublishKms',
