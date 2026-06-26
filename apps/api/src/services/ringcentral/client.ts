@@ -35,6 +35,17 @@ export function __resetTokenCacheForTests(): void {
   tokenCache.clear()
 }
 
+/**
+ * Drop the cached access token for a connection so the next
+ * {@link acquireAccessToken} re-mints from the JWT. Callers use this to recover
+ * from a token RingCentral invalidated *before* its local expiry (e.g. JWT
+ * rotation across the SMS/sync/subscription callers that share the credential),
+ * which a TTL-only cache would otherwise keep re-presenting until a cold start.
+ */
+export function invalidateToken(connectionId: string): void {
+  tokenCache.delete(connectionId)
+}
+
 /** A connection's fields needed to acquire a token. */
 export interface TokenConnection {
   id: string
