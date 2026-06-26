@@ -9,6 +9,7 @@ A Typer application wiring together the workflow developer flow:
 * ``test`` — start local Temporal and run a workflow with stubbed inputs.
 * ``integration-config`` — author the integration-validator config (mapping +
   rules) for an integration (publish / pull / versions / rollback).
+* ``mcp`` — start a stdio MCP server for AI coding agents (requires ``mcp`` extra).
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import typer
 
 from .init import init_command
 from .integration_config import integration_config_app
+from .mcp_server import mcp_command
 from .package import package_command
 from .push import push_command
 from .run import run_command
@@ -34,6 +36,7 @@ app.command("package")(package_command)
 app.command("push")(push_command)
 app.command("run")(run_command)
 app.command("test")(test_command)
+app.command("mcp")(mcp_command)
 app.add_typer(integration_config_app)
 
 
