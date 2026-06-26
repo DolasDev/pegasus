@@ -41,6 +41,16 @@ vi.mock('../services/ringcentral/oauth', async (importOriginal) => {
   }
 })
 
+// smsHandler now applies dualAuthMiddleware itself (it's mounted on the m2mV1
+// router, which has no wildcard auth). Stub it to a passthrough so buildApp's
+// own seedPrincipal/db middleware supplies the auth context; real
+// requirePermission still evaluates the offline Cedar policy.
+vi.mock('../middleware/dual-auth', () => ({
+  dualAuthMiddleware: vi.fn(async (_c, next) => {
+    await next()
+  }),
+}))
+
 import { smsHandler } from './sms'
 
 // ---------------------------------------------------------------------------

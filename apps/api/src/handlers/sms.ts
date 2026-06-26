@@ -19,6 +19,7 @@ import { validator } from 'hono/validator'
 import { z } from 'zod'
 import { isValidE164 } from '@pegasus/domain'
 import { requirePermission } from '../middleware/rbac'
+import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { Actions } from '../authz/actions'
 import type { AppEnv } from '../types'
 import { readOAuthConfig, RingCentralOAuthError } from '../services/ringcentral/oauth'
@@ -34,6 +35,14 @@ const SendSmsBody = z.object({
 })
 
 export const smsHandler = new Hono<AppEnv>()
+
+// Authenticate every SMS route through dualAuthMiddleware so the workflow
+// runtime's `vnd_` key (the workflow_runtime service account, holding SendSms)
+// is accepted — the same pattern as workflowsHandler / eventTypesHandler. This
+// handler is mounted on the m2mV1 router (app.ts), which has no wildcard auth,
+// so the middleware must be applied here. Previously the route lived on the
+// Cognito-JWT-only `v1` router and every workflow `send_sms` got 401.
+smsHandler.use('*', dualAuthMiddleware)
 
 // ---------------------------------------------------------------------------
 // POST /send — fire an outbound SMS via the tenant's RingCentral connection.

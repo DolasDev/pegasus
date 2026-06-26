@@ -231,6 +231,11 @@ m2mV1.route('/events', eventsHandler)
 m2mV1.route('/event-types', eventTypesHandler)
 m2mV1.route('/orders', ordersHandler)
 m2mV1.route('/workflows', workflowsHandler)
+// Outbound SMS — called by the workflow runtime's `vnd_` key (SendSms), so it
+// must accept API-key auth, not Cognito-JWT only. Dual-auth is applied inside
+// smsHandler (see handlers/sms.ts). Was previously mis-mounted on the JWT-only
+// `v1` router, which 401'd every workflow `send_sms`.
+m2mV1.route('/sms', smsHandler)
 // Worker-only internal endpoints — gated by the shared-secret header
 // X-Workflow-Broker-Secret (see handlers/workflow-internal.ts). No tenant
 // middleware involvement; tenant scope is derived from the WorkflowExecution
@@ -297,7 +302,7 @@ v1.route('/me', meHandler)
 // device, no permission gate); notifications/send is staff-gated (SendNotification).
 v1.route('/device-tokens', deviceTokensHandler)
 v1.route('/notifications', notificationsHandler)
-v1.route('/sms', smsHandler)
+// /sms moved to the m2mV1 (dual-auth) router above — see note there.
 v1.route('/sso', ssoHandler)
 v1.route('/users', usersHandler)
 v1.route('/customers', customersHandler)
