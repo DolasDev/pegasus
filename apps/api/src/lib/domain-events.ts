@@ -40,7 +40,11 @@ export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number]
  * register a colliding custom event. Catalogue source of truth:
  * GET /api/v1/pegii/events/catalogue.
  */
-export const INTEGRATION_EVENT_TYPES = ['pegii.shipment.opened', 'pegii.shipment.closed'] as const
+export const INTEGRATION_EVENT_TYPES = [
+  'pegii.shipment.opened',
+  'pegii.shipment.closed',
+  'pegii.sale.saved',
+] as const
 
 export type IntegrationEventType = (typeof INTEGRATION_EVENT_TYPES)[number]
 
