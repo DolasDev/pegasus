@@ -39,9 +39,15 @@ PyPI install for everyday use.
 pegasus-workflows init demo
 cd demo
 pegasus-workflows test demo
+pegasus-workflows diagram                # generate workflow.mmd (needs [diagram] extra + ANTHROPIC_API_KEY)
 pegasus-workflows package
 pegasus-workflows push --token=vnd_... --base-url=http://localhost:3000
 ```
+
+> A workflow **diagram** (`<source_dir>/workflow.mmd`) is required to publish. `init`
+> ships a starter one; `pegasus-workflows diagram` regenerates it from your code via
+> the Anthropic API. Business users view it in the Pegasus tenant UI to confirm the
+> workflow matches their business rules. See [Visualizing workflows](#visualizing-workflows).
 
 ## Authoring
 
@@ -196,6 +202,53 @@ async def charge_customer(amount_cents: int) -> str:
 `get_secret` / `get_config` raise `PegasusApiError` (404) if the key is unset and
 (403) if the matching read action is absent from `required_actions`.
 
+## Visualizing workflows
+
+A workflow is published as opaque Python, so the Pegasus tenant UI can't infer
+what it does. Instead, each workflow ships a **Mermaid diagram** at
+`<source_dir>/workflow.mmd` that business users view to confirm the workflow
+matches their business rules. The UI pairs it with a _verified envelope_ drawn
+from data the platform actually stores and trusts — the workflow's triggers, its
+declared `required_actions`, and the secret/config keys it touches — so the
+diagram (author-declared) sits next to the permission boundary (platform-guaranteed).
+
+A diagram is **required to publish**. Generate or refresh it from your code:
+
+```
+pip install 'pegasus-workflows-sdk[diagram]'   # one-time: the Anthropic SDK
+export ANTHROPIC_API_KEY=sk-ant-...
+pegasus-workflows diagram                       # writes <source_dir>/workflow.mmd
+pegasus-workflows diagram --model claude-sonnet-4-6 --force   # cheaper model, regenerate
+```
+
+The command sends your workflow's Python source to the Anthropic API and writes a
+`flowchart TD`. The file is the source of truth — **edit it freely** afterward;
+`diagram` only regenerates with `--force`. It is packaged into the bundle, so it
+is SHA-pinned to the exact published version.
+
+## Inspecting executions
+
+Read execution status, results, and the Temporal event-history timeline from the
+terminal (the same tenant-scoped data the web UI shows):
+
+```
+pegasus-workflows executions list <workflow-id> --token=vnd_…
+pegasus-workflows executions show <workflow-id> <execution-id> --token=vnd_…
+```
+
+`show` prints the run's input/result/error plus a flattened timeline
+(`WorkflowExecutionStarted` → per-activity events → the terminal event). Cancel
+and retry are available in the tenant web UI. The same data is available
+programmatically via `client.list_executions`, `client.get_execution`, and
+`client.get_execution_history`.
+
+> ⚠️ **Keep PII out of workflow inputs and results.** Temporal stores execution
+> payloads (input, result, and the full event history) and renders them in its
+> UI, and platform engineers can read them cross-tenant in the Temporal Cloud
+> console. Pass **entity ids**, not raw personal data — look the details up inside
+> an activity via the API. (A payload codec would let us encrypt payloads; it's
+> deferred until this convention can't hold.)
+
 ## The manifest — `pegasus-workflows.toml`
 
 Every project has a `pegasus-workflows.toml` at its root. Each `[[workflow]]`
@@ -219,9 +272,12 @@ fail fast locally before any HTTP call.
 | Command                                                                | What it does                                                 |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------ |
 | `pegasus-workflows init <name>`                                        | Scaffold a new workflow project.                             |
+| `pegasus-workflows diagram [-C <dir>] [--model …] [--force]`           | AI-generate `workflow.mmd` from source (`[diagram]` extra).  |
 | `pegasus-workflows package`                                            | Zip each declared workflow into `dist/<name>-<version>.zip`. |
 | `pegasus-workflows push --token=<vnd_…> [--base-url=…]`                | Package, then `upload-url` → S3 PUT → finalize.              |
 | `pegasus-workflows test <workflow>`                                    | Start local Temporal and run the workflow with a stub input. |
+| `pegasus-workflows executions list <wf-id> --token=<vnd_…>`            | List recent executions of a workflow (newest first).         |
+| `pegasus-workflows executions show <wf-id> <exec-id> --token=<vnd_…>`  | Show one execution's input/result/error + history timeline.  |
 | `pegasus-workflows integration-config validate <id> [-C <dir>]`        | Dry-run the publish gate for a config (no write).            |
 | `pegasus-workflows integration-config publish <id> [-C <dir>]`         | Gate then publish a new config version.                      |
 | `pegasus-workflows integration-config pull <id> [-C <dir>] [--stdout]` | Fetch the active config; write the editable surface to disk. |

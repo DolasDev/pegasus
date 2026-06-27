@@ -284,6 +284,33 @@ class PegasusClient:
             f"/api/v1/workflows/{workflow_id}/executions/{execution_id}",
         )["data"]
 
+    def get_execution_history(
+        self,
+        workflow_id: str,
+        execution_id: str,
+    ) -> list[dict[str, Any]]:
+        """Fetch the Temporal event-history timeline for one execution.
+
+        Returns the flattened timeline the server derives from the run's
+        Temporal history — ``WorkflowExecutionStarted``, per-activity
+        scheduled/started/completed/failed, and the terminal workflow event.
+
+        Args:
+            workflow_id: The workflow the execution belongs to.
+            execution_id: The execution to inspect.
+
+        Returns:
+            A list of ``{id, type, timestamp, activityType?, attempt?, failure?}``
+            events. Empty when the run never started on Temporal.
+
+        Raises:
+            PegasusApiError: On 404 (not visible, or history no longer available)
+                or 502 (Temporal unavailable).
+        """
+        return self._get_json(
+            f"/api/v1/workflows/{workflow_id}/executions/{execution_id}/history",
+        )["data"]["events"]
+
     def fork_workflow(self, workflow_id: str) -> dict[str, Any]:
         """Fork a GLOBAL platform-library workflow into the caller's tenant.
 

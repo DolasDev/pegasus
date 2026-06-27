@@ -87,6 +87,19 @@ def test_to_api_manifest_shape(workflow_project: Path) -> None:
     }
 
 
+def test_to_api_manifest_includes_diagram_when_passed(workflow_project: Path) -> None:
+    """The publish flow passes the workflow.mmd contents as `diagram`."""
+    m = load_manifest(workflow_project)[0]
+    api = m.to_api_manifest(diagram="flowchart TD\n  A --> B")
+    assert api["diagram"] == "flowchart TD\n  A --> B"
+
+
+def test_to_api_manifest_omits_diagram_when_not_passed(workflow_project: Path) -> None:
+    """Callers that don't publish (e.g. tests) omit the diagram entirely."""
+    m = load_manifest(workflow_project)[0]
+    assert "diagram" not in m.to_api_manifest()
+
+
 def test_to_api_manifest_omits_absent_description(tmp_path: Path) -> None:
     (tmp_path / "pegasus-workflows.toml").write_text(
         textwrap.dedent(

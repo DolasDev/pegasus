@@ -13,7 +13,8 @@ def workflow_project(tmp_path: Path) -> Path:
     """Materialise a minimal, valid workflow project in a temp directory.
 
     Returns the project root, which contains a ``pegasus-workflows.toml``
-    declaring one workflow ``demo`` with a ``demo/workflow.py`` source file.
+    declaring one workflow ``demo`` with a ``demo/workflow.py`` source file and
+    the ``demo/workflow.mmd`` diagram the publish flow requires.
     """
     project = tmp_path / "demo"
     source = project / "demo"
@@ -36,5 +37,8 @@ def workflow_project(tmp_path: Path) -> Path:
     (source / "__init__.py").write_text("", encoding="utf-8")
     (source / "workflow.py").write_text(
         "class HelloWorkflow:\n    pass\n", encoding="utf-8"
+    )
+    (source / "workflow.mmd").write_text(
+        "flowchart TD\n  A[Start] --> B[Done]\n", encoding="utf-8"
     )
     return project

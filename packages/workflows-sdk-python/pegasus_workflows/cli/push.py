@@ -14,7 +14,7 @@ from pathlib import Path
 import typer
 
 from ..api import PegasusApiError, PegasusClient
-from ..manifest import ManifestError
+from ..manifest import DIAGRAM_FILENAME, ManifestError
 from .package import package_project
 
 __all__ = ["push_command"]
@@ -68,6 +68,12 @@ def push_command(
         artifact = zip_path.read_bytes()
         size = len(artifact)
         label = f"{manifest.name}@{manifest.version}"
+        # package_project already verified the diagram exists; read its contents
+        # to embed in the manifest. It is the same file packaged into the zip, so
+        # it is covered by artifactSha256 and pinned to this exact version.
+        diagram = (project_dir / manifest.source_dir / DIAGRAM_FILENAME).read_text(
+            encoding="utf-8"
+        )
         try:
             typer.echo(f"-> requesting upload URL for {label} ({size} bytes)")
             upload = client.request_upload_url(manifest.name, manifest.version, size)
@@ -76,7 +82,9 @@ def push_command(
             client.upload_artifact(upload["uploadUrl"], artifact)
 
             typer.echo("-> finalizing")
-            row = client.finalize(upload["workflowId"], manifest.to_api_manifest())
+            row = client.finalize(
+                upload["workflowId"], manifest.to_api_manifest(diagram=diagram)
+            )
 
             typer.secho(
                 f"published {label} (id={row['id']}, visibility={row['visibility']})",
