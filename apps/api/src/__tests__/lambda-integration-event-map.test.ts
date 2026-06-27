@@ -80,6 +80,7 @@ describe('deriveEventType', () => {
   it('lowercases the detail-type under the pegii namespace', () => {
     expect(deriveEventType('Shipment.Opened')).toBe('pegii.shipment.opened')
     expect(deriveEventType('Shipment.Closed')).toBe('pegii.shipment.closed')
+    expect(deriveEventType('Sale.Saved')).toBe('pegii.sale.saved')
   })
 })
 

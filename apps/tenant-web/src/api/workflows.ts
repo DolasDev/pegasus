@@ -126,7 +126,11 @@ export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number]
  * (tenant-web cannot import from apps/api). Names are the lowercased pegII
  * catalogue DetailTypes under the `pegii.` namespace.
  */
-export const INTEGRATION_EVENT_TYPES = ['pegii.shipment.opened', 'pegii.shipment.closed'] as const
+export const INTEGRATION_EVENT_TYPES = [
+  'pegii.shipment.opened',
+  'pegii.shipment.closed',
+  'pegii.sale.saved',
+] as const
 
 export type IntegrationEventType = (typeof INTEGRATION_EVENT_TYPES)[number]
 
