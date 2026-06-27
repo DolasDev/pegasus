@@ -78,6 +78,7 @@ import { meHandler } from './handlers/me'
 import { deviceTokensHandler } from './handlers/device-tokens'
 import { notificationsHandler } from './handlers/notifications'
 import { smsHandler } from './handlers/sms'
+import { workflowSecretsConfigsHandler } from './handlers/workflow-secrets-configs'
 import { ringcentralOauthHandler } from './handlers/integrations/ringcentral-oauth'
 import { ringcentralWebhookHandler } from './handlers/integrations/ringcentral-webhook'
 import { integrationsHandler } from './handlers/integrations/list'
@@ -236,6 +237,11 @@ m2mV1.route('/workflows', workflowsHandler)
 // smsHandler (see handlers/sms.ts). Was previously mis-mounted on the JWT-only
 // `v1` router, which 401'd every workflow `send_sms`.
 m2mV1.route('/sms', smsHandler)
+// Per-tenant workflow secrets & config. Management routes use Cognito (tenant
+// admin / workflow developer); the /runtime/* reads use the workflow runtime's
+// `vnd_` key. Dual-auth is applied inside the handler — same pattern as
+// /workflows and /event-types. See handlers/workflow-secrets-configs.ts.
+m2mV1.route('/workflow-secrets-configs', workflowSecretsConfigsHandler)
 // Worker-only internal endpoints — gated by the shared-secret header
 // X-Workflow-Broker-Secret (see handlers/workflow-internal.ts). No tenant
 // middleware involvement; tenant scope is derived from the WorkflowExecution

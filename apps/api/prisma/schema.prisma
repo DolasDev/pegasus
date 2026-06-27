@@ -267,6 +267,7 @@ model Tenant {
   integrationConfigs IntegrationConfig[]
   domainEvents       DomainEvent[]
   tenantEventTypes   TenantEventType[]
+  workflowSecretConfigs WorkflowSecretConfig[]
   brokerCredential   TenantBrokerCredential?
   vpnPeer            VpnPeer?
 
@@ -1595,6 +1596,64 @@ model TenantEventType {
   // that actually carry a condition are scanned.
   @@index([hasDomainCondition, enabled])
   @@map("tenant_event_types")
+  @@schema("public")
+}
+
+enum WorkflowSecretConfigKind {
+  SECRET
+  CONFIG
+
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Workflow secrets & configuration — per-tenant key/value store that a running
+// workflow reads at runtime via the SDK (PegasusClient.get_secret/get_config).
+//
+// Two kinds share one table via the `kind` discriminator:
+//   - SECRET: write-once, value KMS-encrypted into `valueCiphertext` (the
+//     plaintext is NEVER returned by the management API nor stored in `value`).
+//   - CONFIG: plain key/value, editable, stored in `value` (no ciphertext).
+//
+// Scope is per-tenant (shared): every workflow the tenant owns reads the same
+// namespace. Management routes require Cognito + ManageWorkflowSecrets/Configs;
+// the runtime read routes require the vnd_ runtime key's ReadWorkflowSecret/
+// ReadWorkflowConfig Cedar action (declared in the workflow manifest).
+//
+// Tenant-owned only (no GLOBAL case), so the model lives in TENANT_SCOPED_MODELS
+// — reads auto-scope to the current tenant via the Prisma extension.
+// ---------------------------------------------------------------------------
+model WorkflowSecretConfig {
+  id       String                   @id @default(uuid())
+  tenantId String                   @map("tenant_id")
+  kind     WorkflowSecretConfigKind
+
+  /// Lookup key, env-var style: [a-zA-Z_][a-zA-Z0-9_]{0,127}. Unique per
+  /// (tenant, kind) — a SECRET and a CONFIG may share a key (separate namespaces).
+  key String
+
+  /// Plain value for CONFIG rows. Always NULL for SECRET rows.
+  value String?
+
+  /// KMS-encrypted (base64) value for SECRET rows. Always NULL for CONFIG rows.
+  /// MUST NOT be returned in any API response.
+  valueCiphertext String? @map("value_ciphertext")
+
+  /// Stamped by the server at creation: true for SECRET, false for CONFIG.
+  /// Drives response shaping so the mapper never emits a secret value.
+  isSecret Boolean @default(false) @map("is_secret")
+
+  description String?
+
+  createdByUserId String   @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, kind, key])
+  @@index([tenantId, kind])
+  @@map("workflow_secret_configs")
   @@schema("public")
 }
 

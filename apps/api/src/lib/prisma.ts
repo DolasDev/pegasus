@@ -51,6 +51,11 @@ export const TENANT_SCOPED_MODELS = new Set([
   // dispatcher's domain-condition deriver reads cross-tenant via the root `db`,
   // which bypasses this extension — same precedent as DomainEvent above.
   'TenantEventType',
+  // WorkflowSecretConfig — per-tenant secrets/config a workflow reads at runtime.
+  // Purely tenant-owned (no GLOBAL case); all CRUD + the runtime read go through
+  // the tenant-scoped client, so auto-scoping here enforces isolation and the
+  // KMS decrypt path is additionally bound to tenantId via the encryption context.
+  'WorkflowSecretConfig',
   // Messaging — tenant-owned entities a tenant/admin handler reads via the
   // scoped client. The background capture/forward/purge jobs use the base
   // client (cross-tenant cron context) and are unaffected by this set.

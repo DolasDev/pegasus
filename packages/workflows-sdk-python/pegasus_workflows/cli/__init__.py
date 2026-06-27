@@ -9,6 +9,8 @@ A Typer application wiring together the workflow developer flow:
 * ``test`` — start local Temporal and run a workflow with stubbed inputs.
 * ``integration-config`` — author the integration-validator config (mapping +
   rules) for an integration (publish / pull / versions / rollback).
+* ``secrets`` / ``config`` — publish per-tenant workflow secrets & configuration
+  (set / list / delete) that workflows read at runtime.
 * ``mcp`` — start a stdio MCP server for AI coding agents (requires ``mcp`` extra).
 """
 
@@ -22,6 +24,7 @@ from .mcp_server import mcp_command
 from .package import package_command
 from .push import push_command
 from .run import run_command
+from .secrets_config import config_app, secrets_app
 from .test import test_command
 
 app = typer.Typer(
@@ -38,6 +41,8 @@ app.command("run")(run_command)
 app.command("test")(test_command)
 app.command("mcp")(mcp_command)
 app.add_typer(integration_config_app)
+app.add_typer(secrets_app)
+app.add_typer(config_app)
 
 
 def main() -> None:
