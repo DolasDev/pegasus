@@ -1,0 +1,4 @@
+flowchart TD
+  A[Trigger or manual run: quote payload] --> B[Resolve quoteId from payload]
+  B --> C[compose_followup activity]
+  C --> D[Return follow-up message]
