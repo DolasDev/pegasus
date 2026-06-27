@@ -559,3 +559,146 @@ def test_send_sms_non_2xx_raises_pegasus_api_error() -> None:
         client.send_sms(to="+16308868537", body="hello")
     assert exc_info.value.status_code == 403
     assert exc_info.value.code == "FORBIDDEN"
+
+
+# -- workflow secrets & configuration ---------------------------------------
+
+
+def test_get_secret_success() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["auth"] = request.headers.get("Authorization")
+        return httpx.Response(200, json={"data": {"value": "s3cr3t"}})
+
+    client = _client_with(handler)
+    assert client.get_secret("STRIPE_API_KEY") == "s3cr3t"
+    assert captured["path"] == "/api/v1/workflow-secrets-configs/runtime/secrets/STRIPE_API_KEY"
+    assert captured["auth"] == f"Bearer {_TOKEN}"
+
+
+def test_get_secret_not_found_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"error": "Secret not found", "code": "NOT_FOUND"})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.get_secret("NOPE")
+    assert exc_info.value.status_code == 404
+
+
+def test_get_config_success() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        return httpx.Response(200, json={"data": {"value": "us-east-1"}})
+
+    client = _client_with(handler)
+    assert client.get_config("DEFAULT_REGION") == "us-east-1"
+    assert captured["path"] == "/api/v1/workflow-secrets-configs/runtime/configs/DEFAULT_REGION"
+
+
+def test_get_config_forbidden_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"error": "denied", "code": "FORBIDDEN"})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.get_config("DEFAULT_REGION")
+    assert exc_info.value.status_code == 403
+
+
+def test_set_secret_posts_payload_and_returns_metadata() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["json"] = json.loads(request.read())
+        return httpx.Response(201, json={"data": {"key": "STRIPE_API_KEY", "isSecret": True}})
+
+    client = _client_with(handler)
+    row = client.set_secret("STRIPE_API_KEY", "sk_live_x", description="payments")
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/api/v1/workflow-secrets-configs/secrets"
+    assert captured["json"] == {
+        "key": "STRIPE_API_KEY",
+        "value": "sk_live_x",
+        "description": "payments",
+    }
+    assert row["isSecret"] is True
+
+
+def test_set_secret_conflict_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(409, json={"error": "already exists", "code": "CONFLICT"})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.set_secret("STRIPE_API_KEY", "sk_live_x")
+    assert exc_info.value.status_code == 409
+
+
+def test_list_secrets_returns_data() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/workflow-secrets-configs/secrets"
+        return httpx.Response(200, json={"data": [{"key": "STRIPE_API_KEY"}]})
+
+    client = _client_with(handler)
+    assert client.list_secrets() == [{"key": "STRIPE_API_KEY"}]
+
+
+def test_delete_secret_issues_delete() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        return httpx.Response(204)
+
+    client = _client_with(handler)
+    client.delete_secret("STRIPE_API_KEY")
+    assert captured["method"] == "DELETE"
+    assert captured["path"] == "/api/v1/workflow-secrets-configs/secrets/STRIPE_API_KEY"
+
+
+def test_set_config_puts_payload() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["json"] = json.loads(request.read())
+        return httpx.Response(200, json={"data": {"key": "DEFAULT_REGION", "value": "us-east-1"}})
+
+    client = _client_with(handler)
+    row = client.set_config("DEFAULT_REGION", "us-east-1")
+    assert captured["method"] == "PUT"
+    assert captured["path"] == "/api/v1/workflow-secrets-configs/configs/DEFAULT_REGION"
+    assert captured["json"] == {"value": "us-east-1"}
+    assert row["value"] == "us-east-1"
+
+
+def test_list_configs_returns_data() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/workflow-secrets-configs/configs"
+        return httpx.Response(200, json={"data": [{"key": "DEFAULT_REGION", "value": "us-east-1"}]})
+
+    client = _client_with(handler)
+    assert client.list_configs() == [{"key": "DEFAULT_REGION", "value": "us-east-1"}]
+
+
+def test_delete_config_issues_delete() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        return httpx.Response(204)
+
+    client = _client_with(handler)
+    client.delete_config("DEFAULT_REGION")
+    assert captured["method"] == "DELETE"
+    assert captured["path"] == "/api/v1/workflow-secrets-configs/configs/DEFAULT_REGION"

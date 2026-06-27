@@ -5,7 +5,10 @@
 // capabilities on top so a developer can ship, exercise, and wire up a
 // workflow without needing a separate tenant_admin grant. ManageEventTypes
 // lets a developer register the custom event types their workflows trigger on.
-// tenant_admin covers all of these implicitly via its permit-everything policy.
+// ManageWorkflowSecrets/ManageWorkflowConfigs let a developer publish the
+// per-tenant secret/config values their workflows read at runtime (via the SDK
+// CLI). tenant_admin covers all of these implicitly via its permit-everything
+// policy.
 permit (
   principal in Pegasus::Group::"workflow_developer",
   action in [
@@ -13,7 +16,9 @@ permit (
     Pegasus::Action::"UploadWorkflow",
     Pegasus::Action::"RunWorkflow",
     Pegasus::Action::"ManageWorkflowTriggers",
-    Pegasus::Action::"ManageEventTypes"
+    Pegasus::Action::"ManageEventTypes",
+    Pegasus::Action::"ManageWorkflowSecrets",
+    Pegasus::Action::"ManageWorkflowConfigs"
   ],
   resource
 );

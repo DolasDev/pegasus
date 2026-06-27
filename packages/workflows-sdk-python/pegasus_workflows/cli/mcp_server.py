@@ -15,6 +15,8 @@ Resources
     Authoring guide: import surface, determinism rule, input contract.
 ``pegasus://guide/input-contract``
     The three input shapes + a worked resolver example.
+``pegasus://guide/secrets-config``
+    How to publish and use per-tenant workflow secrets & configuration.
 ``pegasus://reference/manifest``
     Manifest fields and constraints, generated from ``manifest.py`` constants.
 ``pegasus://reference/api``
@@ -59,6 +61,7 @@ __all__ = [
     "mcp_command",
     "resource_guide_authoring",
     "resource_guide_input_contract",
+    "resource_guide_secrets_config",
     "resource_reference_manifest",
     "resource_reference_api",
     "tool_scaffold_workflow",
@@ -123,6 +126,13 @@ Use ``PegasusClient`` only inside activities, never inside workflow methods.
 
 See ``pegasus://guide/input-contract`` for the three argument shapes your
 ``run()`` method must handle (trigger-fired, manual run, CLI test).
+
+## Secrets & configuration
+
+To read per-tenant secrets or config at runtime, declare ``ReadWorkflowSecret``
+/ ``ReadWorkflowConfig`` in your manifest ``required_actions`` and call
+``client.get_secret(...)`` / ``client.get_config(...)`` inside an activity. See
+``pegasus://guide/secrets-config`` for publishing and usage.
 """
 
 
@@ -175,6 +185,74 @@ worker context:
         if isinstance(inp, dict) and inp.get("quote_id"):
             return str(inp["quote_id"])
         return "quote-unknown"
+"""
+
+
+def resource_guide_secrets_config() -> str:
+    """How to publish and use per-tenant workflow secrets & configuration."""
+    return """\
+# Pegasus Workflow Secrets & Configuration
+
+A workflow reads two kinds of per-tenant key/value data at runtime:
+
+- **Secrets** — write-once, encrypted at rest, the plaintext is only ever handed
+  to the workflow runtime (e.g. a third-party API key). Read action:
+  ``ReadWorkflowSecret``.
+- **Config** — plain, editable values (e.g. a region, a feature flag, a base URL).
+  Read action: ``ReadWorkflowConfig``.
+
+Both are scoped to the whole tenant: every workflow the tenant owns reads the
+same namespace. A secret and a config entry may share a key — they are separate
+namespaces.
+
+## 1. Declare what your workflow needs (manifest)
+
+Add the read actions to ``required_actions`` in ``pegasus-workflows.toml`` so the
+runtime service account is authorized to read them:
+
+    [[workflow]]
+    name = "send_quote_followup"
+    version = "0.1.0"
+    entry_points = ["send_quote_followup.workflow:SendQuoteFollowup"]
+    required_actions = ["ReadQuote", "ReadWorkflowSecret", "ReadWorkflowConfig"]
+
+## 2. Publish values (one-time, by a developer/admin)
+
+Values are NOT part of the workflow artifact — publish them out of band with a
+token holding ``ManageWorkflowSecrets`` / ``ManageWorkflowConfigs`` (the
+``workflow_developer`` or ``tenant_admin`` role), via the CLI:
+
+    pegasus-workflows secrets set STRIPE_API_KEY "sk_live_..." --token vnd_... --base-url https://api...
+    pegasus-workflows config  set DEFAULT_REGION us-east-1   --token vnd_... --base-url https://api...
+    pegasus-workflows secrets list --token vnd_...      # metadata only, never values
+    pegasus-workflows config  list --token vnd_...
+
+or from Python:
+
+    client = PegasusClient(base_url="https://...", token="vnd_...")
+    client.set_secret("STRIPE_API_KEY", "sk_live_...")
+    client.set_config("DEFAULT_REGION", "us-east-1")
+
+Secrets are **write-once** — to rotate, ``delete_secret`` then ``set_secret``
+again. Config is an idempotent upsert (``set_config`` replaces the value).
+
+## 3. Read values at runtime (inside an activity)
+
+Read them with the runtime ``vnd_`` token inside an ``@activity.defn`` function —
+never in workflow code (httpx is sandboxed there):
+
+    from pegasus_workflows import activity
+    from pegasus_workflows.api import PegasusClient
+
+    @activity.defn
+    async def charge_customer(amount_cents: int) -> str:
+        client = PegasusClient(base_url=BASE_URL, token=RUNTIME_TOKEN)
+        api_key = client.get_secret("STRIPE_API_KEY")   # needs ReadWorkflowSecret
+        region = client.get_config("DEFAULT_REGION")    # needs ReadWorkflowConfig
+        ...
+
+``get_secret`` / ``get_config`` raise ``PegasusApiError`` with status 404 if the
+key is unset and 403 if the manifest did not declare the matching read action.
 """
 
 
@@ -398,6 +476,10 @@ def _build_server(FastMCP: type) -> Any:  # type: ignore[type-arg]
     @server.resource("pegasus://guide/input-contract")
     def _res_guide_input_contract() -> str:
         return resource_guide_input_contract()
+
+    @server.resource("pegasus://guide/secrets-config")
+    def _res_guide_secrets_config() -> str:
+        return resource_guide_secrets_config()
 
     @server.resource("pegasus://reference/manifest")
     def _res_reference_manifest() -> str:

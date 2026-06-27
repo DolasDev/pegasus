@@ -9,7 +9,9 @@
 // and EmitTenantEvent so a workflow can fire a tenant-defined custom event
 // (workflow-to-workflow chaining). It does NOT include write access to quotes,
 // moves, invoices, or customers - a runtime workflow observes and emits events,
-// it does not mutate core records directly.
+// it does not mutate core records directly. ReadWorkflowSecret/ReadWorkflowConfig
+// let a running workflow fetch the per-tenant secret/config values it declared in
+// its manifest required_actions; it can read but never manage them.
 permit (
   principal in Pegasus::Group::"workflow_runtime",
   action in [
@@ -20,7 +22,9 @@ permit (
     Pegasus::Action::"ReadEvent",
     Pegasus::Action::"CreateEvent",
     Pegasus::Action::"EmitTenantEvent",
-    Pegasus::Action::"SendSms"
+    Pegasus::Action::"SendSms",
+    Pegasus::Action::"ReadWorkflowSecret",
+    Pegasus::Action::"ReadWorkflowConfig"
   ],
   resource
 );

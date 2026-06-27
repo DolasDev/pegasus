@@ -93,6 +93,13 @@
           "attributes": {}
         }
       },
+      "WorkflowSecretConfig": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
       "Notification": {
         "memberOfTypes": [],
         "shape": {
@@ -247,6 +254,18 @@
       },
       "EmitTenantEvent": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["EventType"] }
+      },
+      "ManageWorkflowSecrets": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["WorkflowSecretConfig"] }
+      },
+      "ReadWorkflowSecret": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["WorkflowSecretConfig"] }
+      },
+      "ManageWorkflowConfigs": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["WorkflowSecretConfig"] }
+      },
+      "ReadWorkflowConfig": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["WorkflowSecretConfig"] }
       }
     }
   }

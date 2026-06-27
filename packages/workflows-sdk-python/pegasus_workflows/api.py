@@ -550,3 +550,158 @@ class PegasusClient:
             )
         _raise_for_status(response)
         return response.json()["data"]
+
+    # -- workflow secrets & configuration -----------------------------------
+    #
+    # Per-tenant key/value store (apps/api/src/handlers/workflow-secrets-configs.ts).
+    # Two namespaces:
+    #   - SECRETS: write-once, KMS-encrypted at rest, the plaintext is only ever
+    #     returned to the workflow runtime. Manage with a token holding
+    #     ``ManageWorkflowSecrets`` (workflow_developer / tenant_admin); read at
+    #     runtime with ``ReadWorkflowSecret``.
+    #   - CONFIG: plain, editable key/value. Manage with ``ManageWorkflowConfigs``;
+    #     read at runtime with ``ReadWorkflowConfig``.
+    #
+    # A workflow declares the read actions it needs in its manifest
+    # ``required_actions`` (e.g. ``["ReadWorkflowSecret", "ReadWorkflowConfig"]``)
+    # and reads values inside an activity via :meth:`get_secret` / :meth:`get_config`.
+
+    _SECRETS_CONFIG_BASE = "/api/v1/workflow-secrets-configs"
+
+    def get_secret(self, name: str) -> str:
+        """Read a workflow secret value by name (runtime use).
+
+        For use inside workflow activities only (never in workflow code — httpx
+        is sandboxed there). Requires the workflow's manifest to declare
+        ``required_actions = ["ReadWorkflowSecret"]``.
+
+        Args:
+            name: The secret key.
+
+        Returns:
+            The decrypted secret plaintext.
+
+        Raises:
+            PegasusApiError: On 403 (token/manifest lacks ``ReadWorkflowSecret``),
+                404 (no such secret), or any other non-2xx.
+        """
+        return self._get_json(f"{self._SECRETS_CONFIG_BASE}/runtime/secrets/{name}")[
+            "data"
+        ]["value"]
+
+    def get_config(self, name: str) -> str:
+        """Read a workflow config value by name (runtime use).
+
+        For use inside workflow activities only. Requires the workflow's manifest
+        to declare ``required_actions = ["ReadWorkflowConfig"]``.
+
+        Args:
+            name: The config key.
+
+        Returns:
+            The config value as a string.
+
+        Raises:
+            PegasusApiError: On 403 (token/manifest lacks ``ReadWorkflowConfig``),
+                404 (no such config entry), or any other non-2xx.
+        """
+        return self._get_json(f"{self._SECRETS_CONFIG_BASE}/runtime/configs/{name}")[
+            "data"
+        ]["value"]
+
+    def list_secrets(self) -> list[dict[str, Any]]:
+        """List secret metadata (never any value). Requires ``ManageWorkflowSecrets``.
+
+        Returns:
+            A list of ``{id, key, description, isSecret, createdByUserId,
+            createdAt, updatedAt}`` — no secret values are ever returned.
+        """
+        return self._get_json(f"{self._SECRETS_CONFIG_BASE}/secrets")["data"]
+
+    def set_secret(
+        self, key: str, value: str, *, description: str | None = None
+    ) -> dict[str, Any]:
+        """Publish a secret (write-once). Requires ``ManageWorkflowSecrets``.
+
+        Secrets are write-once: to rotate a value, :meth:`delete_secret` then
+        ``set_secret`` again. The returned row carries metadata only — the value
+        is never echoed back.
+
+        Args:
+            key: Env-var-style key (``[a-zA-Z_][a-zA-Z0-9_]{0,127}``).
+            value: The secret plaintext (stored KMS-encrypted at rest).
+            description: Optional human note.
+
+        Returns:
+            The created secret's metadata.
+
+        Raises:
+            PegasusApiError: On 400 (bad key), 403 (lacks ``ManageWorkflowSecrets``),
+                409 (a secret with that key already exists), or any other non-2xx.
+        """
+        payload: dict[str, Any] = {"key": key, "value": value}
+        if description is not None:
+            payload["description"] = description
+        with self._client() as client:
+            response = client.post(f"{self._SECRETS_CONFIG_BASE}/secrets", json=payload)
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def delete_secret(self, key: str) -> None:
+        """Delete a secret by key. Requires ``ManageWorkflowSecrets``.
+
+        Raises:
+            PegasusApiError: On 403, 404 (no such secret), or any other non-2xx.
+        """
+        with self._client() as client:
+            response = client.delete(f"{self._SECRETS_CONFIG_BASE}/secrets/{key}")
+        _raise_for_status(response)
+
+    def list_configs(self) -> list[dict[str, Any]]:
+        """List config entries with their plain values. Requires ``ManageWorkflowConfigs``.
+
+        Returns:
+            A list of ``{id, key, value, description, isSecret, createdByUserId,
+            createdAt, updatedAt}``.
+        """
+        return self._get_json(f"{self._SECRETS_CONFIG_BASE}/configs")["data"]
+
+    def set_config(
+        self, key: str, value: str, *, description: str | None = None
+    ) -> dict[str, Any]:
+        """Publish a config value (idempotent upsert). Requires ``ManageWorkflowConfigs``.
+
+        Unlike secrets, config is freely editable — calling ``set_config`` again
+        with the same key replaces the value.
+
+        Args:
+            key: Env-var-style key (``[a-zA-Z_][a-zA-Z0-9_]{0,127}``).
+            value: The config value.
+            description: Optional human note.
+
+        Returns:
+            The created/updated config entry (including its value).
+
+        Raises:
+            PegasusApiError: On 400 (bad key), 403 (lacks ``ManageWorkflowConfigs``),
+                or any other non-2xx.
+        """
+        payload: dict[str, Any] = {"value": value}
+        if description is not None:
+            payload["description"] = description
+        with self._client() as client:
+            response = client.put(
+                f"{self._SECRETS_CONFIG_BASE}/configs/{key}", json=payload
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def delete_config(self, key: str) -> None:
+        """Delete a config entry by key. Requires ``ManageWorkflowConfigs``.
+
+        Raises:
+            PegasusApiError: On 403, 404 (no such entry), or any other non-2xx.
+        """
+        with self._client() as client:
+            response = client.delete(f"{self._SECRETS_CONFIG_BASE}/configs/{key}")
+        _raise_for_status(response)

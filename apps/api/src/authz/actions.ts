@@ -30,6 +30,7 @@ export type ResourceType =
   | 'Order'
   | 'Event'
   | 'Workflow'
+  | 'WorkflowSecretConfig'
   | 'Notification'
   | 'IntegrationConfig'
   | 'EventType'
@@ -205,6 +206,30 @@ export const Actions = {
     id: 'EmitTenantEvent',
     resourceType: 'EventType',
     permission: 'event_type:emit',
+  },
+  // ── Workflow secrets & config (per-tenant key/value read at runtime) ──────
+  // Manage* gate the Cognito management surface (tenant_admin / workflow_developer);
+  // Read* gate the vnd_ runtime read and are granted to workflow_runtime so a
+  // running workflow can fetch values it declared in its manifest required_actions.
+  ManageWorkflowSecrets: {
+    id: 'ManageWorkflowSecrets',
+    resourceType: 'WorkflowSecretConfig',
+    permission: 'workflow_secret:manage',
+  },
+  ReadWorkflowSecret: {
+    id: 'ReadWorkflowSecret',
+    resourceType: 'WorkflowSecretConfig',
+    permission: 'workflow_secret:read',
+  },
+  ManageWorkflowConfigs: {
+    id: 'ManageWorkflowConfigs',
+    resourceType: 'WorkflowSecretConfig',
+    permission: 'workflow_config:manage',
+  },
+  ReadWorkflowConfig: {
+    id: 'ReadWorkflowConfig',
+    resourceType: 'WorkflowSecretConfig',
+    permission: 'workflow_config:read',
   },
 } as const satisfies Record<string, ActionDef>
 

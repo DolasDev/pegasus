@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from pegasus_workflows.cli.mcp_server import (
+    resource_guide_secrets_config,
     resource_reference_api,
     resource_reference_manifest,
     tool_package_project,
@@ -235,6 +236,35 @@ def test_reference_manifest_reflects_constant(monkeypatch: pytest.MonkeyPatch) -
     finally:
         monkeypatch.setattr(mmod, "MANIFEST_TIMEOUT_MAX_SECONDS", original)
         monkeypatch.setattr(mcp_mod, "MANIFEST_TIMEOUT_MAX_SECONDS", original)
+
+
+def test_secrets_config_guide_covers_publish_and_use() -> None:
+    """The secrets/config guide documents both publishing and runtime use, and
+    names the read actions a workflow must declare."""
+    content = resource_guide_secrets_config()
+    for token in (
+        "ReadWorkflowSecret",
+        "ReadWorkflowConfig",
+        "required_actions",
+        "get_secret",
+        "get_config",
+        "pegasus-workflows secrets set",
+        "write-once",
+    ):
+        assert token in content, f"secrets-config guide is missing '{token}'"
+
+
+def test_secrets_config_guide_registered_as_resource() -> None:
+    """The guide must be wired onto the MCP server as a resource."""
+    mcp = pytest.importorskip("mcp.server.fastmcp", reason="mcp extra not installed")
+    FastMCP = mcp.FastMCP  # type: ignore[attr-defined]
+
+    from pegasus_workflows.cli.mcp_server import _build_server
+
+    server = _build_server(FastMCP)
+    resources = asyncio.run(server.list_resources())
+    uris = {str(r.uri) for r in resources}
+    assert "pegasus://guide/secrets-config" in uris
 
 
 # ── test: no mutating tools registered ───────────────────────────────────────
