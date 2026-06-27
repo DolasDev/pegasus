@@ -237,6 +237,12 @@
       "ManageWorkflowTriggers": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
       },
+      "CancelWorkflowExecution": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
+      },
+      "RetryWorkflowExecution": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Workflow"] }
+      },
       "SendNotification": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Notification"] }
       },

@@ -3,7 +3,10 @@
 // already covered by the tenant_user baseline (ReadWorkflow); this group
 // adds the UploadWorkflow + RunWorkflow + ManageWorkflowTriggers
 // capabilities on top so a developer can ship, exercise, and wire up a
-// workflow without needing a separate tenant_admin grant. ManageEventTypes
+// workflow without needing a separate tenant_admin grant.
+// CancelWorkflowExecution + RetryWorkflowExecution let a developer drive
+// executions from the tenant UI (cancel a stuck run, retry a failed one).
+// ManageEventTypes
 // lets a developer register the custom event types their workflows trigger on.
 // ManageWorkflowSecrets/ManageWorkflowConfigs let a developer publish the
 // per-tenant secret/config values their workflows read at runtime (via the SDK
@@ -16,6 +19,8 @@ permit (
     Pegasus::Action::"UploadWorkflow",
     Pegasus::Action::"RunWorkflow",
     Pegasus::Action::"ManageWorkflowTriggers",
+    Pegasus::Action::"CancelWorkflowExecution",
+    Pegasus::Action::"RetryWorkflowExecution",
     Pegasus::Action::"ManageEventTypes",
     Pegasus::Action::"ManageWorkflowSecrets",
     Pegasus::Action::"ManageWorkflowConfigs"

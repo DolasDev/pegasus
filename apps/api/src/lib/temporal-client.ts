@@ -34,6 +34,155 @@
 import { Client, Connection } from '@temporalio/client'
 
 // ---------------------------------------------------------------------------
+// Workflow history summary (developer execution inspection)
+//
+// `handle.fetchHistory()` returns a Temporal protobuf History whose events are
+// a verbose union of `<kind>EventAttributes` fields. We flatten it to a compact
+// timeline the tenant UI and the SDK CLI can render — WorkflowExecutionStarted,
+// per-activity scheduled/started/completed/failed, and the terminal workflow
+// event — without leaking the raw proto shape into handlers.
+//
+// Kept here, pure and proto-agnostic, so it is unit-testable from a plain
+// object fixture (no live Temporal connection).
+// ---------------------------------------------------------------------------
+
+/** One flattened history event for the execution-inspection timeline. */
+export type WorkflowHistoryEvent = {
+  /** Temporal eventId, stringified (it is a 64-bit value). */
+  id: string
+  /** Human-readable event kind, e.g. `ActivityTaskFailed`. */
+  type: string
+  /** ISO-8601 event time, or null when the proto carried no timestamp. */
+  timestamp: string | null
+  /** Activity name, on activity events (correlated by scheduledEventId). */
+  activityType?: string
+  /** Attempt number, on activity-started events. */
+  attempt?: number
+  /** Failure message, on failed workflow/activity events. */
+  failure?: string
+}
+
+/** Map each `<kind>EventAttributes` field name to a clean event label. */
+const HISTORY_EVENT_ATTR_TYPES: Readonly<Record<string, string>> = {
+  workflowExecutionStartedEventAttributes: 'WorkflowExecutionStarted',
+  workflowExecutionCompletedEventAttributes: 'WorkflowExecutionCompleted',
+  workflowExecutionFailedEventAttributes: 'WorkflowExecutionFailed',
+  workflowExecutionTimedOutEventAttributes: 'WorkflowExecutionTimedOut',
+  workflowExecutionCanceledEventAttributes: 'WorkflowExecutionCanceled',
+  workflowExecutionTerminatedEventAttributes: 'WorkflowExecutionTerminated',
+  workflowExecutionContinuedAsNewEventAttributes: 'WorkflowExecutionContinuedAsNew',
+  activityTaskScheduledEventAttributes: 'ActivityTaskScheduled',
+  activityTaskStartedEventAttributes: 'ActivityTaskStarted',
+  activityTaskCompletedEventAttributes: 'ActivityTaskCompleted',
+  activityTaskFailedEventAttributes: 'ActivityTaskFailed',
+  activityTaskTimedOutEventAttributes: 'ActivityTaskTimedOut',
+  timerStartedEventAttributes: 'TimerStarted',
+  timerFiredEventAttributes: 'TimerFired',
+}
+
+function asObject(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null
+}
+
+/** Coerce a proto numeric (number | string | Long-like) to a JS number. */
+function protoNumber(value: unknown): number | null {
+  if (typeof value === 'number') return value
+  if (typeof value === 'string') {
+    const n = Number(value)
+    return Number.isFinite(n) ? n : null
+  }
+  const obj = asObject(value)
+  if (obj && typeof obj['toString'] === 'function') {
+    const n = Number(String(value))
+    return Number.isFinite(n) ? n : null
+  }
+  return null
+}
+
+/** Convert a proto `{ seconds, nanos }` timestamp to an ISO string. */
+function protoTimestampToIso(value: unknown): string | null {
+  const t = asObject(value)
+  if (!t) return null
+  const seconds = protoNumber(t['seconds'])
+  if (seconds === null) return null
+  const nanos = protoNumber(t['nanos']) ?? 0
+  return new Date(seconds * 1000 + Math.floor(nanos / 1e6)).toISOString()
+}
+
+/**
+ * Flatten a Temporal History proto into a compact, ordered timeline. Activity
+ * names are correlated from the scheduled event onto the later
+ * started/completed/failed/timed-out events (which only carry a
+ * scheduledEventId), so each activity event in the timeline shows its name.
+ */
+export function summarizeWorkflowHistory(history: unknown): WorkflowHistoryEvent[] {
+  const root = asObject(history)
+  const rawEvents = root ? root['events'] : null
+  if (!Array.isArray(rawEvents)) return []
+
+  // First pass: scheduledEventId → activity name.
+  const activityNameByScheduledId = new Map<string, string>()
+  for (const raw of rawEvents) {
+    const event = asObject(raw)
+    if (!event) continue
+    const attrs = asObject(event['activityTaskScheduledEventAttributes'])
+    if (!attrs) continue
+    const eventId = event['eventId']
+    const activityType = asObject(attrs['activityType'])
+    const name = activityType ? activityType['name'] : null
+    if (eventId != null && typeof name === 'string') {
+      activityNameByScheduledId.set(String(eventId), name)
+    }
+  }
+
+  const out: WorkflowHistoryEvent[] = []
+  for (const raw of rawEvents) {
+    const event = asObject(raw)
+    if (!event) continue
+
+    // Find the populated `<kind>EventAttributes` field.
+    let attrKey: string | null = null
+    for (const key of Object.keys(HISTORY_EVENT_ATTR_TYPES)) {
+      if (asObject(event[key])) {
+        attrKey = key
+        break
+      }
+    }
+    const type = (attrKey ? HISTORY_EVENT_ATTR_TYPES[attrKey] : undefined) ?? 'Unknown'
+    const attrs = attrKey ? asObject(event[attrKey]) : null
+
+    const summary: WorkflowHistoryEvent = {
+      id: event['eventId'] != null ? String(event['eventId']) : '',
+      type,
+      timestamp: protoTimestampToIso(event['eventTime']),
+    }
+
+    if (attrs) {
+      // Activity name: directly on the scheduled event, else correlated.
+      const directType = asObject(attrs['activityType'])
+      if (directType && typeof directType['name'] === 'string') {
+        summary.activityType = directType['name']
+      } else {
+        const scheduledId = attrs['scheduledEventId']
+        if (scheduledId != null) {
+          const name = activityNameByScheduledId.get(String(scheduledId))
+          if (name) summary.activityType = name
+        }
+      }
+      const attempt = protoNumber(attrs['attempt'])
+      if (attempt !== null && attempt > 0) summary.attempt = attempt
+      const failure = asObject(attrs['failure'])
+      if (failure && typeof failure['message'] === 'string') {
+        summary.failure = failure['message']
+      }
+    }
+
+    out.push(summary)
+  }
+  return out
+}
+
+// ---------------------------------------------------------------------------
 // Env / config helpers
 // ---------------------------------------------------------------------------
 
@@ -102,9 +251,7 @@ export async function getTemporalClient(): Promise<Client> {
     if (usesTemporalCloud()) {
       const apiKey = temporalCloudApiKey()
       if (!apiKey) {
-        throw new Error(
-          'TEMPORAL_CLOUD_API_KEY is not set — cannot connect to Temporal Cloud',
-        )
+        throw new Error('TEMPORAL_CLOUD_API_KEY is not set — cannot connect to Temporal Cloud')
       }
       const address = temporalAddress()
       if (!address) {
