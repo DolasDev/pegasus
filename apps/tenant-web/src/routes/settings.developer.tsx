@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   Package,
   Blocks,
+  Building2,
 } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
@@ -51,6 +52,7 @@ import { roleOptionsQueryOptions, type RoleOption } from '@/api/queries/users'
 import { integrationsQueryOptions } from '@/api/queries/integrations'
 import type { ApiClient, ApiClientWithKey } from '@/api/api-clients'
 import { getConfig } from '@/config'
+import { getSession } from '@/auth/session'
 import { usePermissions } from '@/auth/permissions'
 import { RoleCheckboxList } from '@/components/RoleCheckboxList'
 
@@ -275,6 +277,70 @@ function KeyDisplayModal({
         </Card>
       </div>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Tenant identity (shown at the top — handy for support + API calls)
+// ---------------------------------------------------------------------------
+
+function TenantInfoCard() {
+  const session = getSession()
+  const [copied, setCopied] = useState(false)
+
+  // No session (e.g. test/SSR contexts) — nothing useful to show.
+  if (!session) return null
+
+  async function copyTenantId() {
+    try {
+      await navigator.clipboard.writeText(session!.tenantId)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Ignore
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Building2 size={18} className="text-muted-foreground" />
+          <CardTitle>Tenant</CardTitle>
+        </div>
+        <CardDescription>
+          Your tenant&rsquo;s identifier. Quote it when contacting support or use it in API calls.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-4 sm:gap-y-2">
+          {session.tenantName && (
+            <>
+              <span className="text-muted-foreground">Name</span>
+              <span>{session.tenantName}</span>
+            </>
+          )}
+
+          <span className="text-muted-foreground">Tenant ID</span>
+          <span className="flex items-center gap-2">
+            <code className="font-mono break-all">{session.tenantId}</code>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 shrink-0"
+              onClick={() => void copyTenantId()}
+              title="Copy tenant ID"
+            >
+              {copied ? (
+                <Check className="h-3.5 w-3.5 text-green-500" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          </span>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -1049,6 +1115,8 @@ export function DeveloperSettingsPage() {
         />
 
         <div className="space-y-3">
+          <TenantInfoCard />
+
           <ApiUsageCard />
 
           {(!clients || clients.length === 0) && panel.kind === 'none' && (
