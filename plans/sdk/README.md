@@ -10,7 +10,10 @@ resulting `Status` back into the source.
 
 ## Index
 
-| Spec                                                               | Status          | Area                            |
-| ------------------------------------------------------------------ | --------------- | ------------------------------- |
-| [ai-authoring-mcp-server.md](ai-authoring-mcp-server.md)           | Shipped (0.2.0) | tooling / CLI / docs            |
-| [sms-notification-and-secrets.md](sms-notification-and-secrets.md) | Shipped (0.2.0) | PegasusClient / runtime secrets |
+| Spec                                                                         | Status          | Area                            |
+| ---------------------------------------------------------------------------- | --------------- | ------------------------------- |
+| [ai-authoring-mcp-server.md](ai-authoring-mcp-server.md)                     | Shipped (0.2.0) | tooling / CLI / docs            |
+| [sms-notification-and-secrets.md](sms-notification-and-secrets.md)           | Shipped (0.2.0) | PegasusClient / runtime secrets |
+| [post-publish-deployment-recording.md](post-publish-deployment-recording.md) | Proposed        | CLI (`push`) / packaging / MCP  |
+| [named-credential-profiles.md](named-credential-profiles.md)                 | Proposed        | CLI / auth / MCP                |
+| [runtime-env-var-names-wrong.md](runtime-env-var-names-wrong.md)             | Proposed        | docs / PegasusClient            |
