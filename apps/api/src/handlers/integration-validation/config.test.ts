@@ -186,9 +186,17 @@ describe('integration-config handler', () => {
       expect(mockRepo.publish).not.toHaveBeenCalled()
     })
 
-    it('returns 403 reading the active config without ReadIntegrationConfig (viewer)', async () => {
+    it('allows the viewer read-only role to read the active config', async () => {
+      // ReadIntegrationConfig is on the viewer baseline (20-viewer.cedar) so
+      // business users can view mappings/rules in-product; publish stays
+      // restricted (see the publish-denial case above).
+      mockRepo.findActiveForScope.mockResolvedValue(configRow)
       const res = await buildApp(['viewer']).request(PATH)
-      expect(res.status).toBe(403)
+      expect(res.status).toBe(200)
+      const body = (await json(res)).data as JsonBody
+      expect(body['mapping']).toEqual(configRow.mapping)
+      expect(body['rules']).toEqual(configRow.rules)
+      expect('gateReport' in body).toBe(false)
     })
 
     it('allows integration_publisher to publish', async () => {
@@ -389,9 +397,10 @@ describe('integration-config handler', () => {
       expect((body.meta as JsonBody)['count']).toBe(2)
     })
 
-    it('returns 403 for a viewer (ReadIntegrationConfig required)', async () => {
+    it('allows the viewer read-only role to list versions', async () => {
+      mockRepo.listVersions.mockResolvedValue([configRow])
       const res = await buildApp(['viewer']).request(`${PATH}/versions`)
-      expect(res.status).toBe(403)
+      expect(res.status).toBe(200)
     })
   })
 

@@ -17,6 +17,8 @@ import { CustomersPage } from '@/routes/customers.index'
 import { CustomerDetailPage } from '@/routes/customers.$customerId'
 import { DispatchPage } from '@/routes/dispatch.index'
 import { InvoicesPage } from '@/routes/invoices.index'
+import { IntegrationsIndexPage } from '@/routes/integrations.index'
+import { IntegrationDetailPage } from '@/routes/integrations.$integrationId'
 import { SsoConfigPage } from '@/routes/sso-config'
 import { UsersPage } from '@/routes/users'
 import { DeveloperSettingsPage } from '@/routes/settings.developer'
@@ -147,6 +149,27 @@ const invoicesRoute = createRoute({
   getParentRoute: () => authLayout,
   path: '/invoices',
   component: InvoicesPage,
+})
+
+// Integrations — read-only mapping/ruleset visualization. Hangs off authLayout
+// (NOT settingsLayout, so it's not admin-only) but guarded to the roles that
+// hold ReadIntegrationConfig (viewer baseline + integration_publisher; admin via
+// permit-all), mirroring 20-viewer.cedar. Non-granted users redirect to the
+// dashboard instead of loading a page that 403s on its first fetch.
+const INTEGRATION_VIEW_ROLES = ['tenant_admin', 'integration_publisher', 'viewer'] as const
+
+const integrationsIndexRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/integrations',
+  beforeLoad: requireRole(...INTEGRATION_VIEW_ROLES),
+  component: IntegrationsIndexPage,
+})
+
+const integrationDetailRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/integrations/$integrationId',
+  beforeLoad: requireRole(...INTEGRATION_VIEW_ROLES),
+  component: IntegrationDetailPage,
 })
 
 // ---------------------------------------------------------------------------
@@ -319,6 +342,8 @@ const routeTree = rootRoute.addChildren([
     customersDetailRoute,
     dispatchRoute,
     invoicesRoute,
+    integrationsIndexRoute,
+    integrationDetailRoute,
     driverPlanningRoute.addChildren([
       dpAvailabilityRoute,
       dpPlanningRoute,

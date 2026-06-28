@@ -15,6 +15,7 @@ import {
   Workflow,
   Zap,
   Phone,
+  Blocks,
   SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
@@ -35,6 +36,9 @@ const ADMIN_ONLY = ['tenant_admin'] as const
 // Drivers get the Moves nav alongside admins — the list and detail screens are
 // read-only and the API scopes a driver to their own assigned trips.
 const MOVES_VIEW_ROLES = ['tenant_admin', 'driver'] as const
+// Roles that may read published integration configs — mirrors the Cedar grant
+// (viewer baseline + integration_publisher; tenant_admin via permit-all).
+const INTEGRATION_VIEW_ROLES = ['tenant_admin', 'viewer', 'integration_publisher'] as const
 const OPERATIONS_PLANNING_ROLES = [
   'tenant_admin',
   'operations_admin',
@@ -105,6 +109,17 @@ const NAV_ITEMS = [
     exact: false,
     roles: OPERATIONS_PLANNING_ROLES,
     children: OPERATIONS_CHILDREN,
+  },
+  {
+    // Read-only mapping/ruleset viewer for published integrations. Shown to the
+    // roles that hold ReadIntegrationConfig (viewer/admin/publisher) so the nav
+    // matches the API grant and non-granted personas don't hit a dead end.
+    to: '/integrations' as const,
+    label: 'Integrations',
+    icon: Blocks,
+    exact: false,
+    roles: INTEGRATION_VIEW_ROLES,
+    children: null,
   },
 ] as const
 
