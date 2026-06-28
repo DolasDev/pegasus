@@ -63,6 +63,9 @@ const VIEWER_PERMISSIONS = [
   'invoice:read',
   'customer:read',
   'workflow:read',
+  // viewer reads published integration mapping/ruleset configs (20-viewer.cedar)
+  // so the read-only Integrations viewer is open to non-admin business users.
+  'integration_config:read',
 ] as const
 
 type PersonaSession = {
@@ -243,7 +246,7 @@ test.describe('authenticated AVP smoke', () => {
       expect([...body.permissions].sort()).toEqual([...SALES_PERMISSIONS].sort())
     })
 
-    test('viewer has exactly its 6 read-only permissions and is denied on invite', async () => {
+    test('viewer has exactly its 7 read-only permissions and is denied on invite', async () => {
       expect(viewerSession, 'viewer persona did not provision').not.toBeNull()
       const fetch_ = fetchWithToken(viewerSession!.token)
 
