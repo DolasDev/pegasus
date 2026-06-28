@@ -598,6 +598,13 @@ function IntegrationsCard() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">{it.description}</p>
+                  <Link
+                    to="/integrations/$integrationId"
+                    params={{ integrationId: it.id }}
+                    className="mt-1 inline-block text-xs text-primary hover:underline"
+                  >
+                    View mapping &amp; rules
+                  </Link>
                 </div>
               </li>
             ))}

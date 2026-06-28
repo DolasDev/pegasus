@@ -214,6 +214,7 @@ describe('listAllowedPermissions — offline', () => {
         Actions.ReadInvoice.permission,
         Actions.ReadCustomer.permission,
         Actions.ReadWorkflow.permission,
+        Actions.ReadIntegrationConfig.permission,
       ]),
     )
   })

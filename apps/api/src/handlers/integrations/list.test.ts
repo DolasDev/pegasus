@@ -76,11 +76,12 @@ describe('integrations list handler', () => {
     mockRepo.findActiveForScope.mockResolvedValue(null)
   })
 
-  it('returns 403 without ReadIntegrationConfig (viewer)', async () => {
+  it('allows the viewer read-only role to list integrations', async () => {
+    // ReadIntegrationConfig is on the viewer baseline (20-viewer.cedar) so
+    // business users see the Integrations list, not just admins.
     const res = await buildApp(['viewer']).request('/integrations')
-    expect(res.status).toBe(403)
-    expect((await json(res)).code).toBe('FORBIDDEN')
-    expect(mockRepo.findActiveForScope).not.toHaveBeenCalled()
+    expect(res.status).toBe(200)
+    expect(mockRepo.findActiveForScope).toHaveBeenCalled()
   })
 
   it('returns one row per registered integration with display metadata (tenant_admin)', async () => {
