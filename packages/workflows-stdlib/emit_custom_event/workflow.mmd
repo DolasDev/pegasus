@@ -1,0 +1,4 @@
+flowchart TD
+  A[Trigger: quote.accepted payload] --> B[Resolve quoteId + moveId]
+  B --> C[emit_quote_won activity: emit crm.quote_won event]
+  C --> D[Return emit result]

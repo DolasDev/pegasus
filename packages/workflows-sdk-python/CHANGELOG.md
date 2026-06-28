@@ -3,6 +3,34 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.4.0
+
+### Added
+
+- **Workflow diagrams (`pegasus-workflows diagram`).** AI-generates a Mermaid
+  flowchart from a workflow's Python source via the Anthropic API and writes it
+  to `<source_dir>/workflow.mmd` (author-editable). Needs the new `[diagram]`
+  extra and `ANTHROPIC_API_KEY`. Defaults to `claude-opus-4-8`; override with
+  `--model` or `$PEGASUS_DIAGRAM_MODEL`. Business users view the diagram in the
+  Pegasus tenant UI to confirm a workflow matches their business rules.
+- **Execution inspection CLI.** `pegasus-workflows executions list <wf-id>` and
+  `executions show <wf-id> <exec-id>` (input/result/error + the Temporal
+  event-history timeline). New `PegasusClient.get_execution_history` backs the
+  timeline; `list_executions` / `get_execution` already existed.
+
+### Changed
+
+- **A workflow diagram is now required to publish.** `package` / `push` fail
+  fast if `<source_dir>/workflow.mmd` is missing, and `Manifest.to_api_manifest`
+  takes the diagram contents (the server's `ManifestSchema` now requires
+  `diagram`). `init` scaffolds a starter `workflow.mmd`.
+
+### Notes
+
+- **Keep PII out of execution payloads.** Temporal stores and renders inputs,
+  results, and history; pass entity ids, not personal data. (Documented in the
+  README; a payload codec is deferred.)
+
 ## 0.3.0
 
 ### Added

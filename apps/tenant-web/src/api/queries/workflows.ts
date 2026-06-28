@@ -1,11 +1,15 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
+  cancelExecution,
   createTrigger,
   deleteTrigger,
   forkWorkflow,
+  getWorkflow,
+  listExecutionHistory,
   listExecutions,
   listTriggers,
   listWorkflows,
+  retryExecution,
   runWorkflow,
   updateTrigger,
   type CreateWorkflowTriggerInput,
@@ -19,7 +23,10 @@ import {
 export const workflowKeys = {
   all: ['workflows'] as const,
   list: () => [...workflowKeys.all, 'list'] as const,
+  detail: (id: string) => [...workflowKeys.all, id, 'detail'] as const,
   executions: (id: string) => [...workflowKeys.all, id, 'executions'] as const,
+  executionHistory: (id: string, executionId: string) =>
+    [...workflowKeys.all, id, 'executions', executionId, 'history'] as const,
   triggers: (id: string) => [...workflowKeys.all, id, 'triggers'] as const,
 }
 
@@ -30,6 +37,20 @@ export const workflowsQueryOptions = queryOptions({
   queryKey: workflowKeys.list(),
   queryFn: () => listWorkflows(),
 })
+
+/** A single workflow (with its manifest, including the embedded diagram). */
+export const workflowQueryOptions = (workflowId: string) =>
+  queryOptions({
+    queryKey: workflowKeys.detail(workflowId),
+    queryFn: () => getWorkflow(workflowId),
+  })
+
+/** The Temporal event-history timeline for one execution. */
+export const executionHistoryQueryOptions = (workflowId: string, executionId: string) =>
+  queryOptions({
+    queryKey: workflowKeys.executionHistory(workflowId, executionId),
+    queryFn: () => listExecutionHistory(workflowId, executionId),
+  })
 
 /**
  * Executions for a single workflow, newest first. Polls every 3s while any row
@@ -73,6 +94,36 @@ export function useRunWorkflow() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: unknown }) => runWorkflow(id, input),
+    onSuccess: (_data, { id }) => {
+      void qc.invalidateQueries({ queryKey: workflowKeys.executions(id) })
+    },
+  })
+}
+
+/**
+ * Request cancellation of a RUNNING execution. On success the executions list is
+ * invalidated so polling picks up the eventual CANCELLED transition.
+ */
+export function useCancelExecution() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, executionId }: { id: string; executionId: string }) =>
+      cancelExecution(id, executionId),
+    onSuccess: (_data, { id }) => {
+      void qc.invalidateQueries({ queryKey: workflowKeys.executions(id) })
+    },
+  })
+}
+
+/**
+ * Retry a failed execution — starts a new run with the original input. On
+ * success the executions list is invalidated so the new row appears.
+ */
+export function useRetryExecution() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, executionId }: { id: string; executionId: string }) =>
+      retryExecution(id, executionId),
     onSuccess: (_data, { id }) => {
       void qc.invalidateQueries({ queryKey: workflowKeys.executions(id) })
     },

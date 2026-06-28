@@ -321,6 +321,33 @@ def test_get_execution_uses_nested_path() -> None:
     assert captured["path"] == "/api/v1/workflows/wf-1/executions/exec-1"
 
 
+def test_get_execution_history_returns_events_array() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "events": [
+                        {"id": "1", "type": "WorkflowExecutionStarted", "timestamp": None},
+                        {"id": "2", "type": "ActivityTaskFailed", "failure": "boom"},
+                    ]
+                }
+            },
+        )
+
+    client = _client_with(handler)
+    events = client.get_execution_history("wf-1", "exec-1")
+
+    assert captured["path"] == "/api/v1/workflows/wf-1/executions/exec-1/history"
+    assert [e["type"] for e in events] == [
+        "WorkflowExecutionStarted",
+        "ActivityTaskFailed",
+    ]
+
+
 def test_emit_event_posts_payload_to_emit_endpoint() -> None:
     captured: dict = {}
 

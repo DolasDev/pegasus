@@ -38,9 +38,18 @@ const {
   mockEncryptRuntimeToken,
   mockGetTemporalClient,
   mockTemporalStart,
+  mockGetHandle,
+  mockHandleCancel,
+  mockHandleFetchHistory,
 } = vi.hoisted(() => {
   const start = vi.fn()
-  const client = { workflow: { start } }
+  const handleCancel = vi.fn()
+  const handleFetchHistory = vi.fn()
+  const getHandle = vi.fn(() => ({
+    cancel: handleCancel,
+    fetchHistory: handleFetchHistory,
+  }))
+  const client = { workflow: { start, getHandle } }
   return {
     mockRepo: {
       create: vi.fn(),
@@ -80,6 +89,9 @@ const {
     mockEncryptRuntimeToken: vi.fn(),
     mockGetTemporalClient: vi.fn(async () => client),
     mockTemporalStart: start,
+    mockGetHandle: getHandle,
+    mockHandleCancel: handleCancel,
+    mockHandleFetchHistory: handleFetchHistory,
   }
 })
 
@@ -91,9 +103,12 @@ vi.mock('../repositories/api-client.repository', () => ({
   createApiClientRepository: vi.fn(() => mockApiClientRepo),
 }))
 
-vi.mock('../repositories/workflow-execution.repository', () => ({
-  createWorkflowExecutionRepository: vi.fn(() => mockExecutionRepo),
-}))
+// Preserve real exports (notably TERMINAL_STATUSES, used by the cancel
+// endpoint) and override only the repository factory.
+vi.mock('../repositories/workflow-execution.repository', async (importActual) => {
+  const actual = (await importActual()) as Record<string, unknown>
+  return { ...actual, createWorkflowExecutionRepository: vi.fn(() => mockExecutionRepo) }
+})
 
 vi.mock('../repositories/workflow-trigger.repository', () => ({
   createWorkflowTriggerRepository: vi.fn(() => mockTriggerRepo),
@@ -103,10 +118,13 @@ vi.mock('../repositories/tenant-event-type.repository', () => ({
   createTenantEventTypeRepository: vi.fn(() => mockEventTypeRepo),
 }))
 
-vi.mock('../lib/temporal-client', () => ({
-  getTemporalClient: mockGetTemporalClient,
-  temporalTaskQueue: () => 'pegasus-stdlib-test',
-}))
+// Keep the real module (notably summarizeWorkflowHistory, used by the history
+// endpoint, and temporalTaskQueue) and override only the client constructor so
+// no real Temporal connection is opened.
+vi.mock('../lib/temporal-client', async (importActual) => {
+  const actual = (await importActual()) as Record<string, unknown>
+  return { ...actual, getTemporalClient: mockGetTemporalClient }
+})
 
 vi.mock('../lib/documents-s3', () => ({
   presignUpload: mockPresignUpload,
@@ -217,12 +235,22 @@ const validArtifactZip = readFileSync(
 )
 const validArtifactSha256 = createHash('sha256').update(validArtifactZip).digest('hex')
 
+const validDiagram = [
+  'flowchart TD',
+  '  A[Quote sent] --> B[Wait 3 days]',
+  '  B --> C{Accepted?}',
+  '  C -->|No| D[Email follow-up]',
+  '  C -->|Yes| E[Done]',
+].join('\n')
+
 const validManifest = {
   name: 'send_quote_followup',
   version: '1.0.0',
   // Must resolve inside validArtifactZip (send_quote_followup/workflow.py).
   entryPoints: ['send_quote_followup.workflow:SendQuoteFollowup'],
   description: 'Email a follow-up to the customer 3 days after a quote is sent.',
+  // Required since workflow visualization — the SDK embeds a Mermaid flowchart.
+  diagram: validDiagram,
 }
 
 const mockRow = {
@@ -437,6 +465,36 @@ describe('workflows handler', () => {
       )
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    it('returns 400 VALIDATION_ERROR when the manifest has no diagram', async () => {
+      const { diagram: _omitted, ...noDiagram } = validManifest
+      const res = await buildApp().request('/', post({ workflowId, manifest: noDiagram }))
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    it('returns 400 VALIDATION_ERROR when the diagram is an empty string', async () => {
+      const res = await buildApp().request(
+        '/',
+        post({ workflowId, manifest: { ...validManifest, diagram: '' } }),
+      )
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    it('persists and returns the embedded Mermaid diagram', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
+      mockRepo.create.mockResolvedValue(mockRow)
+      const res = await buildApp().request('/', post({ workflowId, manifest: validManifest }))
+      expect(res.status).toBe(201)
+      // Stored verbatim inside the manifest column…
+      expect(mockRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ manifest: expect.objectContaining({ diagram: validDiagram }) }),
+      )
+      // …and surfaced in the response for the tenant UI to render.
+      const body = await json(res)
+      expect((body.data as { manifest: { diagram: string } }).manifest.diagram).toBe(validDiagram)
     })
 
     it('writes a TENANT-visibility row when tenant is not the platform tenant', async () => {
@@ -1084,6 +1142,240 @@ describe('workflows handler', () => {
       expect(res.status).toBe(200)
       const data = (await json(res)).data as JsonBody
       expect(data['id']).toBe('exec-1')
+    })
+  })
+
+  // ── GET /:id/executions/:executionId/history ──────────────────────────────
+
+  describe('GET /:id/executions/:executionId/history', () => {
+    const runningExec = {
+      id: 'exec-1',
+      tenantId: 'test-tenant-id',
+      workflowId: 'wf-1',
+      status: 'RUNNING' as const,
+      input: {},
+      result: null,
+      errorMessage: null,
+      temporalWorkflowId: 'wf/test-tenant-id/send_quote_followup/exec-1',
+      temporalRunId: 'run-1',
+      triggeredByUserId: 'user-1',
+      triggerSource: 'USER' as const,
+      triggeredByTriggerId: null,
+      queuedAt: now,
+      startedAt: now,
+      finishedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    // A minimal Temporal History proto: started → activity scheduled →
+    // activity failed (carrying the failure + correlated activity name).
+    const fakeHistory = {
+      events: [
+        {
+          eventId: 1,
+          eventTime: { seconds: 1_700_000_000, nanos: 0 },
+          workflowExecutionStartedEventAttributes: {},
+        },
+        {
+          eventId: 5,
+          eventTime: { seconds: 1_700_000_001, nanos: 0 },
+          activityTaskScheduledEventAttributes: { activityType: { name: 'compose_followup' } },
+        },
+        {
+          eventId: 7,
+          eventTime: { seconds: 1_700_000_002, nanos: 0 },
+          activityTaskFailedEventAttributes: {
+            scheduledEventId: 5,
+            failure: { message: 'boom 401' },
+          },
+        },
+      ],
+    }
+
+    it('returns 404 when the workflow is not visible', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(null)
+      const res = await buildApp().request('/wf-1/executions/exec-1/history')
+      expect(res.status).toBe(404)
+    })
+
+    it('returns an empty timeline when the run never started on Temporal', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.findById.mockResolvedValue({ ...runningExec, temporalWorkflowId: null })
+      const res = await buildApp().request('/wf-1/executions/exec-1/history')
+      expect(res.status).toBe(200)
+      const data = (await json(res)).data as { events: unknown[] }
+      expect(data.events).toEqual([])
+      expect(mockGetHandle).not.toHaveBeenCalled()
+    })
+
+    it('flattens the Temporal history into a timeline', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.findById.mockResolvedValue(runningExec)
+      mockHandleFetchHistory.mockResolvedValue(fakeHistory)
+      const res = await buildApp().request('/wf-1/executions/exec-1/history')
+      expect(res.status).toBe(200)
+      expect(mockGetHandle).toHaveBeenCalledWith(
+        'wf/test-tenant-id/send_quote_followup/exec-1',
+        'run-1',
+      )
+      const events = ((await json(res)).data as { events: Array<Record<string, unknown>> }).events
+      expect(events.map((e) => e['type'])).toEqual([
+        'WorkflowExecutionStarted',
+        'ActivityTaskScheduled',
+        'ActivityTaskFailed',
+      ])
+      // Activity name correlated from the scheduled event onto the failed one.
+      expect(events[2]).toMatchObject({ activityType: 'compose_followup', failure: 'boom 401' })
+    })
+
+    it('returns 404 when Temporal no longer has the history', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.findById.mockResolvedValue(runningExec)
+      const notFound = new Error('not found')
+      notFound.name = 'WorkflowNotFoundError'
+      mockHandleFetchHistory.mockRejectedValue(notFound)
+      const res = await buildApp().request('/wf-1/executions/exec-1/history')
+      expect(res.status).toBe(404)
+    })
+
+    it('returns 502 on an unexpected Temporal error', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.findById.mockResolvedValue(runningExec)
+      mockHandleFetchHistory.mockRejectedValue(new Error('grpc unavailable'))
+      const res = await buildApp().request('/wf-1/executions/exec-1/history')
+      expect(res.status).toBe(502)
+      expect((await json(res)).code).toBe('TEMPORAL_HISTORY_UNAVAILABLE')
+    })
+  })
+
+  // ── POST /:id/executions/:executionId/cancel ──────────────────────────────
+
+  describe('POST /:id/executions/:executionId/cancel', () => {
+    const runningExec = {
+      id: 'exec-1',
+      tenantId: 'test-tenant-id',
+      workflowId: 'wf-1',
+      status: 'RUNNING' as const,
+      input: {},
+      result: null,
+      errorMessage: null,
+      temporalWorkflowId: 'wf/test-tenant-id/send_quote_followup/exec-1',
+      temporalRunId: 'run-1',
+      triggeredByUserId: 'user-1',
+      triggerSource: 'USER' as const,
+      triggeredByTriggerId: null,
+      queuedAt: now,
+      startedAt: now,
+      finishedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    it('returns 403 without the cancel permission', async () => {
+      const res = await buildApp(['viewer']).request('/wf-1/executions/exec-1/cancel', post({}))
+      expect(res.status).toBe(403)
+    })
+
+    it('requests cancellation and returns 202 with the still-RUNNING row', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.findById.mockResolvedValue(runningExec)
+      mockHandleCancel.mockResolvedValue(undefined)
+      const res = await buildApp().request('/wf-1/executions/exec-1/cancel', post({}))
+      expect(res.status).toBe(202)
+      expect(mockHandleCancel).toHaveBeenCalledTimes(1)
+      const data = (await json(res)).data as JsonBody
+      expect(data['status']).toBe('RUNNING')
+    })
+
+    it('returns 409 when the execution is already terminal', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.findById.mockResolvedValue({ ...runningExec, status: 'COMPLETED' })
+      const res = await buildApp().request('/wf-1/executions/exec-1/cancel', post({}))
+      expect(res.status).toBe(409)
+      expect(mockHandleCancel).not.toHaveBeenCalled()
+    })
+
+    it('returns 409 when the execution has no Temporal id yet', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.findById.mockResolvedValue({
+        ...runningExec,
+        status: 'QUEUED',
+        temporalWorkflowId: null,
+      })
+      const res = await buildApp().request('/wf-1/executions/exec-1/cancel', post({}))
+      expect(res.status).toBe(409)
+    })
+
+    it('returns 502 when Temporal cancel fails', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.findById.mockResolvedValue(runningExec)
+      mockHandleCancel.mockRejectedValue(new Error('grpc down'))
+      const res = await buildApp().request('/wf-1/executions/exec-1/cancel', post({}))
+      expect(res.status).toBe(502)
+      expect((await json(res)).code).toBe('TEMPORAL_CANCEL_FAILED')
+    })
+  })
+
+  // ── POST /:id/executions/:executionId/retry ───────────────────────────────
+
+  describe('POST /:id/executions/:executionId/retry', () => {
+    const failedExec = {
+      id: 'exec-1',
+      tenantId: 'test-tenant-id',
+      workflowId: 'wf-1',
+      status: 'FAILED' as const,
+      input: { quoteId: 'q-9' },
+      result: null,
+      errorMessage: 'boom',
+      temporalWorkflowId: 'wf/test-tenant-id/send_quote_followup/exec-1',
+      temporalRunId: 'run-1',
+      triggeredByUserId: 'user-1',
+      triggerSource: 'USER' as const,
+      triggeredByTriggerId: null,
+      queuedAt: now,
+      startedAt: now,
+      finishedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    it('returns 403 without the retry permission', async () => {
+      const res = await buildApp(['viewer']).request('/wf-1/executions/exec-1/retry', post({}))
+      expect(res.status).toBe(403)
+    })
+
+    it('starts a new execution with the original input and returns 201', async () => {
+      mockTenantFindUnique.mockResolvedValue({
+        isPlatformTenant: false,
+        workflowsDisabled: false,
+      })
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.findById.mockResolvedValue(failedExec)
+      mockExecutionRepo.create.mockResolvedValue({ ...failedExec, id: 'exec-2', status: 'QUEUED' })
+      mockExecutionRepo.markStarted.mockResolvedValue({
+        ...failedExec,
+        id: 'exec-2',
+        status: 'RUNNING',
+      })
+      mockTemporalStart.mockResolvedValue({ workflowId: 'wf-x', firstExecutionRunId: 'run-2' })
+      const res = await buildApp().request('/wf-1/executions/exec-1/retry', post({}))
+      expect(res.status).toBe(201)
+      // A NEW execution was inserted carrying the original input.
+      expect(mockExecutionRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ input: { quoteId: 'q-9' } }),
+      )
+      const data = (await json(res)).data as JsonBody
+      expect(data['id']).toBe('exec-2')
+    })
+
+    it('returns 409 when the execution is not in a retryable state', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.findById.mockResolvedValue({ ...failedExec, status: 'COMPLETED' })
+      const res = await buildApp().request('/wf-1/executions/exec-1/retry', post({}))
+      expect(res.status).toBe(409)
+      expect((await json(res)).code).toBe('EXECUTION_NOT_RETRYABLE')
+      expect(mockExecutionRepo.create).not.toHaveBeenCalled()
     })
   })
 

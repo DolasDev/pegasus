@@ -3,9 +3,11 @@
 A Typer application wiring together the workflow developer flow:
 
 * ``init`` — scaffold a new workflow project.
+* ``diagram`` — generate the Mermaid workflow diagram from source (``[diagram]`` extra).
 * ``package`` — zip each declared workflow into ``dist/``.
 * ``push`` — package, then upload + finalize against the Pegasus API.
 * ``run`` — trigger a server-side execution of a curated workflow.
+* ``executions`` — inspect workflow executions (list / show) from the terminal.
 * ``test`` — start local Temporal and run a workflow with stubbed inputs.
 * ``integration-config`` — author the integration-validator config (mapping +
   rules) for an integration (publish / pull / versions / rollback).
@@ -18,6 +20,8 @@ from __future__ import annotations
 
 import typer
 
+from .diagram import diagram_command
+from .executions import executions_app
 from .init import init_command
 from .integration_config import integration_config_app
 from .mcp_server import mcp_command
@@ -35,12 +39,14 @@ app = typer.Typer(
 )
 
 app.command("init")(init_command)
+app.command("diagram")(diagram_command)
 app.command("package")(package_command)
 app.command("push")(push_command)
 app.command("run")(run_command)
 app.command("test")(test_command)
 app.command("mcp")(mcp_command)
 app.add_typer(integration_config_app)
+app.add_typer(executions_app)
 app.add_typer(secrets_app)
 app.add_typer(config_app)
 

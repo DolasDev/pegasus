@@ -7,6 +7,16 @@ import type { RunnerTask, TenantQuota } from '@/api/workflows'
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Temporal Cloud console. Platform engineers inspect any execution's full event
+ * history, stack traces, and retries here. The console is cross-tenant (every
+ * tenant's runs are visible in a namespace), so it is deliberately surfaced only
+ * in admin-web — never in the tenant app, which has no per-tenant isolation in
+ * the Temporal UI. The namespace differs per environment (staging vs prod), so
+ * we link to the namespaces list and let the engineer pick.
+ */
+const TEMPORAL_CLOUD_URL = 'https://cloud.temporal.io/namespaces'
+
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('en-US', {
     year: 'numeric',
@@ -204,6 +214,26 @@ export function WorkflowsPage() {
 
   return (
     <div className="space-y-8 max-w-5xl">
+      {/* Page header — deep-link into Temporal Cloud for execution inspection */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="text-lg font-semibold text-foreground">Workflows</h1>
+          <a
+            href={TEMPORAL_CLOUD_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
+          >
+            Open in Temporal Cloud ↗
+          </a>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Inspect any execution&apos;s full event history, stack traces, and retries in the Temporal
+          Cloud console (pick the environment&apos;s namespace there). The console is cross-tenant —
+          for platform engineers only — so it is not surfaced in the tenant app.
+        </p>
+      </div>
+
       {/* Runner status — live operational view */}
       <RunnerStatusSection />
 

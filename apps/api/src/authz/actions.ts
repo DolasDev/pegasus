@@ -173,6 +173,16 @@ export const Actions = {
     resourceType: 'Workflow',
     permission: 'workflow:manage_triggers',
   },
+  CancelWorkflowExecution: {
+    id: 'CancelWorkflowExecution',
+    resourceType: 'Workflow',
+    permission: 'workflow:cancel_execution',
+  },
+  RetryWorkflowExecution: {
+    id: 'RetryWorkflowExecution',
+    resourceType: 'Workflow',
+    permission: 'workflow:retry_execution',
+  },
   // ── Notifications (staff-initiated push to drivers/crew) ────────────────────
   SendNotification: {
     id: 'SendNotification',

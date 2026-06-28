@@ -829,7 +829,13 @@ function WorkflowRow({ workflow }: { workflow: Workflow }) {
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-sm font-medium text-foreground">{workflow.name}</span>
+            <Link
+              to="/settings/workflows/$workflowId"
+              params={{ workflowId: workflow.id }}
+              className="font-mono text-sm font-medium text-foreground hover:underline"
+            >
+              {workflow.name}
+            </Link>
             <Badge variant="outline" className="font-mono text-xs">
               {workflow.version}
             </Badge>

@@ -5,7 +5,10 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from pegasus_workflows.cli.package import package_project
+from pegasus_workflows.manifest import ManifestError
 
 
 def test_package_produces_one_zip_per_workflow(workflow_project: Path) -> None:
@@ -17,13 +20,22 @@ def test_package_produces_one_zip_per_workflow(workflow_project: Path) -> None:
     assert manifest.name == "demo"
 
 
-def test_artifact_contains_source_and_manifest(workflow_project: Path) -> None:
+def test_artifact_contains_source_manifest_and_diagram(workflow_project: Path) -> None:
     _, zip_path = package_project(workflow_project)[0]
     with zipfile.ZipFile(zip_path) as archive:
         names = set(archive.namelist())
     assert "demo/workflow.py" in names
     assert "demo/__init__.py" in names
     assert "pegasus-workflows.toml" in names
+    # The diagram is packaged into the bundle (so it is SHA-pinned to the version).
+    assert "demo/workflow.mmd" in names
+
+
+def test_package_fails_without_a_diagram(workflow_project: Path) -> None:
+    """A workflow with no workflow.mmd cannot be packaged (diagram is required)."""
+    (workflow_project / "demo" / "workflow.mmd").unlink()
+    with pytest.raises(ManifestError, match="workflow.mmd"):
+        package_project(workflow_project)
 
 
 def test_artifact_excludes_pycache(workflow_project: Path) -> None:

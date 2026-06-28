@@ -12,7 +12,13 @@ from pathlib import Path
 
 import typer
 
-from ..manifest import MANIFEST_FILENAME, Manifest, ManifestError, load_manifest
+from ..manifest import (
+    DIAGRAM_FILENAME,
+    MANIFEST_FILENAME,
+    Manifest,
+    ManifestError,
+    load_manifest,
+)
 
 __all__ = ["package_command", "package_workflow", "package_project"]
 
@@ -47,6 +53,16 @@ def package_workflow(project_dir: Path, manifest: Manifest, dist_dir: Path) -> P
     if not source_dir.is_dir():
         raise ManifestError(
             f"workflow {manifest.name}: source_dir '{manifest.source_dir}' not found"
+        )
+
+    # A workflow diagram is required at publish time (the server rejects a
+    # manifest without one). Catch its absence here so `package`/`push` fail with
+    # a clear, actionable message instead of a server 400. Run
+    # `pegasus-workflows diagram` to generate it.
+    if not (source_dir / DIAGRAM_FILENAME).is_file():
+        raise ManifestError(
+            f"workflow {manifest.name}: {manifest.source_dir}/{DIAGRAM_FILENAME} not found "
+            f"— run `pegasus-workflows diagram` to generate the workflow diagram first"
         )
 
     dist_dir.mkdir(parents=True, exist_ok=True)
