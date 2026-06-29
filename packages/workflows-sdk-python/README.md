@@ -202,6 +202,43 @@ async def charge_customer(amount_cents: int) -> str:
 `get_secret` / `get_config` raise `PegasusApiError` (404) if the key is unset and
 (403) if the matching read action is absent from `required_actions`.
 
+### Integration projections (cached external state)
+
+When a workflow syncs an external system, it can cache each record's last-known
+state as a **projection** — keyed by `(integration, entity_type, key)` within the
+tenant. The Pegasus **integration validator** reads the matching record's cached
+`state` back as the `prior` input when pre-validating an update, so transition
+rules stay accurate without the caller resupplying prior state.
+
+Declare the actions your workflow needs, then read/write inside an activity:
+
+```toml
+[[workflow]]
+name = "sync-weichert-orders"
+version = "0.1.0"
+entry_points = ["sync.workflow:SyncWeichert"]
+required_actions = ["ReadIntegrationProjection", "WriteIntegrationProjection"]
+```
+
+```python
+@activity.defn
+async def cache_order(order: dict) -> None:
+    client = PegasusClient(
+        base_url=os.environ["PEGASUS_BASE_URL"],
+        token=os.environ["PEGASUS_WORKFLOW_TOKEN"],
+    )
+    # Mirror the external record (native payload shape, ≤ 256 KB serialized).
+    client.put_projection("weichert", "order", order["serviceOrderNumber"], order)
+
+    prior = client.get_projection("weichert", "order", "SO-12345")  # None on miss
+    every = client.list_projections("weichert", "order")
+    client.delete_projection("weichert", "order", "SO-12345")
+```
+
+`get_projection` returns `None` on a cache miss; the write methods raise
+`PegasusApiError` (403) if the matching action is absent from `required_actions`,
+and `put_projection` raises 413 if the serialized state exceeds 256 KB.
+
 ## Visualizing workflows
 
 A workflow is published as opaque Python, so the Pegasus tenant UI can't infer

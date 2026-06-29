@@ -12,6 +12,8 @@
 // it does not mutate core records directly. ReadWorkflowSecret/ReadWorkflowConfig
 // let a running workflow fetch the per-tenant secret/config values it declared in
 // its manifest required_actions; it can read but never manage them.
+// Read/WriteIntegrationProjection let a running workflow maintain the per-record
+// external-state cache that the integration validator reads back as `prior`.
 permit (
   principal in Pegasus::Group::"workflow_runtime",
   action in [
@@ -24,7 +26,9 @@ permit (
     Pegasus::Action::"EmitTenantEvent",
     Pegasus::Action::"SendSms",
     Pegasus::Action::"ReadWorkflowSecret",
-    Pegasus::Action::"ReadWorkflowConfig"
+    Pegasus::Action::"ReadWorkflowConfig",
+    Pegasus::Action::"ReadIntegrationProjection",
+    Pegasus::Action::"WriteIntegrationProjection"
   ],
   resource
 );

@@ -729,3 +729,93 @@ def test_delete_config_issues_delete() -> None:
     client.delete_config("DEFAULT_REGION")
     assert captured["method"] == "DELETE"
     assert captured["path"] == "/api/v1/workflow-secrets-configs/configs/DEFAULT_REGION"
+
+
+# -- integration projections --------------------------------------------------
+
+
+def test_get_projection_success() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["auth"] = request.headers.get("Authorization")
+        return httpx.Response(200, json={"data": {"entityKey": "SO-1", "state": {"x": 1}}})
+
+    client = _client_with(handler)
+    row = client.get_projection("weichert", "order", "SO-1")
+    assert row == {"entityKey": "SO-1", "state": {"x": 1}}
+    assert captured["method"] == "GET"
+    assert captured["path"] == "/api/v1/integration-projections/runtime/weichert/order/SO-1"
+    assert captured["auth"] == f"Bearer {_TOKEN}"
+
+
+def test_get_projection_miss_returns_none() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"error": "Projection not found", "code": "NOT_FOUND"})
+
+    client = _client_with(handler)
+    assert client.get_projection("weichert", "order", "NOPE") is None
+
+
+def test_get_projection_forbidden_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"error": "denied", "code": "FORBIDDEN"})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.get_projection("weichert", "order", "SO-1")
+    assert exc_info.value.status_code == 403
+
+
+def test_list_projections_returns_data() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/integration-projections/runtime/weichert/order"
+        return httpx.Response(200, json={"data": [{"entityKey": "SO-1"}]})
+
+    client = _client_with(handler)
+    assert client.list_projections("weichert", "order") == [{"entityKey": "SO-1"}]
+
+
+def test_put_projection_puts_state_payload() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["json"] = json.loads(request.read())
+        return httpx.Response(201, json={"data": {"entityKey": "SO-1", "version": 1}})
+
+    client = _client_with(handler)
+    row = client.put_projection("weichert", "order", "SO-1", {"serviceOrderNumber": "SO-1"})
+    assert captured["method"] == "PUT"
+    assert captured["path"] == "/api/v1/integration-projections/runtime/weichert/order/SO-1"
+    assert captured["json"] == {"state": {"serviceOrderNumber": "SO-1"}}
+    assert row["version"] == 1
+
+
+def test_put_projection_too_large_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            413, json={"error": "state exceeds 256 KB", "code": "VALIDATION_ERROR"}
+        )
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.put_projection("weichert", "order", "SO-1", {"big": "x"})
+    assert exc_info.value.status_code == 413
+
+
+def test_delete_projection_issues_delete() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        return httpx.Response(204)
+
+    client = _client_with(handler)
+    client.delete_projection("weichert", "order", "SO-1")
+    assert captured["method"] == "DELETE"
+    assert captured["path"] == "/api/v1/integration-projections/runtime/weichert/order/SO-1"

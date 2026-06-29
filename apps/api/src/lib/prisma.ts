@@ -56,6 +56,11 @@ export const TENANT_SCOPED_MODELS = new Set([
   // the tenant-scoped client, so auto-scoping here enforces isolation and the
   // KMS decrypt path is additionally bound to tenantId via the encryption context.
   'WorkflowSecretConfig',
+  // IntegrationProjection — per-record cache of an external system's last-known
+  // state. Purely tenant-owned (no GLOBAL case); all CRUD plus the validator's
+  // prior-state lookup go through the tenant-scoped client, so auto-scoping here
+  // enforces isolation.
+  'IntegrationProjection',
   // Messaging — tenant-owned entities a tenant/admin handler reads via the
   // scoped client. The background capture/forward/purge jobs use the base
   // client (cross-tenant cron context) and are unaffected by this set.

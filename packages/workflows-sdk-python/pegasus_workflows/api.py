@@ -732,3 +732,105 @@ class PegasusClient:
         with self._client() as client:
             response = client.delete(f"{self._SECRETS_CONFIG_BASE}/configs/{key}")
         _raise_for_status(response)
+
+    # -- integration projections (runtime use) -----------------------------
+    #
+    # A per-record cache of an external system's last-known state, keyed by
+    # (integration, entity_type, key) within the tenant. A workflow mirrors the
+    # external system into this cache; the Pegasus integration validator reads
+    # the matching ``state`` back as the ``prior`` input when pre-validating an
+    # update. For use inside workflow activities only (httpx is sandboxed in
+    # workflow code). Requires the workflow manifest to declare
+    # ``required_actions = ["ReadIntegrationProjection", "WriteIntegrationProjection"]``.
+
+    _PROJECTIONS_BASE = "/api/v1/integration-projections"
+
+    def get_projection(
+        self, integration: str, entity_type: str, key: str
+    ) -> dict[str, Any] | None:
+        """Read one cached projection record. Requires ``ReadIntegrationProjection``.
+
+        Args:
+            integration: Integration slug, e.g. ``"weichert"``.
+            entity_type: Logical record type, e.g. ``"order"``.
+            key: External record key, e.g. the service order number.
+
+        Returns:
+            The projection row ``{integrationId, entityType, entityKey, state,
+            version, updatedByUserId, createdAt, updatedAt}``, or ``None`` if no
+            record is cached for that key.
+
+        Raises:
+            PegasusApiError: On 403 (token/manifest lacks the action) or any
+                other non-2xx besides 404.
+        """
+        with self._client() as client:
+            response = client.get(
+                f"{self._PROJECTIONS_BASE}/runtime/{integration}/{entity_type}/{key}"
+            )
+        if response.status_code == 404:
+            return None
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def list_projections(
+        self, integration: str, entity_type: str
+    ) -> list[dict[str, Any]]:
+        """List all cached projection records for one entity type.
+
+        Requires ``ReadIntegrationProjection``.
+
+        Args:
+            integration: Integration slug, e.g. ``"weichert"``.
+            entity_type: Logical record type, e.g. ``"order"``.
+
+        Returns:
+            A list of projection rows (possibly empty).
+        """
+        return self._get_json(
+            f"{self._PROJECTIONS_BASE}/runtime/{integration}/{entity_type}"
+        )["data"]
+
+    def put_projection(
+        self, integration: str, entity_type: str, key: str, state: Any
+    ) -> dict[str, Any]:
+        """Upsert the cached state for one record. Requires ``WriteIntegrationProjection``.
+
+        Idempotent: calling again with the same key replaces the cached state and
+        bumps the row's ``version``.
+
+        Args:
+            integration: Integration slug, e.g. ``"weichert"``.
+            entity_type: Logical record type, e.g. ``"order"``.
+            key: External record key, e.g. the service order number.
+            state: The record's last-known state, in the integration's NATIVE
+                payload shape (the same shape the validator accepts as ``order``/
+                ``prior``). Must be JSON-serializable and ≤ 256 KB serialized.
+
+        Returns:
+            The created/updated projection row (including its ``state`` and
+            ``version``).
+
+        Raises:
+            PegasusApiError: On 400 (bad key/state), 403 (lacks the action),
+                413 (state too large), or any other non-2xx.
+        """
+        with self._client() as client:
+            response = client.put(
+                f"{self._PROJECTIONS_BASE}/runtime/{integration}/{entity_type}/{key}",
+                json={"state": state},
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def delete_projection(self, integration: str, entity_type: str, key: str) -> None:
+        """Delete one cached projection record. Requires ``WriteIntegrationProjection``.
+
+        Raises:
+            PegasusApiError: On 403, 404 (no such record), or any other non-2xx.
+        """
+        with self._client() as client:
+            response = client.delete(
+                f"{self._PROJECTIONS_BASE}/runtime/{integration}/{entity_type}/{key}"
+            )
+        _raise_for_status(response)

@@ -1,0 +1,24 @@
+-- CreateTable
+CREATE TABLE "integration_projections" (
+    "id" TEXT NOT NULL,
+    "tenant_id" TEXT NOT NULL,
+    "integration_id" TEXT NOT NULL,
+    "entity_type" TEXT NOT NULL,
+    "entity_key" TEXT NOT NULL,
+    "state" JSONB NOT NULL,
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "updated_by_user_id" TEXT NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "integration_projections_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE INDEX "integration_projections_tenant_id_integration_id_entity_typ_idx" ON "integration_projections"("tenant_id", "integration_id", "entity_type");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "integration_projections_tenant_id_integration_id_entity_typ_key" ON "integration_projections"("tenant_id", "integration_id", "entity_type", "entity_key");
+
+-- AddForeignKey
+ALTER TABLE "integration_projections" ADD CONSTRAINT "integration_projections_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

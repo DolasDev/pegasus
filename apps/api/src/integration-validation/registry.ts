@@ -37,6 +37,12 @@ const weichertDefinition: IntegrationDefinition = {
   factCatalog: weichertFactCatalog,
   rules: weichertRules,
   defaultAction: 'save',
+  // Cached-projection binding: a Weichert order is keyed by its service order
+  // number, so the validator can load the order's last-known state as `prior`.
+  projection: {
+    entityType: 'order',
+    key: (o) => (typeof o?.serviceOrderNumber === 'string' ? o.serviceOrderNumber : null),
+  },
 }
 
 // Built-in definitions are the always-valid baseline (guaranteed by CI). They

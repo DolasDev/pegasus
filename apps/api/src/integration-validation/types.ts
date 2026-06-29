@@ -88,4 +88,23 @@ export interface IntegrationDefinition {
   rules: RuleSet
   /** Default action assumed when a caller omits one. */
   defaultAction: OrderAction
+  /**
+   * Optional cached-projection binding. When set, the validate endpoint can
+   * auto-resolve the record's last-known state (the cached projection) as the
+   * `prior` input: it derives the entity key from the canonical order and loads
+   * the matching projection row. Absent ⇒ the endpoint stays stateless.
+   */
+  projection?: IntegrationProjectionBinding
+}
+
+/** Identifies a record so its cached projection can be looked up as `prior`. */
+export interface IntegrationProjectionBinding {
+  /** Logical entity type, used as the projection's `entityType` key segment. */
+  entityType: string
+  /**
+   * Extract the external record key from the CANONICAL order (post-transform).
+   * Return null when the order has no usable key (⇒ skip the lookup).
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  key: (order: any) => string | null
 }

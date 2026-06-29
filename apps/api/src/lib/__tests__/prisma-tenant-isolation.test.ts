@@ -13,6 +13,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { db } from '../../db'
 import { createTenantDb, TENANT_SCOPED_MODELS } from '../prisma'
+import { createIntegrationProjectionRepository } from '../../repositories/integration-projection.repository'
 import type { PrismaClient } from '@prisma/client'
 
 const hasDb = Boolean(process.env['DATABASE_URL'])
@@ -90,6 +91,9 @@ describe.skipIf(!hasDb)('createTenantDb — cross-tenant isolation (integration)
     await db.rateTable.deleteMany({ where: { tenantId: { in: [tenantAId, tenantBId] } } })
     await db.tenantSsoProvider.deleteMany({ where: { tenantId: { in: [tenantAId, tenantBId] } } })
     await db.tenantEventType.deleteMany({ where: { tenantId: { in: [tenantAId, tenantBId] } } })
+    await db.integrationProjection.deleteMany({
+      where: { tenantId: { in: [tenantAId, tenantBId] } },
+    })
     await db.contact.deleteMany({
       where: { customer: { tenantId: { in: [tenantAId, tenantBId] } } },
     })
@@ -869,6 +873,67 @@ describe.skipIf(!hasDb)('createTenantDb — cross-tenant isolation (integration)
       await dbA.tenantEventType.delete({ where: { id: typeBId } }).catch(() => {})
       const stillExists = await db.tenantEventType.findUnique({ where: { id: typeBId } })
       expect(stillExists).not.toBeNull()
+    })
+  })
+
+  describe('IntegrationProjection', () => {
+    let projAId: string
+    let projBId: string
+
+    beforeAll(async () => {
+      const [pA, pB] = await Promise.all([
+        db.integrationProjection.create({
+          data: {
+            tenantId: tenantAId,
+            integrationId: 'weichert',
+            entityType: 'order',
+            entityKey: 'SO-ISO-A',
+            state: { serviceOrderNumber: 'SO-ISO-A' },
+            updatedByUserId: 'user-iso-a',
+          },
+        }),
+        db.integrationProjection.create({
+          data: {
+            tenantId: tenantBId,
+            integrationId: 'weichert',
+            entityType: 'order',
+            entityKey: 'SO-ISO-B',
+            state: { serviceOrderNumber: 'SO-ISO-B' },
+            updatedByUserId: 'user-iso-b',
+          },
+        }),
+      ])
+      projAId = pA.id
+      projBId = pB.id
+    })
+
+    it('findMany via dbA returns only Tenant A projections', async () => {
+      const rows = await dbA.integrationProjection.findMany()
+      const ids = rows.map((r: { id: string }) => r.id)
+      expect(ids).toContain(projAId)
+      expect(ids).not.toContain(projBId)
+    })
+
+    it('findUnique via dbA returns null for a Tenant B projection', async () => {
+      const result = await dbA.integrationProjection.findUnique({ where: { id: projBId } })
+      expect(result).toBeNull()
+    })
+
+    it('the repository upsert bumps version on overwrite (Tenant A scope)', async () => {
+      const repo = createIntegrationProjectionRepository(dbA)
+      const first = await repo.upsert({
+        tenantId: tenantAId,
+        integrationId: 'weichert',
+        entityType: 'order',
+        entityKey: 'SO-ISO-A',
+        state: { serviceOrderNumber: 'SO-ISO-A', v: 2 },
+        updatedByUserId: 'user-iso-a',
+      })
+      expect(first.created).toBe(false)
+      expect(first.row.version).toBe(2)
+
+      const state = await repo.findState('weichert', 'order', 'SO-ISO-A')
+      expect(state).toMatchObject({ v: 2 })
     })
   })
 })
