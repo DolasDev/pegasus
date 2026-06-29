@@ -268,6 +268,7 @@ model Tenant {
   domainEvents       DomainEvent[]
   tenantEventTypes   TenantEventType[]
   workflowSecretConfigs WorkflowSecretConfig[]
+  integrationProjections IntegrationProjection[]
   brokerCredential   TenantBrokerCredential?
   vpnPeer            VpnPeer?
 
@@ -1654,6 +1655,50 @@ model WorkflowSecretConfig {
   @@unique([tenantId, kind, key])
   @@index([tenantId, kind])
   @@map("workflow_secret_configs")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Integration projections — a per-record cache of an external system's
+// last-known state, keyed by (tenant, integrationId, entityType, entityKey).
+//
+// A running workflow mirrors the external system into this table via the SDK
+// (PegasusClient.put_projection); the integration validator reads the matching
+// row's `state` as the `prior` input so transition rules can pre-validate an
+// update without the caller resupplying prior state.
+//
+//   - integrationId is a code-defined slug (e.g. "weichert"), NOT an FK — the
+//     integration registry lives in code, same precedent as IntegrationConfig.
+//   - `state` is the integration's NATIVE payload shape (identical to the
+//     validate `order`/`prior` body), so it transforms through the same mapping.
+//   - Durable, last-write-wins; `version` is a monotonic write counter.
+//
+// Tenant-owned only (no GLOBAL case), so the model lives in TENANT_SCOPED_MODELS
+// — reads/writes auto-scope to the current tenant via the Prisma extension.
+// ---------------------------------------------------------------------------
+model IntegrationProjection {
+  id            String @id @default(uuid())
+  tenantId      String @map("tenant_id")
+  integrationId String @map("integration_id")
+  entityType    String @map("entity_type")
+  entityKey     String @map("entity_key")
+
+  /// Last-known external state, in the integration's NATIVE payload shape.
+  state Json
+
+  /// Monotonic counter bumped on each write — observability + future If-Match.
+  version Int @default(1)
+
+  /// workflow_runtime service-account user id that last wrote the row.
+  updatedByUserId String   @map("updated_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, integrationId, entityType, entityKey])
+  @@index([tenantId, integrationId, entityType])
+  @@map("integration_projections")
   @@schema("public")
 }
 

@@ -33,6 +33,7 @@ export type ResourceType =
   | 'WorkflowSecretConfig'
   | 'Notification'
   | 'IntegrationConfig'
+  | 'IntegrationProjection'
   | 'EventType'
 
 export interface ActionDef {
@@ -240,6 +241,21 @@ export const Actions = {
     id: 'ReadWorkflowConfig',
     resourceType: 'WorkflowSecretConfig',
     permission: 'workflow_config:read',
+  },
+  // ── Integration projections (per-record external-state cache for workflows) ─
+  // Read* gates both the SDK runtime read and the validator's prior-state lookup;
+  // Write* gates the SDK upsert/delete. Both are granted to workflow_runtime so a
+  // running workflow can mirror the external system and the validator can read it
+  // under the same vnd_ runtime token.
+  ReadIntegrationProjection: {
+    id: 'ReadIntegrationProjection',
+    resourceType: 'IntegrationProjection',
+    permission: 'integration_projection:read',
+  },
+  WriteIntegrationProjection: {
+    id: 'WriteIntegrationProjection',
+    resourceType: 'IntegrationProjection',
+    permission: 'integration_projection:write',
   },
 } as const satisfies Record<string, ActionDef>
 

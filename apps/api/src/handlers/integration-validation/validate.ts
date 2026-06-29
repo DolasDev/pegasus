@@ -6,9 +6,16 @@
 // AUTH: API-key (M2M). Any valid, non-revoked `vnd_` key from ANY tenant is
 // accepted — auth is applied as route-level middleware so it only runs on this
 // exact route and other /integrations/* paths (e.g. the tenant-auth
-// /integrations/ringcentral routes) still fall through. The validator is
-// STATELESS and reads no tenant data, so no scope or per-tenant restriction is
-// applied beyond "the key is valid".
+// /integrations/ringcentral routes) still fall through.
+//
+// PRIOR-STATE RESOLUTION: the endpoint is stateless EXCEPT when the integration
+// declares a projection binding (registry.ts) and the request omits `prior`. In
+// that case, for a tenant-scoped key, it derives the record key from the
+// canonical order and loads the caller-tenant's cached projection as `prior` so
+// transition rules can run against last-known external state. An explicit
+// `prior` in the body always wins; the platform-key path (null tenant) and
+// projection-less integrations remain fully stateless. The lookup fails open to
+// no-prior — a projection miss or error never blocks a save.
 //
 // Contract:
 //   200 { valid, issues[], degraded }  — validation ran (degraded=true ⇒ failed
@@ -25,11 +32,22 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { apiClientAuthMiddleware } from '../../middleware/api-client-auth'
 import type { ApiClientVariables } from '../../types'
-import { validateOrder, UnknownIntegrationError } from '../../integration-validation/validate'
-import { loadRegistryOverlayIfStale } from '../../integration-validation/registry'
+import {
+  validateOrder,
+  transformOrderToCanonical,
+  UnknownIntegrationError,
+} from '../../integration-validation/validate'
+import {
+  loadRegistryOverlayIfStale,
+  getIntegrationDefinition,
+} from '../../integration-validation/registry'
 import type { ValidationInput } from '../../integration-validation/types'
 import { mappingFormatJsonSchema } from '../../integration-validation/transform/mapping-format'
+import { createIntegrationProjectionRepository } from '../../repositories/integration-projection.repository'
 import { db as basePrisma } from '../../db'
+import { createTenantDb } from '../../lib/prisma'
+import { logger } from '../../lib/logger'
+import type { PrismaClient } from '@prisma/client'
 
 // correlationId is injected by the root correlationMiddleware on every request;
 // declare it alongside the API-key vars this route relies on.
@@ -67,8 +85,18 @@ integrationValidationHandler.post(
     // and TTL-throttled; failures fall back to the built-in baseline.
     await loadRegistryOverlayIfStale(basePrisma)
 
+    const input = parsed.data as ValidationInput
+
+    // Prior-state resolution: when the caller didn't supply `prior` and the
+    // integration declares a projection binding, load the record's last-known
+    // state from the tenant's projection cache. Fails open to no-prior.
+    if (input.prior === undefined || input.prior === null) {
+      const resolved = await resolveProjectionPrior(integrationId, input, c.get('tenantId'))
+      if (resolved !== undefined) input.prior = resolved
+    }
+
     try {
-      const result = validateOrder(integrationId, parsed.data as ValidationInput)
+      const result = validateOrder(integrationId, input)
       return c.json(result)
     } catch (err) {
       if (err instanceof UnknownIntegrationError) {
@@ -78,3 +106,39 @@ integrationValidationHandler.post(
     }
   },
 )
+
+/**
+ * Resolve the cached projection state to use as `prior` for this validation.
+ * Returns the cached native state, or `undefined` when no projection should be
+ * applied (no binding, no tenant scope, unkeyable order, miss, or any error).
+ * Never throws — a projection problem must never block a save.
+ */
+async function resolveProjectionPrior(
+  integrationId: string,
+  input: ValidationInput,
+  tenantId: string | null,
+): Promise<unknown | undefined> {
+  // Platform-scoped keys (null tenant) have no projection namespace to read.
+  if (!tenantId) return undefined
+
+  const def = getIntegrationDefinition(integrationId)
+  if (!def?.projection) return undefined
+
+  try {
+    const canonical = transformOrderToCanonical(def, input.order)
+    if (canonical === null) return undefined
+    const entityKey = def.projection.key(canonical)
+    if (!entityKey) return undefined
+
+    const tenantDb = createTenantDb(basePrisma, tenantId)
+    const repo = createIntegrationProjectionRepository(tenantDb as unknown as PrismaClient)
+    const state = await repo.findState(integrationId, def.projection.entityType, entityKey)
+    return state ?? undefined
+  } catch (err) {
+    logger.warn('integration projection prior lookup failed open', {
+      integrationId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return undefined
+  }
+}

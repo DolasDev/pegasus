@@ -3,6 +3,23 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.5.0
+
+### Added
+
+- **Integration projections (cached external state).** New runtime
+  `PegasusClient` methods let a workflow maintain a per-record cache of an
+  external system's last-known state: `get_projection(integration, entity_type,
+key)` (returns `None` on miss), `put_projection(...)` (idempotent upsert,
+  bumps `version`), `list_projections(integration, entity_type)`, and
+  `delete_projection(...)`. State is the integration's native payload shape and
+  is capped at 256 KB serialized. Declare `required_actions =
+["ReadIntegrationProjection", "WriteIntegrationProjection"]` in the manifest.
+  The Pegasus integration validator reads the matching record's cached `state`
+  back as the `prior` input when pre-validating an update, so a workflow that
+  syncs the external system keeps transition-rule validation accurate without
+  the caller resupplying prior state.
+
 ## 0.4.0
 
 ### Added

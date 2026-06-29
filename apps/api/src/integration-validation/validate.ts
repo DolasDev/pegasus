@@ -53,6 +53,21 @@ function transformToCanonical(
 }
 
 /**
+ * Transform a native order payload to its canonical shape using an integration
+ * definition, returning the parsed canonical order or null when the payload
+ * can't be mapped/parsed. Exposed so the validate endpoint can derive a
+ * projection key from the canonical order before validating. Never throws.
+ */
+export function transformOrderToCanonical(def: IntegrationDefinition, native: unknown): unknown {
+  try {
+    const result = transformToCanonical(def, native)
+    return result.ok ? result.order : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Validate a native order payload against an EXPLICIT integration definition —
  * the registry-free core. Used by `validateOrder` (after registry lookup) and by
  * the gate pipeline, which validates a *candidate* config that isn't registered.

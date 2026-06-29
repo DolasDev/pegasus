@@ -79,6 +79,7 @@ import { deviceTokensHandler } from './handlers/device-tokens'
 import { notificationsHandler } from './handlers/notifications'
 import { smsHandler } from './handlers/sms'
 import { workflowSecretsConfigsHandler } from './handlers/workflow-secrets-configs'
+import { integrationProjectionsHandler } from './handlers/integration-projections'
 import { ringcentralOauthHandler } from './handlers/integrations/ringcentral-oauth'
 import { ringcentralWebhookHandler } from './handlers/integrations/ringcentral-webhook'
 import { integrationsHandler } from './handlers/integrations/list'
@@ -242,6 +243,11 @@ m2mV1.route('/sms', smsHandler)
 // `vnd_` key. Dual-auth is applied inside the handler — same pattern as
 // /workflows and /event-types. See handlers/workflow-secrets-configs.ts.
 m2mV1.route('/workflow-secrets-configs', workflowSecretsConfigsHandler)
+// Per-record integration projections — the external-state cache that running
+// workflows maintain via the `vnd_` runtime key and the integration validator
+// reads back as `prior`. Runtime-only surface; dual-auth applied inside the
+// handler. See handlers/integration-projections.ts.
+m2mV1.route('/integration-projections', integrationProjectionsHandler)
 // Worker-only internal endpoints — gated by the shared-secret header
 // X-Workflow-Broker-Secret (see handlers/workflow-internal.ts). No tenant
 // middleware involvement; tenant scope is derived from the WorkflowExecution
