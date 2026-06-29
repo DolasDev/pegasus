@@ -32,6 +32,10 @@ Tools
     Package declared workflows into ``dist/`` (wraps ``pegasus-workflows package``).
 ``validate_integration_config(integration_id, mapping, rules, corpus, base_url, token)``
     Dry-run the publish gate — no write (wraps ``PegasusClient.validate_integration_config``).
+``list_deployments(project_dir)``
+    Read the project's ``deployments.toml`` ledger (read-only, no network).
+``list_profiles()``
+    List credential profile names + api_root — never a key (read-only, no network).
 """
 
 from __future__ import annotations
@@ -45,6 +49,8 @@ from typing import Any
 import typer
 
 from ..api import PegasusClient
+from ..credentials import ProfileError, list_profile_summaries
+from ..deployments import read_deployments
 from ..manifest import (
     MANIFEST_FILENAME,
     MANIFEST_TIMEOUT_MAX_SECONDS,
@@ -68,6 +74,8 @@ __all__ = [
     "tool_validate_manifest",
     "tool_package_project",
     "tool_validate_integration_config",
+    "tool_list_deployments",
+    "tool_list_profiles",
 ]
 
 #: Shown when the user runs ``pegasus-workflows mcp`` without the extra installed.
@@ -450,6 +458,40 @@ def tool_validate_integration_config(
         return {"ok": False, "error": str(exc)}
 
 
+def tool_list_deployments(project_dir: str) -> dict[str, Any]:
+    """Read a project's ``deployments.toml`` ledger. Read-only — no network, no write.
+
+    Wraps :func:`pegasus_workflows.deployments.read_deployments`, so an agent can
+    answer "where is this deployed / what's its id in env X" without scraping
+    terminal output.
+
+    Returns:
+        ``{"ok": True, "deployments": {...}}`` (empty dict when no ledger exists),
+        or ``{"ok": False, "error": str}`` on a malformed file.
+    """
+    try:
+        deployments = read_deployments(Path(project_dir).resolve())
+    except (OSError, ValueError) as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "deployments": deployments}
+
+
+def tool_list_profiles() -> dict[str, Any]:
+    """List credential profile names + api_root. **Never** returns ``api_key``.
+
+    Wraps :func:`pegasus_workflows.credentials.list_profile_summaries`. Secrets
+    must not cross the MCP boundary, so only names and api_roots are exposed.
+
+    Returns:
+        ``{"ok": True, "profiles": [{"name", "api_root"}, ...]}`` or
+        ``{"ok": False, "error": str}``.
+    """
+    try:
+        return {"ok": True, "profiles": list_profile_summaries()}
+    except ProfileError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 # ── MCP server builder ────────────────────────────────────────────────────────
 
 
@@ -517,6 +559,16 @@ def _build_server(FastMCP: type) -> Any:  # type: ignore[type-arg]
         return tool_validate_integration_config(
             integration_id, mapping, rules, corpus, base_url, token
         )
+
+    @server.tool()
+    def list_deployments(project_dir: str) -> dict:  # type: ignore[type-arg]
+        """Read a project's deployments.toml ledger (read-only — no network)."""
+        return tool_list_deployments(project_dir)
+
+    @server.tool()
+    def list_profiles() -> dict:  # type: ignore[type-arg]
+        """List credential profile names + api_root — never a key (read-only)."""
+        return tool_list_profiles()
 
     return server
 

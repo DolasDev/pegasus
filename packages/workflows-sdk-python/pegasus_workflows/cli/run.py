@@ -23,10 +23,9 @@ from typing import Any
 import typer
 
 from ..api import PegasusApiError, PegasusClient
+from ._auth import base_url_option, profile_option, resolve_credentials, token_option
 
 __all__ = ["run_command"]
-
-TOKEN_ENV_VAR = "PEGASUS_WORKFLOW_TOKEN"
 
 
 def _parse_name_version(spec: str) -> tuple[str, str | None]:
@@ -78,26 +77,12 @@ def run_command(
         "--input",
         help="JSON-encoded input payload passed to the workflow.",
     ),
-    token: str = typer.Option(
-        None,
-        "--token",
-        help=f"Pegasus vnd_ API key. Falls back to ${TOKEN_ENV_VAR}.",
-        envvar=TOKEN_ENV_VAR,
-    ),
-    base_url: str = typer.Option(
-        "http://localhost:3000",
-        "--base-url",
-        help="Pegasus API base URL.",
-    ),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
 ) -> None:
     """Run a curated workflow against the Pegasus runtime."""
-    if not token:
-        typer.secho(
-            f"no token: pass --token or set ${TOKEN_ENV_VAR}",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
+    token, base_url = resolve_credentials(token, base_url, profile)
 
     try:
         parsed_input = json_mod.loads(input_json)

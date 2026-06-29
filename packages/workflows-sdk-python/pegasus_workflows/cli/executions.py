@@ -19,11 +19,9 @@ from typing import Any
 import typer
 
 from ..api import PegasusApiError, PegasusClient
+from ._auth import base_url_option, profile_option, resolve_credentials, token_option
 
 __all__ = ["executions_app"]
-
-#: Env var consulted when ``--token`` is omitted (shared with ``push``).
-TOKEN_ENV_VAR = "PEGASUS_WORKFLOW_TOKEN"
 
 executions_app = typer.Typer(
     name="executions",
@@ -33,32 +31,9 @@ executions_app = typer.Typer(
 )
 
 
-def _require_token(token: str | None) -> str:
-    if not token:
-        typer.secho(
-            f"no token: pass --token or set ${TOKEN_ENV_VAR}",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-    return token
-
-
-def _token_option() -> Any:
-    return typer.Option(
-        None,
-        "--token",
-        help=f"Pegasus vnd_ API key. Falls back to ${TOKEN_ENV_VAR}.",
-        envvar=TOKEN_ENV_VAR,
-    )
-
-
-def _base_url_option() -> Any:
-    return typer.Option("http://localhost:3000", "--base-url", help="Pegasus API base URL.")
-
-
-def _client(base_url: str, token: str | None) -> PegasusClient:
-    return PegasusClient(base_url=base_url, token=_require_token(token))
+def _client(token: str | None, base_url: str | None, profile: str | None) -> PegasusClient:
+    token, base_url = resolve_credentials(token, base_url, profile)
+    return PegasusClient(base_url=base_url, token=token)
 
 
 def _fmt(value: Any) -> str:
@@ -69,11 +44,12 @@ def _fmt(value: Any) -> str:
 def executions_list_command(
     workflow_id: str = typer.Argument(..., help="The workflow whose executions to list."),
     limit: int = typer.Option(20, "--limit", "-n", help="Maximum rows to show (1..200)."),
-    token: str = _token_option(),
-    base_url: str = _base_url_option(),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
 ) -> None:
     """List recent executions of a workflow, newest first."""
-    client = _client(base_url, token)
+    client = _client(token, base_url, profile)
     try:
         rows = client.list_executions(workflow_id, limit=limit)
     except PegasusApiError as exc:
@@ -98,11 +74,12 @@ def executions_list_command(
 def executions_show_command(
     workflow_id: str = typer.Argument(..., help="The workflow the execution belongs to."),
     execution_id: str = typer.Argument(..., help="The execution to inspect."),
-    token: str = _token_option(),
-    base_url: str = _base_url_option(),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
 ) -> None:
     """Show one execution's input/result/error and its event-history timeline."""
-    client = _client(base_url, token)
+    client = _client(token, base_url, profile)
     try:
         execution = client.get_execution(workflow_id, execution_id)
         history = client.get_execution_history(workflow_id, execution_id)

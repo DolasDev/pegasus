@@ -129,16 +129,19 @@ no credential needs to appear in the workflow source or manifest.
 ```python
 from pegasus_workflows import activity
 from pegasus_workflows.api import PegasusClient
-import os
 
 @activity.defn
 async def send_alert_sms(to: str, message: str) -> dict:
-    client = PegasusClient(
-        base_url=os.environ["PEGASUS_BASE_URL"],
-        token=os.environ["PEGASUS_WORKFLOW_TOKEN"],
-    )
+    client = PegasusClient.from_runtime()   # reads the runner-injected env vars
     return client.send_sms(to=to, body=message)
 ```
+
+> **Build the client with `PegasusClient.from_runtime()`** inside activities. The
+> tenant runner injects the API connection as `PEGASUS_API_BASE_URL` and
+> `PEGASUS_RUNTIME_TOKEN`; `from_runtime()` reads exactly those and raises a clear,
+> named error if run outside the runner. Don't hardcode `os.environ[...]` — and
+> note `PEGASUS_WORKFLOW_TOKEN` is the **publish-time CLI** token, _not_ a runtime
+> var, so reaching for it here fails at runtime.
 
 Declare the capability in `pegasus-workflows.toml`:
 
@@ -190,10 +193,7 @@ required_actions = ["ReadWorkflowSecret", "ReadWorkflowConfig"]
 ```python
 @activity.defn
 async def charge_customer(amount_cents: int) -> str:
-    client = PegasusClient(
-        base_url=os.environ["PEGASUS_BASE_URL"],
-        token=os.environ["PEGASUS_WORKFLOW_TOKEN"],
-    )
+    client = PegasusClient.from_runtime()
     api_key = client.get_secret("STRIPE_API_KEY")   # needs ReadWorkflowSecret
     region = client.get_config("DEFAULT_REGION")    # needs ReadWorkflowConfig
     ...
@@ -223,10 +223,7 @@ required_actions = ["ReadIntegrationProjection", "WriteIntegrationProjection"]
 ```python
 @activity.defn
 async def cache_order(order: dict) -> None:
-    client = PegasusClient(
-        base_url=os.environ["PEGASUS_BASE_URL"],
-        token=os.environ["PEGASUS_WORKFLOW_TOKEN"],
-    )
+    client = PegasusClient.from_runtime()
     # Mirror the external record (native payload shape, ≤ 256 KB serialized).
     client.put_projection("weichert", "order", order["serviceOrderNumber"], order)
 
@@ -304,30 +301,98 @@ description = "..."                             # optional
 These rules mirror the server's `ManifestSchema` exactly, so `package`/`push`
 fail fast locally before any HTTP call.
 
+## Credentials & profiles
+
+Every command that talks to the API needs a `vnd_` token and a base URL. Rather
+than pasting them on the command line (where they leak into shell history,
+process listings, and agent transcripts), store **named profiles** — AWS-CLI
+style — in `~/.pegasus/credentials`:
+
+```
+pegasus-workflows configure --profile prod   # prompts for api_key (hidden) + api_root
+pegasus-workflows configure --profile qa
+pegasus-workflows profile list               # names + api_root only — never the key
+```
+
+The file is created `0600` (owner read/write only) and is **never committed** —
+keep it out of repos. Then select a profile per command:
+
+```
+pegasus-workflows push --profile prod        # token + root from [prod]
+pegasus-workflows run  --profile qa <id>
+pegasus-workflows push                        # uses [default] if present
+```
+
+`--profile` works on every command that builds a client (`push`, `run`,
+`integration-config`, `executions`, `secrets`, `config`). Resolution precedence,
+highest first:
+
+| Tier | Source                                                 |
+| ---- | ------------------------------------------------------ |
+| 1    | explicit `--token` / `--base-url` flags                |
+| 2    | `--profile NAME`                                       |
+| 3    | `PEGASUS_WORKFLOW_TOKEN` / `PEGASUS_BASE_URL` env vars |
+| 4    | the `[default]` profile                                |
+
+`api_root` is optional in a profile and defaults to
+`https://api.pegasus.dolas.dev`. With nothing configured at all, the base URL
+falls back to `http://localhost:3000` for local dev.
+
+> These are the **publish-time CLI** credentials — distinct from the runtime vars
+> (`PEGASUS_API_BASE_URL` / `PEGASUS_RUNTIME_TOKEN`) that the tenant runner injects
+> for `PegasusClient.from_runtime()` inside activities.
+
+## Deployment ledger — `deployments.toml`
+
+Workflow ids are **environment-specific** — publishing the same workflow to QA and
+prod yields different ids. After a successful `push`, the SDK records where each
+workflow landed in a `deployments.toml` beside the manifest, so post-publish
+actions (`run`, `executions`, fork, rollback) read the id instead of scraping it
+from scrollback:
+
+```toml
+[prod]
+base_url = "https://api.pegasus.dolas.dev"
+workflow_id = "f8077342-2e58-4dc1-a47a-797ca394ef72"
+version = "0.1.0"
+visibility = "GLOBAL"
+published_at = "2026-06-29T21:05:48Z"
+```
+
+- The environment key is derived from the API host, or set explicitly with
+  `push --env NAME`.
+- Re-publishing to the same env **updates the entry in place** (no duplicates);
+  a second env adds a table. A multi-workflow project nests each record under the
+  workflow name (`[prod.send_order_saved_sms]`).
+- The file is **safe to commit** — it holds ids and URLs only, never a token.
+
 ## CLI
 
-| Command                                                                | What it does                                                 |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `pegasus-workflows init <name>`                                        | Scaffold a new workflow project.                             |
-| `pegasus-workflows diagram [-C <dir>] [--model …] [--force]`           | AI-generate `workflow.mmd` from source (`[diagram]` extra).  |
-| `pegasus-workflows package`                                            | Zip each declared workflow into `dist/<name>-<version>.zip`. |
-| `pegasus-workflows push --token=<vnd_…> [--base-url=…]`                | Package, then `upload-url` → S3 PUT → finalize.              |
-| `pegasus-workflows test <workflow>`                                    | Start local Temporal and run the workflow with a stub input. |
-| `pegasus-workflows executions list <wf-id> --token=<vnd_…>`            | List recent executions of a workflow (newest first).         |
-| `pegasus-workflows executions show <wf-id> <exec-id> --token=<vnd_…>`  | Show one execution's input/result/error + history timeline.  |
-| `pegasus-workflows integration-config validate <id> [-C <dir>]`        | Dry-run the publish gate for a config (no write).            |
-| `pegasus-workflows integration-config publish <id> [-C <dir>]`         | Gate then publish a new config version.                      |
-| `pegasus-workflows integration-config pull <id> [-C <dir>] [--stdout]` | Fetch the active config; write the editable surface to disk. |
-| `pegasus-workflows integration-config versions <id>`                   | List the config version history (newest first).              |
-| `pegasus-workflows integration-config rollback <id> <version>`         | Re-publish a prior version (re-runs the gate).               |
-| `pegasus-workflows secrets set <key> <value> [-d <desc>]`              | Publish a secret (write-once, encrypted at rest).            |
-| `pegasus-workflows secrets list` / `secrets delete <key>`              | List secret keys (no values) / delete a secret.              |
-| `pegasus-workflows config set <key> <value> [-d <desc>]`               | Publish a config value (idempotent upsert).                  |
-| `pegasus-workflows config list` / `config delete <key>`                | List config key/values / delete a config entry.              |
+| Command                                                                | What it does                                                   |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `pegasus-workflows init <name>`                                        | Scaffold a new workflow project.                               |
+| `pegasus-workflows configure [--profile <name>]`                       | Store a credential profile in `~/.pegasus/credentials` (0600). |
+| `pegasus-workflows profile list`                                       | List stored profile names + api_root (never the key).          |
+| `pegasus-workflows diagram [-C <dir>] [--model …] [--force]`           | AI-generate `workflow.mmd` from source (`[diagram]` extra).    |
+| `pegasus-workflows package`                                            | Zip each declared workflow into `dist/<name>-<version>.zip`.   |
+| `pegasus-workflows push [--profile <name>] [--env <name>] [--token=…]` | Package → upload → finalize; records `deployments.toml`.       |
+| `pegasus-workflows test <workflow>`                                    | Start local Temporal and run the workflow with a stub input.   |
+| `pegasus-workflows executions list <wf-id> --token=<vnd_…>`            | List recent executions of a workflow (newest first).           |
+| `pegasus-workflows executions show <wf-id> <exec-id> --token=<vnd_…>`  | Show one execution's input/result/error + history timeline.    |
+| `pegasus-workflows integration-config validate <id> [-C <dir>]`        | Dry-run the publish gate for a config (no write).              |
+| `pegasus-workflows integration-config publish <id> [-C <dir>]`         | Gate then publish a new config version.                        |
+| `pegasus-workflows integration-config pull <id> [-C <dir>] [--stdout]` | Fetch the active config; write the editable surface to disk.   |
+| `pegasus-workflows integration-config versions <id>`                   | List the config version history (newest first).                |
+| `pegasus-workflows integration-config rollback <id> <version>`         | Re-publish a prior version (re-runs the gate).                 |
+| `pegasus-workflows secrets set <key> <value> [-d <desc>]`              | Publish a secret (write-once, encrypted at rest).              |
+| `pegasus-workflows secrets list` / `secrets delete <key>`              | List secret keys (no values) / delete a secret.                |
+| `pegasus-workflows config set <key> <value> [-d <desc>]`               | Publish a config value (idempotent upsert).                    |
+| `pegasus-workflows config list` / `config delete <key>`                | List config key/values / delete a config entry.                |
 
-`push` reads the token from `--token` or the `PEGASUS_WORKFLOW_TOKEN`
-environment variable. The token is a `vnd_*` Pegasus API key whose service
-account holds the `workflow_developer` role.
+Credentials resolve via `--token`/`--base-url`, `--profile`, the
+`PEGASUS_WORKFLOW_TOKEN`/`PEGASUS_BASE_URL` env vars, or the `[default]` profile
+(see [Credentials & profiles](#credentials--profiles)). The token is a `vnd_*`
+Pegasus API key whose service account holds the `workflow_developer` role.
 
 ### Authoring an integration-validator config
 
@@ -427,9 +492,12 @@ any additional setup.
 | `validate_manifest(path_or_toml)`                                                      | Validate a manifest file path or raw TOML text. Returns structured errors or the parsed manifest.      |
 | `package_project(project_dir)`                                                         | Package declared workflows into `dist/`. Returns `{name, version, zip_path, size_bytes}` per workflow. |
 | `validate_integration_config(integration_id, mapping, rules, corpus, base_url, token)` | Dry-run the integration config publish gate. No state change.                                          |
+| `list_deployments(project_dir)`                                                        | Read a project's `deployments.toml` ledger (no network, no write).                                     |
+| `list_profiles()`                                                                      | List credential profile names + api_root. **Never** returns `api_key`.                                 |
 
 Network-mutating operations (`push`, `publish_integration_config`, `run`) are
-intentionally **not exposed** — keep those human-gated via the CLI.
+intentionally **not exposed** — keep those human-gated via the CLI. Secrets never
+cross the MCP boundary: `list_profiles` exposes profile names and api_roots only.
 
 ### Smoke test (verify the server starts)
 

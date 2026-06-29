@@ -4,3 +4,8 @@ build/
 __pycache__/
 .pytest_cache/
 .venv/
+.venv-sdk/
+# Credential profiles must never be committed (the SDK writes ~/.pegasus by
+# default; this guards any project-local ./.pegasus a developer creates).
+.pegasus/
+pegasus-credentials.toml

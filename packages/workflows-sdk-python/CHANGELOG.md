@@ -3,6 +3,44 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.6.0
+
+### Added
+
+- **`PegasusClient.from_runtime()`.** A classmethod that builds a client from the
+  env vars the tenant runner injects (`PEGASUS_API_BASE_URL` /
+  `PEGASUS_RUNTIME_TOKEN`) and raises a clear, named error when run outside the
+  runner. Prefer it over hardcoding `os.environ[...]` in activities — a future
+  rename of the runtime contract becomes a one-line SDK fix. (Fixes the README's
+  prior SMS/activity example, which named non-existent runtime vars and failed
+  100% of the time at first execution.)
+- **Named credential profiles.** Store `vnd_` tokens + API roots in
+  `~/.pegasus/credentials` (AWS-CLI style) instead of pasting them on the command
+  line. `pegasus-workflows configure [--profile NAME]` writes the file `0600`;
+  `pegasus-workflows profile list` shows names + api_root only (never a key).
+  Every API command accepts `--profile NAME`. Resolution precedence: explicit
+  `--token`/`--base-url` > `--profile` > `PEGASUS_WORKFLOW_TOKEN` /
+  `PEGASUS_BASE_URL` env vars > the `[default]` profile. A profile's `api_root`
+  defaults to `https://api.pegasus.dolas.dev`.
+- **Post-publish deployment ledger.** `push` now records each published workflow
+  in a `deployments.toml` beside the manifest — `(env, workflow) → {workflow_id,
+version, visibility, base_url, published_at}` — so environment-specific ids are
+  a deterministic file read, not a scrollback scrape. The env key derives from the
+  API host or `push --env NAME`; re-publishing upserts in place; multi-workflow
+  projects nest by name. The file holds ids/URLs only (safe to commit).
+- **Two read-only MCP tools.** `list_deployments(project_dir)` reads the ledger;
+  `list_profiles()` lists profile names + api_root (never `api_key`). Both are
+  network-free; the no-mutation MCP invariant still holds.
+
+### Changed
+
+- API commands (`push`, `run`, `integration-config`, `executions`, `secrets`,
+  `config`) now resolve credentials through the shared profile-aware path. Behavior
+  is unchanged when no profile is used (explicit flags / `PEGASUS_WORKFLOW_TOKEN`
+  still work); `--base-url` now also reads `PEGASUS_BASE_URL`.
+- README activity examples (SMS, secrets/config, projections) use
+  `PegasusClient.from_runtime()`.
+
 ## 0.5.0
 
 ### Added
