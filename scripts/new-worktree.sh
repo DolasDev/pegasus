@@ -3,15 +3,21 @@
 # new-worktree.sh — Provision an isolated git worktree + Postgres for a
 #                   Claude Code / parallel development session.
 #
-# Usage: scripts/new-worktree.sh <slug>
+# Usage: scripts/new-worktree.sh [<type>] <slug>
+#          <type>  Branch prefix: feat | fix | chore | docs  (default: feat)
+#          <slug>  Short lowercase id for the worktree dir + DB ([a-z0-9][a-z0-9-]*)
+#        Run with no args in a terminal and it prompts for type + slug.
+#        On success, drops you into a shell inside the new worktree (type 'exit'
+#        to return). Re-running with an existing slug just re-enters it.
 #
 # Creates:
-#   ../pegasus-<slug>           — git worktree on branch <slug> from origin/main
+#   ../pegasus-<slug>           — git worktree on branch <type>/<slug> from origin/main
 #   pegasus-pg-<slug>           — Docker container (postgres:16) on a stable port
 #   ../pegasus-<slug>/apps/api/.env           — DATABASE_URL/DIRECT_URL pointing at isolated DB
 #   ../pegasus-<slug>/apps/e2e/.env.test      — DATABASE_URL pointing at isolated DB
 #
-# Tear down with: scripts/rm-worktree.sh <slug>
+# The branch is prefixed (<type>/<slug>); the worktree dir + DB container use the
+# flat <slug> only. Tear down with: scripts/rm-worktree.sh <slug>
 # =============================================================================
 
 set -euo pipefail
@@ -27,6 +33,21 @@ ok()   { echo -e "${GREEN}✔${RESET}  $*"; }
 info() { echo -e "${BLUE}ℹ${RESET}  $*"; }
 warn() { echo -e "${YELLOW}⚠${RESET}  $*"; }
 fail() { echo -e "${RED}✘${RESET}  $*" >&2; exit 1; }
+
+# Drop the caller into the worktree on its branch. A child process cannot cd the
+# parent shell, so when attached to a terminal we exec a fresh interactive shell
+# rooted in the worktree; otherwise we just print the cd. Uses WORKTREE_PATH /
+# BRANCH_NAME, which are set before this is called.
+enter_worktree() {
+  if [[ -t 0 && -t 1 ]]; then
+    trap - EXIT                       # success path — disarm the error-cleanup trap
+    info "Entering $WORKTREE_PATH on branch $BRANCH_NAME — type 'exit' to return."
+    cd "$WORKTREE_PATH" || fail "Could not cd into $WORKTREE_PATH"
+    exec "${SHELL:-/bin/bash}"
+  else
+    info "Not a terminal — enter the worktree with:  cd $WORKTREE_PATH"
+  fi
+}
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -48,12 +69,49 @@ echo -e "\n${BOLD}Pegasus — New Worktree Provisioner${RESET}\n"
 
 # ── Validate slug arg ────────────────────────────────────────────────────────
 
-SLUG="${1:-}"
+# Accepts: [--type <type>] <slug>  |  <type> <slug>  |  <slug>  |  (nothing → prompt)
+# <type> ∈ {feat,fix,chore,docs}; default feat. Branch is <type>/<slug>.
+TYPE=""
+SLUG=""
+if [[ "${1:-}" == "--type" ]]; then
+  TYPE="${2:-}"
+  SLUG="${3:-}"
+elif [[ $# -eq 2 ]]; then
+  TYPE="$1"
+  SLUG="$2"
+elif [[ $# -eq 1 ]]; then
+  SLUG="$1"
+fi
+
+# Prompt for a missing slug (and type) when run interactively; error otherwise.
 if [[ -z "$SLUG" ]]; then
-  echo -e "Usage: $(basename "$0") <slug>" >&2
-  echo -e "  <slug>  A short lowercase identifier for this worktree (e.g. feature-foo, probe)" >&2
-  echo -e "          Must match: [a-z0-9][a-z0-9-]*" >&2
-  exit 1
+  if [[ -t 0 ]]; then
+    if [[ -z "$TYPE" ]]; then
+      read -rp "$(echo -e "${BOLD}Branch type${RESET} [feat/fix/chore/docs] (default feat): ")" TYPE || true
+    fi
+    read -rp "$(echo -e "${BOLD}Slug${RESET} (lowercase + hyphens, e.g. workflow-viz): ")" SLUG || true
+  else
+    echo -e "Usage: $(basename "$0") [<type>] <slug>" >&2
+    echo -e "  <type>  Branch prefix: feat | fix | chore | docs  (default: feat)" >&2
+    echo -e "  <slug>  A short lowercase identifier (e.g. workflow-viz, probe); [a-z0-9][a-z0-9-]*" >&2
+    echo -e "  Examples:  $(basename "$0") feat workflow-viz   →  branch feat/workflow-viz" >&2
+    echo -e "             $(basename "$0") probe                →  branch feat/probe" >&2
+    echo -e "  Or run with no arguments in a terminal to be prompted." >&2
+    exit 1
+  fi
+fi
+
+# Defaults + tidy up prompted input.
+TYPE="${TYPE:-feat}"
+TYPE="${TYPE//[[:space:]]/}"
+SLUG="${SLUG//[[:space:]]/}"
+
+if [[ -z "$SLUG" ]]; then
+  fail "No slug provided."
+fi
+
+if ! [[ "$TYPE" =~ ^(feat|fix|chore|docs)$ ]]; then
+  fail "Invalid type '$TYPE'. Must be one of: feat | fix | chore | docs"
 fi
 
 if ! [[ "$SLUG" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
@@ -61,20 +119,22 @@ if ! [[ "$SLUG" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
 fi
 
 WORKTREE_PATH="$(dirname "$REPO_ROOT")/pegasus-${SLUG}"
-BRANCH_NAME="$SLUG"
+BRANCH_NAME="${TYPE}/${SLUG}"
 CONTAINER_NAME="pegasus-pg-${SLUG}"
 
 # ── Guard: branch / worktree already exists ──────────────────────────────────
 
+# If the worktree already exists, don't recreate it — just switch into it.
 if git -C "$REPO_ROOT" worktree list --porcelain | grep -qF "worktree $WORKTREE_PATH"; then
-  warn "Worktree already exists at $WORKTREE_PATH"
-  warn "Remove it first with:  scripts/rm-worktree.sh $SLUG"
-  exit 1
+  ok "Worktree already exists at $WORKTREE_PATH — reusing it (skipping provisioning)."
+  enter_worktree
+  exit 0
 fi
 
+# Branch exists but is not attached to this path → ambiguous; let the dev resolve.
 if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
-  warn "Branch '$BRANCH_NAME' already exists locally."
-  warn "Remove it first with:  git branch -D $BRANCH_NAME  (or use rm-worktree.sh $SLUG)"
+  warn "Branch '$BRANCH_NAME' already exists but is not attached to $WORKTREE_PATH."
+  warn "Remove it first:  git branch -D $BRANCH_NAME   (or:  scripts/rm-worktree.sh $SLUG)"
   exit 1
 fi
 
@@ -307,11 +367,13 @@ echo -e "  ${BOLD}Worktree:${RESET}  $WORKTREE_PATH"
 echo -e "  ${BOLD}Branch:${RESET}    $BRANCH_NAME  (based on origin/main)"
 echo -e "  ${BOLD}DB port:${RESET}   $PORT  (container: $CONTAINER_NAME)"
 echo ""
-echo -e "  ${BOLD}Next steps:${RESET}"
-echo -e "    cd $WORKTREE_PATH"
+echo -e "  ${BOLD}Once inside:${RESET}"
 echo -e "    npm run dev           # start the full stack"
 echo -e "    npm test              # run tests against the isolated DB"
 echo ""
-echo -e "  ${BOLD}Tear down:${RESET}"
+echo -e "  ${BOLD}Tear down (from the primary checkout):${RESET}"
 echo -e "    scripts/rm-worktree.sh $SLUG"
 echo ""
+
+# Drop the dev straight into the worktree on its branch.
+enter_worktree
