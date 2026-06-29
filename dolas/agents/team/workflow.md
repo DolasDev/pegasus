@@ -77,6 +77,18 @@ Every plan file must contain:
 
 When multiple sessions run in parallel, each works in its own worktree on its own branch (see `scripts/new-worktree.sh`). Sessions never share a working directory and never coordinate directly — the merge queue is the coordination point.
 
+### Isolation — one stream, one worktree (mandatory)
+
+The cause of tangled work on this repo is multiplexing several features through a **single checkout** by hopping branches. `git checkout` silently carries an uncommitted working tree across branches when it doesn't textually collide, so two features bleed into one tree. The rules below prevent that.
+
+- **One stream = one worktree = one branch = one DB.** Spin up every feature/fix with `scripts/new-worktree.sh <type> <slug>` (isolated dir, branch off fresh `origin/main`, own Postgres + `.env` + deps). Never run two streams in one checkout.
+- **The primary checkout stays parked on `main`.** Keep it synced (`git fetch && git pull --ff-only`), **never dirty, never used for feature work** — it's the clean launch/reference point. All feature work lives in named worktrees.
+- **Always branch from fresh `origin/main`** (the script does this after a fetch). Never branch off a stale local `main`.
+- **Never `git checkout`/`switch` to another feature with a dirty tree.** If a switch is truly unavoidable, commit or stash first. This single rule prevents the entire class of tree-bleed tangles. (Agents are already forbidden from `checkout`/`switch` outright — see Branch Discipline.)
+- **Branch naming `<type>/<slug>`**, type ∈ {`feat`,`fix`,`chore`,`docs`}. The worktree dir + DB container use the flat `<slug>`.
+- **Hot-file coordination.** Merge-magnet files — `apps/api/src/authz/cedar.schema.json`, `authz/actions.ts`, persona `*.cedar`, `apps/tenant-web/src/router.tsx`, `AppShell.tsx`, `apps/api/prisma/schema.prisma` — collide _semantically_ (test breaks) even when git merges cleanly. When two active streams must both touch one: serialize — land one, then `git fetch && git rebase origin/main` the other before continuing.
+- **Tear down on merge.** `scripts/rm-worktree.sh <slug>` removes the worktree, its branch, and its DB. Then prune dangling branches and keep `main` synced.
+
 ### Landing work — canonical path
 
 1. Open a PR for the branch: `gh pr create`.

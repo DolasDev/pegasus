@@ -8,7 +8,7 @@
 # Removes:
 #   pegasus-pg-<slug>    — Docker container (stopped + deleted)
 #   ../pegasus-<slug>    — git worktree (removed + pruned)
-#   <slug>               — local branch (deleted if not current)
+#   <type>/<slug>        — the branch actually attached to the worktree (deleted if not current)
 # =============================================================================
 
 set -euo pipefail
@@ -43,8 +43,18 @@ if ! [[ "$SLUG" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
 fi
 
 WORKTREE_PATH="$(dirname "$REPO_ROOT")/pegasus-${SLUG}"
-BRANCH_NAME="$SLUG"
 CONTAINER_NAME="pegasus-pg-${SLUG}"
+
+# Resolve the branch actually attached to this worktree (it is <type>/<slug>,
+# not necessarily == slug). Must happen BEFORE the worktree is removed below.
+BRANCH_NAME="$(git -C "$REPO_ROOT" worktree list --porcelain \
+  | awk -v wt="worktree $WORKTREE_PATH" '
+      $0 == wt { found=1; next }
+      found && /^branch / { sub("refs/heads/", "", $2); print $2; exit }
+      found && /^worktree / { exit }
+    ')"
+# Fall back to the bare slug if the worktree is not registered (already gone).
+[[ -z "$BRANCH_NAME" ]] && BRANCH_NAME="$SLUG"
 
 # ── Stop + remove Docker container ───────────────────────────────────────────
 

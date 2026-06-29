@@ -55,6 +55,10 @@ The monorepo uses Turborepo (`turbo.json`) and top-level npm scripts:
 - `packages/infra`: `npm run synth` and `npm run deploy` (via AWS CDK).
 - `apps/admin-web`: `npm run dev` explicitly starts Vite on port `5174`.
 
+### Parallel Work
+
+One stream = one worktree = one branch. Spin up each parallel feature/fix with `scripts/new-worktree.sh <type> <slug>` (isolated dir + branch off fresh `origin/main` + its own Postgres) and tear it down with `scripts/rm-worktree.sh <slug>`. The primary checkout stays parked on `main` — kept synced, never dirty, never used for feature work. Full rules: `dolas/agents/team/workflow.md` → "Concurrent Work & The Merge Queue".
+
 ## Bounded Contexts
 
 ### Customer
