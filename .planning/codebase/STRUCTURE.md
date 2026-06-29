@@ -204,8 +204,8 @@ pegasus/
 │
 ├── scripts/                     # Root-level utility scripts
 │   ├── create-admin-user.ts     # Cognito admin user creation
-│   ├── launch_agent.sh          # Git worktree setup for parallel agents
-│   └── remove_agent.sh
+│   ├── new-worktree.sh          # Provision an isolated worktree + DB per work stream
+│   └── rm-worktree.sh           # Tear down a worktree, its branch, and its DB
 │
 └── .planning/                   # GSD codebase documentation
     └── codebase/

@@ -16,8 +16,6 @@
     "setup": "bash scripts/setup.sh",
     "doctor": "bash scripts/doctor.sh",
     "prepare": "node ./node_modules/husky/bin.js || true",
-    "launch-agent": "bash ./scripts/launch_agent.sh",
-    "remove-agent": "bash ./scripts/remove_agent.sh",
     "e2e": "turbo run e2e --filter=@pegasus/e2e",
     "e2e:qa": "E2E_TARGET=qa npm run e2e --workspace=@pegasus/e2e",
     "e2e:remote": "E2E_TARGET=remote npm run e2e --workspace=@pegasus/e2e"
