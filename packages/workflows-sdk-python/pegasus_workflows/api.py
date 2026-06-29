@@ -15,18 +15,32 @@ Two responsibilities:
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
-__all__ = ["PegasusApiError", "PegasusClient", "MAX_ARTIFACT_BYTES", "ARTIFACT_MIME_TYPE"]
+__all__ = [
+    "PegasusApiError",
+    "PegasusClient",
+    "MAX_ARTIFACT_BYTES",
+    "ARTIFACT_MIME_TYPE",
+    "RUNTIME_BASE_URL_ENV_VAR",
+    "RUNTIME_TOKEN_ENV_VAR",
+]
 
 #: Maximum artifact size accepted by ``POST /upload-url`` (mirrors the server).
 MAX_ARTIFACT_BYTES = 25 * 1024 * 1024
 
 #: Content-Type the presigned PUT is signed for. Must match exactly.
 ARTIFACT_MIME_TYPE = "application/zip"
+
+#: Env vars the tenant runner injects so workflow activities can reach the API.
+#: These are the RUNTIME contract — distinct from the publish-time CLI token
+#: (``PEGASUS_WORKFLOW_TOKEN``). See ``PegasusClient.from_runtime``.
+RUNTIME_BASE_URL_ENV_VAR = "PEGASUS_API_BASE_URL"
+RUNTIME_TOKEN_ENV_VAR = "PEGASUS_RUNTIME_TOKEN"
 
 
 @dataclass
@@ -104,6 +118,40 @@ class PegasusClient:
         self._timeout = timeout
         # Optional transport override — used by tests to mock HTTP traffic.
         self._transport = transport
+
+    @classmethod
+    def from_runtime(cls, *, timeout: float = 30.0) -> PegasusClient:
+        """Build a client from the env vars the tenant runner injects.
+
+        Inside a workflow activity, prefer this over hardcoding
+        ``os.environ[...]`` — it reads the runner's contract
+        (:data:`RUNTIME_BASE_URL_ENV_VAR` / :data:`RUNTIME_TOKEN_ENV_VAR`) so a
+        future rename of those vars is a one-line SDK fix, not a per-workflow
+        break. Raises a clear, named error when run outside the runner (so the
+        failure is obvious locally instead of a bare ``KeyError`` in prod).
+
+        Raises:
+            RuntimeError: If either runtime env var is missing or empty.
+        """
+        base_url = os.environ.get(RUNTIME_BASE_URL_ENV_VAR)
+        token = os.environ.get(RUNTIME_TOKEN_ENV_VAR)
+        missing = [
+            name
+            for name, value in (
+                (RUNTIME_BASE_URL_ENV_VAR, base_url),
+                (RUNTIME_TOKEN_ENV_VAR, token),
+            )
+            if not value
+        ]
+        if missing:
+            raise RuntimeError(
+                "PegasusClient.from_runtime() requires the tenant-runner-injected "
+                f"env var(s) {', '.join(missing)}; they are unset. (Note: "
+                "PEGASUS_WORKFLOW_TOKEN is the publish-time CLI token, not a "
+                "runtime var.)"
+            )
+        # base_url and token are non-empty here (else they'd be in `missing`).
+        return cls(base_url=base_url, token=token, timeout=timeout)  # type: ignore[arg-type]
 
     # -- internals ----------------------------------------------------------
 

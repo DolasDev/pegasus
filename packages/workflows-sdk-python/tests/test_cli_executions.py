@@ -61,9 +61,13 @@ class _FakeClient:
 
 
 @pytest.fixture(autouse=True)
-def _patch_client(monkeypatch: pytest.MonkeyPatch) -> None:
+def _patch_client(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: ANN001
     _FakeClient.last = {}
     monkeypatch.setattr(ex, "PegasusClient", _FakeClient)
+    # Isolate credential resolution from any real ~/.pegasus/credentials.
+    monkeypatch.setenv("PEGASUS_CREDENTIALS_FILE", str(tmp_path / "credentials"))
+    monkeypatch.delenv("PEGASUS_WORKFLOW_TOKEN", raising=False)
+    monkeypatch.delenv("PEGASUS_BASE_URL", raising=False)
 
 
 def test_list_calls_api_and_prints_rows() -> None:

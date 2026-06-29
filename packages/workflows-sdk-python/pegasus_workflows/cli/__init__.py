@@ -13,6 +13,8 @@ A Typer application wiring together the workflow developer flow:
   rules) for an integration (publish / pull / versions / rollback).
 * ``secrets`` / ``config`` — publish per-tenant workflow secrets & configuration
   (set / list / delete) that workflows read at runtime.
+* ``configure`` / ``profile`` — store & list named credential profiles
+  (``~/.pegasus/credentials``) so tokens never go on the command line.
 * ``mcp`` — start a stdio MCP server for AI coding agents (requires ``mcp`` extra).
 """
 
@@ -26,6 +28,7 @@ from .init import init_command
 from .integration_config import integration_config_app
 from .mcp_server import mcp_command
 from .package import package_command
+from .profile_config import configure_command, profile_app
 from .push import push_command
 from .run import run_command
 from .secrets_config import config_app, secrets_app
@@ -44,11 +47,13 @@ app.command("package")(package_command)
 app.command("push")(push_command)
 app.command("run")(run_command)
 app.command("test")(test_command)
+app.command("configure")(configure_command)
 app.command("mcp")(mcp_command)
 app.add_typer(integration_config_app)
 app.add_typer(executions_app)
 app.add_typer(secrets_app)
 app.add_typer(config_app)
+app.add_typer(profile_app)
 
 
 def main() -> None:

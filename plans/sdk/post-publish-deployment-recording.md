@@ -1,10 +1,10 @@
 # SDK spec — Post-publish deployment recording (push writes a deployments ledger)
 
 - **Origin:** pegasus-workflows repo (`~/repos/pegasus-workflows`), `sdk-feedback/0003-post-publish-deployment-recording.md`
-- **Status:** Proposed
+- **Status:** Shipped
 - **Filed:** 2026-06-26
 - **SDK version when filed:** 0.2.0
-- **SDK version that addresses it:** <!-- fill in when shipped -->
+- **SDK version that addresses it:** 0.6.0
 - **Area:** CLI (`push`) / packaging / tooling (MCP)
 
 ## Problem
@@ -84,7 +84,14 @@ section; note the file is safe to commit (no secrets — ids and URLs only).
 
 ## Validation log
 
-<!-- Filled in when the SDK ships this and validation runs in the
-     pegasus-workflows repo. Plan: re-publish send_order_saved_sms to QA, confirm
-     push rewrites deployments.toml in place (matching the hand-maintained one),
-     and that MCP list_deployments returns both envs. -->
+**Shipped in 0.6.0:** `push` writes/updates `deployments.toml` beside the manifest
+after each successful finalize (env key from `--base-url` host or `--env NAME`;
+idempotent upsert; multi-workflow projects nest by name). New
+`pegasus_workflows.deployments` module (`record_deployment` / `read_deployments`)
+
+- read-only MCP tool `list_deployments(project_dir)`. Unit-tested in
+  `tests/test_deployments.py` and `tests/test_cli_push.py`.
+
+<!-- Remaining manual validation in the pegasus-workflows repo: re-publish
+     send_order_saved_sms to QA, confirm push rewrites deployments.toml in place
+     (matching the hand-maintained one), and MCP list_deployments returns it. -->

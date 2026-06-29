@@ -25,11 +25,9 @@ from typing import Any
 import typer
 
 from ..api import PegasusApiError, PegasusClient
+from ._auth import base_url_option, profile_option, resolve_credentials, token_option
 
 __all__ = ["secrets_app", "config_app"]
-
-#: Env var consulted when ``--token`` is omitted (shared with ``push``).
-TOKEN_ENV_VAR = "PEGASUS_WORKFLOW_TOKEN"
 
 secrets_app = typer.Typer(
     name="secrets",
@@ -49,36 +47,13 @@ config_app = typer.Typer(
 # -- shared helpers ---------------------------------------------------------
 
 
-def _require_token(token: str | None) -> str:
-    if not token:
-        typer.secho(
-            f"no token: pass --token or set ${TOKEN_ENV_VAR}",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-    return token
-
-
-def _token_option() -> Any:
-    return typer.Option(
-        None,
-        "--token",
-        help=f"Pegasus vnd_ API key. Falls back to ${TOKEN_ENV_VAR}.",
-        envvar=TOKEN_ENV_VAR,
-    )
-
-
-def _base_url_option() -> Any:
-    return typer.Option("http://localhost:3000", "--base-url", help="Pegasus API base URL.")
-
-
 def _desc_option() -> Any:
     return typer.Option(None, "--description", "-d", help="Optional human-readable note.")
 
 
-def _client(base_url: str, token: str | None) -> PegasusClient:
-    return PegasusClient(base_url=base_url, token=_require_token(token))
+def _client(token: str | None, base_url: str | None, profile: str | None) -> PegasusClient:
+    token, base_url = resolve_credentials(token, base_url, profile)
+    return PegasusClient(base_url=base_url, token=token)
 
 
 # -- secrets ----------------------------------------------------------------
@@ -89,11 +64,12 @@ def secrets_set_command(
     key: str = typer.Argument(..., help="Secret key, e.g. STRIPE_API_KEY."),
     value: str = typer.Argument(..., help="Secret value (stored encrypted at rest)."),
     description: str = _desc_option(),
-    token: str = _token_option(),
-    base_url: str = _base_url_option(),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
 ) -> None:
     """Publish a secret. Secrets are write-once — delete then set again to rotate."""
-    client = _client(base_url, token)
+    client = _client(token, base_url, profile)
     try:
         client.set_secret(key, value, description=description)
     except PegasusApiError as exc:
@@ -111,11 +87,12 @@ def secrets_set_command(
 
 @secrets_app.command("list")
 def secrets_list_command(
-    token: str = _token_option(),
-    base_url: str = _base_url_option(),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
 ) -> None:
     """List secret keys and metadata. Values are never shown."""
-    client = _client(base_url, token)
+    client = _client(token, base_url, profile)
     try:
         rows = client.list_secrets()
     except PegasusApiError as exc:
@@ -131,11 +108,12 @@ def secrets_list_command(
 @secrets_app.command("delete")
 def secrets_delete_command(
     key: str = typer.Argument(..., help="Secret key to delete."),
-    token: str = _token_option(),
-    base_url: str = _base_url_option(),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
 ) -> None:
     """Delete a secret by key."""
-    client = _client(base_url, token)
+    client = _client(token, base_url, profile)
     try:
         client.delete_secret(key)
     except PegasusApiError as exc:
@@ -152,11 +130,12 @@ def config_set_command(
     key: str = typer.Argument(..., help="Config key, e.g. DEFAULT_REGION."),
     value: str = typer.Argument(..., help="Config value."),
     description: str = _desc_option(),
-    token: str = _token_option(),
-    base_url: str = _base_url_option(),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
 ) -> None:
     """Publish a config value (idempotent — re-running replaces the value)."""
-    client = _client(base_url, token)
+    client = _client(token, base_url, profile)
     try:
         client.set_config(key, value, description=description)
     except PegasusApiError as exc:
@@ -167,11 +146,12 @@ def config_set_command(
 
 @config_app.command("list")
 def config_list_command(
-    token: str = _token_option(),
-    base_url: str = _base_url_option(),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
 ) -> None:
     """List config keys and their values."""
-    client = _client(base_url, token)
+    client = _client(token, base_url, profile)
     try:
         rows = client.list_configs()
     except PegasusApiError as exc:
@@ -187,11 +167,12 @@ def config_list_command(
 @config_app.command("delete")
 def config_delete_command(
     key: str = typer.Argument(..., help="Config key to delete."),
-    token: str = _token_option(),
-    base_url: str = _base_url_option(),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
 ) -> None:
     """Delete a config entry by key."""
-    client = _client(base_url, token)
+    client = _client(token, base_url, profile)
     try:
         client.delete_config(key)
     except PegasusApiError as exc:

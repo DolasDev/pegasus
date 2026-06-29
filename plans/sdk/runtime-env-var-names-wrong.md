@@ -1,10 +1,10 @@
 # SDK spec — README runtime env var names are wrong; ship a `from_runtime()` factory
 
 - **Origin:** pegasus-workflows repo (`~/repos/pegasus-workflows`), `sdk-feedback/0005-runtime-env-var-names-wrong.md`
-- **Status:** Proposed
+- **Status:** Shipped
 - **Filed:** 2026-06-26
 - **SDK version when filed:** 0.2.0
-- **SDK version that addresses it:** <!-- fill in when shipped -->
+- **SDK version that addresses it:** 0.6.0
 - **Area:** docs (README) / authoring API (`PegasusClient`)
 
 ## Problem
@@ -88,7 +88,12 @@ the wrong names propagate to every workflow until each one fails in prod.
 
 ## Validation log
 
-<!-- Filled in when the SDK ships this and validation runs in the
-     pegasus-workflows repo. Plan: rewrite deliver_sms to use
-     PegasusClient.from_runtime(), re-publish, trigger against a connected
-     tenant, confirm a real text arrives (no KeyError). -->
+**Shipped in 0.6.0:** `PegasusClient.from_runtime()` reads `PEGASUS_API_BASE_URL`
+/ `PEGASUS_RUNTIME_TOKEN` and raises a named `RuntimeError` when either is unset;
+the README activity examples (SMS, secrets/config, projections) now use it, and
+note that `PEGASUS_WORKFLOW_TOKEN` is the publish-time CLI token. Unit-tested in
+`tests/test_from_runtime.py`.
+
+<!-- Remaining manual validation in the pegasus-workflows repo: rewrite
+     deliver_sms to use PegasusClient.from_runtime(), re-publish, trigger against
+     a connected tenant, confirm a real text arrives (no KeyError). -->

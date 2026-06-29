@@ -1,10 +1,10 @@
 # SDK spec — Named credential profiles (AWS-CLI-style) for publishing
 
 - **Origin:** pegasus-workflows repo (`~/repos/pegasus-workflows`), `sdk-feedback/0004-named-credential-profiles.md`
-- **Status:** Proposed
+- **Status:** Shipped
 - **Filed:** 2026-06-26
 - **SDK version when filed:** 0.2.0
-- **SDK version that addresses it:** <!-- fill in when shipped -->
+- **SDK version that addresses it:** 0.6.0
 - **Area:** CLI (`push`/`run`/`integration-config`) / auth / tooling (MCP)
 
 ## Problem
@@ -117,8 +117,14 @@ creds" and "which environment."
 
 ## Validation log
 
-<!-- Filled in when the SDK ships this and validation runs in the
-     pegasus-workflows repo. Plan: create ~/.pegasus/credentials with a [qa]
+**Shipped in 0.6.0:** `~/.pegasus/credentials` TOML profiles (new
+`pegasus_workflows.credentials` module); `configure` writes the file `0600`,
+`profile list` shows names + api_root only. `--profile` accepted by every API
+command; precedence is explicit flags > `--profile` > env vars > `[default]`;
+profile `api_root` defaults to `https://api.pegasus.dolas.dev`. Read-only MCP
+`list_profiles` never returns `api_key`. Unit-tested in `tests/test_credentials.py`
+and `tests/test_cli_profile.py`; CLI binary verified (0600 perms, key masked).
+
+<!-- Remaining manual validation in the pegasus-workflows repo: create a [qa]
      profile, run `pegasus-workflows push --profile qa` with no token/url flags,
-     confirm it publishes to QA; confirm `profile list` masks the key and the
-     file is 0600. -->
+     confirm it publishes to QA. -->

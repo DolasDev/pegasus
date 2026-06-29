@@ -9,31 +9,28 @@ Drives the server's two-step publish flow per workflow:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
 
 from ..api import PegasusApiError, PegasusClient
+from ..deployments import derive_env, record_deployment
 from ..manifest import DIAGRAM_FILENAME, ManifestError
+from ._auth import base_url_option, profile_option, resolve_credentials, token_option
 from .package import package_project
 
 __all__ = ["push_command"]
 
-#: Env var consulted when ``--token`` is omitted.
-TOKEN_ENV_VAR = "PEGASUS_WORKFLOW_TOKEN"
-
 
 def push_command(
-    token: str = typer.Option(
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
+    env: str = typer.Option(
         None,
-        "--token",
-        help=f"Pegasus vnd_ API key. Falls back to ${TOKEN_ENV_VAR}.",
-        envvar=TOKEN_ENV_VAR,
-    ),
-    base_url: str = typer.Option(
-        "http://localhost:3000",
-        "--base-url",
-        help="Pegasus API base URL.",
+        "--env",
+        help="Environment key for the deployments.toml record (default: API host).",
     ),
     project_dir: Path = typer.Option(
         Path("."),
@@ -46,13 +43,7 @@ def push_command(
     ),
 ) -> None:
     """Package and publish every workflow in the project to Pegasus."""
-    if not token:
-        typer.secho(
-            f"no token: pass --token or set ${TOKEN_ENV_VAR}",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
+    token, base_url = resolve_credentials(token, base_url, profile)
 
     project_dir = project_dir.resolve()
     try:
@@ -62,6 +53,8 @@ def push_command(
         raise typer.Exit(code=1) from exc
 
     client = PegasusClient(base_url=base_url, token=token)
+    env_key = env or derive_env(base_url)
+    multi = len(packaged) > 1
     failures = 0
 
     for manifest, zip_path in packaged:
@@ -90,6 +83,32 @@ def push_command(
                 f"published {label} (id={row['id']}, visibility={row['visibility']})",
                 fg=typer.colors.GREEN,
             )
+
+            # The artifact is already published; a ledger-write failure (disk
+            # full, perms) must not abort the remaining workflows or surface as a
+            # traceback — warn and carry on. The id is still recoverable via the
+            # API, the ledger is a convenience cache.
+            try:
+                ledger = record_deployment(
+                    project_dir,
+                    env=env_key,
+                    base_url=base_url,
+                    workflow_name=manifest.name,
+                    multi=multi,
+                    workflow_id=row["id"],
+                    version=manifest.version,
+                    visibility=row["visibility"],
+                    published_at=datetime.now(UTC)
+                    .isoformat(timespec="seconds")
+                    .replace("+00:00", "Z"),
+                )
+                typer.echo(f"-> recorded deployment [{env_key}] in {ledger}")
+            except OSError as exc:
+                typer.secho(
+                    f"published {label}, but could not write deployments.toml: {exc}",
+                    fg=typer.colors.YELLOW,
+                    err=True,
+                )
         except PegasusApiError as exc:
             failures += 1
             if exc.status_code == 409:

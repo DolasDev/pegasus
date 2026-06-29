@@ -29,11 +29,9 @@ from typing import Any
 import typer
 
 from ..api import PegasusApiError, PegasusClient
+from ._auth import base_url_option, profile_option, resolve_credentials, token_option
 
 __all__ = ["integration_config_app"]
-
-#: Env var consulted when ``--token`` is omitted (shared with ``push``).
-TOKEN_ENV_VAR = "PEGASUS_WORKFLOW_TOKEN"
 
 #: The editable surface, as conventional filenames in the working directory.
 MAPPING_FILE = "mapping.json"
@@ -49,17 +47,6 @@ integration_config_app = typer.Typer(
 
 
 # -- shared helpers ---------------------------------------------------------
-
-
-def _require_token(token: str | None) -> str:
-    if not token:
-        typer.secho(
-            f"no token: pass --token or set ${TOKEN_ENV_VAR}",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
-    return token
 
 
 def _load_json(directory: Path, filename: str) -> Any:
@@ -108,19 +95,6 @@ def _print_report(report: dict[str, Any]) -> None:
 
 
 # Reusable option declarations (Typer reads the default object per-parameter).
-def _token_option() -> Any:
-    return typer.Option(
-        None,
-        "--token",
-        help=f"Pegasus vnd_ API key. Falls back to ${TOKEN_ENV_VAR}.",
-        envvar=TOKEN_ENV_VAR,
-    )
-
-
-def _base_url_option() -> Any:
-    return typer.Option("http://localhost:3000", "--base-url", help="Pegasus API base URL.")
-
-
 def _dir_option() -> Any:
     return typer.Option(
         Path("."),
@@ -139,11 +113,12 @@ def _dir_option() -> Any:
 def validate_command(
     integration_id: str = typer.Argument(..., help="Integration id, e.g. weichert."),
     directory: Path = _dir_option(),
-    token: str = _token_option(),
-    base_url: str = _base_url_option(),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
 ) -> None:
     """Dry-run the publish gate for the config in *dir*. Writes nothing."""
-    token = _require_token(token)
+    token, base_url = resolve_credentials(token, base_url, profile)
     mapping, rules, corpus = _load_surface(directory.resolve())
     client = PegasusClient(base_url=base_url, token=token)
     try:
@@ -162,11 +137,12 @@ def validate_command(
 def publish_command(
     integration_id: str = typer.Argument(..., help="Integration id, e.g. weichert."),
     directory: Path = _dir_option(),
-    token: str = _token_option(),
-    base_url: str = _base_url_option(),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
 ) -> None:
     """Gate then publish the config in *dir* as a new version."""
-    token = _require_token(token)
+    token, base_url = resolve_credentials(token, base_url, profile)
     mapping, rules, corpus = _load_surface(directory.resolve())
     client = PegasusClient(base_url=base_url, token=token)
     try:
@@ -190,14 +166,15 @@ def publish_command(
 def pull_command(
     integration_id: str = typer.Argument(..., help="Integration id, e.g. weichert."),
     directory: Path = _dir_option(),
-    token: str = _token_option(),
-    base_url: str = _base_url_option(),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
     stdout: bool = typer.Option(
         False, "--stdout", help="Print the full config JSON instead of writing files."
     ),
 ) -> None:
     """Fetch the active config; write the editable surface to *dir* (or stdout)."""
-    token = _require_token(token)
+    token, base_url = resolve_credentials(token, base_url, profile)
     client = PegasusClient(base_url=base_url, token=token)
     try:
         config = client.get_integration_config(integration_id)
@@ -229,11 +206,12 @@ def pull_command(
 @integration_config_app.command("versions")
 def versions_command(
     integration_id: str = typer.Argument(..., help="Integration id, e.g. weichert."),
-    token: str = _token_option(),
-    base_url: str = _base_url_option(),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
 ) -> None:
     """List the config version history for the caller's scope, newest first."""
-    token = _require_token(token)
+    token, base_url = resolve_credentials(token, base_url, profile)
     client = PegasusClient(base_url=base_url, token=token)
     try:
         rows = client.list_integration_config_versions(integration_id)
@@ -254,11 +232,12 @@ def versions_command(
 def rollback_command(
     integration_id: str = typer.Argument(..., help="Integration id, e.g. weichert."),
     version: int = typer.Argument(..., help="The existing version to re-publish."),
-    token: str = _token_option(),
-    base_url: str = _base_url_option(),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
 ) -> None:
     """Re-publish a prior version as a new version (re-runs the gate)."""
-    token = _require_token(token)
+    token, base_url = resolve_credentials(token, base_url, profile)
     client = PegasusClient(base_url=base_url, token=token)
     try:
         row = client.rollback_integration_config(integration_id, version)

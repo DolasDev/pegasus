@@ -309,5 +309,7 @@ def test_registered_tools_are_only_safe_actions() -> None:
         "validate_manifest",
         "package_project",
         "validate_integration_config",
+        "list_deployments",
+        "list_profiles",
     }
     assert tool_names == expected
