@@ -3,7 +3,8 @@
 A Typer application wiring together the workflow developer flow:
 
 * ``init`` — scaffold a new workflow project.
-* ``diagram`` — generate the Mermaid workflow diagram from source (``[diagram]`` extra).
+* ``diagram`` — emit a prompt for your own coding agent to draw the Mermaid
+  workflow diagram (no LLM/API key needed — bring your own agent).
 * ``package`` — zip each declared workflow into ``dist/``.
 * ``push`` — package, then upload + finalize against the Pegasus API.
 * ``run`` — trigger a server-side execution of a curated workflow.
