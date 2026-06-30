@@ -246,19 +246,27 @@ from data the platform actually stores and trusts — the workflow's triggers, i
 declared `required_actions`, and the secret/config keys it touches — so the
 diagram (author-declared) sits next to the permission boundary (platform-guaranteed).
 
-A diagram is **required to publish**. Generate or refresh it from your code:
+A diagram is **required to publish** — but how you draw it is up to you. The
+`workflow.mmd` file is the source of truth: hand-write it, or have it drawn by
+**whatever coding agent you already use** (Claude Code, Cursor, Copilot, …) on
+your own subscription. `init` scaffolds a starter `workflow.mmd` so a new project
+publishes out of the box.
+
+The `diagram` command never calls an LLM and needs no API key. It assembles a
+ready-to-use prompt — your workflow's Python source plus the exact output path and
+formatting rules — for your agent to act on:
 
 ```
-pip install 'pegasus-workflows-sdk[diagram]'   # one-time: the Anthropic SDK
-export ANTHROPIC_API_KEY=sk-ant-...
-pegasus-workflows diagram                       # writes <source_dir>/workflow.mmd
-pegasus-workflows diagram --model claude-sonnet-4-6 --force   # cheaper model, regenerate
+pegasus-workflows diagram                  # print the prompt for all workflows
+pegasus-workflows diagram -w my-workflow   # just one workflow
+pegasus-workflows diagram -o diagram.txt   # write the prompt to a file instead
 ```
 
-The command sends your workflow's Python source to the Anthropic API and writes a
-`flowchart TD`. The file is the source of truth — **edit it freely** afterward;
-`diagram` only regenerates with `--force`. It is packaged into the bundle, so it
-is SHA-pinned to the exact published version.
+Feed the output to your coding agent (it names the target path, e.g.
+`<source_dir>/workflow.mmd`, and asks for a bare `flowchart TD`), then save the
+result there. The file is packaged into the bundle, so it is SHA-pinned to the
+exact published version — **edit it freely**; a changed diagram only goes live
+with a new published version.
 
 ## Inspecting executions
 

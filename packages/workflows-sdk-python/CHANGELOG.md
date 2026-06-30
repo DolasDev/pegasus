@@ -3,6 +3,39 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.7.0
+
+### Added
+
+- **MCP `diagram_prompt` tool + authoring-guide coverage.** The `pegasus-workflows
+mcp` server now exposes a read-only `diagram_prompt(project_dir, workflow=None)`
+  tool — the MCP-native equivalent of the CLI command — returning each workflow's
+  source plus its `workflow.mmd` output path and Mermaid rules so an AI coding
+  agent draws the diagram itself. The `pegasus://guide/authoring` resource now
+  documents that a `workflow.mmd` is required to publish and that the agent (not
+  any AI service) draws it. No new mutating/network tools; the no-write invariant
+  holds.
+
+### Changed
+
+- **`pegasus-workflows diagram` is now bring-your-own-agent.** The command no
+  longer calls the Anthropic API. Instead it prints a ready-to-use prompt — the
+  workflow's Python source plus the exact `<source_dir>/workflow.mmd` output path
+  and formatting rules — for **whatever coding agent the developer already uses**
+  (Claude Code, Cursor, Copilot, …) to act on, on their own subscription. No
+  `ANTHROPIC_API_KEY`, no provider lock-in. `--out/-o FILE` writes the prompt to a
+  file; `--workflow/-w` scopes to one workflow. What's required to publish is
+  unchanged: the `workflow.mmd` file must exist — its contents may be hand-written
+  or produced by any tool.
+
+### Removed
+
+- **The `[diagram]` extra** (the bundled `anthropic` dependency) and the
+  `--model` / `--force` flags and `$PEGASUS_DIAGRAM_MODEL` env var — the command
+  no longer generates or writes the diagram itself, so none apply. Anyone who
+  installed `pegasus-workflows-sdk[diagram]` should drop the extra; the command
+  works with no extras.
+
 ## 0.6.0
 
 ### Added

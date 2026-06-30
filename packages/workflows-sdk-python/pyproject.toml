@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pegasus-workflows-sdk"
-version = "0.6.0"
+version = "0.7.0"
 description = "Python SDK and CLI for authoring, packaging, and publishing Pegasus workflows."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -30,9 +30,6 @@ dev = [
   "ruff>=0.6",
 ]
 mcp = ["mcp>=1,<2"]
-# `pegasus-workflows diagram` AI-generates the Mermaid workflow diagram via the
-# Anthropic API. Optional so the core publish flow carries no AI dependency.
-diagram = ["anthropic>=0.39,<1"]
 
 [project.scripts]
 pegasus-workflows = "pegasus_workflows.cli:main"

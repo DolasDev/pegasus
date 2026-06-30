@@ -57,12 +57,12 @@ def package_workflow(project_dir: Path, manifest: Manifest, dist_dir: Path) -> P
 
     # A workflow diagram is required at publish time (the server rejects a
     # manifest without one). Catch its absence here so `package`/`push` fail with
-    # a clear, actionable message instead of a server 400. Run
-    # `pegasus-workflows diagram` to generate it.
+    # a clear, actionable message instead of a server 400. Write it by hand or have
+    # your coding agent draw it — `pegasus-workflows diagram` prints a prompt for it.
     if not (source_dir / DIAGRAM_FILENAME).is_file():
         raise ManifestError(
             f"workflow {manifest.name}: {manifest.source_dir}/{DIAGRAM_FILENAME} not found "
-            f"— run `pegasus-workflows diagram` to generate the workflow diagram first"
+            f"— write the Mermaid diagram (or run `pegasus-workflows diagram` for a prompt) first"
         )
 
     dist_dir.mkdir(parents=True, exist_ok=True)

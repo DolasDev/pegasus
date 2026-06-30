@@ -104,8 +104,12 @@ authoring MCP server exists) expose it as reference there too.
 - New Cedar action `SendSms` (`sms:send`) granted to the `workflow_runtime`
   persona; absent the action the call is denied (403). A manifest declaring
   `required_actions = ["SendSms"]` is therefore the capability gate.
-- Path **B (`get_secret`) was deferred** — the spec accepts "at least one of
-  A/B" and A (a platform-owned primitive) is the preferred shape.
+- Path **B (`get_secret`) initially deferred at 0.2.0** (the spec accepts "at
+  least one of A/B" and A, a platform-owned primitive, is the preferred shape) —
+  but it **has since landed**: `PegasusClient.get_secret(name)` /
+  `get_config(name)` are runtime methods (`GET …/runtime/secrets|configs/{name}`)
+  gated by `required_actions = ["ReadWorkflowSecret"]` / `["ReadWorkflowConfig"]`,
+  403 without the action and 404 on a missing key. So both A and B now exist.
 
 <!-- Remaining manual validation runs in the pegasus-workflows repo: bump the
      SDK to 0.2.0 in requirements.txt, un-stub send_order_saved_sms to call

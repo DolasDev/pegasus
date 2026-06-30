@@ -10,9 +10,11 @@ from pathlib import Path
 import pytest
 
 from pegasus_workflows.cli.mcp_server import (
+    resource_guide_authoring,
     resource_guide_secrets_config,
     resource_reference_api,
     resource_reference_manifest,
+    tool_diagram_prompt,
     tool_package_project,
     tool_scaffold_workflow,
     tool_validate_manifest,
@@ -183,6 +185,46 @@ def test_package_project_returns_zip_matching_cli(tmp_path: Path) -> None:
     assert zip_path.name == cli_zip.name
 
 
+# ── test: diagram_prompt tool ────────────────────────────────────────────────
+
+
+def test_diagram_prompt_returns_prompt_with_source_and_path(tmp_path: Path) -> None:
+    """``diagram_prompt`` returns a BYO-agent prompt naming the output path + source."""
+    from pegasus_workflows.cli.init import render_project
+
+    project_dir = render_project("dgtest", tmp_path)
+
+    result = tool_diagram_prompt(str(project_dir))
+    assert result["ok"] is True
+    assert len(result["prompts"]) == 1
+
+    entry = result["prompts"][0]
+    assert entry["workflow"] == "dgtest"
+    assert entry["out_path"] == "dgtest/workflow.mmd"
+    assert entry["exists"] is True  # init scaffolds a starter workflow.mmd
+    assert "flowchart TD" in entry["prompt"]
+    assert "dgtest/workflow.mmd" in entry["prompt"]
+    # The workflow's own source is embedded in the prompt.
+    assert "class" in entry["prompt"].lower() or "def" in entry["prompt"].lower()
+
+
+def test_diagram_prompt_unknown_workflow_errors(tmp_path: Path) -> None:
+    from pegasus_workflows.cli.init import render_project
+
+    project_dir = render_project("dgtest", tmp_path)
+    result = tool_diagram_prompt(str(project_dir), workflow="nope")
+    assert result["ok"] is False
+    assert "nope" in result["error"]
+
+
+def test_authoring_guide_documents_byo_diagram() -> None:
+    guide = resource_guide_authoring()
+    assert "workflow.mmd" in guide
+    assert "diagram_prompt" in guide
+    # Make clear the agent draws it (no AI service does).
+    assert "you" in guide.lower() and "draw" in guide.lower()
+
+
 # ── test: reference/api resource ─────────────────────────────────────────────
 
 
@@ -307,6 +349,7 @@ def test_registered_tools_are_only_safe_actions() -> None:
     expected = {
         "scaffold_workflow",
         "validate_manifest",
+        "diagram_prompt",
         "package_project",
         "validate_integration_config",
         "list_deployments",

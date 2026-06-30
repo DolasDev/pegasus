@@ -28,6 +28,9 @@ Tools
     Scaffold a new workflow project (wraps ``pegasus-workflows init``).
 ``validate_manifest(path_or_toml)``
     Validate a manifest file path or raw TOML text.
+``diagram_prompt(project_dir, workflow=None)``
+    Build the bring-your-own-agent prompt(s) for drawing each ``workflow.mmd`` —
+    the calling agent produces the Mermaid diagram itself (read-only, no network).
 ``package_project(project_dir)``
     Package declared workflows into ``dist/`` (wraps ``pegasus-workflows package``).
 ``validate_integration_config(integration_id, mapping, rules, corpus, base_url, token)``
@@ -52,6 +55,7 @@ from ..api import PegasusClient
 from ..credentials import ProfileError, list_profile_summaries
 from ..deployments import read_deployments
 from ..manifest import (
+    DIAGRAM_FILENAME,
     MANIFEST_FILENAME,
     MANIFEST_TIMEOUT_MAX_SECONDS,
     NAME_REGEX,
@@ -60,6 +64,7 @@ from ..manifest import (
     ManifestError,
     load_manifest,
 )
+from .diagram import build_diagram_prompt, gather_source
 from .init import render_project
 from .package import package_project as _pkg_project
 
@@ -72,6 +77,7 @@ __all__ = [
     "resource_reference_api",
     "tool_scaffold_workflow",
     "tool_validate_manifest",
+    "tool_diagram_prompt",
     "tool_package_project",
     "tool_validate_integration_config",
     "tool_list_deployments",
@@ -141,6 +147,18 @@ To read per-tenant secrets or config at runtime, declare ``ReadWorkflowSecret``
 / ``ReadWorkflowConfig`` in your manifest ``required_actions`` and call
 ``client.get_secret(...)`` / ``client.get_config(...)`` inside an activity. See
 ``pegasus://guide/secrets-config`` for publishing and usage.
+
+## Workflow diagram (required to publish)
+
+Every workflow must ship a Mermaid diagram at ``<source_dir>/workflow.mmd``. The
+tenant UI renders it so business users can confirm the workflow matches their
+rules, and ``package`` / ``push`` fail without it. There is no AI service that
+draws it for you — **you, the coding agent, draw it.** Call the ``diagram_prompt``
+tool to get each workflow's source plus the exact output path and formatting
+rules, produce a Mermaid ``flowchart TD`` that faithfully reflects the control
+flow (no invented steps), and write it to the path the tool names.
+``scaffold_workflow`` seeds a starter ``workflow.mmd`` so a fresh project already
+publishes; refine it before publishing for real.
 """
 
 
@@ -404,6 +422,51 @@ def _manifest_to_dict(m: Manifest) -> dict[str, Any]:
     }
 
 
+def tool_diagram_prompt(project_dir: str, workflow: str | None = None) -> dict[str, Any]:
+    """Build the bring-your-own-agent diagram prompt(s) for a project's workflows.
+
+    Returns the same prompt the ``pegasus-workflows diagram`` CLI prints — each
+    workflow's Python source plus the exact ``<source_dir>/workflow.mmd`` output
+    path and Mermaid formatting rules — so the calling agent draws the
+    ``flowchart TD`` itself and writes it to that path. A ``workflow.mmd`` is
+    required to package/publish. Read-only: gathers source and returns text, no
+    network and no write. Pass *workflow* to scope to a single workflow name.
+
+    Returns:
+        ``{"ok": True, "prompts": [{"workflow", "out_path", "exists", "prompt"}, ...]}``
+        on success, or ``{"ok": False, "error": str}`` on failure.
+    """
+    proj = Path(project_dir).resolve()
+    try:
+        manifests = load_manifest(proj)
+    except ManifestError as exc:
+        return {"ok": False, "error": str(exc)}
+
+    if workflow is not None:
+        manifests = [m for m in manifests if m.name == workflow]
+        if not manifests:
+            return {"ok": False, "error": f"no workflow named {workflow!r} in this project"}
+
+    prompts: list[dict[str, Any]] = []
+    for m in manifests:
+        source_dir = proj / m.source_dir
+        if not source_dir.is_dir():
+            return {
+                "ok": False,
+                "error": f"workflow {m.name}: source_dir '{m.source_dir}' not found",
+            }
+        out_path = f"{m.source_dir}/{DIAGRAM_FILENAME}"
+        prompts.append(
+            {
+                "workflow": m.name,
+                "out_path": out_path,
+                "exists": (source_dir / DIAGRAM_FILENAME).is_file(),
+                "prompt": build_diagram_prompt(m.name, out_path, gather_source(source_dir)),
+            }
+        )
+    return {"ok": True, "prompts": prompts}
+
+
 def tool_package_project(project_dir: str) -> dict[str, Any]:
     """Package every workflow declared in ``project_dir`` into ``dist/``.
 
@@ -540,6 +603,11 @@ def _build_server(FastMCP: type) -> Any:  # type: ignore[type-arg]
     def validate_manifest(path_or_toml: str) -> dict:  # type: ignore[type-arg]
         """Validate a manifest file path or raw TOML text."""
         return tool_validate_manifest(path_or_toml)
+
+    @server.tool()
+    def diagram_prompt(project_dir: str, workflow: str | None = None) -> dict:  # type: ignore[type-arg]
+        """Build the BYO-agent prompt(s) for drawing each workflow.mmd (read-only, no network)."""
+        return tool_diagram_prompt(project_dir, workflow)
 
     @server.tool()
     def package_project(project_dir: str) -> dict:  # type: ignore[type-arg]
