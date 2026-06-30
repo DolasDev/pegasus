@@ -5,7 +5,42 @@ updates:
     schedule:
       interval: 'weekly'
     groups:
+      # Tree-volatile dependencies, each on its own PR. These were carved out of
+      # the catch-all after a 44-package grouped bump (#383, closed) wedged CI:
+      # prisma 7.8.0 pulled @prisma/dev -> hono ^4.12.8, forking hono and
+      # breaking the apps/api typecheck, while a cedar-wasm bump de-hoisted the
+      # package out of root node_modules and broke the API Lambda bundle test.
+      # Isolating them keeps a bump that reshuffles the install tree reviewable
+      # and independently verifiable instead of buried in a 40-package PR.
+      prisma:
+        patterns:
+          - 'prisma'
+          - '@prisma/*'
+        update-types:
+          - 'minor'
+          - 'patch'
+      hono:
+        patterns:
+          - 'hono'
+          - '@hono/*'
+        update-types:
+          - 'minor'
+          - 'patch'
+      cedar:
+        patterns:
+          - '@cedar-policy/*'
+        update-types:
+          - 'minor'
+          - 'patch'
       minor-and-patch:
+        patterns:
+          - '*'
+        exclude-patterns:
+          - 'prisma'
+          - '@prisma/*'
+          - 'hono'
+          - '@hono/*'
+          - '@cedar-policy/*'
         update-types:
           - 'minor'
           - 'patch'
