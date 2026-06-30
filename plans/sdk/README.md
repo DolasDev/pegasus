@@ -19,3 +19,5 @@ resulting `Status` back into the source.
 | [runtime-env-var-names-wrong.md](runtime-env-var-names-wrong.md)                         | Shipped (0.6.0) | docs / PegasusClient                |
 | [long-running-event-correlated-workflows.md](long-running-event-correlated-workflows.md) | Proposed        | authoring API / manifest / platform |
 | [task-lifecycle-and-order-reads.md](task-lifecycle-and-order-reads.md)                   | Proposed        | PegasusClient / docs                |
+| [unified-setup-bootstrap.md](unified-setup-bootstrap.md)                                 | Proposed        | CLI / tooling (MCP) / docs          |
+| [mcp-server-guidance-stale.md](mcp-server-guidance-stale.md)                             | Proposed        | tooling (MCP) / docs / CLI          |
