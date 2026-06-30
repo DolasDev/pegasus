@@ -17,3 +17,4 @@ resulting `Status` back into the source.
 | [post-publish-deployment-recording.md](post-publish-deployment-recording.md) | Shipped (0.6.0) | CLI (`push`) / packaging / MCP  |
 | [named-credential-profiles.md](named-credential-profiles.md)                 | Shipped (0.6.0) | CLI / auth / MCP                |
 | [runtime-env-var-names-wrong.md](runtime-env-var-names-wrong.md)             | Shipped (0.6.0) | docs / PegasusClient            |
+| [unified-setup-bootstrap.md](unified-setup-bootstrap.md)                     | Proposed        | CLI / tooling (MCP) / docs      |
