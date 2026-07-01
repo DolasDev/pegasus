@@ -39,8 +39,8 @@ One command does the whole first-run bootstrap — seed a credential profile and
 wire the authoring MCP server into your agent host:
 
 ```
-pip install 'pegasus-workflows-sdk[mcp]'
-pegasus-workflows setup            # seeds ~/.pegasus/credentials (0600) + writes .mcp.json
+pip install pegasus-workflows-sdk   # the MCP server ships in the base package
+pegasus-workflows setup             # seeds ~/.pegasus/credentials (0600) + writes .mcp.json
 ```
 
 `setup` is the front door the obvious `--setup` / `--configure` guesses point
@@ -478,11 +478,16 @@ gives any MCP-compatible AI coding agent (Claude Code, Cursor, Windsurf, …)
 structured access to SDK rules and safe tooling — without the agent having to
 read or guess from source files.
 
-### Install the extra
+### Install
+
+The MCP server ships in the base package — no extra needed:
 
 ```
-pip install 'pegasus-workflows-sdk[mcp]'
+pip install pegasus-workflows-sdk
 ```
+
+(A legacy `[mcp]` extra still resolves as a no-op alias, so older
+`pip install 'pegasus-workflows-sdk[mcp]'` commands keep working.)
 
 ### Configure your agent
 

@@ -18,7 +18,7 @@ A Typer application wiring together the workflow developer flow:
   the MCP server into your agent host (the ``--setup``/``--configure`` front door).
 * ``configure`` / ``profile`` — store & list named credential profiles
   (``~/.pegasus/credentials``) so tokens never go on the command line.
-* ``mcp`` — start a stdio MCP server for AI coding agents (requires ``mcp`` extra).
+* ``mcp`` — start a stdio MCP server for AI coding agents (bundled in the base install).
 """
 
 from __future__ import annotations

@@ -21,6 +21,7 @@ resulting `Status` back into the source.
 | [task-lifecycle-and-order-reads.md](task-lifecycle-and-order-reads.md)                   | Shipped (0.8.0)† | PegasusClient / docs                |
 | [unified-setup-bootstrap.md](unified-setup-bootstrap.md)                                 | Shipped (0.8.0)  | CLI / tooling (MCP) / docs          |
 | [mcp-server-guidance-stale.md](mcp-server-guidance-stale.md)                             | Shipped (0.8.0)  | tooling (MCP) / docs / CLI          |
+| [mcp-extra-regression.md](mcp-extra-regression.md)                                       | Shipped (0.8.1)  | packaging (deps) / CLI / docs       |
 
 † `task-lifecycle-and-order-reads` (0009): SDK methods + `ReadOrder`/`ReadTask`/
 `CloseTask` Cedar actions shipped; the `/api/v1/pegii/*` order+task API is a

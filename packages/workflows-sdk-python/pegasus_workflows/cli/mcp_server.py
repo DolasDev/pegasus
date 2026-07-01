@@ -5,9 +5,9 @@ scaffolding, packaging, and the integration-config dry-run gate).  It does
 NOT re-implement any business logic — every tool delegates straight to the
 corresponding CLI helper.
 
-The ``mcp`` extra must be installed::
+The MCP server ships in the base package — a plain install has everything::
 
-    pip install 'pegasus-workflows-sdk[mcp]'
+    pip install pegasus-workflows-sdk
 
 Resources
 ---------
@@ -84,9 +84,12 @@ __all__ = [
     "tool_list_profiles",
 ]
 
-#: Shown when the user runs ``pegasus-workflows mcp`` without the extra installed.
+#: Shown if the ``mcp`` dependency is somehow absent. It ships in the BASE package
+#: (as of 0.8.1), so the remedy is a reinstall — not an extra. Defensive only.
 _MISSING_EXTRA_MSG = (
-    "The 'mcp' extra is required: pip install 'pegasus-workflows-sdk[mcp]'"
+    "The MCP server dependency 'mcp' is missing from this environment — it ships "
+    "in the base pegasus-workflows-sdk package. Reinstall to restore it: "
+    "pip install --upgrade pegasus-workflows-sdk"
 )
 
 
@@ -675,16 +678,15 @@ def _build_server(FastMCP: type) -> Any:  # type: ignore[type-arg]
 
 
 def mcp_command() -> None:
-    """Start a stdio MCP server for AI coding agents (requires the ``mcp`` extra).
+    """Start a stdio MCP server for AI coding agents.
 
     Exposes SDK resources and safe tools so any MCP-compatible agent can
     scaffold, validate, and package Pegasus workflows without network side
     effects.  Network-mutating operations (push, publish, run) are not exposed
     and remain human-gated via the CLI.
 
-    Install the extra first::
-
-        pip install 'pegasus-workflows-sdk[mcp]'
+    The MCP dependency ships in the base package — a plain
+    ``pip install pegasus-workflows-sdk`` is enough.
     """
     try:
         from mcp.server.fastmcp import FastMCP
