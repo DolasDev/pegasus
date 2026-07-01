@@ -35,16 +35,16 @@ function post(path: string, body?: unknown, headers: Record<string, string> = {}
 
 const authed = (token: string = PLATFORM_TOKEN) => ({ Authorization: `Bearer ${token}` })
 
-const PATH = '/api/v1/integrations/weichert/validate'
+const PATH = '/api/v1/integrations/demo_partner/validate'
 
-// A known-valid weichert order (mirrors __corpus__/weichert/01-valid-accepted).
-const validWeichertOrder = {
+// A known-valid demo_partner order (mirrors __corpus__/demo_partner/01-valid-accepted).
+const validDemoPartnerOrder = {
   Id: 'SHIP-1',
   InvolvedParties: {
     ShipperEmployer: { Identity: { Description: 'O-60232' } },
     Coordinator: {
       Identity: { Description: 'Suzanne Polo' },
-      EmailAddress: 'noreply@weichertwm.com',
+      EmailAddress: 'noreply@demopartner.example',
     },
   },
   Survey: { SerivceStatus: 'Accepted', Storage1stDay: 100, GeneralComments: 'ok' },
@@ -70,7 +70,7 @@ describe('POST /integrations/:integrationId/validate', () => {
   })
 
   it('returns 401 when no API key is supplied', async () => {
-    const res = await post(PATH, { order: validWeichertOrder })
+    const res = await post(PATH, { order: validDemoPartnerOrder })
     expect(res.status).toBe(401)
     expect((await res.json()) as Record<string, unknown>).toMatchObject({ code: 'UNAUTHORIZED' })
   })
@@ -81,7 +81,7 @@ describe('POST /integrations/:integrationId/validate', () => {
   })
 
   it('returns 200 valid:true for a clean order with a valid key', async () => {
-    const res = await post(PATH, { action: 'save', order: validWeichertOrder }, authed())
+    const res = await post(PATH, { action: 'save', order: validDemoPartnerOrder }, authed())
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ valid: true, issues: [], degraded: false })
   })
@@ -90,7 +90,7 @@ describe('POST /integrations/:integrationId/validate', () => {
     // A supplier may not set serviceStatus to Awarded — the live rejection.
     const res = await post(
       PATH,
-      { action: 'save', order: { ...validWeichertOrder, Survey: { SerivceStatus: 'Awarded' } } },
+      { action: 'save', order: { ...validDemoPartnerOrder, Survey: { SerivceStatus: 'Awarded' } } },
       authed(),
     )
     expect(res.status).toBe(200)

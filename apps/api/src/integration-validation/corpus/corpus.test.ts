@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { runGatePipeline, type GateCorpusCase } from '../gate-pipeline'
 import { getIntegrationDefinition } from '../registry'
-import { BUILTIN_CORPORA, getBuiltinCorpus, getGateCorpus, weichertCorpus } from './index'
+import { BUILTIN_CORPORA, getBuiltinCorpus, getGateCorpus, demoPartnerCorpus } from './index'
 
 // vitest runs with cwd = the apps/api package root.
 function readCorpusFromDisk(integrationId: string): GateCorpusCase[] {
@@ -27,7 +27,7 @@ describe('built-in corpus exports', () => {
   )
 
   it('exposes a non-empty corpus for the shipped integration', () => {
-    expect(weichertCorpus.length).toBeGreaterThan(0)
+    expect(demoPartnerCorpus.length).toBeGreaterThan(0)
   })
 
   // The DoD: runGatePipeline(base, { mapping, rules, corpus }) is ok for both
@@ -48,14 +48,14 @@ describe('built-in corpus exports', () => {
     },
   )
 
-  it('gate corpus excludes any structural-rejection fixture; weichert has none so it equals the full corpus', () => {
+  it('gate corpus excludes any structural-rejection fixture; demo_partner has none so it equals the full corpus', () => {
     // getGateCorpus drops cases that expect a structural-contract rejection (the
-    // gate's round-trip stage cannot accept them). weichert ships no such fixture,
+    // gate's round-trip stage cannot accept them). demo_partner ships no such fixture,
     // so its gate corpus is identical to the full corpus. (The filter is exercised
     // generically below; a future integration with a structural fixture would
     // re-add a data-level case.)
-    const full = getBuiltinCorpus('weichert')!
-    const gate = getGateCorpus('weichert')!
+    const full = getBuiltinCorpus('demo_partner')!
+    const gate = getGateCorpus('demo_partner')!
     expect(full.some((c) => c.expected.ruleIds.includes('structural-contract'))).toBe(false)
     expect(gate).toEqual(full)
   })

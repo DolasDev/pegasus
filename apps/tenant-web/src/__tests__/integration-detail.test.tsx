@@ -22,7 +22,7 @@ import {
 import type { IntegrationConfig } from '../api/integrations'
 
 vi.mock('@tanstack/react-router', () => ({
-  useParams: () => ({ integrationId: 'weichert' }),
+  useParams: () => ({ integrationId: 'demo_partner' }),
   Link: ({
     to,
     children,
@@ -57,7 +57,7 @@ vi.mock('@tanstack/react-query', async () => {
 
 const config: IntegrationConfig = {
   id: 'cfg-1',
-  integrationId: 'weichert',
+  integrationId: 'demo_partner',
   version: 3,
   visibility: 'GLOBAL',
   status: 'PUBLISHED',
@@ -198,7 +198,7 @@ describe('RulesTable', () => {
 describe('RawJsonView', () => {
   it('renders the full config as pretty JSON', () => {
     render(<RawJsonView config={config} />)
-    expect(screen.getByText(/"integrationId": "weichert"/)).toBeInTheDocument()
+    expect(screen.getByText(/"integrationId": "demo_partner"/)).toBeInTheDocument()
     // Corpus is included in the raw view (but not the human-readable tabs).
     expect(screen.getByText(/"corpus"/)).toBeInTheDocument()
   })

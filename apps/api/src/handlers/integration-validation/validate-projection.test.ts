@@ -6,7 +6,7 @@
 // warm is a no-op. validateOrder is spied (transform stays real) so we can
 // assert exactly what `prior` the resolver fed into the validator.
 //
-// The weichert fixture maps serviceOrderNumber from
+// The demo_partner fixture maps serviceOrderNumber from
 // InvolvedParties.ShipperEmployer.Identity.Description, so the derived
 // projection key is "O-60232".
 // ---------------------------------------------------------------------------
@@ -62,15 +62,15 @@ vi.mock('../../integration-validation/validate', async (importActual) => {
 
 import { integrationValidationHandler } from './validate'
 
-const PATH = '/api/v1/integrations/weichert/validate'
+const PATH = '/api/v1/integrations/demo_partner/validate'
 
-const validWeichertOrder = {
+const validDemoPartnerOrder = {
   Id: 'SHIP-1',
   InvolvedParties: {
     ShipperEmployer: { Identity: { Description: 'O-60232' } },
     Coordinator: {
       Identity: { Description: 'Suzanne Polo' },
-      EmailAddress: 'noreply@weichertwm.com',
+      EmailAddress: 'noreply@demopartner.example',
     },
   },
   Survey: { SerivceStatus: 'Accepted', Storage1stDay: 100, GeneralComments: 'ok' },
@@ -101,26 +101,26 @@ beforeEach(() => {
 
 describe('validate — cached-projection prior resolution', () => {
   it('loads the cached projection as prior when the body omits prior', async () => {
-    const cachedState = { ...validWeichertOrder, Survey: { SerivceStatus: 'Submitted' } }
+    const cachedState = { ...validDemoPartnerOrder, Survey: { SerivceStatus: 'Submitted' } }
     mockFindState.mockResolvedValue(cachedState)
 
-    const res = await post({ action: 'save', order: validWeichertOrder })
+    const res = await post({ action: 'save', order: validDemoPartnerOrder })
     expect(res.status).toBe(200)
-    expect(mockFindState).toHaveBeenCalledWith('weichert', 'order', 'O-60232')
+    expect(mockFindState).toHaveBeenCalledWith('demo_partner', 'order', 'O-60232')
     expect(captured.input?.prior).toEqual(cachedState)
   })
 
   it('does not apply a prior when the cache misses', async () => {
     mockFindState.mockResolvedValue(null)
-    const res = await post({ action: 'save', order: validWeichertOrder })
+    const res = await post({ action: 'save', order: validDemoPartnerOrder })
     expect(res.status).toBe(200)
     expect(mockFindState).toHaveBeenCalled()
     expect(captured.input?.prior).toBeUndefined()
   })
 
   it('an explicit prior in the body wins and skips the cache lookup', async () => {
-    const explicitPrior = { ...validWeichertOrder, Survey: { SerivceStatus: 'Accepted' } }
-    const res = await post({ action: 'save', order: validWeichertOrder, prior: explicitPrior })
+    const explicitPrior = { ...validDemoPartnerOrder, Survey: { SerivceStatus: 'Accepted' } }
+    const res = await post({ action: 'save', order: validDemoPartnerOrder, prior: explicitPrior })
     expect(res.status).toBe(200)
     expect(mockFindState).not.toHaveBeenCalled()
     expect(captured.input?.prior).toEqual(explicitPrior)
@@ -128,7 +128,7 @@ describe('validate — cached-projection prior resolution', () => {
 
   it('skips the lookup entirely for a platform-scoped key (null tenant)', async () => {
     authState.tenantId = null
-    const res = await post({ action: 'save', order: validWeichertOrder })
+    const res = await post({ action: 'save', order: validDemoPartnerOrder })
     expect(res.status).toBe(200)
     expect(mockFindState).not.toHaveBeenCalled()
     expect(captured.input?.prior).toBeUndefined()

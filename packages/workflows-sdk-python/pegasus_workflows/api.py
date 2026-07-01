@@ -635,7 +635,7 @@ class PegasusClient:
         usable pre-check anywhere. Inspect ``report["ok"]``.
 
         Args:
-            integration_id: The integration to gate against (e.g. ``"weichert"``).
+            integration_id: The integration to gate against (e.g. ``"demo_partner"``).
             mapping: The mapping document (editable surface).
             rules: The rule set (editable surface).
             corpus: The golden corpus — a list of ``GateCorpusCase`` objects.
@@ -915,7 +915,7 @@ class PegasusClient:
         """Read one cached projection record. Requires ``ReadIntegrationProjection``.
 
         Args:
-            integration: Integration slug, e.g. ``"weichert"``.
+            integration: Integration slug, e.g. ``"demo_partner"``.
             entity_type: Logical record type, e.g. ``"order"``.
             key: External record key, e.g. the service order number.
 
@@ -945,7 +945,7 @@ class PegasusClient:
         Requires ``ReadIntegrationProjection``.
 
         Args:
-            integration: Integration slug, e.g. ``"weichert"``.
+            integration: Integration slug, e.g. ``"demo_partner"``.
             entity_type: Logical record type, e.g. ``"order"``.
 
         Returns:
@@ -964,7 +964,7 @@ class PegasusClient:
         bumps the row's ``version``.
 
         Args:
-            integration: Integration slug, e.g. ``"weichert"``.
+            integration: Integration slug, e.g. ``"demo_partner"``.
             entity_type: Logical record type, e.g. ``"order"``.
             key: External record key, e.g. the service order number.
             state: The record's last-known state, in the integration's NATIVE

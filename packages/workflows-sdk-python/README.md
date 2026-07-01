@@ -246,9 +246,9 @@ Declare the actions your workflow needs, then read/write inside an activity:
 
 ```toml
 [[workflow]]
-name = "sync-weichert-orders"
+name = "sync-demo-partner-orders"
 version = "0.1.0"
-entry_points = ["sync.workflow:SyncWeichert"]
+entry_points = ["sync.workflow:SyncDemoPartner"]
 required_actions = ["ReadIntegrationProjection", "WriteIntegrationProjection"]
 ```
 
@@ -257,11 +257,11 @@ required_actions = ["ReadIntegrationProjection", "WriteIntegrationProjection"]
 async def cache_order(order: dict) -> None:
     client = PegasusClient.from_runtime()
     # Mirror the external record (native payload shape, ≤ 256 KB serialized).
-    client.put_projection("weichert", "order", order["serviceOrderNumber"], order)
+    client.put_projection("demo_partner", "order", order["serviceOrderNumber"], order)
 
-    prior = client.get_projection("weichert", "order", "SO-12345")  # None on miss
-    every = client.list_projections("weichert", "order")
-    client.delete_projection("weichert", "order", "SO-12345")
+    prior = client.get_projection("demo_partner", "order", "SO-12345")  # None on miss
+    every = client.list_projections("demo_partner", "order")
+    client.delete_projection("demo_partner", "order", "SO-12345")
 ```
 
 `get_projection` returns `None` on a cache miss; the write methods raise
@@ -445,10 +445,10 @@ lives as three JSON files in a working directory (`-C`, default `.`):
 validate → publish:
 
 ```
-pegasus-workflows integration-config pull weichert -C ./weichert
+pegasus-workflows integration-config pull demo_partner -C ./demo_partner
 # …edit mapping.json / rules.json…
-pegasus-workflows integration-config validate weichert -C ./weichert
-pegasus-workflows integration-config publish weichert -C ./weichert
+pegasus-workflows integration-config validate demo_partner -C ./demo_partner
+pegasus-workflows integration-config publish demo_partner -C ./demo_partner
 ```
 
 `publish`/`rollback` require the token's tenant to be the **platform tenant** to

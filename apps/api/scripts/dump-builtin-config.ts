@@ -12,7 +12,11 @@
 //
 // Usage (single-line):
 //   npx tsx scripts/dump-builtin-config.ts <integrationId> <outDir>
-//   npx tsx scripts/dump-builtin-config.ts weichert ../../integration-configs/weichert
+//   npx tsx scripts/dump-builtin-config.ts demo_partner ../../../pegasus-workflows/platform/integrations/demo_partner
+//
+// The canonical published integration configs now live in the pegasus-workflows
+// repo (platform/integrations/<id>/); this script regenerates that JSON snapshot
+// from the built-in floor whenever the floor changes.
 //
 // The corpus is the GATE-ELIGIBLE subset (structural-rejection fixtures dropped),
 // so the dumped files are publish-ready as-is.
@@ -20,12 +24,12 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { weichertMapping } from '../src/integration-validation/transform/weichert.transform'
-import { weichertRules } from '../src/integration-validation/rules/weichert.rules'
+import { demoPartnerMapping } from '../src/integration-validation/transform/demo-partner.transform'
+import { demoPartnerRules } from '../src/integration-validation/rules/demo-partner.rules'
 import { getGateCorpus } from '../src/integration-validation/corpus'
 
 const BUILTINS: Record<string, { mapping: unknown; rules: unknown }> = {
-  weichert: { mapping: weichertMapping, rules: weichertRules },
+  demo_partner: { mapping: demoPartnerMapping, rules: demoPartnerRules },
 }
 
 const [integrationId, outDirArg] = process.argv.slice(2)

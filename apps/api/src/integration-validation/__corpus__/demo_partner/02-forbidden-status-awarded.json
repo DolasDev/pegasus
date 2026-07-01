@@ -1,5 +1,5 @@
 {
-  "name": "valid — Accepted status, well-formed",
+  "name": "forbidden — supplier cannot set serviceStatus = Awarded",
   "input": {
     "order": {
       "Id": "SHIP-1",
@@ -7,14 +7,14 @@
         "ShipperEmployer": { "Identity": { "Description": "O-60232" } },
         "Coordinator": {
           "Identity": { "Description": "Suzanne Polo" },
-          "EmailAddress": "noreply@weichertwm.com"
+          "EmailAddress": "noreply@demopartner.example"
         }
       },
-      "Survey": { "SerivceStatus": "Accepted", "Storage1stDay": 100, "GeneralComments": "ok" },
+      "Survey": { "SerivceStatus": "Awarded" },
       "DocumentationDates": ["2024-05-25"],
       "KeyMoveDates": { "Survey": { "Planned": "2024-05-25" } },
-      "Financials": { "EstimatedWeight": 5000, "ActualWeight": null }
+      "Financials": { "EstimatedWeight": 5000 }
     }
   },
-  "expected": { "valid": true, "ruleIds": [] }
+  "expected": { "valid": false, "ruleIds": ["service-status-not-supplier-settable"] }
 }

@@ -1,17 +1,17 @@
 import { describe, it, expect } from 'vitest'
 import { z } from 'zod'
 import { analyzeMapping } from './mapping-static-check'
-import { WeichertOrderSchema } from '../canonical-weichert'
-import { weichertInputFieldRoots } from './weichert.transform'
+import { DemoPartnerOrderSchema } from '../canonical-demo-partner'
+import { demoPartnerInputFieldRoots } from './demo-partner.transform'
 import { listIntegrationIds, getIntegrationDefinition } from '../registry'
 
-const weichertJsonSchema = z.toJSONSchema(WeichertOrderSchema)
+const demoPartnerJsonSchema = z.toJSONSchema(DemoPartnerOrderSchema)
 
 describe('analyzeMapping', () => {
   it('flags a mapping to a field the canonical contract does not have', () => {
     const problems = analyzeMapping(
       { bogusField: 'x' },
-      { canonicalJsonSchema: weichertJsonSchema },
+      { canonicalJsonSchema: demoPartnerJsonSchema },
     )
     expect(problems).toContainEqual({
       where: 'bogusField',
@@ -22,7 +22,7 @@ describe('analyzeMapping', () => {
   it('flags a $each element mapping to an unknown canonical sub-field', () => {
     const problems = analyzeMapping(
       { shipments: { $from: 'shipments', $each: { ghost: 'order_num' } } },
-      { canonicalJsonSchema: weichertJsonSchema },
+      { canonicalJsonSchema: demoPartnerJsonSchema },
     )
     expect(problems).toContainEqual({
       where: 'shipments[].ghost',
@@ -33,7 +33,7 @@ describe('analyzeMapping', () => {
   it('flags a $from that reads an undeclared input field root', () => {
     const problems = analyzeMapping(
       { serviceStatus: { $from: 'totally_made_up' } },
-      { canonicalJsonSchema: weichertJsonSchema, inputFieldRoots: weichertInputFieldRoots },
+      { canonicalJsonSchema: demoPartnerJsonSchema, inputFieldRoots: demoPartnerInputFieldRoots },
     )
     expect(problems).toContainEqual({
       where: 'totally_made_up',
@@ -44,7 +44,7 @@ describe('analyzeMapping', () => {
   it('flags an ill-formed mapping document', () => {
     const problems = analyzeMapping(
       { a: { $from: '' } },
-      { canonicalJsonSchema: weichertJsonSchema },
+      { canonicalJsonSchema: demoPartnerJsonSchema },
     )
     expect(problems[0]?.problem).toMatch(/invalid mapping format/)
   })
@@ -52,7 +52,7 @@ describe('analyzeMapping', () => {
   it('accepts a $map whose outputs are all members of the target field enum', () => {
     const problems = analyzeMapping(
       { serviceStatus: { $from: 'Survey.SerivceStatus', $map: { active: 'Accepted' } } },
-      { canonicalJsonSchema: weichertJsonSchema },
+      { canonicalJsonSchema: demoPartnerJsonSchema },
     )
     expect(problems).toEqual([])
   })
@@ -60,7 +60,7 @@ describe('analyzeMapping', () => {
   it('flags a $map output that is not a valid value for an enum target field', () => {
     const problems = analyzeMapping(
       { serviceStatus: { $from: 'Survey.SerivceStatus', $map: { active: 'Bogus' } } },
-      { canonicalJsonSchema: weichertJsonSchema },
+      { canonicalJsonSchema: demoPartnerJsonSchema },
     )
     expect(problems).toContainEqual({
       where: 'serviceStatus',
@@ -71,7 +71,7 @@ describe('analyzeMapping', () => {
   it('flags $map combined with $each (value translation is scalar-only)', () => {
     const problems = analyzeMapping(
       { shipments: { $from: 'shipments', $map: { a: 'b' }, $each: { supplierShipmentId: 'Id' } } },
-      { canonicalJsonSchema: weichertJsonSchema },
+      { canonicalJsonSchema: demoPartnerJsonSchema },
     )
     expect(problems).toContainEqual({
       where: 'shipments',

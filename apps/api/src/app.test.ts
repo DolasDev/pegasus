@@ -305,18 +305,18 @@ describe('Unknown routes', () => {
 // ---------------------------------------------------------------------------
 // Declarative integration validation — real-app smoke through the full router.
 // Proves the route is mounted pre-tenant (reachable with NO tenant session) and
-// validates real weichert order shapes end-to-end.
+// validates real demo_partner order shapes end-to-end.
 // ---------------------------------------------------------------------------
 
 describe('POST /api/v1/integrations/:integrationId/validate', () => {
-  // A known-valid weichert order (mirrors __corpus__/weichert/01-valid-accepted).
-  const validWeichertOrder = {
+  // A known-valid demo_partner order (mirrors __corpus__/demo_partner/01-valid-accepted).
+  const validDemoPartnerOrder = {
     Id: 'SHIP-1',
     InvolvedParties: {
       ShipperEmployer: { Identity: { Description: 'O-60232' } },
       Coordinator: {
         Identity: { Description: 'Suzanne Polo' },
-        EmailAddress: 'noreply@weichertwm.com',
+        EmailAddress: 'noreply@demopartner.example',
       },
     },
     Survey: { SerivceStatus: 'Accepted', Storage1stDay: 100, GeneralComments: 'ok' },
@@ -325,24 +325,24 @@ describe('POST /api/v1/integrations/:integrationId/validate', () => {
     Financials: { EstimatedWeight: 5000, ActualWeight: null },
   }
 
-  it('returns 200 valid:true for a clean weichert order (no tenant session needed)', async () => {
-    const res = await app.request('/api/v1/integrations/weichert/validate', {
+  it('returns 200 valid:true for a clean demo_partner order (no tenant session needed)', async () => {
+    const res = await app.request('/api/v1/integrations/demo_partner/validate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'save', order: validWeichertOrder }),
+      body: JSON.stringify({ action: 'save', order: validDemoPartnerOrder }),
     })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ valid: true, issues: [], degraded: false })
   })
 
-  it('returns 200 valid:false with a field-mapped issue for a real weichert rule violation', async () => {
+  it('returns 200 valid:false with a field-mapped issue for a real demo_partner rule violation', async () => {
     // A supplier may not set serviceStatus to Awarded — the live rejection.
-    const res = await app.request('/api/v1/integrations/weichert/validate', {
+    const res = await app.request('/api/v1/integrations/demo_partner/validate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'save',
-        order: { ...validWeichertOrder, Survey: { SerivceStatus: 'Awarded' } },
+        order: { ...validDemoPartnerOrder, Survey: { SerivceStatus: 'Awarded' } },
       }),
     })
     expect(res.status).toBe(200)
@@ -381,11 +381,11 @@ describe('GET /api/v1/integrations', () => {
     expect(res.status).toBe(200)
     const data = ((await res.json()) as { data: Array<Record<string, unknown>> }).data
     const ids = data.map((d) => d['id'])
-    expect(ids).toEqual(expect.arrayContaining(['weichert']))
-    const weichert = data.find((d) => d['id'] === 'weichert')!
-    expect(weichert['name']).toBe('Weichert')
-    expect(typeof weichert['description']).toBe('string')
-    expect(weichert).toMatchObject({ published: false, version: null, visibility: null })
+    expect(ids).toEqual(expect.arrayContaining(['demo_partner']))
+    const demo_partner = data.find((d) => d['id'] === 'demo_partner')!
+    expect(demo_partner['name']).toBe('Demo Partner')
+    expect(typeof demo_partner['description']).toBe('string')
+    expect(demo_partner).toMatchObject({ published: false, version: null, visibility: null })
   })
 })
 

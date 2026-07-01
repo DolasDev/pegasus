@@ -104,7 +104,7 @@ const ringcentralEnabled = envName === 'prod'
 // Ungates the mutating integration-validator config endpoints (POST /config +
 // rollback) behind INTEGRATION_CONFIG_PUBLISH_ENABLED on the api Lambda. Enabled
 // in staging (QA) and prod — staging is where we dogfooded publishing the
-// built-in weichert config as a GLOBAL row, verified clean (zero validation
+// built-in demo_partner config as a GLOBAL row, verified clean (zero validation
 // diffs) on 2026-06-25, so Phase 5 turns the switch on for prod too (see
 // plans/todo/integration-config-dogfood-publish.md). Env-gated rather than a
 // one-shot context flag so it stays on across routine main-push deploys. Inert

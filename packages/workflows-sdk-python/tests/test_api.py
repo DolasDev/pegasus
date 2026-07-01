@@ -435,7 +435,7 @@ def test_validate_integration_config_posts_surface() -> None:
 
     client = _client_with(handler)
     report = client.validate_integration_config(
-        "weichert",
+        "demo_partner",
         mapping={"a": "x"},
         rules=[{"id": "r"}],
         corpus=[{"name": "c"}],
@@ -443,7 +443,7 @@ def test_validate_integration_config_posts_surface() -> None:
 
     assert report["ok"] is True
     assert captured["method"] == "POST"
-    assert captured["path"] == "/api/v1/integrations/weichert/config/validate"
+    assert captured["path"] == "/api/v1/integrations/demo_partner/config/validate"
     assert captured["body"] == {
         "mapping": {"a": "x"},
         "rules": [{"id": "r"}],
@@ -463,12 +463,12 @@ def test_publish_integration_config_returns_row() -> None:
 
     client = _client_with(handler)
     row = client.publish_integration_config(
-        "weichert", mapping={}, rules=[], corpus=[]
+        "demo_partner", mapping={}, rules=[], corpus=[]
     )
 
     assert row["version"] == 1
     assert row["visibility"] == "GLOBAL"
-    assert captured["path"] == "/api/v1/integrations/weichert/config"
+    assert captured["path"] == "/api/v1/integrations/demo_partner/config"
 
 
 def test_publish_integration_config_gate_failure_raises() -> None:
@@ -480,14 +480,14 @@ def test_publish_integration_config_gate_failure_raises() -> None:
 
     client = _client_with(handler)
     with pytest.raises(PegasusApiError) as exc_info:
-        client.publish_integration_config("weichert", mapping={}, rules=[], corpus=[])
+        client.publish_integration_config("demo_partner", mapping={}, rules=[], corpus=[])
     assert exc_info.value.status_code == 422
     assert exc_info.value.code == "GATE_FAILED"
 
 
 def test_get_integration_config_returns_full_projection() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v1/integrations/weichert/config"
+        assert request.url.path == "/api/v1/integrations/demo_partner/config"
         return httpx.Response(
             200,
             json={
@@ -502,7 +502,7 @@ def test_get_integration_config_returns_full_projection() -> None:
         )
 
     client = _client_with(handler)
-    config = client.get_integration_config("weichert")
+    config = client.get_integration_config("demo_partner")
     assert config["version"] == 3
     assert config["mapping"] == {"a": "x"}
 
@@ -513,20 +513,20 @@ def test_get_integration_config_not_found_raises() -> None:
 
     client = _client_with(handler)
     with pytest.raises(PegasusApiError) as exc_info:
-        client.get_integration_config("weichert")
+        client.get_integration_config("demo_partner")
     assert exc_info.value.status_code == 404
 
 
 def test_list_integration_config_versions_returns_data_array() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v1/integrations/weichert/config/versions"
+        assert request.url.path == "/api/v1/integrations/demo_partner/config/versions"
         return httpx.Response(
             200,
             json={"data": [{"version": 2}, {"version": 1}], "meta": {"count": 2}},
         )
 
     client = _client_with(handler)
-    assert client.list_integration_config_versions("weichert") == [
+    assert client.list_integration_config_versions("demo_partner") == [
         {"version": 2},
         {"version": 1},
     ]
@@ -541,11 +541,11 @@ def test_rollback_integration_config_posts_to_version_path() -> None:
         return httpx.Response(201, json={"data": {"version": 4, "visibility": "GLOBAL"}})
 
     client = _client_with(handler)
-    row = client.rollback_integration_config("weichert", 2)
+    row = client.rollback_integration_config("demo_partner", 2)
 
     assert row["version"] == 4
     assert captured["method"] == "POST"
-    assert captured["path"] == "/api/v1/integrations/weichert/config/rollback/2"
+    assert captured["path"] == "/api/v1/integrations/demo_partner/config/rollback/2"
 
 
 # ---------------------------------------------------------------------------
@@ -744,10 +744,10 @@ def test_get_projection_success() -> None:
         return httpx.Response(200, json={"data": {"entityKey": "SO-1", "state": {"x": 1}}})
 
     client = _client_with(handler)
-    row = client.get_projection("weichert", "order", "SO-1")
+    row = client.get_projection("demo_partner", "order", "SO-1")
     assert row == {"entityKey": "SO-1", "state": {"x": 1}}
     assert captured["method"] == "GET"
-    assert captured["path"] == "/api/v1/integration-projections/runtime/weichert/order/SO-1"
+    assert captured["path"] == "/api/v1/integration-projections/runtime/demo_partner/order/SO-1"
     assert captured["auth"] == f"Bearer {_TOKEN}"
 
 
@@ -756,7 +756,7 @@ def test_get_projection_miss_returns_none() -> None:
         return httpx.Response(404, json={"error": "Projection not found", "code": "NOT_FOUND"})
 
     client = _client_with(handler)
-    assert client.get_projection("weichert", "order", "NOPE") is None
+    assert client.get_projection("demo_partner", "order", "NOPE") is None
 
 
 def test_get_projection_forbidden_raises() -> None:
@@ -765,17 +765,17 @@ def test_get_projection_forbidden_raises() -> None:
 
     client = _client_with(handler)
     with pytest.raises(PegasusApiError) as exc_info:
-        client.get_projection("weichert", "order", "SO-1")
+        client.get_projection("demo_partner", "order", "SO-1")
     assert exc_info.value.status_code == 403
 
 
 def test_list_projections_returns_data() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/v1/integration-projections/runtime/weichert/order"
+        assert request.url.path == "/api/v1/integration-projections/runtime/demo_partner/order"
         return httpx.Response(200, json={"data": [{"entityKey": "SO-1"}]})
 
     client = _client_with(handler)
-    assert client.list_projections("weichert", "order") == [{"entityKey": "SO-1"}]
+    assert client.list_projections("demo_partner", "order") == [{"entityKey": "SO-1"}]
 
 
 def test_put_projection_puts_state_payload() -> None:
@@ -788,9 +788,9 @@ def test_put_projection_puts_state_payload() -> None:
         return httpx.Response(201, json={"data": {"entityKey": "SO-1", "version": 1}})
 
     client = _client_with(handler)
-    row = client.put_projection("weichert", "order", "SO-1", {"serviceOrderNumber": "SO-1"})
+    row = client.put_projection("demo_partner", "order", "SO-1", {"serviceOrderNumber": "SO-1"})
     assert captured["method"] == "PUT"
-    assert captured["path"] == "/api/v1/integration-projections/runtime/weichert/order/SO-1"
+    assert captured["path"] == "/api/v1/integration-projections/runtime/demo_partner/order/SO-1"
     assert captured["json"] == {"state": {"serviceOrderNumber": "SO-1"}}
     assert row["version"] == 1
 
@@ -803,7 +803,7 @@ def test_put_projection_too_large_raises() -> None:
 
     client = _client_with(handler)
     with pytest.raises(PegasusApiError) as exc_info:
-        client.put_projection("weichert", "order", "SO-1", {"big": "x"})
+        client.put_projection("demo_partner", "order", "SO-1", {"big": "x"})
     assert exc_info.value.status_code == 413
 
 
@@ -816,9 +816,9 @@ def test_delete_projection_issues_delete() -> None:
         return httpx.Response(204)
 
     client = _client_with(handler)
-    client.delete_projection("weichert", "order", "SO-1")
+    client.delete_projection("demo_partner", "order", "SO-1")
     assert captured["method"] == "DELETE"
-    assert captured["path"] == "/api/v1/integration-projections/runtime/weichert/order/SO-1"
+    assert captured["path"] == "/api/v1/integration-projections/runtime/demo_partner/order/SO-1"
 
 
 # -- pegII order reads -------------------------------------------------------

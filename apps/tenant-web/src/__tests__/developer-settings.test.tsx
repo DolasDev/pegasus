@@ -405,9 +405,9 @@ describe('DeveloperSettingsPage', () => {
             visibility: 'GLOBAL',
           },
           {
-            id: 'weichert',
-            name: 'Weichert',
-            description: 'Validates Weichert orders.',
+            id: 'demo_partner',
+            name: 'Demo Partner',
+            description: 'Validates Demo Partner orders.',
             published: false,
             version: null,
             visibility: null,
@@ -419,7 +419,7 @@ describe('DeveloperSettingsPage', () => {
       renderPage()
       expect(screen.getByText('LongHaul')).toBeInTheDocument()
       expect(screen.getByText('Published v4 · GLOBAL')).toBeInTheDocument()
-      expect(screen.getByText('Weichert')).toBeInTheDocument()
+      expect(screen.getByText('Demo Partner')).toBeInTheDocument()
       expect(screen.getByText('Built-in')).toBeInTheDocument()
     })
 
