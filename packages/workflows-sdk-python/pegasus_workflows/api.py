@@ -495,6 +495,122 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()
 
+    # -- pegII order + task reads (for use inside activities) ---------------
+    #
+    # Orders and their operational tasks live in the legacy pegII (MoveManager)
+    # system, exposed to running workflows under ``/api/v1/pegii`` — a namespaced
+    # legacy-bridge surface like the retired ``/onprem/longhaul`` cloud handlers.
+    # (This is distinct from the M2M ``/api/v1/orders`` reporting view of cloud
+    # moves.) A workflow started from an ``order.*`` domain event gets only a
+    # pointer in the envelope payload — re-fetch authoritative state here.
+
+    def list_orders(self, **params: Any) -> list[dict[str, Any]]:
+        """List pegII orders visible to the caller. Requires ``ReadOrder``.
+
+        For use inside workflow activities. Pass through query params such as
+        ``status`` as keyword arguments.
+
+        Returns:
+            A list of order rows (``{id, orderNumber, status, customerName,
+            scheduledDate, packingActualDate, createdAt, updatedAt}``).
+
+        Raises:
+            PegasusApiError: On 403 (manifest lacks ``ReadOrder``) or any other
+                non-2xx.
+        """
+        return self._get_json("/api/v1/pegii/orders", **params)["data"]
+
+    def get_order(self, order_id: str) -> dict[str, Any]:
+        """Fetch a single pegII order by id. Requires ``ReadOrder``.
+
+        For use inside workflow activities — the way to re-fetch authoritative
+        order state from an ``order.*`` event envelope's pointer payload.
+
+        Args:
+            order_id: The order id.
+
+        Returns:
+            The order row.
+
+        Raises:
+            PegasusApiError: On 403 (manifest lacks ``ReadOrder``), 404 (no such
+                order), or any other non-2xx.
+        """
+        return self._get_json(f"/api/v1/pegii/orders/{order_id}")["data"]
+
+    # Tasks are the unit of human work in the moving-ops flow (date
+    # confirmation, survey scheduling, paperwork, QA sign-off). A workflow whose
+    # job is to advance or close out operational tasks in response to events
+    # uses these. Reads are gated by ``ReadTask``; ``close_task`` by
+    # ``CloseTask`` — declared in the workflow manifest ``required_actions``.
+
+    def list_tasks(
+        self, order_id: str | None = None, **params: Any
+    ) -> list[dict[str, Any]]:
+        """List pegII tasks, optionally scoped to one order. Requires ``ReadTask``.
+
+        Args:
+            order_id: If given, only tasks belonging to this order are returned
+                (sent as the ``orderId`` query param).
+            **params: Additional query params (e.g. ``status``).
+
+        Returns:
+            A list of task rows (``{id, orderId, taskType, status, reason,
+            createdAt, updatedAt, closedAt}``).
+
+        Raises:
+            PegasusApiError: On 403 (manifest lacks ``ReadTask``) or any other
+                non-2xx.
+        """
+        if order_id is not None:
+            params["orderId"] = order_id
+        return self._get_json("/api/v1/pegii/tasks", **params)["data"]
+
+    def get_task(self, task_id: str) -> dict[str, Any]:
+        """Fetch a single pegII task by id. Requires ``ReadTask``.
+
+        Raises:
+            PegasusApiError: On 403 (manifest lacks ``ReadTask``), 404 (no such
+                task), or any other non-2xx.
+        """
+        return self._get_json(f"/api/v1/pegii/tasks/{task_id}")["data"]
+
+    def close_task(
+        self,
+        *,
+        order_id: str,
+        task_type: str,
+        reason: str | None = None,
+    ) -> dict[str, Any]:
+        """Close an order's task by ``(order_id, task_type)``. Requires ``CloseTask``.
+
+        Identifying a task by ``(order_id, task_type)`` avoids having to first
+        list tasks to find an id — the common "close the date-confirmation task
+        for this order" shape. **Idempotent**: closing an already-closed task is
+        a no-op success (not an error), so a long-running workflow can safely
+        retry the activity.
+
+        Args:
+            order_id: The order the task belongs to.
+            task_type: The task's type, e.g. ``"date_confirmation"``.
+            reason: Optional human-readable note recorded on the close.
+
+        Returns:
+            The closed task row (``status == "closed"``). The response also
+            carries ``alreadyClosed: True`` when the task was already closed.
+
+        Raises:
+            PegasusApiError: On 403 (manifest lacks ``CloseTask``), 404 (no such
+                order/task), or any other non-2xx.
+        """
+        payload: dict[str, Any] = {"orderId": order_id, "taskType": task_type}
+        if reason is not None:
+            payload["reason"] = reason
+        with self._client() as client:
+            response = client.post("/api/v1/pegii/tasks/close", json=payload)
+        _raise_for_status(response)
+        return response.json()["data"]
+
     # -- integration-validator config (publish / pull / versions / rollback) --
     #
     # The DB-backed authoring surface for an integration's declarative mapping +

@@ -225,6 +225,60 @@ def test_authoring_guide_documents_byo_diagram() -> None:
     assert "you" in guide.lower() and "draw" in guide.lower()
 
 
+def test_authoring_guide_teaches_from_runtime_not_hardcoded_client() -> None:
+    """The Activities example must use from_runtime(), not literal base_url/token.
+
+    Regression for sdk-feedback/0011 — the served guide drifted behind the
+    0.6.0 README, steering agents back to the runtime-failing hardcoded shape.
+    """
+    guide = resource_guide_authoring()
+    assert "PegasusClient.from_runtime()" in guide
+    assert "PegasusClient(base_url=" not in guide
+    # References the runtime env-var contract the from_runtime() reads.
+    assert "PEGASUS_API_BASE_URL" in guide
+    assert "PEGASUS_RUNTIME_TOKEN" in guide
+
+
+def test_secrets_config_guide_runtime_read_uses_from_runtime() -> None:
+    """The runtime read example must also use from_runtime() (no hardcoded token)."""
+    guide = resource_guide_secrets_config()
+    assert "PegasusClient.from_runtime()" in guide
+    # The publish-time (out-of-band) example may still show an explicit token,
+    # but the in-activity runtime read must not.
+    assert "token=RUNTIME_TOKEN" not in guide
+
+
+def test_manifest_reference_documents_diagram_requirement() -> None:
+    ref = resource_reference_manifest()
+    assert "workflow.mmd" in ref
+    assert "diagram_prompt" in ref
+
+
+def test_package_project_missing_diagram_names_in_mcp_remedy(tmp_path: Path) -> None:
+    """A missing diagram must fail with a remedy reachable from within MCP."""
+    from pegasus_workflows.cli.init import render_project
+    from pegasus_workflows.manifest import DIAGRAM_FILENAME
+
+    project_dir = render_project("nodiagram", tmp_path)
+    # Remove the scaffolded starter diagram to simulate the dead-end.
+    (project_dir / "nodiagram" / DIAGRAM_FILENAME).unlink()
+
+    result = tool_package_project(str(project_dir))
+    assert result["ok"] is False
+    # The remedy points at the in-MCP tool, not a shell command.
+    assert "diagram_prompt" in result["remedy"]
+    assert DIAGRAM_FILENAME in result["error"]
+
+
+def test_package_project_scaffold_then_package_works_via_mcp(tmp_path: Path) -> None:
+    """Scaffold → package through MCP tools alone (no shell diagram) succeeds."""
+    result = tool_scaffold_workflow("mcpflow", str(tmp_path))
+    assert result["ok"] is True
+    packaged = tool_package_project(result["project_dir"])
+    assert packaged["ok"] is True
+    assert len(packaged["artifacts"]) == 1
+
+
 # ── test: reference/api resource ─────────────────────────────────────────────
 
 

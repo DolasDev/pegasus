@@ -14,6 +14,11 @@
 // its manifest required_actions; it can read but never manage them.
 // Read/WriteIntegrationProjection let a running workflow maintain the per-record
 // external-state cache that the integration validator reads back as `prior`.
+// ReadOrder/ReadTask let a lifecycle workflow re-fetch authoritative order and
+// task state from an order.* event pointer; CloseTask lets it close out an
+// order's operational task (e.g. date_confirmation) when the triggering event
+// arrives. Orders/tasks are the pegII-bound operational surface
+// (handlers/pegii-runtime.ts).
 permit (
   principal in Pegasus::Group::"workflow_runtime",
   action in [
@@ -22,6 +27,9 @@ permit (
     Pegasus::Action::"ReadInvoice",
     Pegasus::Action::"ReadCustomer",
     Pegasus::Action::"ReadEvent",
+    Pegasus::Action::"ReadOrder",
+    Pegasus::Action::"ReadTask",
+    Pegasus::Action::"CloseTask",
     Pegasus::Action::"CreateEvent",
     Pegasus::Action::"EmitTenantEvent",
     Pegasus::Action::"SendSms",

@@ -14,6 +14,8 @@ A Typer application wiring together the workflow developer flow:
   rules) for an integration (publish / pull / versions / rollback).
 * ``secrets`` / ``config`` — publish per-tenant workflow secrets & configuration
   (set / list / delete) that workflows read at runtime.
+* ``setup`` — one guided first-run bootstrap: seed a credential profile + wire
+  the MCP server into your agent host (the ``--setup``/``--configure`` front door).
 * ``configure`` / ``profile`` — store & list named credential profiles
   (``~/.pegasus/credentials``) so tokens never go on the command line.
 * ``mcp`` — start a stdio MCP server for AI coding agents (requires ``mcp`` extra).
@@ -33,15 +35,43 @@ from .profile_config import configure_command, profile_app
 from .push import push_command
 from .run import run_command
 from .secrets_config import config_app, secrets_app
+from .setup import setup_command
 from .test import test_command
 
 app = typer.Typer(
     name="pegasus-workflows",
-    help="Author, package, and publish Pegasus workflows.",
+    # First-timers guess `--setup` / `--configure`; name the real command in the
+    # top-level help so those guesses land on `pegasus-workflows setup`.
+    help=(
+        "Author, package, and publish Pegasus workflows.\n\n"
+        "First time here? Run `pegasus-workflows setup` — the one-shot bootstrap "
+        "(this is the --setup / --configure you're looking for)."
+    ),
     no_args_is_help=True,
     add_completion=False,
 )
 
+
+@app.callback(invoke_without_command=True)
+def _main(
+    setup: bool = typer.Option(
+        False,
+        "--setup",
+        "--configure",
+        help="Alias hint: run `pegasus-workflows setup` for first-run bootstrap.",
+        is_eager=True,
+    ),
+) -> None:
+    """Point the obvious `--setup` / `--configure` guesses at the real command."""
+    if setup:
+        typer.echo(
+            "Run `pegasus-workflows setup` to seed credentials and register the MCP "
+            "server. See `pegasus-workflows setup --help` for options."
+        )
+        raise typer.Exit(code=0)
+
+
+app.command("setup")(setup_command)
 app.command("init")(init_command)
 app.command("diagram")(diagram_command)
 app.command("package")(package_command)

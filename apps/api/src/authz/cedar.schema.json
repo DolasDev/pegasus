@@ -79,6 +79,13 @@
           "attributes": {}
         }
       },
+      "Task": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
       "Event": {
         "memberOfTypes": [],
         "shape": {
@@ -219,6 +226,12 @@
       },
       "CreateOrder": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Order"] }
+      },
+      "ReadTask": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Task"] }
+      },
+      "CloseTask": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Task"] }
       },
       "ReadEvent": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Event"] }

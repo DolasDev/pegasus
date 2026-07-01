@@ -24,6 +24,7 @@ import { workflowInternalHandler } from './handlers/workflow-internal'
 import { eventsHandler } from './handlers/events'
 import { eventTypesHandler } from './handlers/event-types'
 import { ordersHandler } from './handlers/orders'
+import { pegiiRuntimeHandler } from './handlers/pegii-runtime'
 import { vpnAgentHandler } from './handlers/vpn-agent'
 import { dashboardPegiiHandler } from './handlers/dashboard-pegii'
 import { longhaulVersionHandler } from './handlers/longhaul-cloud/version'
@@ -221,6 +222,9 @@ app.route('/api/vpn', vpnAgentHandler)
 //   GET    /api/v1/orders              ← GET  /orders
 //   POST   /api/v1/orders              ← POST /orders/create[/{customer_app_id}]
 //   GET    /api/v1/orders/:orderId     ← (new — single order lookup)
+//   GET    /api/v1/pegii/orders        ← workflow-runtime pegII order reads (ReadOrder)
+//   GET    /api/v1/pegii/tasks         ← workflow-runtime pegII task reads (ReadTask)
+//   POST   /api/v1/pegii/tasks/close   ← workflow-runtime pegII task close (CloseTask)
 //
 // Dual-auth routes — reached by BOTH Cognito sessions and vnd_ keys:
 //   /api/v1/workflows  — tenant SPA reads + Python SDK CLI uploads. The handler
@@ -232,6 +236,12 @@ const m2mV1 = new Hono<AppEnv>()
 m2mV1.route('/events', eventsHandler)
 m2mV1.route('/event-types', eventTypesHandler)
 m2mV1.route('/orders', ordersHandler)
+// Workflow-runtime reads of legacy pegII operational records (orders + tasks):
+// ReadOrder / ReadTask / CloseTask on the workflow_runtime `vnd_` key. A
+// namespaced legacy-bridge surface like the retired `/onprem/longhaul/*`;
+// dual-auth applied inside the handler; pegII bridge stubbed today — see
+// handlers/pegii-runtime.ts. Distinct from the M2M `/orders` above.
+m2mV1.route('/pegii', pegiiRuntimeHandler)
 m2mV1.route('/workflows', workflowsHandler)
 // Outbound SMS — called by the workflow runtime's `vnd_` key (SendSms), so it
 // must accept API-key auth, not Cognito-JWT only. Dual-auth is applied inside

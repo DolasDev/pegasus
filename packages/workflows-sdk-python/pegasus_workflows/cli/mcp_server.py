@@ -128,12 +128,19 @@ Use ``PegasusClient`` only inside activities, never inside workflow methods.
 
 ## Activities
 
+Build the client with ``PegasusClient.from_runtime()`` — it reads the two env
+vars the tenant runner injects (``PEGASUS_API_BASE_URL`` /
+``PEGASUS_RUNTIME_TOKEN``), so you never hardcode a base URL or token. A future
+rename of those vars is then a one-line SDK fix, not a per-workflow break, and a
+run outside the runner fails with a clear named error instead of a bare
+``KeyError``.
+
     from pegasus_workflows import activity
     from pegasus_workflows.api import PegasusClient
 
     @activity.defn
     async def fetch_quote(quote_id: str) -> dict:
-        client = PegasusClient(base_url="https://...", token="vnd_...")
+        client = PegasusClient.from_runtime()
         return client.get_workflow(quote_id)  # example — use the right method
 
 ## Input contract
@@ -272,7 +279,7 @@ never in workflow code (httpx is sandboxed there):
 
     @activity.defn
     async def charge_customer(amount_cents: int) -> str:
-        client = PegasusClient(base_url=BASE_URL, token=RUNTIME_TOKEN)
+        client = PegasusClient.from_runtime()           # reads the runner's env contract
         api_key = client.get_secret("STRIPE_API_KEY")   # needs ReadWorkflowSecret
         region = client.get_config("DEFAULT_REGION")    # needs ReadWorkflowConfig
         ...
@@ -301,6 +308,13 @@ def resource_reference_manifest() -> str:
         "## Timeout constraint\n\n"
         f"``timeout_seconds`` max: ``{MANIFEST_TIMEOUT_MAX_SECONDS}`` s.\n"
         "The manifest may LOWER the platform default, never raise it.\n\n"
+        "## Packaging requirement — workflow diagram\n\n"
+        f"Every workflow must ship a Mermaid diagram at ``<source_dir>/{DIAGRAM_FILENAME}``.\n"
+        "``package`` (and ``push``) hard-fail without it. Through MCP, call the\n"
+        "``diagram_prompt`` tool to get each workflow's source + exact output path,\n"
+        "draw the ``flowchart TD`` yourself, and write it to that path before\n"
+        "``package_project``. ``scaffold_workflow`` seeds a starter diagram so a\n"
+        "fresh project already packages.\n\n"
         "## Manifest fields (``Manifest`` dataclass)\n\n"
         + "\n".join(field_lines)
         + "\n\n"
@@ -479,7 +493,23 @@ def tool_package_project(project_dir: str) -> dict[str, Any]:
     try:
         results = _pkg_project(Path(project_dir).resolve())
     except (ManifestError, OSError) as exc:
-        return {"ok": False, "error": str(exc)}
+        # The missing-diagram failure names a shell command (`pegasus-workflows
+        # diagram`) that an MCP-only agent can't run. Rewrite the remedy to the
+        # in-MCP path so scaffold → (draw) → package stays reachable without a
+        # shell. See the `diagram_prompt` tool + pegasus://reference/manifest.
+        message = str(exc)
+        if DIAGRAM_FILENAME in message:
+            return {
+                "ok": False,
+                "error": message,
+                "remedy": (
+                    f"A workflow diagram ({DIAGRAM_FILENAME}) is required to package. "
+                    "Call the `diagram_prompt` tool to get each workflow's source and "
+                    "output path, draw the Mermaid `flowchart TD` yourself, write it to "
+                    "the path the tool names, then call `package_project` again."
+                ),
+            }
+        return {"ok": False, "error": message}
 
     artifacts = [
         {
