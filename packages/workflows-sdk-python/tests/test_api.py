@@ -819,3 +819,122 @@ def test_delete_projection_issues_delete() -> None:
     client.delete_projection("weichert", "order", "SO-1")
     assert captured["method"] == "DELETE"
     assert captured["path"] == "/api/v1/integration-projections/runtime/weichert/order/SO-1"
+
+
+# -- pegII order reads -------------------------------------------------------
+
+
+def test_list_orders_returns_data_array() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["query"] = dict(request.url.params)
+        return httpx.Response(200, json={"data": [{"id": "ord-1"}], "meta": {"count": 1}})
+
+    client = _client_with(handler)
+    orders = client.list_orders(status="booked")
+    assert orders == [{"id": "ord-1"}]
+    assert captured["path"] == "/api/v1/pegii/orders"
+    assert captured["query"] == {"status": "booked"}
+
+
+def test_get_order_returns_data() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/pegii/orders/ord-9"
+        return httpx.Response(200, json={"data": {"id": "ord-9", "status": "booked"}})
+
+    client = _client_with(handler)
+    assert client.get_order("ord-9") == {"id": "ord-9", "status": "booked"}
+
+
+def test_get_order_forbidden_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"error": "manifest lacks ReadOrder", "code": "FORBIDDEN"})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.get_order("ord-9")
+    assert exc_info.value.status_code == 403
+
+
+# -- pegII task lifecycle ----------------------------------------------------
+
+
+def test_list_tasks_scopes_by_order_id() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["query"] = dict(request.url.params)
+        return httpx.Response(200, json={"data": [{"id": "task-1"}], "meta": {"count": 1}})
+
+    client = _client_with(handler)
+    tasks = client.list_tasks(order_id="ord-1", status="open")
+    assert tasks == [{"id": "task-1"}]
+    assert captured["path"] == "/api/v1/pegii/tasks"
+    assert captured["query"] == {"orderId": "ord-1", "status": "open"}
+
+
+def test_get_task_returns_data() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/pegii/tasks/task-7"
+        return httpx.Response(200, json={"data": {"id": "task-7", "status": "open"}})
+
+    client = _client_with(handler)
+    assert client.get_task("task-7") == {"id": "task-7", "status": "open"}
+
+
+def test_close_task_posts_order_and_type() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "orderId": "ord-1",
+                    "taskType": "date_confirmation",
+                    "status": "closed",
+                }
+            },
+        )
+
+    client = _client_with(handler)
+    result = client.close_task(
+        order_id="ord-1", task_type="date_confirmation", reason="packing date set"
+    )
+    assert result["status"] == "closed"
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/api/v1/pegii/tasks/close"
+    assert captured["body"] == {
+        "orderId": "ord-1",
+        "taskType": "date_confirmation",
+        "reason": "packing date set",
+    }
+
+
+def test_close_task_omits_reason_when_absent() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"data": {"status": "closed", "alreadyClosed": True}})
+
+    client = _client_with(handler)
+    result = client.close_task(order_id="ord-1", task_type="date_confirmation")
+    assert result["alreadyClosed"] is True
+    assert captured["body"] == {"orderId": "ord-1", "taskType": "date_confirmation"}
+
+
+def test_close_task_forbidden_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"error": "manifest lacks CloseTask", "code": "FORBIDDEN"})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.close_task(order_id="ord-1", task_type="date_confirmation")
+    assert exc_info.value.status_code == 403

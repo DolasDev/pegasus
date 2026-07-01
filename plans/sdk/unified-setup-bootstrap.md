@@ -1,10 +1,10 @@
 # SDK spec — Unified `setup` bootstrap (MCP wiring + profile seeding)
 
 - **Origin:** pegasus-workflows repo (`~/repos/pegasus-workflows`), `sdk-feedback/0010-unified-setup-bootstrap.md`
-- **Status:** Proposed
+- **Status:** Shipped (0.8.0)
 - **Filed:** 2026-06-30
 - **SDK version when filed:** 0.6.0
-- **SDK version that addresses it:** <!-- fill in when shipped -->
+- **SDK version that addresses it:** 0.8.0
 - **Area:** CLI / tooling (MCP) / docs
 
 ## Problem

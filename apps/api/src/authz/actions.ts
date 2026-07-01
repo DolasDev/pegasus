@@ -28,6 +28,7 @@ export type ResourceType =
   | 'ApiClient'
   | 'Setting'
   | 'Order'
+  | 'Task'
   | 'Event'
   | 'Workflow'
   | 'WorkflowSecretConfig'
@@ -148,6 +149,12 @@ export const Actions = {
   // ── Orders (legacy on-prem orders integration; M2M-only surface) ────────
   ReadOrder: { id: 'ReadOrder', resourceType: 'Order', permission: 'order:read' },
   CreateOrder: { id: 'CreateOrder', resourceType: 'Order', permission: 'order:create' },
+  // ── Tasks (operational work items; workflow-runtime surface, pegII-bound) ─
+  // Read/close of an order's tasks (date confirmation, survey scheduling, …)
+  // from a running workflow. Backed by a stub today; bridges to the pegII API
+  // like the retired longhaul surface (see handlers/pegii-runtime.ts).
+  ReadTask: { id: 'ReadTask', resourceType: 'Task', permission: 'task:read' },
+  CloseTask: { id: 'CloseTask', resourceType: 'Task', permission: 'task:close' },
   // ── Events (inbound platform event queue; M2M-only surface) ─────────────
   ReadEvent: { id: 'ReadEvent', resourceType: 'Event', permission: 'event:read' },
   CreateEvent: { id: 'CreateEvent', resourceType: 'Event', permission: 'event:create' },

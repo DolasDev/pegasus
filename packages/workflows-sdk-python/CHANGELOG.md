@@ -3,6 +3,48 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.8.0
+
+### Added
+
+- **`pegasus-workflows setup` — one guided first-run bootstrap** (spec 0010). Seeds
+  a `~/.pegasus/credentials` profile at `0600` (delegating to `configure`) and
+  registers the bundled MCP server by writing a `pegasus` entry into the agent
+  host's `.mcp.json` (Claude Code project config). Never clobbers an existing
+  `pegasus` entry without `--force`; `--print-mcp-config` emits the stanza to
+  stdout for other hosts/CI; `--skip-mcp` seeds only the profile. Performs no
+  network calls and writes the `api_key` only to the `0600` credentials file —
+  never into `.mcp.json`. Fully scriptable (zero prompts) when inputs are passed
+  as flags. The obvious `--setup` / `--configure` guesses now point at it, and
+  the onboarding flow is documented in the README.
+- **Order + task reads on `PegasusClient`** (spec 0009). New activity-side methods
+  `get_order` / `list_orders` (gated `ReadOrder`), `list_tasks` / `get_task`
+  (gated `ReadTask`), and an idempotent `close_task(*, order_id, task_type,
+reason=None)` (gated `CloseTask`) for lifecycle workflows that advance or close
+  out an order's operational tasks. All auto-surface in the
+  `pegasus://reference/api` MCP resource.
+
+### Changed
+
+- **MCP authoring guidance synced to 0.6.0 behavior** (spec 0011). The
+  `pegasus://guide/authoring` Activities example (and the secrets-config runtime
+  example) now build the client with `PegasusClient.from_runtime()` instead of a
+  hardcoded `base_url`/`token`, and reference the `PEGASUS_API_BASE_URL` /
+  `PEGASUS_RUNTIME_TOKEN` runtime contract. `pegasus://reference/manifest` now
+  documents the `workflow.mmd` packaging requirement, and the MCP
+  `package_project` tool's missing-diagram error names the in-MCP remedy (the
+  `diagram_prompt` tool) so a non-Claude agent isn't dead-ended at a shell command.
+
+> **Platform note (spec 0009):** the SDK's order/task methods target a namespaced
+> `/api/v1/pegii/*` legacy-bridge surface (like the retired `/onprem/longhaul/*`
+> handlers) — `get_order`/`list_orders` → `/api/v1/pegii/orders`,
+> `list_tasks`/`get_task`/`close_task` → `/api/v1/pegii/tasks`. That surface + the
+> `ReadOrder`/`ReadTask`/`CloseTask` Cedar actions ship in `apps/api` backed by
+> in-memory **stubs** (`services/pegii-orders.ts` + `services/pegii-tasks.ts`) that
+> bridge to the pegII API later — the same cutover pattern the retired longhaul
+> surface used. `close_task` is idempotent today against the stub. This is distinct
+> from the untouched M2M `/api/v1/orders` reporting view of cloud moves.
+
 ## 0.7.0
 
 ### Added

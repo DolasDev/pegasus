@@ -1,11 +1,25 @@
 # SDK spec — Task lifecycle API (`close_task`) and order domain reads on PegasusClient
 
 - **Origin:** pegasus-workflows repo (`~/repos/pegasus-workflows`), `sdk-feedback/0009-task-lifecycle-and-order-reads.md`
-- **Status:** Proposed
+- **Status:** Shipped (0.8.0) — API stubbed, pegII bridge pending
 - **Filed:** 2026-06-29
 - **SDK version when filed:** 0.6.0
-- **SDK version that addresses it:** <!-- fill in when shipped -->
+- **SDK version that addresses it:** 0.8.0
 - **Area:** PegasusClient | docs
+
+> **Ship note (2026-07-01):** the `PegasusClient` methods (`get_order`,
+> `list_orders`, `list_tasks`, `get_task`, idempotent `close_task`) and the real
+> `ReadOrder` / `ReadTask` / `CloseTask` Cedar actions (granted to
+> `workflow_runtime`) shipped in SDK 0.8.0. Both orders and tasks read from a
+> namespaced `/api/v1/pegii/*` legacy-bridge surface (like the retired
+> `/onprem/longhaul/*` handlers) — deliberately separate from the untouched M2M
+> `/api/v1/orders` reporting view of cloud moves. The surface ships in `apps/api`
+> (`handlers/pegii-runtime.ts`) backed by in-memory **stubs**
+> (`services/pegii-orders.ts` + `services/pegii-tasks.ts`); when the pegII API is
+> ready it bridges there the same way the retired longhaul surface cut over from
+> on-prem MSSQL. The last acceptance criterion (live QA idempotency run +
+> un-stubbing `order_lifecycle`) is validated in the pegasus-workflows repo, and
+> depends on spec 0008 (long-running workflows) landing.
 
 ## Problem
 

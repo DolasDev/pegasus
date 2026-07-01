@@ -1,9 +1,10 @@
 # SDK spec — MCP server guidance drifted from 0.6.0 behavior (`from_runtime` + mandatory `workflow.mmd`)
 
 - **Origin:** pegasus-workflows repo (`~/repos/pegasus-workflows`), `sdk-feedback/0011-mcp-server-stale-after-0.6.0.md`
-- **Status:** Proposed
+- **Status:** Shipped (0.8.0)
 - **Filed:** 2026-06-30
 - **SDK version when filed:** 0.6.0
+- **SDK version that addresses it:** 0.8.0
 - **Area:** tooling (MCP) / docs / CLI (`package`)
 
 ## Problem

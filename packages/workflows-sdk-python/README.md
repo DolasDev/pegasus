@@ -33,21 +33,53 @@ Swap the `@sdk-python-v0.1.0` tag for `@main` to track the latest unreleased
 SDK. This clones the whole monorepo to build one subdirectory, so prefer the
 PyPI install for everyday use.
 
+## First-run setup
+
+One command does the whole first-run bootstrap — seed a credential profile and
+wire the authoring MCP server into your agent host:
+
+```
+pip install 'pegasus-workflows-sdk[mcp]'
+pegasus-workflows setup            # seeds ~/.pegasus/credentials (0600) + writes .mcp.json
+```
+
+`setup` is the front door the obvious `--setup` / `--configure` guesses point
+at. It:
+
+- seeds/updates a `~/.pegasus/credentials` profile at `0600` (delegates to
+  `configure`; pick the profile with `--profile NAME`),
+- writes the `pegasus` MCP-server stanza into `./.mcp.json` (Claude Code project
+  config), never clobbering an existing `pegasus` entry without `--force`, and
+- performs **no network calls** and writes the `api_key` **only** to the `0600`
+  credentials file — never into `.mcp.json`.
+
+Scriptable (zero prompts) when you pass everything as flags:
+
+```
+pegasus-workflows setup --profile qa --api-key vnd_... --api-root https://api.pegasus-qa.dolas.dev
+pegasus-workflows setup --print-mcp-config      # emit the stanza to stdout, write nothing
+pegasus-workflows setup --skip-mcp              # only seed the credential profile
+```
+
+Then start authoring (see [Quick start](#quick-start)). For other agent hosts or
+manual wiring, see [Using the SDK with an AI coding agent](#using-the-sdk-with-an-ai-coding-agent).
+
 ## Quick start
 
 ```
 pegasus-workflows init demo
 cd demo
 pegasus-workflows test demo
-pegasus-workflows diagram                # generate workflow.mmd (needs [diagram] extra + ANTHROPIC_API_KEY)
+pegasus-workflows diagram                # prints a prompt — your coding agent draws workflow.mmd
 pegasus-workflows package
-pegasus-workflows push --token=vnd_... --base-url=http://localhost:3000
+pegasus-workflows push --profile default
 ```
 
 > A workflow **diagram** (`<source_dir>/workflow.mmd`) is required to publish. `init`
-> ships a starter one; `pegasus-workflows diagram` regenerates it from your code via
-> the Anthropic API. Business users view it in the Pegasus tenant UI to confirm the
-> workflow matches their business rules. See [Visualizing workflows](#visualizing-workflows).
+> ships a starter one; `pegasus-workflows diagram` prints a prompt you feed to your
+> own coding agent (Claude Code, Cursor, …) to draw it — no API key or extra needed.
+> Business users view it in the Pegasus tenant UI to confirm the workflow matches
+> their business rules. See [Visualizing workflows](#visualizing-workflows).
 
 ## Authoring
 
@@ -378,10 +410,11 @@ published_at = "2026-06-29T21:05:48Z"
 
 | Command                                                                | What it does                                                   |
 | ---------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `pegasus-workflows setup [--profile <name>] [--print-mcp-config]`      | First-run bootstrap: seed a profile + register the MCP server. |
 | `pegasus-workflows init <name>`                                        | Scaffold a new workflow project.                               |
 | `pegasus-workflows configure [--profile <name>]`                       | Store a credential profile in `~/.pegasus/credentials` (0600). |
 | `pegasus-workflows profile list`                                       | List stored profile names + api_root (never the key).          |
-| `pegasus-workflows diagram [-C <dir>] [--model …] [--force]`           | AI-generate `workflow.mmd` from source (`[diagram]` extra).    |
+| `pegasus-workflows diagram [-C <dir>] [-w <name>] [-o <file>]`         | Print a prompt for your coding agent to draw `workflow.mmd`.   |
 | `pegasus-workflows package`                                            | Zip each declared workflow into `dist/<name>-<version>.zip`.   |
 | `pegasus-workflows push [--profile <name>] [--env <name>] [--token=…]` | Package → upload → finalize; records `deployments.toml`.       |
 | `pegasus-workflows test <workflow>`                                    | Start local Temporal and run the workflow with a stub input.   |
@@ -452,6 +485,11 @@ pip install 'pegasus-workflows-sdk[mcp]'
 ```
 
 ### Configure your agent
+
+For Claude Code, `pegasus-workflows setup` writes the stanza for you (a `pegasus`
+entry in project `./.mcp.json`) — see [First-run setup](#first-run-setup). Use
+`pegasus-workflows setup --print-mcp-config` to emit the stanza for any other
+host, or wire it by hand below.
 
 #### Claude Code (`~/.claude/settings.json` or project `.claude/settings.json`)
 
