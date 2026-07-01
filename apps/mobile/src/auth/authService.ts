@@ -1,3 +1,4 @@
+import { normalizeEmail } from '@pegasus/auth'
 import { AuthError, type Session, type TenantResolution } from './types'
 import type { MobileConfig } from '../config'
 import type { OAuthConfig } from './oauthService'
@@ -52,8 +53,9 @@ export function createAuthService({ config, cognitoService, oauthService }: Auth
     password: string,
     _tenantId: string,
   ): Promise<Session> {
+    // Cognito usernames are case-sensitive — always sign in with the lower-cased email.
     const { idToken } = await cognitoService.signIn(
-      email,
+      normalizeEmail(email),
       password,
       cognito.userPoolId,
       cognito.clientId,
@@ -83,7 +85,7 @@ export function createAuthService({ config, cognitoService, oauthService }: Auth
     const res = await fetch(`${apiUrl}/api/auth/resolve-tenants`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email: normalizeEmail(email) }),
     })
     if (!res.ok) {
       throw new AuthError('ResolveTenantsFailed', `resolve-tenants returned ${res.status}`)
@@ -102,7 +104,7 @@ export function createAuthService({ config, cognitoService, oauthService }: Auth
     const res = await fetch(`${apiUrl}/api/auth/select-tenant`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, tenantId }),
+      body: JSON.stringify({ email: normalizeEmail(email), tenantId }),
     })
     if (!res.ok) {
       throw new AuthError('SelectTenantFailed', `select-tenant returned ${res.status}`)

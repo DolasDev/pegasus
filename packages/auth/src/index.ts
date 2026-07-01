@@ -6,3 +6,4 @@ export {
   passwordPolicyMessage,
 } from './cognito-client'
 export { type Session, isSessionExpired } from './session'
+export { normalizeEmail } from './email'
