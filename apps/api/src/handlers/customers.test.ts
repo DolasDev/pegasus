@@ -17,6 +17,7 @@ import { customersHandler } from './customers'
 vi.mock('../repositories', () => ({
   createCustomer: vi.fn(),
   findCustomerById: vi.fn(),
+  findCustomerByEmail: vi.fn(),
   listCustomers: vi.fn(),
   countCustomers: vi.fn(),
   updateCustomer: vi.fn(),
@@ -28,6 +29,25 @@ vi.mock('../repositories', () => ({
 vi.mock('../lib/domain-events', () => ({
   emitDomainEvent: vi.fn(),
 }))
+
+// The read routes resolve a CustomerGateway. In unit tests we mock the factory
+// so it delegates to the same mocked repository functions the write routes use
+// — keeping every existing read assertion valid while proving the reads flow
+// through the gateway seam rather than the repo import directly. The real
+// factory/branch logic is covered by gateways/__tests__/customer-gateway.factory.test.ts.
+vi.mock('../gateways/customer-gateway.factory', async () => {
+  const repos = await import('../repositories')
+  const noDb = {} as never
+  return {
+    resolveCustomerGateway: vi.fn(async () => ({
+      findCustomerById: (id: string) => repos.findCustomerById(noDb, id),
+      findCustomerByEmail: (email: string) => repos.findCustomerByEmail(noDb, email),
+      listCustomers: (opts: { limit?: number; offset?: number } = {}) =>
+        repos.listCustomers(noDb, opts),
+      countCustomers: () => repos.countCustomers(noDb),
+    })),
+  }
+})
 
 import type * as Domain from '@pegasus/domain'
 
@@ -48,6 +68,7 @@ import {
 } from '../repositories'
 import { hasPrimaryContact } from '@pegasus/domain'
 import { emitDomainEvent } from '../lib/domain-events'
+import { resolveCustomerGateway } from '../gateways/customer-gateway.factory'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -183,7 +204,9 @@ describe('customers handler', () => {
     })
 
     it('returns 422 with DomainError code when repository throws DomainError', async () => {
-      vi.mocked(createCustomer).mockRejectedValue(new DomainError('Email already exists', 'DUPLICATE_EMAIL'))
+      vi.mocked(createCustomer).mockRejectedValue(
+        new DomainError('Email already exists', 'DUPLICATE_EMAIL'),
+      )
       const res = await buildApp().request('/', post(validCreateBody))
       expect(res.status).toBe(422)
       const body = await json(res)
@@ -212,6 +235,13 @@ describe('customers handler', () => {
       const res = await buildApp().request('/')
       expect(res.status).toBe(500)
       expect((await json(res)).code).toBe('INTERNAL_ERROR')
+    })
+
+    it('resolves the read through the CustomerGateway seam', async () => {
+      vi.mocked(listCustomers).mockResolvedValue([] as never)
+      vi.mocked(countCustomers).mockResolvedValue(0 as never)
+      await buildApp().request('/')
+      expect(resolveCustomerGateway).toHaveBeenCalledWith(expect.anything(), 'test-tenant-id')
     })
   })
 

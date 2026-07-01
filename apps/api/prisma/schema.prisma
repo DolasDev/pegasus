@@ -207,6 +207,25 @@ model Tenant {
   /// var. Null until configured. See lib/longhaul-client-config.ts.
   longhaulClient String? @map("longhaul_client")
 
+  /// Per-tenant data source for the Customer aggregate reads — 'prisma'
+  /// (default: cloud Postgres is authoritative) or 'pegii' (reads are hydrated
+  /// from the pegII team's on-prem domain API over the WireGuard tunnel). Null
+  /// is treated as 'prisma'. Writes always stay on Postgres for now. See
+  /// lib/customer-source-config.ts and gateways/customer-gateway.factory.ts.
+  customerSource String? @map("customer_source")
+
+  /// Base URL for the pegII team's on-prem "true domain layer" API, reached
+  /// over the WireGuard tunnel (e.g. "https://host:port"). Distinct from
+  /// mssqlConnectionString (this repo's own pegii/efwk MSSQL bridge). Null
+  /// falls back to the PEGII_API_TUNNEL_SCHEME/PORT env defaults against the
+  /// tenant's VpnPeer overlay IP. See lib/pegii-overlay-target.ts.
+  pegiiApiBaseUrl String? @map("pegii_api_base_url")
+
+  /// Secrets Manager ARN for the pegII API bearer credential. Stored by
+  /// reference, never as plaintext, and NEVER returned by any API response.
+  /// Null means no Authorization header is sent (connectivity-only checks).
+  pegiiApiKeyRef String? @map("pegii_api_key_ref")
+
   /// Set when the tenant is offboarded. Data is retained; the tenant is
   /// excluded from all default queries. Null means not offboarded.
   deletedAt DateTime? @map("deleted_at")

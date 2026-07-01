@@ -18,6 +18,7 @@ import { inventoryHandler } from './handlers/inventory'
 import { billingHandler } from './handlers/billing'
 import { apiClientsHandler } from './handlers/api-clients'
 import { settingsHandler } from './handlers/settings'
+import { settingsPegiiHandler } from './handlers/settings-pegii'
 import { documentsHandler } from './handlers/documents'
 import { workflowsHandler } from './handlers/workflows'
 import { workflowInternalHandler } from './handlers/workflow-internal'
@@ -336,6 +337,9 @@ v1.route('/crew', crewHandler)
 v1.route('/invoices', billingHandler)
 v1.route('/api-clients', apiClientsHandler)
 v1.route('/settings', settingsHandler)
+// pegII on-prem domain API config (customerSource flag, base URL, credential).
+// Shares the /settings prefix; routes resolve across both routers.
+v1.route('/settings', settingsPegiiHandler)
 // RingCentral connections (tenant-authenticated, admin). Bring-your-own JWT:
 // the tenant pastes their RingCentral app's client id/secret + JWT credential,
 // which connect validates with a live jwt-bearer exchange. No platform OAuth app
