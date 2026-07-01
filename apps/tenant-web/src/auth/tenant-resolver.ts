@@ -9,6 +9,7 @@
 // returned here; only display metadata needed to build the authorize URL.
 // ---------------------------------------------------------------------------
 
+import { normalizeEmail } from '@pegasus/auth'
 import { apiFetch } from '@/api/client'
 
 export type ProviderType = 'oidc' | 'saml'
@@ -51,7 +52,7 @@ export type TenantResolution = {
 export async function resolveTenantsForEmail(email: string): Promise<TenantResolution[]> {
   return apiFetch<TenantResolution[]>('/api/auth/resolve-tenants', {
     method: 'POST',
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email: normalizeEmail(email) }),
   })
 }
 
@@ -68,6 +69,6 @@ export async function resolveTenantsForEmail(email: string): Promise<TenantResol
 export async function selectTenant(email: string, tenantId: string): Promise<TenantResolution> {
   return apiFetch<TenantResolution>('/api/auth/select-tenant', {
     method: 'POST',
-    body: JSON.stringify({ email, tenantId }),
+    body: JSON.stringify({ email: normalizeEmail(email), tenantId }),
   })
 }

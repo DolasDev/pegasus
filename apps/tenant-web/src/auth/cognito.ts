@@ -1,5 +1,10 @@
 import { getConfig } from '../config'
-import { cognitoApiRequest, CognitoError, passwordPolicyMessage } from '@pegasus/auth'
+import {
+  cognitoApiRequest,
+  CognitoError,
+  normalizeEmail,
+  passwordPolicyMessage,
+} from '@pegasus/auth'
 
 // ---------------------------------------------------------------------------
 // Cognito — configuration and Hosted UI helpers for the tenant web app.
@@ -134,18 +139,20 @@ export type SignInResult =
  */
 export async function signIn(email: string, password: string): Promise<SignInResult> {
   const { region, clientId } = getCognitoConfig()
+  // Cognito usernames are case-sensitive — always sign in with the lower-cased email.
+  const username = normalizeEmail(email)
   const json = await cognitoApiRequest(region, 'InitiateAuth', {
     AuthFlow: 'USER_PASSWORD_AUTH',
-    AuthParameters: { USERNAME: email, PASSWORD: password },
+    AuthParameters: { USERNAME: username, PASSWORD: password },
     ClientId: clientId,
   })
 
   if (json['ChallengeName'] === 'SOFTWARE_TOKEN_MFA') {
-    return { type: 'mfa', session: json['Session'] as string, username: email }
+    return { type: 'mfa', session: json['Session'] as string, username }
   }
 
   if (json['ChallengeName'] === 'NEW_PASSWORD_REQUIRED') {
-    return { type: 'new_password_required', session: json['Session'] as string, username: email }
+    return { type: 'new_password_required', session: json['Session'] as string, username }
   }
 
   const result = json['AuthenticationResult'] as { IdToken: string }
@@ -213,7 +220,7 @@ export async function forgotPassword(email: string): Promise<void> {
   const { region, clientId } = getCognitoConfig()
   await cognitoApiRequest(region, 'ForgotPassword', {
     ClientId: clientId,
-    Username: email,
+    Username: normalizeEmail(email),
   })
 }
 
@@ -226,7 +233,7 @@ export async function confirmForgotPassword(
   const { region, clientId } = getCognitoConfig()
   await cognitoApiRequest(region, 'ConfirmForgotPassword', {
     ClientId: clientId,
-    Username: email,
+    Username: normalizeEmail(email),
     ConfirmationCode: code,
     Password: newPassword,
   })
