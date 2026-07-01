@@ -125,16 +125,16 @@ Models crew and vehicle availability.
 
 ## Claude Code Model Routing
 
-`.claude/settings.json` ships one committed, team-wide model-routing key — the goal is to keep
-fan-out off the expensive model without burning it on routine work:
+`.claude/settings.json` ships two committed, team-wide model-routing keys — the goal is to get Fable
+5's intelligence on hard decisions while keeping fan-out off the expensive model on routine work:
 
+- **`"advisorModel": "fable"`** — the main loop consults Fable 5 at decision points; each seat's main
+  model stays on its own default. Gives the team Fable's judgment on hard calls without paying for it
+  on every turn. Per-seat requirements are the same as the plan/execute split below (Fable 5 access,
+  first-party Anthropic billing, Claude Code ≥ v2.1.170).
 - **`"env": { "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet" }`** — every spawned subagent (search, mechanical
   edits, `gsd-*` agents) runs on Sonnet, so fan-out never burns the expensive model. Per-session
   opt-out: launch with `CLAUDE_CODE_SUBAGENT_MODEL=inherit claude`.
-
-> **Note:** the always-on **`"advisorModel": "fable"`** key was removed (see git history) — the main
-> loop no longer consults Fable 5 at decision points. Fable is now used only via the optional
-> plan/execute split below.
 
 **Verify it's working:** run `/status` (no errors, main model = your default), then trigger a broad
 search and confirm the spawned subagent runs Sonnet, not your main model.
