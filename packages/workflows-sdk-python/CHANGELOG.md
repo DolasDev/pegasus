@@ -3,6 +3,21 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.8.1
+
+### Fixed
+
+- **The MCP server now ships in the base package** (spec 0012). `mcp` was an
+  optional `[mcp]` extra, so a clean `pip install pegasus-workflows-sdk` produced
+  an SDK whose `pegasus-workflows mcp` server could not start — which broke the
+  0.8.0 onboarding promise: `pegasus-workflows setup` registers a `pegasus` MCP
+  server in `.mcp.json`, but on a fresh install that server dead-ended at launch
+  with an `ImportError`. `mcp>=1,<2` is now a base dependency, so a plain install
+  yields a working server. The `[mcp]` extra is kept as a **no-op alias** so
+  existing `pip install 'pegasus-workflows-sdk[mcp]'` commands still resolve. Docs
+  (README) updated to match; the `mcp` command's missing-dependency message now
+  points at a base reinstall rather than the extra.
+
 ## 0.8.0
 
 ### Added

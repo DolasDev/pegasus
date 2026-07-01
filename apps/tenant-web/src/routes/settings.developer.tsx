@@ -485,12 +485,13 @@ function CopyableBlock({ code }: { code: string }) {
 function WorkflowsSdkCard() {
   const apiUrl = getConfig().apiUrl.replace(/\/$/, '')
   const installCmd = 'pip install pegasus-workflows-sdk'
+  const setupCmd = `pegasus-workflows setup --api-root ${apiUrl}`
   const quickStartCmd = [
     'pegasus-workflows init demo',
     'cd demo',
     'pegasus-workflows test demo',
     'pegasus-workflows package',
-    `pegasus-workflows push --token=<vnd_…> --base-url=${apiUrl}`,
+    'pegasus-workflows push',
   ].join('\n')
 
   return (
@@ -518,21 +519,42 @@ function WorkflowsSdkCard() {
         </div>
 
         <div className="space-y-1.5">
-          <p className="text-sm font-medium">2. Scaffold, test, package, and push</p>
+          <p className="text-sm font-medium">2. Run first-time setup</p>
+          <CopyableBlock code={setupCmd} />
+          <p className="text-xs text-muted-foreground">
+            <code className="font-mono">setup</code> prompts (hidden) for a{' '}
+            <code className="font-mono">vnd_…</code> API key and stores it in a{' '}
+            <code className="font-mono">~/.pegasus/credentials</code> profile (
+            <code className="font-mono">0600</code>) — so later commands need no{' '}
+            <code className="font-mono">--token</code>. It also registers the authoring MCP server
+            in <code className="font-mono">.mcp.json</code> so your AI coding agent (Claude Code,
+            Cursor, …) gets full workflow-authoring context. Your API key is written only to the
+            credentials file, never to <code className="font-mono">.mcp.json</code>. It performs no
+            network calls. Re-run it any time; add{' '}
+            <code className="font-mono">--print-mcp-config</code> to just emit the MCP stanza, or{' '}
+            <code className="font-mono">--skip-mcp</code> to only seed credentials.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium">3. Scaffold, test, package, and push</p>
           <CopyableBlock code={quickStartCmd} />
           <p className="text-xs text-muted-foreground">
             <code className="font-mono">test</code> runs the workflow against a local Dockerized
             Temporal; <code className="font-mono">package</code> zips each workflow declared in{' '}
             <code className="font-mono">pegasus-workflows.toml</code>;{' '}
-            <code className="font-mono">push</code> uploads it to this tenant.
+            <code className="font-mono">push</code> uploads it to this tenant using the profile{' '}
+            <code className="font-mono">setup</code> seeded.
           </p>
         </div>
 
         <div className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
-          <strong>Token:</strong> <code className="font-mono">push</code> needs a{' '}
-          <code className="font-mono">vnd_…</code> API key whose service account holds the{' '}
-          <code className="font-mono">workflow_developer</code> role. Create one above, then pass it
-          via <code className="font-mono">--token</code> or the{' '}
+          <strong>Token:</strong> <code className="font-mono">setup</code> (and{' '}
+          <code className="font-mono">push</code>) need a <code className="font-mono">vnd_…</code>{' '}
+          API key whose service account holds the{' '}
+          <code className="font-mono">workflow_developer</code> role. Create one above, then paste
+          it when <code className="font-mono">setup</code> prompts. To skip the profile, commands
+          still accept <code className="font-mono">--token</code> or the{' '}
           <code className="font-mono">PEGASUS_WORKFLOW_TOKEN</code> environment variable.
         </div>
       </CardContent>

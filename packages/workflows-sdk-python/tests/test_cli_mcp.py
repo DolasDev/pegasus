@@ -57,13 +57,41 @@ def test_mcp_command_exits_when_extra_missing(monkeypatch: pytest.MonkeyPatch) -
     assert "pip install" in combined
 
 
+def test_mcp_is_a_base_dependency_not_an_extra() -> None:
+    """Regression for sdk-feedback 0012 — `mcp` must ship in the BASE package.
+
+    A plain `pip install pegasus-workflows-sdk` has to yield a working MCP server
+    (the onboarding path `setup` advertises). Gating `mcp` behind an optional
+    `[mcp]` extra regressed that: a clean install registered a server that
+    couldn't start. Assert the packaging declares `mcp` as a base dependency and
+    the `[mcp]` extra (if present at all) adds nothing.
+    """
+    import tomllib
+
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    with pyproject.open("rb") as fh:
+        cfg = tomllib.load(fh)
+
+    base_deps = cfg["project"]["dependencies"]
+    assert any(d.startswith("mcp") for d in base_deps), (
+        f"`mcp` must be a base dependency, got {base_deps}"
+    )
+    # The extra, if kept for back-compat, must be a no-op (adds no mcp pin).
+    extra = cfg["project"].get("optional-dependencies", {}).get("mcp", [])
+    assert extra == [], f"the [mcp] extra must be a no-op alias, got {extra}"
+
+
 def test_missing_extra_message_content() -> None:
-    """The hardcoded error message names the extra and the install command."""
+    """The defensive error message names the dep and a reinstall command.
+
+    ``mcp`` ships in the base package (0.8.1+), so the remedy is a reinstall of
+    the base SDK — not an extra (sdk-feedback 0012).
+    """
     from pegasus_workflows.cli.mcp_server import _MISSING_EXTRA_MSG
 
     assert "mcp" in _MISSING_EXTRA_MSG
     assert "pip install" in _MISSING_EXTRA_MSG
-    assert "pegasus-workflows-sdk[mcp]" in _MISSING_EXTRA_MSG
+    assert "pegasus-workflows-sdk" in _MISSING_EXTRA_MSG
 
 
 # ── test: validate_manifest tool ──────────────────────────────────────────────
