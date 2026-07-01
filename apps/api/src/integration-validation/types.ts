@@ -66,7 +66,7 @@ export interface CanonicalContext<T = unknown> {
  */
 export interface IntegrationDefinition {
   id: string
-  /** Human-facing label for UI/list surfaces (e.g. "Weichert"). */
+  /** Human-facing label for UI/list surfaces (e.g. "Demo Partner"). */
   displayName: string
   /** One-line description of what the integration validates. */
   description: string

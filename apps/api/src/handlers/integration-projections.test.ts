@@ -73,7 +73,7 @@ function projectionRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'p-1',
     tenantId: 'test-tenant-id',
-    integrationId: 'weichert',
+    integrationId: 'demo_partner',
     entityType: 'order',
     entityKey: 'SO-1',
     state: { serviceOrderNumber: 'SO-1' },
@@ -85,7 +85,7 @@ function projectionRow(overrides: Record<string, unknown> = {}) {
   }
 }
 
-const BASE = '/integration-projections/runtime/weichert/order'
+const BASE = '/integration-projections/runtime/demo_partner/order'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -101,7 +101,7 @@ describe('GET /runtime/:integrationId/:entityType/:entityKey', () => {
     const data = (await json(res))['data'] as Record<string, unknown>
     expect(data['entityKey']).toBe('SO-1')
     expect(data['state']).toEqual({ serviceOrderNumber: 'SO-1' })
-    expect(mockRepo.findByKey).toHaveBeenCalledWith('weichert', 'order', 'SO-1')
+    expect(mockRepo.findByKey).toHaveBeenCalledWith('demo_partner', 'order', 'SO-1')
   })
 
   it('returns 404 on a miss', async () => {
@@ -135,7 +135,7 @@ describe('GET /runtime/:integrationId/:entityType (list)', () => {
     expect(res.status).toBe(200)
     const data = (await json(res))['data'] as Array<Record<string, unknown>>
     expect(data.map((r) => r['entityKey'])).toEqual(['SO-1', 'SO-2'])
-    expect(mockRepo.list).toHaveBeenCalledWith('weichert', 'order')
+    expect(mockRepo.list).toHaveBeenCalledWith('demo_partner', 'order')
   })
 })
 
@@ -148,7 +148,7 @@ describe('PUT /runtime/:integrationId/:entityType/:entityKey', () => {
     expect(mockRepo.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantId: 'test-tenant-id',
-        integrationId: 'weichert',
+        integrationId: 'demo_partner',
         entityType: 'order',
         entityKey: 'SO-1',
         updatedByUserId: 'svc-user-1',
@@ -200,7 +200,7 @@ describe('DELETE /runtime/:integrationId/:entityType/:entityKey', () => {
     const app = buildApp(['workflow_runtime'])
     const ok = await app.request(`${BASE}/SO-1`, { method: 'DELETE' })
     expect(ok.status).toBe(204)
-    expect(mockRepo.deleteByKey).toHaveBeenCalledWith('weichert', 'order', 'SO-1')
+    expect(mockRepo.deleteByKey).toHaveBeenCalledWith('demo_partner', 'order', 'SO-1')
     const missing = await app.request(`${BASE}/NOPE`, { method: 'DELETE' })
     expect(missing.status).toBe(404)
   })

@@ -6,12 +6,12 @@
 // ---------------------------------------------------------------------------
 
 import type { GateCorpusCase } from '../gate-pipeline'
-import { weichertCorpus } from './weichert.corpus'
+import { demoPartnerCorpus } from './demo-partner.corpus'
 
-export { weichertCorpus }
+export { demoPartnerCorpus }
 
 export const BUILTIN_CORPORA: Record<string, GateCorpusCase[]> = {
-  weichert: weichertCorpus,
+  demo_partner: demoPartnerCorpus,
 }
 
 /**

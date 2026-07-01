@@ -73,11 +73,11 @@ def test_validate_reads_surface_and_passes_it(tmp_path: Path) -> None:
     _write_surface(tmp_path)
     result = runner.invoke(
         ic.integration_config_app,
-        ["validate", "weichert", "--dir", str(tmp_path), "--token", _TOKEN],
+        ["validate", "demo_partner", "--dir", str(tmp_path), "--token", _TOKEN],
     )
     assert result.exit_code == 0, result.output
     iid, mapping, rules, corpus = _FakeClient.last["validate"]
-    assert iid == "weichert"
+    assert iid == "demo_partner"
     assert mapping == {"a": "x"}
     assert rules == [{"id": "r"}]
     assert corpus == [{"name": "c"}]
@@ -98,7 +98,7 @@ def test_validate_exits_nonzero_when_gate_not_ok(
     )
     result = runner.invoke(
         ic.integration_config_app,
-        ["validate", "weichert", "--dir", str(tmp_path), "--token", _TOKEN],
+        ["validate", "demo_partner", "--dir", str(tmp_path), "--token", _TOKEN],
     )
     assert result.exit_code == 1
 
@@ -107,7 +107,7 @@ def test_missing_token_exits_with_message(tmp_path: Path) -> None:
     _write_surface(tmp_path)
     result = runner.invoke(
         ic.integration_config_app,
-        ["validate", "weichert", "--dir", str(tmp_path)],
+        ["validate", "demo_partner", "--dir", str(tmp_path)],
         env={"PEGASUS_WORKFLOW_TOKEN": ""},
     )
     assert result.exit_code == 1
@@ -120,7 +120,7 @@ def test_validate_missing_file_exits(tmp_path: Path) -> None:
     (tmp_path / ic.RULES_FILE).write_text("[]")
     result = runner.invoke(
         ic.integration_config_app,
-        ["validate", "weichert", "--dir", str(tmp_path), "--token", _TOKEN],
+        ["validate", "demo_partner", "--dir", str(tmp_path), "--token", _TOKEN],
     )
     assert result.exit_code == 1
     assert "missing corpus.json" in result.output
@@ -129,7 +129,7 @@ def test_validate_missing_file_exits(tmp_path: Path) -> None:
 def test_pull_writes_surface_files(tmp_path: Path) -> None:
     result = runner.invoke(
         ic.integration_config_app,
-        ["pull", "weichert", "--dir", str(tmp_path), "--token", _TOKEN],
+        ["pull", "demo_partner", "--dir", str(tmp_path), "--token", _TOKEN],
     )
     assert result.exit_code == 0, result.output
     assert json.loads((tmp_path / ic.MAPPING_FILE).read_text()) == {"a": "x"}
@@ -140,11 +140,11 @@ def test_pull_writes_surface_files(tmp_path: Path) -> None:
 def test_pull_then_publish_round_trips(tmp_path: Path) -> None:
     runner.invoke(
         ic.integration_config_app,
-        ["pull", "weichert", "--dir", str(tmp_path), "--token", _TOKEN],
+        ["pull", "demo_partner", "--dir", str(tmp_path), "--token", _TOKEN],
     )
     result = runner.invoke(
         ic.integration_config_app,
-        ["publish", "weichert", "--dir", str(tmp_path), "--token", _TOKEN],
+        ["publish", "demo_partner", "--dir", str(tmp_path), "--token", _TOKEN],
     )
     assert result.exit_code == 0, result.output
     iid, mapping, rules, corpus = _FakeClient.last["publish"]
@@ -162,7 +162,7 @@ def test_publish_surfaces_gate_failure(tmp_path: Path, monkeypatch: pytest.Monke
     monkeypatch.setattr(_FakeClient, "publish_integration_config", _raise)
     result = runner.invoke(
         ic.integration_config_app,
-        ["publish", "weichert", "--dir", str(tmp_path), "--token", _TOKEN],
+        ["publish", "demo_partner", "--dir", str(tmp_path), "--token", _TOKEN],
     )
     assert result.exit_code == 1
     assert "gate failed" in result.output
@@ -171,7 +171,7 @@ def test_publish_surfaces_gate_failure(tmp_path: Path, monkeypatch: pytest.Monke
 def test_rollback_passes_version(tmp_path: Path) -> None:
     result = runner.invoke(
         ic.integration_config_app,
-        ["rollback", "weichert", "2", "--token", _TOKEN],
+        ["rollback", "demo_partner", "2", "--token", _TOKEN],
     )
     assert result.exit_code == 0, result.output
-    assert _FakeClient.last["rollback"] == ("weichert", 2)
+    assert _FakeClient.last["rollback"] == ("demo_partner", 2)

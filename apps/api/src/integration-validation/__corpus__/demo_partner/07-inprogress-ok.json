@@ -7,7 +7,7 @@
         "ShipperEmployer": { "Identity": { "Description": "O-60232" } },
         "Coordinator": {
           "Identity": { "Description": "Suzanne Polo" },
-          "EmailAddress": "noreply@weichertwm.com"
+          "EmailAddress": "noreply@demopartner.example"
         }
       },
       "Survey": { "SerivceStatus": "In Progress" },

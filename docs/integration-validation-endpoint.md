@@ -2,7 +2,7 @@
 
 > **Audience:** a system that submits orders to Pegasus on a partner integration's
 > behalf and wants them checked before they are written.
-> **Status:** POC. One integration supported: `weichert`. The endpoint is live
+> **Status:** POC. One integration supported: `demo_partner`. The endpoint is live
 > behind API-key auth; wiring a client's save flow to call it is the task this doc
 > describes. (The original `longhaul` POC integration was removed — see git
 > history; another integration is re-added as data, not new endpoint code.)
@@ -21,7 +21,7 @@ issues, and block the save on a hard failure. If the call fails or times out,
 ## Endpoint
 
 ```
-POST {API_BASE_URL}/api/v1/integrations/weichert/validate
+POST {API_BASE_URL}/api/v1/integrations/demo_partner/validate
 ```
 
 `{API_BASE_URL}` is the same API host the rest of `/api/v1/*` uses (prod and QA
@@ -68,10 +68,10 @@ Content-Type: application/json
 
 The `order` (and `prior`) use the integration's **native legacy payload shape**;
 you can send the object you're about to persist as-is — only the fields the
-mapping reads are used, everything else is ignored. For `weichert` that is the
-Weichert move object (`InvolvedParties` / `Survey` / `KeyMoveDates` /
+mapping reads are used, everything else is ignored. For `demo_partner` that is the
+Demo Partner move object (`InvolvedParties` / `Survey` / `KeyMoveDates` /
 `DocumentationDates` / `Financials`). The authoritative field list is the mapping
-itself: `transform/weichert.transform.ts`. The examples below are complete,
+itself: `transform/demo-partner.transform.ts`. The examples below are complete,
 copy-pasteable payloads.
 
 ## Response
@@ -105,10 +105,10 @@ Other responses:
 | `403`  | `FORBIDDEN`        | API key revoked                   |
 | `404`  | `NOT_FOUND`        | unknown integration id in the URL |
 
-## Rules currently enforced (weichert)
+## Rules currently enforced (demo_partner)
 
-These reproduce the live Weichert Move Network rejections, one-for-one. Source:
-`rules/weichert.rules.ts`.
+These reproduce the live Demo Partner network rejections, one-for-one. Source:
+`rules/demo-partner.rules.ts`.
 
 | `ruleId`                                        | Fires when                                                                     | `field`                |
 | ----------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------- |
@@ -160,18 +160,18 @@ succeeded.
 **Pass** — a well-formed Accepted order:
 
 ```bash
-curl -sS -X POST "{API_BASE_URL}/api/v1/integrations/weichert/validate" \
+curl -sS -X POST "{API_BASE_URL}/api/v1/integrations/demo_partner/validate" \
   -H "Authorization: Bearer vnd_xxx" -H "Content-Type: application/json" \
-  -d '{"action":"save","order":{"Id":"SHIP-1","InvolvedParties":{"ShipperEmployer":{"Identity":{"Description":"O-60232"}},"Coordinator":{"Identity":{"Description":"Suzanne Polo"},"EmailAddress":"noreply@weichertwm.com"}},"Survey":{"SerivceStatus":"Accepted"},"DocumentationDates":["2024-05-25"],"KeyMoveDates":{"Survey":{"Planned":"2024-05-25"}},"Financials":{"EstimatedWeight":5000}}}'
+  -d '{"action":"save","order":{"Id":"SHIP-1","InvolvedParties":{"ShipperEmployer":{"Identity":{"Description":"O-60232"}},"Coordinator":{"Identity":{"Description":"Suzanne Polo"},"EmailAddress":"noreply@demopartner.example"}},"Survey":{"SerivceStatus":"Accepted"},"DocumentationDates":["2024-05-25"],"KeyMoveDates":{"Survey":{"Planned":"2024-05-25"}},"Financials":{"EstimatedWeight":5000}}}'
 # → {"valid":true,"issues":[],"degraded":false}
 ```
 
 **Fail** — a supplier-forbidden service status (`Awarded`):
 
 ```bash
-curl -sS -X POST "{API_BASE_URL}/api/v1/integrations/weichert/validate" \
+curl -sS -X POST "{API_BASE_URL}/api/v1/integrations/demo_partner/validate" \
   -H "Authorization: Bearer vnd_xxx" -H "Content-Type: application/json" \
-  -d '{"action":"save","order":{"Id":"SHIP-1","InvolvedParties":{"ShipperEmployer":{"Identity":{"Description":"O-60232"}},"Coordinator":{"Identity":{"Description":"Suzanne Polo"},"EmailAddress":"noreply@weichertwm.com"}},"Survey":{"SerivceStatus":"Awarded"}}}'
+  -d '{"action":"save","order":{"Id":"SHIP-1","InvolvedParties":{"ShipperEmployer":{"Identity":{"Description":"O-60232"}},"Coordinator":{"Identity":{"Description":"Suzanne Polo"},"EmailAddress":"noreply@demopartner.example"}},"Survey":{"SerivceStatus":"Awarded"}}}'
 # → {"valid":false,"issues":[{"ruleId":"service-status-not-supplier-settable","field":"serviceStatus","message":"…","kind":"behavioral","severity":"error"}],"degraded":false}
 ```
 
@@ -190,7 +190,7 @@ Using client As New Net.Http.HttpClient()
 
     Try
         Dim resp = Await client.PostAsync(
-            apiBase & "/api/v1/integrations/weichert/validate", content)
+            apiBase & "/api/v1/integrations/demo_partner/validate", content)
         If resp.IsSuccessStatusCode Then
             Dim result = Newtonsoft.Json.JsonConvert.DeserializeObject(Of ValidationResult)(
                 Await resp.Content.ReadAsStringAsync())
@@ -212,10 +212,10 @@ End Using
 
 One integration is registered (use the id in the URL):
 
-- **`weichert`** — the Weichert Supplier Move Network (Salesforce-backed). See the
-  rule table above. The Weichert mapping is authored in the output-shaped format —
+- **`demo_partner`** — the Demo Partner supplier network (a fictional example). See the
+  rule table above. The Demo Partner mapping is authored in the output-shaped format —
   see [`integration-mapping-format.md`](./integration-mapping-format.md). Source:
-  `rules/weichert.rules.ts`, `canonical-weichert.ts`, `transform/weichert.transform.ts`.
+  `rules/demo-partner.rules.ts`, `canonical-demo-partner.ts`, `transform/demo-partner.transform.ts`.
 
 The live, machine-readable list is `GET /api/v1/integrations`.
 

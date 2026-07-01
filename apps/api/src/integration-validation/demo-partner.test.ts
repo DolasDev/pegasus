@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
-// Weichert golden-corpus runner + transform checks. The corpus inputs are in the
-// LEGACY Weichert move shape (InvolvedParties/Survey/KeyMoveDates/...); each case
+// Demo Partner golden-corpus runner + transform checks. The corpus inputs are in the
+// LEGACY Demo Partner move shape (InvolvedParties/Survey/KeyMoveDates/...); each case
 // pins the expected validation outcome after the mapping + rules run.
 // ---------------------------------------------------------------------------
 
@@ -9,7 +9,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { validateOrder, UnknownIntegrationError } from './validate'
 import { compileMapping } from './transform/mapping-format'
-import { weichertMapping } from './transform/weichert.transform'
+import { demoPartnerMapping } from './transform/demo-partner.transform'
 import { applyMapping } from './transform/engine'
 import type { ValidationInput } from './types'
 
@@ -19,7 +19,7 @@ interface CorpusCase {
   expected: { valid: boolean; ruleIds: string[] }
 }
 
-const corpusDir = join(process.cwd(), 'src/integration-validation/__corpus__/weichert')
+const corpusDir = join(process.cwd(), 'src/integration-validation/__corpus__/demo_partner')
 
 function loadCorpus(): CorpusCase[] {
   return readdirSync(corpusDir)
@@ -28,10 +28,10 @@ function loadCorpus(): CorpusCase[] {
     .map((f) => JSON.parse(readFileSync(join(corpusDir, f), 'utf8')) as CorpusCase)
 }
 
-describe('validateOrder — weichert golden corpus', () => {
+describe('validateOrder — demo_partner golden corpus', () => {
   for (const c of loadCorpus()) {
     it(`corpus: ${c.name}`, () => {
-      const result = validateOrder('weichert', c.input)
+      const result = validateOrder('demo_partner', c.input)
       expect(result.degraded).toBe(false)
       expect(result.valid).toBe(c.expected.valid)
       expect(result.issues.map((i) => i.ruleId).sort()).toEqual([...c.expected.ruleIds].sort())
@@ -39,8 +39,8 @@ describe('validateOrder — weichert golden corpus', () => {
   }
 })
 
-describe('weichert transform — engine extensions', () => {
-  const transform = compileMapping(weichertMapping)
+describe('demo_partner transform — engine extensions', () => {
+  const transform = compileMapping(demoPartnerMapping)
 
   it('maps the root object into a one-element shipments array ($from: ".")', () => {
     const out = applyMapping(transform, {
@@ -69,7 +69,7 @@ describe('weichert transform — engine extensions', () => {
   })
 })
 
-describe('weichert shipmentStatus restricted picklist', () => {
+describe('demo_partner shipmentStatus restricted picklist', () => {
   // Structural (NOT a gate-corpus case — the gate's round-trip stage requires
   // corpus inputs to be structurally valid). A bad shipmentStatus reproduces the
   // live "bad value for restricted picklist" rejection.
@@ -86,7 +86,7 @@ describe('weichert shipmentStatus restricted picklist', () => {
   })
 
   it('rejects a bad shipmentStatus as a structural-contract issue', () => {
-    const res = validateOrder('weichert', { order: order('Under Reivew') })
+    const res = validateOrder('demo_partner', { order: order('Under Reivew') })
     expect(res.valid).toBe(false)
     expect(res.issues).toEqual([
       expect.objectContaining({ kind: 'structural', field: 'shipments.0.shipmentStatus' }),
@@ -94,12 +94,12 @@ describe('weichert shipmentStatus restricted picklist', () => {
   })
 
   it('accepts a valid shipmentStatus', () => {
-    expect(validateOrder('weichert', { order: order('In Process') }).valid).toBe(true)
+    expect(validateOrder('demo_partner', { order: order('In Process') }).valid).toBe(true)
   })
 })
 
 // Integration-agnostic orchestration behaviour of validateOrder, exercised via
-// weichert (the registered integration). Mirrors the checks the longhaul POC test
+// demo_partner (the registered integration). Mirrors the checks the longhaul POC test
 // used to cover before that integration was removed.
 describe('validateOrder — orchestration', () => {
   const validOrder = {
@@ -119,7 +119,7 @@ describe('validateOrder — orchestration', () => {
   })
 
   it('attaches a stable ruleId, field and kind to a behavioral issue', () => {
-    const result = validateOrder('weichert', {
+    const result = validateOrder('demo_partner', {
       order: { ...validOrder, Survey: { SerivceStatus: 'Awarded' } },
     })
     expect(result.valid).toBe(false)
@@ -135,7 +135,7 @@ describe('validateOrder — orchestration', () => {
   it('skips a malformed prior (rather than blocking the save on it)', () => {
     // The prior's mapped output fails the contract (bad shipmentStatus enum), so
     // the validator drops it and validates the order alone — no throw, not degraded.
-    const result = validateOrder('weichert', {
+    const result = validateOrder('demo_partner', {
       order: validOrder,
       prior: {
         ...validOrder,

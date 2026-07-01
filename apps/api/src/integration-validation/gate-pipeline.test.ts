@@ -1,15 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import { runGatePipeline } from './gate-pipeline'
 import { getIntegrationDefinition } from './registry'
-import { weichertCorpus } from './corpus'
+import { demoPartnerCorpus } from './corpus'
 
-const base = getIntegrationDefinition('weichert')!
+const base = getIntegrationDefinition('demo_partner')!
 
 // The typed corpus export (corpus.test.ts asserts it equals the on-disk files).
-const corpus = weichertCorpus
+const corpus = demoPartnerCorpus
 
 describe('runGatePipeline', () => {
-  it('passes for the shipped weichert mapping + rules against its own corpus', () => {
+  it('passes for the shipped demo_partner mapping + rules against its own corpus', () => {
     const report = runGatePipeline(base, { mapping: base.mapping, rules: base.rules, corpus })
     expect(report.problems).toEqual([])
     expect(report.corpus.failures).toEqual([])

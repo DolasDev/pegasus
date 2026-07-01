@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 // ---------------------------------------------------------------------------
-// Dogfood: push the built-in integration configs (longhaul + weichert) through
-// the real publish path as GLOBAL `IntegrationConfig` rows.
+// Dogfood: push the built-in integration configs (demo_partner) through the real
+// publish path as GLOBAL `IntegrationConfig` rows.
 //
 // This is the Phase-3/4 vehicle of plans/todo/integration-config-dogfood-publish.md.
 // It changes NEITHER the engine nor the built-ins — it just assembles the
@@ -23,7 +23,7 @@
 //   API_BASE_URL=https://<api> PEGASUS_PUBLISH_KEY=vnd_xxx npx tsx scripts/publish-builtin-configs.ts --publish  # gate then publish GLOBAL
 //   API_BASE_URL=https://<api> PEGASUS_PUBLISH_KEY=vnd_xxx npx tsx scripts/publish-builtin-configs.ts --verify   # GET config/versions + replay full corpus through /validate, diff vs expected
 //   ... --publish --verify                                                                                       # publish, then verify in one run
-//   ... longhaul                                                                                                 # limit to one integration (positional)
+//   ... demo_partner                                                                                             # limit to one integration (positional)
 //
 // Env:
 //   API_BASE_URL  (or PEGASUS_API_BASE_URL) — API origin, e.g. https://api.pegasus-qa.dolas.dev  (no trailing /api/v1)
@@ -33,8 +33,8 @@
 // Exit code is non-zero if any gate fails, any publish errors, or --verify finds a diff.
 // ---------------------------------------------------------------------------
 
-import { weichertMapping } from '../src/integration-validation/transform/weichert.transform'
-import { weichertRules } from '../src/integration-validation/rules/weichert.rules'
+import { demoPartnerMapping } from '../src/integration-validation/transform/demo-partner.transform'
+import { demoPartnerRules } from '../src/integration-validation/rules/demo-partner.rules'
 import { getBuiltinCorpus, getGateCorpus } from '../src/integration-validation/corpus'
 import type { GateCorpusCase, GateReport } from '../src/integration-validation/gate-pipeline'
 
@@ -45,7 +45,7 @@ interface BuiltinConfig {
 }
 
 const BUILTINS: BuiltinConfig[] = [
-  { id: 'weichert', mapping: weichertMapping, rules: weichertRules },
+  { id: 'demo_partner', mapping: demoPartnerMapping, rules: demoPartnerRules },
 ]
 
 // ── CLI args ────────────────────────────────────────────────────────────────

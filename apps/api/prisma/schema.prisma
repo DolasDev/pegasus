@@ -1205,7 +1205,7 @@ model IntegrationConfig {
   id       String @id @default(uuid())
   tenantId String @map("tenant_id")
 
-  /// Target integration id (e.g. "longhaul", "weichert"). Matches a built-in
+  /// Target integration id (e.g. "demo_partner"). Matches a built-in
   /// IntegrationDefinition id; not an FK — integration ids are code-defined.
   integrationId String @map("integration_id")
 
@@ -1667,7 +1667,7 @@ model WorkflowSecretConfig {
 // row's `state` as the `prior` input so transition rules can pre-validate an
 // update without the caller resupplying prior state.
 //
-//   - integrationId is a code-defined slug (e.g. "weichert"), NOT an FK — the
+//   - integrationId is a code-defined slug (e.g. "demo_partner"), NOT an FK — the
 //     integration registry lives in code, same precedent as IntegrationConfig.
 //   - `state` is the integration's NATIVE payload shape (identical to the
 //     validate `order`/`prior` body), so it transforms through the same mapping.

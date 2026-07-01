@@ -1,44 +1,45 @@
 // ---------------------------------------------------------------------------
 // Integration registry — the multi-integration seam, kept as DATA from day one.
 //
-// Ships one entry (weichert), supported globally (a single shared definition,
-// not per-tenant). Adding an integration is a new entry here plus its own
-// transform/rules/facts files; the engine and the endpoint never change. Nothing
-// about a specific integration is referenced outside this map. (The original
-// longhaul POC entry was removed — see git history — and can be re-added the same
-// way if needed.)
+// Ships one entry (demo_partner — a fictional example/reference integration),
+// supported globally (a single shared definition, not per-tenant). Adding an
+// integration is a new entry here plus its own transform/rules/facts files; the
+// engine and the endpoint never change. Nothing about a specific integration is
+// referenced outside this map. (An earlier POC entry was removed — see git
+// history — and can be re-added the same way if needed.)
 // ---------------------------------------------------------------------------
 
 import type { PrismaClient } from '@prisma/client'
-import { WeichertOrderSchema } from './canonical-weichert'
+import { DemoPartnerOrderSchema } from './canonical-demo-partner'
 import {
   compileMapping,
   MappingTemplateSchema,
   type MappingTemplate,
 } from './transform/mapping-format'
-import { weichertMapping, weichertInputFieldRoots } from './transform/weichert.transform'
-import { deriveWeichertFacts, weichertFactCatalog } from './facts/weichert-facts'
-import { weichertRules } from './rules/weichert.rules'
+import { demoPartnerMapping, demoPartnerInputFieldRoots } from './transform/demo-partner.transform'
+import { deriveDemoPartnerFacts, demoPartnerFactCatalog } from './facts/demo-partner-facts'
+import { demoPartnerRules } from './rules/demo-partner.rules'
 import { RuleSetSchema, type RuleSet } from './rules/types'
 import { createIntegrationConfigRepository } from '../repositories/integration-config.repository'
 import { logger } from '../lib/logger'
 import type { TransformSpec } from './transform/engine'
 import type { IntegrationDefinition } from './types'
 
-const weichertDefinition: IntegrationDefinition = {
-  id: 'weichert',
-  displayName: 'Weichert',
-  description: 'Validates Weichert order payloads before they are saved.',
-  structuralContract: WeichertOrderSchema,
-  mapping: weichertMapping,
-  transform: compileMapping(weichertMapping),
-  inputFieldRoots: weichertInputFieldRoots,
-  deriveFacts: deriveWeichertFacts,
-  factCatalog: weichertFactCatalog,
-  rules: weichertRules,
+const demoPartnerDefinition: IntegrationDefinition = {
+  id: 'demo_partner',
+  displayName: 'Demo Partner',
+  description: 'Validates Demo Partner order payloads before they are saved.',
+  structuralContract: DemoPartnerOrderSchema,
+  mapping: demoPartnerMapping,
+  transform: compileMapping(demoPartnerMapping),
+  inputFieldRoots: demoPartnerInputFieldRoots,
+  deriveFacts: deriveDemoPartnerFacts,
+  factCatalog: demoPartnerFactCatalog,
+  rules: demoPartnerRules,
   defaultAction: 'save',
-  // Cached-projection binding: a Weichert order is keyed by its service order
-  // number, so the validator can load the order's last-known state as `prior`.
+  // Cached-projection binding: a Demo Partner order is keyed by its service
+  // order number, so the validator can load the order's last-known state as
+  // `prior`.
   projection: {
     entityType: 'order',
     key: (o) => (typeof o?.serviceOrderNumber === 'string' ? o.serviceOrderNumber : null),
@@ -49,7 +50,7 @@ const weichertDefinition: IntegrationDefinition = {
 // supply the CODE ground truth — structuralContract, deriveFacts, factCatalog,
 // inputFieldRoots — that a DB-published config can never override.
 const REGISTRY: Record<string, IntegrationDefinition> = {
-  weichert: weichertDefinition,
+  demo_partner: demoPartnerDefinition,
 }
 
 // ---------------------------------------------------------------------------

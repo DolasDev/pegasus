@@ -42,7 +42,11 @@ type JsonBody = Record<string, unknown>
 const json = (res: Response) => res.json() as Promise<JsonBody>
 
 const DEFS: Record<string, { id: string; displayName: string; description: string }> = {
-  weichert: { id: 'weichert', displayName: 'Weichert', description: 'Validates Weichert orders.' },
+  demo_partner: {
+    id: 'demo_partner',
+    displayName: 'Demo Partner',
+    description: 'Validates Demo Partner orders.',
+  },
 }
 
 function buildApp(roleNames: readonly string[] = ['tenant_admin'], tenantId = 'test-tenant-id') {
@@ -71,7 +75,7 @@ describe('integrations list handler', () => {
     vi.clearAllMocks()
     process.env['AUTHZ_OFFLINE'] = 'true'
     _clearAuthzCache()
-    mockListIntegrationIds.mockReturnValue(['weichert'])
+    mockListIntegrationIds.mockReturnValue(['demo_partner'])
     mockGetIntegrationDefinition.mockImplementation((id: string) => DEFS[id])
     mockRepo.findActiveForScope.mockResolvedValue(null)
   })
@@ -90,9 +94,9 @@ describe('integrations list handler', () => {
     const body = await json(res)
     expect(body.data).toEqual([
       {
-        id: 'weichert',
-        name: 'Weichert',
-        description: 'Validates Weichert orders.',
+        id: 'demo_partner',
+        name: 'Demo Partner',
+        description: 'Validates Demo Partner orders.',
         published: false,
         version: null,
         visibility: null,
@@ -102,13 +106,13 @@ describe('integrations list handler', () => {
 
   it('reflects an active published config (version + visibility) when one exists', async () => {
     mockRepo.findActiveForScope.mockImplementation(async (id: string) =>
-      id === 'weichert' ? { version: 4, visibility: 'GLOBAL' as const } : null,
+      id === 'demo_partner' ? { version: 4, visibility: 'GLOBAL' as const } : null,
     )
     const res = await buildApp(['tenant_admin']).request('/integrations')
     expect(res.status).toBe(200)
     const data = (await json(res)).data as Array<Record<string, unknown>>
     expect(data[0]).toMatchObject({
-      id: 'weichert',
+      id: 'demo_partner',
       published: true,
       version: 4,
       visibility: 'GLOBAL',

@@ -23,7 +23,7 @@ afterEach(async () => {
 describe('registry overlay', () => {
   it('returns the built-in definition when no overlay row applies', async () => {
     await refreshRegistryOverlay(emptyDb)
-    const def = getIntegrationDefinition('weichert')!
+    const def = getIntegrationDefinition('demo_partner')!
     expect(def.mapping['serviceStatus']).toBe('Survey.SerivceStatus')
   })
 
@@ -32,7 +32,7 @@ describe('registry overlay', () => {
     await refreshRegistryOverlay(
       fakeDb([
         {
-          integrationId: 'weichert',
+          integrationId: 'demo_partner',
           version: 5,
           visibility: 'GLOBAL',
           status: 'PUBLISHED',
@@ -41,7 +41,7 @@ describe('registry overlay', () => {
         },
       ]),
     )
-    const def = getIntegrationDefinition('weichert')!
+    const def = getIntegrationDefinition('demo_partner')!
     expect(def.mapping).toEqual(override)
     expect(def.rules).toEqual([])
     expect(def.transform).toEqual(compileMapping(override))
@@ -52,10 +52,10 @@ describe('registry overlay', () => {
   it('ignores an overlay row whose mapping does not parse (falls back to built-in)', async () => {
     await refreshRegistryOverlay(
       fakeDb([
-        { integrationId: 'weichert', version: 1, mapping: { bad: { $from: '' } }, rules: [] },
+        { integrationId: 'demo_partner', version: 1, mapping: { bad: { $from: '' } }, rules: [] },
       ]),
     )
-    const def = getIntegrationDefinition('weichert')!
+    const def = getIntegrationDefinition('demo_partner')!
     expect(def.mapping['serviceStatus']).toBe('Survey.SerivceStatus')
   })
 

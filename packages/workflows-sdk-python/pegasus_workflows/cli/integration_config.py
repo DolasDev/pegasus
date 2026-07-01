@@ -111,7 +111,7 @@ def _dir_option() -> Any:
 
 @integration_config_app.command("validate")
 def validate_command(
-    integration_id: str = typer.Argument(..., help="Integration id, e.g. weichert."),
+    integration_id: str = typer.Argument(..., help="Integration id, e.g. demo_partner."),
     directory: Path = _dir_option(),
     token: str = token_option(),
     base_url: str = base_url_option(),
@@ -135,7 +135,7 @@ def validate_command(
 
 @integration_config_app.command("publish")
 def publish_command(
-    integration_id: str = typer.Argument(..., help="Integration id, e.g. weichert."),
+    integration_id: str = typer.Argument(..., help="Integration id, e.g. demo_partner."),
     directory: Path = _dir_option(),
     token: str = token_option(),
     base_url: str = base_url_option(),
@@ -164,7 +164,7 @@ def publish_command(
 
 @integration_config_app.command("pull")
 def pull_command(
-    integration_id: str = typer.Argument(..., help="Integration id, e.g. weichert."),
+    integration_id: str = typer.Argument(..., help="Integration id, e.g. demo_partner."),
     directory: Path = _dir_option(),
     token: str = token_option(),
     base_url: str = base_url_option(),
@@ -205,7 +205,7 @@ def pull_command(
 
 @integration_config_app.command("versions")
 def versions_command(
-    integration_id: str = typer.Argument(..., help="Integration id, e.g. weichert."),
+    integration_id: str = typer.Argument(..., help="Integration id, e.g. demo_partner."),
     token: str = token_option(),
     base_url: str = base_url_option(),
     profile: str = profile_option(),
@@ -230,7 +230,7 @@ def versions_command(
 
 @integration_config_app.command("rollback")
 def rollback_command(
-    integration_id: str = typer.Argument(..., help="Integration id, e.g. weichert."),
+    integration_id: str = typer.Argument(..., help="Integration id, e.g. demo_partner."),
     version: int = typer.Argument(..., help="The existing version to re-publish."),
     token: str = token_option(),
     base_url: str = base_url_option(),

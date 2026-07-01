@@ -885,7 +885,7 @@ describe.skipIf(!hasDb)('createTenantDb — cross-tenant isolation (integration)
         db.integrationProjection.create({
           data: {
             tenantId: tenantAId,
-            integrationId: 'weichert',
+            integrationId: 'demo_partner',
             entityType: 'order',
             entityKey: 'SO-ISO-A',
             state: { serviceOrderNumber: 'SO-ISO-A' },
@@ -895,7 +895,7 @@ describe.skipIf(!hasDb)('createTenantDb — cross-tenant isolation (integration)
         db.integrationProjection.create({
           data: {
             tenantId: tenantBId,
-            integrationId: 'weichert',
+            integrationId: 'demo_partner',
             entityType: 'order',
             entityKey: 'SO-ISO-B',
             state: { serviceOrderNumber: 'SO-ISO-B' },
@@ -923,7 +923,7 @@ describe.skipIf(!hasDb)('createTenantDb — cross-tenant isolation (integration)
       const repo = createIntegrationProjectionRepository(dbA)
       const first = await repo.upsert({
         tenantId: tenantAId,
-        integrationId: 'weichert',
+        integrationId: 'demo_partner',
         entityType: 'order',
         entityKey: 'SO-ISO-A',
         state: { serviceOrderNumber: 'SO-ISO-A', v: 2 },
@@ -932,7 +932,7 @@ describe.skipIf(!hasDb)('createTenantDb — cross-tenant isolation (integration)
       expect(first.created).toBe(false)
       expect(first.row.version).toBe(2)
 
-      const state = await repo.findState('weichert', 'order', 'SO-ISO-A')
+      const state = await repo.findState('demo_partner', 'order', 'SO-ISO-A')
       expect(state).toMatchObject({ v: 2 })
     })
   })

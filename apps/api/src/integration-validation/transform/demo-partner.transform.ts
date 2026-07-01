@@ -1,8 +1,9 @@
 // ---------------------------------------------------------------------------
-// Weichert: legacy move object → CanonicalWeichertOrder mapping, in the
-// output-shaped format. Authored by the integration owner; transcribed verbatim.
+// Demo Partner: legacy move object → canonical Demo Partner order mapping, in
+// the output-shaped format. A fictional example authored the way an integration
+// owner would.
 //
-// Notable features this mapping exercises (and the engine now supports):
+// Notable features this mapping exercises (and the engine supports):
 //   - `$from: "."`        — the move object IS the single shipment; `$each` wraps
 //                           the root object into a one-element shipments array.
 //   - `DocumentationDates[0]` — array-index access in a source path.
@@ -10,7 +11,7 @@
 
 import type { MappingTemplate } from './mapping-format'
 
-export const weichertMapping: MappingTemplate = {
+export const demoPartnerMapping: MappingTemplate = {
   serviceOrderNumber: 'InvolvedParties.ShipperEmployer.Identity.Description',
   supplierContactName: 'InvolvedParties.Coordinator.Identity.Description',
   supplierContactEmail: {
@@ -30,11 +31,9 @@ export const weichertMapping: MappingTemplate = {
         estimated: { $from: 'Financials.EstimatedWeight', coerce: 'toNumberOrNull' },
         actual: { $from: 'Financials.ActualWeight', coerce: 'toNumberOrNull' },
       },
-      // NOTE: the legacy source paths for the pack/load/delivery actuals and
-      // shipmentStatus are INFERRED from the existing convention
-      // (KeyMoveDates.<milestone>.Actual, mirroring KeyMoveDates.Survey.Planned)
-      // — the Weichert OUTPUT fields are documented, but confirm/adjust these
-      // legacy-side `$from` paths against the actual client payload.
+      // The pack/load/delivery actuals and shipmentStatus follow the legacy
+      // convention (KeyMoveDates.<milestone>.Actual, mirroring
+      // KeyMoveDates.Survey.Planned).
       packDate1: { actual: { $from: 'KeyMoveDates.Pack.Actual', default: null } },
       loadDate1: { actual: { $from: 'KeyMoveDates.Load.Actual', default: null } },
       deliveryDate1: { actual: { $from: 'KeyMoveDates.Delivery.Actual', default: null } },
@@ -60,8 +59,8 @@ export const weichertMapping: MappingTemplate = {
   },
 }
 
-/** Top-level keys the legacy Weichert move object provides (mapping static-check guard). */
-export const weichertInputFieldRoots = [
+/** Top-level keys the legacy move object provides (mapping static-check guard). */
+export const demoPartnerInputFieldRoots = [
   'InvolvedParties',
   'Survey',
   'DocumentationDates',
