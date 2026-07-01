@@ -181,6 +181,10 @@ const ALLOWED_BASE_CLIENT_HANDLERS: ReadonlySet<string> = new Set([
   'longhaul-cloud/zones.ts',
   'pegii/middleware.ts',
   'settings.ts',
+  // pegII config lives on the Tenant row (customerSource / pegiiApiBaseUrl /
+  // pegiiApiKeyRef) — read/written via the base client exactly like settings.ts,
+  // since Tenant is not a tenant-scoped model. No tenant data flows here.
+  'settings-pegii.ts',
   'vpn-agent.ts',
   'workflow-internal.ts',
 ])

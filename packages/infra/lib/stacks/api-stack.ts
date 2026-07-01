@@ -814,6 +814,17 @@ export class ApiStack extends cdk.Stack {
     }
 
     // ---------------------------------------------------------------------------
+    // pegII on-prem domain API — scheme/port defaults for the overlay target.
+    // apps/api/src/lib/pegii-overlay-target.ts reads these when a tenant has no
+    // explicit pegiiApiBaseUrl, deriving https://10.200.<o1>.<o2>:<port> from the
+    // VpnPeer overlay IP. Reuses the already-wired TUNNEL_PROXY_FUNCTION_NAME
+    // transport above; no new Lambda invoke grant is needed. PEGII_API_TUNNEL_
+    // BASE_OVERRIDE is intentionally left unset (opt-in smoke-test escape hatch).
+    // ---------------------------------------------------------------------------
+    apiFunction.addEnvironment('PEGII_API_TUNNEL_SCHEME', 'https')
+    apiFunction.addEnvironment('PEGII_API_TUNNEL_PORT', '8443')
+
+    // ---------------------------------------------------------------------------
     // MSSQL executor — grant invoke + surface function name as env var.
     // apps/api/src/lib/mssql-executor-client.ts reads MSSQL_EXECUTOR_FUNCTION_NAME
     // and throws EXECUTOR_NOT_CONFIGURED if unset, so ApiStack stays

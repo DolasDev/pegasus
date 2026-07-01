@@ -30,6 +30,9 @@ vi.mock('./middleware/tenant', () => ({
       // Read by the integrations list handler's repo (findActiveForScope); null
       // = no published config, so each integration reports its built-in baseline.
       integrationConfig: { findFirst: vi.fn(async () => null) },
+      // Read by resolveCustomerGateway on the customer read routes; null
+      // customerSource keeps the default (Prisma) path so the repo mocks serve.
+      tenant: { findUnique: vi.fn(async () => ({ customerSource: null })) },
     }
     db.$transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(db))
     c.set('db', db)

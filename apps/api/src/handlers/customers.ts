@@ -12,13 +12,12 @@ import { emitDomainEvent } from '../lib/domain-events'
 import {
   createCustomer,
   findCustomerById,
-  listCustomers,
-  countCustomers,
   updateCustomer,
   deleteCustomer,
   createContact,
   listQuotesByCustomerId,
 } from '../repositories'
+import { resolveCustomerGateway } from '../gateways/customer-gateway.factory'
 
 const ContactBody = z.object({
   firstName: z.string().min(1),
@@ -77,9 +76,7 @@ customersHandler.post(
           firstName: body.primaryContact.firstName,
           lastName: body.primaryContact.lastName,
           email: body.primaryContact.email,
-          ...(body.primaryContact.phone !== undefined
-            ? { phone: body.primaryContact.phone }
-            : {}),
+          ...(body.primaryContact.phone !== undefined ? { phone: body.primaryContact.phone } : {}),
         },
       )
       await emitDomainEvent(tx, {
@@ -95,19 +92,26 @@ customersHandler.post(
 
 customersHandler.get('/', async (c) => {
   const db = c.get('db')
+  const tenantId = c.get('tenantId')
   const limit = Math.min(Number(c.req.query('limit') ?? '50'), 100)
   const offset = Number(c.req.query('offset') ?? '0')
+  // Reads resolve through the gateway so a tenant flagged customerSource=pegii
+  // is served from the on-prem pegII API instead of cloud Postgres. Default
+  // (null/'prisma') wraps the same repository functions as before.
+  const gateway = await resolveCustomerGateway(db, tenantId)
   const [data, total] = await Promise.all([
-    listCustomers(db, { limit, offset }),
-    countCustomers(db),
+    gateway.listCustomers({ limit, offset }),
+    gateway.countCustomers(),
   ])
   return c.json({ data, meta: { total, count: data.length, limit, offset } })
 })
 
 customersHandler.get('/:id', async (c) => {
   const db = c.get('db')
+  const tenantId = c.get('tenantId')
   const id = c.req.param('id')
-  const data = await findCustomerById(db, id)
+  const gateway = await resolveCustomerGateway(db, tenantId)
+  const data = await gateway.findCustomerById(id)
   if (!data) return c.json({ error: 'Customer not found', code: 'NOT_FOUND' }, 404)
   return c.json({ data })
 })
@@ -169,8 +173,10 @@ customersHandler.post(
 
 customersHandler.get('/:customerId/quotes', async (c) => {
   const db = c.get('db')
+  const tenantId = c.get('tenantId')
   const customerId = c.req.param('customerId')
-  const customer = await findCustomerById(db, customerId)
+  const gateway = await resolveCustomerGateway(db, tenantId)
+  const customer = await gateway.findCustomerById(customerId)
   if (!customer) return c.json({ error: 'Customer not found', code: 'NOT_FOUND' }, 404)
   // Use domain invariant to verify customer has a primary contact
   if (!hasPrimaryContact(customer)) {
