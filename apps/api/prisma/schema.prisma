@@ -1648,8 +1648,14 @@ model WorkflowSecretConfig {
   tenantId String                   @map("tenant_id")
   kind     WorkflowSecretConfigKind
 
+  /// Logical group for organizing entries within a tenant (e.g. "billing",
+  /// "notifications"). Entries created without one land in "global". Part of the
+  /// uniqueness key, so the same key may exist in different groups.
+  group String @default("global") @map("group_name")
+
   /// Lookup key, env-var style: [a-zA-Z_][a-zA-Z0-9_]{0,127}. Unique per
-  /// (tenant, kind) — a SECRET and a CONFIG may share a key (separate namespaces).
+  /// (tenant, kind, group) — a SECRET and a CONFIG may share a key, and the same
+  /// key may recur across groups (separate namespaces).
   key String
 
   /// Plain value for CONFIG rows. Always NULL for SECRET rows.
@@ -1671,7 +1677,7 @@ model WorkflowSecretConfig {
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
-  @@unique([tenantId, kind, key])
+  @@unique([tenantId, kind, group, key])
   @@index([tenantId, kind])
   @@map("workflow_secret_configs")
   @@schema("public")

@@ -35,12 +35,14 @@ describe('createWorkflowSecretConfigRepository', () => {
     await repo.create({
       tenantId: 't1',
       kind: 'SECRET',
+      group: 'global',
       key: 'DB_PASSWORD',
       valueCiphertext: 'cipher==',
       createdByUserId: 'u1',
     })
     const arg = firstArg(calls.create)
     expect(arg.data.isSecret).toBe(true)
+    expect(arg.data.group).toBe('global')
     expect(arg.data.valueCiphertext).toBe('cipher==')
     expect(arg.data.value).toBeNull()
   })
@@ -51,32 +53,44 @@ describe('createWorkflowSecretConfigRepository', () => {
     await repo.create({
       tenantId: 't1',
       kind: 'CONFIG',
+      group: 'billing',
       key: 'REGION',
       value: 'us-east-1',
       createdByUserId: 'u1',
     })
     const arg = firstArg(calls.create)
     expect(arg.data.isSecret).toBe(false)
+    expect(arg.data.group).toBe('billing')
     expect(arg.data.value).toBe('us-east-1')
     expect(arg.data.valueCiphertext).toBeNull()
   })
 
-  it('findByKey uses tenant-scoped findFirst on (kind, key)', async () => {
+  it('findByKey uses tenant-scoped findFirst on (kind, group, key)', async () => {
     calls.findFirst.mockResolvedValue(null)
     const repo = createWorkflowSecretConfigRepository(makeDb())
-    await repo.findByKey('SECRET', 'DB_PASSWORD')
+    await repo.findByKey('SECRET', 'billing', 'DB_PASSWORD')
     expect(calls.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { kind: 'SECRET', key: 'DB_PASSWORD' } }),
+      expect.objectContaining({ where: { kind: 'SECRET', group: 'billing', key: 'DB_PASSWORD' } }),
     )
   })
 
-  it('listByKind filters by kind and orders by key asc', async () => {
+  it('listByKind filters by kind (+ group when given) and orders by group then key', async () => {
+    calls.findMany.mockResolvedValue([])
+    const repo = createWorkflowSecretConfigRepository(makeDb())
+    await repo.listByKind('CONFIG', 'billing')
+    expect(calls.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { kind: 'CONFIG', group: 'billing' },
+        orderBy: [{ group: 'asc' }, { key: 'asc' }],
+      }),
+    )
+  })
+
+  it('listByKind without a group lists every group for the kind', async () => {
     calls.findMany.mockResolvedValue([])
     const repo = createWorkflowSecretConfigRepository(makeDb())
     await repo.listByKind('CONFIG')
-    expect(calls.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { kind: 'CONFIG' }, orderBy: { key: 'asc' } }),
-    )
+    expect(firstArg(calls.findMany).where).toEqual({ kind: 'CONFIG' })
   })
 
   it('update applies only the provided fields', async () => {
@@ -91,8 +105,10 @@ describe('createWorkflowSecretConfigRepository', () => {
   it('deleteByKey issues a tenant-scoped deleteMany and returns the count', async () => {
     calls.deleteMany.mockResolvedValue({ count: 1 })
     const repo = createWorkflowSecretConfigRepository(makeDb())
-    const count = await repo.deleteByKey('SECRET', 'DB_PASSWORD')
+    const count = await repo.deleteByKey('SECRET', 'billing', 'DB_PASSWORD')
     expect(count).toBe(1)
-    expect(calls.deleteMany).toHaveBeenCalledWith({ where: { kind: 'SECRET', key: 'DB_PASSWORD' } })
+    expect(calls.deleteMany).toHaveBeenCalledWith({
+      where: { kind: 'SECRET', group: 'billing', key: 'DB_PASSWORD' },
+    })
   })
 })

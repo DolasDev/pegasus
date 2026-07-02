@@ -807,7 +807,7 @@ class PegasusClient:
 
     _SECRETS_CONFIG_BASE = "/api/v1/workflow-secrets-configs"
 
-    def get_secret(self, name: str) -> str:
+    def get_secret(self, name: str, *, group: str = "global") -> str:
         """Read a workflow secret value by name (runtime use).
 
         For use inside workflow activities only (never in workflow code — httpx
@@ -816,19 +816,20 @@ class PegasusClient:
 
         Args:
             name: The secret key.
+            group: The logical group the secret lives in (default ``"global"``).
 
         Returns:
             The decrypted secret plaintext.
 
         Raises:
             PegasusApiError: On 403 (token/manifest lacks ``ReadWorkflowSecret``),
-                404 (no such secret), or any other non-2xx.
+                404 (no such secret in that group), or any other non-2xx.
         """
-        return self._get_json(f"{self._SECRETS_CONFIG_BASE}/runtime/secrets/{name}")[
-            "data"
-        ]["value"]
+        return self._get_json(
+            f"{self._SECRETS_CONFIG_BASE}/runtime/secrets/{name}", group=group
+        )["data"]["value"]
 
-    def get_config(self, name: str) -> str:
+    def get_config(self, name: str, *, group: str = "global") -> str:
         """Read a workflow config value by name (runtime use).
 
         For use inside workflow activities only. Requires the workflow's manifest
@@ -836,29 +837,34 @@ class PegasusClient:
 
         Args:
             name: The config key.
+            group: The logical group the config lives in (default ``"global"``).
 
         Returns:
             The config value as a string.
 
         Raises:
             PegasusApiError: On 403 (token/manifest lacks ``ReadWorkflowConfig``),
-                404 (no such config entry), or any other non-2xx.
+                404 (no such config entry in that group), or any other non-2xx.
         """
-        return self._get_json(f"{self._SECRETS_CONFIG_BASE}/runtime/configs/{name}")[
-            "data"
-        ]["value"]
+        return self._get_json(
+            f"{self._SECRETS_CONFIG_BASE}/runtime/configs/{name}", group=group
+        )["data"]["value"]
 
-    def list_secrets(self) -> list[dict[str, Any]]:
+    def list_secrets(self, *, group: str | None = None) -> list[dict[str, Any]]:
         """List secret metadata (never any value). Requires ``ManageWorkflowSecrets``.
 
+        Args:
+            group: List only this group; omit to list every group.
+
         Returns:
-            A list of ``{id, key, description, isSecret, createdByUserId,
+            A list of ``{id, group, key, description, isSecret, createdByUserId,
             createdAt, updatedAt}`` — no secret values are ever returned.
         """
-        return self._get_json(f"{self._SECRETS_CONFIG_BASE}/secrets")["data"]
+        params = {} if group is None else {"group": group}
+        return self._get_json(f"{self._SECRETS_CONFIG_BASE}/secrets", **params)["data"]
 
     def set_secret(
-        self, key: str, value: str, *, description: str | None = None
+        self, key: str, value: str, *, group: str = "global", description: str | None = None
     ) -> dict[str, Any]:
         """Publish a secret (write-once). Requires ``ManageWorkflowSecrets``.
 
@@ -866,19 +872,25 @@ class PegasusClient:
         ``set_secret`` again. The returned row carries metadata only — the value
         is never echoed back.
 
+        Prefer organizing related entries under a ``group`` (e.g. ``"billing"``,
+        ``"notifications"``) rather than dumping everything in ``"global"`` — the
+        same key may exist in different groups.
+
         Args:
             key: Env-var-style key (``[a-zA-Z_][a-zA-Z0-9_]{0,127}``).
             value: The secret plaintext (stored KMS-encrypted at rest).
+            group: Logical group to place the secret in (default ``"global"``).
             description: Optional human note.
 
         Returns:
             The created secret's metadata.
 
         Raises:
-            PegasusApiError: On 400 (bad key), 403 (lacks ``ManageWorkflowSecrets``),
-                409 (a secret with that key already exists), or any other non-2xx.
+            PegasusApiError: On 400 (bad key/group), 403 (lacks
+                ``ManageWorkflowSecrets``), 409 (a secret with that key already
+                exists in the group), or any other non-2xx.
         """
-        payload: dict[str, Any] = {"key": key, "value": value}
+        payload: dict[str, Any] = {"key": key, "value": value, "group": group}
         if description is not None:
             payload["description"] = description
         with self._client() as client:
@@ -886,46 +898,62 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
-    def delete_secret(self, key: str) -> None:
+    def delete_secret(self, key: str, *, group: str = "global") -> None:
         """Delete a secret by key. Requires ``ManageWorkflowSecrets``.
 
+        Args:
+            key: The secret key.
+            group: The group the secret lives in (default ``"global"``).
+
         Raises:
-            PegasusApiError: On 403, 404 (no such secret), or any other non-2xx.
+            PegasusApiError: On 403, 404 (no such secret in that group), or any
+                other non-2xx.
         """
         with self._client() as client:
-            response = client.delete(f"{self._SECRETS_CONFIG_BASE}/secrets/{key}")
+            response = client.delete(
+                f"{self._SECRETS_CONFIG_BASE}/secrets/{key}", params={"group": group}
+            )
         _raise_for_status(response)
 
-    def list_configs(self) -> list[dict[str, Any]]:
+    def list_configs(self, *, group: str | None = None) -> list[dict[str, Any]]:
         """List config entries with their plain values. Requires ``ManageWorkflowConfigs``.
 
+        Args:
+            group: List only this group; omit to list every group.
+
         Returns:
-            A list of ``{id, key, value, description, isSecret, createdByUserId,
-            createdAt, updatedAt}``.
+            A list of ``{id, group, key, value, description, isSecret,
+            createdByUserId, createdAt, updatedAt}``.
         """
-        return self._get_json(f"{self._SECRETS_CONFIG_BASE}/configs")["data"]
+        params = {} if group is None else {"group": group}
+        return self._get_json(f"{self._SECRETS_CONFIG_BASE}/configs", **params)["data"]
 
     def set_config(
-        self, key: str, value: str, *, description: str | None = None
+        self, key: str, value: str, *, group: str = "global", description: str | None = None
     ) -> dict[str, Any]:
         """Publish a config value (idempotent upsert). Requires ``ManageWorkflowConfigs``.
 
         Unlike secrets, config is freely editable — calling ``set_config`` again
-        with the same key replaces the value.
+        with the same key (and group) replaces the value.
+
+        Prefer organizing related entries under a ``group`` (e.g. ``"billing"``,
+        ``"notifications"``) rather than dumping everything in ``"global"`` — the
+        same key may exist in different groups.
 
         Args:
             key: Env-var-style key (``[a-zA-Z_][a-zA-Z0-9_]{0,127}``).
             value: The config value.
+            group: Logical group to place the config in (default ``"global"``).
             description: Optional human note.
 
         Returns:
             The created/updated config entry (including its value).
 
         Raises:
-            PegasusApiError: On 400 (bad key), 403 (lacks ``ManageWorkflowConfigs``),
-                or any other non-2xx.
+            PegasusApiError: On 400 (bad key/group), 403 (lacks
+                ``ManageWorkflowConfigs``), or any other non-2xx.
         """
-        payload: dict[str, Any] = {"value": value}
+        payload: dict[str, Any] = {"value": value, "group": group}
         if description is not None:
             payload["description"] = description
         with self._client() as client:
@@ -935,14 +963,21 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
-    def delete_config(self, key: str) -> None:
+    def delete_config(self, key: str, *, group: str = "global") -> None:
         """Delete a config entry by key. Requires ``ManageWorkflowConfigs``.
 
+        Args:
+            key: The config key.
+            group: The group the config lives in (default ``"global"``).
+
         Raises:
-            PegasusApiError: On 403, 404 (no such entry), or any other non-2xx.
+            PegasusApiError: On 403, 404 (no such entry in that group), or any
+                other non-2xx.
         """
         with self._client() as client:
-            response = client.delete(f"{self._SECRETS_CONFIG_BASE}/configs/{key}")
+            response = client.delete(
+                f"{self._SECRETS_CONFIG_BASE}/configs/{key}", params={"group": group}
+            )
         _raise_for_status(response)
 
     # -- integration projections (runtime use) -----------------------------

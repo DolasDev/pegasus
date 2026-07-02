@@ -712,9 +712,62 @@ def test_set_secret_posts_payload_and_returns_metadata() -> None:
     assert captured["json"] == {
         "key": "STRIPE_API_KEY",
         "value": "sk_live_x",
+        "group": "global",
         "description": "payments",
     }
     assert row["isSecret"] is True
+
+
+def test_set_secret_sends_named_group() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["json"] = json.loads(request.read())
+        return httpx.Response(201, json={"data": {"key": "STRIPE_API_KEY", "group": "billing"}})
+
+    client = _client_with(handler)
+    client.set_secret("STRIPE_API_KEY", "sk_live_x", group="billing")
+    assert captured["json"] == {"key": "STRIPE_API_KEY", "value": "sk_live_x", "group": "billing"}
+
+
+def test_get_secret_sends_group_query() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["group"] = request.url.params.get("group")
+        return httpx.Response(200, json={"data": {"value": "s3cr3t"}})
+
+    client = _client_with(handler)
+    client.get_secret("STRIPE_API_KEY", group="billing")
+    assert captured["group"] == "billing"
+
+
+def test_delete_secret_sends_group_query() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["group"] = request.url.params.get("group")
+        return httpx.Response(204)
+
+    client = _client_with(handler)
+    client.delete_secret("STRIPE_API_KEY", group="billing")
+    assert captured["group"] == "billing"
+
+
+def test_list_secrets_filters_by_group() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["group"] = request.url.params.get("group")
+        return httpx.Response(200, json={"data": []})
+
+    client = _client_with(handler)
+    client.list_secrets(group="billing")
+    assert captured["group"] == "billing"
+    # No group → no query param (list every group).
+    captured.clear()
+    client.list_secrets()
+    assert captured["group"] is None
 
 
 def test_set_secret_conflict_raises() -> None:
@@ -760,10 +813,10 @@ def test_set_config_puts_payload() -> None:
         return httpx.Response(200, json={"data": {"key": "DEFAULT_REGION", "value": "us-east-1"}})
 
     client = _client_with(handler)
-    row = client.set_config("DEFAULT_REGION", "us-east-1")
+    row = client.set_config("DEFAULT_REGION", "us-east-1", group="billing")
     assert captured["method"] == "PUT"
     assert captured["path"] == "/api/v1/workflow-secrets-configs/configs/DEFAULT_REGION"
-    assert captured["json"] == {"value": "us-east-1"}
+    assert captured["json"] == {"value": "us-east-1", "group": "billing"}
     assert row["value"] == "us-east-1"
 
 

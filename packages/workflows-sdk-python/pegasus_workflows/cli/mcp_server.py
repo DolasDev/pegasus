@@ -241,6 +241,26 @@ Both are scoped to the whole tenant: every workflow the tenant owns reads the
 same namespace. A secret and a config entry may share a key — they are separate
 namespaces.
 
+## Organize with groups (recommended)
+
+Every secret/config belongs to a **group** — a logical namespace for keeping
+related keys together (e.g. ``billing``, ``notifications``, ``crm``). An entry
+created without a group lands in ``global``.
+
+**Best practice: put every key in a meaningful group; reserve ``global`` for
+truly cross-cutting values.** Groups keep a growing store navigable and let you
+list one area at a time. The group is part of an entry's identity, so the same
+key may exist in different groups (e.g. ``API_KEY`` in both ``billing`` and
+``crm``) — reads/writes must name the group (default ``global``). Groups are
+organizational only; they are not an access-control boundary.
+
+    pegasus-workflows secrets set STRIPE_API_KEY "sk_live_..." --group billing --token vnd_...
+    pegasus-workflows secrets list --group billing --token vnd_...   # one group
+    pegasus-workflows secrets list --token vnd_...                   # every group
+
+    client.set_config("DEFAULT_REGION", "us-east-1", group="billing")
+    region = client.get_config("DEFAULT_REGION", group="billing")
+
 ## 1. Declare what your workflow needs (manifest)
 
 Add the read actions to ``required_actions`` in ``pegasus-workflows.toml`` so the
@@ -282,13 +302,14 @@ never in workflow code (httpx is sandboxed there):
 
     @activity.defn
     async def charge_customer(amount_cents: int) -> str:
-        client = PegasusClient.from_runtime()           # reads the runner's env contract
-        api_key = client.get_secret("STRIPE_API_KEY")   # needs ReadWorkflowSecret
-        region = client.get_config("DEFAULT_REGION")    # needs ReadWorkflowConfig
+        client = PegasusClient.from_runtime()                       # runner's env contract
+        api_key = client.get_secret("STRIPE_API_KEY", group="billing")  # needs ReadWorkflowSecret
+        region = client.get_config("DEFAULT_REGION")                # group defaults to "global"
         ...
 
-``get_secret`` / ``get_config`` raise ``PegasusApiError`` with status 404 if the
-key is unset and 403 if the manifest did not declare the matching read action.
+``get_secret`` / ``get_config`` take an optional ``group=`` (default ``"global"``)
+and raise ``PegasusApiError`` with status 404 if the key is unset **in that group**
+and 403 if the manifest did not declare the matching read action.
 """
 
 

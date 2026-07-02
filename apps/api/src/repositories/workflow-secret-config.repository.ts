@@ -21,6 +21,7 @@ export type WorkflowSecretConfigRow = {
   id: string
   tenantId: string
   kind: WorkflowSecretConfigKind
+  group: string
   key: string
   value: string | null
   valueCiphertext: string | null
@@ -35,6 +36,7 @@ const SELECT = {
   id: true,
   tenantId: true,
   kind: true,
+  group: true,
   key: true,
   value: true,
   valueCiphertext: true,
@@ -56,6 +58,7 @@ export function createWorkflowSecretConfigRepository(db: PrismaClient) {
     async create(input: {
       tenantId: string
       kind: WorkflowSecretConfigKind
+      group: string
       key: string
       value?: string | null
       valueCiphertext?: string | null
@@ -65,6 +68,7 @@ export function createWorkflowSecretConfigRepository(db: PrismaClient) {
       const data: Prisma.WorkflowSecretConfigUncheckedCreateInput = {
         tenantId: input.tenantId,
         kind: input.kind,
+        group: input.group,
         key: input.key,
         value: input.value ?? null,
         valueCiphertext: input.valueCiphertext ?? null,
@@ -75,19 +79,26 @@ export function createWorkflowSecretConfigRepository(db: PrismaClient) {
       return db.workflowSecretConfig.create({ data, select: SELECT })
     },
 
-    /** Tenant-scoped fetch by (kind, key) — the unique lookup. */
+    /** Tenant-scoped fetch by (kind, group, key) — the unique lookup. */
     async findByKey(
       kind: WorkflowSecretConfigKind,
+      group: string,
       key: string,
     ): Promise<WorkflowSecretConfigRow | null> {
-      return db.workflowSecretConfig.findFirst({ where: { kind, key }, select: SELECT })
+      return db.workflowSecretConfig.findFirst({ where: { kind, group, key }, select: SELECT })
     },
 
-    /** Tenant-scoped list of one kind, ordered by key. */
-    async listByKind(kind: WorkflowSecretConfigKind): Promise<WorkflowSecretConfigRow[]> {
+    /**
+     * Tenant-scoped list of one kind, ordered by group then key. Pass `group`
+     * to list a single group; omit it to list every group for the kind.
+     */
+    async listByKind(
+      kind: WorkflowSecretConfigKind,
+      group?: string,
+    ): Promise<WorkflowSecretConfigRow[]> {
       return db.workflowSecretConfig.findMany({
-        where: { kind },
-        orderBy: { key: 'asc' },
+        where: group === undefined ? { kind } : { kind, group },
+        orderBy: [{ group: 'asc' }, { key: 'asc' }],
         select: SELECT,
       })
     },
@@ -109,12 +120,12 @@ export function createWorkflowSecretConfigRepository(db: PrismaClient) {
     },
 
     /**
-     * Tenant-scoped hard delete by (kind, key). Uses deleteMany so a missing
-     * key is a no-op (returns count 0) rather than throwing — the handler maps
-     * count 0 to 404.
+     * Tenant-scoped hard delete by (kind, group, key). Uses deleteMany so a
+     * missing key is a no-op (returns count 0) rather than throwing — the
+     * handler maps count 0 to 404.
      */
-    async deleteByKey(kind: WorkflowSecretConfigKind, key: string): Promise<number> {
-      const result = await db.workflowSecretConfig.deleteMany({ where: { kind, key } })
+    async deleteByKey(kind: WorkflowSecretConfigKind, group: string, key: string): Promise<number> {
+      const result = await db.workflowSecretConfig.deleteMany({ where: { kind, group, key } })
       return result.count
     },
   }
