@@ -495,6 +495,54 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()
 
+    def map_to_external(
+        self, integration_id: str, data: Any, *, action: str | None = None
+    ) -> dict[str, Any]:
+        """Map entity data into a published integration's external JSON shape.
+
+        A published integration's mapping projects Pegasus/entity data into the
+        partner's payload shape (its "canonical" structural contract IS that
+        external shape). This runs that mapping and returns the result, so an
+        activity can build the body for the partner API. The same validation
+        verdict the integration's ``/validate`` gate produces is returned too, so
+        the caller can decide whether the payload is safe to send.
+
+        For use inside workflow activities. No manifest action required (same open
+        API-key surface as ``/validate``).
+
+        To reconcile against an external system's last-known state, compose this
+        with the projection cache in your own code: ``get_projection`` (the cached
+        external state) → ``map_to_external`` (the new payload) → merge in Python →
+        ``put_projection`` (write it back). No merge happens server-side.
+
+        Args:
+            integration_id: Integration slug, e.g. ``"demo_partner"``.
+            data: The entity data to map (any JSON-serializable object; the
+                mapping's source paths resolve against it).
+            action: Optional action driving action-scoped rules
+                (``"save"`` | ``"cancel"`` | ``"status-change"``); defaults to the
+                integration's default action.
+
+        Returns:
+            ``{external, valid, issues, degraded}``. ``external`` is the mapped
+            partner payload — always present unless the mapping itself errored
+            (then ``null``). ``valid``/``issues`` report whether ``external``
+            passed the integration's structural contract + rules; ``degraded`` is
+            true when the gate failed open internally.
+
+        Raises:
+            PegasusApiError: On 404 (unknown integration) or any other non-2xx.
+        """
+        body: dict[str, Any] = {"data": data}
+        if action is not None:
+            body["action"] = action
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/integrations/{integration_id}/map-to-external", json=body
+            )
+        _raise_for_status(response)
+        return response.json()
+
     # -- pegII order + task reads (for use inside activities) ---------------
     #
     # Orders and their operational tasks live in the legacy pegII (MoveManager)

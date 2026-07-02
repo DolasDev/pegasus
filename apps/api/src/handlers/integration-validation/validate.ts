@@ -34,6 +34,7 @@ import { apiClientAuthMiddleware } from '../../middleware/api-client-auth'
 import type { ApiClientVariables } from '../../types'
 import {
   validateOrder,
+  mapToExternal,
   transformOrderToCanonical,
   UnknownIntegrationError,
 } from '../../integration-validation/validate'
@@ -56,6 +57,11 @@ type IntegrationValidationEnv = { Variables: ApiClientVariables & { correlationI
 const ValidateBody = z.object({
   order: z.unknown(),
   prior: z.unknown().optional(),
+  action: z.enum(['save', 'cancel', 'status-change']).optional(),
+})
+
+const MapToExternalBody = z.object({
+  data: z.unknown(),
   action: z.enum(['save', 'cancel', 'status-change']).optional(),
 })
 
@@ -98,6 +104,40 @@ integrationValidationHandler.post(
     try {
       const result = validateOrder(integrationId, input)
       return c.json(result)
+    } catch (err) {
+      if (err instanceof UnknownIntegrationError) {
+        return c.json({ error: err.message, code: 'NOT_FOUND', correlationId }, 404)
+      }
+      throw err
+    }
+  },
+)
+
+// POST /integrations/:integrationId/map-to-external — project entity data into
+// the integration's external payload shape and return it, plus the same
+// validation verdict the /validate route gives. A workflow uses this to build
+// the JSON body for the partner API; `valid` lets it gate the send. Stateless:
+// no prior/projection lookup — merging into a cached projection is the caller's
+// job (get_projection → this → merge → put_projection). Same open-key auth as
+// /validate.
+integrationValidationHandler.post(
+  '/integrations/:integrationId/map-to-external',
+  apiClientAuthMiddleware,
+  async (c) => {
+    const correlationId = c.get('correlationId')
+    const integrationId = c.req.param('integrationId') ?? ''
+
+    const parsed = MapToExternalBody.safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.message, code: 'VALIDATION_ERROR', correlationId }, 400)
+    }
+
+    // Warm the registry overlay so any published config is reflected. Best-effort
+    // and TTL-throttled; failures fall back to the built-in baseline.
+    await loadRegistryOverlayIfStale(basePrisma)
+
+    try {
+      return c.json(mapToExternal(integrationId, parsed.data.data, parsed.data.action))
     } catch (err) {
       if (err instanceof UnknownIntegrationError) {
         return c.json({ error: err.message, code: 'NOT_FOUND', correlationId }, 404)
