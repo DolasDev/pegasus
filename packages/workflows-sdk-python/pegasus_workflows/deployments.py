@@ -29,7 +29,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from ._toml import dumps as _toml_dumps
+from ._toml import clear_table_scalars as _toml_clear_table_scalars
+from ._toml import update_table as _toml_update_table
 
 __all__ = [
     "DEPLOYMENTS_FILENAME",
@@ -82,9 +83,14 @@ def record_deployment(
     (no duplicate table). Publishing to a new ``env`` adds a table. When *multi*
     is true (project declares more than one workflow), the record is nested under
     the workflow name (``[env.workflow_name]``) so every workflow coexists.
+
+    Comment-preserving: only the target table's keys are edited. Header comments,
+    a hand-maintained ``# Superseded`` audit trail, blank lines, key order and
+    every other env table survive byte-for-byte (sdk-feedback/0013).
     """
     path = Path(project_dir) / DEPLOYMENTS_FILENAME
-    data = read_deployments(project_dir)
+    raw = path.read_text(encoding="utf-8") if path.is_file() else ""
+    data = tomllib.loads(raw) if raw else {}
 
     entry = {
         "base_url": base_url,
@@ -95,16 +101,17 @@ def record_deployment(
     }
 
     if multi:
-        env_table = data.get(env)
-        # If a prior single-workflow record sits at this env, promote to nested.
-        if not isinstance(env_table, dict) or _is_entry(env_table):
-            env_table = {}
-        env_table[workflow_name] = entry
-        data[env] = env_table
+        env_val = data.get(env)
+        # A prior single-workflow record at this env must be promoted to nested:
+        # drop its leaf scalars (keeping the header + any comments) before
+        # nesting this workflow under the env table.
+        if isinstance(env_val, dict) and _is_entry(env_val):
+            raw = _toml_clear_table_scalars(raw, [env])
+        raw = _toml_update_table(raw, [env, workflow_name], entry)
     else:
-        data[env] = entry
+        raw = _toml_update_table(raw, [env], entry)
 
-    path.write_text(_toml_dumps(data), encoding="utf-8")
+    path.write_text(raw, encoding="utf-8")
     return path
 
 

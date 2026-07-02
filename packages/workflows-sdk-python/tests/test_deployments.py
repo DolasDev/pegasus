@@ -77,3 +77,109 @@ def test_multi_workflow_named_workflow_id_does_not_wipe_siblings(tmp_path: Path)
     data = dp.read_deployments(tmp_path)
     assert data["prod"]["workflow_id"]["workflow_id"] == "wf-a"
     assert data["prod"]["other"]["workflow_id"] == "wf-b"
+
+
+# ── comment preservation (sdk-feedback/0013) ───────────────────────────────
+
+# A hand-maintained ledger: header block + a Superseded audit trail + a [qa]
+# table the current publish must not touch.
+_LEDGER_WITH_COMMENTS = '''\
+# deployments.toml — where each workflow landed and the id it got.
+# Ids are environment-specific; this is the human-facing audit trail.
+
+# Superseded — prior published ids (keep for the record):
+#   prod 0.1.0 = f8077342-2e58-4dc1-a47a-797ca394ef72
+
+[qa]
+base_url = "https://api.pegasus-qa.dolas.dev"
+workflow_id = "wf-qa-1"
+version = "0.1.0"
+visibility = "GLOBAL"
+published_at = "2026-06-01T00:00:00Z"
+
+[prod]
+base_url = "https://api.pegasus.dolas.dev"
+workflow_id = "wf-old"
+version = "0.1.0"
+visibility = "GLOBAL"
+published_at = "2026-06-26T21:05:48Z"
+'''
+
+
+def test_republish_preserves_comments_and_only_changes_target_keys(tmp_path: Path) -> None:
+    path = tmp_path / dp.DEPLOYMENTS_FILENAME
+    path.write_text(_LEDGER_WITH_COMMENTS, encoding="utf-8")
+
+    _record(
+        tmp_path,
+        env="prod",
+        workflow_id="wf-new",
+        version="0.2.0",
+        published_at="2026-07-01T10:00:00Z",
+    )
+
+    before = _LEDGER_WITH_COMMENTS.splitlines()
+    after = path.read_text(encoding="utf-8").splitlines()
+    # Only the three prod value lines change; everything else is byte-identical.
+    changed = [(b, a) for b, a in zip(before, after, strict=True) if b != a]
+    assert changed == [
+        ('workflow_id = "wf-old"', 'workflow_id = "wf-new"'),
+        ('version = "0.1.0"', 'version = "0.2.0"'),
+        (
+            'published_at = "2026-06-26T21:05:48Z"',
+            'published_at = "2026-07-01T10:00:00Z"',
+        ),
+    ]
+    # The Superseded comment line and the untouched [qa] table both survive.
+    text = path.read_text(encoding="utf-8")
+    assert "#   prod 0.1.0 = f8077342-2e58-4dc1-a47a-797ca394ef72" in text
+    assert dp.read_deployments(tmp_path)["qa"]["workflow_id"] == "wf-qa-1"
+
+
+def test_new_env_appends_without_disturbing_comments(tmp_path: Path) -> None:
+    path = tmp_path / dp.DEPLOYMENTS_FILENAME
+    path.write_text(_LEDGER_WITH_COMMENTS, encoding="utf-8")
+
+    _record(
+        tmp_path,
+        env="staging",
+        base_url="https://api.pegasus-staging.dolas.dev",
+        workflow_id="wf-staging",
+    )
+
+    text = path.read_text(encoding="utf-8")
+    # Existing content is a byte-stable prefix; the new table is appended after.
+    assert text.startswith(_LEDGER_WITH_COMMENTS)
+    data = dp.read_deployments(tmp_path)
+    assert set(data) == {"qa", "prod", "staging"}
+    assert data["staging"]["workflow_id"] == "wf-staging"
+    # And the whole file still parses (valid TOML).
+    assert tomllib.loads(text)["staging"]["base_url"].endswith("staging.dolas.dev")
+
+
+def test_missing_key_is_appended_to_existing_table(tmp_path: Path) -> None:
+    # A table lacking a key the recorder writes gains it in place, comments kept.
+    path = tmp_path / dp.DEPLOYMENTS_FILENAME
+    path.write_text(
+        '[prod]\n# note: seeded by hand\nworkflow_id = "wf-old"\n',
+        encoding="utf-8",
+    )
+    _record(tmp_path, env="prod", workflow_id="wf-new", version="0.2.0")
+    data = dp.read_deployments(tmp_path)
+    assert data["prod"]["workflow_id"] == "wf-new"
+    assert data["prod"]["version"] == "0.2.0"
+    assert data["prod"]["visibility"] == "GLOBAL"
+    assert "# note: seeded by hand" in path.read_text(encoding="utf-8")
+
+
+def test_promote_single_to_multi_preserves_comments(tmp_path: Path) -> None:
+    path = tmp_path / dp.DEPLOYMENTS_FILENAME
+    path.write_text(_LEDGER_WITH_COMMENTS, encoding="utf-8")
+    # prod was a single-workflow leaf; now publish it as a multi-workflow project.
+    _record(tmp_path, env="prod", multi=True, workflow_name="alpha", workflow_id="wf-a")
+    data = dp.read_deployments(tmp_path)
+    assert data["prod"]["alpha"]["workflow_id"] == "wf-a"
+    # The leaf's scalars are gone (promoted), but comments + [qa] remain.
+    text = path.read_text(encoding="utf-8")
+    assert "#   prod 0.1.0 = f8077342-2e58-4dc1-a47a-797ca394ef72" in text
+    assert data["qa"]["workflow_id"] == "wf-qa-1"
