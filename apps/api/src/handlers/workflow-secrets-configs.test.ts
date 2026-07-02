@@ -86,6 +86,7 @@ function secretRow(overrides: Record<string, unknown> = {}) {
     id: 's-1',
     tenantId: 'test-tenant-id',
     kind: 'SECRET',
+    group: 'global',
     key: 'DB_PASSWORD',
     value: null,
     valueCiphertext: 'cipher==',
@@ -102,6 +103,7 @@ function configRow(overrides: Record<string, unknown> = {}) {
     id: 'c-1',
     tenantId: 'test-tenant-id',
     kind: 'CONFIG',
+    group: 'global',
     key: 'REGION',
     value: 'us-east-1',
     valueCiphertext: null,
@@ -137,8 +139,36 @@ describe('POST /secrets', () => {
     expect(data['valueCiphertext']).toBeUndefined()
     expect(mockEncrypt).toHaveBeenCalledWith('s3cr3t', 'test-tenant-id')
     expect(mockRepo.create).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'SECRET', key: 'DB_PASSWORD', valueCiphertext: 'cipher==' }),
+      expect.objectContaining({
+        kind: 'SECRET',
+        group: 'global',
+        key: 'DB_PASSWORD',
+        valueCiphertext: 'cipher==',
+      }),
     )
+  })
+
+  it('creates a secret in a named group and echoes the group back', async () => {
+    mockEncrypt.mockResolvedValue('cipher==')
+    mockRepo.create.mockResolvedValue(secretRow({ group: 'billing' }))
+    const app = buildApp(['tenant_admin'])
+    const res = await app.request(
+      '/workflow-secrets-configs/secrets',
+      post({ key: 'DB_PASSWORD', group: 'billing', value: 's3cr3t' }),
+    )
+    expect(res.status).toBe(201)
+    expect((await json(res))['data']).toMatchObject({ group: 'billing', key: 'DB_PASSWORD' })
+    expect(mockRepo.create).toHaveBeenCalledWith(expect.objectContaining({ group: 'billing' }))
+  })
+
+  it('returns 400 on an invalid group', async () => {
+    const app = buildApp(['tenant_admin'])
+    const res = await app.request(
+      '/workflow-secrets-configs/secrets',
+      post({ key: 'DB_PASSWORD', group: 'bad group!', value: 's3cr3t' }),
+    )
+    expect(res.status).toBe(400)
+    expect(mockRepo.create).not.toHaveBeenCalled()
   })
 
   it('rejects a role without ManageWorkflowSecrets (workflow_runtime) with 403', async () => {
@@ -182,21 +212,48 @@ describe('GET /secrets', () => {
     expect(res.status).toBe(200)
     const data = (await json(res))['data'] as Array<Record<string, unknown>>
     expect(data[0]?.['key']).toBe('DB_PASSWORD')
+    expect(data[0]?.['group']).toBe('global')
     expect(data[0]?.['value']).toBeUndefined()
     expect(data[0]?.['valueCiphertext']).toBeUndefined()
-    expect(mockRepo.listByKind).toHaveBeenCalledWith('SECRET')
+    // No ?group → list every group (undefined filter).
+    expect(mockRepo.listByKind).toHaveBeenCalledWith('SECRET', undefined)
+  })
+
+  it('filters to one group with ?group=', async () => {
+    mockRepo.listByKind.mockResolvedValue([secretRow({ group: 'billing' })])
+    const app = buildApp(['tenant_admin'])
+    const res = await app.request('/workflow-secrets-configs/secrets?group=billing')
+    expect(res.status).toBe(200)
+    expect(mockRepo.listByKind).toHaveBeenCalledWith('SECRET', 'billing')
+  })
+
+  it('returns 400 for a malformed ?group=', async () => {
+    const app = buildApp(['tenant_admin'])
+    const res = await app.request('/workflow-secrets-configs/secrets?group=bad%20group!')
+    expect(res.status).toBe(400)
+    expect(mockRepo.listByKind).not.toHaveBeenCalled()
   })
 })
 
 describe('DELETE /secrets/:key', () => {
-  it('returns 204 on delete', async () => {
+  it('returns 204 on delete (default group)', async () => {
     mockRepo.deleteByKey.mockResolvedValue(1)
     const app = buildApp(['tenant_admin'])
     const res = await app.request('/workflow-secrets-configs/secrets/DB_PASSWORD', {
       method: 'DELETE',
     })
     expect(res.status).toBe(204)
-    expect(mockRepo.deleteByKey).toHaveBeenCalledWith('SECRET', 'DB_PASSWORD')
+    expect(mockRepo.deleteByKey).toHaveBeenCalledWith('SECRET', 'global', 'DB_PASSWORD')
+  })
+
+  it('deletes from the group named in ?group=', async () => {
+    mockRepo.deleteByKey.mockResolvedValue(1)
+    const app = buildApp(['tenant_admin'])
+    const res = await app.request('/workflow-secrets-configs/secrets/DB_PASSWORD?group=billing', {
+      method: 'DELETE',
+    })
+    expect(res.status).toBe(204)
+    expect(mockRepo.deleteByKey).toHaveBeenCalledWith('SECRET', 'billing', 'DB_PASSWORD')
   })
 
   it('returns 404 when the secret is absent', async () => {
@@ -262,6 +319,19 @@ describe('GET /runtime/secrets/:key', () => {
     expect((await json(res))['data']).toEqual({ value: 's3cr3t' })
     expect(mockDecrypt).toHaveBeenCalledWith('cipher==', 'test-tenant-id')
     expect(res.headers.get('Cache-Control')).toBe('no-store')
+    // Default group when ?group is omitted.
+    expect(mockRepo.findByKey).toHaveBeenCalledWith('SECRET', 'global', 'DB_PASSWORD')
+  })
+
+  it('reads a secret from the group named in ?group=', async () => {
+    mockRepo.findByKey.mockResolvedValue(secretRow({ group: 'billing' }))
+    mockDecrypt.mockResolvedValue('s3cr3t')
+    const app = buildApp(['workflow_runtime'], null)
+    const res = await app.request(
+      '/workflow-secrets-configs/runtime/secrets/DB_PASSWORD?group=billing',
+    )
+    expect(res.status).toBe(200)
+    expect(mockRepo.findByKey).toHaveBeenCalledWith('SECRET', 'billing', 'DB_PASSWORD')
   })
 
   it('rejects a role without ReadWorkflowSecret (workflow_developer) with 403', async () => {
@@ -365,7 +435,7 @@ describe('management edge cases', () => {
     const app = buildApp(['tenant_admin'])
     const ok = await app.request('/workflow-secrets-configs/configs/REGION', { method: 'DELETE' })
     expect(ok.status).toBe(204)
-    expect(mockRepo.deleteByKey).toHaveBeenCalledWith('CONFIG', 'REGION')
+    expect(mockRepo.deleteByKey).toHaveBeenCalledWith('CONFIG', 'global', 'REGION')
     const missing = await app.request('/workflow-secrets-configs/configs/NOPE', {
       method: 'DELETE',
     })
@@ -377,7 +447,7 @@ describe('management edge cases', () => {
     const app = buildApp(['tenant_admin'])
     const res = await app.request('/workflow-secrets-configs/configs')
     expect(res.status).toBe(200)
-    expect(mockRepo.listByKind).toHaveBeenCalledWith('CONFIG')
+    expect(mockRepo.listByKind).toHaveBeenCalledWith('CONFIG', undefined)
     const data = (await json(res))['data'] as Array<Record<string, unknown>>
     expect(data[0]?.['value']).toBe('us-east-1')
   })

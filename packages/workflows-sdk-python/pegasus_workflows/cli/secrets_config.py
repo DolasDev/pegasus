@@ -51,6 +51,16 @@ def _desc_option() -> Any:
     return typer.Option(None, "--description", "-d", help="Optional human-readable note.")
 
 
+def _group_option(default: str | None = "global") -> Any:
+    return typer.Option(
+        default,
+        "--group",
+        "-g",
+        help="Logical group for organization (default: global). "
+        "Prefer grouping related keys over dumping everything in global.",
+    )
+
+
 def _client(token: str | None, base_url: str | None, profile: str | None) -> PegasusClient:
     token, base_url = resolve_credentials(token, base_url, profile)
     return PegasusClient(base_url=base_url, token=token)
@@ -63,6 +73,7 @@ def _client(token: str | None, base_url: str | None, profile: str | None) -> Peg
 def secrets_set_command(
     key: str = typer.Argument(..., help="Secret key, e.g. STRIPE_API_KEY."),
     value: str = typer.Argument(..., help="Secret value (stored encrypted at rest)."),
+    group: str = _group_option(),
     description: str = _desc_option(),
     token: str = token_option(),
     base_url: str = base_url_option(),
@@ -71,22 +82,23 @@ def secrets_set_command(
     """Publish a secret. Secrets are write-once — delete then set again to rotate."""
     client = _client(token, base_url, profile)
     try:
-        client.set_secret(key, value, description=description)
+        client.set_secret(key, value, group=group, description=description)
     except PegasusApiError as exc:
         if exc.status_code == 409:
             typer.secho(
-                f"secret '{key}' already exists — delete it first to rotate",
+                f"secret '{key}' already exists in group '{group}' — delete it first to rotate",
                 fg=typer.colors.RED,
                 err=True,
             )
         else:
             typer.secho(f"set failed: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
-    typer.secho(f"set secret {key}", fg=typer.colors.GREEN)
+    typer.secho(f"set secret {key} (group: {group})", fg=typer.colors.GREEN)
 
 
 @secrets_app.command("list")
 def secrets_list_command(
+    group: str = _group_option(default=None),
     token: str = token_option(),
     base_url: str = base_url_option(),
     profile: str = profile_option(),
@@ -94,7 +106,7 @@ def secrets_list_command(
     """List secret keys and metadata. Values are never shown."""
     client = _client(token, base_url, profile)
     try:
-        rows = client.list_secrets()
+        rows = client.list_secrets(group=group)
     except PegasusApiError as exc:
         typer.secho(f"list failed: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
@@ -102,12 +114,13 @@ def secrets_list_command(
         typer.echo("no secrets")
         return
     for row in rows:
-        typer.echo(f"{row.get('key')}\t{row.get('description') or ''}")
+        typer.echo(f"{row.get('group')}\t{row.get('key')}\t{row.get('description') or ''}")
 
 
 @secrets_app.command("delete")
 def secrets_delete_command(
     key: str = typer.Argument(..., help="Secret key to delete."),
+    group: str = _group_option(),
     token: str = token_option(),
     base_url: str = base_url_option(),
     profile: str = profile_option(),
@@ -115,11 +128,11 @@ def secrets_delete_command(
     """Delete a secret by key."""
     client = _client(token, base_url, profile)
     try:
-        client.delete_secret(key)
+        client.delete_secret(key, group=group)
     except PegasusApiError as exc:
         typer.secho(f"delete failed: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
-    typer.secho(f"deleted secret {key}", fg=typer.colors.GREEN)
+    typer.secho(f"deleted secret {key} (group: {group})", fg=typer.colors.GREEN)
 
 
 # -- config -----------------------------------------------------------------
@@ -129,6 +142,7 @@ def secrets_delete_command(
 def config_set_command(
     key: str = typer.Argument(..., help="Config key, e.g. DEFAULT_REGION."),
     value: str = typer.Argument(..., help="Config value."),
+    group: str = _group_option(),
     description: str = _desc_option(),
     token: str = token_option(),
     base_url: str = base_url_option(),
@@ -137,15 +151,16 @@ def config_set_command(
     """Publish a config value (idempotent — re-running replaces the value)."""
     client = _client(token, base_url, profile)
     try:
-        client.set_config(key, value, description=description)
+        client.set_config(key, value, group=group, description=description)
     except PegasusApiError as exc:
         typer.secho(f"set failed: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
-    typer.secho(f"set config {key}", fg=typer.colors.GREEN)
+    typer.secho(f"set config {key} (group: {group})", fg=typer.colors.GREEN)
 
 
 @config_app.command("list")
 def config_list_command(
+    group: str = _group_option(default=None),
     token: str = token_option(),
     base_url: str = base_url_option(),
     profile: str = profile_option(),
@@ -153,7 +168,7 @@ def config_list_command(
     """List config keys and their values."""
     client = _client(token, base_url, profile)
     try:
-        rows = client.list_configs()
+        rows = client.list_configs(group=group)
     except PegasusApiError as exc:
         typer.secho(f"list failed: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
@@ -161,12 +176,13 @@ def config_list_command(
         typer.echo("no config")
         return
     for row in rows:
-        typer.echo(f"{row.get('key')}\t{row.get('value')}")
+        typer.echo(f"{row.get('group')}\t{row.get('key')}\t{row.get('value')}")
 
 
 @config_app.command("delete")
 def config_delete_command(
     key: str = typer.Argument(..., help="Config key to delete."),
+    group: str = _group_option(),
     token: str = token_option(),
     base_url: str = base_url_option(),
     profile: str = profile_option(),
@@ -174,8 +190,8 @@ def config_delete_command(
     """Delete a config entry by key."""
     client = _client(token, base_url, profile)
     try:
-        client.delete_config(key)
+        client.delete_config(key, group=group)
     except PegasusApiError as exc:
         typer.secho(f"delete failed: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
-    typer.secho(f"deleted config {key}", fg=typer.colors.GREEN)
+    typer.secho(f"deleted config {key} (group: {group})", fg=typer.colors.GREEN)
