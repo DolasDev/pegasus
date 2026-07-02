@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { validateOrder, UnknownIntegrationError } from './validate'
+import { validateOrder, mapToExternal, UnknownIntegrationError } from './validate'
 import { compileMapping } from './transform/mapping-format'
 import { demoPartnerMapping } from './transform/demo-partner.transform'
 import { applyMapping } from './transform/engine'
@@ -95,6 +95,62 @@ describe('demo_partner shipmentStatus restricted picklist', () => {
 
   it('accepts a valid shipmentStatus', () => {
     expect(validateOrder('demo_partner', { order: order('In Process') }).valid).toBe(true)
+  })
+})
+
+// mapToExternal — projects entity data into the external payload shape and
+// returns it alongside the validation verdict. Exercised via demo_partner.
+describe('mapToExternal', () => {
+  const validOrder = {
+    Id: 'S1',
+    InvolvedParties: {
+      ShipperEmployer: { Identity: { Description: 'O-1' } },
+      Coordinator: { Identity: { Description: 'Cora' }, EmailAddress: 'c@d.com' },
+    },
+    Survey: { SerivceStatus: 'Accepted', Storage1stDay: 10, GeneralComments: 'hi' },
+    DocumentationDates: ['2024-01-01'],
+    KeyMoveDates: { Survey: { Planned: '2024-01-01' } },
+    Financials: { EstimatedWeight: 1000, ActualWeight: 1100 },
+  }
+
+  it('returns the external payload and valid:true for a clean order', () => {
+    const result = mapToExternal('demo_partner', validOrder)
+    expect(result).toMatchObject({ valid: true, issues: [], degraded: false })
+    expect(result.external).toMatchObject({
+      serviceOrderNumber: 'O-1',
+      serviceStatus: 'Accepted',
+    })
+    const shipments = result.external?.['shipments'] as Array<Record<string, unknown>>
+    expect(shipments).toHaveLength(1)
+    expect(shipments[0]).toMatchObject({ supplierShipmentId: 'S1', comments: 'hi' })
+  })
+
+  it('still returns the external payload when a behavioral rule fails', () => {
+    const result = mapToExternal('demo_partner', {
+      ...validOrder,
+      Survey: { SerivceStatus: 'Awarded' },
+    })
+    expect(result.valid).toBe(false)
+    // The payload is still produced (serviceStatus mapped through) — the caller
+    // decides whether to send it.
+    expect(result.external).toMatchObject({ serviceStatus: 'Awarded' })
+    expect(result.issues).toContainEqual(
+      expect.objectContaining({ ruleId: 'service-status-not-supplier-settable' }),
+    )
+  })
+
+  it('returns the external payload even when the structural contract fails', () => {
+    const result = mapToExternal('demo_partner', {
+      ...validOrder,
+      Survey: { SerivceStatus: 'Accepted', ShipmentStatus: 'NOT_A_STATUS' },
+    })
+    expect(result.valid).toBe(false)
+    expect(result.external).not.toBeNull()
+    expect(result.issues).toContainEqual(expect.objectContaining({ kind: 'structural' }))
+  })
+
+  it('throws UnknownIntegrationError for an unregistered integration', () => {
+    expect(() => mapToExternal('nope', {})).toThrow(UnknownIntegrationError)
   })
 })
 

@@ -21,6 +21,7 @@ import { logger } from '../lib/logger'
 import type {
   CanonicalContext,
   IntegrationDefinition,
+  OrderAction,
   ValidationInput,
   ValidationIssue,
   ValidationResult,
@@ -117,4 +118,60 @@ export function validateOrder(integrationId: string, input: ValidationInput): Va
   const def = getIntegrationDefinition(integrationId)
   if (!def) throw new UnknownIntegrationError(integrationId)
   return validateWithDefinition(def, input)
+}
+
+// ---------------------------------------------------------------------------
+// mapToExternal — the outbound half of the anti-corruption layer, exposed.
+//
+// The integration's mapping already runs internal → external (its `transform`
+// projects entity data into the partner's payload shape; the "canonical"
+// structural contract IS that external shape). validateOrder runs this transform
+// internally but returns only the pass/fail verdict; a workflow that wants to
+// CALL the partner API needs the transformed payload itself. This returns it,
+// alongside the same validation verdict so the caller can gate the send.
+//
+// `external` is the RAW mapped output — always returned (even when it fails the
+// structural contract or a rule), so the caller can inspect/send it regardless.
+// A hard mapping error (e.g. an unknown coercion) yields `external: null`.
+// Merging into a cached projection is intentionally NOT done here — a workflow
+// composes get_projection → this → merge (in Python) → put_projection itself.
+// ---------------------------------------------------------------------------
+
+export interface MapToExternalResult {
+  /** The entity data projected into the integration's external payload shape. */
+  external: Record<string, unknown> | null
+  /** Whether `external` passed the integration's structural contract + rules. */
+  valid: boolean
+  /** Findings when `valid` is false (empty otherwise). */
+  issues: ValidationIssue[]
+  /** True when validation failed open internally (the gate did not actually run). */
+  degraded: boolean
+}
+
+export function mapToExternal(
+  integrationId: string,
+  data: unknown,
+  action?: OrderAction,
+): MapToExternalResult {
+  const def = getIntegrationDefinition(integrationId)
+  if (!def) throw new UnknownIntegrationError(integrationId)
+
+  // Raw external payload — returned even if it later fails validation. A defect
+  // in the transform must not deny the caller a verdict, so fall back to null.
+  let external: Record<string, unknown> | null = null
+  try {
+    external = applyMapping(def.transform, data)
+  } catch (err) {
+    logger.warn('integration map-to-external transform failed', {
+      integrationId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
+  // Build the input conditionally: with exactOptionalPropertyTypes, an explicit
+  // `action: undefined` is not assignable to the optional `action?`.
+  const input: ValidationInput = { order: data }
+  if (action !== undefined) input.action = action
+  const result = validateWithDefinition(def, input)
+  return { external, valid: result.valid, issues: result.issues, degraded: result.degraded }
 }

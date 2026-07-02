@@ -588,6 +588,65 @@ def test_send_sms_non_2xx_raises_pegasus_api_error() -> None:
     assert exc_info.value.code == "FORBIDDEN"
 
 
+# -- map to external --------------------------------------------------------
+
+
+def test_map_to_external_posts_data_and_returns_envelope() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "external": {"serviceOrderNumber": "O-1", "shipments": [{"id": "S1"}]},
+                "valid": True,
+                "issues": [],
+                "degraded": False,
+            },
+        )
+
+    client = _client_with(handler)
+    result = client.map_to_external("demo_partner", {"Id": "S1"}, action="save")
+
+    assert result["external"]["serviceOrderNumber"] == "O-1"
+    assert result["valid"] is True
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/api/v1/integrations/demo_partner/map-to-external"
+    assert captured["body"] == {"data": {"Id": "S1"}, "action": "save"}
+
+
+def test_map_to_external_omits_action_when_not_given() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200, json={"external": {}, "valid": True, "issues": [], "degraded": False}
+        )
+
+    client = _client_with(handler)
+    client.map_to_external("demo_partner", {"Id": "S1"})
+
+    assert captured["body"] == {"data": {"Id": "S1"}}
+    assert "action" not in captured["body"]
+
+
+def test_map_to_external_non_2xx_raises_pegasus_api_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            404, json={"error": 'Unknown integration "ghost"', "code": "NOT_FOUND"}
+        )
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.map_to_external("ghost", {})
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.code == "NOT_FOUND"
+
+
 # -- workflow secrets & configuration ---------------------------------------
 
 
