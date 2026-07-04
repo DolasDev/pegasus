@@ -37,7 +37,8 @@ export const configsQueryOptions = queryOptions({
 export function useCreateSecret() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { key: string; value: string; description?: string }) => createSecret(data),
+    mutationFn: (data: { key: string; value: string; group?: string; description?: string }) =>
+      createSecret(data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: workflowSecretConfigKeys.secrets() })
     },
@@ -47,7 +48,7 @@ export function useCreateSecret() {
 export function useDeleteSecret() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (key: string) => deleteSecret(key),
+    mutationFn: ({ key, group }: { key: string; group: string }) => deleteSecret(key, group),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: workflowSecretConfigKeys.secrets() })
     },
@@ -57,7 +58,8 @@ export function useDeleteSecret() {
 export function useCreateConfig() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { key: string; value: string; description?: string }) => createConfig(data),
+    mutationFn: (data: { key: string; value: string; group?: string; description?: string }) =>
+      createConfig(data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: workflowSecretConfigKeys.configs() })
     },
@@ -72,7 +74,7 @@ export function useUpsertConfig() {
       data,
     }: {
       key: string
-      data: { value: string; description?: string | null }
+      data: { value: string; group?: string; description?: string | null }
     }) => upsertConfig(key, data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: workflowSecretConfigKeys.configs() })
@@ -83,7 +85,7 @@ export function useUpsertConfig() {
 export function useDeleteConfig() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (key: string) => deleteConfig(key),
+    mutationFn: ({ key, group }: { key: string; group: string }) => deleteConfig(key, group),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: workflowSecretConfigKeys.configs() })
     },
