@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Copy,
   Download,
+  Folder,
   Globe,
   Info,
   KeyRound,
@@ -57,7 +58,11 @@ import {
   useUpsertConfig,
   useDeleteConfig,
 } from '@/api/queries/workflow-secrets-configs'
-import type { WorkflowSecretMeta, WorkflowConfigEntry } from '@/api/workflow-secrets-configs'
+import {
+  DEFAULT_GROUP,
+  type WorkflowSecretMeta,
+  type WorkflowConfigEntry,
+} from '@/api/workflow-secrets-configs'
 import { Input } from '@/components/ui/input'
 import { usePermissions } from '@/auth/permissions'
 import { formatFireTimeUtc, parseCronExpression, previewNextFires } from '@/lib/cron-preview'
@@ -72,6 +77,9 @@ const MANAGE_CONFIGS_PERMISSION = 'workflow_config:manage'
 
 /** Env-var-style key rule — mirrors the server's KEY_RE. */
 const SECRET_CONFIG_KEY_RE = /^[a-zA-Z_][a-zA-Z0-9_]{0,127}$/
+
+/** Group name rule — mirrors the server's GROUP_RE. */
+const SECRET_CONFIG_GROUP_RE = /^[a-zA-Z0-9_-]{1,64}$/
 
 // ---------------------------------------------------------------------------
 // Executability helpers
@@ -965,6 +973,50 @@ function keyError(key: string): string | null {
   return null
 }
 
+/** Normalize a group input: blank → the default "global" bucket. */
+function normalizeGroup(group: string): string {
+  return group.trim() || DEFAULT_GROUP
+}
+
+function groupError(group: string): string | null {
+  if (!SECRET_CONFIG_GROUP_RE.test(normalizeGroup(group))) {
+    return 'Group must use only letters, digits, - and _ (max 64).'
+  }
+  return null
+}
+
+/**
+ * Bucket entries by their group for grouped rendering. The default "global"
+ * group sorts first; the rest alphabetically. Entries keep the server's key
+ * order within each group.
+ */
+function groupByGroup<T extends { group: string }>(items: T[]): [string, T[]][] {
+  const buckets = new Map<string, T[]>()
+  for (const item of items) {
+    const arr = buckets.get(item.group)
+    if (arr) arr.push(item)
+    else buckets.set(item.group, [item])
+  }
+  return [...buckets.entries()].sort(([a], [b]) => {
+    if (a === DEFAULT_GROUP) return -1
+    if (b === DEFAULT_GROUP) return 1
+    return a.localeCompare(b)
+  })
+}
+
+/** A group heading row shown above each group's entries. */
+function GroupHeading({ group, count }: { group: string; count: number }) {
+  return (
+    <div className="flex items-center gap-2 bg-muted/40 px-4 py-1.5">
+      <Folder className="h-3 w-3 text-muted-foreground" />
+      <span className="font-mono text-xs font-medium text-foreground">{group}</span>
+      <Badge variant="outline" className="text-[10px]">
+        {count}
+      </Badge>
+    </div>
+  )
+}
+
 function apiErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) return error.message
   if (error instanceof Error) return error.message
@@ -1027,6 +1079,7 @@ function SecretsSection() {
 
   const [addOpen, setAddOpen] = useState(false)
   const [key, setKey] = useState('')
+  const [group, setGroup] = useState('')
   const [value, setValue] = useState('')
   const [description, setDescription] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
@@ -1036,6 +1089,7 @@ function SecretsSection() {
 
   function resetForm() {
     setKey('')
+    setGroup('')
     setValue('')
     setDescription('')
     setFormError(null)
@@ -1048,12 +1102,22 @@ function SecretsSection() {
       setFormError(ke)
       return
     }
+    const ge = groupError(group)
+    if (ge) {
+      setFormError(ge)
+      return
+    }
     if (value.length === 0) {
       setFormError('Value is required.')
       return
     }
     createMutation.mutate(
-      { key, value, ...(description.trim() ? { description: description.trim() } : {}) },
+      {
+        key,
+        value,
+        group: normalizeGroup(group),
+        ...(description.trim() ? { description: description.trim() } : {}),
+      },
       {
         onSuccess: () => resetForm(),
         onError: (e) => setFormError(apiErrorMessage(e, 'Failed to create secret.')),
@@ -1062,6 +1126,7 @@ function SecretsSection() {
   }
 
   const secrets = data ?? []
+  const grouped = groupByGroup(secrets)
 
   return (
     <section>
@@ -1083,7 +1148,9 @@ function SecretsSection() {
         Encrypted, write-once values your workflows read at runtime via{' '}
         <code className="font-mono">get_secret()</code>. Values are never shown again after creation
         — to rotate, delete and recreate. A workflow must declare{' '}
-        <code className="font-mono">ReadWorkflowSecret</code> in its manifest.
+        <code className="font-mono">ReadWorkflowSecret</code> in its manifest. Organize related keys
+        into <span className="font-medium">groups</span>; anything left ungrouped lives in{' '}
+        <code className="font-mono">{DEFAULT_GROUP}</code>.
       </p>
 
       {addOpen && (
@@ -1102,18 +1169,30 @@ function SecretsSection() {
               />
             </div>
             <div>
-              <label htmlFor="secret-value" className="block text-xs font-medium text-foreground">
-                Value
+              <label htmlFor="secret-group" className="block text-xs font-medium text-foreground">
+                Group
               </label>
               <Input
-                id="secret-value"
-                type="password"
+                id="secret-group"
                 className="mt-1 font-mono"
-                placeholder="sk_live_…"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
+                placeholder={DEFAULT_GROUP}
+                value={group}
+                onChange={(e) => setGroup(e.target.value)}
               />
             </div>
+          </div>
+          <div className="mt-3">
+            <label htmlFor="secret-value" className="block text-xs font-medium text-foreground">
+              Value
+            </label>
+            <Input
+              id="secret-value"
+              type="password"
+              className="mt-1 font-mono"
+              placeholder="sk_live_…"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+            />
           </div>
           <div className="mt-3">
             <label htmlFor="secret-desc" className="block text-xs font-medium text-foreground">
@@ -1166,24 +1245,29 @@ function SecretsSection() {
           description="Add a secret your workflows can read at runtime."
         />
       ) : (
-        <div className="rounded-md border border-border bg-card">
-          {secrets.map((s) => (
-            <div
-              key={s.id}
-              className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0"
-            >
-              <code className="font-mono text-sm text-foreground">{s.key}</code>
-              {s.description && (
-                <span className="truncate text-xs text-muted-foreground">{s.description}</span>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="ml-auto text-destructive hover:text-destructive"
-                onClick={() => setDeleteTarget(s)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+        <div className="overflow-hidden rounded-md border border-border bg-card">
+          {grouped.map(([groupName, rows]) => (
+            <div key={groupName} className="border-b border-border last:border-b-0">
+              <GroupHeading group={groupName} count={rows.length} />
+              {rows.map((s) => (
+                <div
+                  key={s.id}
+                  className="flex items-center gap-3 border-t border-border px-4 py-3"
+                >
+                  <code className="font-mono text-sm text-foreground">{s.key}</code>
+                  {s.description && (
+                    <span className="truncate text-xs text-muted-foreground">{s.description}</span>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto text-destructive hover:text-destructive"
+                    onClick={() => setDeleteTarget(s)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
             </div>
           ))}
         </div>
@@ -1192,11 +1276,14 @@ function SecretsSection() {
       {deleteTarget && (
         <ConfirmDeleteDialog
           what="secret"
-          name={deleteTarget.key}
+          name={`${deleteTarget.key} (${deleteTarget.group})`}
           pending={deleteMutation.isPending}
           onClose={() => setDeleteTarget(null)}
           onConfirm={() =>
-            deleteMutation.mutate(deleteTarget.key, { onSuccess: () => setDeleteTarget(null) })
+            deleteMutation.mutate(
+              { key: deleteTarget.key, group: deleteTarget.group },
+              { onSuccess: () => setDeleteTarget(null) },
+            )
           }
         />
       )}
@@ -1217,9 +1304,10 @@ function ConfigsSection() {
 
   const [addOpen, setAddOpen] = useState(false)
   const [key, setKey] = useState('')
+  const [group, setGroup] = useState('')
   const [value, setValue] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
-  const [editKey, setEditKey] = useState<string | null>(null)
+  const [editId, setEditId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<WorkflowConfigEntry | null>(null)
 
@@ -1227,6 +1315,7 @@ function ConfigsSection() {
 
   function resetForm() {
     setKey('')
+    setGroup('')
     setValue('')
     setFormError(null)
     setAddOpen(false)
@@ -1238,8 +1327,13 @@ function ConfigsSection() {
       setFormError(ke)
       return
     }
+    const ge = groupError(group)
+    if (ge) {
+      setFormError(ge)
+      return
+    }
     createMutation.mutate(
-      { key, value },
+      { key, value, group: normalizeGroup(group) },
       {
         onSuccess: () => resetForm(),
         onError: (e) => setFormError(apiErrorMessage(e, 'Failed to create config entry.')),
@@ -1247,14 +1341,17 @@ function ConfigsSection() {
     )
   }
 
-  function handleSaveEdit(entryKey: string) {
+  function handleSaveEdit(entry: WorkflowConfigEntry) {
+    // Pass the entry's own group so the upsert targets the right row (the same
+    // key can exist in multiple groups).
     upsertMutation.mutate(
-      { key: entryKey, data: { value: editValue } },
-      { onSuccess: () => setEditKey(null) },
+      { key: entry.key, data: { value: editValue, group: entry.group } },
+      { onSuccess: () => setEditId(null) },
     )
   }
 
   const configs = data ?? []
+  const grouped = groupByGroup(configs)
 
   return (
     <section>
@@ -1275,7 +1372,9 @@ function ConfigsSection() {
       <p className="mb-3 text-xs text-muted-foreground">
         Plain, editable key/value pairs your workflows read at runtime via{' '}
         <code className="font-mono">get_config()</code>. A workflow must declare{' '}
-        <code className="font-mono">ReadWorkflowConfig</code> in its manifest.
+        <code className="font-mono">ReadWorkflowConfig</code> in its manifest. Organize related keys
+        into <span className="font-medium">groups</span>; anything left ungrouped lives in{' '}
+        <code className="font-mono">{DEFAULT_GROUP}</code>.
       </p>
 
       {addOpen && (
@@ -1294,17 +1393,29 @@ function ConfigsSection() {
               />
             </div>
             <div>
-              <label htmlFor="config-value" className="block text-xs font-medium text-foreground">
-                Value
+              <label htmlFor="config-group" className="block text-xs font-medium text-foreground">
+                Group
               </label>
               <Input
-                id="config-value"
+                id="config-group"
                 className="mt-1 font-mono"
-                placeholder="us-east-1"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
+                placeholder={DEFAULT_GROUP}
+                value={group}
+                onChange={(e) => setGroup(e.target.value)}
               />
             </div>
+          </div>
+          <div className="mt-3">
+            <label htmlFor="config-value" className="block text-xs font-medium text-foreground">
+              Value
+            </label>
+            <Input
+              id="config-value"
+              className="mt-1 font-mono"
+              placeholder="us-east-1"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+            />
           </div>
           {formError && (
             <p className="mt-2 text-xs text-destructive" role="alert">
@@ -1345,57 +1456,62 @@ function ConfigsSection() {
           description="Add a config value your workflows can read."
         />
       ) : (
-        <div className="rounded-md border border-border bg-card">
-          {configs.map((cfg) => (
-            <div
-              key={cfg.id}
-              className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0"
-            >
-              <code className="shrink-0 font-mono text-sm text-foreground">{cfg.key}</code>
-              {editKey === cfg.key ? (
-                <>
-                  <Input
-                    className="font-mono"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                  />
-                  <Button
-                    size="sm"
-                    onClick={() => handleSaveEdit(cfg.key)}
-                    disabled={upsertMutation.isPending}
-                  >
-                    Save
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setEditKey(null)}>
-                    Cancel
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <span className="truncate font-mono text-sm text-muted-foreground">
-                    {cfg.value}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto"
-                    onClick={() => {
-                      setEditKey(cfg.key)
-                      setEditValue(cfg.value)
-                    }}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => setDeleteTarget(cfg)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </>
-              )}
+        <div className="overflow-hidden rounded-md border border-border bg-card">
+          {grouped.map(([groupName, rows]) => (
+            <div key={groupName} className="border-b border-border last:border-b-0">
+              <GroupHeading group={groupName} count={rows.length} />
+              {rows.map((cfg) => (
+                <div
+                  key={cfg.id}
+                  className="flex items-center gap-3 border-t border-border px-4 py-3"
+                >
+                  <code className="shrink-0 font-mono text-sm text-foreground">{cfg.key}</code>
+                  {editId === cfg.id ? (
+                    <>
+                      <Input
+                        className="font-mono"
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => handleSaveEdit(cfg)}
+                        disabled={upsertMutation.isPending}
+                      >
+                        Save
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => setEditId(null)}>
+                        Cancel
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="truncate font-mono text-sm text-muted-foreground">
+                        {cfg.value}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="ml-auto"
+                        onClick={() => {
+                          setEditId(cfg.id)
+                          setEditValue(cfg.value)
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleteTarget(cfg)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              ))}
             </div>
           ))}
         </div>
@@ -1404,11 +1520,14 @@ function ConfigsSection() {
       {deleteTarget && (
         <ConfirmDeleteDialog
           what="config entry"
-          name={deleteTarget.key}
+          name={`${deleteTarget.key} (${deleteTarget.group})`}
           pending={deleteMutation.isPending}
           onClose={() => setDeleteTarget(null)}
           onConfirm={() =>
-            deleteMutation.mutate(deleteTarget.key, { onSuccess: () => setDeleteTarget(null) })
+            deleteMutation.mutate(
+              { key: deleteTarget.key, group: deleteTarget.group },
+              { onSuccess: () => setDeleteTarget(null) },
+            )
           }
         />
       )}
