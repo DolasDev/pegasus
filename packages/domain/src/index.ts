@@ -93,6 +93,34 @@ export {
   calculateQuoteTotal,
 } from './quoting/index'
 
+// Rating context
+export type {
+  TariffCode,
+  TariffVersionId,
+  TariffSeason,
+  RatingInput,
+  RatedLineItem,
+  RatingResult,
+  MileageEstimate,
+  MileageEstimator,
+  Tariff400ngData,
+  ServiceAreaRates,
+} from './rating/index'
+export {
+  toTariffCode,
+  toTariffVersionId,
+  createZip3CentroidEstimator,
+  haversineMiles,
+  RATE_400NG,
+  rateCycleFor,
+  isPeakSeason,
+  billedWeight,
+  cwt,
+  fuelSurcharge,
+  fscPercentForDieselPrice,
+  rate400ng,
+} from './rating/index'
+
 // Billing context
 export type {
   InvoiceId,
