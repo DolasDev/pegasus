@@ -63,7 +63,7 @@ jobs:
     timeout-minutes: 15
     environment: ${{ inputs.env-name }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.git-ref }}
 
@@ -104,7 +104,7 @@ jobs:
       ENV_NAME: ${{ inputs.env-name }}
       STACK_PREFIX: ${{ inputs.stack-prefix }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.git-ref }}
 
