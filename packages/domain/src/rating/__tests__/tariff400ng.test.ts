@@ -262,6 +262,22 @@ describe('rate400ng — options', () => {
       'Full pack requested but no pack rate is published for the origin service area — omitted',
     )
   })
+
+  it('warns instead of throwing when full unpack is requested but unavailable', () => {
+    const { unpackRateMillicentsPerCwt, ...destinationWithoutUnpack } = SYNTHETIC_TARIFF.destination
+    const tariffWithoutUnpack: Tariff400ngData = {
+      ...SYNTHETIC_TARIFF,
+      destination: destinationWithoutUnpack,
+    }
+    const result = rate400ng(
+      makeInput({ options: { fullPack: false, fullUnpack: true } }),
+      tariffWithoutUnpack,
+    )
+    expect(result.lineItems.find((li) => li.code === 'FULL_UNPACK')).toBeUndefined()
+    expect(result.meta.warnings).toContain(
+      'Full unpack requested but no unpack rate is published for the destination service area — omitted',
+    )
+  })
 })
 
 describe('rate400ng — fuel surcharge availability', () => {
