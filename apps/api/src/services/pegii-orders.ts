@@ -1,26 +1,25 @@
 // ---------------------------------------------------------------------------
-// pegII order bridge — STUB.
+// pegII order bridge.
 //
 // The authoritative "order" record lives in the legacy pegII (MoveManager)
 // system, NOT in the cloud Postgres. (The cloud `/api/v1/orders` endpoint is a
 // separate, move-backed integration view for M2M reporting clients — see
 // handlers/orders.ts — and is deliberately left untouched.) A lifecycle
-// workflow re-fetches authoritative order state from here, keyed by the order
-// id carried in an `order.*` event envelope.
+// workflow re-fetches authoritative order state, keyed by the order id carried
+// in an `order.*` event envelope.
 //
-// This module is the seam, mirroring services/pegii-tasks.ts. Today it returns
-// deterministic in-memory stub data so the SDK surface
-// (PegasusClient.get_order / list_orders), the `ReadOrder` Cedar action, and the
-// workflow author's activity can all be built and tested end to end. When the
-// pegII order API is ready, replace the bodies below with calls into the pegII
-// executor (handlers/pegii/ + repositories/pegii/generic.repository) — the
-// exported signatures and the handler stay put, exactly like the longhaul
-// cloud-cutover from on-prem MSSQL.
+// This module owns the OrderRecord surface shape (what PegasusClient.get_order /
+// list_orders return) plus the list stub. Single-order READS are now LIVE: the
+// /api/v1/pegii/orders/:id route resolves an OrderGateway (see
+// gateways/order-gateway.factory.ts) and fetches the serialized order from the
+// pegII team's on-prem API at `/api/v1/pegii/serialized/orders/:id` over the
+// WireGuard tunnel, mapping it through gateways/pegii/pegii-order.mapper.ts.
 //
-// The store is per-process and NON-DURABLE (a Lambda cold start resets it),
-// which is fine for a stub: it keeps the contract honest without pretending to
-// persist. Reads lazily materialise a deterministic record for any order id so
-// a workflow started from an `order.booked` pointer always resolves something.
+// LISTING stays a stub: the pegII serialized endpoint is by-id only, so there
+// is no collection to bridge to yet. `listOrders` therefore reads the in-memory
+// store below (empty at runtime — nothing seeds it), keeping the /orders route
+// and its `ReadOrder` Cedar gate intact. When pegII exposes an order collection
+// endpoint, add `listOrders` to the OrderGateway and wire the route to it.
 // ---------------------------------------------------------------------------
 
 /** A pegII order record, in the shape the SDK/runtime surface exposes. */
@@ -35,40 +34,14 @@ export interface OrderRecord {
   updatedAt: string
 }
 
-/** Per-process store keyed by `${tenantId}:${orderId}`. */
+/** Per-process store keyed by `${tenantId}:${orderId}` — backs the list stub. */
 const store = new Map<string, OrderRecord>()
 
-function key(tenantId: string, orderId: string): string {
-  return `${tenantId}:${orderId}`
-}
-
-/** Lazily materialise a deterministic order record for `orderId`. */
-function ensureOrder(tenantId: string, orderId: string): OrderRecord {
-  const k = key(tenantId, orderId)
-  let record = store.get(k)
-  if (!record) {
-    const now = new Date().toISOString()
-    record = {
-      id: orderId,
-      orderNumber: `SO-${orderId}`,
-      status: 'booked',
-      customerName: null,
-      scheduledDate: null,
-      packingActualDate: null,
-      createdAt: now,
-      updatedAt: now,
-    }
-    store.set(k, record)
-  }
-  return record
-}
-
-/** Fetch one order by id. Materialised on first read (stub behaviour). */
-export function getOrder(tenantId: string, orderId: string): OrderRecord {
-  return ensureOrder(tenantId, orderId)
-}
-
-/** List orders, optionally filtered by status. */
+/**
+ * List orders, optionally filtered by status. STUB: reads the in-memory store,
+ * which is un-seeded at runtime (the pegII serialized API is by-id only), so
+ * this returns [] until a pegII collection endpoint is bridged in.
+ */
 export function listOrders(tenantId: string, opts: { status?: string } = {}): OrderRecord[] {
   const prefix = `${tenantId}:`
   let records = [...store.entries()].filter(([k]) => k.startsWith(prefix)).map(([, v]) => v)
@@ -76,6 +49,11 @@ export function listOrders(tenantId: string, opts: { status?: string } = {}): Or
     records = records.filter((r) => r.status === opts.status)
   }
   return records
+}
+
+/** Test seam — seed the list store so `listOrders` behaviour can be exercised. */
+export function _seedOrder(tenantId: string, record: OrderRecord): void {
+  store.set(`${tenantId}:${record.id}`, record)
 }
 
 /** Test seam — clear the in-memory store between cases. */
