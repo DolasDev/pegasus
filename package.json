@@ -73,7 +73,8 @@
     "fast-uri": "GHSA-q3j6-qgpj-74h6 / GHSA-v39h-62p7-jpjc path traversal + host confusion",
     "fast-xml-builder": "GHSA-5wm8-gmm8-39j9 / GHSA-45c6-75p6-83cc attribute / comment regex bypass",
     "protobufjs": "GHSA-wcpc-wj8m-hjx6 (high, DoS via unbounded Any expansion, range <=7.6.0). @temporalio/proto@1.18.1 pins protobufjs@7.5.8; force >=7.6.3 <8 (resolves 7.6.4) tree-wide. Stays within 7.x for @temporalio/proto compatibility; also clears GHSA-f38q-mgvj-vph7 (moderate, <=7.6.2). Remove once @temporalio/proto ships a patched protobufjs.",
-    "jest-runtime": "react-native@0.83.6's jest preset locks jest-environment-node@29.7.0 + jest-mock@29.7.0 (no clearMocksOnScope), which npm hoists to the root. jest-runtime 30.4.x calls _environment.moduleMocker.clearMocksOnScope() in resetModules() and 20/20 mobile suites fail. Pin to 30.3.0 (last release before that call was added) until either react-native ships a jest-30 preset or we add jest-environment-node/@jest/environment/@jest/fake-timers/jest-mock overrides for the mobile workspace."
+    "jest-runtime": "react-native@0.83.6's jest preset locks jest-environment-node@29.7.0 + jest-mock@29.7.0 (no clearMocksOnScope), which npm hoists to the root. jest-runtime 30.4.x calls _environment.moduleMocker.clearMocksOnScope() in resetModules() and 20/20 mobile suites fail. Pin to 30.3.0 (last release before that call was added) until either react-native ships a jest-30 preset or we add jest-environment-node/@jest/environment/@jest/fake-timers/jest-mock overrides for the mobile workspace.",
+    "decompress": "GHSA-mp2f-45pm-3cg9 (critical, archive path traversal). shellcheck depends on the abandoned `decompress` package directly (no patch was ever released — 4.2.1 is both latest and vulnerable). Aliased to the maintained @xhmikosr/decompress fork instead of a plain version bump: verified both are ESM with an identical `export default decompress(input, output, options)` signature, and shellcheck already passes its own plugins explicitly (decompressTarXz/decompressUnzip) rather than relying on decompress's bundled defaults, so this is a clean drop-in. Remove once shellcheck migrates off the abandoned package upstream."
   },
   "overrides": {
     "handlebars": ">=4.7.9",
@@ -110,7 +111,8 @@
     "fast-uri": ">=3.1.2",
     "fast-xml-builder": ">=1.1.7",
     "protobufjs": ">=7.6.3 <8",
-    "jest-runtime": "30.3.0"
+    "jest-runtime": "30.3.0",
+    "decompress": "npm:@xhmikosr/decompress@^11.1.3"
   },
   "engines": {
     "node": ">=24 <25",
