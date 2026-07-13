@@ -162,6 +162,17 @@ export function useDeactivateUser() {
   })
 }
 
+export function useReactivateUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<TenantUser>(`/api/v1/users/${id}/reactivate`, { method: 'POST' }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: usersKeys.list() })
+    },
+  })
+}
+
 /**
  * Admin-initiated password reset. The user is emailed a confirmation code and
  * completes the reset through the "Forgot password" flow on the login page.

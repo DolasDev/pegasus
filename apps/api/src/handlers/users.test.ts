@@ -47,9 +47,6 @@ vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
   AdminCreateUserCommand: vi.fn().mockImplementation(function (input: unknown) {
     return input
   }),
-  AdminDisableUserCommand: vi.fn().mockImplementation(function (input: unknown) {
-    return input
-  }),
   AdminResetUserPasswordCommand: vi.fn().mockImplementation(function (input: unknown) {
     return input
   }),
@@ -375,47 +372,62 @@ describe('users handler', () => {
       expect((await json(res)).code).toBe('LAST_ADMIN')
     })
 
-    it('returns 200 when Cognito throws UserNotFoundException (fail-open)', async () => {
-      mockRepo.findById.mockResolvedValue(mockUserRow)
-      mockSend.mockRejectedValue(
-        Object.assign(new Error('not found'), { name: 'UserNotFoundException' }),
-      )
-      mockRepo.deactivate.mockResolvedValue({
-        ...mockUserRow,
-        status: 'DEACTIVATED',
-        deactivatedAt: now,
-      })
-      const res = await buildApp().request('/user-1', { method: 'DELETE' })
-      expect(res.status).toBe(200)
-    })
-
-    it('returns 500 INTERNAL_ERROR when Cognito throws an unknown error (DB deactivate not called)', async () => {
-      mockRepo.findById.mockResolvedValue(mockUserRow)
-      mockSend.mockRejectedValue(new Error('Cognito failure'))
-      const res = await buildApp().request('/user-1', { method: 'DELETE' })
-      expect(res.status).toBe(500)
-      expect((await json(res)).code).toBe('INTERNAL_ERROR')
-      expect(mockRepo.deactivate).not.toHaveBeenCalled()
-    })
-
     it('returns 500 INTERNAL_ERROR when deactivate throws', async () => {
       mockRepo.findById.mockResolvedValue(mockUserRow)
-      mockSend.mockResolvedValue({})
       mockRepo.deactivate.mockRejectedValue(new Error('db error'))
       const res = await buildApp().request('/user-1', { method: 'DELETE' })
       expect(res.status).toBe(500)
       expect((await json(res)).code).toBe('INTERNAL_ERROR')
     })
 
-    it('returns 200 with deactivated user on happy path', async () => {
+    it('returns 200 with deactivated user on happy path, without touching Cognito', async () => {
       const deactivated = { ...mockUserRow, status: 'DEACTIVATED' as const, deactivatedAt: now }
       mockRepo.findById.mockResolvedValue(mockUserRow)
-      mockSend.mockResolvedValue({})
       mockRepo.deactivate.mockResolvedValue(deactivated)
       const res = await buildApp().request('/user-1', { method: 'DELETE' })
       expect(res.status).toBe(200)
       const body = await json(res)
       expect((body.data as JsonBody)['status']).toBe('DEACTIVATED')
+      // The regression this guards: deactivating a user in one tenant must
+      // never call a Cognito Admin*User command, since the user pool is
+      // shared across every tenant on the platform (it would otherwise lock
+      // the person out of every other tenant they belong to, not just this one).
+      expect(mockSend).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── POST /:id/reactivate ──────────────────────────────────────────────────
+
+  describe('POST /:id/reactivate', () => {
+    it('returns 404 NOT_FOUND when user does not exist', async () => {
+      mockRepo.findById.mockResolvedValue(null)
+      const res = await buildApp().request('/user-1/reactivate', post({}))
+      expect(res.status).toBe(404)
+      expect((await json(res)).code).toBe('NOT_FOUND')
+    })
+
+    it('returns 422 INVALID_STATE when user is not deactivated', async () => {
+      mockRepo.findById.mockResolvedValue(mockUserRow) // PENDING
+      const res = await buildApp().request('/user-1/reactivate', post({}))
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('INVALID_STATE')
+    })
+
+    it('returns 200 with reactivated user on happy path, without touching Cognito', async () => {
+      const deactivatedRow = { ...mockUserRow, status: 'DEACTIVATED' as const, deactivatedAt: now }
+      const reactivated = { ...mockUserRow, status: 'ACTIVE' as const, deactivatedAt: null }
+      mockRepo.findById.mockResolvedValue(deactivatedRow)
+      mockRepo.reactivate.mockResolvedValue(reactivated)
+      const res = await buildApp().request('/user-1/reactivate', post({}))
+      expect(res.status).toBe(200)
+      const body = await json(res)
+      expect((body.data as JsonBody)['status']).toBe('ACTIVE')
+      expect(mockSend).not.toHaveBeenCalled()
+    })
+
+    it('returns 403 FORBIDDEN for a viewer (no ReactivateUser)', async () => {
+      const res = await buildApp('viewer').request('/user-1/reactivate', post({}))
+      expect(res.status).toBe(403)
     })
   })
 

@@ -76,6 +76,11 @@ export const Actions = {
     resourceType: 'User',
     permission: 'user:deactivate',
   },
+  ReactivateUser: {
+    id: 'ReactivateUser',
+    resourceType: 'User',
+    permission: 'user:reactivate',
+  },
   // ── Settings ────────────────────────────────────────────────────────────
   ReadSettings: {
     id: 'ReadSettings',

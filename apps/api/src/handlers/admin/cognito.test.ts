@@ -24,20 +24,12 @@ vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
   AdminCreateUserCommand: vi.fn().mockImplementation(function (input: unknown) {
     return input
   }),
-  AdminDisableUserCommand: vi.fn().mockImplementation(function (input: unknown) {
-    return input
-  }),
   AdminResetUserPasswordCommand: vi.fn().mockImplementation(function (input: unknown) {
     return input
   }),
 }))
 
-import {
-  provisionCognitoUser,
-  disableCognitoUser,
-  resetCognitoUserPassword,
-  getCognito,
-} from './cognito'
+import { provisionCognitoUser, resetCognitoUserPassword, getCognito } from './cognito'
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -124,45 +116,6 @@ describe('provisionCognitoUser', () => {
     await expect(provisionCognitoUser('new@acme.com', tenantContext)).rejects.toThrow(
       'Network timeout',
     )
-  })
-})
-
-describe('disableCognitoUser', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('calls Cognito AdminDisableUser with the given email', async () => {
-    mockSend.mockResolvedValue({})
-
-    await disableCognitoUser('user@acme.com')
-
-    expect(mockSend).toHaveBeenCalledOnce()
-    const sentCommand = mockSend.mock.calls[0]![0] as Record<string, unknown>
-    expect(sentCommand['Username']).toBe('user@acme.com')
-  })
-
-  it('resolves without throwing when Cognito returns UserNotFoundException (fail-open)', async () => {
-    mockSend.mockRejectedValue(
-      Object.assign(new Error('User not found'), { name: 'UserNotFoundException' }),
-    )
-
-    await expect(disableCognitoUser('ghost@acme.com')).resolves.toBeUndefined()
-    expect(mockSend).toHaveBeenCalledOnce()
-  })
-
-  it('rethrows non-UserNotFoundException errors', async () => {
-    mockSend.mockRejectedValue(
-      Object.assign(new Error('Access denied'), { name: 'NotAuthorizedException' }),
-    )
-
-    await expect(disableCognitoUser('user@acme.com')).rejects.toThrow('Access denied')
-  })
-
-  it('rethrows generic errors (no name property)', async () => {
-    mockSend.mockRejectedValue(new Error('Network error'))
-
-    await expect(disableCognitoUser('user@acme.com')).rejects.toThrow('Network error')
   })
 })
 

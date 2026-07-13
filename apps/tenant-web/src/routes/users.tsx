@@ -13,6 +13,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   UserPlus,
   UserX,
+  UserCheck,
   ShieldCheck,
   Loader2,
   AlertCircle,
@@ -40,6 +41,7 @@ import {
   useLinkCrewMember,
   useUpdateUserLonghaulDriverId,
   useDeactivateUser,
+  useReactivateUser,
   useResetUserPassword,
   type TenantUser,
   type RoleOption,
@@ -257,8 +259,9 @@ function DeactivateConfirm({ user, onConfirm, onCancel, isPending }: DeactivateC
       <CardHeader>
         <CardTitle className="text-destructive">Deactivate user?</CardTitle>
         <CardDescription>
-          <strong>{user.email}</strong> will no longer be able to sign in. Their data will be
-          retained. You can re-invite them later if needed.
+          <strong>{user.email}</strong> will no longer be able to sign in to this company&rsquo;s
+          account. If they belong to other companies on Pegasus, their access there is unaffected.
+          Their data will be retained here, and you can reactivate them later if needed.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex justify-end gap-2">
@@ -268,6 +271,40 @@ function DeactivateConfirm({ user, onConfirm, onCancel, isPending }: DeactivateC
         <Button variant="destructive" onClick={onConfirm} disabled={isPending} className="gap-2">
           {isPending && <Loader2 size={14} className="animate-spin" />}
           Deactivate
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Reactivate confirmation
+// ---------------------------------------------------------------------------
+
+type ReactivateConfirmProps = {
+  user: TenantUser
+  onConfirm: () => void
+  onCancel: () => void
+  isPending: boolean
+}
+
+function ReactivateConfirm({ user, onConfirm, onCancel, isPending }: ReactivateConfirmProps) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Reactivate user?</CardTitle>
+        <CardDescription>
+          <strong>{user.email}</strong> will be able to sign in to this company&rsquo;s account
+          again with their existing credentials.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex justify-end gap-2">
+        <Button variant="outline" onClick={onCancel} disabled={isPending}>
+          Cancel
+        </Button>
+        <Button onClick={onConfirm} disabled={isPending} className="gap-2">
+          {isPending && <Loader2 size={14} className="animate-spin" />}
+          Reactivate
         </Button>
       </CardContent>
     </Card>
@@ -763,7 +800,9 @@ type UserRowProps = {
   longhaulDriversError: boolean
   canManageRoles: boolean
   canDeactivate: boolean
+  canReactivate: boolean
   onDeactivate: (user: TenantUser) => void
+  onReactivate: (user: TenantUser) => void
   onManageRoles: (user: TenantUser) => void
   onResetPassword: (user: TenantUser) => void
   onSaveLegacyWindowsUsername: (
@@ -784,7 +823,9 @@ function UserRow({
   longhaulDriversError,
   canManageRoles,
   canDeactivate,
+  canReactivate,
   onDeactivate,
+  onReactivate,
   onManageRoles,
   onResetPassword,
   onSaveLegacyWindowsUsername,
@@ -880,6 +921,19 @@ function UserRow({
           )}
         </div>
       )}
+      {isDeactivated && canReactivate && (
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-xs"
+            onClick={() => onReactivate(user)}
+          >
+            <UserCheck size={13} />
+            Reactivate
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
@@ -892,6 +946,7 @@ type PanelState =
   | { kind: 'none' }
   | { kind: 'invite' }
   | { kind: 'deactivate'; user: TenantUser }
+  | { kind: 'reactivate'; user: TenantUser }
   | { kind: 'manage'; user: TenantUser }
   | { kind: 'reset'; user: TenantUser }
 
@@ -925,6 +980,7 @@ export function UsersPage() {
   })
   const users = usersData ?? []
   const deactivateMutation = useDeactivateUser()
+  const reactivateMutation = useReactivateUser()
   const resetPasswordMutation = useResetUserPassword()
   const roleMutation = useUpdateUserRole()
   const legacyWindowsUsernameMutation = useUpdateUserLegacyWindowsUsername()
@@ -985,6 +1041,15 @@ export function UsersPage() {
       setPanel({ kind: 'none' })
     } catch {
       // Error surfaces via deactivateMutation.error — keep panel open for retry.
+    }
+  }
+
+  async function handleReactivate(user: TenantUser) {
+    try {
+      await reactivateMutation.mutateAsync(user.id)
+      setPanel({ kind: 'none' })
+    } catch {
+      // Error surfaces via reactivateMutation.error — keep panel open for retry.
     }
   }
 
@@ -1057,7 +1122,9 @@ export function UsersPage() {
               longhaulDriversError={longhaulDriversError}
               canManageRoles={perms.has('user:update')}
               canDeactivate={perms.has('user:deactivate')}
+              canReactivate={perms.has('user:reactivate')}
               onDeactivate={(u) => setPanel({ kind: 'deactivate', user: u })}
+              onReactivate={(u) => setPanel({ kind: 'reactivate', user: u })}
               onManageRoles={(u) => setPanel({ kind: 'manage', user: u })}
               onResetPassword={(u) => setPanel({ kind: 'reset', user: u })}
               onSaveLegacyWindowsUsername={handleSaveLegacyWindowsUsername}
@@ -1088,6 +1155,20 @@ export function UsersPage() {
                   onConfirm={() => void handleDeactivate(user)}
                   onCancel={() => setPanel({ kind: 'none' })}
                   isPending={deactivateMutation.isPending}
+                />
+              </div>
+            )
+          }
+
+          if (panel.kind === 'reactivate' && panel.user.id === user.id) {
+            return (
+              <div key={user.id} className="space-y-2">
+                {row}
+                <ReactivateConfirm
+                  user={user}
+                  onConfirm={() => void handleReactivate(user)}
+                  onCancel={() => setPanel({ kind: 'none' })}
+                  isPending={reactivateMutation.isPending}
                 />
               </div>
             )

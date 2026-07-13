@@ -45,9 +45,6 @@ vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
   AdminCreateUserCommand: vi.fn().mockImplementation(function (input: unknown) {
     return input
   }),
-  AdminDisableUserCommand: vi.fn().mockImplementation(function (input: unknown) {
-    return input
-  }),
 }))
 
 vi.mock('../../repositories/users', () => ({
@@ -278,7 +275,7 @@ describe('admin tenant-users handler', () => {
   // ── DELETE /:userId — deactivate ──────────────────────────────────────────
 
   describe('DELETE /:userId', () => {
-    it('returns 200 with deactivated user on success', async () => {
+    it('returns 200 with deactivated user on success, without touching Cognito', async () => {
       const deactivated = { ...mockUserRow, status: 'DEACTIVATED' as const, deactivatedAt: now }
       mockRepo.findById.mockResolvedValue(mockUserRow)
       mockRepo.deactivate.mockResolvedValue(deactivated)
@@ -287,6 +284,10 @@ describe('admin tenant-users handler', () => {
       expect(res.status).toBe(200)
       const body = await json(res)
       expect((body.data as JsonBody)['status']).toBe('DEACTIVATED')
+      // The regression this guards: a platform admin deactivating a user in
+      // one tenant must never call a Cognito Admin*User command, since the
+      // user pool is shared across every tenant on the platform.
+      expect(mockSend).not.toHaveBeenCalled()
     })
 
     it('returns 404 NOT_FOUND when user does not exist in this tenant', async () => {
@@ -314,26 +315,46 @@ describe('admin tenant-users handler', () => {
       expect((await json(res)).code).toBe('LAST_ADMIN')
     })
 
-    it('returns 500 INTERNAL_ERROR when Cognito AdminDisableUser fails', async () => {
+    it('returns 500 INTERNAL_ERROR when the deactivate transaction throws', async () => {
       mockRepo.findById.mockResolvedValue(mockUserRow)
-      mockSend.mockRejectedValue(new Error('Cognito failure'))
+      mockRepo.deactivate.mockRejectedValue(new Error('db error'))
 
       const res = await buildApp().request(`${BASE}/user-1`, { method: 'DELETE' })
       expect(res.status).toBe(500)
       expect((await json(res)).code).toBe('INTERNAL_ERROR')
-      expect(mockRepo.deactivate).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── POST /:userId/reactivate ───────────────────────────────────────────────
+
+  describe('POST /:userId/reactivate', () => {
+    it('returns 200 with reactivated user on success, without touching Cognito', async () => {
+      const deactivatedRow = { ...mockUserRow, status: 'DEACTIVATED' as const, deactivatedAt: now }
+      const reactivated = { ...mockUserRow, status: 'ACTIVE' as const, deactivatedAt: null }
+      mockRepo.findById.mockResolvedValue(deactivatedRow)
+      mockRepo.reactivate.mockResolvedValue(reactivated)
+
+      const res = await buildApp().request(`${BASE}/user-1/reactivate`, post({}))
+      expect(res.status).toBe(200)
+      const body = await json(res)
+      expect((body.data as JsonBody)['status']).toBe('ACTIVE')
+      expect(mockSend).not.toHaveBeenCalled()
     })
 
-    it('returns 200 when Cognito returns UserNotFoundException (fail-open)', async () => {
-      const deactivated = { ...mockUserRow, status: 'DEACTIVATED' as const, deactivatedAt: now }
-      mockRepo.findById.mockResolvedValue(mockUserRow)
-      mockSend.mockRejectedValue(
-        Object.assign(new Error('not found'), { name: 'UserNotFoundException' }),
-      )
-      mockRepo.deactivate.mockResolvedValue(deactivated)
+    it('returns 404 NOT_FOUND when user does not exist in this tenant', async () => {
+      mockRepo.findById.mockResolvedValue(null)
 
-      const res = await buildApp().request(`${BASE}/user-1`, { method: 'DELETE' })
-      expect(res.status).toBe(200)
+      const res = await buildApp().request(`${BASE}/user-1/reactivate`, post({}))
+      expect(res.status).toBe(404)
+      expect((await json(res)).code).toBe('NOT_FOUND')
+    })
+
+    it('returns 422 INVALID_STATE when user is not deactivated', async () => {
+      mockRepo.findById.mockResolvedValue(mockUserRow) // PENDING
+
+      const res = await buildApp().request(`${BASE}/user-1/reactivate`, post({}))
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('INVALID_STATE')
     })
   })
 })
