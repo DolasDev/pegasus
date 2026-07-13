@@ -42,6 +42,7 @@ async function countSeededRows(): Promise<Record<string, number>> {
     payments,
     inventoryRooms,
     inventoryItems,
+    tariffVersions,
   ] = await Promise.all([
     db.tenant.count({ where: { id: tenantId } }),
     db.tenantUser.count({ where: { tenantId } }),
@@ -61,6 +62,12 @@ async function countSeededRows(): Promise<Record<string, number>> {
     db.payment.count({ where: { invoice: { tenantId } } }),
     db.inventoryRoom.count({ where: { tenantId } }),
     db.inventoryItem.count({ where: { room: { tenantId } } }),
+    // Global (non-tenant) rating fixture — scoped by the seed's own
+    // deterministic id (not tariffCode: '400NG' broadly), so other tests
+    // that import their own '400NG'-coded fixtures (e.g.
+    // repositories/__tests__/tariff.repository.test.ts) can't perturb this
+    // count when run in the same worker pool against the shared dev DB.
+    db.tariffVersion.count({ where: { id: 'seed-tariff-400ng-0001' } }),
   ])
   return {
     tenants,
@@ -81,6 +88,7 @@ async function countSeededRows(): Promise<Record<string, number>> {
     payments,
     inventoryRooms,
     inventoryItems,
+    tariffVersions,
   }
 }
 
@@ -157,6 +165,35 @@ describe.skipIf(!hasDb)('prisma seed (integration)', () => {
     expect(counts['invoices']).toBeGreaterThanOrEqual(1)
     expect(counts['inventoryRooms']).toBeGreaterThanOrEqual(2)
     expect(counts['inventoryItems']).toBeGreaterThanOrEqual(5)
+    expect(counts['tariffVersions']).toBeGreaterThanOrEqual(1)
+  })
+
+  it('seeds a real 400NG tariff fixture (platform-global, no tenantId)', async () => {
+    const version = await db.tariffVersion.findUnique({
+      where: { id: 'seed-tariff-400ng-0001' },
+      include: {
+        zip3s: true,
+        serviceAreas: true,
+        linehaulRates: true,
+        shorthaulRates: true,
+        packRates: true,
+        unpackRates: true,
+      },
+    })
+    expect(version?.status).toBe('ACTIVE')
+    expect(version?.zip3s).toHaveLength(2)
+    expect(version?.serviceAreas).toHaveLength(2)
+    expect(version?.linehaulRates).toHaveLength(2)
+    expect(version?.shorthaulRates).toHaveLength(1)
+    expect(version?.packRates).toHaveLength(1)
+    expect(version?.unpackRates).toHaveLength(1)
+
+    const fsc = await db.tariffFuelSurcharge.findUnique({
+      where: {
+        tariffCode_effectiveFrom: { tariffCode: '400NG', effectiveFrom: new Date('2026-01-01') },
+      },
+    })
+    expect(fsc?.percentBps).toBe(500)
   })
 
   it('is idempotent — a second run leaves all row counts unchanged', async () => {

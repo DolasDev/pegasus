@@ -51,6 +51,13 @@ export interface RatingInput {
     readonly fullPack: boolean
     readonly fullUnpack: boolean
   }
+  /**
+   * TSP-specific negotiated linehaul discount (0-100), won through a
+   * separate bid/rate-filing process and NOT published in the tariff
+   * itself. Omit (or pass 0) to rate the published baseline/undiscounted
+   * amount — see the calibration-status note in tariff400ng.ts.
+   */
+  readonly linehaulDiscountPercent?: number
 }
 
 /**
@@ -69,15 +76,12 @@ export interface RatedLineItem {
   readonly amountCents: number
 }
 
-export type TariffSeason = 'PEAK' | 'NONPEAK'
-
 /** The full priced result of rating a shipment against one tariff version. */
 export interface RatingResult {
   readonly lineItems: readonly RatedLineItem[]
   readonly totalCents: number
   readonly meta: {
     readonly tariffCode: TariffCode
-    readonly season: TariffSeason
     readonly billedWeightLbs: number
     readonly mileage: MileageEstimate
     /** Non-fatal issues, e.g. "FSC rate unavailable — omitted from total". */
@@ -95,10 +99,12 @@ export { createZip3CentroidEstimator, haversineMiles } from './mileage'
 export type { Tariff400ngData, ServiceAreaRates } from './tariff400ng'
 export {
   RATE_400NG,
+  MIN_BILLABLE_WEIGHT_LBS,
+  SHORTHAUL_THRESHOLD_MILES,
   rateCycleFor,
-  isPeakSeason,
   billedWeight,
   cwt,
+  invdLHS,
   fuelSurcharge,
   fscPercentForDieselPrice,
   rate400ng,
