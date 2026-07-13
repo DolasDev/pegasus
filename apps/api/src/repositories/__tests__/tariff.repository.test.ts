@@ -3,8 +3,13 @@
  * data). Read-only tests exercise the real seeded 400NG fixture (SA 672
  * Philadelphia / SA 736 Abilene, real 2026 rates — see prisma/seed.ts and
  * packages/domain/src/rating/__tests__/tariff400ng.test.ts for the same
- * numbers). Import/activate tests use a separate `TEST_TARIFF` tariffCode so
- * they can't disturb the shared '400NG' ACTIVE fixture other tests rely on.
+ * numbers). Import/activate tests must still use tariffCode '400NG' (the
+ * import schema hardcodes it), but use effective windows in 2020-2022 — far
+ * from the seed's 2026-2027 window — so activation's supersede-overlap logic
+ * can never touch the shared ACTIVE fixture other tests rely on; every
+ * created version is also deleted in afterAll. seed.test.ts's own row count
+ * is scoped by the seed's deterministic id, not by tariffCode, for the same
+ * reason.
  *
  * Requires a live PostgreSQL database — skipped automatically when
  * DATABASE_URL is not set.

@@ -62,8 +62,12 @@ async function countSeededRows(): Promise<Record<string, number>> {
     db.payment.count({ where: { invoice: { tenantId } } }),
     db.inventoryRoom.count({ where: { tenantId } }),
     db.inventoryItem.count({ where: { room: { tenantId } } }),
-    // Global (non-tenant) rating fixture — scoped by tariffCode, not tenantId.
-    db.tariffVersion.count({ where: { tariffCode: '400NG' } }),
+    // Global (non-tenant) rating fixture — scoped by the seed's own
+    // deterministic id (not tariffCode: '400NG' broadly), so other tests
+    // that import their own '400NG'-coded fixtures (e.g.
+    // repositories/__tests__/tariff.repository.test.ts) can't perturb this
+    // count when run in the same worker pool against the shared dev DB.
+    db.tariffVersion.count({ where: { id: 'seed-tariff-400ng-0001' } }),
   ])
   return {
     tenants,
