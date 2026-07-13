@@ -7,6 +7,11 @@
 // mapping/ruleset viewer is open to business users without admin, while the
 // empty-roles and stub-persona "deny everything" invariants stay intact.
 // Publishing remains restricted to integration_publisher / tenant_admin.
+//
+// RateShipment/ReadTariff are here for the same reason -- rating a shipment
+// and browsing published tariff versions is a normal business-user action,
+// not an admin one. ImportTariff (mutates platform-global tariff data) is
+// deliberately NOT granted here -- only tenant_admin's blanket policy covers it.
 permit (
   principal in Pegasus::Group::"viewer",
   action in [
@@ -16,7 +21,9 @@ permit (
     Pegasus::Action::"ReadInvoice",
     Pegasus::Action::"ReadCustomer",
     Pegasus::Action::"ReadWorkflow",
-    Pegasus::Action::"ReadIntegrationConfig"
+    Pegasus::Action::"ReadIntegrationConfig",
+    Pegasus::Action::"RateShipment",
+    Pegasus::Action::"ReadTariff"
   ],
   resource
 );

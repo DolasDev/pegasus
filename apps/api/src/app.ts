@@ -12,6 +12,7 @@ import { ssoHandler } from './handlers/sso'
 import { usersHandler } from './handlers/users'
 import { customersHandler } from './handlers/customers'
 import { quotesHandler } from './handlers/quotes'
+import { ratingHandler } from './handlers/rating'
 import { movesHandler } from './handlers/moves'
 import { crewHandler } from './handlers/crew'
 import { inventoryHandler } from './handlers/inventory'
@@ -330,6 +331,7 @@ v1.route('/sso', ssoHandler)
 v1.route('/users', usersHandler)
 v1.route('/customers', customersHandler)
 v1.route('/quotes', quotesHandler)
+v1.route('/rating', ratingHandler)
 v1.route('/moves', movesHandler)
 // Inventory routes are nested under /moves (e.g. /moves/:moveId/rooms)
 v1.route('/moves', inventoryHandler)

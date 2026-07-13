@@ -265,31 +265,31 @@ model Tenant {
   // Relations
   // -------------------------------------------------------------------------
 
-  customers          Customer[]
-  moves              Move[]
-  quotes             Quote[]
-  invoices           Invoice[]
-  crewMembers        CrewMember[]
-  vehicles           Vehicle[]
-  availabilities     Availability[]
-  inventoryRooms     InventoryRoom[]
-  leadSources        LeadSource[]
-  accounts           Account[]
-  rateTables         RateTable[]
-  ssoProviders       TenantSsoProvider[]
-  users              TenantUser[]
-  apiClients         ApiClient[]
-  pegasusEvents      PegasusEvent[]
-  documents          Document[]
-  workflows          Workflow[]
-  workflowTriggers   WorkflowTrigger[]
-  integrationConfigs IntegrationConfig[]
-  domainEvents       DomainEvent[]
-  tenantEventTypes   TenantEventType[]
-  workflowSecretConfigs WorkflowSecretConfig[]
+  customers              Customer[]
+  moves                  Move[]
+  quotes                 Quote[]
+  invoices               Invoice[]
+  crewMembers            CrewMember[]
+  vehicles               Vehicle[]
+  availabilities         Availability[]
+  inventoryRooms         InventoryRoom[]
+  leadSources            LeadSource[]
+  accounts               Account[]
+  rateTables             RateTable[]
+  ssoProviders           TenantSsoProvider[]
+  users                  TenantUser[]
+  apiClients             ApiClient[]
+  pegasusEvents          PegasusEvent[]
+  documents              Document[]
+  workflows              Workflow[]
+  workflowTriggers       WorkflowTrigger[]
+  integrationConfigs     IntegrationConfig[]
+  domainEvents           DomainEvent[]
+  tenantEventTypes       TenantEventType[]
+  workflowSecretConfigs  WorkflowSecretConfig[]
   integrationProjections IntegrationProjection[]
-  brokerCredential   TenantBrokerCredential?
-  vpnPeer            VpnPeer?
+  brokerCredential       TenantBrokerCredential?
+  vpnPeer                VpnPeer?
 
   // Messaging context — RingCentral SMS capture
   ringCentralConnections   RingCentralConnection[]
@@ -914,6 +914,202 @@ model QuoteLineItem {
 
   @@index([quoteId])
   @@map("quote_line_items")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Rating context — platform-global tariff reference data
+//
+// Rates a shipment against a published tariff (400NG to start). These
+// tables are NOT tenantId-scoped: 400NG is government reference data
+// identical for every tenant, so duplicating it per-tenant would only
+// multiply import/update burden. createTenantDb passes through any model
+// absent from TENANT_SCOPED_MODELS (see lib/prisma.ts), so tenant handlers
+// keep using c.get('db') unchanged; writes (import/activate) are Cedar
+// admin-gated instead of tenant-isolated.
+//
+// All rate columns are integer cents (or millicents where finer precision
+// than a whole cent is needed) to match packages/domain/src/rating's
+// integer-only money math — see tariff400ng.ts for the calibration-status
+// caveat these rates inherit.
+// ---------------------------------------------------------------------------
+
+enum TariffVersionStatus {
+  STAGED
+  ACTIVE
+  SUPERSEDED
+
+  @@schema("public")
+}
+
+enum TariffFuelSurchargeSource {
+  MANUAL
+  EIA_AUTO
+
+  @@schema("public")
+}
+
+/// One imported, dated release of a tariff's rate data (e.g. "2026 400NG").
+/// `status` STAGED -> ACTIVE -> SUPERSEDED; activating a version
+/// transactionally supersedes any other ACTIVE version whose
+/// [effectiveFrom, effectiveTo) window overlaps it (enforced in
+/// tariff.repository.ts, not expressible as a DB constraint over ranges).
+model TariffVersion {
+  id             String              @id @default(uuid())
+  tariffCode     String              @map("tariff_code")
+  label          String
+  effectiveFrom  DateTime            @map("effective_from")
+  effectiveTo    DateTime            @map("effective_to")
+  status         TariffVersionStatus @default(STAGED)
+  sourceChecksum String              @map("source_checksum")
+  importedBy     String?             @map("imported_by")
+  notes          String?
+
+  zip3s          Tariff400ngZip3[]
+  serviceAreas   Tariff400ngServiceArea[]
+  linehaulRates  Tariff400ngLinehaulRate[]
+  shorthaulRates Tariff400ngShorthaulRate[]
+  packRates      Tariff400ngFullPackRate[]
+  unpackRates    Tariff400ngFullUnpackRate[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Re-importing byte-identical source data is a no-op (see import handler).
+  @@unique([tariffCode, sourceChecksum])
+  @@index([tariffCode, status])
+  @@map("tariff_versions")
+  @@schema("public")
+}
+
+/// ZIP3 prefix -> named service area, for one tariff version.
+model Tariff400ngZip3 {
+  id              String @id @default(uuid())
+  tariffVersionId String @map("tariff_version_id")
+  zip3            String @db.Char(3)
+  serviceArea     String @map("service_area")
+
+  tariffVersion TariffVersion @relation(fields: [tariffVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([tariffVersionId, zip3])
+  @@index([tariffVersionId])
+  @@map("tariff_400ng_zip3s")
+  @@schema("public")
+}
+
+/// Per-service-area charges: origin/destination service charge (135A/B),
+/// linehaul factor (OLF/DLF), and the Service Schedule (1-4, "Geographical
+/// Schedule" tab) that drives its full pack/unpack rates. Confirmed against
+/// the 2026 Baseline Rates spreadsheet: no peak/non-peak split exists for
+/// any of these CONUS domestic rates (see tariff400ng.ts calibration note).
+model Tariff400ngServiceArea {
+  id                        String @id @default(uuid())
+  tariffVersionId           String @map("tariff_version_id")
+  serviceArea               String @map("service_area")
+  schedule                  Int
+  serviceChargeCentsPerCwt  Int    @map("service_charge_cents_per_cwt")
+  linehaulFactorCentsPerCwt Int    @map("linehaul_factor_cents_per_cwt")
+
+  tariffVersion TariffVersion @relation(fields: [tariffVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([tariffVersionId, serviceArea])
+  @@index([tariffVersionId])
+  @@map("tariff_400ng_service_areas")
+  @@schema("public")
+}
+
+/// Base linehaul charge (BLHS) for a matched (mileage band x weight band)
+/// cell ("Linehaul" tab, Section 3). Always applies, regardless of distance
+/// — see tariff400ng.ts for why this is not gated by the shorthaul threshold.
+model Tariff400ngLinehaulRate {
+  id              String @id @default(uuid())
+  tariffVersionId String @map("tariff_version_id")
+  milesLower      Int    @map("miles_lower")
+  milesUpper      Int    @map("miles_upper")
+  weightLower     Int    @map("weight_lower")
+  weightUpper     Int    @map("weight_upper")
+  rateCents       Int    @map("rate_cents")
+
+  tariffVersion TariffVersion @relation(fields: [tariffVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([tariffVersionId, milesLower, weightLower])
+  @@index([tariffVersionId])
+  @@map("tariff_400ng_linehaul_rates")
+  @@schema("public")
+}
+
+/// Shorthaul (SH) flat-dollar charge for a matched cwt-miles band ("Additional
+/// Rates" tab, Item 999). Additive on top of BLHS/OLF/DLF, only when total
+/// mileage <= SHORTHAUL_THRESHOLD_MILES — NOT a per-unit rate (see tariff400ng.ts).
+model Tariff400ngShorthaulRate {
+  id              String @id @default(uuid())
+  tariffVersionId String @map("tariff_version_id")
+  cwtMilesLower   Int    @map("cwt_miles_lower")
+  cwtMilesUpper   Int    @map("cwt_miles_upper")
+  rateCents       Int    @map("rate_cents")
+
+  tariffVersion TariffVersion @relation(fields: [tariffVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([tariffVersionId, cwtMilesLower])
+  @@index([tariffVersionId])
+  @@map("tariff_400ng_shorthaul_rates")
+  @@schema("public")
+}
+
+/// Full-pack rate (Item 105A), keyed by Service Schedule (1-4, shared across
+/// service areas via Tariff400ngServiceArea.schedule) and banded by shipment
+/// weight. Full-unpack is a separate, flat (non-weight-banded) rate per
+/// schedule — see Tariff400ngFullUnpackRate.
+model Tariff400ngFullPackRate {
+  id              String @id @default(uuid())
+  tariffVersionId String @map("tariff_version_id")
+  schedule        Int
+  weightLower     Int    @map("weight_lower")
+  weightUpper     Int    @map("weight_upper")
+  rateCentsPerCwt Int    @map("rate_cents_per_cwt")
+
+  tariffVersion TariffVersion @relation(fields: [tariffVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([tariffVersionId, schedule, weightLower])
+  @@index([tariffVersionId, schedule])
+  @@map("tariff_400ng_full_pack_rates")
+  @@schema("public")
+}
+
+/// Full-unpack rate (Item 105A), keyed by Service Schedule (1-4) — flat
+/// regardless of shipment weight, unlike full pack. Millicents/cwt because
+/// the published rate has fractional-cent precision (e.g. $7.91595/cwt).
+model Tariff400ngFullUnpackRate {
+  id                   String @id @default(uuid())
+  tariffVersionId      String @map("tariff_version_id")
+  schedule             Int
+  rateMillicentsPerCwt Int    @map("rate_millicents_per_cwt")
+
+  tariffVersion TariffVersion @relation(fields: [tariffVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([tariffVersionId, schedule])
+  @@index([tariffVersionId, schedule])
+  @@map("tariff_400ng_full_unpack_rates")
+  @@schema("public")
+}
+
+/// Fuel surcharge, republished monthly — orthogonal to the annual
+/// TariffVersion cycle, so it is not version-scoped. Resolution is "latest
+/// row with effectiveFrom <= pickupDate" (see tariff.repository.ts).
+model TariffFuelSurcharge {
+  id                        String                    @id @default(uuid())
+  tariffCode                String                    @map("tariff_code")
+  effectiveFrom             DateTime                  @map("effective_from")
+  percentBps                Int                       @map("percent_bps")
+  dieselPriceCentsPerGallon Int?                      @map("diesel_price_cents_per_gallon")
+  source                    TariffFuelSurchargeSource @default(MANUAL)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([tariffCode, effectiveFrom])
+  @@index([tariffCode, effectiveFrom])
+  @@map("tariff_fuel_surcharges")
   @@schema("public")
 }
 

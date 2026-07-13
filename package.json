@@ -27,6 +27,7 @@
     "audit-ci": "^7.1.0",
     "eslint": "^10.5.0",
     "eslint-config-prettier": "^10.1.8",
+    "exceljs": "^4.4.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.0.0",
     "prettier": "^3.8.4",

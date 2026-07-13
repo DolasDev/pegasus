@@ -31,6 +31,13 @@
           "attributes": {}
         }
       },
+      "Tariff": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
       "Move": {
         "memberOfTypes": [],
         "shape": {
@@ -181,6 +188,15 @@
       },
       "DeleteQuote": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Quote"] }
+      },
+      "RateShipment": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Tariff"] }
+      },
+      "ReadTariff": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Tariff"] }
+      },
+      "ImportTariff": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Tariff"] }
       },
       "ListMoves": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Move"] }

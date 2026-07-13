@@ -22,6 +22,7 @@ export const PEGASUS_NS = 'Pegasus' as const
 export type ResourceType =
   | 'User'
   | 'Quote'
+  | 'Tariff'
   | 'Move'
   | 'Invoice'
   | 'Customer'
@@ -118,6 +119,14 @@ export const Actions = {
   CreateQuote: { id: 'CreateQuote', resourceType: 'Quote', permission: 'quote:create' },
   UpdateQuote: { id: 'UpdateQuote', resourceType: 'Quote', permission: 'quote:update' },
   DeleteQuote: { id: 'DeleteQuote', resourceType: 'Quote', permission: 'quote:delete' },
+  // ── Tariffs (rating engine — global reference data, e.g. 400NG) ──────────
+  // RateShipment/ReadTariff are open to standard tenant roles (see
+  // policies/20-viewer.cedar); ImportTariff is intentionally NOT granted to
+  // any persona file, so only tenant_admin's blanket policy covers it —
+  // importing/activating a new tariff version mutates platform-global data.
+  RateShipment: { id: 'RateShipment', resourceType: 'Tariff', permission: 'tariff:rate' },
+  ReadTariff: { id: 'ReadTariff', resourceType: 'Tariff', permission: 'tariff:read' },
+  ImportTariff: { id: 'ImportTariff', resourceType: 'Tariff', permission: 'tariff:import' },
   // ── Moves ───────────────────────────────────────────────────────────────
   ListMoves: { id: 'ListMoves', resourceType: 'Move', permission: 'move:list' },
   ReadMove: { id: 'ReadMove', resourceType: 'Move', permission: 'move:read' },

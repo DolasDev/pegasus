@@ -87,6 +87,103 @@ export async function main(db: PrismaClient): Promise<void> {
   })
 
   // ---------------------------------------------------------------------------
+  // Rating: 400NG tariff fixture (platform-global, no tenantId)
+  //
+  // A small real subset of the actual 2026 400NG tariff (effective 15 May
+  // 2026) — Service Areas 672 (Philadelphia, PA) and 736 (Abilene, TX), one
+  // long-haul (1401-1500mi) and one shorthaul-eligible (351-400mi) linehaul
+  // cell at the 8000-8199 lb weight band, both real dollar amounts from the
+  // published Baseline Rates spreadsheet. See
+  // packages/domain/src/rating/tariff400ng.ts and
+  // packages/domain/src/rating/__tests__/tariff400ng.test.ts for the same
+  // fixture used as domain-level test data.
+  // ---------------------------------------------------------------------------
+  await db.tariffVersion.upsert({
+    where: {
+      tariffCode_sourceChecksum: { tariffCode: '400NG', sourceChecksum: 'seed-400ng-2026-v1' },
+    },
+    create: {
+      id: 'seed-tariff-400ng-0001',
+      tariffCode: '400NG',
+      label: '2026 400NG (seed subset)',
+      effectiveFrom: new Date('2026-05-15'),
+      effectiveTo: new Date('2027-05-15'),
+      status: 'ACTIVE',
+      sourceChecksum: 'seed-400ng-2026-v1',
+      importedBy: 'seed',
+      zip3s: {
+        create: [
+          { zip3: '173', serviceArea: '672' },
+          { zip3: '796', serviceArea: '736' },
+        ],
+      },
+      serviceAreas: {
+        create: [
+          {
+            serviceArea: '672',
+            schedule: 3,
+            serviceChargeCentsPerCwt: 1209,
+            linehaulFactorCentsPerCwt: 288,
+          },
+          {
+            serviceArea: '736',
+            schedule: 1,
+            serviceChargeCentsPerCwt: 747,
+            linehaulFactorCentsPerCwt: 171,
+          },
+        ],
+      },
+      linehaulRates: {
+        create: [
+          // 351-400 miles, 8000-8199 lbs: $10,637.00 (shorthaul-eligible)
+          {
+            milesLower: 351,
+            milesUpper: 401,
+            weightLower: 8000,
+            weightUpper: 8200,
+            rateCents: 1_063_700,
+          },
+          // 1401-1500 miles, 8000-8199 lbs: $17,475.00
+          {
+            milesLower: 1401,
+            milesUpper: 1501,
+            weightLower: 8000,
+            weightUpper: 8200,
+            rateCents: 1_747_500,
+          },
+        ],
+      },
+      shorthaulRates: {
+        // 16,001-32,000 cwt-miles: $397.02 flat
+        create: [{ cwtMilesLower: 16_001, cwtMilesUpper: 32_000, rateCents: 39_702 }],
+      },
+      packRates: {
+        // Schedule 3, <= 16,000 lbs: $91.33/cwt
+        create: [{ schedule: 3, weightLower: 0, weightUpper: 16_001, rateCentsPerCwt: 9133 }],
+      },
+      unpackRates: {
+        // Schedule 1, flat regardless of weight: $7.91595/cwt
+        create: [{ schedule: 1, rateMillicentsPerCwt: 791_595 }],
+      },
+    },
+    update: {},
+  })
+
+  await db.tariffFuelSurcharge.upsert({
+    where: {
+      tariffCode_effectiveFrom: { tariffCode: '400NG', effectiveFrom: new Date('2026-01-01') },
+    },
+    create: {
+      tariffCode: '400NG',
+      effectiveFrom: new Date('2026-01-01'),
+      percentBps: 500, // 5%, corresponding to a $4.15/gal diesel price
+      dieselPriceCentsPerGallon: 415,
+      source: 'MANUAL',
+    },
+    update: {},
+  })
+
+  // ---------------------------------------------------------------------------
   // Crew member & vehicle
   // ---------------------------------------------------------------------------
   const crew = await db.crewMember.upsert({
