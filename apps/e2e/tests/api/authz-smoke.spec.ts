@@ -66,6 +66,10 @@ const VIEWER_PERMISSIONS = [
   // viewer reads published integration mapping/ruleset configs (20-viewer.cedar)
   // so the read-only Integrations viewer is open to non-admin business users.
   'integration_config:read',
+  // viewer can rate a shipment and browse published tariff versions
+  // (20-viewer.cedar) — not an admin-only action, unlike ImportTariff.
+  'tariff:rate',
+  'tariff:read',
 ] as const
 
 type PersonaSession = {
@@ -246,7 +250,7 @@ test.describe('authenticated AVP smoke', () => {
       expect([...body.permissions].sort()).toEqual([...SALES_PERMISSIONS].sort())
     })
 
-    test('viewer has exactly its 7 read-only permissions and is denied on invite', async () => {
+    test('viewer has exactly its 9 read-only permissions and is denied on invite', async () => {
       expect(viewerSession, 'viewer persona did not provision').not.toBeNull()
       const fetch_ = fetchWithToken(viewerSession!.token)
 
