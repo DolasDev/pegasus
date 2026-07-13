@@ -4,9 +4,13 @@
 // dualAuthMiddleware is stubbed to inject the AppEnv context; requirePermission
 // is NOT mocked — real Cedar RBAC runs against workflow-runtime.cedar, so these
 // tests double as verification that ReadOrder / ReadTask / CloseTask are granted
-// to workflow_runtime and withheld from workflow_developer. The data sources are
-// the in-memory pegII stubs (services/pegii-orders + services/pegii-tasks),
-// reset between cases.
+// to workflow_runtime and withheld from workflow_developer.
+//
+// Single-order reads go through the OrderGateway, so order-gateway.factory is
+// mocked to a controllable stub (its own resolution + tunnel transport are
+// covered in the gateway/factory unit tests). Task routes and order LISTING
+// stay on the in-memory pegII stubs (services/pegii-tasks + services/
+// pegii-orders), reset/seeded between cases.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -16,12 +20,17 @@ import type { AppEnv } from '../types'
 import { registerTestErrorHandler } from '../test-helpers'
 import { _clearAuthzCache } from '../lib/authz'
 import { _resetTaskStore } from '../services/pegii-tasks'
-import { _resetOrderStore } from '../services/pegii-orders'
+import { _resetOrderStore, _seedOrder, type OrderRecord } from '../services/pegii-orders'
 
 vi.mock('../middleware/dual-auth', () => ({
   dualAuthMiddleware: vi.fn(async (_c, next) => {
     await next()
   }),
+}))
+
+const { findOrderById } = vi.hoisted(() => ({ findOrderById: vi.fn() }))
+vi.mock('../gateways/order-gateway.factory', () => ({
+  resolveOrderGateway: vi.fn(async () => ({ findOrderById })),
 }))
 
 import { pegiiRuntimeHandler } from './pegii-runtime'
@@ -53,6 +62,18 @@ function buildApp(roleNames: readonly string[] = ['workflow_runtime']) {
   return app
 }
 
+const orderRecord = (over: Partial<OrderRecord> = {}): OrderRecord => ({
+  id: 'ord-1',
+  orderNumber: 'SO-ord-1',
+  status: 'booked',
+  customerName: null,
+  scheduledDate: null,
+  packingActualDate: null,
+  createdAt: '1970-01-01T00:00:00.000Z',
+  updatedAt: '1970-01-01T00:00:00.000Z',
+  ...over,
+})
+
 beforeEach(() => {
   vi.clearAllMocks()
   _clearAuthzCache()
@@ -61,25 +82,37 @@ beforeEach(() => {
 })
 
 describe('GET /pegii/orders/:orderId', () => {
-  it('materialises and returns an order for workflow_runtime', async () => {
+  it('returns the gateway-fetched order for workflow_runtime', async () => {
+    findOrderById.mockResolvedValue(orderRecord({ id: 'ord-1', status: 'in_progress' }))
     const app = buildApp(['workflow_runtime'])
     const res = await app.request('/pegii/orders/ord-1')
     expect(res.status).toBe(200)
-    expect((await json(res))['data']).toMatchObject({ id: 'ord-1', status: 'booked' })
+    expect((await json(res))['data']).toMatchObject({ id: 'ord-1', status: 'in_progress' })
+    expect(findOrderById).toHaveBeenCalledWith('ord-1')
+  })
+
+  it('returns 404 when the gateway reports no such order', async () => {
+    findOrderById.mockResolvedValue(null)
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request('/pegii/orders/ord-missing')
+    expect(res.status).toBe(404)
+    expect((await json(res))['code']).toBe('NOT_FOUND')
   })
 
   it('rejects a role without ReadOrder (workflow_developer) with 403', async () => {
     const app = buildApp(['workflow_developer'])
     const res = await app.request('/pegii/orders/ord-1')
     expect(res.status).toBe(403)
+    expect(findOrderById).not.toHaveBeenCalled()
   })
 })
 
 describe('GET /pegii/orders', () => {
-  it('lists materialised orders, filterable by status', async () => {
+  it('lists seeded orders, filterable by status', async () => {
+    _seedOrder('test-tenant-id', orderRecord({ id: 'ord-1', status: 'booked' }))
+    _seedOrder('test-tenant-id', orderRecord({ id: 'ord-2', status: 'booked' }))
+    _seedOrder('test-tenant-id', orderRecord({ id: 'ord-3', status: 'completed' }))
     const app = buildApp(['workflow_runtime'])
-    await app.request('/pegii/orders/ord-1')
-    await app.request('/pegii/orders/ord-2')
     const res = await app.request('/pegii/orders?status=booked')
     expect(res.status).toBe(200)
     const data = (await json(res))['data'] as Array<Record<string, unknown>>

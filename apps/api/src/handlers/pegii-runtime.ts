@@ -15,10 +15,14 @@
 //   POST /tasks/close            CloseTask   close (orderId, taskType) — idempotent
 //
 // This is a namespaced legacy-bridge surface, exactly like the retired longhaul
-// cloud handlers lived under `/api/v1/onprem/longhaul/*`. The data source is a
-// STUB today (services/pegii-orders.ts + services/pegii-tasks.ts); the route
-// contract + Cedar gating are real so the SDK and workflow authors build against
-// them now, and only the backing store swaps when the pegII API is bridged in.
+// cloud handlers lived under `/api/v1/onprem/longhaul/*`. Single-order reads are
+// LIVE: GET /orders/:orderId resolves an OrderGateway (gateways/order-gateway.
+// factory.ts) and fetches the serialized order from the pegII team's on-prem API
+// at `/api/v1/pegii/serialized/orders/:id` over the WireGuard tunnel. Order
+// LISTING and all task routes remain STUB-backed (services/pegii-orders.ts +
+// services/pegii-tasks.ts) — the pegII serialized endpoint is by-id only — with
+// the route contract + Cedar gating real so the SDK and workflow authors build
+// against them now, and the backing store swaps when pegII exposes collections.
 //
 // Distinct from the M2M `/api/v1/orders` endpoint (handlers/orders.ts), which is
 // a move-backed reporting view for integration clients and is left untouched.
@@ -36,8 +40,9 @@ import type { AppEnv } from '../types'
 import { Actions } from '../authz/actions'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { requirePermission } from '../middleware/rbac'
-import { getOrder, listOrders, type OrderRecord } from '../services/pegii-orders'
+import { listOrders, type OrderRecord } from '../services/pegii-orders'
 import { closeTask, getTask, listTasks, type TaskRecord } from '../services/pegii-tasks'
+import { resolveOrderGateway } from '../gateways/order-gateway.factory'
 import { logger } from '../lib/logger'
 
 /** Identifier shape for orderId / taskId / taskType path+body segments. */
@@ -93,12 +98,19 @@ pegiiRuntimeHandler.get('/orders', requirePermission(Actions.ReadOrder), async (
   return c.json({ data: orders.map(toOrderResponse), meta: { count: orders.length } })
 })
 
-// GET /orders/:orderId — fetch one order (materialised on first read; stub).
+// GET /orders/:orderId — fetch one order from the pegII serialized endpoint via
+// the OrderGateway. A tenant with no reachable pegII target hard-errors (the
+// factory throws PegiiApiError → 500); an unknown order id is a 404.
 pegiiRuntimeHandler.get('/orders/:orderId', requirePermission(Actions.ReadOrder), async (c) => {
   const tenantId = c.get('tenantId')
   const orderId = c.req.param('orderId') ?? ''
 
-  const order = getOrder(tenantId, orderId)
+  const gateway = await resolveOrderGateway(c.get('db'), tenantId)
+  const order = await gateway.findOrderById(orderId)
+  if (!order) {
+    return c.json({ error: 'Order not found', code: 'NOT_FOUND' }, 404)
+  }
+  logger.info('pegII order fetched', { orderId, tenantId })
   return c.json({ data: toOrderResponse(order) })
 })
 
