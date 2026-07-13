@@ -1,5 +1,7 @@
 # Tariff Rating Engine — 400NG Slice 1
 
+**COMPLETE (PR1-3) — merged and deployed to prod.** PR1 #406, PR2 #410 (schema/import/rate API), and a post-merge hotfix #411 (a third viewer-permission snapshot in the e2e suite that #410 missed, which failed the staging E2E gate and blocked prod — fixed and reverified green through prod on merge commit `b280811`). Remaining "keep tariffs updated" infra work (originally PR4) is tracked separately in `plans/todo/rating-engine-pr4-update-mechanism.md`.
+
 Branch: `feat/rating-engine`
 
 Goal: rate a shipment against the military 400NG tariff via a standalone API, with an extensible tariff abstraction (van-line tariffs later) and a keep-tariffs-updated mechanism.
