@@ -77,6 +77,7 @@ describe('authorize — offline (cedar-wasm)', () => {
       Actions.InviteUser,
       Actions.UpdateUser,
       Actions.DeactivateUser,
+      Actions.ReactivateUser,
       Actions.UpdateSettings,
       Actions.CreateApiClient,
       Actions.RotateApiClient,

@@ -850,8 +850,10 @@ export class ApiStack extends cdk.Stack {
         new iam.PolicyStatement({
           actions: [
             'cognito-idp:AdminCreateUser',
-            'cognito-idp:AdminDisableUser',
-            'cognito-idp:AdminEnableUser',
+            // Deliberately no AdminDisableUser/AdminEnableUser: the API never
+            // calls them (see handlers/users.ts's file header) — deactivating
+            // a user in one tenant must not lock them out of every other
+            // tenant they belong to in the shared Cognito user pool.
             'cognito-idp:AdminResetUserPassword',
             'cognito-idp:AdminGetUser',
             'cognito-idp:CreateIdentityProvider',

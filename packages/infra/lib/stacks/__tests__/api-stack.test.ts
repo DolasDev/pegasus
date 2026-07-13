@@ -430,9 +430,11 @@ const AVP_PER_STORE_ACTIONS = [
 
 const COGNITO_INTROSPECTION_ACTIONS = [
   // Direct calls from apps/api code paths.
+  // Deliberately no AdminDisableUser/AdminEnableUser — see api-stack.ts's
+  // comment at this grant: the API never calls them, since deactivating a
+  // user in one tenant must not lock them out of every other tenant in the
+  // shared Cognito user pool.
   'cognito-idp:AdminCreateUser',
-  'cognito-idp:AdminDisableUser',
-  'cognito-idp:AdminEnableUser',
   'cognito-idp:AdminResetUserPassword',
   'cognito-idp:AdminGetUser',
   'cognito-idp:CreateIdentityProvider',

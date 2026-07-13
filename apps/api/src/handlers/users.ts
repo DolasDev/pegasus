@@ -8,12 +8,21 @@
 //   GET    /                — list all TenantUsers for this tenant
 //   POST   /invite          — invite a user (AdminCreateUser + TenantUser PENDING)
 //   PATCH  /:id             — update Cedar role-group memberships (roleNames)
-//   DELETE /:id             — deactivate (AdminDisableUser + TenantUser DEACTIVATED)
+//   DELETE /:id             — deactivate (TenantUser DEACTIVATED — tenant-scoped only)
+//   POST   /:id/reactivate  — reactivate (TenantUser ACTIVE — tenant-scoped only)
 //
 // Security invariants:
 //   - requirePermission(Actions.X) enforced on all routes (Cedar/AVP)
 //   - Deactivating the last active tenant_admin is rejected (lockout guard)
 //   - Inviting an already-existing user email returns 409 CONFLICT
+//   - Deactivate/reactivate touch ONLY this tenant's TenantUser row — they
+//     never call a Cognito Admin*User command. Cognito user pools are shared
+//     across every tenant on the platform (one pool, keyed by email), so an
+//     AdminDisableUser/AdminEnableUser call would lock a person out of (or
+//     back into) every OTHER tenant they belong to, not just this one. The
+//     real per-tenant login gate is TenantUser.status, enforced by the
+//     Pre-Token-Generation Lambda (cognito/pre-token.ts) on every login and
+//     token refresh — flipping that column here is sufficient on its own.
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
@@ -22,7 +31,6 @@ import { z } from 'zod'
 import {
   CognitoIdentityProviderClient,
   AdminCreateUserCommand,
-  AdminDisableUserCommand,
 } from '@aws-sdk/client-cognito-identity-provider'
 import { requirePermission } from '../middleware/rbac'
 import { Actions } from '../authz/actions'
@@ -329,10 +337,13 @@ usersHandler.patch(
 // ---------------------------------------------------------------------------
 // DELETE /:id
 //
-// Deactivates a TenantUser:
+// Deactivates a TenantUser, scoped to this tenant only:
 //   1. Guard against deactivating the last active ADMIN
-//   2. Call cognito-idp:AdminDisableUser (blocks further logins)
-//   3. Set TenantUser status=DEACTIVATED
+//   2. Set TenantUser status=DEACTIVATED
+//
+// Does NOT touch Cognito — see the file header for why (shared user pool
+// across tenants; the real per-tenant gate is TenantUser.status, enforced
+// at token-issuance time by cognito/pre-token.ts).
 //
 // Response: { data: TenantUserResponse } (200)
 //           { error, code: NOT_FOUND }        (404)
@@ -367,29 +378,37 @@ usersHandler.delete('/:id', requirePermission(Actions.DeactivateUser), async (c)
     }
   }
 
-  // Disable in Cognito (fail-open if user not found — they may never have logged in)
-  try {
-    await getCognito().send(
-      new AdminDisableUserCommand({
-        UserPoolId: USER_POOL_ID,
-        Username: existing.email,
-      }),
-    )
-  } catch (err) {
-    const errName =
-      typeof err === 'object' && err !== null && 'name' in err ? (err as { name: string }).name : ''
-    if (errName !== 'UserNotFoundException') {
-      logger.error('DELETE /users/:id: Cognito AdminDisableUser failed', {
-        error: String(err),
-        id,
-        email: existing.email,
-      })
-      return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
-    }
-  }
-
   const deactivated = await repo.deactivate(id)
   return c.json({ data: toResponse(deactivated) })
+})
+
+// ---------------------------------------------------------------------------
+// POST /:id/reactivate
+//
+// Reactivates a deactivated TenantUser, scoped to this tenant only. Does not
+// touch Cognito — see the file header / DELETE /:id for why.
+//
+// Response: { data: TenantUserResponse } (200)
+//           { error, code: NOT_FOUND }        (404)
+//           { error, code: INVALID_STATE }    (422) — user is not deactivated
+// ---------------------------------------------------------------------------
+usersHandler.post('/:id/reactivate', requirePermission(Actions.ReactivateUser), async (c) => {
+  const db = c.get('db')
+  const tenantId = c.get('tenantId')
+  const repo = createUsersRepository(db)
+  const id = c.req.param('id') ?? ''
+
+  const existing = await repo.findById(id, tenantId)
+  if (!existing) {
+    return c.json({ error: 'User not found', code: 'NOT_FOUND' }, 404)
+  }
+
+  if (existing.status !== 'DEACTIVATED') {
+    return c.json({ error: 'User is not deactivated', code: 'INVALID_STATE' }, 422)
+  }
+
+  const reactivated = await repo.reactivate(id)
+  return c.json({ data: toResponse(reactivated) })
 })
 
 // ---------------------------------------------------------------------------

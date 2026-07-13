@@ -11,6 +11,12 @@
 //   PATCH  /:userId                — update role (ADMIN ↔ USER)
 //   POST   /:userId/reactivate     — reactivate a deactivated user
 //   DELETE /:userId                — deactivate user
+//
+// Deactivate/reactivate touch ONLY the target tenant's TenantUser row — see
+// handlers/users.ts's file header for why this must never call a Cognito
+// Admin*User command (one shared user pool across every tenant on the
+// platform; TenantUser.status, enforced by cognito/pre-token.ts at
+// token-issuance time, is the real per-tenant gate).
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
@@ -22,7 +28,7 @@ import type { AdminEnv } from '../../types'
 import { db } from '../../db'
 import { ROLE_OPTIONS } from '../../authz/role-options'
 import { createUsersRepository, type TenantUserRow } from '../../repositories/users'
-import { provisionCognitoUser, disableCognitoUser, enableCognitoUser } from './cognito'
+import { provisionCognitoUser } from './cognito'
 import { writeAuditLog } from './audit'
 import { logger } from '../../lib/logger'
 
@@ -319,10 +325,9 @@ adminTenantUsersRouter.patch(
 // ---------------------------------------------------------------------------
 // POST /:userId/reactivate
 //
-// Reactivates a deactivated TenantUser:
+// Reactivates a deactivated TenantUser, scoped to this tenant only:
 //   1. Guard against reactivating a non-deactivated user (422 INVALID_STATE)
-//   2. Call cognito-idp:AdminEnableUser (fail-open on UserNotFoundException)
-//   3. Set TenantUser status=ACTIVE, clear deactivatedAt + audit log in transaction
+//   2. Set TenantUser status=ACTIVE, clear deactivatedAt + audit log in transaction
 //
 // Response: { data: TenantUserResponse } (200)
 // ---------------------------------------------------------------------------
@@ -343,20 +348,6 @@ adminTenantUsersRouter.post('/:userId/reactivate', async (c) => {
 
   if (existing.status !== 'DEACTIVATED') {
     return c.json({ error: 'User is not deactivated', code: 'INVALID_STATE' }, 422)
-  }
-
-  try {
-    await enableCognitoUser(existing.email)
-  } catch (err) {
-    logger.error(
-      'POST admin/tenants/:tenantId/users/:userId/reactivate: Cognito AdminEnableUser failed',
-      {
-        error: String(err),
-        userId,
-        email: existing.email,
-      },
-    )
-    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
   }
 
   try {
@@ -392,11 +383,10 @@ adminTenantUsersRouter.post('/:userId/reactivate', async (c) => {
 // ---------------------------------------------------------------------------
 // DELETE /:userId
 //
-// Deactivates a TenantUser:
+// Deactivates a TenantUser, scoped to this tenant only:
 //   1. Guard against deactivating an already-deactivated user (422 INVALID_STATE)
 //   2. Guard against deactivating the last active admin (422 LAST_ADMIN)
-//   3. Call cognito-idp:AdminDisableUser (fail-open on UserNotFoundException)
-//   4. Set TenantUser status=DEACTIVATED + audit log in transaction
+//   3. Set TenantUser status=DEACTIVATED + audit log in transaction
 //
 // Response: { data: TenantUserResponse } (200)
 // ---------------------------------------------------------------------------
@@ -430,17 +420,6 @@ adminTenantUsersRouter.delete('/:userId', async (c) => {
         422,
       )
     }
-  }
-
-  try {
-    await disableCognitoUser(existing.email)
-  } catch (err) {
-    logger.error('DELETE admin/tenants/:tenantId/users/:userId: Cognito AdminDisableUser failed', {
-      error: String(err),
-      userId,
-      email: existing.email,
-    })
-    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
   }
 
   try {
