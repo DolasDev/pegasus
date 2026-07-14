@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # =============================================================================
-# start-workstream.sh — Provision an isolated worktree for an approved plan and
+# workstream-start.sh — Provision an isolated worktree for an approved plan and
 #                       seed the plan into it, ready to implement.
 #
-# Usage: scripts/start-workstream.sh [<type>] <slug> <plan-file>
+# Usage: scripts/workstream-start.sh [<type>] <slug> <plan-file>
 #          <type>       Branch prefix: feat | fix | chore | docs  (default: feat)
 #          <slug>       Short lowercase id, same convention as new-worktree.sh
 #          <plan-file>  Path to the drafted, user-approved plan (e.g. a plan-mode
 #                       artifact under ~/.claude/plans/) to seed the worktree with
 #
-# Flow (see .claude/commands/start-workstream.md for the session-level wrapper):
+# Flow (see .claude/commands/workstream-start.md for the session-level wrapper):
 #   1. Delegates worktree + branch + isolated Postgres + env provisioning to
 #      scripts/new-worktree.sh <type> <slug> (idempotent, reused unchanged).
 #   2. Copies <plan-file> into <worktree>/plans/in-progress/<slug>.md — inside
@@ -103,7 +103,7 @@ echo -e "  ${BOLD}Branch:${RESET}     $BRANCH_NAME  (based on origin/main)"
 echo -e "  ${BOLD}Plan:${RESET}       $PLAN_DEST_REL  (uncommitted — commit it with your implementation)"
 echo ""
 echo -e "  ${BOLD}Next:${RESET} move the session into the worktree and implement there."
-echo -e "        The start-workstream skill calls EnterWorktree for you; manually:"
+echo -e "        The workstream-start skill calls EnterWorktree for you; manually:"
 echo -e "          cd $WORKTREE_PATH"
 echo -e "        Commit the plan + code together and open ONE PR when the work is done."
 echo ""

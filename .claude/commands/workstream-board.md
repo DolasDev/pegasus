@@ -17,7 +17,7 @@ never creates, switches, commits, pushes, or removes anything.
 1. Enumerate worktrees from the source of truth:
    `git worktree list --porcelain` (run from any worktree — it lists them all).
    The primary checkout is the first entry; the rest are active workstreams
-   created by `scripts/new-worktree.sh` / `/start-workstream`.
+   created by `scripts/new-worktree.sh` / `/workstream-start`.
 
 2. For each worktree, gather (use `git -C <path> ...`, all read-only):
    - **branch** — `git -C <path> rev-parse --abbrev-ref HEAD` (or `(detached)`).
@@ -42,7 +42,7 @@ never creates, switches, commits, pushes, or removes anything.
 <notes>
 - Git is the ledger; this board is only a view of it. If it disagrees with git,
   git wins — re-run rather than trust a cached impression.
-- Pairs with `/start-workstream` (begin) and `/finish-workstream` (land + tear
+- Pairs with `/workstream-start` (begin) and `/workstream-finish` (land + tear
   down): this is the "what's happening right now" lens between the two.
 - Because every session shares the same `gh` credentials, an open PR here may be
   driven by another session — the board shows state, not ownership. Do not act

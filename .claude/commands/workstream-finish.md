@@ -1,5 +1,5 @@
 ---
-name: finish-workstream
+name: workstream-finish
 description: Land the current worktree's completed work as one PR through the merge queue, then safely tear the worktree down once it has merged
 argument-hint: (run inside the worktree; optional <slug> when tearing down from the primary checkout)
 allowed-tools:
@@ -9,7 +9,7 @@ allowed-tools:
 ---
 
 <objective>
-The counterpart to `/start-workstream`. Take a worktree whose implementation is
+The counterpart to `/workstream-start`. Take a worktree whose implementation is
 done and land it, then reclaim the workbench — without ever bypassing the merge
 queue or discarding unmerged work.
 
@@ -49,7 +49,7 @@ Re-run it after the queue merges to move from A to B.
    - `gh pr create` (skip if one exists), then `gh pr merge <branch> --auto --squash`.
    - This enqueues the PR; the queue rebases + runs required checks + merges
      serially. Report the PR URL and that auto-merge is enabled. **Do not** push
-     to `main` directly. Then stop and tell the user to re-run `/finish-workstream`
+     to `main` directly. Then stop and tell the user to re-run `/workstream-finish`
      once it merges (or watch the queue and continue when `mergedAt` is set).
    - Heads-up (`feedback_rapid_main_pushes_cancel_deploy.md`): if several PRs
      merge in quick succession, check `gh run list --workflow deploy.yml` for a
@@ -73,7 +73,7 @@ Re-run it after the queue merges to move from A to B.
 - Idempotent: safe to run at any point. Before merge it lands / re-uses the PR;
   after merge it tears down; if already torn down it no-ops.
 - One PR carries both the plan file and the implementation (that is the whole
-  point of `/start-workstream` seeding the plan into the worktree) — there is no
+  point of `/workstream-start` seeding the plan into the worktree) — there is no
   separate plan PR to reconcile.
 - Break-glass only: if the merge queue itself is broken, surface it and let the
   user decide — do not direct-push to `main` to get around it.

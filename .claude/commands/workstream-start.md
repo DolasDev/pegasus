@@ -1,5 +1,5 @@
 ---
-name: start-workstream
+name: workstream-start
 description: Provision an isolated worktree for an approved plan, seed the plan into it, and move the session in to implement — plan and code land together in one PR
 argument-hint: <type> <slug> <plan-file>
 allowed-tools:
@@ -20,7 +20,7 @@ Turn an approved plan into a running workstream:
    the whole thing lands on `main` through the branch's single PR + the merge
    queue when the work is done — no early push, no separate plan PR.
 
-Mechanical provisioning lives in `scripts/start-workstream.sh` — this command is
+Mechanical provisioning lives in `scripts/workstream-start.sh` — this command is
 the thin session-level wrapper described in the DolasDev workflow
 (`dolas/agents/team/workflow.md` → "Concurrent Work & The Merge Queue").
 </objective>
@@ -37,7 +37,7 @@ If any argument is missing, ask for it rather than guessing — especially
 
 <process>
 1. Confirm the plan has been approved by the user before running.
-2. Run: `scripts/start-workstream.sh <type> <slug> <plan-file>`
+2. Run: `scripts/workstream-start.sh <type> <slug> <plan-file>`
    This provisions the worktree and seeds the plan file. It makes **no** git
    commit / push / PR — nothing goes to the remote at this step. Read its output
    for the worktree path.
@@ -63,6 +63,6 @@ If any argument is missing, ask for it rather than guessing — especially
 - The provisioning step is side-effect-free on the remote; the only outward-facing
   action is the single PR you open at the end, once the work is ready.
 - Companion commands: `/workstream-board` shows every in-flight workstream at a
-  glance; `/finish-workstream` lands this branch through the merge queue and tears
+  glance; `/workstream-finish` lands this branch through the merge queue and tears
   the worktree down once it has merged.
 </notes>
