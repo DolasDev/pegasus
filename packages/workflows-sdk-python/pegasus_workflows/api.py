@@ -28,6 +28,9 @@ __all__ = [
     "ARTIFACT_MIME_TYPE",
     "RUNTIME_BASE_URL_ENV_VAR",
     "RUNTIME_TOKEN_ENV_VAR",
+    "DRY_RUN_ENV_VAR",
+    "get_dry_run_captures",
+    "reset_dry_run_captures",
 ]
 
 #: Maximum artifact size accepted by ``POST /upload-url`` (mirrors the server).
@@ -41,6 +44,36 @@ ARTIFACT_MIME_TYPE = "application/zip"
 #: (``PEGASUS_WORKFLOW_TOKEN``). See ``PegasusClient.from_runtime``.
 RUNTIME_BASE_URL_ENV_VAR = "PEGASUS_API_BASE_URL"
 RUNTIME_TOKEN_ENV_VAR = "PEGASUS_RUNTIME_TOKEN"
+
+#: Env var the tenant runner sets for a dry-run execution. When truthy,
+#: ``PegasusClient.from_runtime()`` returns a client in dry-run mode: reads hit
+#: the live API as normal, but mutating calls perform NO external effect — they
+#: append a record to the capture log and return a synthetic success. This is the
+#: server-side half of the benign test capability (sdk-feedback/0015 Part A); the
+#: read-vs-mutation split matches ``pegasus_workflows.testing.fake_client``.
+DRY_RUN_ENV_VAR = "PEGASUS_DRY_RUN"
+_DRY_RUN_TRUTHY = frozenset({"1", "true", "True", "yes", "on"})
+
+#: Process-global dry-run capture sink. Each dry-run execution runs in its own
+#: subprocess (the tenant runner's driver), so a module-level list is effectively
+#: execution-scoped — the driver resets it before the run and reads it after, to
+#: attach the capture log to the execution result the web-UI trace renders.
+_dry_run_captures: list[dict[str, Any]] = []
+
+
+def reset_dry_run_captures() -> None:
+    """Clear the process-global dry-run capture sink (driver calls this pre-run)."""
+    _dry_run_captures.clear()
+
+
+def get_dry_run_captures() -> list[dict[str, Any]]:
+    """Return a copy of the captured side effects recorded this process."""
+    return list(_dry_run_captures)
+
+
+#: Returned by the mutation-capture helper when NOT in dry-run, signalling the
+#: caller to proceed with the real HTTP call. Distinct from any real return.
+_NOT_CAPTURED: Any = object()
 
 
 @dataclass
@@ -110,6 +143,7 @@ class PegasusClient:
         *,
         timeout: float = 30.0,
         transport: httpx.BaseTransport | None = None,
+        dry_run: bool = False,
     ) -> None:
         if not token:
             raise ValueError("a Pegasus API token is required")
@@ -118,6 +152,11 @@ class PegasusClient:
         self._timeout = timeout
         # Optional transport override — used by tests to mock HTTP traffic.
         self._transport = transport
+        #: When True, mutating methods perform no external effect — they append
+        #: to the capture log and return a synthetic success. Reads run live.
+        self.is_dry_run = dry_run
+        #: Side effects captured on THIS client (mirrors the process-global sink).
+        self.captured: list[dict[str, Any]] = []
 
     @classmethod
     def from_runtime(cls, *, timeout: float = 30.0) -> PegasusClient:
@@ -150,8 +189,55 @@ class PegasusClient:
                 "PEGASUS_WORKFLOW_TOKEN is the publish-time CLI token, not a "
                 "runtime var.)"
             )
+        dry_run = os.environ.get(DRY_RUN_ENV_VAR, "") in _DRY_RUN_TRUTHY
         # base_url and token are non-empty here (else they'd be in `missing`).
-        return cls(base_url=base_url, token=token, timeout=timeout)  # type: ignore[arg-type]
+        return cls(  # type: ignore[arg-type]
+            base_url=base_url, token=token, timeout=timeout, dry_run=dry_run
+        )
+
+    # -- dry-run capture ----------------------------------------------------
+
+    def _capture_mutation(
+        self,
+        capability: str,
+        method: str,
+        args: dict[str, Any],
+        would_return: Any,
+    ) -> Any:
+        """In dry-run, record a mutation and return its synthetic result.
+
+        Returns :data:`_NOT_CAPTURED` when NOT in dry-run, signalling the caller
+        to proceed with the real HTTP call. The record is appended both to this
+        client's :attr:`captured` and the process-global sink the runner reads.
+        """
+        if not self.is_dry_run:
+            return _NOT_CAPTURED
+        record = {
+            "method": method,
+            "capability": capability,
+            "args": args,
+            "wouldReturn": would_return,
+        }
+        self.captured.append(record)
+        _dry_run_captures.append(record)
+        return would_return
+
+    def record_side_effect(self, label: str, payload: Any = None) -> None:
+        """Record an effect the platform can't infer (e.g. a raw outbound call).
+
+        A no-op outside dry-run. Use this when an activity performs a side effect
+        the SDK doesn't mediate, so the dry-run trace still shows it would happen.
+        """
+        if not self.is_dry_run:
+            return
+        record = {
+            "method": "record_side_effect",
+            "capability": "custom",
+            "label": label,
+            "payload": payload,
+        }
+        self.captured.append(record)
+        _dry_run_captures.append(record)
 
     # -- internals ----------------------------------------------------------
 
@@ -464,6 +550,19 @@ class PegasusClient:
             PegasusApiError: On 400 (payload fails the type's schema),
                 404 (event type not found or disabled), or any other non-2xx.
         """
+        captured = self._capture_mutation(
+            "EmitTenantEvent",
+            "emit_event",
+            {"name": name, "payload": payload or {}},
+            {
+                "emitted": True,
+                "eventType": name,
+                "occurredAt": "1970-01-01T00:00:00.000Z",
+                "dryRun": True,
+            },
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
         with self._client() as client:
             response = client.post(
                 f"/api/v1/event-types/{name}/emit",
@@ -490,6 +589,14 @@ class PegasusClient:
             PegasusApiError: On 404 (no provider connected for the tenant),
                 403 (manifest lacks ``SendSms``), or any other non-2xx.
         """
+        captured = self._capture_mutation(
+            "SendSms",
+            "send_sms",
+            {"to": to, "body": body},
+            {"data": {"id": "dry-run", "status": "captured", "dryRun": True}},
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
         with self._client() as client:
             response = client.post("/api/v1/sms/send", json={"to": to, "body": body})
         _raise_for_status(response)
@@ -600,6 +707,14 @@ class PegasusClient:
         }
         if headers_config is not None:
             payload["headersConfig"] = headers_config
+        captured = self._capture_mutation(
+            "DeliverToExternal",
+            "deliver_to_external",
+            {"integration_id": integration_id, "external": body},
+            {"delivered": False, "status": None, "response": None, "dryRun": True},
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
         with self._client() as client:
             response = client.post(
                 f"/api/v1/integrations/{integration_id}/deliver-to-external", json=payload
@@ -718,6 +833,20 @@ class PegasusClient:
         payload: dict[str, Any] = {"orderId": order_id, "taskType": task_type}
         if reason is not None:
             payload["reason"] = reason
+        captured = self._capture_mutation(
+            "CloseTask",
+            "close_task",
+            {"order_id": order_id, "task_type": task_type, "reason": reason},
+            {
+                "orderId": order_id,
+                "taskType": task_type,
+                "status": "closed",
+                "alreadyClosed": False,
+                "dryRun": True,
+            },
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
         with self._client() as client:
             response = client.post("/api/v1/pegii/tasks/close", json=payload)
         _raise_for_status(response)
@@ -795,6 +924,14 @@ class PegasusClient:
             PegasusApiError: On 403 (feature disabled), 404, 422 (gate failed —
                 the ``report`` is in the error body), or any other non-2xx.
         """
+        captured = self._capture_mutation(
+            "PublishIntegrationConfig",
+            "publish_integration_config",
+            {"integration_id": integration_id},
+            {"integrationId": integration_id, "dryRun": True},
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
         with self._client() as client:
             response = client.post(
                 f"/api/v1/integrations/{integration_id}/config",
@@ -847,6 +984,14 @@ class PegasusClient:
             PegasusApiError: On 403 (feature disabled), 404 (version not found),
                 422 (gate failed), or any other non-2xx.
         """
+        captured = self._capture_mutation(
+            "PublishIntegrationConfig",
+            "rollback_integration_config",
+            {"integration_id": integration_id, "version": version},
+            {"integrationId": integration_id, "version": version, "dryRun": True},
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
         with self._client() as client:
             response = client.post(
                 f"/api/v1/integrations/{integration_id}/config/rollback/{version}",
@@ -957,6 +1102,14 @@ class PegasusClient:
         payload: dict[str, Any] = {"key": key, "value": value, "group": group}
         if description is not None:
             payload["description"] = description
+        captured = self._capture_mutation(
+            "ManageWorkflowSecrets",
+            "set_secret",
+            {"key": key, "group": group},
+            {"key": key, "group": group, "dryRun": True},
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
         with self._client() as client:
             response = client.post(f"{self._SECRETS_CONFIG_BASE}/secrets", json=payload)
         _raise_for_status(response)
@@ -973,6 +1126,10 @@ class PegasusClient:
             PegasusApiError: On 403, 404 (no such secret in that group), or any
                 other non-2xx.
         """
+        if self._capture_mutation(
+            "ManageWorkflowSecrets", "delete_secret", {"key": key, "group": group}, None
+        ) is not _NOT_CAPTURED:
+            return
         with self._client() as client:
             response = client.delete(
                 f"{self._SECRETS_CONFIG_BASE}/secrets/{key}", params={"group": group}
@@ -1020,6 +1177,14 @@ class PegasusClient:
         payload: dict[str, Any] = {"value": value, "group": group}
         if description is not None:
             payload["description"] = description
+        captured = self._capture_mutation(
+            "ManageWorkflowConfigs",
+            "set_config",
+            {"key": key, "value": value, "group": group},
+            {"key": key, "value": value, "group": group, "dryRun": True},
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
         with self._client() as client:
             response = client.put(
                 f"{self._SECRETS_CONFIG_BASE}/configs/{key}", json=payload
@@ -1038,6 +1203,10 @@ class PegasusClient:
             PegasusApiError: On 403, 404 (no such entry in that group), or any
                 other non-2xx.
         """
+        if self._capture_mutation(
+            "ManageWorkflowConfigs", "delete_config", {"key": key, "group": group}, None
+        ) is not _NOT_CAPTURED:
+            return
         with self._client() as client:
             response = client.delete(
                 f"{self._SECRETS_CONFIG_BASE}/configs/{key}", params={"group": group}
@@ -1126,6 +1295,14 @@ class PegasusClient:
             PegasusApiError: On 400 (bad key/state), 403 (lacks the action),
                 413 (state too large), or any other non-2xx.
         """
+        captured = self._capture_mutation(
+            "WriteIntegrationProjection",
+            "put_projection",
+            {"integration": integration, "entity_type": entity_type, "key": key, "state": state},
+            {"state": state, "version": 1, "dryRun": True},
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
         with self._client() as client:
             response = client.put(
                 f"{self._PROJECTIONS_BASE}/runtime/{integration}/{entity_type}/{key}",
@@ -1140,6 +1317,14 @@ class PegasusClient:
         Raises:
             PegasusApiError: On 403, 404 (no such record), or any other non-2xx.
         """
+        captured = self._capture_mutation(
+            "WriteIntegrationProjection",
+            "delete_projection",
+            {"integration": integration, "entity_type": entity_type, "key": key},
+            None,
+        )
+        if captured is not _NOT_CAPTURED:
+            return
         with self._client() as client:
             response = client.delete(
                 f"{self._PROJECTIONS_BASE}/runtime/{integration}/{entity_type}/{key}"

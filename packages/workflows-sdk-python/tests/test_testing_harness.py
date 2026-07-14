@@ -196,10 +196,13 @@ def test_arun_activity_coroutine() -> None:
 
 
 def test_classification_covers_every_client_method() -> None:
+    # from_runtime (constructor) and record_side_effect (dry-run helper) are not
+    # HTTP read/mutation methods, so they are not part of the classification.
+    _NON_HTTP = {"from_runtime", "record_side_effect"}
     public = {
         name
         for name, member in inspect.getmembers(PegasusClient, callable)
-        if not name.startswith("_") and name != "from_runtime"
+        if not name.startswith("_") and name not in _NON_HTTP
     }
     classified = set(_READS) | set(_MUTATIONS) | set(_IGNORED)
     missing = public - classified
