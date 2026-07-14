@@ -12,6 +12,7 @@ import {
   Globe,
   Info,
   KeyRound,
+  ListChecks,
   Loader2,
   Lock,
   Pencil,
@@ -25,7 +26,7 @@ import {
 import { PageHeader } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { WorkflowExecutionStatusBadge } from '@/components/StatusBadge'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
@@ -893,7 +894,16 @@ function WorkflowRow({ workflow, nested = false }: { workflow: Workflow; nested?
             </p>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <Link
+            to="/settings/workflows/$workflowId"
+            params={{ workflowId: workflow.id }}
+            search={{ tab: 'executions' }}
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            <ListChecks className="mr-1.5 h-3.5 w-3.5" />
+            View executions
+          </Link>
           {canRun && (
             <span
               title={

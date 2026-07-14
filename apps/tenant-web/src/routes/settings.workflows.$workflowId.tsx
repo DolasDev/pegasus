@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link, useParams } from '@tanstack/react-router'
+import { Link, useParams, useSearch } from '@tanstack/react-router'
 import {
   ArrowLeft,
   Calendar,
@@ -36,6 +36,7 @@ const RETRYABLE_STATUSES = new Set(['FAILED', 'TIMED_OUT', 'CANCELLED'])
 
 export function WorkflowDetailPage() {
   const { workflowId } = useParams({ strict: false }) as { workflowId: string }
+  const { tab } = useSearch({ strict: false }) as { tab?: 'executions' }
   const { data: workflow, isLoading, isError } = useQuery(workflowQueryOptions(workflowId))
 
   if (isLoading) {
@@ -71,7 +72,7 @@ export function WorkflowDetailPage() {
       />
       <BackLink />
 
-      <Tabs defaultValue="overview" className="mt-6">
+      <Tabs defaultValue={tab === 'executions' ? 'executions' : 'overview'} className="mt-6">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="executions">Executions</TabsTrigger>
