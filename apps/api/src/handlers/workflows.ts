@@ -169,6 +169,11 @@ const RunBody = z.object({
   // here — that contract belongs to the workflow author. Defaults to {}
   // so the SDK can call `run_workflow(id)` with no input.
   input: z.record(z.string(), z.unknown()).optional().default({}),
+  // Execution mode. `dry_run` runs the real workflow on the tenant runner with
+  // reads live but mutations captured (never performed) — a benign rehearsal.
+  // Only supported for tenant-runner workflows (422 DRY_RUN_UNSUPPORTED
+  // otherwise). Defaults to `live`.
+  mode: z.enum(['live', 'dry_run']).optional().default('live'),
 })
 
 const LIST_DEFAULT_LIMIT = 50
@@ -371,6 +376,14 @@ function startResultToResponse(
           code: 'WORKFLOW_NOT_EXECUTABLE',
         },
         400,
+      )
+    case 'DRY_RUN_UNSUPPORTED':
+      return c.json(
+        {
+          error: `Workflow "${workflowName}" does not run on the tenant runner, so it cannot be dry-run (dry-run interception is a tenant-runner capability). Run it live, or dry-run a tenant-runner workflow.`,
+          code: 'DRY_RUN_UNSUPPORTED',
+        },
+        422,
       )
     case 'WORKFLOWS_DISABLED':
       return c.json(
@@ -919,7 +932,7 @@ workflowsHandler.post(
       throw new DomainError('Authenticated user required to run workflows', 'UNAUTHENTICATED')
     }
     const workflowId = c.req.param('id') ?? ''
-    const { input } = c.req.valid('json')
+    const { input, mode } = c.req.valid('json')
     const db = c.get('db')
 
     const repo = createWorkflowRepository(db)
@@ -935,6 +948,7 @@ workflowsHandler.post(
       workflow,
       tenantId,
       input,
+      dryRun: mode === 'dry_run',
       provenance: { triggerSource: 'USER', triggeredByUserId: userId },
     })
 

@@ -174,6 +174,16 @@ export type StartWorkflowExecutionOptions = {
    * id is only persisted by markStarted — unchanged Phase 2 behavior.
    */
   temporalWorkflowId?: string
+  /**
+   * When true, run in DRY-RUN mode: the tenant runner injects a dry-run
+   * PegasusClient so reads run live but mutations are captured (never
+   * performed), and the execution is tagged `dryRun` end-to-end (Temporal memo
+   * + envelope). Only supported on the TENANT_RUNNER lane — the STDLIB lane runs
+   * real activities with no interception seam, so a dry-run there is rejected
+   * (DRY_RUN_UNSUPPORTED) rather than silently performing side effects. Defaults
+   * false. Not threaded through retry/dispatcher — those always run live.
+   */
+  dryRun?: boolean
 }
 
 export type StartWorkflowExecutionResult =
@@ -181,6 +191,14 @@ export type StartWorkflowExecutionResult =
   | { outcome: 'STARTED'; execution: WorkflowExecutionRow }
   /** Route was NOT_EXECUTABLE — non-curated + non-executable. Nothing written. */
   | { outcome: 'NOT_EXECUTABLE' }
+  /**
+   * A dry-run was requested for a workflow that does not run on the tenant
+   * runner (STDLIB lane). Dry-run interception lives in the tenant-runner
+   * subprocess driver; the curated stdlib worker runs real activities, so a
+   * dry-run there could not be made benign. Nothing written or started. The
+   * caller maps this to 422 with code DRY_RUN_UNSUPPORTED.
+   */
+  | { outcome: 'DRY_RUN_UNSUPPORTED' }
   /**
    * Operator kill switch: workflowsDisabled=true on the tenant row. Nothing
    * written or started. Existing RUNNING executions are unaffected (allowed to
@@ -392,6 +410,19 @@ export async function startWorkflowExecution(
     return { outcome: 'NOT_EXECUTABLE' }
   }
 
+  // Dry-run is a TENANT_RUNNER-only capability: interception lives in the
+  // subprocess driver. Reject (never silently perform side effects) a dry-run
+  // of a curated STDLIB workflow, which runs real activities with no seam.
+  if (opts.dryRun && route !== 'TENANT_RUNNER') {
+    logger.warn('Dry-run start rejected — workflow does not run on the tenant runner', {
+      tenantId,
+      workflowId: workflow.id,
+      workflowName: workflow.name,
+      route,
+    })
+    return { outcome: 'DRY_RUN_UNSUPPORTED' }
+  }
+
   // ── Kill-switch check — applies to BOTH routes ───────────────────────────
   //
   // Read workflowsDisabled from the Tenant row. This is a cheap indexed
@@ -547,12 +578,18 @@ export async function startWorkflowExecution(
   // Start the Temporal workflow. If start_workflow throws, mark the
   // execution FAILED with the error so we don't leak QUEUED rows for
   // runtime failures.
+  const dryRun = opts.dryRun ?? false
   try {
     const client = await getTemporalClient()
     const handle = await client.workflow.start(workflow.name, {
-      args: [{ executionId: inserted.id, input }],
+      // dryRun rides the envelope so the tenant runner's subprocess driver sees
+      // it and injects the dry-run client + trace capture.
+      args: [{ executionId: inserted.id, input, dryRun }],
       taskQueue,
       workflowId: temporalWorkflowId,
+      // Tag the execution in Temporal so dry-runs are filterable in the Web UI
+      // and never mistaken for a real run.
+      memo: { dryRun },
       // Idempotent re-submit: if a previous call already started this id,
       // we'd rather error here than start a second run.
       workflowIdReusePolicy: 'REJECT_DUPLICATE',
