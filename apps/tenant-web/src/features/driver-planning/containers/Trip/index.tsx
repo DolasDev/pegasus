@@ -7,6 +7,7 @@ import { ActivityGantt } from './components/ActivityGantt/ActivityGantt'
 import { Notes } from './components/Notes/Notes'
 import styles from './Trip.module.css'
 import { Button } from '../../components/Button'
+import { RateTripButton } from '../../components/RateTripButton'
 
 import { API } from '@/features/driver-planning/utils/api'
 import { useStatusPredictionPrompt, usePromptForStatusUpdate } from './utils/status-prompt'
@@ -147,6 +148,7 @@ function TripInternal() {
                 <Button data-target="trip-back-to-trips" onClick={() => navigate('/trips')}>
                   <i className="fas fa-arrow-left"></i> All trips
                 </Button>
+                <RateTripButton shipments={trip.shipments} />
                 {!isRejected && (
                   <Button
                     className={styles.editTripButton}

@@ -5,6 +5,7 @@ import { Link } from '@/features/driver-planning/utils/router-compat'
 
 import { Lane } from '../../components/Lane'
 import { Button } from '../../components/Button'
+import { RateTripButton } from '../../components/RateTripButton'
 
 import styles from './PendingTrips.module.css'
 import {
@@ -420,6 +421,7 @@ const PendingTripsInternal = (_props: any) => {
               <Button disabled={saveDisabled} data-target="save-trip" onClick={handleSaveClick}>
                 Save
               </Button>
+              <RateTripButton shipments={currentTrip.shipments} />
               {currentTrip?.id ? <MoreTripActions tripId={currentTrip?.id} /> : null}
             </div>
             <div className={styles['trip-card-container']}>
