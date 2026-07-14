@@ -24,6 +24,13 @@ describe('normalizeZip', () => {
     expect(normalizeZip('7016')).toBe('07016')
   })
 
+  it('recovers a numeric ZIP+4 whose leading zero was stripped (not the wrong first-5)', () => {
+    // 07016-1234 stored as an int -> 70161234 (8 digits). Pad back to 9 before
+    // slicing so the zip3 stays 070, not the wrong 701.
+    expect(normalizeZip(70161234)).toBe('07016')
+    expect(normalizeZip(902101234)).toBe('90210')
+  })
+
   it('rejects empty, null, or too-short values', () => {
     expect(normalizeZip(null)).toBeNull()
     expect(normalizeZip('')).toBeNull()

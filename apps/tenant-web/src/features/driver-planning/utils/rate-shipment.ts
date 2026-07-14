@@ -43,16 +43,24 @@ export type BuildResult = { ok: true; payload: RatePayload } | { ok: false; reas
 
 /**
  * Coerce a legacy zip value to the 5-digit form the rate endpoint requires
- * (`/^\d{5}$/`). Legacy MSSQL stores these inconsistently:
- *   - "07016-1234" / "070161234" (ZIP+4)  → first 5 digits
- *   - 7016 (numeric, leading zero stripped) → left-padded to "07016"
- *   - null / "" / non-numeric / too short  → null (uncable)
+ * (`/^\d{5}$/`). Legacy MSSQL stores these inconsistently, and numeric columns
+ * strip leading zeros, so the digit count alone is ambiguous. A ZIP+4 is
+ * nominally 9 digits and a main zip 5, so we pad any stripped leading zeros
+ * back to that width before taking the 5-digit prefix:
+ *   - "07016-1234" / "070161234" (ZIP+4 string) → "07016"
+ *   - 70161234 (numeric ZIP+4, one zero stripped) → padded to "070161234" → "07016"
+ *     (NOT the wrong "70161" a naive first-5 slice would give)
+ *   - 7016 (numeric main zip, one zero stripped) → "07016"
+ *   - null / "" / non-numeric / 1–3 digits (too short to trust) → null (uncable)
  * Returns null when it can't produce a trustworthy 5-digit zip.
  */
 export function normalizeZip(z: unknown): string | null {
   const digits = String(z ?? '').replace(/\D/g, '')
-  if (digits.length === 4) return digits.padStart(5, '0')
-  if (digits.length >= 5) return digits.slice(0, 5)
+  // ZIP+4 (nominally 9 digits): pad stripped leading zeros back before slicing.
+  if (digits.length >= 6) return digits.padStart(9, '0').slice(0, 5)
+  // 5-digit main zip, possibly with a stripped leading zero from numeric storage.
+  if (digits.length === 4 || digits.length === 5) return digits.padStart(5, '0')
+  // 1–3 digits (or empty) is too short to trust as a real zip.
   return null
 }
 

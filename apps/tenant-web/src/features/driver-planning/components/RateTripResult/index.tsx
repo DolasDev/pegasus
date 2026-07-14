@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Button } from '../Button'
 import { uncableLabel, type RateRow } from '../../utils/rate-shipment'
@@ -68,6 +68,11 @@ export const RateTripResult: React.FC<RateTripResultProps> = ({
   appliedDiscount,
 }) => {
   const [discount, setDiscount] = useState('0')
+  // Reset to the baseline each time the dialog opens so one trip's discount is
+  // never silently carried over to the next trip rated from the same button.
+  useEffect(() => {
+    if (open) setDiscount('0')
+  }, [open])
   const parsed = parseDiscount(discount)
   const invalid = parsed === null
 
@@ -154,7 +159,7 @@ export const RateTripResult: React.FC<RateTripResultProps> = ({
                   <tbody>
                     {rows.map((row, i) => (
                       <tr
-                        key={row.shipment.order_num ?? i}
+                        key={`${row.shipment.order_num ?? 'na'}-${i}`}
                         data-target="rate-row"
                         data-status={row.status}
                       >
