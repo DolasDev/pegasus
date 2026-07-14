@@ -68,14 +68,20 @@ describe('RateTripButton', () => {
     expect(screen.getByRole('button', { name: /rate trip/i })).toBeDisabled()
   })
 
-  it('rates the trip and shows per-shipment rows + a trip total of only rated rows', async () => {
+  it('prompts for a discount, then rates — showing rows, a total of only rated rows, and threading the discount', async () => {
     renderWithClient(<RateTripButton shipments={shipments} />)
 
+    // Opening the dialog does not rate yet — it prompts for the discount.
     fireEvent.click(screen.getByRole('button', { name: /rate trip/i }))
+    const input = document.querySelector('[data-target="rate-trip-discount"]') as HTMLInputElement
+    expect(input).not.toBeNull()
+    expect(rateShipment).not.toHaveBeenCalled()
 
-    // The dialog renders through a Radix portal into document.body, so query
-    // the document rather than the render container.
-    // Wait for the batch to settle (loading state gone, total rendered).
+    // Enter a discount and run.
+    fireEvent.change(input, { target: { value: '15' } })
+    fireEvent.click(document.querySelector('[data-target="rate-trip-run"]') as HTMLElement)
+
+    // The dialog renders through a Radix portal into document.body.
     await waitFor(() => {
       expect(document.querySelector('[data-target="rate-trip-total"]')).not.toBeNull()
     })
@@ -86,19 +92,37 @@ describe('RateTripButton', () => {
     expect(rows[0].getAttribute('data-status')).toBe('rated')
     expect(rows[1].getAttribute('data-status')).toBe('uncable')
     expect(rows[2].getAttribute('data-status')).toBe('error')
-
-    // The rateable shipment shows its 400NG amount; the errored/uncable rows don't.
     expect(rows[0].textContent).toContain('$2,500')
 
-    // Only the two rateable-looking shipments hit the API; the uncable one was skipped.
+    // Only the two rateable-looking shipments hit the API, each with the discount.
     expect(rateShipment).toHaveBeenCalledTimes(2)
+    expect(rateShipment).toHaveBeenCalledWith(
+      expect.objectContaining({ linehaulDiscountPercent: 15 }),
+    )
 
-    // Trip total sums only the single rated row.
-    const total = document.querySelector('[data-target="rate-trip-total"]')
-    expect(total?.textContent).toContain('$2,500')
+    // Trip total sums only the single rated row; footer notes the two not rated.
+    expect(document.querySelector('[data-target="rate-trip-total"]')?.textContent).toContain(
+      '$2,500',
+    )
+    expect(document.querySelector('[data-target="rate-trip-total-row"]')?.textContent).toMatch(
+      /2 not rated/,
+    )
+    // The applied-discount note reflects the entered value.
+    expect(
+      document.querySelector('[data-target="rate-trip-applied-discount"]')?.textContent,
+    ).toMatch(/15%/)
+  })
 
-    // Footer notes the two shipments that weren't rated.
-    const totalRow = document.querySelector('[data-target="rate-trip-total-row"]')
-    expect(totalRow?.textContent).toMatch(/2 not rated/)
+  it('blocks rating on an invalid discount', () => {
+    renderWithClient(<RateTripButton shipments={shipments} />)
+    fireEvent.click(screen.getByRole('button', { name: /rate trip/i }))
+
+    const input = document.querySelector('[data-target="rate-trip-discount"]') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '150' } })
+
+    expect(document.querySelector('[data-target="rate-trip-discount-error"]')).not.toBeNull()
+    expect(document.querySelector('[data-target="rate-trip-run"]')).toBeDisabled()
+    fireEvent.click(document.querySelector('[data-target="rate-trip-run"]') as HTMLElement)
+    expect(rateShipment).not.toHaveBeenCalled()
   })
 })

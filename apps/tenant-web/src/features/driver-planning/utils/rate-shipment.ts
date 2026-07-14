@@ -35,6 +35,8 @@ export interface RatePayload {
   originZip: string
   destZip: string
   pickupDate: string
+  /** TSP-negotiated linehaul discount (0-100). Omitted for the published baseline. */
+  linehaulDiscountPercent?: number
 }
 
 export type BuildResult = { ok: true; payload: RatePayload } | { ok: false; reason: UncableReason }
@@ -137,9 +139,12 @@ export function uncableLabel(reason: UncableReason): string {
 export async function rateTripShipments(
   shipments: RateShipmentInput[],
   rateFn: RateFn,
-  opts: { concurrency?: number } = {},
+  opts: { concurrency?: number; linehaulDiscountPercent?: number } = {},
 ): Promise<RateRow[]> {
   const concurrency = Math.max(1, opts.concurrency ?? 4)
+  const discount = opts.linehaulDiscountPercent
+  // 0 == baseline, same as omitting — only send a positive, finite discount.
+  const applyDiscount = typeof discount === 'number' && Number.isFinite(discount) && discount > 0
   const rows: RateRow[] = new Array(shipments.length)
   let next = 0
 
@@ -153,8 +158,11 @@ export async function rateTripShipments(
         rows[i] = { shipment, status: 'uncable', reason: built.reason }
         continue
       }
+      const payload = applyDiscount
+        ? { ...built.payload, linehaulDiscountPercent: discount }
+        : built.payload
       try {
-        const result = await rateFn(built.payload)
+        const result = await rateFn(payload)
         rows[i] = {
           shipment,
           status: 'rated',

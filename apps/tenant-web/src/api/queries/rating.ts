@@ -16,13 +16,23 @@ import {
 export interface RateTripResult {
   rows: RateRow[]
   total: number
+  /** The discount that produced these rows (0 = baseline). */
+  discountPercent: number
+}
+
+export interface RateTripVars {
+  shipments: RateShipmentInput[]
+  /** TSP linehaul discount, integer 0-100. 0 = published baseline. */
+  discountPercent: number
 }
 
 export function useRateTrip() {
-  return useMutation<RateTripResult, Error, RateShipmentInput[]>({
-    mutationFn: async (shipments) => {
-      const rows = await rateTripShipments(shipments, rateShipment)
-      return { rows, total: tripRateTotal(rows) }
+  return useMutation<RateTripResult, Error, RateTripVars>({
+    mutationFn: async ({ shipments, discountPercent }) => {
+      const rows = await rateTripShipments(shipments, rateShipment, {
+        linehaulDiscountPercent: discountPercent,
+      })
+      return { rows, total: tripRateTotal(rows), discountPercent }
     },
   })
 }

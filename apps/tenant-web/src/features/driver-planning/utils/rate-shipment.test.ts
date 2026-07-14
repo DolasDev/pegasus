@@ -151,6 +151,20 @@ describe('rateTripShipments', () => {
     const rows = await rateTripShipments([], vi.fn())
     expect(rows).toEqual([])
   })
+
+  it('threads a positive linehaul discount into every payload', async () => {
+    const rateFn = vi.fn(async () => ({ total: 1000 }))
+    await rateTripShipments([rated], rateFn, { linehaulDiscountPercent: 12 })
+    expect(rateFn).toHaveBeenCalledWith(expect.objectContaining({ linehaulDiscountPercent: 12 }))
+  })
+
+  it('omits a zero/undefined discount (0 == published baseline)', async () => {
+    const rateFn = vi.fn(async () => ({ total: 1000 }))
+    await rateTripShipments([rated], rateFn, { linehaulDiscountPercent: 0 })
+    expect(rateFn).toHaveBeenCalledWith(
+      expect.not.objectContaining({ linehaulDiscountPercent: expect.anything() }),
+    )
+  })
 })
 
 describe('uncableLabel', () => {

@@ -50,10 +50,10 @@ already granted to the viewer baseline, so every standard operations user can ca
       `shipments[]`, runs `rateTripShipments(shipments, rateShipment)`, returns `{ rows, tripTotal }`
       (tripTotal = sum of `rated` totals). No cache write needed (rates aren't persisted).
 - [x] `apps/tenant-web/src/features/driver-planning/components/RateTripResult/` — presentation:
-      a `PopoverShell`/dialog (reuse existing dialog pattern) rendering a table — one row per shipment
-      (`order_num`, lane `city, ST → city, ST`, billed weight, **400NG total** or `—` + reason/message),
-      a footer **trip total**, and a header note "400NG baseline (undiscounted) — differs from Linehaul".
-      Loading + empty states. `data-target="rate-trip-result"`.
+      a Radix dialog with a **TSP linehaul discount input** (integer 0–100, validated) + Rate/Re-rate
+      button that triggers the rating, then a table — one row per shipment (`order_num`, lane
+      `city, ST → city, ST`, billed weight, **400NG total** or `—` + reason/message), a footer
+      **trip total**, and an applied-discount note. Loading/idle/empty states. `data-target="rate-trip-result"`.
 - [x] `apps/tenant-web/src/features/driver-planning/components/RateTripButton/` — the trigger button
       (`data-target="rate-trip"`), disabled when `shipments.length === 0`; opens `RateTripResult`, calls
       `useRateTrip`. Shared by both screens.
@@ -79,9 +79,9 @@ known hot/merge-magnet files. Purely additive tenant-web frontend.
 - Missing/zero `total_est_wt` → uncable (`no-weight`). Uses ESTIMATED weight by design; actual
   (`total_actual_wt`) not used — could be a future toggle.
 - 400NG min billing weight is 1,000 lb; the engine bumps light shipments (surfaced via `meta.billedWeightLbs`).
-- Result is the **published baseline** (no TSP-negotiated discount — not in longhaul data). Label it so
-  it isn't mistaken for the contracted price or the existing `line_haul` figure. (Optional future: a
-  single `linehaulDiscountPercent` input.)
+- The dialog **prompts for the TSP linehaul discount** (integer 0–100) and threads it to every rate
+  call as `linehaulDiscountPercent` (0 = published baseline, sent as omitted). Result is still labeled
+  as a planning figure distinct from the negotiated `line_haul` column.
 - N calls per trip (one per shipment) → concurrency-limited client-side. If trips routinely carry many
   shipments, consider a server-side batch endpoint later (out of scope here).
 - 400NG-only (`tariffCode` literal). Informational for non-400NG traffic.

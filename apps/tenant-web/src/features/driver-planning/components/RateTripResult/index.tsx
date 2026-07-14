@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Button } from '../Button'
 import { uncableLabel, type RateRow } from '../../utils/rate-shipment'
@@ -7,10 +7,14 @@ import styles from './RateTripResult.module.css'
 interface RateTripResultProps {
   open: boolean
   onClose: () => void
+  onRate: (discountPercent: number) => void
   loading: boolean
   error: Error | null
+  hasResult: boolean
   rows: RateRow[]
   total: number
+  /** Discount that produced the current rows (0 = baseline). */
+  appliedDiscount: number
 }
 
 const usd = (n: number): string =>
@@ -45,16 +49,36 @@ function RowCell({ row }: { row: RateRow }): React.ReactElement {
   )
 }
 
+/** Valid discount = whole number 0–100. */
+function parseDiscount(raw: string): number | null {
+  if (raw.trim() === '') return null
+  const n = Number(raw)
+  return Number.isInteger(n) && n >= 0 && n <= 100 ? n : null
+}
+
 export const RateTripResult: React.FC<RateTripResultProps> = ({
   open,
   onClose,
+  onRate,
   loading,
   error,
+  hasResult,
   rows,
   total,
+  appliedDiscount,
 }) => {
+  const [discount, setDiscount] = useState('0')
+  const parsed = parseDiscount(discount)
+  const invalid = parsed === null
+
   const ratedCount = rows.filter((r) => r.status === 'rated').length
   const skipped = rows.length - ratedCount
+
+  const handleSubmit = (e: React.FormEvent): void => {
+    e.preventDefault()
+    if (invalid || loading) return
+    onRate(parsed)
+  }
 
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
@@ -62,12 +86,39 @@ export const RateTripResult: React.FC<RateTripResultProps> = ({
         <Dialog.Overlay className={styles.overlay} />
         <Dialog.Content className={styles.content} data-target="rate-trip-result">
           <Dialog.Title asChild>
-            <h2 className={styles.title}>400NG trip rate</h2>
+            <h2 className={styles.title}>Rate trip (400NG)</h2>
           </Dialog.Title>
           <p className={styles.subtitle}>
-            Published 400NG baseline (undiscounted) — for planning only; differs from the negotiated
-            Linehaul figure.
+            Enter the TSP-negotiated linehaul discount, then rate. Result is the published 400NG
+            tariff with that discount applied — for planning; differs from the negotiated Linehaul
+            figure.
           </p>
+
+          <form className={styles.controls} onSubmit={handleSubmit}>
+            <label className={styles.field}>
+              <span>Linehaul discount (%)</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                inputMode="numeric"
+                value={discount}
+                onChange={(e) => setDiscount(e.target.value)}
+                className={styles.input}
+                data-target="rate-trip-discount"
+                aria-invalid={invalid}
+              />
+            </label>
+            <Button type="submit" disabled={invalid || loading} data-target="rate-trip-run">
+              {hasResult ? 'Re-rate' : 'Rate'}
+            </Button>
+          </form>
+          {invalid ? (
+            <p className={styles.fieldError} data-target="rate-trip-discount-error">
+              Enter a whole number between 0 and 100.
+            </p>
+          ) : null}
 
           {loading ? (
             <div className={styles.state} data-target="rate-trip-loading">
@@ -77,10 +128,19 @@ export const RateTripResult: React.FC<RateTripResultProps> = ({
             <div className={styles.error} data-target="rate-trip-error">
               Could not rate this trip: {error.message}
             </div>
+          ) : !hasResult ? (
+            <div className={styles.state} data-target="rate-trip-idle">
+              {rows.length === 0 && total === 0 ? 'Enter a discount and rate the trip.' : null}
+            </div>
           ) : rows.length === 0 ? (
             <div className={styles.state}>No shipments on this trip.</div>
           ) : (
             <>
+              <p className={styles.applied} data-target="rate-trip-applied-discount">
+                {appliedDiscount > 0
+                  ? `${appliedDiscount}% linehaul discount applied.`
+                  : 'No discount applied (published baseline).'}
+              </p>
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
                   <thead>
@@ -127,7 +187,7 @@ export const RateTripResult: React.FC<RateTripResultProps> = ({
           )}
 
           <div className={styles.actions}>
-            <Button type="button" onClick={onClose} data-target="rate-trip-close">
+            <Button type="button" inverted onClick={onClose} data-target="rate-trip-close">
               Close
             </Button>
           </div>
