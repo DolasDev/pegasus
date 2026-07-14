@@ -3,7 +3,7 @@
 //
 // Mocks @hono/node-server's serve function and verifies that:
 //   - The server starts on the configured port/host
-//   - Graceful shutdown calls closeAllPools() and db.$disconnect()
+//   - Graceful shutdown disconnects Prisma
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -12,20 +12,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 // Hoisted mocks
 // ---------------------------------------------------------------------------
 
-const { mockServe, mockCloseAllPools, mockDbDisconnect } = vi.hoisted(() => ({
+const { mockServe, mockDbDisconnect } = vi.hoisted(() => ({
   mockServe: vi.fn(() => ({
     close: vi.fn((cb?: () => void) => cb?.()),
   })),
-  mockCloseAllPools: vi.fn(async () => {}),
   mockDbDisconnect: vi.fn(async () => {}),
 }))
 
 vi.mock('@hono/node-server', () => ({
   serve: mockServe,
-}))
-
-vi.mock('../lib/mssql', () => ({
-  closeAllPools: mockCloseAllPools,
 }))
 
 vi.mock('../db', () => ({
@@ -54,7 +49,6 @@ describe('server bootstrap', () => {
 
   beforeEach(() => {
     mockServe.mockClear()
-    mockCloseAllPools.mockClear()
     mockDbDisconnect.mockClear()
     process.env['SKIP_AUTH'] = 'true'
     process.env['DATABASE_URL'] =
@@ -99,12 +93,11 @@ describe('server bootstrap', () => {
     )
   })
 
-  it('exports a shutdown function that closes pools and disconnects db', async () => {
+  it('exports a shutdown function that disconnects db', async () => {
     const { shutdown } = await import('../server')
 
     await shutdown()
 
-    expect(mockCloseAllPools).toHaveBeenCalledTimes(1)
     expect(mockDbDisconnect).toHaveBeenCalledTimes(1)
   })
 })

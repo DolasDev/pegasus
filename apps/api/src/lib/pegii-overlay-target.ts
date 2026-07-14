@@ -4,7 +4,7 @@
 //
 // Mirrors the resolveOverlayTarget() helper from the (deleted) /onprem proxy
 // handler, but points at the pegII team's NEW API rather than this repo's own
-// app.server.ts on-prem server. It therefore uses a distinct set of env vars
+// (now retired) on-prem server. It therefore uses a distinct set of env vars
 // (PEGII_API_TUNNEL_*) so there is zero collision with the dead ONPREM_* set.
 //
 // Precedence:

@@ -10,9 +10,9 @@
 // so the SDK surface (PegasusClient.list_tasks / get_task / close_task), the
 // Cedar actions (ReadTask / CloseTask), and the workflow author's activity can
 // all be built and tested end to end. When the pegII task API is ready, replace
-// the bodies below with calls into the pegII executor (see handlers/pegii/ +
-// repositories/pegii/generic.repository) — the exported signatures and the
-// handler stay put, exactly like the longhaul cloud-cutover.
+// the bodies below with calls into the pegII team's on-prem domain API over the
+// tunnel, exactly as the order read was bridged (see gateways/pegii-order.gateway
+// + the serialized endpoint) — the exported signatures and the handler stay put.
 //
 // The in-memory store is per-process and NON-DURABLE (a Lambda cold start
 // resets it). That is intentional for a stub: it makes close_task idempotent

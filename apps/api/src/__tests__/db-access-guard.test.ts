@@ -130,7 +130,6 @@ describe('Guard 1: Raw SQL usage ($queryRaw / $executeRaw)', () => {
  *   - longhaul-cloud/** reach tenant MSSQL via the mssql-executor Lambda; they
  *     still use the base client for Neon lookups (connection strings, reference
  *     data) that span all tenants.
- *   - pegii/middleware.ts: PegII auth resolves tenant from the request.
  *   - settings.ts, vpn-agent.ts, dashboard-pegii.ts: cross-tenant or
  *     platform-level lookups.
  *   - integrations/ringcentral-{oauth,webhook}.ts: webhook path pre-dates
@@ -179,7 +178,6 @@ const ALLOWED_BASE_CLIENT_HANDLERS: ReadonlySet<string> = new Set([
   'longhaul-cloud/users-me.ts',
   'longhaul-cloud/version.ts',
   'longhaul-cloud/zones.ts',
-  'pegii/middleware.ts',
   'settings.ts',
   // pegII config lives on the Tenant row (customerSource / pegiiApiBaseUrl /
   // pegiiApiKeyRef) — read/written via the base client exactly like settings.ts,
