@@ -2,8 +2,10 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import type { PrismaClient } from '@prisma/client'
 import {
   getIntegrationDefinition,
+  getBuiltInDefinition,
   refreshRegistryOverlay,
   loadRegistryOverlayIfStale,
+  resolveIntegrationDefinition,
 } from './registry'
 import { compileMapping } from './transform/mapping-format'
 
@@ -11,6 +13,28 @@ import { compileMapping } from './transform/mapping-format'
 function fakeDb(rows: unknown[]): PrismaClient {
   return { integrationConfig: { findMany: async () => rows } } as unknown as PrismaClient
 }
+
+/**
+ * A fake Prisma client for the resolver's `findActiveForScope`, which issues two
+ * findFirst calls: the tenant's own PUBLISHED row, then the GLOBAL PUBLISHED row.
+ * Returns `own` when the where-clause carries a tenantId, else `global`.
+ */
+function scopedDb(own: unknown, global: unknown): PrismaClient {
+  return {
+    integrationConfig: {
+      findFirst: async ({ where }: { where: Record<string, unknown> }) =>
+        'tenantId' in where ? own : global,
+    },
+  } as unknown as PrismaClient
+}
+
+const throwingDb = {
+  integrationConfig: {
+    findFirst: async () => {
+      throw new Error('db down')
+    },
+  },
+} as unknown as PrismaClient
 
 const emptyDb = fakeDb([])
 
@@ -64,6 +88,90 @@ describe('registry overlay', () => {
       fakeDb([{ integrationId: 'ghost', version: 1, mapping: { x: 'y' }, rules: [] }]),
     )
     expect(getIntegrationDefinition('ghost')).toBeUndefined()
+  })
+
+  it('resolveIntegrationDefinition returns undefined for an unknown integration', async () => {
+    expect(await resolveIntegrationDefinition(scopedDb(null, null), 'ghost', 't1')).toBeUndefined()
+  })
+
+  it('resolveIntegrationDefinition prefers a TENANT config over GLOBAL and built-in', async () => {
+    const tenantOverride = { serviceOrderNumber: 'TenantSource' }
+    const globalOverride = { serviceOrderNumber: 'GlobalSource' }
+    const def = (await resolveIntegrationDefinition(
+      scopedDb(
+        { integrationId: 'demo_partner', version: 3, mapping: tenantOverride, rules: [] },
+        { integrationId: 'demo_partner', version: 9, mapping: globalOverride, rules: [] },
+      ),
+      'demo_partner',
+      't1',
+    ))!
+    expect(def.mapping).toEqual(tenantOverride)
+    expect(def.transform).toEqual(compileMapping(tenantOverride))
+    // Code ground truth is never overridden by a config row.
+    expect(typeof def.deriveFacts).toBe('function')
+  })
+
+  it('resolveIntegrationDefinition falls back to GLOBAL when the tenant has no own config', async () => {
+    const globalOverride = { serviceOrderNumber: 'GlobalSource' }
+    const def = (await resolveIntegrationDefinition(
+      scopedDb(null, {
+        integrationId: 'demo_partner',
+        version: 9,
+        mapping: globalOverride,
+        rules: [],
+      }),
+      'demo_partner',
+      't1',
+    ))!
+    expect(def.mapping).toEqual(globalOverride)
+  })
+
+  it('resolveIntegrationDefinition falls back to the built-in when no config applies', async () => {
+    const def = (await resolveIntegrationDefinition(scopedDb(null, null), 'demo_partner', 't1'))!
+    expect(def.mapping['serviceStatus']).toBe('Survey.SerivceStatus')
+  })
+
+  it('resolveIntegrationDefinition ignores an unparseable tenant row (built-in floor)', async () => {
+    const def = (await resolveIntegrationDefinition(
+      scopedDb(
+        { integrationId: 'demo_partner', version: 3, mapping: { bad: { $from: '' } }, rules: [] },
+        null,
+      ),
+      'demo_partner',
+      't1',
+    ))!
+    expect(def.mapping['serviceStatus']).toBe('Survey.SerivceStatus')
+  })
+
+  it('resolveIntegrationDefinition fails open to the built-in on a DB error', async () => {
+    const def = (await resolveIntegrationDefinition(throwingDb, 'demo_partner', 't1'))!
+    expect(def.mapping['serviceStatus']).toBe('Survey.SerivceStatus')
+  })
+
+  it('resolveIntegrationDefinition uses the GLOBAL overlay for a platform-scoped (null tenant) key', async () => {
+    const override = { serviceOrderNumber: 'GlobalOnly' }
+    await refreshRegistryOverlay(
+      fakeDb([{ integrationId: 'demo_partner', version: 2, mapping: override, rules: [] }]),
+    )
+    const def = (await resolveIntegrationDefinition(emptyDb, 'demo_partner', null))!
+    expect(def.mapping).toEqual(override)
+  })
+
+  it('getBuiltInDefinition ignores the overlay entirely', async () => {
+    await refreshRegistryOverlay(
+      fakeDb([
+        {
+          integrationId: 'demo_partner',
+          version: 2,
+          mapping: { serviceOrderNumber: 'X' },
+          rules: [],
+        },
+      ]),
+    )
+    expect(getBuiltInDefinition('demo_partner')!.mapping['serviceStatus']).toBe(
+      'Survey.SerivceStatus',
+    )
+    expect(getBuiltInDefinition('ghost')).toBeUndefined()
   })
 
   it('loadRegistryOverlayIfStale reloads only after the TTL elapses', async () => {

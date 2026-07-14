@@ -75,6 +75,47 @@ const DEFAULT_OVERLAY_TTL_MS = 60_000
 let overlay: Map<string, OverlayEntry> | null = null
 let overlayLoadedAt = 0
 
+/**
+ * Parse + compile a config row's editable surface (mapping + rules) into an
+ * overlay entry, or null when the row can't be trusted (unparseable mapping/
+ * rules or a compile error). Shared by the GLOBAL overlay build and the
+ * per-request tenant resolver so both apply — and reject — a row identically.
+ */
+function toOverlayEntry(
+  integrationId: string,
+  mappingJson: unknown,
+  rulesJson: unknown,
+  version?: number,
+): OverlayEntry | null {
+  const mapping = MappingTemplateSchema.safeParse(mappingJson)
+  const rules = RuleSetSchema.safeParse(rulesJson)
+  if (!mapping.success || !rules.success) {
+    logger.warn('integration config row failed to parse — ignoring', { integrationId, version })
+    return null
+  }
+  try {
+    return {
+      mapping: mapping.data,
+      transform: compileMapping(mapping.data),
+      rules: rules.data,
+    }
+  } catch (err) {
+    logger.warn('integration config row failed to compile — ignoring', {
+      integrationId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return null
+  }
+}
+
+/** Merge an overlay entry's editable surface onto a built-in definition. */
+function mergeDefinition(
+  builtIn: IntegrationDefinition,
+  entry: OverlayEntry,
+): IntegrationDefinition {
+  return { ...builtIn, mapping: entry.mapping, transform: entry.transform, rules: entry.rules }
+}
+
 /** Build the overlay map from the active GLOBAL configs, skipping unparseable rows. */
 async function buildOverlay(db: PrismaClient): Promise<Map<string, OverlayEntry>> {
   const repo = createIntegrationConfigRepository(db)
@@ -83,27 +124,8 @@ async function buildOverlay(db: PrismaClient): Promise<Map<string, OverlayEntry>
     // Only the editable surface is overlaid; an unknown integration id has no
     // built-in base to merge onto, so it can never take effect — skip early.
     if (!REGISTRY[row.integrationId]) continue
-    const mapping = MappingTemplateSchema.safeParse(row.mapping)
-    const rules = RuleSetSchema.safeParse(row.rules)
-    if (!mapping.success || !rules.success) {
-      logger.warn('integration config overlay row failed to parse — ignoring', {
-        integrationId: row.integrationId,
-        version: row.version,
-      })
-      continue
-    }
-    try {
-      next.set(row.integrationId, {
-        mapping: mapping.data,
-        transform: compileMapping(mapping.data),
-        rules: rules.data,
-      })
-    } catch (err) {
-      logger.warn('integration config overlay row failed to compile — ignoring', {
-        integrationId: row.integrationId,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
+    const entry = toOverlayEntry(row.integrationId, row.mapping, row.rules, row.version)
+    if (entry) next.set(row.integrationId, entry)
   }
   return next
 }
@@ -137,8 +159,60 @@ export function getIntegrationDefinition(id: string): IntegrationDefinition | un
   const builtIn = REGISTRY[id]
   if (!builtIn) return undefined
   const entry = overlay?.get(id)
-  if (!entry) return builtIn
-  return { ...builtIn, mapping: entry.mapping, transform: entry.transform, rules: entry.rules }
+  return entry ? mergeDefinition(builtIn, entry) : builtIn
+}
+
+/**
+ * The pure built-in (code) definition — never merged with any published config.
+ * The publish/gate path validates candidate configs against this ground truth
+ * so an already-live overlay can't influence what a new config is checked against.
+ */
+export function getBuiltInDefinition(id: string): IntegrationDefinition | undefined {
+  return REGISTRY[id]
+}
+
+/**
+ * Resolve the definition that governs RUNTIME validation for a caller in a given
+ * tenant scope. Unlike getIntegrationDefinition (which serves only the GLOBAL
+ * overlay), this honours the same tenant-over-GLOBAL precedence as the config
+ * read path (`findActiveForScope`): a tenant's own published config wins, else
+ * the GLOBAL platform config, else the built-in baseline. So a TENANT-scoped
+ * config actually changes what that tenant's orders are validated against — it
+ * is not display-only.
+ *
+ * - `tenantId === null` (platform-scoped key): no tenant namespace, so the GLOBAL
+ *   overlay is the whole story — defers to the cached overlay path unchanged.
+ * - Reads the tenant's active row fresh per request (no TTL lag → a publish takes
+ *   effect immediately), and FAILS OPEN to the built-in baseline on any DB error
+ *   or unparseable row, matching the overlay's "code floor is the safe default".
+ */
+export async function resolveIntegrationDefinition(
+  db: PrismaClient,
+  id: string,
+  tenantId: string | null,
+): Promise<IntegrationDefinition | undefined> {
+  const builtIn = REGISTRY[id]
+  if (!builtIn) return undefined
+
+  // Platform-scoped keys have no tenant of their own — GLOBAL is all that applies.
+  if (!tenantId) {
+    await loadRegistryOverlayIfStale(db)
+    return getIntegrationDefinition(id)
+  }
+
+  try {
+    const repo = createIntegrationConfigRepository(db)
+    const row = await repo.findActiveForScope(id, tenantId)
+    if (!row) return builtIn
+    const entry = toOverlayEntry(row.integrationId, row.mapping, row.rules, row.version)
+    return entry ? mergeDefinition(builtIn, entry) : builtIn
+  } catch (err) {
+    logger.warn('integration definition resolve failed — serving built-in baseline', {
+      integrationId: id,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return builtIn
+  }
 }
 
 export function listIntegrationIds(): string[] {

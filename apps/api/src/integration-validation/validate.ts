@@ -148,14 +148,11 @@ export interface MapToExternalResult {
   degraded: boolean
 }
 
-export function mapToExternal(
-  integrationId: string,
+export function mapToExternalWithDefinition(
+  def: IntegrationDefinition,
   data: unknown,
   action?: OrderAction,
 ): MapToExternalResult {
-  const def = getIntegrationDefinition(integrationId)
-  if (!def) throw new UnknownIntegrationError(integrationId)
-
   // Raw external payload — returned even if it later fails validation. A defect
   // in the transform must not deny the caller a verdict, so fall back to null.
   let external: Record<string, unknown> | null = null
@@ -163,7 +160,7 @@ export function mapToExternal(
     external = applyMapping(def.transform, data)
   } catch (err) {
     logger.warn('integration map-to-external transform failed', {
-      integrationId,
+      integrationId: def.id,
       error: err instanceof Error ? err.message : String(err),
     })
   }
@@ -174,4 +171,14 @@ export function mapToExternal(
   if (action !== undefined) input.action = action
   const result = validateWithDefinition(def, input)
   return { external, valid: result.valid, issues: result.issues, degraded: result.degraded }
+}
+
+export function mapToExternal(
+  integrationId: string,
+  data: unknown,
+  action?: OrderAction,
+): MapToExternalResult {
+  const def = getIntegrationDefinition(integrationId)
+  if (!def) throw new UnknownIntegrationError(integrationId)
+  return mapToExternalWithDefinition(def, data, action)
 }

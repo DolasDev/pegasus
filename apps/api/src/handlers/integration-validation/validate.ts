@@ -33,16 +33,12 @@ import { z } from 'zod'
 import { apiClientAuthMiddleware } from '../../middleware/api-client-auth'
 import type { ApiClientVariables } from '../../types'
 import {
-  validateOrder,
-  mapToExternal,
+  validateWithDefinition,
+  mapToExternalWithDefinition,
   transformOrderToCanonical,
-  UnknownIntegrationError,
 } from '../../integration-validation/validate'
-import {
-  loadRegistryOverlayIfStale,
-  getIntegrationDefinition,
-} from '../../integration-validation/registry'
-import type { ValidationInput } from '../../integration-validation/types'
+import { resolveIntegrationDefinition } from '../../integration-validation/registry'
+import type { IntegrationDefinition, ValidationInput } from '../../integration-validation/types'
 import { mappingFormatJsonSchema } from '../../integration-validation/transform/mapping-format'
 import { createIntegrationProjectionRepository } from '../../repositories/integration-projection.repository'
 import { db as basePrisma } from '../../db'
@@ -87,9 +83,17 @@ integrationValidationHandler.post(
       return c.json({ error: parsed.error.message, code: 'VALIDATION_ERROR', correlationId }, 400)
     }
 
-    // Warm the registry overlay so any published config is reflected. Best-effort
-    // and TTL-throttled; failures fall back to the built-in baseline.
-    await loadRegistryOverlayIfStale(basePrisma)
+    // Resolve the definition for THIS tenant's scope: a tenant's own published
+    // config wins over GLOBAL over the built-in baseline, so a tenant-scoped
+    // config actually governs the verdict. Fails open to the built-in baseline.
+    const tenantId = c.get('tenantId')
+    const def = await resolveIntegrationDefinition(basePrisma, integrationId, tenantId)
+    if (!def) {
+      return c.json(
+        { error: `Unknown integration "${integrationId}"`, code: 'NOT_FOUND', correlationId },
+        404,
+      )
+    }
 
     const input = parsed.data as ValidationInput
 
@@ -97,19 +101,11 @@ integrationValidationHandler.post(
     // integration declares a projection binding, load the record's last-known
     // state from the tenant's projection cache. Fails open to no-prior.
     if (input.prior === undefined || input.prior === null) {
-      const resolved = await resolveProjectionPrior(integrationId, input, c.get('tenantId'))
+      const resolved = await resolveProjectionPrior(def, input, tenantId)
       if (resolved !== undefined) input.prior = resolved
     }
 
-    try {
-      const result = validateOrder(integrationId, input)
-      return c.json(result)
-    } catch (err) {
-      if (err instanceof UnknownIntegrationError) {
-        return c.json({ error: err.message, code: 'NOT_FOUND', correlationId }, 404)
-      }
-      throw err
-    }
+    return c.json(validateWithDefinition(def, input))
   },
 )
 
@@ -132,37 +128,36 @@ integrationValidationHandler.post(
       return c.json({ error: parsed.error.message, code: 'VALIDATION_ERROR', correlationId }, 400)
     }
 
-    // Warm the registry overlay so any published config is reflected. Best-effort
-    // and TTL-throttled; failures fall back to the built-in baseline.
-    await loadRegistryOverlayIfStale(basePrisma)
-
-    try {
-      return c.json(mapToExternal(integrationId, parsed.data.data, parsed.data.action))
-    } catch (err) {
-      if (err instanceof UnknownIntegrationError) {
-        return c.json({ error: err.message, code: 'NOT_FOUND', correlationId }, 404)
-      }
-      throw err
+    // Resolve the definition for THIS tenant's scope (own → GLOBAL → built-in),
+    // so a tenant's own mapping/rules shape the projected payload and verdict.
+    const def = await resolveIntegrationDefinition(basePrisma, integrationId, c.get('tenantId'))
+    if (!def) {
+      return c.json(
+        { error: `Unknown integration "${integrationId}"`, code: 'NOT_FOUND', correlationId },
+        404,
+      )
     }
+
+    return c.json(mapToExternalWithDefinition(def, parsed.data.data, parsed.data.action))
   },
 )
 
 /**
  * Resolve the cached projection state to use as `prior` for this validation.
- * Returns the cached native state, or `undefined` when no projection should be
- * applied (no binding, no tenant scope, unkeyable order, miss, or any error).
- * Never throws — a projection problem must never block a save.
+ * Takes the already tenant-resolved definition so the projection key is derived
+ * with the SAME transform that governs the verdict. Returns the cached native
+ * state, or `undefined` when no projection should be applied (no binding, no
+ * tenant scope, unkeyable order, miss, or any error). Never throws — a
+ * projection problem must never block a save.
  */
 async function resolveProjectionPrior(
-  integrationId: string,
+  def: IntegrationDefinition,
   input: ValidationInput,
   tenantId: string | null,
 ): Promise<unknown | undefined> {
   // Platform-scoped keys (null tenant) have no projection namespace to read.
   if (!tenantId) return undefined
-
-  const def = getIntegrationDefinition(integrationId)
-  if (!def?.projection) return undefined
+  if (!def.projection) return undefined
 
   try {
     const canonical = transformOrderToCanonical(def, input.order)
@@ -172,11 +167,11 @@ async function resolveProjectionPrior(
 
     const tenantDb = createTenantDb(basePrisma, tenantId)
     const repo = createIntegrationProjectionRepository(tenantDb as unknown as PrismaClient)
-    const state = await repo.findState(integrationId, def.projection.entityType, entityKey)
+    const state = await repo.findState(def.id, def.projection.entityType, entityKey)
     return state ?? undefined
   } catch (err) {
     logger.warn('integration projection prior lookup failed open', {
-      integrationId,
+      integrationId: def.id,
       error: err instanceof Error ? err.message : String(err),
     })
     return undefined
