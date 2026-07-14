@@ -111,7 +111,16 @@ Goal: make partner delivery a platform capability so it is interceptable in dry-
 - [ ] **SSRF hardening follow-up**: `assertDeliverableUrl` is a baseline guard (no DNS-rebinding protection / egress allowlist). Consider an allowlist or resolve-then-pin before GA on untrusted tenants.
 - Note: diverged from the spec's "integration's *configured* endpoint" wording per Decision 2b — `integration_id` is validated + recorded but creds come from workflow config. Update spec 0015 acceptance/validation log accordingly.
 
-### Phase A — Server-side dry-run execution (core platform piece) — after B
+### Phase A — Server-side dry-run execution — **FUNCTIONAL END-TO-END (A1a+A2+A3+A4 done); A1b column pending**
+
+Status: a dry-run works end-to-end today — `run --dry-run` → API threads the flag → runner subprocess driver injects the dry-run client + captures the trace → result envelope `{dryRun, return, trace, captured}` lands in `WorkflowExecution.result` (+ Temporal `memo{dryRun}`). Done:
+- [x] **A2 SDK dry-run client** — `from_runtime()` reads `PEGASUS_DRY_RUN`; 12 mutating methods capture-not-perform; process-global sink; `is_dry_run`/`record_side_effect`. (committed)
+- [x] **A3 tenant-runner seam** — executor threads `dryRun`; `subprocess_driver` sets `PEGASUS_DRY_RUN`, wraps `_direct_execute_activity` for trace, returns `{dryRun,return,trace,captured}`; **fails closed** if the bundled SDK is too old. Verified in a real subprocess. (committed)
+- [x] **A1a API** — `RunBody.mode`; thread `dryRun` into the Temporal args envelope + `memo{dryRun}`; **STDLIB guard** → `DRY_RUN_UNSUPPORTED` (422); 159 API tests pass; `tsc` clean.
+- [x] **A4 CLI/SDK** — `run --dry-run`; `run_workflow(..., dry_run=True)` sends `mode=dry_run`; SDK 0.12.0 → 0.13.0 + CHANGELOG + README.
+- [ ] **A1b — `WorkflowExecution.dryRun` column + migration + persistence + quota/dashboard exclusion.** BLOCKED in this worktree: adding a Prisma column needs `prisma generate`, which would clobber the shared symlinked client. Do with a real worktree `npm install` (or in a normal checkout). Until then, dry-runs are identified by Temporal `memo` + the `result.dryRun` envelope (Phase D can read either), and dry-runs DO currently count toward concurrency/quota (the column-based exclusion is the pending refinement). Steps: `dryRun Boolean @default(false) @map("dry_run")` on the model + migration; `execRepo.create({dryRun})`; add `dryRun: false` to `countTenantRunnerActive/DailyExecutions`; skip the cap/quota rejection when `opts.dryRun`.
+
+### Phase A (original checklist) — Server-side dry-run execution (core platform piece) — after B
 Goal: a first-class `dry_run` mode: real workflow, real worker, real reads, mutations captured not performed; tagged `dryRun:true` end-to-end; repeatable; fires no chained events; excluded from dashboards/quota.
 
 - [ ] `RunBody` (`handlers/workflows.ts:167`) += `mode: 'dry_run' | 'live'` (default live); thread through `StartWorkflowExecutionOptions` (`start-workflow-execution.ts:158`). Add **Temporal `Memo` `{ dryRun: true }`** to the `client.workflow.start` options (`start-workflow-execution.ts:552`) for Temporal-UI filterability, and pass the flag into the args payload so the runner/subprocess sees it. Decide whether retry/dispatcher inherit or exclude the flag.
