@@ -143,7 +143,15 @@ Goal: a first-class `dry_run` mode: real workflow, real worker, real reads, muta
 - [ ] CLI: `--dry-run` flag on `run` (`cli/run.py`) threading `mode="dry_run"` into the `run_workflow` payload; plus the `--remote` test path. SDK release + PyPI.
 - Acceptance (spec Part A): real fetched order + real mapped body in the trace (reads ran live); no partner request; SMS dry-run records `to`/`body`, sends nothing; no chained event fires; `is_dry_run` True in dry-run / False in live.
 
-### Phase D — Web-UI test trace (tenant-web) — after A
+### Phase D — Web-UI test trace (tenant-web) — **DONE**
+
+- [x] API types: `WorkflowExecution.dryRun`; `DryRunResult` envelope (`{dryRun, return, trace, captured}`) + `DryRunCapture`/`DryRunTraceEntry`; `asDryRunResult()` narrower. `runWorkflow(id, input, {dryRun})` sends `mode: 'dry_run'`; `useRunWorkflow` accepts `dryRun`.
+- [x] Run dialog (`settings.workflows.tsx`): a **"Test run (dry run)"** toggle turns _Run workflow_ into **Run test**; shared `DryRunBadge` on execution rows.
+- [x] Detail page (`settings.workflows.$workflowId.tsx`): `DryRunBadge` on the row; **"Re-run as test"** replays a past execution's input as a dry run (the replay-a-past-event affordance); `ExecutionDetail` branches to a **Test-trace** view for dry-runs — resolved input → each activity's args/result **with the `map_to_external` valid/issues/degraded verdict** badge → the capture log of would-be side effects, humanized ("Would send an SMS to +1…", "Would deliver a body to the … partner endpoint") → the workflow return. Live runs keep the Temporal timeline.
+- [x] Tests: 3 new API-wrapper/`asDryRunResult` tests; full tenant-web suite **1013 pass**; `tsc` + eslint clean.
+- Note: end-to-end browser verification (render a real dry-run trace) awaits a running stack (API + tenant-runner + Temporal); logic is covered by unit tests + typecheck.
+
+### Phase D (original checklist) — Web-UI test trace (tenant-web) — after A
 
 Goal: a trace view a non-technical operator can read, plus a "Run test" affordance.
 

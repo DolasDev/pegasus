@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Copy,
   Download,
+  FlaskConical,
   Folder,
   Globe,
   Info,
@@ -23,6 +24,7 @@ import {
   Workflow as WorkflowIcon,
   XCircle,
 } from 'lucide-react'
+import { DryRunBadge } from '@/components/DryRunBadge'
 import { PageHeader } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
 import { WorkflowExecutionStatusBadge } from '@/components/StatusBadge'
@@ -179,6 +181,7 @@ function TriggerSourceBadge({ source }: { source: WorkflowTriggerSource }) {
 
 function RunWorkflowDialog({ workflow, onClose }: { workflow: Workflow; onClose: () => void }) {
   const [inputText, setInputText] = useState('{}')
+  const [dryRun, setDryRun] = useState(false)
   const [parseError, setParseError] = useState<string | null>(null)
   const runMutation = useRunWorkflow()
 
@@ -200,7 +203,7 @@ function RunWorkflowDialog({ workflow, onClose }: { workflow: Workflow; onClose:
       setParseError('Input must be a JSON object (e.g. {"key": "value"}).')
       return
     }
-    runMutation.mutate({ id: workflow.id, input: parsed }, { onSuccess: () => onClose() })
+    runMutation.mutate({ id: workflow.id, input: parsed, dryRun }, { onSuccess: () => onClose() })
   }
 
   return (
@@ -243,17 +246,38 @@ function RunWorkflowDialog({ workflow, onClose }: { workflow: Workflow; onClose:
             {runError}
           </p>
         )}
+        <label className="mt-4 flex cursor-pointer items-start gap-2 text-xs text-foreground">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={dryRun}
+            onChange={(e) => setDryRun(e.target.checked)}
+          />
+          <span>
+            <span className="font-medium">Test run (dry run)</span> — run for real but{' '}
+            <span className="font-medium">capture</span> every side effect instead of performing it.
+            Reads still hit live data; no SMS is sent, no task closed, nothing delivered. Only
+            tenant-runner workflows support this.
+          </span>
+        </label>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose} disabled={runMutation.isPending}>
             Cancel
           </Button>
-          <Button size="sm" onClick={handleRun} disabled={runMutation.isPending}>
+          <Button
+            size="sm"
+            variant={dryRun ? 'outline' : 'default'}
+            onClick={handleRun}
+            disabled={runMutation.isPending}
+          >
             {runMutation.isPending ? (
               <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : dryRun ? (
+              <FlaskConical className="mr-1.5 h-3.5 w-3.5" />
             ) : (
               <Play className="mr-1.5 h-3.5 w-3.5" />
             )}
-            Run workflow
+            {dryRun ? 'Run test' : 'Run workflow'}
           </Button>
         </div>
       </div>
@@ -315,6 +339,7 @@ function ExecutionsList({ workflowId }: { workflowId: string }) {
           <div className="flex flex-wrap items-center gap-2">
             <WorkflowExecutionStatusBadge status={exec.status} />
             <TriggerSourceBadge source={exec.triggerSource} />
+            {exec.dryRun && <DryRunBadge />}
             <span className="text-xs text-muted-foreground">
               Queued {new Date(exec.queuedAt).toLocaleString()}
             </span>

@@ -93,7 +93,8 @@ export function useForkWorkflow() {
 export function useRunWorkflow() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, input }: { id: string; input: unknown }) => runWorkflow(id, input),
+    mutationFn: ({ id, input, dryRun }: { id: string; input: unknown; dryRun?: boolean }) =>
+      runWorkflow(id, input, { dryRun }),
     onSuccess: (_data, { id }) => {
       void qc.invalidateQueries({ queryKey: workflowKeys.executions(id) })
     },
