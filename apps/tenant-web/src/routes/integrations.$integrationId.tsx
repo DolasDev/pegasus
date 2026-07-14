@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from '@tanstack/react-router'
-import { Check, Copy, Loader2 } from 'lucide-react'
+import { AlertTriangle, Check, Copy, GitFork, Loader2, Pencil, RotateCcw, X } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -17,9 +17,19 @@ import {
 } from '@/components/ui/table'
 import { EmptyState } from '@/components/EmptyState'
 import { ApiError } from '@/api/client'
-import { integrationConfigQueryOptions } from '@/api/queries/integrations'
+import {
+  integrationConfigQueryOptions,
+  integrationConfigVersionsQueryOptions,
+  useForkIntegrationConfig,
+  useValidateIntegrationConfig,
+  usePublishIntegrationConfig,
+  useRollbackIntegrationConfig,
+} from '@/api/queries/integrations'
 import type {
+  ConfigDraft,
+  GateReport,
   IntegrationConfig,
+  IntegrationConfigVersion,
   IntegrationRule,
   MappingDirective,
   MappingNode,
@@ -235,10 +245,235 @@ export function RawJsonView({ config }: { config: IntegrationConfig }) {
   )
 }
 
+// --- Gate report ------------------------------------------------------------
+
+export function GateReportView({ report }: { report: GateReport }) {
+  return (
+    <div
+      className={`rounded-md border px-3 py-2 text-xs ${
+        report.ok
+          ? 'border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-400'
+          : 'border-destructive/40 bg-destructive/10 text-destructive'
+      }`}
+    >
+      <p className="flex items-center gap-1.5 font-medium">
+        {report.ok ? <Check className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+        {report.ok
+          ? `Gate passed — ${report.corpus.passed}/${report.corpus.total} corpus cases`
+          : `Gate failed — ${report.problems.length} problem(s), ${report.corpus.passed}/${report.corpus.total} corpus cases`}
+      </p>
+      {report.problems.length > 0 && (
+        <ul className="mt-1 space-y-0.5 font-mono">
+          {report.problems.map((p, i) => (
+            <li key={i}>
+              [{p.stage}] {p.where}: {p.problem}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+// --- Editor -----------------------------------------------------------------
+
+const TEXTAREA_CLASS =
+  'w-full min-h-[16rem] rounded-md border bg-muted/30 p-3 font-mono text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+
+/**
+ * Edit a TENANT config's mapping + rules as JSON, dry-run the gate, and publish
+ * a new version. The corpus is carried through unchanged from the current config
+ * (edit mapping/rules only). Publish is blocked until a validate passes on the
+ * exact current text — any edit clears the prior verdict.
+ */
+export function IntegrationConfigEditor({
+  config,
+  onClose,
+}: {
+  config: IntegrationConfig
+  onClose: () => void
+}) {
+  const [mappingText, setMappingText] = useState(() => JSON.stringify(config.mapping, null, 2))
+  const [rulesText, setRulesText] = useState(() => JSON.stringify(config.rules, null, 2))
+  const [parseError, setParseError] = useState<string | null>(null)
+  const [report, setReport] = useState<GateReport | null>(null)
+
+  const validate = useValidateIntegrationConfig(config.integrationId)
+  const publish = usePublishIntegrationConfig(config.integrationId)
+
+  function parseDraft(): ConfigDraft | null {
+    try {
+      const draft: ConfigDraft = {
+        mapping: JSON.parse(mappingText),
+        rules: JSON.parse(rulesText),
+        corpus: config.corpus,
+      }
+      setParseError(null)
+      return draft
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : 'Invalid JSON')
+      return null
+    }
+  }
+
+  // Any edit invalidates a prior gate verdict — you must re-validate to publish.
+  function editMapping(v: string) {
+    setMappingText(v)
+    setReport(null)
+  }
+  function editRules(v: string) {
+    setRulesText(v)
+    setReport(null)
+  }
+
+  function onValidate() {
+    const draft = parseDraft()
+    if (!draft) return
+    setReport(null)
+    validate.mutate(draft, { onSuccess: (r) => setReport(r) })
+  }
+
+  function onPublish() {
+    const draft = parseDraft()
+    if (!draft) return
+    publish.mutate(draft, { onSuccess: onClose })
+  }
+
+  const busy = validate.isPending || publish.isPending
+  const canPublish = report?.ok === true && !busy
+
+  return (
+    <Card>
+      <CardContent className="space-y-4 pt-6">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Mapping (JSON)</label>
+            <textarea
+              className={TEXTAREA_CLASS}
+              value={mappingText}
+              spellCheck={false}
+              onChange={(e) => editMapping(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Rules (JSON)</label>
+            <textarea
+              className={TEXTAREA_CLASS}
+              value={rulesText}
+              spellCheck={false}
+              onChange={(e) => editRules(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {parseError && (
+          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            Invalid JSON: {parseError}
+          </div>
+        )}
+        {report && <GateReportView report={report} />}
+        {(validate.error || publish.error) && (
+          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {(validate.error ?? publish.error) instanceof ApiError
+              ? ((validate.error ?? publish.error) as ApiError).message
+              : 'Request failed.'}
+          </div>
+        )}
+
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={onValidate} disabled={busy}>
+            {validate.isPending ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Check className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            Validate
+          </Button>
+          <Button variant="default" size="sm" onClick={onPublish} disabled={!canPublish}>
+            {publish.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            Publish new version
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>
+            <X className="mr-1.5 h-3.5 w-3.5" />
+            Cancel
+          </Button>
+          {!canPublish && !report && (
+            <span className="text-xs text-muted-foreground">Validate before publishing.</span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// --- Version history --------------------------------------------------------
+
+export function ConfigVersionsCard({ integrationId }: { integrationId: string }) {
+  const { data: versions } = useQuery(integrationConfigVersionsQueryOptions(integrationId))
+  const rollback = useRollbackIntegrationConfig(integrationId)
+  if (!versions || versions.length === 0) return null
+
+  return (
+    <Card className="mt-4">
+      <CardContent className="pt-6">
+        <p className="mb-2 text-sm font-medium">Version history</p>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Version</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Published by</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {versions.map((v: IntegrationConfigVersion) => (
+              <TableRow key={v.id}>
+                <TableCell className="font-mono text-xs">
+                  v{v.version}
+                  {v.forkedFromVersion != null && (
+                    <span className="ml-1 text-muted-foreground">
+                      (forked from platform v{v.forkedFromVersion})
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <Badge variant={v.status === 'PUBLISHED' ? 'secondary' : 'muted'}>
+                    {v.status}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">{v.publishedBy}</TableCell>
+                <TableCell className="text-right">
+                  {v.status === 'SUPERSEDED' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => rollback.mutate(v.version)}
+                      disabled={rollback.isPending}
+                    >
+                      <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                      Roll back
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        {rollback.error instanceof ApiError && (
+          <p className="mt-2 text-xs text-destructive">{rollback.error.message}</p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // --- Page -------------------------------------------------------------------
 
 export function IntegrationDetailPage() {
   const { integrationId } = useParams({ strict: false }) as { integrationId: string }
+  const [editing, setEditing] = useState(false)
+  const fork = useForkIntegrationConfig()
   const {
     data: config,
     isLoading,
@@ -303,6 +538,9 @@ export function IntegrationDetailPage() {
     )
   }
 
+  const isTenantOwned = config.visibility === 'TENANT'
+  const isPlatform = config.visibility === 'GLOBAL'
+
   return (
     <div>
       <PageHeader
@@ -311,30 +549,74 @@ export function IntegrationDetailPage() {
         action={
           <div className="flex items-center gap-2">
             <Badge variant="secondary">v{config.version}</Badge>
-            <Badge variant="outline">{config.visibility}</Badge>
+            <Badge variant="outline">{isTenantOwned ? 'Your config' : 'Platform'}</Badge>
+            {isPlatform && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fork.mutate(config.integrationId)}
+                disabled={fork.isPending}
+              >
+                {fork.isPending ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <GitFork className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Fork to my tenant
+              </Button>
+            )}
+            {isTenantOwned && !editing && (
+              <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+                <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                Edit
+              </Button>
+            )}
           </div>
         }
       />
 
-      <Tabs defaultValue="mapping">
-        <TabsList>
-          <TabsTrigger value="mapping">Mapping</TabsTrigger>
-          <TabsTrigger value="rules">Rules</TabsTrigger>
-          <TabsTrigger value="raw">Raw JSON</TabsTrigger>
-        </TabsList>
+      {isPlatform && (
+        <p className="mb-3 text-sm text-muted-foreground">
+          This is the platform&rsquo;s shared config. Fork it to customize the mapping and rules for
+          your tenant.
+        </p>
+      )}
+      {isTenantOwned && config.forkedFromVersion != null && (
+        <p className="mb-3 text-sm text-muted-foreground">
+          Your config — forked from platform v{config.forkedFromVersion}.
+        </p>
+      )}
+      {fork.error instanceof ApiError && (
+        <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {fork.error.message}
+        </div>
+      )}
 
-        <TabsContent value="mapping" className="mt-4">
-          <MappingTable mapping={config.mapping} />
-        </TabsContent>
+      {editing && isTenantOwned ? (
+        <IntegrationConfigEditor config={config} onClose={() => setEditing(false)} />
+      ) : (
+        <Tabs defaultValue="mapping">
+          <TabsList>
+            <TabsTrigger value="mapping">Mapping</TabsTrigger>
+            <TabsTrigger value="rules">Rules</TabsTrigger>
+            <TabsTrigger value="raw">Raw JSON</TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="rules" className="mt-4">
-          <RulesTable rules={config.rules} />
-        </TabsContent>
+          <TabsContent value="mapping" className="mt-4">
+            <MappingTable mapping={config.mapping} />
+          </TabsContent>
 
-        <TabsContent value="raw" className="mt-4">
-          <RawJsonView config={config} />
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="rules" className="mt-4">
+            <RulesTable rules={config.rules} />
+          </TabsContent>
+
+          <TabsContent value="raw" className="mt-4">
+            <RawJsonView config={config} />
+          </TabsContent>
+        </Tabs>
+      )}
+
+      {isTenantOwned && !editing && <ConfigVersionsCard integrationId={config.integrationId} />}
     </div>
   )
 }

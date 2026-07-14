@@ -32,6 +32,10 @@ export type IntegrationConfigRow = {
   corpus: Prisma.JsonValue
   gateReport: Prisma.JsonValue
   publishedBy: string
+  /** Source IntegrationConfig.id when this row was forked from a GLOBAL config; else null. */
+  forkedFromConfigId: string | null
+  /** Source config version at fork time; else null. */
+  forkedFromVersion: number | null
   createdAt: Date
 }
 
@@ -47,6 +51,8 @@ const SELECT = {
   corpus: true,
   gateReport: true,
   publishedBy: true,
+  forkedFromConfigId: true,
+  forkedFromVersion: true,
   createdAt: true,
 } as const
 
@@ -61,6 +67,10 @@ export interface PublishConfigInput {
   corpus: Prisma.InputJsonValue
   gateReport: Prisma.InputJsonValue
   publishedBy: string
+  /** Set by the fork path: the source GLOBAL config's id. Omit for direct publishes. */
+  forkedFromConfigId?: string
+  /** Set by the fork path: the source GLOBAL config's version. Omit for direct publishes. */
+  forkedFromVersion?: number
 }
 
 export function createIntegrationConfigRepository(db: PrismaClient) {
@@ -112,6 +122,37 @@ export function createIntegrationConfigRepository(db: PrismaClient) {
       if (own) return own
       return db.integrationConfig.findFirst({
         where: { integrationId, visibility: 'GLOBAL', status: 'PUBLISHED' },
+        orderBy: { version: 'desc' },
+        select: SELECT,
+      })
+    },
+
+    /**
+     * The latest PUBLISHED GLOBAL row for one integration — the fork source.
+     * Null when the platform has published no GLOBAL config for it (only a
+     * built-in code definition exists), which the fork handler treats as 404.
+     */
+    async findActiveGlobal(integrationId: string): Promise<IntegrationConfigRow | null> {
+      return db.integrationConfig.findFirst({
+        where: { integrationId, visibility: 'GLOBAL', status: 'PUBLISHED' },
+        orderBy: { version: 'desc' },
+        select: SELECT,
+      })
+    },
+
+    /**
+     * The tenant's OWN latest PUBLISHED row (visibility TENANT, owned by the
+     * caller) for one integration — used by the fork guard to refuse clobbering
+     * a tenant that has already customized. Null when the tenant has no own row
+     * (they only see GLOBAL/built-in). Distinct from findActiveForScope, which
+     * falls back to GLOBAL.
+     */
+    async findActiveOwn(
+      integrationId: string,
+      tenantId: string,
+    ): Promise<IntegrationConfigRow | null> {
+      return db.integrationConfig.findFirst({
+        where: { integrationId, tenantId, visibility: 'TENANT', status: 'PUBLISHED' },
         orderBy: { version: 'desc' },
         select: SELECT,
       })

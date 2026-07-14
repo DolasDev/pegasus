@@ -83,11 +83,111 @@ export interface IntegrationConfig {
   /** Golden-corpus cases — surfaced only in the raw-JSON view. */
   corpus: unknown[]
   publishedBy: string
+  /** Source config id when this row was forked from a GLOBAL platform config. */
+  forkedFromConfigId: string | null
+  /** Source config version at fork time. */
+  forkedFromVersion: number | null
   createdAt: string
 }
 
 export async function getIntegrationConfig(integrationId: string): Promise<IntegrationConfig> {
   return apiFetch<IntegrationConfig>(
     `/api/v1/integrations/${encodeURIComponent(integrationId)}/config`,
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Mutations — fork / validate / publish / versions / rollback.
+//
+// All live on the dual-auth m2m plane and accept a Cognito session, gated by
+// PublishIntegrationConfig + the INTEGRATION_CONFIG_PUBLISH_ENABLED flag.
+// Mirror apps/api/src/handlers/integration-validation/config.ts.
+// ---------------------------------------------------------------------------
+
+/**
+ * Fork the platform (GLOBAL) config for an integration into the caller's tenant
+ * scope — copies its mapping/rules/corpus, re-runs the gate, and publishes it as
+ * the tenant's own TENANT config (v1). Returns the new config row.
+ */
+export async function forkIntegrationConfig(integrationId: string): Promise<IntegrationConfig> {
+  return apiFetch<IntegrationConfig>(
+    `/api/v1/integrations/${encodeURIComponent(integrationId)}/config/fork`,
+    { method: 'POST' },
+  )
+}
+
+/** One problem the gate found in a candidate config. */
+export interface GateProblem {
+  stage: string
+  where: string
+  problem: string
+}
+
+/** The deterministic gate report (mirrors GateReport on the API). */
+export interface GateReport {
+  ok: boolean
+  problems: GateProblem[]
+  corpus: { total: number; passed: number; failures: unknown[] }
+}
+
+/** The editable surface a tenant submits to validate/publish. */
+export interface ConfigDraft {
+  mapping: unknown
+  rules: unknown
+  corpus: unknown[]
+}
+
+/** Dry-run the gate against a candidate config without writing. */
+export async function validateIntegrationConfig(
+  integrationId: string,
+  draft: ConfigDraft,
+): Promise<GateReport> {
+  return apiFetch<GateReport>(
+    `/api/v1/integrations/${encodeURIComponent(integrationId)}/config/validate`,
+    { method: 'POST', body: JSON.stringify(draft) },
+  )
+}
+
+/** Publish a new version of the tenant's own config (gated server-side). */
+export async function publishIntegrationConfig(
+  integrationId: string,
+  draft: ConfigDraft,
+): Promise<IntegrationConfig> {
+  return apiFetch<IntegrationConfig>(
+    `/api/v1/integrations/${encodeURIComponent(integrationId)}/config`,
+    { method: 'POST', body: JSON.stringify(draft) },
+  )
+}
+
+/** A compact version-history entry (mirrors the `toSummary` projection). */
+export interface IntegrationConfigVersion {
+  id: string
+  integrationId: string
+  version: number
+  visibility: 'GLOBAL' | 'TENANT'
+  status: 'PUBLISHED' | 'SUPERSEDED'
+  publishedBy: string
+  forkedFromConfigId: string | null
+  forkedFromVersion: number | null
+  createdAt: string
+}
+
+/** Version history for the caller's scope, newest first. */
+export async function listIntegrationConfigVersions(
+  integrationId: string,
+): Promise<IntegrationConfigVersion[]> {
+  return apiFetch<IntegrationConfigVersion[]>(
+    `/api/v1/integrations/${encodeURIComponent(integrationId)}/config/versions`,
+  )
+}
+
+/** Re-publish a prior version as a new version (re-runs the gate). */
+export async function rollbackIntegrationConfig(
+  integrationId: string,
+  version: number,
+): Promise<IntegrationConfig> {
+  return apiFetch<IntegrationConfig>(
+    `/api/v1/integrations/${encodeURIComponent(integrationId)}/config/rollback/${version}`,
+    { method: 'POST' },
   )
 }

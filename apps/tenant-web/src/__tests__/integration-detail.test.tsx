@@ -9,7 +9,7 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { ApiError } from '@/api/client'
@@ -18,6 +18,7 @@ import {
   MappingTable,
   RulesTable,
   RawJsonView,
+  GateReportView,
 } from '../routes/integrations.$integrationId'
 import type { IntegrationConfig } from '../api/integrations'
 
@@ -34,11 +35,26 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }))
 
+const { mockFork, mockValidate, mockPublish, mockRollback } = vi.hoisted(() => ({
+  mockFork: { mutate: vi.fn(), isPending: false, error: null as unknown },
+  mockValidate: { mutate: vi.fn(), isPending: false, error: null as unknown },
+  mockPublish: { mutate: vi.fn(), isPending: false, error: null as unknown },
+  mockRollback: { mutate: vi.fn(), isPending: false, error: null as unknown },
+}))
+
 vi.mock('@/api/queries/integrations', () => ({
   integrationConfigQueryOptions: (id: string) => ({
     queryKey: ['integrations', 'config', id],
     queryFn: vi.fn(),
   }),
+  integrationConfigVersionsQueryOptions: (id: string) => ({
+    queryKey: ['integrations', 'versions', id],
+    queryFn: vi.fn(),
+  }),
+  useForkIntegrationConfig: () => mockFork,
+  useValidateIntegrationConfig: () => mockValidate,
+  usePublishIntegrationConfig: () => mockPublish,
+  useRollbackIntegrationConfig: () => mockRollback,
 }))
 
 let configReturn: Record<string, unknown> = { data: undefined, isLoading: true, isError: false }
@@ -47,7 +63,12 @@ vi.mock('@tanstack/react-query', async () => {
   const actual = await vi.importActual('@tanstack/react-query')
   return {
     ...actual,
-    useQuery: () => configReturn,
+    // The versions query (ConfigVersionsCard) returns an empty list; every other
+    // query resolves to the controllable config return.
+    useQuery: (opts: { queryKey?: unknown[] }) =>
+      Array.isArray(opts?.queryKey) && opts.queryKey.includes('versions')
+        ? { data: [], isLoading: false, isError: false }
+        : configReturn,
   }
 })
 
@@ -90,6 +111,8 @@ const config: IntegrationConfig = {
   ],
   corpus: [{ name: 'clean', input: { order: {} }, expected: { valid: true, ruleIds: [] } }],
   publishedBy: 'user-1',
+  forkedFromConfigId: null,
+  forkedFromVersion: null,
   createdAt: '2026-06-19T12:00:00Z',
 }
 
@@ -112,6 +135,44 @@ describe('IntegrationDetailPage', () => {
     configReturn = { data: undefined, isLoading: true, isError: false }
   })
 
+  it('shows a Fork button on a GLOBAL (platform) config and forks on click', () => {
+    configReturn = { data: config, isLoading: false, isError: false }
+    renderPage()
+    expect(screen.getByText('Platform')).toBeInTheDocument()
+    const btn = screen.getByRole('button', { name: /fork to my tenant/i })
+    fireEvent.click(btn)
+    expect(mockFork.mutate).toHaveBeenCalledWith('demo_partner')
+    // No Edit affordance for a platform config the tenant doesn't own.
+    expect(screen.queryByRole('button', { name: /^edit$/i })).not.toBeInTheDocument()
+  })
+
+  it('shows provenance + Edit (not Fork) on a TENANT-owned forked config', () => {
+    configReturn = {
+      data: { ...config, visibility: 'TENANT', forkedFromVersion: 3, forkedFromConfigId: 'cfg-g' },
+      isLoading: false,
+      isError: false,
+    }
+    renderPage()
+    expect(screen.getByText(/forked from platform v3/i)).toBeInTheDocument()
+    expect(screen.getByText('Your config')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /fork to my tenant/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^edit$/i })).toBeInTheDocument()
+  })
+
+  it('opens the editor when Edit is clicked on a TENANT config', () => {
+    configReturn = {
+      data: { ...config, visibility: 'TENANT' },
+      isLoading: false,
+      isError: false,
+    }
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /^edit$/i }))
+    expect(screen.getByText('Mapping (JSON)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /validate/i })).toBeInTheDocument()
+    // Publish is blocked until a validate passes.
+    expect(screen.getByRole('button', { name: /publish new version/i })).toBeDisabled()
+  })
+
   it('shows the loading state', () => {
     configReturn = { data: undefined, isLoading: true, isError: false }
     renderPage()
@@ -124,7 +185,8 @@ describe('IntegrationDetailPage', () => {
     // Mapping is the default tab — its content is mounted on first render.
     expect(screen.getByText('serviceOrderNumber')).toBeInTheDocument()
     expect(screen.getByText('v3')).toBeInTheDocument()
-    expect(screen.getByText('GLOBAL')).toBeInTheDocument()
+    // A GLOBAL config renders the "Platform" badge (+ a Fork CTA).
+    expect(screen.getByText('Platform')).toBeInTheDocument()
     // All three tab triggers render.
     expect(screen.getByRole('tab', { name: 'Mapping' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Rules' })).toBeInTheDocument()
@@ -201,5 +263,30 @@ describe('RawJsonView', () => {
     expect(screen.getByText(/"integrationId": "demo_partner"/)).toBeInTheDocument()
     // Corpus is included in the raw view (but not the human-readable tabs).
     expect(screen.getByText(/"corpus"/)).toBeInTheDocument()
+  })
+})
+
+describe('GateReportView', () => {
+  it('summarizes a passing gate', () => {
+    render(
+      <GateReportView
+        report={{ ok: true, problems: [], corpus: { total: 2, passed: 2, failures: [] } }}
+      />,
+    )
+    expect(screen.getByText(/gate passed — 2\/2 corpus cases/i)).toBeInTheDocument()
+  })
+
+  it('lists problems on a failing gate', () => {
+    render(
+      <GateReportView
+        report={{
+          ok: false,
+          problems: [{ stage: 'mapping', where: 'shipments', problem: 'unmapped' }],
+          corpus: { total: 1, passed: 0, failures: [] },
+        }}
+      />,
+    )
+    expect(screen.getByText(/gate failed — 1 problem/i)).toBeInTheDocument()
+    expect(screen.getByText(/\[mapping\] shipments: unmapped/i)).toBeInTheDocument()
   })
 })
