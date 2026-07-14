@@ -212,6 +212,10 @@ const workflowDetailRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: '/settings/workflows/$workflowId',
   component: WorkflowDetailPage,
+  // Optional `?tab=executions` deep-links straight to the Executions tab (e.g.
+  // the "View executions" link on the workflows list). Anything else is dropped.
+  validateSearch: (search: Record<string, unknown>): { tab?: 'executions' } =>
+    search.tab === 'executions' ? { tab: 'executions' } : {},
 })
 
 const eventTypesSettingsRoute = createRoute({
