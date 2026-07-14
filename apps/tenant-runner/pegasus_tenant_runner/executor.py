@@ -127,8 +127,10 @@ class TenantCodeExecutor:
             )
 
         execution_id = ""
+        dry_run = False
         if isinstance(payload, dict):
             execution_id = str(payload.get("executionId") or "")
+            dry_run = bool(payload.get("dryRun"))
 
         # 1. Broker-proxied runtime-token fetch (sync httpx → worker thread).
         try:
@@ -155,6 +157,7 @@ class TenantCodeExecutor:
                 "runtimeToken": runtime_token,
                 "apiBaseUrl": self._api_base_url,
                 "resultPath": str(result_path),
+                "dryRun": dry_run,
             }
         ).encode("utf-8")
 
