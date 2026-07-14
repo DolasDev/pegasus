@@ -1,7 +1,11 @@
 # Rate trip shipments — 400NG "Rate trip" button
 
-Branch: `feat/rate-trip-shipments` (worktree at `../pegasus-rate-trip-shipments`, off fresh `origin/main`).
-Status: implemented + unit/component tests green, typecheck/lint clean. Not yet PR'd.
+Branch: `feat/rate-trip-shipments` (merged).
+Status: SHIPPED + deployed to prod. PR #421, squash-merge `2066a1a` (2026-07-14); branch CI,
+main CI, and Deploy (incl. prod release tag) all green. `/code-review` (high effort) run on the
+diff — all 6 findings fixed before merge (commits `389003b` zip recovery / discount reset / row
+key; `364db57` total sum / rejected-trip guard / dead condition). Automated tests only; a manual
+QA pass against real longhaul trip data (on-prem MSSQL bridge) remains the one uncovered check.
 
 Goal: add a "Rate trip" action to the driver-planning Planning screen (`PendingTrips`) and the
 saved-trip gantt detail (`Trip`) that rates each shipment on the trip via `POST /api/v1/rating/rate`
