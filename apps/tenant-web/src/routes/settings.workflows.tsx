@@ -4,6 +4,8 @@ import { Link } from '@tanstack/react-router'
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Copy,
   Download,
   Folder,
@@ -67,6 +69,7 @@ import { Input } from '@/components/ui/input'
 import { usePermissions } from '@/auth/permissions'
 import { formatFireTimeUtc, parseCronExpression, previewNextFires } from '@/lib/cron-preview'
 import { parseTriggerFilter } from '@/lib/trigger-filter'
+import { groupWorkflowsByName, type WorkflowVersionGroup } from '@/lib/workflow-grouping'
 import { eventTypesQueryOptions } from '@/api/queries/event-types'
 
 // Triggers are gated by this Cedar permission (underscore, not hyphen — the
@@ -792,7 +795,7 @@ function TriggersSection({ workflow }: { workflow: Workflow }) {
 // Row component — one workflow with a Download Source button
 // ---------------------------------------------------------------------------
 
-function WorkflowRow({ workflow }: { workflow: Workflow }) {
+function WorkflowRow({ workflow, nested = false }: { workflow: Workflow; nested?: boolean }) {
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [runDialogOpen, setRunDialogOpen] = useState(false)
@@ -833,7 +836,7 @@ function WorkflowRow({ workflow }: { workflow: Workflow }) {
   }
 
   return (
-    <div className="border-b border-border py-3 last:border-0">
+    <div className={nested ? 'border-t border-border py-3 first:border-t-0' : 'py-3'}>
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -956,6 +959,49 @@ function WorkflowRow({ workflow }: { workflow: Workflow }) {
 
       {runDialogOpen && (
         <RunWorkflowDialog workflow={workflow} onClose={() => setRunDialogOpen(false)} />
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Workflow group — one workflow name; shows only the latest version by default
+// with older versions tucked behind an expander to keep the list uncluttered.
+// ---------------------------------------------------------------------------
+
+function WorkflowGroup({ group }: { group: WorkflowVersionGroup<Workflow> }) {
+  const [expanded, setExpanded] = useState(false)
+  const { latest, older } = group
+  const olderCount = older.length
+
+  return (
+    <div className="border-b border-border last:border-0">
+      <WorkflowRow workflow={latest} />
+      {olderCount > 0 && (
+        <div className="pb-3">
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((v) => !v)}
+            className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+          >
+            {expanded ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )}
+            {expanded
+              ? 'Hide older versions'
+              : `${olderCount} older version${olderCount === 1 ? '' : 's'}`}
+          </button>
+          {expanded && (
+            <div className="mt-1 border-l border-border pl-4">
+              {older.map((w) => (
+                <WorkflowRow key={w.id} workflow={w} nested />
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   )
@@ -1542,8 +1588,11 @@ function ConfigsSection() {
 export function WorkflowsSettingsPage() {
   const { data, isPending, isError, error } = useQuery(workflowsQueryOptions)
 
-  const platformLibrary = data?.filter((w) => w.visibility === 'GLOBAL') ?? []
-  const tenantWorkflows = data?.filter((w) => w.visibility === 'TENANT') ?? []
+  // Collapse each section's flat (name, version) rows into one group per
+  // workflow name — the list shows only each workflow's latest version, with
+  // older versions behind a per-row expander.
+  const platformLibrary = groupWorkflowsByName(data?.filter((w) => w.visibility === 'GLOBAL') ?? [])
+  const tenantWorkflows = groupWorkflowsByName(data?.filter((w) => w.visibility === 'TENANT') ?? [])
 
   return (
     <div className="container mx-auto max-w-4xl py-8">
@@ -1608,8 +1657,8 @@ export function WorkflowsSettingsPage() {
               />
             ) : (
               <div className="rounded-md border border-border bg-card px-4">
-                {platformLibrary.map((w) => (
-                  <WorkflowRow key={w.id} workflow={w} />
+                {platformLibrary.map((g) => (
+                  <WorkflowGroup key={g.name} group={g} />
                 ))}
               </div>
             )}
@@ -1632,8 +1681,8 @@ export function WorkflowsSettingsPage() {
               />
             ) : (
               <div className="rounded-md border border-border bg-card px-4">
-                {tenantWorkflows.map((w) => (
-                  <WorkflowRow key={w.id} workflow={w} />
+                {tenantWorkflows.map((g) => (
+                  <WorkflowGroup key={g.name} group={g} />
                 ))}
               </div>
             )}
