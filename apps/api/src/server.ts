@@ -1,25 +1,23 @@
 // ---------------------------------------------------------------------------
 // Standalone Node.js HTTP entry point
 //
-// Runs the Hono app using @hono/node-server for on-premises deployment.
-// The Lambda entry point (lambda.ts) remains unchanged for AWS deployment.
+// Runs the cloud Hono app (app.ts) under @hono/node-server for local
+// development and the e2e suite's `webServer` (apps/e2e/playwright.config.ts).
+// The Lambda entry point (lambda.ts) remains the AWS deployment path.
 //
 // Environment variables:
 //   PORT      — HTTP port (default: 3000)
 //   HOST      — Bind address (default: 0.0.0.0)
-//   SKIP_AUTH — When "true", bypasses Cognito auth (on-prem / internal use)
+//   SKIP_AUTH — When "true", bypasses Cognito auth (local / internal use)
 // ---------------------------------------------------------------------------
 
-// Load .env before any module reads process.env. Required for the on-prem
-// Windows Service path: the service runs as LocalSystem and does not inherit
-// per-user env vars, so config must come from a .env file in apps/api/.
+// Load .env before any module reads process.env.
 import 'dotenv/config'
 
 import { serve } from '@hono/node-server'
-import { app } from './app.server'
+import { app } from './app'
 import { logger } from './lib/logger'
 import { validateEnv } from './lib/env'
-import { closeAllPools } from './lib/mssql'
 import { db } from './db'
 
 /**
@@ -39,11 +37,10 @@ export function startServer() {
 }
 
 /**
- * Graceful shutdown — closes MSSQL connection pools and disconnects Prisma.
+ * Graceful shutdown — disconnects Prisma.
  */
 export async function shutdown(): Promise<void> {
   logger.info('Shutting down gracefully...')
-  await closeAllPools()
   await db.$disconnect()
   logger.info('Shutdown complete')
 }

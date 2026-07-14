@@ -1,10 +1,28 @@
 # Retire the pegII + efwk on-prem MSSQL-executor routes
 
-Branch (when started): `chore/retire-pegii-efwk-onprem-routes` (this file lands first as a draft).
+Branch: `chore/retire-pegii-efwk-onprem-routes`.
 Goal: delete the two unused legacy on-prem HTTP surfaces — the pegII generic
 MSSQL-entity router and the efwk router — and unwind whatever becomes dead once
 they're gone, **without** touching the MSSQL-executor path that live cloud
 handlers still depend on.
+
+## ✅ EXECUTED 2026-07-14 (option B1, with one forced adaptation)
+
+Deleted `handlers/pegii/`, `handlers/efwk/`, `repositories/pegii/` (+ all their
+tests), `app.server.ts`, `lib/mssql.ts`, `types.onprem.ts`, `apps/api/service/`;
+dropped the `mssql` + `@types/mssql` + `node-windows` deps and the
+`start`/`service:*` package scripts; updated `apps/api/README.md`, the
+`db-access-guard` allowlist, and two stale comments.
+
+**Adaptation from a strict B1:** `server.ts` could NOT be deleted — it is the
+e2e/dev `webServer` boot command (`apps/e2e/playwright.config.ts:128`,
+`tsx ../api/src/server.ts`). It was instead **repointed at the base cloud
+`./app`** (dropping the `app.server` + `lib/mssql` imports) and its `start:dev`
+script kept. The on-prem _server subsystem_ is gone; `server.ts` survives as a
+plain local/e2e node server. Verified: typecheck+lint+2160 tests green; the node
+server boots and `/health`→200; retired `/api/v1/pegii/sale/*` + `/api/v1/efwk/*`
+→404 while the LIVE `/api/v1/pegii/orders` runtime route still serves. Shipped in
+PR (see git log).
 
 ## Context
 
