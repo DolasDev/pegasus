@@ -77,6 +77,14 @@ def run_command(
         "--input",
         help="JSON-encoded input payload passed to the workflow.",
     ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help=(
+            "Benign rehearsal: run the real workflow with reads live but "
+            "mutations captured, never performed. Tenant-runner workflows only."
+        ),
+    ),
     token: str = token_option(),
     base_url: str = base_url_option(),
     profile: str = profile_option(),
@@ -104,12 +112,13 @@ def run_command(
     name, version = _parse_name_version(workflow)
     client = PegasusClient(base_url=base_url, token=token)
     workflow_row = _find_workflow(client, name, version)
+    mode_label = " [dry-run]" if dry_run else ""
     typer.echo(
-        f"-> running {workflow_row['name']}@{workflow_row['version']} "
+        f"-> running {workflow_row['name']}@{workflow_row['version']}{mode_label} "
         f"({workflow_row['visibility']}, id={workflow_row['id']})"
     )
     try:
-        execution = client.run_workflow(workflow_row["id"], parsed_input)
+        execution = client.run_workflow(workflow_row["id"], parsed_input, dry_run=dry_run)
     except PegasusApiError as exc:
         typer.secho(f"run failed: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc

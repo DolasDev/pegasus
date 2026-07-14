@@ -343,6 +343,8 @@ class PegasusClient:
         self,
         workflow_id: str,
         input: dict[str, Any] | None = None,
+        *,
+        dry_run: bool = False,
     ) -> dict[str, Any]:
         """Start a server-side execution of *workflow_id*.
 
@@ -355,6 +357,10 @@ class PegasusClient:
             workflow_id: The workflow to run (GLOBAL or a TENANT fork of one).
             input: JSON-shaped input dict the worker passes to the workflow.
                 Defaults to an empty dict.
+            dry_run: When True, request ``mode=dry_run`` — a benign rehearsal
+                that runs the real workflow with reads live but mutations
+                captured (never performed). Only tenant-runner workflows support
+                it; a curated workflow returns 422 ``DRY_RUN_UNSUPPORTED``.
 
         Returns:
             The freshly-created ``WorkflowExecutionResponse`` object in its
@@ -362,10 +368,13 @@ class PegasusClient:
             the Temporal start round-trip has completed).
 
         Raises:
-            PegasusApiError: On 400 (not in allowlist), 404, 502 (Temporal
-                start failed), or any other non-2xx.
+            PegasusApiError: On 400 (not in allowlist), 404, 422
+                (``DRY_RUN_UNSUPPORTED``), 502 (Temporal start failed), or any
+                other non-2xx.
         """
-        payload = {"input": input or {}}
+        payload: dict[str, Any] = {"input": input or {}}
+        if dry_run:
+            payload["mode"] = "dry_run"
         with self._client() as client:
             response = client.post(
                 f"/api/v1/workflows/{workflow_id}/run",

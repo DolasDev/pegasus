@@ -1219,3 +1219,27 @@ def test_non_dry_run_client_sends_normally() -> None:
     client.send_sms(to="+15551234567", body="hi")
     assert calls["path"] == "/api/v1/sms/send"   # real POST happened
     assert client.captured == []
+
+
+def test_run_workflow_dry_run_sets_mode() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(201, json={"data": {"id": "exec-1", "status": "QUEUED"}})
+
+    client = _client_with(handler)
+    client.run_workflow("wf-1", {"n": 1}, dry_run=True)
+    assert captured["body"] == {"input": {"n": 1}, "mode": "dry_run"}
+
+
+def test_run_workflow_live_omits_mode() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(201, json={"data": {"id": "exec-1", "status": "QUEUED"}})
+
+    client = _client_with(handler)
+    client.run_workflow("wf-1", {"n": 1})
+    assert captured["body"] == {"input": {"n": 1}}   # back-compat: no mode key

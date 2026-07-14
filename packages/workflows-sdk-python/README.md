@@ -538,6 +538,21 @@ captured to `client.captured` — the same read-vs-mutation split the platform's
 Cedar `required_actions` gating enforces, and the same `is_dry_run` /
 `record_side_effect` surface the server-side dry-run mode exposes.
 
+**Rehearse the real thing with `--dry-run`.** The offline harness runs one
+activity; to rehearse a whole workflow end-to-end on the platform — real reads,
+mutations captured, nothing performed — start it in dry-run mode:
+
+```
+pegasus-workflows run send_order_to_partner --dry-run --input '{"saleId":"S-123"}'
+```
+
+The workflow runs on the tenant runner exactly as a live run would, but the
+runtime injects a dry-run client (`client.is_dry_run` is `True`), so reads hit
+the live API while every mutation is captured instead of performed. The result
+carries the per-activity trace and the capture log of would-be side effects.
+Only tenant-runner workflows support it (a curated workflow returns 422
+`DRY_RUN_UNSUPPORTED`).
+
 ## Using the SDK with an AI coding agent
 
 The SDK ships a built-in [MCP](https://modelcontextprotocol.io/) server that

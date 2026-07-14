@@ -3,6 +3,21 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.13.0
+
+### Added
+
+- **Dry-run execution** (spec 0015, Part A). `pegasus-workflows run <name>
+  --dry-run` (and `PegasusClient.run_workflow(id, input, dry_run=True)`) starts a
+  benign rehearsal: the real workflow runs on the tenant runner with reads live
+  but every mutation **captured, never performed**. The runtime enables this by
+  setting `PEGASUS_DRY_RUN`, which `PegasusClient.from_runtime()` reads to return
+  a dry-run client: `client.is_dry_run` is `True`, mutating methods append a
+  capture record and return a synthetic success, and `client.record_side_effect`
+  logs effects the SDK can't infer. Only tenant-runner workflows support it — a
+  curated workflow returns 422 `DRY_RUN_UNSUPPORTED`. Author code needs no
+  changes: the same activity body runs; the injected client makes it benign.
+
 ## 0.12.0
 
 ### Added
