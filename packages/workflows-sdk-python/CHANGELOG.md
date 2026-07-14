@@ -3,6 +3,27 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.11.0
+
+### Added
+
+- **`pegasus_workflows.testing` — an offline activity harness** (spec 0015,
+  Part C). `fake_client(reads={...})` returns a `PegasusClient`-shaped double that
+  serves reads from canned fixtures and **captures** mutations (`send_sms`,
+  `emit_event`, `close_task`, `put_projection`/`delete_projection`, …) to
+  `client.captured` instead of performing them — each entry carries its Cedar
+  `capability`, so a test asserts *what would have been sent* without sending it.
+  `run_activity(activity_fn, *args, client=...)` runs an activity's **real** body
+  inside Temporal's own `temporalio.testing.ActivityEnvironment` (no Docker, no
+  network), injecting the fake by patching `PegasusClient.from_runtime` for the
+  call — so activity code that does `PegasusClient.from_runtime()` runs its real
+  logic against the fake and the `if client is None: return {"stub": True}` stub
+  branch is retired from shipped source. The fake exposes the same `is_dry_run` /
+  `record_side_effect` surface as the forthcoming server-side `--dry-run` mode, so
+  author code behaves identically offline and server-side. A drift guard asserts
+  every `PegasusClient` runtime method is classified read-vs-mutation, so a new
+  SDK method can't slip through unclassified.
+
 ## 0.8.1
 
 ### Fixed

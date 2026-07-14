@@ -471,6 +471,44 @@ docker compose -f docker-compose.temporal.yml up -d
 
 The Temporal Web UI is then at <http://localhost:8080>.
 
+## Testing activities offline
+
+`pegasus-workflows test` runs a workflow end-to-end against a local Temporal, but
+it injects **no** runtime client — so every activity that builds one via
+`PegasusClient.from_runtime()` gets nothing and falls back to a hand-written stub,
+exercising control flow only. To run an activity's **real** body — a real mapping,
+a real read — without any Docker, network, or side effect, use the
+`pegasus_workflows.testing` harness:
+
+```python
+from pegasus_workflows.testing import fake_client, run_activity
+from my_workflow.workflow import fetch_order, send_order_to_partner
+
+# Reads are served from fixtures; keyed reads (get_order, get_secret,
+# map_to_external, …) take a {key: value} map, list/whole-value reads take the
+# value as-is.
+client = fake_client(reads={"get_order": {"S-123": {"orderNumber": "S-123"}}})
+
+# The activity's REAL body runs (inside Temporal's ActivityEnvironment) — not a
+# stub — with the fake injected in place of PegasusClient.from_runtime().
+order = run_activity(fetch_order, "S-123", client=client)
+assert order["orderNumber"] == "S-123"
+assert client.captured == []                 # a read — nothing was sent
+
+# Mutations are captured, never performed. Each entry records its Cedar capability.
+run_activity(send_order_to_partner, order, client=client)
+assert client.captured[0]["capability"] == "SendSms"
+```
+
+This retires the `if client is None: return {"stub": True}` pattern: the stub
+logic lives in the harness, not in shipped source, so a test exercises the same
+code that runs in production. Reads (`get_order`, `map_to_external`,
+`get_config`/`get_secret`, `list_*`, …) are benign and served from fixtures;
+mutations (`send_sms`, `emit_event`, `close_task`, `put_projection`, …) are
+captured to `client.captured` — the same read-vs-mutation split the platform's
+Cedar `required_actions` gating enforces, and the same `is_dry_run` /
+`record_side_effect` surface the server-side dry-run mode exposes.
+
 ## Using the SDK with an AI coding agent
 
 The SDK ships a built-in [MCP](https://modelcontextprotocol.io/) server that
