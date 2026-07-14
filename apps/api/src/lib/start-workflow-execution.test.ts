@@ -724,6 +724,7 @@ describe('startWorkflowExecution (inherited Unit 3 contracts)', () => {
       triggeredByTriggerId: null,
       temporalWorkflowId: null,
       input: { quote_id: 'q-1' },
+      dryRun: false,
     })
     expect(mockTemporalStart).toHaveBeenCalledWith('send_quote_followup', {
       args: [{ executionId: 'exec-1', input: { quote_id: 'q-1' }, dryRun: false }],
@@ -751,6 +752,23 @@ describe('startWorkflowExecution (inherited Unit 3 contracts)', () => {
         memo: { dryRun: true },
       }),
     )
+    // The row is persisted with dryRun=true.
+    expect(mockExecutionRepo.create).toHaveBeenCalledWith(expect.objectContaining({ dryRun: true }))
+  })
+
+  it('dry-run skips the concurrency cap + daily quota (never counted, never blocked)', async () => {
+    // countValue well over the cap — a live run would be CONCURRENCY_LIMIT.
+    const result = await startWorkflowExecution(fakeDb(99), {
+      workflow: tenantWorkflow,
+      tenantId: 'tenant-1',
+      input: {},
+      dryRun: true,
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-1' },
+    })
+
+    expect(result.outcome).toBe('STARTED')
+    // The counts are never even queried for a dry-run.
+    expect(mockExecutionCount).not.toHaveBeenCalled()
   })
 
   it('dry-run of a curated STDLIB workflow is rejected (DRY_RUN_UNSUPPORTED) — nothing started', async () => {

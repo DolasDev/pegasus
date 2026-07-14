@@ -15,10 +15,11 @@ Authoritative SDK source: `packages/workflows-sdk-python` (v0.10.0). Consumer wo
 **Run dispatch (single choke point).** `POST /api/v1/workflows/:id/run` → `apps/api/src/handlers/workflows.ts:905` (`RunBody` Zod at `:167`, `{ input }` only, no mode) → shared `startWorkflowExecution(...)` in `apps/api/src/lib/start-workflow-execution.ts:383` (also used by retry + trigger-dispatcher Lambda). The only channel into the worker is the Temporal `args: [{ executionId, input }]` at `start-workflow-execution.ts:552`; the worker fetches its runtime `vnd_` token out-of-band from `POST /api/v1/internal/workflow-runtime-token` keyed by `executionId`.
 
 **Runtime capability endpoints** (called by `PegasusClient`, mapping in `packages/workflows-sdk-python/pegasus_workflows/api.py`), reads vs mutations:
+
 - Reads (safe to run live in a test): `get_order`/`list_orders` (`ReadOrder`), `list_tasks`/`get_task` (`ReadTask`), `get_projection`/`list_projections` (`ReadIntegrationProjection`), `get_config` (`ReadWorkflowConfig`), `get_secret` (`ReadWorkflowSecret`), `map_to_external` (**no** Cedar action — open `vnd_`-key), `validate_integration_config`, and the `list_customers/quotes/moves/inventory/invoices/events` reads.
 - Mutations (must be captured, never performed in dry-run): `send_sms` (`SendSms`, `handlers/sms.ts:57`), `emit_event` (`EmitTenantEvent`, `handlers/event-types.ts:291`), `close_task` (`CloseTask`, `handlers/pegii-runtime.ts:147`), `put_projection`/`delete_projection` (`WriteIntegrationProjection`, `handlers/integration-projections.ts:109`), plus **any raw outbound network** (the blind spot).
 
-**`map_to_external` is the symmetric template for `deliver_to_external`** — handler `apps/api/src/handlers/integration-validation/validate.ts:119`, but it is gated only by `apiClientAuthMiddleware` (any non-revoked `vnd_` key, no `requirePermission`, no Cedar action) because it is a pure read-only transform. `deliver_to_external` is a *mutation with an external side effect* → it must NOT reuse the open surface; it needs a real `requirePermission(Actions.DeliverToExternal)` gate.
+**`map_to_external` is the symmetric template for `deliver_to_external`** — handler `apps/api/src/handlers/integration-validation/validate.ts:119`, but it is gated only by `apiClientAuthMiddleware` (any non-revoked `vnd_` key, no `requirePermission`, no Cedar action) because it is a pure read-only transform. `deliver_to_external` is a _mutation with an external side effect_ → it must NOT reuse the open surface; it needs a real `requirePermission(Actions.DeliverToExternal)` gate.
 
 **Cedar registration pattern** (4 steps, documented at `apps/api/src/authz/actions.ts:12`): add to `Actions` const (`actions.ts:57`) → add to `cedar.schema.json` `actions` map with `appliesTo` → reference in `apps/api/src/authz/policies/30-personas/workflow-runtime.cedar:22` → mount `requirePermission(...)` on the route. `VALID_ACTION_IDS` (`handlers/workflows.ts:82`) gates what a manifest's `required_actions` may declare — so the action must land before any workflow can declare it.
 
@@ -27,6 +28,7 @@ Authoritative SDK source: `packages/workflows-sdk-python` (v0.10.0). Consumer wo
 **tenant-web inspection UI (PR #376).** Detail page `apps/tenant-web/src/routes/settings.workflows.$workflowId.tsx` (Overview + Executions tabs; `ExecutionDetail` renders the Temporal timeline). List page `settings.workflows.tsx` has the **Run** button → `RunWorkflowDialog` → `useRunWorkflow()` → `POST .../run`. API client `apps/tenant-web/src/api/workflows.ts`; query wrappers `apps/tenant-web/src/api/queries/workflows.ts`. Router: `apps/tenant-web/src/router.tsx`.
 
 **Motivating workflows (in `pegasus-workflows` repo).**
+
 - `platform/send_order_to_partner/.../workflow.py` — `fetch_order` → `map_order_to_external_body` → `send_to_partner`; the last does **raw `httpx.post(SEND_URL, ...)`** with `SEND_API_KEY`. All three carry `if client is None: return {"stub": True}`. Manifest `required_actions = ["ReadOrder","ReadWorkflowConfig","ReadWorkflowSecret"]`.
 - `nw/order_lifecycle/.../workflow.py` — `close_date_confirmation_task` is a full stub (`⚠️ STUB … no task API`); note `close_task` now exists in SDK, so this stub is separately un-stubbable.
 - `platform/send_order_saved_sms/.../workflow.py` — single `deliver_sms` activity, already unstubbed (`SendSms`).
@@ -37,27 +39,31 @@ Authoritative SDK source: `packages/workflows-sdk-python` (v0.10.0). Consumer wo
 
 ## Temporal-native strategy (researched 2026-07-14 — read before implementing)
 
-We checked what Temporal offers natively vs. what we must build. Summary: **Temporal has excellent native *testing* primitives (use them in Phase C), but no native dry-run / side-effect suppression — and this repo's tenant-execution model bypasses the Temporal features that would otherwise help Part A/D.**
+We checked what Temporal offers natively vs. what we must build. Summary: **Temporal has excellent native _testing_ primitives (use them in Phase C), but no native dry-run / side-effect suppression — and this repo's tenant-execution model bypasses the Temporal features that would otherwise help Part A/D.**
 
 **What Temporal gives us for free (use it):**
+
 - **`temporalio.testing.ActivityEnvironment().run(fn, *args)`** runs a single `@activity.defn` in a real activity context. This is the idiomatic backing for Phase C's `run_activity` — **do not hand-roll it.** `apps/temporal-worker/tests/test_worker_e2e.py` already uses the sibling `WorkflowEnvironment` (`start_local`), so this is an established repo pattern.
 - **`WorkflowEnvironment.start_time_skipping()` + a `Worker` with same-name/signature mock activities** is the idiomatic whole-workflow offline test (no docker for the app server; downloads a test-server binary). Fidelity caveat below.
 
 **What Temporal does NOT give us (must build in our layer):**
+
 - **No native "dry-run" that suppresses side effects.** Temporal is agnostic to what an activity does — an `httpx.post` or a `client.send_sms()` inside an activity is invisible to it. So mutation interception is fundamentally ours (Decision 1).
 - **`Replayer` is determinism validation, NOT re-execution.** The spec's "replay a past event" (Part D) is therefore **not** Temporal replay — it's just starting a fresh dry-run execution with the saved trigger payload as input. Do not conflate; do not reach for `Replayer`.
 
 **The decisive architectural fact — how tenant code actually runs (`apps/tenant-runner`):**
 Temporal only ever sees a **proxy workflow → one opaque activity** (`run_tenant_entry_point`, `proxy.py:118`). The real tenant workflow body runs in a **subprocess with no Temporal connection** (`subprocess_driver.py`), where `_install_direct_execution_patches()` (`subprocess_driver.py:63`) already monkey-patches `workflow.execute_activity`/`execute_local_activity`/`sleep`/`now`/`uuid4` into **direct in-process calls**. "The whole workflow runs as ONE unit of work" (v1 semantics; per-activity durability/replay/signals deferred). Consequences:
+
 1. **Temporal event history is NOT a usable capture-log source for tenant workflows** — `summarizeWorkflowHistory` (`temporal-client.ts:118`) would show only the single proxy activity, and today it doesn't even surface activity `input`/`result` payloads (both present on the raw proto, neither read). So Part D's per-activity trace **cannot** come from Temporal history.
-2. **The `_direct_execute_activity` monkey-patch seam is THE injection point** for dry-run — it already wraps every tenant activity call. Wrapping it to (a) record `{activity, args, result}` into a per-execution trace and (b) know the dry-run flag is a *small, localized* change, far cleaner than scattering `is_dry_run` across every `PegasusClient` method or building a Temporal interceptor (which sits at the proxy boundary and can't see inside anyway).
+2. **The `_direct_execute_activity` monkey-patch seam is THE injection point** for dry-run — it already wraps every tenant activity call. Wrapping it to (a) record `{activity, args, result}` into a per-execution trace and (b) know the dry-run flag is a _small, localized_ change, far cleaner than scattering `is_dry_run` across every `PegasusClient` method or building a Temporal interceptor (which sits at the proxy boundary and can't see inside anyway).
 3. **Capture-log transport is nearly free:** the subprocess already returns its result up through the proxy activity into `WorkflowExecution.result`. Attach the trace + capture log there → the existing execution-detail endpoint surfaces it to Part D. No bespoke `/internal/.../capture` endpoint needed.
 
 **Temporal tagging (idiomatic, currently greenfield — nothing in the repo uses Search Attributes / Memo / Interceptors / tags):**
+
 - Add a **`Memo` `{ dryRun: true }`** to `client.workflow.start` (`start-workflow-execution.ts:552`) — trivial, makes dry-runs filterable in the Temporal Web UI. Recommended.
 - A registered custom **Search Attribute** (`dryRun`) would allow `ListWorkflows` filtering but needs namespace registration in CDK (`packages/infra`) — heavier; optional/ops-nice-to-have. The app's own dashboards filter on the Postgres `WorkflowExecution.dryRun` column regardless.
 
-**Related finding to flag (not in scope, but adjacent):** there's a **fidelity gap** — `pegasus-workflows test` (`cli/test.py`) runs the workflow as a *real* Temporal workflow (registers `workflow_cls` + real activities on a real dockerized Temporal), whereas production runs it via the proxy + subprocess direct-execution model. A dry-run that reuses the subprocess driver is *more* production-faithful than the current `test` command. Worth a note in the SDK docs; possibly a future convergence.
+**Related finding to flag (not in scope, but adjacent):** there's a **fidelity gap** — `pegasus-workflows test` (`cli/test.py`) runs the workflow as a _real_ Temporal workflow (registers `workflow_cls` + real activities on a real dockerized Temporal), whereas production runs it via the proxy + subprocess direct-execution model. A dry-run that reuses the subprocess driver is _more_ production-faithful than the current `test` command. Worth a note in the SDK docs; possibly a future convergence.
 
 **Net effect on the plan:** Phase C leans on `ActivityEnvironment`; Phase A's interception + trace capture live at the `subprocess_driver` seam (not PegasusClient branches, not Temporal interceptors); the capture log rides the proxy result into `WorkflowExecution.result`; Temporal `Memo` tags the execution; Part D reads the result, not Temporal history.
 
@@ -71,12 +77,14 @@ Temporal only ever sees a **proxy workflow → one opaque activity** (`run_tenan
 
 ## Decision detail (superseded by the LOCKED block above; kept for rationale)
 
-**Decision 1 — Dry-run enforcement model (affects Phase A).** *(Refined by the Temporal-native research above — the injection point is now identified as the subprocess-driver seam, not scattered client branches.)*
+**Decision 1 — Dry-run enforcement model (affects Phase A).** _(Refined by the Temporal-native research above — the injection point is now identified as the subprocess-driver seam, not scattered client branches.)_
+
 - **(1a) Driver-seam interception [RECOMMENDED for v1].** The runner marks the execution dry-run; the **subprocess driver** (`subprocess_driver.py`) reads it, injects a dry-run `PegasusClient` (so mutating capability calls — `send_sms`, `emit_event`, `close_task`, `put_projection`, `deliver_to_external` — are suppressed + captured, reads pass through live), and wraps `_direct_execute_activity` to record the per-activity trace. `client.is_dry_run` + `record_side_effect` are still exposed to author code. Trace + capture log return up through the proxy activity into `WorkflowExecution.result`. Touches **no** mutating capability handler and needs **no** new capture endpoint. Weakness: trust-based — raw outbound network (raw `httpx`) still escapes the injected client, which is exactly what Phase B fixes for the one send that matters.
 - **(1b) Server-side scope enforcement [hardening follow-up].** The runtime token minted for a dry-run execution carries a `dry-run` scope; every mutating handler checks it and captures instead of performing. Genuinely enforced regardless of client behavior, but touches every mutating handler + token minting; still can't stop raw `httpx` (only Phase B / an egress guard does).
 - **Recommendation:** ship **1a**; note 1b as later hardening. Capture-log transport is settled by the architecture: **the subprocess already returns its result through the proxy → land the trace in `WorkflowExecution.result`; no new endpoint.**
 
 **Decision 2 — Where `deliver_to_external`'s endpoint + credential live (affects Phase B size).**
+
 - **(2a) Platform-held on the integration [spec's intent, larger].** Add an outbound-delivery binding (endpoint URL + credential reference) to the integration definition/config; platform holds the secret. Delivers the spec promise ("config/secret shrink to nothing for the send", symmetric with `map_to_external`) but is net-new config schema + a secret-storage decision + admin surface to set it.
 - **(2b) Server-side call over existing workflow config/secret [lighter].** `deliver_to_external` still reads the workflow's own `SEND_URL`/`SEND_API_KEY`, but the POST executes **server-side** so dry-run can intercept it. Removes raw `httpx` from the workflow and makes the send interceptable (the core win) without new integration schema — but creds stay workflow-scoped, not "platform-held".
 - **Recommendation:** decide with the user. 2b is a materially smaller first step that still unblocks Phase A's benign-ness on `send_order_to_partner`; 2a can follow. **This is the single biggest scoping unknown in the workstream.**
@@ -88,6 +96,7 @@ Temporal only ever sees a **proxy workflow → one opaque activity** (`run_tenan
 ## Phasing (dependency order: C ∥ B → A → D)
 
 ### Phase C — Local fixture harness (SDK only; offline; cheapest, safest) — **IN PROGRESS (SDK slice done)**
+
 Goal: ship `pegasus_workflows.testing` so an activity's real body runs offline against canned reads and side effects are asserted from a capture log — replacing the `if client is None` stubs in shipped source.
 
 - [x] `packages/workflows-sdk-python/pegasus_workflows/testing/__init__.py` — `fake_client(reads={...})` returns a `FakeClient` (duck-typed, `__getattr__`-dispatched): reads served from fixtures; every mutating method appends `{method, capability, args, kwargs, would_return}` to `client.captured` and returns a synthetic, realistically-shaped success. Exposes `is_dry_run=True` + `record_side_effect(label, payload)` matching the Phase A surface.
@@ -100,6 +109,7 @@ Goal: ship `pegasus_workflows.testing` so an activity's real body runs offline a
 - Anti-drift satisfied: `test_classification_covers_every_client_method` fails if the SDK adds an unclassified `PegasusClient` method.
 
 ### Phase B — Outbound delivery primitive `deliver_to_external` (API + Cedar + SDK) — **DONE (platform+SDK), consumer rewrite pending**
+
 Goal: make partner delivery a platform capability so it is interceptable in dry-run and no longer raw `httpx`. Decision 2b: creds from the workflow's own config/secret, POST performed server-side.
 
 - [x] Cedar: `DeliverToExternal` action added via the 4-step pattern — `actions.ts` (resourceType `IntegrationConfig`, permission `integration:deliver`), `cedar.schema.json`, `workflow-runtime.cedar` grant, route gate. `tenant_admin` blanket-covers it (authz invariants hold).
@@ -109,18 +119,20 @@ Goal: make partner delivery a platform capability so it is interceptable in dry-
 - [ ] **PyPI publish** `sdk-python-v0.12.0` — deferred to explicit release go.
 - [ ] **In `pegasus-workflows` repo** (separate PR/repo): rewrite `send_order_to_partner.send_to_partner` to call `deliver_to_external`; drop `httpx` import + `SEND_URL`/`SEND_API_KEY` reads; manifest `required_actions` += `DeliverToExternal`. (Depends on 0.12.0 on PyPI.)
 - [ ] **SSRF hardening follow-up**: `assertDeliverableUrl` is a baseline guard (no DNS-rebinding protection / egress allowlist). Consider an allowlist or resolve-then-pin before GA on untrusted tenants.
-- Note: diverged from the spec's "integration's *configured* endpoint" wording per Decision 2b — `integration_id` is validated + recorded but creds come from workflow config. Update spec 0015 acceptance/validation log accordingly.
+- Note: diverged from the spec's "integration's _configured_ endpoint" wording per Decision 2b — `integration_id` is validated + recorded but creds come from workflow config. Update spec 0015 acceptance/validation log accordingly.
 
 ### Phase A — Server-side dry-run execution — **FUNCTIONAL END-TO-END (A1a+A2+A3+A4 done); A1b column pending**
 
 Status: a dry-run works end-to-end today — `run --dry-run` → API threads the flag → runner subprocess driver injects the dry-run client + captures the trace → result envelope `{dryRun, return, trace, captured}` lands in `WorkflowExecution.result` (+ Temporal `memo{dryRun}`). Done:
+
 - [x] **A2 SDK dry-run client** — `from_runtime()` reads `PEGASUS_DRY_RUN`; 12 mutating methods capture-not-perform; process-global sink; `is_dry_run`/`record_side_effect`. (committed)
 - [x] **A3 tenant-runner seam** — executor threads `dryRun`; `subprocess_driver` sets `PEGASUS_DRY_RUN`, wraps `_direct_execute_activity` for trace, returns `{dryRun,return,trace,captured}`; **fails closed** if the bundled SDK is too old. Verified in a real subprocess. (committed)
 - [x] **A1a API** — `RunBody.mode`; thread `dryRun` into the Temporal args envelope + `memo{dryRun}`; **STDLIB guard** → `DRY_RUN_UNSUPPORTED` (422); 159 API tests pass; `tsc` clean.
 - [x] **A4 CLI/SDK** — `run --dry-run`; `run_workflow(..., dry_run=True)` sends `mode=dry_run`; SDK 0.12.0 → 0.13.0 + CHANGELOG + README.
-- [ ] **A1b — `WorkflowExecution.dryRun` column + migration + persistence + quota/dashboard exclusion.** BLOCKED in this worktree: adding a Prisma column needs `prisma generate`, which would clobber the shared symlinked client. Do with a real worktree `npm install` (or in a normal checkout). Until then, dry-runs are identified by Temporal `memo` + the `result.dryRun` envelope (Phase D can read either), and dry-runs DO currently count toward concurrency/quota (the column-based exclusion is the pending refinement). Steps: `dryRun Boolean @default(false) @map("dry_run")` on the model + migration; `execRepo.create({dryRun})`; add `dryRun: false` to `countTenantRunnerActive/DailyExecutions`; skip the cap/quota rejection when `opts.dryRun`.
+- [x] **A1b — `WorkflowExecution.dryRun` column + persistence + quota/dashboard exclusion.** DONE (after a real worktree `npm install` + `prisma generate`). Added `dryRun Boolean @default(false) @map("dry_run")` + migration `20260714180000_add_workflow_execution_dry_run`; `execRepo.create({dryRun})` + row/SELECT/response (`toExecutionResponse` now emits `dryRun`); `countTenantRunnerActive/DailyExecutions` filter `dryRun:false`; the cap/quota block is skipped entirely for `opts.dryRun` (never counted, never blocked — safe to repeat). Full API suite **2187 pass**; `tsc` clean.
 
 ### Phase A (original checklist) — Server-side dry-run execution (core platform piece) — after B
+
 Goal: a first-class `dry_run` mode: real workflow, real worker, real reads, mutations captured not performed; tagged `dryRun:true` end-to-end; repeatable; fires no chained events; excluded from dashboards/quota.
 
 - [ ] `RunBody` (`handlers/workflows.ts:167`) += `mode: 'dry_run' | 'live'` (default live); thread through `StartWorkflowExecutionOptions` (`start-workflow-execution.ts:158`). Add **Temporal `Memo` `{ dryRun: true }`** to the `client.workflow.start` options (`start-workflow-execution.ts:552`) for Temporal-UI filterability, and pass the flag into the args payload so the runner/subprocess sees it. Decide whether retry/dispatcher inherit or exclude the flag.
@@ -132,6 +144,7 @@ Goal: a first-class `dry_run` mode: real workflow, real worker, real reads, muta
 - Acceptance (spec Part A): real fetched order + real mapped body in the trace (reads ran live); no partner request; SMS dry-run records `to`/`body`, sends nothing; no chained event fires; `is_dry_run` True in dry-run / False in live.
 
 ### Phase D — Web-UI test trace (tenant-web) — after A
+
 Goal: a trace view a non-technical operator can read, plus a "Run test" affordance.
 
 - [ ] API: surface `dryRun` + the capture log/trace on the execution **detail** endpoint by reading `WorkflowExecution.result` (where the subprocess deposited it — **not** Temporal history, which only holds the opaque proxy activity for tenant code). Render resolved input → each activity's args/result (from the driver-built trace) → mapped external body **with** its `map_to_external` `valid|issues|degraded` verdict → capture log of would-be side effects.
@@ -141,13 +154,15 @@ Goal: a trace view a non-technical operator can read, plus a "Run test" affordan
 - Acceptance (spec Part D): trace shows input, per-activity args/result, mapped body + verdict, capture log; operator can start a dry run w/ custom input or replayed event, nothing performed.
 
 ### Docs (final, across phases)
+
 - [ ] Update `pegasus-workflows/CLAUDE.md` + the MCP authoring guide (`pegasus://guide/*`) to document the read-vs-mutation classification, `--dry-run`, `deliver_to_external`, and the testing harness as the standard benign-test path.
 - [ ] Fill the spec's `## Validation log` with the real commands/output/verdict per phase; set "SDK version that addresses it".
 
 ---
 
 ## Cross-cutting risks / notes
-- **Two repos.** API/web changes land in `pegasus`; SDK method + version + PyPI in `pegasus`'s `packages/workflows-sdk-python`; consumer-workflow rewrites + the spec validation log land in the separate `pegasus-workflows` repo. Coordinate release ordering: SDK on PyPI *before* consumer rewrites depend on it.
+
+- **Two repos.** API/web changes land in `pegasus`; SDK method + version + PyPI in `pegasus`'s `packages/workflows-sdk-python`; consumer-workflow rewrites + the spec validation log land in the separate `pegasus-workflows` repo. Coordinate release ordering: SDK on PyPI _before_ consumer rewrites depend on it.
 - **Hot files** (`actions.ts`, `cedar.schema.json`, `*.cedar`, `router.tsx`) — serialize against other active streams per workflow.md.
 - **PyPI publish gotchas** (from memory): `gh pr checks | grep pending` settles early on QUEUED — use `--watch`; re-tag recipe on failed publish; run SDK ruff/pytest before tagging.
 - **DB push gotcha:** pin `DATABASE_URL` to the migrated local Docker Postgres before `db:migrate`.

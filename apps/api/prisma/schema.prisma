@@ -1611,8 +1611,15 @@ model WorkflowExecution {
   /// The input payload the execution was started with.
   input Json
 
-  /// The result payload on successful completion. Null until COMPLETED.
+  /// The result payload on successful completion. Null until COMPLETED. For a
+  /// dry run this holds the trace envelope { dryRun, return, trace, captured }.
   result Json?
+
+  /// True when this execution was started in DRY-RUN mode (reads live,
+  /// mutations captured not performed). Dry-runs are excluded from the
+  /// TENANT_RUNNER concurrency cap and daily quota, and are tagged in Temporal
+  /// with a matching memo. Only tenant-runner workflows can be dry-run.
+  dryRun Boolean @default(false) @map("dry_run")
 
   /// Human-readable failure reason. Set for FAILED / TIMED_OUT / CANCELLED.
   errorMessage String? @map("error_message")

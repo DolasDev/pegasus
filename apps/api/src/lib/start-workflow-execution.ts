@@ -332,6 +332,8 @@ async function countTenantRunnerActiveExecutions(
     where: {
       tenantId,
       status: { in: ['QUEUED', 'RUNNING'] },
+      // Dry-runs are benign rehearsals and never count against the cap.
+      dryRun: false,
       workflow: {
         executable: true,
         name: { notIn: [...CURATED_WORKFLOW_NAMES] },
@@ -366,6 +368,8 @@ async function countTenantRunnerDailyExecutions(
     where: {
       tenantId,
       createdAt: { gte: utcDayStart(now) },
+      // Dry-runs are benign rehearsals and never consume daily quota.
+      dryRun: false,
       workflow: {
         executable: true,
         name: { notIn: [...CURATED_WORKFLOW_NAMES] },
@@ -480,35 +484,40 @@ export async function startWorkflowExecution(
       return { outcome: 'MUST_FORK' }
     }
 
-    const now = new Date()
+    // Dry-runs are benign rehearsals: never capped or quota-limited (and they
+    // don't count toward either — see the count helpers' dryRun:false filter),
+    // so a tenant can always rehearse even at the real-run ceiling.
+    if (!opts.dryRun) {
+      const now = new Date()
 
-    // (b) Concurrency cap
-    const activeConcurrent = await countTenantRunnerActiveExecutions(db, tenantId)
-    if (activeConcurrent >= TENANT_RUNNER_CONCURRENCY_CAP) {
-      logger.warn('TENANT_RUNNER concurrency cap reached', {
-        tenantId,
-        workflowId: workflow.id,
-        workflowName: workflow.name,
-        activeConcurrent,
-        cap: TENANT_RUNNER_CONCURRENCY_CAP,
-      })
-      await emitRejectionMetric('CONCURRENCY_LIMIT')
-      return { outcome: 'CONCURRENCY_LIMIT' }
-    }
+      // (b) Concurrency cap
+      const activeConcurrent = await countTenantRunnerActiveExecutions(db, tenantId)
+      if (activeConcurrent >= TENANT_RUNNER_CONCURRENCY_CAP) {
+        logger.warn('TENANT_RUNNER concurrency cap reached', {
+          tenantId,
+          workflowId: workflow.id,
+          workflowName: workflow.name,
+          activeConcurrent,
+          cap: TENANT_RUNNER_CONCURRENCY_CAP,
+        })
+        await emitRejectionMetric('CONCURRENCY_LIMIT')
+        return { outcome: 'CONCURRENCY_LIMIT' }
+      }
 
-    // (c) Daily quota
-    const dailyCount = await countTenantRunnerDailyExecutions(db, tenantId, now)
-    const quota = dailyQuotaLimit()
-    if (dailyCount >= quota) {
-      logger.warn('TENANT_RUNNER daily quota reached', {
-        tenantId,
-        workflowId: workflow.id,
-        workflowName: workflow.name,
-        dailyCount,
-        quota,
-      })
-      await emitRejectionMetric('DAILY_QUOTA_EXCEEDED')
-      return { outcome: 'DAILY_QUOTA_EXCEEDED' }
+      // (c) Daily quota
+      const dailyCount = await countTenantRunnerDailyExecutions(db, tenantId, now)
+      const quota = dailyQuotaLimit()
+      if (dailyCount >= quota) {
+        logger.warn('TENANT_RUNNER daily quota reached', {
+          tenantId,
+          workflowId: workflow.id,
+          workflowName: workflow.name,
+          dailyCount,
+          quota,
+        })
+        await emitRejectionMetric('DAILY_QUOTA_EXCEEDED')
+        return { outcome: 'DAILY_QUOTA_EXCEEDED' }
+      }
     }
   }
 
@@ -551,6 +560,7 @@ export async function startWorkflowExecution(
         provenance.triggerSource === 'USER' ? null : provenance.triggeredByTriggerId,
       temporalWorkflowId: opts.temporalWorkflowId ?? null,
       input: input as Prisma.InputJsonValue,
+      dryRun: opts.dryRun ?? false,
     })
   })
 

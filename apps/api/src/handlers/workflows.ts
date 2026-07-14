@@ -327,6 +327,8 @@ type WorkflowExecutionResponse = {
   triggeredByUserId: string | null
   triggerSource: WorkflowExecutionRow['triggerSource']
   triggeredByTriggerId: string | null
+  /** True when this execution was started in dry-run mode. */
+  dryRun: boolean
   queuedAt: string
   startedAt: string | null
   finishedAt: string | null
@@ -348,6 +350,7 @@ function toExecutionResponse(row: WorkflowExecutionRow): WorkflowExecutionRespon
     triggeredByUserId: row.triggeredByUserId,
     triggerSource: row.triggerSource,
     triggeredByTriggerId: row.triggeredByTriggerId,
+    dryRun: row.dryRun,
     queuedAt: row.queuedAt.toISOString(),
     startedAt: row.startedAt ? row.startedAt.toISOString() : null,
     finishedAt: row.finishedAt ? row.finishedAt.toISOString() : null,
