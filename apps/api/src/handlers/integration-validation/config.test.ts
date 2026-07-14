@@ -5,7 +5,7 @@
 // Mirrors the workflows.test.ts pattern:
 //   - createIntegrationConfigRepository is mocked so no DB is required.
 //   - runGatePipeline is mocked so each test controls the gate verdict.
-//   - getIntegrationDefinition / refreshRegistryOverlay are mocked (no registry
+//   - getBuiltInDefinition / refreshRegistryOverlay are mocked (no registry
 //     state, no real Prisma overlay refresh).
 //   - dualAuthMiddleware is a context-injecting stub — the real dispatch is
 //     covered by dual-auth.test.ts. buildApp picks roleNames/userId per test.
@@ -29,7 +29,7 @@ import { _clearAuthzCache } from '../../lib/authz'
 const {
   mockRepo,
   mockTenantFindUnique,
-  mockGetIntegrationDefinition,
+  mockGetBuiltInDefinition,
   mockRefreshRegistryOverlay,
   mockRunGatePipeline,
 } = vi.hoisted(() => ({
@@ -40,7 +40,7 @@ const {
     findVersion: vi.fn(),
   },
   mockTenantFindUnique: vi.fn(),
-  mockGetIntegrationDefinition: vi.fn(),
+  mockGetBuiltInDefinition: vi.fn(),
   mockRefreshRegistryOverlay: vi.fn(async () => {}),
   mockRunGatePipeline: vi.fn(),
 }))
@@ -50,7 +50,7 @@ vi.mock('../../repositories/integration-config.repository', () => ({
 }))
 
 vi.mock('../../integration-validation/registry', () => ({
-  getIntegrationDefinition: mockGetIntegrationDefinition,
+  getBuiltInDefinition: mockGetBuiltInDefinition,
   refreshRegistryOverlay: mockRefreshRegistryOverlay,
 }))
 
@@ -124,7 +124,7 @@ function buildApp(
 
 const now = new Date('2026-06-19T12:00:00Z')
 
-// A sentinel "base definition" — getIntegrationDefinition is mocked, so the
+// A sentinel "base definition" — getBuiltInDefinition is mocked, so the
 // handler only checks truthiness; the real shape is exercised by the gate tests.
 const baseDef = { id: 'demo_partner' } as unknown
 
@@ -170,7 +170,7 @@ describe('integration-config handler', () => {
     process.env['AUTHZ_OFFLINE'] = 'true'
     process.env['INTEGRATION_CONFIG_PUBLISH_ENABLED'] = 'true'
     _clearAuthzCache()
-    mockGetIntegrationDefinition.mockReturnValue(baseDef)
+    mockGetBuiltInDefinition.mockReturnValue(baseDef)
     mockRunGatePipeline.mockReturnValue(okReport)
     mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
     mockRepo.publish.mockResolvedValue(configRow)
@@ -228,7 +228,7 @@ describe('integration-config handler', () => {
     })
 
     it('returns 404 for an unknown integration', async () => {
-      mockGetIntegrationDefinition.mockReturnValue(undefined)
+      mockGetBuiltInDefinition.mockReturnValue(undefined)
       const res = await buildApp().request('/integrations/ghost/config/validate', post(validBody))
       expect(res.status).toBe(404)
       expect((await json(res)).code).toBe('NOT_FOUND')
@@ -273,7 +273,7 @@ describe('integration-config handler', () => {
     })
 
     it('returns 404 for an unknown integration', async () => {
-      mockGetIntegrationDefinition.mockReturnValue(undefined)
+      mockGetBuiltInDefinition.mockReturnValue(undefined)
       const res = await buildApp().request('/integrations/ghost/config', post(validBody))
       expect(res.status).toBe(404)
     })
@@ -435,7 +435,7 @@ describe('integration-config handler', () => {
     })
 
     it('returns 404 for an unknown integration', async () => {
-      mockGetIntegrationDefinition.mockReturnValue(undefined)
+      mockGetBuiltInDefinition.mockReturnValue(undefined)
       const res = await buildApp().request('/integrations/ghost/config/rollback/2', post())
       expect(res.status).toBe(404)
     })

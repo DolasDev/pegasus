@@ -10,9 +10,11 @@
 // corpus) BEFORE persisting; a failure returns 422 with the full report and
 // writes nothing. Visibility is derived server-side from the publishing tenant's
 // isPlatformTenant flag (GLOBAL for the platform tenant, TENANT otherwise) —
-// exactly like the workflows store. On success the registry overlay is refreshed
-// so the live validator picks up the new config. Mutations are gated behind the
-// INTEGRATION_CONFIG_PUBLISH_ENABLED env switch.
+// exactly like the workflows store. Both scopes drive the live validator:
+// resolveIntegrationDefinition applies a tenant's own config over GLOBAL over the
+// built-in baseline, per request. On success the GLOBAL overlay cache is also
+// refreshed so the platform-scoped (null-tenant) validate path picks up a GLOBAL
+// publish immediately. Mutations are gated behind INTEGRATION_CONFIG_PUBLISH_ENABLED.
 //
 // There is no tenant-plane audit table (writeAuditLog is admin-only); publish
 // and rollback emit a structured logger.info, the convention on this plane.
@@ -31,10 +33,7 @@ import {
   createIntegrationConfigRepository,
   type IntegrationConfigRow,
 } from '../../repositories/integration-config.repository'
-import {
-  getIntegrationDefinition,
-  refreshRegistryOverlay,
-} from '../../integration-validation/registry'
+import { getBuiltInDefinition, refreshRegistryOverlay } from '../../integration-validation/registry'
 import { runGatePipeline, type GateCorpusCase } from '../../integration-validation/gate-pipeline'
 import { isIntegrationConfigPublishEnabled } from '../../lib/integration-config-feature'
 import type { Prisma } from '@prisma/client'
@@ -107,7 +106,7 @@ integrationConfigHandler.post(
   }),
   (c) => {
     const integrationId = c.req.param('integrationId') ?? ''
-    const base = getIntegrationDefinition(integrationId)
+    const base = getBuiltInDefinition(integrationId)
     if (!base)
       return c.json({ error: `Unknown integration "${integrationId}"`, code: 'NOT_FOUND' }, 404)
     const { mapping, rules, corpus } = c.req.valid('json')
@@ -139,7 +138,7 @@ integrationConfigHandler.post(
     if (!userId)
       throw new DomainError('Authenticated user required to publish config', 'UNAUTHENTICATED')
 
-    const base = getIntegrationDefinition(integrationId)
+    const base = getBuiltInDefinition(integrationId)
     if (!base)
       return c.json({ error: `Unknown integration "${integrationId}"`, code: 'NOT_FOUND' }, 404)
 
@@ -235,7 +234,7 @@ integrationConfigHandler.post(
       return c.json({ error: 'Invalid version', code: 'VALIDATION_ERROR' }, 400)
     }
 
-    const base = getIntegrationDefinition(integrationId)
+    const base = getBuiltInDefinition(integrationId)
     if (!base)
       return c.json({ error: `Unknown integration "${integrationId}"`, code: 'NOT_FOUND' }, 404)
 

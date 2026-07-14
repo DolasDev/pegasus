@@ -44,19 +44,28 @@ vi.mock('../../repositories/integration-projection.repository', () => ({
   createIntegrationProjectionRepository: vi.fn(() => ({ findState: mockFindState })),
 }))
 
+// Resolve to the real built-in definition without touching the DB, so the test
+// exercises the projection resolver (not tenant-config resolution).
 vi.mock('../../integration-validation/registry', async (importActual) => {
   const actual = await importActual<typeof RegistryModule>()
-  return { ...actual, loadRegistryOverlayIfStale: vi.fn(async () => {}) }
+  return {
+    ...actual,
+    resolveIntegrationDefinition: vi.fn(async (_db: unknown, id: string) =>
+      actual.getBuiltInDefinition(id),
+    ),
+  }
 })
 
 vi.mock('../../integration-validation/validate', async (importActual) => {
   const actual = await importActual<typeof ValidateModule>()
   return {
     ...actual,
-    validateOrder: vi.fn((id: string, input: ValidationInput) => {
-      captured.input = input
-      return actual.validateOrder(id, input)
-    }),
+    validateWithDefinition: vi.fn(
+      (def: Parameters<typeof actual.validateWithDefinition>[0], input: ValidationInput) => {
+        captured.input = input
+        return actual.validateWithDefinition(def, input)
+      },
+    ),
   }
 })
 
