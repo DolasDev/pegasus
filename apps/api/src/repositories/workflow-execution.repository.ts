@@ -55,6 +55,8 @@ export type WorkflowExecutionRow = {
   triggerSource: WorkflowExecutionTriggerSource
   /** WorkflowTrigger.id that fired this execution; null for USER source. */
   triggeredByTriggerId: string | null
+  /** True when started in dry-run mode (reads live, mutations captured). */
+  dryRun: boolean
   queuedAt: Date
   startedAt: Date | null
   finishedAt: Date | null
@@ -75,6 +77,7 @@ const EXECUTION_SELECT = {
   triggeredByUserId: true,
   triggerSource: true,
   triggeredByTriggerId: true,
+  dryRun: true,
   queuedAt: true,
   startedAt: true,
   finishedAt: true,
@@ -115,6 +118,8 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
        * — those only record it at markStarted. */
       temporalWorkflowId?: string | null
       input: Prisma.InputJsonValue
+      /** Started in dry-run mode. Defaults false. */
+      dryRun?: boolean
     }): Promise<WorkflowExecutionRow> {
       return db.workflowExecution.create({
         data: {
@@ -125,6 +130,7 @@ export function createWorkflowExecutionRepository(db: PrismaClient) {
           triggeredByTriggerId: input.triggeredByTriggerId ?? null,
           temporalWorkflowId: input.temporalWorkflowId ?? null,
           input: input.input,
+          dryRun: input.dryRun ?? false,
           status: 'QUEUED',
           queuedAt: new Date(),
         },

@@ -3,6 +3,60 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.13.0
+
+### Added
+
+- **Dry-run execution** (spec 0015, Part A). `pegasus-workflows run <name>
+  --dry-run` (and `PegasusClient.run_workflow(id, input, dry_run=True)`) starts a
+  benign rehearsal: the real workflow runs on the tenant runner with reads live
+  but every mutation **captured, never performed**. The runtime enables this by
+  setting `PEGASUS_DRY_RUN`, which `PegasusClient.from_runtime()` reads to return
+  a dry-run client: `client.is_dry_run` is `True`, mutating methods append a
+  capture record and return a synthetic success, and `client.record_side_effect`
+  logs effects the SDK can't infer. Only tenant-runner workflows support it — a
+  curated workflow returns 422 `DRY_RUN_UNSUPPORTED`. Author code needs no
+  changes: the same activity body runs; the injected client makes it benign.
+
+## 0.12.0
+
+### Added
+
+- **`PegasusClient.deliver_to_external(integration_id, body, …)`** (spec 0015,
+  Part B). The mutating counterpart to `map_to_external`: build the partner body
+  with `map_to_external`, then deliver it here instead of a raw `httpx.post`. The
+  platform performs the outbound POST **server-side**, using the workflow's own
+  delivery URL (config `SEND_URL`) and API key (secret `SEND_API_KEY`) — so the
+  send flows through the one boundary a dry run controls (captured, not
+  performed) rather than a raw call the runtime can't see. `integration_id` is
+  validated against the registry (404 if unknown) and recorded; the
+  URL/key/headers config keys and group are overridable. Requires the manifest to
+  declare `required_actions = ["DeliverToExternal"]` (a new Cedar action granted
+  to `workflow_runtime`). Returns `{delivered, status, response, dryRun}`.
+  Auto-surfaces in the `pegasus://reference/api` MCP resource, and the offline
+  test harness captures it with capability `DeliverToExternal`.
+
+## 0.11.0
+
+### Added
+
+- **`pegasus_workflows.testing` — an offline activity harness** (spec 0015,
+  Part C). `fake_client(reads={...})` returns a `PegasusClient`-shaped double that
+  serves reads from canned fixtures and **captures** mutations (`send_sms`,
+  `emit_event`, `close_task`, `put_projection`/`delete_projection`, …) to
+  `client.captured` instead of performing them — each entry carries its Cedar
+  `capability`, so a test asserts *what would have been sent* without sending it.
+  `run_activity(activity_fn, *args, client=...)` runs an activity's **real** body
+  inside Temporal's own `temporalio.testing.ActivityEnvironment` (no Docker, no
+  network), injecting the fake by patching `PegasusClient.from_runtime` for the
+  call — so activity code that does `PegasusClient.from_runtime()` runs its real
+  logic against the fake and the `if client is None: return {"stub": True}` stub
+  branch is retired from shipped source. The fake exposes the same `is_dry_run` /
+  `record_side_effect` surface as the forthcoming server-side `--dry-run` mode, so
+  author code behaves identically offline and server-side. A drift guard asserts
+  every `PegasusClient` runtime method is classified read-vs-mutation, so a new
+  SDK method can't slip through unclassified.
+
 ## 0.8.1
 
 ### Fixed

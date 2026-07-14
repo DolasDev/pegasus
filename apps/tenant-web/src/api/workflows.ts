@@ -94,12 +94,77 @@ export interface WorkflowExecution {
   triggerSource: WorkflowTriggerSource
   /** The WorkflowTrigger that fired this run (EVENT/SCHEDULE), else null. */
   triggeredByTriggerId: string | null
+  /**
+   * True when this execution was a DRY RUN — a benign rehearsal in which reads
+   * ran live but every mutation was captured, never performed. For a dry run
+   * `result` holds a {@link DryRunResult} trace envelope.
+   */
+  dryRun: boolean
   /** ISO-8601 timestamps. */
   queuedAt: string
   startedAt: string | null
   finishedAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+// ---------------------------------------------------------------------------
+// Dry-run trace envelope — the shape of `execution.result` when `dryRun` is
+// true. Produced by the tenant-runner subprocess driver (spec 0015 Part A) and
+// rendered by the execution-detail "Test trace" view.
+// ---------------------------------------------------------------------------
+
+/** One activity call recorded during a dry run. */
+export interface DryRunTraceEntry {
+  /** The activity function name. */
+  activity: string
+  /** The positional args the activity was called with. */
+  args: unknown
+  /** The activity's return value (real for reads; synthetic for mutations). */
+  result: unknown
+}
+
+/** One captured side effect the dry run would have performed. */
+export interface DryRunCapture {
+  /** PegasusClient method, e.g. `send_sms`, or `record_side_effect`. */
+  method: string
+  /** The Cedar capability gating it, e.g. `SendSms`, or `custom`. */
+  capability: string
+  /** The call arguments (mutating-method captures). */
+  args?: Record<string, unknown>
+  /** The synthetic value the mutation returned (mutating-method captures). */
+  wouldReturn?: unknown
+  /** Author label (`record_side_effect` captures). */
+  label?: string
+  /** Author payload (`record_side_effect` captures). */
+  payload?: unknown
+}
+
+/** The `execution.result` shape for a dry run. */
+export interface DryRunResult {
+  dryRun: true
+  /** The workflow's actual return value. */
+  return: unknown
+  trace: DryRunTraceEntry[]
+  captured: DryRunCapture[]
+}
+
+/** Narrow an execution's `result` to a {@link DryRunResult} when it is one. */
+export function asDryRunResult(result: unknown): DryRunResult | null {
+  if (
+    result != null &&
+    typeof result === 'object' &&
+    (result as { dryRun?: unknown }).dryRun === true
+  ) {
+    const r = result as Partial<DryRunResult>
+    return {
+      dryRun: true,
+      return: r.return,
+      trace: Array.isArray(r.trace) ? r.trace : [],
+      captured: Array.isArray(r.captured) ? r.captured : [],
+    }
+  }
+  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -220,10 +285,14 @@ export async function forkWorkflow(id: string): Promise<Workflow> {
  * Manually trigger a run of a workflow with the given JSON input. Returns the
  * freshly-enqueued execution row (status QUEUED). Requires `workflow:run`.
  */
-export async function runWorkflow(id: string, input: unknown): Promise<WorkflowExecution> {
+export async function runWorkflow(
+  id: string,
+  input: unknown,
+  options: { dryRun?: boolean } = {},
+): Promise<WorkflowExecution> {
   return apiFetch<WorkflowExecution>(`/api/v1/workflows/${id}/run`, {
     method: 'POST',
-    body: JSON.stringify({ input }),
+    body: JSON.stringify({ input, ...(options.dryRun ? { mode: 'dry_run' } : {}) }),
   })
 }
 

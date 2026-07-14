@@ -59,14 +59,35 @@ from typing import Any
 #: Sentinel mirroring temporalio's unset-arg marker for execute_activity.
 _UNSET = object()
 
+#: Env var the SDK's PegasusClient.from_runtime() reads to enter dry-run mode.
+_DRY_RUN_ENV_VAR = "PEGASUS_DRY_RUN"
 
-def _install_direct_execution_patches() -> None:
+
+def _json_safe(value: Any) -> Any:
+    """Return ``value`` if JSON-serializable, else its ``repr`` — for the trace.
+
+    Activity args/results are arbitrary tenant data; the trace must survive the
+    JSON write even when a value isn't serializable.
+    """
+    try:
+        json.dumps(value)
+    except (TypeError, ValueError):
+        return repr(value)
+    return value
+
+
+def _install_direct_execution_patches(trace: list[dict[str, Any]] | None = None) -> None:
     """Replace Temporal orchestration primitives with direct equivalents.
 
     Module-attribute patching is process-global on purpose: workflow modules
     import ``workflow`` from ``pegasus_workflows`` (a re-export of
     ``temporalio.workflow``), so patching the module is what makes the
     tenant's orchestration calls work without a server.
+
+    When ``trace`` is provided (dry-run), each activity call appends a
+    ``{activity, args, result}`` record to it — the per-activity trace the
+    web-UI dry-run view renders. This is the natural capture point: every
+    tenant activity call already flows through this wrapper.
     """
     from temporalio import workflow
 
@@ -90,6 +111,14 @@ def _install_direct_execution_patches() -> None:
         result = activity(*call_args)
         if inspect.isawaitable(result):
             result = await result
+        if trace is not None:
+            trace.append(
+                {
+                    "activity": getattr(activity, "__name__", repr(activity)),
+                    "args": _json_safe(call_args),
+                    "result": _json_safe(result),
+                }
+            )
         return result
 
     workflow.execute_activity = _direct_execute_activity  # type: ignore[assignment]
@@ -162,6 +191,7 @@ def main() -> int:
         result_path = request["resultPath"]
         runtime_token = request.get("runtimeToken", "")
         api_base_url = request.get("apiBaseUrl", "")
+        dry_run = bool(request.get("dryRun"))
     except (ValueError, KeyError) as exc:
         print(f"pegasus driver: invalid request: {exc!r}", file=sys.stderr)
         return 4
@@ -176,14 +206,52 @@ def main() -> int:
     if runtime_token:
         os.environ["PEGASUS_RUNTIME_TOKEN"] = runtime_token
 
+    # Dry-run FAILS CLOSED: a dry run is only benign if the workflow's bundled
+    # SDK actually suppresses mutations. If the SDK is too old to support
+    # dry-run, refuse to run rather than perform real side effects under a
+    # "dry-run" label. When supported, set PEGASUS_DRY_RUN so
+    # from_runtime() returns a dry-run client, and reset the capture sink.
+    trace: list[dict[str, Any]] | None = None
+    if dry_run:
+        try:
+            from pegasus_workflows import api as _pw_api
+
+            reset = _pw_api.reset_dry_run_captures
+        except (ImportError, AttributeError):
+            _write_result(
+                result_path,
+                {
+                    "ok": False,
+                    "error": (
+                        "dry-run requires a newer pegasus-workflows-sdk: this "
+                        "workflow's bundled SDK does not support dry-run capture. "
+                        "Republish with an SDK that exposes PEGASUS_DRY_RUN."
+                    ),
+                },
+            )
+            return 3
+        reset()
+        os.environ[_DRY_RUN_ENV_VAR] = "1"
+        trace = []
+
     try:
-        _install_direct_execution_patches()
+        _install_direct_execution_patches(trace)
         target = _import_entry_point(entry_point)
         run = _resolve_run_callable(target)
         result = asyncio.run(run(payload))
     except BaseException:
         _write_result(result_path, {"ok": False, "error": traceback.format_exc(limit=20)})
         return 3
+
+    if dry_run:
+        from pegasus_workflows import api as _pw_api
+
+        result = {
+            "dryRun": True,
+            "return": _json_safe(result),
+            "trace": trace or [],
+            "captured": _pw_api.get_dry_run_captures(),
+        }
 
     _write_result(result_path, {"ok": True, "result": result})
     return 0

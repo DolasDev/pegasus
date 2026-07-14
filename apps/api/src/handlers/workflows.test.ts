@@ -963,6 +963,22 @@ describe('workflows handler', () => {
       )
     })
 
+    it('422 DRY_RUN_UNSUPPORTED — dry-run of a curated (STDLIB) workflow is rejected', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      const res = await buildApp().request('/wf-1/run', post({ input: {}, mode: 'dry_run' }))
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('DRY_RUN_UNSUPPORTED')
+      // Nothing started on Temporal.
+      expect(mockTemporalStart).not.toHaveBeenCalled()
+    })
+
+    it('400 VALIDATION_ERROR — unknown mode', async () => {
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      const res = await buildApp().request('/wf-1/run', post({ input: {}, mode: 'nope' }))
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
     it('lazy-mints the runtime account when the workflow lacks one', async () => {
       // mockRow.runtimeApiClientId / runtimeTokenCiphertext are both null.
       mockRepo.findByIdForTenant.mockResolvedValue(mockRow)

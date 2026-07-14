@@ -724,13 +724,65 @@ describe('startWorkflowExecution (inherited Unit 3 contracts)', () => {
       triggeredByTriggerId: null,
       temporalWorkflowId: null,
       input: { quote_id: 'q-1' },
+      dryRun: false,
     })
     expect(mockTemporalStart).toHaveBeenCalledWith('send_quote_followup', {
-      args: [{ executionId: 'exec-1', input: { quote_id: 'q-1' } }],
+      args: [{ executionId: 'exec-1', input: { quote_id: 'q-1' }, dryRun: false }],
       taskQueue: 'pegasus-stdlib-test',
       workflowId: 'wf/tenant-1/send_quote_followup/exec-1',
+      memo: { dryRun: false },
       workflowIdReusePolicy: 'REJECT_DUPLICATE',
     })
+  })
+
+  it('dry-run of a tenant-runner workflow: dryRun rides the args + Temporal memo', async () => {
+    const result = await startWorkflowExecution(fakeDb(), {
+      workflow: tenantWorkflow,
+      tenantId: 'tenant-1',
+      input: { n: 1 },
+      dryRun: true,
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-1' },
+    })
+
+    expect(result.outcome).toBe('STARTED')
+    expect(mockTemporalStart).toHaveBeenCalledWith(
+      'my_custom_workflow',
+      expect.objectContaining({
+        args: [{ executionId: 'exec-1', input: { n: 1 }, dryRun: true }],
+        memo: { dryRun: true },
+      }),
+    )
+    // The row is persisted with dryRun=true.
+    expect(mockExecutionRepo.create).toHaveBeenCalledWith(expect.objectContaining({ dryRun: true }))
+  })
+
+  it('dry-run skips the concurrency cap + daily quota (never counted, never blocked)', async () => {
+    // countValue well over the cap — a live run would be CONCURRENCY_LIMIT.
+    const result = await startWorkflowExecution(fakeDb(99), {
+      workflow: tenantWorkflow,
+      tenantId: 'tenant-1',
+      input: {},
+      dryRun: true,
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-1' },
+    })
+
+    expect(result.outcome).toBe('STARTED')
+    // The counts are never even queried for a dry-run.
+    expect(mockExecutionCount).not.toHaveBeenCalled()
+  })
+
+  it('dry-run of a curated STDLIB workflow is rejected (DRY_RUN_UNSUPPORTED) — nothing started', async () => {
+    const result = await startWorkflowExecution(fakeDb(), {
+      workflow: curatedWorkflow,
+      tenantId: 'tenant-1',
+      input: {},
+      dryRun: true,
+      provenance: { triggerSource: 'USER', triggeredByUserId: 'user-1' },
+    })
+
+    expect(result.outcome).toBe('DRY_RUN_UNSUPPORTED')
+    expect(mockExecutionRepo.create).not.toHaveBeenCalled()
+    expect(mockTemporalStart).not.toHaveBeenCalled()
   })
 
   it('EVENT provenance: inserts an EVENT row (null user) with the trigger id', async () => {

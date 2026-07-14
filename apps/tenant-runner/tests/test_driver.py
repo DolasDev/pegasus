@@ -54,6 +54,28 @@ WORKFLOW_MODULE = textwrap.dedent(
         @workflow.run
         async def run(self, payload: dict) -> dict:
             raise ValueError("tenant code exploded")
+
+
+    @activity.defn
+    async def notify(to: str) -> dict:
+        # Real activity body — builds the client and performs a mutation. Under
+        # dry-run the client suppresses the send (apiBaseUrl is invalid, so a
+        # real POST would fail); success proves nothing was sent.
+        from pegasus_workflows.api import PegasusClient
+
+        client = PegasusClient.from_runtime()
+        client.record_side_effect("about_to_notify", {"to": to})
+        return client.send_sms(to=to, body="hello")
+
+
+    @pegasus_workflow(name="notify_wf", version="1.0.0")
+    class NotifyWorkflow:
+        @workflow.run
+        async def run(self, payload: dict) -> dict:
+            to = ((payload or {}).get("input") or {}).get("to", "+15550000000")
+            return await workflow.execute_activity(
+                notify, to, start_to_close_timeout=None,
+            )
     '''
 )
 
@@ -64,6 +86,7 @@ def _run_driver(
     entry_point: str,
     payload: dict,
     runtime_token: str = "vnd_test_token",
+    dry_run: bool = False,
 ) -> tuple[subprocess.CompletedProcess[str], dict | None]:
     src = tmp_path / "src" / "fixture_wf"
     src.mkdir(parents=True, exist_ok=True)
@@ -78,6 +101,7 @@ def _run_driver(
             "runtimeToken": runtime_token,
             "apiBaseUrl": "https://api.pegasus.invalid",
             "resultPath": str(result_path),
+            "dryRun": dry_run,
         }
     )
     # temporalio comes from the test interpreter's site-packages; the SDK
@@ -115,6 +139,47 @@ def test_driver_runs_sdk_workflow_with_direct_execution(tmp_path: Path) -> None:
     # The vnd_ token reached tenant code via in-process env (stdin → setenv).
     assert verdict["result"]["has_runtime_token"] is True
     assert verdict["result"]["api_base_url"] == "https://api.pegasus.invalid"
+
+
+def test_driver_dry_run_captures_mutation_without_sending(tmp_path: Path) -> None:
+    proc, verdict = _run_driver(
+        tmp_path,
+        entry_point="fixture_wf.workflow:NotifyWorkflow",
+        payload={"executionId": "e1", "input": {"to": "+15551234567"}},
+        dry_run=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert verdict is not None and verdict["ok"] is True
+    result = verdict["result"]
+    # Dry-run result is the trace envelope, not the bare workflow return.
+    assert result["dryRun"] is True
+    # The send was suppressed and returned the synthetic value (no real POST —
+    # apiBaseUrl is invalid, so a live send would have failed the run).
+    assert result["return"] == {"data": {"id": "dry-run", "status": "captured", "dryRun": True}}
+    # Capture log: record_side_effect first, then the send_sms mutation.
+    caps = result["captured"]
+    assert caps[0]["label"] == "about_to_notify"
+    assert caps[1]["capability"] == "SendSms"
+    assert caps[1]["args"] == {"to": "+15551234567", "body": "hello"}
+    # Per-activity trace records the notify activity and its (synthetic) result.
+    assert result["trace"][0]["activity"] == "notify"
+
+
+def test_driver_dry_run_traces_activities_with_empty_capture(tmp_path: Path) -> None:
+    # A workflow whose activity performs no side effect: trace present, no captures.
+    proc, verdict = _run_driver(
+        tmp_path,
+        entry_point="fixture_wf.workflow:FixtureWorkflow",
+        payload={"executionId": "e1", "input": {"n": 21}},
+        dry_run=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    result = verdict["result"]
+    assert result["dryRun"] is True
+    assert result["return"]["doubled"] == 42
+    assert result["captured"] == []
+    assert result["trace"][0]["activity"] == "double"
+    assert result["trace"][0]["result"] == 42
 
 
 def test_driver_reports_tenant_exception_as_failure(tmp_path: Path) -> None:

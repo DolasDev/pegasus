@@ -189,6 +189,35 @@ required_actions = ["SendSms"]
 or (404) if the tenant has no SMS provider connected. The `to` number must be E.164
 (e.g. `"+16308868537"`).
 
+### Delivering a body to a partner endpoint
+
+To POST a mapped body to a partner API, use `client.deliver_to_external` rather than
+calling the partner directly with `httpx` — the platform performs the outbound POST
+**server-side**, so the send flows through the one boundary a dry run controls
+(captured, never performed) instead of a raw call the runtime can't see or stop. It
+pairs with `map_to_external`: map to build the body, deliver to send it.
+
+```python
+@activity.defn
+async def send_order_to_partner(order: dict) -> dict:
+    client = PegasusClient.from_runtime()
+    mapped = client.map_to_external("demo_partner", order)   # build the partner body
+    if not mapped["valid"]:
+        raise RuntimeError(f"refusing to send invalid body: {mapped['issues']}")
+    result = client.deliver_to_external("demo_partner", mapped["external"])
+    if not result["delivered"]:
+        raise RuntimeError(f"partner rejected the delivery: {result['status']}")
+    return result
+```
+
+The delivery URL and API key come from the workflow's own config/secret (`SEND_URL`
+config, `SEND_API_KEY` secret by default — override with `url_config` /
+`api_key_secret` / `headers_config` / `group`), so no partner URL or key appears in
+the workflow source. Declare `required_actions = ["DeliverToExternal"]` in the
+manifest. Returns `{delivered, status, response, dryRun}`; raises `PegasusApiError`
+on 403 (missing action), 404 (unknown integration, or the URL config / API-key
+secret is not set), or 400 (a delivery URL pointing at a private/loopback host).
+
 ### Secrets & configuration
 
 A workflow reads two kinds of per-tenant key/value data at runtime — **secrets**
@@ -470,6 +499,59 @@ docker compose -f docker-compose.temporal.yml up -d
 ```
 
 The Temporal Web UI is then at <http://localhost:8080>.
+
+## Testing activities offline
+
+`pegasus-workflows test` runs a workflow end-to-end against a local Temporal, but
+it injects **no** runtime client — so every activity that builds one via
+`PegasusClient.from_runtime()` gets nothing and falls back to a hand-written stub,
+exercising control flow only. To run an activity's **real** body — a real mapping,
+a real read — without any Docker, network, or side effect, use the
+`pegasus_workflows.testing` harness:
+
+```python
+from pegasus_workflows.testing import fake_client, run_activity
+from my_workflow.workflow import fetch_order, send_order_to_partner
+
+# Reads are served from fixtures; keyed reads (get_order, get_secret,
+# map_to_external, …) take a {key: value} map, list/whole-value reads take the
+# value as-is.
+client = fake_client(reads={"get_order": {"S-123": {"orderNumber": "S-123"}}})
+
+# The activity's REAL body runs (inside Temporal's ActivityEnvironment) — not a
+# stub — with the fake injected in place of PegasusClient.from_runtime().
+order = run_activity(fetch_order, "S-123", client=client)
+assert order["orderNumber"] == "S-123"
+assert client.captured == []                 # a read — nothing was sent
+
+# Mutations are captured, never performed. Each entry records its Cedar capability.
+run_activity(send_order_to_partner, order, client=client)
+assert client.captured[0]["capability"] == "SendSms"
+```
+
+This retires the `if client is None: return {"stub": True}` pattern: the stub
+logic lives in the harness, not in shipped source, so a test exercises the same
+code that runs in production. Reads (`get_order`, `map_to_external`,
+`get_config`/`get_secret`, `list_*`, …) are benign and served from fixtures;
+mutations (`send_sms`, `emit_event`, `close_task`, `put_projection`, …) are
+captured to `client.captured` — the same read-vs-mutation split the platform's
+Cedar `required_actions` gating enforces, and the same `is_dry_run` /
+`record_side_effect` surface the server-side dry-run mode exposes.
+
+**Rehearse the real thing with `--dry-run`.** The offline harness runs one
+activity; to rehearse a whole workflow end-to-end on the platform — real reads,
+mutations captured, nothing performed — start it in dry-run mode:
+
+```
+pegasus-workflows run send_order_to_partner --dry-run --input '{"saleId":"S-123"}'
+```
+
+The workflow runs on the tenant runner exactly as a live run would, but the
+runtime injects a dry-run client (`client.is_dry_run` is `True`), so reads hit
+the live API while every mutation is captured instead of performed. The result
+carries the per-activity trace and the capture log of would-be side effects.
+Only tenant-runner workflows support it (a curated workflow returns 422
+`DRY_RUN_UNSUPPORTED`).
 
 ## Using the SDK with an AI coding agent
 

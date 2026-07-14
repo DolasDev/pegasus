@@ -77,6 +77,7 @@ import {
 } from './handlers/longhaul-cloud/trip-save'
 import { integrationValidationHandler } from './handlers/integration-validation/validate'
 import { integrationConfigHandler } from './handlers/integration-validation/config'
+import { integrationDeliveryHandler } from './handlers/integration-delivery'
 import { meHandler } from './handlers/me'
 import { deviceTokensHandler } from './handlers/device-tokens'
 import { notificationsHandler } from './handlers/notifications'
@@ -276,6 +277,10 @@ m2mV1.route('/', integrationValidationHandler)
 // Uses dualAuthMiddleware internally (RBAC-gated) — distinct from the stateless
 // validate route above. See src/handlers/integration-validation/config.ts.
 m2mV1.route('/', integrationConfigHandler)
+// Outbound delivery: a workflow POSTs a mapped body to a partner endpoint,
+// performed server-side so it is dry-run-interceptable. Dual-auth + RBAC
+// (DeliverToExternal). See src/handlers/integration-delivery.ts.
+m2mV1.route('/', integrationDeliveryHandler)
 
 app.route('/api/v1', m2mV1)
 

@@ -1050,3 +1050,196 @@ def test_close_task_forbidden_raises() -> None:
     with pytest.raises(PegasusApiError) as exc_info:
         client.close_task(order_id="ord-1", task_type="date_confirmation")
     assert exc_info.value.status_code == 403
+
+
+def test_deliver_to_external_posts_body_and_returns_data() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "delivered": True,
+                    "status": 200,
+                    "response": {"accepted": True},
+                    "dryRun": False,
+                }
+            },
+        )
+
+    client = _client_with(handler)
+    result = client.deliver_to_external("demo_partner", {"serviceOrderNumber": "O-1"})
+
+    assert result == {
+        "delivered": True,
+        "status": 200,
+        "response": {"accepted": True},
+        "dryRun": False,
+    }
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/api/v1/integrations/demo_partner/deliver-to-external"
+    assert captured["body"] == {
+        "external": {"serviceOrderNumber": "O-1"},
+        "urlConfig": "SEND_URL",
+        "apiKeySecret": "SEND_API_KEY",
+        "group": "global",
+    }
+
+
+def test_deliver_to_external_threads_overrides() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"data": {"delivered": True}})
+
+    client = _client_with(handler)
+    client.deliver_to_external(
+        "demo_partner",
+        {"x": 1},
+        url_config="ORDER_URL",
+        api_key_secret="ORDER_KEY",
+        headers_config="ORDER_HEADERS",
+        group="billing",
+    )
+
+    assert captured["body"] == {
+        "external": {"x": 1},
+        "urlConfig": "ORDER_URL",
+        "apiKeySecret": "ORDER_KEY",
+        "group": "billing",
+        "headersConfig": "ORDER_HEADERS",
+    }
+
+
+def test_deliver_to_external_non_2xx_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"error": "forbidden", "code": "FORBIDDEN"})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.deliver_to_external("demo_partner", {})
+    assert exc_info.value.status_code == 403
+
+
+# --- dry-run mode -------------------------------------------------------------
+
+from pegasus_workflows.api import (  # noqa: E402
+    DRY_RUN_ENV_VAR,
+    get_dry_run_captures,
+    reset_dry_run_captures,
+)
+
+
+def _dry_client(handler) -> PegasusClient:
+    return PegasusClient(
+        base_url="http://api.test",
+        token=_TOKEN,
+        transport=httpx.MockTransport(handler),
+        dry_run=True,
+    )
+
+
+def _raising_handler(request: httpx.Request) -> httpx.Response:
+    raise AssertionError(f"unexpected HTTP call in dry-run: {request.method} {request.url.path}")
+
+
+def test_from_runtime_reads_dry_run_env(monkeypatch) -> None:
+    monkeypatch.setenv("PEGASUS_API_BASE_URL", "http://api.test")
+    monkeypatch.setenv("PEGASUS_RUNTIME_TOKEN", _TOKEN)
+    monkeypatch.delenv(DRY_RUN_ENV_VAR, raising=False)
+    assert PegasusClient.from_runtime().is_dry_run is False
+    monkeypatch.setenv(DRY_RUN_ENV_VAR, "1")
+    assert PegasusClient.from_runtime().is_dry_run is True
+
+
+def test_dry_run_mutation_is_captured_not_sent() -> None:
+    reset_dry_run_captures()
+    client = _dry_client(_raising_handler)
+    result = client.send_sms(to="+15551234567", body="hi")   # must NOT raise
+    assert result == {"data": {"id": "dry-run", "status": "captured", "dryRun": True}}
+    assert client.captured[0]["capability"] == "SendSms"
+    assert client.captured[0]["args"] == {"to": "+15551234567", "body": "hi"}
+    # Also recorded in the process-global sink the runner reads.
+    assert get_dry_run_captures()[-1]["capability"] == "SendSms"
+
+
+def test_dry_run_reads_still_hit_the_api() -> None:
+    reset_dry_run_captures()
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        return httpx.Response(200, json={"data": {"id": "S-1", "orderNumber": "S-1"}})
+
+    client = _dry_client(handler)
+    order = client.get_order("S-1")
+    assert order["orderNumber"] == "S-1"
+    assert seen["path"] == "/api/v1/pegii/orders/S-1"   # the read ran live
+    assert client.captured == []                         # a read captures nothing
+
+
+def test_dry_run_deliver_to_external_captured() -> None:
+    reset_dry_run_captures()
+    client = _dry_client(_raising_handler)
+    result = client.deliver_to_external("demo_partner", {"x": 1})
+    assert result == {"delivered": False, "status": None, "response": None, "dryRun": True}
+    assert client.captured[0]["capability"] == "DeliverToExternal"
+
+
+def test_dry_run_delete_projection_returns_none_and_captures() -> None:
+    reset_dry_run_captures()
+    client = _dry_client(_raising_handler)
+    assert client.delete_projection("i", "order", "S-1") is None
+    assert client.captured[0]["method"] == "delete_projection"
+
+
+def test_record_side_effect_only_in_dry_run() -> None:
+    reset_dry_run_captures()
+    live = PegasusClient(base_url="http://api.test", token=_TOKEN)
+    live.record_side_effect("raw_post", {"url": "x"})
+    assert live.captured == []                            # no-op outside dry-run
+    dry = _dry_client(_raising_handler)
+    dry.record_side_effect("raw_post", {"url": "x"})
+    assert dry.captured[0]["label"] == "raw_post"
+
+
+def test_non_dry_run_client_sends_normally() -> None:
+    calls: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["path"] = request.url.path
+        return httpx.Response(200, json={"data": {"id": 1, "status": "Sent"}})
+
+    client = _client_with(handler)   # dry_run defaults False
+    client.send_sms(to="+15551234567", body="hi")
+    assert calls["path"] == "/api/v1/sms/send"   # real POST happened
+    assert client.captured == []
+
+
+def test_run_workflow_dry_run_sets_mode() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(201, json={"data": {"id": "exec-1", "status": "QUEUED"}})
+
+    client = _client_with(handler)
+    client.run_workflow("wf-1", {"n": 1}, dry_run=True)
+    assert captured["body"] == {"input": {"n": 1}, "mode": "dry_run"}
+
+
+def test_run_workflow_live_omits_mode() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(201, json={"data": {"id": "exec-1", "status": "QUEUED"}})
+
+    client = _client_with(handler)
+    client.run_workflow("wf-1", {"n": 1})
+    assert captured["body"] == {"input": {"n": 1}}   # back-compat: no mode key

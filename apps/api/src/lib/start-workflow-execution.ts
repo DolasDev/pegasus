@@ -174,6 +174,16 @@ export type StartWorkflowExecutionOptions = {
    * id is only persisted by markStarted — unchanged Phase 2 behavior.
    */
   temporalWorkflowId?: string
+  /**
+   * When true, run in DRY-RUN mode: the tenant runner injects a dry-run
+   * PegasusClient so reads run live but mutations are captured (never
+   * performed), and the execution is tagged `dryRun` end-to-end (Temporal memo
+   * + envelope). Only supported on the TENANT_RUNNER lane — the STDLIB lane runs
+   * real activities with no interception seam, so a dry-run there is rejected
+   * (DRY_RUN_UNSUPPORTED) rather than silently performing side effects. Defaults
+   * false. Not threaded through retry/dispatcher — those always run live.
+   */
+  dryRun?: boolean
 }
 
 export type StartWorkflowExecutionResult =
@@ -181,6 +191,14 @@ export type StartWorkflowExecutionResult =
   | { outcome: 'STARTED'; execution: WorkflowExecutionRow }
   /** Route was NOT_EXECUTABLE — non-curated + non-executable. Nothing written. */
   | { outcome: 'NOT_EXECUTABLE' }
+  /**
+   * A dry-run was requested for a workflow that does not run on the tenant
+   * runner (STDLIB lane). Dry-run interception lives in the tenant-runner
+   * subprocess driver; the curated stdlib worker runs real activities, so a
+   * dry-run there could not be made benign. Nothing written or started. The
+   * caller maps this to 422 with code DRY_RUN_UNSUPPORTED.
+   */
+  | { outcome: 'DRY_RUN_UNSUPPORTED' }
   /**
    * Operator kill switch: workflowsDisabled=true on the tenant row. Nothing
    * written or started. Existing RUNNING executions are unaffected (allowed to
@@ -314,6 +332,8 @@ async function countTenantRunnerActiveExecutions(
     where: {
       tenantId,
       status: { in: ['QUEUED', 'RUNNING'] },
+      // Dry-runs are benign rehearsals and never count against the cap.
+      dryRun: false,
       workflow: {
         executable: true,
         name: { notIn: [...CURATED_WORKFLOW_NAMES] },
@@ -348,6 +368,8 @@ async function countTenantRunnerDailyExecutions(
     where: {
       tenantId,
       createdAt: { gte: utcDayStart(now) },
+      // Dry-runs are benign rehearsals and never consume daily quota.
+      dryRun: false,
       workflow: {
         executable: true,
         name: { notIn: [...CURATED_WORKFLOW_NAMES] },
@@ -390,6 +412,19 @@ export async function startWorkflowExecution(
 
   if (route === 'NOT_EXECUTABLE') {
     return { outcome: 'NOT_EXECUTABLE' }
+  }
+
+  // Dry-run is a TENANT_RUNNER-only capability: interception lives in the
+  // subprocess driver. Reject (never silently perform side effects) a dry-run
+  // of a curated STDLIB workflow, which runs real activities with no seam.
+  if (opts.dryRun && route !== 'TENANT_RUNNER') {
+    logger.warn('Dry-run start rejected — workflow does not run on the tenant runner', {
+      tenantId,
+      workflowId: workflow.id,
+      workflowName: workflow.name,
+      route,
+    })
+    return { outcome: 'DRY_RUN_UNSUPPORTED' }
   }
 
   // ── Kill-switch check — applies to BOTH routes ───────────────────────────
@@ -449,35 +484,40 @@ export async function startWorkflowExecution(
       return { outcome: 'MUST_FORK' }
     }
 
-    const now = new Date()
+    // Dry-runs are benign rehearsals: never capped or quota-limited (and they
+    // don't count toward either — see the count helpers' dryRun:false filter),
+    // so a tenant can always rehearse even at the real-run ceiling.
+    if (!opts.dryRun) {
+      const now = new Date()
 
-    // (b) Concurrency cap
-    const activeConcurrent = await countTenantRunnerActiveExecutions(db, tenantId)
-    if (activeConcurrent >= TENANT_RUNNER_CONCURRENCY_CAP) {
-      logger.warn('TENANT_RUNNER concurrency cap reached', {
-        tenantId,
-        workflowId: workflow.id,
-        workflowName: workflow.name,
-        activeConcurrent,
-        cap: TENANT_RUNNER_CONCURRENCY_CAP,
-      })
-      await emitRejectionMetric('CONCURRENCY_LIMIT')
-      return { outcome: 'CONCURRENCY_LIMIT' }
-    }
+      // (b) Concurrency cap
+      const activeConcurrent = await countTenantRunnerActiveExecutions(db, tenantId)
+      if (activeConcurrent >= TENANT_RUNNER_CONCURRENCY_CAP) {
+        logger.warn('TENANT_RUNNER concurrency cap reached', {
+          tenantId,
+          workflowId: workflow.id,
+          workflowName: workflow.name,
+          activeConcurrent,
+          cap: TENANT_RUNNER_CONCURRENCY_CAP,
+        })
+        await emitRejectionMetric('CONCURRENCY_LIMIT')
+        return { outcome: 'CONCURRENCY_LIMIT' }
+      }
 
-    // (c) Daily quota
-    const dailyCount = await countTenantRunnerDailyExecutions(db, tenantId, now)
-    const quota = dailyQuotaLimit()
-    if (dailyCount >= quota) {
-      logger.warn('TENANT_RUNNER daily quota reached', {
-        tenantId,
-        workflowId: workflow.id,
-        workflowName: workflow.name,
-        dailyCount,
-        quota,
-      })
-      await emitRejectionMetric('DAILY_QUOTA_EXCEEDED')
-      return { outcome: 'DAILY_QUOTA_EXCEEDED' }
+      // (c) Daily quota
+      const dailyCount = await countTenantRunnerDailyExecutions(db, tenantId, now)
+      const quota = dailyQuotaLimit()
+      if (dailyCount >= quota) {
+        logger.warn('TENANT_RUNNER daily quota reached', {
+          tenantId,
+          workflowId: workflow.id,
+          workflowName: workflow.name,
+          dailyCount,
+          quota,
+        })
+        await emitRejectionMetric('DAILY_QUOTA_EXCEEDED')
+        return { outcome: 'DAILY_QUOTA_EXCEEDED' }
+      }
     }
   }
 
@@ -520,6 +560,7 @@ export async function startWorkflowExecution(
         provenance.triggerSource === 'USER' ? null : provenance.triggeredByTriggerId,
       temporalWorkflowId: opts.temporalWorkflowId ?? null,
       input: input as Prisma.InputJsonValue,
+      dryRun: opts.dryRun ?? false,
     })
   })
 
@@ -547,12 +588,18 @@ export async function startWorkflowExecution(
   // Start the Temporal workflow. If start_workflow throws, mark the
   // execution FAILED with the error so we don't leak QUEUED rows for
   // runtime failures.
+  const dryRun = opts.dryRun ?? false
   try {
     const client = await getTemporalClient()
     const handle = await client.workflow.start(workflow.name, {
-      args: [{ executionId: inserted.id, input }],
+      // dryRun rides the envelope so the tenant runner's subprocess driver sees
+      // it and injects the dry-run client + trace capture.
+      args: [{ executionId: inserted.id, input, dryRun }],
       taskQueue,
       workflowId: temporalWorkflowId,
+      // Tag the execution in Temporal so dry-runs are filterable in the Web UI
+      // and never mistaken for a real run.
+      memo: { dryRun },
       // Idempotent re-submit: if a previous call already started this id,
       // we'd rather error here than start a second run.
       workflowIdReusePolicy: 'REJECT_DUPLICATE',

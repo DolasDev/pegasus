@@ -13,6 +13,7 @@ vi.mock('../api/client', () => ({
 import { apiFetch, apiFetchPaginated } from '../api/client'
 import {
   runWorkflow,
+  asDryRunResult,
   listExecutions,
   getExecution,
   listTriggers,
@@ -143,5 +144,46 @@ describe('workflows trigger API', () => {
     expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/workflows/wf-1/triggers/t-1', {
       method: 'DELETE',
     })
+  })
+})
+
+describe('dry-run wrappers', () => {
+  it('runWorkflow with dryRun sends mode=dry_run', async () => {
+    mockApiFetch.mockResolvedValueOnce({ id: 'e-1', status: 'QUEUED', dryRun: true })
+    await runWorkflow('wf-1', { n: 1 }, { dryRun: true })
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/workflows/wf-1/run', {
+      method: 'POST',
+      body: JSON.stringify({ input: { n: 1 }, mode: 'dry_run' }),
+    })
+  })
+
+  it('runWorkflow without dryRun omits mode (back-compat)', async () => {
+    mockApiFetch.mockResolvedValueOnce({ id: 'e-1', status: 'QUEUED' })
+    await runWorkflow('wf-1', { n: 1 }, { dryRun: false })
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/workflows/wf-1/run', {
+      method: 'POST',
+      body: JSON.stringify({ input: { n: 1 } }),
+    })
+  })
+
+  it('asDryRunResult narrows a dry-run envelope and defaults missing arrays', () => {
+    expect(asDryRunResult(null)).toBeNull()
+    expect(asDryRunResult({ foo: 1 })).toBeNull()
+    expect(asDryRunResult({ dryRun: false })).toBeNull()
+
+    const parsed = asDryRunResult({
+      dryRun: true,
+      return: { ok: 1 },
+      trace: [{ activity: 'a', args: [1], result: 2 }],
+      captured: [{ method: 'send_sms', capability: 'SendSms', args: { to: '+1' } }],
+    })
+    expect(parsed).not.toBeNull()
+    expect(parsed?.trace).toHaveLength(1)
+    expect(parsed?.captured[0].capability).toBe('SendSms')
+
+    // Missing trace/captured default to empty arrays (never undefined).
+    const bare = asDryRunResult({ dryRun: true, return: 1 })
+    expect(bare?.trace).toEqual([])
+    expect(bare?.captured).toEqual([])
   })
 })

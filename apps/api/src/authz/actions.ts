@@ -228,6 +228,17 @@ export const Actions = {
     resourceType: 'IntegrationConfig',
     permission: 'integration_config:publish',
   },
+  // ── Outbound delivery (workflow POSTs a mapped body to a partner endpoint) ─
+  // The mutating counterpart to the (open, read-only) map-to-external transform:
+  // a running workflow hands the platform the external body and the platform
+  // performs the POST server-side, so the send flows through the platform (and
+  // is captured, not performed, under dry-run) instead of a raw httpx call the
+  // runtime can neither see nor stop. Granted to workflow_runtime.
+  DeliverToExternal: {
+    id: 'DeliverToExternal',
+    resourceType: 'IntegrationConfig',
+    permission: 'integration:deliver',
+  },
   // ── Custom event types (tenant-defined event registry for workflows) ─────
   ManageEventTypes: {
     id: 'ManageEventTypes',
