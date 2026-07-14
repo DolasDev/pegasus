@@ -62,4 +62,7 @@ If any argument is missing, ask for it rather than guessing — especially
   small plans-only PR deliberately rather than on every workstream start.
 - The provisioning step is side-effect-free on the remote; the only outward-facing
   action is the single PR you open at the end, once the work is ready.
+- Companion commands: `/workstream-board` shows every in-flight workstream at a
+  glance; `/finish-workstream` lands this branch through the merge queue and tears
+  the worktree down once it has merged.
 </notes>
