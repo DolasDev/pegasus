@@ -59,8 +59,10 @@ export function IntegrationsIndexPage() {
                         </Badge>
                         {it.published ? (
                           <Badge variant="secondary" className="text-xs">
-                            Published v{it.version}
-                            {it.visibility ? ` · ${it.visibility}` : ''}
+                            v{it.version}
+                            {it.visibility
+                              ? ` · ${it.visibility === 'TENANT' ? 'Your config' : 'Platform'}`
+                              : ''}
                           </Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground italic">Built-in</span>

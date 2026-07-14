@@ -9,6 +9,27 @@ prefers a tenant's own `IntegrationConfig` over GLOBAL (shipped in PR #420), but
 tenant has **no way to create one except the Python CLI**, and there is **no
 provenance link** back to the platform config it was based on. This closes that gap.
 
+## ✅ EXECUTED 2026-07-14 (Phases 0–3)
+
+All four active phases implemented on `feat/integration-clone-to-tenant`:
+
+- **Phase 0** — `IntegrationConfig.forkedFromConfigId` / `forkedFromVersion` columns +
+  migration `20260714190924_add_integration_config_fork_provenance` (additive/nullable).
+- **Phase 1** — `POST /api/v1/integrations/:id/config/fork` (400 platform-tenant guard →
+  409 already-customized → 404 no GLOBAL source → 422 gate-fail → 201 with provenance),
+  repo `findActiveGlobal` / `findActiveOwn` + `PublishConfigInput.forkedFrom*`. Handler +
+  DB-backed repo tests.
+- **Phase 2** — tenant-web `forkIntegrationConfig` client + `useForkIntegrationConfig`,
+  "Fork to my tenant" CTA on GLOBAL configs, provenance line on forked TENANT configs,
+  index/detail "Platform" vs "Your config" badges.
+- **Phase 3** — JSON mapping/rules editor (`IntegrationConfigEditor`) with dry-run validate
+  (gate report) → publish-new-version (blocked until validate passes), plus version-history
+  card with rollback. Client fns + mutation hooks + component tests.
+
+Verified: API 291 tests (incl. DB-backed fork round-trip) + tenant-web 1015 tests green;
+tsc + eslint clean both packages. Phase 4 remains backlog (update/reset-from-platform, rich
+form editors, seed-from-built-in).
+
 ---
 
 ## Why (the gap)

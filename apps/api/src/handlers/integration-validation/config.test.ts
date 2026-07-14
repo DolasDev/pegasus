@@ -36,6 +36,8 @@ const {
   mockRepo: {
     publish: vi.fn(),
     findActiveForScope: vi.fn(),
+    findActiveGlobal: vi.fn(),
+    findActiveOwn: vi.fn(),
     listVersions: vi.fn(),
     findVersion: vi.fn(),
   },
@@ -155,7 +157,18 @@ const configRow = {
   corpus: validBody.corpus,
   gateReport: okReport,
   publishedBy: 'user-1',
+  forkedFromConfigId: null,
+  forkedFromVersion: null,
   createdAt: now,
+}
+
+// A GLOBAL platform config that a tenant forks from.
+const globalRow = {
+  ...configRow,
+  id: 'cfg-global-1',
+  tenantId: 'platform-tenant-id',
+  version: 7,
+  visibility: 'GLOBAL' as const,
 }
 
 const PATH = '/integrations/demo_partner/config'
@@ -468,6 +481,102 @@ describe('integration-config handler', () => {
           mapping: configRow.mapping,
           rules: configRow.rules,
           publishedBy: 'user-1',
+        }),
+      )
+      expect(mockRefreshRegistryOverlay).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('POST /config/fork', () => {
+    const FORK = `${PATH}/fork`
+
+    beforeEach(() => {
+      // Default happy-path fork context: no existing own config, a GLOBAL source
+      // exists, the gate passes, and publish returns a forked TENANT row.
+      mockRepo.findActiveOwn.mockResolvedValue(null)
+      mockRepo.findActiveGlobal.mockResolvedValue(globalRow)
+      mockRepo.publish.mockResolvedValue({
+        ...configRow,
+        id: 'cfg-forked-1',
+        version: 1,
+        forkedFromConfigId: globalRow.id,
+        forkedFromVersion: globalRow.version,
+      })
+    })
+
+    it('returns 403 FEATURE_DISABLED when the master switch is off', async () => {
+      process.env['INTEGRATION_CONFIG_PUBLISH_ENABLED'] = 'false'
+      const res = await buildApp().request(FORK, post())
+      expect(res.status).toBe(403)
+      expect((await json(res)).code).toBe('FEATURE_DISABLED')
+      expect(mockRepo.publish).not.toHaveBeenCalled()
+    })
+
+    it('returns 403 without PublishIntegrationConfig (viewer)', async () => {
+      const res = await buildApp(['viewer']).request(FORK, post())
+      expect(res.status).toBe(403)
+      expect(mockRepo.publish).not.toHaveBeenCalled()
+    })
+
+    it('returns 404 for an unknown integration', async () => {
+      mockGetBuiltInDefinition.mockReturnValue(undefined)
+      const res = await buildApp().request('/integrations/ghost/config/fork', post())
+      expect(res.status).toBe(404)
+      expect(mockRepo.publish).not.toHaveBeenCalled()
+    })
+
+    it('returns 400 when the platform tenant tries to fork its own GLOBAL config', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: true })
+      const res = await buildApp().request(FORK, post())
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('PLATFORM_TENANT_CANNOT_FORK')
+      expect(mockRepo.findActiveGlobal).not.toHaveBeenCalled()
+      expect(mockRepo.publish).not.toHaveBeenCalled()
+    })
+
+    it('returns 409 when the tenant already has its own config', async () => {
+      mockRepo.findActiveOwn.mockResolvedValue(configRow)
+      const res = await buildApp().request(FORK, post())
+      expect(res.status).toBe(409)
+      expect((await json(res)).code).toBe('CONFLICT')
+      expect(mockRepo.publish).not.toHaveBeenCalled()
+    })
+
+    it('returns 404 when no GLOBAL platform config exists to fork', async () => {
+      mockRepo.findActiveGlobal.mockResolvedValue(null)
+      const res = await buildApp().request(FORK, post())
+      expect(res.status).toBe(404)
+      expect((await json(res)).code).toBe('NOT_FOUND')
+      expect(mockRepo.publish).not.toHaveBeenCalled()
+    })
+
+    it('returns 422 GATE_FAILED when the platform config no longer passes the gate', async () => {
+      mockRunGatePipeline.mockReturnValue(failReport)
+      const res = await buildApp().request(FORK, post())
+      expect(res.status).toBe(422)
+      expect((await json(res)).code).toBe('GATE_FAILED')
+      expect(mockRepo.publish).not.toHaveBeenCalled()
+    })
+
+    it('forks the GLOBAL config into a TENANT config with provenance on success', async () => {
+      const res = await buildApp().request(FORK, post())
+      expect(res.status).toBe(201)
+      const body = (await json(res)).data as JsonBody
+      expect(body['visibility']).toBe('TENANT')
+      expect(body['forkedFromConfigId']).toBe(globalRow.id)
+      expect(body['forkedFromVersion']).toBe(globalRow.version)
+      // Publishes a TENANT copy of the GLOBAL source's mapping/rules/corpus,
+      // stamped with fork provenance.
+      expect(mockRepo.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          integrationId: 'demo_partner',
+          tenantId: 'test-tenant-id',
+          visibility: 'TENANT',
+          mapping: globalRow.mapping,
+          rules: globalRow.rules,
+          publishedBy: 'user-1',
+          forkedFromConfigId: globalRow.id,
+          forkedFromVersion: globalRow.version,
         }),
       )
       expect(mockRefreshRegistryOverlay).toHaveBeenCalledTimes(1)

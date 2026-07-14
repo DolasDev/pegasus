@@ -1448,6 +1448,14 @@ model IntegrationConfig {
   /// TenantUser.id (or service-account id) of the publisher. Denormalised; not an FK.
   publishedBy String @map("published_by")
 
+  /// Set when this config was created by forking a GLOBAL platform config
+  /// ("fork to my tenant"). Holds the source IntegrationConfig.id. Null for
+  /// directly-published configs. Not an FK so the row survives source deletion.
+  forkedFromConfigId String? @map("forked_from_config_id")
+
+  /// The source config's version at fork time. Null for direct publishes.
+  forkedFromVersion Int? @map("forked_from_version")
+
   createdAt DateTime @default(now()) @map("created_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])

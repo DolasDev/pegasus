@@ -74,6 +74,8 @@ function toFull(row: IntegrationConfigRow) {
     rules: row.rules,
     corpus: row.corpus,
     publishedBy: row.publishedBy,
+    forkedFromConfigId: row.forkedFromConfigId,
+    forkedFromVersion: row.forkedFromVersion,
     createdAt: row.createdAt,
   }
 }
@@ -87,6 +89,8 @@ function toSummary(row: IntegrationConfigRow) {
     visibility: row.visibility,
     status: row.status,
     publishedBy: row.publishedBy,
+    forkedFromConfigId: row.forkedFromConfigId,
+    forkedFromVersion: row.forkedFromVersion,
     createdAt: row.createdAt,
   }
 }
@@ -281,6 +285,113 @@ integrationConfigHandler.post(
       integrationId,
       tenantId,
       fromVersion: version,
+      newVersion: row.version,
+    })
+    return c.json({ data: toFull(row) }, 201)
+  },
+)
+
+// POST /integrations/:id/config/fork — fork the platform (GLOBAL) config into the
+// caller's tenant scope: copy its mapping/rules/corpus, re-run the gate against the
+// current built-in, and publish it as the tenant's own TENANT config (v1) stamped
+// with fork provenance. Mirrors the workflow "fork to my store" flow. Reuses the
+// PublishIntegrationConfig permission and the INTEGRATION_CONFIG_PUBLISH_ENABLED flag.
+integrationConfigHandler.post(
+  '/integrations/:integrationId/config/fork',
+  requirePermission(Actions.PublishIntegrationConfig),
+  async (c) => {
+    if (featureDisabled()) {
+      return c.json(
+        { error: 'Integration config publishing is not enabled', code: 'FEATURE_DISABLED' },
+        403,
+      )
+    }
+    const integrationId = c.req.param('integrationId') ?? ''
+    const tenantId = c.get('tenantId')
+    if (!tenantId) throw new DomainError('Tenant context required', 'UNAUTHENTICATED')
+    const userId = c.get('userId')
+    if (!userId)
+      throw new DomainError('Authenticated user required to publish config', 'UNAUTHENTICATED')
+
+    const base = getBuiltInDefinition(integrationId)
+    if (!base)
+      return c.json({ error: `Unknown integration "${integrationId}"`, code: 'NOT_FOUND' }, 404)
+
+    const db = c.get('db')
+    const tenant = await db.tenant.findUnique({
+      where: { id: tenantId },
+      select: { isPlatformTenant: true },
+    })
+    if (!tenant) throw new DomainError('Tenant not found', 'NOT_FOUND')
+    // The platform tenant owns GLOBAL configs; forking GLOBAL into its own scope
+    // is nonsensical (it would fork a config into the tenant that already owns it).
+    if (tenant.isPlatformTenant) {
+      return c.json(
+        {
+          error: 'The platform tenant cannot fork its own GLOBAL config',
+          code: 'PLATFORM_TENANT_CANNOT_FORK',
+        },
+        400,
+      )
+    }
+
+    const repo = createIntegrationConfigRepository(db)
+
+    // Refuse to clobber an existing tenant customization — publishing would
+    // otherwise supersede their own config with a copy of GLOBAL.
+    const own = await repo.findActiveOwn(integrationId, tenantId)
+    if (own) {
+      return c.json(
+        {
+          error: 'This tenant already has its own config for this integration',
+          code: 'CONFLICT',
+        },
+        409,
+      )
+    }
+
+    const source = await repo.findActiveGlobal(integrationId)
+    if (!source) {
+      return c.json(
+        { error: `No platform config published for "${integrationId}"`, code: 'NOT_FOUND' },
+        404,
+      )
+    }
+
+    // Re-run the gate against the CURRENT built-in: a GLOBAL config that passed
+    // when published may no longer pass if the canonical contract has since
+    // changed in code. Forking must not resurrect a now-invalid config.
+    const report = runGatePipeline(base, {
+      mapping: source.mapping,
+      rules: source.rules,
+      corpus: source.corpus as unknown as GateCorpusCase[],
+    })
+    if (!report.ok) {
+      return c.json(
+        { error: 'Platform config no longer passes the gate', code: 'GATE_FAILED', report },
+        422,
+      )
+    }
+
+    const row = await repo.publish({
+      integrationId,
+      tenantId,
+      visibility: 'TENANT',
+      mapping: source.mapping as Prisma.InputJsonValue,
+      rules: source.rules as Prisma.InputJsonValue,
+      corpus: source.corpus as Prisma.InputJsonValue,
+      gateReport: report as unknown as Prisma.InputJsonValue,
+      publishedBy: userId,
+      forkedFromConfigId: source.id,
+      forkedFromVersion: source.version,
+    })
+
+    await refreshRegistryOverlay(basePrisma)
+    logger.info('integration config forked', {
+      integrationId,
+      tenantId,
+      forkedFromConfigId: source.id,
+      forkedFromVersion: source.version,
       newVersion: row.version,
     })
     return c.json({ data: toFull(row) }, 201)

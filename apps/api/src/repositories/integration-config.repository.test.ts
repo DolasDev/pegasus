@@ -112,4 +112,45 @@ describe.skipIf(!hasDb)('createIntegrationConfigRepository (integration)', () =>
     const globals = await repo.listActiveGlobal()
     expect(globals.every((g) => g.visibility === 'GLOBAL' && g.status === 'PUBLISHED')).toBe(true)
   })
+
+  it('findActiveGlobal returns the GLOBAL row for the integration, null otherwise', async () => {
+    const global = await repo.findActiveGlobal(INTEG_GLOBAL)
+    expect(global?.visibility).toBe('GLOBAL')
+    // INTEG only has a TENANT row — no GLOBAL to source a fork from.
+    expect(await repo.findActiveGlobal(INTEG)).toBeNull()
+  })
+
+  it('findActiveOwn returns the tenant PUBLISHED row, null when only GLOBAL exists', async () => {
+    const own = await repo.findActiveOwn(INTEG, tenantId)
+    expect(own?.visibility).toBe('TENANT')
+    expect(own?.version).toBe(2)
+    // The tenant has no OWN row for the GLOBAL-only integration.
+    expect(await repo.findActiveOwn(INTEG_GLOBAL, tenantId)).toBeNull()
+  })
+
+  it('publish stamps fork provenance when provided, else leaves it null', async () => {
+    const INTEG_FORK = `${INTEG}-fork`
+    const source = await repo.findActiveGlobal(INTEG_GLOBAL)
+    expect(source).not.toBeNull()
+
+    const forked = await repo.publish({
+      integrationId: INTEG_FORK,
+      tenantId,
+      visibility: 'TENANT',
+      mapping,
+      rules,
+      corpus,
+      gateReport,
+      publishedBy: 'u1',
+      forkedFromConfigId: source!.id,
+      forkedFromVersion: source!.version,
+    })
+    expect(forked.forkedFromConfigId).toBe(source!.id)
+    expect(forked.forkedFromVersion).toBe(source!.version)
+
+    // A plain publish (no provenance args) leaves the columns null.
+    const direct = await repo.findVersion(INTEG, tenantId, 2)
+    expect(direct?.forkedFromConfigId).toBeNull()
+    expect(direct?.forkedFromVersion).toBeNull()
+  })
 })
