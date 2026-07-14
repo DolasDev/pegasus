@@ -294,6 +294,9 @@
       "PublishIntegrationConfig": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["IntegrationConfig"] }
       },
+      "DeliverToExternal": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["IntegrationConfig"] }
+      },
       "ManageEventTypes": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["EventType"] }
       },

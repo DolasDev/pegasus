@@ -18,7 +18,11 @@
 // task state from an order.* event pointer; CloseTask lets it close out an
 // order's operational task (e.g. date_confirmation) when the triggering event
 // arrives. Orders/tasks are the pegII-bound operational surface
-// (handlers/pegii-runtime.ts).
+// (handlers/pegii-runtime.ts). DeliverToExternal lets a workflow hand the
+// platform a mapped external body to POST to the partner endpoint server-side
+// (the mutating counterpart to the open map-to-external transform), so the send
+// flows through the platform and is dry-run-interceptable rather than a raw
+// httpx call from the activity.
 permit (
   principal in Pegasus::Group::"workflow_runtime",
   action in [
@@ -33,6 +37,7 @@ permit (
     Pegasus::Action::"CreateEvent",
     Pegasus::Action::"EmitTenantEvent",
     Pegasus::Action::"SendSms",
+    Pegasus::Action::"DeliverToExternal",
     Pegasus::Action::"ReadWorkflowSecret",
     Pegasus::Action::"ReadWorkflowConfig",
     Pegasus::Action::"ReadIntegrationProjection",
