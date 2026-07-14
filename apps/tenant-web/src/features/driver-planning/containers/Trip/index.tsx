@@ -7,6 +7,7 @@ import { ActivityGantt } from './components/ActivityGantt/ActivityGantt'
 import { Notes } from './components/Notes/Notes'
 import styles from './Trip.module.css'
 import { Button } from '../../components/Button'
+import { RateTripButton } from '../../components/RateTripButton'
 
 import { API } from '@/features/driver-planning/utils/api'
 import { useStatusPredictionPrompt, usePromptForStatusUpdate } from './utils/status-prompt'
@@ -148,13 +149,16 @@ function TripInternal() {
                   <i className="fas fa-arrow-left"></i> All trips
                 </Button>
                 {!isRejected && (
-                  <Button
-                    className={styles.editTripButton}
-                    data-target="trip-edit-planning"
-                    onClick={() => navigate(`/planning?tripId=${tripId}`)}
-                  >
-                    <i className="fas fa-pencil"></i> &nbsp;Edit planning
-                  </Button>
+                  <>
+                    <RateTripButton shipments={trip.shipments} />
+                    <Button
+                      className={styles.editTripButton}
+                      data-target="trip-edit-planning"
+                      onClick={() => navigate(`/planning?tripId=${tripId}`)}
+                    >
+                      <i className="fas fa-pencil"></i> &nbsp;Edit planning
+                    </Button>
+                  </>
                 )}
               </div>
               {isRejected && (
