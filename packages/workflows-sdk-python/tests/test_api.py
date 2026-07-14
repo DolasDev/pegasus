@@ -1050,3 +1050,77 @@ def test_close_task_forbidden_raises() -> None:
     with pytest.raises(PegasusApiError) as exc_info:
         client.close_task(order_id="ord-1", task_type="date_confirmation")
     assert exc_info.value.status_code == 403
+
+
+def test_deliver_to_external_posts_body_and_returns_data() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "delivered": True,
+                    "status": 200,
+                    "response": {"accepted": True},
+                    "dryRun": False,
+                }
+            },
+        )
+
+    client = _client_with(handler)
+    result = client.deliver_to_external("demo_partner", {"serviceOrderNumber": "O-1"})
+
+    assert result == {
+        "delivered": True,
+        "status": 200,
+        "response": {"accepted": True},
+        "dryRun": False,
+    }
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/api/v1/integrations/demo_partner/deliver-to-external"
+    assert captured["body"] == {
+        "external": {"serviceOrderNumber": "O-1"},
+        "urlConfig": "SEND_URL",
+        "apiKeySecret": "SEND_API_KEY",
+        "group": "global",
+    }
+
+
+def test_deliver_to_external_threads_overrides() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"data": {"delivered": True}})
+
+    client = _client_with(handler)
+    client.deliver_to_external(
+        "demo_partner",
+        {"x": 1},
+        url_config="ORDER_URL",
+        api_key_secret="ORDER_KEY",
+        headers_config="ORDER_HEADERS",
+        group="billing",
+    )
+
+    assert captured["body"] == {
+        "external": {"x": 1},
+        "urlConfig": "ORDER_URL",
+        "apiKeySecret": "ORDER_KEY",
+        "group": "billing",
+        "headersConfig": "ORDER_HEADERS",
+    }
+
+
+def test_deliver_to_external_non_2xx_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"error": "forbidden", "code": "FORBIDDEN"})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.deliver_to_external("demo_partner", {})
+    assert exc_info.value.status_code == 403

@@ -113,8 +113,7 @@ _MUTATIONS: dict[str, str] = {
     "delete_secret": "ManageWorkflowSecrets",
     "set_config": "ManageWorkflowConfigs",
     "delete_config": "ManageWorkflowConfigs",
-    # NOTE: when Phase B lands ``deliver_to_external`` on PegasusClient, add:
-    #   "deliver_to_external": "DeliverToExternal",
+    "deliver_to_external": "DeliverToExternal",
 }
 
 #: publish / CLI / execution-inspection methods — not the in-activity surface.
@@ -263,6 +262,8 @@ def _synthetic_return(name: str, args: tuple, kwargs: dict) -> Any:
         return {"state": state, "version": 1, "dryRun": True}
     if name == "delete_projection":
         return None
+    if name == "deliver_to_external":
+        return {"delivered": False, "status": None, "response": None, "dryRun": True}
     return {"dryRun": True, "captured": True}
 
 

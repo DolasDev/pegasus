@@ -3,6 +3,24 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.12.0
+
+### Added
+
+- **`PegasusClient.deliver_to_external(integration_id, body, …)`** (spec 0015,
+  Part B). The mutating counterpart to `map_to_external`: build the partner body
+  with `map_to_external`, then deliver it here instead of a raw `httpx.post`. The
+  platform performs the outbound POST **server-side**, using the workflow's own
+  delivery URL (config `SEND_URL`) and API key (secret `SEND_API_KEY`) — so the
+  send flows through the one boundary a dry run controls (captured, not
+  performed) rather than a raw call the runtime can't see. `integration_id` is
+  validated against the registry (404 if unknown) and recorded; the
+  URL/key/headers config keys and group are overridable. Requires the manifest to
+  declare `required_actions = ["DeliverToExternal"]` (a new Cedar action granted
+  to `workflow_runtime`). Returns `{delivered, status, response, dryRun}`.
+  Auto-surfaces in the `pegasus://reference/api` MCP resource, and the offline
+  test harness captures it with capability `DeliverToExternal`.
+
 ## 0.11.0
 
 ### Added

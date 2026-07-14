@@ -189,6 +189,35 @@ required_actions = ["SendSms"]
 or (404) if the tenant has no SMS provider connected. The `to` number must be E.164
 (e.g. `"+16308868537"`).
 
+### Delivering a body to a partner endpoint
+
+To POST a mapped body to a partner API, use `client.deliver_to_external` rather than
+calling the partner directly with `httpx` — the platform performs the outbound POST
+**server-side**, so the send flows through the one boundary a dry run controls
+(captured, never performed) instead of a raw call the runtime can't see or stop. It
+pairs with `map_to_external`: map to build the body, deliver to send it.
+
+```python
+@activity.defn
+async def send_order_to_partner(order: dict) -> dict:
+    client = PegasusClient.from_runtime()
+    mapped = client.map_to_external("demo_partner", order)   # build the partner body
+    if not mapped["valid"]:
+        raise RuntimeError(f"refusing to send invalid body: {mapped['issues']}")
+    result = client.deliver_to_external("demo_partner", mapped["external"])
+    if not result["delivered"]:
+        raise RuntimeError(f"partner rejected the delivery: {result['status']}")
+    return result
+```
+
+The delivery URL and API key come from the workflow's own config/secret (`SEND_URL`
+config, `SEND_API_KEY` secret by default — override with `url_config` /
+`api_key_secret` / `headers_config` / `group`), so no partner URL or key appears in
+the workflow source. Declare `required_actions = ["DeliverToExternal"]` in the
+manifest. Returns `{delivered, status, response, dryRun}`; raises `PegasusApiError`
+on 403 (missing action), 404 (unknown integration, or the URL config / API-key
+secret is not set), or 400 (a delivery URL pointing at a private/loopback host).
+
 ### Secrets & configuration
 
 A workflow reads two kinds of per-tenant key/value data at runtime — **secrets**

@@ -106,6 +106,7 @@ def test_get_projection_absent_returns_none() -> None:
         (lambda c: c.delete_projection("i", "order", "S-1"), "WriteIntegrationProjection"),
         (lambda c: c.set_config("K", "v"), "ManageWorkflowConfigs"),
         (lambda c: c.set_secret("K", "v"), "ManageWorkflowSecrets"),
+        (lambda c: c.deliver_to_external("demo_partner", {"x": 1}), "DeliverToExternal"),
     ],
 )
 def test_mutation_is_captured_not_performed(call, capability) -> None:
@@ -123,6 +124,13 @@ def test_capture_records_args_and_synthetic_return() -> None:
     assert entry["kwargs"] == {"to": "+1555", "body": "hello"}
     assert entry["would_return"] == result
     assert result["data"]["dryRun"] is True
+
+
+def test_deliver_to_external_capture_shape() -> None:
+    client = fake_client()
+    result = client.deliver_to_external("demo_partner", {"orderNumber": "S-1"})
+    assert result == {"delivered": False, "status": None, "response": None, "dryRun": True}
+    assert client.captured[0]["capability"] == "DeliverToExternal"
 
 
 def test_record_side_effect() -> None:

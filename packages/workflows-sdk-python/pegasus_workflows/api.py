@@ -543,6 +543,70 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()
 
+    def deliver_to_external(
+        self,
+        integration_id: str,
+        body: Any,
+        *,
+        url_config: str = "SEND_URL",
+        api_key_secret: str = "SEND_API_KEY",
+        headers_config: str | None = None,
+        group: str = "global",
+    ) -> dict[str, Any]:
+        """POST a mapped external body to a partner endpoint, server-side.
+
+        The mutating counterpart to :meth:`map_to_external`: build the partner
+        body with ``map_to_external``, then deliver it here. The platform performs
+        the outbound POST using the workflow's own delivery URL (config
+        ``url_config``) and API key (secret ``api_key_secret``), so the send flows
+        through the platform — captured, not performed, under a dry run — instead
+        of a raw ``httpx.post`` the runtime can neither see nor stop. Prefer this
+        over calling the partner directly from an activity.
+
+        Requires the workflow's manifest to declare
+        ``required_actions = ["DeliverToExternal"]``.
+
+        Args:
+            integration_id: Integration slug the delivery is for, e.g.
+                ``"demo_partner"``. Validated against the registry (404 if
+                unknown) and recorded; the endpoint/credentials come from config.
+            body: The mapped external payload to POST (typically a
+                ``map_to_external`` result's ``external``).
+            url_config: Config key holding the delivery URL (default ``SEND_URL``).
+            api_key_secret: Secret key holding the bearer API key (default
+                ``SEND_API_KEY``).
+            headers_config: Optional config key holding extra headers as a JSON
+                object string (e.g. ``SEND_HEADERS``).
+            group: The config/secret group the entries live in (default
+                ``"global"``).
+
+        Returns:
+            ``{delivered, status, response, dryRun}``. On a real run ``delivered``
+            reflects the partner's 2xx-ness and ``status``/``response`` carry the
+            partner reply. On a dry run: ``{delivered: False, dryRun: True}`` and
+            nothing is sent.
+
+        Raises:
+            PegasusApiError: On 403 (manifest lacks ``DeliverToExternal``), 404
+                (unknown integration, or the URL config / API-key secret is not
+                set), 400 (disallowed delivery URL), 502 (delivery failed), or any
+                other non-2xx.
+        """
+        payload: dict[str, Any] = {
+            "external": body,
+            "urlConfig": url_config,
+            "apiKeySecret": api_key_secret,
+            "group": group,
+        }
+        if headers_config is not None:
+            payload["headersConfig"] = headers_config
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/integrations/{integration_id}/deliver-to-external", json=payload
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
     # -- pegII order + task reads (for use inside activities) ---------------
     #
     # Orders and their operational tasks live in the legacy pegII (MoveManager)
