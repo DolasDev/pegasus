@@ -135,7 +135,7 @@ export const RateTripResult: React.FC<RateTripResultProps> = ({
             </div>
           ) : !hasResult ? (
             <div className={styles.state} data-target="rate-trip-idle">
-              {rows.length === 0 && total === 0 ? 'Enter a discount and rate the trip.' : null}
+              Enter a discount and rate the trip.
             </div>
           ) : rows.length === 0 ? (
             <div className={styles.state}>No shipments on this trip.</div>

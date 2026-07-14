@@ -174,6 +174,18 @@ describe('rateTripShipments', () => {
   })
 })
 
+describe('tripRateTotal', () => {
+  it('sums rated rows, counting a legitimately $0 rated row and ignoring uncable/error rows', () => {
+    const rows = [
+      { shipment: {}, status: 'rated' as const, total: 1200 },
+      { shipment: {}, status: 'rated' as const, total: 0 },
+      { shipment: {}, status: 'uncable' as const, reason: 'no-weight' as const },
+      { shipment: {}, status: 'error' as const, message: 'boom' },
+    ]
+    expect(tripRateTotal(rows)).toBe(1200)
+  })
+})
+
 describe('uncableLabel', () => {
   it('has readable text for every reason', () => {
     expect(uncableLabel('bad-origin-zip')).toMatch(/origin/i)

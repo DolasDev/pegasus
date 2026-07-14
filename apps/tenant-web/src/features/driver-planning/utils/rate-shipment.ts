@@ -194,5 +194,8 @@ export async function rateTripShipments(
 
 /** Sum of the `rated` rows' totals (uncable/error rows contribute nothing). */
 export function tripRateTotal(rows: RateRow[]): number {
-  return rows.reduce((sum, r) => (r.status === 'rated' && r.total ? sum + r.total : sum), 0)
+  return rows.reduce(
+    (sum, r) => (r.status === 'rated' && typeof r.total === 'number' ? sum + r.total : sum),
+    0,
+  )
 }

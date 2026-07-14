@@ -148,15 +148,17 @@ function TripInternal() {
                 <Button data-target="trip-back-to-trips" onClick={() => navigate('/trips')}>
                   <i className="fas fa-arrow-left"></i> All trips
                 </Button>
-                <RateTripButton shipments={trip.shipments} />
                 {!isRejected && (
-                  <Button
-                    className={styles.editTripButton}
-                    data-target="trip-edit-planning"
-                    onClick={() => navigate(`/planning?tripId=${tripId}`)}
-                  >
-                    <i className="fas fa-pencil"></i> &nbsp;Edit planning
-                  </Button>
+                  <>
+                    <RateTripButton shipments={trip.shipments} />
+                    <Button
+                      className={styles.editTripButton}
+                      data-target="trip-edit-planning"
+                      onClick={() => navigate(`/planning?tripId=${tripId}`)}
+                    >
+                      <i className="fas fa-pencil"></i> &nbsp;Edit planning
+                    </Button>
+                  </>
                 )}
               </div>
               {isRejected && (
