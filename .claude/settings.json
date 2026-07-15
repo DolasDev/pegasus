@@ -87,6 +87,10 @@
           {
             "type": "command",
             "command": "node .claude/hooks/gsd-check-update.js"
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/worktree-guard-notice.js"
           }
         ]
       }
