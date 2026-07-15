@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 13.2.0"
+    "version": ">=13.2.0 <14.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "preview": {
@@ -18,10 +19,21 @@
       }
     },
     "production": {
+      "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
       },
       "ios": {
+        "resourceClass": "m-medium"
+      },
+      "env": {
+        "EXPO_PUBLIC_ENV": "production"
+      }
+    },
+    "ios-simulator-ci": {
+      "extends": "production",
+      "ios": {
+        "simulator": true,
         "resourceClass": "m-medium"
       },
       "env": {
@@ -32,8 +44,7 @@
   "submit": {
     "production": {
       "android": {
-        "serviceAccountKeyPath": "./google-service-account.json",
-        "track": "internal"
+        "track": "production"
       },
       "ios": {
         "appleId": "steve@yourcompany.com",

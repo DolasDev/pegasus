@@ -1,0 +1,194 @@
+name: Mobile release
+
+# Builds and releases the @pegasus/mobile driver app.
+#
+# Android — push to main (paths below) or manual dispatch → EAS cloud build
+# (production AAB) → `eas submit` to the Google Play *production* track. Every
+# job that touches a real environment runs under the matching GitHub
+# environment (`prod` on push), so the `prod` required-reviewer rule gates the
+# whole release: nothing builds or submits until a human approves it once for
+# the run. Runtime config (API URL + Cognito) is resolved from SSM into
+# apps/mobile/.env at build time by the ./.github/actions/mobile-eas-config
+# composite.
+#
+# iOS — an unsigned *simulator* build only (no Apple Developer credentials
+# exist yet, which blocks device builds, not just submission). It is a CI
+# signal, decoupled from the Android submit chain via the `needs:` graph so a
+# simulator break can never block a Play release. Device build + App Store
+# submit are a documented follow-up (apps/mobile/DEPLOYMENT_GUIDE.md).
+#
+# Why a plain path filter (not deploy.yml's `last-deploy` watermark): mobile is
+# a single independent component with no cross-component cancellation risk, and
+# main uses squash-merges, so single-commit on.push.paths diffing is reliable.
+#
+# Prereqs — see apps/mobile/DEPLOYMENT_GUIDE.md → "One-time bootstrap":
+#   - GitHub environments `staging`/`prod`, each with an `AWS_DEPLOY_ROLE_ARN`
+#     var whose role has ssm:GetParameter on the four parameters read by the
+#     mobile-eas-config action.
+#   - Repo secret EXPO_TOKEN whose EAS account owns the project AND has the
+#     Google Play service-account submit key registered via `eas credentials`
+#     (so no key material ever lands on the runner).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/api-http/**'
+      - 'packages/auth/**'
+      - 'packages/domain/**'
+      - 'packages/theme/**'
+  workflow_dispatch:
+    inputs:
+      env:
+        description: 'Target Pegasus environment'
+        type: choice
+        required: true
+        default: prod
+        options: [prod, staging]
+      platform:
+        description: 'Which platform(s) to build'
+        type: choice
+        required: true
+        default: all
+        options: [all, android, ios]
+      skip_submit:
+        description: 'Build only — do not submit to Google Play'
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: mobile-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Resolve what this run should do. On push → a production release of both
+  # platforms. On dispatch → honour the inputs. Kept env-free so it never waits
+  # on a reviewer gate.
+  # ---------------------------------------------------------------------------
+  resolve:
+    name: Resolve release parameters
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      target_env: ${{ steps.d.outputs.target_env }}
+      do_android: ${{ steps.d.outputs.do_android }}
+      do_ios: ${{ steps.d.outputs.do_ios }}
+      do_submit: ${{ steps.d.outputs.do_submit }}
+    steps:
+      - name: Decide
+        id: d
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            target_env="${{ inputs.env }}"
+            platform="${{ inputs.platform }}"
+            skip_submit="${{ inputs.skip_submit }}"
+          else
+            target_env="prod"
+            platform="all"
+            skip_submit="false"
+          fi
+          do_android=false; do_ios=false
+          [[ "$platform" == "all" || "$platform" == "android" ]] && do_android=true
+          [[ "$platform" == "all" || "$platform" == "ios" ]] && do_ios=true
+          # Submit only a production Android build, and only when not skipped.
+          do_submit=false
+          if [[ "$do_android" == "true" && "$target_env" == "prod" && "$skip_submit" != "true" ]]; then
+            do_submit=true
+          fi
+          {
+            echo "target_env=$target_env"
+            echo "do_android=$do_android"
+            echo "do_ios=$do_ios"
+            echo "do_submit=$do_submit"
+          } >> "$GITHUB_OUTPUT"
+          echo "env=$target_env android=$do_android ios=$do_ios submit=$do_submit"
+
+  # ---------------------------------------------------------------------------
+  # Android production AAB. Runs under the target environment (prod on push),
+  # so the required-reviewer gate applies here.
+  # ---------------------------------------------------------------------------
+  build-android:
+    name: Build Android (production AAB)
+    needs: resolve
+    if: needs.resolve.outputs.do_android == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve.outputs.target_env }}
+    timeout-minutes: 40
+    outputs:
+      build_id: ${{ steps.build.outputs.build_id }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/mobile-eas-config
+        with:
+          aws-role: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+      - name: EAS build (Android, production)
+        id: build
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          out=$(eas build --non-interactive --json --profile production --platform android)
+          echo "$out"
+          # `eas build --json` returns an array (one entry per platform); pin
+          # the build id so submit targets exactly this build, never --latest.
+          build_id=$(node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s);console.log(Array.isArray(a)?a[0].id:a.id)})' <<< "$out")
+          echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
+          echo "Android build id: $build_id"
+
+  # ---------------------------------------------------------------------------
+  # iOS simulator (unsigned) build — CI signal only, no Apple creds needed.
+  # Independent of submit via the needs graph.
+  # ---------------------------------------------------------------------------
+  build-ios-simulator:
+    name: Build iOS (simulator, unsigned)
+    needs: resolve
+    if: needs.resolve.outputs.do_ios == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve.outputs.target_env }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/mobile-eas-config
+        with:
+          aws-role: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+      - name: EAS build (iOS simulator)
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          eas build --non-interactive --profile ios-simulator-ci --platform ios
+
+  # ---------------------------------------------------------------------------
+  # Submit the pinned Android build to the Play production track. Depends only
+  # on build-android (never on the iOS build). No AWS/SSM needed — the Google
+  # service-account key is EAS-hosted, reached with EXPO_TOKEN alone.
+  # ---------------------------------------------------------------------------
+  submit-android:
+    name: Submit to Google Play (production)
+    needs: [resolve, build-android]
+    if: needs.resolve.outputs.do_submit == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve.outputs.target_env }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+      - name: EAS submit (Android → Play production)
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: eas submit --non-interactive --platform android --profile production --id "${{ needs.build-android.outputs.build_id }}"
