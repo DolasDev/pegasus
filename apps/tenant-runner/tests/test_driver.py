@@ -76,6 +76,29 @@ WORKFLOW_MODULE = textwrap.dedent(
             return await workflow.execute_activity(
                 notify, to, start_to_close_timeout=None,
             )
+
+
+    @pegasus_workflow(name="logging_wf", version="1.0.0")
+    class LoggingWorkflow:
+        @workflow.run
+        async def run(self, payload: dict) -> dict:
+            # The standard authoring surface: logger + info on the FIRST lines.
+            # Real temporalio.workflow.logger/info read the event-loop context,
+            # so without the driver's patches this raised _NotInWorkflowEventLoop-
+            # Error before any activity ran (sdk-feedback/0017).
+            workflow.logger.info("logging_wf started")
+            info = workflow.info()
+            return {"ran": True, "workflow_id": info.workflow_id}
+
+
+    @pegasus_workflow(name="waiter_wf", version="1.0.0")
+    class WaiterWorkflow:
+        @workflow.run
+        async def run(self, payload: dict) -> dict:
+            workflow.logger.info("waiter_wf waiting on a signal that never comes")
+            # No signal source in a single-shot run — predicate stays False.
+            await workflow.wait_condition(lambda: False)
+            return {"ran": True}
     '''
 )
 
@@ -180,6 +203,50 @@ def test_driver_dry_run_traces_activities_with_empty_capture(tmp_path: Path) -> 
     assert result["captured"] == []
     assert result["trace"][0]["activity"] == "double"
     assert result["trace"][0]["result"] == 42
+
+
+def test_driver_runs_workflow_using_logger_and_info(tmp_path: Path) -> None:
+    # Regression for sdk-feedback/0017: workflow.logger / workflow.info on the
+    # first lines of run() must NOT raise _NotInWorkflowEventLoopError. This is
+    # the single path for both live and dry-run, so a live run must succeed too.
+    proc, verdict = _run_driver(
+        tmp_path,
+        entry_point="fixture_wf.workflow:LoggingWorkflow",
+        payload={"executionId": "e1", "input": {}},
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert verdict is not None and verdict["ok"] is True
+    assert verdict["result"] == {"ran": True, "workflow_id": "dry-run"}
+    assert "NotInWorkflowEventLoop" not in (proc.stderr or "")
+
+
+def test_driver_dry_run_workflow_using_logger_and_info(tmp_path: Path) -> None:
+    # The same workflow under dry-run also reaches completion (no crash).
+    proc, verdict = _run_driver(
+        tmp_path,
+        entry_point="fixture_wf.workflow:LoggingWorkflow",
+        payload={"executionId": "e1", "input": {}},
+        dry_run=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert verdict is not None and verdict["ok"] is True
+    assert verdict["result"]["dryRun"] is True
+    assert verdict["result"]["return"] == {"ran": True, "workflow_id": "dry-run"}
+
+
+def test_driver_reports_wait_condition_as_unsupported(tmp_path: Path) -> None:
+    # A signal-/wait_condition-driven workflow cannot run single-shot; the driver
+    # must report a clear "unsupported" error, not a raw event-loop crash (AC5).
+    proc, verdict = _run_driver(
+        tmp_path,
+        entry_point="fixture_wf.workflow:WaiterWorkflow",
+        payload={"executionId": "e1", "input": {}},
+        dry_run=True,
+    )
+    assert proc.returncode == 3
+    assert verdict is not None and verdict["ok"] is False
+    assert "not yet supported" in verdict["error"]
+    assert "NotInWorkflowEventLoop" not in verdict["error"]
 
 
 def test_driver_reports_tenant_exception_as_failure(tmp_path: Path) -> None:
