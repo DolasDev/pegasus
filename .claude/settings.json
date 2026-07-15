@@ -113,6 +113,16 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/worktree-branch-guard.js",
+            "timeout": 5
+          }
+        ]
       }
     ]
   },
