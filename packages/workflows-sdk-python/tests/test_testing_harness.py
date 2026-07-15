@@ -121,8 +121,12 @@ def test_capture_records_args_and_synthetic_return() -> None:
     result = client.send_sms(to="+1555", body="hello")
     entry = client.captured[0]
     assert entry["method"] == "send_sms"
-    assert entry["kwargs"] == {"to": "+1555", "body": "hello"}
-    assert entry["would_return"] == result
+    # Unified shape: `args` is a named dict (no separate `kwargs`), regardless of
+    # whether the author called positionally or by keyword; return key is
+    # `wouldReturn` — identical to the server-side dry-run record (0016).
+    assert entry["args"] == {"to": "+1555", "body": "hello"}
+    assert "kwargs" not in entry
+    assert entry["wouldReturn"] == result
     assert result["data"]["dryRun"] is True
 
 
@@ -130,7 +134,9 @@ def test_deliver_to_external_capture_shape() -> None:
     client = fake_client()
     result = client.deliver_to_external("demo_partner", {"orderNumber": "S-1"})
     assert result == {"delivered": False, "status": None, "response": None, "dryRun": True}
-    assert client.captured[0]["capability"] == "DeliverToExternal"
+    entry = client.captured[0]
+    assert entry["capability"] == "DeliverToExternal"
+    assert entry["args"] == {"integration_id": "demo_partner", "external": {"orderNumber": "S-1"}}
 
 
 def test_record_side_effect() -> None:
@@ -160,7 +166,7 @@ def test_run_activity_runs_real_body_not_stub() -> None:
     assert result == {"stub": False, "orderNumber": "S-9"}
     # The mutation was captured, not performed.
     assert [c["capability"] for c in client.captured] == ["SendSms"]
-    assert client.captured[0]["kwargs"]["body"] == "order S-9 saved"
+    assert client.captured[0]["args"]["body"] == "order S-9 saved"
 
 
 def test_run_activity_sync_activity() -> None:
@@ -213,3 +219,57 @@ def test_classification_covers_every_client_method() -> None:
 
 def test_fake_client_is_fakeclient_instance() -> None:
     assert isinstance(fake_client(), FakeClient)
+
+
+# --- 0016 parity: offline record == server-side dry-run record ------------------
+
+# A representative call per mutation, exercised against BOTH the offline fake and
+# a real dry-run PegasusClient. The two capture records must be byte-for-byte
+# equal — the guarantee that an offline `client.captured` assertion describes the
+# real web-UI dry-run trace. Fails loudly if either shape drifts.
+_MUTATION_CALLS = [
+    lambda c: c.send_sms(to="+15551234567", body="hi"),
+    lambda c: c.emit_event("order.saved", {"id": 1}),
+    lambda c: c.close_task(order_id="S-1", task_type="date_confirmation", reason="done"),
+    lambda c: c.put_projection("demo_partner", "order", "S-1", {"x": 1}),
+    lambda c: c.delete_projection("demo_partner", "order", "S-1"),
+    lambda c: c.publish_integration_config("demo_partner", mapping={}, rules={}, corpus=[]),
+    lambda c: c.rollback_integration_config("demo_partner", version=2),
+    lambda c: c.set_secret("K", "v"),
+    lambda c: c.delete_secret("K"),
+    lambda c: c.set_config("K", "v"),
+    lambda c: c.delete_config("K"),
+    lambda c: c.deliver_to_external("demo_partner", {"orderNumber": "S-1"}),
+]
+
+
+@pytest.mark.parametrize("call", _MUTATION_CALLS)
+def test_offline_record_matches_server_side_dry_run(call) -> None:
+    fake = fake_client()
+    real = PegasusClient(base_url="http://dry-run.invalid", token="dry-run", dry_run=True)
+    call(fake)
+    call(real)
+    assert fake.captured[-1] == real.captured[-1]
+    # And it is the canonical shape — named `args` dict, `wouldReturn`, no `kwargs`.
+    entry = fake.captured[-1]
+    assert set(entry) == {"method", "capability", "args", "wouldReturn"}
+    assert isinstance(entry["args"], dict)
+
+
+def test_every_mutation_has_a_parity_call() -> None:
+    # Keep the parity matrix exhaustive: one call per classified mutation.
+    covered = {c(_MethodRecorder()) for c in _MUTATION_CALLS}
+    assert covered == set(_MUTATIONS), (
+        f"parity matrix out of sync with _MUTATIONS: "
+        f"missing={set(_MUTATIONS) - covered}, extra={covered - set(_MUTATIONS)}"
+    )
+
+
+class _MethodRecorder:
+    """Records which method name a parity lambda invokes (no execution)."""
+
+    def __getattr__(self, name: str):
+        def _record(*_a, **_k) -> str:
+            return name
+
+        return _record

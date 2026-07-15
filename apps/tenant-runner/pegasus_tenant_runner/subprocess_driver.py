@@ -29,19 +29,28 @@ Direct-execution mode
 Tenant workflows are authored as Temporal workflow classes (the SDK's
 ``@pegasus_workflow`` + ``@workflow.run``), but this process has NO Temporal
 connection — connection details are deliberately absent. Instead the driver
-patches the handful of ``temporalio.workflow`` orchestration primitives to
-direct equivalents and runs the workflow body as plain asyncio:
+patches the ``temporalio.workflow`` primitives that need the workflow event
+loop to direct equivalents and runs the workflow body as plain asyncio:
 
 * ``execute_activity`` / ``execute_local_activity`` → call the activity
   callable in-process (``@activity.defn`` returns the original callable).
 * ``sleep`` → ``asyncio.sleep``; ``now`` → ``datetime.now(UTC)``;
   ``uuid4`` → ``uuid.uuid4``.
+* ``logger`` → a plain stdlib logger; ``info()`` → a synthetic ``Info``.
+  (Temporal's real ``workflow.logger``/``info()`` read the event-loop
+  context, so without these patches the FIRST ``workflow.logger.info`` in a
+  workflow raises ``_NotInWorkflowEventLoopError`` — see sdk-feedback/0017.)
+* ``wait_condition`` → evaluate the predicate once; if it is already true,
+  return; otherwise raise a clear "unsupported in v1" error, because a
+  single-shot subprocess has no signal source to make it become true.
 
 v1 semantics, documented for workflow authors: the whole workflow runs as
 ONE unit of work inside the platform's per-execution timeout. Durable
 Temporal replay, signals, queries, and per-activity retries are not
 available to tenant code yet — the proxy activity wrapping this subprocess
-is what Temporal sees.
+is what Temporal sees. Signal-/``wait_condition``-driven workflows therefore
+cannot run here and fail with an explicit message rather than a crash. These
+patches apply identically to live and dry-run (both take this path).
 """
 
 from __future__ import annotations
@@ -49,9 +58,11 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import logging
 import os
 import sys
 import traceback
+import types
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -88,6 +99,11 @@ def _install_direct_execution_patches(trace: list[dict[str, Any]] | None = None)
     ``{activity, args, result}`` record to it — the per-activity trace the
     web-UI dry-run view renders. This is the natural capture point: every
     tenant activity call already flows through this wrapper.
+
+    Beyond activity dispatch, this also patches the ``workflow.*`` accessors a
+    normal workflow body touches (``logger``, ``info``, ``wait_condition``)
+    so they don't reach for the (absent) Temporal event loop. See the module
+    docstring for the v1 limitations this implies.
     """
     from temporalio import workflow
 
@@ -121,11 +137,44 @@ def _install_direct_execution_patches(trace: list[dict[str, Any]] | None = None)
             )
         return result
 
+    async def _direct_wait_condition(
+        fn: Any, *_args: Any, **_kwargs: Any
+    ) -> None:
+        # A single-shot subprocess has no signal source, so a predicate that is
+        # not already true can never become true here. Fail with a clear message
+        # instead of blocking forever or raising an event-loop error.
+        if callable(fn) and fn():
+            return
+        raise RuntimeError(
+            "workflow.wait_condition cannot be satisfied in the Pegasus v1 "
+            "direct-execution runtime: this workflow blocks on a signal or "
+            "condition, which the single-shot tenant runner cannot deliver. "
+            "Signal-/wait_condition-driven workflows are not yet supported "
+            "(see sdk-feedback/0017)."
+        )
+
+    def _direct_info() -> Any:
+        # A stand-in for temporalio's WorkflowInfo — enough attributes that
+        # ``workflow.info().<field>`` reads work without the event-loop context.
+        return types.SimpleNamespace(
+            workflow_id="dry-run",
+            run_id="dry-run",
+            workflow_type="pegasus-tenant-workflow",
+            task_queue="pegasus-tenant-runner",
+            namespace="default",
+            attempt=1,
+        )
+
     workflow.execute_activity = _direct_execute_activity  # type: ignore[assignment]
     workflow.execute_local_activity = _direct_execute_activity  # type: ignore[assignment]
     workflow.sleep = asyncio.sleep  # type: ignore[assignment]
     workflow.now = lambda: datetime.now(UTC)  # type: ignore[assignment]
     workflow.uuid4 = uuid.uuid4  # type: ignore[assignment]
+    # A plain stdlib logger: no LoggerAdapter that reads the workflow event loop
+    # (the real one raises _NotInWorkflowEventLoopError on the first log call).
+    workflow.logger = logging.getLogger("pegasus_tenant_runner.workflow")  # type: ignore[assignment]
+    workflow.info = _direct_info  # type: ignore[assignment]
+    workflow.wait_condition = _direct_wait_condition  # type: ignore[assignment]
 
 
 def _resolve_run_callable(target: Any) -> Any:

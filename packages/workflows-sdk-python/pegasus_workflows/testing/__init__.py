@@ -24,6 +24,7 @@ performed:
 
     run_activity(close_task_activity, "S-123", client=client)
     assert client.captured[0]["capability"] == "CloseTask"   # captured, not performed
+    assert client.captured[0]["args"]["order_id"] == "S-123"  # same shape as a dry-run
 
 ``run_activity`` runs the activity inside Temporal's own
 :class:`temporalio.testing.ActivityEnvironment`, so ``activity.info()``,
@@ -157,21 +158,28 @@ class FakeClient:
 
     def __init__(self, reads: Mapping[str, Any] | None = None) -> None:
         self._reads: dict[str, Any] = dict(reads or {})
-        #: Ordered list of captured side effects, each a dict with keys
-        #: ``method``, ``capability``, ``args``, ``kwargs``, ``would_return``.
+        #: Ordered list of captured side effects. Each entry has the SAME shape as
+        #: the server-side dry-run capture record — ``{method, capability, args, wouldReturn}``
+        #: (``args`` is a named dict, not a positional tuple) — so an offline
+        #: assertion describes the real web-UI dry-run trace (sdk-feedback/0016).
         self.captured: list[dict[str, Any]] = []
+        #: Lazily-built real ``PegasusClient`` in dry-run mode. Mutations delegate
+        #: to it so the capture record is produced by the same code the runner uses
+        #: (identical shape by construction, no parallel curation table to drift).
+        self._dry: Any = None
 
     # -- author-facing dry-run surface (mirrors PegasusClient in dry-run) -----
 
     def record_side_effect(self, label: str, payload: Any = None) -> None:
-        """Record an effect the harness can't infer (e.g. a raw outbound call)."""
+        """Record an effect the harness can't infer (e.g. a raw outbound call).
+
+        Uses the same record shape as ``PegasusClient.record_side_effect`` in
+        dry-run: ``{method, capability, label, payload}``.
+        """
         self.captured.append(
             {
                 "method": "record_side_effect",
                 "capability": "custom",
-                "args": (label,),
-                "kwargs": {},
-                "would_return": None,
                 "label": label,
                 "payload": payload,
             }
@@ -224,47 +232,28 @@ class FakeClient:
         return fixture
 
     def _mutation(self, name: str, args: tuple, kwargs: dict) -> Any:
-        would_return = _synthetic_return(name, args, kwargs)
-        self.captured.append(
-            {
-                "method": name,
-                "capability": _MUTATIONS[name],
-                "args": args,
-                "kwargs": dict(kwargs),
-                "would_return": would_return,
-            }
-        )
-        return would_return
+        """Capture a mutation by delegating to a real dry-run ``PegasusClient``.
 
+        The real client's mutating methods short-circuit before any network in
+        dry-run — each calls ``_capture_mutation`` first, appending the canonical
+        ``{method, capability, args (named dict), wouldReturn}`` record and
+        returning the synthetic result without an HTTP call. Reusing that path
+        means the offline record is byte-for-byte the shape the runner surfaces,
+        with no second curation table to keep in sync (sdk-feedback/0016).
+        """
+        # Lazy import: api pulls in httpx, kept out of the sandboxed workflow
+        # module graph until a test actually exercises a mutation.
+        from ..api import PegasusClient
 
-def _synthetic_return(name: str, args: tuple, kwargs: dict) -> Any:
-    """A benign, realistically-shaped stand-in for a mutation's real return."""
-    if name == "send_sms":
-        return {"data": {"id": "dry-run", "status": "captured", "dryRun": True}}
-    if name == "emit_event":
-        event_type = _first(args, kwargs, "name")
-        return {
-            "emitted": True,
-            "eventType": event_type,
-            "occurredAt": "1970-01-01T00:00:00.000Z",
-            "dryRun": True,
-        }
-    if name == "close_task":
-        return {
-            "orderId": kwargs.get("order_id"),
-            "taskType": kwargs.get("task_type"),
-            "status": "closed",
-            "alreadyClosed": False,
-            "dryRun": True,
-        }
-    if name == "put_projection":
-        state = args[3] if len(args) > 3 else kwargs.get("state")
-        return {"state": state, "version": 1, "dryRun": True}
-    if name == "delete_projection":
-        return None
-    if name == "deliver_to_external":
-        return {"delivered": False, "status": None, "response": None, "dryRun": True}
-    return {"dryRun": True, "captured": True}
+        if self._dry is None:
+            self._dry = PegasusClient(
+                base_url="http://dry-run.invalid", token="dry-run", dry_run=True
+            )
+        before = len(self._dry.captured)
+        result = getattr(self._dry, name)(*args, **kwargs)
+        # The real method appended exactly one canonical record; mirror it.
+        self.captured.extend(self._dry.captured[before:])
+        return result
 
 
 def fake_client(reads: Mapping[str, Any] | None = None) -> FakeClient:

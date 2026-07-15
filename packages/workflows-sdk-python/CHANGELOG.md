@@ -3,12 +3,31 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.14.0
+
+### Fixed
+
+- **Offline capture records now match the server-side dry-run shape**
+  (sdk-feedback/0016). `pegasus_workflows.testing.fake_client` recorded a
+  mutation's arguments as a positional `args` tuple plus a separate `kwargs`
+  dict, with a snake_case `would_return` key — while the server-side dry-run
+  client (the shape the web-UI trace renders) records a curated named `args`
+  dict and a camelCase `wouldReturn`, with no `kwargs`. An offline
+  `client.captured` assertion therefore did not describe a real dry-run trace.
+  The fake now delegates each mutation to a real dry-run `PegasusClient`, so both
+  emit the **identical** record `{method, capability, args: <named dict>,
+wouldReturn}` by construction — a single helper reading `record["args"]["body"]`
+  works against either. **Breaking for tests** that asserted the old offline
+  shape: replace `entry["kwargs"]`/`entry["would_return"]` with
+  `entry["args"]`/`entry["wouldReturn"]` (args is now a named dict). A parity
+  test now guards the two shapes against future drift.
+
 ## 0.13.0
 
 ### Added
 
 - **Dry-run execution** (spec 0015, Part A). `pegasus-workflows run <name>
-  --dry-run` (and `PegasusClient.run_workflow(id, input, dry_run=True)`) starts a
+--dry-run` (and `PegasusClient.run_workflow(id, input, dry_run=True)`) starts a
   benign rehearsal: the real workflow runs on the tenant runner with reads live
   but every mutation **captured, never performed**. The runtime enables this by
   setting `PEGASUS_DRY_RUN`, which `PegasusClient.from_runtime()` reads to return
@@ -45,7 +64,7 @@ follows [Semantic Versioning](https://semver.org/).
   serves reads from canned fixtures and **captures** mutations (`send_sms`,
   `emit_event`, `close_task`, `put_projection`/`delete_projection`, …) to
   `client.captured` instead of performing them — each entry carries its Cedar
-  `capability`, so a test asserts *what would have been sent* without sending it.
+  `capability`, so a test asserts _what would have been sent_ without sending it.
   `run_activity(activity_fn, *args, client=...)` runs an activity's **real** body
   inside Temporal's own `temporalio.testing.ActivityEnvironment` (no Docker, no
   network), injecting the fake by patching `PegasusClient.from_runtime` for the
