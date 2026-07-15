@@ -6,6 +6,77 @@ This guide provides step-by-step instructions for building and deploying the Mov
 
 ---
 
+## Automated release pipeline (canonical path)
+
+Day-to-day, releases are **automated** — you do not run `eas build`/`eas submit`
+by hand. The `.github/workflows/mobile-release.yml` workflow is the canonical
+path; the manual EAS commands below are the fallback / first-time bootstrap.
+
+**How it works**
+
+- **Trigger** — a push to `main` that touches `apps/mobile/**` or a shared
+  package the app bundles (`packages/api-http|auth|domain|theme`). Also runnable
+  on demand from the Actions tab (`workflow_dispatch`: choose `env`, `platform`,
+  and a `skip_submit` toggle for build-only runs).
+- **Android** — EAS builds a production AAB, then `eas submit` lands it on the
+  Google Play **production** track. Both jobs run under the `prod` GitHub
+  environment, so the required-reviewer rule gates the release: **one approval
+  per run** unblocks build + submit. Nothing reaches Play without that approval.
+- **iOS** — an unsigned **simulator** build runs as a CI signal only (device
+  builds need Apple Developer credentials we don't have yet). It's decoupled
+  from the Android submit, so an iOS break never blocks a Play release.
+- **Config** — API URL + Cognito values are resolved from SSM into
+  `apps/mobile/.env` at build time (`.github/actions/mobile-eas-config`), so the
+  built app points at the target environment's backend.
+- **Versioning** — `eas.json` uses `cli.appVersionSource: "remote"` +
+  `production.autoIncrement: true`; EAS owns a monotonic Android `versionCode`.
+  The user-facing `version` in `app.json` is still bumped **manually** for each
+  marketing release.
+- **Staged rollout** — `eas submit` lands the release; set the rollout
+  **percentage** with the Play Console rollout slider afterward (full
+  API-driven staged rollout is a deferred follow-up).
+
+> This pipeline is intentionally **separate** from `deploy.yml`/`_deploy.yml`
+> (CDK-only) and is **not** part of the `deploy-manifest.json` component set.
+
+### One-time bootstrap — must be fully complete _before_ the pipeline can publish
+
+This is a go-live gate, not parallel work. In order:
+
+1. **EAS account/ownership** — migrate the project off the personal
+   `owner` in `app.json` to an Expo **org / robot account** (an unattended
+   auto-submit pipeline must not hinge on one person's personal login). Confirm
+   the plan's build-credit allotment covers the push frequency (each
+   mobile-touching push = 1 Android + 1 iOS-simulator cloud build).
+2. **Google Play Console** ($25 one-time) — create the app for
+   `com.movingstorage.driverapp` and complete the entire "Set up your app"
+   checklist: privacy policy URL, content rating, target audience, **data
+   safety**, ads declaration, and full store listing (see §Google Play below).
+   These are enforced **per-submission** — an incomplete section rejects _every_
+   future `eas submit`, automated or not.
+3. **First AAB, uploaded manually** — Google forbids the API from creating a
+   brand-new app's first release. Build one AAB
+   (`eas build --profile production --platform android`), upload it via the
+   Console UI (Internal testing is the lowest-friction track), accept **Play App
+   Signing**, and publish. The **first review can take days** — it must be
+   live/approved before the pipeline's first real submit.
+4. **Service account** — Play Console → Setup → API access → link a GCP project →
+   create a service account + JSON key. Play Console → Users and permissions →
+   invite the SA email and grant least-privilege **single-app** release access.
+5. **Register the key with EAS** — `eas credentials` → Android → _Google Service
+   Account Key for Submissions_, upload the JSON once. This is why `eas.json`
+   has **no** `serviceAccountKeyPath`: the key is EAS-hosted, so no key material
+   ever lands on a CI runner. Only `EXPO_TOKEN` needs project access.
+6. **Seed the versionCode counter** — `eas build:version:set` so the next
+   automated Android `versionCode` is strictly greater than the one you uploaded
+   manually in step 3, or the first automated submit fails with "version code
+   already used."
+
+After steps 1–6, enable the workflow and watch the first automated run end to
+end before treating the pipeline as unattended-safe.
+
+---
+
 ## Prerequisites
 
 ### 1. Expo Account Setup
