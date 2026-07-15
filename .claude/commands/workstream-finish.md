@@ -17,8 +17,9 @@ It runs in two idempotent phases so it is safe to re-run:
 
 - **Phase A — land** (when the branch is not yet merged): commit anything
   outstanding (plan + code together), push, open one PR, enable auto-merge.
-- **Phase B — teardown** (when the PR has merged): leave the worktree and delete
-  it, its branch, and its Postgres via `scripts/rm-worktree.sh`.
+- **Phase B — teardown** (when the PR has merged): archive the plan if it shipped
+  un-archived, then leave the worktree and delete it, its branch, and its
+  Postgres via `scripts/rm-worktree.sh`.
 
 Re-run it after the queue merges to move from A to B.
 </objective>
@@ -66,7 +67,33 @@ Re-run it after the queue merges to move from A to B.
    - From the primary checkout run `scripts/rm-worktree.sh <slug>` — removes the
      worktree, its branch, and its Postgres container, and prunes.
    - `git -C <primary> fetch --prune && git -C <primary> pull --ff-only` to keep
-     `main` synced. Report the final clean state (`git worktree list`).
+     `main` synced.
+
+6. **Archive a plan that shipped un-archived (Phase B safety net).**
+   Normally Phase A moves the plan to `plans/completed/` inside the feature
+   branch, so it lands already archived. But when the PR was merged *before*
+   `/workstream-finish` ran Phase A — e.g. the implementer enabled auto-merge
+   directly, or the queue merged while you were away — the plan reaches `main`
+   still under `plans/in-progress/`. After syncing `main`, close that gap:
+   - `test -f <primary>/plans/in-progress/<slug>.md` — if absent, nothing to do
+     (already archived); skip and report the clean state.
+   - If present, land a **small plans-only PR** through the queue — **never**
+     direct-push to `main`, and don't dirty the primary checkout (keep it parked
+     on `main`). Use a throwaway worktree off the freshest `main`:
+     - `git -C <primary> fetch origin` then `git -C <primary> worktree add -b
+       chore/archive-<slug>-plan ../pegasus-archive-<slug> origin/main` (no deps
+       or DB — it is a one-file move).
+     - `git -C ../pegasus-archive-<slug> mv plans/in-progress/<slug>.md
+       plans/completed/<merge-short-hash>-<slug>.md`, where merge-short-hash =
+       `git -C <primary> rev-parse --short origin/main` (the squash-merge commit
+       the plan shipped in), matching the `plans/completed/` naming convention.
+     - Commit (`chore(plans): archive <slug> plan (shipped in #<pr>)`), push,
+       `gh pr create`, `gh pr merge --auto --squash`. Report the archive PR URL.
+     - Once the archive PR is enqueued, remove the throwaway worktree:
+       `git -C <primary> worktree remove ../pegasus-archive-<slug>` (its branch
+       auto-deletes on squash-merge). The archive PR merges on its own through
+       the queue; no need to block on it.
+   - Report the final clean state (`git worktree list`).
 </process>
 
 <notes>
@@ -74,7 +101,10 @@ Re-run it after the queue merges to move from A to B.
   after merge it tears down; if already torn down it no-ops.
 - One PR carries both the plan file and the implementation (that is the whole
   point of `/workstream-start` seeding the plan into the worktree) — there is no
-  separate plan PR to reconcile.
+  separate plan PR to reconcile in the normal path. The exception is step 6's
+  safety net: when a PR merged before Phase A archived the plan, a tiny
+  plans-only follow-up PR moves it to `plans/completed/` so `main` never carries
+  a stale in-progress entry.
 - Break-glass only: if the merge queue itself is broken, surface it and let the
   user decide — do not direct-push to `main` to get around it.
 </notes>
