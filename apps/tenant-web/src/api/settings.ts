@@ -37,3 +37,30 @@ export async function testMssqlConnection(): Promise<MssqlTestResult> {
     method: 'POST',
   })
 }
+
+// ---------------------------------------------------------------------------
+// pegII on-prem API health check — mirrors the MSSQL connection test above.
+// The endpoint probes the pegII team's on-prem API over the WireGuard tunnel
+// (open GET /health). Always HTTP 200; the verdict is in the body.
+// ---------------------------------------------------------------------------
+
+export type PegiiTestCode =
+  | 'OK'
+  | 'NOT_CONFIGURED'
+  | 'PEER_INACTIVE'
+  | 'TUNNEL_ERROR'
+  | 'HTTP_ERROR'
+  | 'BAD_ENVELOPE'
+
+export type PegiiTestResult = {
+  ok: boolean
+  code: PegiiTestCode
+  detail: string
+  elapsedMs: number
+}
+
+export async function testPegiiConnection(): Promise<PegiiTestResult> {
+  return apiFetch<PegiiTestResult>('/api/v1/settings/pegii/test', {
+    method: 'POST',
+  })
+}

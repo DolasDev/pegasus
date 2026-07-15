@@ -1,5 +1,10 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getMssqlSettings, updateMssqlSettings, testMssqlConnection } from '@/api/settings'
+import {
+  getMssqlSettings,
+  updateMssqlSettings,
+  testMssqlConnection,
+  testPegiiConnection,
+} from '@/api/settings'
 
 export const settingsKeys = {
   all: ['settings'] as const,
@@ -24,5 +29,11 @@ export function useUpdateMssqlSettings() {
 export function useTestMssqlConnection() {
   return useMutation({
     mutationFn: () => testMssqlConnection(),
+  })
+}
+
+export function useTestPegiiConnection() {
+  return useMutation({
+    mutationFn: () => testPegiiConnection(),
   })
 }

@@ -3,7 +3,7 @@
 //
 // db is mocked via vi.hoisted; AWS EC2/SSM clients are injected via the
 // setVpnDiagnoseClients() seam exposed by the handler module. The
-// tunnel-client is mocked so tcp_connect doesn't actually invoke Lambda.
+// tunnel-client is mocked so the pegII /health probe doesn't invoke Lambda.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -214,7 +214,7 @@ describe('GET /api/admin/tenants/:tenantId/vpn/diagnose', () => {
       'hub_kernel_route',
       'hub_masquerade',
       'hub_wg_handshake',
-      'tcp_connect',
+      'pegii_health',
     ])
     expect(report.checks.every((c) => c.status === 'pass')).toBe(true)
   })
@@ -317,7 +317,8 @@ describe('GET /api/admin/tenants/:tenantId/vpn/diagnose', () => {
     expect(report.firstFailure).toBe('hub_masquerade')
   })
 
-  it('treats 403 from on-prem as a connectivity-OK pass with note', async () => {
+  // Fully-healthy hub fixtures so the report reaches the Layer-3 pegII probe.
+  function healthyHubClients() {
     setVpnDiagnoseClients({
       ec2: fakeEc2({
         describeInstances: () => ({
@@ -352,16 +353,45 @@ describe('GET /api/admin/tenants/:tenantId/vpn/diagnose', () => {
         'wg show wg0': { exitCode: 0, stdout: FRESH_HANDSHAKE_OUTPUT },
       }),
     })
+  }
+
+  it('probes the pegII /health at the resolved http :65274 base and passes on {"status":"healthy"}', async () => {
+    healthyHubClients()
     mockTunnelFetch.mockResolvedValue({
-      status: 403,
-      headers: {},
-      body: '{"error":"Missing X-Windows-User header"}',
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      body: '{"status":"healthy"}',
     })
     const report = await getReport(buildApp())
     expect(report.summary).toBe('pass')
-    const tcp = report.checks.find((c) => c.id === 'tcp_connect')!
-    expect(tcp.status).toBe('pass')
-    expect(tcp.detail).toContain('connectivity OK')
+    const pegii = report.checks.find((c) => c.id === 'pegii_health')!
+    expect(pegii.status).toBe('pass')
+    expect(pegii.detail).toContain('status: healthy')
+    // Reuses the shared resolver → derives http://10.200.0.2:65274/health.
+    expect(mockTunnelFetch).toHaveBeenCalledWith(
+      'http://10.200.0.2:65274/health',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    // /health is open — no Authorization header is sent.
+    const [, opts] = mockTunnelFetch.mock.calls.at(-1)!
+    expect(
+      (opts as { headers?: Record<string, string> }).headers?.['authorization'],
+    ).toBeUndefined()
+  })
+
+  it('fails the pegII probe on a non-2xx response (open endpoint — no 403 amnesty)', async () => {
+    healthyHubClients()
+    mockTunnelFetch.mockResolvedValue({
+      status: 503,
+      headers: {},
+      body: 'service unavailable',
+    })
+    const report = await getReport(buildApp())
+    expect(report.summary).toBe('fail')
+    expect(report.firstFailure).toBe('pegii_health')
+    const pegii = report.checks.find((c) => c.id === 'pegii_health')!
+    expect(pegii.status).toBe('fail')
+    expect(pegii.detail).toContain('503')
   })
 
   it('skips SSM checks when hub instance is missing', async () => {

@@ -29,6 +29,7 @@ import { SSMClient, SendCommandCommand, GetCommandInvocationCommand } from '@aws
 import type { AdminEnv } from '../../types'
 import { db } from '../../db'
 import { tunnelFetch, TunnelError } from '../../lib/tunnel-client'
+import { resolvePegiiOverlayTarget } from '../../lib/pegii-overlay-target'
 import { logger } from '../../lib/logger'
 
 // Discovery constants — coupled to CDK definitions in
@@ -39,7 +40,6 @@ const TUNNEL_PROXY_SG_NAME = 'pegasus-wireguard-tunnel-proxy'
 const LAMBDA_SUBNET_TAG_KEY = 'pegasus:subnet-role'
 const LAMBDA_SUBNET_TAG_VALUE = 'private-lambda'
 const TENANT_OVERLAY_CIDR = '10.200.0.0/16'
-const TENANT_OVERLAY_PORT = 3000
 
 export type CheckStatus = 'pass' | 'fail' | 'skip'
 
@@ -486,58 +486,70 @@ async function checkHubWgHandshake(instanceId: string, overlayIp: string): Promi
   return pass('hub_wg_handshake', 'WG handshake fresh for tenant peer', handshakeLine, elapsedMs)
 }
 
-async function checkTcpConnect(overlayIp: string): Promise<DiagnoseCheck> {
+const PEGII_HEALTH_ID = 'pegii_health'
+const PEGII_HEALTH_LABEL = 'Cloud → on-prem pegII API /health'
+
+async function checkPegiiHealth(tenantId: string): Promise<DiagnoseCheck> {
   const start = Date.now()
+
+  // Resolve the pegII API target through the same resolver the tenant-facing
+  // /settings/pegii/test probe uses, so the admin diagnostic and the tenant
+  // self-serve check hit the exact same base URL (no drift). The pegII team
+  // runs the API on-prem at http://<overlayIp>:65274; /health is open (no auth).
+  const resolved = await resolvePegiiOverlayTarget(db, tenantId)
+  if (!resolved.ok) {
+    return fail(
+      PEGII_HEALTH_ID,
+      PEGII_HEALTH_LABEL,
+      `Could not resolve the pegII API target: ${resolved.code} — ${resolved.message}`,
+      Date.now() - start,
+    )
+  }
+
+  const url = `${resolved.target.base}/health`
   try {
-    // Using tunnelFetch as the "TCP probe" — it hits the same network path
-    // the production traffic uses, so a clean fail here reproduces what
-    // the user sees. 5s timeout to keep the diagnostic snappy.
-    const url = `http://${overlayIp}:${TENANT_OVERLAY_PORT}/api/v1/longhaul/version`
+    // tunnelFetch hits the same network path production traffic uses, so a
+    // clean fail here reproduces what the tenant sees. 5s timeout to keep the
+    // diagnostic snappy. No Authorization header — /health is unauthenticated.
     const res = await tunnelFetch(url, { method: 'GET', timeoutMs: 5000 })
     const elapsedMs = Date.now() - start
+
     if (res.status >= 200 && res.status < 300) {
+      let status: string | undefined
+      try {
+        const parsed = JSON.parse(res.body) as { status?: unknown }
+        if (typeof parsed.status === 'string') status = parsed.status
+      } catch {
+        // Non-JSON body — connectivity still proven by the 2xx.
+      }
       return pass(
-        'tcp_connect',
-        'Cloud → on-prem TCP connect on overlay :3000',
-        `HTTP ${res.status} from on-prem service.`,
+        PEGII_HEALTH_ID,
+        PEGII_HEALTH_LABEL,
+        `HTTP ${res.status} from pegII API${status !== undefined ? ` (status: ${status})` : ''}.`,
         elapsedMs,
-        { httpStatus: res.status },
-      )
-    }
-    if (res.status === 403) {
-      // 403 means we reached the on-prem service but failed an auth check.
-      // That's a connectivity success — flag it as pass with an explanatory
-      // note since it's a different layer (longhaul user middleware).
-      return pass(
-        'tcp_connect',
-        'Cloud → on-prem TCP connect on overlay :3000',
-        `HTTP 403 from on-prem service — connectivity OK; longhaul auth middleware rejected (expected when X-Windows-User absent).`,
-        elapsedMs,
-        { httpStatus: res.status },
+        { httpStatus: res.status, url, ...(status !== undefined ? { status } : {}) },
       )
     }
     return fail(
-      'tcp_connect',
-      'Cloud → on-prem TCP connect on overlay :3000',
-      `HTTP ${res.status} from on-prem service. Body (truncated): ${res.body.slice(0, 200)}`,
+      PEGII_HEALTH_ID,
+      PEGII_HEALTH_LABEL,
+      `HTTP ${res.status} from pegII API. Body (truncated): ${res.body.slice(0, 200)}`,
       elapsedMs,
-      { httpStatus: res.status },
+      { httpStatus: res.status, url },
     )
   } catch (err) {
     const elapsedMs = Date.now() - start
     if (err instanceof TunnelError) {
-      return fail(
-        'tcp_connect',
-        'Cloud → on-prem TCP connect on overlay :3000',
-        `${err.code}: ${err.message}`,
-        elapsedMs,
-      )
+      return fail(PEGII_HEALTH_ID, PEGII_HEALTH_LABEL, `${err.code}: ${err.message}`, elapsedMs, {
+        url,
+      })
     }
     return fail(
-      'tcp_connect',
-      'Cloud → on-prem TCP connect on overlay :3000',
+      PEGII_HEALTH_ID,
+      PEGII_HEALTH_LABEL,
       err instanceof Error ? err.message : String(err),
       elapsedMs,
+      { url },
     )
   }
 }
@@ -612,17 +624,11 @@ adminVpnDiagnoseRouter.get('/diagnose', async (c) => {
     )
   }
 
-  // Layer 3: end-to-end TCP probe
+  // Layer 3: end-to-end probe of the on-prem pegII API /health.
   if (peerResult.overlayIp !== null) {
-    checks.push(await checkTcpConnect(peerResult.overlayIp))
+    checks.push(await checkPegiiHealth(tenantId))
   } else {
-    checks.push(
-      skip(
-        'tcp_connect',
-        'Cloud → on-prem TCP connect on overlay :3000',
-        'No active VpnPeer overlay IP to probe.',
-      ),
-    )
+    checks.push(skip(PEGII_HEALTH_ID, PEGII_HEALTH_LABEL, 'No active VpnPeer overlay IP to probe.'))
   }
 
   const firstFailure = checks.find((c) => c.status === 'fail')?.id ?? null

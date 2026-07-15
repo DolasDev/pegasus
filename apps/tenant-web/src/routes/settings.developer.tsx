@@ -19,6 +19,7 @@ import {
   Package,
   Blocks,
   Building2,
+  Server,
 } from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { EmptyState } from '@/components/EmptyState'
@@ -46,8 +47,9 @@ import {
   mssqlSettingsQueryOptions,
   useUpdateMssqlSettings,
   useTestMssqlConnection,
+  useTestPegiiConnection,
 } from '@/api/queries/settings'
-import type { MssqlTestResult } from '@/api/settings'
+import type { MssqlTestResult, PegiiTestResult } from '@/api/settings'
 import { roleOptionsQueryOptions, type RoleOption } from '@/api/queries/users'
 import { integrationsQueryOptions } from '@/api/queries/integrations'
 import type { ApiClient, ApiClientWithKey } from '@/api/api-clients'
@@ -1044,6 +1046,89 @@ function MssqlSettingsSection() {
 }
 
 // ---------------------------------------------------------------------------
+// pegII API health section
+//
+// Mirrors the "Run diagnostic" affordance on the Legacy Database Connection
+// card, but probes the pegII team's on-prem API over the WireGuard tunnel
+// (POST /api/v1/settings/pegii/test → open GET /health). Health-check only;
+// pegII config editing lives elsewhere.
+// ---------------------------------------------------------------------------
+
+function PegiiHealthSection() {
+  const testMutation = useTestPegiiConnection()
+  const [testResult, setTestResult] = useState<PegiiTestResult | null>(null)
+
+  async function handleCheckHealth() {
+    setTestResult(null)
+    try {
+      const result = await testMutation.mutateAsync()
+      setTestResult(result)
+    } catch (err) {
+      setTestResult({
+        ok: false,
+        code: 'HTTP_ERROR',
+        detail:
+          err instanceof Error ? err.message : 'Could not run the health check. Please try again.',
+        elapsedMs: 0,
+      })
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Server size={18} className="text-muted-foreground" />
+          <CardTitle>pegII API Connection</CardTitle>
+        </div>
+        <CardDescription>
+          Check that the on-prem pegII API is reachable over the tunnel (GET /health).
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-muted-foreground">
+            Runs a live health probe against the pegII API server.
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-xs"
+            onClick={() => void handleCheckHealth()}
+            disabled={testMutation.isPending}
+          >
+            {testMutation.isPending ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <Stethoscope size={13} />
+            )}
+            Check health
+          </Button>
+        </div>
+
+        {testResult && (
+          <div
+            className={
+              testResult.ok
+                ? 'flex items-start gap-2 rounded-md border border-emerald-500/50 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400'
+                : 'flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive'
+            }
+            role="status"
+          >
+            {testResult.ok ? (
+              <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+            ) : (
+              <AlertCircle size={14} className="mt-0.5 shrink-0" />
+            )}
+            <span>{testResult.detail}</span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -1264,6 +1349,10 @@ export function DeveloperSettingsPage() {
         <Separator className="my-6" />
 
         <MssqlSettingsSection />
+
+        <Separator className="my-6" />
+
+        <PegiiHealthSection />
       </div>
 
       {newKey && <KeyDisplayModal clientWithKey={newKey} onClose={() => setNewKey(null)} />}

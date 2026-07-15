@@ -108,3 +108,66 @@ describe('createPegiiApiClient.get', () => {
     await expect(client.get('/x')).rejects.toMatchObject({ code: 'PEGII_API_TUNNEL_ERROR' })
   })
 })
+
+describe('createPegiiApiClient.getHealth', () => {
+  it('returns the bare status body without requiring a { data } envelope', async () => {
+    const send = stubUpstream({ status: 200, body: JSON.stringify({ status: 'healthy' }) })
+    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://10.200.7.1:65274' })
+
+    const health = await client.getHealth()
+
+    expect(health).toEqual({ status: 'healthy' })
+    const cmd = send.mock.calls[0]![0] as { input: { Payload: Uint8Array } }
+    const payload = JSON.parse(new TextDecoder().decode(cmd.input.Payload)) as {
+      url: string
+      method: string
+    }
+    expect(payload.url).toBe('http://10.200.7.1:65274/health')
+    expect(payload.method).toBe('GET')
+  })
+
+  it('never sends an Authorization header even when an apiKey is configured (open endpoint)', async () => {
+    const send = stubUpstream({ status: 200, body: JSON.stringify({ status: 'healthy' }) })
+    const client = createPegiiApiClient({
+      tenantId: 't1',
+      baseUrl: 'http://h',
+      apiKey: 'secret-token',
+    })
+    await client.getHealth()
+
+    const cmd = send.mock.calls[0]![0] as { input: { Payload: Uint8Array } }
+    const payload = JSON.parse(new TextDecoder().decode(cmd.input.Payload)) as {
+      headers: Record<string, string>
+    }
+    expect(payload.headers['authorization']).toBeUndefined()
+  })
+
+  it('fails fast with PEGII_API_NOT_CONFIGURED when baseUrl is empty', async () => {
+    const send = stubUpstream({ status: 200, body: '{"status":"healthy"}' })
+    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: '' })
+
+    await expect(client.getHealth()).rejects.toMatchObject({ code: 'PEGII_API_NOT_CONFIGURED' })
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('maps a non-2xx response to PEGII_API_HTTP_ERROR with status', async () => {
+    stubUpstream({ status: 503, body: 'service unavailable' })
+    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://h' })
+
+    const err = await client.getHealth().catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(PegiiApiError)
+    expect(err).toMatchObject({ code: 'PEGII_API_HTTP_ERROR', status: 503 })
+  })
+
+  it('throws PEGII_API_BAD_ENVELOPE on a non-JSON body', async () => {
+    stubUpstream({ status: 200, body: '<html>not json</html>' })
+    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://h' })
+    await expect(client.getHealth()).rejects.toMatchObject({ code: 'PEGII_API_BAD_ENVELOPE' })
+  })
+
+  it('translates a TunnelError into PEGII_API_TUNNEL_ERROR', async () => {
+    delete process.env['TUNNEL_PROXY_FUNCTION_NAME']
+    const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://h' })
+    await expect(client.getHealth()).rejects.toMatchObject({ code: 'PEGII_API_TUNNEL_ERROR' })
+  })
+})
