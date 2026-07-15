@@ -8,7 +8,8 @@
 // Endpoints:
 //   GET   /pegii       — current config (credential presence only, never value)
 //   PATCH /pegii       — update customerSource / base URL / credential ref
-//   POST  /pegii/test  — connectivity probe over the tunnel (GET /health)
+//   POST  /pegii/test  — connectivity probe over the tunnel (open GET /health,
+//                        expects a bare {"status":"healthy"} body)
 //
 // The credential (pegiiApiKeyRef) is a Secrets Manager ARN, stored by
 // reference. It is NEVER returned by any response — GET/PATCH only report
@@ -168,8 +169,27 @@ settingsPegiiHandler.post('/pegii/test', requirePermission(Actions.ReadSettings)
   })
 
   try {
-    await client.get('/health')
+    const health = await client.getHealth()
     const elapsedMs = Date.now() - startedAt
+
+    // The pegII team's /health returns a bare `{"status":"healthy"}`. Reaching
+    // it at all proves connectivity; a status that is present but not "healthy"
+    // means the service answered but reports itself degraded.
+    if (typeof health.status === 'string' && health.status !== 'healthy') {
+      logger.warn('pegII connection test reported unhealthy', {
+        tenantId,
+        status: health.status,
+        elapsedMs,
+      })
+      const result: PegiiTestResult = {
+        ok: false,
+        code: 'HTTP_ERROR',
+        detail: `Reached the pegII API, but it reported status "${health.status}".`,
+        elapsedMs,
+      }
+      return c.json({ data: result })
+    }
+
     logger.info('pegII connection test succeeded', { tenantId, elapsedMs })
     const result: PegiiTestResult = {
       ok: true,

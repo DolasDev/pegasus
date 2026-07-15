@@ -48,7 +48,7 @@ export interface PegiiApiClientConfig {
   /** Owning tenant — carried for logging/telemetry, not sent on the wire. */
   tenantId: string
   /**
-   * Fully-resolved base URL, e.g. "https://10.200.7.1:8443". An empty string
+   * Fully-resolved base URL, e.g. "http://10.200.7.1:65274". An empty string
    * means the tenant is not configured — every call fails fast with
    * PEGII_API_NOT_CONFIGURED rather than issuing a doomed tunnel hop.
    */
@@ -61,6 +61,17 @@ export interface PegiiApiClientConfig {
 
 export type PegiiQuery = Record<string, string | number | undefined>
 
+/**
+ * Body shape of the pegII team's `GET /health` probe. It is a bare status
+ * object (e.g. `{"status":"healthy"}`) — deliberately NOT the platform
+ * `{ data }` envelope the domain read endpoints use, so it is parsed by
+ * `getHealth()` rather than `get()`.
+ */
+export interface PegiiHealth {
+  status?: string
+  [key: string]: unknown
+}
+
 export interface PegiiApiClient {
   /**
    * GET `path` (optionally with a query object) and return the unwrapped
@@ -69,6 +80,16 @@ export interface PegiiApiClient {
    * callers can translate it to a domain-appropriate null.
    */
   get<T>(path: string, query?: PegiiQuery): Promise<T>
+
+  /**
+   * GET `/health` and return the parsed status body as-is. Unlike `get()`,
+   * this does NOT require (or unwrap) a `data` envelope — the pegII team's
+   * health endpoint returns a bare `{"status":"healthy"}`. The endpoint is
+   * unauthenticated, so no Authorization header is sent even when an apiKey is
+   * configured. Throws PegiiApiError on transport failure, non-2xx, or a
+   * non-JSON body.
+   */
+  getHealth(): Promise<PegiiHealth>
 }
 
 function buildUrl(baseUrl: string, path: string, query?: PegiiQuery): string {
@@ -143,6 +164,61 @@ export function createPegiiApiClient(config: PegiiApiClientConfig): PegiiApiClie
       }
 
       return (json as { data: T }).data
+    },
+
+    async getHealth(): Promise<PegiiHealth> {
+      if (!config.baseUrl) {
+        throw new PegiiApiError(
+          'PEGII_API_NOT_CONFIGURED',
+          `pegII API base URL is not configured for tenant ${config.tenantId}`,
+        )
+      }
+
+      // Health is an open endpoint — no Authorization header even when an
+      // apiKey is configured.
+      const url = `${config.baseUrl}/health`
+      let res: TunnelFetchResponse
+      try {
+        res = await tunnelFetch(url, {
+          method: 'GET',
+          headers: { accept: 'application/json' },
+          ...(config.timeoutMs !== undefined ? { timeoutMs: config.timeoutMs } : {}),
+        })
+      } catch (err) {
+        if (err instanceof TunnelError) {
+          throw new PegiiApiError('PEGII_API_TUNNEL_ERROR', `${err.code}: ${err.message}`)
+        }
+        throw err
+      }
+
+      if (!res.ok) {
+        throw new PegiiApiError(
+          'PEGII_API_HTTP_ERROR',
+          `pegII API /health returned ${res.status}: ${res.body.slice(0, 200)}`,
+          res.status,
+        )
+      }
+
+      let json: unknown
+      try {
+        json = await res.json()
+      } catch {
+        throw new PegiiApiError(
+          'PEGII_API_BAD_ENVELOPE',
+          `pegII API /health returned a non-JSON body (status ${res.status})`,
+          res.status,
+        )
+      }
+
+      if (typeof json !== 'object' || json === null) {
+        throw new PegiiApiError(
+          'PEGII_API_BAD_ENVELOPE',
+          `pegII API /health returned a non-object body (status ${res.status})`,
+          res.status,
+        )
+      }
+
+      return json as PegiiHealth
     },
   }
 }

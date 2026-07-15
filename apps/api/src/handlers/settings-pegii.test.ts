@@ -22,10 +22,16 @@ vi.mock('../db', () => ({ db: mockDb }))
 const { mockResolve } = vi.hoisted(() => ({ mockResolve: vi.fn() }))
 vi.mock('../lib/pegii-overlay-target', () => ({ resolvePegiiOverlayTarget: mockResolve }))
 
-const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }))
+const { mockGet, mockGetHealth } = vi.hoisted(() => ({
+  mockGet: vi.fn(),
+  mockGetHealth: vi.fn(),
+}))
 vi.mock('../lib/pegii-api-client', async () => {
   const actual = await vi.importActual<typeof PegiiApiClient>('../lib/pegii-api-client')
-  return { ...actual, createPegiiApiClient: vi.fn(() => ({ get: mockGet })) }
+  return {
+    ...actual,
+    createPegiiApiClient: vi.fn(() => ({ get: mockGet, getHealth: mockGetHealth })),
+  }
 })
 
 import { settingsPegiiHandler } from './settings-pegii'
@@ -134,16 +140,60 @@ describe('POST /pegii/test', () => {
     expect(res.status).toBe(200)
     const data = (await json(res)).data as JsonBody
     expect(data).toMatchObject({ ok: false, code: 'PEER_INACTIVE' })
-    expect(mockGet).not.toHaveBeenCalled()
+    expect(mockGetHealth).not.toHaveBeenCalled()
   })
 
-  it('returns OK when the health probe succeeds', async () => {
-    mockResolve.mockResolvedValue({ ok: true, target: { base: 'https://h:8443', apiKey: null } })
-    mockGet.mockResolvedValue({ status: 'up' })
+  it('returns NOT_CONFIGURED when the tenant has no peer', async () => {
+    mockResolve.mockResolvedValue({
+      ok: false,
+      code: 'PEGII_API_NO_PEER',
+      message: 'tenant has no WireGuard peer',
+    })
+    const res = await buildApp().request('/pegii/test', { method: 'POST' })
+    const data = (await json(res)).data as JsonBody
+    expect(data).toMatchObject({ ok: false, code: 'NOT_CONFIGURED' })
+    expect(mockGetHealth).not.toHaveBeenCalled()
+  })
+
+  it('returns OK for a bare {"status":"healthy"} body (no { data } envelope needed)', async () => {
+    mockResolve.mockResolvedValue({ ok: true, target: { base: 'http://h:65274', apiKey: null } })
+    mockGetHealth.mockResolvedValue({ status: 'healthy' })
     const res = await buildApp().request('/pegii/test', { method: 'POST' })
     const data = (await json(res)).data as JsonBody
     expect(data['ok']).toBe(true)
     expect(data['code']).toBe('OK')
-    expect(mockGet).toHaveBeenCalledWith('/health')
+    expect(mockGetHealth).toHaveBeenCalledOnce()
+  })
+
+  it('returns OK when the health body has no status field at all', async () => {
+    mockResolve.mockResolvedValue({ ok: true, target: { base: 'http://h:65274', apiKey: null } })
+    mockGetHealth.mockResolvedValue({})
+    const res = await buildApp().request('/pegii/test', { method: 'POST' })
+    const data = (await json(res)).data as JsonBody
+    expect(data['ok']).toBe(true)
+    expect(data['code']).toBe('OK')
+  })
+
+  it('reports HTTP_ERROR when the service answers but is not healthy', async () => {
+    mockResolve.mockResolvedValue({ ok: true, target: { base: 'http://h:65274', apiKey: null } })
+    mockGetHealth.mockResolvedValue({ status: 'degraded' })
+    const res = await buildApp().request('/pegii/test', { method: 'POST' })
+    const data = (await json(res)).data as JsonBody
+    expect(data['ok']).toBe(false)
+    expect(data['code']).toBe('HTTP_ERROR')
+    expect(String(data['detail'])).toContain('degraded')
+  })
+
+  it('classifies a tunnel failure as TUNNEL_ERROR', async () => {
+    mockResolve.mockResolvedValue({ ok: true, target: { base: 'http://h:65274', apiKey: null } })
+    const { PegiiApiError } =
+      await vi.importActual<typeof PegiiApiClient>('../lib/pegii-api-client')
+    mockGetHealth.mockRejectedValue(
+      new PegiiApiError('PEGII_API_TUNNEL_ERROR', 'TUNNEL_TIMEOUT: timed out'),
+    )
+    const res = await buildApp().request('/pegii/test', { method: 'POST' })
+    const data = (await json(res)).data as JsonBody
+    expect(data['ok']).toBe(false)
+    expect(data['code']).toBe('TUNNEL_ERROR')
   })
 })

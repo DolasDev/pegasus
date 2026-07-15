@@ -10,7 +10,8 @@
 // Precedence:
 //   1. Tenant.pegiiApiBaseUrl        — explicit per-tenant base URL (wins).
 //   2. PEGII_API_TUNNEL_BASE_OVERRIDE — global single-tenant smoke-test base.
-//   3. VpnPeer overlay IP            — http(s)://10.200.<o1>.<o2>:<port>.
+//   3. VpnPeer overlay IP            — http(s)://10.200.<o1>.<o2>:<port>
+//                                       (defaults http :65274, overridable).
 //
 // The credential (Tenant.pegiiApiKeyRef) is returned alongside the base so the
 // caller can build a PegiiApiClient. It is stored by reference (a Secrets
@@ -86,8 +87,11 @@ export async function resolvePegiiOverlayTarget(
     }
   }
 
-  const scheme = process.env['PEGII_API_TUNNEL_SCHEME'] ?? 'https'
-  const port = process.env['PEGII_API_TUNNEL_PORT'] ?? '8443'
+  // Defaults match the pegII team's on-prem API as they run it today: plain
+  // HTTP on the high port 65274. Both are overridable via env for other
+  // environments; a per-tenant Tenant.pegiiApiBaseUrl still wins over these.
+  const scheme = process.env['PEGII_API_TUNNEL_SCHEME'] ?? 'http'
+  const port = process.env['PEGII_API_TUNNEL_PORT'] ?? '65274'
   return {
     ok: true,
     target: {

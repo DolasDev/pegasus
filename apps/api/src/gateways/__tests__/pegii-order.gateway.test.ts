@@ -4,7 +4,9 @@ import { PegiiApiError, type PegiiApiClient } from '../../lib/pegii-api-client'
 import type { PegiiOrderDto } from '../pegii/pegii-order.dto'
 
 function stubClient(get: PegiiApiClient['get']): PegiiApiClient {
-  return { get }
+  // The order gateway only uses get(); getHealth() is stubbed to satisfy the
+  // interface and should never be called on this path.
+  return { get, getHealth: vi.fn() }
 }
 
 describe('createPegiiOrderGateway.findOrderById', () => {

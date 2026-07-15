@@ -69,9 +69,10 @@ vi.mock('@/auth/permissions', () => ({
   }),
 }))
 
-// Mock the MSSQL settings query module
+// Mock the MSSQL + pegII settings query module
 const mockUseUpdateMssqlSettings = vi.fn()
 const mockUseTestMssqlConnection = vi.fn()
+const mockUseTestPegiiConnection = vi.fn()
 
 vi.mock('@/api/queries/settings', () => ({
   mssqlSettingsQueryOptions: {
@@ -80,6 +81,7 @@ vi.mock('@/api/queries/settings', () => ({
   },
   useUpdateMssqlSettings: () => mockUseUpdateMssqlSettings(),
   useTestMssqlConnection: () => mockUseTestMssqlConnection(),
+  useTestPegiiConnection: () => mockUseTestPegiiConnection(),
 }))
 
 // Stub the role-options query so the form's RoleCheckboxList has fixtures.
@@ -202,6 +204,7 @@ describe('DeveloperSettingsPage', () => {
     mockUseRotateApiClient.mockReturnValue(makeMutationResult())
     mockUseUpdateMssqlSettings.mockReturnValue(makeMutationResult())
     mockUseTestMssqlConnection.mockReturnValue(makeMutationResult())
+    mockUseTestPegiiConnection.mockReturnValue(makeMutationResult())
 
     // Default returns
     apiClientsReturn = { data: [], isLoading: false, isError: false }
@@ -516,6 +519,51 @@ describe('DeveloperSettingsPage', () => {
       }
       renderPage()
       expect(screen.getByText('Clear')).toBeInTheDocument()
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // pegII API health section
+  // -------------------------------------------------------------------------
+
+  describe('pegII API Connection', () => {
+    it('renders the pegII API Connection card with a Check health button', () => {
+      renderPage()
+      expect(screen.getByText('pegII API Connection')).toBeInTheDocument()
+      expect(screen.getByText('Check health')).toBeInTheDocument()
+    })
+
+    it('runs the health probe and shows the success detail', async () => {
+      const mutateAsync = vi.fn().mockResolvedValue({
+        ok: true,
+        code: 'OK',
+        detail: 'Connected — pegII API responded in 42 ms.',
+        elapsedMs: 42,
+      })
+      mockUseTestPegiiConnection.mockReturnValue(makeMutationResult({ mutateAsync }))
+      renderPage()
+
+      fireEvent.click(screen.getByText('Check health'))
+      expect(mutateAsync).toHaveBeenCalledOnce()
+      expect(
+        await screen.findByText('Connected — pegII API responded in 42 ms.'),
+      ).toBeInTheDocument()
+    })
+
+    it('shows the failure detail when the probe reports not-ok', async () => {
+      const mutateAsync = vi.fn().mockResolvedValue({
+        ok: false,
+        code: 'TUNNEL_ERROR',
+        detail: 'Could not reach the pegII API over the tunnel.',
+        elapsedMs: 12,
+      })
+      mockUseTestPegiiConnection.mockReturnValue(makeMutationResult({ mutateAsync }))
+      renderPage()
+
+      fireEvent.click(screen.getByText('Check health'))
+      expect(
+        await screen.findByText('Could not reach the pegII API over the tunnel.'),
+      ).toBeInTheDocument()
     })
   })
 })
