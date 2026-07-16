@@ -46,5 +46,12 @@ export function createPegiiOrderGateway(opts: PegiiOrderGatewayOptions): OrderGa
         throw err
       }
     },
+
+    async checkReachable() {
+      // getHealth hits the unauthenticated `/health` probe; reaching it at all
+      // proves connectivity. A tunnel/HTTP failure throws PegiiApiError, which
+      // the router maps to 502/503 — the same surface a by-id read produces.
+      await client.getHealth()
+    },
   }
 }

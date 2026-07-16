@@ -19,4 +19,14 @@ import type { OrderRecord } from '../services/pegii-orders'
 export interface OrderGateway {
   /** Fetch one order by id. Resolves null when pegII reports 404 (no such order). */
   findOrderById(id: string): Promise<OrderRecord | null>
+
+  /**
+   * Probe that the pegII source is reachable, without fetching a specific order.
+   * Resolves when the source answers; throws `PegiiApiError` when it is
+   * unreachable (tunnel/HTTP failure). Lets reachability-only callers (the
+   * `/orders` list route, whose data is still stub-backed) fail the same way a
+   * by-id read does, instead of silently returning an empty list while the
+   * source is down.
+   */
+  checkReachable(): Promise<void>
 }

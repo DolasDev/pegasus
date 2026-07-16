@@ -18,8 +18,11 @@
 // LISTING stays a stub: the pegII serialized endpoint is by-id only, so there
 // is no collection to bridge to yet. `listOrders` therefore reads the in-memory
 // store below (empty at runtime — nothing seeds it), keeping the /orders route
-// and its `ReadOrder` Cedar gate intact. When pegII exposes an order collection
-// endpoint, add `listOrders` to the OrderGateway and wire the route to it.
+// and its `ReadOrder` Cedar gate intact. The route still probes reachability
+// through the OrderGateway first (OrderGateway.checkReachable), so it returns a
+// 502/503 rather than a misleading `200 []` when the source is down. When pegII
+// exposes an order collection endpoint, add `listOrders` to the OrderGateway and
+// wire the route to it.
 // ---------------------------------------------------------------------------
 
 /** A pegII order record, in the shape the SDK/runtime surface exposes. */

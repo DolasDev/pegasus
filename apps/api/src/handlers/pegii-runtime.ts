@@ -43,6 +43,7 @@ import { requirePermission } from '../middleware/rbac'
 import { listOrders, type OrderRecord } from '../services/pegii-orders'
 import { closeTask, getTask, listTasks, type TaskRecord } from '../services/pegii-tasks'
 import { resolveOrderGateway } from '../gateways/order-gateway.factory'
+import { PegiiApiError, pegiiApiErrorToHttp } from '../lib/pegii-api-client'
 import { logger } from '../lib/logger'
 
 /** Identifier shape for orderId / taskId / taskType path+body segments. */
@@ -84,14 +85,49 @@ function toTaskResponse(task: TaskRecord) {
 
 export const pegiiRuntimeHandler = new Hono<AppEnv>()
 
+// Router-scoped error boundary. A PegiiApiError (the legacy pegII source is
+// unreachable / not configured / answered with a bad envelope) is mapped to a
+// legible 502/503/404 that names the dependency, instead of the bare 500
+// INTERNAL_ERROR the global app.onError would produce. Anything else is
+// re-thrown so the global handler keeps owning it (DomainError → 422, genuine
+// bugs → 500). A mounted sub-app's own onError is what Hono invokes for throws
+// from its routes, and a re-throw here propagates to the parent onError. See
+// sdk-feedback spec 0018.
+pegiiRuntimeHandler.onError((err, c) => {
+  if (err instanceof PegiiApiError) {
+    const { status, code, message } = pegiiApiErrorToHttp(err)
+    const correlationId = c.get('correlationId') ?? 'unknown'
+    logger.warn('pegII bridge upstream failure', {
+      pegiiCode: err.code,
+      pegiiStatus: err.status,
+      status,
+      correlationId,
+    })
+    return c.json({ error: message, code, correlationId }, status)
+  }
+  throw err
+})
+
 pegiiRuntimeHandler.use('*', dualAuthMiddleware)
 
 // ── Orders ────────────────────────────────────────────────────────────────
 
 // GET /orders — list orders, optionally filtered by status.
+//
+// The list itself is still stub-backed (the pegII serialized API is by-id only),
+// but we first probe reachability through the OrderGateway so this route fails the
+// SAME way GET /orders/:orderId does when the source is down — a 502/503 that names
+// the dependency — rather than misleadingly returning `200 []` for a firewalled
+// tenant. resolveOrderGateway throws PEGII_API_NOT_CONFIGURED (→ 503) and
+// checkReachable throws PEGII_API_TUNNEL_ERROR (→ 502); the error boundary maps
+// both. See sdk-feedback spec 0018 (AC: list_orders and get_order agree on
+// reachability).
 pegiiRuntimeHandler.get('/orders', requirePermission(Actions.ReadOrder), async (c) => {
   const tenantId = c.get('tenantId')
   const status = c.req.query('status')
+
+  const gateway = await resolveOrderGateway(c.get('db'), tenantId)
+  await gateway.checkReachable()
 
   const orders = listOrders(tenantId, { ...(status ? { status } : {}) })
   logger.info('pegII orders listed', { count: orders.length, status, tenantId })
@@ -99,8 +135,9 @@ pegiiRuntimeHandler.get('/orders', requirePermission(Actions.ReadOrder), async (
 })
 
 // GET /orders/:orderId — fetch one order from the pegII serialized endpoint via
-// the OrderGateway. A tenant with no reachable pegII target hard-errors (the
-// factory throws PegiiApiError → 500); an unknown order id is a 404.
+// the OrderGateway. A tenant with no configured pegII target → 503 and an
+// unreachable source → 502 (the error boundary maps the thrown PegiiApiError);
+// an unknown order id is a 404 (the gateway null-maps the upstream 404).
 pegiiRuntimeHandler.get('/orders/:orderId', requirePermission(Actions.ReadOrder), async (c) => {
   const tenantId = c.get('tenantId')
   const orderId = c.req.param('orderId') ?? ''

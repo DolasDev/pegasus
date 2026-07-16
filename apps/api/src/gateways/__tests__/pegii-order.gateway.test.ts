@@ -3,10 +3,12 @@ import { createPegiiOrderGateway } from '../pegii-order.gateway'
 import { PegiiApiError, type PegiiApiClient } from '../../lib/pegii-api-client'
 import type { PegiiOrderDto } from '../pegii/pegii-order.dto'
 
-function stubClient(get: PegiiApiClient['get']): PegiiApiClient {
-  // The order gateway only uses get(); getHealth() is stubbed to satisfy the
-  // interface and should never be called on this path.
-  return { get, getHealth: vi.fn() }
+function stubClient(
+  get: PegiiApiClient['get'],
+  getHealth: PegiiApiClient['getHealth'] = vi.fn(),
+): PegiiApiClient {
+  // findOrderById only uses get(); checkReachable() only uses getHealth().
+  return { get, getHealth }
 }
 
 describe('createPegiiOrderGateway.findOrderById', () => {
@@ -60,5 +62,31 @@ describe('createPegiiOrderGateway.findOrderById', () => {
     })
 
     await expect(gateway.findOrderById('ord-1')).rejects.toBe(boom)
+  })
+})
+
+describe('createPegiiOrderGateway.checkReachable', () => {
+  it('resolves by probing /health when the source answers', async () => {
+    const getHealth = vi.fn().mockResolvedValue({ status: 'healthy' })
+    const gateway = createPegiiOrderGateway({
+      tenantId: 't1',
+      baseUrl: 'https://pegii.test:8443',
+      client: stubClient(vi.fn(), getHealth),
+    })
+
+    await expect(gateway.checkReachable()).resolves.toBeUndefined()
+    expect(getHealth).toHaveBeenCalledTimes(1)
+  })
+
+  it('propagates the PegiiApiError when the source is unreachable', async () => {
+    const boom = new PegiiApiError('PEGII_API_TUNNEL_ERROR', 'tunnel down')
+    const getHealth = vi.fn().mockRejectedValue(boom)
+    const gateway = createPegiiOrderGateway({
+      tenantId: 't1',
+      baseUrl: 'https://pegii.test:8443',
+      client: stubClient(vi.fn(), getHealth),
+    })
+
+    await expect(gateway.checkReachable()).rejects.toBe(boom)
   })
 })

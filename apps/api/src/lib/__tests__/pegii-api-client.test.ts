@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { type LambdaClient } from '@aws-sdk/client-lambda'
 import { setTunnelLambdaClient } from '../tunnel-client'
-import { createPegiiApiClient, PegiiApiError, isPegiiNotFound } from '../pegii-api-client'
+import {
+  createPegiiApiClient,
+  PegiiApiError,
+  isPegiiNotFound,
+  pegiiApiErrorToHttp,
+} from '../pegii-api-client'
 
 function fakeInvokePayload(obj: unknown): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(obj))
@@ -169,5 +174,41 @@ describe('createPegiiApiClient.getHealth', () => {
     delete process.env['TUNNEL_PROXY_FUNCTION_NAME']
     const client = createPegiiApiClient({ tenantId: 't1', baseUrl: 'http://h' })
     await expect(client.getHealth()).rejects.toMatchObject({ code: 'PEGII_API_TUNNEL_ERROR' })
+  })
+})
+
+describe('pegiiApiErrorToHttp', () => {
+  it('maps NOT_CONFIGURED to 503 PEGII_SOURCE_UNAVAILABLE', () => {
+    expect(pegiiApiErrorToHttp(new PegiiApiError('PEGII_API_NOT_CONFIGURED', 'x'))).toMatchObject({
+      status: 503,
+      code: 'PEGII_SOURCE_UNAVAILABLE',
+    })
+  })
+
+  it('maps TUNNEL_ERROR to 502 PEGII_SOURCE_UNREACHABLE, carrying the detail', () => {
+    const out = pegiiApiErrorToHttp(
+      new PegiiApiError('PEGII_API_TUNNEL_ERROR', 'connect timed out'),
+    )
+    expect(out.status).toBe(502)
+    expect(out.code).toBe('PEGII_SOURCE_UNREACHABLE')
+    expect(out.message).toMatch(/connect timed out/)
+  })
+
+  it('maps BAD_ENVELOPE to 502 PEGII_SOURCE_BAD_RESPONSE', () => {
+    expect(
+      pegiiApiErrorToHttp(new PegiiApiError('PEGII_API_BAD_ENVELOPE', 'no data', 200)),
+    ).toMatchObject({ status: 502, code: 'PEGII_SOURCE_BAD_RESPONSE' })
+  })
+
+  it('maps an upstream 404 HTTP_ERROR to 404 NOT_FOUND', () => {
+    expect(
+      pegiiApiErrorToHttp(new PegiiApiError('PEGII_API_HTTP_ERROR', 'not found', 404)),
+    ).toMatchObject({ status: 404, code: 'NOT_FOUND' })
+  })
+
+  it('maps a non-404 upstream HTTP_ERROR to 502 PEGII_SOURCE_BAD_RESPONSE', () => {
+    expect(
+      pegiiApiErrorToHttp(new PegiiApiError('PEGII_API_HTTP_ERROR', 'boom', 500)),
+    ).toMatchObject({ status: 502, code: 'PEGII_SOURCE_BAD_RESPONSE' })
   })
 })
