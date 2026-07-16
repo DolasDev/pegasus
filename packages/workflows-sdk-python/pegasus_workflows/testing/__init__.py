@@ -145,6 +145,9 @@ _IGNORED: frozenset[str] = frozenset(
         "create_trigger",
         "list_triggers",
         "delete_trigger",
+        "create_ingress",
+        "rotate_ingress",
+        "get_ingress",
     }
 )
 

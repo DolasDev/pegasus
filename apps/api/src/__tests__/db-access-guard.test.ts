@@ -160,6 +160,11 @@ const ALLOWED_BASE_CLIENT_HANDLERS: ReadonlySet<string> = new Set([
   'integration-validation/validate.ts',
   'integrations/ringcentral-oauth.ts',
   'integrations/ringcentral-webhook.ts',
+  // Ingress endpoint (sdk-feedback 0021): pre-tenant, like the RingCentral
+  // webhook — it resolves the tenant FROM the presented token, so it must query
+  // the base client cross-tenant (credential prefix lookup) before any tenant is
+  // known. Tenant isolation is enforced by the token→tenant resolution itself.
+  'ingress.ts',
   'longhaul-cloud/activity-types.ts',
   'longhaul-cloud/dispatchers.ts',
   'longhaul-cloud/driver-planning.ts',

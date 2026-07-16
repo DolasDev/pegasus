@@ -1474,6 +1474,13 @@ model IntegrationConfig {
   /// (0020). Null ⇒ identity (external == canonical).
   externalMapping Json? @map("external_mapping")
 
+  /// Inbound (ingress) behaviour published as part of the integration definition
+  /// (sdk-feedback 0021): `{ eventType, dedupKeyPath?, orderByPath?, ackTemplate:
+  /// {success, failure} }`. The ingress endpoint reads this to know which domain
+  /// event to emit on receipt, how to derive the dedup id, and how to shape the
+  /// synchronous partner ack. Null ⇒ a generic `{status:"accepted"}` ack.
+  inbound Json?
+
   createdAt DateTime @default(now()) @map("created_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
@@ -1953,6 +1960,68 @@ model IntegrationProjection {
   @@unique([tenantId, integrationId, entityType, entityKey])
   @@index([tenantId, integrationId, entityType])
   @@map("integration_projections")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Inbound integration ingress (sdk-feedback 0021)
+//
+// IngressCredential — the bearer a third party (e.g. Sirva ADE) presents to the
+// platform ingress endpoint. Only the hash is stored (never the plaintext, shown
+// once at issue); the prefix indexes the hash lookup. One credential per
+// (tenant, integration); rotation overwrites hash+prefix in place. Plain
+// tenantId (no FK), like DomainEvent/WorkflowTrigger.
+// ---------------------------------------------------------------------------
+model IngressCredential {
+  id            String @id @default(uuid())
+  tenantId      String @map("tenant_id")
+  integrationId String @map("integration_id")
+
+  /// First 12 chars of the token (e.g. "ing_a1b2c3d4") — indexes the hash lookup.
+  tokenPrefix String @map("token_prefix")
+  /// SHA-256 of the full token. Never returned by any API.
+  tokenHash String @map("token_hash")
+
+  enabled         Boolean   @default(true)
+  createdByUserId String    @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  rotatedAt       DateTime? @map("rotated_at")
+
+  @@unique([tenantId, integrationId])
+  @@index([tokenPrefix])
+  @@map("ingress_credentials")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// InboundEvent — the durable raw-payload log of what a partner POSTed to the
+// ingress, and the dedup boundary: unique (tenant, integration, externalId) so a
+// redelivered event is recorded once and the workflow fires once. Retained for
+// replay/backfill. Plain tenantId (no FK).
+// ---------------------------------------------------------------------------
+model InboundEvent {
+  id            String @id @default(uuid())
+  tenantId      String @map("tenant_id")
+  integrationId String @map("integration_id")
+
+  /// Dedup id derived from the payload (the configured dedupKeyPath, or a body
+  /// hash fallback). Unique per (tenant, integration).
+  externalId String @map("external_id")
+
+  /// The partner payload verbatim (for replay/backfill).
+  rawPayload Json @map("raw_payload")
+
+  /// "accepted" | "rejected" — ingestion outcome (NOT workflow outcome).
+  status String
+
+  /// The DomainEvent this receipt emitted (null if rejected/malformed).
+  domainEventId String? @map("domain_event_id")
+
+  receivedAt DateTime @default(now()) @map("received_at")
+
+  @@unique([tenantId, integrationId, externalId])
+  @@index([tenantId, integrationId, receivedAt])
+  @@map("inbound_events")
   @@schema("public")
 }
 

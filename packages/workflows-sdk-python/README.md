@@ -286,6 +286,39 @@ async def file_document(reg: str) -> dict:
 are reads (live). Blobs are tenant-scoped and expire via a TTL. The
 `$blob`/`response_to_blob` paths are a **small-file cut** (≤ ~5 MB through the
 API); large-file streaming is a follow-up.
+### Receiving events (inbound ingress)
+
+For partners that **push** to you (a webhook), provision a platform-hosted ingress
+endpoint. The partner POSTs to it with a bearer the platform issues; the endpoint
+authenticates, dedups, persists the raw body, emits a domain event, and returns a
+partner-shaped ack synchronously.
+
+```
+pegasus-workflows ingress create sirva_ade_shipment   # prints URL + one-time token
+pegasus-workflows ingress rotate sirva_ade_shipment
+pegasus-workflows ingress list   sirva_ade_shipment
+```
+
+The workflow that handles the events binds to the emitted domain event with an
+ordinary **EVENT trigger**. The emitted event type, the dedup key path, and the
+**ack template** (e.g. a partner's `Result{…}` envelope) are published as part of
+the integration definition — an `inbound` block on the integration config:
+
+```jsonc
+"inbound": {
+  "eventType": "sirva_ade.shipment.event",
+  "dedupKeyPath": "Events.0.Id",
+  "ackTemplate": {
+    "success": { "Result": { "Results": "Success", "ResultsMessageCount": 0, "ResultsMessage": [] } },
+    "failure": { "Result": { "Results": "Failed", "ResultsMessageCount": "{{errorCount}}",
+                             "ResultsMessage": "{{messages}}" } }
+  }
+}
+```
+
+Managing ingress needs a `vnd_` key with `ManageIngress` (the `workflow_developer`
+/ `tenant_admin` role). With no `inbound` block, the endpoint returns a generic
+`{status:"accepted"}` ack.
 
 ### Secrets & configuration
 

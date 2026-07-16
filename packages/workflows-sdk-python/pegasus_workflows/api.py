@@ -569,6 +569,43 @@ class PegasusClient:
             response = client.delete(f"/api/v1/workflows/{workflow_id}/triggers/{trigger_id}")
         _raise_for_status(response)
 
+    # -- inbound ingress credentials (CLI management) -----------------------
+    #
+    # The bearer a third party POSTs to the platform ingress endpoint. Managed
+    # (create/rotate/inspect) with a vnd_ key holding ``ManageIngress``
+    # (workflow_developer / tenant_admin). The plaintext token is returned ONCE
+    # by create/rotate — store it immediately (register it Sirva-side).
+
+    def create_ingress(self, integration_id: str) -> dict[str, Any]:
+        """Mint the ingress credential for an integration. Requires ``ManageIngress``.
+
+        Returns ``{integrationId, url, token, tokenPrefix, enabled}`` — ``token``
+        is shown only here. Raises ``PegasusApiError`` (409) if one already exists
+        (rotate instead).
+        """
+        with self._client() as client:
+            response = client.post(f"/api/v1/integrations/{integration_id}/ingress")
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def rotate_ingress(self, integration_id: str) -> dict[str, Any]:
+        """Rotate an integration's ingress token (old token stops working).
+
+        Requires ``ManageIngress``. Returns ``{integrationId, url, token, ...}``
+        with the NEW token (shown once). Raises ``PegasusApiError`` (404) if none.
+        """
+        with self._client() as client:
+            response = client.post(f"/api/v1/integrations/{integration_id}/ingress/rotate")
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def get_ingress(self, integration_id: str) -> dict[str, Any]:
+        """Fetch an integration's ingress metadata (never the token). ``ManageIngress``.
+
+        Returns ``{integrationId, url, tokenPrefix, enabled, createdAt, rotatedAt}``.
+        """
+        return self._get_json(f"/api/v1/integrations/{integration_id}/ingress")["data"]
+
     def get_download_url(self, workflow_id: str) -> dict[str, Any]:
         """Get a presigned GET URL for a workflow's source zip.
 

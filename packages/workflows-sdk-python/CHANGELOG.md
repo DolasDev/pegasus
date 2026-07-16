@@ -3,6 +3,28 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.19.0
+
+### Added
+
+- **Inbound integration ingress** (sdk-feedback/0021) — a platform-hosted endpoint
+  a third party (e.g. Sirva ADE) POSTs events to, so push-only partner APIs are
+  authorable without an off-platform daemon:
+  - **`pegasus-workflows ingress create|rotate|list <integration>`** provisions the
+    per-integration bearer (`PegasusClient.create_ingress` / `rotate_ingress` /
+    `get_ingress`, gated by a new `ManageIngress` action). `create`/`rotate` print
+    the URL + a **one-time token** to register partner-side.
+  - The endpoint authenticates the bearer (resolving the tenant), **dedups** on an
+    id derived from the payload, persists the raw body, **emits a domain event**
+    (an ordinary EVENT trigger fires the bound workflow), and returns a
+    **synchronous, partner-shaped ack** derived from ingestion — never waiting on
+    the workflow.
+  - The ack shape, dedup path, and emitted event type are **published as part of
+    the integration definition** (a new `inbound` block on the integration config:
+    `{ eventType, dedupKeyPath, ackTemplate: {success, failure} }`), so a tenant
+    defines its partner's ADE `Result{…}` envelope itself. A definition with no
+    `inbound` block falls back to a generic `{status:"accepted"}` ack.
+
 ## 0.18.0
 
 ### Added

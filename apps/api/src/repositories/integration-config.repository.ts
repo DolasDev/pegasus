@@ -44,6 +44,8 @@ export type IntegrationConfigRow = {
   externalShape: Prisma.JsonValue | null
   /** Canonical → external projection (0020). Null ⇒ identity. */
   externalMapping: Prisma.JsonValue | null
+  /** Inbound (ingress) behaviour block (0021). Null ⇒ generic ack. */
+  inbound: Prisma.JsonValue | null
   createdAt: Date
 }
 
@@ -65,6 +67,7 @@ const SELECT = {
   displayName: true,
   externalShape: true,
   externalMapping: true,
+  inbound: true,
   createdAt: true,
 } as const
 
@@ -91,6 +94,8 @@ export interface PublishConfigInput {
   externalShape?: Prisma.InputJsonValue
   /** Canonical → external projection (0020). Omit ⇒ identity. */
   externalMapping?: Prisma.InputJsonValue
+  /** Inbound (ingress) behaviour block (0021). Omit ⇒ generic ack. */
+  inbound?: Prisma.InputJsonValue
 }
 
 export function createIntegrationConfigRepository(db: PrismaClient) {

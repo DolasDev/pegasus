@@ -61,6 +61,13 @@ export const TENANT_SCOPED_MODELS = new Set([
   // prior-state lookup go through the tenant-scoped client, so auto-scoping here
   // enforces isolation.
   'IntegrationProjection',
+  // Ingress (sdk-feedback 0021) — IngressCredential CRUD + InboundEvent history
+  // reads go through the tenant-scoped client on the management routes. The
+  // pre-tenant ingress endpoint itself uses the root `db` (it resolves the tenant
+  // FROM the presented token), which bypasses this extension — same cross-tenant
+  // precedent as the DomainEvent outbox above.
+  'IngressCredential',
+  'InboundEvent',
   // Messaging — tenant-owned entities a tenant/admin handler reads via the
   // scoped client. The background capture/forward/purge jobs use the base
   // client (cross-tenant cron context) and are unaffected by this set.

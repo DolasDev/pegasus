@@ -91,6 +91,7 @@ import {
 } from './handlers/integration-projections'
 import { ringcentralOauthHandler } from './handlers/integrations/ringcentral-oauth'
 import { ringcentralWebhookHandler } from './handlers/integrations/ringcentral-webhook'
+import { ingressHandler, ingressManagementHandler } from './handlers/ingress'
 import { integrationsHandler } from './handlers/integrations/list'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -206,6 +207,13 @@ app.route('/api/admin', adminRouter)
 app.route('/api/integrations/ringcentral', ringcentralWebhookHandler)
 
 // ---------------------------------------------------------------------------
+// Inbound integration ingress — pre-tenant (sdk-feedback 0021). A partner POSTs
+// with a platform-issued bearer that resolves the tenant; no Cognito session.
+// Mounted BEFORE the tenant-protected /api/v1 block. See handlers/ingress.ts.
+// ---------------------------------------------------------------------------
+app.route('/api/ingress/v1', ingressHandler)
+
+// ---------------------------------------------------------------------------
 // Hub agent API — /api/vpn/**
 //
 // M2M endpoints for the WireGuard hub's reconcile agent. The router applies
@@ -301,6 +309,10 @@ m2mV1.route('/', integrationCallHandler)
 // land binary files (e.g. ADE documents) without proxying bytes through the
 // Lambda. Dual-auth + RBAC (Read/WriteBlob). See handlers/blobs.ts.
 m2mV1.route('/', blobsHandler)
+// Ingress credential management: provision/rotate/inspect the bearer a partner
+// POSTs to the pre-tenant ingress endpoint. Dual-auth + RBAC (ManageIngress).
+// See handlers/ingress.ts.
+m2mV1.route('/', ingressManagementHandler)
 
 app.route('/api/v1', m2mV1)
 
