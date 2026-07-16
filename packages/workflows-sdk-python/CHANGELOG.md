@@ -3,6 +3,32 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.16.0
+
+### Added
+
+- **`PegasusClient.call_external` — a generic authenticated outbound HTTP caller**
+  (sdk-feedback/0022). The read/arbitrary-method counterpart to
+  `deliver_to_external`'s single fixed JSON `POST`: name a `method` + `path` (+
+  `query`/`body`) and the platform performs the call **server-side** against the
+  integration's configured `BASE_URL`, authenticating per its `AUTH_MODE`.
+  - `AUTH_MODE=oauth2_client_credentials` mints, caches, and **re-mints on a
+    partner `401`** an OAuth2 client-credentials token server-side (the RingCentral
+    token-cache pattern, generalized), parsing an **XML `<Access>`** or JSON token
+    body — so `client_id`/`client_secret` never appear in workflow code.
+    `AUTH_MODE=bearer` uses a static `API_KEY` secret; `none` sends no auth.
+  - Config + credentials are read from the tenant's workflow config/secret store
+    by name + `group` (`BASE_URL`/`AUTH_MODE`/`TOKEN_URL` configs;
+    `CLIENT_ID`/`CLIENT_SECRET` or `API_KEY` secrets).
+  - **Dry-run split (sdk-feedback/0015):** a `GET` is a read and runs **live** under
+    `run --dry-run`; a `POST`/`PUT`/… is a mutation and is **captured, not
+    performed**. A `mutating` flag overrides the method-based default. The offline
+    `fake_client` serves a `GET` from a path-keyed `reads={"call_external": …}`
+    fixture and captures a mutation via the shared dry-run path.
+  - Requires `required_actions = ["CallExternal"]` (a new Cedar action granted to
+    the `workflow_runtime` persona). Returns `{status, ok, response, headers,
+dryRun}`; auto-documented in the `pegasus://reference/api` MCP resource.
+
 ## 0.15.0
 
 ### Added

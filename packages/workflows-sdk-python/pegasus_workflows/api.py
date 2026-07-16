@@ -758,6 +758,92 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
+    def call_external(
+        self,
+        integration_id: str,
+        *,
+        method: str,
+        path: str,
+        query: dict[str, Any] | None = None,
+        body: Any = None,
+        mutating: bool | None = None,
+        group: str = "global",
+    ) -> dict[str, Any]:
+        """Call a partner API server-side with the integration's configured auth.
+
+        The read/arbitrary-method counterpart to :meth:`deliver_to_external`
+        (which is one fixed JSON ``POST``). You name a ``method`` + ``path`` (+
+        ``query``/``body``) and the platform performs the call against the
+        integration's ``BASE_URL``, authenticating per its ``AUTH_MODE`` — for
+        ``oauth2_client_credentials`` it mints, caches, and re-mints (on a partner
+        ``401``) an OAuth2 token server-side, so ``client_id``/``client_secret``
+        never appear in workflow code. Config + credentials live in the tenant's
+        workflow config/secret store (``BASE_URL``/``AUTH_MODE``/``TOKEN_URL``
+        configs, ``CLIENT_ID``/``CLIENT_SECRET`` or ``API_KEY`` secrets), read by
+        name + ``group``.
+
+        Requires the workflow's manifest to declare
+        ``required_actions = ["CallExternal"]``.
+
+        **Dry-run split (sdk-feedback/0015):** a ``GET`` (or any method with
+        ``mutating=False``) is a *read* — it runs **live** under
+        ``run --dry-run`` and returns real data. A ``POST``/``PUT``/… (or
+        ``mutating=True``) is a *mutation* — it is **captured, not performed**
+        under a dry run. Pass ``mutating`` to override the method-based default
+        when a partner overloads a verb (e.g. a ``POST`` that only reads).
+
+        Args:
+            integration_id: Integration slug the call is for (e.g.
+                ``"sirva_ade_shipment"``). Validated against the registry (404 if
+                unknown); the endpoint/credentials come from config.
+            method: HTTP method — ``GET``/``POST``/``PUT``/``PATCH``/``DELETE``.
+            path: Path appended to ``BASE_URL`` (e.g. ``/OM/m1/GetShipmentDetail``).
+            query: Optional query params (values are stringified).
+            body: Optional JSON request body (mutations).
+            mutating: Force read (``False``) / mutation (``True``) classification.
+            group: Config/secret group the entries live in (default ``"global"``).
+
+        Returns:
+            ``{status, ok, response, headers, dryRun}``. ``response`` is the parsed
+            JSON body, or the raw text for a non-JSON (e.g. XML) partner reply. On
+            a captured mutation under dry-run: ``{status: None, response: None,
+            ok: False, dryRun: True}`` and nothing is sent.
+
+        Raises:
+            PegasusApiError: On 403 (manifest lacks ``CallExternal``), 404 (unknown
+                integration or an unset ``BASE_URL``/``TOKEN_URL``/credential),
+                400 (disallowed resolved URL or unsupported ``AUTH_MODE``), 502
+                (token mint or outbound call failed), or any other non-2xx.
+        """
+        method_upper = method.upper()
+        is_mutation = (
+            mutating if mutating is not None else method_upper not in ("GET", "HEAD", "OPTIONS")
+        )
+        payload: dict[str, Any] = {"method": method_upper, "path": path, "group": group}
+        if query is not None:
+            payload["query"] = query
+        if body is not None:
+            payload["body"] = body
+        if mutating is not None:
+            payload["mutating"] = mutating
+
+        if is_mutation:
+            captured = self._capture_mutation(
+                "CallExternal",
+                "call_external",
+                {"integration_id": integration_id, "method": method_upper, "path": path},
+                {"status": None, "response": None, "ok": False, "dryRun": True},
+            )
+            if captured is not _NOT_CAPTURED:
+                return captured
+
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/integrations/{integration_id}/call-external", json=payload
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
     # -- pegII order + task reads (for use inside activities) ---------------
     #
     # Orders and their operational tasks live in the legacy pegII (MoveManager)

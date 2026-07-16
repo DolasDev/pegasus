@@ -239,6 +239,18 @@ export const Actions = {
     resourceType: 'IntegrationConfig',
     permission: 'integration:deliver',
   },
+  // ── Outbound authenticated call (generic method+path caller, OAuth server-side) ─
+  // The read/arbitrary-method counterpart to DeliverToExternal's fixed JSON POST:
+  // a workflow names a method + path and the platform performs the call
+  // server-side using the integration's configured BASE_URL + (for OAuth2
+  // partners) a client-credentials token it mints/caches/re-mints. Unlike the
+  // open map-to-external transform, this makes real authenticated outbound calls
+  // with tenant credentials, so it stays persona-scoped. Granted to workflow_runtime.
+  CallExternal: {
+    id: 'CallExternal',
+    resourceType: 'IntegrationConfig',
+    permission: 'integration:call',
+  },
   // ── Custom event types (tenant-defined event registry for workflows) ─────
   ManageEventTypes: {
     id: 'ManageEventTypes',
