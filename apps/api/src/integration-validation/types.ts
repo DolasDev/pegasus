@@ -56,9 +56,71 @@ export interface CanonicalContext<T = unknown> {
 }
 
 /**
- * A complete, declarative description of one integration. The validator is
- * generic over this — nothing about a specific integration is hardcoded in the
- * engine. Keyed by `id` in the registry so adding integration #2 is data, not code.
+ * A per-*type* fact abstraction — the reusable, partner-neutral half of an
+ * integration (sdk-feedback 0020). One floor (e.g. `shipment_status_update`)
+ * defines the canonical fact-bearing shape and how facts are derived, and is
+ * shared by every partner overlay of that type. It carries NO partner-specific
+ * output shape, mapping, or rules — those live in the overlay.
+ */
+export interface TypeFloor {
+  /** Stable type id, e.g. `shipment_status_update`. */
+  floor: string
+  /** Canonical Zod schema the (native→canonical) mapping output must satisfy. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  structuralContract: z.ZodType<any>
+  /** Top-level input field roots an overlay mapping may read (static-check guard). */
+  inputFieldRoots?: string[]
+  /** Pure derivation of neutral facts from the canonical context. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  deriveFacts: (ctx: CanonicalContext<any>) => Facts
+  /** The facts overlay rules may reference (enforced against the overlay). */
+  factCatalog: FactCatalog
+  /** Default action assumed when a caller omits one. */
+  defaultAction: OrderAction
+  /** Optional cached-projection binding (keyed off the canonical order). */
+  projection?: IntegrationProjectionBinding
+}
+
+/**
+ * The per-*partner* half of an integration (sdk-feedback 0019 + 0020), authored
+ * as a built-in (code) or a published `IntegrationConfig` (DB). It references a
+ * `floor` (the reusable type) and carries everything partner-specific: the
+ * native→canonical `mapping`, the partner-facing `displayName`, the behavioral
+ * `rules`, and — the key 0020 move — the partner's OWN external output shape
+ * (`externalShape`) + canonical→external projection (`externalMapping`). A new
+ * partner on an existing floor is thus authorable as an overlay alone.
+ */
+export interface IntegrationOverlay {
+  /** Integration id (e.g. `demo_partner`). */
+  id: string
+  /** The type floor this overlay is built on. */
+  floor: string
+  /** Human-facing label, decoupled from `id` (0019). */
+  displayName: string
+  /** One-line description of what the integration validates. */
+  description?: string
+  /** Declarative native → canonical mapping, in the output-shaped format. */
+  mapping: MappingTemplate
+  /** Declarative behavioral rules evaluated against the floor's facts. */
+  rules: RuleSet
+  /**
+   * The partner external output shape, as a JSON Schema. Absent ⇒ the external
+   * body IS the canonical (identity) — the pre-0020 behavior. When present, two
+   * overlays on the same floor can emit different external shapes.
+   */
+  externalShape?: Record<string, unknown>
+  /**
+   * Canonical → partner-external projection. Absent ⇒ identity (external =
+   * canonical). Compiled the same way as `mapping`.
+   */
+  externalMapping?: MappingTemplate
+}
+
+/**
+ * A complete, declarative description of one integration — the RESOLVED shape a
+ * TypeFloor and an IntegrationOverlay compose into (see registry). Consumers
+ * (validate, gate, list) use this single object; the floor/overlay split lives
+ * at the authoring + DB layer and in `composeDefinition`.
  *
  * The canonical type varies per integration, so the canonical-typed members use
  * `any`: the structural contract validates the real shape at runtime, and each
@@ -66,6 +128,8 @@ export interface CanonicalContext<T = unknown> {
  */
 export interface IntegrationDefinition {
   id: string
+  /** The type floor this integration is built on (0020). */
+  floor: string
   /** Human-facing label for UI/list surfaces (e.g. "Demo Partner"). */
   displayName: string
   /** One-line description of what the integration validates. */
@@ -95,6 +159,17 @@ export interface IntegrationDefinition {
    * the matching projection row. Absent ⇒ the endpoint stays stateless.
    */
   projection?: IntegrationProjectionBinding
+  /**
+   * The partner external output shape as a JSON Schema (0020). Absent ⇒ external
+   * == canonical (identity). Used by the publish gate to static-check
+   * `externalTransform` targets and round-trip the corpus's external bodies.
+   */
+  externalJsonSchema?: Record<string, unknown>
+  /**
+   * Canonical → external projection, compiled (0020). Absent ⇒ identity: the
+   * external body IS the canonical, byte-identical to the pre-0020 map result.
+   */
+  externalTransform?: TransformSpec
 }
 
 /** Identifies a record so its cached projection can be looked up as `prior`. */

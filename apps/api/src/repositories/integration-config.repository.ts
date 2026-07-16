@@ -36,6 +36,14 @@ export type IntegrationConfigRow = {
   forkedFromConfigId: string | null
   /** Source config version at fork time; else null. */
   forkedFromVersion: number | null
+  /** Type floor this overlay is built on (0020). Null ⇒ resolve via the built-in overlay's floor. */
+  floor: string | null
+  /** Human-facing label decoupled from integrationId (0019). Null ⇒ fall back to the built-in/id. */
+  displayName: string | null
+  /** Partner external output shape as a JSON Schema (0020). Null ⇒ external == canonical (identity). */
+  externalShape: Prisma.JsonValue | null
+  /** Canonical → external projection (0020). Null ⇒ identity. */
+  externalMapping: Prisma.JsonValue | null
   createdAt: Date
 }
 
@@ -53,6 +61,10 @@ const SELECT = {
   publishedBy: true,
   forkedFromConfigId: true,
   forkedFromVersion: true,
+  floor: true,
+  displayName: true,
+  externalShape: true,
+  externalMapping: true,
   createdAt: true,
 } as const
 
@@ -71,6 +83,14 @@ export interface PublishConfigInput {
   forkedFromConfigId?: string
   /** Set by the fork path: the source GLOBAL config's version. Omit for direct publishes. */
   forkedFromVersion?: number
+  /** Type floor this overlay targets (0020). Omit to inherit the built-in overlay's floor. */
+  floor?: string
+  /** Human-facing label (0019). Omit to fall back to the built-in/id. */
+  displayName?: string
+  /** Partner external output shape as a JSON Schema (0020). Omit ⇒ identity. */
+  externalShape?: Prisma.InputJsonValue
+  /** Canonical → external projection (0020). Omit ⇒ identity. */
+  externalMapping?: Prisma.InputJsonValue
 }
 
 export function createIntegrationConfigRepository(db: PrismaClient) {

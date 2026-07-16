@@ -123,18 +123,20 @@ export function validateOrder(integrationId: string, input: ValidationInput): Va
 // ---------------------------------------------------------------------------
 // mapToExternal — the outbound half of the anti-corruption layer, exposed.
 //
-// The integration's mapping already runs internal → external (its `transform`
-// projects entity data into the partner's payload shape; the "canonical"
-// structural contract IS that external shape). validateOrder runs this transform
-// internally but returns only the pass/fail verdict; a workflow that wants to
-// CALL the partner API needs the transformed payload itself. This returns it,
-// alongside the same validation verdict so the caller can gate the send.
+// Two-stage projection (sdk-feedback 0020): the overlay's `transform` runs
+// native → CANONICAL (the floor's neutral fact shape), then the overlay's
+// optional `externalTransform` projects CANONICAL → the partner EXTERNAL body.
+// When `externalTransform` is absent the external body IS the canonical
+// (identity) — the pre-0020 behavior, byte-identical. validateOrder runs the
+// native→canonical transform internally for its verdict; this additionally
+// returns the external payload so a workflow can CALL the partner API and gate
+// the send on `valid`.
 //
-// `external` is the RAW mapped output — always returned (even when it fails the
-// structural contract or a rule), so the caller can inspect/send it regardless.
-// A hard mapping error (e.g. an unknown coercion) yields `external: null`.
-// Merging into a cached projection is intentionally NOT done here — a workflow
-// composes get_projection → this → merge (in Python) → put_projection itself.
+// `external` is the projected output — always returned (even when it fails the
+// contract or a rule), so the caller can inspect/send it regardless. A hard
+// mapping error (e.g. an unknown coercion) yields `external: null`. Merging into
+// a cached projection is intentionally NOT done here — a workflow composes
+// get_projection → this → merge (in Python) → put_projection itself.
 // ---------------------------------------------------------------------------
 
 export interface MapToExternalResult {
@@ -153,11 +155,14 @@ export function mapToExternalWithDefinition(
   data: unknown,
   action?: OrderAction,
 ): MapToExternalResult {
-  // Raw external payload — returned even if it later fails validation. A defect
-  // in the transform must not deny the caller a verdict, so fall back to null.
+  // External payload — returned even if it later fails validation. A defect in
+  // either transform must not deny the caller a verdict, so fall back to null.
+  // Stage 1: native → canonical. Stage 2 (optional): canonical → external; when
+  // there is no external transform the canonical IS the external body (identity).
   let external: Record<string, unknown> | null = null
   try {
-    external = applyMapping(def.transform, data)
+    const canonical = applyMapping(def.transform, data)
+    external = def.externalTransform ? applyMapping(def.externalTransform, canonical) : canonical
   } catch (err) {
     logger.warn('integration map-to-external transform failed', {
       integrationId: def.id,

@@ -1456,6 +1456,24 @@ model IntegrationConfig {
   /// The source config's version at fork time. Null for direct publishes.
   forkedFromVersion Int? @map("forked_from_version")
 
+  /// Type floor this overlay is built on (sdk-feedback 0020), e.g.
+  /// "shipment_status_update". Null ⇒ resolve via the built-in overlay's floor
+  /// for this integrationId. Lets a NEW partner target an existing floor from a
+  /// published config alone — no new code floor.
+  floor String?
+
+  /// Human-facing label decoupled from integrationId (sdk-feedback 0019). Null ⇒
+  /// fall back to the built-in overlay's displayName, else the id.
+  displayName String? @map("display_name")
+
+  /// Partner external output shape as a JSON Schema (sdk-feedback 0020). Null ⇒
+  /// the external body IS the canonical (identity). Gate-checked at publish.
+  externalShape Json? @map("external_shape")
+
+  /// Canonical → partner-external projection, output-shaped like `mapping`
+  /// (0020). Null ⇒ identity (external == canonical).
+  externalMapping Json? @map("external_mapping")
+
   createdAt DateTime @default(now()) @map("created_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])

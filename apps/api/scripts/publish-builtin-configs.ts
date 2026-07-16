@@ -33,20 +33,63 @@
 // Exit code is non-zero if any gate fails, any publish errors, or --verify finds a diff.
 // ---------------------------------------------------------------------------
 
-import { demoPartnerMapping } from '../src/integration-validation/transform/demo-partner.transform'
-import { demoPartnerRules } from '../src/integration-validation/rules/demo-partner.rules'
+import { demoPartnerOverlay } from '../src/integration-validation/overlays/demo-partner.overlay'
+import { alliedStatusOverlay } from '../src/integration-validation/overlays/allied-status.overlay'
 import { getBuiltinCorpus, getGateCorpus } from '../src/integration-validation/corpus'
 import type { GateCorpusCase, GateReport } from '../src/integration-validation/gate-pipeline'
 
 interface BuiltinConfig {
   id: string
+  floor: string
+  displayName: string
   mapping: unknown
   rules: unknown
+  externalShape?: Record<string, unknown>
+  externalMapping?: unknown
+  /** Corpus source id — an overlay that reuses another's fixtures points here. */
+  corpusId: string
 }
 
+// Built-in overlays, published as GLOBAL configs on their type floor
+// (sdk-feedback 0019 + 0020). demo_partner has an identity external body;
+// allied_status reuses demo_partner's fixtures but emits its own external shape.
 const BUILTINS: BuiltinConfig[] = [
-  { id: 'demo_partner', mapping: demoPartnerMapping, rules: demoPartnerRules },
+  {
+    id: demoPartnerOverlay.id,
+    floor: demoPartnerOverlay.floor,
+    displayName: demoPartnerOverlay.displayName,
+    mapping: demoPartnerOverlay.mapping,
+    rules: demoPartnerOverlay.rules,
+    corpusId: 'demo_partner',
+  },
+  {
+    id: alliedStatusOverlay.id,
+    floor: alliedStatusOverlay.floor,
+    displayName: alliedStatusOverlay.displayName,
+    mapping: alliedStatusOverlay.mapping,
+    rules: alliedStatusOverlay.rules,
+    ...(alliedStatusOverlay.externalShape
+      ? { externalShape: alliedStatusOverlay.externalShape }
+      : {}),
+    ...(alliedStatusOverlay.externalMapping
+      ? { externalMapping: alliedStatusOverlay.externalMapping }
+      : {}),
+    corpusId: 'demo_partner',
+  },
 ]
+
+/** Assemble the config request body (editable surface + floor/overlay fields). */
+function configBody(cfg: BuiltinConfig): Record<string, unknown> {
+  return {
+    mapping: cfg.mapping,
+    rules: cfg.rules,
+    corpus: getGateCorpus(cfg.corpusId) as GateCorpusCase[],
+    floor: cfg.floor,
+    displayName: cfg.displayName,
+    ...(cfg.externalShape ? { externalShape: cfg.externalShape } : {}),
+    ...(cfg.externalMapping !== undefined ? { externalMapping: cfg.externalMapping } : {}),
+  }
+}
 
 // ── CLI args ────────────────────────────────────────────────────────────────
 const args = process.argv.slice(2)
@@ -111,12 +154,11 @@ function reportSummary(report: GateReport): string {
 
 // ── Gate (dry-run validate) ───────────────────────────────────────────────────
 async function gate(cfg: BuiltinConfig): Promise<GateReport> {
-  const corpus = getGateCorpus(cfg.id) as GateCorpusCase[]
-  const { status, json } = await api('POST', `/integrations/${cfg.id}/config/validate`, {
-    mapping: cfg.mapping,
-    rules: cfg.rules,
-    corpus,
-  })
+  const { status, json } = await api(
+    'POST',
+    `/integrations/${cfg.id}/config/validate`,
+    configBody(cfg),
+  )
   if (status !== 200) {
     console.error(`  response: ${JSON.stringify(json)}`)
     die(`[${cfg.id}] /config/validate returned ${status}`)
@@ -126,12 +168,7 @@ async function gate(cfg: BuiltinConfig): Promise<GateReport> {
 
 // ── Publish ───────────────────────────────────────────────────────────────────
 async function publish(cfg: BuiltinConfig): Promise<void> {
-  const corpus = getGateCorpus(cfg.id) as GateCorpusCase[]
-  const { status, json } = await api('POST', `/integrations/${cfg.id}/config`, {
-    mapping: cfg.mapping,
-    rules: cfg.rules,
-    corpus,
-  })
+  const { status, json } = await api('POST', `/integrations/${cfg.id}/config`, configBody(cfg))
   if (status !== 201) {
     console.error(`  response: ${JSON.stringify(json)}`)
     die(`[${cfg.id}] publish returned ${status} (expected 201)`)
@@ -162,7 +199,7 @@ async function verify(cfg: BuiltinConfig): Promise<VerifyDiff[]> {
   // Replay EVERY corpus case (incl. structural-rejection fixtures) through the
   // live validate endpoint. The published mapping/rules equal the built-in floor,
   // so the expected diff is NONE — that is the safety proof.
-  const corpus = getBuiltinCorpus(cfg.id) as GateCorpusCase[]
+  const corpus = getBuiltinCorpus(cfg.corpusId) as GateCorpusCase[]
   const diffs: VerifyDiff[] = []
   for (const tc of corpus) {
     const { status, json } = await api('POST', `/integrations/${cfg.id}/validate`, tc.input)

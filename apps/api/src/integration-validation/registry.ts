@@ -1,131 +1,227 @@
 // ---------------------------------------------------------------------------
-// Integration registry — the multi-integration seam, kept as DATA from day one.
+// Integration registry — the floor(type) + overlay(partner) seam (sdk-feedback
+// 0019 + 0020).
 //
-// Ships one entry (demo_partner — a fictional example/reference integration),
-// supported globally (a single shared definition, not per-tenant). Adding an
-// integration is a new entry here plus its own transform/rules/facts files; the
-// engine and the endpoint never change. Nothing about a specific integration is
-// referenced outside this map. (An earlier POC entry was removed — see git
-// history — and can be re-added the same way if needed.)
+// TWO code layers, kept as DATA:
+//   - FLOORS: per-*type* fact abstractions (TypeFloor) — the neutral canonical
+//     shape, fact derivation, fact catalog, input roots, projection. Reusable
+//     across partners of the same integration type.
+//   - BUILTIN_OVERLAYS: per-*partner* overlays (IntegrationOverlay) — the
+//     native→canonical mapping, displayName, rules, and the partner's own
+//     external output shape + canonical→external projection. Each references a
+//     floor by id.
+//
+// A runtime `IntegrationDefinition` is the COMPOSITION of a floor and an overlay
+// (composeDefinition). Consumers (validate, gate, list) still use that single
+// resolved object. A published DB config (IntegrationConfig) is a per-tenant /
+// GLOBAL overlay: it overrides the editable surface (mapping, rules, displayName,
+// externalShape, externalMapping) and — the 0020 win — may reference a floor by
+// id, so a NEW partner on an existing type is authorable as an overlay ALONE,
+// with no built-in code entry of its own.
 // ---------------------------------------------------------------------------
 
 import type { PrismaClient } from '@prisma/client'
-import { DemoPartnerOrderSchema } from './canonical-demo-partner'
 import {
   compileMapping,
   MappingTemplateSchema,
   type MappingTemplate,
 } from './transform/mapping-format'
-import { demoPartnerMapping, demoPartnerInputFieldRoots } from './transform/demo-partner.transform'
-import { deriveDemoPartnerFacts, demoPartnerFactCatalog } from './facts/demo-partner-facts'
-import { demoPartnerRules } from './rules/demo-partner.rules'
 import { RuleSetSchema, type RuleSet } from './rules/types'
+import { shipmentStatusUpdateFloor } from './floors/shipment-status-update.floor'
+import { demoPartnerOverlay } from './overlays/demo-partner.overlay'
+import { alliedStatusOverlay } from './overlays/allied-status.overlay'
 import { createIntegrationConfigRepository } from '../repositories/integration-config.repository'
 import { logger } from '../lib/logger'
-import type { TransformSpec } from './transform/engine'
-import type { IntegrationDefinition } from './types'
+import type { IntegrationConfigRow } from '../repositories/integration-config.repository'
+import type { IntegrationDefinition, IntegrationOverlay, TypeFloor } from './types'
 
-const demoPartnerDefinition: IntegrationDefinition = {
-  id: 'demo_partner',
-  displayName: 'Demo Partner',
-  description: 'Validates Demo Partner order payloads before they are saved.',
-  structuralContract: DemoPartnerOrderSchema,
-  mapping: demoPartnerMapping,
-  transform: compileMapping(demoPartnerMapping),
-  inputFieldRoots: demoPartnerInputFieldRoots,
-  deriveFacts: deriveDemoPartnerFacts,
-  factCatalog: demoPartnerFactCatalog,
-  rules: demoPartnerRules,
-  defaultAction: 'save',
-  // Cached-projection binding: a Demo Partner order is keyed by its service
-  // order number, so the validator can load the order's last-known state as
-  // `prior`.
-  projection: {
-    entityType: 'order',
-    key: (o) => (typeof o?.serviceOrderNumber === 'string' ? o.serviceOrderNumber : null),
-  },
+// ── Built-in floors (types) and overlays (partners) ────────────────────────
+
+/** Per-*type* fact abstractions, keyed by floor id. Partner-neutral, reusable. */
+const FLOORS: Record<string, TypeFloor> = {
+  [shipmentStatusUpdateFloor.floor]: shipmentStatusUpdateFloor,
 }
 
-// Built-in definitions are the always-valid baseline (guaranteed by CI). They
-// supply the CODE ground truth — structuralContract, deriveFacts, factCatalog,
-// inputFieldRoots — that a DB-published config can never override.
-const REGISTRY: Record<string, IntegrationDefinition> = {
-  demo_partner: demoPartnerDefinition,
+/** Built-in per-*partner* overlays, keyed by integrationId. Each names a floor. */
+const BUILTIN_OVERLAYS: Record<string, IntegrationOverlay> = {
+  [demoPartnerOverlay.id]: demoPartnerOverlay,
+  [alliedStatusOverlay.id]: alliedStatusOverlay,
 }
 
-// ---------------------------------------------------------------------------
-// DB-backed overlay
-//
-// A published GLOBAL config overrides ONLY the editable surface (mapping +
-// rules) of its built-in definition. The overlay is a module-level cache warmed
-// from the DB with a TTL (the JWKS-cache precedent in middleware/admin-auth.ts),
-// so getIntegrationDefinition stays synchronous — validateOrder and the
-// in-process cloud save path are unchanged. The built-in baseline is the safe
-// floor: an absent, stale, or unparseable overlay simply falls back to code.
-// ---------------------------------------------------------------------------
+// ── Composition: floor ⊕ overlay → resolved IntegrationDefinition ───────────
 
-interface OverlayEntry {
+/** Normalised overlay parts (built-in or DB-derived) ready to compose onto a floor. */
+interface OverlayParts {
+  id: string
+  displayName: string
+  description: string
   mapping: MappingTemplate
-  transform: TransformSpec
   rules: RuleSet
+  /** External output shape as a JSON Schema. Undefined ⇒ identity (external == canonical). */
+  externalShape?: Record<string, unknown>
+  /** Canonical → external projection. Undefined ⇒ identity. */
+  externalMapping?: MappingTemplate
 }
+
+/** Compose a floor and overlay parts into the resolved definition consumers use. */
+function composeDefinition(floor: TypeFloor, parts: OverlayParts): IntegrationDefinition {
+  return {
+    id: parts.id,
+    floor: floor.floor,
+    displayName: parts.displayName,
+    description: parts.description,
+    structuralContract: floor.structuralContract,
+    mapping: parts.mapping,
+    transform: compileMapping(parts.mapping),
+    ...(floor.inputFieldRoots ? { inputFieldRoots: floor.inputFieldRoots } : {}),
+    deriveFacts: floor.deriveFacts,
+    factCatalog: floor.factCatalog,
+    rules: parts.rules,
+    defaultAction: floor.defaultAction,
+    ...(floor.projection ? { projection: floor.projection } : {}),
+    ...(parts.externalShape ? { externalJsonSchema: parts.externalShape } : {}),
+    ...(parts.externalMapping ? { externalTransform: compileMapping(parts.externalMapping) } : {}),
+  }
+}
+
+/**
+ * Resolve raw overlay input (a built-in overlay or a DB config row already parsed
+ * into MappingTemplate/RuleSet) into a full IntegrationDefinition. A field the
+ * input omits falls back to the built-in overlay for that id (so a DB row can set
+ * only what it changes); `floor` falls back to the built-in overlay's floor.
+ * Returns null when no floor can be resolved — the "unknown integration" case.
+ */
+function resolveComposed(input: {
+  id: string
+  floorId?: string
+  displayName?: string
+  mapping: MappingTemplate
+  rules: RuleSet
+  externalShape?: Record<string, unknown>
+  externalMapping?: MappingTemplate
+}): IntegrationDefinition | null {
+  const builtIn = BUILTIN_OVERLAYS[input.id]
+  const floorId = input.floorId ?? builtIn?.floor
+  const floor = floorId ? FLOORS[floorId] : undefined
+  if (!floor) return null
+
+  const externalShape = input.externalShape ?? builtIn?.externalShape
+  const externalMapping = input.externalMapping ?? builtIn?.externalMapping
+  const parts: OverlayParts = {
+    id: input.id,
+    displayName: input.displayName ?? builtIn?.displayName ?? input.id,
+    description: builtIn?.description ?? '',
+    mapping: input.mapping,
+    rules: input.rules,
+    ...(externalShape ? { externalShape } : {}),
+    ...(externalMapping ? { externalMapping } : {}),
+  }
+  return composeDefinition(floor, parts)
+}
+
+/** Built-in overlay composed onto its floor — the always-valid code baseline. */
+function composeBuiltIn(overlay: IntegrationOverlay): IntegrationDefinition {
+  const floor = FLOORS[overlay.floor]
+  if (!floor) {
+    // A built-in overlay must reference a known floor — a programming error.
+    throw new Error(`built-in overlay "${overlay.id}" references unknown floor "${overlay.floor}"`)
+  }
+  return composeDefinition(floor, {
+    id: overlay.id,
+    displayName: overlay.displayName,
+    description: overlay.description ?? '',
+    mapping: overlay.mapping,
+    rules: overlay.rules,
+    ...(overlay.externalShape ? { externalShape: overlay.externalShape } : {}),
+    ...(overlay.externalMapping ? { externalMapping: overlay.externalMapping } : {}),
+  })
+}
+
+/**
+ * Built-in resolved definitions, keyed by integrationId. The CODE ground truth
+ * (floor's structuralContract/deriveFacts/factCatalog/inputFieldRoots) a
+ * DB-published config can never override.
+ */
+const REGISTRY: Record<string, IntegrationDefinition> = Object.fromEntries(
+  Object.values(BUILTIN_OVERLAYS).map((o) => [o.id, composeBuiltIn(o)]),
+)
+
+// ── DB-backed overlay cache (GLOBAL) ────────────────────────────────────────
+//
+// A published GLOBAL config overrides the editable surface of its integration
+// and may introduce a NEW integration id (referencing an existing floor). The
+// overlay is a module-level cache warmed from the DB with a TTL, so
+// getIntegrationDefinition stays synchronous. A built-in floor is the safe
+// baseline: an absent, stale, or unparseable overlay falls back to code.
 
 const DEFAULT_OVERLAY_TTL_MS = 60_000
 
-let overlay: Map<string, OverlayEntry> | null = null
+let overlay: Map<string, IntegrationDefinition> | null = null
 let overlayLoadedAt = 0
 
 /**
- * Parse + compile a config row's editable surface (mapping + rules) into an
- * overlay entry, or null when the row can't be trusted (unparseable mapping/
- * rules or a compile error). Shared by the GLOBAL overlay build and the
+ * Parse + compose a DB config row into a resolved IntegrationDefinition, or null
+ * when the row can't be trusted (unparseable/uncompilable mapping/rules/external
+ * mapping, or an unknown floor). Shared by the GLOBAL overlay build and the
  * per-request tenant resolver so both apply — and reject — a row identically.
  */
-function toOverlayEntry(
-  integrationId: string,
-  mappingJson: unknown,
-  rulesJson: unknown,
-  version?: number,
-): OverlayEntry | null {
-  const mapping = MappingTemplateSchema.safeParse(mappingJson)
-  const rules = RuleSetSchema.safeParse(rulesJson)
+function toDefinitionFromRow(row: IntegrationConfigRow): IntegrationDefinition | null {
+  const mapping = MappingTemplateSchema.safeParse(row.mapping)
+  const rules = RuleSetSchema.safeParse(row.rules)
   if (!mapping.success || !rules.success) {
-    logger.warn('integration config row failed to parse — ignoring', { integrationId, version })
+    logger.warn('integration config row failed to parse — ignoring', {
+      integrationId: row.integrationId,
+      version: row.version,
+    })
     return null
   }
-  try {
-    return {
-      mapping: mapping.data,
-      transform: compileMapping(mapping.data),
-      rules: rules.data,
+
+  let externalMapping: MappingTemplate | undefined
+  if (row.externalMapping != null) {
+    const parsed = MappingTemplateSchema.safeParse(row.externalMapping)
+    if (!parsed.success) {
+      logger.warn('integration config external mapping failed to parse — ignoring', {
+        integrationId: row.integrationId,
+        version: row.version,
+      })
+      return null
     }
+    externalMapping = parsed.data
+  }
+
+  const externalShape =
+    row.externalShape != null && typeof row.externalShape === 'object'
+      ? (row.externalShape as Record<string, unknown>)
+      : undefined
+
+  try {
+    return resolveComposed({
+      id: row.integrationId,
+      ...(row.floor ? { floorId: row.floor } : {}),
+      ...(row.displayName ? { displayName: row.displayName } : {}),
+      mapping: mapping.data,
+      rules: rules.data,
+      ...(externalShape ? { externalShape } : {}),
+      ...(externalMapping ? { externalMapping } : {}),
+    })
   } catch (err) {
-    logger.warn('integration config row failed to compile — ignoring', {
-      integrationId,
+    logger.warn('integration config row failed to compose — ignoring', {
+      integrationId: row.integrationId,
       error: err instanceof Error ? err.message : String(err),
     })
     return null
   }
 }
 
-/** Merge an overlay entry's editable surface onto a built-in definition. */
-function mergeDefinition(
-  builtIn: IntegrationDefinition,
-  entry: OverlayEntry,
-): IntegrationDefinition {
-  return { ...builtIn, mapping: entry.mapping, transform: entry.transform, rules: entry.rules }
-}
-
-/** Build the overlay map from the active GLOBAL configs, skipping unparseable rows. */
-async function buildOverlay(db: PrismaClient): Promise<Map<string, OverlayEntry>> {
+/** Build the overlay map from the active GLOBAL configs, skipping unresolvable rows. */
+async function buildOverlay(db: PrismaClient): Promise<Map<string, IntegrationDefinition>> {
   const repo = createIntegrationConfigRepository(db)
-  const next = new Map<string, OverlayEntry>()
+  const next = new Map<string, IntegrationDefinition>()
   for (const row of await repo.listActiveGlobal()) {
-    // Only the editable surface is overlaid; an unknown integration id has no
-    // built-in base to merge onto, so it can never take effect — skip early.
-    if (!REGISTRY[row.integrationId]) continue
-    const entry = toOverlayEntry(row.integrationId, row.mapping, row.rules, row.version)
-    if (entry) next.set(row.integrationId, entry)
+    // A row referencing an unknown floor (and with no built-in base) resolves to
+    // null and is skipped — it can never take effect.
+    const def = toDefinitionFromRow(row)
+    if (def) next.set(row.integrationId, def)
   }
   return next
 }
@@ -156,10 +252,9 @@ export async function loadRegistryOverlayIfStale(
 }
 
 export function getIntegrationDefinition(id: string): IntegrationDefinition | undefined {
-  const builtIn = REGISTRY[id]
-  if (!builtIn) return undefined
-  const entry = overlay?.get(id)
-  return entry ? mergeDefinition(builtIn, entry) : builtIn
+  // A GLOBAL overlay wins (it may also be a NEW partner with no built-in), else
+  // the built-in baseline.
+  return overlay?.get(id) ?? REGISTRY[id]
 }
 
 /**
@@ -171,29 +266,61 @@ export function getBuiltInDefinition(id: string): IntegrationDefinition | undefi
   return REGISTRY[id]
 }
 
+/** A type floor by id (the fact-abstraction ground truth). */
+export function getFloor(floorId: string): TypeFloor | undefined {
+  return FLOORS[floorId]
+}
+
+/** All known type-floor ids. */
+export function listFloorIds(): string[] {
+  return Object.keys(FLOORS)
+}
+
+/**
+ * The ground-truth base definition the publish gate checks a candidate against.
+ * For a built-in id, that is its resolved built-in definition. For a NEW partner
+ * id (no built-in), it is a bare definition composed from the named floor with a
+ * placeholder editable surface (the candidate overrides mapping/rules). Returns
+ * undefined when neither a built-in nor a known floor applies.
+ */
+export function getGateBase(
+  integrationId: string,
+  floorId?: string,
+): IntegrationDefinition | undefined {
+  const builtIn = REGISTRY[integrationId]
+  if (builtIn && (!floorId || floorId === builtIn.floor)) return builtIn
+
+  const floor = floorId ? FLOORS[floorId] : builtIn ? FLOORS[builtIn.floor] : undefined
+  if (!floor) return undefined
+  // Placeholder editable surface — the gate spreads the candidate's mapping/rules
+  // on top, so these are never used to check anything.
+  return composeDefinition(floor, {
+    id: integrationId,
+    displayName: integrationId,
+    description: '',
+    mapping: {},
+    rules: [],
+  })
+}
+
 /**
  * Resolve the definition that governs RUNTIME validation for a caller in a given
- * tenant scope. Unlike getIntegrationDefinition (which serves only the GLOBAL
- * overlay), this honours the same tenant-over-GLOBAL precedence as the config
- * read path (`findActiveForScope`): a tenant's own published config wins, else
- * the GLOBAL platform config, else the built-in baseline. So a TENANT-scoped
- * config actually changes what that tenant's orders are validated against — it
- * is not display-only.
+ * tenant scope. Honours tenant-over-GLOBAL-over-built-in precedence
+ * (`findActiveForScope`): a tenant's own published config wins, else the GLOBAL
+ * platform config, else the built-in baseline. So a TENANT-scoped config actually
+ * changes what that tenant's orders are validated against — it is not display-only.
  *
- * - `tenantId === null` (platform-scoped key): no tenant namespace, so the GLOBAL
- *   overlay is the whole story — defers to the cached overlay path unchanged.
+ * - `tenantId === null` (platform-scoped key): the GLOBAL overlay is the whole
+ *   story — defers to the cached overlay path.
  * - Reads the tenant's active row fresh per request (no TTL lag → a publish takes
  *   effect immediately), and FAILS OPEN to the built-in baseline on any DB error
- *   or unparseable row, matching the overlay's "code floor is the safe default".
+ *   or unparseable row.
  */
 export async function resolveIntegrationDefinition(
   db: PrismaClient,
   id: string,
   tenantId: string | null,
 ): Promise<IntegrationDefinition | undefined> {
-  const builtIn = REGISTRY[id]
-  if (!builtIn) return undefined
-
   // Platform-scoped keys have no tenant of their own — GLOBAL is all that applies.
   if (!tenantId) {
     await loadRegistryOverlayIfStale(db)
@@ -203,18 +330,22 @@ export async function resolveIntegrationDefinition(
   try {
     const repo = createIntegrationConfigRepository(db)
     const row = await repo.findActiveForScope(id, tenantId)
-    if (!row) return builtIn
-    const entry = toOverlayEntry(row.integrationId, row.mapping, row.rules, row.version)
-    return entry ? mergeDefinition(builtIn, entry) : builtIn
+    // No row → built-in (undefined for a genuinely unknown id → 404). A row that
+    // fails to resolve falls back to the built-in baseline too.
+    if (!row) return REGISTRY[id]
+    return toDefinitionFromRow(row) ?? REGISTRY[id]
   } catch (err) {
     logger.warn('integration definition resolve failed — serving built-in baseline', {
       integrationId: id,
       error: err instanceof Error ? err.message : String(err),
     })
-    return builtIn
+    return REGISTRY[id]
   }
 }
 
+/** Known integration ids — built-ins plus any GLOBAL-overlay (new-partner) ids. */
 export function listIntegrationIds(): string[] {
-  return Object.keys(REGISTRY)
+  const ids = new Set<string>(Object.keys(REGISTRY))
+  if (overlay) for (const id of overlay.keys()) ids.add(id)
+  return [...ids]
 }
