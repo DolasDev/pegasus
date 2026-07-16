@@ -113,6 +113,31 @@ describe('CognitoStack — User Pool', () => {
       }),
     })
   })
+
+  it('wires the pre-sign-up Lambda trigger', () => {
+    template.hasResourceProperties('AWS::Cognito::UserPool', {
+      LambdaConfig: Match.objectLike({
+        PreSignUp: Match.anyValue(),
+      }),
+    })
+  })
+
+  // The linking Lambda gets its own grant — the API function never calls these
+  // actions, so they are deliberately absent from api-stack's cognito-idp block.
+  for (const action of ['cognito-idp:ListUsers', 'cognito-idp:AdminLinkProviderForUser']) {
+    it(`grants ${action} to the pre-sign-up Lambda`, () => {
+      template.hasResourceProperties('AWS::IAM::Policy', {
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Action: Match.arrayWith([action]),
+              Effect: 'Allow',
+            }),
+          ]),
+        },
+      })
+    })
+  }
 })
 
 // ---------------------------------------------------------------------------
@@ -228,8 +253,8 @@ describe('CognitoStack — Tenant app client', () => {
 // ---------------------------------------------------------------------------
 
 describe('CognitoStack — Lambda triggers', () => {
-  it('creates exactly three Lambda functions (pre-auth, pre-token, custom-message)', () => {
-    template.resourceCountIs('AWS::Lambda::Function', 3)
+  it('creates exactly four Lambda functions (pre-auth, pre-token, custom-message, pre-sign-up)', () => {
+    template.resourceCountIs('AWS::Lambda::Function', 4)
   })
 
   it('pre-auth Lambda uses Node.js 20.x runtime', () => {
@@ -568,9 +593,9 @@ describe('CognitoStack — Mobile app client', () => {
     expect(mobileClientOutput).toBeDefined()
   })
 
-  it('does not change the Lambda function count (still 3: pre-auth + pre-token + custom-message)', () => {
+  it('does not change the Lambda function count (still 4: pre-auth + pre-token + custom-message + pre-sign-up)', () => {
     // Mobile app client addition must not add any Lambda functions
-    template.resourceCountIs('AWS::Lambda::Function', 3)
+    template.resourceCountIs('AWS::Lambda::Function', 4)
   })
 })
 

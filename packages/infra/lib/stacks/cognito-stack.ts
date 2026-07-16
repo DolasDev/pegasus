@@ -213,6 +213,60 @@ export class CognitoStack extends cdk.Stack {
     dbSecret.grantRead(preTokenFn)
 
     // -------------------------------------------------------------------------
+    // Pre-Sign-Up Lambda trigger
+    //
+    // Fires before a user is created. On PreSignUp_ExternalProvider it links the
+    // new federated identity to the person's existing native user in the SAME
+    // tenant, so one person keeps one Cognito user and one stable `sub`.
+    // Without it Cognito creates a second user (it does not enforce email
+    // uniqueness for federated identities), which splits the `sub` and silently
+    // breaks audit attribution and driver scoping.
+    //
+    // Needs DB reach for the same reason as preTokenFn: TenantSsoProvider maps
+    // the provider to its owning tenant, and TenantUser is the roster that says
+    // whether the email may be linked there at all.
+    // -------------------------------------------------------------------------
+    const preSignUpFn = new nodejs.NodejsFunction(this, 'PreSignUpFunction', {
+      functionName: `pegasus-cognito-pre-sign-up-${this.stackName}`,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: path.join(__dirname, '../../../../apps/api/src/cognito/pre-sign-up.ts'),
+      handler: 'handler',
+      environment: {
+        NODE_ENV: 'production',
+        DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        externalModules: ['@aws-sdk/*'],
+      },
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(15),
+    })
+
+    dbSecret.grantRead(preSignUpFn)
+
+    // The linking Lambda needs its OWN grant — it is not the API function, and
+    // the API never calls these actions (apps/api's cognito-idp grants in
+    // api-stack.ts are for its own direct calls only).
+    //
+    // As with preAuthFn below, the wildcard ARN is deliberate: referencing
+    // this.userPool.userPoolArn here would create a CloudFormation circular
+    // dependency (UserPool → PreSignUpFunction (trigger) → IAM Policy → UserPool).
+    // The role's trust policy already scopes it to this account and region.
+    preSignUpFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          // Find the native user to link to (email → the pool's UUID Username).
+          'cognito-idp:ListUsers',
+          // The link itself.
+          'cognito-idp:AdminLinkProviderForUser',
+        ],
+        resources: [`arn:aws:cognito-idp:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:userpool/*`],
+      }),
+    )
+
+    // -------------------------------------------------------------------------
     // Custom-Message Lambda trigger
     //
     // Rewrites the AdminCreateUser invite email so the recipient gets a
@@ -341,6 +395,7 @@ export class CognitoStack extends cdk.Stack {
         preAuthentication: preAuthFn,
         preTokenGeneration: preTokenFn,
         customMessage: customMessageFn,
+        preSignUp: preSignUpFn,
       },
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
       // RETAIN: user accounts must survive stack updates and accidental

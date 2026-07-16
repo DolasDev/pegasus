@@ -1,12 +1,68 @@
 # Link federated identities to their existing native user
 
-**Status:** TODO — planned 2026-07-16, not started. Ready to `/workstream-start`.
+**Status:** IN PROGRESS — planned 2026-07-16, started 2026-07-16.
 
-**Branch (when started):** `fix/sso-account-linking`
+**Branch:** `fix/sso-account-linking`
+
+## Checklist
+
+- [x] Confirm the `PreSignUp_ExternalProvider` event shape — `@types/aws-lambda`'s
+      `BasePreSignUpTriggerEvent.request` carries only `userAttributes` /
+      `validationData` / `clientMetadata`; there is **no** guaranteed `identities`
+      (the user does not exist yet). Provider is read from `userName` only.
+      Still unverified against live Cognito — the handler no-ops if the shape differs,
+      so a surprise degrades to today's behaviour rather than breaking sign-in.
+- [x] Phase 1 — `apps/api/src/cognito/pre-sign-up.ts` + `pre-sign-up.test.ts` (18 tests)
+- [x] Phase 2 — IaC: `preSignUp` trigger wiring + DB reach + own IAM grant
+      (`cognito-stack.ts` + `cognito-stack.test.ts`) — see deviation 1
+- [x] Gates: `npm test` (14/14 tasks), `npm run typecheck`, `npm run lint`
+- [ ] PR → merge queue
+- [ ] Prerequisite (needs prod Neon access — see below): reconcile stale
+      `TenantUser.cognitoSub` for `steve@dolas.dev`
+- [ ] Phase 3 — post-deploy, against real Cognito: delete the stray federated user, sign
+      in via `Microsoft`, verify one user / `sub` matches `cognitoSub` / `userId` set
+
+## Deviations from the plan as written (and why)
+
+1. **The IAM grant went on the pre-sign-up Lambda's own role, not `api-stack.ts`.**
+   The plan's Phase 2 said to add `AdminLinkProviderForUser` / `ListUsers` to
+   `COGNITO_INTROSPECTION_ACTIONS` in `api-stack.test.ts`, but that list pins grants for
+   the **API function**, and its comment scopes it to "direct calls from apps/api code
+   paths" — the API never calls these. The plan's own third bullet says the linking Lambda
+   needs its own grant. Followed that; pinned the two actions in `cognito-stack.test.ts`
+   instead. `api-stack.ts` is untouched.
+2. **Wildcard ARN, not the pool ARN.** The plan said "scoped to the pool ARN", but
+   `cognito-stack.ts` deliberately uses `userpool/*` for exactly this: referencing
+   `this.userPool.userPoolArn` from a trigger's policy creates a CloudFormation cycle
+   (UserPool → Function → Policy → UserPool). Matched the documented pre-auth pattern.
+3. **The provider is resolved by database match, never by splitting `userName`.**
+   The plan said to parse `<ProviderName>_<sub>`. That string has **no safe split point**:
+   `sso.ts` allows underscores in tenant-chosen provider names (`^[a-zA-Z0-9_-]+$`) and
+   Entra subs contain them (`Microsoft_zSmI_AFcB…`). A first-underscore split of
+   `Acme_Evil_<sub>` yields `Acme` — and if another tenant owns a provider named `Acme`,
+   linking would cross into **their** tenant: the escalation #443 closed, reintroduced via
+   a parser. Instead every underscore-prefix is offered to the DB and **exactly one** match
+   is required; 0 or >1 ⇒ no link. This also covers `TenantSsoProvider` being unique per
+   `(tenantId, cognitoProviderName)` rather than pool-wide, which makes duplicate provider
+   names across tenants representable.
+4. **Two pinned Lambda-count guards moved 3 → 4** in `cognito-stack.test.ts`. Intended:
+   the fourth function is this trigger.
+5. `apps/api/vitest.config.ts` coverage floors ratcheted **up** (autoUpdate) — the new
+   handler is well covered. Re-pinned after rebasing onto #450: floors ratcheted against
+   pre-#450 `main` (91.03/86.45/89.59) are unmeetable once #450's ingress code is in the
+   tree (90.93/86.18/89.5), so the merge queue's Test job failed on the combined ref and
+   **ejected the PR twice** with every branch check green — the autoUpdate ratchet cannot
+   lower a floor, only raise it. The re-pinned values are still above `main`'s
+   (90.81/77.48/86.03/89.38), so this is a ratchet, not a regression. Any two PRs that both
+   move coverage will do this to each other; the second one through has to re-measure.
+
+**Ambiguity never links.** Not linking is the status quo (a duplicate user, which
+`pre-token.ts` still resolves correctly from the authoritative `identities` attribute).
+Mis-linking hands one tenant's account to another. So every undecidable case declines.
 
 **Goal:** When a user signs in via SSO for the first time, link that federated identity to
 their **existing native Cognito user in the same tenant**, so one person = one Cognito
-user = one stable `sub`. Today Cognito silently creates a *second* user, and the split
+user = one stable `sub`. Today Cognito silently creates a _second_ user, and the split
 `sub` quietly breaks audit attribution and driver scoping.
 
 ---
@@ -32,8 +88,8 @@ Two users ⇒ **two different `sub` claims**. And:
 So whichever identity did not set it misses the lookup. It is **fail-open**, so the
 session still works — which is why this hides — but:
 
-- **`userId` is unset** ⇒ audit attribution is lost (the code's own comment: *"recording
-  who created an API client"*). Actions land unattributed.
+- **`userId` is unset** ⇒ audit attribution is lost (the code's own comment: _"recording
+  who created an API client"_). Actions land unattributed.
 - **A `driver` principal loses `crewMemberId`** ⇒ Cedar's `User.crewMemberId` attribute
   is absent ⇒ per-record `ReadMove` scoping and the Moves list filter break. A driver
   signing in via SSO sees the wrong moves, or none.
@@ -47,8 +103,8 @@ returns the **destination (native) user**, so the `sub` stays stable and matches
 **Do this before/alongside the linking work, and verify it.** During the 2026-07-16
 debugging session the `steve@dolas.dev` Cognito users were deleted and recreated
 (current rows were both created that day: native 19:58, federated 20:57). The
-`TenantUser.cognitoSub` for that row was written at its *original* activation and very
-likely points at a **sub that no longer exists** — in which case *neither* identity
+`TenantUser.cognitoSub` for that row was written at its _original_ activation and very
+likely points at a **sub that no longer exists** — in which case _neither_ identity
 matches and audit attribution is already broken on both password and SSO login.
 
 - Query prod (Neon) for `TenantUser.cognitoSub WHERE email = 'steve@dolas.dev'` and
@@ -58,7 +114,7 @@ matches and audit attribution is already broken on both password and SSO login.
 - If stale, re-point it at the native user's sub. Consider whether other tenants have the
   same drift (any user whose Cognito account was ever recreated).
 - Worth deciding: should `pre-token.ts` refresh `cognitoSub` on ACTIVE logins too,
-  instead of only at activation? That would self-heal drift, but it also means the *last*
+  instead of only at activation? That would self-heal drift, but it also means the _last_
   identity to log in wins — which is wrong while duplicates exist, and unnecessary once
   linking guarantees one sub. Probably: fix the data, keep the write PENDING-only.
 
@@ -83,20 +139,20 @@ provider→tenant scoping is load-bearing, not optional.
 
 - **Trigger:** a new `preSignUp` Lambda on `PreSignUp_ExternalProvider`. That is the only
   moment linking can happen — `AdminLinkProviderForUser` only works for an identity that
-  *"hasn't yet signed in from their third-party IdP"*.
+  _"hasn't yet signed in from their third-party IdP"_.
 - **Auto-link**, scoped to the provider's own tenant.
 - **Cross-tenant email:** allow, scoped to the provider's tenant only — never touch the
   other tenant's account. (Buildable: duplicate emails coexist, proven above.)
 
 ### Verified API facts — do NOT rediscover these
 
-- **`Cognito_Subject` is NOT required for OIDC.** Only *social* IdPs (Facebook, Google,
-  LoginWithAmazon, SignInWithApple) force it. AWS docs: *"For OIDC, the
-  `ProviderAttributeName` can be any mapped value from a claim in the ID token"*; their
+- **`Cognito_Subject` is NOT required for OIDC.** Only _social_ IdPs (Facebook, Google,
+  LoginWithAmazon, SignInWithApple) force it. AWS docs: _"For OIDC, the
+  `ProviderAttributeName` can be any mapped value from a claim in the ID token"_; their
   own OIDC example links by `preferred_username`. **Link by `email`**, already mapped via
   `AttributeMapping: { email: 'email' }` in `sso.ts`.
-- **Entra's `sub` is pairwise per application ID** — *"two different apps … receive two
-  different values"*. It is **not** the portal's Object ID (`oid`, stable across apps), so
+- **Entra's `sub` is pairwise per application ID** — _"two different apps … receive two
+  different values"_. It is **not** the portal's Object ID (`oid`, stable across apps), so
   it cannot be looked up ahead of time. Confirmed live: the federated `userId` is
   `zSmI_AFcBNlAm5zli…` (43 chars, not a GUID). Linking by `email` sidesteps this entirely.
 - **`DestinationUser.ProviderAttributeValue` is the pool `Username`, NOT the email.**
@@ -179,6 +235,26 @@ requests (i.e. audit attribution is back).
   provider, and confirm (a) only ONE Cognito user exists for the email, (b) the token's
   `sub` equals `TenantUser.cognitoSub`, (c) an API request has `userId` set. A green suite
   is not sufficient — this path only exists against real Cognito.
+
+## Found while building (not fixed here)
+
+- **`admin/tenants.ts` does not lowercase `contactEmail`** (`z.string().email().optional()`),
+  unlike the invite path's `z.string().trim().email().toLowerCase()` (`users.ts:62`). So a
+  tenant admin can exist in Cognito and in `TenantUser` with a mixed-case email, and every
+  lookup that normalises depends on case-insensitive matching to find them. The new handler
+  tolerates this (it re-checks the returned email lowercased on both sides), but the
+  normalisation gap is real and worth closing at the source.
+- **`pre-token.ts:191` resolves the provider with `findFirst` on `cognitoProviderName`
+  alone**, while the schema's constraint is `@@unique([tenantId, cognitoProviderName])` —
+  per-tenant, not pool-wide. Only Cognito's pool-wide name uniqueness makes this safe; a
+  stale row (or one whose Cognito registration failed) could make it resolve the wrong
+  tenant. `pre-sign-up.ts` deliberately requires exactly one match rather than inheriting
+  this pattern. Fixing pre-token belongs in its own change — it is the highest-blast-radius
+  file in the repo.
+- **AWS does not document the case semantics of the `email` ListUsers filter** (it annotates
+  `username` case-sensitive and `cognito:user_status` case-insensitive, and leaves `email`
+  unannotated). Worth settling during Phase 3's live verification, since it decides whether
+  a mixed-case native user can be found at all.
 
 ## Out of scope (tracked elsewhere)
 
