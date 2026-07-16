@@ -4,8 +4,8 @@ import { TripsPage } from './pages/TripsPage'
 // ---------------------------------------------------------------------------
 // /driver-planning/trips — the legacy Trips list.
 // Selectors target the `data-target` hooks added to TripCard / the Trips lane.
-// Filter-control interactions stay `test.fixme`'d pending the QA-app walkthrough
-// (TripsFilter is react-select-heavy).
+// Filter-control interactions run against the QA tenant (TripsFilter is
+// react-select-heavy); they self-skip when the QA DB has no matching trips.
 // ---------------------------------------------------------------------------
 
 test.describe('Trips tab', () => {
