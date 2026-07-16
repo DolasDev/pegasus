@@ -227,3 +227,54 @@ export function createPegiiApiClient(config: PegiiApiClientConfig): PegiiApiClie
 export function isPegiiNotFound(err: unknown): boolean {
   return err instanceof PegiiApiError && err.code === 'PEGII_API_HTTP_ERROR' && err.status === 404
 }
+
+/** Client-facing HTTP shape a pegII-bridge route returns for a PegiiApiError. */
+export interface PegiiHttpError {
+  status: 404 | 502 | 503
+  code: string
+  message: string
+}
+
+/**
+ * Map a PegiiApiError to a client-facing HTTP status that names the dependency,
+ * so a pegII-bridge route distinguishes "upstream unreachable" (502/503) and
+ * "not found" (404) from a genuine bridge bug (500, reserved for anything that
+ * is NOT a PegiiApiError). Used by the pegII runtime router's error boundary.
+ *
+ * - not configured   → 503 (nothing to reach for this tenant)
+ * - tunnel error      → 502 (couldn't complete the upstream hop — firewall/timeout/refused)
+ * - bad envelope      → 502 (source answered with something unusable)
+ * - upstream 404      → 404 (no such order/task)
+ * - other upstream    → 502 (source rejected/failed the request)
+ */
+export function pegiiApiErrorToHttp(err: PegiiApiError): PegiiHttpError {
+  switch (err.code) {
+    case 'PEGII_API_NOT_CONFIGURED':
+      return {
+        status: 503,
+        code: 'PEGII_SOURCE_UNAVAILABLE',
+        message: 'pegII order source is not configured for this tenant',
+      }
+    case 'PEGII_API_TUNNEL_ERROR':
+      return {
+        status: 502,
+        code: 'PEGII_SOURCE_UNREACHABLE',
+        message: `pegII source unreachable: ${err.message}`,
+      }
+    case 'PEGII_API_BAD_ENVELOPE':
+      return {
+        status: 502,
+        code: 'PEGII_SOURCE_BAD_RESPONSE',
+        message: `pegII source returned an invalid response: ${err.message}`,
+      }
+    case 'PEGII_API_HTTP_ERROR':
+      if (err.status === 404) {
+        return { status: 404, code: 'NOT_FOUND', message: 'not found' }
+      }
+      return {
+        status: 502,
+        code: 'PEGII_SOURCE_BAD_RESPONSE',
+        message: `pegII source returned an error: ${err.message}`,
+      }
+  }
+}

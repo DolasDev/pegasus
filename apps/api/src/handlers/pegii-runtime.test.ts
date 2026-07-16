@@ -28,13 +28,18 @@ vi.mock('../middleware/dual-auth', () => ({
   }),
 }))
 
-const { findOrderById } = vi.hoisted(() => ({ findOrderById: vi.fn() }))
+const { findOrderById, checkReachable } = vi.hoisted(() => ({
+  findOrderById: vi.fn(),
+  checkReachable: vi.fn(),
+}))
 vi.mock('../gateways/order-gateway.factory', () => ({
-  resolveOrderGateway: vi.fn(async () => ({ findOrderById })),
+  resolveOrderGateway: vi.fn(async () => ({ findOrderById, checkReachable })),
 }))
 
 import { pegiiRuntimeHandler } from './pegii-runtime'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
+import { resolveOrderGateway } from '../gateways/order-gateway.factory'
+import { PegiiApiError } from '../lib/pegii-api-client'
 
 type JsonBody = Record<string, unknown>
 const json = (res: Response) => res.json() as Promise<JsonBody>
@@ -79,6 +84,8 @@ beforeEach(() => {
   _clearAuthzCache()
   _resetTaskStore()
   _resetOrderStore()
+  // Default: source reachable. Individual cases override to simulate a down source.
+  checkReachable.mockResolvedValue(undefined)
 })
 
 describe('GET /pegii/orders/:orderId', () => {
@@ -105,10 +112,51 @@ describe('GET /pegii/orders/:orderId', () => {
     expect(res.status).toBe(403)
     expect(findOrderById).not.toHaveBeenCalled()
   })
+
+  it('returns 502 (not a bare 500) when the pegII source is unreachable', async () => {
+    findOrderById.mockRejectedValue(
+      new PegiiApiError('PEGII_API_TUNNEL_ERROR', 'PROXY_INVOKE_FAILED: connect timed out'),
+    )
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request('/pegii/orders/483883')
+    expect(res.status).toBe(502)
+    const body = await json(res)
+    expect(body['code']).toBe('PEGII_SOURCE_UNREACHABLE')
+    expect(String(body['error'])).toMatch(/pegII source unreachable/)
+    expect(body['correlationId']).toBeDefined()
+  })
+
+  it('returns 503 when the tenant has no configured pegII source', async () => {
+    vi.mocked(resolveOrderGateway).mockRejectedValueOnce(
+      new PegiiApiError('PEGII_API_NOT_CONFIGURED', 'tenant has no reachable pegII order source'),
+    )
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request('/pegii/orders/483883')
+    expect(res.status).toBe(503)
+    expect((await json(res))['code']).toBe('PEGII_SOURCE_UNAVAILABLE')
+  })
+
+  it('returns 502 when the pegII source answers with a bad envelope', async () => {
+    findOrderById.mockRejectedValue(
+      new PegiiApiError('PEGII_API_BAD_ENVELOPE', 'missing the `data` field', 200),
+    )
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request('/pegii/orders/483883')
+    expect(res.status).toBe(502)
+    expect((await json(res))['code']).toBe('PEGII_SOURCE_BAD_RESPONSE')
+  })
+
+  it('still returns a bare 500 for a genuine (non-pegII) bridge bug', async () => {
+    findOrderById.mockRejectedValue(new Error('boom — real bug in the bridge'))
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request('/pegii/orders/483883')
+    expect(res.status).toBe(500)
+    expect((await json(res))['code']).toBe('INTERNAL_ERROR')
+  })
 })
 
 describe('GET /pegii/orders', () => {
-  it('lists seeded orders, filterable by status', async () => {
+  it('lists seeded orders, filterable by status (source reachable)', async () => {
     _seedOrder('test-tenant-id', orderRecord({ id: 'ord-1', status: 'booked' }))
     _seedOrder('test-tenant-id', orderRecord({ id: 'ord-2', status: 'booked' }))
     _seedOrder('test-tenant-id', orderRecord({ id: 'ord-3', status: 'completed' }))
@@ -117,6 +165,29 @@ describe('GET /pegii/orders', () => {
     expect(res.status).toBe(200)
     const data = (await json(res))['data'] as Array<Record<string, unknown>>
     expect(data.length).toBe(2)
+    expect(checkReachable).toHaveBeenCalled()
+  })
+
+  // AC: list_orders and get_order agree on reachability — the list must not
+  // return `200 []` while a by-id read 502s for the same down tenant.
+  it('returns 502 (not 200 []) when the pegII source is unreachable', async () => {
+    checkReachable.mockRejectedValue(
+      new PegiiApiError('PEGII_API_TUNNEL_ERROR', 'connection refused'),
+    )
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request('/pegii/orders')
+    expect(res.status).toBe(502)
+    expect((await json(res))['code']).toBe('PEGII_SOURCE_UNREACHABLE')
+  })
+
+  it('returns 503 when the tenant has no configured pegII source', async () => {
+    vi.mocked(resolveOrderGateway).mockRejectedValueOnce(
+      new PegiiApiError('PEGII_API_NOT_CONFIGURED', 'no reachable pegII order source'),
+    )
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request('/pegii/orders')
+    expect(res.status).toBe(503)
+    expect((await json(res))['code']).toBe('PEGII_SOURCE_UNAVAILABLE')
   })
 })
 
