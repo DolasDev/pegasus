@@ -136,6 +136,54 @@ provider-validated patterns and **push-time** blocking before a secret enters th
 with a reason in the CLI output — same triage discipline as the Betterleaks runbook above.
 The known Airbrake client key is dismissed in both (`.betterleaksignore:10-13` rationale).
 
+### The scan is repo-wide, not PR-wide — someone else's branch can redden your PR
+
+`betterleaks git .` scans **every ref the runner has**, and the job checks out with
+`fetch-depth: 0` ("all history for all branches and tags"). So a finding on ANY pushed
+branch fails the secret-scan job on EVERY open PR, including PRs that never touched the
+file. Seen 2026-07-16: an `ing_`-prefixed fake token fixture on `feat/inbound-ingress`
+(#450) failed the scan on the unrelated #451 four minutes after it was pushed, while
+older PRs stayed green only because their checks had already run.
+
+Do not quote a flagged literal into this file when writing one of these up — the scanner
+reads documentation too, and a pasted example becomes finding number five.
+
+Diagnose before assuming it is yours — the CI log prints only `leaks found: N`, not the
+findings. Reproduce locally per the runbook above and read the `Commit` and `File` of each
+finding; `git branch -a --contains <sha>` and `git merge-base --is-ancestor <sha> HEAD`
+tell you whose it is in one step. If it is not on your branch, the fix belongs on the
+branch that owns it — do not allowlist it from yours.
+
+**Prefer an inline `// gitleaks:allow` comment to a fingerprint for a finding on an
+unmerged branch.** Fingerprints are pinned to a **commit sha**, so a squash-merge (or any
+rebase/force-push) changes the sha and the entry silently stops matching — the finding
+then reappears on `main`. The inline comment travels with the content and survives both.
+`gitleaks:allow` works because betterleaks is a gitleaks fork. #450 fixed its own fixture
+this way, which cleared #451 with no change to #451 at all.
+
+## Merge queue ejects a PR whose coverage floors were ratcheted before a parallel PR merged
+
+`apps/api/vitest.config.ts` has `thresholds.autoUpdate: true`, which only ever RAISES a
+floor — it never lowers one. So two PRs in flight that both move coverage will break each
+other, and the second one through pays:
+
+1. PR A ratchets floors up against the `main` it forked from (e.g. lines 91.03).
+2. PR B merges first, adding code whose coverage sits below A's floors.
+3. A's own branch checks stay **green** (they run on A's pre-B tree), so A looks ready and
+   is queued — but the merge queue validates `main + A` on a `merge_group` ref, where the
+   combined coverage (90.93) is under A's floor (91.03). The Test job fails and the queue
+   **ejects A**, quietly: `gh pr checks` still shows every branch check passing, and
+   `mergeStateStatus` reads `CLEAN`.
+
+Symptom: a PR enters the queue (`AWAITING_CHECKS`), disappears from it minutes later
+without merging, and auto-merge reads OFF. Seen twice on #451 on 2026-07-16.
+
+Fix: rebase onto `main`, re-run `npx vitest run --coverage` from `apps/api`, and re-pin the
+floors to the **measured** combined values. Verify they are still ≥ `main`'s floors — then
+it is an honest ratchet, not a regression. (If a parallel PR added a migration, run
+`npm run db:migrate` AND `npm run db:generate` from `apps/api` first, or the stale Prisma
+client fails tests that pass on `main`.)
+
 ## SBOM Export (on demand, no recurring artifacts)
 
 We deliberately do **not** attach CycloneDX/syft SBOMs to releases — ceremony with no
