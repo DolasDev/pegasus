@@ -144,6 +144,7 @@ const validCreateBody = {
   cognitoProviderName: 'GoogleOIDC',
   metadataUrl: 'https://accounts.google.com/.well-known/openid-configuration',
   oidcClientId: 'google-client-id',
+  oidcClientSecret: 'google-client-secret',
 }
 
 const validSamlCreateBody = {
@@ -274,6 +275,74 @@ describe('SSO handler', () => {
       )
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    // An OIDC provider registered without a client secret cannot complete the
+    // authorization-code exchange — Cognito returns 400 at /oauth2/idpresponse.
+    // Reject the shape up front rather than registering an IdP that can never work.
+    it('returns 400 VALIDATION_ERROR when an OIDC provider has no oidcClientSecret', async () => {
+      const { oidcClientSecret: _omitted, ...noSecret } = validCreateBody
+
+      const res = await buildApp().request('/providers', post(noSecret))
+
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+      expect(mockDb.tenantSsoProvider.create).not.toHaveBeenCalled()
+      expect(CreateIdentityProviderCommand).not.toHaveBeenCalled()
+    })
+
+    it('returns 400 VALIDATION_ERROR when an OIDC provider has no oidcClientId', async () => {
+      const { oidcClientId: _omitted, ...noClientId } = validCreateBody
+
+      const res = await buildApp().request('/providers', post(noClientId))
+
+      expect(res.status).toBe(400)
+      expect(CreateIdentityProviderCommand).not.toHaveBeenCalled()
+    })
+
+    it('returns 400 VALIDATION_ERROR when an OIDC provider has no metadataUrl', async () => {
+      const { metadataUrl: _omitted, ...noMetadata } = validCreateBody
+
+      const res = await buildApp().request('/providers', post(noMetadata))
+
+      expect(res.status).toBe(400)
+      expect(CreateIdentityProviderCommand).not.toHaveBeenCalled()
+    })
+
+    // The UI marks metadata URL required for SAML, but a direct API call could
+    // still register a SAML IdP with empty ProviderDetails, which Cognito rejects.
+    it('returns 400 VALIDATION_ERROR when a SAML provider has no metadataUrl', async () => {
+      const { metadataUrl: _omitted, ...noMetadata } = validSamlCreateBody
+
+      const res = await buildApp().request('/providers', post(noMetadata))
+
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+      expect(CreateIdentityProviderCommand).not.toHaveBeenCalled()
+    })
+
+    it('accepts a SAML provider without any OIDC fields', async () => {
+      mockDb.tenantSsoProvider.create.mockResolvedValue(mockSamlProviderRow)
+
+      const res = await buildApp().request('/providers', post(validSamlCreateBody))
+
+      expect(res.status).toBe(201)
+    })
+
+    it('returns 409 CONFLICT when Cognito rejects the provider name as a duplicate', async () => {
+      mockDb.tenantSsoProvider.create.mockResolvedValue(mockProviderRow)
+      mockDb.tenantSsoProvider.delete.mockResolvedValue(undefined)
+      const err = Object.assign(new Error('duplicate'), { name: 'DuplicateProviderException' })
+      mockSend.mockRejectedValue(err)
+
+      const res = await buildApp().request('/providers', post(validCreateBody))
+
+      expect(res.status).toBe(409)
+      expect((await json(res)).code).toBe('CONFLICT')
+      // The DB row must still be rolled back, exactly as on any other Cognito failure.
+      expect(mockDb.tenantSsoProvider.delete).toHaveBeenCalledWith({
+        where: { id: 'provider-1' },
+      })
     })
 
     it('returns 409 CONFLICT when Prisma throws a P2002 unique constraint violation', async () => {
@@ -408,35 +477,92 @@ describe('SSO handler', () => {
 
     // ── PUT — Cognito sync ───────────────────────────────────────────────────
 
-    it('calls UpdateIdentityProviderCommand with cognitoProviderName and authorize_scopes for OIDC', async () => {
+    // UpdateIdentityProvider replaces ProviderDetails wholesale, and the client
+    // secret is never persisted here — so syncing Cognito on an edit that did not
+    // touch a Cognito-stored field would drop client_secret and silently break
+    // login. Name and isEnabled live only in the DB; they must not reach Cognito.
+    it('does not call Cognito when only the display name changed', async () => {
       mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockExistingRow)
       mockDb.tenantSsoProvider.update.mockResolvedValue(mockProviderRow)
 
       const res = await buildApp().request('/providers/provider-1', put({ name: 'Renamed' }))
-      expect(res.status).toBe(200)
 
+      expect(res.status).toBe(200)
+      expect(UpdateIdentityProviderCommand).not.toHaveBeenCalled()
+      expect(mockSend).not.toHaveBeenCalled()
+    })
+
+    it('does not call Cognito when only isEnabled changed', async () => {
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockExistingRow)
+      mockDb.tenantSsoProvider.update.mockResolvedValue(mockProviderRow)
+
+      const res = await buildApp().request('/providers/provider-1', put({ isEnabled: false }))
+
+      expect(res.status).toBe(200)
+      expect(UpdateIdentityProviderCommand).not.toHaveBeenCalled()
+    })
+
+    // The API never stores the secret, so it cannot re-send one it was not given.
+    // Rather than resync without it (wiping it), demand it up front.
+    it('returns 400 when an OIDC Cognito-relevant field changes without a client secret', async () => {
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockExistingRow)
+
+      const res = await buildApp().request(
+        '/providers/provider-1',
+        put({ metadataUrl: 'https://idp.example.com/.well-known/openid-configuration' }),
+      )
+
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+      // Reject before touching the DB, so the row cannot drift from Cognito.
+      expect(mockDb.tenantSsoProvider.update).not.toHaveBeenCalled()
+      expect(UpdateIdentityProviderCommand).not.toHaveBeenCalled()
+    })
+
+    it('syncs Cognito with client_secret when an OIDC field changes and a secret is supplied', async () => {
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockExistingRow)
+      mockDb.tenantSsoProvider.update.mockResolvedValue(mockProviderRow)
+
+      const res = await buildApp().request(
+        '/providers/provider-1',
+        put({ oidcClientId: 'new-client-id', oidcClientSecret: 'new-secret' }),
+      )
+
+      expect(res.status).toBe(200)
       expect(UpdateIdentityProviderCommand).toHaveBeenCalledWith(
         expect.objectContaining({
           UserPoolId: expect.any(String),
           ProviderName: 'GoogleOIDC',
           ProviderDetails: expect.objectContaining({
+            client_id: 'new-client-id',
+            client_secret: 'new-secret',
             authorize_scopes: 'openid email profile',
           }),
         }),
       )
     })
 
-    it('includes client_secret in UpdateIdentityProviderCommand only when oidcClientSecret is provided', async () => {
-      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockExistingRow)
-      mockDb.tenantSsoProvider.update.mockResolvedValue(mockProviderRow)
+    // SAML has no client secret, so a metadata change needs no extra credential.
+    it('syncs a SAML metadata change to Cognito without requiring a secret', async () => {
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue({
+        ...mockExistingRow,
+        type: 'SAML' as const,
+        metadataUrl: 'https://okta.example.com/metadata',
+        oidcClientId: null,
+      })
+      mockDb.tenantSsoProvider.update.mockResolvedValue(mockSamlProviderRow)
 
-      await buildApp().request('/providers/provider-1', put({ oidcClientSecret: 'new-secret' }))
+      const res = await buildApp().request(
+        '/providers/provider-1',
+        put({ metadataUrl: 'https://okta.example.com/metadata-v2' }),
+      )
 
-      const call = (UpdateIdentityProviderCommand as unknown as ReturnType<typeof vi.fn>).mock
-        .calls[0]![0]
-      expect(
-        (call as { ProviderDetails: Record<string, string> }).ProviderDetails['client_secret'],
-      ).toBe('new-secret')
+      expect(res.status).toBe(200)
+      expect(UpdateIdentityProviderCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ProviderDetails: { MetadataURL: 'https://okta.example.com/metadata-v2' },
+        }),
+      )
     })
 
     it('returns 500 and does not retry when Cognito UpdateIdentityProvider fails', async () => {
@@ -444,7 +570,10 @@ describe('SSO handler', () => {
       mockDb.tenantSsoProvider.update.mockResolvedValue(mockProviderRow)
       mockSend.mockRejectedValue(new Error('Cognito error'))
 
-      const res = await buildApp().request('/providers/provider-1', put({ name: 'X' }))
+      const res = await buildApp().request(
+        '/providers/provider-1',
+        put({ oidcClientId: 'x', oidcClientSecret: 'new-secret' }),
+      )
       expect(res.status).toBe(500)
       expect((await json(res)).code).toBe('INTERNAL_ERROR')
     })

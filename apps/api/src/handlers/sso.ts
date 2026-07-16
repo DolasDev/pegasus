@@ -11,12 +11,14 @@
 //   DELETE /providers/:id      — remove a provider; deletes IdP from Cognito first
 //
 // Security invariants:
-//   - secretArn is NEVER returned in any response. It is a Secrets Manager ARN
-//     reference for future Cognito provisioning automation; it must stay server-
-//     side only.
 //   - oidcClientSecret is NEVER persisted to the DB or returned in any response.
 //     It flows only to the Cognito CreateIdentityProvider / UpdateIdentityProvider
-//     API call.
+//     API call. Because we keep no copy, we cannot re-send it on a later sync —
+//     see PUT below, which requires it whenever the Cognito config changes.
+//   - secretArn is NEVER returned in any response. It is vestigial: it was meant to
+//     reference a Secrets Manager ARN, but nothing has ever written it. Believing
+//     that flow existed is what left the tenant-web form with no client-secret
+//     field, registering OIDC providers that could never complete a login.
 //   - cognitoProviderName is immutable after creation — it is the stable
 //     identifier used in Cognito and in the authorize URL. To change it, delete
 //     and recreate the provider.
@@ -48,47 +50,89 @@ const USER_POOL_ID = process.env['COGNITO_USER_POOL_ID'] ?? ''
 
 const SsoProviderTypeEnum = z.enum(['OIDC', 'SAML'])
 
-const CreateSsoProviderBody = z.object({
-  /** Display name shown in the login page provider picker. */
-  name: z.string().min(1).max(100),
+const CreateSsoProviderBody = z
+  .object({
+    /** Display name shown in the login page provider picker. */
+    name: z.string().min(1).max(100),
 
-  /** Protocol type: OIDC or SAML. */
-  type: SsoProviderTypeEnum,
+    /** Protocol type: OIDC or SAML. */
+    type: SsoProviderTypeEnum,
 
-  /**
-   * The Cognito identity provider name. Must exactly match the name registered
-   * in the Cognito User Pool (case-sensitive). Passed as `identity_provider`
-   * in the authorization URL. Immutable after creation.
-   */
-  cognitoProviderName: z
-    .string()
-    .min(1)
-    .max(100)
-    .regex(/^[a-zA-Z0-9_-]+$/, {
-      message: 'cognitoProviderName may only contain letters, digits, hyphens, and underscores',
-    }),
+    /**
+     * The Cognito identity provider name. Chosen by the caller and CREATED in the
+     * User Pool by this endpoint — it does not need to exist beforehand. Passed as
+     * `identity_provider` in the authorization URL. The pool is shared across
+     * tenants, so this must be unique pool-wide. Immutable after creation.
+     */
+    cognitoProviderName: z
+      .string()
+      .min(1)
+      .max(100)
+      .regex(/^[a-zA-Z0-9_-]+$/, {
+        message: 'cognitoProviderName may only contain letters, digits, hyphens, and underscores',
+      }),
 
-  /**
-   * OIDC: discovery document URL (e.g. https://accounts.google.com/.well-known/openid-configuration).
-   * SAML: metadata URL served by the IdP.
-   */
-  metadataUrl: z.string().url().optional(),
+    /**
+     * OIDC: discovery document URL (e.g. https://accounts.google.com/.well-known/openid-configuration).
+     * SAML: metadata URL served by the IdP.
+     */
+    metadataUrl: z.string().url().optional(),
 
-  /**
-   * OIDC only: the client ID issued by the IdP. Must be omitted or null for
-   * SAML providers.
-   */
-  oidcClientId: z.string().min(1).optional(),
+    /**
+     * OIDC only: the client ID issued by the IdP. Must be omitted or null for
+     * SAML providers.
+     */
+    oidcClientId: z.string().min(1).optional(),
 
-  /**
-   * OIDC only: the client secret issued by the IdP.
-   * Passed directly to Cognito — NEVER persisted to the DB or returned in any response.
-   */
-  oidcClientSecret: z.string().min(1).optional(),
+    /**
+     * OIDC only: the client secret issued by the IdP.
+     * Passed directly to Cognito — NEVER persisted to the DB or returned in any response.
+     */
+    oidcClientSecret: z.string().min(1).optional(),
 
-  /** Whether this provider should appear on the login page. Defaults to true. */
-  isEnabled: z.boolean().optional(),
-})
+    /** Whether this provider should appear on the login page. Defaults to true. */
+    isEnabled: z.boolean().optional(),
+  })
+  // Cognito accepts an OIDC provider with no client_secret, but the resulting IdP
+  // can never complete the authorization-code exchange — the failure only surfaces
+  // as a 400 at /oauth2/idpresponse on a tenant's first real login attempt. Reject
+  // the unusable shape here instead of registering it.
+  .superRefine((val, ctx) => {
+    if (val.type === 'OIDC') {
+      if (val.metadataUrl === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['metadataUrl'],
+          message: 'metadataUrl (the OIDC discovery URL) is required for OIDC providers',
+        })
+      }
+      if (val.oidcClientId === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['oidcClientId'],
+          message: 'oidcClientId is required for OIDC providers',
+        })
+      }
+      if (val.oidcClientSecret === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['oidcClientSecret'],
+          message:
+            'oidcClientSecret is required for OIDC providers — without it Cognito cannot exchange the authorization code and every login fails',
+        })
+      }
+      return
+    }
+
+    // SAML: Cognito needs MetadataURL (or MetadataFile) or it rejects the call.
+    if (val.metadataUrl === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['metadataUrl'],
+        message: 'metadataUrl (the SAML metadata URL) is required for SAML providers',
+      })
+    }
+  })
 
 const UpdateSsoProviderBody = z.object({
   /** Rename the display name shown in the provider picker. */
@@ -225,8 +269,12 @@ ssoHandler.get('/providers', async (c) => {
 //
 // Request:  CreateSsoProviderBody
 // Response: { data: SsoProviderResponse } (201)
-//           { error, code: VALIDATION_ERROR }     (400)
-//           { error, code: CONFLICT }             (409) — cognitoProviderName already exists
+//           { error, code: VALIDATION_ERROR }     (400) — incl. an OIDC provider with
+//                                                         no client secret/id/discovery
+//                                                         URL, or SAML with no metadata
+//           { error, code: CONFLICT }             (409) — name taken for this tenant
+//                                                         (DB) or anywhere in the pool
+//                                                         (Cognito duplicate)
 //           { error, code: INTERNAL_ERROR }       (500) — DB or Cognito failure
 // ---------------------------------------------------------------------------
 ssoHandler.post(
@@ -310,6 +358,20 @@ ssoHandler.post(
         { error: String(cognitoErr), providerId: provider.id },
       )
       await db.tenantSsoProvider.delete({ where: { id: provider.id } })
+
+      // The user pool is shared across tenants, so Cognito's ProviderName is unique
+      // per POOL, while the DB constraint is only [tenantId, cognitoProviderName].
+      // A name another tenant already holds passes the DB check and fails here.
+      // Keep the message generic — naming the holder would leak across tenants.
+      if ((cognitoErr as { name?: string }).name === 'DuplicateProviderException') {
+        return c.json(
+          {
+            error: `The Cognito provider name "${body.cognitoProviderName}" is already taken. Choose a different one.`,
+            code: 'CONFLICT',
+          },
+          409,
+        )
+      }
       return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
     }
 
@@ -320,16 +382,24 @@ ssoHandler.post(
 // ---------------------------------------------------------------------------
 // PUT /providers/:id
 //
-// Updates mutable fields on an existing provider, then syncs the changes to
-// Cognito. cognitoProviderName and type are immutable — to change them, delete
-// and recreate the provider (preserving Cognito registration integrity).
+// Updates mutable fields on an existing provider. cognitoProviderName and type are
+// immutable — to change them, delete and recreate the provider (preserving Cognito
+// registration integrity).
+//
+// Cognito is synced ONLY when a field it actually stores changed (metadataUrl,
+// oidcClientId, oidcClientSecret). A name- or isEnabled-only edit is DB-only:
+// UpdateIdentityProvider replaces ProviderDetails wholesale and we never persist the
+// client secret, so syncing such an edit would drop client_secret and break login.
+// For the same reason, changing an OIDC provider's Cognito config requires the caller
+// to re-supply the secret.
 //
 // If Cognito sync fails, the DB is already updated. The caller should retry.
 //
 // Request:  UpdateSsoProviderBody (all fields optional)
 // Response: { data: SsoProviderResponse } (200)
 //           { error, code: NOT_FOUND }        (404)
-//           { error, code: VALIDATION_ERROR } (400)
+//           { error, code: VALIDATION_ERROR } (400) — incl. an OIDC config change with
+//                                                     no oidcClientSecret re-supplied
 //           { error, code: INTERNAL_ERROR }   (500) — DB or Cognito failure
 // ---------------------------------------------------------------------------
 ssoHandler.put(
@@ -353,6 +423,16 @@ ssoHandler.put(
       oidcClientId: string | null
     } | null
     let provider: ProviderRow
+
+    // Does this edit touch a field Cognito actually stores? `name` and `isEnabled`
+    // live only in our DB. UpdateIdentityProvider replaces ProviderDetails wholesale
+    // and we never persist the client secret, so re-syncing an edit that changed no
+    // Cognito field would drop client_secret and silently break every login.
+    const cognitoRelevantChange =
+      body.metadataUrl !== undefined ||
+      body.oidcClientId !== undefined ||
+      body.oidcClientSecret !== undefined
+
     try {
       existing = await db.tenantSsoProvider.findUnique({
         where: { id },
@@ -365,6 +445,25 @@ ssoHandler.put(
         },
       })
       if (!existing) return c.json({ error: 'SSO provider not found', code: 'NOT_FOUND' }, 404)
+
+      // The secret is never stored on our side, so we cannot re-send one we were not
+      // given. If the Cognito config has to change on an OIDC provider, the caller
+      // must supply the secret again. Checked before the DB write so a rejected edit
+      // cannot leave the row describing a provider Cognito never received.
+      if (
+        cognitoRelevantChange &&
+        existing.type === 'OIDC' &&
+        body.oidcClientSecret === undefined
+      ) {
+        return c.json(
+          {
+            error:
+              'oidcClientSecret is required when changing the discovery URL or client ID — the client secret lives only in Cognito and must be re-supplied to update the provider',
+            code: 'VALIDATION_ERROR',
+          },
+          400,
+        )
+      }
 
       // Step 2 — Update DB
       provider = await db.tenantSsoProvider.update({
@@ -382,7 +481,13 @@ ssoHandler.put(
       return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
     }
 
-    // Step 3 — Sync to Cognito (merged state: updated fields take priority)
+    // Step 3 — Sync to Cognito, but only when a Cognito-stored field changed. A
+    // name- or isEnabled-only edit is DB-only and must not touch the registration.
+    if (!cognitoRelevantChange) {
+      return c.json({ data: toResponse(provider) })
+    }
+
+    // Merged state: updated fields take priority over what is already stored.
     const effectiveMetadataUrl = body.metadataUrl ?? existing.metadataUrl
     const effectiveClientId = body.oidcClientId ?? existing.oidcClientId
     const providerDetails: Record<string, string> =
