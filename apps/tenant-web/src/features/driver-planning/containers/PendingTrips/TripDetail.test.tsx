@@ -171,13 +171,21 @@ describe('DriverTripDetail', () => {
     expect(screen.getByText('Unassigned')).toBeInTheDocument()
   })
 
-  it('calls editTrip with driver and driver_id when driver changes', () => {
-    const editTrip = vi.fn()
+  // DriverTypeahead hands back a raw `common.driversList` row — `driver_id`,
+  // `driver_name`, `agent_code`, `active`, `type` — and no `id`. Selections must
+  // survive the save, so these stubs mirror that shape exactly.
+  const driverOption = (over: Record<string, unknown> = {}) => ({
+    driver_id: 9,
+    driver_name: 'Pat',
+    agent_code: 'AG',
+    active: true,
+    type: 'O',
+    ...over,
+  })
+
+  const renderDriverPicker = (editTrip: any, option: Record<string, unknown>) => {
     const EditComp = ({ onChange }: any) => (
-      <button
-        data-testid="driver-select"
-        onClick={() => onChange({ id: 9, driver_id: 9, driver_name: 'Pat' })}
-      >
+      <button data-testid="driver-select" onClick={() => onChange(option)}>
         change
       </button>
     )
@@ -193,12 +201,37 @@ describe('DriverTripDetail', () => {
       />,
     )
     fireEvent.click(screen.getByTestId('driver-select'))
+  }
+
+  it('calls editTrip with driver and driver_id when driver changes', () => {
+    const editTrip = vi.fn()
+    renderDriverPicker(editTrip, driverOption())
     expect(editTrip).toHaveBeenCalledWith(
       expect.objectContaining({
         driver: expect.objectContaining({ driver_id: 9 }),
         driver_id: 9,
       }),
     )
+  })
+
+  it('keeps driver_id when the picked driver has no `id` (raw drivers-list row)', () => {
+    const editTrip = vi.fn()
+    const option = driverOption()
+    expect(option).not.toHaveProperty('id') // guard: the real typeahead shape
+    renderDriverPicker(editTrip, option)
+    expect(editTrip).toHaveBeenCalledWith(expect.objectContaining({ driver_id: 9 }))
+  })
+
+  it('still reads `id` when the driver was hydrated by reshapeTrip', () => {
+    const editTrip = vi.fn()
+    renderDriverPicker(editTrip, { id: 4, driver_id: 4, driver_name: 'Lee' })
+    expect(editTrip).toHaveBeenCalledWith(expect.objectContaining({ driver_id: 4 }))
+  })
+
+  it('unassigns (driver_id null) when the "None" option is picked', () => {
+    const editTrip = vi.fn()
+    renderDriverPicker(editTrip, { driver_id: 0, driver_name: 'None' })
+    expect(editTrip).toHaveBeenCalledWith(expect.objectContaining({ driver_id: null }))
   })
 })
 
