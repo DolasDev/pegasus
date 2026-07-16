@@ -14,6 +14,24 @@ Memory: [[project_sirva_ade_ingress_outbound_suite]]. Publish precedent:
 [[project_workflows_sdk_pypi_published]] (re-tag recipe for failed publishes),
 [[project_sdk_060_specs_shipped]].
 
+## PROGRESS (2026-07-16)
+
+- **Phase 0 ✅** #450 (0021) was BLOCKED by `Secret Scanning (Betterleaks)`: 4 false-positive
+  `generic-api-key` hits on fake test fixtures (`ing_abc12345`). The documented `.betterleaksignore`
+  fingerprint fix would have **resurfaced on main under the squash SHA** (verified empirically) →
+  wedged the queue. Fixed instead with inline `gitleaks:allow` comments (SHA-independent, survives
+  squash) — amended `feat/inbound-ingress`, force-pushed; also fixed a follow-on `Ruff (SDK)` E501.
+  #450 merged (main HEAD `e43a5b1`, SDK 0.19.0); **post-merge main secret-scan = green**. Runbook
+  gap documented in `dolas/agents/project/GOTCHAS.md` (rides this workstream's PR).
+- **Phase 1 ✅** Tagged `sdk-python-v0.19.0` on `e43a5b1`; release workflow published to PyPI
+  (trusted publishing). Verified live: `pegasus-workflows-sdk 0.19.0` (wheel + sdist) on PyPI.
+- **Phase 2 ✅** `~/repos/pegasus-workflows/requirements.txt` bumped to `==0.19.0`; venv reinstalled
+  and reports `0.19.0`.
+- **Phase 3 ⏸ BLOCKED ON ENV** Only configured `~/.pegasus/credentials` profiles (`[default]`, `[nw]`)
+  point at `https://api.pegasus.dolas.dev` = **PROD**. Plan targets QA/staging; Phase 3 does live
+  WRITES (schedule/ingress/blob/projection, un-stub+run). Awaiting user decision on env before
+  running any write-validation. (Also still 0024-blocked for full normalize→persist runs.)
+
 ## Phase 0 — Preconditions (verify first)
 
 1. Confirm **PR #450 (0021) has merged**: `gh pr view 450 --json state --jq .state` → `MERGED`.
