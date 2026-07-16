@@ -139,6 +139,9 @@ _IGNORED: frozenset[str] = frozenset(
         "get_workflow",
         "get_download_url",
         "download_artifact",
+        "create_trigger",
+        "list_triggers",
+        "delete_trigger",
     }
 )
 

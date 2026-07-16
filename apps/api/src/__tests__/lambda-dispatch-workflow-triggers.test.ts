@@ -708,7 +708,7 @@ describe('scheduled triggers', () => {
     )
 
     // Execution row: SCHEDULE provenance + fire-minute deterministic id AT
-    // CREATE, with the scheduledFor envelope as input.
+    // CREATE, with the scheduledAt envelope as input (sdk-feedback/0023).
     expect(mockExecutionCreate).toHaveBeenCalledTimes(1)
     const createArg = mockExecutionCreate.mock.calls[0]![0] as { data: Record<string, unknown> }
     expect(createArg.data).toMatchObject({
@@ -721,7 +721,8 @@ describe('scheduled triggers', () => {
       temporalWorkflowId: SCHEDULE_ID,
     })
     expect(createArg.data['input']).toEqual({
-      scheduledFor: FIRE_MINUTE_ISO,
+      scheduledAt: FIRE_MINUTE_ISO,
+      schedule: '4 16 * * *',
       triggerId: 'trg-sched-1',
     })
 
@@ -759,7 +760,11 @@ describe('scheduled triggers', () => {
 
   it('re-evaluating the same fire-minute is a DUPLICATE skip — no second row', async () => {
     setTriggers({ schedule: [scheduleTriggerRow()] })
-    mockExecutionFindFirst.mockResolvedValue({ id: 'exec-existing' })
+    // No in-flight run (overlap check, status-based) but the deterministic-id row
+    // already exists (dedup check, temporalWorkflowId-based) → DUPLICATE, not OVERLAP.
+    mockExecutionFindFirst.mockImplementation(async (arg: { where: Record<string, unknown> }) =>
+      arg.where['temporalWorkflowId'] ? { id: 'exec-existing' } : null,
+    )
 
     const out = await handler()
 
@@ -781,6 +786,31 @@ describe('scheduled triggers', () => {
       expect.objectContaining({
         MetricName: 'WorkflowTriggerSkipped',
         Dimensions: [{ Name: 'Reason', Value: 'DUPLICATE' }],
+      }),
+    )
+  })
+
+  it('overlap policy: a still-in-flight previous run is an OVERLAP skip — no new row', async () => {
+    setTriggers({ schedule: [scheduleTriggerRow()] })
+    // Overlap check (status QUEUED/RUNNING) finds a prior run still in-flight.
+    mockExecutionFindFirst.mockImplementation(async (arg: { where: Record<string, unknown> }) =>
+      arg.where['status'] ? { id: 'exec-inflight' } : null,
+    )
+
+    const out = await handler()
+
+    expect(out).toMatchObject({ schedulesEvaluated: 1, scheduleFired: 0 })
+    // Overlap short-circuits before the deterministic-id dedup pre-check, so no
+    // row is created and the QUEUED/RUNNING lookup drove the decision.
+    expect(mockExecutionFindFirst).toHaveBeenCalledWith({
+      where: { triggeredByTriggerId: 'trg-sched-1', status: { in: ['QUEUED', 'RUNNING'] } },
+      select: { id: true },
+    })
+    expect(mockExecutionCreate).not.toHaveBeenCalled()
+    expect(emittedMetrics()).toContainEqual(
+      expect.objectContaining({
+        MetricName: 'WorkflowTriggerSkipped',
+        Dimensions: [{ Name: 'Reason', Value: 'OVERLAP' }],
       }),
     )
   })

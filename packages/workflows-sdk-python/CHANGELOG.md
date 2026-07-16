@@ -3,6 +3,30 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.17.0
+
+### Added
+
+- **`pegasus-workflows schedule` — attach cron schedules to a workflow**
+  (sdk-feedback/0023). A terminal wrapper over the workflow-trigger API for the
+  on-platform replacement of an external cron calling `pegasus-workflows run`:
+  - `schedule create <workflow> --cron "*/5 * * * *"` / `schedule list <workflow>`
+    / `schedule delete <workflow> <trigger-id>`.
+  - New `PegasusClient.create_trigger` / `list_triggers` / `delete_trigger`
+    (management surface, needs the `workflow_developer`/`tenant_admin`
+    `ManageWorkflowTriggers` action — not a `workflow_runtime` key).
+- **Documented fourth `run()` input shape — the scheduled tick** (input-contract
+  guide, Shape 4): a SCHEDULE firing passes
+  `arg["input"] = {"scheduledAt": "<ISO>", "schedule": "<cron>", "triggerId": …}`,
+  detected by the `scheduledAt` key and distinct from event/manual/CLI-test runs.
+
+### Note
+
+- The platform dispatcher (already cron-aware) now emits the `scheduledAt`
+  envelope (was `scheduledFor`) and applies an **overlap policy** — a scheduled
+  tick is skipped while a prior run of the same trigger is still in-flight, so a
+  slow run never piles up concurrent duplicates.
+
 ## 0.16.0
 
 ### Added
@@ -27,7 +51,7 @@ follows [Semantic Versioning](https://semver.org/).
     fixture and captures a mutation via the shared dry-run path.
   - Requires `required_actions = ["CallExternal"]` (a new Cedar action granted to
     the `workflow_runtime` persona). Returns `{status, ok, response, headers,
-dryRun}`; auto-documented in the `pegasus://reference/api` MCP resource.
+    dryRun}`; auto-documented in the `pegasus://reference/api` MCP resource.
 
 ## 0.15.0
 
