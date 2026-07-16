@@ -14,9 +14,16 @@
 //   membership directly via adminAuthMiddleware.
 //
 // TENANT / MOBILE APP CLIENT:
-//   Resolve the active tenant from an AuthSession (multi-tenant picker)
-//   or fall back to the user's tenant_users roster, then look up the
-//   TenantUser record to determine roleNames and status:
+//   Resolve the active tenant, then look up the TenantUser record to determine
+//   roleNames and status. Resolution order:
+//
+//     1. FEDERATED (an `identities` claim is present) — the identity PROVIDER
+//        determines the tenant, via TenantSsoProvider.tenantId. The email is never
+//        used to resolve a federated login. See the security note at Step 1a: the
+//        user pool is shared across tenants and each tenant controls its own IdP,
+//        so an asserted email is not a trustworthy tenant signal.
+//     2. AuthSession (multi-tenant picker) — native logins only.
+//     3. The user's tenant_users roster — native logins only.
 //
 //   ACTIVE      → inject custom:tenantId + custom:roles (Cedar groups)
 //   PENDING     → first login: inject claims, set status=ACTIVE + activatedAt + cognitoSub
@@ -67,6 +74,33 @@ async function getAdminClientId(): Promise<string> {
 
   _adminClientId = value
   return value
+}
+
+// ---------------------------------------------------------------------------
+// Federated identity — which IdP actually authenticated this user?
+//
+// Cognito delivers `identities` as a JSON STRING on federated users and omits it
+// entirely for native ones:
+//   [{"userId":"…","providerName":"AcmeOkta","providerType":"OIDC",…}]
+//
+// Anything unparseable, empty, or missing a providerName returns null and is handled
+// as a native login — the strictly more restrictive path. An untrusted claim must
+// never be able to *widen* what we do with it.
+// ---------------------------------------------------------------------------
+function extractProviderName(identitiesAttr: string | undefined): string | null {
+  if (!identitiesAttr) return null
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(identitiesAttr)
+  } catch {
+    return null
+  }
+
+  if (!Array.isArray(parsed) || parsed.length === 0) return null
+
+  const name = (parsed[0] as Record<string, unknown> | undefined)?.['providerName']
+  return typeof name === 'string' && name.length > 0 ? name : null
 }
 
 export const handler: PreTokenGenerationTriggerHandler = async (event) => {
@@ -136,7 +170,65 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
 
   let tenantId: string
 
-  if (authSession) {
+  // -------------------------------------------------------------------------
+  // Step 1a: Federated login — the PROVIDER determines the tenant.
+  //
+  // Tenants configure their own IdPs into a SHARED user pool, so an IdP can assert
+  // any `email` it likes, including another tenant's admin. What it cannot forge is
+  // which provider it is: Cognito stamps `providerName` from the pool's own
+  // registration, and TenantSsoProvider.tenantId is OUR record of who owns that
+  // provider. So the provider resolves the tenant, and the email never does.
+  //
+  // Resolving from the email (as this did until 2026-07-16) let any tenant with an
+  // IdP mint another tenant's custom:tenantId + custom:roles — a cross-tenant
+  // privilege escalation reachable from the SSO settings page. Cognito does not
+  // enforce email uniqueness for federated users even with
+  // UsernameAttributes: ["email"], so nothing else was standing in the way.
+  // -------------------------------------------------------------------------
+  const providerName = extractProviderName(event.request.userAttributes.identities)
+
+  if (providerName) {
+    const provider = await db.tenantSsoProvider.findFirst({
+      where: { cognitoProviderName: providerName },
+      select: { tenantId: true, isEnabled: true },
+    })
+
+    if (!provider) {
+      logger.error('Pre-Token trigger: SECURITY — federated login via unknown provider', {
+        email,
+        providerName,
+      })
+      throw new Error('Authentication failed: unrecognised identity provider.')
+    }
+
+    if (!provider.isEnabled) {
+      logger.warn('Pre-Token trigger: federated login via disabled provider', {
+        email,
+        providerName,
+      })
+      throw new Error('Authentication failed: this identity provider is disabled.')
+    }
+
+    tenantId = provider.tenantId
+
+    // The login flow only ever routes a user to their own selected tenant's provider,
+    // so a disagreement is an attack signal or a serious bug. Fail closed either way.
+    if (authSession && authSession.tenantId !== tenantId) {
+      logger.error('Pre-Token trigger: SECURITY — AuthSession tenant disagrees with provider', {
+        email,
+        providerName,
+        sessionTenantId: authSession.tenantId,
+        providerTenantId: tenantId,
+      })
+      throw new Error('Authentication failed: session does not match the identity provider.')
+    }
+
+    logger.info('Pre-Token trigger: Resolved tenant via SSO provider', {
+      email,
+      providerName,
+      tenantId,
+    })
+  } else if (authSession) {
     // Use the session-selected tenant.
     tenantId = authSession.tenantId
     logger.info('Pre-Token trigger: Resolved tenant via AuthSession', { email, tenantId })
