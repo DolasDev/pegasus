@@ -206,6 +206,19 @@ Read your business data from ``arg["input"]``.
 
 ``pegasus-workflows test <name>`` passes a raw string for local-dev parity.
 
+## Shape 4 — Scheduled (cron trigger)
+
+A SCHEDULE trigger (``pegasus-workflows schedule create``) fires on its cron
+cadence, passing a tick envelope in the run input:
+
+    {"executionId": "<uuid>",
+     "input": {"scheduledAt": "<ISO-8601>", "schedule": "<cron>", "triggerId": "<id>"}}
+
+Read it from ``arg["input"]``; detect a scheduled tick by the ``scheduledAt``
+key. A tick carries no entity — the workflow does its own work (e.g. advance a
+cursor and poll). It is distinct from a manual run, whose ``input`` is your own
+business data.
+
 ## Recommended pattern: a module-level resolver (unit-testable)
 
 Write a plain function — not a method — so it stays testable without a Temporal
@@ -218,6 +231,8 @@ worker context:
         if isinstance(payload, dict) and payload.get("quoteId"):
             return str(payload["quoteId"])
         inp = arg.get("input") if isinstance(arg, dict) else None
+        if isinstance(inp, dict) and inp.get("scheduledAt"):
+            return "scheduled-tick"        # Shape 4: a cron firing, no entity
         if isinstance(inp, dict) and inp.get("quote_id"):
             return str(inp["quote_id"])
         return "quote-unknown"

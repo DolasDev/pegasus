@@ -512,6 +512,63 @@ class PegasusClient:
         """Fetch a single workflow by id."""
         return self._get_json(f"/api/v1/workflows/{workflow_id}")["data"]
 
+    # -- workflow triggers (schedule / event bindings; CLI management) ------
+    #
+    # Management surface (needs ``ManageWorkflowTriggers``, held by the
+    # workflow_developer / tenant_admin roles — NOT a workflow_runtime key).
+    # The dispatcher Lambda fires stored triggers: SCHEDULE rows are cron-
+    # evaluated each minute, EVENT rows match the domain-event outbox.
+
+    def create_trigger(
+        self,
+        workflow_id: str,
+        *,
+        kind: str,
+        cron_expression: str | None = None,
+        event_type: str | None = None,
+        filter: dict[str, Any] | None = None,
+        enabled: bool = True,
+    ) -> dict[str, Any]:
+        """Attach a trigger to a workflow. Requires ``ManageWorkflowTriggers``.
+
+        Args:
+            workflow_id: The workflow row id to bind the trigger to.
+            kind: ``"SCHEDULE"`` (cron) or ``"EVENT"`` (domain-event subscription).
+            cron_expression: 5-field UTC cron (SCHEDULE only), e.g. ``"*/5 * * * *"``.
+            event_type: Domain/custom event name (EVENT only).
+            filter: Optional payload-match object (EVENT only).
+            enabled: Whether the trigger fires (default ``True``).
+
+        Returns:
+            The created trigger row ``{id, workflowId, kind, cronExpression,
+            eventType, filter, enabled, ...}``.
+
+        Raises:
+            PegasusApiError: On 400 (invalid cron / shape), 403 (missing action),
+                404 (unknown workflow).
+        """
+        body: dict[str, Any] = {"kind": kind, "enabled": enabled}
+        if cron_expression is not None:
+            body["cronExpression"] = cron_expression
+        if event_type is not None:
+            body["eventType"] = event_type
+        if filter is not None:
+            body["filter"] = filter
+        with self._client() as client:
+            response = client.post(f"/api/v1/workflows/{workflow_id}/triggers", json=body)
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def list_triggers(self, workflow_id: str) -> list[dict[str, Any]]:
+        """List a workflow's triggers (the caller-tenant's rows). Requires ``ReadWorkflow``."""
+        return self._get_json(f"/api/v1/workflows/{workflow_id}/triggers")["data"]
+
+    def delete_trigger(self, workflow_id: str, trigger_id: str) -> None:
+        """Delete a trigger. Requires ``ManageWorkflowTriggers``."""
+        with self._client() as client:
+            response = client.delete(f"/api/v1/workflows/{workflow_id}/triggers/{trigger_id}")
+        _raise_for_status(response)
+
     def get_download_url(self, workflow_id: str) -> dict[str, Any]:
         """Get a presigned GET URL for a workflow's source zip.
 

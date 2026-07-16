@@ -34,6 +34,7 @@ from .package import package_command
 from .profile_config import configure_command, profile_app
 from .push import push_command
 from .run import run_command
+from .schedule import schedule_app
 from .secrets_config import config_app, secrets_app
 from .setup import setup_command
 from .test import test_command
@@ -82,6 +83,7 @@ app.command("configure")(configure_command)
 app.command("mcp")(mcp_command)
 app.add_typer(integration_config_app)
 app.add_typer(executions_app)
+app.add_typer(schedule_app)
 app.add_typer(secrets_app)
 app.add_typer(config_app)
 app.add_typer(profile_app)

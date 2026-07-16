@@ -93,6 +93,7 @@ type TriggerSkipReason =
   | 'ALREADY_STARTED' // Temporal REJECT_DUPLICATE fired (pre-check raced)
   | 'START_FAILED' // Temporal start threw; FAILED row records the error
   | 'INVALID_CRON' // SCHEDULE row's expression no longer parses (pre-Unit-4 row)
+  | 'OVERLAP' // SCHEDULE overlap policy: a previous run of this trigger is still in-flight
   | 'CONCURRENCY_LIMIT' // Phase 3 Unit 10: tenant concurrent-execution cap reached
   | 'DAILY_QUOTA_EXCEEDED' // Phase 3 Unit 10: tenant daily execution quota reached
   | 'WORKFLOWS_DISABLED' // Phase 3 Unit 11: operator kill switch
@@ -625,12 +626,40 @@ export async function handler(): Promise<{
           continue
         }
 
+        // Overlap policy: skip this tick if a prior run of THIS trigger is still
+        // in-flight (QUEUED/RUNNING), rather than piling up concurrent duplicates
+        // when a run exceeds the interval. The deterministic-id dedup below only
+        // guards the SAME fire-minute; this guards across minutes. The [status]
+        // index keeps it selective (non-terminal executions are few).
+        const inFlight = await db.workflowExecution.findFirst({
+          where: { triggeredByTriggerId: trigger.id, status: { in: ['QUEUED', 'RUNNING'] } },
+          select: { id: true },
+        })
+        if (inFlight) {
+          skip('OVERLAP')
+          logger.info('Scheduled trigger skipped — previous run still in-flight', {
+            triggerId: trigger.id,
+            tenantId: trigger.tenantId,
+            inFlightExecutionId: inFlight.id,
+            fireMinute: fireMinuteIso,
+          })
+          continue
+        }
+
         await fireTrigger({
           workflowRepo,
           trigger,
           triggerSource: 'SCHEDULE',
           dedupeKey: compactUtcMinute(fireMinute),
-          input: { scheduledFor: fireMinuteIso, triggerId: trigger.id },
+          // The scheduled-tick input envelope (sdk-feedback/0023): a documented
+          // shape distinct from EVENT (has `payload`) and manual (has user input)
+          // — a workflow's resolver keys on `scheduledAt`. `schedule` echoes the
+          // cron so the run self-describes its cadence. Lands at `arg["input"]`.
+          input: {
+            scheduledAt: fireMinuteIso,
+            schedule: trigger.cronExpression,
+            triggerId: trigger.id,
+          },
           counts,
           skip,
           logContext: { fireMinute: fireMinuteIso },
