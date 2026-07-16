@@ -119,6 +119,24 @@ CI job `Secret Scanning (Betterleaks)` (`.github/workflows/ci.yml`) runs `better
 4. Append to `.betterleaksignore` under a comment block explaining the verdict (false positive / rotated / client-side identifier) and **why** it is safe.
 5. Re-run `./betterleaks git .` — must exit 0 before pushing.
 
+**A `.betterleaksignore` fingerprint only works for a finding already on `main`.** The fingerprint
+is keyed on the commit SHA. `main` is squash-merged, so a finding introduced by a **not-yet-merged
+PR** lives on the PR-branch commit; when the PR squash-merges, the lines are re-introduced under a
+**new** SHA. A fingerprint pinned to the PR commit passes the PR check but the finding **resurfaces
+on `main` under the squash SHA and fails there — wedging the merge queue.** You cannot predict the
+squash SHA. (All existing `.betterleaksignore` entries reference commits already on `main` — they
+came from the one-time historical triage, not from pre-merge PRs.)
+
+**For a false positive introduced by a PR, use an inline allow-comment instead** — `// gitleaks:allow`
+(TS/JS) or `# gitleaks:allow` (Python) on the same line as the value, ideally with a short reason.
+It travels with the line through squash-merge, so it's SHA-independent; CI runs plain `betterleaks
+git .` (no `--ignore-gitleaks-allow`), so it's honored. You must **amend** the commit that introduced
+the line (force-push) — a _new_ commit adding the comment leaves the original commit's patch still
+flagged in the full-history scan. Keep the reason short: the SDK's `Ruff (SDK)` step (`ruff check .`,
+line-length 100) will fail E501 on a long trailing comment. Note also that `generic-api-key` is
+suppressed by stopwords — a fixture value containing `secret`/`token`/`example` won't be flagged at
+all, so you often only need to comment the values that lack one.
+
 **If you find a real, live secret:**
 
 1. **Rotate first.** Revoke the credential at its source (AWS, Cognito, Airbrake, etc.) before touching git.
