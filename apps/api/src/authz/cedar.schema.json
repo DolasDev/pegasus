@@ -307,6 +307,9 @@
       "CallExternal": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["IntegrationConfig"] }
       },
+      "ManageIngress": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["IntegrationConfig"] }
+      },
       "ManageEventTypes": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["EventType"] }
       },

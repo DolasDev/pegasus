@@ -252,6 +252,15 @@ export const Actions = {
     resourceType: 'IntegrationConfig',
     permission: 'integration:call',
   },
+  // ── Inbound ingress (provision/rotate the bearer a partner POSTs with) ────
+  // Management surface for the per-integration ingress credential (sdk-feedback
+  // 0021). Granted to workflow_developer (the CLI persona) + tenant_admin. The
+  // inbound endpoint ITSELF is pre-tenant and token-authenticated, not Cedar.
+  ManageIngress: {
+    id: 'ManageIngress',
+    resourceType: 'IntegrationConfig',
+    permission: 'ingress:manage',
+  },
   // ── Custom event types (tenant-defined event registry for workflows) ─────
   ManageEventTypes: {
     id: 'ManageEventTypes',

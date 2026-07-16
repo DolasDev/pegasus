@@ -27,6 +27,7 @@ import typer
 
 from .diagram import diagram_command
 from .executions import executions_app
+from .ingress import ingress_app
 from .init import init_command
 from .integration_config import integration_config_app
 from .mcp_server import mcp_command
@@ -84,6 +85,7 @@ app.command("mcp")(mcp_command)
 app.add_typer(integration_config_app)
 app.add_typer(executions_app)
 app.add_typer(schedule_app)
+app.add_typer(ingress_app)
 app.add_typer(secrets_app)
 app.add_typer(config_app)
 app.add_typer(profile_app)

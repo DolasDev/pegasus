@@ -23,7 +23,8 @@ permit (
     Pegasus::Action::"RetryWorkflowExecution",
     Pegasus::Action::"ManageEventTypes",
     Pegasus::Action::"ManageWorkflowSecrets",
-    Pegasus::Action::"ManageWorkflowConfigs"
+    Pegasus::Action::"ManageWorkflowConfigs",
+    Pegasus::Action::"ManageIngress"
   ],
   resource
 );
