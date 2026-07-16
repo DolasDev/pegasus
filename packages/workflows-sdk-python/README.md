@@ -218,6 +218,40 @@ manifest. Returns `{delivered, status, response, dryRun}`; raises `PegasusApiErr
 on 403 (missing action), 404 (unknown integration, or the URL config / API-key
 secret is not set), or 400 (a delivery URL pointing at a private/loopback host).
 
+### Calling a partner API (authenticated reads & writes)
+
+`deliver_to_external` is one fixed JSON `POST`. For arbitrary reads and writes —
+`GET` with query params, per-call paths, OAuth2 partners — use
+`client.call_external`. You name a `method` + `path` (+ `query`/`body`) and the
+platform performs the call **server-side** against the integration's configured
+`BASE_URL`, authenticating per its `AUTH_MODE`. For `oauth2_client_credentials` it
+mints, caches, and re-mints (on a partner `401`) an OAuth2 token server-side — so
+`client_id`/`client_secret` never appear in workflow code.
+
+```python
+@activity.defn
+async def fetch_shipment(reg: str, year: int) -> dict:
+    client = PegasusClient.from_runtime()
+    res = client.call_external(
+        "sirva_ade_shipment",
+        method="GET",
+        path="/OM/m1/GetShipmentDetail",
+        query={"RegNumber": reg, "RegYear": year},
+    )
+    return res["response"]          # parsed JSON (or raw text for an XML reply)
+```
+
+Config + credentials live in the tenant's config/secret store, read by name +
+`group`: `BASE_URL` / `AUTH_MODE` / `TOKEN_URL` configs, and `CLIENT_ID` /
+`CLIENT_SECRET` (OAuth) or `API_KEY` (`AUTH_MODE=bearer`) secrets. Declare
+`required_actions = ["CallExternal"]`. Returns `{status, ok, response, headers,
+dryRun}`.
+
+**Dry-run split:** a `GET` is a read and runs **live** under
+`pegasus-workflows run --dry-run` (returns real data); a `POST`/`PUT`/… is a
+mutation and is **captured, not performed**. Pass `mutating=True`/`False` to
+override the method-based default when a partner overloads a verb.
+
 ### Secrets & configuration
 
 A workflow reads two kinds of per-tenant key/value data at runtime — **secrets**

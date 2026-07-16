@@ -117,6 +117,13 @@ _MUTATIONS: dict[str, str] = {
     "deliver_to_external": "DeliverToExternal",
 }
 
+#: hybrid method(s) — read *or* mutation depending on the call's arguments, so
+#: they can't live in a single table. ``call_external`` is a read for GET/HEAD/
+#: OPTIONS (or ``mutating=False``) — served live under the real dry-run, from a
+#: path-keyed fixture offline — and a mutation otherwise (captured). Dispatched by
+#: :meth:`FakeClient._call_external`; still counted by the anti-drift union.
+_HYBRID: frozenset[str] = frozenset({"call_external"})
+
 #: publish / CLI / execution-inspection methods — not the in-activity surface.
 _IGNORED: frozenset[str] = frozenset(
     {
@@ -190,6 +197,8 @@ class FakeClient:
     def __getattr__(self, name: str) -> Callable[..., Any]:
         # __getattr__ only fires for names not found normally, so real
         # attributes (captured, is_dry_run, _reads) are unaffected.
+        if name in _HYBRID:  # call_external — read or mutation by args
+            return lambda *a, **k: self._call_external(a, k)
         if name in _READS:
             return lambda *a, **k: self._read(name, a, k)
         if name in _MUTATIONS:
@@ -229,6 +238,39 @@ class FakeClient:
                 f"reads[{name!r}] has keys {sorted(fixture)}."
             )
         # A non-mapping fixture for a keyed read is returned as-is.
+        return fixture
+
+    def _call_external(self, args: tuple, kwargs: dict) -> Any:
+        """Route ``call_external`` to read-serving or mutation-capture by its args.
+
+        A ``GET``/``HEAD``/``OPTIONS`` (or ``mutating=False``) is a read: under the
+        real ``--dry-run`` it runs live, but the offline harness has no partner to
+        reach, so it is served from a ``reads={"call_external": {path: value}}``
+        fixture (path-keyed, like the other keyed reads). Anything else is a
+        mutation, captured via the shared :meth:`_mutation` path (byte-identical
+        record shape to the server-side dry run).
+        """
+        method = str(kwargs.get("method", "GET")).upper()
+        mutating = kwargs.get("mutating")
+        is_mutation = mutating if mutating is not None else method not in ("GET", "HEAD", "OPTIONS")
+        if is_mutation:
+            return self._mutation("call_external", args, kwargs)
+        if "call_external" not in self._reads:
+            raise CaptureError(
+                "no fixture for read call_external (a GET runs live under the real "
+                "dry-run, but the offline harness has no partner to reach). Pass "
+                "fake_client(reads={'call_external': {path: value}}) — a mapping "
+                "keyed by request path, or a single value returned as-is."
+            )
+        fixture = self._reads["call_external"]
+        path = kwargs.get("path")
+        if isinstance(fixture, Mapping):
+            if path in fixture:
+                return fixture[path]
+            raise CaptureError(
+                f"no fixture for call_external(path={path!r}); "
+                f"reads['call_external'] has keys {sorted(fixture)}."
+            )
         return fixture
 
     def _mutation(self, name: str, args: tuple, kwargs: dict) -> Any:

@@ -14,6 +14,7 @@ import pytest
 
 from pegasus_workflows import PegasusClient, activity
 from pegasus_workflows.testing import (
+    _HYBRID,
     _IGNORED,
     _MUTATIONS,
     _READS,
@@ -139,6 +140,44 @@ def test_deliver_to_external_capture_shape() -> None:
     assert entry["args"] == {"integration_id": "demo_partner", "external": {"orderNumber": "S-1"}}
 
 
+def test_call_external_get_is_a_read_served_from_fixture() -> None:
+    client = fake_client(
+        reads={"call_external": {"/OM/m1/GetShipmentDetail": {"status": 200, "response": {"a": 1}}}}
+    )
+    got = client.call_external(
+        "sirva_ade_shipment", method="GET", path="/OM/m1/GetShipmentDetail", query={"x": 1}
+    )
+    assert got == {"status": 200, "response": {"a": 1}}
+    assert client.captured == []  # a read captures nothing
+
+
+def test_call_external_get_without_fixture_raises() -> None:
+    client = fake_client()
+    with pytest.raises(CaptureError, match="no fixture for read call_external"):
+        client.call_external("sirva_ade_shipment", method="GET", path="/x")
+
+
+def test_call_external_post_is_captured_not_performed() -> None:
+    client = fake_client()
+    result = client.call_external(
+        "sirva_ade_document", method="POST", path="/Imaging/m3/AddDocument", body={"f": 1}
+    )
+    assert result == {"status": None, "response": None, "ok": False, "dryRun": True}
+    entry = client.captured[0]
+    assert entry["capability"] == "CallExternal"
+    assert entry["args"] == {
+        "integration_id": "sirva_ade_document",
+        "method": "POST",
+        "path": "/Imaging/m3/AddDocument",
+    }
+
+
+def test_call_external_mutating_override_captures_a_get() -> None:
+    client = fake_client()
+    client.call_external("i", method="GET", path="/weird", mutating=True)
+    assert client.captured[0]["capability"] == "CallExternal"
+
+
 def test_record_side_effect() -> None:
     client = fake_client()
     client.record_side_effect("raw_post", {"url": "https://partner/x"})
@@ -210,7 +249,7 @@ def test_classification_covers_every_client_method() -> None:
         for name, member in inspect.getmembers(PegasusClient, callable)
         if not name.startswith("_") and name not in _NON_HTTP
     }
-    classified = set(_READS) | set(_MUTATIONS) | set(_IGNORED)
+    classified = set(_READS) | set(_MUTATIONS) | set(_IGNORED) | set(_HYBRID)
     missing = public - classified
     stale = classified - public
     assert not missing, f"PegasusClient methods not classified in testing harness: {missing}"

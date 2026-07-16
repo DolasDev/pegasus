@@ -22,7 +22,10 @@
 // platform a mapped external body to POST to the partner endpoint server-side
 // (the mutating counterpart to the open map-to-external transform), so the send
 // flows through the platform and is dry-run-interceptable rather than a raw
-// httpx call from the activity.
+// httpx call from the activity. CallExternal is its read/arbitrary-method
+// sibling: a workflow names a method + path and the platform performs the call
+// server-side, minting/caching an OAuth2 client-credentials token so the
+// workflow never handles client_id/client_secret.
 permit (
   principal in Pegasus::Group::"workflow_runtime",
   action in [
@@ -38,6 +41,7 @@ permit (
     Pegasus::Action::"EmitTenantEvent",
     Pegasus::Action::"SendSms",
     Pegasus::Action::"DeliverToExternal",
+    Pegasus::Action::"CallExternal",
     Pegasus::Action::"ReadWorkflowSecret",
     Pegasus::Action::"ReadWorkflowConfig",
     Pegasus::Action::"ReadIntegrationProjection",

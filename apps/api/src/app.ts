@@ -78,6 +78,7 @@ import {
 import { integrationValidationHandler } from './handlers/integration-validation/validate'
 import { integrationConfigHandler } from './handlers/integration-validation/config'
 import { integrationDeliveryHandler } from './handlers/integration-delivery'
+import { integrationCallHandler } from './handlers/integration-call'
 import { meHandler } from './handlers/me'
 import { deviceTokensHandler } from './handlers/device-tokens'
 import { notificationsHandler } from './handlers/notifications'
@@ -281,6 +282,11 @@ m2mV1.route('/', integrationConfigHandler)
 // performed server-side so it is dry-run-interceptable. Dual-auth + RBAC
 // (DeliverToExternal). See src/handlers/integration-delivery.ts.
 m2mV1.route('/', integrationDeliveryHandler)
+// Outbound authenticated caller: a workflow names a method + path and the
+// platform performs the call server-side, minting/caching an OAuth2
+// client-credentials token for the integration. Dual-auth + RBAC (CallExternal).
+// See src/handlers/integration-call.ts.
+m2mV1.route('/', integrationCallHandler)
 
 app.route('/api/v1', m2mV1)
 
