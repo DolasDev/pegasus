@@ -27,11 +27,19 @@ import { RuleSetSchema } from './rules/types'
 import { analyzeRuleSet } from './static-check'
 import { applyMapping } from './transform/engine'
 import { validateWithDefinition } from './validate'
+import type { TransformSpec } from './transform/engine'
 import type { IntegrationDefinition, ValidationInput } from './types'
 
 /** A single static-analysis problem, tagged with the stage that produced it. */
 export interface GateProblem {
-  stage: 'mapping-format' | 'mapping' | 'rules-format' | 'rules'
+  stage:
+    | 'mapping-format'
+    | 'mapping'
+    | 'rules-format'
+    | 'rules'
+    | 'external-mapping-format'
+    | 'external-mapping'
+    | 'external-shape'
   where: string
   problem: string
 }
@@ -57,6 +65,13 @@ export interface GateCandidate {
   mapping: unknown
   rules: unknown
   corpus: GateCorpusCase[]
+  /**
+   * Partner external output shape as a JSON Schema (0020). Required when
+   * `externalMapping` is present; absent ⇒ identity (external == canonical).
+   */
+  externalShape?: Record<string, unknown>
+  /** Canonical → external projection (0020). Absent ⇒ identity. */
+  externalMapping?: unknown
 }
 
 export interface GateReport {
@@ -112,6 +127,37 @@ export function runGatePipeline(base: IntegrationDefinition, candidate: GateCand
     }
   }
 
+  // 4b. External projection (0020): canonical → partner external body. When the
+  // candidate declares an `externalMapping`, static-check its targets against the
+  // declared `externalShape` and its sources against the canonical roots — the
+  // same rigor the native→canonical mapping gets, reusing analyzeMapping.
+  let externalTransform: TransformSpec | undefined
+  if (candidate.externalMapping !== undefined) {
+    const extParsed = MappingTemplateSchema.safeParse(candidate.externalMapping)
+    if (!extParsed.success) {
+      for (const p of issuePaths(extParsed.error)) {
+        problems.push({ stage: 'external-mapping-format', where: p.where, problem: p.problem })
+      }
+    } else if (!candidate.externalShape) {
+      problems.push({
+        stage: 'external-shape',
+        where: '(root)',
+        problem: 'externalMapping requires an externalShape to check its targets against',
+      })
+    } else {
+      const canonicalRoots = Object.keys(
+        (canonicalJsonSchema as { properties?: Record<string, unknown> }).properties ?? {},
+      )
+      for (const p of analyzeMapping(extParsed.data, {
+        canonicalJsonSchema: candidate.externalShape,
+        inputFieldRoots: canonicalRoots,
+      })) {
+        problems.push({ stage: 'external-mapping', where: p.where, problem: p.problem })
+      }
+      externalTransform = compileMapping(extParsed.data)
+    }
+  }
+
   // A malformed mapping or rule set can't be compiled or run — stop before the
   // corpus stages (their results would be meaningless).
   if (!mapParsed.success || !rulesParsed.success) {
@@ -152,6 +198,17 @@ export function runGatePipeline(base: IntegrationDefinition, candidate: GateCand
           .join('; '),
       })
       continue
+    }
+
+    // External round-trip (0020): the canonical must project into the external
+    // body without error. A throw here is an authoring bug in externalMapping.
+    if (externalTransform) {
+      try {
+        applyMapping(externalTransform, parsed.data)
+      } catch (err) {
+        failures.push({ name: c.name, reason: 'structural', detail: `external: ${String(err)}` })
+        continue
+      }
     }
 
     const result = validateWithDefinition(candidateDef, c.input)

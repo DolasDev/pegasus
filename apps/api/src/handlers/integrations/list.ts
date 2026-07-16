@@ -46,7 +46,9 @@ integrationsHandler.get('/', requirePermission(Actions.ReadIntegrationConfig), a
     const active = await repo.findActiveForScope(id, tenantId)
     data.push({
       id: def.id,
-      name: def.displayName,
+      // The active config's displayName (0019) wins over the built-in label, so a
+      // published "Weichert" reads as Weichert rather than its floor/id.
+      name: active?.displayName ?? def.displayName,
       description: def.description,
       published: active !== null,
       version: active?.version ?? null,

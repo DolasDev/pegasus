@@ -33,7 +33,11 @@ import {
   createIntegrationConfigRepository,
   type IntegrationConfigRow,
 } from '../../repositories/integration-config.repository'
-import { getBuiltInDefinition, refreshRegistryOverlay } from '../../integration-validation/registry'
+import {
+  getGateBase,
+  getFloor,
+  refreshRegistryOverlay,
+} from '../../integration-validation/registry'
 import { runGatePipeline, type GateCorpusCase } from '../../integration-validation/gate-pipeline'
 import { isIntegrationConfigPublishEnabled } from '../../lib/integration-config-feature'
 import type { Prisma } from '@prisma/client'
@@ -49,13 +53,20 @@ const CorpusCaseSchema = z.object({
   expected: z.object({ valid: z.boolean(), ruleIds: z.array(z.string()) }),
 })
 
-// mapping + rules are intentionally `unknown` — the gate pipeline validates them
-// against the published schemas and reports problems; the HTTP layer doesn't
-// pre-judge their shape.
+// mapping + rules + externalMapping are intentionally `unknown` — the gate
+// pipeline validates them against the published schemas and reports problems;
+// the HTTP layer doesn't pre-judge their shape. `floor` (0020) selects the type
+// floor (required for a NEW partner id with no built-in), `displayName` (0019) is
+// the human-facing label, and `externalShape`/`externalMapping` (0020) carry the
+// partner's own external output shape + projection.
 const ConfigBody = z.object({
   mapping: z.unknown(),
   rules: z.unknown(),
   corpus: z.array(CorpusCaseSchema),
+  floor: z.string().min(1).optional(),
+  displayName: z.string().min(1).max(200).optional(),
+  externalShape: z.record(z.string(), z.unknown()).optional(),
+  externalMapping: z.unknown().optional(),
 })
 
 export const integrationConfigHandler = new Hono<AppEnv>()
@@ -73,6 +84,10 @@ function toFull(row: IntegrationConfigRow) {
     mapping: row.mapping,
     rules: row.rules,
     corpus: row.corpus,
+    floor: row.floor,
+    displayName: row.displayName,
+    externalShape: row.externalShape,
+    externalMapping: row.externalMapping,
     publishedBy: row.publishedBy,
     forkedFromConfigId: row.forkedFromConfigId,
     forkedFromVersion: row.forkedFromVersion,
@@ -88,6 +103,8 @@ function toSummary(row: IntegrationConfigRow) {
     version: row.version,
     visibility: row.visibility,
     status: row.status,
+    floor: row.floor,
+    displayName: row.displayName,
     publishedBy: row.publishedBy,
     forkedFromConfigId: row.forkedFromConfigId,
     forkedFromVersion: row.forkedFromVersion,
@@ -110,11 +127,25 @@ integrationConfigHandler.post(
   }),
   (c) => {
     const integrationId = c.req.param('integrationId') ?? ''
-    const base = getBuiltInDefinition(integrationId)
+    const { mapping, rules, corpus, floor, externalShape, externalMapping } = c.req.valid('json')
+    if (floor && !getFloor(floor))
+      return c.json({ error: `Unknown floor "${floor}"`, code: 'NOT_FOUND' }, 404)
+    const base = getGateBase(integrationId, floor)
     if (!base)
-      return c.json({ error: `Unknown integration "${integrationId}"`, code: 'NOT_FOUND' }, 404)
-    const { mapping, rules, corpus } = c.req.valid('json')
-    const report = runGatePipeline(base, { mapping, rules, corpus: corpus as GateCorpusCase[] })
+      return c.json(
+        {
+          error: `Unknown integration "${integrationId}" — pass "floor" to target a type floor`,
+          code: 'NOT_FOUND',
+        },
+        404,
+      )
+    const report = runGatePipeline(base, {
+      mapping,
+      rules,
+      corpus: corpus as GateCorpusCase[],
+      ...(externalShape ? { externalShape } : {}),
+      ...(externalMapping !== undefined ? { externalMapping } : {}),
+    })
     return c.json({ data: report })
   },
 )
@@ -142,12 +173,27 @@ integrationConfigHandler.post(
     if (!userId)
       throw new DomainError('Authenticated user required to publish config', 'UNAUTHENTICATED')
 
-    const base = getBuiltInDefinition(integrationId)
+    const { mapping, rules, corpus, floor, displayName, externalShape, externalMapping } =
+      c.req.valid('json')
+    if (floor && !getFloor(floor))
+      return c.json({ error: `Unknown floor "${floor}"`, code: 'NOT_FOUND' }, 404)
+    const base = getGateBase(integrationId, floor)
     if (!base)
-      return c.json({ error: `Unknown integration "${integrationId}"`, code: 'NOT_FOUND' }, 404)
+      return c.json(
+        {
+          error: `Unknown integration "${integrationId}" — pass "floor" to target a type floor`,
+          code: 'NOT_FOUND',
+        },
+        404,
+      )
 
-    const { mapping, rules, corpus } = c.req.valid('json')
-    const report = runGatePipeline(base, { mapping, rules, corpus: corpus as GateCorpusCase[] })
+    const report = runGatePipeline(base, {
+      mapping,
+      rules,
+      corpus: corpus as GateCorpusCase[],
+      ...(externalShape ? { externalShape } : {}),
+      ...(externalMapping !== undefined ? { externalMapping } : {}),
+    })
     if (!report.ok) {
       return c.json(
         { error: 'Config failed the validation gate', code: 'GATE_FAILED', report },
@@ -173,6 +219,14 @@ integrationConfigHandler.post(
       corpus: corpus as unknown as Prisma.InputJsonValue,
       gateReport: report as unknown as Prisma.InputJsonValue,
       publishedBy: userId,
+      // Persist the floor/overlay fields (0019 + 0020). `floor` falls back to the
+      // gate base's floor so a built-in-id publish records its type explicitly.
+      floor: floor ?? base.floor,
+      ...(displayName ? { displayName } : {}),
+      ...(externalShape ? { externalShape: externalShape as Prisma.InputJsonValue } : {}),
+      ...(externalMapping !== undefined
+        ? { externalMapping: externalMapping as Prisma.InputJsonValue }
+        : {}),
     })
 
     await refreshRegistryOverlay(basePrisma)
@@ -238,14 +292,14 @@ integrationConfigHandler.post(
       return c.json({ error: 'Invalid version', code: 'VALIDATION_ERROR' }, 400)
     }
 
-    const base = getBuiltInDefinition(integrationId)
-    if (!base)
-      return c.json({ error: `Unknown integration "${integrationId}"`, code: 'NOT_FOUND' }, 404)
-
     const db = c.get('db')
     const repo = createIntegrationConfigRepository(db)
     const source = await repo.findVersion(integrationId, tenantId, version)
     if (!source) return c.json({ error: `Version ${version} not found`, code: 'NOT_FOUND' }, 404)
+
+    const base = getGateBase(integrationId, source.floor ?? undefined)
+    if (!base)
+      return c.json({ error: `Unknown integration "${integrationId}"`, code: 'NOT_FOUND' }, 404)
 
     // Re-run the gate: a config that passed when published may no longer pass if
     // the canonical contract has since changed in code. Rolling back must not
@@ -254,6 +308,10 @@ integrationConfigHandler.post(
       mapping: source.mapping,
       rules: source.rules,
       corpus: source.corpus as unknown as GateCorpusCase[],
+      ...(source.externalShape != null && typeof source.externalShape === 'object'
+        ? { externalShape: source.externalShape as Record<string, unknown> }
+        : {}),
+      ...(source.externalMapping != null ? { externalMapping: source.externalMapping } : {}),
     })
     if (!report.ok) {
       return c.json(
@@ -278,6 +336,14 @@ integrationConfigHandler.post(
       corpus: source.corpus as Prisma.InputJsonValue,
       gateReport: report as unknown as Prisma.InputJsonValue,
       publishedBy: userId,
+      ...(source.floor ? { floor: source.floor } : {}),
+      ...(source.displayName ? { displayName: source.displayName } : {}),
+      ...(source.externalShape != null
+        ? { externalShape: source.externalShape as Prisma.InputJsonValue }
+        : {}),
+      ...(source.externalMapping != null
+        ? { externalMapping: source.externalMapping as Prisma.InputJsonValue }
+        : {}),
     })
 
     await refreshRegistryOverlay(basePrisma)
@@ -312,10 +378,6 @@ integrationConfigHandler.post(
     const userId = c.get('userId')
     if (!userId)
       throw new DomainError('Authenticated user required to publish config', 'UNAUTHENTICATED')
-
-    const base = getBuiltInDefinition(integrationId)
-    if (!base)
-      return c.json({ error: `Unknown integration "${integrationId}"`, code: 'NOT_FOUND' }, 404)
 
     const db = c.get('db')
     const tenant = await db.tenant.findUnique({
@@ -358,13 +420,21 @@ integrationConfigHandler.post(
       )
     }
 
-    // Re-run the gate against the CURRENT built-in: a GLOBAL config that passed
-    // when published may no longer pass if the canonical contract has since
-    // changed in code. Forking must not resurrect a now-invalid config.
+    const base = getGateBase(integrationId, source.floor ?? undefined)
+    if (!base)
+      return c.json({ error: `Unknown integration "${integrationId}"`, code: 'NOT_FOUND' }, 404)
+
+    // Re-run the gate against the CURRENT floor: a GLOBAL config that passed when
+    // published may no longer pass if the canonical contract has since changed in
+    // code. Forking must not resurrect a now-invalid config.
     const report = runGatePipeline(base, {
       mapping: source.mapping,
       rules: source.rules,
       corpus: source.corpus as unknown as GateCorpusCase[],
+      ...(source.externalShape != null && typeof source.externalShape === 'object'
+        ? { externalShape: source.externalShape as Record<string, unknown> }
+        : {}),
+      ...(source.externalMapping != null ? { externalMapping: source.externalMapping } : {}),
     })
     if (!report.ok) {
       return c.json(
@@ -384,6 +454,14 @@ integrationConfigHandler.post(
       publishedBy: userId,
       forkedFromConfigId: source.id,
       forkedFromVersion: source.version,
+      ...(source.floor ? { floor: source.floor } : {}),
+      ...(source.displayName ? { displayName: source.displayName } : {}),
+      ...(source.externalShape != null
+        ? { externalShape: source.externalShape as Prisma.InputJsonValue }
+        : {}),
+      ...(source.externalMapping != null
+        ? { externalMapping: source.externalMapping as Prisma.InputJsonValue }
+        : {}),
     })
 
     await refreshRegistryOverlay(basePrisma)

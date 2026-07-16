@@ -30,6 +30,7 @@ const {
   mockRepo,
   mockTenantFindUnique,
   mockGetBuiltInDefinition,
+  mockGetFloor,
   mockRefreshRegistryOverlay,
   mockRunGatePipeline,
 } = vi.hoisted(() => ({
@@ -43,6 +44,7 @@ const {
   },
   mockTenantFindUnique: vi.fn(),
   mockGetBuiltInDefinition: vi.fn(),
+  mockGetFloor: vi.fn(),
   mockRefreshRegistryOverlay: vi.fn(async () => {}),
   mockRunGatePipeline: vi.fn(),
 }))
@@ -52,7 +54,10 @@ vi.mock('../../repositories/integration-config.repository', () => ({
 }))
 
 vi.mock('../../integration-validation/registry', () => ({
-  getBuiltInDefinition: mockGetBuiltInDefinition,
+  // getGateBase resolves the gate ground-truth (built-in id or floor); the tests
+  // drive it via mockGetBuiltInDefinition (renamed intent, same control point).
+  getGateBase: mockGetBuiltInDefinition,
+  getFloor: mockGetFloor,
   refreshRegistryOverlay: mockRefreshRegistryOverlay,
 }))
 
@@ -126,9 +131,9 @@ function buildApp(
 
 const now = new Date('2026-06-19T12:00:00Z')
 
-// A sentinel "base definition" — getBuiltInDefinition is mocked, so the
-// handler only checks truthiness; the real shape is exercised by the gate tests.
-const baseDef = { id: 'demo_partner' } as unknown
+// A sentinel "base definition" — getGateBase is mocked, so the handler only
+// checks truthiness + reads `.floor`; the real shape is exercised by the gate tests.
+const baseDef = { id: 'demo_partner', floor: 'shipment_status_update' } as unknown
 
 const okReport = { ok: true, problems: [], corpus: { total: 1, passed: 1, failures: [] } }
 const failReport = {
@@ -184,6 +189,7 @@ describe('integration-config handler', () => {
     process.env['INTEGRATION_CONFIG_PUBLISH_ENABLED'] = 'true'
     _clearAuthzCache()
     mockGetBuiltInDefinition.mockReturnValue(baseDef)
+    mockGetFloor.mockReturnValue({ floor: 'shipment_status_update' })
     mockRunGatePipeline.mockReturnValue(okReport)
     mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
     mockRepo.publish.mockResolvedValue(configRow)
@@ -345,6 +351,49 @@ describe('integration-config handler', () => {
       expect(mockRepo.publish).toHaveBeenCalledWith(
         expect.objectContaining({ visibility: 'GLOBAL' }),
       )
+    })
+
+    it('threads floor/displayName/externalShape/externalMapping into the publish (0019 + 0020)', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: true })
+      mockRepo.publish.mockResolvedValue({
+        ...configRow,
+        floor: 'shipment_status_update',
+        displayName: 'Weichert',
+      })
+      const externalShape = { type: 'object', properties: { ref: { type: 'string' } } }
+      const externalMapping = { ref: 'serviceOrderNumber' }
+      const res = await buildApp().request(
+        PATH,
+        post({
+          ...validBody,
+          floor: 'shipment_status_update',
+          displayName: 'Weichert',
+          externalShape,
+          externalMapping,
+        }),
+      )
+      expect(res.status).toBe(201)
+      const body = (await json(res)).data as JsonBody
+      expect(body['displayName']).toBe('Weichert')
+      expect(body['floor']).toBe('shipment_status_update')
+      expect(mockRepo.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          floor: 'shipment_status_update',
+          displayName: 'Weichert',
+          externalShape,
+          externalMapping,
+        }),
+      )
+    })
+
+    it('404s a new-partner publish whose floor is unknown', async () => {
+      mockGetFloor.mockReturnValueOnce(undefined)
+      const res = await buildApp().request(
+        '/integrations/new_partner/config',
+        post({ ...validBody, floor: 'no_such_floor' }),
+      )
+      expect(res.status).toBe(404)
+      expect(mockRepo.publish).not.toHaveBeenCalled()
     })
 
     it('rejects publish when the tenant row is not found (DomainError NOT_FOUND)', async () => {
