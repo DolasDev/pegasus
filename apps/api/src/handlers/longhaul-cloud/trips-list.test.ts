@@ -134,6 +134,51 @@ describe('GET longhaul/trips (cloud-direct LIST)', () => {
     expect(values).toContain(5000)
   })
 
+  // Zone filters read `zone` off the origin/destination v_longhaul_states joins
+  // rather than a column on TripMaster, and the same aliases (`os`/`ds`) also
+  // feed the origin_zone_code / destination_zone_code SELECT columns. A wrong
+  // alias returns nothing rather than erroring, so pin both sides.
+  describe('zone filters', () => {
+    async function sqlForFilters(filters: Record<string, unknown>) {
+      findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+      executeSqlMock.mockResolvedValue({ recordset: [], rowsAffected: [] })
+      const query = JSON.stringify({ searchTerm: '', filters, sortBy: {} })
+      await buildApp().request(`/onprem/longhaul/trips?filters=${encodeURIComponent(query)}`)
+      return executeSqlMock.mock.calls[0] as [
+        string,
+        string,
+        { params: Array<{ name: string; value: unknown }> },
+      ]
+    }
+
+    it('filters origin_zone on the origin-state join, as a bound param', async () => {
+      const [, sql, opts] = await sqlForFilters({
+        origin_zone: [{ label: 'Northeast', value: 'NE' }],
+      })
+
+      expect(sql).toContain('os.zone IN (@')
+      expect(sql).not.toContain("'NE'")
+      expect(opts.params.map((p) => p.value)).toContain('NE')
+    })
+
+    it('filters destination_zone on the destination-state join, not the origin one', async () => {
+      const [, sql, opts] = await sqlForFilters({
+        destination_zone: [{ label: 'Southeast', value: 'SE' }],
+      })
+
+      expect(sql).toContain('ds.zone IN (@')
+      expect(sql).not.toContain('os.zone IN (')
+      expect(opts.params.map((p) => p.value)).toContain('SE')
+    })
+
+    it('adds no zone predicate when the selection is empty', async () => {
+      const [, sql] = await sqlForFilters({ origin_zone: [], destination_zone: [] })
+
+      expect(sql).not.toContain('os.zone IN')
+      expect(sql).not.toContain('ds.zone IN')
+    })
+  })
+
   it('regression: applies filters.id from the nested wire shape (Phase 3.1)', async () => {
     // This is the test that would have caught the original bug: the UI sends
     // `?filters={"filters":{"id":"42"}}`, NOT `?filters={"id":"42"}`. The
