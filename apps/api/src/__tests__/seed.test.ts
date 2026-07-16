@@ -6,9 +6,6 @@
  *
  * The seed is intentionally run against the shared local dev database — it is
  * idempotent and only touches the dev tenant + deterministic `seed-*` ids.
- *
- * NOTE: this file is excluded from the build program (tsconfig.build.json)
- * because it imports prisma/seed.ts, which lives outside the build rootDir.
  */
 import { describe, it, expect, afterAll } from 'vitest'
 import { db } from '../db'
