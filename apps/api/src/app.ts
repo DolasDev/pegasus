@@ -84,7 +84,10 @@ import { deviceTokensHandler } from './handlers/device-tokens'
 import { notificationsHandler } from './handlers/notifications'
 import { smsHandler } from './handlers/sms'
 import { workflowSecretsConfigsHandler } from './handlers/workflow-secrets-configs'
-import { integrationProjectionsHandler } from './handlers/integration-projections'
+import {
+  integrationProjectionsHandler,
+  integrationProjectionReadHandler,
+} from './handlers/integration-projections'
 import { ringcentralOauthHandler } from './handlers/integrations/ringcentral-oauth'
 import { ringcentralWebhookHandler } from './handlers/integrations/ringcentral-webhook'
 import { integrationsHandler } from './handlers/integrations/list'
@@ -262,6 +265,12 @@ m2mV1.route('/workflow-secrets-configs', workflowSecretsConfigsHandler)
 // reads back as `prior`. Runtime-only surface; dual-auth applied inside the
 // handler. See handlers/integration-projections.ts.
 m2mV1.route('/integration-projections', integrationProjectionsHandler)
+// Read-model surface for the entities workflows land in projections
+// (sdk-feedback/0026): GET /integrations/:id/projections/:entityType[/:key] with
+// filter + paging, for the tenant web app / API keys. Dual-auth + RBAC
+// (ReadIntegrationProjection, now granted to viewer). Mounted at root so it lives
+// under /integrations. See handlers/integration-projections.ts.
+m2mV1.route('/', integrationProjectionReadHandler)
 // Worker-only internal endpoints — gated by the shared-secret header
 // X-Workflow-Broker-Secret (see handlers/workflow-internal.ts). No tenant
 // middleware involvement; tenant scope is derived from the WorkflowExecution

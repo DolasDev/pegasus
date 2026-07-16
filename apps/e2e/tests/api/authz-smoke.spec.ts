@@ -66,6 +66,9 @@ const VIEWER_PERMISSIONS = [
   // viewer reads published integration mapping/ruleset configs (20-viewer.cedar)
   // so the read-only Integrations viewer is open to non-admin business users.
   'integration_config:read',
+  // viewer reads the projections a workflow landed (the read-model surface,
+  // sdk-feedback/0026) — a non-admin business-user read (20-viewer.cedar).
+  'integration_projection:read',
   // viewer can rate a shipment and browse published tariff versions
   // (20-viewer.cedar) — not an admin-only action, unlike ImportTariff.
   'tariff:rate',

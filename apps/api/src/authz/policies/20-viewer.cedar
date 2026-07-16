@@ -22,6 +22,7 @@ permit (
     Pegasus::Action::"ReadCustomer",
     Pegasus::Action::"ReadWorkflow",
     Pegasus::Action::"ReadIntegrationConfig",
+    Pegasus::Action::"ReadIntegrationProjection",
     Pegasus::Action::"RateShipment",
     Pegasus::Action::"ReadTariff"
   ],
