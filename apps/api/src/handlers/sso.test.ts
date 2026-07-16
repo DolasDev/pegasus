@@ -21,6 +21,7 @@ import {
   CreateIdentityProviderCommand,
   UpdateIdentityProviderCommand,
   DeleteIdentityProviderCommand,
+  UpdateUserPoolClientCommand,
 } from '@aws-sdk/client-cognito-identity-provider'
 
 // ---------------------------------------------------------------------------
@@ -44,6 +45,15 @@ vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
   }),
   DeleteIdentityProviderCommand: vi.fn().mockImplementation(function (input: unknown) {
     return input
+  }),
+  // Tagged so the shared mockSend can tell an app-client read from every other call.
+  // The IdP commands above stay untagged — existing assertions read their constructor
+  // args, which this does not touch.
+  DescribeUserPoolClientCommand: vi.fn().mockImplementation(function (input: unknown) {
+    return { __cmd: 'DescribeUserPoolClient', ...(input as object) }
+  }),
+  UpdateUserPoolClientCommand: vi.fn().mockImplementation(function (input: unknown) {
+    return { __cmd: 'UpdateUserPoolClient', ...(input as object) }
   }),
 }))
 
@@ -154,6 +164,26 @@ const validSamlCreateBody = {
   metadataUrl: 'https://okta.example.com/metadata',
 }
 
+/** What DescribeUserPoolClient returns for the tenant app client. */
+const mockAppClient = {
+  UserPoolId: 'us-east-1_TESTPOOL',
+  ClientId: 'tenant-client-id',
+  ClientName: 'tenant-app-client',
+  SupportedIdentityProviders: ['COGNITO'],
+  CallbackURLs: ['https://pegasus.example.dev/login/callback'],
+  ExplicitAuthFlows: ['ALLOW_REFRESH_TOKEN_AUTH', 'ALLOW_USER_PASSWORD_AUTH'],
+  AllowedOAuthFlows: ['code'],
+  AllowedOAuthScopes: ['email', 'openid', 'profile'],
+}
+
+/** The SupportedIdentityProviders list from the Nth app-client write. */
+function appClientWrites(): string[][] {
+  return mockSend.mock.calls
+    .map((c) => c[0] as { __cmd?: string; SupportedIdentityProviders?: string[] })
+    .filter((c) => c.__cmd === 'UpdateUserPoolClient')
+    .map((c) => c.SupportedIdentityProviders ?? [])
+}
+
 const mockSamlProviderRow = {
   ...mockProviderRow,
   id: 'provider-2',
@@ -171,8 +201,15 @@ const mockSamlProviderRow = {
 describe('SSO handler', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // Default: Cognito calls succeed unless overridden in a specific test
-    mockSend.mockResolvedValue({})
+    // Default: Cognito calls succeed unless overridden in a specific test. The app
+    // client must describe as a real client — sso.ts read-modify-writes it, so an
+    // empty response would (correctly) blow up the provider create path.
+    mockSend.mockImplementation(async (cmd: { __cmd?: string }) => {
+      if (cmd?.__cmd === 'DescribeUserPoolClient') {
+        return { UserPoolClient: { ...mockAppClient } }
+      }
+      return {}
+    })
     // Default: tenant exists with cognitoAuthEnabled true
     mockDb.tenant.findUnique.mockResolvedValue({ cognitoAuthEnabled: true })
   })
@@ -193,6 +230,58 @@ describe('SSO handler', () => {
   // ── GET /providers ────────────────────────────────────────────────────────
 
   describe('GET /providers', () => {
+    // CFN owns SupportedIdentityProviders (CDK's addClient renders it), so a CDK edit
+    // to the tenant app client silently resets the list and kills SSO for everyone.
+    // Reconciling on read means the next settings-page load repairs it.
+    it('repairs app client drift left behind by a CloudFormation reset', async () => {
+      mockDb.tenantSsoProvider.findMany.mockResolvedValue([mockProviderRow])
+
+      const res = await buildApp().request('/providers')
+
+      expect(res.status).toBe(200)
+      expect(appClientWrites()).toEqual([['COGNITO', 'GoogleOIDC']])
+    })
+
+    it('does not touch the app client when nothing has drifted', async () => {
+      mockDb.tenantSsoProvider.findMany.mockResolvedValue([mockProviderRow])
+      mockSend.mockImplementation(async (cmd: { __cmd?: string }) => {
+        if (cmd?.__cmd === 'DescribeUserPoolClient') {
+          return {
+            UserPoolClient: {
+              ...mockAppClient,
+              SupportedIdentityProviders: ['COGNITO', 'GoogleOIDC'],
+            },
+          }
+        }
+        return {}
+      })
+
+      await buildApp().request('/providers')
+
+      expect(appClientWrites()).toEqual([])
+    })
+
+    it('does not re-enable a disabled provider on the app client', async () => {
+      mockDb.tenantSsoProvider.findMany.mockResolvedValue([
+        { ...mockProviderRow, isEnabled: false },
+      ])
+
+      await buildApp().request('/providers')
+
+      expect(appClientWrites()).toEqual([])
+    })
+
+    // A failed repair must never take the settings page down with it.
+    it('still returns 200 when the app client reconcile fails', async () => {
+      mockDb.tenantSsoProvider.findMany.mockResolvedValue([mockProviderRow])
+      mockSend.mockRejectedValue(new Error('AccessDeniedException'))
+
+      const res = await buildApp().request('/providers')
+
+      expect(res.status).toBe(200)
+      expect((await json(res)).data).toBeDefined()
+    })
+
     it('returns 200 with an empty array when no providers exist', async () => {
       mockDb.tenantSsoProvider.findMany.mockResolvedValue([])
 
@@ -343,6 +432,54 @@ describe('SSO handler', () => {
       expect(mockDb.tenantSsoProvider.delete).toHaveBeenCalledWith({
         where: { id: 'provider-1' },
       })
+    })
+
+    // Registering the IdP is not enough — without the app client permitting it, Cognito
+    // redirects to the IdP, takes the code back, then 400s at /oauth2/idpresponse with
+    // no error_description. This is the regression guard for that.
+    it('permits the new provider on the tenant app client', async () => {
+      mockDb.tenantSsoProvider.create.mockResolvedValue(mockProviderRow)
+
+      const res = await buildApp().request('/providers', post(validCreateBody))
+
+      expect(res.status).toBe(201)
+      expect(appClientWrites()).toEqual([['COGNITO', 'GoogleOIDC']])
+    })
+
+    it('preserves the app client config when permitting the provider', async () => {
+      mockDb.tenantSsoProvider.create.mockResolvedValue(mockProviderRow)
+
+      await buildApp().request('/providers', post(validCreateBody))
+
+      // UpdateUserPoolClient replaces the whole config — dropping these would break
+      // password login for every tenant, not just SSO.
+      expect(UpdateUserPoolClientCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          CallbackURLs: mockAppClient.CallbackURLs,
+          ExplicitAuthFlows: mockAppClient.ExplicitAuthFlows,
+          AllowedOAuthScopes: mockAppClient.AllowedOAuthScopes,
+        }),
+      )
+    })
+
+    it('rolls back the IdP and the DB row when the app client update fails', async () => {
+      mockDb.tenantSsoProvider.create.mockResolvedValue(mockProviderRow)
+      mockDb.tenantSsoProvider.delete.mockResolvedValue(undefined)
+      mockSend.mockImplementation(async (cmd: { __cmd?: string }) => {
+        if (cmd?.__cmd === 'DescribeUserPoolClient') return { UserPoolClient: { ...mockAppClient } }
+        if (cmd?.__cmd === 'UpdateUserPoolClient') throw new Error('AccessDeniedException')
+        return {}
+      })
+
+      const res = await buildApp().request('/providers', post(validCreateBody))
+
+      expect(res.status).toBe(500)
+      // Leaving the IdP behind would strand exactly the registered-but-unusable
+      // provider this endpoint exists to prevent.
+      expect(DeleteIdentityProviderCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ ProviderName: 'GoogleOIDC' }),
+      )
+      expect(mockDb.tenantSsoProvider.delete).toHaveBeenCalledWith({ where: { id: 'provider-1' } })
     })
 
     it('returns 409 CONFLICT when Prisma throws a P2002 unique constraint violation', async () => {
@@ -600,6 +737,33 @@ describe('SSO handler', () => {
 
     // ── DELETE — Cognito cleanup ─────────────────────────────────────────────
 
+    it('revokes the provider on the app client before deleting the IdP', async () => {
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockDeleteRow)
+      mockDb.tenantSsoProvider.delete.mockResolvedValue(undefined)
+      mockSend.mockImplementation(async (cmd: { __cmd?: string }) => {
+        if (cmd?.__cmd === 'DescribeUserPoolClient') {
+          return {
+            UserPoolClient: {
+              ...mockAppClient,
+              SupportedIdentityProviders: ['COGNITO', 'GoogleOIDC'],
+            },
+          }
+        }
+        return {}
+      })
+
+      const res = await buildApp().request('/providers/provider-1', { method: 'DELETE' })
+
+      expect(res.status).toBe(204)
+      expect(appClientWrites()).toEqual([['COGNITO']])
+
+      // Order matters: Cognito validates SupportedIdentityProviders on every client
+      // update, so deleting the IdP first would leave the client naming a provider that
+      // no longer exists — poisoning every later update to it.
+      const order = mockSend.mock.calls.map((c) => (c[0] as { __cmd?: string }).__cmd ?? 'idp')
+      expect(order.indexOf('UpdateUserPoolClient')).toBeLessThan(order.lastIndexOf('idp'))
+    })
+
     it('calls DeleteIdentityProviderCommand with the provider cognitoProviderName', async () => {
       mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockDeleteRow)
       mockDb.tenantSsoProvider.delete.mockResolvedValue(undefined)
@@ -615,22 +779,58 @@ describe('SSO handler', () => {
       )
     })
 
+    // The exception describes the *IdP* being gone, so only the IdP call rejects —
+    // the app-client calls still work, and revoking a stale name is precisely the
+    // repair this state wants.
     it('treats ResourceNotFoundException from Cognito as idempotent and still deletes DB record', async () => {
       mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockDeleteRow)
       mockDb.tenantSsoProvider.delete.mockResolvedValue(undefined)
       const err = Object.assign(new Error('not found'), { name: 'ResourceNotFoundException' })
-      mockSend.mockRejectedValue(err)
+      mockSend.mockImplementation(async (cmd: { __cmd?: string }) => {
+        if (cmd?.__cmd === 'DescribeUserPoolClient') return { UserPoolClient: { ...mockAppClient } }
+        if (cmd?.__cmd === 'UpdateUserPoolClient') return {}
+        throw err
+      })
 
       const res = await buildApp().request('/providers/provider-1', { method: 'DELETE' })
       expect(res.status).toBe(204)
       expect(mockDb.tenantSsoProvider.delete).toHaveBeenCalledWith({ where: { id: 'provider-1' } })
     })
 
+    // Revoking on the client is NOT idempotent-on-failure: if we deleted the IdP anyway,
+    // the client would be left naming a provider that no longer exists, and Cognito
+    // validates that list on every update — poisoning every later write to the client.
+    it('returns 500 and does not delete the IdP when the app client revoke fails', async () => {
+      mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockDeleteRow)
+      mockSend.mockImplementation(async (cmd: { __cmd?: string }) => {
+        if (cmd?.__cmd === 'DescribeUserPoolClient') {
+          return {
+            UserPoolClient: {
+              ...mockAppClient,
+              SupportedIdentityProviders: ['COGNITO', 'GoogleOIDC'],
+            },
+          }
+        }
+        if (cmd?.__cmd === 'UpdateUserPoolClient') throw new Error('AccessDeniedException')
+        return {}
+      })
+
+      const res = await buildApp().request('/providers/provider-1', { method: 'DELETE' })
+
+      expect(res.status).toBe(500)
+      expect(DeleteIdentityProviderCommand).not.toHaveBeenCalled()
+      expect(mockDb.tenantSsoProvider.delete).not.toHaveBeenCalled()
+    })
+
     it('treats NotAuthorizedException from Cognito as idempotent and still deletes DB record', async () => {
       mockDb.tenantSsoProvider.findUnique.mockResolvedValue(mockDeleteRow)
       mockDb.tenantSsoProvider.delete.mockResolvedValue(undefined)
       const err = Object.assign(new Error('not authorized'), { name: 'NotAuthorizedException' })
-      mockSend.mockRejectedValue(err)
+      mockSend.mockImplementation(async (cmd: { __cmd?: string }) => {
+        if (cmd?.__cmd === 'DescribeUserPoolClient') return { UserPoolClient: { ...mockAppClient } }
+        if (cmd?.__cmd === 'UpdateUserPoolClient') return {}
+        throw err
+      })
 
       const res = await buildApp().request('/providers/provider-1', { method: 'DELETE' })
       expect(res.status).toBe(204)

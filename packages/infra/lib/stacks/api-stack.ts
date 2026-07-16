@@ -860,19 +860,29 @@ export class ApiStack extends cdk.Stack {
             'cognito-idp:CreateIdentityProvider',
             'cognito-idp:UpdateIdentityProvider',
             'cognito-idp:DeleteIdentityProvider',
-            // The next three (DescribeUserPool, ListUserPoolClients,
-            // DescribeUserPoolClient) are required by AVP CreateIdentitySource
-            // when attaching a Cognito User Pool. AVP issues these calls
-            // against the user pool with the *caller's* credentials to
-            // validate that (a) the pool ARN exists, (b) the supplied
-            // clientIds are part of that pool, (c) each client's settings
-            // are compatible with token-based authorization. The API Lambda
-            // never calls them directly, but its role still needs them or
-            // POST /api/admin/tenants fails with AccessDeniedException
-            // *after* CreatePolicyStore + PutSchema + CreatePolicy succeed —
-            // distinguishable only by reading CloudWatch.
+            // UpdateUserPoolClient: handlers/sso.ts adds a newly registered IdP to
+            // the tenant app client's SupportedIdentityProviders (and removes it on
+            // delete). Registering the IdP alone is not enough — without the client
+            // permitting it, Cognito redirects to the IdP, accepts the returned code,
+            // then fails the callback with a bare 400 and no error_description. IaC
+            // cannot pre-declare that list instead: Cognito rejects a provider name
+            // whose provider does not exist yet, and tenants create providers at
+            // runtime with names of their own choosing.
+            'cognito-idp:UpdateUserPoolClient',
+            // DescribeUserPool + ListUserPoolClients are required by AVP
+            // CreateIdentitySource when attaching a Cognito User Pool. AVP issues
+            // these calls against the user pool with the *caller's* credentials to
+            // validate that (a) the pool ARN exists, (b) the supplied clientIds are
+            // part of that pool, (c) each client's settings are compatible with
+            // token-based authorization. The API Lambda never calls those two
+            // directly, but its role still needs them or POST /api/admin/tenants
+            // fails with AccessDeniedException *after* CreatePolicyStore + PutSchema
+            // + CreatePolicy succeed — distinguishable only by reading CloudWatch.
             'cognito-idp:DescribeUserPool',
             'cognito-idp:ListUserPoolClients',
+            // DescribeUserPoolClient serves both AVP (as above) and sso.ts, which
+            // reads the client's full config before every write — UpdateUserPoolClient
+            // replaces the whole config, so anything not echoed back is reset.
             'cognito-idp:DescribeUserPoolClient',
           ],
           resources: [
