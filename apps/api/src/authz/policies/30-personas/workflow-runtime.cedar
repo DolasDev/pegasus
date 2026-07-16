@@ -45,7 +45,9 @@ permit (
     Pegasus::Action::"ReadWorkflowSecret",
     Pegasus::Action::"ReadWorkflowConfig",
     Pegasus::Action::"ReadIntegrationProjection",
-    Pegasus::Action::"WriteIntegrationProjection"
+    Pegasus::Action::"WriteIntegrationProjection",
+    Pegasus::Action::"ReadBlob",
+    Pegasus::Action::"WriteBlob"
   ],
   resource
 );

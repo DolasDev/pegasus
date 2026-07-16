@@ -141,6 +141,13 @@
           "type": "Record",
           "attributes": {}
         }
+      },
+      "Blob": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
       }
     },
     "actions": {
@@ -320,6 +327,12 @@
       },
       "ReadIntegrationProjection": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["IntegrationProjection"] }
+      },
+      "ReadBlob": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Blob"] }
+      },
+      "WriteBlob": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Blob"] }
       },
       "WriteIntegrationProjection": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["IntegrationProjection"] }

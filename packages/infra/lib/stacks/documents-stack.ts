@@ -52,6 +52,19 @@ export class DocumentsStack extends cdk.Stack {
             },
           ],
         },
+        {
+          // Workflow blobs (sdk-feedback/0025) are transient staging bytes — a
+          // document about to be uploaded to a partner, or a fetched image on its
+          // way into a projection. Expire them so the bucket is not an unbounded
+          // dumping ground; this is also the TTL the blob capability advertises.
+          id: 'expire-workflow-blobs',
+          enabled: true,
+          prefix: 'blobs/',
+          expiration: cdk.Duration.days(7),
+          // Bucket is versioned — reap the noncurrent versions too so an
+          // overwrite/delete doesn't leave the bytes lingering past the TTL.
+          noncurrentVersionExpiration: cdk.Duration.days(1),
+        },
       ],
     })
 

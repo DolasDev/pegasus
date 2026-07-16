@@ -252,6 +252,41 @@ dryRun}`.
 mutation and is **captured, not performed**. Pass `mutating=True`/`False` to
 override the method-based default when a partner overloads a verb.
 
+### Transferring documents (blobs)
+
+A workflow can stage a file to upload or land a file it fetched without holding
+the bytes in workflow memory — `put_blob`/`get_blob` stream **runner↔S3 directly**
+(presigned URLs), so they aren't bounded by the API payload limit. Declare
+`required_actions = ["WriteBlob"]` (put) / `["ReadBlob"]` (get).
+
+```python
+@activity.defn
+async def file_document(reg: str) -> dict:
+    client = PegasusClient.from_runtime()
+
+    # Retrieve: land a partner GET response straight into a blob (not memory).
+    got = client.call_external(
+        "sirva_ade_document", method="GET", path="/IMAGING/m2/GetImage",
+        query={"Id": reg}, response_to_blob=True,
+    )
+    blob_id = got["blobId"]
+
+    # ...or stage your own bytes:
+    handle = client.put_blob(pdf_bytes, content_type="application/pdf")  # {blobId, size}
+
+    # Upload: reference a staged blob; the platform inlines its bytes server-side.
+    client.call_external(
+        "sirva_ade_document", method="POST", path="/Imaging/m3/AddDocument",
+        body={"ReferenceNumber": reg, "FileData": {"$blob": handle["blobId"]}},
+    )
+    return {"blobId": blob_id}
+```
+
+`put_blob` is a mutation (captured under `--dry-run`); `get_blob`/`get_blob_url`
+are reads (live). Blobs are tenant-scoped and expire via a TTL. The
+`$blob`/`response_to_blob` paths are a **small-file cut** (≤ ~5 MB through the
+API); large-file streaming is a follow-up.
+
 ### Secrets & configuration
 
 A workflow reads two kinds of per-tenant key/value data at runtime — **secrets**

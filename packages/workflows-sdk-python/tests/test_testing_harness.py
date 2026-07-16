@@ -279,6 +279,7 @@ _MUTATION_CALLS = [
     lambda c: c.set_config("K", "v"),
     lambda c: c.delete_config("K"),
     lambda c: c.deliver_to_external("demo_partner", {"orderNumber": "S-1"}),
+    lambda c: c.put_blob(b"bytes", "application/pdf"),
 ]
 
 

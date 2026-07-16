@@ -79,6 +79,7 @@ import { integrationValidationHandler } from './handlers/integration-validation/
 import { integrationConfigHandler } from './handlers/integration-validation/config'
 import { integrationDeliveryHandler } from './handlers/integration-delivery'
 import { integrationCallHandler } from './handlers/integration-call'
+import { blobsHandler } from './handlers/blobs'
 import { meHandler } from './handlers/me'
 import { deviceTokensHandler } from './handlers/device-tokens'
 import { notificationsHandler } from './handlers/notifications'
@@ -287,6 +288,10 @@ m2mV1.route('/', integrationDeliveryHandler)
 // client-credentials token for the integration. Dual-auth + RBAC (CallExternal).
 // See src/handlers/integration-call.ts.
 m2mV1.route('/', integrationCallHandler)
+// Workflow blob storage: presigned S3 upload/download so a workflow can stage or
+// land binary files (e.g. ADE documents) without proxying bytes through the
+// Lambda. Dual-auth + RBAC (Read/WriteBlob). See handlers/blobs.ts.
+m2mV1.route('/', blobsHandler)
 
 app.route('/api/v1', m2mV1)
 

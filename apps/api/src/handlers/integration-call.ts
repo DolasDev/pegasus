@@ -54,6 +54,69 @@ import {
   outboundTokenCacheKey,
   OutboundOAuthError,
 } from '../services/outbound-oauth'
+import { buildBlobS3Key, newBlobId, getObjectBuffer, putObjectBuffer } from '../lib/documents-s3'
+
+// Small-file ceiling for the blob<->Lambda paths (sdk-feedback/0025, phased):
+// resolving a `{"$blob": id}` upload inline as base64, or landing a partner GET
+// response into a blob, both round-trip the bytes THROUGH this Lambda, so they
+// are bounded well under its payload limit. True 200 MB/2 GB streaming is the
+// follow-up spec; put_blob/get_blob themselves (presigned, runner↔S3) are not
+// bounded by this.
+const INLINE_BLOB_MAX_BYTES = 5 * 1024 * 1024
+
+/** A `{"$blob": "<id>"}` reference a workflow puts in a request body. */
+function blobRefId(value: unknown): string | null {
+  if (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 1 &&
+    typeof (value as Record<string, unknown>)['$blob'] === 'string'
+  ) {
+    return (value as Record<string, string>)['$blob'] ?? null
+  }
+  return null
+}
+
+/**
+ * Recursively replace every `{"$blob": id}` in a request body with the base64 of
+ * that blob's bytes, fetched server-side (so the workflow never holds the file).
+ * Enforces the inline size ceiling. Throws a tagged error the caller maps to a
+ * 4xx/5xx.
+ */
+async function resolveBlobRefs(value: unknown, tenantId: string): Promise<unknown> {
+  const id = blobRefId(value)
+  if (id !== null) {
+    const bytes = await getObjectBuffer(buildBlobS3Key(tenantId, id))
+    if (bytes.length > INLINE_BLOB_MAX_BYTES) {
+      throw new BlobError(
+        `blob ${id} is ${bytes.length} bytes — over the ${INLINE_BLOB_MAX_BYTES}-byte inline cap`,
+        413,
+      )
+    }
+    return bytes.toString('base64')
+  }
+  if (Array.isArray(value)) {
+    return Promise.all(value.map((v) => resolveBlobRefs(v, tenantId)))
+  }
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) out[k] = await resolveBlobRefs(v, tenantId)
+    return out
+  }
+  return value
+}
+
+/** Tagged error for blob resolution — maps to an HTTP status in the handler. */
+class BlobError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message)
+    this.name = 'BlobError'
+  }
+}
 
 const CallBody = z.object({
   /** HTTP method to perform against the partner. */
@@ -71,6 +134,12 @@ const CallBody = z.object({
    * call. Recorded for observability.
    */
   mutating: z.boolean().optional(),
+  /**
+   * Land the partner response body into a new blob instead of returning it
+   * inline (sdk-feedback/0025) — e.g. an ADE `GetImage` base64 payload. Returns
+   * `{blobId, ...}`; the response bytes never sit in the workflow. Small-file cut.
+   */
+  responseToBlob: z.boolean().optional(),
   /** WorkflowSecretConfig group the config/secret entries live in. */
   group: z.string().min(1).max(128).default('global'),
   /** Config/secret key-name overrides (defaults suit a single-integration group). */
@@ -201,15 +270,28 @@ integrationCallHandler.post(
       return c.json({ error: `Unsupported AUTH_MODE '${authMode}'`, code: 'VALIDATION_ERROR' }, 400)
     }
 
+    // ── resolve any {"$blob": id} refs in the body to inline base64 ──────────
+    let outboundBody = input.body
+    if (input.body !== undefined) {
+      try {
+        outboundBody = await resolveBlobRefs(input.body, tenantId)
+      } catch (err) {
+        if (err instanceof BlobError)
+          return c.json({ error: err.message, code: 'BLOB_ERROR' }, err.status as 413)
+        // A missing/expired blob surfaces from S3 GetObject.
+        return c.json({ error: 'referenced blob not found or unreadable', code: 'NOT_FOUND' }, 404)
+      }
+    }
+
     // ── perform the call (with one OAuth re-mint on 401) ─────────────────────
-    const hasBody = input.body !== undefined && input.method !== 'GET'
+    const hasBody = outboundBody !== undefined && input.method !== 'GET'
     if (hasBody) headers['Content-Type'] = 'application/json'
 
     const doRequest = (): Promise<Response> =>
       fetch(url, {
         method: input.method,
         headers,
-        ...(hasBody ? { body: JSON.stringify(input.body) } : {}),
+        ...(hasBody ? { body: JSON.stringify(outboundBody) } : {}),
       })
 
     let response: Response
@@ -225,13 +307,45 @@ integrationCallHandler.post(
       return c.json({ error: message, code: 'UPSTREAM_ERROR' }, 502)
     }
 
+    const contentType = response.headers.get('content-type') ?? undefined
+
+    // ── response_to_blob: land the body into a blob instead of returning it ──
+    if (input.responseToBlob) {
+      const buf = Buffer.from(await response.arrayBuffer())
+      if (buf.length > INLINE_BLOB_MAX_BYTES) {
+        return c.json(
+          {
+            error: `response is ${buf.length} bytes — over the ${INLINE_BLOB_MAX_BYTES}-byte inline cap`,
+            code: 'BLOB_ERROR',
+          },
+          413,
+        )
+      }
+      const blobId = newBlobId()
+      await putObjectBuffer(
+        buildBlobS3Key(tenantId, blobId),
+        buf,
+        contentType ?? 'application/octet-stream',
+      )
+      return c.json({
+        data: {
+          status: response.status,
+          ok: response.ok,
+          blobId,
+          size: buf.length,
+          headers: { 'content-type': contentType },
+          dryRun: false,
+        },
+      })
+    }
+
     const text = await response.text()
     return c.json({
       data: {
         status: response.status,
         ok: response.ok,
         response: parseResponseBody(text),
-        headers: { 'content-type': response.headers.get('content-type') ?? undefined },
+        headers: { 'content-type': contentType },
         dryRun: false,
       },
     })

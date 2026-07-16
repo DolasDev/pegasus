@@ -3,6 +3,28 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.18.0
+
+### Added
+
+- **Workflow blob transfer** (sdk-feedback/0025) — a workflow can stage binary
+  files to upload and land binary files it fetches, without holding the bytes in
+  workflow memory:
+  - `PegasusClient.put_blob(bytes, content_type)` → `{blobId, size}` and
+    `get_blob(blob_id)` → `bytes` / `get_blob_url(blob_id)`. Bytes stream
+    **runner↔S3 directly via presigned URLs**, so they are not bounded by the API
+    Lambda payload limit (up to the platform blob cap; over-cap → 413). Requires
+    `WriteBlob` (put) / `ReadBlob` (get) — new Cedar actions granted to
+    `workflow_runtime`. `put_blob` is a mutation (captured under `--dry-run`);
+    `get_blob`/`get_blob_url` are reads (live).
+  - `call_external(..., response_to_blob=True)` lands the partner response into a
+    blob (returns `{blobId, ...}`), and a request `body` may reference a staged
+    blob as `FileData: {"$blob": blob_id}`, resolved to the blob's bytes
+    server-side. **Small-file cut** — these two paths still round-trip the bytes
+    through the API Lambda (≤ ~5 MB); true 200 MB/2 GB streaming is a follow-up.
+  - Blobs are tenant-scoped (a tenant can only address its own) and expire via an
+    S3 lifecycle TTL.
+
 ## 0.17.0
 
 ### Added
@@ -51,7 +73,7 @@ follows [Semantic Versioning](https://semver.org/).
     fixture and captures a mutation via the shared dry-run path.
   - Requires `required_actions = ["CallExternal"]` (a new Cedar action granted to
     the `workflow_runtime` persona). Returns `{status, ok, response, headers,
-    dryRun}`; auto-documented in the `pegasus://reference/api` MCP resource.
+dryRun}`; auto-documented in the `pegasus://reference/api` MCP resource.
 
 ## 0.15.0
 
