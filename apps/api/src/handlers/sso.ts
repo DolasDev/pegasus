@@ -37,12 +37,22 @@ import {
 } from '@aws-sdk/client-cognito-identity-provider'
 import type { AppEnv } from '../types'
 import { logger } from '../lib/logger'
+import {
+  addProviderToAppClient,
+  removeProviderFromAppClient,
+  reconcileAppClientProvidersSafely,
+} from '../lib/cognito-app-client'
 
 // ---------------------------------------------------------------------------
 // Cognito client singleton — reused across warm invocations
 // ---------------------------------------------------------------------------
 const cognito = new CognitoIdentityProviderClient({})
 const USER_POOL_ID = process.env['COGNITO_USER_POOL_ID'] ?? ''
+
+// Registering an IdP in the pool does not make it usable — the app client must also
+// list it in SupportedIdentityProviders, or Cognito redirects to the IdP, accepts the
+// returned code, and then fails the callback with a bare 400 and no error_description.
+const TENANT_CLIENT_ID = process.env['COGNITO_TENANT_CLIENT_ID'] ?? ''
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -248,6 +258,21 @@ ssoHandler.get('/providers', async (c) => {
         select: { cognitoAuthEnabled: true },
       }),
     ])
+
+    // Repair drift on read. CDK's addClient renders SupportedIdentityProviders into the
+    // CloudFormation template (defaulting to ['COGNITO']) even though cognito-stack.ts
+    // never sets it, so CFN owns the field. CFN only rewrites resources whose template
+    // properties change — runtime additions survive ordinary deploys — but the day
+    // anyone edits the tenant app client in CDK, CFN resets the list and every tenant's
+    // SSO breaks at once, silently. Reconciling here means the next visit to the SSO
+    // settings page repairs it. Fail-open: never break the page over a failed repair.
+    await reconcileAppClientProvidersSafely(
+      cognito,
+      USER_POOL_ID,
+      TENANT_CLIENT_ID,
+      providers.filter((p) => p.isEnabled).map((p) => p.cognitoProviderName),
+    )
+
     return c.json({
       data: {
         providers: providers.map(toResponse),
@@ -372,6 +397,45 @@ ssoHandler.post(
           409,
         )
       }
+      return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+    }
+
+    // Step 3 — Permit the provider on the tenant app client. Registering the IdP is
+    // not enough: Cognito will still redirect to it and accept the returned code, then
+    // fail the callback with a bare 400 and no error_description. Must run after
+    // CreateIdentityProvider — Cognito rejects a name whose provider does not exist yet.
+    try {
+      await addProviderToAppClient(
+        cognito,
+        USER_POOL_ID,
+        TENANT_CLIENT_ID,
+        body.cognitoProviderName,
+      )
+    } catch (clientErr) {
+      logger.error('POST /providers: failed to permit provider on app client, rolling back', {
+        error: String(clientErr),
+        providerId: provider.id,
+        clientId: TENANT_CLIENT_ID,
+      })
+
+      // Roll back the IdP too, not just the DB row — otherwise we leave behind exactly
+      // the registered-but-unusable provider this whole endpoint exists to prevent.
+      try {
+        await cognito.send(
+          new DeleteIdentityProviderCommand({
+            UserPoolId: USER_POOL_ID,
+            ProviderName: body.cognitoProviderName,
+          }),
+        )
+      } catch (cleanupErr) {
+        // Surface it, but never let a failed cleanup mask the original failure.
+        logger.error('POST /providers: rollback of Cognito IdP failed — manual cleanup needed', {
+          error: String(cleanupErr),
+          providerName: body.cognitoProviderName,
+        })
+      }
+
+      await db.tenantSsoProvider.delete({ where: { id: provider.id } })
       return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
     }
 
@@ -596,7 +660,27 @@ ssoHandler.delete('/providers/:id', async (c) => {
   }
   if (!existing) return c.json({ error: 'SSO provider not found', code: 'NOT_FOUND' }, 404)
 
-  // Step 2 — Remove from Cognito
+  // Step 2 — Revoke on the app client BEFORE deleting the IdP. Order matters: Cognito
+  // validates SupportedIdentityProviders on every client update, so a list naming a
+  // provider that no longer exists poisons the client — the next update, for any other
+  // provider, fails with "The provider X does not exist for User Pool ...".
+  try {
+    await removeProviderFromAppClient(
+      cognito,
+      USER_POOL_ID,
+      TENANT_CLIENT_ID,
+      existing.cognitoProviderName,
+    )
+  } catch (clientErr) {
+    logger.error('DELETE /providers/:id: failed to revoke provider on app client', {
+      error: String(clientErr),
+      providerId: id,
+      clientId: TENANT_CLIENT_ID,
+    })
+    return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+  }
+
+  // Step 3 — Remove from Cognito
   try {
     await cognito.send(
       new DeleteIdentityProviderCommand({

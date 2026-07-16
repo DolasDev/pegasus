@@ -440,9 +440,17 @@ const COGNITO_INTROSPECTION_ACTIONS = [
   'cognito-idp:CreateIdentityProvider',
   'cognito-idp:UpdateIdentityProvider',
   'cognito-idp:DeleteIdentityProvider',
+  // handlers/sso.ts adds each newly registered IdP to the tenant app client's
+  // SupportedIdentityProviders (and removes it on delete). Without this grant the
+  // provider registers but no client may use it, and login dies at
+  // /oauth2/idpresponse with a bare 400 and no error_description — the exact
+  // undiagnosable failure that cost a prod debugging session on 2026-07-16.
+  'cognito-idp:UpdateUserPoolClient',
   // Required indirectly by AVP CreateIdentitySource.
   'cognito-idp:DescribeUserPool',
   'cognito-idp:ListUserPoolClients',
+  // DescribeUserPoolClient serves AVP and sso.ts both — the latter reads the client's
+  // full config before every write, since UpdateUserPoolClient replaces it wholesale.
   'cognito-idp:DescribeUserPoolClient',
 ] as const
 
