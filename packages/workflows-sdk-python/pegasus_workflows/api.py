@@ -126,6 +126,33 @@ def _raise_for_status(response: httpx.Response) -> None:
     )
 
 
+def _integration_config_body(
+    mapping: Any,
+    rules: Any,
+    corpus: Any,
+    floor: str | None,
+    display_name: str | None,
+    external_shape: Any | None,
+    external_mapping: Any | None,
+) -> dict[str, Any]:
+    """Assemble the integration-config request body, omitting unset overlay fields.
+
+    ``mapping``/``rules``/``corpus`` are the editable surface; the rest are the
+    floor/overlay fields (sdk-feedback 0019 + 0020) sent only when provided, so an
+    older-style publish is byte-identical.
+    """
+    body: dict[str, Any] = {"mapping": mapping, "rules": rules, "corpus": corpus}
+    if floor is not None:
+        body["floor"] = floor
+    if display_name is not None:
+        body["displayName"] = display_name
+    if external_shape is not None:
+        body["externalShape"] = external_shape
+    if external_mapping is not None:
+        body["externalMapping"] = external_mapping
+    return body
+
+
 class PegasusClient:
     """Authenticated client for the Pegasus public API.
 
@@ -877,6 +904,10 @@ class PegasusClient:
         mapping: Any,
         rules: Any,
         corpus: Any,
+        floor: str | None = None,
+        display_name: str | None = None,
+        external_shape: Any | None = None,
+        external_mapping: Any | None = None,
     ) -> dict[str, Any]:
         """Dry-run the publish gate for a candidate config. No write.
 
@@ -889,17 +920,27 @@ class PegasusClient:
             mapping: The mapping document (editable surface).
             rules: The rule set (editable surface).
             corpus: The golden corpus — a list of ``GateCorpusCase`` objects.
+            floor: The type floor this overlay targets (sdk-feedback 0020).
+                Required for a NEW partner id with no built-in; omit to inherit a
+                built-in id's floor.
+            display_name: Human-facing label decoupled from the id (0019).
+            external_shape: The partner external output shape, a JSON Schema (0020).
+                Omit for an identity external body (external == canonical).
+            external_mapping: The canonical → external projection (0020). Omit for
+                identity.
 
         Returns:
             The ``GateReport``: ``{ok, problems, corpus: {total, passed, failures}}``.
 
         Raises:
-            PegasusApiError: On 404 (unknown integration) or any other non-2xx.
+            PegasusApiError: On 404 (unknown integration/floor) or any other non-2xx.
         """
         with self._client() as client:
             response = client.post(
                 f"/api/v1/integrations/{integration_id}/config/validate",
-                json={"mapping": mapping, "rules": rules, "corpus": corpus},
+                json=_integration_config_body(
+                    mapping, rules, corpus, floor, display_name, external_shape, external_mapping
+                ),
             )
         _raise_for_status(response)
         return response.json()["data"]
@@ -911,6 +952,10 @@ class PegasusClient:
         mapping: Any,
         rules: Any,
         corpus: Any,
+        floor: str | None = None,
+        display_name: str | None = None,
+        external_shape: Any | None = None,
+        external_mapping: Any | None = None,
     ) -> dict[str, Any]:
         """Gate then publish a config, creating a new version.
 
@@ -924,10 +969,19 @@ class PegasusClient:
             mapping: The mapping document.
             rules: The rule set.
             corpus: The golden corpus the gate runs against.
+            floor: The type floor this overlay targets (sdk-feedback 0020).
+                Required for a NEW partner id with no built-in; omit to inherit a
+                built-in id's floor.
+            display_name: Human-facing label decoupled from the id (0019).
+            external_shape: The partner external output shape, a JSON Schema (0020).
+                Omit for an identity external body (external == canonical).
+            external_mapping: The canonical → external projection (0020). Omit for
+                identity.
 
         Returns:
             The created config row: ``{id, integrationId, version, visibility,
-            status, mapping, rules, corpus, publishedBy, createdAt}``.
+            status, mapping, rules, corpus, floor, displayName, externalShape,
+            externalMapping, publishedBy, createdAt}``.
 
         Raises:
             PegasusApiError: On 403 (feature disabled), 404, 422 (gate failed —
@@ -944,7 +998,9 @@ class PegasusClient:
         with self._client() as client:
             response = client.post(
                 f"/api/v1/integrations/{integration_id}/config",
-                json={"mapping": mapping, "rules": rules, "corpus": corpus},
+                json=_integration_config_body(
+                    mapping, rules, corpus, floor, display_name, external_shape, external_mapping
+                ),
             )
         _raise_for_status(response)
         return response.json()["data"]
