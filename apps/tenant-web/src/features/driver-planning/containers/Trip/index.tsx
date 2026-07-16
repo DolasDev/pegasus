@@ -182,7 +182,7 @@ function TripInternal() {
                 <span>
                   <b>Trip</b> {`${'#' + trip.id} ${trip.trip_title}`}
                 </span>
-                <span>
+                <span data-target="trip-driver">
                   <b>Driver</b> {`${trip.driver ? trip.driver.driver_name : 'Unassigned'}`}
                 </span>
                 <span>

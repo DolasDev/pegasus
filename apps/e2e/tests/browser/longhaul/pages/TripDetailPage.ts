@@ -22,6 +22,10 @@ export class TripDetailPage {
   }
 
   // -- header / navigation --------------------------------------------------
+  /** Header "Driver <name>" — renders "Unassigned" when the trip has no driver. */
+  get driverField(): Locator {
+    return this.page.locator('[data-target="trip-driver"]')
+  }
   get backToTripsButton(): Locator {
     return this.page.locator('[data-target="trip-back-to-trips"]')
   }

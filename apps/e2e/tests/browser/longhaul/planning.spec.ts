@@ -1,5 +1,6 @@
 import { test, expect, gateOnOnpremHealth } from './_shared'
 import { PlanningPage } from './pages/PlanningPage'
+import { TripDetailPage } from './pages/TripDetailPage'
 
 // ---------------------------------------------------------------------------
 // /driver-planning/planning — the core legacy trip-building workflow:
@@ -8,8 +9,7 @@ import { PlanningPage } from './pages/PlanningPage'
 //
 // Selectors target the `data-target` hooks added to the ported components.
 // Write flows that hit the on-prem MSSQL DB are tagged @qa-mutating (disposable
-// in QA, re-seed before a full run) and stay `test.fixme`'d until the QA-app
-// walkthrough confirms the full save round-trip.
+// in QA, re-seed before a full run) and run against the QA tenant.
 // ---------------------------------------------------------------------------
 
 test.describe('Planning tab', () => {
@@ -215,7 +215,12 @@ test.describe('Planning tab', () => {
       (await pp.driverTypeaheadOptions().count()) === 0,
       'no drivers loaded (on-prem /drivers empty or 503)',
     )
-    await pp.driverTypeaheadOptions().first().click()
+    // Remember who we picked — step 5 proves the assignment actually survived.
+    // ("None" is concat'd last in DriverTypeahead, so .first() is a real driver.)
+    const driverOption = pp.driverTypeaheadOptions().first()
+    const pickedDriver = (await driverOption.innerText()).trim()
+    expect(pickedDriver, 'picked a real driver, not the "None" option').not.toMatch(/^none$/i)
+    await driverOption.click()
 
     // 3. Save. The trip POSTs and the redux thunk on success triggers a
     // snackbar containing "saved" (matches the case-insensitive pattern below).
@@ -226,6 +231,19 @@ test.describe('Planning tab', () => {
     // 4. Click View Itinerary → the URL should be /driver-planning/trips/<id>.
     await pp.viewItineraryLink.click()
     await expect(page).toHaveURL(/\/driver-planning\/trips\/\d+/, { timeout: 15_000 })
+
+    // 5. The driver must have survived the round-trip. Steps 3-4 alone can't
+    // tell you that: the save-drops-the-driver bug (fixed in #437) wrote
+    // driver_id NULL while the snackbar still said "saved" and the redirect
+    // still happened — the itinerary just quietly read "Unassigned". This is
+    // the only assertion here that reads back what the DB actually stored.
+    const td = new TripDetailPage(page, qaWebUrl)
+    await expect(td.driverField).toBeVisible({ timeout: 15_000 })
+    await expect(td.driverField).not.toContainText(/unassigned/i)
+    // The header prints the raw `driver_name` while the typeahead start-cases
+    // it (and collapses -/_ to spaces), so compare on alphanumerics only.
+    const alnum = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '')
+    expect(alnum(await td.driverField.innerText())).toContain(alnum(pickedDriver))
   })
 
   // Removed per plans/todo/longhaul-qa-mutating-triage.md (Phase 7):

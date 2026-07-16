@@ -16,7 +16,7 @@ test.describe('Shipments tab', () => {
     await layout.openTab('Shipments')
     // Best-effort module-mount wait with one reload-retry. The on-prem
     // `/users/me` lookup AppGuard gates on can stretch past 15 s; one reload
-    // dodges it before any test asserts. Always best-effort — a `test.fixme`'d
+    // dodges it before any test asserts. Always best-effort — a self-skipping
     // test below shouldn't hard-fail in beforeEach on a slow on-prem moment.
     const sp = new ShipmentsPage(page)
     try {

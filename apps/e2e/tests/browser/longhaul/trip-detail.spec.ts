@@ -9,9 +9,11 @@ import { TripsPage } from './pages/TripsPage'
 // /driver-planning/trips/:tripId — the legacy Trip detail / itinerary view
 // (ActivityGantt + Notes + status changes + activity-date edits + ShipmentDetail).
 //
-// Smoke + read-only interactions run normally. Write flows (notes, status, date
-// edits) are @qa-mutating and stay `test.fixme`'d until the QA-app walkthrough
-// confirms the popover/prompt behaviour against the live app.
+// Smoke + read-only interactions run normally. The write flows that used to sit
+// here are gone by design, not parked — see
+// plans/completed/longhaul-qa-mutating-triage.md: notes and activity-date edits
+// moved to qa-api round-trips in tests/api/longhaul-qa.spec.ts, and the status
+// transition was dropped as triple-covered (handler + qa-api + Trip/index.test.tsx).
 // ---------------------------------------------------------------------------
 
 /** Open the first trip from the Trips list and return its detail PO + id.
