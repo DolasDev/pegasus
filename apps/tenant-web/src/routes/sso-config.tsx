@@ -1,21 +1,28 @@
 // ---------------------------------------------------------------------------
 // SSO Configuration — /settings/sso
 //
-// Lets tenant administrators manage their SSO identity providers. Each provider
-// maps to a Cognito identity provider registered in the User Pool.
+// Lets tenant administrators manage their SSO identity providers. Adding a provider
+// here CREATES it in the Cognito User Pool (POST /api/v1/sso/providers →
+// CreateIdentityProvider); editing and deleting sync through to Cognito the same way.
+// Nothing needs to exist in the pool beforehand.
 //
-// Phase 3 scope:
+// Scope:
 //   - List configured providers (read from DB)
-//   - Add a new provider (OIDC or SAML)
-//   - Edit display name, metadataUrl, oidcClientId, or enable/disable
-//   - Delete a provider
+//   - Add a new provider (OIDC or SAML) — provisions it in Cognito
+//   - Edit display name, metadataUrl, oidcClientId, client secret, or enable/disable
+//   - Delete a provider — removes it from Cognito first
 //
-// Out of scope (Phase 4+):
-//   - Provisioning the IdP in Cognito automatically
+// The OIDC client secret is write-only: it is forwarded to Cognito and never stored
+// by Pegasus or returned by the API, so it cannot be pre-filled on edit. Because the
+// API holds no copy, changing an OIDC provider's discovery URL or client ID requires
+// re-entering the secret — otherwise the Cognito sync would drop it and break login.
+//
+// Out of scope:
 //   - Uploading SAML certificates
-//   - Rotating OIDC client secrets (stored in Secrets Manager, not here)
+//   - Configuring the SAML email claim name (hardcoded to `email` server-side)
 //
-// Phase 5 note: This page should be restricted to tenant_admin role via RBAC.
+// Phase 5 note: This page should be restricted to tenant_admin role via RBAC. The
+// perms.has('setting:update') gate below is UI-only — the API does not enforce it yet.
 // ---------------------------------------------------------------------------
 
 import { useState } from 'react'
@@ -109,8 +116,8 @@ export function IdpSetupHints({ type }: { type: 'OIDC' | 'SAML' }) {
           <CopyField label="Authorize scopes" value="openid email profile" />
           <p className="text-xs text-muted-foreground">
             Create an OAuth/OIDC client at your identity provider using this redirect URI, then
-            enter the issued client ID below. Your IdP must release the <code>email</code> claim —
-            it is mapped to the Cognito email attribute.
+            enter the issued client ID and secret below. Your IdP must release the{' '}
+            <code>email</code> claim — it is mapped to the Cognito email attribute.
           </p>
         </>
       ) : (
@@ -141,7 +148,7 @@ type ProviderFormProps = {
   onDone: () => void
 }
 
-function ProviderForm({ mode, onDone }: ProviderFormProps) {
+export function ProviderForm({ mode, onDone }: ProviderFormProps) {
   const isEdit = mode.kind === 'edit'
   const existing = isEdit ? mode.provider : null
 
@@ -152,8 +159,21 @@ function ProviderForm({ mode, onDone }: ProviderFormProps) {
   )
   const [metadataUrl, setMetadataUrl] = useState(existing?.metadataUrl ?? '')
   const [oidcClientId, setOidcClientId] = useState(existing?.oidcClientId ?? '')
+  // Write-only: the API never returns the secret, so there is nothing to pre-fill.
+  // Blank on edit means "leave the stored secret alone".
+  const [oidcClientSecret, setOidcClientSecret] = useState('')
   const [isEnabled, setIsEnabled] = useState(existing?.isEnabled ?? true)
   const [formError, setFormError] = useState<string | null>(null)
+
+  const isOidc = type === 'OIDC' || (isEdit && existing?.type === 'OIDC')
+
+  // Cognito stores these; changing either forces a re-sync, which needs the secret
+  // again because the API keeps no copy to re-send.
+  const oidcConfigChanged =
+    isEdit &&
+    existing !== null &&
+    (metadataUrl !== (existing.metadataUrl ?? '') || oidcClientId !== (existing.oidcClientId ?? ''))
+  const secretRequired = isOidc && (!isEdit || oidcConfigChanged)
 
   const createMutation = useCreateSsoProvider()
   const updateMutation = useUpdateSsoProvider()
@@ -173,6 +193,8 @@ function ProviderForm({ mode, onDone }: ProviderFormProps) {
           ...(oidcClientId !== (existing.oidcClientId ?? '')
             ? { oidcClientId: oidcClientId || undefined }
             : {}),
+          // Only send when actually re-entered — an empty field must never clear it.
+          ...(oidcClientSecret ? { oidcClientSecret } : {}),
           ...(isEnabled !== existing.isEnabled ? { isEnabled } : {}),
         }
         await updateMutation.mutateAsync({ id: existing.id, input })
@@ -183,6 +205,7 @@ function ProviderForm({ mode, onDone }: ProviderFormProps) {
           cognitoProviderName,
           ...(metadataUrl ? { metadataUrl } : {}),
           ...(type === 'OIDC' && oidcClientId ? { oidcClientId } : {}),
+          ...(type === 'OIDC' && oidcClientSecret ? { oidcClientSecret } : {}),
           isEnabled,
         }
         await createMutation.mutateAsync(input)
@@ -201,8 +224,8 @@ function ProviderForm({ mode, onDone }: ProviderFormProps) {
         <CardTitle>{isEdit ? 'Edit provider' : 'Add SSO provider'}</CardTitle>
         <CardDescription>
           {isEdit
-            ? 'Update the provider display name, metadata URL, or client ID. The Cognito provider name and protocol type cannot be changed — delete and recreate the provider to change them.'
-            : 'Register an identity provider that is already configured in your Cognito User Pool.'}
+            ? 'Update the provider display name, metadata URL, client ID, or client secret. The Cognito provider name and protocol type cannot be changed — delete and recreate the provider to change them.'
+            : 'Add an identity provider. It is created in your Cognito User Pool for you — nothing needs to exist there beforehand.'}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -269,8 +292,9 @@ function ProviderForm({ mode, onDone }: ProviderFormProps) {
                 pattern="[a-zA-Z0-9_\-]+"
               />
               <p className="text-xs text-muted-foreground">
-                Must exactly match the identity provider name registered in your Cognito User Pool.
-                Only letters, digits, hyphens, and underscores. Immutable after creation.
+                A name of your choosing — it is created in your Cognito User Pool and identifies
+                this provider in the login URL. Must be unique across the pool. Only letters,
+                digits, hyphens, and underscores. Immutable after creation.
               </p>
             </div>
           )}
@@ -296,18 +320,48 @@ function ProviderForm({ mode, onDone }: ProviderFormProps) {
           </div>
 
           {/* OIDC client ID */}
-          {(type === 'OIDC' || (isEdit && existing?.type === 'OIDC')) && (
+          {isOidc && (
             <div className="space-y-1.5">
-              <Label htmlFor="oidcClientId">OIDC client ID</Label>
+              <Label htmlFor="oidcClientId">
+                OIDC client ID
+                <span className="ml-1 text-destructive">*</span>
+              </Label>
               <Input
                 id="oidcClientId"
                 placeholder="e.g. 0oa1abc123..."
                 value={oidcClientId}
                 onChange={(e) => setOidcClientId(e.target.value)}
+                required={!isEdit}
               />
               <p className="text-xs text-muted-foreground">
-                The client ID issued by your IdP. The client secret is stored in Secrets Manager —
-                it is not managed here.
+                The client ID issued by your IdP for the OAuth/OIDC client you created above.
+              </p>
+            </div>
+          )}
+
+          {/* OIDC client secret — write-only; never returned by the API */}
+          {isOidc && (
+            <div className="space-y-1.5">
+              <Label htmlFor="oidcClientSecret">
+                OIDC client secret
+                {secretRequired && <span className="ml-1 text-destructive">*</span>}
+              </Label>
+              <Input
+                id="oidcClientSecret"
+                type="password"
+                autoComplete="new-password"
+                placeholder={isEdit ? 'Leave blank to keep the current secret' : ''}
+                value={oidcClientSecret}
+                onChange={(e) => setOidcClientSecret(e.target.value)}
+                required={secretRequired}
+              />
+              <p className="text-xs text-muted-foreground">
+                {secretRequired && isEdit
+                  ? 'Changing the discovery URL or client ID re-registers this provider with Cognito, so the secret must be entered again — it is stored only in Cognito and cannot be read back.'
+                  : isEdit
+                    ? 'Leave blank to keep the current secret. Enter a new value to rotate it.'
+                    : 'The client secret issued alongside the client ID (in Entra ID: App registration → Certificates & secrets). Sign-in fails without it.'}{' '}
+                Sent straight to Cognito — never stored by Pegasus and never shown again.
               </p>
             </div>
           )}

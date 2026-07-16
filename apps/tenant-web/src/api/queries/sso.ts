@@ -28,6 +28,8 @@ export type CreateSsoProviderInput = {
   cognitoProviderName: string
   metadataUrl?: string
   oidcClientId?: string
+  /** OIDC only, required by the API. Write-only — never returned by any response. */
+  oidcClientSecret?: string
   isEnabled?: boolean
 }
 
@@ -35,6 +37,12 @@ export type UpdateSsoProviderInput = {
   name?: string
   metadataUrl?: string
   oidcClientId?: string
+  /**
+   * OIDC only. Write-only — never returned by any response, so it cannot be
+   * pre-filled. Omit to leave the stored secret untouched; the API requires it
+   * whenever metadataUrl or oidcClientId change, since it holds no copy to re-send.
+   */
+  oidcClientSecret?: string
   isEnabled?: boolean
 }
 
