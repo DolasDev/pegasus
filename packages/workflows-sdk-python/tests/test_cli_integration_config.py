@@ -28,12 +28,14 @@ class _FakeClient:
     def __init__(self, base_url: str, token: str, **_: Any) -> None:
         _FakeClient.last = {"base_url": base_url, "token": token}
 
-    def validate_integration_config(self, integration_id, *, mapping, rules, corpus):
+    def validate_integration_config(self, integration_id, *, mapping, rules, corpus, **overlay):
         _FakeClient.last["validate"] = (integration_id, mapping, rules, corpus)
+        _FakeClient.last["validate_overlay"] = overlay
         return {"ok": True, "problems": [], "corpus": {"total": 1, "passed": 1, "failures": []}}
 
-    def publish_integration_config(self, integration_id, *, mapping, rules, corpus):
+    def publish_integration_config(self, integration_id, *, mapping, rules, corpus, **overlay):
         _FakeClient.last["publish"] = (integration_id, mapping, rules, corpus)
+        _FakeClient.last["publish_overlay"] = overlay
         return {"version": 1, "visibility": "GLOBAL"}
 
     def get_integration_config(self, integration_id):
@@ -44,6 +46,10 @@ class _FakeClient:
             "mapping": {"a": "x"},
             "rules": [{"id": "r"}],
             "corpus": [{"name": "c"}],
+            "floor": "shipment_status_update",
+            "displayName": "Weichert",
+            "externalShape": {"type": "object", "properties": {"ref": {"type": "string"}}},
+            "externalMapping": {"ref": "serviceOrderNumber"},
         }
 
     def list_integration_config_versions(self, integration_id):
@@ -90,7 +96,7 @@ def test_validate_exits_nonzero_when_gate_not_ok(
     monkeypatch.setattr(
         _FakeClient,
         "validate_integration_config",
-        lambda self, integration_id, *, mapping, rules, corpus: {
+        lambda self, integration_id, *, mapping, rules, corpus, **_: {
             "ok": False,
             "problems": [{"stage": "rules", "where": "r1", "problem": "unknown fact"}],
             "corpus": {"total": 1, "passed": 0, "failures": []},
@@ -137,7 +143,28 @@ def test_pull_writes_surface_files(tmp_path: Path) -> None:
     assert json.loads((tmp_path / ic.CORPUS_FILE).read_text()) == [{"name": "c"}]
 
 
-def test_pull_then_publish_round_trips(tmp_path: Path) -> None:
+def test_pull_writes_floor_overlay_files(tmp_path: Path) -> None:
+    result = runner.invoke(
+        ic.integration_config_app,
+        ["pull", "demo_partner", "--dir", str(tmp_path), "--token", _TOKEN],
+    )
+    assert result.exit_code == 0, result.output
+    # meta.json carries floor + displayName (0019 + 0020) …
+    assert json.loads((tmp_path / ic.META_FILE).read_text()) == {
+        "floor": "shipment_status_update",
+        "displayName": "Weichert",
+    }
+    # … and the partner external shape + mapping are preserved.
+    assert json.loads((tmp_path / ic.EXTERNAL_SHAPE_FILE).read_text()) == {
+        "type": "object",
+        "properties": {"ref": {"type": "string"}},
+    }
+    assert json.loads((tmp_path / ic.EXTERNAL_MAPPING_FILE).read_text()) == {
+        "ref": "serviceOrderNumber"
+    }
+
+
+def test_pull_then_publish_round_trips_overlay_fields(tmp_path: Path) -> None:
     runner.invoke(
         ic.integration_config_app,
         ["pull", "demo_partner", "--dir", str(tmp_path), "--token", _TOKEN],
@@ -147,16 +174,37 @@ def test_pull_then_publish_round_trips(tmp_path: Path) -> None:
         ["publish", "demo_partner", "--dir", str(tmp_path), "--token", _TOKEN],
     )
     assert result.exit_code == 0, result.output
-    iid, mapping, rules, corpus = _FakeClient.last["publish"]
-    assert mapping == {"a": "x"}
-    assert rules == [{"id": "r"}]
-    assert corpus == [{"name": "c"}]
+    _iid, mapping, rules, corpus = _FakeClient.last["publish"]
+    assert (mapping, rules, corpus) == ({"a": "x"}, [{"id": "r"}], [{"name": "c"}])
+    # The floor/overlay fields survive pull -> publish (no silent strip).
+    assert _FakeClient.last["publish_overlay"] == {
+        "floor": "shipment_status_update",
+        "display_name": "Weichert",
+        "external_shape": {"type": "object", "properties": {"ref": {"type": "string"}}},
+        "external_mapping": {"ref": "serviceOrderNumber"},
+    }
+
+
+def test_publish_without_overlay_files_sends_none(tmp_path: Path) -> None:
+    # A pre-0020 working directory (no meta/external files) publishes unchanged.
+    _write_surface(tmp_path)
+    result = runner.invoke(
+        ic.integration_config_app,
+        ["publish", "demo_partner", "--dir", str(tmp_path), "--token", _TOKEN],
+    )
+    assert result.exit_code == 0, result.output
+    assert _FakeClient.last["publish_overlay"] == {
+        "floor": None,
+        "display_name": None,
+        "external_shape": None,
+        "external_mapping": None,
+    }
 
 
 def test_publish_surfaces_gate_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_surface(tmp_path)
 
-    def _raise(self, integration_id, *, mapping, rules, corpus):
+    def _raise(self, integration_id, *, mapping, rules, corpus, **_):
         raise PegasusApiError(status_code=422, code="GATE_FAILED", message="failed")
 
     monkeypatch.setattr(_FakeClient, "publish_integration_config", _raise)

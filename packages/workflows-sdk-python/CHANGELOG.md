@@ -3,6 +3,27 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.15.0
+
+### Added
+
+- **Integration overlays carry a floor + displayName + external shape**
+  (sdk-feedback/0019 + 0020). The platform split an integration "floor" into a
+  reusable per-_type_ fact abstraction and a per-_partner_ overlay that owns the
+  external output shape. The `integration-config` surface now round-trips the new
+  overlay fields:
+  - `PegasusClient.validate_integration_config` / `publish_integration_config`
+    accept optional `floor`, `display_name`, `external_shape`, `external_mapping`
+    and send them (camelCase) only when provided — a plain publish is
+    byte-identical.
+  - The CLI reads an optional `meta.json` (`{floor, displayName}`),
+    `external-shape.json` and `external-mapping.json` alongside
+    `mapping.json`/`rules.json`/`corpus.json`, and `pull` now **writes** them, so a
+    `pull → edit → publish` cycle no longer silently strips the floor/displayName/
+    external shape. A NEW partner on an existing type is now authorable from a
+    working directory alone: set `floor` in `meta.json` and `publish` a new id.
+  - `map_to_external(id, data)` is unchanged — the server resolves `id → floor`.
+
 ## 0.14.0
 
 ### Fixed

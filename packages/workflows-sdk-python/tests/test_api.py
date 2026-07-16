@@ -471,6 +471,37 @@ def test_publish_integration_config_returns_row() -> None:
     assert captured["path"] == "/api/v1/integrations/demo_partner/config"
 
 
+def test_publish_integration_config_sends_floor_overlay_fields() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(201, json={"data": {"version": 1, "visibility": "GLOBAL"}})
+
+    client = _client_with(handler)
+    client.publish_integration_config(
+        "weichert",
+        mapping={"a": "x"},
+        rules=[],
+        corpus=[],
+        floor="shipment_status_update",
+        display_name="Weichert",
+        external_shape={"type": "object"},
+        external_mapping={"ref": "serviceOrderNumber"},
+    )
+
+    # camelCase on the wire; omitted keys stay omitted for a plain publish.
+    assert captured["body"] == {
+        "mapping": {"a": "x"},
+        "rules": [],
+        "corpus": [],
+        "floor": "shipment_status_update",
+        "displayName": "Weichert",
+        "externalShape": {"type": "object"},
+        "externalMapping": {"ref": "serviceOrderNumber"},
+    }
+
+
 def test_publish_integration_config_gate_failure_raises() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
