@@ -116,6 +116,40 @@ describe('computeTripSavePlan', () => {
     expect(plan.kind).toBe('plan')
   })
 
+  // The tenant-web trip planner sends the scalar `driver_id` alongside a `driver`
+  // object taken straight from the drivers list, which has `driver_id` and no
+  // `id`. Resolving only `driver.id` silently wrote NULL over the assignment.
+  describe('driver resolution', () => {
+    it('reads the scalar driver_id sent by the planner', () => {
+      const dto = baseDto({ driver: { driver_id: 3, driver_name: 'Pat' }, driver_id: 3 })
+      const plan = computeTripSavePlan(dto, null, [])
+      if (plan.kind !== 'plan') throw new Error('expected plan')
+      expect(plan.tripRow['driver_id']).toBe(3)
+      expect(plan.activitiesToAdd.every((a) => a['assigned_driver_id'] === 3)).toBe(true)
+    })
+
+    it('falls back to driver.driver_id when no scalar driver_id is sent', () => {
+      const dto = baseDto({ driver: { driver_id: 3, driver_name: 'Pat' } })
+      const plan = computeTripSavePlan(dto, null, [])
+      if (plan.kind !== 'plan') throw new Error('expected plan')
+      expect(plan.tripRow['driver_id']).toBe(3)
+    })
+
+    it('stores driver 0 ("None") as unassigned', () => {
+      const dto = baseDto({ driver: { driver_id: 0, driver_name: 'None' }, driver_id: null })
+      const plan = computeTripSavePlan(dto, null, [])
+      if (plan.kind !== 'plan') throw new Error('expected plan')
+      expect(plan.tripRow['driver_id']).toBeNull()
+    })
+
+    it('stores an absent driver as unassigned', () => {
+      const dto = baseDto({ driver: null })
+      const plan = computeTripSavePlan(dto, null, [])
+      if (plan.kind !== 'plan') throw new Error('expected plan')
+      expect(plan.tripRow['driver_id']).toBeNull()
+    })
+  })
+
   it('flags a dispatcher-change cascade over the existing order_nums', () => {
     const existing: ExistingActivity[] = [
       { id: 1, order_num: 100, activityType_code: 'PACK', actual_date: null, TripMaster_id: 55 },

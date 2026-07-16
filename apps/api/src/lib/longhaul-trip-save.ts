@@ -127,8 +127,13 @@ export function computeTripSavePlan(
   const dtoStatusId = (tripDto['status'] as Record<string, unknown> | null)?.['status_id'] as
     | number
     | undefined
-  const driverId =
-    (tripDto['driver'] as Record<string, unknown> | null)?.['id'] ?? tripDto['driver_id'] ?? null
+  // A driver reaches us as the scalar `driver_id`, or nested on `driver` — which
+  // carries `driver_id` when it came from the drivers list and additionally `id`
+  // once reshapeTrip has hydrated it. Accept all three; driver 0 is the "None"
+  // option rather than a real FK, so it stores as unassigned.
+  const driverDto = tripDto['driver'] as Record<string, unknown> | null
+  const rawDriverId = tripDto['driver_id'] ?? driverDto?.['id'] ?? driverDto?.['driver_id'] ?? null
+  const driverId = rawDriverId === 0 ? null : rawDriverId
   if (existingTrip && dtoStatusId != null && dtoStatusId >= 4) {
     const existingDriverId = existingTrip['driver_id'] as number | null
     if (existingDriverId !== driverId) {
