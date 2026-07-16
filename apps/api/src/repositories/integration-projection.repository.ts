@@ -70,11 +70,32 @@ export function createIntegrationProjectionRepository(db: PrismaClient) {
       return row?.state ?? null
     },
 
-    /** Tenant-scoped list of all records for one (integrationId, entityType). */
-    async list(integrationId: string, entityType: string): Promise<IntegrationProjectionRow[]> {
+    /**
+     * Tenant-scoped list of records for one (integrationId, entityType).
+     *
+     * With no `opts` this is the original unpaged, unfiltered list (the runtime
+     * caller). `opts` adds a read-model query surface (sdk-feedback/0026 Part 2b):
+     *   - `status` — equality filter on the projection state's top-level `status`
+     *     (a workflow that wants status-filterable records writes a top-level
+     *     `status` into the canonical entity it persists);
+     *   - `updatedSince` — only records changed at/after this instant (the indexed
+     *     `updatedAt` column — "changed since T" without listing the whole type);
+     *   - `limit` / `cursor` — keyset paging over `entityKey` (ascending; `cursor`
+     *     is the last `entityKey` of the previous page, exclusive).
+     */
+    async list(
+      integrationId: string,
+      entityType: string,
+      opts: { status?: string; updatedSince?: Date; limit?: number; cursor?: string } = {},
+    ): Promise<IntegrationProjectionRow[]> {
+      const where: Prisma.IntegrationProjectionWhereInput = { integrationId, entityType }
+      if (opts.updatedSince) where.updatedAt = { gte: opts.updatedSince }
+      if (opts.status !== undefined) where.state = { path: ['status'], equals: opts.status }
+      if (opts.cursor) where.entityKey = { gt: opts.cursor }
       return db.integrationProjection.findMany({
-        where: { integrationId, entityType },
+        where,
         orderBy: { entityKey: 'asc' },
+        ...(opts.limit !== undefined ? { take: opts.limit } : {}),
         select: SELECT,
       })
     },
