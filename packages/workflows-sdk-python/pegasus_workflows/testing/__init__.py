@@ -84,6 +84,8 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     "get_secret": lambda a, k: _first(a, k, "name"),
     "map_to_external": lambda a, k: _first(a, k, "integration_id"),
     "get_projection": lambda a, k: a[2] if len(a) > 2 else k.get("key"),
+    "get_blob": lambda a, k: _first(a, k, "blob_id"),
+    "get_blob_url": lambda a, k: _first(a, k, "blob_id"),
     # list / whole-value reads: fixture is the value returned as-is
     "list_customers": None,
     "list_quotes": None,
@@ -115,6 +117,7 @@ _MUTATIONS: dict[str, str] = {
     "set_config": "ManageWorkflowConfigs",
     "delete_config": "ManageWorkflowConfigs",
     "deliver_to_external": "DeliverToExternal",
+    "put_blob": "WriteBlob",
 }
 
 #: hybrid method(s) — read *or* mutation depending on the call's arguments, so

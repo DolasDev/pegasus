@@ -824,6 +824,7 @@ class PegasusClient:
         query: dict[str, Any] | None = None,
         body: Any = None,
         mutating: bool | None = None,
+        response_to_blob: bool = False,
         group: str = "global",
     ) -> dict[str, Any]:
         """Call a partner API server-side with the integration's configured auth.
@@ -858,13 +859,20 @@ class PegasusClient:
             query: Optional query params (values are stringified).
             body: Optional JSON request body (mutations).
             mutating: Force read (``False``) / mutation (``True``) classification.
+            response_to_blob: Land the partner response body into a **blob** and
+                return ``{blobId, ...}`` instead of the body inline — for binary
+                payloads (e.g. an ADE ``GetImage``) that shouldn't sit in workflow
+                memory. Small-file cut (bytes still round-trip the API Lambda);
+                pairs with ``FileData: {"$blob": blob_id}`` in a request ``body``,
+                which the platform resolves to the blob's bytes server-side.
             group: Config/secret group the entries live in (default ``"global"``).
 
         Returns:
-            ``{status, ok, response, headers, dryRun}``. ``response`` is the parsed
-            JSON body, or the raw text for a non-JSON (e.g. XML) partner reply. On
-            a captured mutation under dry-run: ``{status: None, response: None,
-            ok: False, dryRun: True}`` and nothing is sent.
+            ``{status, ok, response, headers, dryRun}`` — or, with
+            ``response_to_blob=True``, ``{status, ok, blobId, size, headers,
+            dryRun}``. ``response`` is the parsed JSON body, or the raw text for a
+            non-JSON (e.g. XML) partner reply. On a captured mutation under
+            dry-run: ``{status: None, response: None, ok: False, dryRun: True}``.
 
         Raises:
             PegasusApiError: On 403 (manifest lacks ``CallExternal``), 404 (unknown
@@ -883,6 +891,8 @@ class PegasusClient:
             payload["body"] = body
         if mutating is not None:
             payload["mutating"] = mutating
+        if response_to_blob:
+            payload["responseToBlob"] = True
 
         if is_mutation:
             captured = self._capture_mutation(
@@ -900,6 +910,82 @@ class PegasusClient:
             )
         _raise_for_status(response)
         return response.json()["data"]
+
+    # -- blobs (opaque byte storage for document transfer) ------------------
+    #
+    # A workflow stages a file to upload or lands a file it fetched, without
+    # holding the bytes in workflow memory — put/get stream runner<->S3 directly
+    # via presigned URLs, so they are NOT bounded by the API Lambda's payload
+    # limit. Requires ``required_actions = ["WriteBlob"]`` (put) / ``["ReadBlob"]``
+    # (get). ``put_blob`` is a mutation (captured under dry-run); ``get_blob`` /
+    # ``get_blob_url`` are reads (live).
+
+    def put_blob(
+        self, content_bytes: bytes, content_type: str = "application/octet-stream"
+    ) -> dict[str, Any]:
+        """Store bytes as a tenant-scoped blob; returns ``{blobId, size}``.
+
+        Mints a blob id + presigned S3 PUT server-side, then uploads the bytes
+        directly to S3 (never through the API), so files far larger than a JSON
+        body are fine (up to the platform blob cap; over-cap raises 413). Use the
+        returned ``blobId`` in a later ``call_external`` upload
+        (``FileData: {"$blob": blobId}``). A **mutation** — captured, not
+        performed, under ``run --dry-run``.
+        """
+        captured = self._capture_mutation(
+            "WriteBlob",
+            "put_blob",
+            {"size": len(content_bytes), "content_type": content_type},
+            {"blobId": None, "size": len(content_bytes), "dryRun": True},
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
+        with self._client() as client:
+            response = client.post(
+                "/api/v1/blobs/upload-url",
+                json={"contentType": content_type, "sizeBytes": len(content_bytes)},
+            )
+        _raise_for_status(response)
+        issued = response.json()["data"]
+        with self._bare_client() as client:
+            put = client.put(
+                issued["uploadUrl"],
+                content=content_bytes,
+                headers={
+                    "Content-Type": content_type,
+                    "Content-Length": str(len(content_bytes)),
+                },
+            )
+        if not put.is_success:
+            raise PegasusApiError(
+                status_code=put.status_code,
+                code="S3_UPLOAD_FAILED",
+                message=put.text or "S3 rejected the blob upload",
+            )
+        return {"blobId": issued["blobId"], "size": len(content_bytes)}
+
+    def get_blob(self, blob_id: str) -> bytes:
+        """Fetch a blob's bytes. Requires ``ReadBlob``. A read (runs live).
+
+        Resolves a short-lived presigned GET server-side, then downloads the
+        bytes directly from S3. Raises ``PegasusApiError`` (404) if the blob is
+        unknown or its TTL has expired.
+        """
+        url = self.get_blob_url(blob_id)["downloadUrl"]
+        with self._bare_client() as client:
+            response = client.get(url)
+        if not response.is_success:
+            raise PegasusApiError(
+                status_code=response.status_code,
+                code="S3_DOWNLOAD_FAILED",
+                message=response.text or "S3 rejected the blob download",
+            )
+        return response.content
+
+    def get_blob_url(self, blob_id: str) -> dict[str, Any]:
+        """Return a short-lived presigned GET URL for a blob (``{downloadUrl,
+        expiresInSeconds, size}``). Requires ``ReadBlob``. A read (runs live)."""
+        return self._get_json(f"/api/v1/blobs/{blob_id}/download-url")["data"]
 
     # -- pegII order + task reads (for use inside activities) ---------------
     #

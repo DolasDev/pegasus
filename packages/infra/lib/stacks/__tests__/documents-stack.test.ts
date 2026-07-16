@@ -75,6 +75,21 @@ describe('DocumentsStack — bucket', () => {
     })
   })
 
+  it('expires workflow blobs under blobs/ after 7 days (TTL, sdk-feedback/0025)', () => {
+    synth().hasResourceProperties('AWS::S3::Bucket', {
+      LifecycleConfiguration: {
+        Rules: Match.arrayWith([
+          Match.objectLike({
+            Status: 'Enabled',
+            Prefix: 'blobs/',
+            ExpirationInDays: 7,
+            NoncurrentVersionExpiration: { NoncurrentDays: 1 },
+          }),
+        ]),
+      },
+    })
+  })
+
   it('enforces SSL via a bucket policy', () => {
     synth().hasResourceProperties('AWS::S3::BucketPolicy', {
       PolicyDocument: {

@@ -37,6 +37,7 @@ export type ResourceType =
   | 'IntegrationConfig'
   | 'IntegrationProjection'
   | 'EventType'
+  | 'Blob'
 
 export interface ActionDef {
   /** Cedar action identifier (without namespace prefix). */
@@ -300,6 +301,20 @@ export const Actions = {
     id: 'WriteIntegrationProjection',
     resourceType: 'IntegrationProjection',
     permission: 'integration_projection:write',
+  },
+  // ── Workflow blobs (opaque byte storage for document transfer) ────────────
+  // A workflow stages/lands binary files (e.g. an ADE shipment document) in a
+  // tenant-scoped blob via presigned S3 URLs. WriteBlob gates put/upload;
+  // ReadBlob gates get/download-url. Both granted to workflow_runtime.
+  ReadBlob: {
+    id: 'ReadBlob',
+    resourceType: 'Blob',
+    permission: 'blob:read',
+  },
+  WriteBlob: {
+    id: 'WriteBlob',
+    resourceType: 'Blob',
+    permission: 'blob:write',
   },
 } as const satisfies Record<string, ActionDef>
 

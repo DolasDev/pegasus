@@ -16,6 +16,7 @@ import {
   CopyObjectCommand,
   HeadObjectCommand,
 } from '@aws-sdk/client-s3'
+import { randomUUID } from 'node:crypto'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 /** Returns the configured documents bucket name, throwing if unset. */
@@ -67,6 +68,43 @@ export function buildVariantS3Key(opts: {
   variant: 'thumb' | 'web'
 }): string {
   return `${opts.tenantId}/${opts.entityType}/${opts.entityId}/${opts.documentId}/variants/${opts.variant}.jpg`
+}
+
+/**
+ * Builds the S3 key for a workflow blob (sdk-feedback/0025) under a tenant
+ * prefix: `blobs/{tenantId}/{blobId}`. A blob is opaque bytes a workflow stages
+ * (a document to upload, a fetched image), keyed by an opaque id. The tenant
+ * prefix is the isolation boundary: the API only ever builds a key from the
+ * REQUESTING tenant, so tenant A can never address tenant B's blob (it would
+ * resolve to `blobs/A/<id>`, which does not exist → 404). A lifecycle rule on
+ * the `blobs/` prefix expires them (TTL). `newBlobId` mints the opaque id.
+ */
+export function newBlobId(): string {
+  return randomUUID()
+}
+
+export function buildBlobS3Key(tenantId: string, blobId: string): string {
+  return `blobs/${tenantId}/${blobId}`
+}
+
+/**
+ * Write a buffer to the documents bucket (server-side). Used by the outbound
+ * caller's `response_to_blob` (land a partner GET response into a blob). Bounded
+ * by the Lambda's memory/payload — the large-file streaming path is a follow-up.
+ */
+export async function putObjectBuffer(
+  key: string,
+  body: Buffer,
+  contentType: string,
+): Promise<void> {
+  await client().send(
+    new PutObjectCommand({
+      Bucket: documentsBucketName(),
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    }),
+  )
 }
 
 /**
