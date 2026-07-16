@@ -228,6 +228,94 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
     expect(opts.params.map((p) => p.value)).toContain('H')
   })
 
+  // Zone filters are the only geographic filter that doesn't read a column off
+  // the shipments view: the dropdown's values come from v_longhaul_zones
+  // (`zone_code`) while the predicate reads `zone` off v_longhaul_states, reached
+  // through the origin/destination joins. That indirection is easy to break and
+  // fails silently — a wrong alias just returns nothing — so pin both sides.
+  describe('zone filters', () => {
+    async function sqlForFilters(filters: Record<string, unknown>) {
+      findUnique.mockResolvedValue({
+        mssqlConnectionString: 'Server=a,1433',
+        longhaulClient: 'nwi',
+      })
+      stubExecutor({ shipments: [] })
+      const encoded = encodeURIComponent(JSON.stringify({ filters }))
+      await buildApp().request(`/onprem/longhaul/shipments?filters=${encoded}`)
+      return executeSqlMock.mock.calls[0] as [string, string, { params: Array<{ value: unknown }> }]
+    }
+
+    it('filters origin_zone on the origin-state join, as a bound param', async () => {
+      // Shape is exactly what the planning screen's react-select sends.
+      const [, sql, opts] = await sqlForFilters({
+        origin_zone: [{ label: 'Northeast', value: 'NE' }],
+      })
+
+      expect(sql).toContain('os.zone IN (@')
+      expect(sql).not.toContain("'NE'")
+      expect(opts.params.map((p) => p.value)).toContain('NE')
+      // The predicate is meaningless without the join that defines `os`.
+      expect(sql).toContain('LEFT JOIN v_longhaul_states AS os')
+    })
+
+    it('filters destination_zone on the destination-state join, not the origin one', async () => {
+      const [, sql, opts] = await sqlForFilters({
+        destination_zone: [{ label: 'Southeast', value: 'SE' }],
+      })
+
+      expect(sql).toContain('ds.zone IN (@')
+      expect(sql).not.toContain('os.zone IN (')
+      expect(opts.params.map((p) => p.value)).toContain('SE')
+      expect(sql).toContain('LEFT JOIN v_longhaul_states AS ds')
+    })
+
+    it('binds every selected zone when several are picked', async () => {
+      const [, sql, opts] = await sqlForFilters({
+        origin_zone: [{ value: 'NE' }, { value: 'SE' }, { value: 'MW' }],
+      })
+
+      expect(sql).toContain('os.zone IN (@p0, @p1, @p2)')
+      expect(opts.params.map((p) => p.value)).toEqual(expect.arrayContaining(['NE', 'SE', 'MW']))
+    })
+
+    it('adds no zone predicate when the selection is empty', async () => {
+      const [, sql] = await sqlForFilters({ origin_zone: [], destination_zone: [] })
+
+      expect(sql).not.toContain('os.zone IN')
+      expect(sql).not.toContain('ds.zone IN')
+    })
+
+    it('applies origin and destination zones together', async () => {
+      const [, sql] = await sqlForFilters({
+        origin_zone: [{ value: 'NE' }],
+        destination_zone: [{ value: 'SE' }],
+      })
+
+      expect(sql).toContain('os.zone IN (@')
+      expect(sql).toContain('ds.zone IN (@')
+    })
+
+    // Legacy parity, ported verbatim from the on-prem repository: a searchTerm of
+    // 3+ chars takes an `else if` branch that skips EVERY filter, zones included.
+    // Surprising, but intended — pin it so a change here is a deliberate one.
+    it('drops zone filters when a searchTerm is present (legacy else-if parity)', async () => {
+      findUnique.mockResolvedValue({
+        mssqlConnectionString: 'Server=a,1433',
+        longhaulClient: 'nwi',
+      })
+      stubExecutor({ shipments: [] })
+      const encoded = encodeURIComponent(
+        JSON.stringify({ filters: { origin_zone: [{ value: 'NE' }] } }),
+      )
+
+      await buildApp().request(`/onprem/longhaul/shipments?filters=${encoded}&searchTerm=abc`)
+
+      const [, sql] = executeSqlMock.mock.calls[0] as [string, string, unknown]
+      expect(sql).not.toContain('os.zone IN')
+      expect(sql).toContain('shipper_name')
+    })
+  })
+
   it('applies the post-fetch TripStatus_id filter', async () => {
     findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
     stubExecutor({
