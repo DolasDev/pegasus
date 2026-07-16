@@ -12,6 +12,37 @@ them, and correct the config UX that describes the opposite of what the code doe
 
 ---
 
+## ✅ EXECUTED 2026-07-16 (all phases) — PR #435
+
+All five phases implemented on `fix/sso-oidc-client-secret`:
+
+- **Phase 1** — tenant-web write-only "Client secret" field (masked,
+  `autoComplete="new-password"`, never pre-filled; blank on edit = unchanged);
+  `oidcClientSecret` threaded through `CreateSsoProviderInput` /
+  `UpdateSsoProviderInput`. Deleted the false "stored in Secrets Manager" help text.
+- **Phase 2** — `superRefine` on `CreateSsoProviderBody`: OIDC requires
+  `oidcClientSecret` + `oidcClientId` + `metadataUrl`; SAML requires `metadataUrl`
+  (closing the parity gap where the UI enforced it and the API did not).
+- **Phase 2b** — PUT syncs Cognito only when a Cognito-stored field changed, and
+  requires the secret to be re-supplied when it does. Guard runs _before_ the DB
+  write so a rejected edit cannot drift the row from Cognito.
+- **Phase 3** — corrected four places claiming the provider must pre-exist (three in
+  `sso-config.tsx`, one in the `sso.ts` schema doc comment).
+- **Phase 4** — `DuplicateProviderException` → 409 CONFLICT with a generic message,
+  DB row still rolled back.
+
+Verified: api 36 sso tests + full root `npm test` (14/14 tasks) green; new
+`sso-config-form.test.tsx` (6 tests); tsc + eslint clean on both packages; branch CI
+all green. `ProviderForm` exported for testing, following the `IdpSetupHints`
+precedent in the same file.
+
+**Open question, deliberately designed around:** whether Cognito's
+`UpdateIdentityProvider` replaces `ProviderDetails` wholesale or merges it could not
+be tested read-only (the staging pool `us-east-1_0LoW8JGgK` has zero providers).
+Phase 2b is correct under either behavior.
+
+---
+
 ## Why (the gap) — evidence from live prod
 
 OIDC login for the prod Microsoft/Entra provider fails with a **400 at**
