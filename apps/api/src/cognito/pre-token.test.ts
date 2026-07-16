@@ -20,6 +20,7 @@ const {
   mockTenantUserUpdate,
   mockAuthSessionFindFirst,
   mockAuthSessionDeleteMany,
+  mockSsoProviderFindFirst,
 } = vi.hoisted(() => ({
   ADMIN_CLIENT_ID: 'admin-client-id-test',
   TENANT_CLIENT_ID: 'tenant-client-id-test',
@@ -28,6 +29,7 @@ const {
   mockTenantUserUpdate: vi.fn(),
   mockAuthSessionFindFirst: vi.fn(),
   mockAuthSessionDeleteMany: vi.fn(),
+  mockSsoProviderFindFirst: vi.fn(),
 }))
 
 vi.mock('@prisma/adapter-pg', () => ({
@@ -47,6 +49,9 @@ vi.mock('@prisma/client', () => ({
       authSession: {
         findFirst: mockAuthSessionFindFirst,
         deleteMany: mockAuthSessionDeleteMany,
+      },
+      tenantSsoProvider: {
+        findFirst: mockSsoProviderFindFirst,
       },
     }
   }),
@@ -86,11 +91,18 @@ function makeEvent({
   sub,
   groups,
   clientId = TENANT_CLIENT_ID,
+  identities,
 }: {
   email?: string
   sub?: string
   groups?: string[]
   clientId?: string
+  /**
+   * Raw value of the `identities` user attribute. Cognito delivers this as a JSON
+   * STRING for federated users and omits it entirely for native ones — pass a string
+   * to mimic the real shape, including deliberately malformed values.
+   */
+  identities?: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }): any {
   return {
@@ -104,6 +116,7 @@ function makeEvent({
       userAttributes: {
         ...(email ? { email } : {}),
         ...(sub ? { sub } : {}),
+        ...(identities !== undefined ? { identities } : {}),
       },
       groupConfiguration: {
         groupsToOverride: groups ?? [TENANT_GROUP],
@@ -139,11 +152,202 @@ describe('pre-token trigger', () => {
     mockTenantUserUpdate.mockReset()
     mockAuthSessionFindFirst.mockReset()
     mockAuthSessionDeleteMany.mockReset()
+    mockSsoProviderFindFirst.mockReset()
     // Default: no auth session pending (most tests use the roster flow).
     mockAuthSessionFindFirst.mockResolvedValue(null)
     mockAuthSessionDeleteMany.mockResolvedValue({ count: 0 })
     // Default: a single roster row resolving to tenant-uuid-123.
     mockTenantUserFindMany.mockResolvedValue([{ tenantId: 'tenant-uuid-123' }])
+    // Default: no SSO provider. Native logins must never reach this lookup.
+    mockSsoProviderFindFirst.mockResolvedValue(null)
+  })
+
+  // ── Federated login: the provider determines the tenant ───────────────────
+  //
+  // An IdP can assert any `email` it likes — tenants configure their own IdPs into
+  // a SHARED user pool. It cannot lie about which provider it is, because Cognito
+  // stamps `providerName` from the pool's own registration, and we own the
+  // provider→tenant mapping. So the provider, not the email, resolves the tenant.
+
+  /** The `identities` attribute exactly as Cognito serialises it. */
+  function identitiesAttr(providerName: string): string {
+    return JSON.stringify([
+      {
+        userId: 'zSmI_AFcBNlAm5zlipPNBPbiy_Qui3uCDNpDDWIWn8M',
+        providerName,
+        providerType: 'OIDC',
+        issuer: null,
+        primary: 'true',
+        dateCreated: '1700000000000',
+      },
+    ])
+  }
+
+  describe('federated login — provider/tenant binding', () => {
+    it('resolves the tenant from the provider, not the email roster', async () => {
+      mockSsoProviderFindFirst.mockResolvedValue({
+        tenantId: 'tenant-from-provider',
+        isEnabled: true,
+      })
+      mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
+
+      const event = await handler(
+        makeEvent({ email: 'user@example.com', sub: 'x', identities: identitiesAttr('AcmeOkta') }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {} as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (() => {}) as any,
+      )
+
+      expect(mockSsoProviderFindFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ cognitoProviderName: 'AcmeOkta' }),
+        }),
+      )
+      // The roster must NOT be consulted to resolve the tenant.
+      expect(mockTenantUserFindMany).not.toHaveBeenCalled()
+      expect(mockTenantUserFindFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ tenantId: 'tenant-from-provider' }),
+        }),
+      )
+      expect(event?.response.claimsOverrideDetails.claimsToAddOrOverride['custom:tenantId']).toBe(
+        'tenant-from-provider',
+      )
+    })
+
+    // THE escalation, as a regression test. Tenant B owns the provider; the asserted
+    // email is rostered only in tenant A. Tenant A's claims must never be issued.
+    it('never issues another tenant claims when its provider asserts that tenants email', async () => {
+      mockSsoProviderFindFirst.mockResolvedValue({ tenantId: 'tenant-B', isEnabled: true })
+      // Tenant B has no roster row for the victim's email.
+      mockTenantUserFindFirst.mockResolvedValue(null)
+
+      await expect(
+        handler(
+          makeEvent({
+            email: 'admin@tenant-a.example',
+            sub: 'x',
+            identities: identitiesAttr('TenantBEvil'),
+          }),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          {} as any,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (() => {}) as any,
+        ),
+      ).rejects.toThrow()
+
+      // Resolution was anchored to tenant B — tenant A was never even looked up.
+      expect(mockTenantUserFindFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ tenantId: 'tenant-B' }) }),
+      )
+      expect(mockTenantUserFindMany).not.toHaveBeenCalled()
+    })
+
+    it('denies an unknown provider', async () => {
+      mockSsoProviderFindFirst.mockResolvedValue(null)
+
+      await expect(
+        handler(
+          makeEvent({ email: 'a@b.com', sub: 'x', identities: identitiesAttr('GhostProvider') }),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          {} as any,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (() => {}) as any,
+        ),
+      ).rejects.toThrow()
+    })
+
+    it('denies a disabled provider', async () => {
+      mockSsoProviderFindFirst.mockResolvedValue({ tenantId: 'tenant-x', isEnabled: false })
+
+      await expect(
+        handler(
+          makeEvent({ email: 'a@b.com', sub: 'x', identities: identitiesAttr('DisabledIdp') }),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          {} as any,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (() => {}) as any,
+        ),
+      ).rejects.toThrow()
+    })
+
+    // The login flow only ever routes a user to their selected tenant's own provider,
+    // so a disagreement is an attack signal or a serious bug. Fail closed.
+    it('denies when a pending AuthSession names a different tenant than the provider', async () => {
+      mockAuthSessionFindFirst.mockResolvedValue({ id: 's1', tenantId: 'tenant-A' })
+      mockSsoProviderFindFirst.mockResolvedValue({ tenantId: 'tenant-B', isEnabled: true })
+
+      await expect(
+        handler(
+          makeEvent({ email: 'a@b.com', sub: 'x', identities: identitiesAttr('TenantBIdp') }),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          {} as any,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (() => {}) as any,
+        ),
+      ).rejects.toThrow()
+
+      expect(mockTenantUserFindFirst).not.toHaveBeenCalled()
+    })
+
+    it('allows when a pending AuthSession agrees with the provider', async () => {
+      mockAuthSessionFindFirst.mockResolvedValue({ id: 's1', tenantId: 'tenant-agreed' })
+      mockSsoProviderFindFirst.mockResolvedValue({ tenantId: 'tenant-agreed', isEnabled: true })
+      mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
+
+      const event = await handler(
+        makeEvent({ email: 'a@b.com', sub: 'x', identities: identitiesAttr('GoodIdp') }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {} as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (() => {}) as any,
+      )
+
+      expect(event?.response.claimsOverrideDetails.claimsToAddOrOverride['custom:tenantId']).toBe(
+        'tenant-agreed',
+      )
+    })
+
+    // Never treat an unparseable claim as trusted federation — fall back to the
+    // native path, which is strictly more restrictive.
+    it.each([
+      ['malformed JSON', 'not-json-at-all'],
+      ['empty array', '[]'],
+      ['array of junk', '[{"noProviderName":true}]'],
+      ['empty string', ''],
+    ])('treats %s identities as a native login', async (_label, identities) => {
+      mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
+
+      const event = await handler(
+        makeEvent({ email: 'a@b.com', sub: 'x', identities }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {} as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (() => {}) as any,
+      )
+
+      // Native path: roster resolution ran, provider lookup did not.
+      expect(mockSsoProviderFindFirst).not.toHaveBeenCalled()
+      expect(mockTenantUserFindMany).toHaveBeenCalled()
+      expect(event?.response.claimsOverrideDetails.claimsToAddOrOverride['custom:tenantId']).toBe(
+        'tenant-uuid-123',
+      )
+    })
+
+    it('does not look up a provider for a native login', async () => {
+      mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
+
+      await handler(
+        makeEvent({ email: 'a@b.com', sub: 'x' }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {} as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (() => {}) as any,
+      )
+
+      expect(mockSsoProviderFindFirst).not.toHaveBeenCalled()
+    })
   })
 
   // ── Admin app client path ─────────────────────────────────────────────────
