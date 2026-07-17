@@ -3,6 +3,33 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.24.0
+
+### Added — SDK completeness (discoverability punch-list P2)
+
+New `PegasusClient` methods for platform capabilities that existed server-side but
+had no SDK accessor (all on already-granted persona actions — no policy change):
+
+- **`cancel_execution(workflow_id, execution_id)`** / **`retry_execution(...)`** —
+  drive an execution from the SDK (previously tenant-web only). `CancelWorkflowExecution` / `RetryWorkflowExecution` (workflow_developer).
+- **`fork_integration_config(integration_id)`** — fork the platform GLOBAL config
+  into the tenant scope (the config analogue of `fork_workflow`). `PublishIntegrationConfig`.
+- **`list_integrations()`** — list the tenant's configured integration ids +
+  active-config summary. Backed by a new m2m route `GET /api/v1/integrations/configs`
+  (the vnd\_-reachable sibling of the Cognito-only `GET /integrations`). `ReadIntegrationConfig`.
+- **`get_mapping_schema()`** / **`get_inbound_schema()`** — fetch the published
+  JSON Schemas for live introspection (validate a mapping / inbound block before publishing).
+
+### Docs (P3)
+
+- README: `schedule` + `ingress` CLI commands; a worked `emit_event` (custom-event
+  chaining) example; pegII orders/tasks reads; SDK `cancel`/`retry` on executions.
+- Fleshed out thin docstrings (`list_workflows`, `get_workflow`, `list_triggers`,
+  `delete_trigger`, `download_artifact`) so they render fully in MCP
+  `pegasus://reference/api`.
+- OpenAPI gains the new SDK-relevant paths (executions cancel/retry, config fork,
+  `/integrations/configs`).
+
 ## 0.23.0
 
 ### Fixed — the operational-entity read helpers now actually work under a `vnd_` key

@@ -103,6 +103,9 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     "list_integration_config_versions": None,
     "list_floors": None,
     "get_floor": None,
+    "list_integrations": None,
+    "get_mapping_schema": None,
+    "get_inbound_schema": None,
 }
 
 #: mutation method -> the Cedar action (``capability``) it is gated by.
@@ -114,6 +117,7 @@ _MUTATIONS: dict[str, str] = {
     "delete_projection": "WriteIntegrationProjection",
     "publish_integration_config": "PublishIntegrationConfig",
     "rollback_integration_config": "PublishIntegrationConfig",
+    "fork_integration_config": "PublishIntegrationConfig",
     "set_secret": "ManageWorkflowSecrets",
     "delete_secret": "ManageWorkflowSecrets",
     "set_config": "ManageWorkflowConfigs",
@@ -139,6 +143,8 @@ _IGNORED: frozenset[str] = frozenset(
         "list_executions",
         "get_execution",
         "get_execution_history",
+        "cancel_execution",
+        "retry_execution",
         "fork_workflow",
         "list_workflows",
         "get_workflow",

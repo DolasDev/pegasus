@@ -507,12 +507,79 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
+    def cancel_execution(self, workflow_id: str, execution_id: str) -> dict[str, Any]:
+        """Request cancellation of a running (non-terminal) execution.
+
+        Cancellation is cooperative: the call signals Temporal and returns once the
+        request is accepted; the execution transitions to CANCELLED when the run
+        observes the signal. Requires ``CancelWorkflowExecution`` (the
+        ``workflow_developer`` role).
+
+        Args:
+            workflow_id: The workflow the execution belongs to.
+            execution_id: The execution to cancel.
+
+        Returns:
+            The updated ``ExecutionResponse``.
+
+        Raises:
+            PegasusApiError: 404 (unknown execution), 409 (already terminal),
+                502 (Temporal signal failed), or any non-2xx.
+        """
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/workflows/{workflow_id}/executions/{execution_id}/cancel"
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def retry_execution(self, workflow_id: str, execution_id: str) -> dict[str, Any]:
+        """Retry a terminal-failed execution as a brand-new run with the same input.
+
+        Starts a fresh execution through the same path as ``run_workflow`` (identical
+        limit/quota/Temporal handling); the original row is left untouched. Only a
+        FAILED / TIMED_OUT / CANCELLED execution can be retried. Requires
+        ``RetryWorkflowExecution`` (the ``workflow_developer`` role).
+
+        Args:
+            workflow_id: The workflow the execution belongs to.
+            execution_id: The terminal execution to re-run.
+
+        Returns:
+            The new ``ExecutionResponse``.
+
+        Raises:
+            PegasusApiError: 404 (unknown execution), 409 (execution not in a
+                retryable terminal state), or any non-2xx.
+        """
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/workflows/{workflow_id}/executions/{execution_id}/retry"
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
     def list_workflows(self) -> list[dict[str, Any]]:
-        """List every workflow visible to the caller's tenant (∪ GLOBAL)."""
+        """List every workflow visible to the caller's tenant (its own ∪ GLOBAL).
+
+        Returns:
+            A list of ``WorkflowResponse`` objects (id, name, version, visibility,
+            createdAt, …). Requires ``ReadWorkflow``.
+        """
         return self._get_json("/api/v1/workflows")["data"]
 
     def get_workflow(self, workflow_id: str) -> dict[str, Any]:
-        """Fetch a single workflow by id."""
+        """Fetch a single workflow's metadata by id.
+
+        Args:
+            workflow_id: The workflow id.
+
+        Returns:
+            The ``WorkflowResponse`` (id, name, version, visibility, …).
+
+        Raises:
+            PegasusApiError: 404 if no such workflow is visible to the caller.
+        """
         return self._get_json(f"/api/v1/workflows/{workflow_id}")["data"]
 
     # -- workflow triggers (schedule / event bindings; CLI management) ------
@@ -563,11 +630,28 @@ class PegasusClient:
         return response.json()["data"]
 
     def list_triggers(self, workflow_id: str) -> list[dict[str, Any]]:
-        """List a workflow's triggers (the caller-tenant's rows). Requires ``ReadWorkflow``."""
+        """List a workflow's triggers (SCHEDULE + EVENT), the caller-tenant's rows.
+
+        Args:
+            workflow_id: The workflow whose triggers to list.
+
+        Returns:
+            A list of trigger objects (id, kind, eventType/schedule, filter,
+            enabled, …). Requires ``ReadWorkflow``.
+        """
         return self._get_json(f"/api/v1/workflows/{workflow_id}/triggers")["data"]
 
     def delete_trigger(self, workflow_id: str, trigger_id: str) -> None:
-        """Delete a trigger. Requires ``ManageWorkflowTriggers``."""
+        """Delete one of a workflow's triggers.
+
+        Args:
+            workflow_id: The workflow the trigger belongs to.
+            trigger_id: The trigger to delete.
+
+        Raises:
+            PegasusApiError: 404 if the trigger does not exist for this tenant, or
+                any non-2xx. Requires ``ManageWorkflowTriggers``.
+        """
         with self._client() as client:
             response = client.delete(f"/api/v1/workflows/{workflow_id}/triggers/{trigger_id}")
         _raise_for_status(response)
@@ -618,7 +702,18 @@ class PegasusClient:
         return self._get_json(f"/api/v1/workflows/{workflow_id}/download-url")["data"]
 
     def download_artifact(self, workflow_id: str) -> bytes:
-        """Download a workflow's source zip bytes."""
+        """Download a workflow's published source zip as raw bytes.
+
+        Resolves a short-lived presigned URL (:meth:`get_download_url`) and streams
+        the object directly from storage. The counterpart to publishing — e.g. to
+        inspect or re-fork a GLOBAL workflow's source.
+
+        Args:
+            workflow_id: The workflow whose artifact to fetch.
+
+        Returns:
+            The zip archive bytes. Requires ``ReadWorkflow``.
+        """
         download_url = self.get_download_url(workflow_id)["downloadUrl"]
         with self._bare_client() as client:
             response = client.get(download_url)
@@ -1360,6 +1455,62 @@ class PegasusClient:
             PegasusApiError: On 404 (no published config for this scope).
         """
         return self._get_json(f"/api/v1/integrations/{integration_id}/config")["data"]
+
+    def list_integrations(self) -> list[dict[str, Any]]:
+        """List the integration ids configured for the caller's tenant.
+
+        Each entry is ``{id, name, description, published, version, visibility}`` —
+        so an integration author can discover which ids exist (and whether each has
+        a published config) without already knowing them. Requires
+        ``ReadIntegrationConfig`` (the ``integration_publisher`` role).
+        """
+        return self._get_json("/api/v1/integrations/configs")["data"]
+
+    def fork_integration_config(self, integration_id: str) -> dict[str, Any]:
+        """Fork the platform GLOBAL config for ``integration_id`` into the caller's scope.
+
+        Copies the active GLOBAL config into a new TENANT-scoped, unpublished config
+        the caller owns (with fork provenance) — the integration-config analogue of
+        :meth:`fork_workflow`, so a tenant can customise a platform default. Requires
+        ``PublishIntegrationConfig`` (the ``integration_publisher`` role).
+
+        Returns:
+            The created TENANT config (full projection).
+
+        Raises:
+            PegasusApiError: 404 (no GLOBAL config to fork), 409/422 (the caller is
+                the platform tenant that already owns the GLOBAL config), or non-2xx.
+        """
+        captured = self._capture_mutation(
+            "PublishIntegrationConfig",
+            "fork_integration_config",
+            {"integration_id": integration_id},
+            {"integrationId": integration_id, "dryRun": True},
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
+        with self._client() as client:
+            response = client.post(f"/api/v1/integrations/{integration_id}/config/fork")
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def get_mapping_schema(self) -> dict[str, Any]:
+        """The JSON Schema for the ``mapping.json`` DSL (public, live introspection).
+
+        Fetch it to validate a mapping's shape before publishing, rather than
+        relying on static docs. Backed by ``GET /api/v1/integrations/mapping-schema``.
+        """
+        return self._get_json("/api/v1/integrations/mapping-schema")
+
+    def get_inbound_schema(self) -> dict[str, Any]:
+        """The JSON Schema for the ingress ``inbound`` block (public, live introspection).
+
+        Covers ``{eventType, dedupKeyPath, validation (requiredPaths,
+        nonEmptyArrayPaths, oneOf), ackTemplate}`` — fetch it to validate an
+        ``inbound.json`` before publishing. Backed by
+        ``GET /api/v1/integrations/inbound-schema``.
+        """
+        return self._get_json("/api/v1/integrations/inbound-schema")
 
     def list_floors(self) -> list[dict[str, Any]]:
         """List the built-in integration floors — the per-type contracts a config builds on.

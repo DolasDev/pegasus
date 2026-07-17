@@ -1370,3 +1370,78 @@ def test_run_workflow_live_omits_mode() -> None:
     client = _client_with(handler)
     client.run_workflow("wf-1", {"n": 1})
     assert captured["body"] == {"input": {"n": 1}}   # back-compat: no mode key
+
+
+# --- P2 accessors (SDK completeness) ----------------------------------------
+
+
+def test_cancel_execution_posts_to_cancel_endpoint() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["method"] = request.method
+        return httpx.Response(202, json={"data": {"id": "exec-1", "status": "CANCELLED"}})
+
+    data = _client_with(handler).cancel_execution("wf-1", "exec-1")
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/api/v1/workflows/wf-1/executions/exec-1/cancel"
+    assert data["status"] == "CANCELLED"
+
+
+def test_retry_execution_posts_to_retry_endpoint() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["method"] = request.method
+        return httpx.Response(201, json={"data": {"id": "exec-2", "status": "QUEUED"}})
+
+    data = _client_with(handler).retry_execution("wf-1", "exec-1")
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/api/v1/workflows/wf-1/executions/exec-1/retry"
+    assert data["id"] == "exec-2"
+
+
+def test_fork_integration_config_posts_to_fork_endpoint() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["method"] = request.method
+        return httpx.Response(201, json={"data": {"id": "cfg-1", "visibility": "TENANT"}})
+
+    data = _client_with(handler).fork_integration_config("demo_partner")
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/api/v1/integrations/demo_partner/config/fork"
+    assert data["visibility"] == "TENANT"
+
+
+def test_list_integrations_reads_configs_endpoint() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        return httpx.Response(
+            200, json={"data": [{"id": "demo_partner", "published": True}], "meta": {"count": 1}}
+        )
+
+    data = _client_with(handler).list_integrations()
+    assert captured["path"] == "/api/v1/integrations/configs"
+    assert data == [{"id": "demo_partner", "published": True}]
+
+
+def test_schema_getters_read_public_endpoints() -> None:
+    seen: list = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        return httpx.Response(200, json={"type": "object"})
+
+    client = _client_with(handler)
+    assert client.get_mapping_schema() == {"type": "object"}
+    assert client.get_inbound_schema() == {"type": "object"}
+    assert seen == [
+        "/api/v1/integrations/mapping-schema",
+        "/api/v1/integrations/inbound-schema",
+    ]
