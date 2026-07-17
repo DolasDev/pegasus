@@ -156,6 +156,10 @@ _IGNORED: frozenset[str] = frozenset(
         "create_ingress",
         "rotate_ingress",
         "get_ingress",
+        # api_get is a read escape hatch for ops/reconciliation on a real client —
+        # it has no method-name→fixture mapping, so it is not part of the offline
+        # in-activity surface. Callers use a typed read helper under the harness.
+        "api_get",
     }
 )
 

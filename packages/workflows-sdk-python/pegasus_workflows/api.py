@@ -752,6 +752,46 @@ class PegasusClient:
         """
         return self._get_json(f"/api/v1/events/{event_type}", **params)
 
+    # -- generic read passthrough ------------------------------------------
+
+    def api_get(self, path: str, **params: Any) -> Any:
+        """GET any Pegasus API path with the caller's key; return the full JSON body.
+
+        A read-only escape hatch for endpoints that have no dedicated helper — e.g.
+        the paginated, filtered projection read-model
+        ``/api/v1/integrations/{id}/projections/{entityType}`` (``status`` /
+        ``updatedSince`` / keyset ``nextCursor``). The catalogue of reachable paths
+        is the OpenAPI spec (``GET /openapi.json`` / ``pegasus://reference/openapi``).
+
+        Args:
+            path: An API path beginning with ``/`` (e.g.
+                ``/api/v1/integrations/x/projections/shipment``). Query params are
+                passed as keyword args. An absolute URL is rejected — this only
+                calls the caller's Pegasus API, never an arbitrary host (that is
+                :meth:`call_external`'s job).
+
+        Returns:
+            The decoded response body verbatim (NOT unwrapped to ``["data"]``), so
+            ``meta`` / ``nextCursor`` / bare-schema envelopes are preserved.
+
+        Raises:
+            ValueError: If ``path`` is not a root-relative path (no scheme/host).
+            PegasusApiError: On any non-2xx response.
+
+        Note:
+            **Read-only by design.** For writes use the typed methods, which route
+            through the dry-run capture path; a generic write would bypass it and
+            silently break offline rehearsal. Not stubbed by the offline test
+            harness (:class:`~pegasus_workflows.testing.FakeClient`) — use a typed
+            read helper there, or a real client.
+        """
+        if not path.startswith("/") or "://" in path:
+            raise ValueError(
+                f"api_get expects a root-relative API path starting with '/', got {path!r}. "
+                "Use call_external to reach a partner host."
+            )
+        return self._get_json(path, **params)
+
     def emit_event(
         self,
         name: str,

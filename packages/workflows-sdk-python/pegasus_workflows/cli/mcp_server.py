@@ -512,8 +512,11 @@ def resource_reference_openapi() -> str:
     header = (
         "# Pegasus API — OpenAPI 3.1 spec (live)\n\n"
         f"Live: ``GET {base}/openapi.json`` · Swagger UI: ``{base}/docs``\n\n"
-        "Covers the SDK-facing surface (integrations authoring, workflows, documents, …) "
-        "incl. auth (vnd_ Bearer key) and request/response shapes.\n\n"
+        "Covers the SDK-facing (vnd_) surface (integrations authoring, workflows, "
+        "documents, the operational read surface, …) incl. auth (vnd_ Bearer key) and "
+        "request/response shapes. Any GET here is callable with no dedicated helper via "
+        "``PegasusClient.api_get(path, **params)`` (read-only) — e.g. the paged/filtered "
+        "projection read-model ``/integrations/{id}/projections/{entityType}``.\n\n"
     )
     if body:
         return header + "```json\n" + body + "\n```\n"

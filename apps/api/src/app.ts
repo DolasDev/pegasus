@@ -535,4 +535,7 @@ app.route('/api/v1', v1)
 // ---------------------------------------------------------------------------
 app.notFound((c) => c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404))
 
-export { app }
+// `m2mV1` (mounted at /api/v1) is exported for the OpenAPI route-coverage test
+// (lib/openapi-spec.coverage.test.ts): every vnd_-reachable GET route it carries
+// must be documented in the served spec, so the api_get catalogue stays complete.
+export { app, m2mV1 }
