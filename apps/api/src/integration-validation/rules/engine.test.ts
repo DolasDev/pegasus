@@ -30,6 +30,14 @@ describe('rule engine', () => {
     )
   })
 
+  it('nin fires when the value is OUTSIDE the allowed set (the "must be one of" primitive)', () => {
+    const r = rule('r', [{ fact: 's', op: 'nin', value: ['AVL', 'NVL'] }])
+    expect(ruleFires(r, { s: 'XYZ' })).toBe(true) // not a member → forbidden
+    expect(ruleFires(r, { s: 'AVL' })).toBe(false) // a member → allowed
+    // A non-array operand can't be evaluated → never fires (symmetric with `in`).
+    expect(ruleFires(rule('r', [{ fact: 's', op: 'nin', value: 'AVL' }]), { s: 'XYZ' })).toBe(false)
+  })
+
   it('never matches an ordered op against a non-numeric fact', () => {
     expect(ruleFires(rule('r', [{ fact: 's', op: 'gt', value: 1 }]), { s: 'cancel' })).toBe(false)
   })

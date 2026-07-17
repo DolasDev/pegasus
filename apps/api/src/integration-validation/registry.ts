@@ -28,6 +28,10 @@ import {
 } from './transform/mapping-format'
 import { RuleSetSchema, type RuleSet } from './rules/types'
 import { shipmentStatusUpdateFloor } from './floors/shipment-status-update.floor'
+import { shipmentLifecycleEventFloor } from './floors/shipment-lifecycle-event.floor'
+import { salesLeadFloor } from './floors/sales-lead.floor'
+import { financialSettlementFloor } from './floors/financial-settlement.floor'
+import { documentRecordFloor } from './floors/document-record.floor'
 import { demoPartnerOverlay } from './overlays/demo-partner.overlay'
 import { alliedStatusOverlay } from './overlays/allied-status.overlay'
 import { createIntegrationConfigRepository } from '../repositories/integration-config.repository'
@@ -40,6 +44,13 @@ import type { IntegrationDefinition, IntegrationOverlay, TypeFloor } from './typ
 /** Per-*type* fact abstractions, keyed by floor id. Partner-neutral, reusable. */
 const FLOORS: Record<string, TypeFloor> = {
   [shipmentStatusUpdateFloor.floor]: shipmentStatusUpdateFloor,
+  // Generic inbound-ingest floors (sdk-feedback 0024). Partner-neutral, reusable —
+  // Sirva ADE is the first partner to build on them, via published config overlays
+  // (no built-in overlay: the mapping + rules live in configuration, not code).
+  [shipmentLifecycleEventFloor.floor]: shipmentLifecycleEventFloor,
+  [salesLeadFloor.floor]: salesLeadFloor,
+  [financialSettlementFloor.floor]: financialSettlementFloor,
+  [documentRecordFloor.floor]: documentRecordFloor,
 }
 
 /** Built-in per-*partner* overlays, keyed by integrationId. Each names a floor. */

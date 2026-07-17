@@ -163,6 +163,65 @@ describe('POST /integrations/:id/events', () => {
     expect(mockTransaction).not.toHaveBeenCalled()
   })
 
+  it('200 — a body that fails the published validation returns the ADE Failed envelope with per-message objects, no emit', async () => {
+    // An inbound block with a validation block + a $map failure template (the full
+    // ADE Result{Results:"Failed", ResultsMessage:[{Code,Description}]} envelope).
+    mockConfigFindFirst.mockResolvedValue({
+      inbound: {
+        eventType: 'sirva_ade.shipment.event',
+        dedupKeyPath: 'Events.0.Id',
+        validation: { requiredPaths: ['SvcProvDataRecipient'], nonEmptyArrayPaths: ['Events'] },
+        ackTemplate: {
+          success: { Result: { Results: 'Success', ResultsMessageCount: 0, ResultsMessage: [] } },
+          failure: {
+            Result: {
+              Results: '{{status}}',
+              ResultsMessageCount: '{{errorCount}}',
+              ResultsMessage: {
+                $map: 'issues',
+                as: { ResultsMessageCode: '{{code}}', ResultsMessageDescription: '{{message}}' },
+              },
+            },
+          },
+        },
+      },
+    })
+    // Missing SvcProvDataRecipient AND an empty Events array → two issues.
+    const res = await app().request(ROUTE, req({ Events: [] }, auth))
+    expect(res.status).toBe(200)
+    expect(await json(res)).toEqual({
+      Result: {
+        Results: 'Failed',
+        ResultsMessageCount: 2,
+        ResultsMessage: [
+          {
+            ResultsMessageCode: 'MISSING_FIELD',
+            ResultsMessageDescription: 'Required field "SvcProvDataRecipient" is missing.',
+          },
+          {
+            ResultsMessageCode: 'EMPTY_LIST',
+            ResultsMessageDescription: '"Events" must be a non-empty array.',
+          },
+        ],
+      },
+    })
+    // Rejected at validation — nothing persisted or emitted.
+    expect(mockTransaction).not.toHaveBeenCalled()
+  })
+
+  it('200 — a valid body passes validation and emits (Success ack)', async () => {
+    mockConfigFindFirst.mockResolvedValue({
+      inbound: {
+        ...ADE_INBOUND,
+        validation: { requiredPaths: ['SvcProvDataRecipient'], nonEmptyArrayPaths: ['Events'] },
+      },
+    })
+    const res = await app().request(ROUTE, req(SHIPMENT, auth))
+    expect(res.status).toBe(200)
+    expect(await json(res)).toMatchObject({ Result: { Results: 'Success' } })
+    expect(mockTx.domainEvent.create).toHaveBeenCalled()
+  })
+
   it('200 — generic ack when the integration publishes no inbound block', async () => {
     mockConfigFindFirst.mockResolvedValue(null)
     const res = await app().request(ROUTE, req(SHIPMENT, auth))

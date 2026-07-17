@@ -3,6 +3,46 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.20.0
+
+### Added
+
+- **Runtime inbound mapping — `PegasusClient.map_from_external(integration_id, payload)`**
+  (sdk-feedback/0024). The inbound mirror of `map_to_external`: runs a published
+  integration's mapping _native → canonical_ and returns the normalized
+  **canonical entity** plus the gate verdict — `{canonical, valid, issues, degraded}`.
+  An ingest workflow (the consumer of an 0021 inbound event) uses `canonical` as
+  the entity to persist and `valid` to fail closed. **Fails closed** (`404`) on an
+  unknown integration / no floor, so an ingest never proceeds on an empty entity.
+  Open API-key surface — no manifest action. Auto-surfaces in
+  `pegasus://reference/api`.
+- **Generic, reusable inbound-ingest floors** (sdk-feedback/0024) — four
+  partner-neutral type floors any partner can build on via a published config
+  overlay (the mapping + rules live in **configuration**, not code):
+  `shipment_lifecycle_event`, `sales_lead`, `financial_settlement`,
+  `document_record`. Sirva ADE is the first partner to use them (its
+  `sirva_ade_*` configs reference these floors).
+- **`nin` (not-in) rule operator** — the symmetric complement of `in`, so a
+  config can express _"a field must be one of an allowed set"_ (the forbidden
+  condition is "outside the set", e.g. `{brandPresent eq true} AND {brand nin [AVL,NVL]}`)
+  without baking the value set into floor code. This is what keeps the floors
+  partner-neutral: value vocabularies (brand codes, statuses, file types) live in
+  the published rules, not the API.
+
+### Changed
+
+- **Inbound ingress ack now supports the full partner envelope** (sdk-feedback/0021):
+  - The `inbound` block gains an optional **`validation`** sub-block
+    (`{requiredPaths, nonEmptyArrayPaths}`): a malformed/rejected body now returns
+    the partner's **failure** ack (e.g. ADE `Result{Results:"Failed", …}`) instead
+    of a generic accepted ack.
+  - The `ackTemplate` renderer gains a **`$map`** array directive
+    (`{ "$map": "issues", "as": {…} }`) so the failure ack can shape a per-message
+    array like ADE's `ResultsMessage: [{ResultsMessageCode, ResultsMessageDescription}]`
+    from the structured validation issues. The success envelope
+    (`Result{Results:"Success", ResultsMessageCount:0, ResultsMessage:[]}`) was
+    already expressible via whole-value substitution.
+
 ## 0.19.0
 
 ### Added

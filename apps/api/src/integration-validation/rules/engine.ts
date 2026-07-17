@@ -16,6 +16,11 @@ function compare(actual: FactValue, op: Predicate['op'], expected: Predicate['va
       return actual !== expected
     case 'in':
       return Array.isArray(expected) && expected.includes(actual as string | number | boolean)
+    case 'nin':
+      // Not-in: fires when `actual` is NOT a member of the set. Symmetric with
+      // `in`; lets a config express "must be one of an allowed set" (the forbidden
+      // condition is "outside the set") without baking the set into floor code.
+      return Array.isArray(expected) && !expected.includes(actual as string | number | boolean)
     case 'gt':
     case 'gte':
     case 'lt':

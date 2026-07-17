@@ -35,6 +35,7 @@ import type { ApiClientVariables } from '../../types'
 import {
   validateWithDefinition,
   mapToExternalWithDefinition,
+  mapFromExternalWithDefinition,
   transformOrderToCanonical,
 } from '../../integration-validation/validate'
 import { resolveIntegrationDefinition } from '../../integration-validation/registry'
@@ -59,6 +60,10 @@ const ValidateBody = z.object({
 const MapToExternalBody = z.object({
   data: z.unknown(),
   action: z.enum(['save', 'cancel', 'status-change']).optional(),
+})
+
+const MapFromExternalBody = z.object({
+  data: z.unknown(),
 })
 
 export const integrationValidationHandler = new Hono<IntegrationValidationEnv>()
@@ -139,6 +144,37 @@ integrationValidationHandler.post(
     }
 
     return c.json(mapToExternalWithDefinition(def, parsed.data.data, parsed.data.action))
+  },
+)
+
+// POST /integrations/:integrationId/map-from-external — the INBOUND mirror of
+// map-to-external (sdk-feedback 0024). Normalize a partner's NATIVE payload into
+// the integration's CANONICAL entity and return it plus the gate verdict. An
+// ingest workflow (0021 inbound events) uses `canonical` as the system-of-record
+// shape and `valid` to fail closed. FAILS CLOSED on an unknown integration / no
+// floor (404) so an ingest never proceeds on a silently-empty entity. Same
+// open-key auth + tenant-scope resolution as /validate and /map-to-external.
+integrationValidationHandler.post(
+  '/integrations/:integrationId/map-from-external',
+  apiClientAuthMiddleware,
+  async (c) => {
+    const correlationId = c.get('correlationId')
+    const integrationId = c.req.param('integrationId') ?? ''
+
+    const parsed = MapFromExternalBody.safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.message, code: 'VALIDATION_ERROR', correlationId }, 400)
+    }
+
+    const def = await resolveIntegrationDefinition(basePrisma, integrationId, c.get('tenantId'))
+    if (!def) {
+      return c.json(
+        { error: `Unknown integration "${integrationId}"`, code: 'NOT_FOUND', correlationId },
+        404,
+      )
+    }
+
+    return c.json(mapFromExternalWithDefinition(def, parsed.data.data))
   },
 )
 
