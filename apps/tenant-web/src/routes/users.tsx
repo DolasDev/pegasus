@@ -970,15 +970,24 @@ export function UsersPage() {
     ...crewMembersQueryOptions,
     enabled: canList,
   })
+  const users = usersData ?? []
+
+  // Only LonghaulDriverLinker consumes this list, and it renders solely for
+  // non-deactivated `driver`-role users. Asking speculatively is not free: on a
+  // tenant with no legacy MSSQL the endpoint 422s permanently, and an errored
+  // query caches no data — so it stays stale forever and refetches on every
+  // mount and every window focus.
+  const hasDriverUsers = users.some(
+    (u) => u.status !== 'DEACTIVATED' && u.roleNames.includes('driver'),
+  )
   const {
     data: longhaulDrivers,
     isLoading: longhaulDriversLoading,
     isError: longhaulDriversError,
   } = useQuery({
     ...longhaulDriversQueryOptions,
-    enabled: canList,
+    enabled: canList && hasDriverUsers,
   })
-  const users = usersData ?? []
   const deactivateMutation = useDeactivateUser()
   const reactivateMutation = useReactivateUser()
   const resetPasswordMutation = useResetUserPassword()
