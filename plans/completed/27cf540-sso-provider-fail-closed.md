@@ -1,6 +1,6 @@
 # Fail closed when a provider name resolves to more than one tenant
 
-**Status:** IN PROGRESS — planned + implemented 2026-07-17.
+**Status:** COMPLETE — shipped `27cf540` (PR #456), deployed to prod 2026-07-17 02:27 UTC.
 
 **Branch:** `fix/sso-provider-fail-closed`
 
@@ -16,7 +16,9 @@
       statement that contradicts the code is a trap. Additive, not a rewrite.
 - [x] `contactEmail` validation left **unchanged** — it is CRM data, not auth data
 - [x] Gates: `npm test`, `npm run typecheck`, `npm run lint`
-- [ ] PR → merge queue
+- [x] PR → merge queue (#456, `27cf540`), deployed 2026-07-17 02:27 UTC. Prod holds 2
+      provider rows (`Microsoft`, `Microsoft-SAML`), each unique ⇒ the deny branch is
+      unreachable there and no login behaviour changed.
 
 **Goal:** `pre-token.ts` must not resolve a federated login's tenant from an ambiguous
 provider lookup. Plus two documentation corrections — one of which is a false claim I put
