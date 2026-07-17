@@ -795,6 +795,8 @@ type UserRowProps = {
   currentUserEmail: string
   roleOptions: RoleOption[]
   crewMembers: CrewMember[]
+  /** Whether the tenant has longhaul — gates the LonghaulDriverLinker render. */
+  longhaulEnabled: boolean
   longhaulDrivers: LonghaulDriver[]
   longhaulDriversLoading: boolean
   longhaulDriversError: boolean
@@ -818,6 +820,7 @@ function UserRow({
   currentUserEmail,
   roleOptions,
   crewMembers,
+  longhaulEnabled,
   longhaulDrivers,
   longhaulDriversLoading,
   longhaulDriversError,
@@ -872,7 +875,7 @@ function UserRow({
                 onSave={(crewMemberId) => onLinkCrewMember(user, crewMemberId)}
               />
             )}
-            {!isDeactivated && isDriver && (
+            {longhaulEnabled && !isDeactivated && isDriver && (
               <LonghaulDriverLinker
                 user={user}
                 drivers={longhaulDrivers}
@@ -972,11 +975,16 @@ export function UsersPage() {
   })
   const users = usersData ?? []
 
-  // Only LonghaulDriverLinker consumes this list, and it renders solely for
-  // non-deactivated `driver`-role users. Asking speculatively is not free: on a
-  // tenant with no legacy MSSQL the endpoint 422s permanently, and an errored
-  // query caches no data — so it stays stale forever and refetches on every
-  // mount and every window focus.
+  // The longhaul-driver picker (LonghaulDriverLinker) is meaningful only on a
+  // tenant that HAS a legacy MSSQL — the source endpoint 422s
+  // MSSQL_NOT_CONFIGURED otherwise. `hasCapability` fails open, so this hides the
+  // picker only when the server explicitly says the tenant has no longhaul.
+  const hasLonghaul = perms.hasCapability('longhaul')
+
+  // Beyond the capability gate, the list is consumed solely by
+  // LonghaulDriverLinker, which renders only for non-deactivated `driver`-role
+  // users — so on a longhaul tenant with no such users there is still nothing
+  // to fetch for.
   const hasDriverUsers = users.some(
     (u) => u.status !== 'DEACTIVATED' && u.roleNames.includes('driver'),
   )
@@ -986,7 +994,7 @@ export function UsersPage() {
     isError: longhaulDriversError,
   } = useQuery({
     ...longhaulDriversQueryOptions,
-    enabled: canList && hasDriverUsers,
+    enabled: canList && hasLonghaul && hasDriverUsers,
   })
   const deactivateMutation = useDeactivateUser()
   const reactivateMutation = useReactivateUser()
@@ -1126,6 +1134,7 @@ export function UsersPage() {
               currentUserEmail={session?.email ?? ''}
               roleOptions={roleOptions ?? []}
               crewMembers={crewMembers ?? []}
+              longhaulEnabled={hasLonghaul}
               longhaulDrivers={longhaulDrivers ?? []}
               longhaulDriversLoading={longhaulDriversLoading}
               longhaulDriversError={longhaulDriversError}

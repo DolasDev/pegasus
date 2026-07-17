@@ -88,11 +88,22 @@ export default async function globalSetup() {
     const PrismaPg = adapterModule['PrismaPg'] ?? adapterModule['default']?.PrismaPg
     const adapter = new PrismaPg({ connectionString: DATABASE_URL })
     const prisma = new PrismaClient({ adapter })
+    // `mssql_connection_string` is set so GET /me/permissions reports
+    // `capabilities.longhaul: true` — the e2e tenant IS a longhaul tenant (the
+    // tests/browser/longhaul/* suite targets /driver-planning on it), so the
+    // Operations nav must render (shell-nav.spec) and the capability gate is
+    // exercised end-to-end. The value is a fake/unreachable DSN: nothing
+    // connects to it in the passing specs (the handler only reads the column's
+    // presence), and the longhaul specs gate on on-prem health and skip when
+    // unreachable. DO UPDATE (not DO NOTHING) so a pre-existing local row from
+    // before this flag also gets it.
     await prisma.$executeRawUnsafe(
-      `INSERT INTO public.tenants (id, name, slug, cognito_auth_enabled, created_at, updated_at)
-       VALUES ($1, 'E2E Test Tenant', 'e2e-test', false, NOW(), NOW())
-       ON CONFLICT (id) DO NOTHING`,
+      `INSERT INTO public.tenants
+         (id, name, slug, cognito_auth_enabled, mssql_connection_string, created_at, updated_at)
+       VALUES ($1, 'E2E Test Tenant', 'e2e-test', false, $2, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET mssql_connection_string = EXCLUDED.mssql_connection_string`,
       TEST_TENANT_ID,
+      'Server=e2e-longhaul-unreachable;Database=e2e;',
     )
     await prisma.$executeRawUnsafe(
       `INSERT INTO public.tenant_users

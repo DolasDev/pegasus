@@ -51,7 +51,13 @@ vi.mock('@/auth/cognito', () => ({
 }))
 
 // Permissions hook — overridden per-test via `mockPermissions`.
-let mockPermissions: { isLoading: boolean; roles: string[] } = {
+// `capabilities` is optional; the real `hasCapability` fails open, so an absent
+// flag → true and only an explicit `false` gates a feature off.
+let mockPermissions: {
+  isLoading: boolean
+  roles: string[]
+  capabilities?: Record<string, boolean>
+} = {
   isLoading: false,
   roles: ['tenant_admin'],
 }
@@ -63,6 +69,7 @@ vi.mock('@/auth/permissions', () => ({
     anyOf: () => true,
     permissions: new Set<string>(),
     roles: mockPermissions.roles,
+    hasCapability: (c: string) => mockPermissions.capabilities?.[c] !== false,
   }),
 }))
 
@@ -131,5 +138,53 @@ describe('AppShell — Settings nav visibility', () => {
     for (const label of SETTINGS_LABELS) {
       expect(screen.queryByText(label)).not.toBeInTheDocument()
     }
+  })
+})
+
+describe('AppShell — Operations nav capability gate', () => {
+  beforeEach(() => {
+    mockPermissions = { isLoading: false, roles: ['tenant_admin'] }
+  })
+
+  it('shows Operations when the tenant has the longhaul capability', () => {
+    mockPermissions = {
+      isLoading: false,
+      roles: ['tenant_admin'],
+      capabilities: { longhaul: true },
+    }
+    render(
+      <AppShell>
+        <div />
+      </AppShell>,
+    )
+    expect(screen.getByText('Operations')).toBeInTheDocument()
+  })
+
+  it('hides Operations when the tenant explicitly lacks longhaul, even for an admin', () => {
+    mockPermissions = {
+      isLoading: false,
+      roles: ['tenant_admin'],
+      capabilities: { longhaul: false },
+    }
+    render(
+      <AppShell>
+        <div />
+      </AppShell>,
+    )
+    expect(screen.queryByText('Operations')).not.toBeInTheDocument()
+    // A role-only item is unaffected by the capability gate.
+    expect(screen.getByText('Dashboard')).toBeInTheDocument()
+  })
+
+  it('shows Operations when the capability flag is absent (fail-open on rollout skew)', () => {
+    // No `capabilities` — an older API that has not shipped the field yet must
+    // not transiently hide a real tenant's Operations.
+    mockPermissions = { isLoading: false, roles: ['tenant_admin'] }
+    render(
+      <AppShell>
+        <div />
+      </AppShell>,
+    )
+    expect(screen.getByText('Operations')).toBeInTheDocument()
   })
 })

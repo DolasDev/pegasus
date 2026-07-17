@@ -15,11 +15,19 @@ import { ALL_ACTIONS, Actions } from '../authz/actions'
 import { _clearAuthzCache } from '../lib/authz'
 import { seedPrincipal } from '../__tests__/_principal'
 
-function buildApp(roleNames: string[]) {
+// `/permissions` now reads the tenant's `mssqlConnectionString` to derive the
+// `longhaul` capability, so the harness seeds a tenant-scoped `db`. Default:
+// no connection string (longhaul:false). Pass a value to exercise longhaul:true.
+function buildApp(roleNames: string[], mssqlConnectionString: string | null = null) {
+  const tenantFindUnique = vi.fn().mockResolvedValue({ mssqlConnectionString })
   const app = new Hono<AppEnv>()
   app.use('*', seedPrincipal({ roleNames }))
+  app.use('*', async (c, next) => {
+    c.set('db', { tenant: { findUnique: tenantFindUnique } } as unknown as PrismaClient)
+    await next()
+  })
   app.route('/', meHandler)
-  return app
+  return { app, tenantFindUnique }
 }
 
 beforeEach(() => {
@@ -29,7 +37,7 @@ beforeEach(() => {
 
 describe('GET /permissions', () => {
   it('returns the full action catalog for tenant_admin', async () => {
-    const res = await buildApp(['tenant_admin']).request('/permissions')
+    const res = await buildApp(['tenant_admin']).app.request('/permissions')
     expect(res.status).toBe(200)
     const body = (await res.json()) as { roles: string[]; permissions: string[] }
     expect(body.roles).toEqual(['tenant_admin'])
@@ -37,7 +45,7 @@ describe('GET /permissions', () => {
   })
 
   it('returns only read permissions for tenant_user', async () => {
-    const res = await buildApp(['viewer']).request('/permissions')
+    const res = await buildApp(['viewer']).app.request('/permissions')
     expect(res.status).toBe(200)
     const body = (await res.json()) as { roles: string[]; permissions: string[] }
     expect(body.roles).toEqual(['viewer'])
@@ -58,11 +66,41 @@ describe('GET /permissions', () => {
   })
 
   it('returns an empty permissions array for an empty-roles principal', async () => {
-    const res = await buildApp([]).request('/permissions')
+    const res = await buildApp([]).app.request('/permissions')
     expect(res.status).toBe(200)
     const body = (await res.json()) as { roles: string[]; permissions: string[] }
     expect(body.roles).toEqual([])
     expect(body.permissions).toEqual([])
+  })
+
+  describe('capabilities.longhaul', () => {
+    it('is true when the tenant has a mssqlConnectionString', async () => {
+      const { app, tenantFindUnique } = buildApp(['tenant_admin'], 'Server=legacy;Database=lh;')
+      const res = await app.request('/permissions')
+      const body = (await res.json()) as { capabilities: { longhaul: boolean } }
+      expect(body.capabilities).toEqual({ longhaul: true })
+      expect(tenantFindUnique).toHaveBeenCalledWith({
+        where: { id: 'test-tenant-id' },
+        select: { mssqlConnectionString: true },
+      })
+    })
+
+    it('is false when the tenant has no mssqlConnectionString', async () => {
+      const res = await buildApp(['tenant_admin'], null).app.request('/permissions')
+      const body = (await res.json()) as { capabilities: { longhaul: boolean } }
+      expect(body.capabilities).toEqual({ longhaul: false })
+    })
+
+    it('is false (no throw) for a principal with no tenant-scoped db', async () => {
+      // M2M / service-account principals resolve no `db` in context.
+      const app = new Hono<AppEnv>()
+      app.use('*', seedPrincipal({ roleNames: ['tenant_admin'] }))
+      app.route('/', meHandler)
+      const res = await app.request('/permissions')
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { capabilities: { longhaul: boolean } }
+      expect(body.capabilities).toEqual({ longhaul: false })
+    })
   })
 })
 
