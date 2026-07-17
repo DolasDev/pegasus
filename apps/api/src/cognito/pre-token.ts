@@ -17,11 +17,14 @@
 //   Resolve the active tenant, then look up the TenantUser record to determine
 //   roleNames and status. Resolution order:
 //
-//     1. FEDERATED (an `identities` claim is present) — the identity PROVIDER
-//        determines the tenant, via TenantSsoProvider.tenantId. The email is never
-//        used to resolve a federated login. See the security note at Step 1a: the
+//     1. FEDERATED (signed in THROUGH an IdP — see isFederatedSignIn) — the identity
+//        PROVIDER determines the tenant, via TenantSsoProvider.tenantId. The email is
+//        never used to resolve a federated login. See the security note at Step 1a: the
 //        user pool is shared across tenants and each tenant controls its own IdP,
 //        so an asserted email is not a trustworthy tenant signal.
+//        NOTE: "has an `identities` attribute" is NOT the test — a linked user carries
+//        that on password logins too. Routing on it locked multi-tenant SSO users out of
+//        every tenant but their provider's.
 //     2. AuthSession (multi-tenant picker) — native logins only.
 //     3. The user's tenant_users roster — native logins only.
 //
@@ -77,11 +80,16 @@ async function getAdminClientId(): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Federated identity — which IdP actually authenticated this user?
+// Federated identity — which IdP is linked to this user?
 //
-// Cognito delivers `identities` as a JSON STRING on federated users and omits it
-// entirely for native ones:
+// Cognito delivers `identities` as a JSON STRING on users with a linked IdP identity
+// and omits it entirely for purely-native ones:
 //   [{"userId":"…","providerName":"AcmeOkta","providerType":"OIDC",…}]
+//
+// NOTE this answers "does this account HAVE a linked IdP identity?", NOT "did this
+// sign-in come THROUGH that IdP?". Those were the same question until account linking
+// (cognito/pre-sign-up.ts) started attaching `identities` to native users. See
+// isFederatedSignIn() — do not use this alone to route a login.
 //
 // Anything unparseable, empty, or missing a providerName returns null and is handled
 // as a native login — the strictly more restrictive path. An untrusted claim must
@@ -101,6 +109,49 @@ function extractProviderName(identitiesAttr: string | undefined): string | null 
 
   const name = (parsed[0] as Record<string, unknown> | undefined)?.['providerName']
   return typeof name === 'string' && name.length > 0 ? name : null
+}
+
+// ---------------------------------------------------------------------------
+// Did THIS sign-in come through the IdP?
+//
+// The `identities` attribute cannot answer that on its own. It describes the account,
+// not the authentication: once cognito/pre-sign-up.ts links a federated identity to a
+// person's native user (so one person = one Cognito user = one stable `sub`), that user
+// carries `identities` FOREVER — including on password logins. Routing on presence alone
+// therefore pinned every login by a linked user to the provider's tenant, and any other
+// tenant pick died on the AuthSession-disagreement check below. That was a live prod
+// break for a multi-tenant SSO user, not a theoretical one.
+//
+// `triggerSource` reports how the token was actually requested, which is the real
+// question. It separates the two flows cleanly because of how the apps sign in:
+//
+//   - Native password → InitiateAuth USER_PASSWORD_AUTH (apps/tenant-web/src/auth/
+//     cognito.ts) → TokenGeneration_Authentication. Never touches the hosted UI.
+//   - Federated → /oauth2/authorize?identity_provider=<name> → TokenGeneration_HostedAuth.
+//     The identity_provider hint skips the hosted UI's own password form, so for a tenant
+//     app client HostedAuth means an IdP round-trip and nothing else.
+//   - admin-web does use the hosted UI, but the admin client returns above, long before
+//     tenant resolution.
+//
+// ⚠️ This couples us to that login design. If tenant password login is ever moved onto the
+// hosted UI, a linked user would be misclassified as federated all over again. Change this
+// check in the same commit as any such move.
+//
+// ⚠️ TokenGeneration_RefreshTokens is deliberately NOT treated as federated: no client in
+// this repo refreshes today (every exchange is grant_type=authorization_code), so it never
+// fires. Whoever adds refresh must decide how to resolve the tenant for a LINKED user —
+// at refresh neither `identities` nor `triggerSource` distinguishes native from federated,
+// and the AuthSession is 10-minute TTL (handlers/auth.ts) so it is long expired. Read this
+// note before you wire one up.
+//
+// Fail-safe direction: anything unrecognised falls to the native path, which is strictly
+// more restrictive — it still requires an AuthSession or an unambiguous roster row.
+// ---------------------------------------------------------------------------
+function isFederatedSignIn(
+  triggerSource: string,
+  providerName: string | null,
+): providerName is string {
+  return providerName !== null && triggerSource === 'TokenGeneration_HostedAuth'
 }
 
 export const handler: PreTokenGenerationTriggerHandler = async (event) => {
@@ -187,7 +238,7 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
   // -------------------------------------------------------------------------
   const providerName = extractProviderName(event.request.userAttributes.identities)
 
-  if (providerName) {
+  if (isFederatedSignIn(event.triggerSource, providerName)) {
     const provider = await db.tenantSsoProvider.findFirst({
       where: { cognitoProviderName: providerName },
       select: { tenantId: true, isEnabled: true },
@@ -227,11 +278,19 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
       email,
       providerName,
       tenantId,
+      triggerSource: event.triggerSource,
     })
   } else if (authSession) {
     // Use the session-selected tenant.
+    // `linkedProvider` distinguishes "native login by a linked user" (the case that
+    // regressed) from a never-federated one, without changing how either is routed.
     tenantId = authSession.tenantId
-    logger.info('Pre-Token trigger: Resolved tenant via AuthSession', { email, tenantId })
+    logger.info('Pre-Token trigger: Resolved tenant via AuthSession', {
+      email,
+      tenantId,
+      triggerSource: event.triggerSource,
+      linkedProvider: providerName ?? '(none)',
+    })
   } else {
     // -----------------------------------------------------------------------
     // Step 2: No pending session (e.g. a token refresh, which never carries
@@ -261,7 +320,12 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
     }
 
     tenantId = rosterRows[0]!.tenantId
-    logger.info('Pre-Token trigger: Resolved tenant via roster', { email, tenantId })
+    logger.info('Pre-Token trigger: Resolved tenant via roster', {
+      email,
+      tenantId,
+      triggerSource: event.triggerSource,
+      linkedProvider: providerName ?? '(none)',
+    })
   }
 
   // -------------------------------------------------------------------------

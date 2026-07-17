@@ -85,6 +85,15 @@ const fakeCallback = () => undefined
 /** Default group assigned to tenant users so they pass the no-groups guard. */
 const TENANT_GROUP = 'us-east-1_test_tenant-uuid-123'
 
+/**
+ * Cognito's trigger source for a sign-in through the hosted UI — which, for a tenant app
+ * client, only ever happens with an `identity_provider` hint, i.e. a real IdP round-trip.
+ * A federated event carries THIS, not TokenGeneration_Authentication.
+ */
+const HOSTED_AUTH = 'TokenGeneration_HostedAuth'
+/** Native username/password via InitiateAuth USER_PASSWORD_AUTH. */
+const NATIVE_AUTH = 'TokenGeneration_Authentication'
+
 /** Builds a minimal PreTokenGeneration trigger event. */
 function makeEvent({
   email,
@@ -92,6 +101,7 @@ function makeEvent({
   groups,
   clientId = TENANT_CLIENT_ID,
   identities,
+  triggerSource = NATIVE_AUTH,
 }: {
   email?: string
   sub?: string
@@ -99,15 +109,21 @@ function makeEvent({
   clientId?: string
   /**
    * Raw value of the `identities` user attribute. Cognito delivers this as a JSON
-   * STRING for federated users and omits it entirely for native ones — pass a string
-   * to mimic the real shape, including deliberately malformed values.
+   * STRING for users with a linked IdP identity and omits it entirely for purely-native
+   * ones — pass a string to mimic the real shape, including deliberately malformed values.
+   *
+   * NOTE: presence does NOT imply the sign-in was federated. Account linking
+   * (cognito/pre-sign-up.ts) attaches this to a NATIVE user permanently, so a password
+   * login by a linked user carries it too — pair it with `triggerSource` to say which.
    */
   identities?: string
+  /** How the token was requested. Drives native-vs-federated routing. */
+  triggerSource?: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 }): any {
   return {
     version: '1',
-    triggerSource: 'TokenGeneration_Authentication' as const,
+    triggerSource,
     region: 'us-east-1',
     userPoolId: 'us-east-1_test',
     callerContext: { awsSdkVersion: '1', clientId },
@@ -183,6 +199,9 @@ describe('pre-token trigger', () => {
     ])
   }
 
+  // Every event here carries HOSTED_AUTH: a federated sign-in reaches Cognito through the
+  // hosted UI, so that is what the real trigger event looks like. `identities` alone does
+  // not make a login federated — a linked user carries it on password logins too.
   describe('federated login — provider/tenant binding', () => {
     it('resolves the tenant from the provider, not the email roster', async () => {
       mockSsoProviderFindFirst.mockResolvedValue({
@@ -192,7 +211,12 @@ describe('pre-token trigger', () => {
       mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
 
       const event = await handler(
-        makeEvent({ email: 'user@example.com', sub: 'x', identities: identitiesAttr('AcmeOkta') }),
+        makeEvent({
+          email: 'user@example.com',
+          sub: 'x',
+          identities: identitiesAttr('AcmeOkta'),
+          triggerSource: HOSTED_AUTH,
+        }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         {} as any,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -229,6 +253,7 @@ describe('pre-token trigger', () => {
             email: 'admin@tenant-a.example',
             sub: 'x',
             identities: identitiesAttr('TenantBEvil'),
+            triggerSource: HOSTED_AUTH,
           }),
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           {} as any,
@@ -249,7 +274,12 @@ describe('pre-token trigger', () => {
 
       await expect(
         handler(
-          makeEvent({ email: 'a@b.com', sub: 'x', identities: identitiesAttr('GhostProvider') }),
+          makeEvent({
+            email: 'a@b.com',
+            sub: 'x',
+            identities: identitiesAttr('GhostProvider'),
+            triggerSource: HOSTED_AUTH,
+          }),
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           {} as any,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -263,7 +293,12 @@ describe('pre-token trigger', () => {
 
       await expect(
         handler(
-          makeEvent({ email: 'a@b.com', sub: 'x', identities: identitiesAttr('DisabledIdp') }),
+          makeEvent({
+            email: 'a@b.com',
+            sub: 'x',
+            identities: identitiesAttr('DisabledIdp'),
+            triggerSource: HOSTED_AUTH,
+          }),
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           {} as any,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -280,7 +315,12 @@ describe('pre-token trigger', () => {
 
       await expect(
         handler(
-          makeEvent({ email: 'a@b.com', sub: 'x', identities: identitiesAttr('TenantBIdp') }),
+          makeEvent({
+            email: 'a@b.com',
+            sub: 'x',
+            identities: identitiesAttr('TenantBIdp'),
+            triggerSource: HOSTED_AUTH,
+          }),
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           {} as any,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -297,7 +337,12 @@ describe('pre-token trigger', () => {
       mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
 
       const event = await handler(
-        makeEvent({ email: 'a@b.com', sub: 'x', identities: identitiesAttr('GoodIdp') }),
+        makeEvent({
+          email: 'a@b.com',
+          sub: 'x',
+          identities: identitiesAttr('GoodIdp'),
+          triggerSource: HOSTED_AUTH,
+        }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         {} as any,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -340,6 +385,135 @@ describe('pre-token trigger', () => {
 
       await handler(
         makeEvent({ email: 'a@b.com', sub: 'x' }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {} as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (() => {}) as any,
+      )
+
+      expect(mockSsoProviderFindFirst).not.toHaveBeenCalled()
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // A LINKED user — `identities` present AND authenticating natively.
+  //
+  // This combination was impossible until account linking (cognito/pre-sign-up.ts)
+  // started attaching a federated identity to a person's native user, so nothing
+  // covered it — which is exactly how the break below reached production: every
+  // password login by a linked user was routed as federated, pinned to the provider's
+  // tenant, and any other tenant pick died on the disagreement check.
+  // -------------------------------------------------------------------------
+  describe('linked user — a native login is not a federated login', () => {
+    it('resolves the AuthSession tenant on a password login, even though identities is present', async () => {
+      // THE prod regression: a user rostered in several tenants, linked to tenant-B's
+      // IdP, signing in with a password and picking tenant-A.
+      mockAuthSessionFindFirst.mockResolvedValue({ id: 's1', tenantId: 'tenant-A' })
+      mockSsoProviderFindFirst.mockResolvedValue({ tenantId: 'tenant-B', isEnabled: true })
+      mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
+
+      const event = await handler(
+        makeEvent({
+          email: 'multi@example.com',
+          sub: 'x',
+          identities: identitiesAttr('TenantBIdp'),
+          triggerSource: NATIVE_AUTH,
+        }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {} as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (() => {}) as any,
+      )
+
+      // The provider must not be consulted at all — this sign-in never touched an IdP.
+      expect(mockSsoProviderFindFirst).not.toHaveBeenCalled()
+      expect(event?.response.claimsOverrideDetails.claimsToAddOrOverride['custom:tenantId']).toBe(
+        'tenant-A',
+      )
+    })
+
+    it('does not throw when the AuthSession tenant differs from the linked provider tenant', async () => {
+      // The disagreement guard belongs to federated sign-ins only. On a password login
+      // there is no provider assertion to disagree with, and throwing here is what locked
+      // a multi-tenant SSO user out of every tenant but their provider's.
+      mockAuthSessionFindFirst.mockResolvedValue({ id: 's1', tenantId: 'tenant-A' })
+      mockSsoProviderFindFirst.mockResolvedValue({ tenantId: 'tenant-B', isEnabled: true })
+      mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
+
+      await expect(
+        handler(
+          makeEvent({
+            email: 'multi@example.com',
+            sub: 'x',
+            identities: identitiesAttr('TenantBIdp'),
+            triggerSource: NATIVE_AUTH,
+          }),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          {} as any,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (() => {}) as any,
+        ),
+      ).resolves.toBeDefined()
+    })
+
+    it('still routes the same linked user through the provider when they use SSO', async () => {
+      // The other half of the contract: linking must not cost us the #443 binding.
+      mockAuthSessionFindFirst.mockResolvedValue(null)
+      mockSsoProviderFindFirst.mockResolvedValue({ tenantId: 'tenant-B', isEnabled: true })
+      mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
+
+      const event = await handler(
+        makeEvent({
+          email: 'multi@example.com',
+          sub: 'x',
+          identities: identitiesAttr('TenantBIdp'),
+          triggerSource: HOSTED_AUTH,
+        }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {} as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (() => {}) as any,
+      )
+
+      expect(mockSsoProviderFindFirst).toHaveBeenCalled()
+      expect(event?.response.claimsOverrideDetails.claimsToAddOrOverride['custom:tenantId']).toBe(
+        'tenant-B',
+      )
+    })
+
+    it('treats a temporary-password challenge as native for a linked user', async () => {
+      // TokenGeneration_NewPasswordChallenge is an invited user's first sign-in. It is a
+      // native flow and must not be pinned to a linked provider's tenant.
+      mockAuthSessionFindFirst.mockResolvedValue({ id: 's1', tenantId: 'tenant-A' })
+      mockSsoProviderFindFirst.mockResolvedValue({ tenantId: 'tenant-B', isEnabled: true })
+      mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
+
+      const event = await handler(
+        makeEvent({
+          email: 'multi@example.com',
+          sub: 'x',
+          identities: identitiesAttr('TenantBIdp'),
+          triggerSource: 'TokenGeneration_NewPasswordChallenge',
+        }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {} as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (() => {}) as any,
+      )
+
+      expect(mockSsoProviderFindFirst).not.toHaveBeenCalled()
+      expect(event?.response.claimsOverrideDetails.claimsToAddOrOverride['custom:tenantId']).toBe(
+        'tenant-A',
+      )
+    })
+
+    it('does not treat hosted-UI auth without any linked identity as federated', async () => {
+      // Defensive: no provider name means there is nothing to resolve a tenant from, so
+      // the native path (stricter) must handle it regardless of trigger source.
+      mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
+
+      await handler(
+        makeEvent({ email: 'a@b.com', sub: 'x', triggerSource: HOSTED_AUTH }),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         {} as any,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
