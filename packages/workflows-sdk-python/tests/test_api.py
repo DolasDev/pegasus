@@ -502,6 +502,62 @@ def test_publish_integration_config_sends_floor_overlay_fields() -> None:
     }
 
 
+def test_publish_integration_config_sends_inbound_block() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(201, json={"data": {"version": 1}})
+
+    inbound = {
+        "eventType": "sirva_ade.shipment.event",
+        "dedupKeyPath": "Events.0.Id",
+        "validation": {"requiredPaths": ["SvcProvDataRecipient"], "nonEmptyArrayPaths": ["Events"]},
+        "ackTemplate": {"success": {"Result": {"Results": "Success"}}},
+    }
+    client = _client_with(handler)
+    client.publish_integration_config(
+        "sirva_ade_shipment",
+        mapping={"a": "x"},
+        rules=[],
+        corpus=[],
+        floor="shipment_lifecycle_event",
+        inbound=inbound,
+    )
+    assert captured["body"]["inbound"] == inbound
+    assert captured["body"]["floor"] == "shipment_lifecycle_event"
+
+
+def test_list_and_get_floor_hit_public_endpoints() -> None:
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        if request.url.path.endswith("/floors"):
+            return httpx.Response(200, json={"data": [{"floor": "shipment_lifecycle_event"}]})
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "floor": "shipment_lifecycle_event",
+                    "canonicalFields": ["Id", "Reference.Brand"],
+                    "factCatalog": {"brand": "string", "brandPresent": "boolean"},
+                    "defaultAction": "save",
+                }
+            },
+        )
+
+    client = _client_with(handler)
+    floors = client.list_floors()
+    assert floors[0]["floor"] == "shipment_lifecycle_event"
+    assert seen["path"] == "/api/v1/integrations/floors"
+
+    floor = client.get_floor("shipment_lifecycle_event")
+    assert seen["path"] == "/api/v1/integrations/floors/shipment_lifecycle_event"
+    assert "brand" in floor["factCatalog"]
+    assert "Reference.Brand" in floor["canonicalFields"]
+
+
 def test_publish_integration_config_gate_failure_raises() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(

@@ -102,6 +102,8 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     "validate_integration_config": None,
     "get_integration_config": None,
     "list_integration_config_versions": None,
+    "list_floors": None,
+    "get_floor": None,
 }
 
 #: mutation method -> the Cedar action (``capability``) it is gated by.

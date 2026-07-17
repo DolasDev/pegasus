@@ -182,6 +182,7 @@ def test_pull_then_publish_round_trips_overlay_fields(tmp_path: Path) -> None:
         "display_name": "Weichert",
         "external_shape": {"type": "object", "properties": {"ref": {"type": "string"}}},
         "external_mapping": {"ref": "serviceOrderNumber"},
+        "inbound": None,
     }
 
 
@@ -198,6 +199,7 @@ def test_publish_without_overlay_files_sends_none(tmp_path: Path) -> None:
         "display_name": None,
         "external_shape": None,
         "external_mapping": None,
+        "inbound": None,
     }
 
 

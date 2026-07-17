@@ -49,6 +49,11 @@ CORPUS_FILE = "corpus.json"
 META_FILE = "meta.json"
 EXTERNAL_SHAPE_FILE = "external-shape.json"
 EXTERNAL_MAPPING_FILE = "external-mapping.json"
+#: Optional inbound ingress block (sdk-feedback 0021): { eventType, dedupKeyPath,
+#: validation, ackTemplate }. Present ⇒ the ingress renders the partner's ack
+#: envelope (e.g. ADE Result{…}) + validates the body. See the JSON Schema at
+#: GET /api/v1/integrations/inbound-schema. Absent ⇒ non-ingress integration.
+INBOUND_FILE = "inbound.json"
 
 
 @dataclass
@@ -62,6 +67,7 @@ class _Surface:
     display_name: str | None = None
     external_shape: Any | None = None
     external_mapping: Any | None = None
+    inbound: Any | None = None
 
 integration_config_app = typer.Typer(
     name="integration-config",
@@ -111,6 +117,7 @@ def _load_surface(directory: Path) -> _Surface:
         display_name=meta_dict.get("displayName"),
         external_shape=_load_optional_json(directory, EXTERNAL_SHAPE_FILE),
         external_mapping=_load_optional_json(directory, EXTERNAL_MAPPING_FILE),
+        inbound=_load_optional_json(directory, INBOUND_FILE),
     )
 
 
@@ -176,6 +183,7 @@ def validate_command(
             display_name=surface.display_name,
             external_shape=surface.external_shape,
             external_mapping=surface.external_mapping,
+            inbound=surface.inbound,
         )
     except PegasusApiError as exc:
         typer.secho(f"validate failed: {exc}", fg=typer.colors.RED, err=True)
@@ -207,6 +215,7 @@ def publish_command(
             display_name=surface.display_name,
             external_shape=surface.external_shape,
             external_mapping=surface.external_mapping,
+            inbound=surface.inbound,
         )
     except PegasusApiError as exc:
         # A gate failure (422) carries the report; surface it.
@@ -271,6 +280,7 @@ def pull_command(
     for filename, key in (
         (EXTERNAL_SHAPE_FILE, "externalShape"),
         (EXTERNAL_MAPPING_FILE, "externalMapping"),
+        (INBOUND_FILE, "inbound"),
     ):
         if config.get(key) is not None:
             (directory / filename).write_text(

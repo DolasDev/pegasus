@@ -134,12 +134,13 @@ def _integration_config_body(
     display_name: str | None,
     external_shape: Any | None,
     external_mapping: Any | None,
+    inbound: Any | None = None,
 ) -> dict[str, Any]:
     """Assemble the integration-config request body, omitting unset overlay fields.
 
     ``mapping``/``rules``/``corpus`` are the editable surface; the rest are the
-    floor/overlay fields (sdk-feedback 0019 + 0020) sent only when provided, so an
-    older-style publish is byte-identical.
+    floor/overlay fields (sdk-feedback 0019 + 0020) and the ``inbound`` ingress
+    block (0021), sent only when provided, so an older-style publish is byte-identical.
     """
     body: dict[str, Any] = {"mapping": mapping, "rules": rules, "corpus": corpus}
     if floor is not None:
@@ -150,6 +151,8 @@ def _integration_config_body(
         body["externalShape"] = external_shape
     if external_mapping is not None:
         body["externalMapping"] = external_mapping
+    if inbound is not None:
+        body["inbound"] = inbound
     return body
 
 
@@ -1217,6 +1220,7 @@ class PegasusClient:
         display_name: str | None = None,
         external_shape: Any | None = None,
         external_mapping: Any | None = None,
+        inbound: Any | None = None,
     ) -> dict[str, Any]:
         """Dry-run the publish gate for a candidate config. No write.
 
@@ -1237,6 +1241,9 @@ class PegasusClient:
                 Omit for an identity external body (external == canonical).
             external_mapping: The canonical → external projection (0020). Omit for
                 identity.
+            inbound: The ingress ack/validation block (0021) — see the
+                ``/api/v1/integrations/inbound-schema`` JSON Schema. Omit for a
+                non-ingress integration.
 
         Returns:
             The ``GateReport``: ``{ok, problems, corpus: {total, passed, failures}}``.
@@ -1248,7 +1255,14 @@ class PegasusClient:
             response = client.post(
                 f"/api/v1/integrations/{integration_id}/config/validate",
                 json=_integration_config_body(
-                    mapping, rules, corpus, floor, display_name, external_shape, external_mapping
+                    mapping,
+                    rules,
+                    corpus,
+                    floor,
+                    display_name,
+                    external_shape,
+                    external_mapping,
+                    inbound,
                 ),
             )
         _raise_for_status(response)
@@ -1265,6 +1279,7 @@ class PegasusClient:
         display_name: str | None = None,
         external_shape: Any | None = None,
         external_mapping: Any | None = None,
+        inbound: Any | None = None,
     ) -> dict[str, Any]:
         """Gate then publish a config, creating a new version.
 
@@ -1286,11 +1301,17 @@ class PegasusClient:
                 Omit for an identity external body (external == canonical).
             external_mapping: The canonical → external projection (0020). Omit for
                 identity.
+            inbound: The ingress ack/validation block (0021) — { eventType,
+                dedupKeyPath, validation, ackTemplate }; see
+                ``/api/v1/integrations/inbound-schema``. This is what makes an
+                ingress return the partner's ack envelope (e.g. ADE ``Result{…}``)
+                instead of the generic ``{"status":"accepted"}``. Omit for a
+                non-ingress integration.
 
         Returns:
             The created config row: ``{id, integrationId, version, visibility,
             status, mapping, rules, corpus, floor, displayName, externalShape,
-            externalMapping, publishedBy, createdAt}``.
+            externalMapping, inbound, publishedBy, createdAt}``.
 
         Raises:
             PegasusApiError: On 403 (feature disabled), 404, 422 (gate failed —
@@ -1308,7 +1329,14 @@ class PegasusClient:
             response = client.post(
                 f"/api/v1/integrations/{integration_id}/config",
                 json=_integration_config_body(
-                    mapping, rules, corpus, floor, display_name, external_shape, external_mapping
+                    mapping,
+                    rules,
+                    corpus,
+                    floor,
+                    display_name,
+                    external_shape,
+                    external_mapping,
+                    inbound,
                 ),
             )
         _raise_for_status(response)
@@ -1324,6 +1352,31 @@ class PegasusClient:
             PegasusApiError: On 404 (no published config for this scope).
         """
         return self._get_json(f"/api/v1/integrations/{integration_id}/config")["data"]
+
+    def list_floors(self) -> list[dict[str, Any]]:
+        """List the built-in integration floors — the per-type contracts a config builds on.
+
+        A floor is partner-neutral and reused across partners of its type. Each entry
+        is the same detail :meth:`get_floor` returns. Use this to discover which floor
+        fits your data before authoring a config. Public read.
+        """
+        return self._get_json("/api/v1/integrations/floors")["data"]
+
+    def get_floor(self, floor_id: str) -> dict[str, Any]:
+        """A floor's machine-readable authoring contract (sdk-feedback 0024).
+
+        Returns ``{floor, canonicalFields, factCatalog, defaultAction, projection?}``:
+
+        - ``canonicalFields`` — the ONLY legal mapping *targets* (a ``mapping.json``
+          may only write these paths; array-element paths are marked ``[]``).
+        - ``factCatalog`` — the ONLY legal rule *facts* (name → type). A rule's
+          ``fact`` must be one of these; its ``field`` one of ``canonicalFields``.
+
+        Author ``mapping.json`` / ``rules.json`` against these so the publish gate
+        accepts them — this is how an agent writes a valid config without platform
+        source. Raises ``PegasusApiError`` (404) on an unknown floor.
+        """
+        return self._get_json(f"/api/v1/integrations/floors/{floor_id}")["data"]
 
     def list_integration_config_versions(self, integration_id: str) -> list[dict[str, Any]]:
         """List the config version history for the caller's scope, newest first.

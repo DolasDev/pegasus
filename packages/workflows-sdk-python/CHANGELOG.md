@@ -3,6 +3,32 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.21.0
+
+### Added — self-serve config authoring (no platform source needed)
+
+- **Publish the ingress `inbound` block.** `publish_integration_config` /
+  `validate_integration_config` gain an `inbound=` param, and the CLI
+  `integration-config` reads/writes an **`inbound.json`** in the working directory
+  (round-tripped by `pull`). This is the missing authoring path for the ADE
+  `Result` ack + body validation (sdk-feedback 0021): the API accepted `inbound`,
+  but nothing could publish it. Now `pull → edit → validate → publish` carries it.
+- **Floor introspection.** `PegasusClient.list_floors()` / `get_floor(floor_id)`
+  return a floor's machine-readable contract — `canonicalFields` (the only legal
+  mapping _targets_) + `factCatalog` (the only legal rule _facts_) + `defaultAction`
+  - `projection`. Author `mapping.json`/`rules.json` against these so the gate
+    accepts them. Backed by public `GET /api/v1/integrations/floors[/{id}]`.
+- **Discovery schemas.** `GET /api/v1/integrations/inbound-schema` (the publishable
+  `inbound` block's JSON Schema) joins the existing `mapping-schema`.
+- **MCP resources** for AI coding agents: `pegasus://reference/integration-config`
+  (the full authoring guide — files, floors, `nin`, the `inbound` block, the publish
+  gate), `pegasus://reference/floors` (live floor list), and
+  `pegasus://reference/openapi` (the API's live OpenAPI 3.1 spec). The
+  `validate_integration_config` MCP tool now accepts `floor` + `inbound`.
+- **OpenAPI**: the served spec (`GET /openapi.json`, Swagger UI at `/docs`) now
+  covers the integration-authoring surface (validate / map-to / map-from / config /
+  floors / schemas) with the `vnd_` Bearer security scheme.
+
 ## 0.20.0
 
 ### Added

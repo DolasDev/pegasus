@@ -7,11 +7,55 @@
 // ---------------------------------------------------------------------------
 
 import crypto from 'node:crypto'
+import { z } from 'zod'
 
 /** A structured ingest issue: a partner-shaped code + a human-readable message. */
 export interface AckIssue {
   code: string
   message: string
+}
+
+// ---------------------------------------------------------------------------
+// Published `inbound` block schema (sdk-feedback 0021) — the documented,
+// machine-discoverable shape of the ingress behaviour a config publishes. Served
+// at GET /api/v1/integrations/inbound-schema and used to gate the block on
+// publish. The runtime `parseInboundConfig` below stays lenient (fail-open) for
+// already-stored rows; this schema is the authoring contract.
+// ---------------------------------------------------------------------------
+
+/** An ack template: JSON with `{{key}}` scalar substitution + a `$map` array directive. */
+const AckTemplateValue = z.unknown()
+
+export const InboundBlockSchema = z
+  .object({
+    /** Domain event emitted on receipt (e.g. "sirva_ade.shipment.event"). */
+    eventType: z.string().min(1).optional(),
+    /** Dot-path to the dedup id in the payload (e.g. "Events.0.Id"). */
+    dedupKeyPath: z.string().min(1).optional(),
+    /** Declarative body validation; a failure returns the `failure` ack. */
+    validation: z
+      .object({
+        requiredPaths: z.array(z.string().min(1)).optional(),
+        nonEmptyArrayPaths: z.array(z.string().min(1)).optional(),
+      })
+      .strict()
+      .optional(),
+    /**
+     * Synchronous partner ack templates. Each is arbitrary JSON; a string that is
+     * exactly `{{key}}` substitutes a context value (`status`, `errorCount`,
+     * `messages`, `issues`), and an object `{ "$map": "issues", "as": {…} }`
+     * renders one element per issue. Success context: status="Success". Failure:
+     * status="Failed", errorCount, messages[] (strings), issues[] ({code,message}).
+     */
+    ackTemplate: z
+      .object({ success: AckTemplateValue.optional(), failure: AckTemplateValue.optional() })
+      .optional(),
+  })
+  .strict()
+
+/** JSON Schema for the publishable `inbound` block (for the discovery endpoint). */
+export function inboundBlockJsonSchema(): unknown {
+  return z.toJSONSchema(InboundBlockSchema)
 }
 
 /** Declarative body validation for the inbound endpoint (all fields optional). */
