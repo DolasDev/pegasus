@@ -22,8 +22,6 @@ vi.mock('../repositories', () => ({
   resolveTariff400ngData: vi.fn(),
   listTariffVersions: vi.fn(),
   getTariffVersionById: vi.fn(),
-  importTariff400ng: vi.fn(),
-  activateTariffVersion: vi.fn(),
 }))
 
 import {
@@ -31,8 +29,6 @@ import {
   resolveTariff400ngData,
   listTariffVersions,
   getTariffVersionById,
-  importTariff400ng,
-  activateTariffVersion,
 } from '../repositories'
 
 // ---------------------------------------------------------------------------
@@ -251,83 +247,6 @@ describe('GET /tariffs/:id', () => {
   })
 })
 
-describe('POST /tariffs/import', () => {
-  const IMPORT_BODY = {
-    schemaVersion: 1,
-    tariffCode: '400NG',
-    label: '2026 400NG',
-    effectiveFrom: '2026-05-15T00:00:00.000Z',
-    effectiveTo: '2027-05-15T00:00:00.000Z',
-    zip3s: [{ zip3: '173', serviceArea: '672' }],
-    serviceAreas: [
-      {
-        serviceArea: '672',
-        schedule: 3,
-        serviceChargeCentsPerCwt: 1209,
-        linehaulFactorCentsPerCwt: 288,
-      },
-    ],
-    linehaulRates: [
-      {
-        milesLower: 1401,
-        milesUpper: 1501,
-        weightLower: 8000,
-        weightUpper: 8200,
-        rateCents: 1_747_500,
-      },
-    ],
-    shorthaulRates: [{ cwtMilesLower: 16_001, cwtMilesUpper: 32_000, rateCents: 39_702 }],
-    packRates: [{ schedule: 3, weightLower: 0, weightUpper: 16_001, rateCentsPerCwt: 9133 }],
-    unpackRates: [{ schedule: 1, rateMillicentsPerCwt: 791_595 }],
-  }
-
-  it('creates a new STAGED version and returns 201', async () => {
-    vi.mocked(importTariff400ng).mockResolvedValue({
-      version: { ...MOCK_VERSION, status: 'STAGED' },
-      created: true,
-    } as never)
-    const res = await buildApp().request('/tariffs/import', post(IMPORT_BODY))
-    expect(res.status).toBe(201)
-    expect((await json(res))['data']).toMatchObject({ created: true, status: 'STAGED' })
-  })
-
-  it('returns 200 (not 201) for an idempotent re-import', async () => {
-    vi.mocked(importTariff400ng).mockResolvedValue({
-      version: MOCK_VERSION,
-      created: false,
-    } as never)
-    const res = await buildApp().request('/tariffs/import', post(IMPORT_BODY))
-    expect(res.status).toBe(200)
-    expect((await json(res))['data']).toMatchObject({ created: false })
-  })
-
-  it('returns 400 VALIDATION_ERROR for a malformed import document', async () => {
-    const res = await buildApp().request('/tariffs/import', post({ tariffCode: '400NG' }))
-    expect(res.status).toBe(400)
-    expect((await json(res))['code']).toBe('VALIDATION_ERROR')
-  })
-
-  it('is forbidden for a viewer (no ImportTariff — admin-only)', async () => {
-    const res = await buildApp(VIEWER_PRINCIPAL).request('/tariffs/import', post(IMPORT_BODY))
-    expect(res.status).toBe(403)
-    expect(importTariff400ng).not.toHaveBeenCalled()
-  })
-})
-
-describe('POST /tariffs/:id/activate', () => {
-  it('activates a STAGED version', async () => {
-    vi.mocked(activateTariffVersion).mockResolvedValue({
-      ...MOCK_VERSION,
-      status: 'ACTIVE',
-    } as never)
-    const res = await buildApp().request('/tariffs/tv-1/activate', post({}))
-    expect(res.status).toBe(200)
-    expect((await json(res))['data']).toMatchObject({ status: 'ACTIVE' })
-  })
-
-  it('is forbidden for a viewer (no ImportTariff — admin-only)', async () => {
-    const res = await buildApp(VIEWER_PRINCIPAL).request('/tariffs/tv-1/activate', post({}))
-    expect(res.status).toBe(403)
-    expect(activateTariffVersion).not.toHaveBeenCalled()
-  })
-})
+// Import/activate moved to the PLATFORM_ADMIN surface (POST /api/admin/tariffs)
+// — covered by handlers/admin/tariffs.test.ts. The tenant rating handler is now
+// read + rate only; there is no tenant-facing tariff mutation route to test here.

@@ -70,7 +70,8 @@ const VIEWER_PERMISSIONS = [
   // sdk-feedback/0026) — a non-admin business-user read (20-viewer.cedar).
   'integration_projection:read',
   // viewer can rate a shipment and browse published tariff versions
-  // (20-viewer.cedar) — not an admin-only action, unlike ImportTariff.
+  // (20-viewer.cedar). Importing/activating tariff data is platform-admin only
+  // (POST /api/admin/tariffs) — there is no tenant-facing tariff:import action.
   'tariff:rate',
   'tariff:read',
 ] as const

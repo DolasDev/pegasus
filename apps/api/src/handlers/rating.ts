@@ -14,15 +14,12 @@ import { rate400ng, createZip3CentroidEstimator, DomainError } from '@pegasus/do
 import type { AppEnv } from '../types'
 import { requirePermission } from '../middleware/rbac'
 import { Actions } from '../authz/actions'
-import { Tariff400ngImportSchema } from '../rating/import-schema'
 import { mapVersionSummary } from '../rating/version-summary'
 import {
   findActiveTariffVersion,
   resolveTariff400ngData,
   listTariffVersions,
   getTariffVersionById,
-  importTariff400ng,
-  activateTariffVersion,
 } from '../repositories'
 
 const mileageEstimator = createZip3CentroidEstimator()
@@ -135,29 +132,7 @@ ratingHandler.get('/tariffs/:id', requirePermission(Actions.ReadTariff), async (
   return c.json({ data: mapVersionSummary(version) })
 })
 
-ratingHandler.post(
-  '/tariffs/import',
-  requirePermission(Actions.ImportTariff),
-  validator('json', (value, c) => {
-    const r = Tariff400ngImportSchema.safeParse(value)
-    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
-    return r.data
-  }),
-  async (c) => {
-    const db = c.get('db')
-    const userId = c.get('userId')
-    const body = c.req.valid('json')
-    const { version, created } = await importTariff400ng(db, body, userId)
-    return c.json(
-      { data: { id: version.id, status: version.status, created } },
-      created ? 201 : 200,
-    )
-  },
-)
-
-ratingHandler.post('/tariffs/:id/activate', requirePermission(Actions.ImportTariff), async (c) => {
-  const db = c.get('db')
-  const id = c.req.param('id') ?? ''
-  const version = await activateTariffVersion(db, id)
-  return c.json({ data: { id: version.id, status: version.status } })
-})
+// Import/activate (mutating platform-global tariff data) intentionally does NOT
+// live here: it moved to the PLATFORM_ADMIN surface at POST /api/admin/tariffs
+// (see handlers/admin/tariffs.ts). The tenant path is read + rate only, so no
+// tenant's admin can mutate the shared tariff every other tenant rates against.
