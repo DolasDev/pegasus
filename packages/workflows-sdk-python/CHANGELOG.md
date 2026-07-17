@@ -3,7 +3,30 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
-## 0.22.0
+## 0.23.0
+
+### Fixed — the operational-entity read helpers now actually work under a `vnd_` key
+
+The `list_customers` / `list_quotes` / `list_moves` / `list_invoices` helpers hit
+the browser `/api/v1/*` CRUD routes, which are Cognito-only and **reject the
+`vnd_` workflow-runtime key** (`from_runtime`) every SDK caller uses — so they
+401'd in practice. They now read a new m2m surface **`GET /api/v1/runtime/*`**
+(RBAC: `ReadCustomer` / `ReadQuote` / `ReadMove` / `ReadInvoice`, already granted
+to the `workflow_runtime` persona — no policy change). Response shape is unchanged
+(`{data, meta}`).
+
+### Changed
+
+- **`list_events(event_type)`** now takes a required event type and reads
+  `GET /api/v1/events/{event_type}` (the inbound platform-event queue is keyed by
+  type). The old no-arg call hit a route that did not exist.
+
+### Removed
+
+- **`list_inventory`** — inventory has no runtime read grant (the `workflow_runtime`
+  persona deliberately omits it) and is nested under moves, so the method never
+  worked. A workflow reads item-level data from the move it is processing. (No real
+  caller breaks — the method 401/404'd before.)
 
 ### Added — multi-shape push partners
 

@@ -626,30 +626,36 @@ class PegasusClient:
         return response.content
 
     # -- domain read helpers (for use inside activities) -------------------
+    # These read core operational entities from inside a running workflow, on the
+    # ``workflow_runtime`` service-account key (``from_runtime``), which is granted
+    # ReadCustomer/ReadQuote/ListMoves/ReadInvoice/ReadEvent. They hit the m2m
+    # ``/api/v1/runtime/*`` surface (0.23.0+) — the browser ``/api/v1/*`` CRUD
+    # routes are Cognito-only and reject a ``vnd_`` key. Each accepts ``limit`` /
+    # ``offset`` query params and returns ``{data, meta:{total,count,limit,offset}}``.
 
     def list_customers(self, **params: Any) -> Any:
-        """Read the customers list. For use inside workflow activities."""
-        return self._get_json("/api/v1/customers", **params)
+        """Read the customers list (requires ``ReadCustomer``)."""
+        return self._get_json("/api/v1/runtime/customers", **params)
 
     def list_quotes(self, **params: Any) -> Any:
-        """Read the quotes list. For use inside workflow activities."""
-        return self._get_json("/api/v1/quotes", **params)
+        """Read the quotes list (requires ``ReadQuote``)."""
+        return self._get_json("/api/v1/runtime/quotes", **params)
 
     def list_moves(self, **params: Any) -> Any:
-        """Read the moves list. For use inside workflow activities."""
-        return self._get_json("/api/v1/moves", **params)
-
-    def list_inventory(self, **params: Any) -> Any:
-        """Read inventory rooms/items. For use inside workflow activities."""
-        return self._get_json("/api/v1/inventory", **params)
+        """Read the moves list (requires ``ListMoves``)."""
+        return self._get_json("/api/v1/runtime/moves", **params)
 
     def list_invoices(self, **params: Any) -> Any:
-        """Read the invoices list. For use inside workflow activities."""
-        return self._get_json("/api/v1/invoices", **params)
+        """Read the invoices list (requires ``ReadInvoice``)."""
+        return self._get_json("/api/v1/runtime/invoices", **params)
 
-    def list_events(self, **params: Any) -> Any:
-        """Read the events stream. For use inside workflow activities."""
-        return self._get_json("/api/v1/events", **params)
+    def list_events(self, event_type: str, **params: Any) -> Any:
+        """Poll the pending inbound events of ``event_type`` (requires ``ReadEvent``).
+
+        The inbound platform-event queue is keyed by type, so an event type is
+        required. Returns the events awaiting processing for the caller's tenant.
+        """
+        return self._get_json(f"/api/v1/events/{event_type}", **params)
 
     def emit_event(
         self,

@@ -411,6 +411,45 @@ export function getOpenApiSpec() {
           responses: { '200': { description: 'JSON Schema of the inbound block' } },
         },
       },
+      // Workflow-runtime entity reads (vnd_ workflow_runtime key). Read-only,
+      // paginated (limit ≤100 / offset), returning { data, meta }. The SDK's
+      // list_customers/list_quotes/list_moves/list_invoices call these.
+      '/api/v1/runtime/customers': {
+        get: {
+          operationId: 'runtimeListCustomers',
+          summary: 'List customers (workflow runtime, ReadCustomer)',
+          tags: ['Runtime'],
+          security: [{ ApiKeyAuth: [] }],
+          responses: { '200': { description: 'Paginated customer list ({data, meta})' } },
+        },
+      },
+      '/api/v1/runtime/quotes': {
+        get: {
+          operationId: 'runtimeListQuotes',
+          summary: 'List quotes (workflow runtime, ReadQuote)',
+          tags: ['Runtime'],
+          security: [{ ApiKeyAuth: [] }],
+          responses: { '200': { description: 'Paginated quote list ({data, meta})' } },
+        },
+      },
+      '/api/v1/runtime/moves': {
+        get: {
+          operationId: 'runtimeListMoves',
+          summary: 'List moves (workflow runtime, ReadMove)',
+          tags: ['Runtime'],
+          security: [{ ApiKeyAuth: [] }],
+          responses: { '200': { description: 'Paginated move list ({data, meta})' } },
+        },
+      },
+      '/api/v1/runtime/invoices': {
+        get: {
+          operationId: 'runtimeListInvoices',
+          summary: 'List invoices (workflow runtime, ReadInvoice)',
+          tags: ['Runtime'],
+          security: [{ ApiKeyAuth: [] }],
+          responses: { '200': { description: 'Paginated invoice list ({data, meta})' } },
+        },
+      },
       '/api/v1/integrations/floors': {
         get: {
           operationId: 'listFloors',
