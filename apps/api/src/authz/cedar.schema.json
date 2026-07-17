@@ -208,9 +208,6 @@
       "ReadTariff": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Tariff"] }
       },
-      "ImportTariff": {
-        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Tariff"] }
-      },
       "ListMoves": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Move"] }
       },

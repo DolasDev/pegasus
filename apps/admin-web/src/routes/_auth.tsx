@@ -18,6 +18,7 @@ export function authGuard() {
 const NAV_ITEMS = [
   { to: '/tenants' as const, label: 'Tenants' },
   { to: '/workflows' as const, label: 'Workflows' },
+  { to: '/tariffs' as const, label: 'Tariffs' },
 ] as const
 
 function NavLinks() {

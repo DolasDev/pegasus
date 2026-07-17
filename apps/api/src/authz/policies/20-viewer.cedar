@@ -10,8 +10,9 @@
 //
 // RateShipment/ReadTariff are here for the same reason -- rating a shipment
 // and browsing published tariff versions is a normal business-user action,
-// not an admin one. ImportTariff (mutates platform-global tariff data) is
-// deliberately NOT granted here -- only tenant_admin's blanket policy covers it.
+// not an admin one. There is no tenant-facing import/activate action at all:
+// mutating the platform-global tariff data lives on the PLATFORM_ADMIN surface
+// (POST /api/admin/tariffs), outside every tenant's Cedar store.
 permit (
   principal in Pegasus::Group::"viewer",
   action in [
