@@ -22,8 +22,12 @@
 //   - cognitoProviderName is immutable after creation — it is the stable
 //     identifier used in Cognito and in the authorize URL. To change it, delete
 //     and recreate the provider.
-//   - Phase 5 will add an RBAC check so only tenant_admin users can call these
-//     endpoints. For now, any authenticated tenant session can manage providers.
+//   - Every route requires ManageSsoProviders (sso:manage), which only
+//     tenant_admin holds. This is load-bearing, not tidiness: a federated login
+//     resolves its tenant from the provider it came through, then inherits the
+//     roles rostered against the email it asserts. An ungated POST /providers
+//     therefore let any tenant user register an IdP they control, assert the
+//     admin's email, and mint tenant_admin claims for their own tenant.
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
@@ -35,6 +39,8 @@ import {
   UpdateIdentityProviderCommand,
   DeleteIdentityProviderCommand,
 } from '@aws-sdk/client-cognito-identity-provider'
+import { requirePermission } from '../middleware/rbac'
+import { Actions } from '../authz/actions'
 import type { AppEnv } from '../types'
 import { logger } from '../lib/logger'
 import {
@@ -244,7 +250,7 @@ export const ssoHandler = new Hono<AppEnv>()
 //
 // Response: { data: SsoProviderResponse[] }
 // ---------------------------------------------------------------------------
-ssoHandler.get('/providers', async (c) => {
+ssoHandler.get('/providers', requirePermission(Actions.ManageSsoProviders), async (c) => {
   const db = c.get('db')
   const tenantId = c.get('tenantId')
   try {
@@ -304,6 +310,7 @@ ssoHandler.get('/providers', async (c) => {
 // ---------------------------------------------------------------------------
 ssoHandler.post(
   '/providers',
+  requirePermission(Actions.ManageSsoProviders),
   validator('json', (value, c) => {
     const r = CreateSsoProviderBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
@@ -468,6 +475,7 @@ ssoHandler.post(
 // ---------------------------------------------------------------------------
 ssoHandler.put(
   '/providers/:id',
+  requirePermission(Actions.ManageSsoProviders),
   validator('json', (value, c) => {
     const r = UpdateSsoProviderBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
@@ -620,6 +628,7 @@ const AuthSettingsBody = z.object({
 
 ssoHandler.patch(
   '/providers/auth-settings',
+  requirePermission(Actions.ManageSsoProviders),
   validator('json', (value, c) => {
     const r = AuthSettingsBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
@@ -643,9 +652,11 @@ ssoHandler.patch(
   },
 )
 
-ssoHandler.delete('/providers/:id', async (c) => {
+ssoHandler.delete('/providers/:id', requirePermission(Actions.ManageSsoProviders), async (c) => {
   const db = c.get('db')
-  const id = c.req.param('id')
+  // `?? ''` mirrors users.ts: adding middleware widens Hono's param typing to
+  // string | undefined. Unreachable — the route only matches with an :id.
+  const id = c.req.param('id') ?? ''
 
   // Step 1 — Fetch existing (need cognitoProviderName for Cognito call)
   let existing: { id: string; cognitoProviderName: string } | null

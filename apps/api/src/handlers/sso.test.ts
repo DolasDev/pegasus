@@ -16,6 +16,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import type { PrismaClient } from '@prisma/client'
 import type { AppEnv } from '../types'
+import { seedPrincipalForRole } from '../__tests__/_principal'
+import { _clearAuthzCache } from '../lib/authz'
 import { ssoHandler } from './sso'
 import {
   CreateIdentityProviderCommand,
@@ -88,12 +90,17 @@ async function json(res: Response): Promise<JsonBody> {
 /**
  * Builds a minimal app that seeds context variables then delegates to
  * ssoHandler.
+ *
+ * `role` defaults to tenant_admin — the only role that may manage providers —
+ * so the behavioural tests below exercise the allowed path. requirePermission
+ * is NOT mocked: the real middleware evaluates the real .cedar policies via the
+ * offline wasm backend, so a grant leaking to a non-admin persona fails here.
  */
-function buildApp() {
+function buildApp(role: string | null = 'tenant_admin') {
   const app = new Hono<AppEnv>()
 
+  app.use('*', seedPrincipalForRole(role))
   app.use('*', async (c, next) => {
-    c.set('tenantId', 'test-tenant-id')
     c.set('db', mockDb as unknown as PrismaClient)
     await next()
   })
@@ -113,6 +120,14 @@ function post(body: unknown): RequestInit {
 function put(body: unknown): RequestInit {
   return {
     method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }
+}
+
+function patch(body: unknown): RequestInit {
+  return {
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   }
@@ -164,6 +179,12 @@ const validSamlCreateBody = {
   metadataUrl: 'https://okta.example.com/metadata',
 }
 
+/** A body the PUT validator accepts — so an RBAC 403 can't be mistaken for a 400. */
+const validUpdateBody = {
+  name: 'Renamed Provider',
+  isEnabled: false,
+}
+
 /** What DescribeUserPoolClient returns for the tenant app client. */
 const mockAppClient = {
   UserPoolId: 'us-east-1_TESTPOOL',
@@ -201,6 +222,9 @@ const mockSamlProviderRow = {
 describe('SSO handler', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Evaluate the real .cedar policies in-process rather than calling AVP.
+    process.env['AUTHZ_OFFLINE'] = 'true'
+    _clearAuthzCache()
     // Default: Cognito calls succeed unless overridden in a specific test. The app
     // client must describe as a real client — sso.ts read-modify-writes it, so an
     // empty response would (correctly) blow up the provider create path.
@@ -215,12 +239,51 @@ describe('SSO handler', () => {
   })
 
   // ── Role access ───────────────────────────────────────────────────────────
-  // Phase 5 will restrict provider management to tenant_admin only.
-  // Until then, any authenticated tenant session (including tenant_user) can
-  // manage providers. The RBAC check is intentionally absent here.
+  // Provider management is tenant_admin only. Registering an IdP mints claims:
+  // a federated login takes its tenant from the provider and its roles from the
+  // roster row for the email it asserts, so an ungated POST /providers let any
+  // tenant user impersonate their own tenant's admin.
+  //
+  // Asserted per-route, not once: the gap was a missing per-route decorator, so
+  // a table-driven case per route is what actually catches a re-introduction.
 
   describe('role access', () => {
-    it('allows access regardless of role (RBAC will tighten in a later phase)', async () => {
+    const routes: ReadonlyArray<readonly [string, string, RequestInit]> = [
+      ['GET', '/providers', { method: 'GET' }],
+      ['POST', '/providers', post(validCreateBody)],
+      ['PUT', '/providers/provider-1', put(validUpdateBody)],
+      ['PATCH', '/providers/auth-settings', patch({ cognitoAuthEnabled: false })],
+      ['DELETE', '/providers/provider-1', { method: 'DELETE' }],
+    ]
+
+    describe.each(routes)('%s %s', (_method, path: string, init: RequestInit) => {
+      it('returns 403 for a viewer session', async () => {
+        const res = await buildApp('viewer').request(path, init)
+        expect(res.status).toBe(403)
+        expect((await json(res)).code).toBe('FORBIDDEN')
+      })
+
+      it('returns 403 for a session with no roles', async () => {
+        const res = await buildApp(null).request(path, init)
+        expect(res.status).toBe(403)
+      })
+
+      // findUnique is included deliberately: it is the FIRST db call PUT and
+      // DELETE make, so omitting it let this assertion pass even with the gate
+      // removed (the handler 404'd before reaching a write).
+      it('does not reach the database or Cognito when denied', async () => {
+        await buildApp('viewer').request(path, init)
+        for (const fn of Object.values(mockDb.tenantSsoProvider)) {
+          expect(fn).not.toHaveBeenCalled()
+        }
+        for (const fn of Object.values(mockDb.tenant)) {
+          expect(fn).not.toHaveBeenCalled()
+        }
+        expect(mockSend).not.toHaveBeenCalled()
+      })
+    })
+
+    it('allows a tenant_admin session', async () => {
       mockDb.tenantSsoProvider.findMany.mockResolvedValue([])
       const res = await buildApp().request('/providers')
       expect(res.status).toBe(200)

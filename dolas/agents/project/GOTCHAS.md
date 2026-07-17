@@ -379,3 +379,18 @@ jest-preset pins `jest-environment-node@^29`, incompatible with jest ≥ 30.4's
 runtime (`clearMocksOnScope`) — apps/mobile overrides `testEnvironment` with a
 local equivalent env (`apps/mobile/jest.environment.js`) resolving its own
 jest-30-matched copy.
+
+## Adding middleware to a Hono route widens `c.req.param()` to `string | undefined`
+
+`ssoHandler.delete('/providers/:id', async (c) => …)` types `c.req.param('id')`
+as `string` — Hono infers it from the path literal. Inserting a middleware
+(`ssoHandler.delete('/providers/:id', requirePermission(...), async (c) => …)`)
+degrades that inference and it becomes `string | undefined`, which under
+`exactOptionalPropertyTypes: true` fails against Prisma's
+`WhereUniqueInput` (`TS2375`) — so gating an existing `:id` route with
+`requirePermission` breaks typecheck at the _db call_, several lines away from
+the edit, with an error that reads like a Prisma problem rather than a routing
+one. The established fix is `users.ts`'s idiom: `c.req.param('id') ?? ''`. The
+fallback is unreachable (the route only matches with an `:id` present); it
+exists purely to restore the type. Handlers that already had a `validator`
+middleware are unaffected — their inference was degraded to begin with.
