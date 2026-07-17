@@ -11,7 +11,9 @@ import { render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 
 // Mock router primitives — AppShell only uses `Link` (rendered as <a>) and
-// `useRouter().state.location.pathname` (for active-link styling).
+// `useRouterState({ select })` (for reactive active-link styling). `currentPathname`
+// is mutable so a test can point the "current route" at a submenu child.
+let currentPathname = '/dashboard'
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
     to,
@@ -22,7 +24,8 @@ vi.mock('@tanstack/react-router', () => ({
       {children}
     </a>
   ),
-  useRouter: () => ({ state: { location: { pathname: '/dashboard' } } }),
+  useRouterState: ({ select }: { select: (s: { location: { pathname: string } }) => unknown }) =>
+    select({ location: { pathname: currentPathname } }),
 }))
 
 // Mock session — minimal Session shape; AppShell reads `tenantName` and
@@ -80,6 +83,7 @@ const SETTINGS_LABELS = ['Users', 'SSO Providers', 'Developer', 'Workflows']
 describe('AppShell — Settings nav visibility', () => {
   beforeEach(() => {
     mockPermissions = { isLoading: false, roles: ['tenant_admin'] }
+    currentPathname = '/dashboard'
   })
 
   it('shows the Settings header and all four items for tenant_admin', () => {
@@ -144,6 +148,7 @@ describe('AppShell — Settings nav visibility', () => {
 describe('AppShell — Operations nav capability gate', () => {
   beforeEach(() => {
     mockPermissions = { isLoading: false, roles: ['tenant_admin'] }
+    currentPathname = '/dashboard'
   })
 
   it('shows Operations when the tenant has the longhaul capability', () => {
@@ -186,5 +191,63 @@ describe('AppShell — Operations nav capability gate', () => {
       </AppShell>,
     )
     expect(screen.getByText('Operations')).toBeInTheDocument()
+  })
+})
+
+describe('AppShell — submenu active highlight follows the current route', () => {
+  beforeEach(() => {
+    mockPermissions = {
+      isLoading: false,
+      roles: ['tenant_admin'],
+      capabilities: { longhaul: true },
+    }
+  })
+
+  // Query by href so the assertion is unambiguous — labels like "Moves"/"Quotes"
+  // appear both as top-level nav and as App Settings children. Compare on the
+  // exact `bg-accent` class token: the inactive style contains `hover:bg-accent/50`,
+  // so a substring check would false-positive — token membership does not.
+  const isLinkActive = (container: HTMLElement, href: string): boolean => {
+    const cls = container.querySelector(`a[href="${href}"]`)?.getAttribute('class') ?? ''
+    return cls.split(/\s+/).includes('bg-accent')
+  }
+
+  it('highlights the App Settings child matching the pathname, not its siblings', () => {
+    currentPathname = '/settings/app/quotes'
+    const { container } = render(
+      <AppShell>
+        <div />
+      </AppShell>,
+    )
+
+    expect(isLinkActive(container, '/settings/app/quotes')).toBe(true)
+    expect(isLinkActive(container, '/settings/app/moves')).toBe(false)
+  })
+
+  it('moves the App Settings highlight when the pathname points at a different child', () => {
+    currentPathname = '/settings/app/moves'
+    const { container } = render(
+      <AppShell>
+        <div />
+      </AppShell>,
+    )
+
+    expect(isLinkActive(container, '/settings/app/moves')).toBe(true)
+    expect(isLinkActive(container, '/settings/app/quotes')).toBe(false)
+  })
+
+  it('highlights the matching Operations child and not its siblings', () => {
+    currentPathname = '/driver-planning/trips'
+    const { container } = render(
+      <AppShell>
+        <div />
+      </AppShell>,
+    )
+
+    expect(isLinkActive(container, '/driver-planning/trips')).toBe(true)
+    // A sibling sub-route stays inactive. (The `/driver-planning` href is shared
+    // by the group parent and the exact `Availability` child, so it's asserted
+    // via the browser check, not here.)
+    expect(isLinkActive(container, '/driver-planning/planning')).toBe(false)
   })
 })

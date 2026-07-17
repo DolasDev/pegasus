@@ -1,4 +1,4 @@
-import { Outlet, useRouter } from '@tanstack/react-router'
+import { Outlet, useRouterState } from '@tanstack/react-router'
 import { AppShell } from '@/components/AppShell'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
@@ -8,8 +8,9 @@ function isShellFree(pathname: string): boolean {
 }
 
 export function RootLayout() {
-  const router = useRouter()
-  const pathname = router.state.location.pathname
+  // Reactive subscription so the shell/shell-free branch tracks client-side
+  // navigation — `useRouter().state` is a non-reactive read of a stable router.
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
 
   if (isShellFree(pathname)) {
     return (

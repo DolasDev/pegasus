@@ -7,7 +7,7 @@
 // continuation of the sidebar.
 // ---------------------------------------------------------------------------
 
-import { Link, Outlet, useRouter } from '@tanstack/react-router'
+import { Link, Outlet, useRouterState } from '@tanstack/react-router'
 import { PageHeader } from '@/components/PageHeader'
 import { cn } from '@/lib/utils'
 
@@ -24,8 +24,10 @@ const SECTIONS = [
 ] as const
 
 export function AppSettingsLayout() {
-  const router = useRouter()
-  const pathname = router.state.location.pathname
+  // Reactive subscription — this is a layout route whose <Outlet> swaps the
+  // child page without re-invoking this component, so a non-reactive
+  // `useRouter().state` read would freeze the rail's active highlight.
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
 
   return (
     <div className="space-y-6">
