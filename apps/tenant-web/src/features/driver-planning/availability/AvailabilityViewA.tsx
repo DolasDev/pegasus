@@ -39,6 +39,22 @@ const CARD_ROW_CLASS = `bg-white/30 shadow-sm hover:bg-[#f5f5f5] ${CARD_TEXT_CLA
 
 const EQUIPMENT_OPTIONS = ['Tractor Trailer', 'Straight Truck']
 
+const AGENCY_PLACEHOLDER = '1111'
+
+// Driver-name cell background keyed by agency (agent code). Ported from View B.
+const AGENCY_BG: Record<string, string> = {
+  '1511': 'bg-red-300',
+  '1545': 'bg-orange-300',
+  '1505': 'bg-white',
+  '1523': 'bg-emerald-200',
+  '1295': 'bg-yellow-200',
+}
+
+function agencyBgClass(agentCode: string | null): string {
+  if (!agentCode) return ''
+  return AGENCY_BG[agentCode.trim()] ?? ''
+}
+
 // WGS cycles Maybe -> Yes -> No -> Maybe on each click. Yes/No render as a
 // ticked / empty checkbox; Maybe renders as a question mark (most compact).
 const WGS_CYCLE: (boolean | null)[] = [null, true, false]
@@ -49,6 +65,14 @@ function wgsLabel(v: boolean | null): string {
 
 function wgsGlyph(v: boolean | null): string {
   return v === true ? '☑' : v === false ? '☐' : '?'
+}
+
+// Color-code the WGS glyph: green + bold for Yes, muted red + bold for No, and
+// leave Maybe (the unset default) visually untouched.
+function wgsColorClass(v: boolean | null): string {
+  if (v === true) return 'text-green-600 font-bold'
+  if (v === false) return 'text-red-400 font-bold'
+  return ''
 }
 
 function ratingClass(rating: number | null): string {
@@ -129,26 +153,28 @@ interface ConfidenceTier {
 }
 
 function getConfidenceTier(d: Delivery): ConfidenceTier {
-  // Every tier paints in the row's brand-blue text colour — no per-tier hue.
+  // Per-tier confidence hue, ported from View C: deepening emerald as certainty
+  // rises. View A additionally has a spread tier (View C has none) — muted, as
+  // the least-certain signal.
   if (d.actualDate) {
-    return { icon: 'fa-truck-moving', colorClass: CARD_TEXT_CLASS, label: 'Verified complete' }
+    return { icon: 'fa-truck-moving', colorClass: 'text-emerald-700', label: 'Verified complete' }
   }
   if (d.isConfirmed) {
     return {
       icon: 'fa-flag-checkered',
-      colorClass: CARD_TEXT_CLASS,
+      colorClass: 'text-emerald-600',
       label: 'Confirmed with driver',
     }
   }
   if (d.isCommitted) {
-    return { icon: 'fa-check', colorClass: CARD_TEXT_CLASS, label: 'Driver committed' }
+    return { icon: 'fa-check', colorClass: 'text-emerald-500', label: 'Driver committed' }
   }
   // Spread fallback — the date shown comes from planned_start only (no
   // estimated / actual). Mirrors the Ready Date "spread" tier.
   if (!d.estimatedDate && d.plannedStart) {
     return {
       icon: 'fa-question',
-      colorClass: CARD_TEXT_CLASS,
+      colorClass: 'text-muted-foreground',
       label: 'Planned spread (least certain)',
     }
   }
@@ -178,16 +204,34 @@ function DeliveryLine({
   const tier = getConfidenceTier(delivery)
   const effective = getDeliveryEffectiveDate(delivery)
   const effStr = effective ? formatDateShort(effective) : ''
+  const city = titleCaseCity(delivery.city)
 
-  // Column order: icon | date | state | city. No bold inside shipment rows —
-  // every cell inherits the row's regular weight.
+  // Column order: date | state | icon. The city is no longer its own column —
+  // it surfaces as a tooltip on hover over the state. No bold inside shipment
+  // rows — every cell inherits the row's regular weight.
   return (
     <tr
       className="whitespace-nowrap align-top"
       data-testid={testId}
       data-activity-id={delivery.activityId}
     >
-      <td className="pr-1.5">
+      <td className="pr-1.5 text-right tabular-nums">
+        {effective ? (
+          <span data-testid="delivery-effective">{effStr}</span>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        )}
+      </td>
+      <td className="px-1.5" data-testid="delivery-state" data-city={city}>
+        {city ? (
+          <HoverToolTip content={city} direction="top">
+            <span>{delivery.state ?? ''}</span>
+          </HoverToolTip>
+        ) : (
+          (delivery.state ?? '')
+        )}
+      </td>
+      <td className="pl-1.5">
         {tier.icon && (
           <HoverToolTip content={tier.label} direction="top">
             <i
@@ -199,15 +243,6 @@ function DeliveryLine({
           </HoverToolTip>
         )}
       </td>
-      <td className="px-1.5 text-right tabular-nums">
-        {effective ? (
-          <span data-testid="delivery-effective">{effStr}</span>
-        ) : (
-          <span className="text-muted-foreground">-</span>
-        )}
-      </td>
-      <td className="px-1.5">{delivery.state ?? ''}</td>
-      <td className="pl-1.5">{titleCaseCity(delivery.city)}</td>
     </tr>
   )
 }
@@ -365,6 +400,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
 
   const mutation = useUpdateConfirmedAvailability()
   const guess = getReadyGuess(driver)
+  const agency = driver.agentCode ?? AGENCY_PLACEHOLDER
 
   // The PATCH upsert overwrites the whole row, so EVERY save must send the full
   // field set — including the roster fields — or omitted columns get nulled out.
@@ -529,7 +565,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
     const label = wgsLabel(form.wgs)
     return (
       <TableCell
-        className="cursor-pointer select-none text-center text-base"
+        className={`cursor-pointer select-none text-center text-base ${wgsColorClass(form.wgs)}`}
         data-testid="driver-wgs"
         data-wgs={label.toLowerCase()}
         title={`WGS: ${label}`}
@@ -543,9 +579,12 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
 
   return (
     <TableRow data-testid="driver-row" data-driver-id={driver.driverId} className={CARD_ROW_CLASS}>
-      <TableCell data-testid="driver-name">
+      <TableCell
+        className={agencyBgClass(driver.agentCode)}
+        data-testid="driver-name"
+        data-agency={agency}
+      >
         <span className="inline-flex items-center gap-2">
-          <span>{formatDriverName(driver.driverName)}</span>
           <a
             href={`tel:${PLACEHOLDER_PHONE}`}
             aria-label="Call driver"
@@ -572,6 +611,9 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
           >
             <i className="fas fa-comment-sms" />
           </a>
+          <HoverToolTip content={`Agency: ${agency}`} direction="top">
+            <span>{formatDriverName(driver.driverName)}</span>
+          </HoverToolTip>
         </span>
       </TableCell>
 
