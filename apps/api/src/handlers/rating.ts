@@ -15,6 +15,7 @@ import type { AppEnv } from '../types'
 import { requirePermission } from '../middleware/rbac'
 import { Actions } from '../authz/actions'
 import { Tariff400ngImportSchema } from '../rating/import-schema'
+import { mapVersionSummary } from '../rating/version-summary'
 import {
   findActiveTariffVersion,
   resolveTariff400ngData,
@@ -22,7 +23,6 @@ import {
   getTariffVersionById,
   importTariff400ng,
   activateTariffVersion,
-  type TariffVersionWithCounts,
 } from '../repositories'
 
 const mileageEstimator = createZip3CentroidEstimator()
@@ -46,20 +46,6 @@ const RateBody = z.object({
    */
   linehaulDiscountPercent: z.number().min(0).max(100).optional(),
 })
-
-function mapVersionSummary(v: TariffVersionWithCounts) {
-  return {
-    id: v.id,
-    tariffCode: v.tariffCode,
-    label: v.label,
-    effectiveFrom: v.effectiveFrom,
-    effectiveTo: v.effectiveTo,
-    status: v.status,
-    sourceChecksum: v.sourceChecksum,
-    importedBy: v.importedBy,
-    counts: v._count,
-  }
-}
 
 export const ratingHandler = new Hono<AppEnv>()
 
