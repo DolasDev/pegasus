@@ -151,6 +151,10 @@ const ALLOWED_BASE_CLIENT_HANDLERS: ReadonlySet<string> = new Set([
   'admin/vpn-diagnose.ts',
   'admin/vpn.ts',
   'admin/workflows.ts',
+  // admin/tariffs.ts manages platform-global 400NG tariff data (no tenantId);
+  // there is no tenant scope to apply, so it uses the base client like the
+  // other admin/** cross-tenant handlers.
+  'admin/tariffs.ts',
   'auth.ts',
   'dashboard-pegii.ts',
   // Integration-validator config: both read the base client only for the
