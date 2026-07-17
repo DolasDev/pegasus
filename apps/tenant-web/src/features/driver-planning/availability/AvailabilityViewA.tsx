@@ -37,6 +37,34 @@ const PLACEHOLDER_PHONE = '+12345678910'
 const CARD_TEXT_CLASS = 'text-[#0c145c]'
 const CARD_ROW_CLASS = `bg-white/30 shadow-sm hover:bg-[#f5f5f5] ${CARD_TEXT_CLASS} font-light`
 
+const EQUIPMENT_OPTIONS = ['Tractor Trailer', 'Straight Truck']
+
+// WGS cycles Maybe -> Yes -> No -> Maybe on each click. Yes/No render as a
+// ticked / empty checkbox; Maybe renders as a question mark (most compact).
+const WGS_CYCLE: (boolean | null)[] = [null, true, false]
+
+function wgsLabel(v: boolean | null): string {
+  return v === true ? 'Yes' : v === false ? 'No' : 'Maybe'
+}
+
+function wgsGlyph(v: boolean | null): string {
+  return v === true ? '☑' : v === false ? '☐' : '?'
+}
+
+function ratingClass(rating: number | null): string {
+  return rating != null && rating < 4.5 ? 'bg-red-200 text-red-700' : ''
+}
+
+function formatRating(rating: number | null): string {
+  return rating == null ? '-' : rating.toFixed(1)
+}
+
+function parseRating(value: string): number | null {
+  const r = Number.parseFloat(value)
+  if (!Number.isFinite(r)) return null
+  return Math.min(5, Math.max(0, r))
+}
+
 function formatMonthDay(dateStr: string | null): string {
   if (!dateStr) return '-'
   const d = new Date(dateStr)
@@ -84,6 +112,14 @@ interface EditState {
   confirmedState: string
   confirmedCity: string
   notes: string
+  canada: boolean
+  california: boolean
+  rating: string
+  equipment: string
+  homeCity: string
+  homeState: string
+  // Tri-state: true = Yes, false = No, null = Maybe (the unset default).
+  wgs: boolean | null
 }
 
 interface ConfidenceTier {
@@ -294,9 +330,16 @@ function dateInRange(dateStr: string | null, from: string, to: string): boolean 
 
 // Ready Date / Ready State / Ready City are linked: editing any of the three
 // opens all three at once and the mutation only fires when every one is
-// filled in. Notes still edits independently.
+// filled in. Notes still edits independently, as do the roster free-text /
+// numeric / select fields ported from Variant B. Canada/California/WGS are
+// click-to-toggle (no edit mode) and commit immediately.
 type LinkedFocus = 'date' | 'state' | 'city'
-type EditMode = { kind: 'linked'; focus: LinkedFocus } | { kind: 'notes' } | null
+type RosterField = 'rating' | 'equipment' | 'homeCity' | 'homeState'
+type EditMode =
+  | { kind: 'linked'; focus: LinkedFocus }
+  | { kind: 'notes' }
+  | { kind: 'field'; field: RosterField }
+  | null
 
 function DriverRow({ driver }: { driver: DriverPlanningRow }) {
   const [editMode, setEditMode] = useState<EditMode>(null)
@@ -307,6 +350,13 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
       confirmedState: state,
       confirmedCity: city,
       notes: driver.confirmedNotes ?? '',
+      canada: driver.canada,
+      california: driver.california,
+      rating: driver.rating == null ? '' : String(driver.rating),
+      equipment: driver.equipment ?? '',
+      homeCity: driver.homeCity ?? '',
+      homeState: driver.homeState ?? '',
+      wgs: driver.wgs,
     }
   }
   const [form, setForm] = useState<EditState>(initialForm)
@@ -315,6 +365,27 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
 
   const mutation = useUpdateConfirmedAvailability()
   const guess = getReadyGuess(driver)
+
+  // The PATCH upsert overwrites the whole row, so EVERY save must send the full
+  // field set — including the roster fields — or omitted columns get nulled out.
+  function commitWith(f: EditState) {
+    mutation.mutate(
+      {
+        driverId: driver.driverId,
+        confirmedDate: f.confirmedDate || null,
+        confirmedLocation: joinLocation(f.confirmedState, f.confirmedCity) || null,
+        notes: f.notes || null,
+        canada: f.canada,
+        california: f.california,
+        rating: parseRating(f.rating),
+        equipment: f.equipment || null,
+        homeCity: f.homeCity || null,
+        homeState: f.homeState || null,
+        wgs: f.wgs,
+      },
+      { onSuccess: () => setEditMode(null) },
+    )
+  }
 
   function startLinkedEdit(focus: LinkedFocus) {
     setSnapshot(form)
@@ -326,6 +397,11 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
     setEditMode({ kind: 'notes' })
   }
 
+  function startFieldEdit(field: RosterField) {
+    setSnapshot(form)
+    setEditMode({ kind: 'field', field })
+  }
+
   function commitLinked() {
     const date = form.confirmedDate.trim()
     const state = form.confirmedState.trim()
@@ -333,27 +409,20 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
     // Partial commits are a no-op — the user must populate all three before
     // anything saves. The inputs stay rendered so they can finish.
     if (!date || !state || !city) return
-    mutation.mutate(
-      {
-        driverId: driver.driverId,
-        confirmedDate: date,
-        confirmedLocation: joinLocation(state, city),
-        notes: form.notes || null,
-      },
-      { onSuccess: () => setEditMode(null) },
-    )
+    commitWith(form)
   }
 
-  function commitNotes() {
-    mutation.mutate(
-      {
-        driverId: driver.driverId,
-        confirmedDate: form.confirmedDate || null,
-        confirmedLocation: joinLocation(form.confirmedState, form.confirmedCity) || null,
-        notes: form.notes || null,
-      },
-      { onSuccess: () => setEditMode(null) },
-    )
+  function toggleBool(key: 'canada' | 'california') {
+    const next = { ...form, [key]: !form[key] }
+    setForm(next)
+    commitWith(next)
+  }
+
+  function cycleWgs() {
+    const idx = WGS_CYCLE.findIndex((v) => v === form.wgs)
+    const next = { ...form, wgs: WGS_CYCLE[(idx + 1) % WGS_CYCLE.length]! }
+    setForm(next)
+    commitWith(next)
   }
 
   function handleBlur() {
@@ -362,7 +431,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
       return
     }
     if (editMode?.kind === 'linked') commitLinked()
-    else if (editMode?.kind === 'notes') commitNotes()
+    else if (editMode?.kind === 'notes' || editMode?.kind === 'field') commitWith(form)
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -398,10 +467,112 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
     )
   }
 
+  function rosterInput(
+    field: 'rating' | 'homeCity' | 'homeState',
+    extra: { type?: string; placeholder?: string; className?: string; step?: string },
+  ) {
+    return (
+      <Input
+        type={extra.type ?? 'text'}
+        step={extra.step}
+        autoFocus
+        data-testid={`confirmed-${field}-input`}
+        value={form[field]}
+        placeholder={extra.placeholder}
+        onChange={(e) => setForm((f) => ({ ...f, [field]: e.target.value }))}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        className={extra.className}
+      />
+    )
+  }
+
+  function equipmentSelect() {
+    return (
+      <select
+        autoFocus
+        data-testid="confirmed-equipment-select"
+        value={form.equipment}
+        onChange={(e) => {
+          skipBlur.current = true
+          const next = { ...form, equipment: e.target.value }
+          setForm(next)
+          commitWith(next)
+        }}
+        onBlur={handleBlur}
+        className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+      >
+        <option value="">—</option>
+        {EQUIPMENT_OPTIONS.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    )
+  }
+
+  function boolCell(key: 'canada' | 'california', testid: string) {
+    const on = form[key]
+    return (
+      <TableCell
+        className={`cursor-pointer select-none ${on ? 'bg-yellow-200' : ''}`}
+        data-testid={testid}
+        onClick={() => toggleBool(key)}
+      >
+        {on ? 'Yes' : '-'}
+      </TableCell>
+    )
+  }
+
+  function wgsCell() {
+    const label = wgsLabel(form.wgs)
+    return (
+      <TableCell
+        className="cursor-pointer select-none text-center text-base"
+        data-testid="driver-wgs"
+        data-wgs={label.toLowerCase()}
+        title={`WGS: ${label}`}
+        aria-label={`WGS: ${label}`}
+        onClick={cycleWgs}
+      >
+        {wgsGlyph(form.wgs)}
+      </TableCell>
+    )
+  }
+
   return (
     <TableRow data-testid="driver-row" data-driver-id={driver.driverId} className={CARD_ROW_CLASS}>
-      <TableCell className="font-bold" data-testid="driver-name">
-        {formatDriverName(driver.driverName)}
+      <TableCell data-testid="driver-name">
+        <span className="inline-flex items-center gap-2">
+          <span>{formatDriverName(driver.driverName)}</span>
+          <a
+            href={`tel:${PLACEHOLDER_PHONE}`}
+            aria-label="Call driver"
+            data-testid="driver-call"
+            className={`${CARD_TEXT_CLASS} hover:opacity-80`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <i className="fas fa-phone" />
+          </a>
+          <a
+            href="#"
+            aria-label="Text driver"
+            data-testid="driver-sms"
+            data-driver-code={driver.agentCode ?? ''}
+            className={`${CARD_TEXT_CLASS} hover:opacity-80`}
+            onClick={(e) => {
+              // Hand off to the desktop app via the pegasus-desktop:// URI —
+              // same pattern as jump-to-order. Util handles config gating,
+              // validation, and the optimistic notify UX.
+              e.preventDefault()
+              e.stopPropagation()
+              smsDriver({ driver_code: driver.agentCode })
+            }}
+          >
+            <i className="fas fa-comment-sms" />
+          </a>
+        </span>
       </TableCell>
 
       <TableCell>
@@ -470,29 +641,6 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
         )}
       </TableCell>
 
-      <TableCell>
-        {editMode?.kind === 'notes' ? (
-          <Input
-            autoFocus
-            data-testid="confirmed-notes-input"
-            value={form.notes}
-            placeholder="Notes"
-            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-            onBlur={handleBlur}
-            onKeyDown={handleKeyDown}
-            className="w-44"
-          />
-        ) : (
-          <span
-            className="cursor-pointer hover:underline text-muted-foreground"
-            data-testid="notes-cell"
-            onClick={() => startNotesEdit()}
-          >
-            {driver.confirmedNotes || '-'}
-          </span>
-        )}
-      </TableCell>
-
       <TableCell data-testid="driver-deliveries">
         {driver.shipments.length === 0 ? (
           <span className="text-muted-foreground">-</span>
@@ -524,35 +672,100 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
         )}
       </TableCell>
 
-      <TableCell data-testid="driver-contact">
-        <span className="inline-flex items-center gap-2">
-          <a
-            href={`tel:${PLACEHOLDER_PHONE}`}
-            aria-label="Call driver"
-            data-testid="driver-call"
-            className={`${CARD_TEXT_CLASS} hover:opacity-80`}
-            onClick={(e) => e.stopPropagation()}
+      <TableCell>
+        {editMode?.kind === 'notes' ? (
+          <Input
+            autoFocus
+            data-testid="confirmed-notes-input"
+            value={form.notes}
+            placeholder="Notes"
+            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+            className="w-44"
+          />
+        ) : (
+          <span
+            className="cursor-pointer hover:underline text-muted-foreground"
+            data-testid="notes-cell"
+            onClick={() => startNotesEdit()}
           >
-            <i className="fas fa-phone" />
-          </a>
-          <a
-            href="#"
-            aria-label="Text driver"
-            data-testid="driver-sms"
-            data-driver-code={driver.agentCode ?? ''}
-            className={`${CARD_TEXT_CLASS} hover:opacity-80`}
-            onClick={(e) => {
-              // Hand off to the desktop app via the pegasus-desktop:// URI —
-              // same pattern as jump-to-order. Util handles config gating,
-              // validation, and the optimistic notify UX.
-              e.preventDefault()
-              e.stopPropagation()
-              smsDriver({ driver_code: driver.agentCode })
-            }}
-          >
-            <i className="fas fa-comment-sms" />
-          </a>
-        </span>
+            {driver.confirmedNotes || '-'}
+          </span>
+        )}
+      </TableCell>
+
+      {boolCell('canada', 'driver-canada')}
+      {boolCell('california', 'driver-california')}
+      {wgsCell()}
+
+      <TableCell
+        className={`cursor-pointer ${ratingClass(driver.rating)}`}
+        data-testid="driver-rating"
+        onClick={
+          editMode?.kind === 'field' && editMode.field === 'rating'
+            ? undefined
+            : () => startFieldEdit('rating')
+        }
+      >
+        {editMode?.kind === 'field' && editMode.field === 'rating' ? (
+          rosterInput('rating', {
+            type: 'number',
+            step: '0.1',
+            placeholder: '0-5',
+            className: 'w-20',
+          })
+        ) : (
+          <span className="hover:underline">{formatRating(driver.rating)}</span>
+        )}
+      </TableCell>
+
+      <TableCell
+        className="cursor-pointer"
+        data-testid="driver-equipment"
+        onClick={
+          editMode?.kind === 'field' && editMode.field === 'equipment'
+            ? undefined
+            : () => startFieldEdit('equipment')
+        }
+      >
+        {editMode?.kind === 'field' && editMode.field === 'equipment' ? (
+          equipmentSelect()
+        ) : (
+          <span className="hover:underline">{driver.equipment || '-'}</span>
+        )}
+      </TableCell>
+
+      <TableCell
+        className="cursor-pointer"
+        data-testid="driver-home-state"
+        onClick={
+          editMode?.kind === 'field' && editMode.field === 'homeState'
+            ? undefined
+            : () => startFieldEdit('homeState')
+        }
+      >
+        {editMode?.kind === 'field' && editMode.field === 'homeState' ? (
+          rosterInput('homeState', { placeholder: 'Home State', className: 'w-24' })
+        ) : (
+          <span className="hover:underline">{driver.homeState || '-'}</span>
+        )}
+      </TableCell>
+
+      <TableCell
+        className="cursor-pointer"
+        data-testid="driver-home-city"
+        onClick={
+          editMode?.kind === 'field' && editMode.field === 'homeCity'
+            ? undefined
+            : () => startFieldEdit('homeCity')
+        }
+      >
+        {editMode?.kind === 'field' && editMode.field === 'homeCity' ? (
+          rosterInput('homeCity', { placeholder: 'Home City', className: 'w-36' })
+        ) : (
+          <span className="hover:underline">{driver.homeCity || '-'}</span>
+        )}
       </TableCell>
     </TableRow>
   )
@@ -697,16 +910,22 @@ export function AvailabilityViewA() {
                   </TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Ready State</TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Ready City</TableHead>
-                  <TableHead className={CARD_TEXT_CLASS}>Notes</TableHead>
                   <TableHead className={CARD_TEXT_CLASS}>Deliveries</TableHead>
-                  <TableHead className={CARD_TEXT_CLASS}>Contact</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Notes</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Canada?</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>California?</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>WGS</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Rating</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Equipment</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Home State</TableHead>
+                  <TableHead className={CARD_TEXT_CLASS}>Home City</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {visible.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={13}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       No matching drivers.

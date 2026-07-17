@@ -175,12 +175,23 @@ describe('DriverPlanningPage', () => {
     renderPage()
 
     // Headers — Ready Location split into Ready State + Ready City; Variant A
-    // drops Current Trip (the Deliveries cell links to it instead).
+    // drops Current Trip (the Deliveries cell links to it instead). The seven
+    // roster columns (Canada?…Home City) sit after Notes; the Contact column
+    // was removed (its phone/SMS icons moved into the Driver cell).
     expect(screen.getByText('Driver')).toBeInTheDocument()
     expect(screen.getByText('Ready Date')).toBeInTheDocument()
     expect(screen.getByText('Ready State')).toBeInTheDocument()
     expect(screen.getByText('Ready City')).toBeInTheDocument()
     expect(screen.getByText('Deliveries')).toBeInTheDocument()
+    expect(screen.getByText('Notes')).toBeInTheDocument()
+    expect(screen.getByText('Canada?')).toBeInTheDocument()
+    expect(screen.getByText('California?')).toBeInTheDocument()
+    expect(screen.getByText('WGS')).toBeInTheDocument()
+    expect(screen.getByText('Rating')).toBeInTheDocument()
+    expect(screen.getByText('Equipment')).toBeInTheDocument()
+    expect(screen.getByText('Home State')).toBeInTheDocument()
+    expect(screen.getByText('Home City')).toBeInTheDocument()
+    expect(screen.queryByText('Contact')).not.toBeInTheDocument()
     expect(screen.queryByText('Ready Location')).not.toBeInTheDocument()
     expect(screen.queryByText('Current Trip')).not.toBeInTheDocument()
     expect(screen.queryByText('Confirmed Date')).not.toBeInTheDocument()
@@ -191,7 +202,7 @@ describe('DriverPlanningPage', () => {
     expect(screen.getByText('Driver, B.')).toBeInTheDocument()
   })
 
-  it('formats the driver name as "Last, F." and renders it bold', () => {
+  it('formats the driver name as "Last, F.", not bold, with the phone + SMS icons trailing it', () => {
     driverPlanningReturn = {
       data: [makeDriver({ driverName: 'Smith, John' })],
       isLoading: false,
@@ -200,7 +211,12 @@ describe('DriverPlanningPage', () => {
     renderPage()
     const cell = screen.getByTestId('driver-name')
     expect(cell).toHaveTextContent('Smith, J.')
-    expect(cell.className).toMatch(/font-bold/)
+    // Name is no longer bold in Variant A.
+    expect(cell.className).not.toMatch(/font-bold/)
+    // The Contact column was removed; its quick-action icons now live in the
+    // Driver cell, after the name.
+    expect(within(cell).getByTestId('driver-call')).toBeInTheDocument()
+    expect(within(cell).getByTestId('driver-sms')).toBeInTheDocument()
   })
 
   describe('ready state / ready city columns', () => {
@@ -710,7 +726,7 @@ describe('DriverPlanningPage', () => {
       expect(eff).toHaveTextContent('06/01')
     })
 
-    it('renders one phone + SMS quick-action pair per driver row in the Contact column', () => {
+    it('renders one phone + SMS quick-action pair per driver row, inside the Driver cell', () => {
       driverPlanningReturn = {
         data: [
           makeDriver({
@@ -729,20 +745,21 @@ describe('DriverPlanningPage', () => {
         isError: false,
       }
       renderPage()
-      // Contact icons live in the per-driver row's last column, not per delivery.
+      // The Contact column was removed; icons live in the Driver cell, not per delivery.
       const lines = screen.getAllByTestId('shipment-line')
       for (const line of lines) {
         expect(within(line).queryByTestId('delivery-call')).toBeNull()
         expect(within(line).queryByTestId('delivery-sms')).toBeNull()
       }
-      const contact = screen.getByTestId('driver-contact')
-      expect(within(contact).getByTestId('driver-call').getAttribute('href')).toBe(
+      expect(screen.queryByTestId('driver-contact')).toBeNull()
+      const driverCell = screen.getByTestId('driver-name')
+      expect(within(driverCell).getByTestId('driver-call').getAttribute('href')).toBe(
         'tel:+12345678910',
       )
       // SMS hands off to the pegasus-desktop:// app via an onClick handler
       // (smsDriver util) — href is the placeholder `#` and the driver code
       // travels through `data-driver-code` on the anchor.
-      const sms = within(contact).getByTestId('driver-sms')
+      const sms = within(driverCell).getByTestId('driver-sms')
       expect(sms.getAttribute('href')).toBe('#')
       expect(sms.getAttribute('data-driver-code')).not.toBeNull()
     })
@@ -850,6 +867,121 @@ describe('DriverPlanningPage', () => {
       const icon = screen.getByTestId('delivery-icon')
       expect(icon.getAttribute('data-icon')).toBe('fa-question')
       expect(icon.className).toMatch(/text-\[#0c145c\]/)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Variant A roster columns — the seven planner fields ported from Variant B.
+  // Every save sends the FULL field set (the PATCH upsert overwrites the whole
+  // row), so a toggle/edit must not null out the untouched columns.
+  // -------------------------------------------------------------------------
+  describe('Variant A roster columns', () => {
+    it('toggles Canada and commits the full field set with canada=true', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ driverId: 7, canada: false, rating: 4.8, homeState: 'TX' })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      fireEvent.click(screen.getByTestId('driver-canada'))
+      expect(mutateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          driverId: 7,
+          canada: true,
+          // Untouched roster fields ride along so the upsert can't wipe them.
+          rating: 4.8,
+          homeState: 'TX',
+        }),
+        expect.anything(),
+      )
+    })
+
+    it('cycles WGS Maybe → Yes and commits wgs=true', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ driverId: 8, wgs: null })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      const wgs = screen.getByTestId('driver-wgs')
+      expect(wgs).toHaveAttribute('data-wgs', 'maybe')
+      fireEvent.click(wgs)
+      expect(mutateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ driverId: 8, wgs: true }),
+        expect.anything(),
+      )
+    })
+
+    it('edits Rating via click-to-edit and commits the parsed number on blur', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ driverId: 9, rating: null })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      fireEvent.click(screen.getByTestId('driver-rating'))
+      const input = screen.getByTestId('confirmed-rating-input')
+      fireEvent.change(input, { target: { value: '4.2' } })
+      fireEvent.blur(input)
+      expect(mutateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ driverId: 9, rating: 4.2 }),
+        expect.anything(),
+      )
+    })
+
+    it('edits Home State via click-to-edit and commits it on blur', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ driverId: 10, homeState: null })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      fireEvent.click(screen.getByTestId('driver-home-state'))
+      const input = screen.getByTestId('confirmed-homeState-input')
+      fireEvent.change(input, { target: { value: 'AZ' } })
+      fireEvent.blur(input)
+      expect(mutateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ driverId: 10, homeState: 'AZ' }),
+        expect.anything(),
+      )
+    })
+
+    it('preserves the roster fields when editing Notes (no wipe)', () => {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            driverId: 11,
+            canada: true,
+            california: true,
+            rating: 4.9,
+            equipment: 'Straight Truck',
+            homeCity: 'Mesa',
+            homeState: 'AZ',
+            wgs: false,
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      fireEvent.click(screen.getByTestId('notes-cell'))
+      const input = screen.getByTestId('confirmed-notes-input')
+      fireEvent.change(input, { target: { value: 'back Tuesday' } })
+      fireEvent.blur(input)
+      expect(mutateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          driverId: 11,
+          notes: 'back Tuesday',
+          canada: true,
+          california: true,
+          rating: 4.9,
+          equipment: 'Straight Truck',
+          homeCity: 'Mesa',
+          homeState: 'AZ',
+          wgs: false,
+        }),
+        expect.anything(),
+      )
     })
   })
 
