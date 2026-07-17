@@ -389,8 +389,236 @@ export function getOpenApiSpec() {
           },
         },
       },
+      // ── Integration authoring surface (the PegasusClient / CLI / MCP path) ──
+      // Public discovery endpoints (no auth) + the vnd_ API-key authoring routes.
+      // An external author or AI agent uses these to introspect a floor's contract
+      // and author + validate + publish a config without platform source.
+      '/api/v1/integrations/mapping-schema': {
+        get: {
+          operationId: 'getMappingSchema',
+          summary: 'JSON Schema for the mapping.json DSL (public)',
+          tags: ['Integrations'],
+          responses: { '200': { description: 'JSON Schema of the output-shaped mapping format' } },
+        },
+      },
+      '/api/v1/integrations/inbound-schema': {
+        get: {
+          operationId: 'getInboundSchema',
+          summary: 'JSON Schema for the inbound ingress block (public)',
+          description:
+            'The publishable `inbound` block: { eventType, dedupKeyPath, validation, ackTemplate }. ackTemplate strings that are exactly {{key}} substitute a context value; { "$map": "issues", "as": {…} } renders one element per issue.',
+          tags: ['Integrations'],
+          responses: { '200': { description: 'JSON Schema of the inbound block' } },
+        },
+      },
+      '/api/v1/integrations/floors': {
+        get: {
+          operationId: 'listFloors',
+          summary: 'List built-in integration floors (public)',
+          description:
+            'Each floor is a per-type, partner-neutral contract. Returns each floor id + its canonicalFields (legal mapping targets) + factCatalog (legal rule facts) + defaultAction + projection.',
+          tags: ['Integrations'],
+          responses: {
+            '200': { description: 'data: array of floor detail objects (see /floors/{floorId})' },
+          },
+        },
+      },
+      '/api/v1/integrations/floors/{floorId}': {
+        get: {
+          operationId: 'getFloor',
+          summary: 'A floor’s machine-readable contract (public)',
+          description:
+            'The contract an author writes a config AGAINST: `canonicalFields` are the only legal mapping targets; `factCatalog` are the only legal rule facts.',
+          tags: ['Integrations'],
+          parameters: [{ name: 'floorId', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '200': {
+              description: 'Floor detail',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      data: {
+                        type: 'object',
+                        properties: {
+                          floor: { type: 'string' },
+                          canonicalFields: { type: 'array', items: { type: 'string' } },
+                          factCatalog: {
+                            type: 'object',
+                            additionalProperties: { enum: ['string', 'number', 'boolean'] },
+                          },
+                          defaultAction: { type: 'string' },
+                          projection: {
+                            type: 'object',
+                            properties: { entityType: { type: 'string' } },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '404': { $ref: '#/components/responses/NotFound' },
+          },
+        },
+      },
+      '/api/v1/integrations/{integrationId}/validate': {
+        post: {
+          operationId: 'validateIntegration',
+          summary: 'Validate a native payload against an integration (API key)',
+          tags: ['Integrations'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'integrationId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['order'],
+                  properties: {
+                    order: {},
+                    prior: {},
+                    action: { enum: ['save', 'cancel', 'status-change'] },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: '{ valid, issues[], degraded }' },
+            '404': { $ref: '#/components/responses/NotFound' },
+          },
+        },
+      },
+      '/api/v1/integrations/{integrationId}/map-to-external': {
+        post: {
+          operationId: 'mapToExternal',
+          summary: 'Map entity data → partner external body (API key)',
+          tags: ['Integrations'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'integrationId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['data'],
+                  properties: { data: {}, action: { enum: ['save', 'cancel', 'status-change'] } },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: '{ external, valid, issues[], degraded }' },
+            '404': { $ref: '#/components/responses/NotFound' },
+          },
+        },
+      },
+      '/api/v1/integrations/{integrationId}/map-from-external': {
+        post: {
+          operationId: 'mapFromExternal',
+          summary: 'Normalize a native payload → canonical entity (API key)',
+          description:
+            'Inbound mirror of map-to-external. Returns { canonical, valid, issues[], degraded }; canonical is null only when unmappable. 404 (fails closed) on unknown integration / no floor.',
+          tags: ['Integrations'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'integrationId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { type: 'object', required: ['data'], properties: { data: {} } },
+              },
+            },
+          },
+          responses: {
+            '200': { description: '{ canonical, valid, issues[], degraded }' },
+            '404': { $ref: '#/components/responses/NotFound' },
+          },
+        },
+      },
+      '/api/v1/integrations/{integrationId}/config': {
+        get: {
+          operationId: 'getIntegrationConfig',
+          summary: 'Fetch the published config overlay (API key)',
+          tags: ['Integrations'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'integrationId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: {
+            '200': {
+              description:
+                '{ mapping, rules, corpus, floor, displayName, externalShape, externalMapping, inbound }',
+            },
+            '404': { $ref: '#/components/responses/NotFound' },
+          },
+        },
+        post: {
+          operationId: 'publishIntegrationConfig',
+          summary: 'Validate (dry-run) or publish a config overlay (API key, platform tenant)',
+          description:
+            'The full authoring surface. `floor` is required for a new id with no built-in overlay. `inbound` is the ingress ack/validation block (see /integrations/inbound-schema). Gated by PublishIntegrationConfig + INTEGRATION_CONFIG_PUBLISH_ENABLED.',
+          tags: ['Integrations'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'integrationId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['mapping', 'rules', 'corpus'],
+                  properties: {
+                    mapping: {
+                      description: 'output-shaped mapping DSL (see /integrations/mapping-schema)',
+                    },
+                    rules: {
+                      type: 'array',
+                      description: 'rule set; ops eq/ne/gt/gte/lt/lte/in/nin',
+                    },
+                    corpus: {
+                      type: 'array',
+                      description: 'gate cases: { input: { order }, expected }',
+                    },
+                    floor: { type: 'string' },
+                    displayName: { type: 'string' },
+                    externalShape: { type: 'object' },
+                    externalMapping: {},
+                    inbound: { type: 'object', description: 'see /integrations/inbound-schema' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'gate report { ok, problems[], corpus }' },
+            '400': { $ref: '#/components/responses/ValidationError' },
+          },
+        },
+      },
     },
     components: {
+      securitySchemes: {
+        ApiKeyAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          description:
+            'A Pegasus vendor API key (vnd_…) in `Authorization: Bearer <key>`. The key’s service account holds the required Cedar action (e.g. workflow_developer / integration_publisher).',
+        },
+      },
       parameters: {
         IdPath: {
           name: 'id',

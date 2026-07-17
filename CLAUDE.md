@@ -152,6 +152,24 @@ Claude Code **≥ v2.1.170** (`claude update` if you're behind).
 > first message via CLAUDE.md/git context. That's expected routing, not a bug; `claude --safe-mode`
 > confirms whether customizations are the trigger.
 
+## SDK is the external product boundary — keep it discoverable
+
+`packages/workflows-sdk-python` (the `pegasus-workflows` SDK/CLI) is how external
+integration/workflow authors — and their AI coding agents — use the platform.
+They must be able to discover and use its **full** functionality **without access
+to this repo's source**, through four surfaces: the SDK **docs** (its README +
+`pegasus-workflows` CLAUDE.md), the **MCP** server resources/tools
+(`pegasus://reference/*`), **CLI `--help`**, and the API's **OpenAPI** spec
+(`GET /openapi.json`, Swagger UI `/docs`).
+
+So whenever an **integrations or workflows** feature is added or changed — a new
+route, floor, rule operator, config field (e.g. the ingress `inbound` block), or
+capability — update the SDK to expose it **and** update its discovery surfaces in
+turn (README, CLAUDE.md, MCP resources, OpenAPI), preferring **live introspection**
+(e.g. `GET /integrations/floors/:id` → the floor's canonical fields + fact catalog)
+over static docs where the contract is code. A capability in the API that isn't
+reachable + discoverable through the SDK is a gap, not a feature.
+
 ## Dependency Management
 
 When dependency version conflicts or resolution issues arise, **do not** attempt to make multiple versions of the same dependency coexist (nested `node_modules`, manual copies, overrides hacks, etc.). Instead, plan and execute a code migration to upgrade all usages to the latest stable version of the dependency across the entire codebase. Rewriting code to work with one consistent version is always preferable to fighting npm hoisting, lockfile quirks, or version shims.

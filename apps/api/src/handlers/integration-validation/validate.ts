@@ -38,9 +38,15 @@ import {
   mapFromExternalWithDefinition,
   transformOrderToCanonical,
 } from '../../integration-validation/validate'
-import { resolveIntegrationDefinition } from '../../integration-validation/registry'
+import {
+  resolveIntegrationDefinition,
+  getFloor,
+  listFloorIds,
+} from '../../integration-validation/registry'
 import type { IntegrationDefinition, ValidationInput } from '../../integration-validation/types'
 import { mappingFormatJsonSchema } from '../../integration-validation/transform/mapping-format'
+import { canonicalSchemaPaths } from '../../integration-validation/transform/mapping-static-check'
+import { inboundBlockJsonSchema } from '../../lib/ingress'
 import { createIntegrationProjectionRepository } from '../../repositories/integration-projection.repository'
 import { db as basePrisma } from '../../db'
 import { createTenantDb } from '../../lib/prisma'
@@ -74,6 +80,53 @@ export const integrationValidationHandler = new Hono<IntegrationValidationEnv>()
 integrationValidationHandler.get('/integrations/mapping-schema', (c) => {
   c.header('Cache-Control', 'public, max-age=86400')
   return c.json(mappingFormatJsonSchema() as object)
+})
+
+// Published JSON Schema for the `inbound` ingress block (sdk-feedback 0021).
+// PUBLIC — the authoring contract for a config's ingress ack + validation.
+integrationValidationHandler.get('/integrations/inbound-schema', (c) => {
+  c.header('Cache-Control', 'public, max-age=86400')
+  return c.json(inboundBlockJsonSchema() as object)
+})
+
+// Floor introspection (sdk-feedback 0024) — the machine-readable contract an
+// author (or an AI agent) writes a config AGAINST: which canonical field paths a
+// mapping may target, and which facts a rule may reference. PUBLIC + non-sensitive
+// (it's the same code-defined contract the publish gate checks against), so an
+// agent can self-serve without platform source. See the `pegasus://reference/floors`
+// MCP resource and `PegasusClient.list_floors` / `get_floor`.
+
+/** Build the machine-readable detail for one floor. */
+function floorDetail(floorId: string): Record<string, unknown> | null {
+  const floor = getFloor(floorId)
+  if (!floor) return null
+  const canonicalFields = [...canonicalSchemaPaths(z.toJSONSchema(floor.structuralContract))].sort()
+  return {
+    floor: floor.floor,
+    // Legal mapping TARGET paths (a mapping may only write these). Array element
+    // paths are marked with `[]` (e.g. "Resources[].Id").
+    canonicalFields,
+    // Legal rule FACTS (name → type). A rule's `fact` must be one of these; its
+    // `field` must be one of `canonicalFields`.
+    factCatalog: floor.factCatalog,
+    defaultAction: floor.defaultAction,
+    ...(floor.projection ? { projection: { entityType: floor.projection.entityType } } : {}),
+  }
+}
+
+integrationValidationHandler.get('/integrations/floors', (c) => {
+  c.header('Cache-Control', 'public, max-age=3600')
+  const floors = listFloorIds()
+    .map((id) => floorDetail(id))
+    .filter((f): f is Record<string, unknown> => f !== null)
+  return c.json({ data: floors })
+})
+
+integrationValidationHandler.get('/integrations/floors/:floorId', (c) => {
+  const detail = floorDetail(c.req.param('floorId') ?? '')
+  if (!detail) return c.json({ error: 'Unknown floor', code: 'NOT_FOUND' }, 404)
+  c.header('Cache-Control', 'public, max-age=3600')
+  return c.json({ data: detail })
 })
 
 integrationValidationHandler.post(

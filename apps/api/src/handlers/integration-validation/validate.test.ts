@@ -69,6 +69,40 @@ describe('POST /integrations/:integrationId/validate', () => {
     expect(body['$id']).toContain('integration-mapping')
   })
 
+  it('serves the inbound-block JSON schema with NO auth (GET inbound-schema)', async () => {
+    const res = await buildApp().request('/api/v1/integrations/inbound-schema')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { properties?: Record<string, unknown> }
+    expect(body.properties).toHaveProperty('ackTemplate')
+    expect(body.properties).toHaveProperty('validation')
+  })
+
+  it('lists floors with their canonical fields + fact catalog (GET floors, public)', async () => {
+    const res = await buildApp().request('/api/v1/integrations/floors')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: Array<{ floor: string }> }
+    const ids = body.data.map((f) => f.floor)
+    expect(ids).toContain('shipment_lifecycle_event')
+  })
+
+  it('returns a floor’s machine-readable contract (GET floors/:id, public)', async () => {
+    const res = await buildApp().request('/api/v1/integrations/floors/shipment_lifecycle_event')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      data: { floor: string; canonicalFields: string[]; factCatalog: Record<string, string> }
+    }
+    expect(body.data.floor).toBe('shipment_lifecycle_event')
+    // canonicalFields are the legal mapping targets; factCatalog the legal rule facts.
+    expect(body.data.canonicalFields).toContain('Reference.Brand')
+    expect(body.data.factCatalog).toHaveProperty('brand')
+    expect(body.data.factCatalog).toHaveProperty('brandPresent')
+  })
+
+  it('404s for an unknown floor (GET floors/:id)', async () => {
+    const res = await buildApp().request('/api/v1/integrations/floors/nope')
+    expect(res.status).toBe(404)
+  })
+
   it('returns 401 when no API key is supplied', async () => {
     const res = await post(PATH, { order: validDemoPartnerOrder })
     expect(res.status).toBe(401)

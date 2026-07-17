@@ -618,18 +618,42 @@ Pegasus API key whose service account holds the `workflow_developer` role.
 ### Authoring an integration-validator config
 
 The `integration-config` group manages an integration's declarative **mapping +
-rules** (the DB-backed authoring surface; see
-`apps/api/src/handlers/integration-validation/config.ts`). The editable surface
-lives as three JSON files in a working directory (`-C`, default `.`):
-`mapping.json`, `rules.json`, `corpus.json`. The round-trip is pull → edit →
-validate → publish:
+rules** (the DB-backed authoring surface). The working directory (`-C`, default
+`.`) holds:
+
+| File                                            | Required | What it is                                                                                                                             |
+| ----------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `mapping.json`                                  | ✓        | native payload → canonical (output-shaped DSL; `GET /api/v1/integrations/mapping-schema`)                                              |
+| `rules.json`                                    | ✓        | behavioural rules; ops `eq ne gt gte lt lte in nin` (use `nin` for "must be one of a set")                                             |
+| `corpus.json`                                   | ✓        | gate cases `{input: {order: <native>}, expected: {valid, ruleIds}}`                                                                    |
+| `meta.json`                                     | –        | `{floor, displayName}` — **required for a new id** with no built-in overlay                                                            |
+| `inbound.json`                                  | –        | ingress ack/validation block (`GET /api/v1/integrations/inbound-schema`) — makes the ingress return the partner's `Result{…}` envelope |
+| `external-shape.json` / `external-mapping.json` | –        | partner **outbound** body shape + projection                                                                                           |
+
+**Discover the floor first.** A floor is the contract your config builds on — it
+declares the only legal mapping _targets_ and rule _facts_. Author against it:
+
+```python
+client.list_floors()                    # [{floor, canonicalFields, factCatalog, …}]
+client.get_floor("shipment_lifecycle_event")
+#  → canonicalFields: legal mapping targets;  factCatalog: legal rule facts
+```
+
+(or public `GET /api/v1/integrations/floors[/{id}]`). Then the round-trip is
+pull → edit → validate → publish:
 
 ```
 pegasus-workflows integration-config pull demo_partner -C ./demo_partner
-# …edit mapping.json / rules.json…
+# …edit mapping.json / rules.json / inbound.json…
 pegasus-workflows integration-config validate demo_partner -C ./demo_partner
 pegasus-workflows integration-config publish demo_partner -C ./demo_partner
 ```
+
+An AI coding agent can do all of this **without platform source**: the MCP
+resources `pegasus://reference/integration-config` (the full guide),
+`pegasus://reference/floors` (live floors), and `pegasus://reference/openapi` (the
+API's OpenAPI 3.1 spec, also at `GET /openapi.json` / Swagger UI `/docs`) carry the
+complete contract.
 
 `publish`/`rollback` require the token's tenant to be the **platform tenant** to
 write GLOBAL (visibility is derived server-side) and to carry the
@@ -790,6 +814,23 @@ pegasus-workflows mcp --help   # should print the mcp command help
 ```
 
 Without the extra installed, the command exits non-zero with an install hint.
+
+## Keeping the SDK in sync (maintainers)
+
+The SDK is the **external product boundary** for integration/workflow authors —
+they and their AI agents must be able to use the **full** platform functionality
+without platform source, via the docs, the MCP `pegasus://reference/*` resources,
+CLI `--help`, and the API's OpenAPI spec (`/openapi.json`). So whenever an
+integrations/workflows platform feature is added or changed (a new route, floor,
+rule operator, config field, or capability):
+
+1. Expose it in the SDK (a `PegasusClient` method / CLI command / config-file surface).
+2. Update its **discovery surfaces in turn** — this README, `CLAUDE.md`, the MCP
+   resources, and the OpenAPI spec — preferring **live introspection** (e.g. the
+   floor endpoints) over static docs where the contract is code.
+
+A capability that exists in the API but isn't reachable + discoverable through
+these is a gap, not a feature.
 
 ## Release
 
