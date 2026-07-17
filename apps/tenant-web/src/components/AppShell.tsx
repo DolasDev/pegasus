@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useRouter } from '@tanstack/react-router'
+import { Link, useRouterState } from '@tanstack/react-router'
 import {
   LayoutDashboard,
   Truck,
@@ -214,8 +214,10 @@ type NavItemProps = {
 }
 
 function NavItem({ to, label, icon: Icon, exact, collapsed }: NavItemProps) {
-  const router = useRouter()
-  const pathname = router.state.location.pathname
+  // Subscribe to the location reactively — `useRouter().state` is a non-reactive
+  // read (plain context), so this layout-level component wouldn't re-render on
+  // client-side navigation and the active highlight would stick.
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
   const isActive = exact ? pathname === to : pathname === to || pathname.startsWith(to + '/')
 
   return (
@@ -249,8 +251,9 @@ type NavGroupProps = {
 }
 
 function NavGroup({ to, label, icon: Icon, exact, collapsed, items }: NavGroupProps) {
-  const router = useRouter()
-  const pathname = router.state.location.pathname
+  // Reactive location subscription (see NavItem) — also drives `isInSection`,
+  // which the expander open-state below depends on.
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
   const isInSection = pathname === to || pathname.startsWith(to + '/')
   const isParentActive = exact ? pathname === to : isInSection
   const [open, setOpen] = useState<boolean>(isInSection)

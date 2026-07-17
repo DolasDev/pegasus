@@ -414,3 +414,30 @@ box. When porting more longhaul screens, treat every `100vw`-relative width as
 suspect. Regression guard: `apps/e2e/tests/browser/trip-notes-visibility.spec.ts`
 asserts (geometry, no screenshot) that the Notes panel's right edge stays within
 `.driver-planning-root` and `.tripContainer` is no wider than it.
+
+## `useRouter().state.location.pathname` is NOT reactive — and the dev server masks the bug
+
+Reading the current path off the router instance —
+`const router = useRouter(); const pathname = router.state.location.pathname` — does
+**not** subscribe the component to router updates (`useRouter()` is a plain context read
+of a stable instance whose `.state` mutates in place). A layout-level component that does
+this (whose `<Outlet>` swaps the page without re-invoking the parent) will not re-render
+on client-side navigation, so anything derived from `pathname` — e.g. active-link
+highlighting — freezes at the value from first render. This bit the sidebar submenus
+(Operations / App Settings `NavGroup` children in `components/AppShell.tsx`), the App
+Settings in-page rail (`features/settings/app/AppSettingsLayout.tsx`), and the
+shell/shell-free toggle (`routes/__root.tsx`). Fix: subscribe reactively —
+`const pathname = useRouterState({ select: (s) => s.location.pathname })` — or use
+`<Link>`'s built-in active state (`activeProps` / `data-status`).
+
+**The trap that makes this expensive to diagnose:** it does NOT reproduce under
+`vite --mode e2e` (dev). React Fast Refresh keeps an HMR client connected and re-renders
+the whole route tree on navigation, which incidentally re-runs the non-reactive read with
+a fresh value — so the highlight appears to work in dev. It only manifests in a real build
+(`vite build` + `vite preview`), where nothing forces the parent to re-render. When
+verifying a router-reactivity fix, drive a PRODUCTION build via `vite preview`, not the
+dev server, and prove navigation stayed client-side (a `window` sentinel set after load
+survives). Regression coverage lives in `src/__tests__/AppShell.test.tsx` (mocks
+`useRouterState` with a mutable pathname); note a mocked router is inherently reactive, so
+the unit test guards the match logic, not the reactivity — the preview-build check is the
+reactivity proof.
