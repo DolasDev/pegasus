@@ -37,6 +37,8 @@ import {
   getGateBase,
   getFloor,
   refreshRegistryOverlay,
+  listIntegrationIds,
+  getIntegrationDefinition,
 } from '../../integration-validation/registry'
 import { runGatePipeline, type GateCorpusCase } from '../../integration-validation/gate-pipeline'
 import { isIntegrationConfigPublishEnabled } from '../../lib/integration-config-feature'
@@ -257,6 +259,37 @@ integrationConfigHandler.get(
     const row = await repo.findActiveForScope(integrationId, tenantId)
     if (!row) return c.json({ error: 'No published config', code: 'NOT_FOUND' }, 404)
     return c.json({ data: toFull(row) })
+  },
+)
+
+// GET /integrations/configs — the tenant's configured integrations (id + active
+// config summary). The m2m (vnd_) sibling of the Cognito-only GET /integrations
+// list, so an SDK/integration_publisher key can discover which integration ids
+// exist for its tenant. Distinct path from the browser `/integrations` so it does
+// not shadow it. Two segments, so it never collides with the handler's
+// `/integrations/:integrationId/config…` (three-segment) routes.
+integrationConfigHandler.get(
+  '/integrations/configs',
+  requirePermission(Actions.ReadIntegrationConfig),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    if (!tenantId) throw new DomainError('Tenant context required', 'UNAUTHENTICATED')
+    const repo = createIntegrationConfigRepository(c.get('db'))
+    const data = []
+    for (const id of listIntegrationIds()) {
+      const def = getIntegrationDefinition(id)
+      if (!def) continue
+      const active = await repo.findActiveForScope(id, tenantId)
+      data.push({
+        id: def.id,
+        name: active?.displayName ?? def.displayName,
+        description: def.description,
+        published: active !== null,
+        version: active?.version ?? null,
+        visibility: active?.visibility ?? null,
+      })
+    }
+    return c.json({ data, meta: { count: data.length } })
   },
 )
 

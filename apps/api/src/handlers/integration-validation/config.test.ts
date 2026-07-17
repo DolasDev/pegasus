@@ -33,6 +33,8 @@ const {
   mockGetFloor,
   mockRefreshRegistryOverlay,
   mockRunGatePipeline,
+  mockListIntegrationIds,
+  mockGetIntegrationDefinition,
 } = vi.hoisted(() => ({
   mockRepo: {
     publish: vi.fn(),
@@ -47,6 +49,8 @@ const {
   mockGetFloor: vi.fn(),
   mockRefreshRegistryOverlay: vi.fn(async () => {}),
   mockRunGatePipeline: vi.fn(),
+  mockListIntegrationIds: vi.fn(() => [] as string[]),
+  mockGetIntegrationDefinition: vi.fn(),
 }))
 
 vi.mock('../../repositories/integration-config.repository', () => ({
@@ -59,6 +63,8 @@ vi.mock('../../integration-validation/registry', () => ({
   getGateBase: mockGetBuiltInDefinition,
   getFloor: mockGetFloor,
   refreshRegistryOverlay: mockRefreshRegistryOverlay,
+  listIntegrationIds: mockListIntegrationIds,
+  getIntegrationDefinition: mockGetIntegrationDefinition,
 }))
 
 vi.mock('../../integration-validation/gate-pipeline', () => ({
@@ -630,5 +636,50 @@ describe('integration-config handler', () => {
       )
       expect(mockRefreshRegistryOverlay).toHaveBeenCalledTimes(1)
     })
+  })
+})
+
+describe('GET /integrations/configs (m2m list)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env['AUTHZ_OFFLINE'] = 'true'
+    _clearAuthzCache()
+    mockListIntegrationIds.mockReturnValue(['demo_partner', 'ghost'])
+    mockGetIntegrationDefinition.mockImplementation((id: string) =>
+      id === 'ghost'
+        ? undefined // an id with no definition is skipped
+        : { id, displayName: 'Demo Partner', description: 'a demo' },
+    )
+  })
+
+  it('lists the tenant integrations with active-config summary for integration_publisher', async () => {
+    mockRepo.findActiveForScope.mockResolvedValue(configRow)
+    const res = await buildApp(['integration_publisher']).request('/integrations/configs')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: unknown[]; meta: { count: number } }
+    // 'ghost' (no definition) is skipped → only demo_partner.
+    expect(body.meta.count).toBe(1)
+    expect(body.data[0]).toMatchObject({
+      // configRow has no displayName, so the route falls back to def.displayName.
+      id: 'demo_partner',
+      name: 'Demo Partner',
+      published: true,
+      version: configRow.version,
+      visibility: 'TENANT',
+    })
+  })
+
+  it('marks an integration with no active config as unpublished', async () => {
+    mockRepo.findActiveForScope.mockResolvedValue(null)
+    const res = await buildApp(['integration_publisher']).request('/integrations/configs')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: Array<{ published: boolean; version: null }> }
+    expect(body.data[0]).toMatchObject({ published: false, version: null, visibility: null })
+  })
+
+  it('rejects a role without ReadIntegrationConfig with 403', async () => {
+    const res = await buildApp(['driver']).request('/integrations/configs')
+    expect(res.status).toBe(403)
+    expect(mockListIntegrationIds).not.toHaveBeenCalled()
   })
 })

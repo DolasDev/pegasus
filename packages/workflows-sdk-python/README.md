@@ -492,6 +492,31 @@ platform-event queue, which is keyed by type, so an event type is required.
 (Inventory has no runtime read grant — a workflow that needs item-level data reads
 it from the move it is processing.)
 
+The pegII operational surface (legacy orders + tasks) has its own reads/mutation:
+
+```python
+client.list_orders()                 # ReadOrder
+client.get_order("SO-12345")         # ReadOrder
+client.list_tasks(order_id="SO-12345")   # ReadTask
+client.get_task("task-1")            # ReadTask
+client.close_task(order_id="SO-12345", task_type="date_confirmation", reason="done")  # CloseTask
+```
+
+### Emitting a custom event (workflow-to-workflow chaining)
+
+A workflow can fire a tenant-defined event type, which any workflow bound to it via
+an EVENT trigger will run — the in-platform way to chain automations without an
+outside queue. Requires `EmitTenantEvent`.
+
+```python
+client.emit_event("quote.followed_up", {"quoteId": "Q-1", "channel": "sms"})
+# → {"emitted": True, "eventType": "quote.followed_up", "occurredAt": "…"}
+```
+
+The event type must already exist for the tenant (define it in the tenant UI or via
+the events surface). `emit_event` is a mutation — captured, not performed, under the
+offline test harness and the server-side `--dry-run`.
+
 ## Visualizing workflows
 
 A workflow is published as opaque Python, so the Pegasus tenant UI can't infer
@@ -535,10 +560,21 @@ pegasus-workflows executions show <workflow-id> <execution-id> --token=vnd_…
 ```
 
 `show` prints the run's input/result/error plus a flattened timeline
-(`WorkflowExecutionStarted` → per-activity events → the terminal event). Cancel
-and retry are available in the tenant web UI. The same data is available
-programmatically via `client.list_executions`, `client.get_execution`, and
-`client.get_execution_history`.
+(`WorkflowExecutionStarted` → per-activity events → the terminal event). The same
+data is available programmatically via `client.list_executions`,
+`client.get_execution`, and `client.get_execution_history`.
+
+Drive an execution from the SDK too (also in the tenant web UI):
+
+```python
+client.cancel_execution(workflow_id, execution_id)  # CancelWorkflowExecution — cooperative cancel
+client.retry_execution(workflow_id, execution_id)   # RetryWorkflowExecution — new run, same input
+```
+
+`cancel` signals a running execution (it transitions to CANCELLED when the run
+observes it); `retry` starts a **new** execution from the stored input of a
+terminal-failed one (FAILED / TIMED_OUT / CANCELLED), leaving the original row
+untouched. Both need the `workflow_developer` role.
 
 > ⚠️ **Keep PII out of workflow inputs and results.** Temporal stores execution
 > payloads (input, result, and the full event history) and renders them in its
@@ -632,27 +668,30 @@ published_at = "2026-06-29T21:05:48Z"
 
 ## CLI
 
-| Command                                                                | What it does                                                   |
-| ---------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `pegasus-workflows setup [--profile <name>] [--print-mcp-config]`      | First-run bootstrap: seed a profile + register the MCP server. |
-| `pegasus-workflows init <name>`                                        | Scaffold a new workflow project.                               |
-| `pegasus-workflows configure [--profile <name>]`                       | Store a credential profile in `~/.pegasus/credentials` (0600). |
-| `pegasus-workflows profile list`                                       | List stored profile names + api_root (never the key).          |
-| `pegasus-workflows diagram [-C <dir>] [-w <name>] [-o <file>]`         | Print a prompt for your coding agent to draw `workflow.mmd`.   |
-| `pegasus-workflows package`                                            | Zip each declared workflow into `dist/<name>-<version>.zip`.   |
-| `pegasus-workflows push [--profile <name>] [--env <name>] [--token=…]` | Package → upload → finalize; records `deployments.toml`.       |
-| `pegasus-workflows test <workflow>`                                    | Start local Temporal and run the workflow with a stub input.   |
-| `pegasus-workflows executions list <wf-id> --token=<vnd_…>`            | List recent executions of a workflow (newest first).           |
-| `pegasus-workflows executions show <wf-id> <exec-id> --token=<vnd_…>`  | Show one execution's input/result/error + history timeline.    |
-| `pegasus-workflows integration-config validate <id> [-C <dir>]`        | Dry-run the publish gate for a config (no write).              |
-| `pegasus-workflows integration-config publish <id> [-C <dir>]`         | Gate then publish a new config version.                        |
-| `pegasus-workflows integration-config pull <id> [-C <dir>] [--stdout]` | Fetch the active config; write the editable surface to disk.   |
-| `pegasus-workflows integration-config versions <id>`                   | List the config version history (newest first).                |
-| `pegasus-workflows integration-config rollback <id> <version>`         | Re-publish a prior version (re-runs the gate).                 |
-| `pegasus-workflows secrets set <key> <value> [-d <desc>]`              | Publish a secret (write-once, encrypted at rest).              |
-| `pegasus-workflows secrets list` / `secrets delete <key>`              | List secret keys (no values) / delete a secret.                |
-| `pegasus-workflows config set <key> <value> [-d <desc>]`               | Publish a config value (idempotent upsert).                    |
-| `pegasus-workflows config list` / `config delete <key>`                | List config key/values / delete a config entry.                |
+| Command                                                                            | What it does                                                   |
+| ---------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `pegasus-workflows setup [--profile <name>] [--print-mcp-config]`                  | First-run bootstrap: seed a profile + register the MCP server. |
+| `pegasus-workflows init <name>`                                                    | Scaffold a new workflow project.                               |
+| `pegasus-workflows configure [--profile <name>]`                                   | Store a credential profile in `~/.pegasus/credentials` (0600). |
+| `pegasus-workflows profile list`                                                   | List stored profile names + api_root (never the key).          |
+| `pegasus-workflows diagram [-C <dir>] [-w <name>] [-o <file>]`                     | Print a prompt for your coding agent to draw `workflow.mmd`.   |
+| `pegasus-workflows package`                                                        | Zip each declared workflow into `dist/<name>-<version>.zip`.   |
+| `pegasus-workflows push [--profile <name>] [--env <name>] [--token=…]`             | Package → upload → finalize; records `deployments.toml`.       |
+| `pegasus-workflows test <workflow>`                                                | Start local Temporal and run the workflow with a stub input.   |
+| `pegasus-workflows executions list <wf-id> --token=<vnd_…>`                        | List recent executions of a workflow (newest first).           |
+| `pegasus-workflows executions show <wf-id> <exec-id> --token=<vnd_…>`              | Show one execution's input/result/error + history timeline.    |
+| `pegasus-workflows integration-config validate <id> [-C <dir>]`                    | Dry-run the publish gate for a config (no write).              |
+| `pegasus-workflows integration-config publish <id> [-C <dir>]`                     | Gate then publish a new config version.                        |
+| `pegasus-workflows integration-config pull <id> [-C <dir>] [--stdout]`             | Fetch the active config; write the editable surface to disk.   |
+| `pegasus-workflows integration-config versions <id>`                               | List the config version history (newest first).                |
+| `pegasus-workflows integration-config rollback <id> <version>`                     | Re-publish a prior version (re-runs the gate).                 |
+| `pegasus-workflows secrets set <key> <value> [-d <desc>]`                          | Publish a secret (write-once, encrypted at rest).              |
+| `pegasus-workflows secrets list` / `secrets delete <key>`                          | List secret keys (no values) / delete a secret.                |
+| `pegasus-workflows config set <key> <value> [-d <desc>]`                           | Publish a config value (idempotent upsert).                    |
+| `pegasus-workflows config list` / `config delete <key>`                            | List config key/values / delete a config entry.                |
+| `pegasus-workflows schedule create <wf-id> --cron "<5-field UTC>"`                 | Attach a cron SCHEDULE trigger that runs the workflow.         |
+| `pegasus-workflows schedule list <wf-id>` / `schedule delete <wf-id> <trigger-id>` | List / remove a workflow's schedule triggers.                  |
+| `pegasus-workflows ingress create <id>` / `rotate <id>` / `list <id>`              | Provision / rotate / inspect a partner-ingress bearer.         |
 
 Credentials resolve via `--token`/`--base-url`, `--profile`, the
 `PEGASUS_WORKFLOW_TOKEN`/`PEGASUS_BASE_URL` env vars, or the `[default]` profile

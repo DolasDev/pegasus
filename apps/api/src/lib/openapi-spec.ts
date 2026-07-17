@@ -450,6 +450,58 @@ export function getOpenApiSpec() {
           responses: { '200': { description: 'Paginated invoice list ({data, meta})' } },
         },
       },
+      '/api/v1/integrations/configs': {
+        get: {
+          operationId: 'listIntegrations',
+          summary: 'List the tenant’s configured integrations (ReadIntegrationConfig)',
+          description:
+            'The vnd_-reachable sibling of the Cognito-only GET /integrations. Each entry: {id, name, description, published, version, visibility}.',
+          tags: ['Integrations'],
+          security: [{ ApiKeyAuth: [] }],
+          responses: { '200': { description: 'Integration summaries ({data, meta})' } },
+        },
+      },
+      '/api/v1/integrations/{integrationId}/config/fork': {
+        post: {
+          operationId: 'forkIntegrationConfig',
+          summary: 'Fork the GLOBAL config into the tenant scope (PublishIntegrationConfig)',
+          tags: ['Integrations'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'integrationId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: {
+            '201': { description: 'The created TENANT config (full projection)' },
+            '404': { description: 'No GLOBAL config to fork' },
+          },
+        },
+      },
+      '/api/v1/workflows/{id}/executions/{executionId}/cancel': {
+        post: {
+          operationId: 'cancelWorkflowExecution',
+          summary: 'Request cancellation of a running execution (CancelWorkflowExecution)',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: { '202': { description: 'Cancellation requested ({data: execution})' } },
+        },
+      },
+      '/api/v1/workflows/{id}/executions/{executionId}/retry': {
+        post: {
+          operationId: 'retryWorkflowExecution',
+          summary: 'Retry a terminal-failed execution as a new run (RetryWorkflowExecution)',
+          tags: ['Workflows'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: { '201': { description: 'New execution started ({data: execution})' } },
+        },
+      },
       '/api/v1/integrations/floors': {
         get: {
           operationId: 'listFloors',
