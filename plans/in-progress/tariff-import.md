@@ -1,6 +1,14 @@
 # 400NG Tariff Import — platform-admin upload UI + backend
 
-Status: **not started.** Builds the "load a real tariff into the DB" capability that
+Status: **COMPLETE — all three PRs implemented on `feat/tariff-import`, awaiting merge.** PR1
+(backend `/api/admin/tariffs`), PR2 (admin-web upload wizard, parser calibration-verified against the
+real 2026 workbook: 913/227/5076/6/16/4), and PR3 (removed the tenant-facing import/activate routes +
+`ImportTariff` Cedar action) are done. Full api suite (2490 tests) + admin-web suite (33 tests) green;
+admin-web production build succeeds with exceljs code-split into its own lazy chunk. The one leftover
+is the manual prod step: after this merges + deploys, a PLATFORM_ADMIN uploads `400NG-BASELINE-RATES.XLSX`
+via admin-web → Tariffs and activates it (prod currently has zero tariff rows).
+
+Builds the "load a real tariff into the DB" capability that
 `plans/completed/b280811-rating-engine-400ng.md` deliberately left as a manual CLI + curl step.
 Sibling of `plans/todo/rating-engine-pr4-update-mechanism.md` (the FSC/coverage cron) — this plan is
 the human-driven import half; PR4 is the automated-monitoring half. They can ship independently.
