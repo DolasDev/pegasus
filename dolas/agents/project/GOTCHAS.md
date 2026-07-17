@@ -394,3 +394,23 @@ one. The established fix is `users.ts`'s idiom: `c.req.param('id') ?? ''`. The
 fallback is unreachable (the route only matches with an `:id` present); it
 exists purely to restore the type. Handlers that already had a `validator`
 middleware are unaffected — their inference was degraded to begin with.
+
+## Ported longhaul `calc(100vw - …)` widths overflow tenant-web's column; `overflow-x: clip` then clips right-pinned children off-screen
+
+The driver-planning feature is a lift-and-shift of the standalone `apps/longhaul`
+app, whose full-viewport layout hard-codes widths like
+`.tripContainer { width: calc(100vw - 90px) }` (viewport minus a 90px rail).
+Inside tenant-web the feature renders in AppShell's content **column**, which is
+narrower than `100vw - …` (there's a sidebar + padding), so the element overflows
+its parent to the right. That was merely ugly until commit `400bb69` added
+`.driver-planning-root { position: relative; overflow-x: clip }` (to hide the
+off-screen `ShipmentDetail` slide) — the clip now chops that over-wide right
+edge. Any child pinned to it with `position: absolute; right: N` (the Trip-detail
+`.noteContainer` / `[data-target="trip-notes"]` Notes panel) is carried past the
+clip boundary and disappears, while still present in the DOM. Fix is to size the
+ported container to its actual column (`width: 100%`) and let inner-content
+overflow scroll within the Lane (`overflow: auto`) instead of blowing out the
+box. When porting more longhaul screens, treat every `100vw`-relative width as
+suspect. Regression guard: `apps/e2e/tests/browser/trip-notes-visibility.spec.ts`
+asserts (geometry, no screenshot) that the Notes panel's right edge stays within
+`.driver-planning-root` and `.tripContainer` is no wider than it.
