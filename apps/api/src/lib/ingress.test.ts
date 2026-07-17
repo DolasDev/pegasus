@@ -10,6 +10,7 @@ import {
   failureAck,
   validateInboundBody,
   defaultEventType,
+  InboundBlockSchema,
 } from './ingress'
 
 describe('parseInboundConfig', () => {
@@ -45,6 +46,15 @@ describe('deriveDedupId', () => {
   })
   it('hashes when no path configured', () => {
     expect(deriveDedupId({ a: 1 }, undefined)).toMatch(/^sha256:/)
+  })
+  it('tries each path in an array, first resolved scalar wins', () => {
+    const paths = ['StatementEntry.0.ReferenceNbr', 'PostingTickets.0.ReferenceNbr']
+    // Abstract shape resolves the first path.
+    expect(deriveDedupId({ StatementEntry: [{ ReferenceNbr: 'A-1' }] }, paths)).toBe('A-1')
+    // Statement shape resolves the second (first is absent).
+    expect(deriveDedupId({ PostingTickets: [{ ReferenceNbr: 'S-9' }] }, paths)).toBe('S-9')
+    // Neither present → body hash.
+    expect(deriveDedupId({ a: 1 }, paths)).toMatch(/^sha256:/)
   })
 })
 
@@ -162,6 +172,106 @@ describe('validateInboundBody', () => {
   })
   it('is a no-op (accepts anything) when no validation is published', () => {
     expect(validateInboundBody({ anything: 1 }, undefined)).toEqual([])
+  })
+})
+
+describe('validateInboundBody — oneOf variants', () => {
+  // ADE Abstract vs Statement: two shapes on one ingress id.
+  const validation = {
+    oneOf: [
+      { requiredPaths: ['AgentNbr'], nonEmptyArrayPaths: ['StatementEntry'] },
+      { requiredPaths: ['AgentStatementHdr.AgentNbr'], nonEmptyArrayPaths: ['PostingTickets'] },
+    ],
+  }
+  it('accepts a body matching the first variant (Abstract)', () => {
+    expect(
+      validateInboundBody(
+        { AgentNbr: '0009000', StatementEntry: [{ ReferenceNbr: 'A-1' }] },
+        validation,
+      ),
+    ).toEqual([])
+  })
+  it('accepts a body matching the second variant (Statement)', () => {
+    expect(
+      validateInboundBody(
+        { AgentStatementHdr: { AgentNbr: '0009000' }, PostingTickets: [{ ReferenceNbr: 'S-1' }] },
+        validation,
+      ),
+    ).toEqual([])
+  })
+  it('rejects a body matching no variant with a single NO_VARIANT_MATCH issue', () => {
+    expect(validateInboundBody({ nonsense: true }, validation)).toEqual([
+      { code: 'NO_VARIANT_MATCH', message: 'Body matched none of the 2 accepted shapes.' },
+    ])
+  })
+  it('rejects a partial match (right array, missing required scalar)', () => {
+    // Has StatementEntry but no AgentNbr, and nothing of the Statement shape.
+    expect(validateInboundBody({ StatementEntry: [{ x: 1 }] }, validation)).toEqual([
+      { code: 'NO_VARIANT_MATCH', message: 'Body matched none of the 2 accepted shapes.' },
+    ])
+  })
+  it('still applies top-level checks alongside oneOf', () => {
+    const withTop = { requiredPaths: ['SvcProvDataRecipient'], ...validation }
+    const issues = validateInboundBody(
+      { AgentNbr: '0009000', StatementEntry: [{ ReferenceNbr: 'A-1' }] },
+      withTop,
+    )
+    expect(issues).toEqual([
+      { code: 'MISSING_FIELD', message: 'Required field "SvcProvDataRecipient" is missing.' },
+    ])
+  })
+  it('treats an empty oneOf as a no-op', () => {
+    expect(validateInboundBody({ anything: 1 }, { oneOf: [] })).toEqual([])
+  })
+})
+
+describe('parseInboundConfig — oneOf + array dedupKeyPath', () => {
+  it('parses an array dedupKeyPath and a validation.oneOf', () => {
+    const cfg = parseInboundConfig({
+      dedupKeyPath: ['StatementEntry.0.ReferenceNbr', 'PostingTickets.0.ReferenceNbr'],
+      validation: {
+        oneOf: [
+          { requiredPaths: ['AgentNbr'], nonEmptyArrayPaths: ['StatementEntry'] },
+          { requiredPaths: ['AgentStatementHdr.AgentNbr'], nonEmptyArrayPaths: ['PostingTickets'] },
+        ],
+      },
+    })
+    expect(cfg.dedupKeyPath).toEqual([
+      'StatementEntry.0.ReferenceNbr',
+      'PostingTickets.0.ReferenceNbr',
+    ])
+    expect(cfg.validation?.oneOf).toHaveLength(2)
+    expect(cfg.validation?.oneOf?.[0]).toEqual({
+      requiredPaths: ['AgentNbr'],
+      nonEmptyArrayPaths: ['StatementEntry'],
+    })
+  })
+  it('drops empty oneOf leaves and an empty oneOf array', () => {
+    expect(
+      parseInboundConfig({ validation: { oneOf: [{}, { junk: 1 }] } }).validation,
+    ).toBeUndefined()
+  })
+})
+
+describe('InboundBlockSchema (published authoring contract)', () => {
+  it('accepts oneOf variants and an array dedupKeyPath', () => {
+    const parsed = InboundBlockSchema.safeParse({
+      eventType: 'sirva_ade.compensation.event',
+      dedupKeyPath: ['StatementEntry.0.ReferenceNbr', 'PostingTickets.0.ReferenceNbr'],
+      validation: {
+        oneOf: [
+          { requiredPaths: ['AgentNbr'], nonEmptyArrayPaths: ['StatementEntry'] },
+          { requiredPaths: ['AgentStatementHdr.AgentNbr'], nonEmptyArrayPaths: ['PostingTickets'] },
+        ],
+      },
+    })
+    expect(parsed.success).toBe(true)
+  })
+  it('rejects an unknown key inside a oneOf leaf (strict)', () => {
+    const parsed = InboundBlockSchema.safeParse({
+      validation: { oneOf: [{ requiredPaths: ['X'], bogus: true }] },
+    })
+    expect(parsed.success).toBe(false)
   })
 })
 

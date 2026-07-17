@@ -369,6 +369,28 @@ bound workflow finishing. Managing ingress needs a `vnd_` key with `ManageIngres
 endpoint accepts any body and returns a generic `{status:"accepted"}` ack (no
 validation, no partner envelope).
 
+**Multi-shape partners — `validation.oneOf` (0.22.0+).** When one ingress id
+receives structurally different bodies (e.g. an ADE Abstract `{…, AgentNbr,
+StatementEntry[]}` vs a Statement `{AgentStatementHdr:{AgentNbr}, PostingTickets[]}`),
+list each accepted shape under `validation.oneOf`. The body must fully satisfy **at
+least one** variant (in addition to any top-level `requiredPaths`/`nonEmptyArrayPaths`);
+a body matching none gets the `failure` ack. Pair it with an array `dedupKeyPath`
+(each path tried in order, first present wins) so both shapes dedup:
+
+```jsonc
+"inbound": {
+  "eventType": "sirva_ade.compensation.event",
+  "dedupKeyPath": ["StatementEntry.0.ReferenceNbr", "PostingTickets.0.ReferenceNbr"],
+  "validation": {
+    "oneOf": [
+      { "requiredPaths": ["AgentNbr"],                  "nonEmptyArrayPaths": ["StatementEntry"] },
+      { "requiredPaths": ["AgentStatementHdr.AgentNbr"], "nonEmptyArrayPaths": ["PostingTickets"] }
+    ]
+  }
+  // ackTemplate as above
+}
+```
+
 ### Secrets & configuration
 
 A workflow reads two kinds of per-tenant key/value data at runtime — **secrets**
