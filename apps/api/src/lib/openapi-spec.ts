@@ -6,15 +6,206 @@
 // the core /api/v1/customers resource and expand with each new handler.
 // ---------------------------------------------------------------------------
 
+/** Compact builder for a simple `vnd_`-authenticated GET path (path + query
+ *  params, one 200). Keeps the many operational read routes DRY; richer routes
+ *  stay hand-authored below. */
+function apiKeyGet(
+  operationId: string,
+  summary: string,
+  opts: {
+    tags?: string[]
+    path?: string[]
+    query?: Array<{ name: string; description?: string }>
+    responseDescription?: string
+  } = {},
+): { get: Record<string, unknown> } {
+  const parameters = [
+    ...(opts.path ?? []).map((name) => ({
+      name,
+      in: 'path',
+      required: true,
+      schema: { type: 'string' },
+    })),
+    ...(opts.query ?? []).map((q) => ({
+      name: q.name,
+      in: 'query',
+      required: false,
+      schema: { type: 'string' },
+      ...(q.description ? { description: q.description } : {}),
+    })),
+  ]
+  return {
+    get: {
+      operationId,
+      summary,
+      tags: opts.tags ?? ['Runtime'],
+      security: [{ ApiKeyAuth: [] }],
+      ...(parameters.length ? { parameters } : {}),
+      responses: { '200': { description: opts.responseDescription ?? 'OK' } },
+    },
+  }
+}
+
+// The operational `vnd_`-reachable GET surface (workflows / executions / triggers,
+// pegII orders+tasks, secrets/config reads, projection cache + 0026 read-model,
+// events, blobs, integration reads, legacy orders). Enforced complete by
+// lib/openapi-spec.coverage.test.ts. `q` = the ?query= param the SDK's api_get can pass.
+const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> = {
+  '/api/v1/workflows': apiKeyGet(
+    'listWorkflows',
+    'List workflows visible to the tenant (∪ GLOBAL)',
+    {
+      tags: ['Workflows'],
+      responseDescription: '{data: WorkflowResponse[]}',
+    },
+  ),
+  '/api/v1/workflows/{id}': apiKeyGet('getWorkflow', 'Get a workflow by id', {
+    tags: ['Workflows'],
+    path: ['id'],
+  }),
+  '/api/v1/workflows/{id}/download-url': apiKeyGet(
+    'getWorkflowDownloadUrl',
+    'Presigned URL for a workflow artifact (ReadWorkflow)',
+    { tags: ['Workflows'], path: ['id'] },
+  ),
+  '/api/v1/workflows/{id}/triggers': apiKeyGet(
+    'listTriggers',
+    "List a workflow's SCHEDULE + EVENT triggers (ReadWorkflow)",
+    { tags: ['Workflows'], path: ['id'] },
+  ),
+  '/api/v1/workflows/{id}/executions': apiKeyGet(
+    'listExecutions',
+    "List a workflow's executions, newest first (ReadWorkflow)",
+    {
+      tags: ['Workflows'],
+      path: ['id'],
+      query: [
+        { name: 'limit', description: 'page size' },
+        { name: 'before', description: 'paging cursor (an execution id)' },
+      ],
+    },
+  ),
+  '/api/v1/workflows/{id}/executions/{executionId}': apiKeyGet(
+    'getExecution',
+    'Get one execution (ReadWorkflow)',
+    { tags: ['Workflows'], path: ['id', 'executionId'] },
+  ),
+  '/api/v1/workflows/{id}/executions/{executionId}/history': apiKeyGet(
+    'getExecutionHistory',
+    "Get an execution's Temporal event-history timeline (ReadWorkflow)",
+    { tags: ['Workflows'], path: ['id', 'executionId'] },
+  ),
+  '/api/v1/pegii/orders': apiKeyGet('listPegiiOrders', 'List pegII orders (ReadOrder)', {
+    tags: ['pegII'],
+  }),
+  '/api/v1/pegii/orders/{orderId}': apiKeyGet('getPegiiOrder', 'Get a pegII order (ReadOrder)', {
+    tags: ['pegII'],
+    path: ['orderId'],
+  }),
+  '/api/v1/pegii/tasks': apiKeyGet('listPegiiTasks', 'List pegII tasks (ReadTask)', {
+    tags: ['pegII'],
+  }),
+  '/api/v1/pegii/tasks/{taskId}': apiKeyGet('getPegiiTask', 'Get a pegII task (ReadTask)', {
+    tags: ['pegII'],
+    path: ['taskId'],
+  }),
+  '/api/v1/orders': apiKeyGet('listOrders', 'List orders — legacy M2M order surface (ReadOrder)', {
+    tags: ['Orders'],
+  }),
+  '/api/v1/orders/{orderId}': apiKeyGet('getOrder', 'Get an order — legacy M2M (ReadOrder)', {
+    tags: ['Orders'],
+    path: ['orderId'],
+  }),
+  '/api/v1/workflow-secrets-configs/secrets': apiKeyGet(
+    'listSecrets',
+    'List secret keys (no values) (ManageWorkflowSecrets)',
+    { tags: ['Secrets & Config'], query: [{ name: 'group' }] },
+  ),
+  '/api/v1/workflow-secrets-configs/configs': apiKeyGet(
+    'listConfigs',
+    'List config key/values (ManageWorkflowConfigs)',
+    { tags: ['Secrets & Config'], query: [{ name: 'group' }] },
+  ),
+  '/api/v1/workflow-secrets-configs/runtime/secrets/{key}': apiKeyGet(
+    'getSecret',
+    'Read a secret value at runtime (ReadWorkflowSecret)',
+    { tags: ['Secrets & Config'], path: ['key'], query: [{ name: 'group' }] },
+  ),
+  '/api/v1/workflow-secrets-configs/runtime/configs/{key}': apiKeyGet(
+    'getConfig',
+    'Read a config value at runtime (ReadWorkflowConfig)',
+    { tags: ['Secrets & Config'], path: ['key'], query: [{ name: 'group' }] },
+  ),
+  '/api/v1/integration-projections/runtime/{integrationId}/{entityType}': apiKeyGet(
+    'listRuntimeProjections',
+    'List cached projections for an entity type (ReadIntegrationProjection)',
+    { tags: ['Projections'], path: ['integrationId', 'entityType'] },
+  ),
+  '/api/v1/integration-projections/runtime/{integrationId}/{entityType}/{entityKey}': apiKeyGet(
+    'getRuntimeProjection',
+    'Read one cached projection (ReadIntegrationProjection)',
+    { tags: ['Projections'], path: ['integrationId', 'entityType', 'entityKey'] },
+  ),
+  '/api/v1/integrations/{integrationId}/projections/{entityType}': apiKeyGet(
+    'queryProjections',
+    'Read-model: filtered + keyset-paged projections for an entity type (ReadIntegrationProjection)',
+    {
+      tags: ['Projections'],
+      path: ['integrationId', 'entityType'],
+      query: [
+        { name: 'status', description: 'filter by projected external status' },
+        { name: 'updatedSince', description: 'ISO-8601; only records updated at/after' },
+        { name: 'limit', description: 'page size (default 50)' },
+        { name: 'cursor', description: 'keyset cursor — the nextCursor of a prior page' },
+      ],
+      responseDescription: '{data, nextCursor}',
+    },
+  ),
+  '/api/v1/integrations/{integrationId}/projections/{entityType}/{entityKey}': apiKeyGet(
+    'getProjectionRecord',
+    'Read-model: one projection record (ReadIntegrationProjection)',
+    { tags: ['Projections'], path: ['integrationId', 'entityType', 'entityKey'] },
+  ),
+  '/api/v1/integrations/{integrationId}/config/versions': apiKeyGet(
+    'listConfigVersions',
+    'Integration-config version history, newest first (ReadIntegrationConfig)',
+    { tags: ['Integrations'], path: ['integrationId'] },
+  ),
+  '/api/v1/integrations/{integrationId}/ingress': apiKeyGet(
+    'getIngress',
+    'Get the partner-ingress bearer status for an integration (ManageIngress)',
+    { tags: ['Integrations'], path: ['integrationId'] },
+  ),
+  '/api/v1/events/{eventType}': apiKeyGet(
+    'listPendingEvents',
+    'Poll the pending inbound events of a type (ReadEvent)',
+    { tags: ['Events'], path: ['eventType'] },
+  ),
+  '/api/v1/event-types': apiKeyGet('listEventTypes', 'List the tenant-defined event types', {
+    tags: ['Events'],
+  }),
+  '/api/v1/event-types/{name}': apiKeyGet('getEventType', 'Get a tenant event type by name', {
+    tags: ['Events'],
+    path: ['name'],
+  }),
+  '/api/v1/blobs/{blobId}/download-url': apiKeyGet(
+    'getBlobDownloadUrl',
+    'Presigned download URL for a blob (ReadBlob)',
+    { tags: ['Blobs'], path: ['blobId'] },
+  ),
+}
+
 export function getOpenApiSpec() {
   return {
     openapi: '3.1.0',
     info: {
       title: 'Pegasus API',
       version: '1.0.0',
-      description: 'Move management platform API',
+      description:
+        'The SDK-facing (vnd_ / m2m) Pegasus API surface — the endpoints a PegasusClient key can call, including the operational read surface reachable via api_get. Cognito-only browser routes and worker-internal (broker-secret) endpoints are intentionally excluded.',
     },
     paths: {
+      ...OPERATIONAL_READ_PATHS,
       '/health': {
         get: {
           operationId: 'getHealth',

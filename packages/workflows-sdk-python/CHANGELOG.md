@@ -3,6 +3,29 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.25.0
+
+### Added — generic read passthrough (`api_get`)
+
+- **`PegasusClient.api_get(path, **params)`** — a read-only escape hatch that GETs
+any Pegasus API path with the caller's key and returns the full JSON body (so
+`meta`/`nextCursor`survive). Reaches endpoints without a dedicated helper —
+notably the **projection read-model**`GET /integrations/{id}/projections/{entityType}`
+(`status`/`updatedSince`/ keyset`cursor`), which `get_projection`/`list_projections` (the runtime cache) don't cover. GET-only and Pegasus-host-only
+  by design (an absolute URL raises); for writes use the typed methods, which route
+  through the dry-run capture path a generic call would bypass. Not stubbed by the
+  offline test harness — use a typed read helper there.
+
+### Changed — OpenAPI now documents the full `vnd_` read surface
+
+- The served spec (`GET /openapi.json`, `pegasus://reference/openapi`) is widened
+  from the authoring surface to **every `vnd_`-reachable GET route** (workflows /
+  executions / triggers, pegII orders+tasks, secrets/config reads, the projection
+  cache + 0026 read-model, events, blobs, integration reads), so `api_get`'s
+  catalogue is discoverable. A **route-coverage test** now fails CI if a new m2m GET
+  route is added without a spec entry (or an explicit allowlist), keeping the spec
+  from drifting.
+
 ## 0.24.0
 
 ### Added — SDK completeness (discoverability punch-list P2)

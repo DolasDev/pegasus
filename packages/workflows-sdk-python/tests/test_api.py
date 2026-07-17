@@ -1445,3 +1445,46 @@ def test_schema_getters_read_public_endpoints() -> None:
         "/api/v1/integrations/mapping-schema",
         "/api/v1/integrations/inbound-schema",
     ]
+
+
+# --- api_get read passthrough (0.25.0) --------------------------------------
+
+
+def test_api_get_returns_full_body_with_params() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["query"] = dict(request.url.params)
+        # A {data, nextCursor} envelope — api_get must NOT unwrap to ["data"].
+        return httpx.Response(200, json={"data": [{"entityKey": "SO-1"}], "nextCursor": "SO-1"})
+
+    body = _client_with(handler).api_get(
+        "/api/v1/integrations/sirva_ade_shipment/projections/shipment",
+        status="REGISTERED",
+        limit=50,
+    )
+    assert captured["path"] == "/api/v1/integrations/sirva_ade_shipment/projections/shipment"
+    assert captured["query"] == {"status": "REGISTERED", "limit": "50"}
+    # Full body preserved (meta/nextCursor visible), not unwrapped.
+    assert body == {"data": [{"entityKey": "SO-1"}], "nextCursor": "SO-1"}
+
+
+def test_api_get_rejects_absolute_url() -> None:
+    client = PegasusClient(base_url="http://api.test", token="vnd_x")
+    with pytest.raises(ValueError, match="root-relative"):
+        client.api_get("https://evil.example.com/api/v1/secrets")
+
+
+def test_api_get_rejects_non_rooted_path() -> None:
+    client = PegasusClient(base_url="http://api.test", token="vnd_x")
+    with pytest.raises(ValueError, match="root-relative"):
+        client.api_get("api/v1/integrations/configs")  # missing leading slash
+
+
+def test_api_get_raises_on_non_2xx() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"error": "forbidden", "code": "FORBIDDEN"})
+
+    with pytest.raises(PegasusApiError):
+        _client_with(handler).api_get("/api/v1/integrations/configs")

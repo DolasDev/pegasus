@@ -517,6 +517,33 @@ The event type must already exist for the tenant (define it in the tenant UI or 
 the events surface). `emit_event` is a mutation — captured, not performed, under the
 offline test harness and the server-side `--dry-run`.
 
+### Calling a read endpoint directly (`api_get`)
+
+Most reads have a typed helper, but the API exposes more than the helpers cover —
+for example the **projection read-model** (`GET /integrations/{id}/projections/{entityType}`),
+which the typed `get_projection` / `list_projections` don't reach: it filters and
+keyset-pages. `api_get(path, **params)` is a **read-only** passthrough to any Pegasus
+API path with your key; it returns the full JSON body (so `meta` / `nextCursor`
+survive). The catalogue of paths is the OpenAPI spec (`GET /openapi.json`, or
+`pegasus://reference/openapi` in your agent):
+
+```python
+# "ADE shipments still stuck at REGISTERED, not touched since 3 days ago" — paged
+page = client.api_get(
+    "/api/v1/integrations/sirva_ade_shipment/projections/shipment",
+    status="REGISTERED", updatedSince="2026-07-14T00:00:00Z", limit=50,
+)
+for record in page["data"]:
+    ...                       # chase the stuck shipment
+cursor = page.get("nextCursor")   # keyset-page through the rest
+```
+
+Read-only by design: `api_get` only does `GET`, and only against your Pegasus API
+(an absolute URL raises — a partner host is `call_external`'s job). For **writes**,
+use the typed methods — they route through the dry-run capture path, which a generic
+call would bypass. `api_get` is likewise **not** stubbed by the offline test harness
+(use a typed read helper there); it's meant for ops/reconciliation on a real client.
+
 ## Visualizing workflows
 
 A workflow is published as opaque Python, so the Pegasus tenant UI can't infer
