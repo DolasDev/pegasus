@@ -1,8 +1,28 @@
 # Link federated identities to their existing native user
 
-**Status:** IN PROGRESS — planned 2026-07-16, started 2026-07-16.
+**Status:** COMPLETE — shipped `a523933` (PR #451) and live-verified in prod 2026-07-17.
 
 **Branch:** `fix/sso-account-linking`
+
+## Outcome (verified against real Cognito, not the suite)
+
+All three Phase 3 criteria met. The stray federated user was deleted, then an SSO sign-in
+linked cleanly: ONE Cognito user (`d4788428-…`) whose `identities` now holds the Entra
+identity `zSmI_AFcB…`/`Microsoft`/`primary:false`, and the trigger logged `linked federated
+identity to existing native user` with `tenantId=a90b22bc…` (**Dolios — the provider's own
+tenant**, so the #443 boundary held). Attribution restored: `middleware/tenant.ts:139` keys
+on `{tenantId, cognitoSub}` and both now match.
+
+**The `cognitoSub` prerequisite below was a FALSE ALARM.** All **7** `tenant_users` rows for
+`steve@dolas.dev` already held `cognito_sub = d4788428-…`, matching the live native user. No
+data fix was needed — the worry is left in place below as the record of what was checked.
+
+⚠️ **This shipped one regression.** Linking attaches `identities` to the native user
+permanently, which broke `pre-token.ts`'s federated detection (it routed on that attribute's
+presence) and locked this multi-tenant user out of every tenant but Dolios on password login.
+Fixed in PR #453 → `plans/completed/4c89793-pre-token-federated-detection.md`.
+`pre-sign-up.ts` and `pre-token.ts` are coupled through that attribute — change one, check
+the other.
 
 ## Checklist
 
@@ -16,11 +36,11 @@
 - [x] Phase 2 — IaC: `preSignUp` trigger wiring + DB reach + own IAM grant
       (`cognito-stack.ts` + `cognito-stack.test.ts`) — see deviation 1
 - [x] Gates: `npm test` (14/14 tasks), `npm run typecheck`, `npm run lint`
-- [ ] PR → merge queue
-- [ ] Prerequisite (needs prod Neon access — see below): reconcile stale
-      `TenantUser.cognitoSub` for `steve@dolas.dev`
-- [ ] Phase 3 — post-deploy, against real Cognito: delete the stray federated user, sign
-      in via `Microsoft`, verify one user / `sub` matches `cognitoSub` / `userId` set
+- [x] PR → merge queue (#451, `a523933`), deployed to prod 2026-07-16
+- [x] Prerequisite: reconciled — **nothing to fix**. All 7 `tenant_users` rows for
+      `steve@dolas.dev` already matched the live native user's sub. See Outcome above.
+- [x] Phase 3 — verified against real Cognito 2026-07-17: stray federated user deleted, SSO
+      sign-in linked cleanly, one user / `sub` matches `cognitoSub` / attribution restored
 
 ## Deviations from the plan as written (and why)
 

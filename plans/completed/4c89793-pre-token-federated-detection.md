@@ -1,8 +1,28 @@
 # Detect a federated _sign-in_, not a federated _user_
 
-**Status:** IN PROGRESS — planned + implemented 2026-07-17. Awaiting prod verification.
+**Status:** COMPLETE — shipped `4c89793` (PR #453) and live-verified in prod 2026-07-17.
 
 **Branch:** `fix/pre-token-federated-detection`
+
+## Outcome — the triggerSource rule is CONFIRMED against live events
+
+The one thing this plan could not prove without deploying. All three logins by the linked
+multi-tenant user, from the prod pre-token logs:
+
+| login                                           | path taken                         | `triggerSource`                  |
+| ----------------------------------------------- | ---------------------------------- | -------------------------------- |
+| password → Nelson Westerberg Test (`32dd89be…`) | `Resolved tenant via AuthSession`  | `TokenGeneration_Authentication` |
+| SSO → Dolios (`a90b22bc…`)                      | `Resolved tenant via SSO provider` | `TokenGeneration_HostedAuth`     |
+| password → Dolios (`a90b22bc…`)                 | `Resolved tenant via AuthSession`  | `TokenGeneration_Authentication` |
+
+Both literal values are exactly as the AWS docs describe. `linkedProvider: "Microsoft"` on
+the password logins confirms it is the LINKED user correctly taking the native path — the
+case that regressed. The reported break is fixed and #443's binding still holds.
+
+Worth keeping: the third case (password into the provider's OWN tenant) passes under **both**
+the old and new code — the tenants agree, so the disagreement guard never fires. A case that
+looks like coverage but proves nothing. The regression tests deliberately use differing
+tenants, and were confirmed to fail against the old `if (providerName)` condition.
 
 ## Checklist
 
@@ -16,8 +36,9 @@
       became realistic. (They passed before only because the branch ignored triggerSource.)
 - [x] `triggerSource` + `linkedProvider` logged on every resolution path
 - [x] Gates: `npm test` (14/14), `npm run typecheck`, `npm run lint`
-- [ ] PR → merge queue
-- [ ] **Post-deploy prod verification (the only thing that proves this)** — see Verification
+- [x] PR → merge queue (#453, `4c89793`), deployed to prod 2026-07-17 01:23 UTC
+- [x] **Post-deploy prod verification** — all three logins confirmed, triggerSource values
+      match the rule. See Outcome above.
 
 **Goal:** `pre-token.ts` must decide "was THIS authentication federated?" from how the user
 authenticated, not from whether their account _has_ a linked IdP identity. Today the second
