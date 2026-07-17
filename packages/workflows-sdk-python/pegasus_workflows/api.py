@@ -780,6 +780,49 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()
 
+    def map_from_external(self, integration_id: str, payload: Any) -> dict[str, Any]:
+        """Normalize a partner's NATIVE payload into the canonical entity (inbound).
+
+        The inbound mirror of :meth:`map_to_external`. A published integration's
+        mapping runs *native → canonical*; this returns that normalized CANONICAL
+        entity (the system-of-record shape), plus the same gate verdict. An ingest
+        workflow — the consumer of an inbound webhook event — uses ``canonical`` as
+        the entity to persist (e.g. to a projection) and ``valid`` to fail closed
+        on a bad payload.
+
+        Unlike ``map_to_external`` (which returns the partner-external body), this
+        returns the CANONICAL entity — the value the outbound direction computes
+        internally and discards.
+
+        For use inside workflow activities. No manifest action required (same open
+        API-key surface as ``/validate`` and ``map_to_external``).
+
+        Args:
+            integration_id: Integration slug, e.g. ``"sirva_ade_shipment"``.
+            payload: The partner's native payload (any JSON-serializable object;
+                the mapping's source paths resolve against it).
+
+        Returns:
+            ``{canonical, valid, issues, degraded}``. ``canonical`` is the mapped
+            entity — ``null`` only when the payload can't be mapped/parsed at all,
+            so an ingest can fail closed rather than persist an empty entity.
+            ``valid``/``issues`` report whether it passed the integration's
+            structural contract + rules; ``degraded`` is true when the gate failed
+            open internally.
+
+        Raises:
+            PegasusApiError: On 404 (unknown integration / no floor — fails closed
+                so an ingest never proceeds on a silently-empty entity) or any
+                other non-2xx.
+        """
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/integrations/{integration_id}/map-from-external",
+                json={"data": payload},
+            )
+        _raise_for_status(response)
+        return response.json()
+
     def deliver_to_external(
         self,
         integration_id: str,

@@ -22,7 +22,7 @@ export type FactCatalog = Record<string, 'string' | 'number' | 'boolean'>
 
 export const PredicateSchema = z.object({
   fact: z.string().min(1),
-  op: z.enum(['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in']),
+  op: z.enum(['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in', 'nin']),
   value: z.union([
     z.string(),
     z.number(),

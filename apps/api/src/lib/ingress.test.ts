@@ -8,6 +8,7 @@ import {
   renderAck,
   successAck,
   failureAck,
+  validateInboundBody,
   defaultEventType,
 } from './ingress'
 
@@ -85,13 +86,82 @@ describe('successAck / failureAck', () => {
         },
       },
     })
-    expect(failureAck(cfg, ['bad body'])).toEqual({
+    expect(failureAck(cfg, [{ code: 'MALFORMED_BODY', message: 'bad body' }])).toEqual({
       Result: { Results: 'Failed', ResultsMessageCount: 1, ResultsMessage: ['bad body'] },
+    })
+  })
+  it('shapes the ADE ResultsMessage[] objects from structured issues via $map', () => {
+    // The full ADE Failed envelope: ResultsMessage is an ARRAY OF OBJECTS
+    // {ResultsMessageCode, ResultsMessageDescription}, built from the structured
+    // issues by the $map directive (a whole-value {{messages}} can't shape it).
+    const cfg = parseInboundConfig({
+      ackTemplate: {
+        failure: {
+          Result: {
+            Results: '{{status}}',
+            ResultsMessageCount: '{{errorCount}}',
+            ResultsMessage: {
+              $map: 'issues',
+              as: { ResultsMessageCode: '{{code}}', ResultsMessageDescription: '{{message}}' },
+            },
+          },
+        },
+      },
+    })
+    expect(
+      failureAck(cfg, [
+        { code: 'MISSING_FIELD', message: 'Required field "SvcProvDataRecipient" is missing.' },
+        { code: 'EMPTY_LIST', message: '"Events" must be a non-empty array.' },
+      ]),
+    ).toEqual({
+      Result: {
+        Results: 'Failed',
+        ResultsMessageCount: 2,
+        ResultsMessage: [
+          {
+            ResultsMessageCode: 'MISSING_FIELD',
+            ResultsMessageDescription: 'Required field "SvcProvDataRecipient" is missing.',
+          },
+          {
+            ResultsMessageCode: 'EMPTY_LIST',
+            ResultsMessageDescription: '"Events" must be a non-empty array.',
+          },
+        ],
+      },
     })
   })
   it('falls back to a generic ack when no template is published', () => {
     expect(successAck({})).toEqual({ status: 'accepted' })
-    expect(failureAck({}, ['x'])).toEqual({ status: 'rejected', errors: ['x'] })
+    expect(failureAck({}, [{ code: 'C', message: 'x' }])).toEqual({
+      status: 'rejected',
+      errors: ['x'],
+    })
+  })
+})
+
+describe('validateInboundBody', () => {
+  const validation = { requiredPaths: ['SvcProvDataRecipient'], nonEmptyArrayPaths: ['Events'] }
+  it('passes a well-formed body', () => {
+    expect(
+      validateInboundBody({ SvcProvDataRecipient: '0556000', Events: [{ Id: 'E-1' }] }, validation),
+    ).toEqual([])
+  })
+  it('flags a missing required scalar', () => {
+    const issues = validateInboundBody({ Events: [{ Id: 'E-1' }] }, validation)
+    expect(issues).toEqual([
+      { code: 'MISSING_FIELD', message: 'Required field "SvcProvDataRecipient" is missing.' },
+    ])
+  })
+  it('flags a missing or empty array', () => {
+    expect(validateInboundBody({ SvcProvDataRecipient: 'x', Events: [] }, validation)).toEqual([
+      { code: 'EMPTY_LIST', message: '"Events" must be a non-empty array.' },
+    ])
+    expect(validateInboundBody({ SvcProvDataRecipient: 'x' }, validation)).toEqual([
+      { code: 'EMPTY_LIST', message: '"Events" must be a non-empty array.' },
+    ])
+  })
+  it('is a no-op (accepts anything) when no validation is published', () => {
+    expect(validateInboundBody({ anything: 1 }, undefined)).toEqual([])
   })
 })
 

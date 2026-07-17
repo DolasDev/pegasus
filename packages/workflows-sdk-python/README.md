@@ -218,6 +218,38 @@ manifest. Returns `{delivered, status, response, dryRun}`; raises `PegasusApiErr
 on 403 (missing action), 404 (unknown integration, or the URL config / API-key
 secret is not set), or 400 (a delivery URL pointing at a private/loopback host).
 
+### Ingesting a partner payload (inbound: native → canonical)
+
+`map_to_external` is the **outbound** direction (entity → partner body). To go the
+other way — normalize a partner's **native** payload into the platform's canonical
+entity — use `client.map_from_external`. This is the step an **ingest workflow**
+runs on an inbound webhook event (see "Inbound integration ingress"): map the raw
+partner payload to the canonical shape, then persist it (e.g. to a projection).
+
+```python
+@activity.defn
+async def normalize_shipment_event(event: dict) -> dict:
+    client = PegasusClient.from_runtime()
+    result = client.map_from_external("sirva_ade_shipment", event)   # native → canonical
+    if result["canonical"] is None or not result["valid"]:
+        raise RuntimeError(f"refusing to ingest an invalid payload: {result['issues']}")
+    return result["canonical"]   # the system-of-record entity to persist
+```
+
+Returns `{canonical, valid, issues, degraded}`. `canonical` is the normalized
+entity (the value the outbound direction discards internally) — `None` only when
+the payload can't be mapped/parsed at all, so an ingest can **fail closed**.
+`valid`/`issues` are the same gate verdict. Raises `PegasusApiError` (404) on an
+unknown integration / no floor — it fails closed so an ingest never proceeds on a
+silently-empty entity. Open API-key surface — no `required_actions`.
+
+The integration's mapping + rules are a **published config** on a reusable,
+partner-neutral **floor** (`shipment_lifecycle_event`, `sales_lead`,
+`financial_settlement`, `document_record`). Partner value sets (allowed brand
+codes, statuses, file types) live in the config's rules via the `nin` operator
+(`{brandPresent eq true} AND {brand nin [AVL,NVL]}`) — not in platform code — so
+the same floor serves any partner of that type.
+
 ### Calling a partner API (authenticated reads & writes)
 
 `deliver_to_external` is one fixed JSON `POST`. For arbitrary reads and writes —
@@ -286,6 +318,7 @@ async def file_document(reg: str) -> dict:
 are reads (live). Blobs are tenant-scoped and expire via a TTL. The
 `$blob`/`response_to_blob` paths are a **small-file cut** (≤ ~5 MB through the
 API); large-file streaming is a follow-up.
+
 ### Receiving events (inbound ingress)
 
 For partners that **push** to you (a webhook), provision a platform-hosted ingress
@@ -300,25 +333,41 @@ pegasus-workflows ingress list   sirva_ade_shipment
 ```
 
 The workflow that handles the events binds to the emitted domain event with an
-ordinary **EVENT trigger**. The emitted event type, the dedup key path, and the
-**ack template** (e.g. a partner's `Result{…}` envelope) are published as part of
-the integration definition — an `inbound` block on the integration config:
+ordinary **EVENT trigger**. The emitted event type, the dedup key path, the body
+**`validation`**, and the **ack template** (the partner's `Result{…}` envelope)
+are published as part of the integration definition — an `inbound` block on the
+integration config:
 
 ```jsonc
 "inbound": {
   "eventType": "sirva_ade.shipment.event",
   "dedupKeyPath": "Events.0.Id",
+  // Declarative body checks. A body that fails them gets the `failure` ack (below)
+  // at HTTP 200 — the partner records the rejection and does not retry it.
+  "validation": {
+    "requiredPaths": ["SvcProvDataRecipient"],
+    "nonEmptyArrayPaths": ["Events"]
+  },
   "ackTemplate": {
-    "success": { "Result": { "Results": "Success", "ResultsMessageCount": 0, "ResultsMessage": [] } },
-    "failure": { "Result": { "Results": "Failed", "ResultsMessageCount": "{{errorCount}}",
-                             "ResultsMessage": "{{messages}}" } }
+    // {{key}} substitutes a whole context value ({{status}} → "Success"/"Failed",
+    // {{errorCount}} → the issue count). A number stays a number.
+    "success": { "Result": { "Results": "{{status}}", "ResultsMessageCount": "{{errorCount}}",
+                             "ResultsMessage": [] } },
+    // The `$map` directive builds a per-message array from the structured issues —
+    // exactly ADE's ResultsMessage[{Code, Description}] shape. Each element renders
+    // the `as` sub-template against one issue ({{code}}, {{message}}).
+    "failure": { "Result": { "Results": "{{status}}", "ResultsMessageCount": "{{errorCount}}",
+      "ResultsMessage": { "$map": "issues",
+        "as": { "ResultsMessageCode": "{{code}}", "ResultsMessageDescription": "{{message}}" } } } }
   }
 }
 ```
 
-Managing ingress needs a `vnd_` key with `ManageIngress` (the `workflow_developer`
-/ `tenant_admin` role). With no `inbound` block, the endpoint returns a generic
-`{status:"accepted"}` ack.
+The ack is derived from **ingestion** (accepted + durably queued), never from the
+bound workflow finishing. Managing ingress needs a `vnd_` key with `ManageIngress`
+(the `workflow_developer` / `tenant_admin` role). With no `inbound` block, the
+endpoint accepts any body and returns a generic `{status:"accepted"}` ack (no
+validation, no partner envelope).
 
 ### Secrets & configuration
 

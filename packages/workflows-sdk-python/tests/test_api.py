@@ -678,6 +678,46 @@ def test_map_to_external_non_2xx_raises_pegasus_api_error() -> None:
     assert exc_info.value.code == "NOT_FOUND"
 
 
+def test_map_from_external_posts_payload_and_returns_canonical() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "canonical": {"Id": "111422", "Reference": {"Brand": "AVL"}},
+                "valid": True,
+                "issues": [],
+                "degraded": False,
+            },
+        )
+
+    client = _client_with(handler)
+    result = client.map_from_external("sirva_ade_shipment", {"Brand": "AVL", "RegNumber": "111422"})
+
+    assert result["canonical"]["Reference"]["Brand"] == "AVL"
+    assert result["valid"] is True
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/api/v1/integrations/sirva_ade_shipment/map-from-external"
+    assert captured["body"] == {"data": {"Brand": "AVL", "RegNumber": "111422"}}
+
+
+def test_map_from_external_fails_closed_on_unknown_integration() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            404, json={"error": 'Unknown integration "ghost"', "code": "NOT_FOUND"}
+        )
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.map_from_external("ghost", {})
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.code == "NOT_FOUND"
+
+
 # -- workflow secrets & configuration ---------------------------------------
 
 

@@ -187,3 +187,51 @@ export function mapToExternal(
   if (!def) throw new UnknownIntegrationError(integrationId)
   return mapToExternalWithDefinition(def, data, action)
 }
+
+// ---------------------------------------------------------------------------
+// mapFromExternal — the INBOUND half of the anti-corruption layer, exposed
+// (sdk-feedback 0024). The inbound mirror of mapToExternal: run a partner's
+// NATIVE payload through the integration's mapping to get the normalized
+// CANONICAL entity, plus the same gate verdict. An ingest workflow (0021's
+// inbound events → this → persist to a projection) uses `canonical` as the
+// system-of-record shape and `valid`/`issues` to fail closed on a bad payload.
+//
+// Unlike mapToExternal (which returns the partner-external body), this returns
+// the CANONICAL entity — the value the outbound direction discards inside
+// validateWithDefinition. `canonical` is null when the payload can't be
+// mapped/parsed (a hard transform error or a broken structural shape), so a
+// caller can fail closed rather than persist an empty entity.
+// ---------------------------------------------------------------------------
+
+export interface MapFromExternalResult {
+  /** The native payload normalized to the integration's canonical entity, or null. */
+  canonical: Record<string, unknown> | null
+  /** Whether the payload passed the integration's structural contract + rules. */
+  valid: boolean
+  /** Findings when `valid` is false (empty otherwise). */
+  issues: ValidationIssue[]
+  /** True when validation failed open internally (the gate did not actually run). */
+  degraded: boolean
+}
+
+export function mapFromExternalWithDefinition(
+  def: IntegrationDefinition,
+  data: unknown,
+): MapFromExternalResult {
+  // The canonical entity (native → canonical), or null on a hard transform/parse
+  // failure — transformOrderToCanonical never throws.
+  const canonical = transformOrderToCanonical(def, data)
+  const result = validateWithDefinition(def, { order: data })
+  return {
+    canonical: (canonical as Record<string, unknown> | null) ?? null,
+    valid: result.valid,
+    issues: result.issues,
+    degraded: result.degraded,
+  }
+}
+
+export function mapFromExternal(integrationId: string, data: unknown): MapFromExternalResult {
+  const def = getIntegrationDefinition(integrationId)
+  if (!def) throw new UnknownIntegrationError(integrationId)
+  return mapFromExternalWithDefinition(def, data)
+}

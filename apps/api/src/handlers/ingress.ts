@@ -38,6 +38,7 @@ import {
   parseInboundConfig,
   deriveDedupId,
   defaultEventType,
+  validateInboundBody,
   successAck,
   failureAck,
 } from '../lib/ingress'
@@ -99,7 +100,23 @@ ingressHandler.post('/integrations/:integrationId/events', async (c) => {
     payload = await c.req.json()
   } catch {
     logger.warn('Ingress rejected a malformed body', { integrationId, tenantId })
-    return c.json(failureAck(inbound, ['malformed request body']), 200)
+    return c.json(
+      failureAck(inbound, [{ code: 'MALFORMED_BODY', message: 'malformed request body' }]),
+      200,
+    )
+  }
+
+  // 3b. Declarative body validation (the published `validation` block). A rejected
+  //     body is a delivery-level rejection: the partner's Failed envelope at 200 so
+  //     it records the ack and does NOT retry a body that can never be accepted.
+  const validationIssues = validateInboundBody(payload, inbound.validation)
+  if (validationIssues.length > 0) {
+    logger.warn('Ingress rejected an invalid body', {
+      integrationId,
+      tenantId,
+      issues: validationIssues.map((i) => i.code),
+    })
+    return c.json(failureAck(inbound, validationIssues), 200)
   }
 
   // 4. Dedup + persist + emit, atomically. A duplicate is a Success ack with no
@@ -136,7 +153,12 @@ ingressHandler.post('/integrations/:integrationId/events', async (c) => {
       tenantId,
       error: err instanceof Error ? err.message : String(err),
     })
-    return c.json(failureAck(inbound, ['internal error recording the event']), 500)
+    return c.json(
+      failureAck(inbound, [
+        { code: 'INTERNAL_ERROR', message: 'internal error recording the event' },
+      ]),
+      500,
+    )
   }
 
   // 5. Synchronous, ingestion-derived ack.

@@ -125,3 +125,47 @@ describe('POST /integrations/:integrationId/validate', () => {
     })
   })
 })
+
+describe('POST /integrations/:integrationId/map-from-external', () => {
+  beforeAll(() => {
+    process.env['VPN_AGENT_APIKEY_HASH'] = PLATFORM_HASH
+  })
+  afterAll(() => {
+    delete process.env['VPN_AGENT_APIKEY_HASH']
+  })
+
+  const MAP_FROM = '/api/v1/integrations/demo_partner/map-from-external'
+
+  it('returns the canonical entity + a passing verdict for a valid native payload', async () => {
+    const res = await post(MAP_FROM, { data: validDemoPartnerOrder }, authed())
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      canonical: Record<string, unknown>
+      valid: boolean
+      issues: unknown[]
+      degraded: boolean
+    }
+    expect(body.valid).toBe(true)
+    expect(body.canonical).toMatchObject({ serviceOrderNumber: 'O-60232' })
+  })
+
+  it('fails closed with 404 for an unknown integration', async () => {
+    const res = await post('/api/v1/integrations/ghost/map-from-external', { data: {} }, authed())
+    expect(res.status).toBe(404)
+    expect((await res.json()) as Record<string, unknown>).toMatchObject({ code: 'NOT_FOUND' })
+  })
+
+  it('returns 401 without an API key', async () => {
+    const res = await post(MAP_FROM, { data: {} })
+    expect(res.status).toBe(401)
+  })
+
+  it('returns 400 for a non-JSON body', async () => {
+    const res = await buildApp().request(MAP_FROM, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...authed() },
+      body: 'not json',
+    })
+    expect(res.status).toBe(400)
+  })
+})
