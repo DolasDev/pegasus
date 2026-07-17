@@ -6,7 +6,15 @@
 }
 
 .tripContainer {
-  width: calc(100vw - 90px);
+  /* Fill the AppShell content column, don't assume the full viewport. The
+   * ported longhaul value `calc(100vw - 90px)` (standalone app: viewport minus a
+   * 90px rail) is wider than tenant-web's content column, so the Lane overflowed
+   * to the right. Harmless until `.driver-planning-root { overflow-x: clip }` was
+   * added (to hide the off-screen ShipmentDetail slide) — that then clipped the
+   * over-wide right edge, taking the right-pinned `.noteContainer` off-screen.
+   * The Lane is `overflow: auto`, so the wide Trip-Itinerary gantt still scrolls
+   * inside it instead of blowing out the container. */
+  width: 100%;
   font-size: 14px;
 }
 
