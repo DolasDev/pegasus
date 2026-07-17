@@ -7,6 +7,7 @@ import { authGuard, AuthLayout } from '@/routes/_auth'
 import { TenantsPage } from '@/routes/_auth/tenants/index'
 import { TenantDetailPage } from '@/routes/_auth/tenants/$id'
 import { WorkflowsPage } from '@/routes/_auth/workflows/index'
+import { TariffsPage } from '@/routes/_auth/tariffs/index'
 import { getAccessToken } from '@/auth/cognito'
 
 // ---------------------------------------------------------------------------
@@ -75,13 +76,25 @@ const workflowsRoute = createRoute({
   component: WorkflowsPage,
 })
 
+const tariffsRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/tariffs',
+  component: TariffsPage,
+})
+
 // ---------------------------------------------------------------------------
 // Route tree + router
 // ---------------------------------------------------------------------------
 const routeTree = rootRoute.addChildren([
   loginRoute,
   authCallbackRoute,
-  authLayout.addChildren([indexRoute, tenantsRoute, tenantDetailRoute, workflowsRoute]),
+  authLayout.addChildren([
+    indexRoute,
+    tenantsRoute,
+    tenantDetailRoute,
+    workflowsRoute,
+    tariffsRoute,
+  ]),
 ])
 
 export const router = createRouter({ routeTree })
