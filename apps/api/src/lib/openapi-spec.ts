@@ -406,7 +406,7 @@ export function getOpenApiSpec() {
           operationId: 'getInboundSchema',
           summary: 'JSON Schema for the inbound ingress block (public)',
           description:
-            'The publishable `inbound` block: { eventType, dedupKeyPath, validation, ackTemplate }. ackTemplate strings that are exactly {{key}} substitute a context value; { "$map": "issues", "as": {…} } renders one element per issue.',
+            'The publishable `inbound` block: { eventType, dedupKeyPath (string or array of paths), validation, ackTemplate }. validation supports requiredPaths + nonEmptyArrayPaths and an optional oneOf (variant shapes for a multi-shape partner — the body must satisfy at least one). ackTemplate strings that are exactly {{key}} substitute a context value; { "$map": "issues", "as": {…} } renders one element per issue.',
           tags: ['Integrations'],
           responses: { '200': { description: 'JSON Schema of the inbound block' } },
         },

@@ -1302,7 +1302,9 @@ class PegasusClient:
             external_mapping: The canonical → external projection (0020). Omit for
                 identity.
             inbound: The ingress ack/validation block (0021) — { eventType,
-                dedupKeyPath, validation, ackTemplate }; see
+                dedupKeyPath (str or list of paths, first present wins),
+                validation (requiredPaths, nonEmptyArrayPaths, and oneOf variants
+                for a multi-shape partner — 0.22.0+), ackTemplate }; see
                 ``/api/v1/integrations/inbound-schema``. This is what makes an
                 ingress return the partner's ack envelope (e.g. ADE ``Result{…}``)
                 instead of the generic ``{"status":"accepted"}``. Omit for a

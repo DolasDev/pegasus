@@ -3,6 +3,26 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.22.0
+
+### Added — multi-shape push partners
+
+- **`validation.oneOf`** on the ingress `inbound` block. A partner that POSTs
+  structurally different bodies to a single ingress id (e.g. ADE Abstract
+  `{…, AgentNbr, StatementEntry[]}` vs Statement `{AgentStatementHdr:{AgentNbr},
+PostingTickets[]}`) can now be validated: list each accepted shape under
+  `validation.oneOf` and the body must fully satisfy at least one (in addition to
+  any top-level `requiredPaths`/`nonEmptyArrayPaths`); a body matching none gets
+  the `failure` ack. Closes the last authoring gap for ADE agent-compensation.
+- **Array `dedupKeyPath`.** `dedupKeyPath` now accepts a list of dot-paths (each
+  tried in order, first present wins), so each `oneOf` variant can dedup on its
+  own id path.
+
+These are platform + doc changes; the `inbound=` param is unchanged (free-form),
+so no SDK signature change. Documented in the README `inbound` section, the MCP
+`pegasus://reference/integration-config` guide, and the served
+`GET /api/v1/integrations/inbound-schema`.
+
 ## 0.21.0
 
 ### Added — self-serve config authoring (no platform source needed)
