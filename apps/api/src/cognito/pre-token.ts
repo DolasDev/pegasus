@@ -239,10 +239,39 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
   const providerName = extractProviderName(event.request.userAttributes.identities)
 
   if (isFederatedSignIn(event.triggerSource, providerName)) {
-    const provider = await db.tenantSsoProvider.findFirst({
+    // findMany, not findFirst: `cognitoProviderName` is NOT unique on its own.
+    // TenantSsoProvider is @@unique([tenantId, cognitoProviderName]) — per TENANT — so two
+    // tenants can hold rows with the same name and findFirst would pick one arbitrarily
+    // (no orderBy), silently resolving the login to whichever it happened to return.
+    //
+    // Only Cognito keeps these names unique pool-wide, and only at registration:
+    // handlers/sso.ts writes the DB row FIRST, calls CreateIdentityProvider, and deletes
+    // the row if Cognito rejects the name. A rollback that never runs (Lambda timeout,
+    // crash, network fault in that window) leaves a stray duplicate behind, and nothing
+    // sweeps it up. So "the database can't hold duplicates" is not a property we have.
+    //
+    // Fail CLOSED on ambiguity. Unlike cognito/pre-sign-up.ts — where not resolving a
+    // provider merely skips linking — the tenant claim itself is at stake here, and
+    // issuing another tenant's custom:tenantId + custom:roles is the exact escalation the
+    // provider→tenant binding exists to prevent. Deny and make it loud.
+    const providers = await db.tenantSsoProvider.findMany({
       where: { cognitoProviderName: providerName },
       select: { tenantId: true, isEnabled: true },
     })
+
+    if (providers.length > 1) {
+      logger.error(
+        'Pre-Token trigger: SECURITY — provider name resolves to multiple tenants, refusing to guess',
+        {
+          email,
+          providerName,
+          tenantIds: providers.map((p) => p.tenantId),
+        },
+      )
+      throw new Error('Authentication failed: identity provider configuration is ambiguous.')
+    }
+
+    const provider = providers[0]
 
     if (!provider) {
       logger.error('Pre-Token trigger: SECURITY — federated login via unknown provider', {

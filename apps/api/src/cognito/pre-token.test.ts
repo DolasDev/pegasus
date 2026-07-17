@@ -20,7 +20,7 @@ const {
   mockTenantUserUpdate,
   mockAuthSessionFindFirst,
   mockAuthSessionDeleteMany,
-  mockSsoProviderFindFirst,
+  mockSsoProviderFindMany,
 } = vi.hoisted(() => ({
   ADMIN_CLIENT_ID: 'admin-client-id-test',
   TENANT_CLIENT_ID: 'tenant-client-id-test',
@@ -29,7 +29,7 @@ const {
   mockTenantUserUpdate: vi.fn(),
   mockAuthSessionFindFirst: vi.fn(),
   mockAuthSessionDeleteMany: vi.fn(),
-  mockSsoProviderFindFirst: vi.fn(),
+  mockSsoProviderFindMany: vi.fn(),
 }))
 
 vi.mock('@prisma/adapter-pg', () => ({
@@ -51,7 +51,7 @@ vi.mock('@prisma/client', () => ({
         deleteMany: mockAuthSessionDeleteMany,
       },
       tenantSsoProvider: {
-        findFirst: mockSsoProviderFindFirst,
+        findMany: mockSsoProviderFindMany,
       },
     }
   }),
@@ -168,14 +168,14 @@ describe('pre-token trigger', () => {
     mockTenantUserUpdate.mockReset()
     mockAuthSessionFindFirst.mockReset()
     mockAuthSessionDeleteMany.mockReset()
-    mockSsoProviderFindFirst.mockReset()
+    mockSsoProviderFindMany.mockReset()
     // Default: no auth session pending (most tests use the roster flow).
     mockAuthSessionFindFirst.mockResolvedValue(null)
     mockAuthSessionDeleteMany.mockResolvedValue({ count: 0 })
     // Default: a single roster row resolving to tenant-uuid-123.
     mockTenantUserFindMany.mockResolvedValue([{ tenantId: 'tenant-uuid-123' }])
     // Default: no SSO provider. Native logins must never reach this lookup.
-    mockSsoProviderFindFirst.mockResolvedValue(null)
+    mockSsoProviderFindMany.mockResolvedValue([])
   })
 
   // ── Federated login: the provider determines the tenant ───────────────────
@@ -204,10 +204,12 @@ describe('pre-token trigger', () => {
   // not make a login federated — a linked user carries it on password logins too.
   describe('federated login — provider/tenant binding', () => {
     it('resolves the tenant from the provider, not the email roster', async () => {
-      mockSsoProviderFindFirst.mockResolvedValue({
-        tenantId: 'tenant-from-provider',
-        isEnabled: true,
-      })
+      mockSsoProviderFindMany.mockResolvedValue([
+        {
+          tenantId: 'tenant-from-provider',
+          isEnabled: true,
+        },
+      ])
       mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
 
       const event = await handler(
@@ -223,7 +225,7 @@ describe('pre-token trigger', () => {
         (() => {}) as any,
       )
 
-      expect(mockSsoProviderFindFirst).toHaveBeenCalledWith(
+      expect(mockSsoProviderFindMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ cognitoProviderName: 'AcmeOkta' }),
         }),
@@ -243,7 +245,7 @@ describe('pre-token trigger', () => {
     // THE escalation, as a regression test. Tenant B owns the provider; the asserted
     // email is rostered only in tenant A. Tenant A's claims must never be issued.
     it('never issues another tenant claims when its provider asserts that tenants email', async () => {
-      mockSsoProviderFindFirst.mockResolvedValue({ tenantId: 'tenant-B', isEnabled: true })
+      mockSsoProviderFindMany.mockResolvedValue([{ tenantId: 'tenant-B', isEnabled: true }])
       // Tenant B has no roster row for the victim's email.
       mockTenantUserFindFirst.mockResolvedValue(null)
 
@@ -269,8 +271,38 @@ describe('pre-token trigger', () => {
       expect(mockTenantUserFindMany).not.toHaveBeenCalled()
     })
 
+    // `cognitoProviderName` is unique per TENANT, not pool-wide, and only Cognito keeps it
+    // unique across the pool — at registration, via a create-then-rollback in sso.ts. A
+    // rollback that never runs leaves a stray duplicate, and findFirst would then have
+    // resolved the login to whichever row came back first. Guessing here means handing one
+    // tenant's claims to another.
+    it('denies when a provider name resolves to more than one tenant', async () => {
+      mockSsoProviderFindMany.mockResolvedValue([
+        { tenantId: 'tenant-A', isEnabled: true },
+        { tenantId: 'tenant-B', isEnabled: true },
+      ])
+
+      await expect(
+        handler(
+          makeEvent({
+            email: 'a@b.com',
+            sub: 'x',
+            identities: identitiesAttr('DuplicatedName'),
+            triggerSource: HOSTED_AUTH,
+          }),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          {} as any,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (() => {}) as any,
+        ),
+      ).rejects.toThrow(/ambiguous/i)
+
+      // No tenant was picked, so no roster lookup and no claims.
+      expect(mockTenantUserFindFirst).not.toHaveBeenCalled()
+    })
+
     it('denies an unknown provider', async () => {
-      mockSsoProviderFindFirst.mockResolvedValue(null)
+      mockSsoProviderFindMany.mockResolvedValue([])
 
       await expect(
         handler(
@@ -289,7 +321,7 @@ describe('pre-token trigger', () => {
     })
 
     it('denies a disabled provider', async () => {
-      mockSsoProviderFindFirst.mockResolvedValue({ tenantId: 'tenant-x', isEnabled: false })
+      mockSsoProviderFindMany.mockResolvedValue([{ tenantId: 'tenant-x', isEnabled: false }])
 
       await expect(
         handler(
@@ -311,7 +343,7 @@ describe('pre-token trigger', () => {
     // so a disagreement is an attack signal or a serious bug. Fail closed.
     it('denies when a pending AuthSession names a different tenant than the provider', async () => {
       mockAuthSessionFindFirst.mockResolvedValue({ id: 's1', tenantId: 'tenant-A' })
-      mockSsoProviderFindFirst.mockResolvedValue({ tenantId: 'tenant-B', isEnabled: true })
+      mockSsoProviderFindMany.mockResolvedValue([{ tenantId: 'tenant-B', isEnabled: true }])
 
       await expect(
         handler(
@@ -333,7 +365,7 @@ describe('pre-token trigger', () => {
 
     it('allows when a pending AuthSession agrees with the provider', async () => {
       mockAuthSessionFindFirst.mockResolvedValue({ id: 's1', tenantId: 'tenant-agreed' })
-      mockSsoProviderFindFirst.mockResolvedValue({ tenantId: 'tenant-agreed', isEnabled: true })
+      mockSsoProviderFindMany.mockResolvedValue([{ tenantId: 'tenant-agreed', isEnabled: true }])
       mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
 
       const event = await handler(
@@ -373,7 +405,7 @@ describe('pre-token trigger', () => {
       )
 
       // Native path: roster resolution ran, provider lookup did not.
-      expect(mockSsoProviderFindFirst).not.toHaveBeenCalled()
+      expect(mockSsoProviderFindMany).not.toHaveBeenCalled()
       expect(mockTenantUserFindMany).toHaveBeenCalled()
       expect(event?.response.claimsOverrideDetails.claimsToAddOrOverride['custom:tenantId']).toBe(
         'tenant-uuid-123',
@@ -391,7 +423,7 @@ describe('pre-token trigger', () => {
         (() => {}) as any,
       )
 
-      expect(mockSsoProviderFindFirst).not.toHaveBeenCalled()
+      expect(mockSsoProviderFindMany).not.toHaveBeenCalled()
     })
   })
 
@@ -409,7 +441,7 @@ describe('pre-token trigger', () => {
       // THE prod regression: a user rostered in several tenants, linked to tenant-B's
       // IdP, signing in with a password and picking tenant-A.
       mockAuthSessionFindFirst.mockResolvedValue({ id: 's1', tenantId: 'tenant-A' })
-      mockSsoProviderFindFirst.mockResolvedValue({ tenantId: 'tenant-B', isEnabled: true })
+      mockSsoProviderFindMany.mockResolvedValue([{ tenantId: 'tenant-B', isEnabled: true }])
       mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
 
       const event = await handler(
@@ -426,7 +458,7 @@ describe('pre-token trigger', () => {
       )
 
       // The provider must not be consulted at all — this sign-in never touched an IdP.
-      expect(mockSsoProviderFindFirst).not.toHaveBeenCalled()
+      expect(mockSsoProviderFindMany).not.toHaveBeenCalled()
       expect(event?.response.claimsOverrideDetails.claimsToAddOrOverride['custom:tenantId']).toBe(
         'tenant-A',
       )
@@ -437,7 +469,7 @@ describe('pre-token trigger', () => {
       // there is no provider assertion to disagree with, and throwing here is what locked
       // a multi-tenant SSO user out of every tenant but their provider's.
       mockAuthSessionFindFirst.mockResolvedValue({ id: 's1', tenantId: 'tenant-A' })
-      mockSsoProviderFindFirst.mockResolvedValue({ tenantId: 'tenant-B', isEnabled: true })
+      mockSsoProviderFindMany.mockResolvedValue([{ tenantId: 'tenant-B', isEnabled: true }])
       mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
 
       await expect(
@@ -459,7 +491,7 @@ describe('pre-token trigger', () => {
     it('still routes the same linked user through the provider when they use SSO', async () => {
       // The other half of the contract: linking must not cost us the #443 binding.
       mockAuthSessionFindFirst.mockResolvedValue(null)
-      mockSsoProviderFindFirst.mockResolvedValue({ tenantId: 'tenant-B', isEnabled: true })
+      mockSsoProviderFindMany.mockResolvedValue([{ tenantId: 'tenant-B', isEnabled: true }])
       mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
 
       const event = await handler(
@@ -475,7 +507,7 @@ describe('pre-token trigger', () => {
         (() => {}) as any,
       )
 
-      expect(mockSsoProviderFindFirst).toHaveBeenCalled()
+      expect(mockSsoProviderFindMany).toHaveBeenCalled()
       expect(event?.response.claimsOverrideDetails.claimsToAddOrOverride['custom:tenantId']).toBe(
         'tenant-B',
       )
@@ -485,7 +517,7 @@ describe('pre-token trigger', () => {
       // TokenGeneration_NewPasswordChallenge is an invited user's first sign-in. It is a
       // native flow and must not be pinned to a linked provider's tenant.
       mockAuthSessionFindFirst.mockResolvedValue({ id: 's1', tenantId: 'tenant-A' })
-      mockSsoProviderFindFirst.mockResolvedValue({ tenantId: 'tenant-B', isEnabled: true })
+      mockSsoProviderFindMany.mockResolvedValue([{ tenantId: 'tenant-B', isEnabled: true }])
       mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
 
       const event = await handler(
@@ -501,7 +533,7 @@ describe('pre-token trigger', () => {
         (() => {}) as any,
       )
 
-      expect(mockSsoProviderFindFirst).not.toHaveBeenCalled()
+      expect(mockSsoProviderFindMany).not.toHaveBeenCalled()
       expect(event?.response.claimsOverrideDetails.claimsToAddOrOverride['custom:tenantId']).toBe(
         'tenant-A',
       )
@@ -520,7 +552,7 @@ describe('pre-token trigger', () => {
         (() => {}) as any,
       )
 
-      expect(mockSsoProviderFindFirst).not.toHaveBeenCalled()
+      expect(mockSsoProviderFindMany).not.toHaveBeenCalled()
     })
   })
 

@@ -435,8 +435,13 @@ model TenantSsoProvider {
 // at token generation by the Pre-Token-Generation Lambda.
 //
 // Populated by:
-//   - POST /api/admin/tenants          (creates ADMIN for the contactEmail)
+//   - POST /api/admin/tenants          (creates ADMIN for the adminEmail)
 //   - POST /api/v1/users/invite        (tenant admin invites additional users)
+//
+// NOTE: `adminEmail`, NOT `contactEmail`. The Tenant's contactEmail is contact
+// details only — it never provisions a Cognito user or a roster row. Both entry
+// points above lowercase the address before writing it, because Cognito usernames
+// are case-sensitive; every lookup against this table normalises to match.
 // ---------------------------------------------------------------------------
 
 model TenantUser {

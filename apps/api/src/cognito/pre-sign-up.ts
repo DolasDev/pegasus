@@ -224,9 +224,10 @@ export const handler: PreSignUpTriggerHandler = async (event) => {
   // The returned emails are re-checked here rather than trusting the filter to
   // mean what we think it means. The API reference annotates `username` as
   // case-sensitive and `cognito:user_status` as case-insensitive but says
-  // NOTHING about `email`, and stored case genuinely varies: the invite path
-  // lowercases (users.ts `z.string().trim().email().toLowerCase()`) while admin
-  // tenant creation does not (admin/tenants.ts `contactEmail: z.string().email()`).
+  // NOTHING about `email`. Both paths that provision a user do lowercase first
+  // (users.ts invite, admin/tenants.ts adminEmail), so a mismatch should not
+  // arise from our own writes — but a pool is long-lived and this costs one
+  // comparison, whereas trusting an undocumented filter costs a silent no-link.
   // Comparing lowercased on both sides is right under either behaviour — a
   // case-insensitive filter returning `Steve@…` for `steve@…` is the same person
   // and should link, while anything that is not this email is rejected.
