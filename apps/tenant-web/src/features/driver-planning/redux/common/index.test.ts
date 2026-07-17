@@ -354,4 +354,34 @@ describe('common slice — thunks', () => {
     await expect(store.dispatch(fetchReferenceData() as any)).rejects.toThrow('ref data down')
     expect(errSpy).toHaveBeenCalled()
   })
+
+  it('fetchReferenceData: MSSQL_NOT_CONFIGURED degrades to empty, does not throw or log', async () => {
+    // A tenant with no legacy DB must not error the Operations bootstrap — the
+    // thunk swallows MSSQL_NOT_CONFIGURED, leaves every slice empty (clearing
+    // any stale values), and does NOT re-throw so AppGuard shows no toast.
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const err = new Error('Legacy database not configured for this tenant') as Error & {
+      code?: string
+    }
+    err.code = 'MSSQL_NOT_CONFIGURED'
+    mockedApi.fetchReferenceData.mockRejectedValue(err)
+    const store = makeStore({
+      loading: true,
+      driversList: [{ driver_name: 'Stale', id: 9 }],
+      dispatcherList: [{ id: 'STALE' }],
+    })
+
+    await expect(store.dispatch(fetchReferenceData() as any)).resolves.toBeUndefined()
+
+    const s = store.getState().common
+    expect(s.driversList).toEqual([])
+    expect(s.dispatcherList).toEqual([])
+    expect(s.tripStatuses).toEqual([])
+    expect(s.stateList).toEqual([])
+    expect(s.zoneList).toEqual([])
+    expect(s.plannersList).toEqual([])
+    expect(s.filterOptions).toEqual({ moveType: [] })
+    expect(s.loading).toBe(false)
+    expect(errSpy).not.toHaveBeenCalled()
+  })
 })

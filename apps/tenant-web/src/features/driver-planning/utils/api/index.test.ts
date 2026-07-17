@@ -76,6 +76,35 @@ describe('API surface', () => {
     })
   })
 
+  describe('fetchHelper error propagation', () => {
+    it('preserves the API error code on the thrown Error', async () => {
+      // The reference-data bootstrap branches on `code` to treat
+      // MSSQL_NOT_CONFIGURED as a benign empty state; fetchHelper must carry it
+      // through rather than flatten it to a message-only Error.
+      fetchDataMock.mockResolvedValue({
+        status: 422,
+        data: undefined,
+        error: {
+          message: 'Legacy database not configured for this tenant',
+          code: 'MSSQL_NOT_CONFIGURED',
+        },
+      })
+      await expect(API.fetchReferenceData()).rejects.toMatchObject({
+        message: 'Legacy database not configured for this tenant',
+        code: 'MSSQL_NOT_CONFIGURED',
+      })
+    })
+
+    it('still throws (without a code) when the error envelope has none', async () => {
+      fetchDataMock.mockResolvedValue({
+        status: 500,
+        data: undefined,
+        error: { message: 'boom' },
+      })
+      await expect(API.fetchReferenceData()).rejects.toThrow('boom')
+    })
+  })
+
   describe('fetchTrips / fetchTrip / saveTrip', () => {
     it('fetchTrips passes the query through', async () => {
       const query = { driverId: 'd1' }
