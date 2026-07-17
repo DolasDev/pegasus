@@ -202,7 +202,7 @@ describe('DriverPlanningPage', () => {
     expect(screen.getByText('Driver, B.')).toBeInTheDocument()
   })
 
-  it('formats the driver name as "Last, F.", not bold, with the phone + SMS icons trailing it', () => {
+  it('formats the driver name as "Last, F.", not bold, with the phone + SMS icons in front of it', () => {
     driverPlanningReturn = {
       data: [makeDriver({ driverName: 'Smith, John' })],
       isLoading: false,
@@ -213,10 +213,31 @@ describe('DriverPlanningPage', () => {
     expect(cell).toHaveTextContent('Smith, J.')
     // Name is no longer bold in Variant A.
     expect(cell.className).not.toMatch(/font-bold/)
-    // The Contact column was removed; its quick-action icons now live in the
-    // Driver cell, after the name.
-    expect(within(cell).getByTestId('driver-call')).toBeInTheDocument()
-    expect(within(cell).getByTestId('driver-sms')).toBeInTheDocument()
+    // The quick-action icons live in the Driver cell, now BEFORE the name.
+    const call = within(cell).getByTestId('driver-call')
+    const sms = within(cell).getByTestId('driver-sms')
+    expect(call).toBeInTheDocument()
+    expect(sms).toBeInTheDocument()
+    // DOM order: call → sms → name. compareDocumentPosition FOLLOWING = 4.
+    const nameNode = within(cell).getByText('Smith, J.')
+    expect(call.compareDocumentPosition(nameNode) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(sms.compareDocumentPosition(nameNode) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('tints the driver-name cell by agency and exposes the agency via data-agency + tooltip', async () => {
+    driverPlanningReturn = {
+      data: [makeDriver({ driverName: 'Hauler, Bob', agentCode: '1295' })],
+      isLoading: false,
+      isError: false,
+    }
+    renderPage()
+    const cell = screen.getByTestId('driver-name')
+    // Agency 1295 → yellow highlight (AGENCY_BG), agency surfaced for the tooltip.
+    expect(cell.className).toMatch(/bg-yellow-200/)
+    expect(cell).toHaveAttribute('data-agency', '1295')
+    // Hover reveals the "Agency: …" tooltip (HoverToolTip renders content on hover).
+    fireEvent.mouseEnter(within(cell).getByText('Hauler, B.'))
+    expect(await screen.findByText('Agency: 1295')).toBeInTheDocument()
   })
 
   describe('ready state / ready city columns', () => {
@@ -698,10 +719,10 @@ describe('DriverPlanningPage', () => {
       const eff = screen.getByTestId('delivery-effective')
       expect(eff).toHaveTextContent('06/03')
       expect(eff.className).not.toMatch(/font-bold/)
-      // Confidence icons all paint in the row's brand-blue text colour now.
+      // Confidence icons are now per-tier emerald (ported from View C); a
+      // confirmed delivery paints emerald-600.
       const icon = screen.getByTestId('delivery-icon')
-      expect(icon.className).toMatch(/text-\[#0c145c\]/)
-      expect(icon.className).not.toMatch(/text-emerald-/)
+      expect(icon.className).toMatch(/text-emerald-600/)
     })
 
     it('falls back to spread start when there is no actual or estimated (priority 3)', () => {
@@ -764,7 +785,7 @@ describe('DriverPlanningPage', () => {
       expect(sms.getAttribute('data-driver-code')).not.toBeNull()
     })
 
-    it('orders the shipment cells icon | date | state | city', () => {
+    it('orders the shipment cells date | state | icon', () => {
       driverPlanningReturn = {
         data: [makeDriver({ deliveries: [delivery({ actualDate: '2026-06-02' })] })],
         isLoading: false,
@@ -773,17 +794,18 @@ describe('DriverPlanningPage', () => {
       renderPage()
       const line = screen.getByTestId('shipment-line')
       const cells = Array.from(line.querySelectorAll('td'))
-      const iconIdx = cells.findIndex((c) => c.querySelector('[data-testid="delivery-icon"]'))
       const effIdx = cells.findIndex((c) => c.querySelector('[data-testid="delivery-effective"]'))
-      const stateIdx = cells.findIndex((c) => c.textContent === 'TX')
-      const cityIdx = cells.findIndex((c) => c.textContent?.includes('Dallas'))
-      expect(iconIdx).toBeGreaterThanOrEqual(0)
-      expect(effIdx).toBe(iconIdx + 1)
+      // delivery-state testid is on the <td> itself, not a descendant.
+      const stateIdx = cells.findIndex((c) => c.getAttribute('data-testid') === 'delivery-state')
+      const iconIdx = cells.findIndex((c) => c.querySelector('[data-testid="delivery-icon"]'))
+      // The indicator icon moved from first to LAST; the city column is gone.
+      expect(effIdx).toBeGreaterThanOrEqual(0)
       expect(stateIdx).toBe(effIdx + 1)
-      expect(cityIdx).toBe(stateIdx + 1)
+      expect(iconIdx).toBe(stateIdx + 1)
+      expect(iconIdx).toBe(cells.length - 1)
     })
 
-    it('renders the truck icon for an actual_date delivery', () => {
+    it('renders the truck icon (emerald-700) for an actual_date delivery', () => {
       driverPlanningReturn = {
         data: [makeDriver({ deliveries: [delivery({ actualDate: '2026-06-02' })] })],
         isLoading: false,
@@ -792,9 +814,10 @@ describe('DriverPlanningPage', () => {
       renderPage()
       const icon = screen.getByTestId('delivery-icon')
       expect(icon.getAttribute('data-icon')).toBe('fa-truck-moving')
+      expect(icon.className).toMatch(/text-emerald-700/)
     })
 
-    it('renders the flag icon for a confirmed-but-not-actualised delivery', () => {
+    it('renders the flag icon (emerald-600) for a confirmed-but-not-actualised delivery', () => {
       driverPlanningReturn = {
         data: [makeDriver({ deliveries: [delivery({ isConfirmed: true })] })],
         isLoading: false,
@@ -803,9 +826,10 @@ describe('DriverPlanningPage', () => {
       renderPage()
       const icon = screen.getByTestId('delivery-icon')
       expect(icon.getAttribute('data-icon')).toBe('fa-flag-checkered')
+      expect(icon.className).toMatch(/text-emerald-600/)
     })
 
-    it('renders the check icon for a committed-only delivery', () => {
+    it('renders the check icon (emerald-500) for a committed-only delivery', () => {
       driverPlanningReturn = {
         data: [makeDriver({ deliveries: [delivery({ isCommitted: true })] })],
         isLoading: false,
@@ -814,6 +838,7 @@ describe('DriverPlanningPage', () => {
       renderPage()
       const icon = screen.getByTestId('delivery-icon')
       expect(icon.getAttribute('data-icon')).toBe('fa-check')
+      expect(icon.className).toMatch(/text-emerald-500/)
     })
 
     it('renders no icon when there is no confidence signal', () => {
@@ -830,7 +855,7 @@ describe('DriverPlanningPage', () => {
       expect(screen.queryByTestId('delivery-icon')).not.toBeInTheDocument()
     })
 
-    it('renders the state code and title-cased city (no bold) in the row', () => {
+    it('shows the state code inline and carries the title-cased city as a state tooltip', () => {
       driverPlanningReturn = {
         data: [makeDriver({ deliveries: [delivery({ city: 'EL PASO', state: 'TX' })] })],
         isLoading: false,
@@ -839,7 +864,12 @@ describe('DriverPlanningPage', () => {
       renderPage()
       const line = screen.getByTestId('shipment-line')
       expect(line.textContent).toContain('TX')
-      expect(line.textContent).toContain('El Paso')
+      // City is no longer its own column — it lives on the state cell as a
+      // (hover) tooltip, exposed for tests via data-city. It is NOT in the plain
+      // un-hovered text.
+      const stateCell = within(line).getByTestId('delivery-state')
+      expect(stateCell).toHaveAttribute('data-city', 'El Paso')
+      expect(line.textContent).not.toContain('El Paso')
       // State is no longer wrapped in <b> — shipment rows are weight-neutral.
       expect(line.querySelectorAll('b')).toHaveLength(0)
     })
@@ -866,7 +896,8 @@ describe('DriverPlanningPage', () => {
       renderPage()
       const icon = screen.getByTestId('delivery-icon')
       expect(icon.getAttribute('data-icon')).toBe('fa-question')
-      expect(icon.className).toMatch(/text-\[#0c145c\]/)
+      // Spread is the least-certain tier → muted (View C has no spread tier).
+      expect(icon.className).toMatch(/text-muted-foreground/)
     })
   })
 
@@ -910,6 +941,26 @@ describe('DriverPlanningPage', () => {
         expect.objectContaining({ driverId: 8, wgs: true }),
         expect.anything(),
       )
+    })
+
+    it('color-codes WGS: green+bold for Yes, muted-red+bold for No, unstyled for Maybe', () => {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({ driverId: 20, driverName: 'A, Yes', wgs: true }),
+          makeDriver({ driverId: 21, driverName: 'B, No', wgs: false }),
+          makeDriver({ driverId: 22, driverName: 'C, Maybe', wgs: null }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      const [yes, no, maybe] = screen.getAllByTestId('driver-wgs')
+      expect(yes!.className).toMatch(/text-green-600/)
+      expect(yes!.className).toMatch(/font-bold/)
+      expect(no!.className).toMatch(/text-red-400/)
+      expect(no!.className).toMatch(/font-bold/)
+      // Maybe (unset) keeps the neutral formatting — no color, no bold.
+      expect(maybe!.className).not.toMatch(/text-green-600|text-red-400|font-bold/)
     })
 
     it('edits Rating via click-to-edit and commits the parsed number on blur', () => {
