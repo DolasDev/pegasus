@@ -26,4 +26,8 @@ export const longhaulDriversQueryOptions = queryOptions({
   queryKey: longhaulDriverKeys.list(),
   queryFn: () => apiFetch<LonghaulDriver[]>('/api/v1/onprem/longhaul/drivers'),
   staleTime: 5 * 60 * 1000,
+  // A tenant with no legacy MSSQL gets 422 MSSQL_NOT_CONFIGURED forever — that
+  // is a fact about tenant config, not a transient failure, so a retry only
+  // doubles the wasted requests.
+  retry: false,
 })
