@@ -109,6 +109,10 @@ const NAV_ITEMS = [
     exact: false,
     roles: OPERATIONS_PLANNING_ROLES,
     children: OPERATIONS_CHILDREN,
+    // Operations (longhaul driver planning) hits legacy-MSSQL endpoints that
+    // 422 without a `mssqlConnectionString`. Hide the whole section on tenants
+    // that have no legacy DB — see `hasCapability` (fails open on absence).
+    capability: 'longhaul' as const,
   },
   {
     // Read-only mapping/ruleset viewer for published integrations. Shown to the
@@ -328,7 +332,14 @@ export function AppShell({ children }: AppShellProps) {
   const userRoles = new Set(perms.roles)
   const visibleNavItems = perms.isLoading
     ? []
-    : NAV_ITEMS.filter((item) => item.roles === null || item.roles.some((r) => userRoles.has(r)))
+    : NAV_ITEMS.filter((item) => {
+        const roleOk = item.roles === null || item.roles.some((r) => userRoles.has(r))
+        // Capability gate is independent of roles: a capability-tagged item
+        // (only Operations today) is hidden when the tenant lacks it, even for
+        // an admin. `hasCapability` fails open, so untagged items are unaffected.
+        const capOk = !('capability' in item) || perms.hasCapability(item.capability)
+        return roleOk && capOk
+      })
   const visibleSettingsItems = perms.isLoading
     ? []
     : SETTINGS_NAV_ITEMS.filter((item) => item.roles.some((r) => userRoles.has(r)))

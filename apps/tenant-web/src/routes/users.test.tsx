@@ -24,6 +24,8 @@ import type { TenantUser } from '@/api/queries/users'
 let seen: Record<string, { enabled?: boolean }> = {}
 let usersData: TenantUser[] = []
 let permissions: string[] = []
+// `undefined` → omit the capabilities field entirely (rollout-skew / fail-open).
+let capabilities: { longhaul?: boolean } | undefined
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children?: React.ReactNode }) => <a>{children}</a>,
@@ -38,7 +40,11 @@ vi.mock('@tanstack/react-query', async () => {
       seen[head] = { enabled: options.enabled }
 
       if (head === 'me') {
-        return { data: { permissions, roles: [] }, isLoading: false, isError: false }
+        return {
+          data: { permissions, roles: [], ...(capabilities ? { capabilities } : {}) },
+          isLoading: false,
+          isError: false,
+        }
       }
       if (head === 'users' && options.queryKey?.[1] === 'list') {
         return { data: usersData, isLoading: false, isError: false }
@@ -81,6 +87,7 @@ describe('UsersPage — longhaul-drivers query gating', () => {
     seen = {}
     permissions = ['user:list']
     usersData = []
+    capabilities = { longhaul: true }
   })
 
   it('does not request longhaul drivers when no user has the driver role', () => {
@@ -107,5 +114,23 @@ describe('UsersPage — longhaul-drivers query gating', () => {
     usersData = [makeUser({ id: 'u4', roleNames: ['driver'] })]
     renderPage()
     expect(seen['longhaul-drivers']?.enabled).toBe(false)
+  })
+
+  it('does not request longhaul drivers when the tenant lacks the longhaul capability', () => {
+    // Even with an active driver user, a non-longhaul tenant has nothing to map
+    // to — the capability gate suppresses the request entirely.
+    capabilities = { longhaul: false }
+    usersData = [makeUser({ id: 'u5', roleNames: ['driver'] })]
+    renderPage()
+    expect(seen['longhaul-drivers']?.enabled).toBe(false)
+  })
+
+  it('requests longhaul drivers when the capability flag is absent (fail-open)', () => {
+    // Older API during a rolled deploy omits `capabilities`; fail open so a real
+    // longhaul tenant is not transiently degraded.
+    capabilities = undefined
+    usersData = [makeUser({ id: 'u6', roleNames: ['driver'] })]
+    renderPage()
+    expect(seen['longhaul-drivers']?.enabled).toBe(true)
   })
 })
