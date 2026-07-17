@@ -12,7 +12,13 @@ export async function fetchHelper(name: string, ...rest: unknown[]) {
     console.log(result.error.message)
   } else if (result?.status >= 400) {
     logger.error(result.error)
-    throw new Error(result.error.message)
+    // Preserve the API error `code` on the thrown Error so callers can branch
+    // on it (e.g. the reference-data bootstrap treats MSSQL_NOT_CONFIGURED as a
+    // benign "no legacy DB" state rather than a hard failure). Existing callers
+    // only read `.message`, so attaching `.code` is additive.
+    const err = new Error(result.error.message) as Error & { code?: string }
+    if (result.error?.code) err.code = result.error.code
+    throw err
   }
   if (!result) {
     throw new Error(`${name} not found`)

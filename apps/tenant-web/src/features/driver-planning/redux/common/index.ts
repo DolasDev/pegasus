@@ -178,6 +178,22 @@ export const fetchReferenceData = () => async (dispatch: AppDispatch) => {
     dispatch(fetchDispatcherSuccess(data.dispatchers))
     dispatch(fetchFilterOptionsSuccess(data.filterOptions))
   } catch (e: any) {
+    // A tenant with no legacy MSSQL answers 422 MSSQL_NOT_CONFIGURED. That is a
+    // fact about tenant config, not a failure to surface — an operations-role
+    // user on such a tenant should see empty dropdowns, not a red "Failed to
+    // load reference data" toast. Populate every slice empty (clearing any
+    // stale values + the loading flag) and swallow, so AppGuard's catch never
+    // fires. Any other error still logs + re-throws for the toast.
+    if (e?.code === 'MSSQL_NOT_CONFIGURED') {
+      dispatch(fetchDriversSuccess([]))
+      dispatch(fetchStatusesSuccess([]))
+      dispatch(fetchStatesSuccess([]))
+      dispatch(fetchZoneSuccess([]))
+      dispatch(fetchPlannersSuccess([]))
+      dispatch(fetchDispatcherSuccess([]))
+      dispatch(fetchFilterOptionsSuccess({ moveType: [] }))
+      return
+    }
     console.error(e)
     throw e
   }
