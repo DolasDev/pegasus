@@ -91,7 +91,6 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     "list_customers": None,
     "list_quotes": None,
     "list_moves": None,
-    "list_inventory": None,
     "list_invoices": None,
     "list_events": None,
     "list_orders": None,

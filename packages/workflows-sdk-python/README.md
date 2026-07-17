@@ -470,6 +470,28 @@ async def cache_order(order: dict) -> None:
 `PegasusApiError` (403) if the matching action is absent from `required_actions`,
 and `put_projection` raises 413 if the serialized state exceeds 256 KB.
 
+### Reading operational entities (inside a workflow)
+
+A running workflow authenticates with its `workflow_runtime` service-account key
+(`PegasusClient.from_runtime()`), which is granted read access to the core
+operational records. These helpers return `{data, meta: {total, count, limit,
+offset}}` and take `limit` (≤100) / `offset`:
+
+```python
+client = PegasusClient.from_runtime()
+client.list_customers(limit=25)          # ReadCustomer
+client.list_quotes()                     # ReadQuote
+client.list_moves()                      # ReadMove
+client.list_invoices()                   # ReadInvoice
+client.list_events("order.completed")    # ReadEvent — poll pending inbound events of a type
+```
+
+They read the m2m `/api/v1/runtime/*` surface (the browser `/api/v1/*` CRUD routes
+are Cognito-only and reject a `vnd_` key). `list_events` polls the inbound
+platform-event queue, which is keyed by type, so an event type is required.
+(Inventory has no runtime read grant — a workflow that needs item-level data reads
+it from the move it is processing.)
+
 ## Visualizing workflows
 
 A workflow is published as opaque Python, so the Pegasus tenant UI can't infer

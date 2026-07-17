@@ -27,6 +27,7 @@ import { eventsHandler } from './handlers/events'
 import { eventTypesHandler } from './handlers/event-types'
 import { ordersHandler } from './handlers/orders'
 import { pegiiRuntimeHandler } from './handlers/pegii-runtime'
+import { runtimeReadsHandler } from './handlers/runtime-reads'
 import { vpnAgentHandler } from './handlers/vpn-agent'
 import { dashboardPegiiHandler } from './handlers/dashboard-pegii'
 import { longhaulVersionHandler } from './handlers/longhaul-cloud/version'
@@ -258,6 +259,11 @@ m2mV1.route('/orders', ordersHandler)
 // dual-auth applied inside the handler; pegII bridge stubbed today — see
 // handlers/pegii-runtime.ts. Distinct from the M2M `/orders` above.
 m2mV1.route('/pegii', pegiiRuntimeHandler)
+// Workflow-runtime reads of core operational entities (customers/quotes/moves/
+// invoices) on the workflow_runtime `vnd_` key (ReadCustomer/ReadQuote/ReadMove/
+// ReadInvoice — already granted). Read-only mirrors of the browser CRUD handlers,
+// under a DISTINCT `/runtime` prefix so they don't shadow the Cognito `v1` routes.
+m2mV1.route('/runtime', runtimeReadsHandler)
 m2mV1.route('/workflows', workflowsHandler)
 // Outbound SMS — called by the workflow runtime's `vnd_` key (SendSms), so it
 // must accept API-key auth, not Cognito-JWT only. Dual-auth is applied inside
