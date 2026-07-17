@@ -93,6 +93,15 @@ export const Actions = {
     resourceType: 'Setting',
     permission: 'setting:update',
   },
+  // Registering an IdP is equivalent to minting claims for this tenant: a
+  // federated login resolves its tenant from the provider, then takes the
+  // roles of whatever email it asserts. So this gates reads too -- one action,
+  // admin-only, no read/manage split.
+  ManageSsoProviders: {
+    id: 'ManageSsoProviders',
+    resourceType: 'Setting',
+    permission: 'sso:manage',
+  },
   // ── Integrations ──────────────────────────────────────────────────────────
   ManageRingCentralIntegration: {
     id: 'ManageRingCentralIntegration',

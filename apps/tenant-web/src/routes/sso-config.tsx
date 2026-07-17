@@ -21,8 +21,11 @@
 //   - Uploading SAML certificates
 //   - Configuring the SAML email claim name (hardcoded to `email` server-side)
 //
-// Phase 5 note: This page should be restricted to tenant_admin role via RBAC. The
-// perms.has('setting:update') gate below is UI-only — the API does not enforce it yet.
+// RBAC: the API now enforces ManageSsoProviders (sso:manage, tenant_admin only) on
+// every /api/v1/sso route, so this page's reads and writes both 403 for anyone else.
+// The perms.has('setting:update') gate below only disables the mutation controls; it
+// is cosmetic, not the control. Non-admins do not reach this page in practice — the
+// nav entry is ADMIN_ONLY — so a hand-typed URL is the only way in, and it 403s.
 // ---------------------------------------------------------------------------
 
 import { useState } from 'react'
