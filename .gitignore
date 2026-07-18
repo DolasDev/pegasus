@@ -89,3 +89,11 @@ awscliv2.zip
 
 # Turborepo
 .turbo
+
+# 400NG tariff source documents — large binary government reference files kept
+# locally for import/parser calibration, not committed. The tariff is loaded
+# into the DB via admin-web → Tariffs (parsed in the browser), so the workbook
+# itself never needs to be in the repo.
+docs/2026-400ng.pdf
+docs/400NG-BASELINE-RATES.XLSX
+docs/400NG-RATING-TOOL.XLSX
