@@ -275,44 +275,53 @@ export async function importTariff400ng(
   })
   if (existing) return { version: existing, created: false }
 
-  const version = await db.$transaction(async (tx) => {
-    const created = await tx.tariffVersion.create({
-      data: {
-        tariffCode: input.tariffCode,
-        label: input.label,
-        effectiveFrom: new Date(input.effectiveFrom),
-        effectiveTo: new Date(input.effectiveTo),
-        status: 'STAGED',
-        sourceChecksum,
-        importedBy: importedBy ?? null,
-      },
-    })
-
-    await tx.tariff400ngZip3.createMany({
-      data: input.zip3s.map((z) => ({ tariffVersionId: created.id, ...z })),
-    })
-    await tx.tariff400ngServiceArea.createMany({
-      data: input.serviceAreas.map((s) => ({ tariffVersionId: created.id, ...s })),
-    })
-    await tx.tariff400ngLinehaulRate.createMany({
-      data: input.linehaulRates.map((r) => ({ tariffVersionId: created.id, ...r })),
-    })
-    await tx.tariff400ngShorthaulRate.createMany({
-      data: input.shorthaulRates.map((r) => ({ tariffVersionId: created.id, ...r })),
-    })
-    if (input.packRates.length > 0) {
-      await tx.tariff400ngFullPackRate.createMany({
-        data: input.packRates.map((r) => ({ tariffVersionId: created.id, ...r })),
+  const version = await db.$transaction(
+    async (tx) => {
+      const created = await tx.tariffVersion.create({
+        data: {
+          tariffCode: input.tariffCode,
+          label: input.label,
+          effectiveFrom: new Date(input.effectiveFrom),
+          effectiveTo: new Date(input.effectiveTo),
+          status: 'STAGED',
+          sourceChecksum,
+          importedBy: importedBy ?? null,
+        },
       })
-    }
-    if (input.unpackRates.length > 0) {
-      await tx.tariff400ngFullUnpackRate.createMany({
-        data: input.unpackRates.map((r) => ({ tariffVersionId: created.id, ...r })),
-      })
-    }
 
-    return created
-  })
+      await tx.tariff400ngZip3.createMany({
+        data: input.zip3s.map((z) => ({ tariffVersionId: created.id, ...z })),
+      })
+      await tx.tariff400ngServiceArea.createMany({
+        data: input.serviceAreas.map((s) => ({ tariffVersionId: created.id, ...s })),
+      })
+      await tx.tariff400ngLinehaulRate.createMany({
+        data: input.linehaulRates.map((r) => ({ tariffVersionId: created.id, ...r })),
+      })
+      await tx.tariff400ngShorthaulRate.createMany({
+        data: input.shorthaulRates.map((r) => ({ tariffVersionId: created.id, ...r })),
+      })
+      if (input.packRates.length > 0) {
+        await tx.tariff400ngFullPackRate.createMany({
+          data: input.packRates.map((r) => ({ tariffVersionId: created.id, ...r })),
+        })
+      }
+      if (input.unpackRates.length > 0) {
+        await tx.tariff400ngFullUnpackRate.createMany({
+          data: input.unpackRates.map((r) => ({ tariffVersionId: created.id, ...r })),
+        })
+      }
+
+      return created
+    },
+    // A full real 400NG import is ~6k rows across six createMany calls. Against
+    // Neon (serverless Postgres, per-statement network latency) that runs ~8s,
+    // which blew Prisma's default 5s interactive-transaction timeout and failed
+    // the whole import in prod. Give a generous budget that still sits well under
+    // the API Lambda / API Gateway 29s ceiling. (The seed subset is tiny, so
+    // local/dev never hit this.)
+    { timeout: 20_000, maxWait: 5_000 },
+  )
 
   return { version, created: true }
 }
