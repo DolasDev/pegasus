@@ -143,6 +143,38 @@
   height: 100%;
 }
 
+/* Planning screen only: pin the surface to the visible area so the Pending
+ * Trips column and the Shipment Detail drawer stay on screen while the (much
+ * taller) shipment list scrolls. Without this `.driver-planning-root` is
+ * height:auto, so `.PlanningModule__container`'s `flex: 1` grows to the left
+ * column's content height, AppShell's <main> takes over the scrolling, and both
+ * panels scroll off the top — their `height: 100%` / `overflow: auto` never
+ * engage because the flex line was never constrained.
+ *
+ * `:has()` scopes this to /planning: the sibling driver-planning routes
+ * (Availability, Trips, Shipments) keep normal page scroll. */
+.driver-planning-root:has(> .PlanningModule__container) {
+  height: 100%;
+  min-height: 0;
+}
+
+/* Flex items default to `min-height: auto` and refuse to shrink below their
+ * content — the pinned height above only holds if this can shrink. */
+.driver-planning-root:has(> .PlanningModule__container) > .PlanningModule__container {
+  min-height: 0;
+}
+
+/* The drawer is absolutely positioned against `.driver-planning-root` and sized
+ * `calc(100vh - 45px)` — taller than the now-pinned root (which sits below the
+ * 56px AppShell header, inside <main>'s 24px padding), so it would spill out the
+ * bottom and hand scrolling straight back to <main>. Span the root exactly
+ * instead; the drawer already scrolls internally (`overflow: auto`). */
+.driver-planning-root:has(> .PlanningModule__container) [data-target='shipment-detail'] {
+  top: 0;
+  margin-top: 0;
+  height: 100%;
+}
+
 .driver-planning-root .App__right-column {
   flex: 1;
   height: 100%;

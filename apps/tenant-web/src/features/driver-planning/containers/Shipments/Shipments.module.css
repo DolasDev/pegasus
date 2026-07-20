@@ -15,6 +15,49 @@
 .container > div > div {
   margin: 3px;
 }
+
+/* Drop the Lane's 5px top padding for this lane only: `overflow: auto` clips at
+   the padding box, so scrolling cards pass THROUGH that top padding and peek
+   above the sticky header (which pins below it). Removing it lets the header pin
+   flush to the scroll-box top. Higher specificity (child of search-dashboard)
+   so it beats Lane's own `.container` regardless of stylesheet order. */
+.container > .shipmentsLane {
+  padding-top: 0;
+}
+
+/* Pin the title + filters + column labels as one block so the card list scrolls
+   under them (the Lane container is the scroll box). The selector mirrors the
+   loose card-margin rule above (Lane.container > .stickyHeader) at higher
+   specificity so it wins and the wrapper keeps a flush top — a 3px margin there
+   would let a card sliver show above the pinned header. */
+.container > div > .stickyHeader {
+  position: sticky;
+  top: 0;
+  /* Beat the card Pack/Load-date cells' `.icon { z-index: 100 }` (ShipmentCard),
+     which would otherwise paint those two columns over the pinned header. This
+     is scoped inside the Shipments container's own stacking context
+     (`.container { z-index: 1 }`), so it can never rise above the Shipment Detail
+     drawer (`z-index: 10`, anchored to .driver-planning-root) — verified. */
+  z-index: 101;
+  background-color: var(--grey);
+  /* Flush top so no card slivers through above the pinned block; 3px sides to
+     line up with the cards below (which carry the loose `margin: 3px`). The
+     padding-top also contains the title's `margin: 10px 0` — without it that
+     margin collapses out through the wrapper's top edge, dropping the whole
+     header 10px and opening the very gap it was meant to close. */
+  margin: 0 3px;
+  padding-top: 5px;
+  box-shadow: 0 3px 4px -2px rgba(0, 0, 0, 0.2);
+}
+
+.laneTitle {
+  margin: 10px 0;
+  font-size: 12px;
+  letter-spacing: 1px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--blue-700);
+}
   
 .flexContainer {
   display: flex;

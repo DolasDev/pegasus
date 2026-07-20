@@ -80,16 +80,18 @@ export const SearchDashboard = () => {
       className={`${styles.container} ${isTableMode ? styles.large : ''}`}
       data-target="search-dashboard"
     >
-      <Lane key="Shipments" title={`Shipments ${countShipments()}`}>
+      {/* No `title` prop: the heading is folded into the sticky header below so
+          the title, filters, and column labels pin as one block while the card
+          list scrolls under them (the Lane container is the scroll box). */}
+      <Lane key="Shipments" className={styles.shipmentsLane}>
         {/*
                 Commenting this out because not sure how necessary this feature is
                 <IconButton className={styles.iconButton} onClick={() => changeMode(state => !state)} Icon={<i className="fas fa-table"></i>} />
                 */}
-        <FilterTabs />
-        {isTableMode ? (
-          <ShipmentsTable shipments={shipments} sortBy={query.sortBy} onSort={changeSortBy} />
-        ) : (
-          <>
+        <div className={styles.stickyHeader}>
+          <h5 className={styles.laneTitle}>{`Shipments ${countShipments()}`}</h5>
+          <FilterTabs />
+          {!isTableMode && (
             <div className={styles.flexContainer}>
               {headers.map(({ label, value, sortable }) => (
                 <b
@@ -113,15 +115,17 @@ export const SearchDashboard = () => {
               ))}
               <div className={styles.emptyContent}></div>
             </div>
-            {shipments.length || loading ? (
-              <MemoizedShipmentCards shipments={shipments} />
-            ) : (
-              <div className={styles['empty-dislaimer']}>
-                <h3>No shipments found</h3>
-                Please revise your search
-              </div>
-            )}
-          </>
+          )}
+        </div>
+        {isTableMode ? (
+          <ShipmentsTable shipments={shipments} sortBy={query.sortBy} onSort={changeSortBy} />
+        ) : shipments.length || loading ? (
+          <MemoizedShipmentCards shipments={shipments} />
+        ) : (
+          <div className={styles['empty-dislaimer']}>
+            <h3>No shipments found</h3>
+            Please revise your search
+          </div>
         )}
       </Lane>
     </div>
