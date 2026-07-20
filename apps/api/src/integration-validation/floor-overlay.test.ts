@@ -22,8 +22,9 @@ import {
   refreshRegistryOverlay,
   resolveIntegrationDefinition,
 } from './registry'
-import { mapToExternal, UnknownIntegrationError } from './validate'
+import { mapToExternal, mapFromExternal, UnknownIntegrationError } from './validate'
 import { runGatePipeline } from './gate-pipeline'
+import { demoPartnerMapping } from './transform/demo-partner.transform'
 import type { PrismaClient as PC } from '@prisma/client'
 
 // A known-valid demo_partner native order (mirrors the map-to-external tests).
@@ -206,6 +207,63 @@ describe('publish gate checks the overlay external mapping/shape (AC2)', () => {
     })
     expect(report.ok).toBe(false)
     expect(report.problems.some((p) => p.stage === 'external-mapping-format')).toBe(true)
+  })
+})
+
+describe('curated UnusedFields survey read via map_from_external (0028)', () => {
+  // A GLOBAL overlay on the shipment_status_update floor whose surveyDate is read
+  // straight from Pegii's UnusedFields junk-drawer — no pre-map lift into
+  // Survey.SurveyReceived. This is the shape the real demo_partner config adopts
+  // once 0028 ships. (Full demo mapping, surveyDate repointed, so the canonical
+  // structurally validates.)
+  const surveyProbeRow = {
+    integrationId: 'survey_probe',
+    version: 1,
+    visibility: 'GLOBAL',
+    status: 'PUBLISHED',
+    floor: 'shipment_status_update',
+    displayName: 'Survey Probe',
+    mapping: {
+      ...demoPartnerMapping,
+      surveyDate: { $from: 'UnusedFields.survey_received', default: null },
+    },
+    rules: [],
+  }
+
+  it('returns surveyDate straight from UnusedFields.survey_received — no pre-lift (AC#2)', async () => {
+    await refreshRegistryOverlay(fakeDb([surveyProbeRow]))
+    const order = { ...nativeOrder, UnusedFields: { survey_received: '2024-06-01' } }
+    const { canonical, valid } = mapFromExternal('survey_probe', order)
+    expect(valid).toBe(true)
+    expect(canonical?.['surveyDate']).toBe('2024-06-01')
+  })
+
+  it('maps an empty/sentinel survey_received through as empty, not a gate error (AC#3)', async () => {
+    await refreshRegistryOverlay(fakeDb([surveyProbeRow]))
+    const order = { ...nativeOrder, UnusedFields: { survey_received: '' } }
+    const { canonical, valid } = mapFromExternal('survey_probe', order)
+    expect(canonical).not.toBeNull()
+    expect(valid).toBe(true)
+    expect(canonical?.['surveyDate']).toBe('') // empty stays empty (default only fills a MISSING key)
+  })
+
+  it('the overlay mapping passes the publish gate reading the curated sub-path (AC#1)', () => {
+    const base = getGateBase('survey_probe', 'shipment_status_update')!
+    const report = runGatePipeline(base, {
+      mapping: surveyProbeRow.mapping,
+      rules: [],
+      corpus: [
+        {
+          name: 'clean',
+          input: {
+            order: { ...nativeOrder, UnusedFields: { survey_received: '2024-06-01' } },
+            action: 'save' as const,
+          },
+          expected: { valid: true, ruleIds: [] },
+        },
+      ],
+    })
+    expect(report.ok).toBe(true)
   })
 })
 

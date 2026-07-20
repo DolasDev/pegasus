@@ -244,3 +244,33 @@ export function collectTopLevelSourceRoots(template: MappingTemplate): string[] 
   visit(template)
   return [...roots]
 }
+
+/**
+ * Full order-scope source paths — every `$from` that resolves against the order
+ * itself (NOT descending into `$each`, whose paths resolve against array
+ * elements), kept at FULL dotted depth rather than collapsed to their first
+ * segment. This is the sibling of `collectTopLevelSourceRoots`; the static
+ * checker's input-side guard uses it so a floor can open a specific vetted
+ * sub-path (e.g. `UnusedFields.survey_received`) while leaving the rest of an
+ * otherwise-closed root shut. The `.` root-identity read (whole order) carries no
+ * field path and is omitted.
+ */
+export function collectTopLevelSourcePaths(template: MappingTemplate): string[] {
+  const paths = new Set<string>()
+  const add = (path: string): void => {
+    // Skip the `.` root-identity read (no field) and any empty-root path.
+    if (path.split('.')[0]!.replace(/\[\d+\]/g, '')) paths.add(path)
+  }
+  const visit = (obj: MappingObject): void => {
+    for (const node of Object.values(obj)) {
+      if (typeof node === 'string') add(node)
+      else if (isDirective(node)) {
+        const from = Array.isArray(node.$from) ? node.$from : [node.$from]
+        from.forEach(add)
+        // Intentionally do NOT descend into $each — element scope, not order scope.
+      } else visit(node)
+    }
+  }
+  visit(template)
+  return [...paths]
+}

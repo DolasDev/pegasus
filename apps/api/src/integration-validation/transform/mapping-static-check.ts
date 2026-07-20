@@ -5,9 +5,13 @@
 //   1. FORMAT:    the document validates against the mapping format schema.
 //   2. TARGET:    every field the mapping produces exists in the CANONICAL
 //                 contract (no mapping to a field the validator doesn't know).
-//   3. INPUT:     every top-level source path the mapping reads is a declared
-//                 input field (a typo guard; only run when the integration
-//                 declares its input field roots).
+//   3. INPUT:     every order-scope source path the mapping reads is covered by
+//                 a declared input field root (a typo guard; only run when the
+//                 integration declares its input field roots). A declared entry
+//                 with NO dot opens a whole top-level root (`Survey`); an entry
+//                 WITH a dot opens only that exact path and its descendants
+//                 (`UnusedFields.survey_received`), leaving the rest of an
+//                 otherwise-closed root shut.
 //
 // Layer 2 reads the canonical JSON Schema (z.toJSONSchema of the structural
 // contract), so target validation tracks the contract automatically. The runtime
@@ -18,7 +22,7 @@ import {
   MappingTemplateSchema,
   collectMapDirectives,
   collectTargetPaths,
-  collectTopLevelSourceRoots,
+  collectTopLevelSourcePaths,
   type MappingTemplate,
 } from './mapping-format'
 
@@ -30,7 +34,11 @@ export interface MappingProblem {
 export interface AnalyzeMappingOptions {
   /** JSON Schema of the canonical output, e.g. `z.toJSONSchema(structuralContract)`. */
   canonicalJsonSchema: unknown
-  /** Allowed top-level input field roots (the legacy DTO keys). Optional. */
+  /**
+   * Allowed input field roots (the legacy DTO keys). A bare key (`Survey`) opens
+   * a whole top-level root; a dotted key (`UnusedFields.survey_received`) opens
+   * only that specific path + its descendants. Optional.
+   */
   inputFieldRoots?: string[] | undefined
 }
 
@@ -100,6 +108,32 @@ function canonicalSchemaEnums(schema: unknown): Map<string, Set<string>> {
   return out
 }
 
+/** Strip array-index suffixes (`[0]`) so path matching is index-agnostic. */
+function normalizeInputPath(path: string): string {
+  return path.replace(/\[\d+\]/g, '')
+}
+
+/**
+ * Is an order-scope source path covered by the declared input-field allowlist?
+ * A declared entry with NO dot is a whole-root grant (its top-level key opens
+ * every path beneath it). A declared entry WITH a dot is a specific-path grant:
+ * it opens only that exact path and its descendants, so a sibling under the same
+ * root (`UnusedFields.truck_name`) or a bare read of the root itself stays closed.
+ */
+function inputPathAllowed(path: string, allowed: readonly string[]): boolean {
+  const p = normalizeInputPath(path)
+  const firstSeg = p.split('.')[0]!
+  for (const raw of allowed) {
+    const entry = normalizeInputPath(raw)
+    if (!entry.includes('.')) {
+      if (firstSeg === entry) return true // whole-root grant
+    } else if (p === entry || p.startsWith(`${entry}.`)) {
+      return true // specific-path grant (exact or descendant)
+    }
+  }
+  return false
+}
+
 /** Analyze a mapping document; returns [] when it is statically valid. */
 export function analyzeMapping(template: unknown, opts: AnalyzeMappingOptions): MappingProblem[] {
   const parsed = MappingTemplateSchema.safeParse(template)
@@ -121,10 +155,17 @@ export function analyzeMapping(template: unknown, opts: AnalyzeMappingOptions): 
   }
 
   if (opts.inputFieldRoots) {
-    const allowed = new Set(opts.inputFieldRoots)
-    for (const root of collectTopLevelSourceRoots(tmpl)) {
-      if (!allowed.has(root)) {
-        problems.push({ where: root, problem: `reads undeclared input field "${root}"` })
+    const allowed = opts.inputFieldRoots
+    const reported = new Set<string>()
+    for (const path of collectTopLevelSourcePaths(tmpl)) {
+      if (!inputPathAllowed(path, allowed)) {
+        // Report against the top-level root (matches the gate's historical
+        // wording and de-dups repeated reads under the same closed root).
+        const root = normalizeInputPath(path).split('.')[0]!
+        if (!reported.has(root)) {
+          reported.add(root)
+          problems.push({ where: root, problem: `reads undeclared input field "${root}"` })
+        }
       }
     }
   }

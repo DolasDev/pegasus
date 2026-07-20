@@ -3,6 +3,7 @@ import {
   MappingTemplateSchema,
   compileMapping,
   collectTargetPaths,
+  collectTopLevelSourcePaths,
   collectTopLevelSourceRoots,
   mappingFormatJsonSchema,
   type MappingTemplate,
@@ -94,6 +95,21 @@ describe('mapping format — path collection', () => {
     expect(roots).toContain('rows')
     // order_num lives inside $each (element scope) — must NOT surface as an order root.
     expect(roots).not.toContain('order_num')
+  })
+
+  it('collects FULL order-scope source paths (not collapsed to first segment)', () => {
+    const paths = collectTopLevelSourcePaths({
+      surveyDate: { $from: 'UnusedFields.survey_received', default: null },
+      contactMadeDate: 'DocumentationDates[0]',
+      whole: { $from: '.', $each: { n: { $from: 'order_num' } } },
+    }).sort()
+    // full dotted depth is preserved for the sub-path guard …
+    expect(paths).toContain('UnusedFields.survey_received')
+    expect(paths).toContain('DocumentationDates[0]')
+    // … the `.` root-identity read carries no field path and is omitted …
+    expect(paths).not.toContain('.')
+    // … and $each element-scope paths still do not surface.
+    expect(paths).not.toContain('order_num')
   })
 })
 

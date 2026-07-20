@@ -542,6 +542,7 @@ def test_list_and_get_floor_hit_public_endpoints() -> None:
                     "floor": "shipment_lifecycle_event",
                     "canonicalFields": ["Id", "Reference.Brand"],
                     "factCatalog": {"brand": "string", "brandPresent": "boolean"},
+                    "inputFieldRoots": ["Survey", "UnusedFields.survey_received"],
                     "defaultAction": "save",
                 }
             },
@@ -556,6 +557,9 @@ def test_list_and_get_floor_hit_public_endpoints() -> None:
     assert seen["path"] == "/api/v1/integrations/floors/shipment_lifecycle_event"
     assert "brand" in floor["factCatalog"]
     assert "Reference.Brand" in floor["canonicalFields"]
+    # The legal mapping SOURCE roots — incl. curated sub-paths — flow through so an
+    # author can discover which native fields are readable (sdk-feedback 0028).
+    assert "UnusedFields.survey_received" in floor["inputFieldRoots"]
 
 
 def test_publish_integration_config_gate_failure_raises() -> None:

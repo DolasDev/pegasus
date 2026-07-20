@@ -109,6 +109,13 @@ function floorDetail(floorId: string): Record<string, unknown> | null {
     // Legal rule FACTS (name → type). A rule's `fact` must be one of these; its
     // `field` must be one of `canonicalFields`.
     factCatalog: floor.factCatalog,
+    // Legal mapping SOURCE roots (what a mapping's `$from` may READ). A bare entry
+    // (`Survey`) opens a whole native root; a dotted entry
+    // (`UnusedFields.survey_received`) opens only that curated sub-path, so an
+    // author can see which specific legacy fields are readable without hitting the
+    // gate blind (sdk-feedback 0028). Omitted for partner-neutral floors that
+    // declare no input roots.
+    ...(floor.inputFieldRoots ? { inputFieldRoots: floor.inputFieldRoots } : {}),
     defaultAction: floor.defaultAction,
     ...(floor.projection ? { projection: { entityType: floor.projection.entityType } } : {}),
   }
