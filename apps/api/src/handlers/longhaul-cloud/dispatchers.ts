@@ -23,6 +23,7 @@ import { db } from '../../db'
 import { executeSql } from '../../lib/mssql-executor-client'
 import { getLonghaulClientConfigFor } from '../../lib/longhaul-client-config'
 import { logger } from '../../lib/logger'
+import { longhaulSalesmanActiveFilter } from './salesman-filter'
 
 export const longhaulDispatchersHandler: Handler<AppEnv> = async (c) => {
   const tenantId = c.get('tenantId')
@@ -56,7 +57,13 @@ export const longhaulDispatchersHandler: Handler<AppEnv> = async (c) => {
 
   try {
     const { dispatcherQuery } = getLonghaulClientConfigFor(tenant.longhaulClient)
-    const sql = `SELECT * FROM v_longhaul_salesman WHERE ${dispatcherQuery}`
+    // `dispatcherQuery` is parenthesised on interpolation: the nwi fragment
+    // contains a top-level OR, and without the wrapping parens the predicate
+    // would parse as `active='Y' AND managed_by_id=2021 OR roles like '%LO%'`
+    // — AND binds tighter, so inactive dispatchers would return via the OR arm.
+    const sql =
+      `SELECT * FROM v_longhaul_salesman ` +
+      `WHERE ${longhaulSalesmanActiveFilter()} AND (${dispatcherQuery})`
     const { recordset } = await executeSql(tenant.mssqlConnectionString, sql)
     return c.json({ data: recordset })
   } catch (err) {

@@ -26,7 +26,8 @@ const executeSqlMock = executeSql as unknown as Mock
 
 const PLANNERS_SQL =
   'SELECT * FROM v_longhaul_salesman ' +
-  'WHERE [v_longhaul_salesman].code IN ' +
+  "WHERE [v_longhaul_salesman].active = 'Y' " +
+  'AND [v_longhaul_salesman].code IN ' +
   '(SELECT DISTINCT created_by_id FROM TripMaster WHERE created_by_id IS NOT NULL)'
 
 function buildApp() {

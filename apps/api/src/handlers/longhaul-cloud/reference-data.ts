@@ -39,6 +39,7 @@ import {
 } from '../../lib/longhaul-client-config'
 import { logger } from '../../lib/logger'
 import { longhaulDriverFilter } from './driver-filter'
+import { longhaulSalesmanActiveFilter } from './salesman-filter'
 
 type Row = Record<string, unknown>
 
@@ -47,10 +48,10 @@ type Row = Record<string, unknown>
 // recordsets[1] = tripStatuses (MasterTripStatus)
 // recordsets[2] = states       (v_longhaul_states)
 // recordsets[3] = zones        (v_longhaul_zones)
-// recordsets[4] = planners     (v_longhaul_salesman filtered to TripMaster.created_by_id)
+// recordsets[4] = planners     (active v_longhaul_salesman filtered to TripMaster.created_by_id)
 //
 // When the tenant has a longhaulClient configured the next two are appended:
-// recordsets[5] = dispatchers   (v_longhaul_salesman filtered by per-client SQL fragment)
+// recordsets[5] = dispatchers   (active v_longhaul_salesman filtered by per-client SQL fragment)
 // recordsets[6] = MoveType rows (reshaped to filterOptions.moveType server-side)
 const COMMON_BATCH_SQL = `
 SELECT
@@ -69,7 +70,8 @@ SELECT * FROM v_longhaul_states;
 SELECT * FROM v_longhaul_zones;
 
 SELECT * FROM v_longhaul_salesman
-WHERE [v_longhaul_salesman].code IN
+WHERE ${longhaulSalesmanActiveFilter('[v_longhaul_salesman]')}
+AND [v_longhaul_salesman].code IN
   (SELECT DISTINCT created_by_id FROM TripMaster WHERE created_by_id IS NOT NULL);
 `
 
@@ -83,7 +85,7 @@ function buildBatchSql(client: LonghaulClientConfig | null): string {
   return (
     COMMON_BATCH_SQL +
     `
-SELECT * FROM v_longhaul_salesman WHERE ${client.dispatcherQuery};
+SELECT * FROM v_longhaul_salesman WHERE ${longhaulSalesmanActiveFilter()} AND (${client.dispatcherQuery});
 
 SELECT move_type_desc, move_type FROM MoveType WHERE ${client.moveTypesWhere} ORDER BY move_type_desc ASC;
 `
