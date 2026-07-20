@@ -11,11 +11,11 @@ import { AvailabilityPage } from './pages/AvailabilityPage'
 test.describe('Availability tab', () => {
   test.beforeEach(async ({ page, qaWebUrl, qaApiFetch }) => {
     await gateOnOnpremHealth(page, qaWebUrl, qaApiFetch)
-    // gateOnOnpremHealth navigated to /driver-planning. The index route renders a
-    // RANDOM A/B/C view variant per mount; pin C (the variant these specs target)
-    // before anything waits on the driver table or asserts columns/cells.
+    // gateOnOnpremHealth navigated to /driver-planning. The index route renders
+    // View A by default (the random A/B/C pick was removed); pin A explicitly so
+    // the specs stay robust to the tab state before waiting on the driver table.
     const av = new AvailabilityPage(page)
-    await av.pinVariant('C')
+    await av.pinVariant('A')
     // Best-effort wait for AppGuard + the driver-planning fetch to settle so the
     // `rowCount`-based `test.skip`s below don't race the (slow) on-prem load and
     // silently skip; if the load is pathologically slow each test still has its
@@ -42,7 +42,7 @@ test.describe('Availability tab', () => {
     // planning DB not loaded" finding.
     if (!(await av.table.isVisible())) {
       await page.reload({ waitUntil: 'domcontentloaded' })
-      await av.pinVariant('C') // reload re-randomises the variant
+      await av.pinVariant('A') // re-assert View A after the reload
       await av.table
         .or(page.getByText('No drivers found'))
         .waitFor({ state: 'visible', timeout: 30_000 })
@@ -51,11 +51,12 @@ test.describe('Availability tab', () => {
     await expect(av.table, 'QA planning DB should have ≥1 driver row').toBeVisible({
       timeout: 15_000,
     })
-    // Variant C splits the legacy "Ready Location" column into Ready State + Ready City.
-    // Substring (non-exact) match on purpose: the "Ready Date" header carries a
-    // Font Awesome sort caret whose CSS ::before glyph leaks into the accessible
-    // name, so `exact` would miss it. No Variant-C header name is a substring of
-    // another, so each still resolves to exactly one columnheader.
+    // View A splits the legacy "Ready Location" column into Ready State + Ready City
+    // and folds the current-trip link into the Deliveries cell (no Current Trip
+    // column). Substring (non-exact) match on purpose: the "Ready Date" header
+    // carries a Font Awesome sort caret whose CSS ::before glyph leaks into the
+    // accessible name, so `exact` would miss it. None of these names is a substring
+    // of another, so each still resolves to exactly one columnheader.
     for (const col of [
       'Driver',
       'Ready Date',
@@ -63,27 +64,25 @@ test.describe('Availability tab', () => {
       'Ready City',
       'Deliveries',
       'Notes',
-      'Current Trip',
     ]) {
       await expect(page.getByRole('columnheader', { name: col })).toBeVisible()
     }
     expect(await av.rowCount()).toBeGreaterThan(0)
   })
 
-  test('current-trip cell links to the trip screen for assigned drivers, "None" otherwise', async ({
-    page,
-  }) => {
+  test('deliveries cell links to the trip screen for assigned drivers', async ({ page }) => {
     const av = new AvailabilityPage(page)
     test.skip((await av.rowCount()) < 1, 'no drivers in the QA DB')
-    const cell = av.rows.first().getByTestId('driver-current-trip')
-    const link = cell.getByTestId('current-trip-link')
-    // Either a trip link (title only, navigates to the trip screen — NO "#id")
-    // or the literal "None".
+    // View A folds the current-trip link into the Deliveries cell: an assigned
+    // driver's deliveries table is a click-through to its trip screen, while an
+    // unassigned driver (or one with no shipments) renders a plain cell with no link.
+    const cell = av.rows.first().getByTestId('driver-deliveries')
+    const link = cell.getByTestId('deliveries-trip-link')
     if (await link.isVisible().catch(() => false)) {
       await expect(link).toHaveAttribute('href', /\/driver-planning\/trips\/\d+/)
-      await expect(cell).not.toContainText('#')
+      await expect(link).not.toContainText('#')
     } else {
-      await expect(cell).toContainText('None')
+      await expect(cell).toBeVisible()
     }
   })
 
@@ -131,9 +130,9 @@ test.describe('Availability tab', () => {
     await expect(row).toContainText(city)
     await expect(row).toContainText(notes)
 
-    // …and persisted: reload (re-pin C — the variant re-randomises) and re-read.
+    // …and persisted: reload (re-assert View A) and re-read.
     await page.reload({ waitUntil: 'domcontentloaded' })
-    await av.pinVariant('C')
+    await av.pinVariant('A')
     const reloaded = av.rowByDriverId(driverId)
     await expect(reloaded).toBeVisible()
     await expect(reloaded).toContainText(state)

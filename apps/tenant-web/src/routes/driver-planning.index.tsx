@@ -1,36 +1,29 @@
 // ---------------------------------------------------------------------------
-// Availability route — picks one of three view variants (A / B / C) at
-// random on mount and exposes a "Change View" tab control in the upper right
-// so dispatchers can switch on demand.
+// Availability route — renders View A by default and exposes a "Change View"
+// tab control in the upper right so dispatchers can switch to another variant.
 //
 // Each variant lives under features/driver-planning/availability/ and started
 // life as a verbatim copy of this page's previous implementation. They are
 // intentionally independent — there is no shared base — so each can iterate
 // without coupling. To drop a variant, remove its entry from VARIANTS and
-// delete the file.
+// delete the file. (Variant C was retired; View A is the default surface.)
 // ---------------------------------------------------------------------------
 import { useState } from 'react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AvailabilityViewA } from '@/features/driver-planning/availability/AvailabilityViewA'
 import { AvailabilityViewB } from '@/features/driver-planning/availability/AvailabilityViewB'
-import { AvailabilityViewC } from '@/features/driver-planning/availability/AvailabilityViewC'
 
-type VariantKey = 'A' | 'B' | 'C'
+type VariantKey = 'A' | 'B'
 
 const VARIANTS: { key: VariantKey; label: string; Component: () => React.ReactElement }[] = [
   { key: 'A', label: 'A', Component: AvailabilityViewA },
   { key: 'B', label: 'B', Component: AvailabilityViewB },
-  { key: 'C', label: 'C', Component: AvailabilityViewC },
 ]
 
-function pickRandomVariant(): VariantKey {
-  return VARIANTS[Math.floor(Math.random() * VARIANTS.length)]!.key
-}
-
 export function DriverPlanningPage() {
-  // Initial pick is randomised once per mount. After that the user is in
-  // control — re-renders never reshuffle, so the tab they clicked stays put.
-  const [variant, setVariant] = useState<VariantKey>(() => pickRandomVariant())
+  // View A renders first; after that the user is in control — the tab they click
+  // stays put across re-renders.
+  const [variant, setVariant] = useState<VariantKey>('A')
 
   const Active = VARIANTS.find((v) => v.key === variant)!.Component
 
