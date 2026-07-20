@@ -132,7 +132,7 @@ export function LoginPage() {
       setStep({
         name: 'error',
         message:
-          'No authentication method is configured for this organisation. Contact your administrator.',
+          'No authentication method is configured for this organization. Contact your administrator.',
       })
       return
     }
@@ -234,7 +234,7 @@ export function LoginPage() {
       const code = err instanceof CognitoError ? err.code : ''
       if (code === 'NotAuthorizedException' || code === 'InvalidParameterException') {
         throw new Error(
-          'This account signs in through your organisation’s identity provider and has no password to reset.',
+          'This account signs in through your organization’s identity provider and has no password to reset.',
           { cause: err },
         )
       }
@@ -361,7 +361,7 @@ export function LoginPage() {
         {step.name === 'resolving' && (
           <>
             <CardHeader>
-              <CardTitle>Looking up your organisation</CardTitle>
+              <CardTitle>Looking up your organization</CardTitle>
               <CardDescription>{email}</CardDescription>
             </CardHeader>
             <CardContent className="flex justify-center py-8">
@@ -374,8 +374,8 @@ export function LoginPage() {
         {step.name === 'select-tenant' && (
           <>
             <CardHeader>
-              <CardTitle>Choose your organisation</CardTitle>
-              <CardDescription>{email} is associated with multiple organisations.</CardDescription>
+              <CardTitle>Choose your organization</CardTitle>
+              <CardDescription>{email} is associated with multiple organizations.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {step.tenants.map((tenant) => (

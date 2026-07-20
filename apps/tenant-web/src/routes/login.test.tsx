@@ -110,7 +110,7 @@ describe('LoginPage — select-tenant step', () => {
     await submitEmail('user@shared.com')
 
     await waitFor(() => {
-      expect(screen.getByText('Choose your organisation')).toBeInTheDocument()
+      expect(screen.getByText('Choose your organization')).toBeInTheDocument()
     })
     expect(screen.getByText('Acme Corp')).toBeInTheDocument()
     expect(screen.getByText('Beta Inc')).toBeInTheDocument()
@@ -129,7 +129,7 @@ describe('LoginPage — select-tenant step', () => {
 
     // Should NOT show the tenant picker
     await waitFor(() => {
-      expect(screen.queryByText('Choose your organisation')).not.toBeInTheDocument()
+      expect(screen.queryByText('Choose your organization')).not.toBeInTheDocument()
     })
     // Should proceed directly to auth options (password or provider step)
     await waitFor(() => {

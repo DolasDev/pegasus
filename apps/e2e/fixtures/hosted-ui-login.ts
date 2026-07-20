@@ -67,7 +67,7 @@ export async function loginToQa(page: Page, cfg: QaLoginConfig): Promise<Capture
   await page.waitForLoadState('networkidle').catch(() => {})
 
   // Step: select-tenant (only when the email maps to >1 tenant)
-  const tenantPickerHeading = page.getByText('Choose your organisation')
+  const tenantPickerHeading = page.getByText('Choose your organization')
   if (await tenantPickerHeading.isVisible().catch(() => false)) {
     const button = cfg.tenantName
       ? page.getByRole('button', { name: cfg.tenantName, exact: false })

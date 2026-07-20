@@ -677,7 +677,7 @@ export function SsoConfigPage() {
         {providers.length === 0 && panel.kind === 'none' && (
           <EmptyState
             title="No SSO providers configured"
-            description="Add an identity provider to enable SSO login for your organisation. The provider must be registered in your Cognito User Pool first."
+            description="Add an identity provider to enable SSO login for your organization. The provider must be registered in your Cognito User Pool first."
           />
         )}
 
