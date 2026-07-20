@@ -40,8 +40,11 @@ import { logger } from '../../lib/logger'
 interface TripFilters {
   id?: string
   driver_id?: { label?: string; value?: string | number }
-  origin?: Array<{ value?: { state_id?: number } }>
-  destination?: Array<{ value?: { state_id?: number } }>
+  // The state dropdown emits the raw `v_longhaul_states` row as `value`, whose
+  // PK is `id` (no `state_id`). Older/legacy callers used `state_id`. Accept
+  // either so a picked state actually filters. See buildWhere below.
+  origin?: Array<{ value?: { state_id?: number; id?: number } }>
+  destination?: Array<{ value?: { state_id?: number; id?: number } }>
   origin_zone?: Array<{ value?: string }>
   destination_zone?: Array<{ value?: string }>
   weight?: [number | null, number | null]
@@ -163,14 +166,14 @@ function buildWhere(filters: TripFilters | undefined): {
   if (filters.origin?.length) {
     inClause(
       'TripMaster.origin_state_id',
-      filters.origin.map((o) => o.value?.state_id),
+      filters.origin.map((o) => o.value?.state_id ?? o.value?.id),
     )
   }
 
   if (filters.destination?.length) {
     inClause(
       'TripMaster.destination_state_id',
-      filters.destination.map((d) => d.value?.state_id),
+      filters.destination.map((d) => d.value?.state_id ?? d.value?.id),
     )
   }
 

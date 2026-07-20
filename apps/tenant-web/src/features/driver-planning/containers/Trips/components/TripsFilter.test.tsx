@@ -59,6 +59,28 @@ describe('TripsFilter', () => {
     expect((store.getState() as any).trips.query.filters).toEqual({})
   })
 
+  it('maps a picked driver to the filter value via driver_id (not id)', () => {
+    // Regression: DriverTypeahead options carry the raw driver row as `value`,
+    // whose id column is `driver_id`. The onChange previously read `value.id`
+    // (undefined), so the dispatched filter was `{ value: undefined }` and the
+    // API dropped the driver predicate — every trip came back.
+    const { store } = renderWithStore(<TripsFilter />, {
+      trips: { query: { filters: {} } } as any,
+      common: { driversList: [{ driver_id: 12, driver_name: 'BOB JONES' }] } as any,
+    })
+
+    const input = screen.getByPlaceholderText('Enter a name') as HTMLInputElement
+    // Downshift v9 opens the menu on ArrowDown without altering the filter.
+    fireEvent.focus(input)
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    fireEvent.click(screen.getByText('Bob Jones'))
+
+    expect((store.getState() as any).trips.query.filters.driver_id).toEqual({
+      value: 12,
+      label: 'Bob Jones',
+    })
+  })
+
   it('renders the Trip Id text input and accepts user typing', () => {
     renderWithStore(<TripsFilter />, {
       preloadedState: { trips: { query: { filters: {} } } as any },

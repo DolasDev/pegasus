@@ -179,6 +179,63 @@ describe('GET longhaul/trips (cloud-direct LIST)', () => {
     })
   })
 
+  // Origin / destination STATE filters. The StateDropdown emits the raw
+  // v_longhaul_states row as `value`, whose PK column is `id` — NOT `state_id`.
+  // The handler read `value.state_id` (undefined for the real payload), so the
+  // predicate was silently dropped and every trip came back. Pin the actual wire
+  // shape (`{ value: { id, geo_code, ... } }`) here.
+  describe('state filters', () => {
+    async function sqlForFilters(filters: Record<string, unknown>) {
+      findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+      executeSqlMock.mockResolvedValue({ recordset: [], rowsAffected: [] })
+      const query = JSON.stringify({ searchTerm: '', filters, sortBy: {} })
+      await buildApp().request(`/onprem/longhaul/trips?filters=${encodeURIComponent(query)}`)
+      return executeSqlMock.mock.calls[0] as [
+        string,
+        string,
+        { params: Array<{ name: string; value: unknown }> },
+      ]
+    }
+
+    it('filters origin on origin_state_id from the real dropdown row (id key)', async () => {
+      const [, sql, opts] = await sqlForFilters({
+        origin: [
+          { value: { id: 55, geo_code: 'TX', geo_name: 'TEXAS', zone: '5' }, label: 'TEXAS (TX)' },
+        ],
+      })
+
+      expect(sql).toContain('TripMaster.origin_state_id IN (@')
+      expect(sql).not.toContain('55)')
+      expect(opts.params.map((p) => p.value)).toContain(55)
+    })
+
+    it('filters destination on destination_state_id, not the origin column', async () => {
+      const [, sql, opts] = await sqlForFilters({
+        destination: [{ value: { id: 12, geo_code: 'CA' }, label: 'CALIFORNIA (CA)' }],
+      })
+
+      expect(sql).toContain('TripMaster.destination_state_id IN (@')
+      expect(sql).not.toContain('TripMaster.origin_state_id IN (')
+      expect(opts.params.map((p) => p.value)).toContain(12)
+    })
+
+    it('still honours the legacy state_id key', async () => {
+      const [, sql, opts] = await sqlForFilters({
+        origin: [{ value: { state_id: 7 } }],
+      })
+
+      expect(sql).toContain('TripMaster.origin_state_id IN (@')
+      expect(opts.params.map((p) => p.value)).toContain(7)
+    })
+
+    it('adds no state predicate when the selection is empty', async () => {
+      const [, sql] = await sqlForFilters({ origin: [], destination: [] })
+
+      expect(sql).not.toContain('TripMaster.origin_state_id IN')
+      expect(sql).not.toContain('TripMaster.destination_state_id IN')
+    })
+  })
+
   it('regression: applies filters.id from the nested wire shape (Phase 3.1)', async () => {
     // This is the test that would have caught the original bug: the UI sends
     // `?filters={"filters":{"id":"42"}}`, NOT `?filters={"id":"42"}`. The
