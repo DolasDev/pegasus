@@ -21,10 +21,17 @@ import type { AppEnv } from '../../types'
 import { db } from '../../db'
 import { executeSql } from '../../lib/mssql-executor-client'
 import { logger } from '../../lib/logger'
+import { longhaulSalesmanActiveFilter } from './salesman-filter'
 
+// Active planners only. Note this narrows a list derived from historical
+// TripMaster.created_by_id values, so a planner who has since been deactivated
+// drops out of the dropdown even though past trips still reference them. That
+// is a deliberate, accepted trade-off — if historical trip attribution needs
+// the full set again, revert this predicate rather than the dispatcher one.
 const PLANNERS_SQL =
   'SELECT * FROM v_longhaul_salesman ' +
-  'WHERE [v_longhaul_salesman].code IN ' +
+  `WHERE ${longhaulSalesmanActiveFilter('[v_longhaul_salesman]')} ` +
+  'AND [v_longhaul_salesman].code IN ' +
   '(SELECT DISTINCT created_by_id FROM TripMaster WHERE created_by_id IS NOT NULL)'
 
 export const longhaulPlannersHandler: Handler<AppEnv> = async (c) => {

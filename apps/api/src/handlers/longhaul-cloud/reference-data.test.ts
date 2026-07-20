@@ -104,6 +104,12 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
     expect(sql).toContain("(managed_by_id = 2021 OR roles like '%LO%')")
     expect(sql).toContain('MoveType')
     expect(sql).toContain('1=1')
+    // Both v_longhaul_salesman statements (planners + dispatchers) must be
+    // restricted to active staff, and the per-client fragment must stay
+    // parenthesised so its OR can't escape the AND. Lowercase `active` is
+    // distinct from the drivers view's uppercase ACTIVE.
+    expect(sql).toContain("[v_longhaul_salesman].active = 'Y'")
+    expect(sql).toContain("active = 'Y' AND ((managed_by_id = 2021 OR roles like '%LO%'))")
   })
 
   it('omits per-client statements (and returns empty dispatchers + filterOptions) when longhaulClient is null', async () => {
@@ -136,6 +142,9 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
     expect(sql).not.toContain('MoveType')
     expect(sql).not.toContain('managed_by_id')
     expect(sql).not.toContain('roles like')
+    // Planners is client-independent, so its active filter survives the
+    // degraded (no longhaulClient) batch.
+    expect(sql).toContain("[v_longhaul_salesman].active = 'Y'")
   })
 
   it('uses qmm per-client fragments when the tenant is a qmm client', async () => {
@@ -154,7 +163,7 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
     expect(res.status).toBe(200)
     expect(executeSqlMock).toHaveBeenCalledTimes(1)
     const sql = executeSqlMock.mock.calls[0]![1] as string
-    expect(sql).toContain("roles like ('%cpd%')")
+    expect(sql).toContain("active = 'Y' AND (roles like ('%cpd%'))")
     expect(sql).toContain("move_type in ('C','S','N','M','U')")
   })
 

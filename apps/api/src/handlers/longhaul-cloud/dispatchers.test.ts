@@ -57,7 +57,7 @@ describe('GET longhaul/dispatchers (cloud-direct)', () => {
     expect(executeSqlMock).toHaveBeenCalledTimes(1)
     expect(executeSqlMock).toHaveBeenCalledWith(
       'Server=a,1433',
-      "SELECT * FROM v_longhaul_salesman WHERE (managed_by_id = 2021 OR roles like '%LO%')",
+      "SELECT * FROM v_longhaul_salesman WHERE active = 'Y' AND ((managed_by_id = 2021 OR roles like '%LO%'))",
     )
   })
 
@@ -70,7 +70,7 @@ describe('GET longhaul/dispatchers (cloud-direct)', () => {
     expect(res.status).toBe(200)
     expect(executeSqlMock).toHaveBeenCalledWith(
       'Server=a,1433',
-      "SELECT * FROM v_longhaul_salesman WHERE roles like ('%cpd%')",
+      "SELECT * FROM v_longhaul_salesman WHERE active = 'Y' AND (roles like ('%cpd%'))",
     )
   })
 
