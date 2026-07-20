@@ -84,6 +84,9 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     "get_secret": lambda a, k: _first(a, k, "name"),
     "map_to_external": lambda a, k: _first(a, k, "integration_id"),
     "map_from_external": lambda a, k: _first(a, k, "integration_id"),
+    # dry_run_integration composes get_order(native) + map_from_external (both
+    # reads); offline it is served as a keyed read like map_from_external.
+    "dry_run_integration": lambda a, k: _first(a, k, "integration_id"),
     "get_projection": lambda a, k: a[2] if len(a) > 2 else k.get("key"),
     "get_blob": lambda a, k: _first(a, k, "blob_id"),
     "get_blob_url": lambda a, k: _first(a, k, "blob_id"),

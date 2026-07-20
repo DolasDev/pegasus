@@ -28,12 +28,17 @@ vi.mock('../middleware/dual-auth', () => ({
   }),
 }))
 
-const { findOrderById, checkReachable } = vi.hoisted(() => ({
+const { findOrderById, findOrderNativeById, checkReachable } = vi.hoisted(() => ({
   findOrderById: vi.fn(),
+  findOrderNativeById: vi.fn(),
   checkReachable: vi.fn(),
 }))
 vi.mock('../gateways/order-gateway.factory', () => ({
-  resolveOrderGateway: vi.fn(async () => ({ findOrderById, checkReachable })),
+  resolveOrderGateway: vi.fn(async () => ({
+    findOrderById,
+    findOrderNativeById,
+    checkReachable,
+  })),
 }))
 
 import { pegiiRuntimeHandler } from './pegii-runtime'
@@ -111,6 +116,34 @@ describe('GET /pegii/orders/:orderId', () => {
     const res = await app.request('/pegii/orders/ord-1')
     expect(res.status).toBe(403)
     expect(findOrderById).not.toHaveBeenCalled()
+  })
+
+  it('returns the RAW native payload for ?shape=native', async () => {
+    const native = { Id: '490574', Survey: { SerivceStatus: 'Accepted' }, WarehouseSummary: {} }
+    findOrderNativeById.mockResolvedValue(native)
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request('/pegii/orders/490574?shape=native')
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toEqual(native)
+    expect(findOrderNativeById).toHaveBeenCalledWith('490574')
+    expect(findOrderById).not.toHaveBeenCalled()
+  })
+
+  it('returns 404 for ?shape=native when the order is missing', async () => {
+    findOrderNativeById.mockResolvedValue(null)
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request('/pegii/orders/ord-missing?shape=native')
+    expect(res.status).toBe(404)
+    expect((await json(res))['code']).toBe('NOT_FOUND')
+  })
+
+  it('rejects an unknown shape value with 400', async () => {
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request('/pegii/orders/490574?shape=raw')
+    expect(res.status).toBe(400)
+    expect((await json(res))['code']).toBe('INVALID_SHAPE')
+    expect(findOrderById).not.toHaveBeenCalled()
+    expect(findOrderNativeById).not.toHaveBeenCalled()
   })
 
   it('returns 502 (not a bare 500) when the pegII source is unreachable', async () => {

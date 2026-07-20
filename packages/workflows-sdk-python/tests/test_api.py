@@ -1101,6 +1101,50 @@ def test_get_order_forbidden_raises() -> None:
     assert exc_info.value.status_code == 403
 
 
+def test_get_order_native_shape_passes_query_and_returns_raw() -> None:
+    captured: dict = {}
+    native = {"Id": "490574", "Survey": {"SerivceStatus": "Accepted"}, "WarehouseSummary": {}}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["shape"] = request.url.params.get("shape")
+        return httpx.Response(200, json={"data": native})
+
+    client = _client_with(handler)
+    result = client.get_order("490574", shape="native")
+
+    assert result == native
+    assert captured["path"] == "/api/v1/pegii/orders/490574"
+    assert captured["shape"] == "native"
+
+
+def test_dry_run_integration_fetches_native_then_maps() -> None:
+    calls: list[tuple[str, str | None]] = []
+    native = {"Id": "490574", "Survey": {"SerivceStatus": "Accepted"}}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.url.path, request.url.params.get("shape")))
+        if request.url.path == "/api/v1/pegii/orders/490574":
+            return httpx.Response(200, json={"data": native})
+        if request.url.path == "/api/v1/integrations/demo_partner/map-from-external":
+            assert json.loads(request.content) == {"data": native}
+            return httpx.Response(
+                200,
+                json={"canonical": {"serviceStatus": "Accepted"}, "valid": True,
+                      "issues": [], "degraded": False},
+            )
+        raise AssertionError(f"unexpected path {request.url.path}")
+
+    client = _client_with(handler)
+    result = client.dry_run_integration("demo_partner", "490574")
+
+    assert result["valid"] is True
+    assert result["canonical"]["serviceStatus"] == "Accepted"
+    # native fetch (shape=native) runs first, then the map POST.
+    assert calls[0] == ("/api/v1/pegii/orders/490574", "native")
+    assert calls[1][0] == "/api/v1/integrations/demo_partner/map-from-external"
+
+
 # -- pegII task lifecycle ----------------------------------------------------
 
 

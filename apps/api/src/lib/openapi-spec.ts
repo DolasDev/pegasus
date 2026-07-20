@@ -101,6 +101,16 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
   '/api/v1/pegii/orders/{orderId}': apiKeyGet('getPegiiOrder', 'Get a pegII order (ReadOrder)', {
     tags: ['pegII'],
     path: ['orderId'],
+    query: [
+      {
+        name: 'shape',
+        description:
+          "Set to 'native' to return the raw serialized pegII payload " +
+          '({Id, Survey, InvolvedParties, KeyMoveDates, …}) instead of the ' +
+          'projected order row — the shape a partner posts to the ingress, for ' +
+          'dry-running a published integration via map_from_external.',
+      },
+    ],
   }),
   '/api/v1/pegii/tasks': apiKeyGet('listPegiiTasks', 'List pegII tasks (ReadTask)', {
     tags: ['pegII'],

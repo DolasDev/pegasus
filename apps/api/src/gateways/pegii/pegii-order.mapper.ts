@@ -4,11 +4,22 @@
 // SDK/runtime surface exposes (services/pegii-orders.ts).
 //
 // Along with pegii-order.dto.ts, this is the single point of change when the
-// real pegII serialized contract firms up.
+// real pegII serialized contract firms up. It reads the REAL native keys the
+// mapping engine already consumes (`Id`, `Survey.SerivceStatus`,
+// `InvolvedParties.ShipperEmployer.Identity.Description`, `KeyMoveDates.*`) —
+// earlier revisions read a guessed flat shape that never resolved, projecting an
+// `id: "undefined"` stub as a 200 (sdk-feedback 0029).
 //
-// pegII gaps handled here (until the real contract specifies them):
-//   - missing orderNumber    → derived "SO-<id>" (mirrors the retired stub)
-//   - unknown/absent status  → 'booked' (the safe default the stub used)
+// FAIL-LOUD: a payload with no real `Id` yields `null`, not a placeholder record.
+// The gateway turns that null into a 404 so a caller can never mistake an
+// unresolvable projection for a real order. See sdk-feedback 0029 acceptance:
+// "a projection that resolves nothing but status/updatedAt should fail loudly,
+// not succeed."
+//
+// pegII gaps still handled softly (a real Id is present, a secondary field is
+// not):
+//   - missing orderNumber    → derived "SO-<id>"
+//   - unknown/absent status  → 'booked' (the safe default)
 //   - missing customer name  → null
 //   - missing timestamps     → epoch (new Date(0)), matching pegii-customer.mapper
 // ---------------------------------------------------------------------------
@@ -45,17 +56,33 @@ function mapStatus(raw: string | null | undefined): OrderRecord['status'] {
   }
 }
 
-/** Map a serialized pegII order DTO onto the OrderRecord surface shape. */
-export function mapPegiiOrderToRecord(dto: PegiiOrderDto): OrderRecord {
-  const id = String(dto.SaleId)
+/** Trim a possibly-null legacy string to a non-empty value, else undefined. */
+function nonEmpty(raw: string | null | undefined): string | undefined {
+  const trimmed = (raw ?? '').trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+/**
+ * Map a serialized pegII order DTO onto the OrderRecord surface shape, or `null`
+ * when the payload carries no resolvable `Id` (an empty/stub projection). A null
+ * return is the honest "not a real order" signal the gateway maps to a 404 —
+ * NEVER an `id: "undefined"` / `orderNumber: "SO-undefined"` record.
+ */
+export function mapPegiiOrderToRecord(dto: PegiiOrderDto): OrderRecord | null {
+  const id = nonEmpty(dto.Id == null ? undefined : String(dto.Id))
+  if (!id) return null
+
+  const orderNumber =
+    nonEmpty(dto.InvolvedParties?.ShipperEmployer?.Identity?.Description) ?? `SO-${id}`
+
   return {
     id,
-    orderNumber: dto.OrderNumber ?? `SO-${id}`,
-    status: mapStatus(dto.Status),
-    customerName: dto.CustomerName ?? null,
-    scheduledDate: dto.ScheduledDate ?? null,
-    packingActualDate: dto.PackingActualDate ?? null,
-    createdAt: dto.CreatedDate ?? EPOCH,
+    orderNumber,
+    status: mapStatus(dto.Survey?.SerivceStatus),
+    customerName: nonEmpty(dto.Survey?.ShipperName) ?? null,
+    scheduledDate: dto.KeyMoveDates?.Survey?.Planned ?? null,
+    packingActualDate: dto.KeyMoveDates?.Pack?.Actual ?? null,
+    createdAt: dto.OrderDate ?? EPOCH,
     updatedAt: dto.ModifiedDate ?? EPOCH,
   }
 }

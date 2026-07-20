@@ -47,6 +47,19 @@ export function createPegiiOrderGateway(opts: PegiiOrderGatewayOptions): OrderGa
       }
     },
 
+    async findOrderNativeById(id) {
+      try {
+        // The raw serialized payload IS the native shape — return it unmapped so a
+        // published integration can dry-run its mapping against a real order id.
+        return await client.get<unknown>(
+          `/api/v1/pegii/serialized/${SERIALIZED_ORDER_ENTITY}/${encodeURIComponent(id)}`,
+        )
+      } catch (err) {
+        if (isPegiiNotFound(err)) return null
+        throw err
+      }
+    },
+
     async checkReachable() {
       // getHealth hits the unauthenticated `/health` probe; reaching it at all
       // proves connectivity. A tunnel/HTTP failure throws PegiiApiError, which

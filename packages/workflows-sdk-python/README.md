@@ -496,11 +496,29 @@ The pegII operational surface (legacy orders + tasks) has its own reads/mutation
 
 ```python
 client.list_orders()                 # ReadOrder
-client.get_order("SO-12345")         # ReadOrder
+client.get_order("SO-12345")         # ReadOrder — projected row {id, orderNumber, status, …}
 client.list_tasks(order_id="SO-12345")   # ReadTask
 client.get_task("task-1")            # ReadTask
 client.close_task(order_id="SO-12345", task_type="date_confirmation", reason="done")  # CloseTask
 ```
+
+To dry-run a **published integration** against a real order id — "does this
+production order pass the mapping?" — fetch the order's **native** pegII payload
+(the same `{Id, Survey, InvolvedParties, KeyMoveDates, …}` shape a partner posts to
+the ingress) and normalize it through the integration's inbound mapping. Two ways:
+
+```python
+# One-shot: fetch native + map + gate, server-normalized.
+client.dry_run_integration("demo_partner", "490574")   # ReadOrder
+# → {canonical, valid, issues, degraded}
+
+# Or compose it yourself from the native payload:
+native = client.get_order("490574", shape="native")    # ReadOrder — raw pegII payload
+client.map_from_external("demo_partner", native)        # native → canonical + gate
+```
+
+No hand-pasting the raw payload. `get_order` without `shape` returns the projected
+row; `shape="native"` returns the raw serialized object for mapping.
 
 ### Emitting a custom event (workflow-to-workflow chaining)
 

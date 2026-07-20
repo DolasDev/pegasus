@@ -3,6 +3,33 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.27.0
+
+### Added — dry-run a published integration against a real order id (`shape="native"`, `dry_run_integration`)
+
+- **`get_order(order_id, shape="native")`** now returns an order's RAW serialized
+  pegII payload (`{Id, Survey, InvolvedParties, KeyMoveDates, …}`) — the same shape
+  a partner posts to the ingress — instead of the projected row. Feed it to
+  `map_from_external` to validate a published mapping against a real order id with
+  no hand-pasting. Omitting `shape` is unchanged (projected row).
+- **`dry_run_integration(integration_id, order_id)`** — one call that fetches the
+  native payload and normalizes it through a published integration's inbound
+  mapping, returning `{canonical, valid, issues, degraded}`. Requires `ReadOrder`;
+  the map step needs no manifest action.
+- Platform: `GET /api/v1/pegii/orders/{id}?shape=native` exposes the raw payload
+  (same `ReadOrder` gate); documented in the OpenAPI spec.
+
+### Fixed — pegII order projection returned an `"undefined"` stub as a 200
+
+- `get_order` (default projected shape) previously returned
+  `{id:"undefined", orderNumber:"SO-undefined", customerName:null, …}` as a **200**
+  for fully-populated orders — the bridge mapper read guessed native keys
+  (`SaleId`, `OrderNumber`, …) that don't exist on the wire. It now reads the real
+  keys (`Id`, `Survey.SerivceStatus`, `Survey.ShipperName`,
+  `InvolvedParties.ShipperEmployer.Identity.Description`, `KeyMoveDates.*`) and a
+  payload with no resolvable `Id` yields an honest **404**, never an `"undefined"`
+  stub (sdk-feedback 0029).
+
 ## 0.26.0
 
 ### Added — floors advertise their legal mapping _source_ roots (`inputFieldRoots`)

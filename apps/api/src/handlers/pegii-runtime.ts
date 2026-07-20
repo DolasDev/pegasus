@@ -138,11 +138,32 @@ pegiiRuntimeHandler.get('/orders', requirePermission(Actions.ReadOrder), async (
 // the OrderGateway. A tenant with no configured pegII target → 503 and an
 // unreachable source → 502 (the error boundary maps the thrown PegiiApiError);
 // an unknown order id is a 404 (the gateway null-maps the upstream 404).
+//
+// `?shape=native` returns the RAW serialized pegII payload (`{Id, Survey,
+// InvolvedParties, …}`) instead of the projected OrderRecord — the shape a
+// partner posts to the ingress, so it can feed a published integration's
+// `map_from_external` to dry-run the mapping against a real order id
+// (sdk-feedback 0029). Same `ReadOrder` gate. Any other `shape` value is a 400.
 pegiiRuntimeHandler.get('/orders/:orderId', requirePermission(Actions.ReadOrder), async (c) => {
   const tenantId = c.get('tenantId')
   const orderId = c.req.param('orderId') ?? ''
+  const shape = c.req.query('shape')
+
+  if (shape !== undefined && shape !== 'native') {
+    return c.json({ error: "shape must be 'native' when provided", code: 'INVALID_SHAPE' }, 400)
+  }
 
   const gateway = await resolveOrderGateway(c.get('db'), tenantId)
+
+  if (shape === 'native') {
+    const native = await gateway.findOrderNativeById(orderId)
+    if (native == null) {
+      return c.json({ error: 'Order not found', code: 'NOT_FOUND' }, 404)
+    }
+    logger.info('pegII order fetched (native)', { orderId, tenantId })
+    return c.json({ data: native })
+  }
+
   const order = await gateway.findOrderById(orderId)
   if (!order) {
     return c.json({ error: 'Order not found', code: 'NOT_FOUND' }, 404)
