@@ -19,6 +19,8 @@
 
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
+import { z } from 'zod'
+import type { TariffFuelSurcharge } from '@prisma/client'
 import type { AdminEnv } from '../../types'
 import { db } from '../../db'
 import { Tariff400ngImportSchema } from '../../rating/import-schema'
@@ -28,6 +30,8 @@ import {
   getTariffVersionById,
   importTariff400ng,
   activateTariffVersion,
+  upsertTariffFuelSurcharge,
+  listTariffFuelSurcharges,
 } from '../../repositories'
 
 export const adminTariffsRouter = new Hono<AdminEnv>()
@@ -38,6 +42,55 @@ adminTariffsRouter.get('/', async (c) => {
   const versions = await listTariffVersions(db, tariffCode)
   return c.json({ data: versions.map(mapVersionSummary) })
 })
+
+// ── Fuel surcharge (Item 16) — registered before /:id so "fsc" is not parsed
+//    as a version id. The percentage is derived server-side from the diesel
+//    price; the caller only ever supplies a price. ────────────────────────────
+
+function mapFsc(f: TariffFuelSurcharge) {
+  return {
+    id: f.id,
+    tariffCode: f.tariffCode,
+    effectiveFrom: f.effectiveFrom,
+    percentBps: f.percentBps,
+    dieselPriceCentsPerGallon: f.dieselPriceCentsPerGallon,
+    source: f.source,
+  }
+}
+
+const FscBody = z.object({
+  tariffCode: z.literal('400NG').optional().default('400NG'),
+  dieselPriceCentsPerGallon: z.number().int().positive(),
+  effectiveFrom: z.string().datetime(),
+})
+
+// GET /api/admin/tariffs/fsc[?tariffCode=400NG] — fuel-surcharge rows, newest first.
+adminTariffsRouter.get('/fsc', async (c) => {
+  const tariffCode = c.req.query('tariffCode') ?? '400NG'
+  const rows = await listTariffFuelSurcharges(db, tariffCode)
+  return c.json({ data: rows.map(mapFsc) })
+})
+
+// POST /api/admin/tariffs/fsc — set the fuel surcharge for an effective date from
+// a diesel price. Upserts by (tariffCode, effectiveFrom); percentBps is computed.
+adminTariffsRouter.post(
+  '/fsc',
+  validator('json', (value, c) => {
+    const r = FscBody.safeParse(value)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => {
+    const body = c.req.valid('json')
+    const row = await upsertTariffFuelSurcharge(db, {
+      tariffCode: body.tariffCode,
+      effectiveFrom: new Date(body.effectiveFrom),
+      dieselPriceCentsPerGallon: body.dieselPriceCentsPerGallon,
+      source: 'MANUAL',
+    })
+    return c.json({ data: mapFsc(row) })
+  },
+)
 
 // GET /api/admin/tariffs/:id — a single version with its row counts.
 adminTariffsRouter.get('/:id', async (c) => {

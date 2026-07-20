@@ -21,6 +21,8 @@ const { mockRepo } = vi.hoisted(() => ({
     getTariffVersionById: vi.fn(),
     importTariff400ng: vi.fn(),
     activateTariffVersion: vi.fn(),
+    upsertTariffFuelSurcharge: vi.fn(),
+    listTariffFuelSurcharges: vi.fn(),
   },
 }))
 
@@ -203,6 +205,67 @@ describe('admin tariffs handler', () => {
       expect(res.status).toBe(200)
       expect((await json(res)).data).toEqual({ id: 'tv-1', status: 'ACTIVE' })
       expect(mockRepo.activateTariffVersion).toHaveBeenCalledWith(expect.anything(), 'tv-1')
+    })
+  })
+
+  describe('GET /tariffs/fsc', () => {
+    it('lists fuel-surcharge rows (and is not shadowed by the /:id route)', async () => {
+      mockRepo.listTariffFuelSurcharges.mockResolvedValue([
+        {
+          id: 'fsc-1',
+          tariffCode: '400NG',
+          effectiveFrom: new Date('2026-05-15T00:00:00.000Z'),
+          percentBps: 500,
+          dieselPriceCentsPerGallon: 415,
+          source: 'MANUAL',
+        },
+      ])
+      const res = await buildApp().request('/tariffs/fsc')
+      expect(res.status).toBe(200)
+      const data = (await json(res)).data as JsonBody[]
+      expect(data[0]!['percentBps']).toBe(500)
+      // The version-by-id handler must not have handled this (fsc != an id lookup).
+      expect(mockRepo.getTariffVersionById).not.toHaveBeenCalled()
+      expect(mockRepo.listTariffFuelSurcharges).toHaveBeenCalledWith(expect.anything(), '400NG')
+    })
+  })
+
+  describe('POST /tariffs/fsc', () => {
+    it('upserts from a diesel price (percent is computed server-side) and returns the row', async () => {
+      mockRepo.upsertTariffFuelSurcharge.mockResolvedValue({
+        id: 'fsc-1',
+        tariffCode: '400NG',
+        effectiveFrom: new Date('2026-05-15T00:00:00.000Z'),
+        percentBps: 500,
+        dieselPriceCentsPerGallon: 415,
+        source: 'MANUAL',
+      })
+      const res = await postJson(buildApp(), '/tariffs/fsc', {
+        dieselPriceCentsPerGallon: 415,
+        effectiveFrom: '2026-05-15T00:00:00.000Z',
+      })
+      expect(res.status).toBe(200)
+      expect((await json(res)).data).toMatchObject({ percentBps: 500, source: 'MANUAL' })
+      expect(mockRepo.upsertTariffFuelSurcharge).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          tariffCode: '400NG',
+          dieselPriceCentsPerGallon: 415,
+          source: 'MANUAL',
+        }),
+      )
+      // The caller never supplies a percentage — the handler must not accept one.
+      const call = mockRepo.upsertTariffFuelSurcharge.mock.calls[0]![1] as Record<string, unknown>
+      expect('percentBps' in call).toBe(false)
+    })
+
+    it('rejects a missing diesel price with 400', async () => {
+      const res = await postJson(buildApp(), '/tariffs/fsc', {
+        effectiveFrom: '2026-05-15T00:00:00.000Z',
+      })
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+      expect(mockRepo.upsertTariffFuelSurcharge).not.toHaveBeenCalled()
     })
   })
 })
