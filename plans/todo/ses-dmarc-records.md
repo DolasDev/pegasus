@@ -41,7 +41,7 @@ v=DMARC1; p=none; rua=mailto:dmarc-reports@pegasus[.qa].dolas.dev; adkim=s; aspf
 - `p=none` — receivers report but don't quarantine, so a misconfiguration
   doesn't immediately bury invites in spam folders.
 - `rua=mailto:dmarc-reports@<sending-domain>` — same-domain reporting address
-  bypasses RFC 7489 §7.1's cross-domain authorisation TXT requirement. We
+  bypasses RFC 7489 §7.1's cross-domain authorization TXT requirement. We
   don't need a real mailbox; aggregator services (dmarcian, Postmark DMARC,
   EasyDMARC free tier) provide an address and a parsing UI. Choose one before
   landing the record — `admin@dolas.dev` would work too but cross-domain

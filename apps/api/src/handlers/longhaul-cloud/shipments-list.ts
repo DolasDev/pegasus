@@ -11,7 +11,7 @@
 // (handlers/longhaul/shipments.ts) + repository
 // (repositories/longhaul/shipments.repository.ts):
 //   - base query against v_longhaul_shipments_v2 with the same LEFT JOINs,
-//     searchTerm behaviour, filter set, ordering, and 1001-row base cap;
+//     searchTerm behavior, filter set, ordering, and 1001-row base cap;
 //   - per-row JS enrichment: getTripInfo trip-info merge, the post-fetch
 //     TripStatus_id filter, buildShipmentActivities (required PACK/LOAD-or-R19O/
 //     RDEL templates), buildExtraShipmentActivities (optional extras);
@@ -23,7 +23,7 @@
 // This handler collapses that into 3 — and runs trips 2 + 3 concurrently:
 //   1. base shipments query;
 //   2. ONE combined enrichment query — activities + coverage + activity-types
-//      catalogue UNION ALL'd into a single recordset tagged with `__src`;
+//      catalog UNION ALL'd into a single recordset tagged with `__src`;
 //   3. extra_locations (kept separate because the table may not exist on every
 //      tenant — it is soft-failed exactly as on-prem does).
 // ---------------------------------------------------------------------------
@@ -260,7 +260,7 @@ function buildBaseSql(query: ShipmentQuery, bag: ParamBag, importExportTypes: st
 // Combined enrichment query — collapses the on-prem activities + coverage +
 // activity-types fan-out (3 separate round trips) into ONE UNION ALL recordset.
 // Each row carries a `__src` discriminator: 'activity' | 'coverage' | 'type'.
-// All payload columns are JSON-serialised into `__payload` so heterogeneous
+// All payload columns are JSON-serialized into `__payload` so heterogeneous
 // shapes coexist in one result set.
 // ---------------------------------------------------------------------------
 

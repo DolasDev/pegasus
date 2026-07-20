@@ -59,7 +59,7 @@ const UpdateEventBody = z.object({
 })
 
 // ---------------------------------------------------------------------------
-// Response serialiser
+// Response serializer
 // ---------------------------------------------------------------------------
 
 function toResponse(row: PegasusEventRow) {

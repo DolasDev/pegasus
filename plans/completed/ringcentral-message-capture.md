@@ -285,7 +285,7 @@ New `messaging-stack.ts` (or extend `api-stack.ts`):
 2. ~~Connection model~~ → **Per-tenant 3-legged OAuth** against one platform RC app.
 3. ~~Latency~~ → **Near-real-time; webhooks primary**, sync demoted to safety net.
 
-**Resolved (2026-06-08, round 2):** 4. ~~On-prem engine~~ → **existing SQL Server via mssql-executor** (T-SQL `MERGE`). 5. ~~Scope~~ → **SMS only**; multiple numbers per connection allowed. 6. ~~Buffer retention~~ → **body purged 72h after SENT; tombstone 30 days** (best-judgement default; tunable). 7. ~~Backfill~~ → **thread FSync + 90-day v1.0 window on first connect** (configurable, capped).
+**Resolved (2026-06-08, round 2):** 4. ~~On-prem engine~~ → **existing SQL Server via mssql-executor** (T-SQL `MERGE`). 5. ~~Scope~~ → **SMS only**; multiple numbers per connection allowed. 6. ~~Buffer retention~~ → **body purged 72h after SENT; tombstone 30 days** (best-judgment default; tunable). 7. ~~Backfill~~ → **thread FSync + 90-day v1.0 window on first connect** (configurable, capped).
 
 **Still open (nice-to-have, none block Phase 0):** 8. Confirm every tenant that will enable RC capture already has a healthy WireGuard overlay + working `Tenant.mssqlConnectionString` (mssql-executor reachability is a prerequisite for Phase 3). 9. Who runs the on-prem `dbo.inbound_messages` DDL — DBA-applied script vs auto-ensure on first write? 10. Any compliance constraint on SMS bodies transiting/buffering in AWS at all (could tighten the 72h to "purge on SENT").
 

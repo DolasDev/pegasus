@@ -9,7 +9,7 @@
 //
 // Fail-loud: if any tenant fails to reconcile, the handler throws and the
 // Trigger fails the CFN deploy. A stale tenant policy store is a quiet
-// authorisation outage — better to block the deploy and force a human to
+// authorization outage — better to block the deploy and force a human to
 // look than to ship green and discover the broken tenant in pager traffic.
 // ---------------------------------------------------------------------------
 

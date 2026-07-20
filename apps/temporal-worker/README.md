@@ -63,7 +63,7 @@ The repo-root `docker-compose.temporal.yml` is the one-stop local setup:
 # Worker + Temporal dev server together (Phase 2 Unit 5 onwards):
 docker compose -f docker-compose.temporal.yml up
 
-# Or, SDK-only (Phase 1 behaviour, no worker — for `pegasus-workflows test`):
+# Or, SDK-only (Phase 1 behavior, no worker — for `pegasus-workflows test`):
 docker compose -f docker-compose.temporal.yml up temporal
 ```
 
@@ -102,15 +102,15 @@ registration shape.
 
 ## Environment variables
 
-| Var                       | Required? | What it is |
-| ------------------------- | --------- | ---------- |
-| `TEMPORAL_NAMESPACE`      | yes       | Cloud namespace (`pegasus-staging` / `pegasus-prod`) or `default` for local. |
-| `TEMPORAL_ADDRESS`        | yes       | Temporal gRPC host:port. `pegasus-<env>.chgel.tmprl.cloud:7233` in prod-tier envs. |
-| `TEMPORAL_TASK_QUEUE`     | yes       | Task queue the worker polls (`pegasus-stdlib-<env>`). |
-| `PEGASUS_API_BASE_URL`    | yes       | Base URL for broker + status-sync calls. CloudFront-fronted API URL in staging/prod. |
-| `ENV_NAME`                | yes       | `dev` / `staging` / `prod`. Used only for log tagging + Temporal client identity. |
-| `TEMPORAL_CLOUD_API_KEY`  | no        | Temporal Cloud JWT. Empty (or unset) means "local Temporal dev server, no auth, no TLS". |
-| `WORKFLOW_BROKER_SECRET`  | no        | Shared secret in the `X-Workflow-Broker-Secret` header. Required for any non-local broker call; failures here raise at the call site. |
+| Var                      | Required? | What it is                                                                                                                            |
+| ------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `TEMPORAL_NAMESPACE`     | yes       | Cloud namespace (`pegasus-staging` / `pegasus-prod`) or `default` for local.                                                          |
+| `TEMPORAL_ADDRESS`       | yes       | Temporal gRPC host:port. `pegasus-<env>.chgel.tmprl.cloud:7233` in prod-tier envs.                                                    |
+| `TEMPORAL_TASK_QUEUE`    | yes       | Task queue the worker polls (`pegasus-stdlib-<env>`).                                                                                 |
+| `PEGASUS_API_BASE_URL`   | yes       | Base URL for broker + status-sync calls. CloudFront-fronted API URL in staging/prod.                                                  |
+| `ENV_NAME`               | yes       | `dev` / `staging` / `prod`. Used only for log tagging + Temporal client identity.                                                     |
+| `TEMPORAL_CLOUD_API_KEY` | no        | Temporal Cloud JWT. Empty (or unset) means "local Temporal dev server, no auth, no TLS".                                              |
+| `WORKFLOW_BROKER_SECRET` | no        | Shared secret in the `X-Workflow-Broker-Secret` header. Required for any non-local broker call; failures here raise at the call site. |
 
 The infra-side source of truth is `packages/infra/lib/stacks/temporal-worker-stack.ts`
 — that stack injects every var above into the Fargate task. The worker's

@@ -86,7 +86,7 @@ Always `200` when validation ran, regardless of pass/fail:
     {
       "ruleId": "service-status-not-supplier-settable",
       "field": "serviceStatus", // the order field the issue maps to
-      "message": "The supplier cannot change the Service Status to Requested, Awarded, Cancelled, or Declined…",
+      "message": "The supplier cannot change the Service Status to Requested, Awarded, Canceled, or Declined…",
       "kind": "behavioral", // or "structural" (bad shape)
       "severity": "error",
     },
@@ -112,7 +112,7 @@ These reproduce the live Demo Partner network rejections, one-for-one. Source:
 
 | `ruleId`                                        | Fires when                                                                     | `field`                |
 | ----------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------- |
-| `service-status-not-supplier-settable`          | `serviceStatus` is set to Requested, Awarded, Cancelled, or Declined           | `serviceStatus`        |
+| `service-status-not-supplier-settable`          | `serviceStatus` is set to Requested, Awarded, Canceled, or Declined            | `serviceStatus`        |
 | `invalid-supplier-email`                        | the supplier contact email is malformed                                        | `supplierContactEmail` |
 | `submit-requires-supplier-contact`              | `serviceStatus` = Submitted with no supplier contact                           | `supplierContactName`  |
 | `submit-requires-contact-made-date`             | `serviceStatus` = Submitted with no contact-made date                          | `contactMadeDate`      |
@@ -125,7 +125,7 @@ These reproduce the live Demo Partner network rejections, one-for-one. Source:
 `ruleId: "structural-contract"` and a `field` pointing at the offending path.
 
 > **Still deferred** (no field on the HHG payload): "In Progress requires Awarded
-> by WMN", Move On-Hold/Closed/Cancelled lock (an Auto-order concept), and
+> by WMN", Move On-Hold/Closed/Canceled lock (an Auto-order concept), and
 > storage-service close (a separate LTS Order payload).
 
 ## How a client should integrate

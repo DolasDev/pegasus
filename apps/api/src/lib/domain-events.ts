@@ -33,12 +33,12 @@ export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number]
  * DOMAIN_EVENT_TYPES platform taxonomy above — they are not emitted by Pegasus
  * domain writes, they're ingested from on-prem.
  *
- * Each name is the lowercased pegII catalogue DetailType under the `pegii.`
+ * Each name is the lowercased pegII catalog DetailType under the `pegii.`
  * namespace (Shipment.Opened → pegii.shipment.opened). This list MUST stay in
- * sync with the mapper's deriveEventType output as the catalogue grows; the
+ * sync with the mapper's deriveEventType output as the catalog grows; the
  * `pegii.` prefix is reserved (see handlers/event-types.ts) so a tenant can't
- * register a colliding custom event. Catalogue source of truth:
- * GET /api/v1/pegii/events/catalogue.
+ * register a colliding custom event. Catalog source of truth:
+ * GET /api/v1/pegii/events/catalog.
  */
 export const INTEGRATION_EVENT_TYPES = [
   'pegii.shipment.opened',

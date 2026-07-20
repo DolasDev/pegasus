@@ -68,7 +68,7 @@ export interface ParsedCsv {
   /** Column display names — real header row when hasHeaders=true, else
    *  `col1`, `col2`, … matching the file's widest row. */
   columns: string[]
-  /** Data rows, normalised to `columns.length` (short rows padded with ''). */
+  /** Data rows, normalized to `columns.length` (short rows padded with ''). */
   rows: string[][]
 }
 
@@ -183,7 +183,7 @@ function coerce(raw: string, kind: TargetDef['kind']): string | number | boolean
     case 'string':
       return raw
     case 'date': {
-      // Accept ISO YYYY-MM-DD as-is; otherwise try Date parse and normalise.
+      // Accept ISO YYYY-MM-DD as-is; otherwise try Date parse and normalize.
       if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
       const d = new Date(raw)
       if (isNaN(d.getTime())) return null

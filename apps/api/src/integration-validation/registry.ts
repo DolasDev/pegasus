@@ -61,7 +61,7 @@ const BUILTIN_OVERLAYS: Record<string, IntegrationOverlay> = {
 
 // ── Composition: floor ⊕ overlay → resolved IntegrationDefinition ───────────
 
-/** Normalised overlay parts (built-in or DB-derived) ready to compose onto a floor. */
+/** Normalized overlay parts (built-in or DB-derived) ready to compose onto a floor. */
 interface OverlayParts {
   id: string
   displayName: string
@@ -316,7 +316,7 @@ export function getGateBase(
 
 /**
  * Resolve the definition that governs RUNTIME validation for a caller in a given
- * tenant scope. Honours tenant-over-GLOBAL-over-built-in precedence
+ * tenant scope. Honors tenant-over-GLOBAL-over-built-in precedence
  * (`findActiveForScope`): a tenant's own published config wins, else the GLOBAL
  * platform config, else the built-in baseline. So a TENANT-scoped config actually
  * changes what that tenant's orders are validated against — it is not display-only.

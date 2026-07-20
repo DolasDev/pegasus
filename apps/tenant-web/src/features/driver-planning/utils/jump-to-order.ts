@@ -6,7 +6,7 @@
 // the running WinForms app to open an order. A browser SPA can't do that; the
 // equivalent is a custom URI scheme that Windows routes to the registered
 // desktop app (works for both classic and MSIX installs). The desktop app
-// registers the scheme and authorises the id — see the handoff in the plan.
+// registers the scheme and authorizes the id — see the handoff in the plan.
 //
 // The browser gives no success/failure callback for a protocol launch, so the
 // flow is optimistic: show success, navigate, then a neutral "didn't open?"

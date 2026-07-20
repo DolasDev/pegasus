@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Email normalisation — shared by every login boundary (tenant-web + mobile).
+// Email normalization — shared by every login boundary (tenant-web + mobile).
 //
 // Cognito usernames/aliases are case-sensitive, and the backend stores and
 // looks up users by their lower-cased email. Any email the user types must be

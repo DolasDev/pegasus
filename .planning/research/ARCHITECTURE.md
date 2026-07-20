@@ -35,7 +35,7 @@ The UI never touches the API directly. `AuthContext` never calls Cognito directl
 | `AuthContext.tsx`   | Owns session state; exposes typed action methods; persists session to AsyncStorage on write; rehydrates on mount                                                          | `authService.*`                   | All app screens via `useAuth()`                                   |
 | `authService.ts`    | Stateless coordinator; executes the full login sequence; returns typed results                                                                                            | `apiClient.*`, `cognitoService.*` | `AuthContext` only                                                |
 | `cognitoService.ts` | Wraps `amazon-cognito-identity-js`; constructs `CognitoUserPool` + `CognitoUser` from runtime config; performs `authenticateUser` SRP challenge; returns `idToken` string | `amazon-cognito-identity-js`      | `authService` only                                                |
-| `apiClient.ts`      | Typed fetch wrapper; knows base URL; adds `x-correlation-id`; deserialises `{ data }` and `{ error, code }` shapes                                                        | `fetch`                           | `authService` only (during auth), rest of app for protected calls |
+| `apiClient.ts`      | Typed fetch wrapper; knows base URL; adds `x-correlation-id`; deserializes `{ data }` and `{ error, code }` shapes                                                        | `fetch`                           | `authService` only (during auth), rest of app for protected calls |
 
 **Rule:** `cognitoService` must never be imported outside `authService`. `authService` must never be imported outside `AuthContext`. This keeps the entire auth flow testable at every boundary with simple mocks.
 
@@ -316,7 +316,7 @@ The `idToken` returned by Cognito SRP is also never stored — it is passed imme
 | Token refresh           | Out of scope (session expires, user re-logins)       | Add silent `cognitoService.refreshTokens()` using stored refresh token; extend `Session` with `refreshToken` field |
 | Biometric re-auth       | Out of scope                                         | Store refresh token in Expo SecureStore (not AsyncStorage) behind biometric prompt                                 |
 | Multiple active tenants | Not in mobile scope (drivers belong to one employer) | If needed, `Session` becomes an array; route guard checks active session                                           |
-| Offline behaviour       | No change from current                               | Auth guard must tolerate no network; check stored session first                                                    |
+| Offline behavior        | No change from current                               | Auth guard must tolerate no network; check stored session first                                                    |
 
 ---
 

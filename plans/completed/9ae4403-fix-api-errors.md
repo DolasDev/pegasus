@@ -11,7 +11,7 @@
 - [x] Fix URL prefix in `packages/web/src/api/queries/quotes.ts`
 - [x] Fix URL prefix in `packages/web/src/api/queries/inventory.ts`
 - [x] Remove premature RBAC check from `packages/api/src/handlers/sso.ts`
-- [x] Update sso.test.ts to reflect new expected behaviour
+- [x] Update sso.test.ts to reflect new expected behavior
 - [x] Run full test suite — domain/api/web/admin all pass; infra failures are pre-existing (confirmed baseline)
 
 ## Files Modified

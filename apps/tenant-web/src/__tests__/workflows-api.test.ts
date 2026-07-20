@@ -68,7 +68,7 @@ describe('workflows execution API', () => {
     )
   })
 
-  it('listExecutions normalises meta to only count + limit', async () => {
+  it('listExecutions normalizes meta to only count + limit', async () => {
     // The shared client types meta as the superset PaginationMeta; the
     // executions endpoint only populates count + limit.
     mockApiFetchPaginated.mockResolvedValueOnce({

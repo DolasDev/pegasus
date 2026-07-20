@@ -55,7 +55,7 @@ function toDto(row: PeerRow) {
     publicKey: row.publicKey,
     status: row.status,
     lastHandshakeAt: row.lastHandshakeAt?.toISOString() ?? null,
-    // BigInt → string so the response JSON-serialises safely.
+    // BigInt → string so the response JSON-serializes safely.
     rxBytes: row.rxBytes.toString(),
     txBytes: row.txBytes.toString(),
     createdAt: row.createdAt.toISOString(),

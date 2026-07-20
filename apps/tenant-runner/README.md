@@ -19,7 +19,7 @@ hostile until proven otherwise**, and even then it only ever runs:
   never argv or exec-time env), which grants the same read-mostly
   `workflow_runtime` role the tenant already holds;
 - after the downloaded zip's **sha256 matched the digest recorded at
-  finalize** (`artifactSha256`) — the TOCTOU defence against the artifact
+  finalize** (`artifactSha256`) — the TOCTOU defense against the artifact
   being re-uploaded through the still-valid presigned PUT URL after
   validation;
 - inside a per-workflow directory + `--without-pip` venv (there is no
@@ -41,7 +41,7 @@ one move — tenant code can no longer scrape `WORKFLOW_BROKER_TOKEN` (or,
 post-Unit-9, the namespace-scoped `TEMPORAL_CLOUD_API_KEY`) out of the
 shim. Children are unaffected (dumpable resets on `execve`). If hardening
 fails on Linux the runner refuses to start (exit 1). **Residual risk** that
-this does *not* cover: the shared-kernel boundary — a kernel exploit
+this does _not_ cover: the shared-kernel boundary — a kernel exploit
 escaping the process model is out of the shim's reach and is owned by the
 ECS task / image hardening layer.
 

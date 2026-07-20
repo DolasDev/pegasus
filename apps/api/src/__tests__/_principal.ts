@@ -4,7 +4,7 @@
 // Handler tests historically did `c.set('role', 'tenant_admin')` on a fake
 // middleware. With the Cedar/AVP migration, handlers go through
 // `requirePermission`, which reads `principal`, `idToken`, and
-// `policyStoreId`. This helper centralises the seeding so individual test
+// `policyStoreId`. This helper centralizes the seeding so individual test
 // files don't drift on the shape.
 //
 // Set AUTHZ_OFFLINE=true in the test environment (vitest setupFiles or

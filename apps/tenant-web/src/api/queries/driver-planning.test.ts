@@ -187,7 +187,7 @@ describe('useUpdateConfirmedAvailability', () => {
     expect(result.current.data).toEqual({ success: true })
   })
 
-  it('serialises null fields in the body', async () => {
+  it('serializes null fields in the body', async () => {
     mockedApiFetch.mockResolvedValueOnce({ success: true })
 
     const { Wrapper } = makeWrapper()

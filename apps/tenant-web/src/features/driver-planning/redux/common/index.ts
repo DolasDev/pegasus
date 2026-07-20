@@ -83,7 +83,7 @@ export const {
 
 // All reference-data thunks log their error AND re-throw so the AppGuard
 // bootstrap loop can collect every failure and surface them together. Before,
-// only fetchDrivers signalled failure (via the `error` slice) while the rest
+// only fetchDrivers signaled failure (via the `error` slice) while the rest
 // swallowed silently — so a single misleading "Failed to fetch drivers" toast
 // hid the fact that zones/states/trip-statuses were all failing too.
 export const fetchDrivers = () => async (dispatch: AppDispatch) => {

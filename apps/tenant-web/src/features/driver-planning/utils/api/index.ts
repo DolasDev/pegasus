@@ -31,7 +31,7 @@ export const API = {
   cancelTrip: async (tripId: string) => {
     try {
       await fetchHelper('cancelTrip', tripId)
-      notifySuccess('Trip Cancelled')
+      notifySuccess('Trip Canceled')
     } catch (e) {
       console.log(e)
       notifyError((e as any).message)

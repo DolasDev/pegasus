@@ -93,7 +93,7 @@ bogus user pool. Silent failure, not a build error.
 
 ### The pipeline already produces the right values
 
-`.github/workflows/_deploy.yml` ("Summarise outputs" step) reads the CDK
+`.github/workflows/_deploy.yml` ("Summarize outputs" step) reads the CDK
 stack outputs after every successful staging/prod deploy and writes
 `artifacts/mobile.env.deploy`:
 
@@ -138,7 +138,7 @@ generated env. Nothing to change in `cognito-stack.ts`.
 
 ### Part 1 — Fix the artifact's API URL (`_deploy.yml`)
 
-In the "Summarise outputs" step, set `EXPO_PUBLIC_API_URL` to the branded
+In the "Summarize outputs" step, set `EXPO_PUBLIC_API_URL` to the branded
 domain instead of the `ApiUrl` output. The branded domain is published by
 dolas-infra into each Pegasus account as the SSM parameter
 `/dolas/pegasus/api/domain-name`; the deploy job already holds AWS

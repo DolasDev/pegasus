@@ -28,7 +28,7 @@
 // SECURITY: the API performs an outbound call to a tenant-configured URL — an
 // SSRF surface. `assertDeliverableUrl` (shared with deliver-to-external) rejects
 // non-http(s) schemes and loopback/private/link-local hosts. Baseline guard, not
-// full SSRF hardening (no DNS-rebinding defence).
+// full SSRF hardening (no DNS-rebinding defense).
 //
 // Failure modes:
 //   400 VALIDATION_ERROR — bad body, or a disallowed resolved URL

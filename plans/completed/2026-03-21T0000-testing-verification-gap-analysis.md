@@ -13,47 +13,47 @@ Pegasus is a multi-tenant move management SaaS replacing a legacy VB.NET WinForm
 
 ## Section 1 — Current State Inventory
 
-| Capability | Status | Evidence | Confidence |
-|---|---|---|---|
-| Unit tests (domain) | **Partial** | 2 test files (~455+154 lines). Covers money, address, dispatch, quoting, billing, customer, inventory, schedule, DomainError. Missing: exhaustive state machine matrix, edge cases. | High |
-| Unit tests (API handlers) | **Present** | 24+ handler/middleware test files. Missing: `admin/tenants.ts`, `admin/audit.ts`, `admin/cognito.ts` | High |
-| Integration tests (repositories) | **Present** | 7 repository test files + 4 Pegii bridge tests. Skip-guarded for no-DB environments. | High |
-| E2E tests (API + browser) | **Present** | 5 Playwright specs: health, customers, moves, quotes, browser/landing. | High |
-| Infrastructure tests (CDK) | **Present** | 6 CDK assertion test files (fine-grained, not just snapshots). | High |
-| Frontend tests (web) | **Present** | 14 test files — components, auth flows, PKCE, session, API client. | High |
-| Frontend tests (admin) | **Present** | 5 test files — TenantFormDialog, TenantUsersSection, cognito, API client. | High |
-| Static analysis (ESLint) | **Present** | `@typescript-eslint/no-explicit-any: error`, lint-staged pre-commit. | High |
-| Type safety (TypeScript) | **Present** | Strict mode + `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess` across domain/api. | High |
-| Code formatting | **Present** | Prettier + lint-staged + Husky v9 pre-commit hooks. | High |
-| Multi-tenant isolation (runtime) | **Present** | `createTenantDb` Prisma extension auto-scopes 12 models. Defence-in-depth: repos also pass tenantId. | High |
-| Multi-tenant isolation (tests) | **Missing** | Tenant middleware unit-tested. No integration test proving cross-tenant data isolation. | High |
-| CI/CD pipeline | **Missing** | No `.github/workflows/`, no CI config anywhere. Manual deployment via `deploy.sh`. | High |
-| Coverage reporting | **Missing** | `@vitest/coverage-v8` installed (web, admin) but unconfigured. No thresholds. | High |
-| Dependency scanning | **Missing** | No Dependabot, Renovate, or Snyk. | High |
-| Secret scanning | **Partial** | `.gitignore` covers `.env` but no Gitleaks or pre-commit secret scanner. | High |
-| Env var validation | **Missing** | `process.env['X']` with `?? ''` fallbacks. No Zod startup validation. | High |
-| Mutation testing | **Missing** | No Stryker or similar. | High |
-| Property-based testing | **Missing** | No fast-check or similar. | High |
-| Fuzz testing | **Partial** | SQL injection tests exist for Pegii bridge. No general fuzz framework. | High |
-| Load/performance testing | **Missing** | No k6, Artillery, or similar. | High |
-| API contract testing | **Missing** | Zod validates inputs but no OpenAPI spec or consumer-driven contracts. | High |
-| CloudWatch alarms/dashboards | **Missing** | CDK stacks define Lambda + API GW + LogGroups but no alarms or dashboards. | High |
-| Observability (logging/tracing) | **Present** | `@aws-lambda-powertools/logger`, correlation middleware, structured error handling. | High |
-| Flaky test detection | **Missing** | Playwright retries once in CI but no tracking/reporting. | High |
-| Test runtime monitoring | **Missing** | No tracking of suite duration over time. | High |
+| Capability                       | Status      | Evidence                                                                                                                                                                            | Confidence |
+| -------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Unit tests (domain)              | **Partial** | 2 test files (~455+154 lines). Covers money, address, dispatch, quoting, billing, customer, inventory, schedule, DomainError. Missing: exhaustive state machine matrix, edge cases. | High       |
+| Unit tests (API handlers)        | **Present** | 24+ handler/middleware test files. Missing: `admin/tenants.ts`, `admin/audit.ts`, `admin/cognito.ts`                                                                                | High       |
+| Integration tests (repositories) | **Present** | 7 repository test files + 4 Pegii bridge tests. Skip-guarded for no-DB environments.                                                                                                | High       |
+| E2E tests (API + browser)        | **Present** | 5 Playwright specs: health, customers, moves, quotes, browser/landing.                                                                                                              | High       |
+| Infrastructure tests (CDK)       | **Present** | 6 CDK assertion test files (fine-grained, not just snapshots).                                                                                                                      | High       |
+| Frontend tests (web)             | **Present** | 14 test files — components, auth flows, PKCE, session, API client.                                                                                                                  | High       |
+| Frontend tests (admin)           | **Present** | 5 test files — TenantFormDialog, TenantUsersSection, cognito, API client.                                                                                                           | High       |
+| Static analysis (ESLint)         | **Present** | `@typescript-eslint/no-explicit-any: error`, lint-staged pre-commit.                                                                                                                | High       |
+| Type safety (TypeScript)         | **Present** | Strict mode + `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess` across domain/api.                                                                                          | High       |
+| Code formatting                  | **Present** | Prettier + lint-staged + Husky v9 pre-commit hooks.                                                                                                                                 | High       |
+| Multi-tenant isolation (runtime) | **Present** | `createTenantDb` Prisma extension auto-scopes 12 models. Defense-in-depth: repos also pass tenantId.                                                                                | High       |
+| Multi-tenant isolation (tests)   | **Missing** | Tenant middleware unit-tested. No integration test proving cross-tenant data isolation.                                                                                             | High       |
+| CI/CD pipeline                   | **Missing** | No `.github/workflows/`, no CI config anywhere. Manual deployment via `deploy.sh`.                                                                                                  | High       |
+| Coverage reporting               | **Missing** | `@vitest/coverage-v8` installed (web, admin) but unconfigured. No thresholds.                                                                                                       | High       |
+| Dependency scanning              | **Missing** | No Dependabot, Renovate, or Snyk.                                                                                                                                                   | High       |
+| Secret scanning                  | **Partial** | `.gitignore` covers `.env` but no Gitleaks or pre-commit secret scanner.                                                                                                            | High       |
+| Env var validation               | **Missing** | `process.env['X']` with `?? ''` fallbacks. No Zod startup validation.                                                                                                               | High       |
+| Mutation testing                 | **Missing** | No Stryker or similar.                                                                                                                                                              | High       |
+| Property-based testing           | **Missing** | No fast-check or similar.                                                                                                                                                           | High       |
+| Fuzz testing                     | **Partial** | SQL injection tests exist for Pegii bridge. No general fuzz framework.                                                                                                              | High       |
+| Load/performance testing         | **Missing** | No k6, Artillery, or similar.                                                                                                                                                       | High       |
+| API contract testing             | **Missing** | Zod validates inputs but no OpenAPI spec or consumer-driven contracts.                                                                                                              | High       |
+| CloudWatch alarms/dashboards     | **Missing** | CDK stacks define Lambda + API GW + LogGroups but no alarms or dashboards.                                                                                                          | High       |
+| Observability (logging/tracing)  | **Present** | `@aws-lambda-powertools/logger`, correlation middleware, structured error handling.                                                                                                 | High       |
+| Flaky test detection             | **Missing** | Playwright retries once in CI but no tracking/reporting.                                                                                                                            | High       |
+| Test runtime monitoring          | **Missing** | No tracking of suite duration over time.                                                                                                                                            | High       |
 
 ---
 
 ## Section 2 — Risk Analysis
 
-| Risk | Impact | Likelihood | Severity | Rationale |
-|---|---|---|---|---|
-| Broken code deployed (no CI) | High | High | **Critical** | No automated gates. Developer can merge broken tests, type errors, or lint failures. |
-| Cross-tenant data leak | Critical | Low | **High** | Prisma extension untested at integration level. A new model omitted from `TENANT_SCOPED_MODELS` silently exposes data. |
-| Domain logic regression | High | Medium | **High** | Domain is "the heart of the system" but has limited test coverage. State machine tests cover 7 of 25 transitions. |
-| Vulnerable dependencies | Medium | High | **High** | No automated scanning. Prisma, Hono, jose, mssql all have active CVE streams. |
-| Env var misconfiguration | Medium | Medium | **Medium** | Missing `COGNITO_JWKS_URL` causes silent auth failure. No startup validation. |
-| Admin handler gaps | Medium | Medium | **Medium** | `tenants.ts`, `audit.ts`, `cognito.ts` have zero tests. Platform admin operations unprotected from regressions. |
+| Risk                         | Impact   | Likelihood | Severity     | Rationale                                                                                                              |
+| ---------------------------- | -------- | ---------- | ------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| Broken code deployed (no CI) | High     | High       | **Critical** | No automated gates. Developer can merge broken tests, type errors, or lint failures.                                   |
+| Cross-tenant data leak       | Critical | Low        | **High**     | Prisma extension untested at integration level. A new model omitted from `TENANT_SCOPED_MODELS` silently exposes data. |
+| Domain logic regression      | High     | Medium     | **High**     | Domain is "the heart of the system" but has limited test coverage. State machine tests cover 7 of 25 transitions.      |
+| Vulnerable dependencies      | Medium   | High       | **High**     | No automated scanning. Prisma, Hono, jose, mssql all have active CVE streams.                                          |
+| Env var misconfiguration     | Medium   | Medium     | **Medium**   | Missing `COGNITO_JWKS_URL` causes silent auth failure. No startup validation.                                          |
+| Admin handler gaps           | Medium   | Medium     | **Medium**   | `tenants.ts`, `audit.ts`, `cognito.ts` have zero tests. Platform admin operations unprotected from regressions.        |
 
 ---
 
@@ -62,6 +62,7 @@ Pegasus is a multi-tenant move management SaaS replacing a legacy VB.NET WinForm
 ### Phase 0 — Safety Baseline
 
 #### Task 0.1: GitHub Actions CI Pipeline
+
 - **Why:** Single highest-leverage improvement. Nothing currently prevents broken code from being deployed.
 - **Impact:** Every PR gets typecheck + lint + test + E2E gates.
 - **Complexity:** Medium
@@ -79,6 +80,7 @@ Pegasus is a multi-tenant move management SaaS replacing a legacy VB.NET WinForm
 - **Success criteria:** PR to `main` triggers all checks. Merge blocked on failure.
 
 #### Task 0.2: Vitest Coverage Configuration
+
 - **Why:** Cannot improve what you cannot measure.
 - **Impact:** Visibility into coverage gaps. Foundation for threshold enforcement.
 - **Complexity:** Low
@@ -92,6 +94,7 @@ Pegasus is a multi-tenant move management SaaS replacing a legacy VB.NET WinForm
 - **Success criteria:** `npm test -- --coverage` produces lcov reports across all packages.
 
 #### Task 0.3: Environment Variable Validation
+
 - **Why:** Missing env vars cause silent failures or runtime crashes.
 - **Impact:** Eliminates an entire class of deployment failures.
 - **Complexity:** Low
@@ -105,6 +108,7 @@ Pegasus is a multi-tenant move management SaaS replacing a legacy VB.NET WinForm
 ### Phase 1 — Test Reliability
 
 #### Task 1.1: Cross-Tenant Data Isolation Integration Tests
+
 - **Why:** `createTenantDb` is the primary data isolation mechanism. A regression leaking data across tenants is a critical business and legal risk.
 - **Impact:** Proves Tenant A cannot read/update/delete Tenant B's data through the Prisma extension.
 - **Complexity:** Medium
@@ -119,6 +123,7 @@ Pegasus is a multi-tenant move management SaaS replacing a legacy VB.NET WinForm
 - **Success criteria:** All 12 models proven isolated. Schema-sync test catches forgotten models.
 
 #### Task 1.2: Domain Package Test Expansion
+
 - **Why:** The domain is documented as "the heart of the system" with only 2 test files. The `canTransition` state machine tests 7 of 25 possible transitions.
 - **Impact:** Catches regressions in core business rules. Raises domain coverage to 90%+.
 - **Complexity:** Low-Medium (pure functions, no I/O)
@@ -131,6 +136,7 @@ Pegasus is a multi-tenant move management SaaS replacing a legacy VB.NET WinForm
 - **Success criteria:** Domain coverage exceeds 90% statements, 85% branches. All state machine transitions tested.
 
 #### Task 1.3: Admin Handler Unit Tests
+
 - **Why:** `tenants.ts`, `audit.ts`, `cognito.ts` admin handlers have zero tests.
 - **Impact:** Prevents regressions in platform admin operations (tenant provisioning, Cognito management).
 - **Complexity:** Low (follow existing handler test pattern from `tenant-users.test.ts`)
@@ -143,6 +149,7 @@ Pegasus is a multi-tenant move management SaaS replacing a legacy VB.NET WinForm
 ### Phase 2 — Test Quality
 
 #### Task 2.1: Property-Based Testing for Domain Value Objects
+
 - **Why:** Money, DateRange, and branded ID types are fundamental. Property-based tests discover edge cases humans miss (floating-point, extreme dates).
 - **Impact:** Catches subtle arithmetic bugs and boundary conditions.
 - **Complexity:** Low
@@ -151,6 +158,7 @@ Pegasus is a multi-tenant move management SaaS replacing a legacy VB.NET WinForm
 - **Success criteria:** Properties hold for 1000+ random inputs: addMoney commutativity, createMoney non-negative, dateRangesOverlap reflexivity.
 
 #### Task 2.2: Mutation Testing for Domain Package
+
 - **Why:** Passing tests ≠ strong tests. Mutation testing measures whether tests detect changes in business logic.
 - **Impact:** Identifies weak assertions. Typical first-run: 50-70%, target: 85%+.
 - **Complexity:** Medium
@@ -160,6 +168,7 @@ Pegasus is a multi-tenant move management SaaS replacing a legacy VB.NET WinForm
 - **Success criteria:** Mutation score above 80%. Runs on schedule (not per-PR due to runtime).
 
 #### Task 2.3: API Contract Documentation (OpenAPI)
+
 - **Why:** Zod validates inputs but no machine-readable API contract exists. Enables type-safe client generation and contract testing.
 - **Impact:** API documentation, Postman collections, future contract testing foundation.
 - **Complexity:** Medium
@@ -173,6 +182,7 @@ Pegasus is a multi-tenant move management SaaS replacing a legacy VB.NET WinForm
 ### Phase 3 — Advanced Verification
 
 #### Task 3.1: Dependency & Secret Scanning
+
 - **Why:** No automated scanning for vulnerable packages or leaked secrets.
 - **Impact:** Prevents deploying known-vulnerable dependencies. Catches accidental secret commits.
 - **Complexity:** Low
@@ -181,6 +191,7 @@ Pegasus is a multi-tenant move management SaaS replacing a legacy VB.NET WinForm
 - **Success criteria:** Dependabot opens PRs for vulnerable deps weekly. CI blocks on high-severity vulnerabilities.
 
 #### Task 3.2: CDK Monitoring Stack (Alarms + Dashboard)
+
 - **Why:** Infrastructure exists without operational monitoring. No alarms on Lambda errors, API GW 5xx.
 - **Impact:** Operational visibility. SNS alerting on production issues.
 - **Complexity:** Medium
@@ -189,6 +200,7 @@ Pegasus is a multi-tenant move management SaaS replacing a legacy VB.NET WinForm
 - **Success criteria:** CDK synth includes CloudWatch alarms (Lambda errors >5/min, API GW 5xx >1%, duration p99 >10s) and a dashboard.
 
 #### Task 3.3: Load Testing Baseline
+
 - **Why:** No performance baseline exists. Cold start latency on Lambda matters. Legacy bridges execute raw SQL.
 - **Impact:** Establishes baseline, identifies bottlenecks before production load.
 - **Complexity:** Medium
@@ -201,14 +213,14 @@ Pegasus is a multi-tenant move management SaaS replacing a legacy VB.NET WinForm
 
 ## Section 4 — Recommended Tooling
 
-| Tool | Purpose | Why Selected | Integration | CI Compatible |
-|---|---|---|---|---|
-| **GitHub Actions** | CI/CD | Native to GitHub, free, Postgres service containers built-in | Low | Yes |
-| **fast-check** | Property-based testing | Most popular JS PBT library, works natively with Vitest | Low | Yes |
-| **@stryker-mutator/core** + vitest-runner | Mutation testing | Only mature JS/TS mutation tool, has Vitest plugin | Medium | Yes (scheduled) |
-| **@hono/zod-openapi** | OpenAPI from Zod schemas | Built for Hono, reuses existing validators, incremental | Medium | Yes |
-| **k6** | Load testing | Lightweight, JS-scriptable, Docker image for CI | Medium | Yes |
-| **Dependabot** | Dependency scanning | Built into GitHub, zero setup, auto-creates PRs | Low | Yes (native) |
+| Tool                                      | Purpose                  | Why Selected                                                 | Integration | CI Compatible   |
+| ----------------------------------------- | ------------------------ | ------------------------------------------------------------ | ----------- | --------------- |
+| **GitHub Actions**                        | CI/CD                    | Native to GitHub, free, Postgres service containers built-in | Low         | Yes             |
+| **fast-check**                            | Property-based testing   | Most popular JS PBT library, works natively with Vitest      | Low         | Yes             |
+| **@stryker-mutator/core** + vitest-runner | Mutation testing         | Only mature JS/TS mutation tool, has Vitest plugin           | Medium      | Yes (scheduled) |
+| **@hono/zod-openapi**                     | OpenAPI from Zod schemas | Built for Hono, reuses existing validators, incremental      | Medium      | Yes             |
+| **k6**                                    | Load testing             | Lightweight, JS-scriptable, Docker image for CI              | Medium      | Yes             |
+| **Dependabot**                            | Dependency scanning      | Built into GitHub, zero setup, auto-creates PRs              | Low         | Yes (native)    |
 
 ---
 
@@ -239,16 +251,19 @@ Pegasus is a multi-tenant move management SaaS replacing a legacy VB.NET WinForm
 ### Parallelizable Tasks
 
 **Group A (no shared file dependencies):**
+
 - Task 0.1 (CI pipeline) — `.github/` only
 - Task 0.3 (env validation) — `packages/api/src/lib/env.ts` + entry points
 - Task 1.2 (domain tests) — `packages/domain/src/` test files only
 
 **Group B (after Group A merges):**
+
 - Task 0.2 (coverage config) — vitest configs
 - Task 1.1 (tenant isolation tests) — `packages/api/src/lib/__tests__/`
 - Task 1.3 (admin handler tests) — `packages/api/src/handlers/admin/*.test.ts`
 
 **Group C (sequential, depends on earlier phases):**
+
 - Task 2.1 (property-based) → after Task 1.2
 - Task 2.2 (mutation testing) → after Tasks 1.2 + 0.2
 - Task 3.1 (scanning) → after Task 0.1

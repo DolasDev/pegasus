@@ -25,7 +25,7 @@ const app = new cdk.App()
 // Account pinning: staging/prod accounts are hardcoded as a safety net — CDK
 // refuses to deploy if the assumed credentials don't match the stack env, so
 // a misconfigured runner can't accidentally cross-deploy. Dev inherits from
-// the ambient credentials to preserve the original behaviour.
+// the ambient credentials to preserve the original behavior.
 
 type EnvName = 'dev' | 'staging' | 'prod'
 
@@ -118,7 +118,7 @@ const integrationConfigPublishEnabled = envName === 'staging' || envName === 'pr
 // hostnames per env (the same dolas-managed domains the frontend stacks attach
 // — see FrontendStack / AdminFrontendStack attachCustomDomain comments). Dev
 // has no custom domains (raw *.cloudfront.net) → omit, which keeps the
-// original wildcard behaviour at both API GW and the Hono layer.
+// original wildcard behavior at both API GW and the Hono layer.
 const CORS_ALLOWED_ORIGINS: Record<Exclude<EnvName, 'dev'>, string[]> = {
   staging: ['https://pegasus-qa.dolas.dev', 'https://admin.pegasus-qa.dolas.dev'],
   prod: ['https://pegasus.dolas.dev', 'https://admin.pegasus.dolas.dev'],

@@ -60,7 +60,7 @@ export const handler: PreAuthenticationTriggerHandler = async (event) => {
   try {
     // -----------------------------------------------------------------------
     // Step 1 — Fetch user record (status + MFA settings in one call) and
-    //           group membership in parallel to minimise latency.
+    //           group membership in parallel to minimize latency.
     // -----------------------------------------------------------------------
     const [userResponse, groupsResponse] = await Promise.all([
       cognitoClient.send(new AdminGetUserCommand({ UserPoolId: userPoolId, Username: userName })),

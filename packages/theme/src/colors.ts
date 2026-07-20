@@ -1,12 +1,12 @@
-// Pegasus theme — aligned to the tenant web app's colour scheme.
+// Pegasus theme — aligned to the tenant web app's color scheme.
 //
 // The tenant web app (apps/tenant-web) uses the shadcn/ui "slate" palette,
 // defined as HSL CSS variables in apps/tenant-web/src/globals.css. The values
 // below are the hex equivalents of that palette (light mode), so the driver
 // app reads as the same product.
 //
-// Order-status colours are Tailwind 500/600 swatches — the web app does not
-// define semantic status colours, so we use the Tailwind ramp shadcn is built
+// Order-status colors are Tailwind 500/600 swatches — the web app does not
+// define semantic status colors, so we use the Tailwind ramp shadcn is built
 // on, picking shades that keep text legible on each badge.
 export const colors = {
   // Primary — tenant `--primary` (slate-900) family

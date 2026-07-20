@@ -19,9 +19,9 @@ import type { PegiiOrderDto } from './pegii-order.dto'
 const EPOCH = new Date(0).toISOString()
 
 /**
- * Narrow a free-form legacy sale status onto the OrderRecord union. Recognises
+ * Narrow a free-form legacy sale status onto the OrderRecord union. Recognizes
  * the union values verbatim plus the common legacy MoveManager synonyms; any
- * unrecognised value falls back to 'booked'.
+ * unrecognized value falls back to 'booked'.
  */
 function mapStatus(raw: string | null | undefined): OrderRecord['status'] {
   // Compact to lowercase alphanumerics so 'InProgress', 'in_progress', and

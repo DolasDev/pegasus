@@ -18,13 +18,13 @@ right.
 
 ## All Failing Tests at a Glance
 
-| #    | File                                                   | Test                                                                   | Root cause                                                                                                             | Fix target |
-| ---- | ------------------------------------------------------ | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------- |
-| 1    | `packages/api/src/app.test.ts`                         | `POST /api/admin/tenants > returns 201 with the created tenant`        | Body missing required `adminEmail` + `emailDomains`; Cognito SDK not mocked                                            | Test       |
-| 2    | `packages/api/src/app.test.ts`                         | `POST /api/admin/tenants > returns 409 when the slug is already taken` | Same as above                                                                                                          | Test       |
-| 3    | `packages/api/src/cognito/pre-auth.test.ts`            | `blocks sign-in when USER_POOL_ID env var is not set`                  | Test deletes a non-existent env var instead of triggering the actual guard (empty `userPoolId` on the event)           | Test       |
-| 4    | `apps/admin/src/__tests__/TenantFormDialog.test.tsx`   | `submit button is disabled when required fields are empty`             | Submit button is only `disabled={isPending}`, never based on field emptiness                                           | Code       |
-| 5–12 | `packages/api/src/__tests__/tenant-middleware.test.ts` | 8 tests (all header-based)                                             | Middleware was rewritten from slug-based resolution to JWT/Bearer authentication; tests still expect the old behaviour | Test       |
+| #    | File                                                   | Test                                                                   | Root cause                                                                                                            | Fix target |
+| ---- | ------------------------------------------------------ | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------- |
+| 1    | `packages/api/src/app.test.ts`                         | `POST /api/admin/tenants > returns 201 with the created tenant`        | Body missing required `adminEmail` + `emailDomains`; Cognito SDK not mocked                                           | Test       |
+| 2    | `packages/api/src/app.test.ts`                         | `POST /api/admin/tenants > returns 409 when the slug is already taken` | Same as above                                                                                                         | Test       |
+| 3    | `packages/api/src/cognito/pre-auth.test.ts`            | `blocks sign-in when USER_POOL_ID env var is not set`                  | Test deletes a non-existent env var instead of triggering the actual guard (empty `userPoolId` on the event)          | Test       |
+| 4    | `apps/admin/src/__tests__/TenantFormDialog.test.tsx`   | `submit button is disabled when required fields are empty`             | Submit button is only `disabled={isPending}`, never based on field emptiness                                          | Code       |
+| 5–12 | `packages/api/src/__tests__/tenant-middleware.test.ts` | 8 tests (all header-based)                                             | Middleware was rewritten from slug-based resolution to JWT/Bearer authentication; tests still expect the old behavior | Test       |
 
 **Baseline before this plan:** 12 failing (11 in `@pegasus/api`, 1 in `@pegasus/admin`).
 

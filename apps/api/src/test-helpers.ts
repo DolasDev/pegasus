@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Shared test helpers for handler tests
 //
-// Provides the global onError handler that mirrors app.ts behaviour so that
+// Provides the global onError handler that mirrors app.ts behavior so that
 // DomainError → 422 routing works in test apps without repeating the logic
 // in every test file.
 // ---------------------------------------------------------------------------

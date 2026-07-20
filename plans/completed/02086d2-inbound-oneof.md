@@ -29,7 +29,7 @@ So variant selection must be **presence-based**, not value-at-a-path. `oneOf` (b
 **Semantics** (in `validateBody`/`collectIssues`):
 
 1. Apply top-level `requiredPaths`/`nonEmptyArrayPaths` (unchanged) → base issues.
-2. If `oneOf` present: evaluate each variant's checks independently; if **any** variant yields zero issues → the `oneOf` contributes no issues. If **all** fail → contribute a single clear issue (`code: "NO_VARIANT_MATCH"`, message naming the expected shapes, e.g. `"Body matched none of the 2 accepted shapes."`), plus optionally the closest-variant detail. Back-compat: no `oneOf` ⇒ behaviour identical to today.
+2. If `oneOf` present: evaluate each variant's checks independently; if **any** variant yields zero issues → the `oneOf` contributes no issues. If **all** fail → contribute a single clear issue (`code: "NO_VARIANT_MATCH"`, message naming the expected shapes, e.g. `"Body matched none of the 2 accepted shapes."`), plus optionally the closest-variant detail. Back-compat: no `oneOf` ⇒ behavior identical to today.
 3. Empty `oneOf: []` ⇒ treat as absent (no-op), not "always fail".
 
 `dedupKeyPath` stays a single optional path; when a variant lacks it (e.g. Abstract uses `StatementEntry.0.ReferenceNbr`, Statement uses `PostingTickets.0.ReferenceNbr`) dedup is best-effort and simply skips when the path is absent — **also** widen `dedupKeyPath` to accept `string | string[]` (first present path wins) so both variants dedup. (Small, additive; drop if it complicates review.)
@@ -43,7 +43,7 @@ So variant selection must be **presence-based**, not value-at-a-path. `oneOf` (b
 
 ## Tests (TDD, `apps/api`)
 
-- `ingress` unit tests: (a) `oneOf` — Abstract-shaped body passes, Statement-shaped passes, neither → single `NO_VARIANT_MATCH` issue → `failure` ack; (b) top-level `requiredPaths` still AND-applied alongside `oneOf`; (c) no `oneOf` ⇒ byte-identical behaviour (back-compat); (d) `oneOf: []` no-op; (e) dedupKeyPath array first-present-wins (if implemented).
+- `ingress` unit tests: (a) `oneOf` — Abstract-shaped body passes, Statement-shaped passes, neither → single `NO_VARIANT_MATCH` issue → `failure` ack; (b) top-level `requiredPaths` still AND-applied alongside `oneOf`; (c) no `oneOf` ⇒ byte-identical behavior (back-compat); (d) `oneOf: []` no-op; (e) dedupKeyPath array first-present-wins (if implemented).
 - openapi-spec test: served spec includes `oneOf` in the inbound schema.
 - Coverage stays ≥ main floors; do NOT commit an autoUpdate floor raise.
 

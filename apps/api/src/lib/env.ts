@@ -64,7 +64,7 @@ export type ValidatedEnv = {
  * misbehaving during request handling.
  *
  * Call this once from the entry point (server.ts `startServer()` or
- * lambda.ts module initialisation) — not during import.
+ * lambda.ts module initialization) — not during import.
  */
 export function validateEnv(): ValidatedEnv {
   const skipAuth = process.env['SKIP_AUTH'] === 'true'

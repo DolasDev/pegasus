@@ -12,7 +12,7 @@
 //
 // The Dolios `v_longhaul_drivers` view returns UPPERCASE column names
 // (DRIVER_ID, DRIVER_NAME, AGENT_CODE, ACTIVE, TYPE). The on-prem `getDrivers`
-// normalises them to lowercase via `lowercaseRowKeys`; the ported longhaul UI
+// normalizes them to lowercase via `lowercaseRowKeys`; the ported longhaul UI
 // (DriverTypeahead, common.driversList) expects lowercase `driver_id` /
 // `driver_name`. We replicate that by aliasing every column to lowercase in
 // the SQL itself.

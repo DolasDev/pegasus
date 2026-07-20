@@ -109,7 +109,7 @@ function isUnsafeEntryPath(name: string): boolean {
   if (name.startsWith('/') || name.startsWith('\\')) return true
   if (/^[A-Za-z]:/.test(name)) return true
   // Split on both separators — the zip spec mandates `/`, but a hostile
-  // writer can emit `\` and some extractors honour it.
+  // writer can emit `\` and some extractors honor it.
   return name.split(/[/\\]/).some((segment) => segment === '..')
 }
 

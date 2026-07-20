@@ -38,7 +38,7 @@ Run `npm test` from the repo root. Every Vitest test across every package must p
 Run the Playwright suite from `apps/e2e/` when the task touches:
 
 - Any API endpoint (new, modified, or deleted)
-- Any browser-visible UI behaviour
+- Any browser-visible UI behavior
 - Auth flows, routing, or data displayed to the user
 
 ```bash

@@ -50,7 +50,7 @@ const CreateTenantBody = z.object({
    * A Cognito user is created with FORCE_CHANGE_PASSWORD status and an invite
    * email is sent so the administrator can set their password and configure SSO.
    */
-  // Normalise to a canonical lowercase form so the Cognito username (created
+  // Normalize to a canonical lowercase form so the Cognito username (created
   // via provisionCognitoUser) matches what the admin sees and types at login.
   // Cognito usernames are case-sensitive.
   adminEmail: z.string().trim().email().toLowerCase(),
@@ -70,7 +70,7 @@ const PatchTenantBody = z.object({
 })
 
 // ---------------------------------------------------------------------------
-// Helper — serialise a Prisma row into a plain JSON snapshot for audit logs.
+// Helper — serialize a Prisma row into a plain JSON snapshot for audit logs.
 // Date fields are converted to ISO strings by JSON.stringify so they survive
 // round-trips through the Json column type.
 // ---------------------------------------------------------------------------

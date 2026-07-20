@@ -14,7 +14,7 @@
 > a db/mssql/tunnel ms breakdown) and Phase 3 (p99 alarm de-flapped to a 2-of-3 five-minute window)
 > are built, tested (infra 300 + api 1731 green), and shipping. **Phase 2 (client timeouts) is
 > deliberately NOT in this change** — the plan gates it on real downstream timings from Phase 1, which
-> only exist once this is deployed and the next spike is observed; finalise the 5–8s budget against
+> only exist once this is deployed and the next spike is observed; finalize the 5–8s budget against
 > that data and ship to staging first. **Phase 4 (provisioned concurrency) remains deferred** — it does
 > not address the warm-request root cause.
 > **Original scope below — 2026-06-12.**
@@ -89,7 +89,7 @@ Every few days a single request blocks 15–29 s. On **Jun 1 it hit the 29 s tim
 
 ### Phase 4 — Optional, only if cold starts become the complaint (not today's issue)
 
-- [x] **DEFERRED 2026-06-15 (user-approved hold) — spun out to `plans/deferred/api-latency-deferred-followups.md`.** Provisioned concurrency would remove the 2.6–4.4 s cold starts but does **not** address the 16.8 s warm-request root cause, so it does not fix this incident. It is also the one costly item (~$5.40/unit/mo, continuous). **Hard prerequisite / contraindication:** PC reserves from the account concurrency pool, and **both accounts are capped at an unraised limit of 10** (`L-B99A9384`) while the api Lambda *synchronously* invokes the executor/tunnel Lambdas from that same pool (see [[project_lambda_concurrency_throttle]]). Reserving PC units would tighten that budget and likely **worsen** the existing self-throttle. Correct order if cold-start p99 ever becomes a distinct product complaint: **(a) raise the concurrency quota on both accounts → (b) then add PC with autoscaling** — not before.
+- [x] **DEFERRED 2026-06-15 (user-approved hold) — spun out to `plans/deferred/api-latency-deferred-followups.md`.** Provisioned concurrency would remove the 2.6–4.4 s cold starts but does **not** address the 16.8 s warm-request root cause, so it does not fix this incident. It is also the one costly item (~$5.40/unit/mo, continuous). **Hard prerequisite / contraindication:** PC reserves from the account concurrency pool, and **both accounts are capped at an unraised limit of 10** (`L-B99A9384`) while the api Lambda _synchronously_ invokes the executor/tunnel Lambdas from that same pool (see [[project_lambda_concurrency_throttle]]). Reserving PC units would tighten that budget and likely **worsen** the existing self-throttle. Correct order if cold-start p99 ever becomes a distinct product complaint: **(a) raise the concurrency quota on both accounts → (b) then add PC with autoscaling** — not before.
 
 ## Costs
 

@@ -46,7 +46,7 @@ describe('getLonghaulClientConfig', () => {
     })
   })
 
-  it('normalises mixed-case values', () => {
+  it('normalizes mixed-case values', () => {
     withEnv('NWI', () => {
       const cfg = getLonghaulClientConfig()
       expect(cfg.importExportTypes).toEqual(['H', 'HA', 'M', 'A', 'SS'])
@@ -93,7 +93,7 @@ describe('getLonghaulClientConfigFor', () => {
     expect(qmm.dispatcherQuery).toBe("roles like ('%cpd%')")
   })
 
-  it('normalises mixed-case / padded values', () => {
+  it('normalizes mixed-case / padded values', () => {
     expect(getLonghaulClientConfigFor('  NWI ').moveTypesWhere).toBe('1=1')
   })
 

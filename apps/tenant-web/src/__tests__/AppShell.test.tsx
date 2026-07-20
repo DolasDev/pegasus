@@ -2,7 +2,7 @@
 // AppShell tests — focus on Settings nav visibility by role.
 //
 // Server-side Cedar already 403s the underlying calls; here we pin the
-// sidebar behaviour so non-admins don't see dead-end Settings entries and
+// sidebar behavior so non-admins don't see dead-end Settings entries and
 // the "Settings" section header doesn't render orphaned.
 // ---------------------------------------------------------------------------
 

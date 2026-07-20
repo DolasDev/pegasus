@@ -56,6 +56,6 @@ Fallback if width change disturbs the Gantt/itinerary:
 ## Verification / done criteria
 
 - Notes panel visible on trip-detail in the browser (verify skill) at normal AppShell width.
-- Gantt/itinerary horizontal behaviour unchanged.
+- Gantt/itinerary horizontal behavior unchanged.
 - `npm run typecheck`, tenant-web unit tests, and the trip-date-container browser spec pass.
 - One PR, apps/tenant-web only.

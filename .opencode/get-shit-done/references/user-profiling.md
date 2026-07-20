@@ -208,7 +208,7 @@ Explanation depth often correlates with domain familiarity. A developer may want
 
 - **fix-first:** "Getting this error: TypeError: Cannot read properties of undefined. Fix it."
 - **diagnostic:** "The API returns 500 when I send a POST to /users. Here's the request body and the server log. What's causing this?"
-- **hypothesis-driven:** "I think the race condition is in the useEffect cleanup. I checked and the subscription isn't being cancelled on unmount. Can you confirm?"
+- **hypothesis-driven:** "I think the race condition is in the useEffect cleanup. I checked and the subscription isn't being canceled on unmount. Can you confirm?"
 - **collaborative:** "Let's debug this together. The test passes locally but fails in CI. What should we check first?"
 
 **Context-dependent patterns:**

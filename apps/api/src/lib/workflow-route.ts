@@ -27,8 +27,8 @@
 //      This means the stdlib worker's baked-in code for that name is what runs,
 //      NOT the tenant's forked artifact bytes. This is intentional for v1:
 //      the stdlib worker has no mechanism to load per-tenant code, and the fork
-//      operation is a row-level copy, not a code-level customisation.
-//      Tenants that want custom behaviour must upload under a DIFFERENT name
+//      operation is a row-level copy, not a code-level customization.
+//      Tenants that want custom behavior must upload under a DIFFERENT name
 //      (which routes TENANT_RUNNER).
 //   3. Any row whose name later becomes curated via an SDK update — same as #1.
 //

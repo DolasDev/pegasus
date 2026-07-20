@@ -241,7 +241,7 @@ describe('GET /connections', () => {
     await expect(res.json()).resolves.toEqual({ data: { connections: [] } })
   })
 
-  it('serialises a null lastRefreshedAt', async () => {
+  it('serializes a null lastRefreshedAt', async () => {
     h.listConnectionsByTenant.mockResolvedValue([{ ...connectionRow, lastRefreshedAt: null }])
     const res = await appForTenant().request('/connections')
     const body = (await res.json()) as { data: { connections: { lastRefreshedAt: unknown }[] } }

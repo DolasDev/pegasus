@@ -59,12 +59,12 @@ Token refresh / silent re-auth is v2 (SESSION-V2-01) and explicitly out of scope
 
 ## Phase Requirements
 
-| ID         | Description                                                                                                                          | Research Support                                                                                          |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| SESSION-01 | Validated session (tenantId, role, email, sub, expiresAt) persisted in `expo-secure-store`; raw Cognito tokens discarded            | expo-secure-store `setItemAsync` / `getItemAsync` / `deleteItemAsync` API confirmed. D-07 locks approach. |
-| SESSION-02 | On cold start, session restored from secure store before any route renders; no login-screen flash for authenticated driver           | `checkSession` in `useEffect` at mount with `isLoading` guard — auth guard in `_layout.tsx` already waits.|
-| SESSION-03 | Driver can log out — clears secure store, resets AuthContext state, navigates to login screen                                       | `deleteItemAsync` + `session = null` + existing auth guard redirect. D-10 locks approach.                 |
-| SESSION-04 | On app foreground resume, if `session.expiresAt < Date.now()`, driver shown re-login prompt (login screen, no modal)                | `AppState.addEventListener('change', handler)` — fires `'active'` on foreground. D-11 locks approach.     |
+| ID         | Description                                                                                                                | Research Support                                                                                           |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| SESSION-01 | Validated session (tenantId, role, email, sub, expiresAt) persisted in `expo-secure-store`; raw Cognito tokens discarded   | expo-secure-store `setItemAsync` / `getItemAsync` / `deleteItemAsync` API confirmed. D-07 locks approach.  |
+| SESSION-02 | On cold start, session restored from secure store before any route renders; no login-screen flash for authenticated driver | `checkSession` in `useEffect` at mount with `isLoading` guard — auth guard in `_layout.tsx` already waits. |
+| SESSION-03 | Driver can log out — clears secure store, resets AuthContext state, navigates to login screen                              | `deleteItemAsync` + `session = null` + existing auth guard redirect. D-10 locks approach.                  |
+| SESSION-04 | On app foreground resume, if `session.expiresAt < Date.now()`, driver shown re-login prompt (login screen, no modal)       | `AppState.addEventListener('change', handler)` — fires `'active'` on foreground. D-11 locks approach.      |
 
 </phase_requirements>
 
@@ -72,25 +72,26 @@ Token refresh / silent re-auth is v2 (SESSION-V2-01) and explicitly out of scope
 
 ### Core
 
-| Library          | Version  | Purpose                                      | Why Standard                                              |
-| ---------------- | -------- | -------------------------------------------- | --------------------------------------------------------- |
-| expo-secure-store | ~15.0.8 | Encrypted key-value storage for Session JSON | Expo SDK 54 compatible; keychain (iOS) / Keystore (Android); required by SESSION-01 |
-| react-native AppState | (built-in) | Foreground/background lifecycle events | Zero-dependency built-in; only mechanism for SESSION-04 |
+| Library               | Version    | Purpose                                      | Why Standard                                                                        |
+| --------------------- | ---------- | -------------------------------------------- | ----------------------------------------------------------------------------------- |
+| expo-secure-store     | ~15.0.8    | Encrypted key-value storage for Session JSON | Expo SDK 54 compatible; keychain (iOS) / Keystore (Android); required by SESSION-01 |
+| react-native AppState | (built-in) | Foreground/background lifecycle events       | Zero-dependency built-in; only mechanism for SESSION-04                             |
 
 ### Supporting
 
-| Library              | Version | Purpose                              | When to Use                                   |
-| -------------------- | ------- | ------------------------------------ | --------------------------------------------- |
-| @react-native-async-storage/async-storage | 2.2.0 | Already installed; being abandoned | Old key `@moving_app_session` is abandoned — no migration |
+| Library                                   | Version | Purpose                            | When to Use                                               |
+| ----------------------------------------- | ------- | ---------------------------------- | --------------------------------------------------------- |
+| @react-native-async-storage/async-storage | 2.2.0   | Already installed; being abandoned | Old key `@moving_app_session` is abandoned — no migration |
 
 ### Alternatives Considered
 
-| Instead of          | Could Use            | Tradeoff                                                        |
-| ------------------- | -------------------- | --------------------------------------------------------------- |
-| expo-secure-store   | AsyncStorage         | AsyncStorage is not encrypted — SESSION-01 explicitly requires encrypted secure store |
-| AppState (built-in) | react-native-appstate-hook | No need for an extra dependency; built-in API is clean in React hooks |
+| Instead of          | Could Use                  | Tradeoff                                                                              |
+| ------------------- | -------------------------- | ------------------------------------------------------------------------------------- |
+| expo-secure-store   | AsyncStorage               | AsyncStorage is not encrypted — SESSION-01 explicitly requires encrypted secure store |
+| AppState (built-in) | react-native-appstate-hook | No need for an extra dependency; built-in API is clean in React hooks                 |
 
 **Installation:**
+
 ```bash
 cd apps/mobile && npx expo install expo-secure-store
 ```
@@ -124,6 +125,7 @@ apps/mobile/
 **When to use:** Always — this is Locked Decision D-06, matching the Phase 2 factory pattern.
 
 **Example:**
+
 ```typescript
 // Source: apps/mobile/src/auth/authService.ts (Phase 2 pattern)
 type AuthProviderProps = {
@@ -142,11 +144,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ authService, childre
 
 ### Pattern 2: expo-secure-store Session Persistence
 
-**What:** `Session` object serialised to JSON and stored under a single key. Retrieved on cold start; deleted on logout.
+**What:** `Session` object serialized to JSON and stored under a single key. Retrieved on cold start; deleted on logout.
 
 **When to use:** SESSION-01 (persist), SESSION-02 (restore), SESSION-03 (clear).
 
 **Example:**
+
 ```typescript
 // Source: https://docs.expo.dev/versions/v54.0.0/sdk/securestore/
 import * as SecureStore from 'expo-secure-store'
@@ -171,6 +174,7 @@ await SecureStore.deleteItemAsync(SESSION_KEY)
 **When to use:** SESSION-04. React-native built-in — no install needed.
 
 **Example:**
+
 ```typescript
 // Source: https://reactnative.dev/docs/appstate
 import { AppState } from 'react-native'
@@ -186,6 +190,7 @@ useEffect(() => {
 ```
 
 **Critical dependency array note:** The `AppState` handler captures `session` via closure. If `session` is not in the dependency array, the handler captures a stale `null` on mount and never detects expiry. Two valid approaches:
+
 1. Put `session` in the dependency array (re-subscribes on each session change — simple, correct for this use case)
 2. Use a `useRef` to hold the current session and read from the ref inside the handler (avoids re-subscribing)
 
@@ -198,6 +203,7 @@ Either approach works. The dependency-array approach (option 1) is simpler and p
 **When to use:** All `AuthContext.test.tsx` tests.
 
 **Example:**
+
 ```typescript
 // Source: apps/mobile/src/context/AuthContext.test.tsx (existing pattern, extended)
 const mockAuthService = {
@@ -225,10 +231,10 @@ function renderWithProvider(authService = mockAuthService) {
 
 ## Don't Hand-Roll
 
-| Problem              | Don't Build              | Use Instead         | Why                                                                |
-| -------------------- | ------------------------ | ------------------- | ------------------------------------------------------------------ |
-| Encrypted local storage | Custom encryption + AsyncStorage | expo-secure-store | Platform keychain/Keystore; session-01 requirement; hardware-backed |
-| Foreground detection | Polling timer            | AppState (built-in) | Platform lifecycle; no polling overhead; already in react-native   |
+| Problem                 | Don't Build                      | Use Instead         | Why                                                                 |
+| ----------------------- | -------------------------------- | ------------------- | ------------------------------------------------------------------- |
+| Encrypted local storage | Custom encryption + AsyncStorage | expo-secure-store   | Platform keychain/Keystore; session-01 requirement; hardware-backed |
+| Foreground detection    | Polling timer                    | AppState (built-in) | Platform lifecycle; no polling overhead; already in react-native    |
 
 **Key insight:** `expo-secure-store` delegates to iOS Keychain and Android Keystore — both hardware-backed on modern devices. Any custom solution would be weaker and more complex.
 
@@ -251,6 +257,7 @@ function renderWithProvider(authService = mockAuthService) {
 **Why it happens:** `jest.config.js` `transformIgnorePatterns` currently excludes `expo` (the package itself) and several other expo packages from the default ignore. But `expo-secure-store` is a separate package and not listed — Jest's default ignores `node_modules`, so it tries to use the raw ESM output and fails.
 
 **How to avoid:** Add `expo-secure-store` to the `transformIgnorePatterns` allowlist in `jest.config.js`:
+
 ```js
 transformIgnorePatterns: [
   'node_modules/(?!(react-native|@react-native|expo|@expo|expo-status-bar|expo-router|expo-constants|expo-image-picker|expo-linking|expo-secure-store|react-native-web|react-native-safe-area-context|react-native-screens)/)',
@@ -266,6 +273,7 @@ transformIgnorePatterns: [
 **Why it happens:** `expo-secure-store` native methods are not available in the Jest Node environment.
 
 **How to avoid:** Add a mock to `jest.setup.js`:
+
 ```js
 jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn(() => Promise.resolve(null)),
@@ -296,7 +304,7 @@ jest.mock('expo-secure-store', () => ({
 
 **What goes wrong:** If `isAuthenticated` is stored as a separate `useState` that is toggled independently, it can go out of sync with `session`. For example, `logout()` sets `session = null` but forgets to set `isAuthenticated = false`.
 
-**Why it happens:** Derived state stored as independent state variables requires manual synchronisation.
+**Why it happens:** Derived state stored as independent state variables requires manual synchronization.
 
 **How to avoid:** Compute `isAuthenticated` as `const isAuthenticated = session !== null` (D-03). Never store it in `useState`. Pass it via context value derived at render time.
 
@@ -328,14 +336,11 @@ await SecureStore.deleteItemAsync('pegasus_session')
 import { AppState, AppStateStatus } from 'react-native'
 
 useEffect(() => {
-  const subscription = AppState.addEventListener(
-    'change',
-    (nextState: AppStateStatus) => {
-      if (nextState === 'active') {
-        // check session expiry here
-      }
+  const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+    if (nextState === 'active') {
+      // check session expiry here
     }
-  )
+  })
   return () => subscription.remove()
 }, [session]) // session in dep array — avoids stale closure
 ```
@@ -346,14 +351,14 @@ useEffect(() => {
 // Derived from CONTEXT.md D-01 through D-05
 interface AuthContextType {
   session: Session | null
-  isAuthenticated: boolean  // derived: session !== null
+  isAuthenticated: boolean // derived: session !== null
   isLoading: boolean
   login: (email: string, password: string, tenantId: string) => Promise<boolean>
   logout: () => Promise<void>
 }
 ```
 
-### _layout.tsx wiring
+### \_layout.tsx wiring
 
 ```typescript
 // Source: CONTEXT.md D-06
@@ -401,10 +406,10 @@ act(() => { mockAppStateListeners.forEach(fn => fn('active')) })
 
 ## State of the Art
 
-| Old Approach | Current Approach | When Changed | Impact |
-| --- | --- | --- | --- |
+| Old Approach                                         | Current Approach                                           | When Changed   | Impact                                                                                        |
+| ---------------------------------------------------- | ---------------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------- |
 | `AppState.addEventListener` returning a subscription | same API (subscription pattern added in React Native 0.65) | RN 0.65 (2021) | `subscription.remove()` is the correct cleanup — `AppState.removeEventListener` is deprecated |
-| Mock session in AsyncStorage | Real Session in expo-secure-store | Phase 3 | Session shape changes; old key abandoned |
+| Mock session in AsyncStorage                         | Real Session in expo-secure-store                          | Phase 3        | Session shape changes; old key abandoned                                                      |
 
 **Deprecated/outdated:**
 
@@ -413,7 +418,7 @@ act(() => { mockAppStateListeners.forEach(fn => fn('active')) })
 
 ## Open Questions
 
-1. **cognitoService import in _layout.tsx**
+1. **cognitoService import in \_layout.tsx**
    - What we know: `authService.ts` requires a `cognitoService` dep. `apps/mobile/src/auth/cognitoService.ts` was created in Phase 2.
    - What's unclear: Whether `cognitoService.ts` exports individual functions or a named namespace object (impacts the import style in `_layout.tsx`).
    - Recommendation: Executor reads `apps/mobile/src/auth/cognitoService.ts` before writing `_layout.tsx` to confirm the export shape.
@@ -425,11 +430,11 @@ act(() => { mockAppStateListeners.forEach(fn => fn('active')) })
 
 ## Environment Availability
 
-| Dependency            | Required By          | Available | Version | Fallback |
-| --------------------- | -------------------- | --------- | ------- | -------- |
-| expo-secure-store     | SESSION-01/02/03     | Not installed | — | None — install required |
-| react-native AppState | SESSION-04           | Built-in (react-native 0.81.6) | 0.81.6 | — |
-| Jest / @testing-library/react-native | All tests | Installed | jest 29.7.0 / @testing-library/react-native 13.3.3 | — |
+| Dependency                           | Required By      | Available                      | Version                                            | Fallback                |
+| ------------------------------------ | ---------------- | ------------------------------ | -------------------------------------------------- | ----------------------- |
+| expo-secure-store                    | SESSION-01/02/03 | Not installed                  | —                                                  | None — install required |
+| react-native AppState                | SESSION-04       | Built-in (react-native 0.81.6) | 0.81.6                                             | —                       |
+| Jest / @testing-library/react-native | All tests        | Installed                      | jest 29.7.0 / @testing-library/react-native 13.3.3 | —                       |
 
 **Missing dependencies with no fallback:**
 
@@ -443,21 +448,21 @@ act(() => { mockAppStateListeners.forEach(fn => fn('active')) })
 
 ### Test Framework
 
-| Property           | Value                                                |
-| ------------------ | ---------------------------------------------------- |
-| Framework          | Jest 29.7.0 + @testing-library/react-native 13.3.3  |
-| Config file        | `apps/mobile/jest.config.js`                         |
+| Property           | Value                                                         |
+| ------------------ | ------------------------------------------------------------- |
+| Framework          | Jest 29.7.0 + @testing-library/react-native 13.3.3            |
+| Config file        | `apps/mobile/jest.config.js`                                  |
 | Quick run command  | `cd apps/mobile && npm test -- --testPathPattern=AuthContext` |
-| Full suite command | `cd apps/mobile && npm test`                         |
+| Full suite command | `cd apps/mobile && npm test`                                  |
 
 ### Phase Requirements → Test Map
 
-| Req ID     | Behavior                                                                  | Test Type | Automated Command                                                                              | File Exists? |
-| ---------- | ------------------------------------------------------------------------- | --------- | ---------------------------------------------------------------------------------------------- | ------------ |
-| SESSION-01 | After login, session JSON is stored in secure-store; raw tokens absent    | unit      | `cd apps/mobile && npm test -- --testPathPattern=AuthContext`                                  | Rewrite existing |
-| SESSION-02 | Cold start with valid secure-store session → isAuthenticated true, no flash | unit    | `cd apps/mobile && npm test -- --testPathPattern=AuthContext`                                  | Rewrite existing |
-| SESSION-03 | logout() clears secure-store, session=null, isAuthenticated=false         | unit      | `cd apps/mobile && npm test -- --testPathPattern=AuthContext`                                  | Rewrite existing |
-| SESSION-04 | AppState 'active' with expired session triggers logout()                  | unit      | `cd apps/mobile && npm test -- --testPathPattern=AuthContext`                                  | Rewrite existing |
+| Req ID     | Behavior                                                                    | Test Type | Automated Command                                             | File Exists?     |
+| ---------- | --------------------------------------------------------------------------- | --------- | ------------------------------------------------------------- | ---------------- |
+| SESSION-01 | After login, session JSON is stored in secure-store; raw tokens absent      | unit      | `cd apps/mobile && npm test -- --testPathPattern=AuthContext` | Rewrite existing |
+| SESSION-02 | Cold start with valid secure-store session → isAuthenticated true, no flash | unit      | `cd apps/mobile && npm test -- --testPathPattern=AuthContext` | Rewrite existing |
+| SESSION-03 | logout() clears secure-store, session=null, isAuthenticated=false           | unit      | `cd apps/mobile && npm test -- --testPathPattern=AuthContext` | Rewrite existing |
+| SESSION-04 | AppState 'active' with expired session triggers logout()                    | unit      | `cd apps/mobile && npm test -- --testPathPattern=AuthContext` | Rewrite existing |
 
 ### Sampling Rate
 

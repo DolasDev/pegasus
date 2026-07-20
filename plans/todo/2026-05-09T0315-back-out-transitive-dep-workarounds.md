@@ -80,7 +80,7 @@ and documented inline in `package.json`.
       and the matching `//overrides` comment.
 - [ ] `rm -rf node_modules package-lock.json && npm install` (npm
       doesn't fully re-resolve transitive overrides on an existing
-      lockfile — same behaviour we hit when adding the pin).
+      lockfile — same behavior we hit when adding the pin).
 - [ ] `npm run -w @pegasus/mobile test` — should pass without the
       `clearMocksOnScope` error.
 - [ ] Re-check the broader test suite via `turbo run test` since the

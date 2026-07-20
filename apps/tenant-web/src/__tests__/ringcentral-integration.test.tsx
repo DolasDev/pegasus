@@ -234,7 +234,7 @@ describe('RingCentralIntegrationPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /^disconnect$/i }))
     expect(screen.getByText('Disconnect RingCentral?')).toBeInTheDocument()
 
-    // The confirm card's destructive button is labelled "Disconnect".
+    // The confirm card's destructive button is labeled "Disconnect".
     const confirmButton = screen.getAllByRole('button', { name: /^disconnect$/i }).pop()!
     fireEvent.click(confirmButton)
 

@@ -29,7 +29,7 @@ import { db } from '../db'
 import { logger } from '../lib/logger'
 
 // ---------------------------------------------------------------------------
-// JWKS cache — initialised on the first request, shared across warm Lambda
+// JWKS cache — initialized on the first request, shared across warm Lambda
 // invocations. jose caches individual public keys internally and re-fetches
 // on unknown `kid`, so key rotation is handled automatically.
 // ---------------------------------------------------------------------------

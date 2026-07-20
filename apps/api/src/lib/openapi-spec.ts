@@ -668,7 +668,7 @@ export function getOpenApiSpec() {
       '/api/v1/integrations/{integrationId}/ingress/test': {
         post: {
           operationId: 'testIngress',
-          summary: 'Dry-run the published inbound behaviour against a sample body (ManageIngress)',
+          summary: 'Dry-run the published inbound behavior against a sample body (ManageIngress)',
           description:
             "Side-effect-free: runs the tenant's published `inbound` validation/dedup/ack against the posted sample. Persists nothing and emits no domain event. Returns {eventType, dedupId, valid, issues, ack}.",
           tags: ['Integrations'],

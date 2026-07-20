@@ -298,10 +298,7 @@ describe('events handler', () => {
 
     it('does not emit when the caller is denied CreateEvent', async () => {
       const app = buildApp({ roles: ['reporting'] })
-      const res = await app.request(
-        '/',
-        post({ eventApiId: 'ext-123', eventType: 'LEAD_CREATED' }),
-      )
+      const res = await app.request('/', post({ eventApiId: 'ext-123', eventType: 'LEAD_CREATED' }))
       expect(res.status).toBe(403)
       expect(emitDomainEvent).not.toHaveBeenCalled()
     })
@@ -362,7 +359,7 @@ describe('events handler', () => {
       expect(body.meta).toMatchObject({ count: 2, limit: 10, offset: 0 })
     })
 
-    it('serialises eventDatetime as ISO string', async () => {
+    it('serializes eventDatetime as ISO string', async () => {
       mockEventsRepo.listEventsByType.mockResolvedValue([mockEventRow])
       const app = buildApp()
       const res = await app.request('/LEAD_CREATED')

@@ -70,7 +70,7 @@ export function useDecommissionIngress() {
   })
 }
 
-/** Dry-run the published inbound behaviour against a sample body (no invalidation). */
+/** Dry-run the published inbound behavior against a sample body (no invalidation). */
 export function useTestIngress(integrationId: string) {
   return useMutation({
     mutationFn: (sample: unknown) => testIngress(integrationId, sample),

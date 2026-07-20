@@ -125,10 +125,10 @@ def _print_report(report: dict[str, Any]) -> None:
     """Print a gate report and its problems/failures."""
     corpus = report.get("corpus", {})
     ok = report.get("ok")
-    colour = typer.colors.GREEN if ok else typer.colors.RED
+    color = typer.colors.GREEN if ok else typer.colors.RED
     typer.secho(
         f"gate ok={ok} corpus={corpus.get('passed')}/{corpus.get('total')}",
-        fg=colour,
+        fg=color,
     )
     for problem in report.get("problems", []):
         typer.secho(

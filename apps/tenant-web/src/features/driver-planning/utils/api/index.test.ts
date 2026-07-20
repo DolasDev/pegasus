@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-// Mock the transport layer (fetchData) — unit 04 covers envelope behaviour.
+// Mock the transport layer (fetchData) — unit 04 covers envelope behavior.
 vi.mock('./transport', () => ({
   fetchData: vi.fn(),
 }))
@@ -135,11 +135,11 @@ describe('API surface', () => {
   })
 
   describe('cancelTrip', () => {
-    it('pushes a "Trip Cancelled" success snackbar on success', async () => {
+    it('pushes a "Trip Canceled" success snackbar on success', async () => {
       fetchDataMock.mockResolvedValue(okEnvelope(null))
       await API.cancelTrip('t1')
       expect(fetchDataMock).toHaveBeenCalledWith('cancelTrip', 't1')
-      expect(notifySuccessMock).toHaveBeenCalledWith('Trip Cancelled')
+      expect(notifySuccessMock).toHaveBeenCalledWith('Trip Canceled')
     })
 
     it('pushes an error snackbar and swallows on failure', async () => {

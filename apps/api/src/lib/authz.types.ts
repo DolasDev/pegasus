@@ -34,7 +34,7 @@ export interface Principal {
 }
 
 /**
- * A reference to a resource being authorised.
+ * A reference to a resource being authorized.
  *
  * `id` defaults to a per-tenant catch-all when callers do not pass one
  * (most current call sites are coarse-grained "can I list users?" rather than

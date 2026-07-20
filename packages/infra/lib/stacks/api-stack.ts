@@ -52,7 +52,7 @@ export interface ApiStackProps extends cdk.StackProps {
    * to the API Lambda as WIREGUARD_HUB_PUBLIC_KEY so the VPN admin handler
    * can render it into tenant client.conf blobs without an extra SSM round-trip.
    * Optional — when absent the VPN provision endpoint returns 503
-   * VPN_HUB_UNCONFIGURED, which is the correct behaviour in environments
+   * VPN_HUB_UNCONFIGURED, which is the correct behavior in environments
    * without WireGuardStack.
    */
   readonly wireguardHubPublicKey?: string
@@ -196,7 +196,7 @@ export interface ApiStackProps extends cdk.StackProps {
    *   - the Lambda env var `CORS_ALLOWED_ORIGINS` consumed by the Hono cors
    *     middleware (defense in depth / direct-served path).
    * Omit (dev) → `['*']` at API GW and an empty env var → Hono reflects any
-   * origin, preserving the original permissive dev behaviour.
+   * origin, preserving the original permissive dev behavior.
    */
   readonly corsAllowedOrigins?: string[]
 }

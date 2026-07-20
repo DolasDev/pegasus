@@ -1,7 +1,7 @@
 # Monthly check for stale entries in package.json `overrides`. The detector
 # (scripts/check-overrides.mjs) surfaces overrides that no longer force anything;
 # this workflow files an issue listing the candidates so they don't accumulate.
-# The judgement/removal step is intentionally manual (no auto-PR, no AI here).
+# The judgment/removal step is intentionally manual (no auto-PR, no AI here).
 name: Override Expiry Check
 on:
   schedule:

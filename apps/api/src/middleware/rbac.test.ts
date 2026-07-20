@@ -21,7 +21,7 @@ async function json(res: Response): Promise<JsonBody> {
 }
 
 // ---------------------------------------------------------------------------
-// requirePermission — Cedar/AVP-backed authorisation middleware
+// requirePermission — Cedar/AVP-backed authorization middleware
 // ---------------------------------------------------------------------------
 
 function buildPermissionApp(roleNames: string[], action: ActionDef = Actions.InviteUser) {

@@ -68,7 +68,7 @@ export class FrontendStack extends cdk.Stack {
     // CloudFront distribution — HTTPS only, OAC, SPA routing fallback
     // ---------------------------------------------------------------------------
     // Shared origin — S3BucketOrigin.withOriginAccessControl creates one OAC per
-    // call so we create it once and reuse it across all cache behaviours.
+    // call so we create it once and reuse it across all cache behaviors.
     const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(this.siteBucket)
 
     const securityHeaders = new cloudfront.ResponseHeadersPolicy(this, 'SecurityHeaders', {

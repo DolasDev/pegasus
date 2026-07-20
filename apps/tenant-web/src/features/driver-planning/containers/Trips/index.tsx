@@ -42,7 +42,7 @@ export function Trips() {
   }, [dispatch, debouncedQuery])
 
   useEffect(() => {
-    let cancelled = false
+    let canceled = false
     async function loadRejected() {
       const driverId = debouncedQuery?.filters?.driver_id?.value
       if (driverId == null || driverId === '') {
@@ -51,14 +51,14 @@ export function Trips() {
       }
       try {
         const rows = await API.fetchRejectedTrips({ driverId: Number(driverId) })
-        if (!cancelled) setRejectedTrips(Array.isArray(rows) ? rows : [])
+        if (!canceled) setRejectedTrips(Array.isArray(rows) ? rows : [])
       } catch {
-        if (!cancelled) setRejectedTrips([])
+        if (!canceled) setRejectedTrips([])
       }
     }
     loadRejected()
     return () => {
-      cancelled = true
+      canceled = true
     }
   }, [debouncedQuery])
 

@@ -75,7 +75,7 @@ describe('summarizeWorkflowHistory', () => {
     expect(events[1]).toMatchObject({ id: '2', type: 'WorkflowExecutionTimedOut', timestamp: null })
   })
 
-  it('labels an unrecognised event Unknown rather than dropping it', () => {
+  it('labels an unrecognized event Unknown rather than dropping it', () => {
     const events = summarizeWorkflowHistory({
       events: [{ eventId: 9, someBrandNewEventAttributes: {} }],
     })

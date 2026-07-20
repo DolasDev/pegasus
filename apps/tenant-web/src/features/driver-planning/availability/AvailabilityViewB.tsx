@@ -6,7 +6,7 @@
 // into a flat attribute table: a row per driver with planner-maintained fields
 // (Canada/California eligibility, rating, equipment, home location, notes) stored
 // as manual overrides on DriverConfirmedAvailability, plus derived State/Zone and
-// the agency-coloured driver name. Edit freely — there is no shared base.
+// the agency-colored driver name. Edit freely — there is no shared base.
 // ---------------------------------------------------------------------------
 import { useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'

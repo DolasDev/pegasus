@@ -6,7 +6,7 @@
 // persists them on TripMaster. Shared by the activity write handlers (Unit 2),
 // the /trips/:id/summary endpoint (Unit 3), and trip-save (Unit 5).
 //
-// Faithful to the on-prem behaviour, including its quirks: findShipmentsByIds
+// Faithful to the on-prem behavior, including its quirks: findShipmentsByIds
 // selects only v_longhaul_shipments_v2.* (no `sales` columns, no enriched
 // origin_state/destination_state objects), and that view exposes `vip`,
 // `total_est_wt`, `line_haul` but NOT `total_actual_wt`, `supervip`, or the

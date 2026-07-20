@@ -55,7 +55,7 @@ const USER_POOL_ID = process.env['COGNITO_USER_POOL_ID'] ?? ''
 // ---------------------------------------------------------------------------
 
 const InviteUserBody = z.object({
-  // Normalise to a canonical lowercase form so the Cognito username (created
+  // Normalize to a canonical lowercase form so the Cognito username (created
   // here) matches what the user sees in the UI and types at login. Cognito
   // usernames are case-sensitive, so a mixed-case invite would otherwise lock
   // the user out — they'd log in with the lowercased address they see.

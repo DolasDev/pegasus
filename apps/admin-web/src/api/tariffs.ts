@@ -27,7 +27,7 @@ export interface TariffVersionSummary {
   id: string
   tariffCode: string
   label: string
-  /** ISO 8601 — serialised by Prisma/JSON.stringify. */
+  /** ISO 8601 — serialized by Prisma/JSON.stringify. */
   effectiveFrom: string
   effectiveTo: string
   status: TariffVersionStatus

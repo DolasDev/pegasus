@@ -9,7 +9,7 @@
 // inviter-typed email straight through to AdminCreateUser, so the pool may
 // hold users with mixed-case usernames (e.g. `John@Acme.com`). Provisioning
 // and login were retro-fitted to lowercase before any Cognito call, so any
-// such users are now unreachable via the normalised login path — this script
+// such users are now unreachable via the normalized login path — this script
 // finds them so an admin can re-invite them with the canonical lowercase form.
 //
 // Usage:

@@ -86,7 +86,7 @@ describe('Guard 1: Raw SQL usage ($queryRaw / $executeRaw)', () => {
     for (const absPath of allSrcFiles) {
       const content = readFileSync(absPath, 'utf-8')
       if (rawSqlRegex.test(content)) {
-        // Normalise to src-relative path using forward slashes for
+        // Normalize to src-relative path using forward slashes for
         // cross-platform determinism.
         const rel = relative(srcDir, absPath).split(sep).join('/')
         if (!ALLOWED_RAW_SQL_FILES.has(rel)) {
@@ -213,7 +213,7 @@ describe('Guard 2: Base Prisma client (unscoped) handler imports', () => {
     for (const absPath of handlerFiles) {
       const content = readFileSync(absPath, 'utf-8')
       if (BASE_CLIENT_IMPORT_REGEX.test(content)) {
-        // Normalise to handlers-relative path with forward slashes.
+        // Normalize to handlers-relative path with forward slashes.
         const rel = relative(handlersDir, absPath).split(sep).join('/')
         if (!ALLOWED_BASE_CLIENT_HANDLERS.has(rel)) {
           violators.push(rel)

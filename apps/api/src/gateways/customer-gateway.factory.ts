@@ -5,7 +5,7 @@
 //   Tenant.customerSource 'pegii'       → pegII on-prem domain API over tunnel
 //
 // The default path wraps the existing customer.repository.ts free functions
-// verbatim, so behaviour is byte-identical to today unless a tenant is
+// verbatim, so behavior is byte-identical to today unless a tenant is
 // explicitly opted in. Tenant and VpnPeer are NOT tenant-scoped models, so the
 // request-scoped db is safe for the config + overlay lookups; Customer IS
 // scoped, so the Prisma path retains tenant isolation.

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Ingress helpers (sdk-feedback 0021) — the definition-driven behaviour of the
+// Ingress helpers (sdk-feedback 0021) — the definition-driven behavior of the
 // inbound endpoint: which domain event to emit, how to derive the dedup id, and
 // how to shape the synchronous partner ack. All read from the `inbound` block a
 // tenant publishes on its IntegrationConfig; a missing block falls back to a
@@ -17,7 +17,7 @@ export interface AckIssue {
 
 // ---------------------------------------------------------------------------
 // Published `inbound` block schema (sdk-feedback 0021) — the documented,
-// machine-discoverable shape of the ingress behaviour a config publishes. Served
+// machine-discoverable shape of the ingress behavior a config publishes. Served
 // at GET /api/v1/integrations/inbound-schema and used to gate the block on
 // publish. The runtime `parseInboundConfig` below stays lenient (fail-open) for
 // already-stored rows; this schema is the authoring contract.

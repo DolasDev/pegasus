@@ -20,7 +20,7 @@ One `PutEventsRequestEntry` per `dbo.Outbox` row:
 {
   "EventBusName": "pegasus-{env}-integration-events", // staging | prod
   "Source": "pegii.movemanager", // stable; the cloud rule matches source: pegii.*
-  "DetailType": "Shipment.Opened", // == AsyncAPI catalogue message name, 1:1
+  "DetailType": "Shipment.Opened", // == AsyncAPI catalog message name, 1:1
   "Detail": "<stringified JSON, see below>", // PutEvents Detail is a STRING
 }
 ```
@@ -50,7 +50,7 @@ Notes:
 - **`eventId` must be stable** for a given Outbox row across retries — it is the
   at-least-once dedupe key. Reuse the Outbox row's GUID.
 - The `payload` shape is unchanged from today's SNS message body.
-- Catalogue stays the source of truth: `GET /api/v1/pegii/events/catalogue`
+- Catalog stays the source of truth: `GET /api/v1/pegii/events/catalog`
   (dolab-m70q-1:65274). New event types = new `DetailType`s; the cloud rule is
   coarse so it needs no change, but the cloud `INTEGRATION_EVENT_TYPES` list
   (apps/api `lib/domain-events.ts`) must add the derived name to make it
@@ -125,7 +125,7 @@ Do this on the **staging** site first.
        platform team to deploy **cloud unit 6** (retire the SNS topic + FIFO queue +
        DLQ + SNS consumer + `sns:Publish` grant). **Never delete the topic while any
        relay still publishes to it.**
-5. [ ] Optional: update the catalogue endpoint's channel `description` (still says
+5. [ ] Optional: update the catalog endpoint's channel `description` (still says
        "FIFO SNS topic the outbox relay publishes to").
 
 ---

@@ -12,7 +12,7 @@ describe('normalizeCustomerSource', () => {
     expect(normalizeCustomerSource(' PEGII ')).toBe('pegii')
   })
 
-  it('throws on any unrecognised value (no silent default)', () => {
+  it('throws on any unrecognized value (no silent default)', () => {
     expect(() => normalizeCustomerSource('mssql')).toThrow(/Unknown customerSource/)
     expect(() => normalizeCustomerSource('')).toThrow(/Unknown customerSource/)
   })

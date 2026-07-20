@@ -30,7 +30,7 @@ describe('resolveWorkflowRoute', () => {
     // A tenant forked send_quote_followup into their store. The row has the
     // same name — it still routes STDLIB (the stdlib worker's baked-in code
     // runs, not the tenant's fork bytes). This is the documented v1 curated-
-    // shadowing behaviour; see workflow-route.ts module header.
+    // shadowing behavior; see workflow-route.ts module header.
     expect(resolveWorkflowRoute({ name: 'send_quote_followup', executable: true })).toBe('STDLIB')
   })
 

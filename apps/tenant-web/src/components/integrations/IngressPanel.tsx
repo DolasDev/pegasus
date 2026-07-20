@@ -19,7 +19,7 @@ import type { IngressCredentialWithToken, IngressTestResult } from '@/api/ingres
 // Ingress management — the "Ingress" tab on /integrations/$integrationId.
 //
 // Provision / rotate / decommission the per-integration partner bearer, and
-// dry-run the published inbound behaviour against a sample body. Rendered only
+// dry-run the published inbound behavior against a sample body. Rendered only
 // when the config is inbound-capable AND the caller has `ingress:manage`.
 //
 // Mirrors the API-Client management patterns in settings.developer.tsx:

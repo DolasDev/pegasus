@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { startCase, lastCommaFirst } from './string'
 
 describe('startCase', () => {
-  it('capitalises a simple lowercase word', () => {
+  it('capitalizes a simple lowercase word', () => {
     expect(startCase('hello')).toBe('Hello')
   })
 

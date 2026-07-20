@@ -48,6 +48,7 @@
 > 5. Use the established pattern: research → plan → spawn worker agent in a worktree → PR → green CI → merge. See "Resume notes" at the bottom + the hotfix-chain at the end of Units 5 and 6 for gotchas.
 >
 > **Lessons accrued this phase (linked from `MEMORY.md`):**
+>
 > - `[[feedback_cdk_secret_complete_arn_for_ecs]]` — ECS secret env injection requires `Secret.fromSecretCompleteArn` with the full suffixed ARN, never `fromSecretNameV2`. (Burned 5 PRs learning this on Unit 5.)
 > - `[[feedback_avp_bulk_sync_throttle_retry]]` — `SyncAvpPoliciesTrigger` needs `ThrottlingException` retry + per-tenant serial CreatePolicy above ~15 tenants. (Surfaced on Unit 6's prod deploy.)
 > - `[[feedback_cdk_retain_orphans_on_rollback]]` — new stacks with `RemovalPolicy.RETAIN` + deterministic names leave orphans that block the next deploy after a CREATE_FAILED. (Hit on Unit 4.)
@@ -250,11 +251,11 @@ rows + non-null ciphertext; `decryptRuntimeToken` round-trips; plaintext in no l
 
 **Hotfixes that landed during first staging boot (all merged 2026-06-06):**
 
-| PR | Sha | Bug | Fix |
-| --- | --- | --- | --- |
-| #189 | `027feff` | SDK wheel build failed with "duplicate file" because `pyproject.toml` had both `packages = [...]` AND a `force-include` block adding `templates/` a second time. Phase 1's `pip install -e` masked it. | Drop the redundant `force-include` block. |
+| PR   | Sha       | Bug                                                                                                                                                                                                                                                                                                               | Fix                                                                                                                           |
+| ---- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| #189 | `027feff` | SDK wheel build failed with "duplicate file" because `pyproject.toml` had both `packages = [...]` AND a `force-include` block adding `templates/` a second time. Phase 1's `pip install -e` masked it.                                                                                                            | Drop the redundant `force-include` block.                                                                                     |
 | #192 | `f7538c8` | ECS task launches failed with `AccessDenied` then `ResourceNotFoundException`. Root cause: `Secret.fromSecretNameV2` produces a **no-suffix ARN** that is NOT a valid Secrets Manager `SecretId` at the API layer (verified live), so both the IAM grant Resource AND the `secrets[].valueFrom` were unmatchable. | Switch to `Secret.fromSecretCompleteArn` with full ARNs. Per-env full ARNs in new `TEMPORAL_SECRET_ARNS` map in `bin/app.ts`. |
-| #193 | `28e30f6` | Worker reached `worker.connected` then crashed at namespace validation with `Worker validation failed: Namespace pegasus-staging was not found ... PermissionDenied`. Root cause: Temporal Cloud namespace IDs are `<short>.<account-id>`, not the short name alone. | Derive full namespace ID from the gRPC address (strip `.tmprl.cloud:7233`). |
+| #193 | `28e30f6` | Worker reached `worker.connected` then crashed at namespace validation with `Worker validation failed: Namespace pegasus-staging was not found ... PermissionDenied`. Root cause: Temporal Cloud namespace IDs are `<short>.<account-id>`, not the short name alone.                                              | Derive full namespace ID from the gRPC address (strip `.tmprl.cloud:7233`).                                                   |
 
 PRs #190 (`9300c8c` — trailing-`*` ARN, didn't actually fix the issue) and #191 (`c141020` — bare `Resource:*`, fixed IAM but revealed the SM ResourceNotFound issue) were superseded by #192's `fromSecretCompleteArn` approach.
 
@@ -296,9 +297,9 @@ Pre-Unit-6 expectation: starting any workflow would activity-fail with `BrokerEn
 
 **Post-merge hotfix chain:**
 
-| PR | Sha | Bug surfaced | Fix |
-| --- | --- | --- | --- |
-| #196 | `50d2659` | Stdlib `send_quote_followup.run(self, quote_id)` couldn't unpack the new `{ executionId, input }` payload — live smoke would template the whole dict into the follow-up. | Accept dict-or-string in `run()`; document the contract for future curated workflows. |
+| PR   | Sha       | Bug surfaced                                                                                                                                                                                                                                                                      | Fix                                                                                                                                                                                                                                                                                                                                                                            |
+| ---- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| #196 | `50d2659` | Stdlib `send_quote_followup.run(self, quote_id)` couldn't unpack the new `{ executionId, input }` payload — live smoke would template the whole dict into the follow-up.                                                                                                          | Accept dict-or-string in `run()`; document the contract for future curated workflows.                                                                                                                                                                                                                                                                                          |
 | #198 | `57e344b` | Prod deploy `UPDATE_ROLLBACK_FAILED` — `SyncAvpPoliciesTrigger` re-syncing the new `RunWorkflow` Cedar action across 15 prod tenants × 15 .cedar files × 4-wide tenant concurrency = ~60 concurrent CreatePolicy calls hit `ThrottlingException`. Staging passed (fewer tenants). | `withThrottleRetry` helper (250ms..8s exponential backoff + ±25% jitter, 7 attempts) wrapped around PutSchema / DeletePolicy / CreatePolicy AND serialize-per-tenant CreatePolicy. Recovery procedure: `aws cloudformation continue-update-rollback --resources-to-skip SyncAvpPoliciesTrigger --profile dolas-pegasus-prod`. See `[[feedback_avp_bulk_sync_throttle_retry]]`. |
 
 ---
@@ -347,7 +348,7 @@ Pre-Unit-6 expectation: starting any workflow would activity-fail with `BrokerEn
 
 - `apps/tenant-web/src/api/workflows.ts` — `WorkflowExecution` type, `runWorkflow / listExecutions / getExecution` HTTP wrappers.
 - `apps/tenant-web/src/api/queries/workflows.ts` — `executionsQueryOptions(workflowId)` (polls while any QUEUED/RUNNING); `useRunWorkflow()` mutation hook with onSuccess → invalidate executions.
-- `apps/tenant-web/src/routes/settings.workflows.tsx` — per-row "Run" button + input-JSON dialog; per-workflow executions list with status badges (QUEUED grey, RUNNING blue, COMPLETED green, FAILED red, TIMED_OUT/CANCELLED amber), timestamps, result/error rendering.
+- `apps/tenant-web/src/routes/settings.workflows.tsx` — per-row "Run" button + input-JSON dialog; per-workflow executions list with status badges (QUEUED gray, RUNNING blue, COMPLETED green, FAILED red, TIMED_OUT/CANCELLED amber), timestamps, result/error rendering.
 - Optionally `apps/tenant-web/src/routes/settings.workflows.$id.tsx` — dedicated execution-history route (deeper detail, paginated list). Phase-2 nice-to-have; not blocking.
 
 **Mergeable alone:** additive frontend, gated behind the `RunWorkflow` Cedar action (Cedar action already deployed via #195, so any tenant_admin or workflow_developer can see the button).

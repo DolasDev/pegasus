@@ -44,7 +44,7 @@ describe('withInvokeTimeout', () => {
   it('throws InvokeTimeoutError when the timer fires before fn settles', async () => {
     vi.useFakeTimers()
     // A hung call that only rejects when its abort signal fires (mirrors the
-    // AWS SDK cancelling an in-flight send).
+    // AWS SDK canceling an in-flight send).
     const p = withInvokeTimeout<string>(
       5_000,
       (signal) =>

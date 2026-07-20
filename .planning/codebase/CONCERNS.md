@@ -166,7 +166,7 @@ The test file (`packages/api/src/cognito/pre-token.test.ts`) exists but does not
 **Recommendations:**
 
 - Add a key rotation mechanism: new keys can be issued while old ones are still valid for a grace period.
-- Document the irreversible nature of lost keys (no password reset analogue).
+- Document the irreversible nature of lost keys (no password reset analog).
 - Log all API client key operations (creation, rotation, revocation) to the audit log.
 
 ---

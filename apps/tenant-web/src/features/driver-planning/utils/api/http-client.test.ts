@@ -73,29 +73,29 @@ describe('longhaul http-client: fetchData', () => {
       mockApiFetch.mockResolvedValueOnce({ ok: true })
       const trip = { customer: 'Acme' }
       await fetchData('saveTrip', trip)
-      expect(mockApiFetch).toHaveBeenCalledWith(
-        '/api/v1/onprem/longhaul/trips',
-        { method: 'POST', body: JSON.stringify(trip) },
-      )
+      expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/onprem/longhaul/trips', {
+        method: 'POST',
+        body: JSON.stringify(trip),
+      })
     })
 
     it('forwards PUT for routes with id (saveTrip update branch)', async () => {
       mockApiFetch.mockResolvedValueOnce({ id: 1 })
       const trip = { id: 1, customer: 'Acme' }
       await fetchData('saveTrip', trip)
-      expect(mockApiFetch).toHaveBeenCalledWith(
-        '/api/v1/onprem/longhaul/trips/1',
-        { method: 'PUT', body: JSON.stringify(trip) },
-      )
+      expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/onprem/longhaul/trips/1', {
+        method: 'PUT',
+        body: JSON.stringify(trip),
+      })
     })
 
     it('forwards PATCH with serialized body', async () => {
       mockApiFetch.mockResolvedValueOnce({})
       await fetchData('changeTripStatus', { tripId: 4, statusId: 2, status: 'open' })
-      expect(mockApiFetch).toHaveBeenCalledWith(
-        '/api/v1/onprem/longhaul/trips/4/status',
-        { method: 'PATCH', body: JSON.stringify({ statusId: 2, status: 'open' }) },
-      )
+      expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/onprem/longhaul/trips/4/status', {
+        method: 'PATCH',
+        body: JSON.stringify({ statusId: 2, status: 'open' }),
+      })
     })
 
     it('forwards DELETE with no body', async () => {
@@ -206,7 +206,7 @@ describe('longhaul http-client: fetchData', () => {
     })
   })
 
-  describe('auth/header behaviour', () => {
+  describe('auth/header behavior', () => {
     it('does not set headers itself on a GET (delegates auth entirely to apiFetch)', async () => {
       mockApiFetch.mockResolvedValueOnce({})
       await fetchData('fetchUser')

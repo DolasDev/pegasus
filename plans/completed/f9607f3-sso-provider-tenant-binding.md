@@ -60,7 +60,7 @@ Consequences:
 
 1. There is **no accidental protection** from email uniqueness. The escalation is real.
 2. The same email _can_ exist as two distinct users, so a future "scope the login to the
-   provider's own tenant" behaviour is buildable (relevant to the linking follow-up).
+   provider's own tenant" behavior is buildable (relevant to the linking follow-up).
 3. `userId` = `zSmI_AFcBNlAm5zli…` (43 chars, not a GUID) confirms Entra's `sub` is the
    per-application pairwise identifier, not the portal's Object ID (`oid`).
 
@@ -128,7 +128,7 @@ because Cognito stamps `providerName` from the pool's own registration.
 - `AuthSession.tenantId` ≠ provider's tenant ⇒ deny.
 - `AuthSession.tenantId` == provider's tenant ⇒ allow.
 - Malformed / empty `identities` JSON ⇒ treated as native, not trusted.
-- Native login with no `identities` ⇒ existing behaviour, existing tests untouched.
+- Native login with no `identities` ⇒ existing behavior, existing tests untouched.
 - Admin client short-circuit unaffected.
 
 ## Verification

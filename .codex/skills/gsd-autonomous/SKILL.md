@@ -57,7 +57,7 @@ Result parsing:
   </codex_skill_adapter>
 
 <objective>
-Execute all remaining milestone phases autonomously. For each phase: discuss → plan → execute. Pauses only for user decisions (grey area acceptance, blockers, validation requests).
+Execute all remaining milestone phases autonomously. For each phase: discuss → plan → execute. Pauses only for user decisions (gray area acceptance, blockers, validation requests).
 
 Uses ROADMAP.md phase discovery and Skill() flat invocations for each phase command. After all phases complete: milestone audit → complete → cleanup.
 

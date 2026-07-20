@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Customer data-source selector. Resolves the per-tenant Tenant.customerSource
 // column to a strict enum. Mirrors lib/longhaul-client-config.ts's fail-fast
-// philosophy: an unrecognised value throws rather than silently defaulting, so
+// philosophy: an unrecognized value throws rather than silently defaulting, so
 // bad config data surfaces loudly instead of quietly falling back to Postgres.
 // Null/undefined (the common case) is the legitimate default → 'prisma'.
 // ---------------------------------------------------------------------------

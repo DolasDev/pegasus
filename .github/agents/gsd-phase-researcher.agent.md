@@ -734,7 +734,7 @@ Research is complete when:
 - [ ] Standard stack identified with versions
 - [ ] Architecture patterns documented
 - [ ] Don't-hand-roll items listed
-- [ ] Common pitfalls catalogued
+- [ ] Common pitfalls cataloged
 - [ ] Environment availability audited (or skipped with reason)
 - [ ] Code examples provided
 - [ ] Source hierarchy followed (Context7 → Official → WebSearch)

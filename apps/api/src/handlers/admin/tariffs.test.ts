@@ -3,7 +3,7 @@
 //
 // The repository layer is mocked (vi.hoisted) so these tests cover handler
 // wiring, whole-document validation, and response codes — the repository's own
-// transactional/checksum/supersede behaviour is covered by
+// transactional/checksum/supersede behavior is covered by
 // repositories/__tests__/tariff.repository.test.ts against a real DB.
 //
 // The PLATFORM_ADMIN gate is applied in admin/index.ts (adminAuthMiddleware on

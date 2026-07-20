@@ -2,7 +2,7 @@ name: Publish VPN agent
 
 # Builds the apps/vpn-agent tarball and rolls it out to one or more envs.
 #
-# - `push` to `main`: auto-publishes to dev only (preserves prior behaviour;
+# - `push` to `main`: auto-publishes to dev only (preserves prior behavior;
 #   triggers an ASG instance refresh in dev and nothing else).
 # - `workflow_dispatch`: manual run with an `env` input — choose one of
 #   dev, staging, or prod. Use this to roll out to staging/prod, which is

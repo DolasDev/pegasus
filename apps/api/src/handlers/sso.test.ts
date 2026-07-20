@@ -92,7 +92,7 @@ async function json(res: Response): Promise<JsonBody> {
  * ssoHandler.
  *
  * `role` defaults to tenant_admin — the only role that may manage providers —
- * so the behavioural tests below exercise the allowed path. requirePermission
+ * so the behavioral tests below exercise the allowed path. requirePermission
  * is NOT mocked: the real middleware evaluates the real .cedar policies via the
  * offline wasm backend, so a grant leaking to a non-admin persona fails here.
  */

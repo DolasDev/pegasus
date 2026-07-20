@@ -202,7 +202,7 @@ describe('canDispatch — A Move cannot be dispatched without at least one crew 
 // ---------------------------------------------------------------------------
 // 5. Quoting: canFinalizeQuote
 // ---------------------------------------------------------------------------
-describe('canFinalizeQuote — A Quote must have at least one line item to be finalised', () => {
+describe('canFinalizeQuote — A Quote must have at least one line item to be finalized', () => {
   it('returns false when lineItems is undefined', () => {
     expect(canFinalizeQuote(makeQuote())).toBe(false)
   })

@@ -39,8 +39,8 @@ Re-run it after the queue merges to move from A to B.
 3. **Finalize the commit (Phase A).**
    - Per `dolas/agents/team/workflow.md`, a finished plan moves out of
      `plans/in-progress/`. Move it: `git mv plans/in-progress/<slug>.md
-     plans/completed/<short-hash>-<slug>.md` (short-hash = `git rev-parse
-     --short HEAD`), so `main` never carries a stale in-progress entry.
+plans/completed/<short-hash>-<slug>.md` (short-hash = `git rev-parse
+--short HEAD`), so `main` never carries a stale in-progress entry.
    - `git add -A` and commit the remaining work with a clear message. If the
      tree is already clean and the plan is already archived, skip.
    - Never commit debug artifacts or unrelated files — review `git status` first.
@@ -54,7 +54,7 @@ Re-run it after the queue merges to move from A to B.
      once it merges (or watch the queue and continue when `mergedAt` is set).
    - Heads-up (`feedback_rapid_main_pushes_cancel_deploy.md`): if several PRs
      merge in quick succession, check `gh run list --workflow deploy.yml` for a
-     cancelled Deploy and re-dispatch.
+     canceled Deploy and re-dispatch.
 
 5. **Teardown (Phase B — only once the PR is MERGED).**
    - **Guard (andon):** confirm the worktree is clean and fully pushed —
@@ -71,7 +71,7 @@ Re-run it after the queue merges to move from A to B.
 
 6. **Archive a plan that shipped un-archived (Phase B safety net).**
    Normally Phase A moves the plan to `plans/completed/` inside the feature
-   branch, so it lands already archived. But when the PR was merged *before*
+   branch, so it lands already archived. But when the PR was merged _before_
    `/workstream-finish` ran Phase A — e.g. the implementer enabled auto-merge
    directly, or the queue merged while you were away — the plan reaches `main`
    still under `plans/in-progress/`. After syncing `main`, close that gap:
@@ -81,10 +81,10 @@ Re-run it after the queue merges to move from A to B.
      direct-push to `main`, and don't dirty the primary checkout (keep it parked
      on `main`). Use a throwaway worktree off the freshest `main`:
      - `git -C <primary> fetch origin` then `git -C <primary> worktree add -b
-       chore/archive-<slug>-plan ../pegasus-archive-<slug> origin/main` (no deps
+chore/archive-<slug>-plan ../pegasus-archive-<slug> origin/main` (no deps
        or DB — it is a one-file move).
      - `git -C ../pegasus-archive-<slug> mv plans/in-progress/<slug>.md
-       plans/completed/<merge-short-hash>-<slug>.md`, where merge-short-hash =
+plans/completed/<merge-short-hash>-<slug>.md`, where merge-short-hash =
        `git -C <primary> rev-parse --short origin/main` (the squash-merge commit
        the plan shipped in), matching the `plans/completed/` naming convention.
      - Commit (`chore(plans): archive <slug> plan (shipped in #<pr>)`), push,
@@ -94,7 +94,7 @@ Re-run it after the queue merges to move from A to B.
        auto-deletes on squash-merge). The archive PR merges on its own through
        the queue; no need to block on it.
    - Report the final clean state (`git worktree list`).
-</process>
+     </process>
 
 <notes>
 - Idempotent: safe to run at any point. Before merge it lands / re-uses the PR;

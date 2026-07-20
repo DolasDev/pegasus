@@ -14,7 +14,7 @@
 
 import { z } from 'zod'
 
-/** All serviceStatus values the Demo Partner order recognises. */
+/** All serviceStatus values the Demo Partner order recognizes. */
 export const SERVICE_STATUSES = [
   'Requested',
   'Accepted',
@@ -23,7 +23,7 @@ export const SERVICE_STATUSES = [
   'In Progress',
   'Delivered',
   'Declined',
-  'Cancelled',
+  'Canceled',
   'Completed',
 ] as const
 
@@ -37,12 +37,7 @@ export const SUPPLIER_SETTABLE_STATUSES = [
 ] as const
 
 /** serviceStatus values a supplier may NOT set (the API rejects these). */
-export const SUPPLIER_FORBIDDEN_STATUSES = [
-  'Requested',
-  'Awarded',
-  'Cancelled',
-  'Declined',
-] as const
+export const SUPPLIER_FORBIDDEN_STATUSES = ['Requested', 'Awarded', 'Canceled', 'Declined'] as const
 
 /** Per-shipment status picklist (distinct from the order-level serviceStatus). */
 export const SHIPMENT_STATUSES = [
@@ -51,7 +46,7 @@ export const SHIPMENT_STATUSES = [
   'In Storage',
   'Delivered',
   'Completed',
-  'Cancelled',
+  'Canceled',
 ] as const
 
 const moneyOrNull = z.number().nullable()

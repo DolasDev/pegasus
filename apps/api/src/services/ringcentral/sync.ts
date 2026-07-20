@@ -2,7 +2,7 @@
 // RingCentral sync service.
 //
 // Pulls SMS from both stores using the RingCentral sync API and the stored
-// per-store cursors, normalises them, and idempotently captures them:
+// per-store cursors, normalizes them, and idempotently captures them:
 //   - v1.0 message-store  → ISync (or FSync on first run / SYNC_TOKEN_INVALID)
 //   - Thread Messaging     → ISync entries; entries omit phone numbers, so we
 //     resolve the from/to pair via Read Thread (cached per thread per run)

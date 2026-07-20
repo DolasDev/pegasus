@@ -337,7 +337,7 @@ export async function markWebhookEventFailed(db: PrismaClient, id: string, error
 // ---------------------------------------------------------------------------
 
 /**
- * Idempotently captures a normalised SMS: upserts the Message on
+ * Idempotently captures a normalized SMS: upserts the Message on
  * (tenantId, source, externalId) and ensures exactly one outbox row exists for
  * on-prem forwarding. Safe to call repeatedly from the webhook path and the
  * safety-net sync — both converge on the same row, and the outbox enqueue is a

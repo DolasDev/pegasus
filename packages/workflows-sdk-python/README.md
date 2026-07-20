@@ -524,7 +524,7 @@ for example the **projection read-model** (`GET /integrations/{id}/projections/{
 which the typed `get_projection` / `list_projections` don't reach: it filters and
 keyset-pages. `api_get(path, **params)` is a **read-only** passthrough to any Pegasus
 API path with your key; it returns the full JSON body (so `meta` / `nextCursor`
-survive). The catalogue of paths is the OpenAPI spec (`GET /openapi.json`, or
+survive). The catalog of paths is the OpenAPI spec (`GET /openapi.json`, or
 `pegasus://reference/openapi` in your agent):
 
 ```python
@@ -734,7 +734,7 @@ rules** (the DB-backed authoring surface). The working directory (`-C`, default
 | File                                            | Required | What it is                                                                                                                             |
 | ----------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `mapping.json`                                  | ✓        | native payload → canonical (output-shaped DSL; `GET /api/v1/integrations/mapping-schema`)                                              |
-| `rules.json`                                    | ✓        | behavioural rules; ops `eq ne gt gte lt lte in nin` (use `nin` for "must be one of a set")                                             |
+| `rules.json`                                    | ✓        | behavioral rules; ops `eq ne gt gte lt lte in nin` (use `nin` for "must be one of a set")                                              |
 | `corpus.json`                                   | ✓        | gate cases `{input: {order: <native>}, expected: {valid, ruleIds}}`                                                                    |
 | `meta.json`                                     | –        | `{floor, displayName}` — **required for a new id** with no built-in overlay                                                            |
 | `inbound.json`                                  | –        | ingress ack/validation block (`GET /api/v1/integrations/inbound-schema`) — makes the ingress return the partner's `Result{…}` envelope |

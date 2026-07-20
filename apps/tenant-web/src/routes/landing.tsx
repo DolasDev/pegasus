@@ -19,7 +19,7 @@ const FEATURES = [
     icon: Brain,
     title: 'AI-Powered Dispatch',
     description:
-      'Intelligent crew and vehicle assignment that learns from historical moves to optimise routes, timing, and labour allocation automatically.',
+      'Intelligent crew and vehicle assignment that learns from historical moves to optimize routes, timing, and labor allocation automatically.',
   },
   {
     icon: ClipboardList,
@@ -37,7 +37,7 @@ const FEATURES = [
     icon: Route,
     title: 'Smart Scheduling',
     description:
-      'No-overlap crew and vehicle calendars with automated conflict detection. Maximise utilisation across your entire fleet.',
+      'No-overlap crew and vehicle calendars with automated conflict detection. Maximize utilization across your entire fleet.',
   },
   {
     icon: Receipt,

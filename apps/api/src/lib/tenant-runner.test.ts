@@ -314,7 +314,7 @@ describe('ensureTenantRunner', () => {
   it('documents the accepted race: two concurrent ensures can both launch', async () => {
     // Both callers observe "no runner" before either RunTask lands. The
     // duplicate is deliberate v1 posture: both poll the same queue and the
-    // idle-exit watchdog reaps the extra task. This test pins the behaviour
+    // idle-exit watchdog reaps the extra task. This test pins the behavior
     // so a future "fix" is a conscious contract change.
     const ecs = fakeEcs({ listTasks: () => ({ taskArns: [] }) })
     const [a, b] = await Promise.all([

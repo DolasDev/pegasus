@@ -119,7 +119,7 @@ describe('AdminFrontendStack — CloudFront distribution', () => {
     })
   })
 
-  it('always has a /config.json cache behaviour with caching disabled', () => {
+  it('always has a /config.json cache behavior with caching disabled', () => {
     const template = synthAdminStack()
     template.hasResourceProperties('AWS::CloudFront::Distribution', {
       DistributionConfig: Match.objectLike({

@@ -107,7 +107,7 @@ const threadEntry = (overrides: Partial<ThreadEntryInput> = {}): ThreadEntryInpu
 const phones: ThreadPhonePair = { from: '+19085760908', to: '+12015550123' }
 
 describe('messaging — normalizeThreadEntry', () => {
-  it('normalises an inbound thread SMS with its resolved phone pair', () => {
+  it('normalizes an inbound thread SMS with its resolved phone pair', () => {
     const m = normalizeThreadEntry(threadEntry(), phones)
     expect(m.source).toBe('THREAD_STORE')
     expect(m.externalId).toBe('9001')
@@ -206,7 +206,7 @@ const v1msg = (overrides: Partial<V1MessageInput> = {}): V1MessageInput => ({
 })
 
 describe('messaging — normalizeV1Message', () => {
-  it('normalises an outbound v1 SMS', () => {
+  it('normalizes an outbound v1 SMS', () => {
     const m = normalizeV1Message(v1msg())
     expect(m.source).toBe('V1_STORE')
     expect(m.externalId).toBe('7777')

@@ -61,7 +61,7 @@ describe('acquireAccessToken', () => {
     expect(h.exchangeJwtForToken).toHaveBeenCalledTimes(2)
   })
 
-  it('honours a per-connection apiBase override', async () => {
+  it('honors a per-connection apiBase override', async () => {
     h.getConnectionCredentials.mockResolvedValue({
       clientId: 'c',
       clientSecret: 's',

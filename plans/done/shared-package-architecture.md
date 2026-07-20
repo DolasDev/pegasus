@@ -54,8 +54,8 @@ The mobile app (`DolasApp/`) is currently outside the Turborepo workspace, has a
 - [ ] Create `packages/api-http/src/client.ts` (createApiClient factory)
 - [ ] Create `packages/api-http/src/index.ts` (barrel)
 - [ ] `node node_modules/.bin/turbo run test --filter=@pegasus/api-http` — all tests pass
-- [ ] Refactor `packages/web/src/api/client.ts` to delegate to `createApiClient` — no behaviour change
-- [ ] Refactor `apps/admin/src/api/client.ts` to delegate to `createApiClient` — no behaviour change
+- [ ] Refactor `packages/web/src/api/client.ts` to delegate to `createApiClient` — no behavior change
+- [ ] Refactor `apps/admin/src/api/client.ts` to delegate to `createApiClient` — no behavior change
 - [ ] `node node_modules/.bin/turbo run typecheck --filter=@pegasus/web`
 - [ ] `node node_modules/.bin/turbo run typecheck --filter=@pegasus/admin-app`
 - [ ] `node node_modules/.bin/turbo run test --filter=@pegasus/web`
@@ -88,7 +88,7 @@ The mobile app (`DolasApp/`) is currently outside the Turborepo workspace, has a
 | ------------------------------------------------ | ----------------------------------------------------------- |
 | `packages/theme/package.json`                    | Package manifest (`@pegasus/theme`)                         |
 | `packages/theme/tsconfig.json`                   | Extends root base config                                    |
-| `packages/theme/src/colors.ts`                   | Colour palette tokens                                       |
+| `packages/theme/src/colors.ts`                   | Color palette tokens                                        |
 | `packages/theme/src/spacing.ts`                  | Spacing scale                                               |
 | `packages/theme/src/typography.ts`               | Font size / weight tokens                                   |
 | `packages/theme/src/index.ts`                    | Barrel export                                               |

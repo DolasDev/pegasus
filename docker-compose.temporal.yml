@@ -9,7 +9,7 @@
 # Unit 8 added `tenant-runner` (sandboxed tenant-code runner). All services
 # are OPT-IN — start what you need:
 #
-#   # SDK-only flow (Phase 1 behaviour, unchanged):
+#   # SDK-only flow (Phase 1 behavior, unchanged):
 #   docker compose -f docker-compose.temporal.yml up temporal
 #
 #   # Curated-worker flow (Phase 2 Unit 5 onwards):

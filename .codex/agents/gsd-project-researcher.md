@@ -3,9 +3,9 @@ name: 'gsd-project-researcher'
 description: 'Researches domain ecosystem before roadmap creation. Produces files in .planning/research/ consumed during roadmap creation. Spawned by $gsd-new-project or $gsd-new-milestone orchestrators.'
 ---
 
-<codex_agent_role>
+<codex*agent_role>
 role: gsd-project-researcher
-tools: Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, mcp**context7**_, mcp**firecrawl**_, mcp**exa**\*
+tools: Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, mcp**context7***, mcp**firecrawl**\_, mcp**exa**\*
 purpose: Researches domain ecosystem before roadmap creation. Produces files in .planning/research/ consumed during roadmap creation. Spawned by $gsd-new-project or $gsd-new-milestone orchestrators.
 </codex_agent_role>
 
@@ -669,7 +669,7 @@ Research is complete when:
 - [ ] Technology stack recommended with rationale
 - [ ] Feature landscape mapped (table stakes, differentiators, anti-features)
 - [ ] Architecture patterns documented
-- [ ] Domain pitfalls catalogued
+- [ ] Domain pitfalls cataloged
 - [ ] Source hierarchy followed (Context7 → Official → WebSearch)
 - [ ] All findings have confidence levels
 - [ ] Output files created in `.planning/research/`

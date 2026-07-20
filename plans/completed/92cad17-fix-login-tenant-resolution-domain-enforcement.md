@@ -43,7 +43,7 @@ Consequences, accepted:
 
 - Login and silent token refresh resolve the correct tenant for any user with exactly one active roster row, with or without a live `AuthSession`.
 - The `email_domains` column, Prisma field, API schemas, resolution code, and admin-web UI are fully removed; `npm run typecheck` and `npm test` are clean.
-- A login that genuinely cannot be authorised shows the user a clean, specific reason (no `PreTokenGeneration failed with error …` wrapper text).
+- A login that genuinely cannot be authorized shows the user a clean, specific reason (no `PreTokenGeneration failed with error …` wrapper text).
 
 ## Plan
 

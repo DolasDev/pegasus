@@ -140,7 +140,7 @@ const YesNoToggle = (props: {
             style={
               status !== null && !status
                 ? { color: 'white', backgroundColor: 'brown', borderRadius: '3px 0px 0px 3px' }
-                : { color: 'white', backgroundColor: 'grey', borderRadius: '3px 0px 0px 3px' }
+                : { color: 'white', backgroundColor: 'gray', borderRadius: '3px 0px 0px 3px' }
             }
             onClick={() => {
               props.onToggle(false)
@@ -164,7 +164,7 @@ const YesNoToggle = (props: {
             style={
               status
                 ? { color: 'white', backgroundColor: 'green', borderRadius: '0px 3px 3px 0px' }
-                : { color: 'white', backgroundColor: 'grey', borderRadius: '0px 3px 3px 0px' }
+                : { color: 'white', backgroundColor: 'gray', borderRadius: '0px 3px 3px 0px' }
             }
             onClick={() => {
               props.onToggle(true)

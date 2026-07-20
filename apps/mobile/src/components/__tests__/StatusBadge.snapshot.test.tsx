@@ -18,7 +18,7 @@ describe('StatusBadge Snapshot Tests', () => {
     expect(toJSON()).toMatchSnapshot()
   })
 
-  it('should match snapshot for cancelled status', () => {
+  it('should match snapshot for canceled status', () => {
     const { toJSON } = render(<StatusBadge status="cancelled" />)
     expect(toJSON()).toMatchSnapshot()
   })

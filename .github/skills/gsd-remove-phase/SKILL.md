@@ -8,7 +8,7 @@ allowed-tools: Read, Write, Bash, Glob
 <objective>
 Remove an unstarted future phase from the roadmap and renumber all subsequent phases to maintain a clean, linear sequence.
 
-Purpose: Clean removal of work you've decided not to do, without polluting context with cancelled/deferred markers.
+Purpose: Clean removal of work you've decided not to do, without polluting context with canceled/deferred markers.
 Output: Phase deleted, all subsequent phases renumbered, git commit as historical record.
 </objective>
 

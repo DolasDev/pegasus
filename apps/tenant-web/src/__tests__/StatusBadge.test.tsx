@@ -25,7 +25,7 @@ describe('MoveStatusBadge', () => {
 
   it('renders the status text for CANCELLED', () => {
     render(<MoveStatusBadge status="CANCELLED" />)
-    expect(screen.getByText('Cancelled')).toBeInTheDocument()
+    expect(screen.getByText('Canceled')).toBeInTheDocument()
   })
 })
 

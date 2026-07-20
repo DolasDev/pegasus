@@ -117,7 +117,7 @@ export function TenantFormDialog(props: TenantFormDialogProps) {
     adminEmail: '',
   })
 
-  // --- Edit-mode state (initialised from tenant prop) ---
+  // --- Edit-mode state (initialized from tenant prop) ---
   const [edit, setEdit] = useState<EditFields>(() => {
     if (mode === 'edit') {
       const t = props.tenant

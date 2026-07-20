@@ -121,7 +121,7 @@ const ManifestSchema = z.object({
       }
     }),
   // Per-execution Temporal workflow timeout in seconds (Phase 3 Unit 10).
-  // Optional; when present the runner honours it as the maximum wall-clock
+  // Optional; when present the runner honors it as the maximum wall-clock
   // budget for the execution (default: 900 s = 15 min). The manifest may
   // LOWER the default, never raise it — values > 900 are rejected at finalize
   // (422 VALIDATION_ERROR) rather than silently clamped, so authors know their
@@ -1170,7 +1170,7 @@ workflowsHandler.post(
     if (!RETRYABLE_STATUSES.has(execution.status)) {
       return c.json(
         {
-          error: `Only failed, timed-out, or cancelled executions can be retried (this one is ${execution.status})`,
+          error: `Only failed, timed-out, or canceled executions can be retried (this one is ${execution.status})`,
           code: 'EXECUTION_NOT_RETRYABLE',
         },
         409,

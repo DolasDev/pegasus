@@ -185,7 +185,7 @@ describe('pre-token trigger', () => {
   // stamps `providerName` from the pool's own registration, and we own the
   // provider→tenant mapping. So the provider, not the email, resolves the tenant.
 
-  /** The `identities` attribute exactly as Cognito serialises it. */
+  /** The `identities` attribute exactly as Cognito serializes it. */
   function identitiesAttr(providerName: string): string {
     return JSON.stringify([
       {

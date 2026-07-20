@@ -246,7 +246,7 @@ Guardrails baked into every YAML below: `--max-turns` cap, `timeout-minutes`, `c
             claude_args: '--model claude-sonnet-4-6 --max-turns 12'
   ```
 
-  Sonnet is sufficient here — log classification, not deep reasoning. This also covers the repo rule "fix the pipeline first": the triage comment lands while context is fresh, and a deploy-run failure on `main` gets surfaced without watching the Actions tab. (Pairs with the existing memory gotcha about cancelled Deploy runs after rapid pushes — the triage fires on `failure`, not `cancelled`; if cancelled-run detection is wanted later, add `types: [completed]` filtering on `conclusion == 'cancelled'` in a follow-up.)
+  Sonnet is sufficient here — log classification, not deep reasoning. This also covers the repo rule "fix the pipeline first": the triage comment lands while context is fresh, and a deploy-run failure on `main` gets surfaced without watching the Actions tab. (Pairs with the existing memory gotcha about canceled Deploy runs after rapid pushes — the triage fires on `failure`, not `cancelled`; if cancelled-run detection is wanted later, add `types: [completed]` filtering on `conclusion == 'cancelled'` in a follow-up.)
 
 ### Phase 4 — Plans-lifecycle hygiene (no AI; effort: ~30 min)
 
@@ -349,7 +349,7 @@ Guardrails baked into every YAML below: `--max-turns` cap, `timeout-minutes`, `c
 - **Triage on `workflow_run` runs with main-branch workflow definitions** — safe by construction (it never checks out PR code with write perms), but remember edits to `ci-triage.yml` only take effect once merged to main.
 - **Docs-drift PRs could subtly rewrite decisions** — constrained to "mark superseded, never delete", ≤100-line diffs, and every drift PR is human-merged after passing the Phase 2 auto-review. Worst case is a wrong suggestion you decline.
 - **Plans consolidation rewrites paths referenced elsewhere** — a few docs/memory entries reference `plans/archived/...` paths. Acceptable: git history preserves the moves (`git log --follow`), and the hygiene report covers the future. Optionally grep `rg 'plans/(done|archive|archived)/' --type md` post-move and fix stragglers in the same commit.
-- **Deploy concurrency interaction** — the consolidation commit is plans-only and will trigger a Deploy run that no-ops on path filters; per existing memory gotcha, land plans-only commits _before_ (not after) a batch of code merges to avoid cancelling a needed deploy.
+- **Deploy concurrency interaction** — the consolidation commit is plans-only and will trigger a Deploy run that no-ops on path filters; per existing memory gotcha, land plans-only commits _before_ (not after) a batch of code merges to avoid canceling a needed deploy.
 
 ## Acceptance Criteria / Verification
 

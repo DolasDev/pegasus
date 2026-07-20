@@ -215,7 +215,7 @@ describe('POST /trips/:id/cancel (cloud-direct)', () => {
     expect(executeSqlMock).toHaveBeenCalledTimes(1)
   })
 
-  it('blocks cancelling at/after in-progress status (>=4) with 403', async () => {
+  it('blocks canceling at/after in-progress status (>=4) with 403', async () => {
     executeSqlMock.mockResolvedValueOnce({
       recordset: [{ TripStatus_id: 4 }],
       recordsets: [],

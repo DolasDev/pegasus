@@ -37,20 +37,20 @@ export function MermaidDiagram({ chart }: { chart: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    let cancelled = false
+    let canceled = false
     setSvg(null)
     setError(null)
     const id = `mermaid-${++renderCounter}`
     loadMermaid()
       .then((mermaid) => mermaid.render(id, chart))
       .then(({ svg }) => {
-        if (!cancelled) setSvg(svg)
+        if (!canceled) setSvg(svg)
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        if (!canceled) setError(err instanceof Error ? err.message : String(err))
       })
     return () => {
-      cancelled = true
+      canceled = true
     }
   }, [chart])
 

@@ -1,10 +1,10 @@
 // ---------------------------------------------------------------------------
 // Messaging bounded context
 // Captures RingCentral SMS (inbound + outbound) from both the Thread Messaging
-// store and the legacy v1.0 message-store, normalises them into a single
+// store and the legacy v1.0 message-store, normalizes them into a single
 // Message aggregate, and tracks forwarding to the on-prem system of record.
 //
-// Pure domain — zero I/O. Normalisation functions translate loosely-typed
+// Pure domain — zero I/O. Normalization functions translate loosely-typed
 // RingCentral payloads (mapped by the service layer) into NormalizedMessage
 // values that the repository persists. The on-prem store is authoritative;
 // the cloud Message row is a transient, idempotency-keyed buffer.
@@ -137,7 +137,7 @@ export interface Message {
 }
 
 /**
- * The output of normalising a raw RingCentral record — the shape the repository
+ * The output of normalizing a raw RingCentral record — the shape the repository
  * idempotently upserts. Excludes capture-side lifecycle fields (status,
  * forwardStatus) which are owned by the persistence layer.
  */
@@ -256,7 +256,7 @@ function toRcDate(raw: string, field: string): Date {
  *
  * The thread store is SMS-centric, so an absent `type` is treated as SMS. The
  * v1.0 message-store also holds Fax/VoiceMail/Pager records, so callers
- * normalising v1 records should require an explicit `type === 'SMS'` (see
+ * normalizing v1 records should require an explicit `type === 'SMS'` (see
  * `normalizeV1Message`) rather than relying on this permissive default.
  */
 export function isSms(type: string | undefined): boolean {
@@ -264,7 +264,7 @@ export function isSms(type: string | undefined): boolean {
 }
 
 /**
- * Normalises a Thread Messaging entry plus its resolved phone pair into a
+ * Normalizes a Thread Messaging entry plus its resolved phone pair into a
  * NormalizedMessage.
  *
  * @throws {DomainError} `INVALID_PHONE_NUMBER` if a resolved number is not E.164.
@@ -297,7 +297,7 @@ export function normalizeThreadEntry(
 }
 
 /**
- * Normalises a v1.0 message-store record into a NormalizedMessage.
+ * Normalizes a v1.0 message-store record into a NormalizedMessage.
  *
  * @throws {DomainError} `INVALID_PHONE_NUMBER` if from/to is missing or not E.164.
  * @throws {DomainError} `UNSUPPORTED_MESSAGE_TYPE` if the record is not an SMS.

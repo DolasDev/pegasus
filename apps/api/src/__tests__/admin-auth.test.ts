@@ -2,8 +2,8 @@
 // Unit tests for adminAuthMiddleware
 //
 // jose is fully mocked so tests run without any network access or real JWTs.
-// The middleware's JWKS cache (_jwks) is lazily initialised on first call and
-// reused across tests — this is intentional and matches Lambda warm behaviour.
+// The middleware's JWKS cache (_jwks) is lazily initialized on first call and
+// reused across tests — this is intentional and matches Lambda warm behavior.
 // jwtVerify is re-configured per test via vi.mocked().mockResolvedValue /
 // mockRejectedValue, which is sufficient because jwtVerify controls all
 // outcomes regardless of what the JWKS set object contains.

@@ -26,12 +26,12 @@ Wait for explicit developer approval before implementing anything.
 
 For every feature, endpoint, or component being built:
 
-1. Write the test file first, covering the expected behaviour, error paths, and edge cases.
+1. Write the test file first, covering the expected behavior, error paths, and edge cases.
 2. Run the tests and confirm they fail for the right reason (the implementation does not exist yet).
 3. Write the minimum implementation needed to make the tests pass.
 4. Refactor if necessary, keeping tests green throughout.
 
-**Plans and individual checklist items must reflect this order.** Each step in a plan that introduces new behaviour must list the test file as the item to implement first, with the implementation item immediately following. Example:
+**Plans and individual checklist items must reflect this order.** Each step in a plan that introduces new behavior must list the test file as the item to implement first, with the implementation item immediately following. Example:
 
 ```
 - [ ] Write tenant-users.test.ts (handler unit tests — all cases failing)
@@ -44,7 +44,7 @@ Do not merge test and implementation steps into a single checklist item. They ar
 
 Each increment must leave the codebase deployable:
 
-- No partially-implemented features that break existing behaviour.
+- No partially-implemented features that break existing behavior.
 - Prefer feature flags, additive changes, and backwards-compatible interfaces.
 - Database migrations must be non-destructive (no dropped columns/tables while old code still references them).
 

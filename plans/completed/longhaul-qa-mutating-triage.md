@@ -159,6 +159,6 @@ to the on-prem Windows host all along).
 
 Push the repo fix + un-fixme'd specs, then trigger an `e2e-qa-longhaul.yml`
 workflow_dispatch run to verify all 3 specs pass (not skip) on a freshly
-reseeded QA. The cloud Lambda needs no behavioural change — onprem.ts is a
+reseeded QA. The cloud Lambda needs no behavioral change — onprem.ts is a
 transparent proxy; the fix lives entirely in the on-prem Windows Service
 (rebuilt + restarted in this session).

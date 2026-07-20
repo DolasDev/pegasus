@@ -3,7 +3,7 @@
 //
 // The three downstream middlewares are mocked with pass-through stubs — this
 // suite asserts only the dispatch decision (which middleware gets the request),
-// not what each downstream middleware does. Their behaviour is covered by
+// not what each downstream middleware does. Their behavior is covered by
 // tenant-middleware.test.ts and m2m-app-auth.test.ts.
 // ---------------------------------------------------------------------------
 

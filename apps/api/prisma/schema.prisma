@@ -303,7 +303,7 @@ model Tenant {
   deviceTokens           DeviceToken[]
   pushNotificationOutbox PushNotificationOutbox[]
 
-  // Longhaul — archived (rejected/cancelled) trip snapshots
+  // Longhaul — archived (rejected/canceled) trip snapshots
   archivedTrips ArchivedTrip[]
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -441,7 +441,7 @@ model TenantSsoProvider {
 // NOTE: `adminEmail`, NOT `contactEmail`. The Tenant's contactEmail is contact
 // details only — it never provisions a Cognito user or a roster row. Both entry
 // points above lowercase the address before writing it, because Cognito usernames
-// are case-sensitive; every lookup against this table normalises to match.
+// are case-sensitive; every lookup against this table normalizes to match.
 // ---------------------------------------------------------------------------
 
 model TenantUser {
@@ -475,7 +475,7 @@ model TenantUser {
   /// Service-account flag — true for non-human principals owned by API clients.
   /// Service accounts have `cognitoSub = null` and are unable to sign in via
   /// Cognito; they exist solely as the principal an `ApiClient` acts as so
-  /// Cedar/AVP authorisation runs through the same code path as human users.
+  /// Cedar/AVP authorization runs through the same code path as human users.
   isServiceAccount Boolean @default(false) @map("is_service_account")
 
   tenant            Tenant      @relation(fields: [tenantId], references: [id])
@@ -542,7 +542,7 @@ model ApiClient {
   /// TenantUser who created this key.
   createdById String @map("created_by")
 
-  /// Service-account TenantUser this key acts as. Cedar/AVP authorisation
+  /// Service-account TenantUser this key acts as. Cedar/AVP authorization
   /// runs against this user's roleNames — there is no separate scope set.
   /// Nullable at the column level so the migration is non-destructive; the
   /// API enforces non-null on create/update and validates that the target is
@@ -1245,7 +1245,7 @@ model AuditLog {
   id           String   @id @default(uuid())
   /// Cognito sub of the administrator who performed the action.
   adminSub     String   @map("admin_sub")
-  /// Denormalised email for display — avoids joins when rendering the log.
+  /// Denormalized email for display — avoids joins when rendering the log.
   adminEmail   String   @map("admin_email")
   /// Action identifier. Values: CREATE_TENANT | UPDATE_TENANT |
   /// SUSPEND_TENANT | REACTIVATE_TENANT | OFFBOARD_TENANT
@@ -1450,7 +1450,7 @@ model IntegrationConfig {
   /// Full gate-pipeline report captured at publish (static checks + corpus run).
   gateReport Json @map("gate_report")
 
-  /// TenantUser.id (or service-account id) of the publisher. Denormalised; not an FK.
+  /// TenantUser.id (or service-account id) of the publisher. Denormalized; not an FK.
   publishedBy String @map("published_by")
 
   /// Set when this config was created by forking a GLOBAL platform config
@@ -1479,7 +1479,7 @@ model IntegrationConfig {
   /// (0020). Null ⇒ identity (external == canonical).
   externalMapping Json? @map("external_mapping")
 
-  /// Inbound (ingress) behaviour published as part of the integration definition
+  /// Inbound (ingress) behavior published as part of the integration definition
   /// (sdk-feedback 0021): `{ eventType, dedupKeyPath?, orderByPath?, ackTemplate:
   /// {success, failure} }`. The ingress endpoint reads this to know which domain
   /// event to emit on receipt, how to derive the dedup id, and how to shape the
@@ -1573,7 +1573,7 @@ model Workflow {
   manifest Json
 
   /// TenantUser.id of the uploader (the principal that called finalize).
-  /// Denormalised; not an FK so the row survives user deletion.
+  /// Denormalized; not an FK so the row survives user deletion.
   createdByUserId String @map("created_by_user_id")
 
   /// Set when this workflow was created by forking another workflow (the
@@ -1671,7 +1671,7 @@ model WorkflowExecution {
 
   /// TenantUser.id of the principal that triggered this execution. Null for
   /// trigger-fired executions (triggerSource EVENT / SCHEDULE) — those carry
-  /// triggeredByTriggerId instead. Denormalised; not an FK so the row
+  /// triggeredByTriggerId instead. Denormalized; not an FK so the row
   /// survives user deletion.
   triggeredByUserId String? @map("triggered_by_user_id")
 
@@ -1680,7 +1680,7 @@ model WorkflowExecution {
   triggerSource WorkflowExecutionTriggerSource @default(USER) @map("trigger_source")
 
   /// WorkflowTrigger.id that fired this execution. Null for USER-source
-  /// executions. Denormalised; not an FK so the row survives trigger deletion.
+  /// executions. Denormalized; not an FK so the row survives trigger deletion.
   triggeredByTriggerId String? @map("triggered_by_trigger_id")
 
   queuedAt   DateTime  @map("queued_at")
@@ -1745,7 +1745,7 @@ model WorkflowTrigger {
   /// Disabled triggers are kept but never fired.
   enabled Boolean @default(true)
 
-  /// TenantUser.id of the creator. Denormalised; not an FK so the row
+  /// TenantUser.id of the creator. Denormalized; not an FK so the row
   /// survives user deletion (matches Workflow.createdByUserId).
   createdByUserId String @map("created_by_user_id")
 
@@ -2247,7 +2247,7 @@ model RingCentralConnection {
   id       String @id @default(uuid())
   tenantId String @map("tenant_id")
 
-  /// RingCentral account id (the `~` account this connection authorises).
+  /// RingCentral account id (the `~` account this connection authorizes).
   rcAccountId String @map("rc_account_id")
 
   /// RingCentral extension id whose token/number this connection owns.
@@ -2363,7 +2363,7 @@ model InboundWebhookEvent {
   @@schema("public")
 }
 
-/// A normalised captured SMS — transient cloud buffer. The `@@unique([tenantId,
+/// A normalized captured SMS — transient cloud buffer. The `@@unique([tenantId,
 /// source, externalId])` is the idempotency linchpin: webhook-path and
 /// sync-path upserts converge on it, giving exactly one row per message.
 model Message {

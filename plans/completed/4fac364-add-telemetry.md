@@ -1,7 +1,7 @@
 # Plan: Add System-Wide Telemetry
 
 **Branch:** main
-**Goal:** Implement structured logging, `x-correlation-id` tracing, and standardised error handling across the full Pegasus stack — API, frontends, and infra — to make production debugging tractable without leaking internal details to clients.
+**Goal:** Implement structured logging, `x-correlation-id` tracing, and standardized error handling across the full Pegasus stack — API, frontends, and infra — to make production debugging tractable without leaking internal details to clients.
 
 ---
 
@@ -12,7 +12,7 @@
 - [x] Install `@aws-lambda-powertools/logger` and wire it into the Lambda entry point
 - [x] Add Hono global logging middleware: extract/generate `x-correlation-id` from each request, attach it to the logger context, and pass it through to all downstream handlers
 - [x] Replace all `console.*` calls in route handlers and services with the structured logger
-- [x] Rewrite `app.onError` to: log the full stack trace + `correlationId` server-side, return a sanitised `{ error: string, correlationId: string }` JSON payload to the client (no stack traces)
+- [x] Rewrite `app.onError` to: log the full stack trace + `correlationId` server-side, return a sanitized `{ error: string, correlationId: string }` JSON payload to the client (no stack traces)
 - [x] Rewrite SSO handler (`handlers/sso.ts`) and Cognito trigger functions (`cognito/pre-token.ts`, `cognito/pre-auth.ts`) to use the structured logger
 
 ### `packages/web` & `apps/admin`
@@ -30,7 +30,7 @@
 
 ### Tests & Docs
 
-- [x] Add unit tests for the Hono logging middleware (correlation ID propagation, error sanitisation)
+- [x] Add unit tests for the Hono logging middleware (correlation ID propagation, error sanitization)
 - [x] Add tests for frontend fetch client (x-correlation-id header injection)
 - [x] Update `CLAUDE.md` and `PATTERNS.md` to document the logging conventions
 

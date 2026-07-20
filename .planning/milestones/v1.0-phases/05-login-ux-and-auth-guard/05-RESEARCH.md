@@ -36,7 +36,7 @@ All APIs are confirmed present in the installed `expo-router` build. `Stack.Prot
 
 **D-04:** Toggle uses tappable text `SHOW` / `HIDE` positioned inside the right side of the password input container. Uppercase to match the existing label style (`EMAIL`, `PASSWORD`). `secureTextEntry` toggled via local `showPassword` boolean state.
 
-**D-05:** Toggle is a `TouchableOpacity` absolutely positioned (or row-flex inside the input wrapper). Style follows `colors.primary` for the active text, matching button text colour.
+**D-05:** Toggle is a `TouchableOpacity` absolutely positioned (or row-flex inside the input wrapper). Style follows `colors.primary` for the active text, matching button text color.
 
 **D-06:** `isLoading` already disables inputs and buttons on the email step — pattern is correct. Password step adds a `passwordError` state for empty-password validation (replaces the existing `Alert.alert` empty-check). All inputs use `editable={!isLoading}` and the submit button uses `disabled={isLoading}`.
 

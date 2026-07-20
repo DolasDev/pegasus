@@ -5,7 +5,7 @@
 
 ## Why (time-boxed — GitHub forces node24 on 2026-06-16)
 
-GitHub is deprecating the **`node20` action runtime** in favour of `node24`. Per the live
+GitHub is deprecating the **`node20` action runtime** in favor of `node24`. Per the live
 deprecation annotation: actions are **forced to run on Node.js 24 by default starting 2026-06-16**,
 and **node20 is removed from runners on 2026-09-16**. Until then flagged actions still run but warn.
 Lower-stakes than the Lambda side (see [lambda-nodejs24-runtime-migration.md](./lambda-nodejs24-runtime-migration.md)),
@@ -46,7 +46,7 @@ exercise them, plus `runs.using` check): `aws-actions/configure-aws-credentials@
 all `actions/*` at v6/v7/v8, and `pypa/gh-action-pypi-publish` (Docker action).
 
 > The earlier worry about risky `aws-actions/*` major bumps was unfounded — they're already node24,
-> so no behaviour-changing bumps were needed. Only `actions/cache` (v4→v5) and the `docker/*` actions
+> so no behavior-changing bumps were needed. Only `actions/cache` (v4→v5) and the `docker/*` actions
 > (v6→v7, v3→v4) are major bumps; both are drop-in for our usage (`path`/`key`; `context`/`file`/
 > `push`/`tags`/`cache-from`/`cache-to`). CI on the PR is the functional gate.
 

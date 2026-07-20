@@ -292,7 +292,7 @@ describe('WireGuardStack — CloudWatch alarms', () => {
   it('routes the reconcile-lag alarm to the SNS topic', () => {
     synth().hasResourceProperties('AWS::CloudWatch::Alarm', {
       AlarmName: 'pegasus-wireguard-reconcile-lag',
-      // SnsAction serialises to a Ref → topic ARN; assert it's non-empty.
+      // SnsAction serializes to a Ref → topic ARN; assert it's non-empty.
       AlarmActions: Match.anyValue(),
     })
   })

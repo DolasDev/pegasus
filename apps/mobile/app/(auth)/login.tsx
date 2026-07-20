@@ -26,7 +26,7 @@ export default function LoginScreen() {
     cognitoAuthEnabled?: string
   }>()
 
-  // D-08: if picker handed off step params, initialise directly in that step
+  // D-08: if picker handed off step params, initialize directly in that step
   const initialStep: LoginStep =
     params.step === 'password' ? 'password' : params.step === 'providers' ? 'providers' : 'email'
   const initialEmail = params.email ?? ''

@@ -15,7 +15,7 @@
 //
 // This handler collapses (1)-(2) into ONE query: v_longhaul_drivers LEFT JOINed
 // to its latest trip via OUTER APPLY (TOP 1). The "last activity" subquery was
-// dropped in favour of a SECOND query that pulls EVERY RDEL (delivery) activity
+// dropped in favor of a SECOND query that pulls EVERY RDEL (delivery) activity
 // for the latest-trip set in one shot, so the Operations → Availability UI can
 // stack a row per delivery on each driver's card. The DriverConfirmedAvailability
 // lookup is a THIRD query that soft-fails (caught + treated as empty) exactly
@@ -35,7 +35,7 @@ import { ENSURE_CONFIRMED_TABLE_SQL } from './driver-confirmed-availability-sche
 
 // One round trip: every driver and its latest non-cancelled trip.
 // v_longhaul_drivers exposes UPPERCASE columns on the Dolios SQL Server — alias
-// them to lowercase exactly as the on-prem `lowercaseRowKeys` normalisation
+// them to lowercase exactly as the on-prem `lowercaseRowKeys` normalization
 // does, so downstream code sees `driver_id` etc.
 //
 // The WHERE clause keeps this list in lockstep with the Planning driver
@@ -231,7 +231,7 @@ function sortDeliveries(deliveries: Delivery[]): Delivery[] {
   })
 }
 
-/** MSSQL bit may surface as boolean | 0 | 1 | null — normalise to boolean. */
+/** MSSQL bit may surface as boolean | 0 | 1 | null — normalize to boolean. */
 function toBool(v: boolean | number | null | undefined): boolean {
   return v === true || v === 1
 }

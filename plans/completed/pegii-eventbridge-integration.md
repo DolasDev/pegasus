@@ -31,7 +31,7 @@ What the on-prem relay must `PutEvents`, and what every cloud consumer relies on
 {
   "EventBusName": "pegasus-{env}-integration-events",
   "Source": "pegii.movemanager", // stable; rules match on this
-  "DetailType": "Shipment.Opened", // == AsyncAPI catalogue message name, 1:1
+  "DetailType": "Shipment.Opened", // == AsyncAPI catalog message name, 1:1
   "Detail": {
     "tenantId": "<pegasus tenant cuid>", // stamped from relay appsettings (per-site)
     "eventId": "<legacy dbo.Outbox row id>", // idempotency key — EB is at-least-once
@@ -50,7 +50,7 @@ What the on-prem relay must `PutEvents`, and what every cloud consumer relies on
 }
 ```
 
-- Catalogue source of truth: `GET /api/v1/pegii/events/catalogue` on the pegII API
+- Catalog source of truth: `GET /api/v1/pegii/events/catalog` on the pegII API
   (dolab-m70q-1:65274). Currently `Shipment.Opened` / `Shipment.Closed`; the
   registry is expected to grow (more aggregates than Shipment).
 - Rules stay **coarse**: route all `source: pegii.*` → mapper. All _fine_ filtering
@@ -76,7 +76,7 @@ What the on-prem relay must `PutEvents`, and what every cloud consumer relies on
 - **Publish swap:** `SNS Publish` → `EventBridge PutEvents`, mapping each `dbo.Outbox`
   row to the envelope above (stamp `tenantId` + `eventId`). The Roles Anywhere
   credential helper already installed keeps working — only the IAM action changes.
-- Optional: update the catalogue endpoint's `description` (it still says "SNS topic
+- Optional: update the catalog endpoint's `description` (it still says "SNS topic
   the outbox relay publishes to").
 
 ## Cutover order (non-breaking, even though SNS is retired)
@@ -95,5 +95,5 @@ What the on-prem relay must `PutEvents`, and what every cloud consumer relies on
 - **At-least-once** → dedupe on `eventId`; consumers idempotent by construction.
 - **Unknown/disabled `tenantId`** → DLQ + alarm, never silently drop.
 - **CMK on bus + archive** — payloads carry light PII (`shippedTo`, `driver`).
-- **Catalogue text** still says "SNS" — update after cutover so the published source
+- **Catalog text** still says "SNS" — update after cutover so the published source
   of truth matches reality.

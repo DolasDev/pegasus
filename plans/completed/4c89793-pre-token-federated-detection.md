@@ -153,7 +153,7 @@ who authenticates natively. That combination was impossible before #451.
 - `identities` absent + `HostedAuth` ⇒ native path (defensive: no provider ⇒ never federated).
 - `identities` present + `TokenGeneration_NewPasswordChallenge` ⇒ native path.
 - Existing federated tests must keep passing with `triggerSource` set to `HostedAuth` — if a
-  test asserting _native_ behaviour needs its expectations changed, the change has leaked
+  test asserting _native_ behavior needs its expectations changed, the change has leaked
   (per the #443 containment rule).
 
 Note the existing `makeEvent` helper hardcodes `triggerSource: 'TokenGeneration_Authentication'`

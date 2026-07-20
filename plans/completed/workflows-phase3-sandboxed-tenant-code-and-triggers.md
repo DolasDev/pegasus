@@ -13,21 +13,22 @@ exists): `smoke_canary` GLOBAL workflow + one test customer/move/quote.
 
 **STAGING SMOKE: engine portions ✅ PASSED 2026-06-13** (driven via a
 temp Playwright spec on the qa e2e target + AWS verification):
+
 - Tenant-code lane ✅: SDK push → `executable:true`+sha → run →
   runner RunTask (startedBy=tenantId) → **cold start 18 s** →
   sha-verified artifact prepare → subprocess exit 0 → COMPLETED with
   result round-trip → **idle-exit ~10 min** (two full scale-to-zero
   cycles observed). Runner logs show the whole designed lifecycle
-  (wbk_-authed discovery, presigned S3, token mint, status PATCH).
+  (wbk\_-authed discovery, presigned S3, token mint, status PATCH).
 - Track B ✅: EVENT (quote.accepted via real customer→move→quote→
-  finalize→accept chain) + SCHEDULE (*/5) both fired curated
+  finalize→accept chain) + SCHEDULE (\*/5) both fired curated
   executions; triggers disabled+deleted clean.
 - **The smoke caught a REAL latent Phase-1 bug, fixed as #256
   (`56bf174`)**: `@pegasus_workflow` registered the Temporal type as
   the Python CLASS name, not the manifest name → the STDLIB lane had
   NEVER executed end-to-end (worker rejected every task; executions
   stuck RUNNING in task-retry). One-line fix (`workflow.defn(name=
-  name)(cls)`) + regression test; rebuilt worker self-healed the stuck
+name)(cls)`) + regression test; rebuilt worker self-healed the stuck
   executions to COMPLETED (Temporal task retry). Tenant-runner lane was
   unaffected (Unit 8 proxies always used manifest names).
 - Remaining: the Unit-11 admin-UI clicks (kill switch 423 round-trip,
@@ -48,8 +49,9 @@ confirmed); queues are implicit, nothing to provision. Temporal Cloud
 IaC (terraform `temporalio/temporalcloud`) assessed + deferred.
 Pipeline interlude: esbuild GHSA-gv7w-rqvm-qjhr (high, published
 2026-06-12) broke audit-ci on all branches — fixed by #249 (override
->=0.28.1; note: overrides regenerate fine on node 24 now, old node-20
-gotcha obsolete).
+
+> =0.28.1; note: overrides regenerate fine on node 24 now, old node-20
+> gotcha obsolete).
 
 ## Resume-session checklist
 
@@ -57,7 +59,7 @@ gotcha obsolete).
    memory (carries the Phase 3 ledger + Track B lessons).
 2. **Verify the last deploy finished green:**
    `gh run list --workflow deploy.yml --limit 3` —
-   if a run failed or was cancelled, fix/redispatch FIRST
+   if a run failed or was canceled, fix/redispatch FIRST
    (`[[feedback_rapid_main_pushes_cancel_deploy]]`).
 3. **Run the staging smoke — full plane** (the one outstanding item,
    needs a staging login, ~25 min):
@@ -66,12 +68,12 @@ gotcha obsolete).
      execution; `*/5 * * * *` SCHEDULE trigger → SCHEDULE-badged
      execution ≤5 min; disable + delete; `domain_events` row exists.
    - Tenant-code lane (Units 6–10, ~15 min): `pegasus-workflows
-     package` + upload a trivial non-curated workflow → row shows
+package` + upload a trivial non-curated workflow → row shows
      `executable: true` + sha (Unit 6); run it → runner cold-start
      ≤~60 s (watch `TenantRunnersRunning` + the ECS task with
      startedBy=tenantId) → execution COMPLETED; confirm runner
      idle-exits ~10 min later; spot-check `/pegasus/staging/
-     tenant-runner` logs and the flow-log group.
+tenant-runner` logs and the flow-log group.
    - Unit 11 (~5 min): admin kill switch blocks a new run (423) then
      re-enable; runner-status panel shows the task; `Pegasus-Workflows`
      dashboard renders data.
@@ -387,7 +389,7 @@ tokens, PATCH other tenants' executions, or learn the shared secret.
 2026-06-11).** New `apps/tenant-runner/` (separate app, NOT a worker
 mode — opposite trust models; ~80 lines deliberately re-implemented).
 Runner holds **NO AWS credentials**: new broker endpoint
-`GET /internal/tenant-workflows` (wbk_-confined like Unit 7's) lists
+`GET /internal/tenant-workflows` (wbk*-confined like Unit 7's) lists
 executable workflows + sha256 + short-lived presigned GET URLs. TOCTOU
 defense shipped: every download re-hashed against `artifactSha256`
 before extraction (`runner.artifact_sha_mismatch_SECURITY`); safe
@@ -396,11 +398,11 @@ install-size guard). Tenant code never imported by the shim —
 dynamically manufactured PROXY workflow classes (one per tenant
 workflow name, unsandboxed, single `run_tenant_entry_point` activity,
 maximum_attempts=1) wrap a stripped-env subprocess: allowlist-built env
-(9 keys, pinned by tests — no wbk_/TEMPORAL_*/AWS_*/metadata URIs);
+(9 keys, pinned by tests — no wbk*/TEMPORAL*\*/AWS*_/metadata URIs);
 the tenant's own `vnd_` token travels over stdin, never argv/env.
-Direct-execution v1 semantics (driver patches execute_activity/sleep/
+Direct-execution v1 semantics (driver patches execute*activity/sleep/
 now/uuid4 — no durable replay/signals for tenant code yet). Idle-exit
-watchdog (~10 min, RUNNER_* tunables). Compose service added; image
+watchdog (~10 min, RUNNER*_ tunables). Compose service added; image
 builds + smoke-tested (non-root uid 999, venv-sees-SDK offline).
 **Unit 9 env contract (RunTask injection):** required `TENANT_ID`,
 `ENV_NAME`, `TEMPORAL_NAMESPACE`, `TEMPORAL_ADDRESS`,
@@ -427,12 +429,12 @@ and won't core-dump — intended. Remaining residual = shared kernel only.
 `f62667a`, deployed + infra-verified 2026-06-12).** Extended
 TemporalWorkerStack (no new stack — orphan-trap avoidance): runner ECR
 repo, RunTask-only task def (0.5 vCPU/1 GiB, empty task role — runner
-holds no AWS creds; TEMPORAL_CLOUD_API_KEY via complete-ARN secret; NO
+holds no AWS creds; TEMPORAL*CLOUD_API_KEY via complete-ARN secret; NO
 broker secret, CDK-test-asserted). Runner SG + subnet flow logs (ALL
 traffic, 90-day, unnamed group) on WireGuardStack. Dispatcher lib
 `apps/api/src/lib/tenant-runner.ts`: `startedBy = tenantId` (exactly 36
 chars) dedupe via ListTasks; check-then-act race accepted (idle-exit
-self-heals); wbk_ token KMS-recovered at launch, passed as RunTask
+self-heals); wbk* token KMS-recovered at launch, passed as RunTask
 override (DescribeTasks-visible, IAM-gated, accepted v1); soft-fail
 contract (failed launch → QUEUED + next-tick sweep retry). Call sites:
 run path + per-minute dispatcher sweep (crash-recovery backstop) + pool

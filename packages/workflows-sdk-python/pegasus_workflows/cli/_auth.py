@@ -1,6 +1,6 @@
 """Shared credential wiring for every API-calling CLI command.
 
-Centralises the ``--token`` / ``--base-url`` / ``--profile`` option declarations
+Centralizes the ``--token`` / ``--base-url`` / ``--profile`` option declarations
 and the flag → profile → env → ``[default]``-profile resolution, so each command
 resolves credentials identically. Commands still construct ``PegasusClient`` from
 their own module symbol (keeping them straightforward to monkeypatch in tests).

@@ -154,7 +154,7 @@ describe('mapToExternal', () => {
   })
 })
 
-// Integration-agnostic orchestration behaviour of validateOrder, exercised via
+// Integration-agnostic orchestration behavior of validateOrder, exercised via
 // demo_partner (the registered integration). Mirrors the checks the longhaul POC test
 // used to cover before that integration was removed.
 describe('validateOrder — orchestration', () => {

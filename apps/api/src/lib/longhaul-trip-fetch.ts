@@ -2,7 +2,7 @@
 // Shared cloud-direct longhaul trip fetch.
 //
 // Extracted from handlers/longhaul-cloud/trip-detail.ts so the same batched,
-// round-trip-minimising read can be reused outside the GET /trips/:id handler —
+// round-trip-minimizing read can be reused outside the GET /trips/:id handler —
 // notably by the rejected-trip snapshot creator, which needs the exact
 // `{ ...trip, activities, notes, shipments }` shape the trip view renders.
 //

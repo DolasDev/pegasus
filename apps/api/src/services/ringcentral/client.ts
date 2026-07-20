@@ -7,7 +7,7 @@
 //     in-memory per warm Lambda container so a sync run does one exchange, not
 //     one per API call. The JWT is the durable credential — there is nothing to
 //     rotate or write back.
-//   - makeClient: a thin GET/POST wrapper that honours rate limits (429 →
+//   - makeClient: a thin GET/POST wrapper that honors rate limits (429 →
 //     RateLimitError with the Retry-After delay) and surfaces other failures.
 // ---------------------------------------------------------------------------
 

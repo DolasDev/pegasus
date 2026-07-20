@@ -375,7 +375,7 @@ COGNITO_MOBILE_CLIENT_ID: props.cognitoMobileClientId ?? '',
 
 ### Wave 0 Gaps
 
-None — existing test infrastructure covers all phase requirements. Tests for new behaviour should be added to existing files:
+None — existing test infrastructure covers all phase requirements. Tests for new behavior should be added to existing files:
 
 - `packages/infra/lib/stacks/__tests__/cognito-stack.test.ts` — add mobile app client assertions
 - `packages/infra/lib/stacks/__tests__/api-stack.test.ts` — add `COGNITO_MOBILE_CLIENT_ID` env var assertion

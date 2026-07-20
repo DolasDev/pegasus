@@ -37,4 +37,4 @@ Query params (paging/filter) pass through to the same list functions. A Cognito 
 
 ## Acceptance
 
-A `PegasusClient` built from `from_runtime` (a `vnd_` workflow_runtime key) can call `list_customers()/list_quotes()/list_moves()/list_invoices()` and `list_events(event_type)` and get data (not 401/404). `list_inventory` is gone. Browser `/api/v1/customers` behaviour is unchanged. No Cedar policy/action changes → no cross-tenant AVP sync.
+A `PegasusClient` built from `from_runtime` (a `vnd_` workflow_runtime key) can call `list_customers()/list_quotes()/list_moves()/list_invoices()` and `list_events(event_type)` and get data (not 401/404). `list_inventory` is gone. Browser `/api/v1/customers` behavior is unchanged. No Cedar policy/action changes → no cross-tenant AVP sync.

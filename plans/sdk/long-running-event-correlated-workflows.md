@@ -37,7 +37,7 @@ Temporal — which the SDK re-exports (`from pegasus_workflows import workflow`)
 and `workflow.wait_condition`. `order_lifecycle` is authored against exactly
 those (signals `packing.actual_date_set` / `order.completed`, a `status` query,
 a `wait_condition` run loop) and registers cleanly. What is missing is the
-**platform glue**: the dispatcher signalling the right running execution, and a
+**platform glue**: the dispatcher signaling the right running execution, and a
 duration ceiling that permits a lifecycle-length run.
 
 ## Why it matters
