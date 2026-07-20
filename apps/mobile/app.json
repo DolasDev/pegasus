@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Moving & Storage Driver",
+    "name": "Pegasus Move Manager",
     "slug": "moving-storage-driver",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -32,8 +32,7 @@
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.ACCESS_COARSE_LOCATION"
       ],
       "predictiveBackGestureEnabled": false
     },
@@ -62,6 +61,6 @@
         "projectId": "a2e694fd-15da-47ba-8ef0-8a3e1cd7c4be"
       }
     },
-    "owner": "kbeck"
+    "owner": "dolas.dev"
   }
 }
