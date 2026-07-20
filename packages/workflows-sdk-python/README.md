@@ -744,9 +744,13 @@ rules** (the DB-backed authoring surface). The working directory (`-C`, default
 declares the only legal mapping _targets_ and rule _facts_. Author against it:
 
 ```python
-client.list_floors()                    # [{floor, canonicalFields, factCatalog, …}]
+client.list_floors()                    # [{floor, canonicalFields, factCatalog, inputFieldRoots?, …}]
 client.get_floor("shipment_lifecycle_event")
-#  → canonicalFields: legal mapping targets;  factCatalog: legal rule facts
+#  → canonicalFields:  legal mapping targets    (what a mapping may WRITE)
+#  → factCatalog:      legal rule facts
+#  → inputFieldRoots:  legal mapping source roots (what a $from may READ), when declared.
+#      bare "Survey" opens a whole native root; dotted "UnusedFields.survey_received"
+#      opens ONLY that curated sub-path (siblings stay closed).
 ```
 
 (or public `GET /api/v1/integrations/floors[/{id}]`). Then the round-trip is

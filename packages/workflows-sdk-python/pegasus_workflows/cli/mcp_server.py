@@ -25,7 +25,8 @@ Resources
     How to author + publish an integration config (files, floors, rules, the
     ingress ``inbound`` block, the publish gate) — no platform source needed.
 ``pegasus://reference/floors``
-    Live list of built-in floors (canonicalFields + factCatalog) to author against.
+    Live list of built-in floors (canonicalFields + factCatalog + inputFieldRoots)
+    to author against.
 ``pegasus://reference/openapi``
     The API's OpenAPI 3.1 spec (live), so an agent can inspect every endpoint.
 
@@ -463,8 +464,11 @@ def resource_reference_integration_config() -> str:
         "- ``external-shape.json`` / ``external-mapping.json`` (optional) — partner OUTBOUND "
         "body shape + projection (only for send-to-partner integrations).\n\n"
         "## Discover the floor FIRST (so the gate accepts your files)\n\n"
-        "A floor tells you the ONLY legal mapping *targets* (``canonicalFields``) and rule "
-        "*facts* (``factCatalog``). Author against them:\n\n"
+        "A floor tells you the ONLY legal mapping *targets* (``canonicalFields``), rule "
+        "*facts* (``factCatalog``), and — when declared — the legal mapping *source* roots a "
+        "``$from`` may READ (``inputFieldRoots``: a bare entry opens a whole native root, a "
+        "dotted entry like ``UnusedFields.survey_received`` opens ONLY that curated sub-path). "
+        "Author against them:\n\n"
         "- ``client.list_floors()`` / ``client.get_floor(floor_id)`` (SDK), or\n"
         "- ``GET /api/v1/integrations/floors`` / ``/floors/{floorId}`` (public) — see the "
         "``pegasus://reference/floors`` resource for the live list.\n\n"
@@ -488,12 +492,17 @@ def resource_reference_integration_config() -> str:
 
 
 def resource_reference_floors() -> str:
-    """Live list of built-in floors (canonicalFields + factCatalog), fetched from the API."""
+    """Live list of built-in floors (canonicalFields + factCatalog + inputFieldRoots).
+
+    Fetched from the API.
+    """
     body = _fetch_public("/api/v1/integrations/floors")
     header = (
         "# Integration floors (live)\n\n"
         "Each floor is a per-type, partner-neutral contract. ``canonicalFields`` are the only "
-        "legal mapping targets; ``factCatalog`` the only legal rule facts. Author "
+        "legal mapping targets; ``factCatalog`` the only legal rule facts; ``inputFieldRoots`` "
+        "(when present) the legal mapping source roots a ``$from`` may read — a bare entry opens "
+        "a whole native root, a dotted entry opens only that curated sub-path. Author "
         "``mapping.json``/``rules.json`` against these. Also via ``client.get_floor(id)``.\n\n"
         f"Source: ``GET {_public_base_url()}/api/v1/integrations/floors``\n\n"
     )

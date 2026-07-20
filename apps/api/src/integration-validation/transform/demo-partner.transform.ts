@@ -59,7 +59,16 @@ export const demoPartnerMapping: MappingTemplate = {
   },
 }
 
-/** Top-level keys the legacy move object provides (mapping static-check guard). */
+/**
+ * Input fields the legacy move object provides (mapping static-check guard).
+ *
+ * Bare entries open a whole top-level root. Dotted entries open only a specific
+ * vetted sub-path: `UnusedFields` is Pegii's junk-drawer (where the .NET
+ * serializer parks a large tail of legacy fields), so it stays otherwise closed
+ * and only the two survey-date fields a real partner consumes are readable
+ * (sdk-feedback 0028). Adding more legacy `UnusedFields.*` dates later is one
+ * vetted entry at a time.
+ */
 export const demoPartnerInputFieldRoots = [
   'InvolvedParties',
   'Survey',
@@ -68,4 +77,8 @@ export const demoPartnerInputFieldRoots = [
   // element scope ($each over ".") reads these off the same root object:
   'Id',
   'Financials',
+  // Curated survey-date reads out of Pegii's UnusedFields junk-drawer — the rest
+  // of UnusedFields stays closed.
+  'UnusedFields.survey_received',
+  'UnusedFields.survey_confirm',
 ]

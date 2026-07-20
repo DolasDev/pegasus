@@ -41,6 +41,59 @@ describe('analyzeMapping', () => {
     })
   })
 
+  // sdk-feedback 0028 — a floor can open a specific vetted sub-path of an
+  // otherwise-closed root (Pegii's UnusedFields junk-drawer).
+  describe('curated input sub-paths (0028)', () => {
+    it('accepts a mapping reading a declared UnusedFields sub-path directly', () => {
+      const problems = analyzeMapping(
+        { surveyDate: { $from: 'UnusedFields.survey_received', default: null } },
+        { canonicalJsonSchema: demoPartnerJsonSchema, inputFieldRoots: demoPartnerInputFieldRoots },
+      )
+      expect(problems).toEqual([])
+    })
+
+    it('accepts the sibling survey_confirm sub-path too', () => {
+      const problems = analyzeMapping(
+        { surveyDate: { $from: 'UnusedFields.survey_confirm', default: null } },
+        { canonicalJsonSchema: demoPartnerJsonSchema, inputFieldRoots: demoPartnerInputFieldRoots },
+      )
+      expect(problems).toEqual([])
+    })
+
+    it('still rejects an un-whitelisted UnusedFields.* sibling (guardrail intact)', () => {
+      const problems = analyzeMapping(
+        { surveyDate: { $from: 'UnusedFields.truck_name', default: null } },
+        { canonicalJsonSchema: demoPartnerJsonSchema, inputFieldRoots: demoPartnerInputFieldRoots },
+      )
+      expect(problems).toContainEqual({
+        where: 'UnusedFields',
+        problem: 'reads undeclared input field "UnusedFields"',
+      })
+    })
+
+    it('still rejects a bare read of the otherwise-closed UnusedFields root', () => {
+      const problems = analyzeMapping(
+        { surveyDate: { $from: 'UnusedFields', default: null } },
+        { canonicalJsonSchema: demoPartnerJsonSchema, inputFieldRoots: demoPartnerInputFieldRoots },
+      )
+      expect(problems).toContainEqual({
+        where: 'UnusedFields',
+        problem: 'reads undeclared input field "UnusedFields"',
+      })
+    })
+
+    it('reports a closed root once even when several of its sub-paths are read', () => {
+      const problems = analyzeMapping(
+        {
+          surveyDate: { $from: 'UnusedFields.truck_name', default: null },
+          contactMadeDate: { $from: 'UnusedFields.load_labor_date', default: null },
+        },
+        { canonicalJsonSchema: demoPartnerJsonSchema, inputFieldRoots: demoPartnerInputFieldRoots },
+      )
+      expect(problems.filter((p) => p.where === 'UnusedFields')).toHaveLength(1)
+    })
+  })
+
   it('flags an ill-formed mapping document', () => {
     const problems = analyzeMapping(
       { a: { $from: '' } },

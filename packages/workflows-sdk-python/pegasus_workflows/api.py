@@ -1564,12 +1564,20 @@ class PegasusClient:
     def get_floor(self, floor_id: str) -> dict[str, Any]:
         """A floor's machine-readable authoring contract (sdk-feedback 0024).
 
-        Returns ``{floor, canonicalFields, factCatalog, defaultAction, projection?}``:
+        Returns ``{floor, canonicalFields, factCatalog, inputFieldRoots?,
+        defaultAction, projection?}``:
 
         - ``canonicalFields`` — the ONLY legal mapping *targets* (a ``mapping.json``
           may only write these paths; array-element paths are marked ``[]``).
         - ``factCatalog`` — the ONLY legal rule *facts* (name → type). A rule's
           ``fact`` must be one of these; its ``field`` one of ``canonicalFields``.
+        - ``inputFieldRoots`` — the legal mapping *source* roots a ``$from`` may
+          READ (present only when the floor declares them). A bare entry
+          (``"Survey"``) opens a whole native root; a dotted entry
+          (``"UnusedFields.survey_received"``) opens ONLY that curated sub-path,
+          so a ``$from`` reading an un-listed sibling under an otherwise-closed
+          root is rejected by the gate. Read these to know which native fields you
+          may map from without hitting the gate blind (sdk-feedback 0028).
 
         Author ``mapping.json`` / ``rules.json`` against these so the publish gate
         accepts them — this is how an agent writes a valid config without platform

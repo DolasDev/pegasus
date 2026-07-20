@@ -3,6 +3,23 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.26.0
+
+### Added — floors advertise their legal mapping _source_ roots (`inputFieldRoots`)
+
+- **`get_floor` / `list_floors` now surface `inputFieldRoots`** — the legal mapping
+  source roots a `$from` may READ, present when the floor declares them. A bare
+  entry (`"Survey"`) opens a whole native root; a **dotted** entry
+  (`"UnusedFields.survey_received"`) opens ONLY that curated sub-path, leaving
+  un-listed siblings under the same root closed. Authors can now discover which
+  specific native fields are mappable instead of hitting the publish gate blind
+  (`reads undeclared input field "…"`).
+- Platform: the `shipment_status_update` floor opens the vetted survey-date fields
+  `UnusedFields.survey_received` / `UnusedFields.survey_confirm` out of Pegii's
+  `UnusedFields` junk-drawer, so an overlay can map `surveyDate` straight from
+  them — no pre-map enrichment lift into `Survey.SurveyReceived`. The rest of
+  `UnusedFields` stays closed. (sdk-feedback 0028)
+
 ## 0.25.0
 
 ### Added — generic read passthrough (`api_get`)

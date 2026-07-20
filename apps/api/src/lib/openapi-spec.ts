@@ -698,7 +698,7 @@ export function getOpenApiSpec() {
           operationId: 'listFloors',
           summary: 'List built-in integration floors (public)',
           description:
-            'Each floor is a per-type, partner-neutral contract. Returns each floor id + its canonicalFields (legal mapping targets) + factCatalog (legal rule facts) + defaultAction + projection.',
+            'Each floor is a per-type, partner-neutral contract. Returns each floor id + its canonicalFields (legal mapping targets) + factCatalog (legal rule facts) + inputFieldRoots (legal mapping source roots, when declared) + defaultAction + projection.',
           tags: ['Integrations'],
           responses: {
             '200': { description: 'data: array of floor detail objects (see /floors/{floorId})' },
@@ -710,7 +710,7 @@ export function getOpenApiSpec() {
           operationId: 'getFloor',
           summary: 'A floor’s machine-readable contract (public)',
           description:
-            'The contract an author writes a config AGAINST: `canonicalFields` are the only legal mapping targets; `factCatalog` are the only legal rule facts.',
+            'The contract an author writes a config AGAINST: `canonicalFields` are the only legal mapping targets; `factCatalog` are the only legal rule facts; `inputFieldRoots` (when present) are the legal mapping SOURCE roots a `$from` may read — a bare entry opens a whole native root, a dotted entry opens only that curated sub-path.',
           tags: ['Integrations'],
           parameters: [{ name: 'floorId', in: 'path', required: true, schema: { type: 'string' } }],
           responses: {
@@ -730,6 +730,7 @@ export function getOpenApiSpec() {
                             type: 'object',
                             additionalProperties: { enum: ['string', 'number', 'boolean'] },
                           },
+                          inputFieldRoots: { type: 'array', items: { type: 'string' } },
                           defaultAction: { type: 'string' },
                           projection: {
                             type: 'object',

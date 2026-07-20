@@ -98,6 +98,26 @@ describe('POST /integrations/:integrationId/validate', () => {
     expect(body.data.factCatalog).toHaveProperty('brandPresent')
   })
 
+  it('exposes a floor’s legal mapping SOURCE roots incl. curated sub-paths (0028)', async () => {
+    const res = await buildApp().request('/api/v1/integrations/floors/shipment_status_update')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: { inputFieldRoots?: string[] } }
+    // The curated UnusedFields survey sub-path is discoverable here, so a config
+    // author knows it is readable without hitting the gate blind.
+    expect(body.data.inputFieldRoots).toContain('UnusedFields.survey_received')
+    // A whole-root grant is listed as a bare key alongside the dotted sub-paths.
+    expect(body.data.inputFieldRoots).toContain('Survey')
+    // The junk-drawer root itself is NOT opened wholesale.
+    expect(body.data.inputFieldRoots).not.toContain('UnusedFields')
+  })
+
+  it('omits inputFieldRoots for a partner-neutral floor that declares none', async () => {
+    const res = await buildApp().request('/api/v1/integrations/floors/shipment_lifecycle_event')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: { inputFieldRoots?: string[] } }
+    expect(body.data.inputFieldRoots).toBeUndefined()
+  })
+
   it('404s for an unknown floor (GET floors/:id)', async () => {
     const res = await buildApp().request('/api/v1/integrations/floors/nope')
     expect(res.status).toBe(404)
