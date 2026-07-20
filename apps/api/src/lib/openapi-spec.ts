@@ -171,11 +171,6 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
     'Integration-config version history, newest first (ReadIntegrationConfig)',
     { tags: ['Integrations'], path: ['integrationId'] },
   ),
-  '/api/v1/integrations/{integrationId}/ingress': apiKeyGet(
-    'getIngress',
-    'Get the partner-ingress bearer status for an integration (ManageIngress)',
-    { tags: ['Integrations'], path: ['integrationId'] },
-  ),
   '/api/v1/events/{eventType}': apiKeyGet(
     'listPendingEvents',
     'Poll the pending inbound events of a type (ReadEvent)',
@@ -600,6 +595,98 @@ export function getOpenApiSpec() {
             'The publishable `inbound` block: { eventType, dedupKeyPath (string or array of paths), validation, ackTemplate }. validation supports requiredPaths + nonEmptyArrayPaths and an optional oneOf (variant shapes for a multi-shape partner — the body must satisfy at least one). ackTemplate strings that are exactly {{key}} substitute a context value; { "$map": "issues", "as": {…} } renders one element per issue.',
           tags: ['Integrations'],
           responses: { '200': { description: 'JSON Schema of the inbound block' } },
+        },
+      },
+      // Partner-ingress bearer management (ManageIngress). The bearer a partner
+      // POSTs to the pre-tenant ingress endpoint; the plaintext token is shown
+      // once at provision/rotate and never again.
+      '/api/v1/integrations/{integrationId}/ingress': {
+        get: {
+          operationId: 'getIngress',
+          summary: 'Get the partner-ingress bearer status for an integration (ManageIngress)',
+          tags: ['Integrations'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'integrationId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: {
+            '200': {
+              description:
+                'Credential metadata: {url, tokenPrefix, enabled, createdAt, rotatedAt}. Never the token.',
+            },
+            '404': { description: 'No ingress credential provisioned' },
+          },
+        },
+        post: {
+          operationId: 'provisionIngress',
+          summary: 'Provision the first partner-ingress bearer (ManageIngress)',
+          description:
+            'Mints the credential and returns the plaintext token ONCE. 409 if one already exists — rotate it instead.',
+          tags: ['Integrations'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'integrationId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: {
+            '201': { description: '{url, token (shown once), tokenPrefix, enabled}' },
+            '409': { description: 'A credential already exists' },
+          },
+        },
+        delete: {
+          operationId: 'decommissionIngress',
+          summary: 'Decommission (hard-delete) the partner-ingress bearer (ManageIngress)',
+          description:
+            'Removes the credential; the partner token stops working immediately and provisioning becomes available again.',
+          tags: ['Integrations'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'integrationId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: {
+            '200': { description: '{integrationId, decommissioned: true}' },
+            '404': { description: 'No ingress credential to decommission' },
+          },
+        },
+      },
+      '/api/v1/integrations/{integrationId}/ingress/rotate': {
+        post: {
+          operationId: 'rotateIngress',
+          summary: 'Rotate the partner-ingress bearer (ManageIngress)',
+          description:
+            'Mints a new token (old one invalid immediately) and returns the plaintext ONCE. 404 if none exists.',
+          tags: ['Integrations'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'integrationId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          responses: {
+            '200': { description: '{url, token (shown once), tokenPrefix, enabled}' },
+            '404': { description: 'No ingress credential to rotate' },
+          },
+        },
+      },
+      '/api/v1/integrations/{integrationId}/ingress/test': {
+        post: {
+          operationId: 'testIngress',
+          summary: 'Dry-run the published inbound behaviour against a sample body (ManageIngress)',
+          description:
+            "Side-effect-free: runs the tenant's published `inbound` validation/dedup/ack against the posted sample. Persists nothing and emits no domain event. Returns {eventType, dedupId, valid, issues, ack}.",
+          tags: ['Integrations'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'integrationId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { type: 'object', description: 'A sample partner payload' },
+              },
+            },
+          },
+          responses: {
+            '200': { description: '{eventType, dedupId, valid, issues, ack}' },
+          },
         },
       },
       // Workflow-runtime entity reads (vnd_ workflow_runtime key). Read-only,

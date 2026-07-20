@@ -113,6 +113,17 @@ export function createIngressCredentialRepository(db: PrismaClient) {
       })
       return { meta, plainToken }
     },
+
+    /**
+     * Hard-delete the credential for an integration (decommission). Returns
+     * whether a row was removed. Deleting frees the `@@unique([tenant,
+     * integration])` slot so a later `create` succeeds — a clean retire, not a
+     * reversible disable.
+     */
+    async decommission(integrationId: string): Promise<boolean> {
+      const { count } = await db.ingressCredential.deleteMany({ where: { integrationId } })
+      return count > 0
+    },
   }
 }
 

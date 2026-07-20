@@ -10,17 +10,22 @@ import { registerTestErrorHandler } from '../test-helpers'
 import { seedPrincipal } from '../__tests__/_principal'
 import { _clearAuthzCache } from '../lib/authz'
 
-const { mockCreate, mockRotate, mockFindMeta } = vi.hoisted(() => ({
-  mockCreate: vi.fn(),
-  mockRotate: vi.fn(),
-  mockFindMeta: vi.fn(),
-}))
+const { mockCreate, mockRotate, mockFindMeta, mockDecommission, mockConfigFindFirst } = vi.hoisted(
+  () => ({
+    mockCreate: vi.fn(),
+    mockRotate: vi.fn(),
+    mockFindMeta: vi.fn(),
+    mockDecommission: vi.fn(),
+    mockConfigFindFirst: vi.fn(),
+  }),
+)
 
 vi.mock('../repositories/ingress-credential.repository', () => ({
   createIngressCredentialRepository: () => ({
     create: mockCreate,
     rotate: mockRotate,
     findMetaForScope: mockFindMeta,
+    decommission: mockDecommission,
   }),
 }))
 vi.mock('../middleware/dual-auth', () => ({
@@ -39,7 +44,9 @@ function buildApp(roleNames: readonly string[] = ['workflow_developer']) {
   registerTestErrorHandler(app)
   app.use('*', seedPrincipal({ roleNames }))
   app.use('*', async (c, next) => {
-    c.set('db', {} as unknown as PrismaClient)
+    c.set('db', {
+      integrationConfig: { findFirst: mockConfigFindFirst },
+    } as unknown as PrismaClient)
     c.set('tenantId', 'tenant-1')
     c.set('userId', 'user-1')
     await next()
@@ -127,5 +134,95 @@ describe('GET .../ingress (list)', () => {
     mockFindMeta.mockResolvedValue(null)
     const res = await buildApp().request(CREATE)
     expect(res.status).toBe(404)
+  })
+})
+
+const DECOMMISSION = '/integrations/sirva_ade_shipment/ingress'
+const TEST = '/integrations/sirva_ade_shipment/ingress/test'
+
+describe('DELETE .../ingress (decommission)', () => {
+  it('200 — hard-deletes the credential (workflow_developer)', async () => {
+    mockDecommission.mockResolvedValue(true)
+    const res = await buildApp().request(DECOMMISSION, { method: 'DELETE' })
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toMatchObject({
+      integrationId: 'sirva_ade_shipment',
+      decommissioned: true,
+    })
+  })
+
+  it('404 — nothing to decommission', async () => {
+    mockDecommission.mockResolvedValue(false)
+    const res = await buildApp().request(DECOMMISSION, { method: 'DELETE' })
+    expect(res.status).toBe(404)
+  })
+
+  it('403 — viewer lacks ManageIngress', async () => {
+    const res = await buildApp(['viewer']).request(DECOMMISSION, { method: 'DELETE' })
+    expect(res.status).toBe(403)
+    expect(mockDecommission).not.toHaveBeenCalled()
+  })
+})
+
+describe('POST .../ingress/test (dry-run)', () => {
+  // A published `inbound` block requiring a non-empty Events[] and deriving the
+  // dedup id from the first event's Id.
+  const inbound = {
+    eventType: 'sirva_ade.shipment.event',
+    dedupKeyPath: 'Events.0.Id',
+    validation: { nonEmptyArrayPaths: ['Events'] },
+  }
+
+  it('200 — valid body → valid:true, resolved eventType + dedupId, success ack', async () => {
+    mockConfigFindFirst.mockResolvedValue({ inbound })
+    const res = await buildApp().request(TEST, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ Events: [{ Id: 'evt-123' }] }),
+    })
+    expect(res.status).toBe(200)
+    const data = (await json(res))['data'] as JsonBody
+    expect(data).toMatchObject({
+      eventType: 'sirva_ade.shipment.event',
+      dedupId: 'evt-123',
+      valid: true,
+      issues: [],
+    })
+  })
+
+  it('200 — body failing validation → valid:false with issues + failure ack', async () => {
+    mockConfigFindFirst.mockResolvedValue({ inbound })
+    const res = await buildApp().request(TEST, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ Events: [] }),
+    })
+    expect(res.status).toBe(200)
+    const data = (await json(res))['data'] as JsonBody
+    expect(data['valid']).toBe(false)
+    expect(data['dedupId']).toBeNull()
+    expect((data['issues'] as unknown[]).length).toBeGreaterThan(0)
+  })
+
+  it('does not touch the credential repo (no persistence, no emit)', async () => {
+    mockConfigFindFirst.mockResolvedValue({ inbound })
+    await buildApp().request(TEST, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ Events: [{ Id: 'x' }] }),
+    })
+    expect(mockCreate).not.toHaveBeenCalled()
+    expect(mockRotate).not.toHaveBeenCalled()
+    expect(mockDecommission).not.toHaveBeenCalled()
+  })
+
+  it('403 — viewer lacks ManageIngress', async () => {
+    const res = await buildApp(['viewer']).request(TEST, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ Events: [{ Id: 'x' }] }),
+    })
+    expect(res.status).toBe(403)
+    expect(mockConfigFindFirst).not.toHaveBeenCalled()
   })
 })
