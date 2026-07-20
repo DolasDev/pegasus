@@ -87,3 +87,39 @@ export async function importTariff(doc: Tariff400ngImportDoc): Promise<ImportRes
 export async function activateTariffVersion(id: string): Promise<ActivateResult> {
   return adminFetch<ActivateResult>(`/api/admin/tariffs/${id}/activate`, { method: 'POST' })
 }
+
+// ---------------------------------------------------------------------------
+// Fuel surcharge (Item 16) — separate feed from the tariff version. The
+// percentage is derived server-side from the diesel price; the UI only ever
+// sends a price.
+// ---------------------------------------------------------------------------
+
+export type TariffFuelSurchargeSource = 'MANUAL' | 'EIA_AUTO'
+
+export interface FuelSurcharge {
+  id: string
+  tariffCode: string
+  /** ISO 8601. */
+  effectiveFrom: string
+  percentBps: number
+  dieselPriceCentsPerGallon: number | null
+  source: TariffFuelSurchargeSource
+}
+
+export async function listFuelSurcharges(tariffCode = '400NG'): Promise<FuelSurcharge[]> {
+  return adminFetch<FuelSurcharge[]>(
+    `/api/admin/tariffs/fsc?tariffCode=${encodeURIComponent(tariffCode)}`,
+  )
+}
+
+export async function setFuelSurcharge(input: {
+  dieselPriceCentsPerGallon: number
+  /** ISO 8601 datetime. */
+  effectiveFrom: string
+  tariffCode?: string
+}): Promise<FuelSurcharge> {
+  return adminFetch<FuelSurcharge>('/api/admin/tariffs/fsc', {
+    method: 'POST',
+    body: JSON.stringify({ tariffCode: '400NG', ...input }),
+  })
+}

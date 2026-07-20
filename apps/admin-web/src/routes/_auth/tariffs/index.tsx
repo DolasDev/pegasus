@@ -6,10 +6,13 @@ import {
   listTariffVersions,
   importTariff,
   activateTariffVersion,
+  listFuelSurcharges,
+  setFuelSurcharge,
   type Tariff400ngImportDoc,
   type TariffVersionSummary,
   type TariffVersionStatus,
   type ImportResult,
+  type FuelSurcharge,
 } from '@/api/tariffs'
 
 // ---------------------------------------------------------------------------
@@ -69,6 +72,20 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function dateToIso(d: string): string {
   return new Date(`${d}T00:00:00.000Z`).toISOString()
 }
+
+// Client-side preview ONLY — mirrors the domain's fscPercentForDieselPrice
+// (Item 16: 1% per $0.13 over the $3.50 baseline). The server recomputes this
+// authoritatively from the price we send; this just shows the operator the
+// resulting % before they submit.
+function previewFscPercent(dieselCentsPerGallon: number): number {
+  if (dieselCentsPerGallon <= 350) return 0
+  return Math.floor((dieselCentsPerGallon - 350) / 13) // whole-percent steps
+}
+
+// Default effective date for a new fuel surcharge — the active 2026 400NG
+// tariff's start, so it covers every shipment being rated, not just future
+// pickups. Editable in the form.
+const DEFAULT_FSC_EFFECTIVE_FROM = '2026-05-15'
 
 type Step = 'pick' | 'review' | 'done'
 
@@ -151,6 +168,141 @@ function VersionsTable({
         </tbody>
       </table>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Fuel surcharge (Item 16) card
+//
+// The FSC is a separate feed from the tariff version — it tracks the national
+// diesel price (changes ~weekly) rather than the annual rate tables. Without a
+// row covering a shipment's pickup date, rating omits the fuel surcharge and
+// warns. The operator sets it here from the current diesel price; the % is
+// derived server-side. (A future weekly EIA-diesel cron will write the same
+// table automatically.)
+// ---------------------------------------------------------------------------
+
+function FuelSurchargeCard() {
+  const queryClient = useQueryClient()
+  const [dieselDollars, setDieselDollars] = useState('')
+  const [effectiveFrom, setEffectiveFrom] = useState(DEFAULT_FSC_EFFECTIVE_FROM)
+  const [apiError, setApiError] = useState<string | null>(null)
+
+  const fscQuery = useQuery({ queryKey: ['admin-fsc'], queryFn: () => listFuelSurcharges() })
+  const current: FuelSurcharge | undefined = fscQuery.data?.[0]
+
+  const dollars = Number.parseFloat(dieselDollars)
+  const dieselCents = Number.isFinite(dollars) && dollars > 0 ? Math.round(dollars * 100) : null
+  const previewPct = dieselCents !== null ? previewFscPercent(dieselCents) : null
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      setFuelSurcharge({
+        dieselPriceCentsPerGallon: dieselCents!,
+        effectiveFrom: dateToIso(effectiveFrom),
+      }),
+    onSuccess: () => {
+      setDieselDollars('')
+      void queryClient.invalidateQueries({ queryKey: ['admin-fsc'] })
+    },
+    onError: (err) =>
+      setApiError(err instanceof ApiError ? err.message : 'An unexpected error occurred.'),
+  })
+
+  const canSubmit = dieselCents !== null && !!effectiveFrom && !mutation.isPending
+
+  return (
+    <section className="rounded-lg border border-border bg-card p-6">
+      <div className="mb-4 space-y-1">
+        <h2 className="text-base font-semibold text-foreground">Fuel surcharge (Item 16)</h2>
+        <p className="text-sm text-muted-foreground">
+          Set from the current U.S. national average on-highway diesel price. The percentage is
+          computed automatically (1% per $0.13 above the $3.50 baseline). Without a value covering a
+          shipment&apos;s pickup date, rating omits the fuel surcharge and warns.
+        </p>
+      </div>
+
+      {/* Current value */}
+      <div className="mb-4 rounded-md border border-border bg-background px-4 py-3 text-sm">
+        {fscQuery.isPending ? (
+          <span className="text-muted-foreground">Loading…</span>
+        ) : current ? (
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <span className="text-lg font-semibold tabular-nums text-foreground">
+              {(current.percentBps / 100).toFixed(0)}%
+            </span>
+            <span className="text-muted-foreground">
+              at{' '}
+              {current.dieselPriceCentsPerGallon !== null
+                ? `$${(current.dieselPriceCentsPerGallon / 100).toFixed(3)}/gal`
+                : '—'}
+            </span>
+            <span className="text-muted-foreground">
+              effective {formatDate(current.effectiveFrom)}
+            </span>
+            <span className="rounded bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+              {current.source}
+            </span>
+          </div>
+        ) : (
+          <span className="text-amber-700">
+            No fuel surcharge set — rating currently omits it and warns on every quote.
+          </span>
+        )}
+      </div>
+
+      {apiError && (
+        <div
+          role="alert"
+          className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {apiError}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <Field label="Diesel price ($/gal)">
+          <input
+            className={inputCls}
+            aria-label="Diesel price"
+            inputMode="decimal"
+            value={dieselDollars}
+            onChange={(e) => setDieselDollars(e.target.value)}
+            placeholder="4.796"
+          />
+        </Field>
+        <Field label="Effective from">
+          <input
+            type="date"
+            aria-label="Fuel surcharge effective from"
+            className={inputCls}
+            value={effectiveFrom}
+            onChange={(e) => setEffectiveFrom(e.target.value)}
+          />
+        </Field>
+        <div className="flex items-end">
+          <div className="text-sm text-muted-foreground">
+            Computed surcharge:{' '}
+            <span className="font-semibold text-foreground">
+              {previewPct !== null ? `${previewPct}%` : '—'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex justify-end">
+        <button
+          className={primaryBtn}
+          disabled={!canSubmit}
+          onClick={() => {
+            setApiError(null)
+            mutation.mutate()
+          }}
+        >
+          {mutation.isPending ? 'Saving…' : 'Set fuel surcharge'}
+        </button>
+      </div>
+    </section>
   )
 }
 
@@ -454,6 +606,9 @@ export function TariffsPage() {
           </div>
         )}
       </section>
+
+      {/* Fuel surcharge (Item 16) */}
+      <FuelSurchargeCard />
 
       {/* Existing versions */}
       <section className="space-y-3">

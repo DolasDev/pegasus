@@ -14,8 +14,14 @@
 // ---------------------------------------------------------------------------
 
 import crypto from 'node:crypto'
-import type { PrismaClient, Prisma, TariffVersion } from '@prisma/client'
-import { DomainError, SHORTHAUL_THRESHOLD_MILES } from '@pegasus/domain'
+import type {
+  PrismaClient,
+  Prisma,
+  TariffVersion,
+  TariffFuelSurcharge,
+  TariffFuelSurchargeSource,
+} from '@prisma/client'
+import { DomainError, SHORTHAUL_THRESHOLD_MILES, fscPercentForDieselPrice } from '@pegasus/domain'
 import type { Tariff400ngData } from '@pegasus/domain'
 import type { Tariff400ngImport } from '../rating/import-schema'
 
@@ -358,5 +364,65 @@ export async function activateTariffVersion(db: PrismaClient, id: string): Promi
     })
 
     return tx.tariffVersion.update({ where: { id }, data: { status: 'ACTIVE' } })
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Fuel surcharge (Item 16 "FRA")
+//
+// Separate feed from the tariff version: the surcharge tracks the national
+// diesel price (changes ~weekly) while the rate tables change ~annually, so it
+// lives in its own TariffFuelSurcharge table, resolved by "latest effectiveFrom
+// <= pickupDate" in resolveTariff400ngData. Set manually here (platform admin)
+// or, once built, by the weekly EIA-diesel cron — both write the same table via
+// this helper. The percentage is DERIVED from the diesel price via the domain's
+// fscPercentForDieselPrice (Item 16: 1% per $0.13 over the $3.50 baseline), so
+// callers only ever supply a price, never a hand-computed percentage.
+// ---------------------------------------------------------------------------
+
+export interface UpsertFuelSurchargeParams {
+  readonly tariffCode: string
+  readonly effectiveFrom: Date
+  readonly dieselPriceCentsPerGallon: number
+  /** MANUAL (admin-set) or EIA_AUTO (the weekly diesel-price cron). Defaults to MANUAL. */
+  readonly source?: TariffFuelSurchargeSource
+}
+
+/**
+ * Upserts a fuel-surcharge row keyed by (tariffCode, effectiveFrom), computing
+ * the basis-point percentage from the supplied diesel price. Re-setting the same
+ * effective date overwrites the price/percent (e.g. correcting a typo, or the
+ * weekly cron refreshing the current week).
+ */
+export async function upsertTariffFuelSurcharge(
+  db: PrismaClient,
+  params: UpsertFuelSurchargeParams,
+): Promise<TariffFuelSurcharge> {
+  const percentBps = fscPercentForDieselPrice(params.dieselPriceCentsPerGallon)
+  const data = {
+    percentBps,
+    dieselPriceCentsPerGallon: params.dieselPriceCentsPerGallon,
+    source: params.source ?? 'MANUAL',
+  }
+  return db.tariffFuelSurcharge.upsert({
+    where: {
+      tariffCode_effectiveFrom: {
+        tariffCode: params.tariffCode,
+        effectiveFrom: params.effectiveFrom,
+      },
+    },
+    create: { tariffCode: params.tariffCode, effectiveFrom: params.effectiveFrom, ...data },
+    update: data,
+  })
+}
+
+/** Lists fuel-surcharge rows for a tariff, most recent effective date first. */
+export async function listTariffFuelSurcharges(
+  db: PrismaClient,
+  tariffCode: string,
+): Promise<TariffFuelSurcharge[]> {
+  return db.tariffFuelSurcharge.findMany({
+    where: { tariffCode },
+    orderBy: { effectiveFrom: 'desc' },
   })
 }

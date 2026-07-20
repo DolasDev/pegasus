@@ -27,6 +27,8 @@ import {
   importTariff400ng,
   activateTariffVersion,
   checksumTariffImport,
+  upsertTariffFuelSurcharge,
+  listTariffFuelSurcharges,
 } from '../tariff.repository'
 
 const hasDb = Boolean(process.env['DATABASE_URL'])
@@ -66,9 +68,15 @@ beforeAll(async () => {
   if (hasDb) await seed(db)
 })
 
+// Far from the seed FSC row (2026-01-01) so these never affect other tests.
+const FSC_TEST_EFFECTIVE_FROM = new Date('2015-03-01T00:00:00.000Z')
+
 afterAll(async () => {
   if (hasDb) {
     await db.tariffVersion.deleteMany({ where: { id: { in: createdVersionIds } } })
+    await db.tariffFuelSurcharge.deleteMany({
+      where: { tariffCode: '400NG', effectiveFrom: FSC_TEST_EFFECTIVE_FROM },
+    })
     await db.$disconnect()
   }
 })
@@ -294,5 +302,44 @@ describe.skipIf(!hasDb)('importTariff400ng / activateTariffVersion', () => {
     await expect(activateTariffVersion(db, 'does-not-exist')).rejects.toMatchObject({
       code: 'NOT_FOUND',
     })
+  })
+})
+
+describe.skipIf(!hasDb)('upsertTariffFuelSurcharge / listTariffFuelSurcharges', () => {
+  it('derives percentBps from the diesel price (Item 16: 1% per $0.13 over $3.50)', async () => {
+    // $5.15/gal -> 12% per the tariff's own worked example (515 - 350) / 13 = 12.
+    const row = await upsertTariffFuelSurcharge(db, {
+      tariffCode: '400NG',
+      effectiveFrom: FSC_TEST_EFFECTIVE_FROM,
+      dieselPriceCentsPerGallon: 515,
+    })
+    expect(row.percentBps).toBe(1200)
+    expect(row.dieselPriceCentsPerGallon).toBe(515)
+    expect(row.source).toBe('MANUAL')
+  })
+
+  it('upserts on (tariffCode, effectiveFrom) — re-setting the same date overwrites', async () => {
+    const again = await upsertTariffFuelSurcharge(db, {
+      tariffCode: '400NG',
+      effectiveFrom: FSC_TEST_EFFECTIVE_FROM,
+      dieselPriceCentsPerGallon: 415, // -> (415-350)/13 = 5% = 500 bps
+    })
+    expect(again.percentBps).toBe(500)
+
+    const rows = await listTariffFuelSurcharges(db, '400NG')
+    const matching = rows.filter(
+      (r) => r.effectiveFrom.getTime() === FSC_TEST_EFFECTIVE_FROM.getTime(),
+    )
+    expect(matching).toHaveLength(1) // upsert, not a second insert
+    expect(matching[0]!.percentBps).toBe(500)
+  })
+
+  it('lists rows newest effective date first', async () => {
+    const rows = await listTariffFuelSurcharges(db, '400NG')
+    for (let i = 1; i < rows.length; i++) {
+      expect(rows[i - 1]!.effectiveFrom.getTime()).toBeGreaterThanOrEqual(
+        rows[i]!.effectiveFrom.getTime(),
+      )
+    }
   })
 })

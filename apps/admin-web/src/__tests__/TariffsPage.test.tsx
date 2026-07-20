@@ -9,10 +9,18 @@ vi.mock('@/api/tariffs', () => ({
   listTariffVersions: vi.fn(),
   importTariff: vi.fn(),
   activateTariffVersion: vi.fn(),
+  listFuelSurcharges: vi.fn(),
+  setFuelSurcharge: vi.fn(),
 }))
 
 import { parseWorkbook } from '@/lib/parse-400ng-xlsx'
-import { listTariffVersions, importTariff, activateTariffVersion } from '@/api/tariffs'
+import {
+  listTariffVersions,
+  importTariff,
+  activateTariffVersion,
+  listFuelSurcharges,
+  setFuelSurcharge,
+} from '@/api/tariffs'
 
 function makeQueryClient() {
   return new QueryClient({
@@ -66,6 +74,7 @@ describe('TariffsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(listTariffVersions).mockResolvedValue([])
+    vi.mocked(listFuelSurcharges).mockResolvedValue([])
     vi.mocked(parseWorkbook).mockResolvedValue(parsed)
   })
 
@@ -155,5 +164,51 @@ describe('TariffsPage', () => {
       expect(importTariff).toHaveBeenCalledWith(expect.objectContaining({ label: 'from-json' })),
     )
     expect(parseWorkbook).not.toHaveBeenCalled()
+  })
+
+  describe('fuel surcharge card', () => {
+    it('warns when no fuel surcharge is set', async () => {
+      renderPage()
+      expect(await screen.findByText(/No fuel surcharge set/)).toBeInTheDocument()
+    })
+
+    it('shows the current surcharge when one exists', async () => {
+      vi.mocked(listFuelSurcharges).mockResolvedValue([
+        {
+          id: 'fsc-1',
+          tariffCode: '400NG',
+          effectiveFrom: '2026-05-15T00:00:00.000Z',
+          percentBps: 500,
+          dieselPriceCentsPerGallon: 415,
+          source: 'MANUAL',
+        },
+      ])
+      renderPage()
+      expect(await screen.findByText('5%')).toBeInTheDocument()
+      expect(screen.getByText(/\$4\.150\/gal/)).toBeInTheDocument()
+    })
+
+    it('previews the computed % and submits the price as integer cents', async () => {
+      vi.mocked(setFuelSurcharge).mockResolvedValue({
+        id: 'fsc-2',
+        tariffCode: '400NG',
+        effectiveFrom: '2026-05-15T00:00:00.000Z',
+        percentBps: 1200,
+        dieselPriceCentsPerGallon: 515,
+        source: 'MANUAL',
+      })
+      renderPage()
+      // $5.15/gal → 12% (Item 16 worked example).
+      fireEvent.change(await screen.findByLabelText('Diesel price'), { target: { value: '5.15' } })
+      expect(screen.getByText('12%')).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Set fuel surcharge' }))
+      await waitFor(() =>
+        expect(setFuelSurcharge).toHaveBeenCalledWith({
+          dieselPriceCentsPerGallon: 515,
+          effectiveFrom: '2026-05-15T00:00:00.000Z',
+        }),
+      )
+    })
   })
 })
