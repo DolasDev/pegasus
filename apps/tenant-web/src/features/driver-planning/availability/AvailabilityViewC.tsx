@@ -337,18 +337,42 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
     const date = form.confirmedDate.trim()
     const state = form.confirmedState.trim()
     const city = form.confirmedCity.trim()
-    // Partial commits are a no-op — the user must populate all three before
-    // anything saves. The inputs stay rendered so they can finish.
-    if (!date || !state || !city) return
-    mutation.mutate(
-      {
-        driverId: driver.driverId,
-        confirmedDate: date,
-        confirmedLocation: joinLocation(state, city),
-        notes: form.notes || null,
-      },
-      { onSuccess: () => setEditMode(null) },
-    )
+
+    // A fully-populated triple is a normal confirmed-availability save.
+    if (date && state && city) {
+      mutation.mutate(
+        {
+          driverId: driver.driverId,
+          confirmedDate: date,
+          confirmedLocation: joinLocation(state, city),
+          notes: form.notes || null,
+        },
+        { onSuccess: () => setEditMode(null) },
+      )
+      return
+    }
+
+    // Clearing the date of a previously-confirmed row removes the WHOLE
+    // confirmed availability — date and location are one linked unit (see
+    // AvailabilityViewA.commitLinked for the full rationale). A genuine clear is
+    // an empty date with a persisted value; an empty date with none is a new
+    // entry still being filled in.
+    if (!date && driver.confirmedAvailableDate) {
+      setForm((f) => ({ ...f, confirmedDate: '', confirmedState: '', confirmedCity: '' }))
+      mutation.mutate(
+        {
+          driverId: driver.driverId,
+          confirmedDate: null,
+          confirmedLocation: null,
+          notes: form.notes || null,
+        },
+        { onSuccess: () => setEditMode(null) },
+      )
+      return
+    }
+
+    // Partial triple mid-entry — no-op; the inputs stay rendered so the user can
+    // finish populating all three.
   }
 
   function commitNotes() {

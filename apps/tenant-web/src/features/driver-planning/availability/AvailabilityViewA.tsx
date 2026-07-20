@@ -442,10 +442,29 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
     const date = form.confirmedDate.trim()
     const state = form.confirmedState.trim()
     const city = form.confirmedCity.trim()
-    // Partial commits are a no-op — the user must populate all three before
-    // anything saves. The inputs stay rendered so they can finish.
-    if (!date || !state || !city) return
-    commitWith(form)
+
+    // A fully-populated triple is a normal confirmed-availability save.
+    if (date && state && city) {
+      commitWith(form)
+      return
+    }
+
+    // Clearing the date of a previously-confirmed row removes the WHOLE
+    // confirmed availability — date and location are one linked unit, so a
+    // location with no date would be a dangling half-record the row can't even
+    // render as confirmed. Detect a genuine clear by the persisted date having
+    // been set; an empty date with no persisted value is just a new entry still
+    // being filled in (a native <input type="date"> replaces its value directly
+    // on edit, so only an explicit clear ever empties it).
+    if (!date && driver.confirmedAvailableDate) {
+      const cleared = { ...form, confirmedDate: '', confirmedState: '', confirmedCity: '' }
+      setForm(cleared)
+      commitWith(cleared)
+      return
+    }
+
+    // Partial triple mid-entry — no-op; the inputs stay rendered so the user can
+    // finish populating all three.
   }
 
   function toggleBool(key: 'canada' | 'california') {
