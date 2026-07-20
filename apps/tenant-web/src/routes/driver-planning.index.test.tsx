@@ -18,6 +18,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DriverPlanningPage } from './driver-planning.index'
+import { AvailabilityViewB } from '@/features/driver-planning/availability/AvailabilityViewB'
 import type { Delivery, DriverPlanningRow } from '@/api/queries/driver-planning'
 import {
   makeTestStore,
@@ -90,6 +91,23 @@ function renderPage(preloadedState: PartialTestRootState = {}) {
   )
 }
 
+// The page renders View A by default; the Change View tab switches to View B in
+// the browser (exercised by the e2e AvailabilityPage.pinVariant via a real click).
+// Radix's tab activation doesn't fire under jsdom's synthetic fireEvent, so the
+// Variant B roster suite renders View B directly — it is the component under test,
+// and the page-level wiring (default A, C tab gone) is covered separately above.
+function renderVariantB(preloadedState: PartialTestRootState = {}) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const store = makeTestStore(preloadedState)
+  return render(
+    <Provider store={store}>
+      <QueryClientProvider client={qc}>
+        <AvailabilityViewB />
+      </QueryClientProvider>
+    </Provider>,
+  )
+}
+
 function makeDriver(overrides?: Partial<DriverPlanningRow>): DriverPlanningRow {
   const base: DriverPlanningRow = {
     driverId: 1,
@@ -145,10 +163,10 @@ describe('DriverPlanningPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     driverPlanningReturn = { data: [], isLoading: false, isError: false }
-    // Pin the random variant pick to V-A (index 0). The variants A/C retain the
-    // original move-centric columns these suites assert on; V-B has diverged into
-    // a roster (covered by its own describe block below). Math.floor(0 * 3) = 0.
-    vi.spyOn(Math, 'random').mockReturnValue(0)
+    // The page renders View A by default (no random pick), so these suites — which
+    // assert View A's columns/cells — need no variant pinning. View B has diverged
+    // into a roster and is covered by its own describe block, which switches to it
+    // via the Change View tab.
   })
 
   it('shows Loading text while drivers are loading', () => {
@@ -161,6 +179,22 @@ describe('DriverPlanningPage', () => {
     driverPlanningReturn = { data: [], isLoading: false, isError: false }
     renderPage()
     expect(screen.getByText(/no drivers found/i)).toBeInTheDocument()
+  })
+
+  it('renders View A by default and drops the retired Variant C tab', () => {
+    driverPlanningReturn = { data: [makeDriver()], isLoading: false, isError: false }
+    renderPage()
+
+    // View A owns the split "Ready City" / "Deliveries" columns; if View B (roster)
+    // had mounted instead there would be no "Ready City" header.
+    const table = within(screen.getByTestId('driver-table'))
+    expect(table.getByText('Ready City')).toBeInTheDocument()
+    expect(table.getByText('Deliveries')).toBeInTheDocument()
+
+    // The Change View control keeps A and B; Variant C is gone.
+    expect(screen.getByTestId('availability-view-tab-A')).toBeInTheDocument()
+    expect(screen.getByTestId('availability-view-tab-B')).toBeInTheDocument()
+    expect(screen.queryByTestId('availability-view-tab-C')).not.toBeInTheDocument()
   })
 
   it('renders the renamed headers (Ready Date/Location) and a row per driver', () => {
@@ -1071,21 +1105,17 @@ describe('DriverPlanningPage', () => {
   })
 
   // -------------------------------------------------------------------------
-  // Variant B — planner-oriented driver roster. Re-pin the random variant pick
-  // to V-B (Math.floor(0.5 * 3) = 1) so renderPage() mounts the roster.
+  // Variant B — planner-oriented driver roster. The page defaults to View A, so
+  // each test switches to View B via the Change View tab (renderVariantB).
   // -------------------------------------------------------------------------
   describe('Variant B roster', () => {
-    beforeEach(() => {
-      vi.spyOn(Math, 'random').mockReturnValue(0.5)
-    })
-
     it('renders the roster headers and Driver Code from driver data', () => {
       driverPlanningReturn = {
         data: [makeDriver({ driverId: 4502, driverName: 'Hauler, Alice', agentCode: '1545' })],
         isLoading: false,
         isError: false,
       }
-      renderPage()
+      renderVariantB()
 
       // Scope to the table — "Zone" also appears in the zone-filter placeholder.
       const table = within(screen.getByTestId('driver-table'))
@@ -1117,7 +1147,7 @@ describe('DriverPlanningPage', () => {
         isLoading: false,
         isError: false,
       }
-      renderPage()
+      renderVariantB()
       const cell = screen.getByTestId('driver-name')
       expect(cell.className).toMatch(/bg-red-300/)
       expect(cell).toHaveAttribute('data-agency', '1511')
@@ -1133,7 +1163,7 @@ describe('DriverPlanningPage', () => {
         isLoading: false,
         isError: false,
       }
-      renderPage()
+      renderVariantB()
       expect(screen.getByTestId('driver-name')).toHaveAttribute('data-agency', '1111')
     })
 
@@ -1143,7 +1173,7 @@ describe('DriverPlanningPage', () => {
         isLoading: false,
         isError: false,
       }
-      renderPage({ common: { stateList: [{ geo_code: 'TX', geo_name: 'Texas', zone: 'SW' }] } })
+      renderVariantB({ common: { stateList: [{ geo_code: 'TX', geo_name: 'Texas', zone: 'SW' }] } })
       expect(screen.getByTestId('driver-state')).toHaveTextContent('TX')
       expect(screen.getByTestId('driver-zone')).toHaveTextContent('SW')
     })
@@ -1154,7 +1184,7 @@ describe('DriverPlanningPage', () => {
         isLoading: false,
         isError: false,
       }
-      renderPage()
+      renderVariantB()
       const cell = screen.getByTestId('driver-canada')
       expect(cell.className).not.toMatch(/bg-yellow-200/)
       fireEvent.click(cell)
@@ -1172,7 +1202,7 @@ describe('DriverPlanningPage', () => {
         isLoading: false,
         isError: false,
       }
-      renderPage()
+      renderVariantB()
       const cell = screen.getByTestId('driver-wgs')
       // Unset default is Maybe (question mark).
       expect(cell).toHaveAttribute('data-wgs', 'maybe')
@@ -1206,7 +1236,7 @@ describe('DriverPlanningPage', () => {
         isLoading: false,
         isError: false,
       }
-      renderPage()
+      renderVariantB()
       const cell = screen.getByTestId('driver-rating')
       expect(cell.className).toMatch(/bg-red-200/)
       expect(cell.className).toMatch(/text-red-700/)
@@ -1218,7 +1248,7 @@ describe('DriverPlanningPage', () => {
         isLoading: false,
         isError: false,
       }
-      renderPage()
+      renderVariantB()
       expect(screen.getByTestId('driver-rating').className).not.toMatch(/bg-red-200/)
     })
 
@@ -1228,7 +1258,7 @@ describe('DriverPlanningPage', () => {
         isLoading: false,
         isError: false,
       }
-      renderPage()
+      renderVariantB()
       fireEvent.click(screen.getByTestId('driver-rating'))
       const input = screen.getByTestId('confirmed-rating-input')
       fireEvent.change(input, { target: { value: '4.9' } })
@@ -1245,53 +1275,12 @@ describe('DriverPlanningPage', () => {
         isLoading: false,
         isError: false,
       }
-      renderPage()
+      renderVariantB()
       fireEvent.click(screen.getByTestId('driver-equipment'))
       const select = screen.getByTestId('confirmed-equipment-select')
       fireEvent.change(select, { target: { value: 'Straight Truck' } })
       expect(mutateMock).toHaveBeenCalledWith(
         expect.objectContaining({ driverId: 3, equipment: 'Straight Truck' }),
-        expect.anything(),
-      )
-    })
-  })
-
-  // -------------------------------------------------------------------------
-  // Variant C — shares Variant A's linked date/state/city commit model, so it
-  // has the same clear-must-persist behaviour. Re-pin the random variant pick
-  // to V-C (Math.floor(0.9 * 3) = 2) so renderPage() mounts it.
-  // -------------------------------------------------------------------------
-  describe('Variant C linked ready date', () => {
-    beforeEach(() => {
-      vi.spyOn(Math, 'random').mockReturnValue(0.9)
-    })
-
-    it('clearing a previously-confirmed ready date commits null date AND null location', () => {
-      driverPlanningReturn = {
-        data: [
-          makeDriver({
-            driverId: 8,
-            confirmedAvailableDate: '2026-07-04',
-            confirmedAvailableLocation: 'CA, Fresno',
-            deliveries: [],
-          }),
-        ],
-        isLoading: false,
-        isError: false,
-      }
-      renderPage()
-
-      fireEvent.click(screen.getByTestId('ready-date-cell'))
-      const dateInput = screen.getByTestId('confirmed-date-input')
-      fireEvent.change(dateInput, { target: { value: '' } })
-      fireEvent.blur(dateInput)
-
-      expect(mutateMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          driverId: 8,
-          confirmedDate: null,
-          confirmedLocation: null,
-        }),
         expect.anything(),
       )
     })
