@@ -41,6 +41,7 @@ import {
   validateInboundBody,
   successAck,
   failureAck,
+  type AckIssue,
 } from '../lib/ingress'
 
 // ── public ingress endpoint ────────────────────────────────────────────────
@@ -253,6 +254,76 @@ ingressManagementHandler.get(
         enabled: meta.enabled,
         createdAt: meta.createdAt.toISOString(),
         rotatedAt: meta.rotatedAt?.toISOString() ?? null,
+      },
+    })
+  },
+)
+
+// DELETE /integrations/:integrationId/ingress — decommission (hard delete).
+ingressManagementHandler.delete(
+  '/integrations/:integrationId/ingress',
+  requirePermission(Actions.ManageIngress),
+  async (c) => {
+    const integrationId = c.req.param('integrationId') ?? ''
+    const repo = createIngressCredentialRepository(c.get('db'))
+    const removed = await repo.decommission(integrationId)
+    if (!removed) {
+      return c.json({ error: 'No ingress credential to decommission', code: 'NOT_FOUND' }, 404)
+    }
+    logger.info('Ingress credential decommissioned', {
+      integrationId,
+      tenantId: c.get('tenantId'),
+    })
+    return c.json({ data: { integrationId, decommissioned: true } })
+  },
+)
+
+// POST /integrations/:integrationId/ingress/test — side-effect-free dry-run of
+// the tenant's published `inbound` behaviour against a sample body. Reuses the
+// exact validation/dedup/ack helpers the public endpoint uses, but persists
+// NOTHING and emits NO domain event. Confirms "is my config correct" without a
+// live partner delivery. Tenant-scoped db (c.get('db')), not the root db.
+ingressManagementHandler.post(
+  '/integrations/:integrationId/ingress/test',
+  requirePermission(Actions.ManageIngress),
+  async (c) => {
+    const integrationId = c.req.param('integrationId') ?? ''
+    const db = c.get('db')
+
+    const configRow = await db.integrationConfig.findFirst({
+      where: { integrationId, status: 'PUBLISHED' },
+      select: { inbound: true },
+    })
+    const inbound = parseInboundConfig(configRow?.inbound ?? null)
+    const eventType = inbound.eventType ?? defaultEventType(integrationId)
+
+    // A malformed/empty body is a validation failure here (the dry-run mirrors
+    // the public endpoint's MALFORMED_BODY rejection rather than a 4xx).
+    let payload: unknown
+    try {
+      payload = await c.req.json()
+    } catch {
+      const issues: AckIssue[] = [{ code: 'MALFORMED_BODY', message: 'malformed request body' }]
+      return c.json({
+        data: {
+          eventType,
+          dedupId: null,
+          valid: false,
+          issues,
+          ack: failureAck(inbound, issues),
+        },
+      })
+    }
+
+    const issues = validateInboundBody(payload, inbound.validation)
+    const valid = issues.length === 0
+    return c.json({
+      data: {
+        eventType,
+        dedupId: valid ? deriveDedupId(payload, inbound.dedupKeyPath) : null,
+        valid,
+        issues,
+        ack: valid ? successAck(inbound) : failureAck(inbound, issues),
       },
     })
   },

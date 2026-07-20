@@ -82,6 +82,12 @@ export interface IntegrationConfig {
   rules: IntegrationRule[]
   /** Golden-corpus cases — surfaced only in the raw-JSON view. */
   corpus: unknown[]
+  /**
+   * The published inbound-ingress block ({ eventType, dedupKeyPath, validation,
+   * ackTemplate }), or absent when the integration is not inbound-capable. Gates
+   * the Ingress tab and seeds its dry-run sample.
+   */
+  inbound?: Record<string, unknown>
   publishedBy: string
   /** Source config id when this row was forked from a GLOBAL platform config. */
   forkedFromConfigId: string | null

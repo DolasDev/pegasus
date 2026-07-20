@@ -16,6 +16,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { EmptyState } from '@/components/EmptyState'
+import { IngressPanel } from '@/components/integrations/IngressPanel'
+import { usePermissions } from '@/auth/permissions'
 import { ApiError } from '@/api/client'
 import {
   integrationConfigQueryOptions,
@@ -473,6 +475,7 @@ export function ConfigVersionsCard({ integrationId }: { integrationId: string })
 export function IntegrationDetailPage() {
   const { integrationId } = useParams({ strict: false }) as { integrationId: string }
   const [editing, setEditing] = useState(false)
+  const perms = usePermissions()
   const fork = useForkIntegrationConfig()
   const {
     data: config,
@@ -600,6 +603,10 @@ export function IntegrationDetailPage() {
             <TabsTrigger value="mapping">Mapping</TabsTrigger>
             <TabsTrigger value="rules">Rules</TabsTrigger>
             <TabsTrigger value="raw">Raw JSON</TabsTrigger>
+            {/* Ingress management — only for an inbound-capable config the caller can manage. */}
+            {config.inbound != null && perms.has('ingress:manage') && (
+              <TabsTrigger value="ingress">Ingress</TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="mapping" className="mt-4">
@@ -613,6 +620,12 @@ export function IntegrationDetailPage() {
           <TabsContent value="raw" className="mt-4">
             <RawJsonView config={config} />
           </TabsContent>
+
+          {config.inbound != null && perms.has('ingress:manage') && (
+            <TabsContent value="ingress" className="mt-4">
+              <IngressPanel integrationId={config.integrationId} />
+            </TabsContent>
+          )}
         </Tabs>
       )}
 
