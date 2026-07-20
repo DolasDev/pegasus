@@ -542,6 +542,40 @@ describe('DriverPlanningPage', () => {
       )
     })
 
+    it('clearing a previously-confirmed ready date commits null date AND null location', () => {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            driverId: 7,
+            confirmedAvailableDate: '2026-07-04',
+            confirmedAvailableLocation: 'CA, Fresno',
+            deliveries: [],
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+
+      // Row is confirmed, so the date cell opens the linked inputs on click.
+      fireEvent.click(screen.getByTestId('ready-date-cell'))
+      const dateInput = screen.getByTestId('confirmed-date-input')
+
+      // Clear the date via the calendar UI and blur — date + location are one
+      // linked unit, so clearing the date clears the whole confirmed availability.
+      fireEvent.change(dateInput, { target: { value: '' } })
+      fireEvent.blur(dateInput)
+
+      expect(mutateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          driverId: 7,
+          confirmedDate: null,
+          confirmedLocation: null,
+        }),
+        expect.anything(),
+      )
+    })
+
     it('commits the edited Notes via the mutation on blur', () => {
       driverPlanningReturn = {
         data: [makeDriver({ driverId: 5 })],
@@ -1217,6 +1251,47 @@ describe('DriverPlanningPage', () => {
       fireEvent.change(select, { target: { value: 'Straight Truck' } })
       expect(mutateMock).toHaveBeenCalledWith(
         expect.objectContaining({ driverId: 3, equipment: 'Straight Truck' }),
+        expect.anything(),
+      )
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Variant C — shares Variant A's linked date/state/city commit model, so it
+  // has the same clear-must-persist behaviour. Re-pin the random variant pick
+  // to V-C (Math.floor(0.9 * 3) = 2) so renderPage() mounts it.
+  // -------------------------------------------------------------------------
+  describe('Variant C linked ready date', () => {
+    beforeEach(() => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.9)
+    })
+
+    it('clearing a previously-confirmed ready date commits null date AND null location', () => {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            driverId: 8,
+            confirmedAvailableDate: '2026-07-04',
+            confirmedAvailableLocation: 'CA, Fresno',
+            deliveries: [],
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+
+      fireEvent.click(screen.getByTestId('ready-date-cell'))
+      const dateInput = screen.getByTestId('confirmed-date-input')
+      fireEvent.change(dateInput, { target: { value: '' } })
+      fireEvent.blur(dateInput)
+
+      expect(mutateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          driverId: 8,
+          confirmedDate: null,
+          confirmedLocation: null,
+        }),
         expect.anything(),
       )
     })
