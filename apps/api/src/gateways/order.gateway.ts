@@ -21,6 +21,16 @@ export interface OrderGateway {
   findOrderById(id: string): Promise<OrderRecord | null>
 
   /**
+   * Fetch one order's RAW native pegII payload by id — the serialized "Sale"
+   * object as it comes off the wire (`{Id, Survey, InvolvedParties, KeyMoveDates,
+   * …}`), NOT the projected OrderRecord. This is the shape a partner posts to the
+   * ingress, so it can be fed straight to a published integration's
+   * `map_from_external` to dry-run the mapping against a real order id
+   * (sdk-feedback 0029). Resolves null when pegII reports 404 (no such order).
+   */
+  findOrderNativeById(id: string): Promise<unknown | null>
+
+  /**
    * Probe that the pegII source is reachable, without fetching a specific order.
    * Resolves when the source answers; throws `PegiiApiError` when it is
    * unreachable (tunnel/HTTP failure). Lets reachability-only callers (the

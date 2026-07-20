@@ -5,5 +5,16 @@
 
   // Advisories listed here are explicitly accepted. Each entry MUST have a tracking note
   // explaining why it's safe and when it can be removed.
-  "allowlist": []
+  "allowlist": [
+    // GHSA-3jxr-9vmj-r5cp — brace-expansion ReDoS (high), range 3.0.0–5.0.6.
+    // The vulnerable copy is bundled INSIDE aws-cdk-lib (packages/infra/node_modules/
+    // aws-cdk-lib/node_modules/brace-expansion@5.0.6 via its vendored minimatch@10),
+    // so an npm `overrides` floor cannot reach it — overrides do not apply to a
+    // published package's bundledDependencies. aws-cdk-lib 2.261.0 still bundles the
+    // vulnerable version (verified 2026-07-20). The reachable, non-bundled copies are
+    // already patched (brace-expansion@1.1.16). Exposure is synth/CDK-time only over
+    // trusted inputs — not a runtime path. Remove once aws-cdk-lib bundles
+    // brace-expansion >=5.0.7 (then the "unused allowlist entry" report flags it).
+    "GHSA-3jxr-9vmj-r5cp"
+  ]
 }

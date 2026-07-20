@@ -1236,7 +1236,7 @@ class PegasusClient:
         """
         return self._get_json("/api/v1/pegii/orders", **params)["data"]
 
-    def get_order(self, order_id: str) -> dict[str, Any]:
+    def get_order(self, order_id: str, *, shape: str | None = None) -> Any:
         """Fetch a single pegII order by id. Requires ``ReadOrder``.
 
         For use inside workflow activities — the way to re-fetch authoritative
@@ -1244,15 +1244,56 @@ class PegasusClient:
 
         Args:
             order_id: The order id.
+            shape: Pass ``"native"`` to get the RAW serialized pegII payload
+                (``{Id, Survey, InvolvedParties, KeyMoveDates, …}``) — the shape a
+                partner posts to the ingress — instead of the projected order row.
+                Feed it to :meth:`map_from_external` to dry-run a published
+                integration's mapping against a real order id, or use
+                :meth:`dry_run_integration` to do both in one call. Omit (the
+                default) for the projected row ``{id, orderNumber, status,
+                customerName, scheduledDate, packingActualDate, createdAt,
+                updatedAt}``.
 
         Returns:
-            The order row.
+            The projected order row (default), or the native payload object when
+            ``shape="native"``.
 
         Raises:
             PegasusApiError: On 403 (manifest lacks ``ReadOrder``), 404 (no such
                 order), or any other non-2xx.
         """
-        return self._get_json(f"/api/v1/pegii/orders/{order_id}")["data"]
+        params = {"shape": shape} if shape is not None else {}
+        return self._get_json(f"/api/v1/pegii/orders/{order_id}", **params)["data"]
+
+    def dry_run_integration(
+        self, integration_id: str, order_id: str
+    ) -> dict[str, Any]:
+        """Dry-run a published integration against a REAL pegII order id.
+
+        Fetches the order's native pegII payload (``get_order(order_id,
+        shape="native")``) and normalizes it through the published integration's
+        inbound mapping (:meth:`map_from_external`) — no hand-pasting the raw
+        payload. This is the "does this real order pass the integration?" check.
+
+        Requires ``ReadOrder`` (for the native fetch); the map step needs no
+        manifest action (same open surface as ``/validate``).
+
+        Args:
+            integration_id: Integration slug, e.g. ``"demo_partner"``.
+            order_id: The pegII order id to fetch and map.
+
+        Returns:
+            ``{canonical, valid, issues, degraded}`` — the same result
+            :meth:`map_from_external` returns for the hand-pasted payload.
+            ``canonical`` is the mapped entity (``null`` only when unmappable);
+            ``valid``/``issues`` report the integration's structural + rule gate.
+
+        Raises:
+            PegasusApiError: On 403 (manifest lacks ``ReadOrder``), 404 (no such
+                order, or unknown integration / no floor), or any other non-2xx.
+        """
+        native = self.get_order(order_id, shape="native")
+        return self.map_from_external(integration_id, native)
 
     # Tasks are the unit of human work in the moving-ops flow (date
     # confirmation, survey scheduling, paperwork, QA sign-off). A workflow whose

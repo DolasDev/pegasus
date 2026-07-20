@@ -69,6 +69,18 @@ def test_keyed_read_passthrough() -> None:
     assert client.captured == []
 
 
+def test_dry_run_integration_served_as_keyed_read() -> None:
+    # Keyed by integration_id (like map_from_external); a read, so nothing captured.
+    client = fake_client(
+        reads={"dry_run_integration": {"demo_partner": {"canonical": {}, "valid": True}}}
+    )
+    assert client.dry_run_integration("demo_partner", "490574") == {
+        "canonical": {},
+        "valid": True,
+    }
+    assert client.captured == []
+
+
 def test_whole_value_read_passthrough() -> None:
     rows = [{"id": "o1"}, {"id": "o2"}]
     client = fake_client(reads={"list_orders": rows})
