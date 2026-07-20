@@ -1,6 +1,6 @@
 <purpose>
 
-Drive all remaining milestone phases autonomously. For each incomplete phase: discuss → plan → execute using Skill() flat invocations. Pauses only for explicit user decisions (grey area acceptance, blockers, validation requests). Re-reads ROADMAP.md after each phase to catch dynamically inserted phases.
+Drive all remaining milestone phases autonomously. For each incomplete phase: discuss → plan → execute using Skill() flat invocations. Pauses only for explicit user decisions (gray area acceptance, blockers, validation requests). Re-reads ROADMAP.md after each phase to catch dynamically inserted phases.
 
 </purpose>
 
@@ -412,7 +412,7 @@ Display the review result summary (score from UI-REVIEW.md if produced). Continu
 
 ## Smart Discuss
 
-Run smart discuss for the current phase. Proposes grey area answers in batch tables — the user accepts or overrides per area. Produces identical CONTEXT.md output to regular discuss-phase.
+Run smart discuss for the current phase. Proposes gray area answers in batch tables — the user accepts or overrides per area. Produces identical CONTEXT.md output to regular discuss-phase.
 
 > **Note:** Smart discuss is an autonomous-optimized variant of the `gsd:discuss-phase` skill. It produces identical CONTEXT.md output but uses batch table proposals instead of sequential questioning. The original `discuss-phase` skill remains unchanged (per CTRL-03). Future milestones may extract this to a separate skill file.
 
@@ -477,7 +477,7 @@ If no prior context exists, continue without — expected for early phases.
 
 ### Sub-step 2: Scout Codebase
 
-Lightweight codebase scan to inform grey area identification and proposals. Keep under ~5% context.
+Lightweight codebase scan to inform gray area identification and proposals. Keep under ~5% context.
 
 **Check for existing codebase maps:**
 
@@ -516,7 +516,7 @@ DETAIL=$(node "/home/steve/repos/pegasus/.opencode/get-shit-done/bin/gsd-tools.c
 
 Extract `goal`, `requirements`, `success_criteria` from the JSON response.
 
-**Infrastructure detection — check FIRST before generating grey areas:**
+**Infrastructure detection — check FIRST before generating gray areas:**
 
 A phase is pure infrastructure when ALL of these are true:
 
@@ -538,7 +538,7 @@ Use these defaults for the CONTEXT.md:
 - `<specifics>`: "No specific requirements — infrastructure phase"
 - `<deferred>`: "None"
 
-**If NOT infrastructure — generate grey area proposals:**
+**If NOT infrastructure — generate gray area proposals:**
 
 Determine domain type from the phase goal:
 
@@ -548,9 +548,9 @@ Determine domain type from the phase goal:
 - Something users **READ** → content: structure, tone, depth, flow
 - Something being **ORGANIZED** → organization: criteria, grouping, exceptions, naming
 
-Check prior_decisions — skip grey areas already decided in prior phases.
+Check prior_decisions — skip gray areas already decided in prior phases.
 
-Generate **3-4 grey areas** with **~4 questions each**. For each question:
+Generate **3-4 gray areas** with **~4 questions each**. For each question:
 
 - **Pre-select a recommended answer** based on: prior decisions (consistency), codebase patterns (reuse), domain conventions (standard approaches), ROADMAP success criteria
 - Generate **1-2 alternatives** per question
@@ -560,12 +560,12 @@ Generate **3-4 grey areas** with **~4 questions each**. For each question:
 
 ### Sub-step 4: Present Proposals Per Area
 
-Present grey areas **one at a time**. For each area (M of N):
+Present gray areas **one at a time**. For each area (M of N):
 
 Display a table:
 
 ```
-### Grey Area {M}/{N}: {Area Name}
+### Gray Area {M}/{N}: {Area Name}
 
 | # | Question | ✅ Recommended | Alternative(s) |
 |---|----------|---------------|-----------------|
@@ -896,7 +896,7 @@ When any phase operation fails or a blocker is detected, present 3 options via q
 <success_criteria>
 
 - [ ] All incomplete phases executed in order (smart discuss → ui-phase → plan → execute → ui-review each)
-- [ ] Smart discuss proposes grey area answers in tables, user accepts or overrides per area
+- [ ] Smart discuss proposes gray area answers in tables, user accepts or overrides per area
 - [ ] Progress banners displayed between phases
 - [ ] Execute-phase invoked with --no-transition (autonomous manages transitions)
 - [ ] Post-execution verification reads VERIFICATION.md and routes on status

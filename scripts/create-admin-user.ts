@@ -17,7 +17,7 @@
  *   AWS_REGION / AWS_DEFAULT_REGION — AWS region (default: us-east-1)
  *   AWS_PROFILE                  — Named profile from ~/.aws/config (skips profile prompt)
  *
- * MFA enrolment order (prevents the pre-auth trigger blocking setup):
+ * MFA enrollment order (prevents the pre-auth trigger blocking setup):
  *   1. AdminCreateUser
  *   2. AdminSetUserPassword (permanent — moves status to CONFIRMED)
  *   3. AdminInitiateAuth  ← user is NOT in PLATFORM_ADMIN yet → trigger passes

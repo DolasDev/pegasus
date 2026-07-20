@@ -39,7 +39,7 @@ notably the **projection read-model**`GET /integrations/{id}/projections/{entity
   from the authoring surface to **every `vnd_`-reachable GET route** (workflows /
   executions / triggers, pegII orders+tasks, secrets/config reads, the projection
   cache + 0026 read-model, events, blobs, integration reads), so `api_get`'s
-  catalogue is discoverable. A **route-coverage test** now fails CI if a new m2m GET
+  catalog is discoverable. A **route-coverage test** now fails CI if a new m2m GET
   route is added without a spec entry (or an explicit allowlist), keeping the spec
   from drifting.
 
@@ -53,7 +53,7 @@ had no SDK accessor (all on already-granted persona actions — no policy change
 - **`cancel_execution(workflow_id, execution_id)`** / **`retry_execution(...)`** —
   drive an execution from the SDK (previously tenant-web only). `CancelWorkflowExecution` / `RetryWorkflowExecution` (workflow_developer).
 - **`fork_integration_config(integration_id)`** — fork the platform GLOBAL config
-  into the tenant scope (the config analogue of `fork_workflow`). `PublishIntegrationConfig`.
+  into the tenant scope (the config analog of `fork_workflow`). `PublishIntegrationConfig`.
 - **`list_integrations()`** — list the tenant's configured integration ids +
   active-config summary. Backed by a new m2m route `GET /api/v1/integrations/configs`
   (the vnd\_-reachable sibling of the Cognito-only `GET /integrations`). `ReadIntegrationConfig`.

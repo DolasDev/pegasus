@@ -203,7 +203,7 @@ it fails, `deploy-prod` is skipped and the run is marked failed.
 - Local global setup: `apps/e2e/global-setup.ts`
 - Existing fixture (already env-aware): `apps/e2e/fixtures/index.ts`
 - Deploy orchestrator: `.github/workflows/deploy.yml`
-- Reusable deploy: `.github/workflows/_deploy.yml` (see `Summarise outputs`
+- Reusable deploy: `.github/workflows/_deploy.yml` (see `Summarize outputs`
   step at L216-252 for the canonical `jq` extraction pattern; artifact
   upload at L254-261)
 - GitHub Actions `needs` short-circuit semantics:

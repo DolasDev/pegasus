@@ -77,7 +77,7 @@ export async function decommissionIngress(
   })
 }
 
-/** Dry-run the published inbound behaviour against a sample body (no side effects). */
+/** Dry-run the published inbound behavior against a sample body (no side effects). */
 export async function testIngress(
   integrationId: string,
   sample: unknown,

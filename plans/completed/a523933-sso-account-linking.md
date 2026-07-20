@@ -31,7 +31,7 @@ the other.
       `validationData` / `clientMetadata`; there is **no** guaranteed `identities`
       (the user does not exist yet). Provider is read from `userName` only.
       Still unverified against live Cognito — the handler no-ops if the shape differs,
-      so a surprise degrades to today's behaviour rather than breaking sign-in.
+      so a surprise degrades to today's behavior rather than breaking sign-in.
 - [x] Phase 1 — `apps/api/src/cognito/pre-sign-up.ts` + `pre-sign-up.test.ts` (18 tests)
 - [x] Phase 2 — IaC: `preSignUp` trigger wiring + DB reach + own IAM grant
       (`cognito-stack.ts` + `cognito-stack.test.ts`) — see deviation 1
@@ -261,16 +261,16 @@ requests (i.e. audit attribution is back).
 - ~~**`admin/tenants.ts` does not lowercase `contactEmail`** (`z.string().email().optional()`),
   unlike the invite path's `z.string().trim().email().toLowerCase()` (`users.ts:62`). So a
   tenant admin can exist in Cognito and in `TenantUser` with a mixed-case email, and every
-  lookup that normalises depends on case-insensitive matching to find them. The new handler
+  lookup that normalizes depends on case-insensitive matching to find them. The new handler
   tolerates this (it re-checks the returned email lowercased on both sides), but the
-  normalisation gap is real and worth closing at the source.~~
+  normalization gap is real and worth closing at the source.~~
 
   > **CORRECTION 2026-07-17 — the claim above is FALSE.** Struck through rather than deleted,
   > since this file is the record of what was believed. `contactEmail` never provisions
   > anything: the Cognito user and the roster row are both created from **`adminEmail`**
   > (`admin/tenants.ts:194`, `:261`), which has always been `z.string().trim().email()
 .toLowerCase()` (`:56`). `contactEmail` is contact detail on the Tenant record alone.
-  > There is no normalisation gap. The claim came from a stale schema.prisma comment
+  > There is no normalization gap. The claim came from a stale schema.prisma comment
   > ("creates ADMIN for the contactEmail") plus `contactEmail` and `AdminCreateUserCommand`
   > co-occurring in grep output — a data flow inferred instead of traced. Corrected in the
   > `sso-provider-fail-closed` change, which fixes that comment; `pre-sign-up.ts`'s

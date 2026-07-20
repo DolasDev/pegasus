@@ -9,7 +9,7 @@ not present in :data:`_CURATED_WORKFLOWS`.
 
 Why a registry instead of a discovery scan:
 
-* Defence-in-depth — even if a future change accidentally ships an
+* Defense-in-depth — even if a future change accidentally ships an
   unvetted module inside the image, the worker never registers it.
 * Each registration's ``Workflow.name`` value is the same name the
   Pegasus API uses to identify a workflow, so the mapping is the

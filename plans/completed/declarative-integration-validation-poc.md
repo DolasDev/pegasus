@@ -4,7 +4,7 @@
 > endpoint is in prod — `POST /api/v1/integrations/:integrationId/validate`
 > (PR #289, merge `b031014`). Phases 1, 2, and the in-repo half of Phase 4 are
 > delivered. The WinForms phases (0, 3) remain **deferred/external** — the desktop
-> app lives outside this repo. The in-process *second caller* in Phase 4 was
+> app lives outside this repo. The in-process _second caller_ in Phase 4 was
 > intentionally **dropped** (user direction: keep the endpoint standalone; do not
 > wire it into the longhaul save path). See **Delivered** below for the as-built
 > map and deviations.
@@ -42,7 +42,7 @@ error. Legacy-app handoff doc: `docs/integration-validation-endpoint.md`.
 - **Structural engine = Zod, not Ajv.** The repo already ships `@hono/zod-openapi`
   and Zod 4; using Zod-as-contract (with JSON-Schema export) avoids a new dep and
   matches the house idiom. Ajv dropped.
-- **Rules engine = in-house decision table with a *closed operator set*, no CEL
+- **Rules engine = in-house decision table with a _closed operator set_, no CEL
   dependency.** The six real guards are simple predicates over scalar facts, so a
   tiny bounded evaluator covers them with zero new deps. **CEL stays the documented
   upgrade path**; OPA-WASM the fallback for non-tabular rules.
@@ -82,7 +82,7 @@ is flagged ⚠️.
 - ⚠️ **There is no existing "global / system-wide shared integration" concept for
   longhaul.** Longhaul config is strictly per-tenant (the two columns), and the code
   deliberately throws rather than defaulting (`longhaul-client-config.ts:81-110`). The
-  POC's "one integration, supported globally" therefore introduces a *new* notion: a
+  POC's "one integration, supported globally" therefore introduces a _new_ notion: a
   single shared definition keyed by integration, independent of tenant. This is fine for a
   global POC but is a genuine addition, not a reuse — Phase 1 owns it.
 
@@ -95,7 +95,7 @@ is flagged ⚠️.
   as a literal `Record<'nwi' | 'qmm', LonghaulClientConfig>` (importExport codes, move-type
   SQL fragments, dispatcher query). Adding a third customer = editing that file. **This is
   exactly the hardcoding the POC replaces** — and it is the simplest representative case
-  that *also* has real behavioral rules (below), so it is the right integration to model.
+  that _also_ has real behavioral rules (below), so it is the right integration to model.
 - **Plumbing:** cloud Lambda → `lib/mssql-executor-client.ts` (Lambda invoke) →
   `apps/mssql-executor` (VPC, WireGuard overlay) → tenant on-prem MSSQL.
 
@@ -103,7 +103,7 @@ is flagged ⚠️.
 
 1. **WinForms desktop → on-prem MSSQL, directly via ADO.NET.** It does **not** call the
    cloud API at save today. There is **no synchronous validation hook**. The "switch
-   WinForms to call the HTTP API" work is a *separate, not-yet-done* item
+   WinForms to call the HTTP API" work is a _separate, not-yet-done_ item
    (`plans/completed/b5c2665-pegii-legacy-api-bridge.md:208`). **This is the path the user
    chose to target.** Implication: validation here is **advisory** — it only enforces
    anything if the desktop honors the response and aborts its own write.
@@ -144,7 +144,7 @@ Consequence for the POC: "integrate with, don't rebuild, durable propagation" re
 longhaul, to **"sit the validator in front of the existing write and don't duplicate the
 write."** For the WinForms caller specifically, the write is WinForms' own ADO.NET call, so
 the validator is a pre-write gate the client invokes. There is no Temporal step to wire
-into. This is the single biggest divergence from the planning context and it *simplifies*
+into. This is the single biggest divergence from the planning context and it _simplifies_
 the POC — see Phase 4.
 
 ## Decision: WinForms-endpoint-first (recorded tradeoffs)
@@ -174,18 +174,18 @@ Each stage is short by design — just enough to avoid designing ourselves into 
    lifted from today's hardcoded guards. Golden corpus + one contract test seeded.
 2. **Multi-integration:** the validator becomes integration-agnostic — definitions keyed by
    integration id, loaded from a registry instead of one hardcoded file. The canonical
-   model stays; each integration ships its own contract + transform + rules. *Compatibility
-   hook now:* in the POC, key everything by an explicit `integrationId` even though there's
+   model stays; each integration ships its own contract + transform + rules. _Compatibility
+   hook now:_ in the POC, key everything by an explicit `integrationId` even though there's
    only one, and keep the engine generic over (contract, transform, rules) — never inline
    "longhaul" into the evaluator.
 3. **Tenant-authored:** definitions move from a shipped file to tenant-editable storage with
    validation-on-author and a visibility model (mirror the existing workflow GLOBAL/TENANT
-   two-tier). *Compatibility hook now:* treat the definition as **data with a schema**, not
+   two-tier). _Compatibility hook now:_ treat the definition as **data with a schema**, not
    code — so it can later be stored, diffed, and authored without a deploy.
 4. **AI-maintained:** the AI emits **deltas constrained by the rule format's schema**, gated
    through format-valid → static analysis → golden-corpus → shadow dry-run before
-   human-approved merge; contract-test failures trigger drift detection. *Compatibility
-   hooks now:* (a) the declarative formats must have a machine-checkable schema; (b) seed a
+   human-approved merge; contract-test failures trigger drift detection. _Compatibility
+   hooks now:_ (a) the declarative formats must have a machine-checkable schema; (b) seed a
    golden corpus and one contract test in the POC; (c) expose the validator as a callable
    dry-run surface (the WinForms endpoint already is one).
 
@@ -309,12 +309,12 @@ network sidecar in the critical path.
 
 - **Structural contract → JSON Schema validated with Ajv.** In-process, mature, JS-native,
   aligns with the repo's existing Zod 4 / JSON-Schema fluency. OpenAPI is the authoring
-  format; compile its schemas to Ajv validators. *Tradeoff:* none material for the POC.
+  format; compile its schemas to Ajv validators. _Tradeoff:_ none material for the POC.
 - **Mapping transform → a per-field declarative spec (data), not one opaque expression.**
   A list of `{ target, source, transform? }` entries evaluated by a small in-house
   evaluator, with named transform functions referenced by key. The planning context
   explicitly prefers "local, diffable over one large opaque expression" — a per-field table
-  is diffable and AI-delta-friendly; a single JSONata blob is not. *Tradeoff:* a giant
+  is diffable and AI-delta-friendly; a single JSONata blob is not. _Tradeoff:_ a giant
   JSONata/CEL expression is faster to write initially but fails the diffability and
   AI-delta goals — rejected for that reason.
 - **Behavioral rules → a declarative decision table (data) + a bounded expression language
@@ -322,7 +322,7 @@ network sidecar in the critical path.
   fields × add/update/remove) evaluated by a small in-house evaluator, with **CEL
   (`cel-js`)** for cell-level predicates where a flat value is insufficient. Rationale:
   - **DMN proper** is Java-centric; JS DMN engines (`dmn-eval-js`) are thin and drag in
-    partial FEEL — and a JVM in Lambda is a non-starter. We take DMN's *tabular shape*
+    partial FEEL — and a JVM in Lambda is a non-starter. We take DMN's _tabular shape_
     (best for state×field rules and static gap/conflict checking, which the AI loop wants)
     without its engine.
   - **OPA/Rego** is powerful but is authz-shaped, a learning curve, and natively a Go
@@ -332,7 +332,7 @@ network sidecar in the critical path.
   - **CEL** is non-Turing-complete, lightweight, embeddable in Node, and ideal for the
     boolean guard predicates the POC actually has. It provides the bounded expression
     layer; the table provides structure.
-  - *Tradeoff:* a small in-house table evaluator is code we own (vs an off-the-shelf
+  - _Tradeoff:_ a small in-house table evaluator is code we own (vs an off-the-shelf
     engine), but it is tiny, keeps us JVM/sidecar-free, and gives us the machine-checkable
     schema and static analysis the AI loop needs — which off-the-shelf engines wouldn't
     hand us for free.
@@ -343,8 +343,8 @@ rules.
 
 > **As built (2026-06-17):** the recommendation was simplified once the repo was in hand.
 > **Structural = Zod** (already present via `@hono/zod-openapi`; JSON-Schema exportable) —
-> Ajv was an unnecessary new dep. **Rules = an in-house decision table over a *closed
-> operator set* (`eq/ne/gt/gte/lt/lte/in`) on scalar facts** — the six real guards don't
+> Ajv was an unnecessary new dep. **Rules = an in-house decision table over a _closed
+> operator set_ (`eq/ne/gt/gte/lt/lte/in`) on scalar facts** — the six real guards don't
 > need an expression language, so **no CEL dependency** was added. The per-field transform
 > spec landed as planned. **CEL remains the documented upgrade path** for cell predicates
 > that outgrow the operator set; **OPA-WASM/Rego** the fallback for non-tabular rules. Net
@@ -361,7 +361,7 @@ rules.
 3. **Durable propagation correction.** ✅ **Resolved/confirmed:** the workflow SDK is not an
    order-state pipe; no new propagation infra built. The validator is a standalone pre-write
    gate.
-4. **Canonical model scope.** ✅ **Resolved:** modelled only the trip subset the six guards +
+4. **Canonical model scope.** ✅ **Resolved:** modeled only the trip subset the six guards +
    structural contract need (`canonical-order.ts`), not the full longhaul schema.
 5. **Fail-open vs fail-closed.** ✅ **Resolved: fail-open.** `validateOrder()` returns
    `{ valid: true, degraded: true }` on any internal error; the handoff doc instructs the
@@ -369,16 +369,16 @@ rules.
 
 ## Risks → how each phase de-risks them
 
-| Risk | De-risked by |
-| --- | --- |
-| Chosen caller (WinForms) can't call/honor an endpoint at save | **Phase 0** spike before any build; fallback to tenant-web-first leaves the validator core unchanged |
-| Advisory-only enforcement gives false confidence | **Phase 3** makes the WinForms block/proceed contract a first-class deliverable with an explicit DoD |
-| Network dependency freezes legacy saves | **Phase 1** tight timeout + fail-open, asserted in DoD; **Phase 3** mirrors it client-side |
-| Rules engine wrong for a TS/Node runtime | Recommendation above is JVM/sidecar-free and in-process; **Phase 2** proves it on real guards before committing |
-| Transform becomes an opaque blob (blocks tenant-authoring + AI deltas) | Per-field diffable spec mandated in **Phase 1**; schema-checked in **Phase 2** |
-| Designing into a corner re: multi-integration / tenant-authoring / AI | Arc compatibility hooks: `integrationId` keying, definition-as-data-with-schema, golden corpus + contract test seeded in **Phases 1–4** |
-| Misreading propagation as needing new infra | **Seam analysis + Phase 4** correct the assumption explicitly and document it |
-| Parity drift from the hardcoded guards | **Phase 2** golden-corpus parity matrix against the exact handler behavior; **Phase 4** in-process second caller shares one definition |
+| Risk                                                                   | De-risked by                                                                                                                            |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Chosen caller (WinForms) can't call/honor an endpoint at save          | **Phase 0** spike before any build; fallback to tenant-web-first leaves the validator core unchanged                                    |
+| Advisory-only enforcement gives false confidence                       | **Phase 3** makes the WinForms block/proceed contract a first-class deliverable with an explicit DoD                                    |
+| Network dependency freezes legacy saves                                | **Phase 1** tight timeout + fail-open, asserted in DoD; **Phase 3** mirrors it client-side                                              |
+| Rules engine wrong for a TS/Node runtime                               | Recommendation above is JVM/sidecar-free and in-process; **Phase 2** proves it on real guards before committing                         |
+| Transform becomes an opaque blob (blocks tenant-authoring + AI deltas) | Per-field diffable spec mandated in **Phase 1**; schema-checked in **Phase 2**                                                          |
+| Designing into a corner re: multi-integration / tenant-authoring / AI  | Arc compatibility hooks: `integrationId` keying, definition-as-data-with-schema, golden corpus + contract test seeded in **Phases 1–4** |
+| Misreading propagation as needing new infra                            | **Seam analysis + Phase 4** correct the assumption explicitly and document it                                                           |
+| Parity drift from the hardcoded guards                                 | **Phase 2** golden-corpus parity matrix against the exact handler behavior; **Phase 4** in-process second caller shares one definition  |
 
 ## Constraints honored
 

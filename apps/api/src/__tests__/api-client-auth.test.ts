@@ -3,7 +3,7 @@
 //
 // The repository is mocked via vi.mock so no DB connection is required.
 // crypto.timingSafeEqual is exercised via real hash comparison (not mocked)
-// so timing-safe behaviour is validated end-to-end.
+// so timing-safe behavior is validated end-to-end.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'

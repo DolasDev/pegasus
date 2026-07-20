@@ -6,7 +6,7 @@ import * as oauthService from './oauthService'
 /**
  * Lazy singleton for the authService instance.
  * Auth screens import this instead of the _layout module export (which no longer exists).
- * Lazily initialised so config env vars are only read when first needed.
+ * Lazily initialized so config env vars are only read when first needed.
  */
 let instance: ReturnType<typeof createAuthService> | null = null
 

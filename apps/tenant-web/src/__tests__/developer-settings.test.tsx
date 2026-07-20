@@ -281,7 +281,7 @@ describe('DeveloperSettingsPage', () => {
     expect(screen.getByText('Create API Client', { selector: 'h3,div' })).toBeInTheDocument()
     expect(screen.getByLabelText('Name')).toBeInTheDocument()
     // The Roles label is rendered alongside the role checkbox list — the
-    // checkboxes themselves are labelled by `<label>` blocks containing the
+    // checkboxes themselves are labeled by `<label>` blocks containing the
     // role title plus description, so query by the label text directly.
     expect(screen.getByText('Roles')).toBeInTheDocument()
     expect(screen.getByText('Reporting')).toBeInTheDocument()

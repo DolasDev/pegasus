@@ -67,7 +67,7 @@ See `.planning/research/FEATURES.md` for the full dependency chain and UX expect
 
 ### Architecture Approach
 
-The architecture follows a strict four-layer dependency chain: `UI → AuthContext → authService → cognitoService/apiClient`. No layer skips a level. This is not over-engineering — it is the minimum structure required for the auth flow to be independently testable at each boundary. The `AuthContext` owns the `AuthStep` state machine (`EMAIL → TENANT_PICKER → PASSWORD → AUTHENTICATING → DONE`); UI screens read this state from context and render accordingly. Login flow state (`tenantCandidates`, `selectedTenant`, `cognitoConfig`, current `email`) lives in `AuthContext`, not in the screen component — this is essential for correct back-navigation and background/foreground behaviour.
+The architecture follows a strict four-layer dependency chain: `UI → AuthContext → authService → cognitoService/apiClient`. No layer skips a level. This is not over-engineering — it is the minimum structure required for the auth flow to be independently testable at each boundary. The `AuthContext` owns the `AuthStep` state machine (`EMAIL → TENANT_PICKER → PASSWORD → AUTHENTICATING → DONE`); UI screens read this state from context and render accordingly. Login flow state (`tenantCandidates`, `selectedTenant`, `cognitoConfig`, current `email`) lives in `AuthContext`, not in the screen component — this is essential for correct back-navigation and background/foreground behavior.
 
 **Major components:**
 
@@ -75,7 +75,7 @@ The architecture follows a strict four-layer dependency chain: `UI → AuthConte
 2. `src/services/cognitoService.ts` — wraps `amazon-cognito-identity-js`; constructs `CognitoUserPool` + `CognitoUser` lazily (after `mobile-config` is fetched); exposes a single `signIn()` function that returns `{ idToken: string }`
 3. `src/services/authService.ts` — stateless flow coordinator; calls `cognitoService.signIn()` and the three API endpoints (`resolve-tenants`, `select-tenant`, `validate-token`, `mobile-config`); no React, no state
 4. `src/context/AuthContext.tsx` — replaces the mock; owns `AuthState`; persists/rehydrates `Session` from AsyncStorage; exposes `submitEmail`, `selectTenant`, `submitPassword`, `logout`
-5. `app/(auth)/tenant-picker.tsx` — new screen; separate Expo Router route rather than inline component (needs its own back button behaviour)
+5. `app/(auth)/tenant-picker.tsx` — new screen; separate Expo Router route rather than inline component (needs its own back button behavior)
 6. `app/(auth)/login.tsx` — updated for two-step; renders based on `AuthContext.step`; no local step state
 7. `packages/api` — new `GET /api/auth/mobile-config` endpoint; returns `userPoolId` and `clientId` for the requesting tenant
 

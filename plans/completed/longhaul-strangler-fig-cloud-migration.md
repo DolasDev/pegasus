@@ -167,7 +167,7 @@ one PR and should be mechanical:
 
 ## Phase 3 — migrate reads
 
-One PR per endpoint. Start with low-volume single-query reads, escalate to multi-query reads (trip detail, planning). The order is judgment-based; prioritise endpoints whose on-prem version is slow today or whose query refactor is genuinely valuable independent of the migration.
+One PR per endpoint. Start with low-volume single-query reads, escalate to multi-query reads (trip detail, planning). The order is judgment-based; prioritize endpoints whose on-prem version is slow today or whose query refactor is genuinely valuable independent of the migration.
 
 ### Phase 3 results (2026-05-19 — PRs #117–#137)
 

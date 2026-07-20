@@ -20,14 +20,14 @@ export const demoPartnerRules: RuleSet = [
   {
     id: 'service-status-not-supplier-settable',
     description:
-      'A supplier may not set serviceStatus to Requested, Awarded, Cancelled, or Declined.',
+      'A supplier may not set serviceStatus to Requested, Awarded, Canceled, or Declined.',
     field: 'serviceStatus',
     message:
-      'The supplier cannot change the Service Status to Requested, Awarded, Cancelled, or Declined. Contact the Demo Partner coordinator for assistance.',
+      'The supplier cannot change the Service Status to Requested, Awarded, Canceled, or Declined. Contact the Demo Partner coordinator for assistance.',
     sourceRef:
-      'Demo Partner API: a supplier cannot set Service Status to Requested, Awarded, Cancelled, or Declined.',
+      'Demo Partner API: a supplier cannot set Service Status to Requested, Awarded, Canceled, or Declined.',
     when: [
-      { fact: 'serviceStatus', op: 'in', value: ['Requested', 'Awarded', 'Cancelled', 'Declined'] },
+      { fact: 'serviceStatus', op: 'in', value: ['Requested', 'Awarded', 'Canceled', 'Declined'] },
     ],
   },
   {

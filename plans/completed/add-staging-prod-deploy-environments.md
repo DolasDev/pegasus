@@ -74,7 +74,7 @@ later (i.e. don't pile prod-deploy logic into the staging job).
       `PegasusStaging-*` and `PegasusProd-*`. Mirror the
       `dolas-infra` convention: env-specific config object
       (account/region/domain/etc.) keyed by an `envName: 'staging' |
-  'prod'`. The existing `PegasusDev-*` stacks remain in the dev
+'prod'`. The existing `PegasusDev-*` stacks remain in the dev
       account untouched until step 7 below — do not break them yet,
       so a rollback of this PR doesn't strand the dev environment
       mid-refactor.
@@ -94,7 +94,7 @@ later (i.e. don't pile prod-deploy logic into the staging job).
       `deploy` job targets the dev account; replace it with two new
       jobs: - `deploy-staging`: `needs: changes`, `environment: staging`,
       `if: github.event_name == 'push' && github.ref ==
-    'refs/heads/main'`. Same steps as the old `deploy` job but
+  'refs/heads/main'`. Same steps as the old `deploy` job but
       with `PegasusStaging-*` stack names (or pass the env via
       `cdk deploy -c env=staging` if you wired it that way in
       step 2). - `deploy-prod`: `needs: deploy-staging`, `environment: prod`,
@@ -135,7 +135,7 @@ later (i.e. don't pile prod-deploy logic into the staging job).
   `pegasus-{env}-`. Staging/prod accounts are pinned in the env config
   (CDK refuses to deploy if assumed creds don't match — defense in
   depth against cross-account misfires). `dev` inherits from the
-  ambient account, preserving the original behaviour.
+  ambient account, preserving the original behavior.
 - `packages/infra/package.json`: `deploy:ci` now passes
   `-c env=${ENV_NAME:-dev}` so `npm run deploy:ci` works with or
   without the env var (deploy.sh stays on `dev`; CI sets it explicitly).

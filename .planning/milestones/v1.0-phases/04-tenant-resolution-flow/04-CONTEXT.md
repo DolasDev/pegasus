@@ -23,7 +23,7 @@ Deliverables:
 ### Login screen architecture
 
 - **D-01:** The two-step flow lives entirely within `login.tsx` via local state (`step: 'email' | 'password'`). The tenant picker is the only new screen. Email and password steps are not separate routes — they are conditional renders in the same component.
-- **D-02:** `login.tsx` reads `useLocalSearchParams()` on mount; if `{ step: 'password', tenantId, tenantName, email }` params are present, it initialises directly in the password step. This is how the picker hands off after a selection.
+- **D-02:** `login.tsx` reads `useLocalSearchParams()` on mount; if `{ step: 'password', tenantId, tenantName, email }` params are present, it initializes directly in the password step. This is how the picker hands off after a selection.
 - **D-03:** Back from the password step returns to the email step (the login.tsx with email step was under the picker in the navigation stack). Back from the picker (before selecting) returns to the login.tsx email step directly (TENANT-06).
 
 ### authService extension
@@ -35,7 +35,7 @@ Deliverables:
 ### Picker → password handoff
 
 - **D-07:** After the driver selects a tenant, `tenant-picker.tsx` calls `authService.selectTenant(email, tenantId)`, then calls `router.replace({ pathname: '/(auth)/login', params: { step: 'password', tenantId, tenantName, email } })`. No shared module-level state is needed.
-- **D-08:** `login.tsx` reads `useLocalSearchParams<{ step?: string; tenantId?: string; tenantName?: string; email?: string }>()` on mount. If `step === 'password'`, it initialises with those values and renders the password step immediately.
+- **D-08:** `login.tsx` reads `useLocalSearchParams<{ step?: string; tenantId?: string; tenantName?: string; email?: string }>()` on mount. If `step === 'password'`, it initializes with those values and renders the password step immediately.
 
 ### Auto-selection (single tenant)
 

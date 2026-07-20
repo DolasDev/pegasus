@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Tests for SKIP_AUTH behaviour
+// Tests for SKIP_AUTH behavior
 //
 // When SKIP_AUTH=true, the tenant middleware is bypassed and stub context
 // values (tenantId, role, db) are set so handlers still work.

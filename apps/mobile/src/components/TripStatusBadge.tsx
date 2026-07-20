@@ -5,7 +5,7 @@ import { colors, fontSize, spacing, borderRadius } from '../theme/colors'
 // ---------------------------------------------------------------------------
 // Status pill for longhaul trips. Unlike the Move StatusBadge, longhaul trip
 // statuses are free-form strings sourced from the legacy MasterTripStatus
-// table, so we colour-map by name with a sensible default.
+// table, so we color-map by name with a sensible default.
 // ---------------------------------------------------------------------------
 
 interface TripStatusBadgeProps {

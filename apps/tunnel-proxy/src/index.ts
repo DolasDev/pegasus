@@ -11,7 +11,7 @@
 //     method:  "GET" | "POST" | ...
 //     url:     "https://10.200.7.1/some/path?query=1"
 //     headers: Record<string,string>
-//     body:    string (already serialised by caller) | null
+//     body:    string (already serialized by caller) | null
 //     timeoutMs?: number   // default 15_000
 //   }
 //

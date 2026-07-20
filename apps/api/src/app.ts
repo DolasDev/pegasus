@@ -114,7 +114,7 @@ app.use('*', correlationMiddleware)
 app.use('*', requestTimingMiddleware)
 // CORS allowlist — driven by CORS_ALLOWED_ORIGINS (comma-separated, injected by
 // the CDK ApiStack per environment). Empty/unset (local dev, E2E, on-prem) →
-// reflect any origin, preserving the previous permissive behaviour. In deployed
+// reflect any origin, preserving the previous permissive behavior. In deployed
 // environments API Gateway's corsPreflight is authoritative for OPTIONS; this
 // Hono layer is defense in depth for the direct-served path.
 const allowedOrigins = (process.env['CORS_ALLOWED_ORIGINS'] ?? '').split(',').filter(Boolean)
@@ -132,7 +132,7 @@ app.use(
 // Global error handler
 //
 // Catches any unhandled exception thrown from a route handler or middleware.
-// Logs the full error server-side (including stack) and returns a sanitised
+// Logs the full error server-side (including stack) and returns a sanitized
 // JSON payload — never leaking internal stack traces to the client.
 // ---------------------------------------------------------------------------
 app.onError((err, c) => {
@@ -537,5 +537,5 @@ app.notFound((c) => c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404))
 
 // `m2mV1` (mounted at /api/v1) is exported for the OpenAPI route-coverage test
 // (lib/openapi-spec.coverage.test.ts): every vnd_-reachable GET route it carries
-// must be documented in the served spec, so the api_get catalogue stays complete.
+// must be documented in the served spec, so the api_get catalog stays complete.
 export { app, m2mV1 }

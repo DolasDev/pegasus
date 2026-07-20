@@ -1077,7 +1077,7 @@ describe('DriverPlanningPage', () => {
       expect(screen.queryByTestId('driver-agency')).not.toBeInTheDocument()
     })
 
-    it('colours the driver-name cell by agency and exposes the agency in a tooltip', async () => {
+    it('colors the driver-name cell by agency and exposes the agency in a tooltip', async () => {
       driverPlanningReturn = {
         data: [makeDriver({ agentCode: '1511' })],
         isLoading: false,

@@ -28,7 +28,7 @@ const PLATFORM_ADMIN_GROUP = 'PLATFORM_ADMIN'
 // ---------------------------------------------------------------------------
 let _jwks: ReturnType<typeof createRemoteJWKSet> | null = null
 
-/** Returns the cached JWKS resolver, initialising it on first call. */
+/** Returns the cached JWKS resolver, initializing it on first call. */
 function getJwks(): ReturnType<typeof createRemoteJWKSet> {
   if (_jwks === null) {
     const url = process.env['COGNITO_JWKS_URL']

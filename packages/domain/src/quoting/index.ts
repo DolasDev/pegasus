@@ -117,9 +117,9 @@ export function isQuoteValid(quote: Quote, at: Date = new Date()): boolean {
 
 /**
  * Returns true when the Quote has at least one line item and may therefore
- * be finalised (status DRAFT → SENT).
+ * be finalized (status DRAFT → SENT).
  *
- * @rule A Quote must have at least one line item to be finalised.
+ * @rule A Quote must have at least one line item to be finalized.
  */
 export function canFinalizeQuote(quote: Quote): boolean {
   return (quote.lineItems?.length ?? 0) > 0

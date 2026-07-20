@@ -73,7 +73,7 @@ must do the same so the rendered URL is unchanged.
 
 - [ ] **1. Pin the four remaining CognitoStack outputs.** In
       `packages/infra/lib/stacks/cognito-stack.ts`, add explicit
-      `CfnOutput` declarations modelled on the existing
+      `CfnOutput` declarations modeled on the existing
       `AssetsAdminClientRefExport` block (introduced in `dbda2dd`)
       for: UserPool ref, TenantAppClient ref, MobileAppClient ref,
       HostedUiDomain ref. Each must call
@@ -85,7 +85,7 @@ must do the same so the rendered URL is unchanged.
 
 - [ ] **2. Switch consumers to `Fn::ImportValue`.** In each consumer
       stack, replace the construct-ref prop with a `cognitoStackName:
-  string` prop and resolve the value via `cdk.Fn.importValue`.
+string` prop and resolve the value via `cdk.Fn.importValue`.
       Files: - `apps/.../frontend-assets-stack.ts` — userPoolId,
       tenantClientId, hostedUiDomain. - `apps/.../admin-frontend-assets-stack.ts` — hostedUiDomain
       (admin client already pinned). - `apps/.../api-stack.ts` — userPoolId, tenantClientId,
@@ -95,8 +95,8 @@ must do the same so the rendered URL is unchanged.
 - [ ] **3. Reconstruct hostedUi URL on the consumer side.** Wherever
       a consumer used the `hostedUiBaseUrl` string token, replace
       with `cdk.Fn.join('', ['https://', cdk.Fn.importValue(
-  '<cognito-stack>:Exports…HostedUiDomain…'),
-  `.auth.${region}.amazoncognito.com`])`. Same for `jwksUrl`
+'<cognito-stack>:Exports…HostedUiDomain…'),
+`.auth.${region}.amazoncognito.com`])`. Same for `jwksUrl`
       built from the imported userPoolId.
 
 - [ ] **4. Wire `cognitoStackName` from `bin/app.ts`.** Pass
@@ -106,7 +106,7 @@ must do the same so the rendered URL is unchanged.
       deploy ordering is preserved.
 
 - [ ] **5. Verify byte-identical synth.** Run `cdk synth -c
-  env=staging` before/after and diff the Outputs section of
+env=staging` before/after and diff the Outputs section of
       `PegasusStaging-CognitoStack.template.json` plus the rendered
       `Fn::ImportValue` strings in the consumer templates. Target:
       Outputs section sorted-JSON-equal to the current synth, and

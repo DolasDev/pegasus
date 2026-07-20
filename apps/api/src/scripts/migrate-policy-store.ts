@@ -144,7 +144,7 @@ async function main(): Promise<void> {
             identitySourceId,
             // principalEntityType must be passed on every Update call —
             // AVP defaults it to `AWS::Cognito` when omitted, which would
-            // produce principals our schema/policies don't recognise. The
+            // produce principals our schema/policies don't recognize. The
             // value here mirrors what authz-provision.ts:CreateIdentitySource
             // sets at provision time.
             principalEntityType: 'Pegasus::User',

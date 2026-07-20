@@ -69,7 +69,7 @@ permissions:
 jobs:
   # ---------------------------------------------------------------------------
   # Resolve what this run should do. On push → a production release of both
-  # platforms. On dispatch → honour the inputs. Kept env-free so it never waits
+  # platforms. On dispatch → honor the inputs. Kept env-free so it never waits
   # on a reviewer gate.
   # ---------------------------------------------------------------------------
   resolve:

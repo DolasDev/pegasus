@@ -98,7 +98,7 @@ def prepare_all(
                 extra={**base, "workflow_name": wf.name, "version": wf.version},
             )
         except ArtifactIntegrityError:
-            # TOCTOU defence tripped: the S3 bytes do NOT match the digest
+            # TOCTOU defense tripped: the S3 bytes do NOT match the digest
             # recorded when the artifact was validated. Treat as hostile.
             log.exception(
                 "runner.artifact_sha_mismatch_SECURITY",

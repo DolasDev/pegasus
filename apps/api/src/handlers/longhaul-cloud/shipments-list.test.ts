@@ -108,7 +108,7 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
           __order_num: 100,
           __payload: payload({ order_num: 100, activity_code: 'PACK', is_covered: true }),
         },
-        // activity-type catalogue rows
+        // activity-type catalog rows
         { __src: 'type', __order_num: null, __payload: payload({ code: 'LOAD', name: 'Load' }) },
         { __src: 'type', __order_num: null, __payload: payload({ code: 'RDEL', name: 'Deliver' }) },
       ],
@@ -139,7 +139,7 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
     expect(codes).toContain('LOAD')
     expect(codes).toContain('RDEL')
     // Regression: generated activities must carry the FULL activityType from the
-    // catalogue (not a bare { code }), or the planning UI renders "undefined"
+    // catalog (not a bare { code }), or the planning UI renders "undefined"
     // and can't gate date editing. LOAD + RDEL are generated → enriched from the
     // activity-types map.
     const load = activities.find(

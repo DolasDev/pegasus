@@ -4,7 +4,7 @@
 // Extracts the x-correlation-id header from each incoming request (or
 // generates a fresh UUID) and:
 //   1. Stores it in the Hono context so error handlers can include it in
-//      sanitised error responses.
+//      sanitized error responses.
 //   2. Attaches it to the shared logger's persistent keys so every log line
 //      emitted during this request includes correlationId, method, and path.
 //   3. Echoes it back in the x-correlation-id response header so the frontend

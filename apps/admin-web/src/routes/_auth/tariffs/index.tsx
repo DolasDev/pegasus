@@ -18,7 +18,7 @@ import {
 // ---------------------------------------------------------------------------
 // Tariff import — platform-admin upload of GLOBAL 400NG rate data.
 //
-// Three-step wizard modelled on tenant-web's DriverImport (pick → review →
+// Three-step wizard modeled on tenant-web's DriverImport (pick → review →
 // confirm), but for the whole-document contract: the .xlsx is parsed IN THE
 // BROWSER into the canonical JSON and POSTed once, rather than looped row by
 // row. The raw file never leaves the browser. A pre-parsed .json (e.g. the CLI

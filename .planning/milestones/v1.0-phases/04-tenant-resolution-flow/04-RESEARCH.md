@@ -22,7 +22,7 @@ The critical architectural decision is that `login.tsx` owns tenant resolution s
 
 **D-01:** The two-step flow lives entirely within `login.tsx` via local state (`step: 'email' | 'password'`). The tenant picker is the only new screen. Email and password steps are not separate routes — they are conditional renders in the same component.
 
-**D-02:** `login.tsx` reads `useLocalSearchParams()` on mount; if `{ step: 'password', tenantId, tenantName, email }` params are present, it initialises directly in the password step. This is how the picker hands off after a selection.
+**D-02:** `login.tsx` reads `useLocalSearchParams()` on mount; if `{ step: 'password', tenantId, tenantName, email }` params are present, it initializes directly in the password step. This is how the picker hands off after a selection.
 
 **D-03:** Back from the password step returns to the email step (the login.tsx with email step was under the picker in the navigation stack). Back from the picker (before selecting) returns to the login.tsx email step directly (TENANT-06).
 
@@ -34,7 +34,7 @@ The critical architectural decision is that `login.tsx` owns tenant resolution s
 
 **D-07:** After the driver selects a tenant, `tenant-picker.tsx` calls `authService.selectTenant(email, tenantId)`, then calls `router.replace({ pathname: '/(auth)/login', params: { step: 'password', tenantId, tenantName, email } })`. No shared module-level state is needed.
 
-**D-08:** `login.tsx` reads `useLocalSearchParams<{ step?: string; tenantId?: string; tenantName?: string; email?: string }>()` on mount. If `step === 'password'`, it initialises with those values and renders the password step immediately.
+**D-08:** `login.tsx` reads `useLocalSearchParams<{ step?: string; tenantId?: string; tenantName?: string; email?: string }>()` on mount. If `step === 'password'`, it initializes with those values and renders the password step immediately.
 
 **D-09:** When `resolveTenants` returns exactly one result, `login.tsx` calls `authService.selectTenant(email, tenants[0].tenantId)` immediately (no navigation), then transitions to `step='password'` in local state. No picker screen is shown (TENANT-02).
 
@@ -66,7 +66,7 @@ Auth guard flash fix (GUARD-01) is Phase 5.
 | ID        | Description                                                                                                        | Research Support                                                                                         |
 | --------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
 | TENANT-01 | Driver enters email and app calls `POST /api/auth/resolve-tenants`, receiving a list of tenants                    | API endpoint exists; `resolveTenants()` factory method pattern established by D-04                       |
-| TENANT-02 | If exactly one tenant matches, app auto-selects it and calls `POST /api/auth/select-tenant` without showing picker | D-09 specifies exact behaviour; `selectTenant()` factory method by D-05                                  |
+| TENANT-02 | If exactly one tenant matches, app auto-selects it and calls `POST /api/auth/select-tenant` without showing picker | D-09 specifies exact behavior; `selectTenant()` factory method by D-05                                   |
 | TENANT-03 | If multiple tenants match, driver sees list of company names; app calls `POST /api/auth/select-tenant`             | `tenant-picker.tsx` new screen; D-07 specifies replace-nav handoff to login                              |
 | TENANT-04 | No tenants → inline error "Email not registered with Pegasus" without navigating away                              | D-10 exact string; inline `<Text>` component below email input in login.tsx email step                   |
 | TENANT-05 | Resolved company name displayed above password input                                                               | D-11: `tenantName` from URL param (picker path) or `tenants[0].tenantName` (auto-select path)            |
@@ -94,10 +94,10 @@ Auth guard flash fix (GUARD-01) is Phase 5.
 
 ### Alternatives Considered
 
-| Instead of                          | Could Use                 | Tradeoff                                                                                        |
-| ----------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------- |
-| Local state in login.tsx (D-01)     | Separate route screens    | Separate routes would complicate back-navigation and URL param passing; local state is simpler  |
-| `router.replace` from picker (D-07) | `router.push` from picker | `replace` prevents picker appearing in back-stack for password step; correct behaviour per spec |
+| Instead of                          | Could Use                 | Tradeoff                                                                                       |
+| ----------------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------- |
+| Local state in login.tsx (D-01)     | Separate route screens    | Separate routes would complicate back-navigation and URL param passing; local state is simpler |
+| `router.replace` from picker (D-07) | `router.push` from picker | `replace` prevents picker appearing in back-stack for password step; correct behavior per spec |
 
 **Installation:** No new dependencies required. All needed libraries are already installed.
 
@@ -182,7 +182,7 @@ const params = useLocalSearchParams<{
   email?: string
 }>()
 
-// initialise state based on params presence
+// initialize state based on params presence
 ```
 
 ### Pattern 3: useLocalSearchParams in Tests
@@ -274,7 +274,7 @@ This is consistent with how `createAuthService` is instantiated once and reused.
 | Problem                | Don't Build                                   | Use Instead                                     | Why                                            |
 | ---------------------- | --------------------------------------------- | ----------------------------------------------- | ---------------------------------------------- |
 | Typed URL params       | Manual URLSearchParams parsing                | `useLocalSearchParams<T>()`                     | Type-safe, already mocked in jest setup        |
-| Navigation with params | Manual router state management                | `router.push({ pathname, params })`             | Expo-router handles serialisation              |
+| Navigation with params | Manual router state management                | `router.push({ pathname, params })`             | Expo-router handles serialization              |
 | Tenant list rendering  | Custom scroll view with manual touch handling | `FlatList` or `ScrollView` + `TouchableOpacity` | Handles recycling, accessibility, Android back |
 
 **Key insight:** The expo-router patterns for typed params and navigation are already established in `apps/mobile/app/order/[id].tsx` and its test — the planner should copy these patterns exactly.
@@ -284,7 +284,7 @@ This is consistent with how `createAuthService` is instantiated once and reused.
 ### Pitfall 1: URL Params Are Always Strings
 
 **What goes wrong:** `useLocalSearchParams` returns all params as `string | string[]`, never as objects or numbers. Attempting to use a param directly as a typed object fails.
-**Why it happens:** expo-router serialises everything through the URL string.
+**Why it happens:** expo-router serializes everything through the URL string.
 **How to avoid:** Stringify complex data before navigation (`JSON.stringify(tenants)`) and parse after (`JSON.parse(tenantsJson as string) as TenantResolution[]`).
 **Warning signs:** TypeScript errors about `string` not assignable to `TenantResolution[]`.
 
@@ -371,7 +371,7 @@ return { fetchMobileConfig, authenticate }
 return { fetchMobileConfig, authenticate, resolveTenants, selectTenant }
 ```
 
-### Inline error text pattern (colour usage from login.tsx StyleSheet)
+### Inline error text pattern (color usage from login.tsx StyleSheet)
 
 ```typescript
 // Pattern for inline error text (mirrors existing login.tsx label style)
@@ -386,7 +386,7 @@ errorText: {
 },
 ```
 
-Check `packages/theme/src/index.ts` for the exact error colour token name before implementing.
+Check `packages/theme/src/index.ts` for the exact error color token name before implementing.
 
 ### API response shape for resolve-tenants
 
@@ -430,7 +430,7 @@ export type TenantResolution = {
 
 ### Phase Requirements to Test Map
 
-| Req ID    | Behaviour                                                   | Test Type        | Automated Command                             | File Exists?                                                   |
+| Req ID    | Behavior                                                    | Test Type        | Automated Command                             | File Exists?                                                   |
 | --------- | ----------------------------------------------------------- | ---------------- | --------------------------------------------- | -------------------------------------------------------------- |
 | TENANT-01 | Email submit calls resolveTenants                           | unit             | `jest --testPathPattern="authService"`        | Partial — authService.test.ts exists, needs new describe block |
 | TENANT-01 | login.tsx calls resolveTenants on email submit              | unit (component) | `jest --testPathPattern="login.test"`         | Partial — login.test.tsx exists, needs new tests               |

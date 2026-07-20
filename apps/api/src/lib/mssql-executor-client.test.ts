@@ -95,7 +95,7 @@ describe('executeSql', () => {
   it('throws EXECUTOR_INVOKE_TIMEOUT when a hung invoke exceeds the client ceiling', async () => {
     vi.useFakeTimers()
     // A client whose send only rejects when its abort signal fires (mirrors the
-    // AWS SDK cancelling an in-flight invoke), so the timeout path is exercised.
+    // AWS SDK canceling an in-flight invoke), so the timeout path is exercised.
     const hung = {
       send: vi.fn(
         (_cmd: unknown, opts: { abortSignal: AbortSignal }) =>

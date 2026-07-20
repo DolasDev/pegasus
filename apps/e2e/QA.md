@@ -15,7 +15,7 @@ It is a third Playwright target alongside `local` and `remote` (see `REMOTE.md`)
 
 ## What it covers
 
-Derived from the legacy app's behaviour (`../longhaul`). See the scenario
+Derived from the legacy app's behavior (`../longhaul`). See the scenario
 catalog in `plans/.../i-ve-placed-the-original-functional-cocke.md`.
 
 - **`@smoke`** — the on-prem version-ping canary (tunnel → Dolios → MSSQL alive),

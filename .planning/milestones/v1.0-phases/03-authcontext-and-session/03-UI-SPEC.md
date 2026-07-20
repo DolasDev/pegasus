@@ -19,7 +19,7 @@ created: 2026-03-27
 Phase 3 is a service/logic replacement phase. No new screens are introduced. No new visual components are added. The only UI-visible changes are:
 
 1. `settings.tsx` — "DRIVER PROFILE" card drops `driverName`; shows `session?.email` and `session?.role` instead.
-2. `_layout.tsx` — The `isLoading` spinner (existing `ActivityIndicator`) covers cold-start restore. Behaviour is unchanged; it already handles `isLoading === true`. No visual change needed.
+2. `_layout.tsx` — The `isLoading` spinner (existing `ActivityIndicator`) covers cold-start restore. Behavior is unchanged; it already handles `isLoading === true`. No visual change needed.
 3. `login.tsx` — No visible change in Phase 3. The screen still renders; it cannot complete a real login (no `tenantId` source yet). The hint text must be updated to remove the demo instruction. Phase 4 owns the two-step flow.
 
 All other UI contract items below specify exact values the executor must match against the established `@pegasus/theme` tokens. Do not deviate.
@@ -44,14 +44,14 @@ Source: codebase scan — `apps/mobile/src/theme/colors.ts`, `packages/theme/src
 
 Declared values from `packages/theme/src/spacing.ts` — do not redefine:
 
-| Token | Value | Usage                              |
-| ----- | ----- | ---------------------------------- |
-| xs    | 4px   | Icon gaps, inline padding          |
-| sm    | 8px   | Compact element spacing            |
-| md    | 16px  | Default element spacing            |
+| Token | Value | Usage                               |
+| ----- | ----- | ----------------------------------- |
+| xs    | 4px   | Icon gaps, inline padding           |
+| sm    | 8px   | Compact element spacing             |
+| md    | 16px  | Default element spacing             |
 | lg    | 24px  | Section padding, card inner padding |
-| xl    | 32px  | Layout gaps, screen padding        |
-| xxl   | 48px  | Major section breaks               |
+| xl    | 32px  | Layout gaps, screen padding         |
+| xxl   | 48px  | Major section breaks                |
 
 Exceptions: `touchTarget.minHeight = 48px` — all tappable elements (buttons, list rows) must meet this minimum. This is a non-spacing constraint, not a spacing scale exception.
 
@@ -65,14 +65,15 @@ Source: `packages/theme/src/spacing.ts`
 
 Font sizes from `packages/theme/src/typography.ts`. Two weights only: 400 (regular) and 600 (semibold):
 
-| Role    | Size | Weight | Line Height | Token     |
-| ------- | ---- | ------ | ----------- | --------- |
-| Caption | 14px | 600    | 1.4         | small     |
-| Body    | 16px | 400    | 1.5         | medium    |
-| Value   | 18px | 600    | 1.4         | large     |
-| Label   | 22px | 600    | 1.2         | xlarge    |
+| Role    | Size | Weight | Line Height | Token  |
+| ------- | ---- | ------ | ----------- | ------ |
+| Caption | 14px | 600    | 1.4         | small  |
+| Body    | 16px | 400    | 1.5         | medium |
+| Value   | 18px | 600    | 1.4         | large  |
+| Label   | 22px | 600    | 1.2         | xlarge |
 
 Notes:
+
 - 18px (`large`) is the minimum for trucker-mode readability — enforced by existing theme comment.
 - Field labels (`EMAIL`, `PASSWORD`, section titles) use 14px weight 600 with `letterSpacing: 0.5`–`1.0` — match existing `settings.tsx` pattern.
 - No new font sizes. Do not introduce sizes outside this table.
@@ -86,24 +87,27 @@ Source: `packages/theme/src/typography.ts`, `apps/mobile/app/(auth)/login.tsx`, 
 
 All values from `packages/theme/src/colors.ts`:
 
-| Role            | Value     | Usage                                                               |
-| --------------- | --------- | ------------------------------------------------------------------- |
-| Dominant (60%)  | #FFFFFF   | `colors.background` — screen surfaces, card backgrounds             |
-| Secondary (30%) | #F5F5F5   | `colors.backgroundLight` — scroll view backgrounds, dividers        |
-| Dark surface    | #1a1a2e   | `colors.backgroundDark` / `colors.textPrimary` — login screen bg    |
-| Accent (10%)    | #FF6B35   | `colors.primary` — LOG OUT button background, ActivityIndicator, arrows |
-| Destructive     | #EE5A6F   | `colors.error` — "LOG OUT" confirmation destructive action, DELETE ACCOUNT border/text |
+| Role            | Value   | Usage                                                                                  |
+| --------------- | ------- | -------------------------------------------------------------------------------------- |
+| Dominant (60%)  | #FFFFFF | `colors.background` — screen surfaces, card backgrounds                                |
+| Secondary (30%) | #F5F5F5 | `colors.backgroundLight` — scroll view backgrounds, dividers                           |
+| Dark surface    | #1a1a2e | `colors.backgroundDark` / `colors.textPrimary` — login screen bg                       |
+| Accent (10%)    | #FF6B35 | `colors.primary` — LOG OUT button background, ActivityIndicator, arrows                |
+| Destructive     | #EE5A6F | `colors.error` — "LOG OUT" confirmation destructive action, DELETE ACCOUNT border/text |
 
 Accent (`colors.primary` #FF6B35) reserved for:
+
 - The LOG OUT button background (`settings.tsx` logoutButton)
 - The ActivityIndicator spinner in `_layout.tsx` loading state
 - Arrow glyphs (→) in navigation rows
 
 Destructive (`colors.error` #EE5A6F) reserved for:
+
 - DELETE ACCOUNT button border and text
 - The "Log Out" destructive option in the `Alert.alert` confirmation sheet
 
 Text colors:
+
 - `colors.textPrimary` (#1a1a2e) — primary values, headings
 - `colors.textSecondary` (#4A4A4A) — field labels, metadata
 - `colors.textLight` (#FFFFFF) — text on dark backgrounds, button labels
@@ -120,12 +124,14 @@ Source: `packages/theme/src/colors.ts`
 The profile card currently renders two rows: `Name` and `Email`. Phase 3 removes `Name` and replaces `Email` with two rows: `Email` and `Role`.
 
 **Before (mock):**
+
 ```
 Name   | John Smith
 Email  | driver@company.com
 ```
 
 **After (real Session):**
+
 ```
 Email  | session?.email ?? '—'
 Role   | session?.role ?? '—'
@@ -133,9 +139,10 @@ Role   | session?.role ?? '—'
 
 Styling: no style changes. Reuse `profileRow`, `label`, `value`, `divider` from existing `settings.tsx`. The `value` style (18px, weight 600, `colors.textPrimary`) applies to both fields.
 
-### _layout.tsx — Loading state (cold-start restore)
+### \_layout.tsx — Loading state (cold-start restore)
 
 The existing spinner renders while `isLoading === true`. No visual change needed. Confirm the spinner uses:
+
 - `ActivityIndicator size="large" color={colors.primary}` — matches existing code
 - Container background: `colors.background` (#FFFFFF)
 - Centered (flex=1, justifyContent=center, alignItems=center)
@@ -145,6 +152,7 @@ This covers SESSION-02: the driver never sees the login screen flash because `is
 ### login.tsx — Hint text removal
 
 The current hint block at the bottom of the login form reads:
+
 > "Demo: Use any email and password (4+ chars)"
 
 Remove this `View` and its styles entirely. The login screen has no hint text in Phase 3. The `hint` and `hintText` styles can be deleted from the StyleSheet.
@@ -155,19 +163,19 @@ No other changes to `login.tsx` in Phase 3.
 
 ## Copywriting Contract
 
-| Element                              | Copy                                                              |
-| ------------------------------------ | ----------------------------------------------------------------- |
-| Settings section title (profile)     | DRIVER PROFILE                                                    |
-| Settings field label — email         | Email                                                             |
-| Settings field label — role          | Role                                                              |
-| Settings field empty value           | — (em dash, shown when `session` is null)                         |
-| Logout confirmation title            | Log Out                                                           |
-| Logout confirmation body             | Are you sure you want to log out?                                 |
-| Logout confirmation cancel           | Stay Logged In                                                    |
-| Logout confirmation destructive      | Log Out                                                           |
-| Expired session — no copy needed     | (logout() is called silently; the login screen is the re-prompt)  |
-| Login screen hint                    | (removed — no hint text in Phase 3)                               |
-| Loading state                        | (no text — spinner only)                                          |
+| Element                          | Copy                                                             |
+| -------------------------------- | ---------------------------------------------------------------- |
+| Settings section title (profile) | DRIVER PROFILE                                                   |
+| Settings field label — email     | Email                                                            |
+| Settings field label — role      | Role                                                             |
+| Settings field empty value       | — (em dash, shown when `session` is null)                        |
+| Logout confirmation title        | Log Out                                                          |
+| Logout confirmation body         | Are you sure you want to log out?                                |
+| Logout confirmation cancel       | Stay Logged In                                                   |
+| Logout confirmation destructive  | Log Out                                                          |
+| Expired session — no copy needed | (logout() is called silently; the login screen is the re-prompt) |
+| Login screen hint                | (removed — no hint text in Phase 3)                              |
+| Loading state                    | (no text — spinner only)                                         |
 
 Source: CONTEXT.md D-11 — "No modal or prompt overlay — the login screen is the re-login experience." No new copy is needed for session expiry.
 

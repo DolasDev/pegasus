@@ -196,7 +196,7 @@ export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number]
  * EVENT trigger can subscribe to, globally available to every tenant. KEEP IN
  * SYNC with `INTEGRATION_EVENT_TYPES` in `apps/api/src/lib/domain-events.ts`
  * (tenant-web cannot import from apps/api). Names are the lowercased pegII
- * catalogue DetailTypes under the `pegii.` namespace.
+ * catalog DetailTypes under the `pegii.` namespace.
  */
 export const INTEGRATION_EVENT_TYPES = [
   'pegii.shipment.opened',
@@ -366,7 +366,7 @@ export async function cancelExecution(id: string, executionId: string): Promise<
 }
 
 /**
- * Retry a failed/timed-out/cancelled execution — starts a NEW execution with
+ * Retry a failed/timed-out/canceled execution — starts a NEW execution with
  * the original input (201). Requires `workflow:retry_execution`.
  */
 export async function retryExecution(id: string, executionId: string): Promise<WorkflowExecution> {

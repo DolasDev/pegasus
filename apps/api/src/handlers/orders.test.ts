@@ -252,7 +252,7 @@ describe('orders handler', () => {
       expect(body.meta).toMatchObject({ count: 0 })
     })
 
-    it('returns 200 with serialised moves', async () => {
+    it('returns 200 with serialized moves', async () => {
       const move = makeMove()
       mockMovesRepo.listMoves.mockResolvedValue([move])
       const app = buildApp()
@@ -286,7 +286,7 @@ describe('orders handler', () => {
       })
     })
 
-    it('serialises scheduledDate as ISO string', async () => {
+    it('serializes scheduledDate as ISO string', async () => {
       mockMovesRepo.listMoves.mockResolvedValue([makeMove()])
       const app = buildApp()
       const res = await app.request('/')

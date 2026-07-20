@@ -17,7 +17,7 @@ export interface LonghaulTrip {
   /** Status name from MasterTripStatus (e.g. 'Pending', 'Offered', 'Accepted'). */
   status_status: string | null
   TripStatus_id: number | null
-  /** Free-text lifecycle flag; 'canceled' marks a cancelled trip. */
+  /** Free-text lifecycle flag; 'canceled' marks a canceled trip. */
   internal_status: string | null
   origin_geo_code: string | null
   destination_geo_code: string | null

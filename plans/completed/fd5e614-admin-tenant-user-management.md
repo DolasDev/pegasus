@@ -275,7 +275,7 @@ Deactivate:
 
 ## Risks / Side Effects
 
-- **Cognito coupling:** `AdminDisableUser` and `AdminCreateUser` are called from the new admin handler. In dev/test these are suppressed (`NODE_ENV !== 'production'`). The existing `provisionCognitoAdminUser` helper in `admin/tenants.ts` will be extracted to a shared `admin/cognito.ts` module — this is a pure refactor of existing code, no behaviour change.
+- **Cognito coupling:** `AdminDisableUser` and `AdminCreateUser` are called from the new admin handler. In dev/test these are suppressed (`NODE_ENV !== 'production'`). The existing `provisionCognitoAdminUser` helper in `admin/tenants.ts` will be extracted to a shared `admin/cognito.ts` module — this is a pure refactor of existing code, no behavior change.
 - **Last-admin guard:** implemented server-side, same logic as `/api/v1/users`. No risk of bypassing — platform admins are also subject to it.
 - **Audit log action strings:** four new action codes (`ADMIN_INVITE_TENANT_USER`, `ADMIN_UPDATE_TENANT_USER_ROLE`, `ADMIN_DEACTIVATE_TENANT_USER`) added to `writeAuditLog` calls. The audit table stores `action` as a plain string — no schema change needed.
 - **No schema changes** — the `TenantUser` model already exists with all required fields.

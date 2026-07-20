@@ -51,7 +51,7 @@ Consider tightening the pre-push hook to the fast layers (typecheck + lint + uni
 ## Out of scope
 
 - Migrating `apps/api` off Prisma or onto a different schema.
-- Reorganising the turbo pipeline beyond reclassifying test scopes.
+- Reorganizing the turbo pipeline beyond reclassifying test scopes.
 
 ## Done so far (this branch)
 

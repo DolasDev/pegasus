@@ -145,7 +145,7 @@ jobs:
       # instance — otherwise the run goes green while the hub fails to boot.
       # Dev is exempt: the param intentionally doesn't exist there (see the
       # publish-vpn-agent.yml header — dev refresh "preserves prior
-      # behaviour") and dev publishes succeeded without it before this check.
+      # behavior") and dev publishes succeeded without it before this check.
       - name: Pre-flight agent apikey param
         if: ${{ !inputs.skip-instance-refresh && inputs.env-name != 'dev' }}
         run: |

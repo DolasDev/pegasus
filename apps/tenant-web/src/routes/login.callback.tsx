@@ -75,7 +75,7 @@ export function LoginCallbackPage() {
     const code = params.get('code')
     const state = params.get('state')
 
-    // Cognito may return an error in the callback (e.g. user cancelled at IdP)
+    // Cognito may return an error in the callback (e.g. user canceled at IdP)
     const errorParam = params.get('error')
     if (errorParam) {
       const description = params.get('error_description') ?? errorParam
@@ -148,7 +148,7 @@ export function LoginCallbackPage() {
       console.error('Token validation failed', err)
       const message =
         err instanceof ApiError && err.status === 403
-          ? 'Your account is not authorised to access Pegasus. Contact your administrator.'
+          ? 'Your account is not authorized to access Pegasus. Contact your administrator.'
           : 'Authentication failed. Please try again.'
       setStatus({ name: 'error', message })
       return

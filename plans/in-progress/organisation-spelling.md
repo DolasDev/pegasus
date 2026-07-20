@@ -1,30 +1,30 @@
-# Fix "organisation" → "organization" in tenant-web login copy
+# Fix "organization" → "organization" in tenant-web login copy
 
 ## Problem
 
 The tenant login flow's organization-selection step renders British-English
-"organisation" in user-facing copy. Standardise the UI on US "organization".
+"organization" in user-facing copy. Standardize the UI on US "organization".
 
 ## Scope
 
 User-facing strings in `apps/tenant-web` plus the two places that assert on
 them (unit test + e2e selector). A single word change per site — no logic,
-no behaviour, no API change.
+no behavior, no API change.
 
 ### In scope
 
 - `apps/tenant-web/src/routes/login.tsx` — 5 occurrences
-  - L135 "No authentication method is configured for this organisation…"
-  - L237 "…signs in through your organisation's identity provider…"
-  - L364 CardTitle "Looking up your organisation"
-  - L377 CardTitle "Choose your organisation" ← the org-selection page
-  - L378 CardDescription "…associated with multiple organisations."
+  - L135 "No authentication method is configured for this organization…"
+  - L237 "…signs in through your organization's identity provider…"
+  - L364 CardTitle "Looking up your organization"
+  - L377 CardTitle "Choose your organization" ← the org-selection page
+  - L378 CardDescription "…associated with multiple organizations."
 - `apps/tenant-web/src/routes/login.test.tsx` — 2 assertions on
-  "Choose your organisation" (L113, L132)
-- `apps/e2e/fixtures/hosted-ui-login.ts` — L70 `getByText('Choose your organisation')`
+  "Choose your organization" (L113, L132)
+- `apps/e2e/fixtures/hosted-ui-login.ts` — L70 `getByText('Choose your organization')`
   tenant-picker selector (breaks if the copy changes and this does not)
 - `apps/tenant-web/src/routes/sso-config.tsx` — L680 user-facing description
-  ("…enable SSO login for your organisation.")
+  ("…enable SSO login for your organization.")
 
 ### Out of scope
 
@@ -36,7 +36,7 @@ no behaviour, no API change.
 ## Approach
 
 1. Mechanical string replacement at the 9 sites above.
-2. Keep the typographic apostrophe in L237 (`organisation’s` → `organization’s`).
+2. Keep the typographic apostrophe in L237 (`organization’s` → `organization’s`).
 3. Run `apps/tenant-web` unit tests — the two updated assertions must pass
    against the updated component (they are the regression guard).
 4. `npm run typecheck` + `npm run lint` at root.

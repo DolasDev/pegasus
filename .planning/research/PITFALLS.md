@@ -165,7 +165,7 @@ The current `_layout.tsx` already handles the `isLoading` check correctly (shows
 
 **What goes wrong:** The Pre-Token-Generation Lambda injects `custom:tenantId` and `custom:role` into the Cognito ID token. If the mobile app (or `validate-token` endpoint) reads claims from the access token instead of the ID token, these claims will be absent and the session will appear to have no tenant.
 
-**Why it happens:** The access token is used for authorising API calls; the ID token carries user identity claims. Developers unfamiliar with this distinction pass the access token to `validate-token`. `amazon-cognito-identity-js` provides both via `getSession()` — it is easy to grab the wrong one.
+**Why it happens:** The access token is used for authorizing API calls; the ID token carries user identity claims. Developers unfamiliar with this distinction pass the access token to `validate-token`. `amazon-cognito-identity-js` provides both via `getSession()` — it is easy to grab the wrong one.
 
 **Consequences:** `tenantId` and `role` are undefined in the session; every API call after login fails with a 403.
 

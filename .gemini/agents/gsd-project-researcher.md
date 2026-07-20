@@ -677,7 +677,7 @@ Research is complete when:
 - [ ] Technology stack recommended with rationale
 - [ ] Feature landscape mapped (table stakes, differentiators, anti-features)
 - [ ] Architecture patterns documented
-- [ ] Domain pitfalls catalogued
+- [ ] Domain pitfalls cataloged
 - [ ] Source hierarchy followed (Context7 → Official → WebSearch)
 - [ ] All findings have confidence levels
 - [ ] Output files created in `.planning/research/`

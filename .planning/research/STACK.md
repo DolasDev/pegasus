@@ -75,7 +75,7 @@ Use `npx expo install` (not plain `npm install`) so Expo's version resolver can 
 
 ### 1. Create a Custom Entry Point
 
-The polyfill must load before expo-router initialises. The current `package.json` has `"main": "expo-router/entry"`. Change it to point to a new root-level file.
+The polyfill must load before expo-router initializes. The current `package.json` has `"main": "expo-router/entry"`. Change it to point to a new root-level file.
 
 **`apps/mobile/index.ts`** (replace current content):
 
@@ -191,15 +191,15 @@ async function restoreSession(pool: CognitoUserPool): Promise<CognitoUserSession
 
 ## Confidence Assessment
 
-| Area                                          | Confidence | Notes                                                                                                                                                                                                               |
-| --------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Library choice (`amazon-cognito-identity-js`) | HIGH       | Explicitly mandated in PROJECT.md; confirmed as the correct pure-JS SRP option                                                                                                                                      |
-| Version (6.3.16)                              | HIGH       | Confirmed as latest stable from npm registry as of early 2026                                                                                                                                                       |
-| Crypto polyfill requirement                   | HIGH       | Confirmed from official npm README and community reports; missing it causes runtime crash                                                                                                                           |
-| Entry point polyfill order                    | MEDIUM     | Pattern confirmed from expo-router community discussions; `expo-router/entry` must come last                                                                                                                        |
-| No Metro config changes needed                | MEDIUM     | Confirmed by absence of any community reports of Metro shim issues with `amazon-cognito-identity-js` v6 specifically; v5 had issues but v6 ships pre-bundled CJS                                                    |
-| `storage.sync()` required on cold start       | HIGH       | Confirmed in official README and multiple community reports; omitting it causes `getCurrentUser()` to return null after app restart                                                                                 |
-| Token refresh via `getSession`                | MEDIUM     | Standard library behaviour; `getSession` does call `refreshSession` internally when access token expired — verified from SDK source and community examples, but not tested against this specific pool configuration |
+| Area                                          | Confidence | Notes                                                                                                                                                                                                              |
+| --------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Library choice (`amazon-cognito-identity-js`) | HIGH       | Explicitly mandated in PROJECT.md; confirmed as the correct pure-JS SRP option                                                                                                                                     |
+| Version (6.3.16)                              | HIGH       | Confirmed as latest stable from npm registry as of early 2026                                                                                                                                                      |
+| Crypto polyfill requirement                   | HIGH       | Confirmed from official npm README and community reports; missing it causes runtime crash                                                                                                                          |
+| Entry point polyfill order                    | MEDIUM     | Pattern confirmed from expo-router community discussions; `expo-router/entry` must come last                                                                                                                       |
+| No Metro config changes needed                | MEDIUM     | Confirmed by absence of any community reports of Metro shim issues with `amazon-cognito-identity-js` v6 specifically; v5 had issues but v6 ships pre-bundled CJS                                                   |
+| `storage.sync()` required on cold start       | HIGH       | Confirmed in official README and multiple community reports; omitting it causes `getCurrentUser()` to return null after app restart                                                                                |
+| Token refresh via `getSession`                | MEDIUM     | Standard library behavior; `getSession` does call `refreshSession` internally when access token expired — verified from SDK source and community examples, but not tested against this specific pool configuration |
 
 ---
 

@@ -140,7 +140,7 @@ describe.skipIf(!hasDb)('QuoteRepository (integration)', () => {
       priceAmount: 500,
       validUntil: new Date('2025-12-01T00:00:00Z'),
       lineItems: [
-        { description: 'Labour', quantity: 4, unitPrice: 100, currency: 'USD' },
+        { description: 'Labor', quantity: 4, unitPrice: 100, currency: 'USD' },
         { description: 'Fuel surcharge', quantity: 1, unitPrice: 100, currency: 'USD' },
       ],
     })

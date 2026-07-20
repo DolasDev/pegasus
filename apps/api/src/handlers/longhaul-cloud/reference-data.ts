@@ -122,7 +122,7 @@ export const longhaulReferenceDataHandler: Handler<AppEnv> = async (c) => {
       clientConfig = getLonghaulClientConfigFor(tenant.longhaulClient)
     } catch (err) {
       logger.warn(
-        'Tenant has an unrecognised longhaulClient; falling back to empty dispatchers + filterOptions',
+        'Tenant has an unrecognized longhaulClient; falling back to empty dispatchers + filterOptions',
         { tenantId, longhaulClient: tenant.longhaulClient, error: String(err) },
       )
     }

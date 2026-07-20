@@ -122,7 +122,7 @@ Components used or added in this phase. All are React Native primitives — no t
 - Toggle is a `TouchableOpacity` inside a flex-row wrapper that replaces the bare `TextInput` for the password field.
 - Label text: `"SHOW"` when `secureTextEntry={true}`; `"HIDE"` when `secureTextEntry={false}`.
 - Label style: `fontSize.medium` (16px), `fontWeight: '700'`, `color: colors.primary` (`#FF6B35`), `letterSpacing: 0.5` (matches `styles.label`).
-- Toggle sits flush to the right inside the input container, vertically centred.
+- Toggle sits flush to the right inside the input container, vertically centered.
 - Toggle is only rendered on the password step, not the email step.
 - Source: CONTEXT.md D-04, D-05.
 

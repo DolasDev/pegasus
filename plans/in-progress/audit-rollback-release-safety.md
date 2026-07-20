@@ -131,7 +131,7 @@ reading). Scoped as Phase 2 item 2c. Everything else here is plain automation.
       with:
         ref: ${{ inputs.git-ref }}
     ```
-    (empty string preserves current default behaviour).
+    (empty string preserves current default behavior).
   - Migrate job condition (`_deploy.yml:53`) becomes:
     `if: inputs.deploy-api == 'true' && inputs.skip-migrate != 'true'`.
     The deploy job already tolerates a skipped migrate (`_deploy.yml:96`).
@@ -208,7 +208,7 @@ reading). Scoped as Phase 2 item 2c. Everything else here is plain automation.
         permissions: { id-token: write, contents: read }
       rollback-prod:
         needs: resolve
-        if: ${{ !cancelled() && needs.resolve.result == 'success' && (inputs.environment == 'prod' || inputs.environment == 'both') }}
+        if: ${{ !canceled() && needs.resolve.result == 'success' && (inputs.environment == 'prod' || inputs.environment == 'both') }}
         uses: ./.github/workflows/_deploy.yml
         with:
           env-name: prod
@@ -455,7 +455,7 @@ One-time operator setup (not in repo): Neon API key → `NEON_API_KEY` secret +
 
 - **1b** shares the `deploy-refs/heads/main` concurrency group with normal
   deploys — a rollback queued behind a long deploy waits for it. Acceptable:
-  cancelling an in-flight CDK deploy mid-changeset is worse. Per the existing
+  canceling an in-flight CDK deploy mid-changeset is worse. Per the existing
   memory note, rapid queueing can cancel pending runs only when
   `cancel-in-progress` flips — keep it `false` in rollback.yml exactly as in
   deploy.yml.
@@ -475,7 +475,7 @@ One-time operator setup (not in repo): Neon API key → `NEON_API_KEY` secret +
   backstop; both are advisory-first.
 - **3b** `prune: false` grows the site buckets slowly (hashed chunks, KBs per
   deploy). Quarterly manual prune noted in the runbook. `BucketDeployment`'s
-  CloudFront invalidation behaviour is unchanged.
+  CloudFront invalidation behavior is unchanged.
 - Skipping the E2E gate on rollback (1b) is deliberate but means a rollback can
   itself be bad. The prod environment approval click remains the human check.
 - Touching `.github/workflows/_deploy.yml`/`deploy.yml` triggers the `infra`

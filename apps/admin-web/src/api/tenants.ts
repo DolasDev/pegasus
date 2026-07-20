@@ -30,7 +30,7 @@ export interface Tenant {
    * disable-workflows / enable-workflows admin actions on the tenant page.
    */
   workflowsDisabled: boolean
-  /** ISO 8601 string — Date fields are serialised by Prisma/JSON.stringify. */
+  /** ISO 8601 string — Date fields are serialized by Prisma/JSON.stringify. */
   createdAt: string
   updatedAt: string
   deletedAt: string | null
@@ -61,7 +61,7 @@ export async function listTenants({
   const query = new URLSearchParams()
 
   if (filter === 'ALL') {
-    // Default server behaviour already excludes OFFBOARDED, which matches
+    // Default server behavior already excludes OFFBOARDED, which matches
     // the "All" view. No extra param needed.
   } else if (filter === 'OFFBOARDED') {
     query.set('status', 'OFFBOARDED')

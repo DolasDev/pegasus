@@ -7,7 +7,7 @@
  * action objects. No store, no provider, no React. Pure functions in, pure
  * state out.
  *
- * Bugs found while writing these tests are catalogued in
+ * Bugs found while writing these tests are cataloged in
  * `plans/in-progress/longhaul-test-notes/unit-10-redux-trip-planning-bugs.md`.
  * Every assertion below is testing the **current** (sometimes buggy) behavior
  * so that the upcoming refactor has a tripwire if it accidentally changes
@@ -171,7 +171,7 @@ describe('tripPlanning slice — reducer (pure)', () => {
       expect(next.shipmentToTrips['O-2'][2]).toBe('Tuesday Run')
     })
 
-    it('initialises shipmentToTrips[orderNum] to {} on first add', () => {
+    it('initializes shipmentToTrips[orderNum] to {} on first add', () => {
       const state = makeInitialState()
       state.selectedTripIndex = 0
       state.trip.name = 'X'
@@ -895,7 +895,7 @@ describe('tripPlanning slice — thunks', () => {
   // ----- cancelTrip ----------------------------------------------------------------
 
   describe('cancelTrip', () => {
-    it('cancels via API then re-initialises a fresh pending trip', async () => {
+    it('cancels via API then re-initializes a fresh pending trip', async () => {
       const dispatch = vi.fn().mockImplementation(async (a: any) => {
         if (typeof a === 'function') return a(dispatch)
         return a

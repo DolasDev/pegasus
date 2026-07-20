@@ -36,7 +36,7 @@ The source repo is a single-package Electron app containing three tightly-couple
 
 ## Phase 1 — Monorepo Integration
 
-**Goal:** Two clean workspace packages in the repo that build without Electron. No behaviour
+**Goal:** Two clean workspace packages in the repo that build without Electron. No behavior
 changes yet — the code runs; the IPC wiring is stubbed at the boundary so tests can run.
 
 ### 1.1 Create `packages/longhaul-api`

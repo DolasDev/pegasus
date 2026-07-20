@@ -18,7 +18,7 @@
 - [x] Gates: `npm test`, `npm run typecheck`, `npm run lint`
 - [x] PR → merge queue (#456, `27cf540`), deployed 2026-07-17 02:27 UTC. Prod holds 2
       provider rows (`Microsoft`, `Microsoft-SAML`), each unique ⇒ the deny branch is
-      unreachable there and no login behaviour changed.
+      unreachable there and no login behavior changed.
 
 **Goal:** `pre-token.ts` must not resolve a federated login's tenant from an ambiguous
 provider lookup. Plus two documentation corrections — one of which is a false claim I put
@@ -84,7 +84,7 @@ I claimed `admin/tenants.ts` creates native Cognito users without lowercasing, s
 emails exist. **That is wrong.** Traced properly:
 
 - `adminEmail: z.string().trim().email().toLowerCase()` (`admin/tenants.ts:56`) — already
-  normalised, with a comment explaining that Cognito usernames are case-sensitive.
+  normalized, with a comment explaining that Cognito usernames are case-sensitive.
 - `provisionCognitoUser(body.adminEmail, …)` (`:194`) — the Cognito user comes from
   `adminEmail`.
 - `email: body.adminEmail.toLowerCase()` (`:261`) — the TenantUser row too.
@@ -111,7 +111,7 @@ co-occurrence rather than traced. Trace it.
 ## Tests (`pre-token.test.ts`)
 
 - two provider rows share the name ⇒ **deny** (no claims issued, no tenant guessed)
-- exactly one row ⇒ unchanged behaviour (the #443 binding still resolves)
+- exactly one row ⇒ unchanged behavior (the #443 binding still resolves)
 - zero rows ⇒ unchanged (existing unknown-provider deny)
 - the existing federated suite must pass untouched — this only changes the ambiguous case
 
@@ -119,7 +119,7 @@ co-occurrence rather than traced. Trace it.
 
 `npm test`, `npm run typecheck`, `npm run lint`. No prod verification needed: this changes
 only a case that cannot currently be reached in prod (one provider row exists pool-wide), and
-the single-match path is byte-identical in behaviour. The `#453` login rules are unaffected.
+the single-match path is byte-identical in behavior. The `#453` login rules are unaffected.
 
 ## Out of scope
 

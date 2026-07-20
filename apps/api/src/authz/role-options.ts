@@ -12,7 +12,7 @@
 // here line up with the policy files. If you add a persona policy, add it
 // here; if you remove a policy, remove the entry — otherwise the test fails.
 //
-// The catalog is modelled on the legacy VB.NET Pegasus role set so existing
+// The catalog is modeled on the legacy VB.NET Pegasus role set so existing
 // customers carry their vocabulary forward. Two legacy roles are deliberately
 // NOT ported:
 //   - Wizard (WZ): combined a role flag with hardcoded usernames to enable

@@ -69,7 +69,7 @@ silent-failure outage.
 
 - [ ] **3. Provision the M2M agent ApiClient automatically.** Today
       `/pegasus/wireguard/agent/apikey` has no creator. Add a CDK
-      custom resource in `WireGuardStack` modelled on
+      custom resource in `WireGuardStack` modeled on
       `HubKeyBootstrapFn` (`wireguard-stack.ts:316`) that:
       a. On first deploy, calls the admin API to create an
       `ApiClient` with scope `vpn:sync` (see
@@ -120,11 +120,11 @@ silent-failure outage.
       c. Once verified, remove the manual peer — it'll be
       re-created by the agent from the DB:
       `aws ssm send-command --document-name AWS-RunShellScript
-        --parameters 'commands=["sudo wg show"]'` to confirm
+      --parameters 'commands=["sudo wg show"]'` to confirm
       it's already there from the agent before removing.
 
 - [ ] **7. Backfill staging.** Same workflow run with `env: staging`.
-      Verify identical behaviour. Capture the runbook in this plan's
+      Verify identical behavior. Capture the runbook in this plan's
       "completed" version so the next env (or DR account) is one
       command away.
 

@@ -68,7 +68,7 @@ export type CreateContactInput = {
 /**
  * Persists a new customer together with an initial primary contact.
  * tenantId must be provided explicitly; the Prisma extension also injects it
- * at runtime as a defence-in-depth measure.
+ * at runtime as a defense-in-depth measure.
  */
 export async function createCustomer(
   db: PrismaClient,

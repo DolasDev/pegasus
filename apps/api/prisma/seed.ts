@@ -76,7 +76,7 @@ export async function main(db: PrismaClient): Promise<void> {
       isActive: true,
       rates: {
         create: [
-          { serviceCode: 'LABOR_HR', description: 'Labour (per man-hour)', unitPrice: 75.0 },
+          { serviceCode: 'LABOR_HR', description: 'Labor (per man-hour)', unitPrice: 75.0 },
           { serviceCode: 'TRUCK_HR', description: 'Truck (per hour)', unitPrice: 120.0 },
           { serviceCode: 'PACKING_BOX', description: 'Packing box', unitPrice: 4.5 },
           { serviceCode: 'FUEL_SURCHARGE', description: 'Fuel surcharge (flat)', unitPrice: 35.0 },
@@ -301,7 +301,7 @@ export async function main(db: PrismaClient): Promise<void> {
       validUntil: new Date('2026-01-10'),
       lineItems: {
         create: [
-          { description: 'Labour (8 man-hours)', quantity: 8, unitPrice: 75.0 },
+          { description: 'Labor (8 man-hours)', quantity: 8, unitPrice: 75.0 },
           { description: 'Truck (5 hours)', quantity: 5, unitPrice: 120.0 },
           { description: 'Fuel surcharge', quantity: 1, unitPrice: 35.0 },
           { description: 'Packing boxes', quantity: 20, unitPrice: 4.5 },
@@ -495,7 +495,7 @@ export async function main(db: PrismaClient): Promise<void> {
       validUntil: new Date('2026-02-28'),
       lineItems: {
         create: [
-          { description: 'Labour (6 man-hours)', quantity: 6, unitPrice: 75.0 },
+          { description: 'Labor (6 man-hours)', quantity: 6, unitPrice: 75.0 },
           { description: 'Truck (4 hours)', quantity: 4, unitPrice: 120.0 },
           { description: 'Fuel surcharge', quantity: 1, unitPrice: 35.0 },
         ],

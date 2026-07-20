@@ -144,7 +144,7 @@ function extractProviderName(identitiesAttr: string | undefined): string | null 
 // and the AuthSession is 10-minute TTL (handlers/auth.ts) so it is long expired. Read this
 // note before you wire one up.
 //
-// Fail-safe direction: anything unrecognised falls to the native path, which is strictly
+// Fail-safe direction: anything unrecognized falls to the native path, which is strictly
 // more restrictive — it still requires an AuthSession or an unambiguous roster row.
 // ---------------------------------------------------------------------------
 function isFederatedSignIn(
@@ -210,7 +210,7 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
   // through the login, enabling multi-tenant users to land in the right org.
   // -------------------------------------------------------------------------
   // AuthSession.email is stored lowercase by select-tenant, so match with
-  // the normalised email to avoid case-mismatch misses. The session is NOT
+  // the normalized email to avoid case-mismatch misses. The session is NOT
   // consumed on read: one login fires several PreTokenGeneration invocations
   // and they must all resolve consistently — it expires naturally instead.
   const authSession = await db.authSession.findFirst({
@@ -278,7 +278,7 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
         email,
         providerName,
       })
-      throw new Error('Authentication failed: unrecognised identity provider.')
+      throw new Error('Authentication failed: unrecognized identity provider.')
     }
 
     if (!provider.isEnabled) {

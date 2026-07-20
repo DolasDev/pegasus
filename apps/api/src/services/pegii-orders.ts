@@ -54,7 +54,7 @@ export function listOrders(tenantId: string, opts: { status?: string } = {}): Or
   return records
 }
 
-/** Test seam — seed the list store so `listOrders` behaviour can be exercised. */
+/** Test seam — seed the list store so `listOrders` behavior can be exercised. */
 export function _seedOrder(tenantId: string, record: OrderRecord): void {
   store.set(`${tenantId}:${record.id}`, record)
 }

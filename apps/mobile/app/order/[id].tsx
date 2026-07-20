@@ -47,7 +47,7 @@ export default function OrderDetailScreen() {
       pending: 'Pending',
       in_transit: 'In Transit',
       delivered: 'Delivered',
-      cancelled: 'Cancelled',
+      cancelled: 'Canceled',
     }
 
     if (newStatus === 'delivered' && capturedPhotos.length === 0) {

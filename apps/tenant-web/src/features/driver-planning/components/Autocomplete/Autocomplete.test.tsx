@@ -76,7 +76,7 @@ describe('Autocomplete', () => {
     expect(onChange).toHaveBeenCalledWith(null)
   })
 
-  it('initialises the input from the value prop', () => {
+  it('initializes the input from the value prop', () => {
     render(<Autocomplete options={options} value={{ label: 'Apple', value: 'apple' }} />)
     const input = screen.getByPlaceholderText('Enter a name') as HTMLInputElement
     expect(input.value).toBe('Apple')

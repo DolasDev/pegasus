@@ -20,7 +20,7 @@
 
 **Domain Model (`packages/domain/src/`):**
 
-- **Purpose**: Pure TypeScript business logic, entities, value objects, and validation rules — the source of truth for all system behaviour
+- **Purpose**: Pure TypeScript business logic, entities, value objects, and validation rules — the source of truth for all system behavior
 - **Location**: `packages/domain/src/`
 - **Contains**: Six bounded contexts (customer, schedule, inventory, dispatch, quoting, billing) + shared types and errors
 - **Depends on**: Nothing (zero runtime dependencies)

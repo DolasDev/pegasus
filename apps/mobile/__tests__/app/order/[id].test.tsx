@@ -174,7 +174,7 @@ describe('OrderDetailScreen', () => {
       expect(queryByText('MARK AS DELIVERED')).toBeNull()
     })
 
-    it('shows no status button for cancelled orders', async () => {
+    it('shows no status button for canceled orders', async () => {
       const { queryByText } = await renderLoaded({ status: 'cancelled' })
       expect(queryByText('START DELIVERY')).toBeNull()
       expect(queryByText('MARK AS DELIVERED')).toBeNull()

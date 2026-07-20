@@ -28,7 +28,7 @@ Commit `6c308f2`. IAM Role descriptions only allow characters in
 
 -~¡-ÿ]`(ASCII + Latin-1 Supplement),
 not General Punctuation. The HubRole description contained a U+2014 em-dash
-and was rejected with`InvalidRequest`. Normalised every `—`→`-` in the
+and was rejected with`InvalidRequest`. Normalized every `—`→`-` in the
 file. Leave this item ticked; included here for context.
 
 ### 2. `AWS::AutoScaling::LaunchConfiguration` is disabled on new accounts

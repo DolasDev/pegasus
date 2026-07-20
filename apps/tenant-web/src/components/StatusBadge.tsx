@@ -21,7 +21,7 @@ const MOVE_STATUS_LABEL: Record<MoveStatus, string> = {
   SCHEDULED: 'Scheduled',
   IN_PROGRESS: 'In Progress',
   COMPLETED: 'Completed',
-  CANCELLED: 'Cancelled',
+  CANCELLED: 'Canceled',
 }
 
 export function MoveStatusBadge({ status }: { status: MoveStatus }) {
@@ -101,7 +101,7 @@ const WORKFLOW_EXECUTION_STATUS_LABEL: Record<WorkflowExecutionStatus, string> =
   COMPLETED: 'Completed',
   FAILED: 'Failed',
   TIMED_OUT: 'Timed out',
-  CANCELLED: 'Cancelled',
+  CANCELLED: 'Canceled',
 }
 
 export function WorkflowExecutionStatusBadge({ status }: { status: WorkflowExecutionStatus }) {

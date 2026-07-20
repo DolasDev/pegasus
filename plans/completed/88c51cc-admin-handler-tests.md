@@ -32,7 +32,7 @@
   - Provision user (success + already exists / UsernameExistsException)
   - Disable user (success + not found / UserNotFoundException fail-open)
   - Non-matching exceptions are rethrown
-  - getCognito singleton behaviour
+  - getCognito singleton behavior
 
 ### 4. Verify
 
@@ -41,15 +41,16 @@
 
 ## Files
 
-| Action | Path |
-|--------|------|
+| Action | Path                                              |
+| ------ | ------------------------------------------------- |
 | Create | `packages/api/src/handlers/admin/tenants.test.ts` |
-| Create | `packages/api/src/handlers/admin/audit.test.ts` |
+| Create | `packages/api/src/handlers/admin/audit.test.ts`   |
 | Create | `packages/api/src/handlers/admin/cognito.test.ts` |
 
 ## Pattern Reference
 
 Follow `packages/api/src/handlers/admin/tenant-users.test.ts`:
+
 - `vi.hoisted` for mock setup
 - `vi.mock` for repository/service modules
 - Test app created with `new Hono()` mounting the handler

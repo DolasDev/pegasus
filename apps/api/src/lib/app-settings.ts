@@ -96,7 +96,7 @@ const OperationsSchema = z
 // No root-level `.default({})` — each section already carries its own default,
 // so passing `{}` to .parse() hydrates the full tree. A root default would
 // fight TypeScript (it'd want to provide all section defaults explicitly) for
-// no behavioural gain.
+// no behavioral gain.
 export const AppSettingsSchema = z.object({
   dashboard: DashboardSchema,
   moves: MovesSchema,

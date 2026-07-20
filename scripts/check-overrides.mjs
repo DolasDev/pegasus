@@ -11,7 +11,7 @@
 //     resolution already satisfies the pin; the constraint is doing nothing)
 //   - package present with >=1 overridden node -> override is ACTIVE (keep)
 //
-// INERT and DEAD overrides are removal *candidates* — the judgement call (re-run
+// INERT and DEAD overrides are removal *candidates* — the judgment call (re-run
 // the affected suite, read the tracking plan, actually delete + re-resolve) is the
 // second stage and is intentionally left to a human/agent. This script only
 // surfaces candidates; it never edits package.json.

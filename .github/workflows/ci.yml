@@ -277,7 +277,7 @@ jobs:
 
       - uses: ./.github/actions/setup
 
-      - name: Initialise database schema and extensions
+      - name: Initialize database schema and extensions
         run: |
           PGPASSWORD=pegasus psql -h localhost -U pegasus -d pegasus -c "CREATE SCHEMA IF NOT EXISTS platform;"
           PGPASSWORD=pegasus psql -h localhost -U pegasus -d pegasus -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'
@@ -375,7 +375,7 @@ jobs:
             node ../../node_modules/.bin/playwright install --with-deps chromium
           fi
 
-      - name: Initialise database schema and extensions
+      - name: Initialize database schema and extensions
         run: |
           PGPASSWORD=pegasus psql -h localhost -U pegasus -d pegasus -c "CREATE SCHEMA IF NOT EXISTS platform;"
           PGPASSWORD=pegasus psql -h localhost -U pegasus -d pegasus -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'

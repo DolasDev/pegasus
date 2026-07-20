@@ -12,7 +12,7 @@
 // Tenant context is supplied by the calling handler via `ClientMetadata`:
 //   { source: 'tenant', tenantId, tenantName, tenantSlug }
 // `source` is reserved for a future admin-portal invite path. Today the only
-// recognised value is `tenant`; anything else falls back to a generic body.
+// recognized value is `tenant`; anything else falls back to a generic body.
 //
 // Fail-safe: any unexpected error returns the event unchanged so Cognito
 // emits its default email rather than swallowing the invite silently.
@@ -89,7 +89,7 @@ async function resolveInviteContext(
   metadata: Record<string, string> | undefined,
   email: string,
 ): Promise<InviteContext> {
-  // The fallback path also handles missing/unrecognised metadata so the email
+  // The fallback path also handles missing/unrecognized metadata so the email
   // still contains a usable link rather than failing the trigger.
   const source = metadata?.['source']
   const tenantName = metadata?.['tenantName'] ?? 'Pegasus'
@@ -102,7 +102,7 @@ async function resolveInviteContext(
     }
   }
 
-  // Default branch: tenant-source invites and any unrecognised source.
+  // Default branch: tenant-source invites and any unrecognized source.
   const base = await getTenantBase()
   return {
     tenantName,

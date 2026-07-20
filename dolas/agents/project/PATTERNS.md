@@ -66,7 +66,7 @@ A failed migration aborts the env's deploy (intended). Recovery is revert-PR + r
 
 **Destructive DDL is contract-only and gated.** A single migration PR is either _expand-only_ (additive — new tables/columns, nullable) or _contract-only_ (the drop/rename/tighten), **never both alongside the code change that needs it**. Destructive statements (`DROP TABLE`, `DROP COLUMN`, `ALTER TABLE … RENAME`, `… SET NOT NULL` on an existing column) must ship at least one release **after** the last code that reads the old shape. Consequence: rolling code back to the previous SHA is **always** safe — the emergency `rollback.yml` path never has to touch the DB.
 
-`scripts/check-migration-safety.sh` enforces this in CI: a newly-added `migration.sql` containing destructive DDL fails the build unless it carries an explicit acknowledgement marker comment:
+`scripts/check-migration-safety.sh` enforces this in CI: a newly-added `migration.sql` containing destructive DDL fails the build unless it carries an explicit acknowledgment marker comment:
 
 ```sql
 -- expand-contract: contract approved

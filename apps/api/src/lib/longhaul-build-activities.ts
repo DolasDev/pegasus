@@ -112,7 +112,7 @@ export function buildShipmentActivities(
   const rule19Id = shipment['rule19_id']
 
   // PACK — only when the shipment has a pack_date2 AND there's no rule19 (which
-  // suppresses on-site packing in favour of dock pickup).
+  // suppresses on-site packing in favor of dock pickup).
   if (shipment['pack_date2'] && !rule19Id) {
     if (!hasCode(activities, ACTIVITY_TYPE_CODE.PACKING)) {
       activities.push(

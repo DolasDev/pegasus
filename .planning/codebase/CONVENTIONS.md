@@ -83,7 +83,7 @@
 
 - Domain layer: throw `DomainError` for business-rule violations (defined at `packages/domain/src/shared/errors.ts`)
 - API layer: catch exceptions in handlers; log at WARN level for `DomainError`, ERROR for unexpected failures
-- Prisma/DB errors: caught and returned as 500 `INTERNAL_ERROR` responses with sanitised message
+- Prisma/DB errors: caught and returned as 500 `INTERNAL_ERROR` responses with sanitized message
 - Validation errors: caught in Zod safeParse; returned as 400 with code `VALIDATION_ERROR`
 - Not found: return 404 with code `NOT_FOUND` (no exception thrown)
 

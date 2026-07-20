@@ -13,13 +13,13 @@ Audit scope: `.github/workflows/deploy.yml`, `_deploy.yml`, `temporal-worker.yml
 Verified in run history (`gh run list --workflow deploy.yml`):
 
 ```
-cancelled  push              2026-06-09T21:49:29Z  chore(plans): archive completed workflows-phase2...
-cancelled  push              2026-06-09T21:48:16Z  feat(workflows): add reconcile poller for orphaned RUNNING...
+canceled  push              2026-06-09T21:49:29Z  chore(plans): archive completed workflows-phase2...
+canceled  push              2026-06-09T21:48:16Z  feat(workflows): add reconcile poller for orphaned RUNNING...
 success    push              2026-06-09T21:48:13Z  feat(tenant-web): workflow execution UI...
 success    workflow_dispatch 2026-06-09T21:52:09Z  Deploy   (18m — manual recovery)
 ```
 
-The reconcile-poller API change (#229) only deployed because the dev noticed and manually dispatched. Today the recovery protocol is _human discipline_ (memory note: "after batch merges, check `gh run list` for cancelled runs and re-dispatch") — exactly the kind of toil this audit must eliminate.
+The reconcile-poller API change (#229) only deployed because the dev noticed and manually dispatched. Today the recovery protocol is _human discipline_ (memory note: "after batch merges, check `gh run list` for canceled runs and re-dispatch") — exactly the kind of toil this audit must eliminate.
 
 **Root design flaw:** the diff base is "previous commit" rather than "last successfully deployed commit". Fixing the base makes cancellations _benign by construction_ — the surviving newest run always covers everything since the last successful deploy. No re-dispatch logic, no accumulated-filter bookkeeping.
 
@@ -42,9 +42,9 @@ The component→stack mapping is hand-maintained in:
 
 `deploy.yml:193-203` extracts 6 values via `jq -r '...'` from the CDK outputs artifact. `jq -r` on a missing key emits the literal string `null` (or empty with `// empty`), so a renamed output key or a partial-deploy outputs file produces garbage env vars and the Playwright suite fails with confusing connection errors instead of a clear "output X missing from cdk-outputs-staging". The `_deploy.yml:214-221` comment about E2EStagingRoleStack proves this class of failure has already bitten once.
 
-### F5 — Zero deploy notifications; cancelled runs are completely invisible (HIGH for a solo dev)
+### F5 — Zero deploy notifications; canceled runs are completely invisible (HIGH for a solo dev)
 
-No workflow sends any notification on start/success/failure/cancellation, and the prod gate (`deploy.yml:240-259`, required-reviewer on the `prod` environment) sits silently waiting for approval until the dev happens to open the Actions tab. Critically, a **cancelled-while-queued run never executes any jobs**, so an in-workflow notification step can never report it — the notifier must live in a _separate_ workflow triggered by `workflow_run: completed` (which does fire for cancelled runs).
+No workflow sends any notification on start/success/failure/cancellation, and the prod gate (`deploy.yml:240-259`, required-reviewer on the `prod` environment) sits silently waiting for approval until the dev happens to open the Actions tab. Critically, a **cancelled-while-queued run never executes any jobs**, so an in-workflow notification step can never report it — the notifier must live in a _separate_ workflow triggered by `workflow_run: completed` (which does fire for canceled runs).
 
 ### F6 — `temporal-worker.yml` staging/prod jobs are copy-paste, and the "build once" comment is false (MEDIUM)
 
@@ -125,7 +125,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
         --instance-refresh-ids "$REFRESH_ID" --query 'InstanceRefreshes[0].Status' --output text)
       case "$STATUS" in
         Successful) echo "Instance refresh complete."; exit 0 ;;
-        Failed|Cancelled|RollbackSuccessful|RollbackFailed) echo "::error::Instance refresh $STATUS"; exit 1 ;;
+        Failed|Canceled|RollbackSuccessful|RollbackFailed) echo "::error::Instance refresh $STATUS"; exit 1 ;;
       esac
       sleep 15
     done
@@ -212,9 +212,9 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
         ... (existing output + summary block; also echo "Diff base: ${BASE:-<none — full deploy>}" into the step summary) ...
     ```
     (Path lists shown inline here; once 3.1 lands they are read from the manifest with `jq`.)
-  - **Behavioral consequences to accept:** after an E2E-gate failure or unapproved prod run, the next push re-deploys everything that changed since the last green run — idempotent CDK, slightly slower, strictly safer. The old failure mode (silently undeployed code) becomes impossible while runs keep landing; a cancelled run with _no_ successor is covered by 2.2's notification.
+  - **Behavioral consequences to accept:** after an E2E-gate failure or unapproved prod run, the next push re-deploys everything that changed since the last green run — idempotent CDK, slightly slower, strictly safer. The old failure mode (silently undeployed code) becomes impossible while runs keep landing; a canceled run with _no_ successor is covered by 2.2's notification.
 
-- [ ] **2.2 `deploy-watch.yml` — push notifications via ntfy.sh, covering cancelled runs** (45 min). New workflow; must be separate because cancelled-while-queued runs execute zero jobs of their own: _(deferred by user 2026-06-11)_
+- [ ] **2.2 `deploy-watch.yml` — push notifications via ntfy.sh, covering canceled runs** (45 min). New workflow; must be separate because cancelled-while-queued runs execute zero jobs of their own: _(deferred by user 2026-06-11)_
 
   ```yaml
   name: Deploy watch
@@ -243,7 +243,7 @@ Most findings here need deterministic automation, **not AI** — adding an LLM t
               -d "$TITLE — $URL" "https://ntfy.sh/${{ secrets.NTFY_TOPIC }}"
   ```
 
-  One-time setup: pick a random topic string, `gh secret set NTFY_TOPIC`, subscribe in the ntfy mobile app. Zero infrastructure, free. After 2.1 lands, cancelled notifications are informational (superseded run covers the changes); failures are actionable alerts.
+  One-time setup: pick a random topic string, `gh secret set NTFY_TOPIC`, subscribe in the ntfy mobile app. Zero infrastructure, free. After 2.1 lands, canceled notifications are informational (superseded run covers the changes); failures are actionable alerts.
 
 - [ ] **2.3 "Prod approval waiting" ping** (15 min). The prod gate waits silently today. Add a final step to the `e2e-staging` job in `deploy.yml`: _(deferred by user 2026-06-11)_
 

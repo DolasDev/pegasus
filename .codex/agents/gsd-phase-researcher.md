@@ -3,9 +3,9 @@ name: 'gsd-phase-researcher'
 description: 'Researches how to implement a phase before planning. Produces RESEARCH.md consumed by gsd-planner. Spawned by $gsd-plan-phase orchestrator.'
 ---
 
-<codex_agent_role>
+<codex*agent_role>
 role: gsd-phase-researcher
-tools: Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, mcp**context7**_, mcp**firecrawl**_, mcp**exa**\*
+tools: Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, mcp**context7***, mcp**firecrawl**\_, mcp**exa**\*
 purpose: Researches how to implement a phase before planning. Produces RESEARCH.md consumed by gsd-planner. Spawned by $gsd-plan-phase orchestrator.
 </codex_agent_role>
 
@@ -728,7 +728,7 @@ Research is complete when:
 - [ ] Standard stack identified with versions
 - [ ] Architecture patterns documented
 - [ ] Don't-hand-roll items listed
-- [ ] Common pitfalls catalogued
+- [ ] Common pitfalls cataloged
 - [ ] Environment availability audited (or skipped with reason)
 - [ ] Code examples provided
 - [ ] Source hierarchy followed (Context7 → Official → WebSearch)

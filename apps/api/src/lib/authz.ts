@@ -11,7 +11,7 @@
 //   - 'offline' : @cedar-policy/cedar-wasm/nodejs — used by tests, local dev
 //                 (SKIP_AUTH), and any tenant that has not yet been migrated
 //                 to AVP. Evaluates the same .cedar policy text on the same
-//                 schema so behaviour matches the deployed path.
+//                 schema so behavior matches the deployed path.
 //
 // Why not IsAuthorizedWithToken: AVP's Cognito identity source treats
 // `cognito:groups` as a special claim — it can ONLY be projected into
@@ -38,7 +38,7 @@
 // would let role changes (PATCH /api/v1/users/:id, PATCH /api/v1/api-clients/:id)
 // serve stale cached decisions for up to TTL_MS, which is both a correctness
 // gap (demotions don't take effect immediately) and a UX papercut (promotions
-// look broken for ~1m). Authorisation calls in tight loops (e.g. /me/permissions
+// look broken for ~1m). Authorization calls in tight loops (e.g. /me/permissions
 // fanning out across the catalog) still hit the cache after the first miss
 // because the principal's role set is identical across that batch.
 // ---------------------------------------------------------------------------
@@ -127,7 +127,7 @@ function toAvpAttributes(attrs: Record<string, unknown>): Record<string, Attribu
 }
 
 /**
- * Build the entity store for an authorisation call: the principal plus one
+ * Build the entity store for an authorization call: the principal plus one
  * Group entity per role membership. The principal is the child of each
  * Group (parents=[Group::"tenant_admin", …]). Same shape on both backends —
  * the AVP path passes this list via `entities`, the offline path hands it
@@ -135,7 +135,7 @@ function toAvpAttributes(attrs: Record<string, unknown>): Record<string, Attribu
  *
  * When `resource.attrs` is supplied the resource entity is appended too, so
  * per-record ABAC policies (e.g. driver `ReadMove`) can read its attributes.
- * Coarse callers pass no `attrs` — behaviour is then unchanged.
+ * Coarse callers pass no `attrs` — behavior is then unchanged.
  */
 function buildEntities(principal: Principal, resource?: ResourceRef): cedar.Entities {
   const groupParents = principal.roleNames.map((g) => ({

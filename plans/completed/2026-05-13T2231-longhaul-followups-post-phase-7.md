@@ -89,7 +89,7 @@ tests still pass. Specs un-fixme'd:
 **Acceptance still pending:** a fresh `e2e-qa-longhaul.yml workflow_dispatch`
 run that exits green with the 3 un-fixme'd specs PASSING (not just skipped).
 The on-prem service on `DOLAB-M70Q-1` has already been restarted with the new
-dist (the cloud Lambda needs no behavioural change — onprem.ts is a pass-through
+dist (the cloud Lambda needs no behavioral change — onprem.ts is a pass-through
 proxy).
 
 #### Original "ON-PREM DIAGNOSIS PENDING" notes — kept for context

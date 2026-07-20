@@ -1,7 +1,7 @@
 """Tests for manifest parsing and validation.
 
 The validation rules must stay in lockstep with the server's
-``ManifestSchema`` — these tests pin the regex behaviour.
+``ManifestSchema`` — these tests pin the regex behavior.
 """
 
 from __future__ import annotations

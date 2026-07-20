@@ -297,7 +297,7 @@ describe('GET /health', () => {
 // ---------------------------------------------------------------------------
 
 describe('Unknown routes', () => {
-  it('returns 404 for an unrecognised path', async () => {
+  it('returns 404 for an unrecognized path', async () => {
     const res = await app.request('/not-a-real-route')
     expect(res.status).toBe(404)
     const body = (await res.json()) as Record<string, unknown>

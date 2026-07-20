@@ -151,7 +151,7 @@ Re-verify with `grep -n "route('/sso'\|route('/api/auth'" apps/api/src/app.ts` b
 ## Tests
 
 - `sso.test.ts`: each of the five routes ⇒ **403** for a session without `sso:manage`;
-  ⇒ unchanged behaviour for `tenant_admin`. The 403 case is the whole point — assert it
+  ⇒ unchanged behavior for `tenant_admin`. The 403 case is the whole point — assert it
   per-route, since the gap is per-route and a missed decorator is exactly the failure mode.
 - `authz/__tests__/load.test.ts`: the policy set still loads with the new action in schema.
 - Persona sets must NOT change: `apps/e2e/tests/api/authz-smoke.spec.ts` pins **exact**
@@ -168,7 +168,7 @@ Re-verify with `grep -n "route('/sso'\|route('/api/auth'" apps/api/src/app.ts` b
   (`ThrottlingException` above ~15 tenants → CFN rollback). Prod has ~7+ tenants; check how
   the sync is triggered on deploy and whether it retries before assuming it is fine.
 - **Ordering.** The action must exist in the deployed schema BEFORE `requirePermission` can
-  authorise against it. If schema sync and API deploy are separate steps, a window exists
+  authorize against it. If schema sync and API deploy are separate steps, a window exists
   where admins get 403 on SSO settings. Confirm the deploy order; if it is not atomic, say so
   in the PR rather than discovering it in prod.
 

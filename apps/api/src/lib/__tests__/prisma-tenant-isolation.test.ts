@@ -159,7 +159,7 @@ describe.skipIf(!hasDb)('createTenantDb — cross-tenant isolation (integration)
           data: { firstName: 'HACKED' },
         })
         .catch(() => {
-          // Prisma throws P2025 (record not found) — that is the correct behaviour
+          // Prisma throws P2025 (record not found) — that is the correct behavior
         })
       const unchanged = await db.customer.findUnique({ where: { id: customerBId } })
       expect(unchanged?.firstName).toBe('Bob')
@@ -167,7 +167,7 @@ describe.skipIf(!hasDb)('createTenantDb — cross-tenant isolation (integration)
 
     it('delete via dbA cannot remove a Tenant B record', async () => {
       await dbA.customer.delete({ where: { id: customerBId } }).catch(() => {
-        // Prisma throws P2025 — correct behaviour
+        // Prisma throws P2025 — correct behavior
       })
       const stillExists = await db.customer.findUnique({ where: { id: customerBId } })
       expect(stillExists).not.toBeNull()

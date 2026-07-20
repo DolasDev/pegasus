@@ -69,7 +69,7 @@ const ConfigBody = z.object({
   displayName: z.string().min(1).max(200).optional(),
   externalShape: z.record(z.string(), z.unknown()).optional(),
   externalMapping: z.unknown().optional(),
-  // Inbound (ingress) behaviour published with the definition (sdk-feedback 0021):
+  // Inbound (ingress) behavior published with the definition (sdk-feedback 0021):
   // { eventType, dedupKeyPath?, orderByPath?, ackTemplate: {success, failure} }.
   inbound: z.record(z.string(), z.unknown()).optional(),
 })

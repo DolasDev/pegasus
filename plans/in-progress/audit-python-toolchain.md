@@ -219,7 +219,7 @@ documented in `CLAUDE.md` package map):
       ```
 
       Rationale: temporalio and httpx are the two deps where a major bump
-      changes runtime behaviour inside a prod container that rebuilds its
+      changes runtime behavior inside a prod container that rebuilds its
       dependency set on every image build (Finding 4). Keep floors as-is so
       one resolution satisfies SDK + worker (comment at worker
       `pyproject.toml:22-24` already documents this contract).
@@ -426,7 +426,7 @@ documented in `CLAUDE.md` package map):
 - **New required CI job:** if `python` is added to branch protection /
   push-gate expectations, a flaky temporalio test-server download could block
   merges. Mitigation: the e2e test already self-skips on download failure
-  (`test_worker_e2e.py:57-61`); keep that behaviour.
+  (`test_worker_e2e.py:57-61`); keep that behavior.
 - **`temporal-worker.yml` gains ~2 min per image deploy** (test gate). This
   is the point — but during an incident the `workflow_dispatch` path also
   pays it. Acceptable; the gate is the same tests that would have caught the

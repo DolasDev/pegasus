@@ -33,7 +33,7 @@ You may ONLY modify files explicitly listed in the approved plan or inside direc
 
 You MUST NOT:
 
-- Refactor code unrelated to the task. If refactoring is required, limit it to in-scope files, ensure it does not alter unrelated public behaviour, and get separate approval for large refactors.
+- Refactor code unrelated to the task. If refactoring is required, limit it to in-scope files, ensure it does not alter unrelated public behavior, and get separate approval for large refactors.
 - Rename global symbols outside scope.
 - Introduce architectural changes unless explicitly requested.
 - Apply formatting-only changes to unrelated files.
@@ -58,7 +58,7 @@ Stop and seek clarification when:
 
 Every commit must be focused and atomic — one logical change, no debug artifacts, no temp files. Commit messages must state what changed and why.
 
-**Do not commit or push until the developer explicitly instructs you to.** When ready: run the full test suite, confirm all layers pass, summarise what changed, and wait for explicit approval.
+**Do not commit or push until the developer explicitly instructs you to.** When ready: run the full test suite, confirm all layers pass, summarize what changed, and wait for explicit approval.
 
 ## Plan File
 
@@ -100,7 +100,7 @@ The cause of tangled work on this repo is multiplexing several features through 
 
 ### Direct push to `main` — break-glass only
 
-Pushing directly to `main` (the old batch-merge-locally protocol) bypasses the queue and can cancel a neighbour's already-running deploy job (`deploy.yml` concurrency cancels a pending run when a new push races it). Use it only when:
+Pushing directly to `main` (the old batch-merge-locally protocol) bypasses the queue and can cancel a neighbor's already-running deploy job (`deploy.yml` concurrency cancels a pending run when a new push races it). Use it only when:
 
 - The merge queue itself is broken and a fix must land immediately, **and**
 - The developer has explicitly approved the direct push.

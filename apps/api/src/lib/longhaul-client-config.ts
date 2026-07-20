@@ -17,9 +17,9 @@
 // with hardcoded NWI-style fallbacks (e.g. importExport defaulted to ['H'],
 // moveTypesWhere defaulted to '1=1', dispatcher_query defaulted to
 // "active='Y'"). That silently broke QMM tenants: if any of the three env
-// vars was unset, QMM saw NWI behaviour with no error or warning.
+// vars was unset, QMM saw NWI behavior with no error or warning.
 //
-// This helper centralises the resolution in one place. The runtime selects a
+// This helper centralizes the resolution in one place. The runtime selects a
 // client by setting LONGHAUL_CLIENT to 'nwi' or 'qmm'; unset/unknown values
 // throw at first call so misconfiguration fails fast at startup instead of
 // silently corrupting query results downstream.
@@ -81,14 +81,14 @@ const CONFIGS: Record<LonghaulClient, LonghaulClientConfig> = {
  * from `Tenant.longhaulClient` (the multi-tenant cloud API Lambda cannot use a
  * single process-env value). Throws when `client` is unknown — we intentionally
  * do NOT silently default, since silent defaults are what caused the original
- * bug (QMM tenants getting NWI behaviour).
+ * bug (QMM tenants getting NWI behavior).
  */
 export function getLonghaulClientConfigFor(client: string): LonghaulClientConfig {
-  const normalised = client.trim().toLowerCase()
-  if (normalised !== 'nwi' && normalised !== 'qmm') {
+  const normalized = client.trim().toLowerCase()
+  if (normalized !== 'nwi' && normalized !== 'qmm') {
     throw new Error(`[longhaul] Unknown longhaul client "${client}". Expected "nwi" or "qmm".`)
   }
-  const source = CONFIGS[normalised]
+  const source = CONFIGS[normalized]
   // Return a fresh copy so callers can't mutate the shared template (e.g.
   // arr.push() on importExportTypes would leak across requests).
   return {

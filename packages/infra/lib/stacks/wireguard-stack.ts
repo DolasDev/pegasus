@@ -769,7 +769,7 @@ export class WireGuardStack extends cdk.Stack {
       // pauseTime is the upper bound CFN waits for the instance to reach
       // InService before continuing — userdata typically finishes in <3 min;
       // 10 min is a safe ceiling for cold dnf installs.
-      // waitOnResourceSignals=true makes rolling updates honour cfn-signal
+      // waitOnResourceSignals=true makes rolling updates honor cfn-signal
       // (matches the create-time signals contract above).
       updatePolicy: autoscaling.UpdatePolicy.rollingUpdate({
         maxBatchSize: 1,

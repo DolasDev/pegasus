@@ -71,7 +71,7 @@ def get_dry_run_captures() -> list[dict[str, Any]]:
     return list(_dry_run_captures)
 
 
-#: Returned by the mutation-capture helper when NOT in dry-run, signalling the
+#: Returned by the mutation-capture helper when NOT in dry-run, signaling the
 #: caller to proceed with the real HTTP call. Distinct from any real return.
 _NOT_CAPTURED: Any = object()
 
@@ -236,7 +236,7 @@ class PegasusClient:
     ) -> Any:
         """In dry-run, record a mutation and return its synthetic result.
 
-        Returns :data:`_NOT_CAPTURED` when NOT in dry-run, signalling the caller
+        Returns :data:`_NOT_CAPTURED` when NOT in dry-run, signaling the caller
         to proceed with the real HTTP call. The record is appended both to this
         client's :attr:`captured` and the process-global sink the runner reads.
         """
@@ -760,7 +760,7 @@ class PegasusClient:
         A read-only escape hatch for endpoints that have no dedicated helper — e.g.
         the paginated, filtered projection read-model
         ``/api/v1/integrations/{id}/projections/{entityType}`` (``status`` /
-        ``updatedSince`` / keyset ``nextCursor``). The catalogue of reachable paths
+        ``updatedSince`` / keyset ``nextCursor``). The catalog of reachable paths
         is the OpenAPI spec (``GET /openapi.json`` / ``pegasus://reference/openapi``).
 
         Args:
@@ -1510,8 +1510,8 @@ class PegasusClient:
         """Fork the platform GLOBAL config for ``integration_id`` into the caller's scope.
 
         Copies the active GLOBAL config into a new TENANT-scoped, unpublished config
-        the caller owns (with fork provenance) — the integration-config analogue of
-        :meth:`fork_workflow`, so a tenant can customise a platform default. Requires
+        the caller owns (with fork provenance) — the integration-config analog of
+        :meth:`fork_workflow`, so a tenant can customize a platform default. Requires
         ``PublishIntegrationConfig`` (the ``integration_publisher`` role).
 
         Returns:

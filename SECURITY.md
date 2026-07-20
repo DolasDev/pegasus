@@ -11,7 +11,7 @@ Please report vulnerabilities privately via
 [GitHub private vulnerability reporting](https://github.com/DolasDev/pegasus/security/advisories/new).
 If that is unavailable, email dolasllc@gmail.com.
 
-You can expect an acknowledgement within 72 hours. Please do not open public
+You can expect an acknowledgment within 72 hours. Please do not open public
 issues for security reports.
 
 There is no bug bounty program at this time.

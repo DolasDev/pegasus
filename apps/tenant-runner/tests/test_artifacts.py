@@ -132,7 +132,7 @@ def test_safe_extract_writes_files(tmp_path: Path) -> None:
 def test_safe_extract_rejects_traversal_paths(tmp_path: Path, evil: str) -> None:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
-        # ZipInfo bypasses zipfile's own name normalisation on write.
+        # ZipInfo bypasses zipfile's own name normalization on write.
         zf.writestr(zipfile.ZipInfo(evil), b"pwn")
     zip_path = tmp_path / "a.zip"
     zip_path.write_bytes(buf.getvalue())
@@ -213,7 +213,7 @@ def test_prepare_workflow_happy_path(tmp_path: Path) -> None:
 
 
 def test_prepare_workflow_sha_mismatch_refuses_to_install(tmp_path: Path) -> None:
-    """TOCTOU defence: bytes differing from the finalize-recorded digest
+    """TOCTOU defense: bytes differing from the finalize-recorded digest
     (e.g. re-PUT via the still-valid presigned upload URL) are rejected
     BEFORE extraction, and nothing is left on disk."""
     tampered = _zip_bytes({"evil.py": b"import os\n"})

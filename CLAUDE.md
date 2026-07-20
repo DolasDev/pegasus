@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Pegasus is a cloud-native move management SaaS platform replacing a legacy VB.NET WinForms desktop application. It modernises the full lifecycle of a residential/commercial move: lead capture, quoting, crew scheduling, dispatch, inventory tracking, and billing — all as a multi-tenant web application backed by a serverless AWS infrastructure.
+Pegasus is a cloud-native move management SaaS platform replacing a legacy VB.NET WinForms desktop application. It modernizes the full lifecycle of a residential/commercial move: lead capture, quoting, crew scheduling, dispatch, inventory tracking, and billing — all as a multi-tenant web application backed by a serverless AWS infrastructure.
 
 ## Tech Stack
 
@@ -63,7 +63,7 @@ One stream = one worktree = one branch. Spin up each parallel feature/fix with `
 
 ### Customer
 
-Manages the people and organisations that request moves.
+Manages the people and organizations that request moves.
 
 - **Entities:** `Customer`, `Contact`, `Account`, **Value objects:** `LeadSource`
 - **Key rules:** A customer must have at least one primary contact.

@@ -9,7 +9,7 @@
 // A tenant with no reachable pegII target is a HARD ERROR — the factory throws
 // PegiiApiError('PEGII_API_NOT_CONFIGURED', ...) rather than degrading to stub
 // data, so an unconfigured tenant surfaces a stable failure instead of pretend
-// records. This mirrors resolveCustomerGateway's behaviour on the 'pegii' path.
+// records. This mirrors resolveCustomerGateway's behavior on the 'pegii' path.
 //
 // Tenant and VpnPeer are NOT tenant-scoped models, so the request-scoped db is
 // safe for the overlay lookup.

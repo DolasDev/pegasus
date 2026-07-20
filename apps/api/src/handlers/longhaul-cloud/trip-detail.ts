@@ -7,7 +7,7 @@
 // /onprem wildcard proxy so Hono route precedence routes /trips/:id here while
 // every un-migrated longhaul endpoint still falls through to the proxy.
 //
-// The batched, round-trip-minimising MSSQL read lives in lib/longhaul-trip-fetch
+// The batched, round-trip-minimizing MSSQL read lives in lib/longhaul-trip-fetch
 // (fetchTripDetail) so it can be reused by the rejected-trip snapshot creator.
 // This handler is now a thin wrapper: connection-string guard + id validation +
 // fetchTripDetail + the `{ data: <trip> }` envelope.

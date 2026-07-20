@@ -34,7 +34,7 @@ trip will silently succeed.
   other planning-side change is happening so we ship one product behavior
   change, not two.
 - Or sooner if a dispatcher actually reassigns an In-Progress driver and we
-  realise we want the lock.
+  realize we want the lock.
 
 ## Acceptance
 

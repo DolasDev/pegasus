@@ -31,7 +31,7 @@ endpoint that proves the AVP path is being hit.
 The deploy workflow already extracts `USER_POOL_ID` and
 `MobileClientId` into `E2E_COGNITO_USER_POOL_ID` /
 `E2E_COGNITO_CLIENT_ID` env vars (`.github/workflows/deploy.yml:181-198`),
-labelled "reserved" in REMOTE.md. This plan turns those reservations
+labeled "reserved" in REMOTE.md. This plan turns those reservations
 into real authenticated smoke tests.
 
 The Cognito stack already enables `USER_PASSWORD_AUTH` on both the
@@ -188,7 +188,7 @@ rejected. Catches regressions before prod deploys.
       3. **Test: a known-allowed write returns 200.** Pick a
          non-mutating write to keep this idempotent. Best option:
          create-then-rollback isn't possible without DB access, so
-         instead use `POST /api/v1/users/invite` with a recognisable
+         instead use `POST /api/v1/users/invite` with a recognizable
          test address and accept either:
          - 200/201 (allowed by AVP, invite created), or
          - 409 (allowed by AVP, idempotency conflict — the test user

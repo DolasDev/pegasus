@@ -10,7 +10,7 @@
   1. The on-prem Node server (`apps/api/src/server.ts`) must bind `0.0.0.0` (the default; verify the deployment's `HOST` env isn't overridden to `127.0.0.1`).
   2. The host firewall must allow inbound on `wg0` to the listen port (`ufw allow in on wg0` or equivalent).
   3. Plain HTTP is intentional — the WG tunnel provides confidentiality + peer auth, so cloud→onprem skips TLS by design (`ONPREM_TUNNEL_SCHEME` defaults to `http`). LAN-side TLS is a separate concern.
-- **`POST /api/admin/tenants` returning `AUTHZ_ERROR` is opaque by design**: the response is a sanitised "Failed to provision the tenant authorization store" with no class hint, so the only way to distinguish bundling vs IAM vs AVP-eventual-consistency vs Cognito-introspection IAM is to read CloudWatch. Filter command (single line):
+- **`POST /api/admin/tenants` returning `AUTHZ_ERROR` is opaque by design**: the response is a sanitized "Failed to provision the tenant authorization store" with no class hint, so the only way to distinguish bundling vs IAM vs AVP-eventual-consistency vs Cognito-introspection IAM is to read CloudWatch. Filter command (single line):
 
   ```
   aws logs filter-log-events --profile pegasus-staging --region us-east-1 --log-group-name <api-log-group> --start-time $(($(date +%s) - 600))000 --filter-pattern '"Failed to provision"' --query 'events[].message' --output text

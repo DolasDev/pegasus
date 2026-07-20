@@ -112,7 +112,7 @@ export async function putObjectBuffer(
  *
  * `ContentType` and `ContentLength` are baked into the signature so the
  * client cannot upload a different file type or a larger file than what
- * was authorised.
+ * was authorized.
  */
 export async function presignUpload(args: {
   key: string

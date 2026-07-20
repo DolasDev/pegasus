@@ -88,7 +88,7 @@ export function DriverTripDetail({
     //setEditMode(false);
     // The typeahead's option value is a raw drivers-list row, which carries
     // `driver_id` and no `id`; only a driver hydrated by reshapeTrip has both.
-    // The "None" option is driver_id 0, which normalises to null (unassigned).
+    // The "None" option is driver_id 0, which normalizes to null (unassigned).
     editTrip({ [property as string]: value, driver_id: value?.driver_id || value?.id || null })
   }
 

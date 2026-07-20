@@ -45,7 +45,7 @@ describe('resolvePegiiOverlayTarget', () => {
     expect(res).toEqual({ ok: true, target: { base: 'http://10.200.7.1:65274', apiKey: 'arn:k' } })
   })
 
-  it('honours PEGII_API_TUNNEL_SCHEME / PORT overrides', async () => {
+  it('honors PEGII_API_TUNNEL_SCHEME / PORT overrides', async () => {
     process.env['PEGII_API_TUNNEL_SCHEME'] = 'http'
     process.env['PEGII_API_TUNNEL_PORT'] = '3001'
     const db = makeDb({

@@ -74,7 +74,7 @@ export interface CognitoStackProps extends cdk.StackProps {
    * Cognito's generic default sender. The domain part MUST be a verified SES
    * domain identity in this account/region (provisioned by dolas-infra's
    * PegasusSesBootstrapStack) or the pool update fails. When undefined the pool
-   * keeps Cognito's default email behaviour (dev + un-migrated envs).
+   * keeps Cognito's default email behavior (dev + un-migrated envs).
    */
   readonly sesFromEmail?: string
 }
@@ -355,7 +355,7 @@ export class CognitoStack extends cdk.Stack {
     // -------------------------------------------------------------------------
     this.userPool = new cognito.UserPool(this, 'UserPool', {
       userPoolName: 'pegasus-user-pool',
-      // SES sender when migrated; otherwise Cognito's default email behaviour.
+      // SES sender when migrated; otherwise Cognito's default email behavior.
       ...(email ? { email } : {}),
       selfSignUpEnabled: false,
       signInAliases: { email: true },
@@ -509,7 +509,7 @@ export class CognitoStack extends cdk.Stack {
       authFlows: {
         // USER_PASSWORD_AUTH: allows tenant admin users to sign in with
         // email + password directly (no Hosted UI redirect) before their
-        // organisation's SSO is configured. Regular tenant users still
+        // organization's SSO is configured. Regular tenant users still
         // authenticate via the PKCE/SSO flow — this flow is only reachable
         // from the login page when no SSO providers exist for the tenant.
         userPassword: true,

@@ -11,7 +11,7 @@ canonical "where is traffic dying" check.
 
 Right now you have to invoke it via curl with a Cognito JWT. Wiring it
 into the admin-web tenant page makes it a single click — the next time
-on-prem connectivity breaks, support / ops can localise the failure
+on-prem connectivity breaks, support / ops can localize the failure
 without shelling into anything.
 
 ## Goal
@@ -27,7 +27,7 @@ root cause first.
 
 - [ ] **1. Add the typed API client.** Extend
       `apps/admin-web/src/api/vpn.ts` with `runVpnDiagnose(tenantId):
-    Promise<DiagnoseReport>`. Mirror the response shape from
+  Promise<DiagnoseReport>`. Mirror the response shape from
       `apps/api/src/handlers/admin/vpn-diagnose.ts` (`DiagnoseReport`,
       `DiagnoseCheck`, `CheckStatus` — re-declare here, don't pull
       across the workspace boundary).
@@ -40,7 +40,7 @@ root cause first.
       `<id>` — <detail>". This is the operationally most important
       line; bias the layout to make it impossible to miss. - One row per check: status pill (pass/fail/skip), label, detail
       text, elapsed ms. Failed rows get a warning border. Skipped
-      rows are de-emphasised. - If a check has `evidence`, expose it via a "Show details"
+      rows are de-emphasized. - If a check has `evidence`, expose it via a "Show details"
       toggle (it's already a `Record<string, unknown>` — just
       `JSON.stringify(…, null, 2)` in a `<pre>`).
 - [ ] **4. Loading + error states.** The endpoint can fail for

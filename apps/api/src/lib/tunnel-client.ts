@@ -57,7 +57,7 @@ interface TunnelFetchOptions {
   method?: string
   /** HTTP headers (flat string-to-string map). */
   headers?: Record<string, string>
-  /** Already-serialised request body — caller owns stringification. */
+  /** Already-serialized request body — caller owns stringification. */
   body?: string | null
   /**
    * Timeout enforced by the proxy Lambda itself (AbortController on its

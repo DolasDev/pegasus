@@ -918,7 +918,7 @@ export class MonitoringStack extends cdk.Stack {
                 }),
               ]
             : []),
-          // Workflow-execution-reconciled is visualised on the dedicated
+          // Workflow-execution-reconciled is visualized on the dedicated
           // Pegasus-Workflows dashboard (Phase 3 Unit 11), so no widget here.
         ],
       ],

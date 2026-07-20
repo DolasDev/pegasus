@@ -32,7 +32,7 @@ Deliverables:
 ### Password show/hide toggle (AUTH-04)
 
 - **D-04:** Toggle uses tappable text `SHOW` / `HIDE` positioned inside the right side of the password input container. Uppercase to match the existing label style (`EMAIL`, `PASSWORD`). `secureTextEntry` toggled via local `showPassword` boolean state.
-- **D-05:** Toggle is a `TouchableOpacity` absolutely positioned (or row-flex inside the input wrapper). Style follows `colors.primary` for the active text, matching button text colour.
+- **D-05:** Toggle is a `TouchableOpacity` absolutely positioned (or row-flex inside the input wrapper). Style follows `colors.primary` for the active text, matching button text color.
 
 ### Input locking (AUTH-06)
 
@@ -85,7 +85,7 @@ Deliverables:
 ### Prior phase outputs (read before modifying)
 
 - `apps/mobile/src/auth/types.ts` — `AuthError` class with `code: string` field (Phase 2)
-- `apps/mobile/src/theme/colors.ts` — colour tokens used throughout login.tsx
+- `apps/mobile/src/theme/colors.ts` — color tokens used throughout login.tsx
 
 </canonical_refs>
 

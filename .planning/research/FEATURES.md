@@ -101,7 +101,7 @@ Features that users expect and that the product is contractually incomplete with
 
 **Why expected:** If the stored session is expired and the app silently accepts it as valid, the first API call will return 401. The user sees a confusing failure screen instead of a clean login prompt. Detecting expiry proactively and redirecting to login is the minimum baseline for a production app.
 
-**What the user experiences:** Opens the app after not using it for several days. The loading state appears briefly, then the login screen appears. No error message — this is normal behaviour, not a failure. Optionally: a brief "Your session has expired. Please log in again." message.
+**What the user experiences:** Opens the app after not using it for several days. The loading state appears briefly, then the login screen appears. No error message — this is normal behavior, not a failure. Optionally: a brief "Your session has expired. Please log in again." message.
 
 **Implementation notes:**
 
@@ -164,7 +164,7 @@ Features that users expect and that the product is contractually incomplete with
 
 **Required loading states:**
 
-| Step                                              | Loading Behaviour                                               |
+| Step                                              | Loading Behavior                                                |
 | ------------------------------------------------- | --------------------------------------------------------------- |
 | Email submitted — resolving tenants               | NEXT button shows spinner, email field disabled                 |
 | Tenant selected in picker                         | Tapped row shows spinner or dimmed state                        |
@@ -402,13 +402,13 @@ Defer: token refresh, biometric, password reset, SSO.
 
 ## Confidence Assessment
 
-| Area                                                                               | Confidence | Basis                                                                                                    |
-| ---------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------- |
-| Cognito error codes and lockout behaviour                                          | HIGH       | Verified against AWS official docs and amplify-js issues                                                 |
-| Two-step UX pattern                                                                | HIGH       | Established pattern; web tenant app already uses it                                                      |
-| SecureStore size limitation                                                        | MEDIUM     | Known issue; workaround (per-key storage) is well-documented; exact byte threshold varies by iOS version |
-| `amazon-cognito-identity-js` React Native behaviour (`storage.sync()` requirement) | MEDIUM     | Community sources; confirmed in multiple RN integration articles                                         |
-| Multi-tenant picker UX expectations                                                | HIGH       | Standard B2B pattern; documented in Auth0, WorkOS, Clerk references                                      |
+| Area                                                                              | Confidence | Basis                                                                                                    |
+| --------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------- |
+| Cognito error codes and lockout behavior                                          | HIGH       | Verified against AWS official docs and amplify-js issues                                                 |
+| Two-step UX pattern                                                               | HIGH       | Established pattern; web tenant app already uses it                                                      |
+| SecureStore size limitation                                                       | MEDIUM     | Known issue; workaround (per-key storage) is well-documented; exact byte threshold varies by iOS version |
+| `amazon-cognito-identity-js` React Native behavior (`storage.sync()` requirement) | MEDIUM     | Community sources; confirmed in multiple RN integration articles                                         |
+| Multi-tenant picker UX expectations                                               | HIGH       | Standard B2B pattern; documented in Auth0, WorkOS, Clerk references                                      |
 
 ---
 

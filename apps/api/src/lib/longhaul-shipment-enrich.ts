@@ -527,7 +527,7 @@ export function buildExtraShipmentActivities(
       activityTypesMap,
     )
     // Legacy guards on `cfout.activityType` — only push if the type exists in
-    // the activity-type catalogue.
+    // the activity-type catalog.
     if (tpl.activityType) extras.push(tpl)
   }
 

@@ -6,7 +6,7 @@
 // optional field is left untouched, not nulled. A cloud handler that authored
 // a fixed `SET a=@a, b=@b, …` would null every field the client didn't send
 // (the shadow-update E2E sends only `lng_dis_comments` and expects the other
-// shadow columns preserved). This helper reproduces knex's behaviour: it emits
+// shadow columns preserved). This helper reproduces knex's behavior: it emits
 // a parameterized fragment for exactly the DEFINED keys that appear in an
 // explicit allow-list. Column names come only from the caller's literal
 // `allowed` list — never from request input — so there is no SQL-injection path.

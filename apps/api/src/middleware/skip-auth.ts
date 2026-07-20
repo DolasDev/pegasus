@@ -23,7 +23,7 @@ import { db as basePrisma } from '../db'
  * literal `default-tenant` placeholder when that env var is unset).
  *
  * `db` is the unscoped base Prisma client — the tenant query extension is not
- * applied under SKIP_AUTH, matching the legacy inline behaviour in app.ts.
+ * applied under SKIP_AUTH, matching the legacy inline behavior in app.ts.
  */
 export async function skipAuthMiddleware(c: Context<AppEnv>, next: Next): Promise<void> {
   const tenantId = process.env['DEFAULT_TENANT_ID'] ?? 'default-tenant'

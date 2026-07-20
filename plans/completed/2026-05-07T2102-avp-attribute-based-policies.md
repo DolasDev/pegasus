@@ -71,7 +71,7 @@ and group-derivation as fully owned by the IdentitySource configuration when
 called via `IsAuthorizedWithToken`. There is no supported way to override the
 prefixed entity IDs AVP generates, AND no supported way to declare bare-named
 Group entities in the request when groupConfiguration is set. This is
-documented behaviour, not a bug in our code.
+documented behavior, not a bug in our code.
 
 The `is-authorized` (no-token) API doesn't have these restrictions, which is
 why both `5d585a7` and `e94c3dc` could be smoke-tested via direct CLI calls

@@ -143,7 +143,7 @@ function vendorFetch(plainKey: string) {
 //
 // One service account per role-set keeps the spec narrow: each test asserts
 // the policy decision for a single (role, action) pair without coupling to
-// the cache-invalidation behaviour exercised by lib/authz.test.ts.
+// the cache-invalidation behavior exercised by lib/authz.test.ts.
 test.describe.serial('API-client service-account → Cedar flow @local-only', () => {
   let prisma: PrismaLike
   let reportingClient: ServiceAccountClient

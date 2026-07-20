@@ -25,7 +25,7 @@ export default tseslint.config(
         'error',
         { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
       ],
-      // Disable base rule in favour of the TS-aware version
+      // Disable base rule in favor of the TS-aware version
       'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': [
         'error',

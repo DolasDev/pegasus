@@ -1,7 +1,7 @@
 /**
  * Vitest global setup — manages a local Postgres container for integration tests.
  *
- * Behaviour:
+ * Behavior:
  *   1. If DATABASE_URL is already set (Neon, CI secret, manual override) →
  *      respect it and skip all Docker logic.
  *   2. If localhost:5432 is already reachable → reuse the running instance.
@@ -79,7 +79,7 @@ export async function setup(): Promise<void> {
   // ── 0. Load .env so DATABASE_URL / DIRECT_URL are available ───────────────
   loadDotEnv(path.join(API_DIR, '.env'))
 
-  // ── 1. Honour an externally-provided DATABASE_URL ─────────────────────────
+  // ── 1. Honor an externally-provided DATABASE_URL ─────────────────────────
   if (process.env['DATABASE_URL']) {
     console.log('\n[test:db] DATABASE_URL already set — skipping Docker setup\n')
     return

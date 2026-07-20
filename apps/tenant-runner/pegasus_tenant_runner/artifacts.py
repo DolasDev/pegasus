@@ -6,15 +6,15 @@ one bad artifact must never take down the runner or other workflows):
 1. **Download** the zip via the broker-issued presigned GET URL (the runner
    holds no AWS credentials; the URL is the entire authorization), streaming
    to disk with a hard byte cap.
-2. **TOCTOU defence (MANDATORY, Unit 6 review):** the presigned *PUT* URL
+2. **TOCTOU defense (MANDATORY, Unit 6 review):** the presigned *PUT* URL
    issued at upload time outlives finalize validation (~15 min TTL), so the
    S3 bytes can be overwritten AFTER the API validated them. The recorded
-   ``artifactSha256`` is the defence: the runner re-hashes the downloaded
+   ``artifactSha256`` is the defense: the runner re-hashes the downloaded
    bytes and refuses to unpack/execute on any mismatch.
 3. **Extract** into ``<work>/<name>/src`` with its own safety checks. The
    finalize validator already rejected hostile entry names, and the sha
    check proves we hold the same bytes — but the extractor re-checks
-   anyway (defence-in-depth): no absolute/``..`` paths, no symlink entries,
+   anyway (defense-in-depth): no absolute/``..`` paths, no symlink entries,
    bounded entry count, and a bounded TOTAL decompressed size (the
    install-size guard from Resolved decision #3d — a 10 MB zip can expand
    to gigabytes; the cap is enforced while streaming, not from the
@@ -141,7 +141,7 @@ def safe_extract(
     max_total_bytes: int,
     max_entries: int = MAX_ZIP_ENTRIES,
 ) -> int:
-    """Extract ``zip_path`` into ``dest_dir`` with hostile-archive defences.
+    """Extract ``zip_path`` into ``dest_dir`` with hostile-archive defenses.
 
     Every output is created by the extractor itself as a REGULAR file (or
     plain directory) — symlink entries are rejected outright, so nothing the
@@ -263,7 +263,7 @@ def prepare_workflow(
         zip_path = wf_dir / "artifact.zip"
         download_artifact(wf.download_url, zip_path, transport=transport)
 
-        # TOCTOU defence — verify BEFORE the zip is opened for extraction.
+        # TOCTOU defense — verify BEFORE the zip is opened for extraction.
         actual = sha256_file(zip_path)
         if actual != wf.artifact_sha256:
             raise ArtifactIntegrityError(

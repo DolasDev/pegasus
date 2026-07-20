@@ -40,7 +40,7 @@ The handler already reads the trip header (`driver_id`, `TripStatus_id`) in `STA
      (statusId === 3 || statusId === 4)
    ```
 
-2. **Add a guarded UPDATE inside `STATUS_WRITE_SQL`** (between the existing `LongDistanceDispatchActivity` update and `COMMIT TRAN`). Keep the SQL a static constant and drive behaviour via params — mirrors the existing parameterised style:
+2. **Add a guarded UPDATE inside `STATUS_WRITE_SQL`** (between the existing `LongDistanceDispatchActivity` update and `COMMIT TRAN`). Keep the SQL a static constant and drive behavior via params — mirrors the existing parameterised style:
 
    ```sql
    IF @clearReady = 1 AND @driverId IS NOT NULL

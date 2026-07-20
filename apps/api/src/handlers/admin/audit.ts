@@ -17,7 +17,7 @@ import { Prisma } from '@prisma/client'
  * @param tx  - The Prisma transaction client (or the global db client for
  *              reads where atomicity is not required).
  * @param sub  - Cognito `sub` claim of the acting administrator.
- * @param email - Denormalised admin email for display in the audit UI.
+ * @param email - Denormalized admin email for display in the audit UI.
  * @param action - Identifier for the action (e.g. `CREATE_TENANT`).
  * @param resourceType - Type of the affected resource (e.g. `TENANT`).
  * @param resourceId - Primary key of the affected resource.

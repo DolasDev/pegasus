@@ -51,7 +51,7 @@ const CreateOrderBody = z.object({
 })
 
 // ---------------------------------------------------------------------------
-// Response serialiser — moves mapped to order-friendly shape
+// Response serializer — moves mapped to order-friendly shape
 // ---------------------------------------------------------------------------
 
 function toOrderResponse(move: Move) {

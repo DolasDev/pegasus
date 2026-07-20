@@ -80,7 +80,7 @@ export const TENANT_SCOPED_MODELS = new Set([
   // bypasses this extension — same precedent as the messaging forward job.
   'DeviceToken',
   'PushNotificationOutbox',
-  // ArchivedTrip (rejected/cancelled longhaul trip snapshots). The longhaul
+  // ArchivedTrip (rejected/canceled longhaul trip snapshots). The longhaul
   // cloud handlers read/write via the base client and pass tenantId explicitly
   // (the longhaul convention — same as trip-detail/trips-list), so the manual
   // scoping is what enforces isolation today. Listed here so any future access

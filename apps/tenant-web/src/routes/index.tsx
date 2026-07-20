@@ -88,7 +88,7 @@ export function DashboardPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Default (cloud Postgres) dashboard — unchanged behaviour.
+// Default (cloud Postgres) dashboard — unchanged behavior.
 // ---------------------------------------------------------------------------
 
 function CloudDashboard() {

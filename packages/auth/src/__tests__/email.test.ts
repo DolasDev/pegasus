@@ -12,7 +12,7 @@ describe('normalizeEmail', () => {
     expect(normalizeEmail('\tUser@Example.com\n')).toBe('user@example.com')
   })
 
-  it('leaves an already-normalised address unchanged', () => {
+  it('leaves an already-normalized address unchanged', () => {
     expect(normalizeEmail('user@example.com')).toBe('user@example.com')
   })
 })

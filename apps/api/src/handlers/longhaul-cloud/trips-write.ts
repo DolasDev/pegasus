@@ -13,7 +13,7 @@
 //      sync), and re-read the trip. The proxy wrapped the two updates in a
 //      knex transaction — we use the in-SQL transaction (Unit 0).
 //   #9 POST  /trips/:id/cancel  — 404 if missing; 403 if status_id >= 4
-//      (== TripStatus_id; cancelling after in-progress is disallowed). Then,
+//      (== TripStatus_id; canceling after in-progress is disallowed). Then,
 //      atomically: touch + DELETE the trip's activities and set
 //      internal_status='canceled'.
 //   #8 PATCH /trips/:id/summary — RECOMPUTES the trip's roll-up from its
@@ -233,7 +233,7 @@ export const longhaulTripCancelHandler: Handler<AppEnv> = async (c) => {
     if ((trip.TripStatus_id ?? 0) >= 4) {
       return c.json(
         {
-          error: 'Cancelling trip after in-progress status is not allowed',
+          error: 'Canceling trip after in-progress status is not allowed',
           code: 'VALIDATION_ERROR',
           correlationId,
         },

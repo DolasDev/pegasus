@@ -25,7 +25,17 @@ vi.mock('@tanstack/react-router', () => ({
   Link: (props: any) => {
     tanstackLinkSpy(props)
     // Render an anchor so consumers can find it via DOM queries.
-    return <a data-testid="tanstack-link" href={typeof props.to === 'string' ? props.to : ''} className={props.className} style={props.style} onClick={props.onClick}>{props.children}</a>
+    return (
+      <a
+        data-testid="tanstack-link"
+        href={typeof props.to === 'string' ? props.to : ''}
+        className={props.className}
+        style={props.style}
+        onClick={props.onClick}
+      >
+        {props.children}
+      </a>
+    )
   },
   useLocation: () => tanstackLocationSpy(),
   useNavigate: () => tanstackNavigateSpy,
@@ -71,9 +81,7 @@ describe('translatePath', () => {
   })
 
   it('rewrites legacy /trip/:id with query string', () => {
-    expect(translatePath('/trip/abc123?tab=stops')).toBe(
-      '/driver-planning/trips/abc123?tab=stops'
-    )
+    expect(translatePath('/trip/abc123?tab=stops')).toBe('/driver-planning/trips/abc123?tab=stops')
   })
 
   it('prefixes /planning paths', () => {
@@ -81,9 +89,7 @@ describe('translatePath', () => {
   })
 
   it('prefixes nested /planning paths with query string', () => {
-    expect(translatePath('/planning/board?week=2')).toBe(
-      '/driver-planning/planning/board?week=2'
-    )
+    expect(translatePath('/planning/board?week=2')).toBe('/driver-planning/planning/board?week=2')
   })
 
   it('prefixes /trips listing path', () => {
@@ -128,7 +134,7 @@ describe('Link', () => {
     const { getByTestId } = render(
       <Link to="/planning" className="nav-link" style={{ color: 'red' }}>
         Planning
-      </Link>
+      </Link>,
     )
     const anchor = getByTestId('tanstack-link')
     expect(anchor).toHaveTextContent('Planning')
@@ -141,7 +147,7 @@ describe('Link', () => {
     const { getByTestId } = render(
       <Link to="/" onClick={onClick}>
         Home
-      </Link>
+      </Link>,
     )
     getByTestId('tanstack-link').click()
     expect(onClick).toHaveBeenCalledTimes(1)
@@ -151,7 +157,7 @@ describe('Link', () => {
 // ---- useLocation ------------------------------------------------------------
 
 describe('useLocation', () => {
-  it('returns pathname/hash and serialises search-object to a string', () => {
+  it('returns pathname/hash and serializes search-object to a string', () => {
     tanstackLocationSpy.mockReturnValue({
       pathname: '/driver-planning/trips',
       search: { status: 'open', tab: 'list' },

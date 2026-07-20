@@ -441,7 +441,7 @@ def resource_reference_integration_config() -> str:
         "## Working-directory files\n\n"
         "- ``mapping.json`` (required) — native payload → canonical, output-shaped DSL. "
         "Schema: ``GET /api/v1/integrations/mapping-schema``.\n"
-        "- ``rules.json`` (required) — behavioural rules (decision table). Ops: "
+        "- ``rules.json`` (required) — behavioral rules (decision table). Ops: "
         "``eq, ne, gt, gte, lt, lte, in, nin``. Use ``nin`` for 'must be one of a set' "
         "(``{fact: brandPresent, op: eq, value: true}`` AND "
         "``{fact: brand, op: nin, value: [AVL,NVL]}``).\n"

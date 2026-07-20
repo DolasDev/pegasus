@@ -85,7 +85,7 @@ ingressHandler.post('/integrations/:integrationId/events', async (c) => {
   if (!cred) return c.json({ error: 'Invalid or expired token' }, 401)
   const tenantId = cred.tenantId
 
-  // 2. Load the tenant's published inbound behaviour off its IntegrationConfig.
+  // 2. Load the tenant's published inbound behavior off its IntegrationConfig.
   const configRow = await rootDb.integrationConfig.findFirst({
     where: { integrationId, tenantId, status: 'PUBLISHED' },
     select: { inbound: true },
@@ -279,7 +279,7 @@ ingressManagementHandler.delete(
 )
 
 // POST /integrations/:integrationId/ingress/test — side-effect-free dry-run of
-// the tenant's published `inbound` behaviour against a sample body. Reuses the
+// the tenant's published `inbound` behavior against a sample body. Reuses the
 // exact validation/dedup/ack helpers the public endpoint uses, but persists
 // NOTHING and emits NO domain event. Confirms "is my config correct" without a
 // live partner delivery. Tenant-scoped db (c.get('db')), not the root db.

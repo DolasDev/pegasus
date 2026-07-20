@@ -44,7 +44,7 @@ export type IntegrationConfigRow = {
   externalShape: Prisma.JsonValue | null
   /** Canonical → external projection (0020). Null ⇒ identity. */
   externalMapping: Prisma.JsonValue | null
-  /** Inbound (ingress) behaviour block (0021). Null ⇒ generic ack. */
+  /** Inbound (ingress) behavior block (0021). Null ⇒ generic ack. */
   inbound: Prisma.JsonValue | null
   createdAt: Date
 }
@@ -94,7 +94,7 @@ export interface PublishConfigInput {
   externalShape?: Prisma.InputJsonValue
   /** Canonical → external projection (0020). Omit ⇒ identity. */
   externalMapping?: Prisma.InputJsonValue
-  /** Inbound (ingress) behaviour block (0021). Omit ⇒ generic ack. */
+  /** Inbound (ingress) behavior block (0021). Omit ⇒ generic ack. */
   inbound?: Prisma.InputJsonValue
 }
 

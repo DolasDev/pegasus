@@ -212,7 +212,7 @@ workflowInternalHandler.post(
       logger.warn('broker.token_denied_cross_tenant', { executionId })
       return c.json({ error: 'execution not found', code: 'NOT_FOUND' }, 404)
     }
-    // Terminal executions don't get fresh tokens issued — defence-in-depth
+    // Terminal executions don't get fresh tokens issued — defense-in-depth
     // against a late retry from a worker that lost track of state.
     if (execution.status !== 'QUEUED' && execution.status !== 'RUNNING') {
       return c.json({ error: 'execution not in an issuable state', code: 'NOT_FOUND' }, 404)
@@ -235,7 +235,7 @@ workflowInternalHandler.post(
 
     // Belt-and-braces: tell anything between us and the worker not to cache
     // the body. There SHOULDN'T be a cache in the path (Lambda → ALB →
-    // worker), but defence-in-depth costs nothing.
+    // worker), but defense-in-depth costs nothing.
     c.header('Cache-Control', 'no-store')
     return c.json({ token })
   },
@@ -394,7 +394,7 @@ workflowInternalHandler.patch(
 // it lists the tenant's `executable: true` workflows together with the
 // integrity digest recorded at finalize and a short-lived presigned GET URL
 // per artifact. The runner re-hashes each download against `artifactSha256`
-// before unpacking (the Unit 6 TOCTOU defence); rows without a digest are
+// before unpacking (the Unit 6 TOCTOU defense); rows without a digest are
 // excluded here because the runner could never verify them.
 //
 // Tenant confinement (same posture as the other two endpoints): a `wbk_`

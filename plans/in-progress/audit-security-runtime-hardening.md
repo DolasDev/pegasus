@@ -195,7 +195,7 @@ for h in pegasus-qa.dolas.dev admin.<qa-admin-domain> api.pegasus-qa.dolas.dev; 
 cd apps/api && npx vitest run src/lib/__tests__/prisma-tenant-isolation.test.ts src/__tests__/db-access-guard.test.ts
 # expect: schema-sync + guard tests PASS (not skipped) with DATABASE_URL unset
 
-# 6. Full isolation suite against local Postgres (unchanged behaviour):
+# 6. Full isolation suite against local Postgres (unchanged behavior):
 cd apps/api && DATABASE_URL=postgresql://pegasus:pegasus@localhost:5432/pegasus?schema=public npx vitest run src/lib/__tests__/prisma-tenant-isolation.test.ts
 
 # 7. Infra tests + snapshots updated:

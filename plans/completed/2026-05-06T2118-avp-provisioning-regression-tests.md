@@ -88,7 +88,7 @@ logic errors — no more "AUTHZ_ERROR, check CloudWatch."
       Implementation note: the existing `api-stack.test.ts` uses
       `bundling-stacks: []` to skip bundling for speed. This new test
       explicitly *enables* bundling and accepts the ~3-5s synth latency.
-      Mark with `it.concurrent` so it doesn't serialise the rest of the
+      Mark with `it.concurrent` so it doesn't serialize the rest of the
       suite, and gate it behind an env var (`PEGASUS_RUN_BUNDLE_TESTS=1`)
       if the latency proves disruptive in local watch-mode runs.
 

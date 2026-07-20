@@ -228,7 +228,7 @@ export const handler: PreSignUpTriggerHandler = async (event) => {
   // (users.ts invite, admin/tenants.ts adminEmail), so a mismatch should not
   // arise from our own writes — but a pool is long-lived and this costs one
   // comparison, whereas trusting an undocumented filter costs a silent no-link.
-  // Comparing lowercased on both sides is right under either behaviour — a
+  // Comparing lowercased on both sides is right under either behavior — a
   // case-insensitive filter returning `Steve@…` for `steve@…` is the same person
   // and should link, while anything that is not this email is rejected.
   // -------------------------------------------------------------------------
@@ -285,7 +285,7 @@ export const handler: PreSignUpTriggerHandler = async (event) => {
   // is pairwise per application ID and unknowable ahead of a first sign-in, so
   // email is the only workable source attribute anyway.
   //
-  // The asserted email (not the normalised one) is the source value: it is what
+  // The asserted email (not the normalized one) is the source value: it is what
   // the IdP will assert on the next sign-in, and that is what Cognito matches.
   // -------------------------------------------------------------------------
   try {

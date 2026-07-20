@@ -319,7 +319,7 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
     expect(bob.deliveries.map((d) => d.activityId)).toEqual([200])
   })
 
-  it('normalises MSSQL bit booleans (0/1/null) to boolean in deliveries', async () => {
+  it('normalizes MSSQL bit booleans (0/1/null) to boolean in deliveries', async () => {
     findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
     executeSqlMock
       .mockResolvedValueOnce({ recordset: [planningRow()], rowsAffected: [] })
@@ -387,7 +387,7 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
     expect(body.data[0]!.confirmedAvailableDate).toBe('2026-06-20')
     expect(body.data[0]!.confirmedAvailableLocation).toBe('Austin, TX')
     expect(body.data[0]!.confirmedNotes).toBe('driver confirmed')
-    // Variant-B roster overrides — bit columns normalised to boolean.
+    // Variant-B roster overrides — bit columns normalized to boolean.
     expect(body.data[0]!.canada).toBe(true)
     expect(body.data[0]!.california).toBe(false)
     expect(body.data[0]!.rating).toBe(4.8)

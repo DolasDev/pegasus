@@ -109,7 +109,7 @@ describe('coerceRow', () => {
     expect(coerceRow(['1', 'oops'], mapping)?.rating).toBeNull()
   })
 
-  it('normalises dates to YYYY-MM-DD', () => {
+  it('normalizes dates to YYYY-MM-DD', () => {
     const mapping: ColumnMapping = ['driverId', 'confirmedDate']
     expect(coerceRow(['1', '2026-06-15'], mapping)?.confirmedDate).toBe('2026-06-15')
     expect(coerceRow(['1', 'June 15 2026'], mapping)?.confirmedDate).toBe('2026-06-15')

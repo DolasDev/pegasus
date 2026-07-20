@@ -124,7 +124,7 @@ jobs:
       #   `apps/api/src/lambda-document-converter.ts`, which transitively
       #   imports `@pegasus/domain`. Without dist on disk, esbuild fails with
       #   `Could not resolve "@pegasus/domain"`. The `npm run build --workspace`
-      #   form does not honour Turbo's `^build` topology, so domain was never
+      #   form does not honor Turbo's `^build` topology, so domain was never
       #   built before the bundle ran.
       #
       # Filters per component:
@@ -256,7 +256,7 @@ jobs:
           TARGET: ${{ steps.target.outputs.target }}
         run: npm run deploy:ci
 
-      - name: Summarise outputs
+      - name: Summarize outputs
         if: success()
         run: |
           set -euo pipefail

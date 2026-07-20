@@ -69,7 +69,7 @@ class ProfileError(Exception):
 def credentials_path(*, for_write: bool = False) -> Path:
     """Resolve the credentials file path.
 
-    Reads honour, in order: the ``PEGASUS_CREDENTIALS_FILE`` override, a
+    Reads honor, in order: the ``PEGASUS_CREDENTIALS_FILE`` override, a
     project-local ``./.pegasus/credentials`` (if it exists), then the home file
     ``~/.pegasus/credentials``. Writes target the override if set, else the home
     file (never the project-local one implicitly — keeping secrets out of repos).
@@ -187,7 +187,7 @@ def write_profile(name: str, *, api_key: str, api_root: str | None = None) -> Pa
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
 
     # Read the existing profiles from the WRITE target specifically — not via
-    # load_profiles(), which honours the project-local read override and would
+    # load_profiles(), which honors the project-local read override and would
     # otherwise merge a different file's profiles into (and clobber) the home file.
     profiles = _load_profiles_from(path)
     table: dict[str, Any] = {"api_key": api_key}
