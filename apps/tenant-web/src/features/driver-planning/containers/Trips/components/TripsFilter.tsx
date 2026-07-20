@@ -136,7 +136,11 @@ function renderFilterComponentByType(type: any, args: any, common_state: any) {
           {...args}
           value={args.value || ''}
           onChange={(val: any) => {
-            args.onChange({ value: val?.value.id, label: val?.label })
+            // DriverTypeahead options carry the raw driver row as `value`, whose
+            // id column is `driver_id` (no `id`). Fall back to `id` for any
+            // caller that pre-normalises. Without this the filter value is
+            // `undefined` and the handler drops the driver predicate entirely.
+            args.onChange({ value: val?.value?.driver_id ?? val?.value?.id, label: val?.label })
           }}
         />
       )
