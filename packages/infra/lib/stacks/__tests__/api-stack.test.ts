@@ -1,4 +1,4 @@
-import { describe, it } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import * as cdk from 'aws-cdk-lib'
 import { Template, Match } from 'aws-cdk-lib/assertions'
 import * as ec2 from 'aws-cdk-lib/aws-ec2'
@@ -41,15 +41,15 @@ function synthApiStackWithCognito() {
 }
 
 describe('ApiStack — Lambda function', () => {
-  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + RingCentral token-refresh/sync/renew/capture/forward/buffer-purge/metrics + push forward + Trigger invoker)', () => {
+  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + tariff fuel-surcharge update + RingCentral token-refresh/sync/renew/capture/forward/buffer-purge/metrics + push forward + Trigger invoker)', () => {
     // HTTP API handler + AvpStoreCountFunction + SyncAvpPoliciesFunction +
-    // RingCentralTokenRefreshFunction + RingCentralSyncFunction +
-    // RingCentralRenewFunction + RingCentralCaptureFunction +
-    // RingCentralForwardFunction + RingCentralBufferPurgeFunction +
-    // RingCentralMetricsFunction + PushForwardFunction + the CDK Triggers
-    // framework's invoker Lambda.
+    // TariffFscUpdateFunction + RingCentralTokenRefreshFunction +
+    // RingCentralSyncFunction + RingCentralRenewFunction +
+    // RingCentralCaptureFunction + RingCentralForwardFunction +
+    // RingCentralBufferPurgeFunction + RingCentralMetricsFunction +
+    // PushForwardFunction + the CDK Triggers framework's invoker Lambda.
     const template = synthApiStack()
-    template.resourceCountIs('AWS::Lambda::Function', 12)
+    template.resourceCountIs('AWS::Lambda::Function', 13)
   })
 
   it('uses Node.js 20.x runtime', () => {
@@ -586,6 +586,54 @@ describe('ApiStack — AVP store-count metric emitter', () => {
         ]),
       },
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+describe('ApiStack — tariff fuel-surcharge cron', () => {
+  it('schedules the fuel-surcharge Lambda weekly via EventBridge', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::Events::Rule', {
+      ScheduleExpression: 'rate(7 days)',
+      State: 'ENABLED',
+      Description: Match.stringLikeRegexp('fuel-surcharge refresh from EIA'),
+    })
+  })
+
+  it('injects the EIA API-key secret name so the Lambda reads it at runtime', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: {
+        Variables: Match.objectLike({ EIA_API_KEY_SECRET_NAME: 'pegasus/dev/eia-api-key' }),
+      },
+    })
+  })
+
+  it('grants cloudwatch:PutMetricData scoped to the Pegasus/Rating namespace', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'cloudwatch:PutMetricData',
+            Effect: 'Allow',
+            Resource: '*',
+            Condition: {
+              StringEquals: { 'cloudwatch:namespace': 'Pegasus/Rating' },
+            },
+          }),
+        ]),
+      },
+    })
+  })
+
+  it('grants read on the EIA API-key secret (deploys before the secret exists)', () => {
+    const template = synthApiStack()
+    // The secret ARN is a Fn::Join object, so assert against the serialized
+    // policies: some IAM policy grants GetSecretValue on the eia-api-key secret.
+    const policies = JSON.stringify(template.findResources('AWS::IAM::Policy'))
+    expect(policies).toContain('secretsmanager:GetSecretValue')
+    expect(policies).toContain('pegasus/dev/eia-api-key')
   })
 })
 

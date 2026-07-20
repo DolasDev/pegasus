@@ -21,6 +21,7 @@ import {
   PEGASUS_AUTHZ_METRIC_NAMESPACE,
   PEGASUS_RINGCENTRAL_METRIC_NAMESPACE,
   PEGASUS_WORKFLOWS_METRIC_NAMESPACE,
+  PEGASUS_RATING_METRIC_NAMESPACE,
 } from '../metrics'
 
 export interface ApiStackProps extends cdk.StackProps {
@@ -1042,6 +1043,75 @@ export class ApiStack extends cdk.Stack {
       description:
         'Hourly trigger for the AVP policy-store count metric emitter (Pegasus/Authorization/PolicyStoreCount).',
       targets: [new eventsTargets.LambdaFunction(avpStoreCountFunction)],
+    })
+
+    // ---------------------------------------------------------------------------
+    // Weekly 400NG fuel-surcharge (Item 16) refresh from EIA.
+    //
+    // Fetches the latest national diesel price and upserts a TariffFuelSurcharge
+    // row (source EIA_AUTO). INERT until an operator creates the API-key secret
+    // `pegasus/<env>/eia-api-key` (a plain-string secret holding the EIA key);
+    // the Lambda reads it from Secrets Manager AT RUNTIME by name, so creating
+    // the secret activates the next weekly run with no redeploy. Scheduled for
+    // Wednesday (after EIA's Tuesday publish) so the current week's point is out.
+    // ---------------------------------------------------------------------------
+    const fscUpdateLogGroup = new logs.LogGroup(this, 'TariffFscUpdateLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+    cronLogGroupNames.push(fscUpdateLogGroup.logGroupName)
+
+    const eiaApiKeySecretName = `pegasus/${envName}/eia-api-key`
+    const fscUpdateFunction = new nodejs.NodejsFunction(this, 'TariffFscUpdateFunction', {
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: path.join(__dirname, '../../../../apps/api/src/lambda-tariff-fsc-update.ts'),
+      handler: 'handler',
+      environment: {
+        NODE_ENV: 'production',
+        DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+        LOG_LEVEL: 'INFO',
+        EIA_API_KEY_SECRET_NAME: eiaApiKeySecretName,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        externalModules: ['@aws-sdk/*'],
+      },
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(30),
+      logGroup: fscUpdateLogGroup,
+    })
+
+    dbSecret.grantRead(fscUpdateFunction)
+
+    // Read-only on the EIA key secret. fromSecretNameV2 grants on the
+    // wildcard-suffix ARN, which matches the secret once an operator creates it;
+    // the grant (and this whole cron) deploys fine before the secret exists —
+    // the Lambda no-ops on ResourceNotFound until it does.
+    secretsmanager.Secret.fromSecretNameV2(this, 'EiaApiKeySecret', eiaApiKeySecretName).grantRead(
+      fscUpdateFunction,
+    )
+
+    // PutMetricData can't be resource-scoped; narrow it to the Pegasus/Rating
+    // namespace via the condition key (same rationale as the AVP emitter above).
+    fscUpdateFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['cloudwatch:PutMetricData'],
+        resources: ['*'],
+        conditions: {
+          StringEquals: { 'cloudwatch:namespace': PEGASUS_RATING_METRIC_NAMESPACE },
+        },
+      }),
+    )
+
+    new events.Rule(this, 'TariffFscUpdateSchedule', {
+      // Weekly. Fixed-rate is the house style here; the exact weekday only
+      // affects which day of the week runs land on across deploys, and the
+      // upsert is idempotent per survey-week, so a 7-day rate is sufficient.
+      schedule: events.Schedule.rate(cdk.Duration.days(7)),
+      description:
+        'Weekly trigger for the 400NG fuel-surcharge refresh from EIA (Pegasus/Rating/FscUpdate*).',
+      targets: [new eventsTargets.LambdaFunction(fscUpdateFunction)],
     })
 
     // ---------------------------------------------------------------------------
