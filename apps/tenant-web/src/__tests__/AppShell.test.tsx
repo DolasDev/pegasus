@@ -194,6 +194,82 @@ describe('AppShell — Operations nav capability gate', () => {
   })
 })
 
+describe('AppShell — Operations submenu per-child role gate', () => {
+  // Children only render while the group is expanded, which happens when the
+  // current route is inside the section. Point it at Availability (reachable by
+  // every operations role) so the Planning/Trips children are in the DOM to
+  // assert on — mirrors how the highlight tests below open the group.
+  beforeEach(() => {
+    currentPathname = '/driver-planning'
+  })
+
+  it('shows Planning and Trips to operations_admin', () => {
+    mockPermissions = {
+      isLoading: false,
+      roles: ['operations_admin'],
+      capabilities: { longhaul: true },
+    }
+    render(
+      <AppShell>
+        <div />
+      </AppShell>,
+    )
+    expect(screen.getByText('Planning')).toBeInTheDocument()
+    expect(screen.getByText('Trips')).toBeInTheDocument()
+  })
+
+  it('shows Planning and Trips to tenant_admin', () => {
+    mockPermissions = {
+      isLoading: false,
+      roles: ['tenant_admin'],
+      capabilities: { longhaul: true },
+    }
+    render(
+      <AppShell>
+        <div />
+      </AppShell>,
+    )
+    expect(screen.getByText('Planning')).toBeInTheDocument()
+    expect(screen.getByText('Trips')).toBeInTheDocument()
+  })
+
+  it('hides Planning/Trips from long_distance_dispatch but keeps Availability and Shipments', () => {
+    mockPermissions = {
+      isLoading: false,
+      roles: ['long_distance_dispatch'],
+      capabilities: { longhaul: true },
+    }
+    render(
+      <AppShell>
+        <div />
+      </AppShell>,
+    )
+    // The Operations section and its unrestricted children stay visible…
+    expect(screen.getByText('Operations')).toBeInTheDocument()
+    expect(screen.getByText('Availability')).toBeInTheDocument()
+    expect(screen.getByText('Shipments')).toBeInTheDocument()
+    // …but the manager-only children are filtered out.
+    expect(screen.queryByText('Planning')).not.toBeInTheDocument()
+    expect(screen.queryByText('Trips')).not.toBeInTheDocument()
+  })
+
+  it('hides Planning/Trips from central_planning_dispatch as well', () => {
+    mockPermissions = {
+      isLoading: false,
+      roles: ['central_planning_dispatch'],
+      capabilities: { longhaul: true },
+    }
+    render(
+      <AppShell>
+        <div />
+      </AppShell>,
+    )
+    expect(screen.getByText('Operations')).toBeInTheDocument()
+    expect(screen.queryByText('Planning')).not.toBeInTheDocument()
+    expect(screen.queryByText('Trips')).not.toBeInTheDocument()
+  })
+})
+
 describe('AppShell — submenu active highlight follows the current route', () => {
   beforeEach(() => {
     mockPermissions = {
