@@ -20,6 +20,8 @@ import {
   TENANT_RUNNERS_RUNNING_METRIC_NAME,
   TENANT_RUNNER_COLD_START_SECONDS_METRIC_NAME,
   WORKFLOW_EXECUTION_RECONCILED_METRIC_NAME,
+  PEGASUS_RATING_METRIC_NAMESPACE,
+  FSC_UPDATE_FAILURE_METRIC_NAME,
 } from '../metrics'
 
 export interface MonitoringStackProps extends cdk.StackProps {
@@ -290,6 +292,32 @@ export class MonitoringStack extends cdk.Stack {
       treatMissingData: cloudwatch.TreatMissingData.BREACHING,
     })
     wire(avpStoreCountCriticalAlarm)
+
+    // ── Fuel-surcharge cron alarm ──────────────────────────────────────────────
+    // The weekly EIA fuel-surcharge refresh publishes FscUpdateFailure (Count)
+    // only when a run fails. The cron is inert until the EIA key secret exists,
+    // so NOT_BREACHING keeps this green until the feature is on AND a run breaks
+    // (rather than paging on no-data). Any failure in a 24h window pages —
+    // there's plenty of runway before the surcharge goes stale (weekly cadence).
+    const fscUpdateFailureMetric = new cloudwatch.Metric({
+      namespace: PEGASUS_RATING_METRIC_NAMESPACE,
+      metricName: FSC_UPDATE_FAILURE_METRIC_NAME,
+      statistic: 'Sum',
+      period: cdk.Duration.hours(24),
+    })
+    const fscUpdateFailureAlarm = new cloudwatch.Alarm(this, 'FscUpdateFailureAlarm', {
+      alarmName: 'pegasus-fsc-update-failure',
+      alarmDescription:
+        'The weekly EIA 400NG fuel-surcharge refresh failed (EIA fetch/parse/upsert). ' +
+        'The surcharge will go stale if this persists — check the EIA API key secret and the ' +
+        'lambda-tariff-fsc-update logs.',
+      metric: fscUpdateFailureMetric,
+      threshold: 0,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    })
+    wire(fscUpdateFailureAlarm)
 
     // ── RingCentral capture-health alarms ──────────────────────────────────────
     // Gauges published every 15 min by the ringcentral-metrics emitter

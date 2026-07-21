@@ -94,3 +94,24 @@ export const TENANT_RUNNERS_RUNNING_METRIC_NAME = 'TenantRunnersRunning'
  * for tasks that reached RUNNING within the last tick window. The accepted
  * Resolved-#1 budget is ~30–60 s. */
 export const TENANT_RUNNER_COLD_START_SECONDS_METRIC_NAME = 'TenantRunnerColdStartSeconds'
+
+// ---------------------------------------------------------------------------
+// Rating / tariff metrics.
+//
+// Emitted by the weekly EIA fuel-surcharge cron
+// (apps/api/src/lambda-tariff-fsc-update.ts), which repeats these strings
+// literally for the same apps/api-can't-import-@pegasus/infra reason as the
+// emitters above. Keep both sides in sync.
+//
+// Both are Count events published only on a run outcome (one datapoint per
+// run). The cron is inert until the EIA API-key secret exists, so the failure
+// alarm uses treatMissingData NOT_BREACHING — it stays green until the feature
+// is on AND a run actually fails, rather than paging on no-data.
+// ---------------------------------------------------------------------------
+
+export const PEGASUS_RATING_METRIC_NAMESPACE = 'Pegasus/Rating'
+
+/** Count of successful weekly fuel-surcharge refreshes (one per successful run). */
+export const FSC_UPDATE_SUCCESS_METRIC_NAME = 'FscUpdateSuccess'
+/** Count of failed weekly fuel-surcharge refreshes (EIA fetch/parse/upsert errors). */
+export const FSC_UPDATE_FAILURE_METRIC_NAME = 'FscUpdateFailure'
