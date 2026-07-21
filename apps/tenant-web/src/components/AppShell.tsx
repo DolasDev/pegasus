@@ -45,11 +45,27 @@ const OPERATIONS_PLANNING_ROLES = [
   'long_distance_dispatch',
   'central_planning_dispatch',
 ] as const
+// Planning and Trips are further restricted to the operations-manager persona
+// (operations_admin) plus tenant_admin — a subset of the roles that can see the
+// Operations section. The dispatch roles keep Availability/Shipments but not
+// these two children (see the per-child `roles` filter in NavGroup rendering).
+// Mirrors the route `beforeLoad` guards on these paths in router.tsx.
+const OPERATIONS_MANAGER_ROLES = ['tenant_admin', 'operations_admin'] as const
 
 const OPERATIONS_CHILDREN = [
   { to: '/driver-planning' as const, label: 'Availability', exact: true },
-  { to: '/driver-planning/planning' as const, label: 'Planning', exact: false },
-  { to: '/driver-planning/trips' as const, label: 'Trips', exact: false },
+  {
+    to: '/driver-planning/planning' as const,
+    label: 'Planning',
+    exact: false,
+    roles: OPERATIONS_MANAGER_ROLES,
+  },
+  {
+    to: '/driver-planning/trips' as const,
+    label: 'Trips',
+    exact: false,
+    roles: OPERATIONS_MANAGER_ROLES,
+  },
   { to: '/driver-planning/shipments' as const, label: 'Shipments', exact: false },
 ] as const
 
@@ -239,7 +255,10 @@ function NavItem({ to, label, icon: Icon, exact, collapsed }: NavItemProps) {
   )
 }
 
-type NavChild = { to: string; label: string; exact: boolean }
+// `roles` is optional: a child without it inherits the parent group's
+// visibility; a child with it is additionally hidden unless the user holds one
+// of the listed roles (e.g. Planning/Trips under Operations).
+type NavChild = { to: string; label: string; exact: boolean; roles?: readonly string[] }
 
 type NavGroupProps = {
   to: string
@@ -333,6 +352,12 @@ export function AppShell({ children }: AppShellProps) {
   const session = getSession()
   const perms = usePermissions()
   const userRoles = new Set(perms.roles)
+  // A submenu child with its own `roles` is hidden unless the user holds one of
+  // them; children without `roles` inherit the parent group's visibility. This
+  // lets a role that can see the Operations group still be denied specific
+  // children (Planning/Trips) without hiding the whole section.
+  const visibleChildren = (children: readonly NavChild[]) =>
+    children.filter((c) => !c.roles || c.roles.some((r) => userRoles.has(r)))
   const visibleNavItems = perms.isLoading
     ? []
     : NAV_ITEMS.filter((item) => {
@@ -424,7 +449,7 @@ export function AppShell({ children }: AppShellProps) {
                   icon={item.icon}
                   exact={item.exact}
                   collapsed={collapsed}
-                  items={item.children}
+                  items={visibleChildren(item.children)}
                 />
               ) : (
                 <NavItem
@@ -461,7 +486,7 @@ export function AppShell({ children }: AppShellProps) {
                       icon={item.icon}
                       exact={item.exact}
                       collapsed={collapsed}
-                      items={item.children}
+                      items={visibleChildren(item.children)}
                     />
                   ) : (
                     <NavItem

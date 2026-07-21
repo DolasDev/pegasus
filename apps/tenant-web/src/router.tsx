@@ -305,6 +305,13 @@ const driverPlanningRoute = createRoute({
   component: DriverPlanningLayout,
 })
 
+// Planning and Trips are restricted to the operations-manager persona
+// (operations_admin) plus tenant_admin. The broader dispatch roles that can see
+// the Operations section still reach Availability/Shipments, but not these two
+// screens — the sibling nav entries in AppShell carry the matching per-child
+// role filter, and server-side Cedar remains the source of truth.
+const OPERATIONS_MANAGER_ROLES = ['tenant_admin', 'operations_admin'] as const
+
 const dpAvailabilityRoute = createRoute({
   getParentRoute: () => driverPlanningRoute,
   path: '/',
@@ -314,18 +321,21 @@ const dpAvailabilityRoute = createRoute({
 const dpPlanningRoute = createRoute({
   getParentRoute: () => driverPlanningRoute,
   path: 'planning',
+  beforeLoad: requireRole(...OPERATIONS_MANAGER_ROLES),
   component: PlanningModuleLazy,
 })
 
 const dpTripsIndexRoute = createRoute({
   getParentRoute: () => driverPlanningRoute,
   path: 'trips',
+  beforeLoad: requireRole(...OPERATIONS_MANAGER_ROLES),
   component: TripsModuleLazy,
 })
 
 const dpTripDetailRoute = createRoute({
   getParentRoute: () => driverPlanningRoute,
   path: 'trips/$tripId',
+  beforeLoad: requireRole(...OPERATIONS_MANAGER_ROLES),
   component: TripDetailLazy,
 })
 
@@ -336,6 +346,7 @@ const dpTripDetailRoute = createRoute({
 const dpRejectedTripRoute = createRoute({
   getParentRoute: () => driverPlanningRoute,
   path: 'trips/rejected/$rejectedId',
+  beforeLoad: requireRole(...OPERATIONS_MANAGER_ROLES),
   component: TripDetailLazy,
 })
 
