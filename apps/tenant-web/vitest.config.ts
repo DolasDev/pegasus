@@ -16,7 +16,7 @@ export default defineConfig({
       // and @testing-library (which resolves from root via Node) share one instance.
       react: path.resolve(__dirname, '../../node_modules/react'),
       'react-dom': path.resolve(__dirname, '../../node_modules/react-dom'),
-      '@pegasus/domain': path.resolve(__dirname, '../domain/src/index.ts'),
+      '@pegasus/domain': path.resolve(__dirname, '../../packages/domain/src/index.ts'),
       '@': path.resolve(__dirname, './src'),
     },
   },

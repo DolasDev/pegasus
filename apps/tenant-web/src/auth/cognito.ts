@@ -41,16 +41,37 @@ export function getCognitoConfig(): CognitoConfig {
  * OIDC and SAML providers registered in the User Pool use the same parameter;
  * Cognito handles the protocol difference transparently.
  *
+ * `login_hint` names the account we actually want. Without it, an IdP with a
+ * cached browser session silently signs the user in as whoever it already has —
+ * so someone who typed a@acme.com but is signed in to Microsoft as b@acme.com
+ * gets authenticated as b, and only finds out when the pre-token Lambda rejects
+ * the mismatch (see PEGASUS_IDP_ACCOUNT_MISMATCH). Passing the hint makes the
+ * IdP target the requested account instead of guessing.
+ *
+ * Two things to know about the hint:
+ *   - Cognito forwards it to OIDC IdPs ONLY. SAML, Google, Apple, Amazon and
+ *     Facebook silently drop it. It is sent unconditionally anyway — a no-op on
+ *     those providers is cheaper than branching on provider type here, and the
+ *     mismatch check in pre-token.ts is the real guarantee either way.
+ *   - It is a HINT, not a constraint. An IdP may ignore it, and a tenant whose
+ *     roster email differs from the user's IdP username may see "we couldn't
+ *     find an account" from the IdP instead of a successful sign-in. That is a
+ *     louder failure than the silent wrong-account one it replaces, and such a
+ *     user could not have completed login anyway — pre-token.ts requires the
+ *     asserted email to match a roster row.
+ *
  * @param providerId   The Cognito identity provider name (must exactly match
  *                     the name registered in the User Pool).
  * @param codeChallenge  SHA-256 of the PKCE code verifier, base64url-encoded.
  * @param state          Random value for CSRF protection.
+ * @param loginHint      The email the user typed on the login form.
  */
 export function buildAuthorizeUrl(
   config: CognitoConfig,
   providerId: string,
   codeChallenge: string,
   state: string,
+  loginHint: string,
 ): string {
   const params = new URLSearchParams({
     response_type: 'code',
@@ -63,6 +84,7 @@ export function buildAuthorizeUrl(
     // Route directly to the specified IdP — no Hosted UI login form is shown.
     // Works identically for OIDC and SAML providers.
     identity_provider: providerId,
+    login_hint: normalizeEmail(loginHint),
   })
 
   return `${config.domain}/oauth2/authorize?${params.toString()}`

@@ -246,6 +246,25 @@ describe('CognitoStack — Tenant app client', () => {
       RefreshTokenValidity: thirtyDaysInMinutes,
     })
   })
+
+  it('registers /login/signed-out as a sign-out URL', () => {
+    // Leg one of the wrong-account recovery chain sends the user to Cognito's
+    // /logout with logout_uri=<origin>/login/signed-out. Cognito rejects any
+    // logout_uri that is not registered here, and it fails at the IdP redirect
+    // with no error_description — so an unregistered URL breaks recovery
+    // silently. See apps/tenant-web/src/auth/idp-signout.ts.
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      ClientName: 'tenant-app-client',
+      LogoutURLs: Match.arrayWith(['http://localhost:5173/login/signed-out']),
+    })
+  })
+
+  it('keeps /login registered as a sign-out URL', () => {
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      ClientName: 'tenant-app-client',
+      LogoutURLs: Match.arrayWith(['http://localhost:5173/login']),
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------

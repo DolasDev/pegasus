@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@pegasus/domain': path.resolve(__dirname, '../domain/src/index.ts'),
+      '@pegasus/domain': path.resolve(__dirname, '../../packages/domain/src/index.ts'),
       '@': path.resolve(__dirname, './src'),
     },
   },

@@ -5,6 +5,7 @@ import { RootLayout } from '@/routes/__root'
 import { LandingPage } from '@/routes/landing'
 import { LoginPage } from '@/routes/login'
 import { LoginCallbackPage } from '@/routes/login.callback'
+import { LoginSignedOutPage } from '@/routes/login.signed-out'
 import { AuthLayout } from '@/routes/_auth'
 import { authGuard } from '@/auth/guard'
 import { requireRole } from '@/auth/role-guard'
@@ -83,6 +84,14 @@ const loginCallbackRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login/callback',
   component: LoginCallbackPage,
+})
+
+// Landing point for Cognito's /logout during the wrong-account recovery chain.
+// Registered as a sign-out URL on the tenant app client (packages/infra).
+const loginSignedOutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/login/signed-out',
+  component: LoginSignedOutPage,
 })
 
 // ---------------------------------------------------------------------------
@@ -343,6 +352,7 @@ const routeTree = rootRoute.addChildren([
   landingRoute,
   loginRoute,
   loginCallbackRoute,
+  loginSignedOutRoute,
   authLayout.addChildren([
     indexRoute,
     movesIndexRoute,
