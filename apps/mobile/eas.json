@@ -1,6 +1,6 @@
 {
   "cli": {
-    "version": ">=13.2.0 <14.0.0",
+    "version": ">=21.0.0 <22.0.0",
     "appVersionSource": "remote"
   },
   "build": {
@@ -44,7 +44,7 @@
   "submit": {
     "production": {
       "android": {
-        "track": "production"
+        "track": "alpha"
       },
       "ios": {
         "appleId": "steve@yourcompany.com",
