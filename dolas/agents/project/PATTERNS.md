@@ -79,6 +79,17 @@ The marker is a deliberate "yes, the old code is already gone" sign-off — only
 - **All frontend HTTP calls go through `@pegasus/api-http`** (`createApiClient`). Never use raw `fetch()` for API calls in any frontend app. This ensures correlation-id injection, token attachment, and envelope unwrapping are consistent.
 - **PKCE and Cognito REST primitives** belong in `@pegasus/auth` (when extracted). App-specific flows (sign-in orchestration, token storage, redirect handling) stay in each app.
 
+## Password Fields (`PasswordInput`)
+
+Every password field should be a `PasswordInput`, never a bare `type="password"` input — it carries the show/hide eye toggle, the right-padding that keeps text clear of the icon, and the `aria-label`/`aria-pressed` wiring. The toggle is `type="button"` so it never submits the surrounding form, and each instance owns its own visibility so a "new / confirm" pair reveals independently.
+
+Each SPA has its own copy, because the two apps have different UI foundations and the component is small:
+
+- `apps/tenant-web/src/components/ui/password-input.tsx` — wraps the shadcn `Input`, uses `lucide-react`'s `Eye`/`EyeOff`.
+- `apps/admin-web/src/components/PasswordInput.tsx` — wraps a plain `<input>` and inlines its own SVG eye glyphs. admin-web has no icon library and no `cn` helper; **do not** add `lucide-react` there just for these icons (see CLAUDE.md → Dependency Management).
+
+The login screens (`routes/login.tsx` in both apps) use it throughout. The other `type="password"` fields — tenant-web's `settings.workflows`, `settings.integrations.ringcentral`, and `sso-config` secret entry — have not been converted yet and are the obvious next users.
+
 ## Test Coverage Policy
 
 Coverage is collected on **`packages/domain`** and **`apps/api`** only — these are the packages where untested logic directly causes data corruption or incorrect business outcomes. Coverage is deliberately **not** collected on `packages/infra` (CDK stack tests use assertion checks against synthesised CloudFormation, where line-coverage percentages are meaningless), `apps/admin-web`, or `apps/tenant-web` (the SPAs' coverage was never consumed and the infrastructure to gate on it was never wired into CI). Do not add `@vitest/coverage-v8` back to those three packages, and do not add a `coverage:` block to their `vitest.config.ts` files, without first establishing a pipeline that enforces and gates on the numbers. Self-ratcheting thresholds (`thresholds` + `autoUpdate: true`) are configured on `packages/domain` and `apps/api`: each runs `vitest run --coverage`, so the existing CI `turbo run test` gate fails any PR that drops coverage below the committed high-water mark, and `autoUpdate` ratchets the floor upward as coverage improves. The thresholds advance only when a developer runs coverage locally and commits the updated `vitest.config.ts` (CI cannot push the rewrite); if a baseline ever proves too optimistic and blocks the queue, lower the committed numbers a point rather than disabling the gate.
