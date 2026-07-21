@@ -6,33 +6,40 @@ This guide provides step-by-step instructions for building and deploying the Mov
 
 ---
 
-## Automated release pipeline (canonical path)
+## Release pipeline (canonical path)
 
-Day-to-day, releases are **automated** — you do not run `eas build`/`eas submit`
-by hand. The `.github/workflows/mobile-release.yml` workflow is the canonical
-path; the manual EAS commands below are the fallback / first-time bootstrap.
+Releases are cut **manually and deliberately** via the
+`.github/workflows/mobile-release.yml` workflow — you don't run `eas build`/`eas
+submit` by hand, but you do decide when a release happens. The manual EAS
+commands below are the fallback / first-time bootstrap.
 
 **How it works**
 
-- **Trigger** — a push to `main` that touches `apps/mobile/**` or a shared
-  package the app bundles (`packages/api-http|auth|domain|theme`). Also runnable
-  on demand from the Actions tab (`workflow_dispatch`: choose `env`, `platform`,
-  and a `skip_submit` toggle for build-only runs).
-- **Android** — EAS builds a production AAB, then `eas submit` lands it on the
-  Google Play **production** track. Both jobs run under the `prod` GitHub
-  environment, so the required-reviewer rule gates the release: **one approval
-  per run** unblocks build + submit. Nothing reaches Play without that approval.
-- **iOS** — an unsigned **simulator** build runs as a CI signal only (device
-  builds need Apple Developer credentials we don't have yet). It's decoupled
-  from the Android submit, so an iOS break never blocks a Play release.
-- **Config** — API URL + Cognito values are resolved from SSM into
-  `apps/mobile/.env` at build time (`.github/actions/mobile-eas-config`), so the
-  built app points at the target environment's backend.
+- **Trigger** — `workflow_dispatch` only (Actions tab → "Mobile release" → Run
+  workflow): choose `env` (which backend config to bake in), `platform`
+  (android / ios / all), and `submit` (Android: auto-submit after build).
+  Dispatching **is** the release gate — there is no auto-on-push, deliberately:
+  the app bundles shared packages, so pushes would fire on unrelated backend
+  merges, and EAS free-tier queues outlive a synchronous CI job.
+- **Android** — `eas build --no-wait --auto-submit` hands the AAB build **and**
+  the Google Play submit to EAS's servers and returns immediately. So the CI run
+  confirms the build was _accepted_, not that it finished — watch progress and
+  the final result on the **EAS dashboard**
+  (`expo.dev/accounts/dolas.dev/projects/moving-storage-driver/builds`). The
+  submit lands on the **Closed testing** (`alpha`) track (interim until Google
+  grants production access; then flip `submit.production.android.track` to
+  `production`).
+- **iOS** — an unsigned **simulator** build, on-demand signal only (device
+  builds need Apple Developer credentials we don't have yet).
+- **Config** — API URL + Cognito are resolved from SSM into `apps/mobile/.env`
+  at build time (`.github/actions/mobile-eas-config`), and the EAS build runs on
+  **Node 24** (`eas.json` build profiles pin `node` — EAS's default Node 20
+  fails the repo's `engines` requirement at `npm ci`).
 - **Versioning** — `eas.json` uses `cli.appVersionSource: "remote"` +
   `production.autoIncrement: true`; EAS owns a monotonic Android `versionCode`.
   The user-facing `version` in `app.json` is still bumped **manually** for each
   marketing release.
-- **Staged rollout** — `eas submit` lands the release; set the rollout
+- **Staged rollout** — the submit lands the release; set the rollout
   **percentage** with the Play Console rollout slider afterward (full
   API-driven staged rollout is a deferred follow-up).
 
