@@ -11,11 +11,12 @@ name: Mobile release
 # apps/mobile/.env at build time by the ./.github/actions/mobile-eas-config
 # composite.
 #
-# iOS — an unsigned *simulator* build only (no Apple Developer credentials
-# exist yet, which blocks device builds, not just submission). It is a CI
-# signal, decoupled from the Android submit chain via the `needs:` graph so a
-# simulator break can never block a Play release. Device build + App Store
-# submit are a documented follow-up (apps/mobile/DEPLOYMENT_GUIDE.md).
+# iOS — a manual, on-demand unsigned *simulator* build only, never on the auto
+# push path (see the resolve job). It's a deferred platform (no Apple Developer
+# credentials → no device build, no App Store submit) and the simulator build
+# currently errors in EAS's iOS dependency-install phase, so it stays opt-in via
+# workflow_dispatch (platform=all|ios) until iOS work resumes. Device build +
+# App Store submit are a documented follow-up (apps/mobile/DEPLOYMENT_GUIDE.md).
 #
 # Why a plain path filter (not deploy.yml's `last-deploy` watermark): mobile is
 # a single independent component with no cross-component cancellation risk, and
@@ -97,7 +98,16 @@ jobs:
           fi
           do_android=false; do_ios=false
           [[ "$platform" == "all" || "$platform" == "android" ]] && do_android=true
-          [[ "$platform" == "all" || "$platform" == "ios" ]] && do_ios=true
+          # iOS is a manual, on-demand signal only. It's a deferred platform
+          # (no Apple Developer credentials → no device build, no App Store
+          # submit) and the unsigned simulator build currently errors in EAS's
+          # iOS dependency-install phase. Keeping it OFF the automatic push path
+          # means mobile merges stay Android-focused and green; run it
+          # deliberately via workflow_dispatch (platform=all|ios) when actively
+          # working on iOS and able to debug the EAS iOS environment.
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            [[ "$platform" == "all" || "$platform" == "ios" ]] && do_ios=true
+          fi
           # Submit only a production Android build, and only when not skipped.
           do_submit=false
           if [[ "$do_android" == "true" && "$target_env" == "prod" && "$skip_submit" != "true" ]]; then
