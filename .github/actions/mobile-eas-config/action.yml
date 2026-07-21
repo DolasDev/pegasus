@@ -44,4 +44,6 @@ runs:
 
     - name: Install EAS CLI
       shell: bash
-      run: npm install -g eas-cli
+      # Pin the major to match eas.json cli.version (>=21 <22) so an upstream
+      # eas-cli major bump can't silently break builds mid-pipeline.
+      run: npm install -g eas-cli@^21.0.0

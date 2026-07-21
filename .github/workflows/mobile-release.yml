@@ -186,7 +186,7 @@ jobs:
         with:
           node-version-file: '.nvmrc'
       - name: Install EAS CLI
-        run: npm install -g eas-cli
+        run: npm install -g eas-cli@^21.0.0
       - name: EAS submit (Android → Play production)
         working-directory: apps/mobile
         env:
