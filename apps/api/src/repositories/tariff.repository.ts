@@ -58,6 +58,39 @@ export async function findActiveTariffVersion(
   return version
 }
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000
+
+/**
+ * Whole days of remaining ACTIVE coverage for `tariffCode` at `atDate`: the
+ * active version's `effectiveTo` minus `atDate`, floored to whole days. Returns
+ * `0` when NO version is ACTIVE over `atDate` — a real lapse, deliberately not
+ * distinguished from "expires today" so the coverage-days alarm (< 45) fires on
+ * a lapse rather than seeing a gap. Never negative (the ACTIVE window has
+ * `effectiveTo > atDate`, but the floor is clamped defensively).
+ *
+ * Unlike `findActiveTariffVersion`, this does NOT throw on no-active-version:
+ * it is the monitoring path, where "nothing active" is a value to publish (0),
+ * not an error to surface.
+ */
+export async function getActiveTariffCoverageDays(
+  db: Db,
+  tariffCode: string,
+  atDate: Date = new Date(),
+): Promise<number> {
+  const version = await db.tariffVersion.findFirst({
+    where: {
+      tariffCode,
+      status: 'ACTIVE',
+      effectiveFrom: { lte: atDate },
+      effectiveTo: { gt: atDate },
+    },
+    orderBy: { effectiveFrom: 'desc' },
+  })
+  if (!version) return 0
+  const msRemaining = version.effectiveTo.getTime() - atDate.getTime()
+  return Math.max(0, Math.floor(msRemaining / MS_PER_DAY))
+}
+
 // ---------------------------------------------------------------------------
 // 400NG rate-cell resolution
 // ---------------------------------------------------------------------------

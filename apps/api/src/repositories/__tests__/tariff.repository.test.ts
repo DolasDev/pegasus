@@ -29,6 +29,7 @@ import {
   checksumTariffImport,
   upsertTariffFuelSurcharge,
   listTariffFuelSurcharges,
+  getActiveTariffCoverageDays,
 } from '../tariff.repository'
 
 const hasDb = Boolean(process.env['DATABASE_URL'])
@@ -100,6 +101,34 @@ describe.skipIf(!hasDb)('findActiveTariffVersion', () => {
     await expect(findActiveTariffVersion(db, 'NOT_A_TARIFF', PICKUP_DATE)).rejects.toThrow(
       DomainError,
     )
+  })
+})
+
+describe.skipIf(!hasDb)('getActiveTariffCoverageDays', () => {
+  // Seed ACTIVE window is 2026-05-15 → 2027-05-15 (see prisma/seed.ts).
+  const SEED_EFFECTIVE_TO = new Date('2027-05-15T00:00:00.000Z')
+
+  it('returns whole days until the active version’s effectiveTo', async () => {
+    const atDate = new Date('2026-07-21T00:00:00.000Z')
+    const expected = Math.floor((SEED_EFFECTIVE_TO.getTime() - atDate.getTime()) / 86_400_000)
+    await expect(getActiveTariffCoverageDays(db, '400NG', atDate)).resolves.toBe(expected)
+    expect(expected).toBe(298) // guards the fixture window against drift
+  })
+
+  it('floors a partial day toward the expiry (never rounds up)', async () => {
+    // 44 days + 23h before expiry still reports 44, so the < 45 alarm can fire.
+    const atDate = new Date('2027-03-31T01:00:00.000Z') // 44d 23h before 2027-05-15
+    await expect(getActiveTariffCoverageDays(db, '400NG', atDate)).resolves.toBe(44)
+  })
+
+  it('returns 0 (not an error) when no version is active over the date', async () => {
+    await expect(
+      getActiveTariffCoverageDays(db, '400NG', new Date('2099-01-01T00:00:00.000Z')),
+    ).resolves.toBe(0)
+  })
+
+  it('returns 0 for an unknown tariffCode', async () => {
+    await expect(getActiveTariffCoverageDays(db, 'NOT_A_TARIFF')).resolves.toBe(0)
   })
 })
 

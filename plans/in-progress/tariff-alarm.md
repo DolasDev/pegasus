@@ -1,6 +1,18 @@
 # Tariff coverage-check cron (`lambda-tariff-check`)
 
-Status: **not started.** The remaining half of the old PR4 update-mechanism plan
+> **Deviation from plan — cron cadence is DAILY, not monthly.** The plan paired a
+> `rate(30 days)` schedule with a `treatMissingData: BREACHING` coverage alarm
+> ("a missing gauge means the cron isn't running"). Those two are incompatible:
+> a CloudWatch **alarm period caps at 1 day**, so a monthly emitter reads
+> "missing" ~29 of every 30 days and BREACHING would page **every day**. The fix
+> is to emit **daily** (`rate(1 day)`) — the check is a single indexed DB read, so
+> daily is negligible, and it makes BREACHING correct (a genuinely missing daily
+> datapoint = the cron is down). Daily also detects the < 45-day crossing within
+> a day instead of up to a month late. `rate(1 day)` is unique among the stack's
+> schedules, so no Description-disambiguation is needed for the rule (though it
+> has a clear one anyway).
+
+Status: **implemented on `feat/tariff-alarm`.** The remaining half of the old PR4 update-mechanism plan
 (`plans/todo/rating-engine-pr4-update-mechanism.md`). The **FSC-update** half shipped
 in #488 (`apps/api/src/lambda-tariff-fsc-update.ts` + its infra + `FscUpdateFailureAlarm`);
 this is the **coverage/staleness monitor** that was intentionally deferred. See
@@ -24,44 +36,44 @@ becomes reachable.
 Bare `handler(): Promise<void>` like `lambda-tariff-fsc-update.ts` / `lambda-avp-store-count.ts`.
 Uses the `db` singleton + a module-level `CloudWatchClient`.
 
-- [ ] **Coverage-days gauge (reliable, DB-only).** Find the ACTIVE 400NG version covering
+- [x] **Coverage-days gauge (reliable, DB-only).** Find the ACTIVE 400NG version covering
       "now" (reuse/extend `tariff.repository.ts`), compute
       `daysRemaining = floor((effectiveTo - now) / 1 day)`, publish a `TariffCoverageDays`
       **gauge** (Maximum) to `Pegasus/Rating`. Publish `0` (not a gap) when nothing is
       ACTIVE, so the alarm fires on lapse rather than going missing-data. Consider a
       repository helper `getActiveTariffCoverageDays(db, tariffCode)` so the math is unit-tested.
-- [ ] **Best-effort artifact probe (optional, never fails the run).** GET the next-rate-year
+- [x] **Best-effort artifact probe (optional, never fails the run).** GET the next-rate-year
       USTRANSCOM Baseline Rates URL pattern; **expect it to fail** (WAF-gated). If it ever
       unexpectedly `200`s, log at WARN and emit `TariffArtifactDetected=1`. **No auto-import**
       — this is only a "hey, the new tariff might be fetchable now" signal. Wrap so a
       probe error is swallowed (the coverage gauge is the reliable duty).
-- [ ] Metric constants: add `TARIFF_COVERAGE_DAYS_METRIC_NAME` (+ `TARIFF_ARTIFACT_DETECTED_METRIC_NAME`)
+- [x] Metric constants: add `TARIFF_COVERAGE_DAYS_METRIC_NAME` (+ `TARIFF_ARTIFACT_DETECTED_METRIC_NAME`)
       to `packages/infra/lib/metrics.ts` under `PEGASUS_RATING_METRIC_NAMESPACE` (already added in #488),
       duplicated literally in the Lambda per the file's apps/api-can't-import-@pegasus/infra convention.
 
 ### `packages/infra/lib/stacks/api-stack.ts`
 
-- [ ] New cron block modeled on the `TariffFscUpdateFunction` block (256MB / 30s, log group →
+- [x] New cron block modeled on the `TariffFscUpdateFunction` block (256MB / 30s, log group →
       `cronLogGroupNames`, `dbSecret.grantRead`, scoped `cloudwatch:PutMetricData` on
       `Pegasus/Rating`). Schedule **monthly** — `events.Schedule.rate(cdk.Duration.days(30))`
       (house style is `rate`, not cron expressions). No secret needed (DB + a public probe).
 
 ### `packages/infra/lib/stacks/monitoring-stack.ts`
 
-- [ ] `TariffCoverageDaysAlarm` — `TariffCoverageDays < 45` (`LESS_THAN_THRESHOLD`),
-      `treatMissingData: BREACHING` (unlike the FSC failure alarm's NOT_BREACHING — here a
-      _missing_ gauge means the cron isn't running, which is itself alarm-worthy once the
+- [x] `TariffCoverageDaysAlarm` — `TariffCoverageDays < 45` (`LESS_THAN_THRESHOLD`),
+      `treatMissingData: BREACHING` (unlike the FSC failure alarm's NOT*BREACHING — here a
+      \_missing* gauge means the cron isn't running, which is itself alarm-worthy once the
       feature is on). Wire via the existing `wire(alarm)`/`alarmTopic`. 45 days ≈ a comfortable
       window to download + import the next workbook before rating breaks.
 
 ### Tests
 
-- [ ] Handler unit test (mock db/repo + CloudWatch + fetch): coverage-days math (incl. the
+- [x] Handler unit test (mock db/repo + CloudWatch + fetch): coverage-days math (incl. the
       no-active-version → 0 case), probe stays best-effort (a probe throw doesn't fail the run
       or block the gauge), metric emission.
-- [ ] Repository test for the coverage helper (real DB, DATABASE_URL-gated) against the seed
+- [x] Repository test for the coverage helper (real DB, DATABASE_URL-gated) against the seed
       version's window.
-- [ ] CDK assertion tests: new function (256/30) + monthly rule (disambiguate by Description,
+- [x] CDK assertion tests: new function (256/30) + monthly rule (disambiguate by Description,
       since `rate(30 days)` may collide) + scoped IAM + the alarm props/wiring. **Bump the
       hardcoded resource counts** — `AWS::Lambda::Function` (13 → 14 in
       `api-stack.test.ts`) and `AWS::CloudWatch::Alarm` (18 → 19, plus the

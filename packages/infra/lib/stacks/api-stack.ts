@@ -1115,6 +1115,68 @@ export class ApiStack extends cdk.Stack {
     })
 
     // ---------------------------------------------------------------------------
+    // Tariff coverage-check cron
+    //
+    // Daily DB-only staleness monitor for the 400NG tariff. Publishes a
+    // TariffCoverageDays gauge (days until the active version's effectiveTo, 0
+    // on lapse) so the MonitoringStack alarm pages ~45 days before rating would
+    // break, plus a best-effort probe of next year's (WAF-gated) USTRANSCOM
+    // artifact. No secret needed — a DB read and a public HTTP probe. Runs
+    // DAILY, not monthly: the coverage alarm treats a missing gauge as BREACHING
+    // (a missing datapoint = the cron is down), and a CloudWatch alarm period
+    // caps at 1 day, so the gauge must land at least daily to avoid paging on
+    // no-data. A single indexed read a day is negligible.
+    // ---------------------------------------------------------------------------
+    const tariffCheckLogGroup = new logs.LogGroup(this, 'TariffCheckLogGroup', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    })
+    cronLogGroupNames.push(tariffCheckLogGroup.logGroupName)
+
+    const tariffCheckFunction = new nodejs.NodejsFunction(this, 'TariffCheckFunction', {
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: path.join(__dirname, '../../../../apps/api/src/lambda-tariff-check.ts'),
+      handler: 'handler',
+      environment: {
+        NODE_ENV: 'production',
+        DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
+        LOG_LEVEL: 'INFO',
+      },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        externalModules: ['@aws-sdk/*'],
+      },
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(30),
+      logGroup: tariffCheckLogGroup,
+    })
+
+    dbSecret.grantRead(tariffCheckFunction)
+
+    // PutMetricData can't be resource-scoped; narrow it to the Pegasus/Rating
+    // namespace via the condition key (same rationale as the FSC emitter above).
+    tariffCheckFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['cloudwatch:PutMetricData'],
+        resources: ['*'],
+        conditions: {
+          StringEquals: { 'cloudwatch:namespace': PEGASUS_RATING_METRIC_NAMESPACE },
+        },
+      }),
+    )
+
+    new events.Rule(this, 'TariffCheckSchedule', {
+      // Daily — see the block comment: the coverage-days alarm is BREACHING-on-
+      // missing and a CloudWatch alarm period maxes at 1 day, so a fresh gauge
+      // must land every day.
+      schedule: events.Schedule.rate(cdk.Duration.days(1)),
+      description:
+        'Daily 400NG tariff coverage-staleness check (Pegasus/Rating/TariffCoverageDays).',
+      targets: [new eventsTargets.LambdaFunction(tariffCheckFunction)],
+    })
+
+    // ---------------------------------------------------------------------------
     // RingCentral credential health-check cron
     //
     // With per-tenant JWT auth there is no refresh token to rotate; this cron

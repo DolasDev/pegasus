@@ -41,15 +41,15 @@ function synthApiStackWithCognito() {
 }
 
 describe('ApiStack — Lambda function', () => {
-  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + tariff fuel-surcharge update + RingCentral token-refresh/sync/renew/capture/forward/buffer-purge/metrics + push forward + Trigger invoker)', () => {
+  it('creates the expected Lambda functions (HTTP API + AVP store-count + AVP policy reconciler + tariff fuel-surcharge update + tariff coverage-check + RingCentral token-refresh/sync/renew/capture/forward/buffer-purge/metrics + push forward + Trigger invoker)', () => {
     // HTTP API handler + AvpStoreCountFunction + SyncAvpPoliciesFunction +
-    // TariffFscUpdateFunction + RingCentralTokenRefreshFunction +
+    // TariffFscUpdateFunction + TariffCheckFunction + RingCentralTokenRefreshFunction +
     // RingCentralSyncFunction + RingCentralRenewFunction +
     // RingCentralCaptureFunction + RingCentralForwardFunction +
     // RingCentralBufferPurgeFunction + RingCentralMetricsFunction +
     // PushForwardFunction + the CDK Triggers framework's invoker Lambda.
     const template = synthApiStack()
-    template.resourceCountIs('AWS::Lambda::Function', 13)
+    template.resourceCountIs('AWS::Lambda::Function', 14)
   })
 
   it('uses Node.js 20.x runtime', () => {
@@ -634,6 +634,52 @@ describe('ApiStack — tariff fuel-surcharge cron', () => {
     const policies = JSON.stringify(template.findResources('AWS::IAM::Policy'))
     expect(policies).toContain('secretsmanager:GetSecretValue')
     expect(policies).toContain('pegasus/dev/eia-api-key')
+  })
+})
+
+// ---------------------------------------------------------------------------
+describe('ApiStack — tariff coverage-check cron', () => {
+  it('schedules the coverage-check Lambda daily via EventBridge', () => {
+    const template = synthApiStack()
+    // rate(1 day) is unique among the stack's schedules, so match on it plus the
+    // description (the FSC cron above uses rate(7 days), so no collision).
+    template.hasResourceProperties('AWS::Events::Rule', {
+      ScheduleExpression: 'rate(1 day)',
+      State: 'ENABLED',
+      Description: Match.stringLikeRegexp('coverage-staleness check'),
+    })
+  })
+
+  it('grants cloudwatch:PutMetricData scoped to the Pegasus/Rating namespace', () => {
+    const template = synthApiStack()
+    template.hasResourceProperties('AWS::IAM::Policy', {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: 'cloudwatch:PutMetricData',
+            Effect: 'Allow',
+            Resource: '*',
+            Condition: {
+              StringEquals: { 'cloudwatch:namespace': 'Pegasus/Rating' },
+            },
+          }),
+        ]),
+      },
+    })
+  })
+
+  it('provisions a 256 MB / 30s DB-reading Lambda for the coverage check', () => {
+    const template = synthApiStack()
+    // Matches the shipped cron shape (FSC/AVP): 256/30, DATABASE_URL injected,
+    // no VPC. Not unique on its own, but paired with the daily schedule + the
+    // Pegasus/Rating grant above it pins the coverage cron's function config.
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      MemorySize: 256,
+      Timeout: 30,
+      Environment: {
+        Variables: Match.objectLike({ DATABASE_URL: Match.anyValue() }),
+      },
+    })
   })
 })
 
