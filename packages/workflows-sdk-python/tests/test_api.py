@@ -1101,6 +1101,42 @@ def test_get_order_forbidden_raises() -> None:
     assert exc_info.value.status_code == 403
 
 
+def test_list_salesmen_returns_data_array() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["query"] = dict(request.url.params)
+        return httpx.Response(200, json={"data": [{"id": "213056"}], "meta": {"count": 1}})
+
+    client = _client_with(handler)
+    salesmen = client.list_salesmen(active="true")
+    assert salesmen == [{"id": "213056"}]
+    assert captured["path"] == "/api/v1/pegii/salesmen"
+    assert captured["query"] == {"active": "true"}
+
+
+def test_get_salesman_returns_data() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/pegii/salesmen/213056"
+        return httpx.Response(200, json={"data": {"id": "213056", "name": "STEVE GAVIN"}})
+
+    client = _client_with(handler)
+    assert client.get_salesman("213056") == {"id": "213056", "name": "STEVE GAVIN"}
+
+
+def test_get_salesman_forbidden_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            403, json={"error": "manifest lacks ReadSalesman", "code": "FORBIDDEN"}
+        )
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.get_salesman("213056")
+    assert exc_info.value.status_code == 403
+
+
 def test_get_order_native_shape_passes_query_and_returns_raw() -> None:
     captured: dict = {}
     native = {"Id": "490574", "Survey": {"SerivceStatus": "Accepted"}, "WarehouseSummary": {}}

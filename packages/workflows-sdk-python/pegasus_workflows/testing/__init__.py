@@ -80,6 +80,7 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     # keyed single-record reads: fixture is {key: value}
     "get_order": lambda a, k: _first(a, k, "order_id"),
     "get_task": lambda a, k: _first(a, k, "task_id"),
+    "get_salesman": lambda a, k: _first(a, k, "salesman_id"),
     "get_config": lambda a, k: _first(a, k, "name"),
     "get_secret": lambda a, k: _first(a, k, "name"),
     "map_to_external": lambda a, k: _first(a, k, "integration_id"),
@@ -98,6 +99,7 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     "list_events": None,
     "list_orders": None,
     "list_tasks": None,
+    "list_salesmen": None,
     "list_projections": None,
     "list_secrets": None,
     "list_configs": None,

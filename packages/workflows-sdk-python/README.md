@@ -492,7 +492,7 @@ platform-event queue, which is keyed by type, so an event type is required.
 (Inventory has no runtime read grant — a workflow that needs item-level data reads
 it from the move it is processing.)
 
-The pegII operational surface (legacy orders + tasks) has its own reads/mutation:
+The pegII operational surface (legacy orders + tasks + salesmen) has its own reads/mutation:
 
 ```python
 client.list_orders()                 # ReadOrder
@@ -500,6 +500,8 @@ client.get_order("SO-12345")         # ReadOrder — projected row {id, orderNum
 client.list_tasks(order_id="SO-12345")   # ReadTask
 client.get_task("task-1")            # ReadTask
 client.close_task(order_id="SO-12345", task_type="date_confirmation", reason="done")  # CloseTask
+client.list_salesmen(active="true")  # ReadSalesman
+client.get_salesman("213056")        # ReadSalesman — {id, name, email, branch, active, …}
 ```
 
 To dry-run a **published integration** against a real order id — "does this
