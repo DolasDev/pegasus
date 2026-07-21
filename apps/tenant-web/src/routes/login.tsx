@@ -3,6 +3,7 @@ import { ArrowRight, Loader2, AlertCircle, LogIn } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   resolveTenantsForEmail,
@@ -578,9 +579,8 @@ function PasswordForm({
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="password">Password</Label>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -744,9 +744,8 @@ function ForgotPasswordConfirmForm({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="reset-new-password">New password</Label>
-            <Input
+            <PasswordInput
               id="reset-new-password"
-              type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               required
@@ -755,9 +754,8 @@ function ForgotPasswordConfirmForm({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="reset-confirm-password">Confirm password</Label>
-            <Input
+            <PasswordInput
               id="reset-confirm-password"
-              type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               required
@@ -829,9 +827,8 @@ function NewPasswordForm({
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="new-password">New password</Label>
-            <Input
+            <PasswordInput
               id="new-password"
-              type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               required
@@ -841,9 +838,8 @@ function NewPasswordForm({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="confirm-password">Confirm password</Label>
-            <Input
+            <PasswordInput
               id="confirm-password"
-              type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               required

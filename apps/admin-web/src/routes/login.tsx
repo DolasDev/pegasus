@@ -8,6 +8,7 @@ import {
   CognitoError,
   passwordPolicyMessage,
 } from '@/auth/cognito'
+import { PasswordInput } from '@/components/PasswordInput'
 
 type Step = 'credentials' | 'mfa' | 'forgot-email' | 'forgot-confirm'
 
@@ -171,14 +172,12 @@ export function LoginPage() {
               <label htmlFor="password" className="text-sm font-medium text-foreground">
                 Password
               </label>
-              <input
+              <PasswordInput
                 id="password"
-                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 autoComplete="current-password"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none ring-offset-background placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:ring-offset-2"
               />
             </div>
 
@@ -311,14 +310,12 @@ export function LoginPage() {
               <label htmlFor="reset-new-password" className="text-sm font-medium text-foreground">
                 New password
               </label>
-              <input
+              <PasswordInput
                 id="reset-new-password"
-                type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
                 autoComplete="new-password"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none ring-offset-background placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:ring-offset-2"
               />
             </div>
 
@@ -329,14 +326,12 @@ export function LoginPage() {
               >
                 Confirm password
               </label>
-              <input
+              <PasswordInput
                 id="reset-confirm-password"
-                type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
                 autoComplete="new-password"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-none ring-offset-background placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:ring-offset-2"
               />
             </div>
 
