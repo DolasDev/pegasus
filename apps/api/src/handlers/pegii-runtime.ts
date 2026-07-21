@@ -8,8 +8,10 @@
 // via the SDK (PegasusClient.get_order / list_orders / list_tasks / get_task /
 // close_task).
 //
-//   GET  /orders                 ReadOrder   list orders (?status=…)
-//   GET  /orders/:orderId        ReadOrder   fetch one order
+//   GET  /orders                 ReadOrder     list orders (?status=…)
+//   GET  /orders/:orderId        ReadOrder     fetch one order
+//   GET  /salesmen               ReadSalesman  list salesmen (?active=…)
+//   GET  /salesmen/:salesmanId   ReadSalesman  fetch one salesman
 //   GET  /tasks                  ReadTask    list tasks (?orderId=… ?status=…)
 //   GET  /tasks/:taskId          ReadTask    fetch one task
 //   POST /tasks/close            CloseTask   close (orderId, taskType) — idempotent
@@ -41,8 +43,10 @@ import { Actions } from '../authz/actions'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { requirePermission } from '../middleware/rbac'
 import { listOrders, type OrderRecord } from '../services/pegii-orders'
+import { listSalesmen, type SalesmanRecord } from '../services/pegii-salesmen'
 import { closeTask, getTask, listTasks, type TaskRecord } from '../services/pegii-tasks'
 import { resolveOrderGateway } from '../gateways/order-gateway.factory'
+import { resolveSalesmanGateway } from '../gateways/salesman-gateway.factory'
 import { PegiiApiError, pegiiApiErrorToHttp } from '../lib/pegii-api-client'
 import { logger } from '../lib/logger'
 
@@ -67,6 +71,26 @@ function toOrderResponse(order: OrderRecord) {
     packingActualDate: order.packingActualDate,
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
+  }
+}
+
+function toSalesmanResponse(salesman: SalesmanRecord) {
+  return {
+    id: salesman.id,
+    avlCode: salesman.avlCode,
+    firstName: salesman.firstName,
+    lastName: salesman.lastName,
+    name: salesman.name,
+    title: salesman.title,
+    email: salesman.email,
+    extension: salesman.extension,
+    branch: salesman.branch,
+    agencyCode: salesman.agencyCode,
+    roles: salesman.roles,
+    employeeType: salesman.employeeType,
+    active: salesman.active,
+    startDate: salesman.startDate,
+    dateTerminated: salesman.dateTerminated,
   }
 }
 
@@ -171,6 +195,51 @@ pegiiRuntimeHandler.get('/orders/:orderId', requirePermission(Actions.ReadOrder)
   logger.info('pegII order fetched', { orderId, tenantId })
   return c.json({ data: toOrderResponse(order) })
 })
+
+// ── Salesmen ────────────────────────────────────────────────────────────────
+
+// GET /salesmen — list salesmen, optionally filtered by active state.
+//
+// Like GET /orders, the list itself is still stub-backed (the pegII serialized
+// API is by-id only), but we first probe reachability through the
+// SalesmanGateway so this route fails the SAME way GET /salesmen/:salesmanId
+// does when the source is down — a 502/503 that names the dependency — rather
+// than misleadingly returning `200 []` for a firewalled tenant. The `active`
+// query param, when present, is parsed as a boolean ("true"/"false"/"1"/"0").
+pegiiRuntimeHandler.get('/salesmen', requirePermission(Actions.ReadSalesman), async (c) => {
+  const tenantId = c.get('tenantId')
+  const activeRaw = c.req.query('active')
+  const active = activeRaw === undefined ? undefined : activeRaw === 'true' || activeRaw === '1'
+
+  const gateway = await resolveSalesmanGateway(c.get('db'), tenantId)
+  await gateway.checkReachable()
+
+  const salesmen = listSalesmen(tenantId, { ...(active !== undefined ? { active } : {}) })
+  logger.info('pegII salesmen listed', { count: salesmen.length, active, tenantId })
+  return c.json({ data: salesmen.map(toSalesmanResponse), meta: { count: salesmen.length } })
+})
+
+// GET /salesmen/:salesmanId — fetch one salesman from the pegII serialized
+// endpoint via the SalesmanGateway. A tenant with no configured pegII target →
+// 503 and an unreachable source → 502 (the error boundary maps the thrown
+// PegiiApiError); an unknown salesman id is a 404 (the gateway null-maps the
+// upstream 404).
+pegiiRuntimeHandler.get(
+  '/salesmen/:salesmanId',
+  requirePermission(Actions.ReadSalesman),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const salesmanId = c.req.param('salesmanId') ?? ''
+
+    const gateway = await resolveSalesmanGateway(c.get('db'), tenantId)
+    const salesman = await gateway.findSalesmanById(salesmanId)
+    if (!salesman) {
+      return c.json({ error: 'Salesman not found', code: 'NOT_FOUND' }, 404)
+    }
+    logger.info('pegII salesman fetched', { salesmanId, tenantId })
+    return c.json({ data: toSalesmanResponse(salesman) })
+  },
+)
 
 // ── Tasks ─────────────────────────────────────────────────────────────────
 

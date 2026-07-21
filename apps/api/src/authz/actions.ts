@@ -29,6 +29,7 @@ export type ResourceType =
   | 'ApiClient'
   | 'Setting'
   | 'Order'
+  | 'Salesman'
   | 'Task'
   | 'Event'
   | 'Workflow'
@@ -173,6 +174,11 @@ export const Actions = {
   // ── Orders (legacy on-prem orders integration; M2M-only surface) ────────
   ReadOrder: { id: 'ReadOrder', resourceType: 'Order', permission: 'order:read' },
   CreateOrder: { id: 'CreateOrder', resourceType: 'Order', permission: 'order:create' },
+  // ── Salesmen (legacy pegII sales users/employees; workflow-runtime surface) ─
+  // Read a salesman (a.k.a. employee / sales user) from the pegII serialized
+  // endpoint. Backed by a by-id read over the tunnel (list is a stub today),
+  // exactly like ReadOrder (see handlers/pegii-runtime.ts).
+  ReadSalesman: { id: 'ReadSalesman', resourceType: 'Salesman', permission: 'salesman:read' },
   // ── Tasks (operational work items; workflow-runtime surface, pegII-bound) ─
   // Read/close of an order's tasks (date confirmation, survey scheduling, …)
   // from a running workflow. Backed by a stub today; bridges to the pegII API

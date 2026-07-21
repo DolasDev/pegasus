@@ -3,6 +3,21 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.28.0
+
+### Added — pegII salesman reads (`get_salesman` / `list_salesmen`)
+
+- **`PegasusClient.get_salesman(salesman_id)`** and **`list_salesmen(**params)`** —
+read the legacy pegII (MoveManager) **salesman** (the sales user / employee tied
+to an order) over the WireGuard tunnel, alongside the existing `get_order`/`get_task`pegII bridge.`get_salesman`re-fetches authoritative salesman detail
+from the code carried on an order;`list_salesmen`accepts an`active` filter.
+Both require the new **`ReadSalesman`** action in the workflow manifest
+`required_actions`. Returns `{id, avlCode, firstName, lastName, name, title,
+  email, extension, branch, agencyCode, roles, employeeType, active, startDate,
+  dateTerminated}`. Single-salesman reads are LIVE (`GET
+  /api/v1/pegii/salesmen/:id`); listing is reachability-probed but stub-backed
+until pegII exposes a salesman collection endpoint, mirroring `list_orders`.
+
 ## 0.27.0
 
 ### Added — dry-run a published integration against a real order id (`shape="native"`, `dry_run_integration`)

@@ -1382,6 +1382,47 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
+    # Salesmen are the sales users / employees pegII hangs off an order (the
+    # booking agent, the account owner). A workflow that needs authoritative
+    # salesman detail — name, branch, contact, active state — re-fetches it here
+    # by the code carried on the order. Reads are gated by ``ReadSalesman``,
+    # declared in the workflow manifest ``required_actions``.
+
+    def list_salesmen(self, **params: Any) -> list[dict[str, Any]]:
+        """List pegII salesmen visible to the caller. Requires ``ReadSalesman``.
+
+        For use inside workflow activities. Pass through query params such as
+        ``active`` (``"true"``/``"false"``) as keyword arguments.
+
+        Returns:
+            A list of salesman rows (``{id, avlCode, firstName, lastName, name,
+            title, email, extension, branch, agencyCode, roles, employeeType,
+            active, startDate, dateTerminated}``).
+
+        Raises:
+            PegasusApiError: On 403 (manifest lacks ``ReadSalesman``) or any
+                other non-2xx.
+        """
+        return self._get_json("/api/v1/pegii/salesmen", **params)["data"]
+
+    def get_salesman(self, salesman_id: str) -> dict[str, Any]:
+        """Fetch a single pegII salesman by code. Requires ``ReadSalesman``.
+
+        For use inside workflow activities — the way to re-fetch authoritative
+        salesman detail from the salesman code carried on an order.
+
+        Args:
+            salesman_id: The salesman code (e.g. ``"213056"``).
+
+        Returns:
+            The salesman row.
+
+        Raises:
+            PegasusApiError: On 403 (manifest lacks ``ReadSalesman``), 404 (no
+                such salesman), or any other non-2xx.
+        """
+        return self._get_json(f"/api/v1/pegii/salesmen/{salesman_id}")["data"]
+
     # -- integration-validator config (publish / pull / versions / rollback) --
     #
     # The DB-backed authoring surface for an integration's declarative mapping +
