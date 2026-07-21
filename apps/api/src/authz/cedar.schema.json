@@ -86,6 +86,13 @@
           "attributes": {}
         }
       },
+      "Salesman": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
       "Task": {
         "memberOfTypes": [],
         "shape": {
@@ -252,6 +259,9 @@
       },
       "CreateOrder": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Order"] }
+      },
+      "ReadSalesman": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Salesman"] }
       },
       "ReadTask": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Task"] }

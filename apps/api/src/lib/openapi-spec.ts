@@ -112,6 +112,15 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
       },
     ],
   }),
+  '/api/v1/pegii/salesmen': apiKeyGet('listPegiiSalesmen', 'List pegII salesmen (ReadSalesman)', {
+    tags: ['pegII'],
+    query: [{ name: 'active', description: 'filter by active state' }],
+  }),
+  '/api/v1/pegii/salesmen/{salesmanId}': apiKeyGet(
+    'getPegiiSalesman',
+    'Get a pegII salesman (ReadSalesman)',
+    { tags: ['pegII'], path: ['salesmanId'] },
+  ),
   '/api/v1/pegii/tasks': apiKeyGet('listPegiiTasks', 'List pegII tasks (ReadTask)', {
     tags: ['pegII'],
   }),

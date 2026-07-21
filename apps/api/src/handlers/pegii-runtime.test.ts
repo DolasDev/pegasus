@@ -3,8 +3,8 @@
 //
 // dualAuthMiddleware is stubbed to inject the AppEnv context; requirePermission
 // is NOT mocked — real Cedar RBAC runs against workflow-runtime.cedar, so these
-// tests double as verification that ReadOrder / ReadTask / CloseTask are granted
-// to workflow_runtime and withheld from workflow_developer.
+// tests double as verification that ReadOrder / ReadSalesman / ReadTask /
+// CloseTask are granted to workflow_runtime and withheld from workflow_developer.
 //
 // Single-order reads go through the OrderGateway, so order-gateway.factory is
 // mocked to a controllable stub (its own resolution + tunnel transport are
@@ -21,6 +21,7 @@ import { registerTestErrorHandler } from '../test-helpers'
 import { _clearAuthzCache } from '../lib/authz'
 import { _resetTaskStore } from '../services/pegii-tasks'
 import { _resetOrderStore, _seedOrder, type OrderRecord } from '../services/pegii-orders'
+import { _resetSalesmanStore, _seedSalesman, type SalesmanRecord } from '../services/pegii-salesmen'
 
 vi.mock('../middleware/dual-auth', () => ({
   dualAuthMiddleware: vi.fn(async (_c, next) => {
@@ -41,9 +42,21 @@ vi.mock('../gateways/order-gateway.factory', () => ({
   })),
 }))
 
+const { findSalesmanById, checkSalesmanReachable } = vi.hoisted(() => ({
+  findSalesmanById: vi.fn(),
+  checkSalesmanReachable: vi.fn(),
+}))
+vi.mock('../gateways/salesman-gateway.factory', () => ({
+  resolveSalesmanGateway: vi.fn(async () => ({
+    findSalesmanById,
+    checkReachable: checkSalesmanReachable,
+  })),
+}))
+
 import { pegiiRuntimeHandler } from './pegii-runtime'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { resolveOrderGateway } from '../gateways/order-gateway.factory'
+import { resolveSalesmanGateway } from '../gateways/salesman-gateway.factory'
 import { PegiiApiError } from '../lib/pegii-api-client'
 
 type JsonBody = Record<string, unknown>
@@ -84,13 +97,34 @@ const orderRecord = (over: Partial<OrderRecord> = {}): OrderRecord => ({
   ...over,
 })
 
+const salesmanRecord = (over: Partial<SalesmanRecord> = {}): SalesmanRecord => ({
+  id: 'sm-1',
+  avlCode: null,
+  firstName: null,
+  lastName: null,
+  name: 'sm-1',
+  title: null,
+  email: null,
+  extension: null,
+  branch: null,
+  agencyCode: null,
+  roles: null,
+  employeeType: null,
+  active: true,
+  startDate: null,
+  dateTerminated: null,
+  ...over,
+})
+
 beforeEach(() => {
   vi.clearAllMocks()
   _clearAuthzCache()
   _resetTaskStore()
   _resetOrderStore()
+  _resetSalesmanStore()
   // Default: source reachable. Individual cases override to simulate a down source.
   checkReachable.mockResolvedValue(undefined)
+  checkSalesmanReachable.mockResolvedValue(undefined)
 })
 
 describe('GET /pegii/orders/:orderId', () => {
@@ -221,6 +255,85 @@ describe('GET /pegii/orders', () => {
     const res = await app.request('/pegii/orders')
     expect(res.status).toBe(503)
     expect((await json(res))['code']).toBe('PEGII_SOURCE_UNAVAILABLE')
+  })
+})
+
+describe('GET /pegii/salesmen/:salesmanId', () => {
+  it('returns the gateway-fetched salesman for workflow_runtime', async () => {
+    findSalesmanById.mockResolvedValue(salesmanRecord({ id: 'sm-9', name: 'Dana Rivers' }))
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request('/pegii/salesmen/sm-9')
+    expect(res.status).toBe(200)
+    expect((await json(res))['data']).toMatchObject({ id: 'sm-9', name: 'Dana Rivers' })
+    expect(findSalesmanById).toHaveBeenCalledWith('sm-9')
+  })
+
+  it('returns 404 when the gateway reports no such salesman', async () => {
+    findSalesmanById.mockResolvedValue(null)
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request('/pegii/salesmen/sm-missing')
+    expect(res.status).toBe(404)
+    expect((await json(res))['code']).toBe('NOT_FOUND')
+  })
+
+  it('rejects a role without ReadSalesman (workflow_developer) with 403', async () => {
+    const app = buildApp(['workflow_developer'])
+    const res = await app.request('/pegii/salesmen/sm-1')
+    expect(res.status).toBe(403)
+    expect(findSalesmanById).not.toHaveBeenCalled()
+  })
+
+  it('returns 502 when the pegII source is unreachable', async () => {
+    findSalesmanById.mockRejectedValue(
+      new PegiiApiError('PEGII_API_TUNNEL_ERROR', 'PROXY_INVOKE_FAILED: connect timed out'),
+    )
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request('/pegii/salesmen/42')
+    expect(res.status).toBe(502)
+    expect((await json(res))['code']).toBe('PEGII_SOURCE_UNREACHABLE')
+  })
+
+  it('returns 503 when the tenant has no configured pegII source', async () => {
+    vi.mocked(resolveSalesmanGateway).mockRejectedValueOnce(
+      new PegiiApiError(
+        'PEGII_API_NOT_CONFIGURED',
+        'tenant has no reachable pegII salesman source',
+      ),
+    )
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request('/pegii/salesmen/42')
+    expect(res.status).toBe(503)
+    expect((await json(res))['code']).toBe('PEGII_SOURCE_UNAVAILABLE')
+  })
+})
+
+describe('GET /pegii/salesmen', () => {
+  it('lists seeded salesmen, filterable by active state (source reachable)', async () => {
+    _seedSalesman('test-tenant-id', salesmanRecord({ id: 'sm-1', active: true }))
+    _seedSalesman('test-tenant-id', salesmanRecord({ id: 'sm-2', active: true }))
+    _seedSalesman('test-tenant-id', salesmanRecord({ id: 'sm-3', active: false }))
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request('/pegii/salesmen?active=true')
+    expect(res.status).toBe(200)
+    const data = (await json(res))['data'] as Array<Record<string, unknown>>
+    expect(data.length).toBe(2)
+    expect(checkSalesmanReachable).toHaveBeenCalled()
+  })
+
+  it('returns 502 (not 200 []) when the pegII source is unreachable', async () => {
+    checkSalesmanReachable.mockRejectedValue(
+      new PegiiApiError('PEGII_API_TUNNEL_ERROR', 'connection refused'),
+    )
+    const app = buildApp(['workflow_runtime'])
+    const res = await app.request('/pegii/salesmen')
+    expect(res.status).toBe(502)
+    expect((await json(res))['code']).toBe('PEGII_SOURCE_UNREACHABLE')
+  })
+
+  it('rejects a role without ReadSalesman (workflow_developer) with 403', async () => {
+    const app = buildApp(['workflow_developer'])
+    const res = await app.request('/pegii/salesmen')
+    expect(res.status).toBe(403)
   })
 })
 

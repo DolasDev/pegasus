@@ -1,5 +1,5 @@
 // reporting: read-only across every operational entity, including the M2M
-// surfaces (Order, Event). Intended for service accounts that mirror data into
+// surfaces (Order, Salesman, Event). Intended for service accounts that mirror data into
 // downstream warehouses or run scheduled exports -- strictly observational.
 permit (
   principal in Pegasus::Group::"reporting",
@@ -10,6 +10,7 @@ permit (
     Pegasus::Action::"ReadInvoice",
     Pegasus::Action::"ReadCustomer",
     Pegasus::Action::"ReadOrder",
+    Pegasus::Action::"ReadSalesman",
     Pegasus::Action::"ReadEvent"
   ],
   resource
