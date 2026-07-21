@@ -22,6 +22,7 @@ import {
   WORKFLOW_EXECUTION_RECONCILED_METRIC_NAME,
   PEGASUS_RATING_METRIC_NAMESPACE,
   FSC_UPDATE_FAILURE_METRIC_NAME,
+  TARIFF_COVERAGE_DAYS_METRIC_NAME,
 } from '../metrics'
 
 export interface MonitoringStackProps extends cdk.StackProps {
@@ -318,6 +319,36 @@ export class MonitoringStack extends cdk.Stack {
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     })
     wire(fscUpdateFailureAlarm)
+
+    // ── Tariff coverage-staleness alarm ────────────────────────────────────────
+    // The daily coverage-check cron publishes TariffCoverageDays (Maximum gauge)
+    // = whole days until the active 400NG version's effectiveTo, or 0 on lapse.
+    // Pages when coverage drops below 45 days — a comfortable window to download
+    // and import next year's workbook before rating breaks. treatMissingData is
+    // BREACHING (unlike the FSC failure alarm): a MISSING gauge means the daily
+    // cron isn't running, which is itself alarm-worthy — and the emitter always
+    // publishes 0 on a real lapse, so INSUFFICIENT_DATA only ever means "cron
+    // down". Period is 1 day (the alarm-period max) to match the daily cadence.
+    const tariffCoverageDaysMetric = new cloudwatch.Metric({
+      namespace: PEGASUS_RATING_METRIC_NAMESPACE,
+      metricName: TARIFF_COVERAGE_DAYS_METRIC_NAME,
+      statistic: 'Maximum',
+      period: cdk.Duration.days(1),
+    })
+    const tariffCoverageDaysAlarm = new cloudwatch.Alarm(this, 'TariffCoverageDaysAlarm', {
+      alarmName: 'pegasus-tariff-coverage-days',
+      alarmDescription:
+        'The ACTIVE 400NG tariff has under 45 days of coverage left (or none is active). ' +
+        'Import next year’s Baseline Rates workbook via admin-web → Tariffs before it ' +
+        'lapses — once it does, all rating breaks with NO_ACTIVE_TARIFF_VERSION. A missing ' +
+        'datapoint means the lambda-tariff-check cron is down.',
+      metric: tariffCoverageDaysMetric,
+      threshold: 45,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.BREACHING,
+    })
+    wire(tariffCoverageDaysAlarm)
 
     // ── RingCentral capture-health alarms ──────────────────────────────────────
     // Gauges published every 15 min by the ringcentral-metrics emitter

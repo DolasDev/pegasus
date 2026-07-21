@@ -115,3 +115,30 @@ export const PEGASUS_RATING_METRIC_NAMESPACE = 'Pegasus/Rating'
 export const FSC_UPDATE_SUCCESS_METRIC_NAME = 'FscUpdateSuccess'
 /** Count of failed weekly fuel-surcharge refreshes (EIA fetch/parse/upsert errors). */
 export const FSC_UPDATE_FAILURE_METRIC_NAME = 'FscUpdateFailure'
+
+// ---------------------------------------------------------------------------
+// Tariff coverage-staleness metrics.
+//
+// Emitted by the daily tariff coverage-check cron
+// (apps/api/src/lambda-tariff-check.ts), which repeats these strings literally
+// for the same apps/api-can't-import-@pegasus/infra reason as the emitters
+// above. Keep both sides in sync.
+// ---------------------------------------------------------------------------
+
+/**
+ * Gauge (Maximum): whole days of remaining ACTIVE 400NG coverage — the active
+ * version's `effectiveTo` minus now. The emitter publishes 0 when NO version is
+ * ACTIVE (a real lapse), so the < 45 alarm fires on lapse instead of going
+ * missing-data. Emitted daily so a genuinely missing datapoint means the cron
+ * itself is down — which is why the alarm treats missing data as BREACHING.
+ */
+export const TARIFF_COVERAGE_DAYS_METRIC_NAME = 'TariffCoverageDays'
+
+/**
+ * Count: emitted (Value 1) only if the best-effort probe of the next rate
+ * year's USTRANSCOM Baseline Rates artifact URL unexpectedly returns 200. The
+ * artifact is WAF-gated, so this normally never fires; a datapoint is a "the
+ * next tariff might be fetchable now" signal for a human — there is no
+ * auto-import.
+ */
+export const TARIFF_ARTIFACT_DETECTED_METRIC_NAME = 'TariffArtifactDetected'
