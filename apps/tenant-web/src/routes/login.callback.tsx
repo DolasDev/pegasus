@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, UserX } from 'lucide-react'
+import { findSsoErrorMarker, type SsoErrorMarker } from '@pegasus/domain'
+import { normalizeEmail } from '@pegasus/auth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { setSession } from '@/auth/session'
 import { getCognitoConfig, exchangeCodeForTokens } from '@/auth/cognito'
 import { consumePkceState } from '@/auth/pkce'
+import { readSsoContext, clearSsoContext, type SsoContext } from '@/auth/sso-context'
+import { startIdpSignOut } from '@/auth/idp-signout'
 import { apiFetch, ApiError } from '@/api/client'
 import type { Session } from '@/auth/session'
 
@@ -55,16 +59,68 @@ import type { Session } from '@/auth/session'
 //   restart so there is no ambiguity about the session state.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Wrong-account recovery
+//
+// Three distinct ways a federated sign-in ends up as the wrong person, and all
+// three arrive here differently:
+//
+//   1. IdP asserted no email       → pre-token throws, marker SSO_ERROR_NO_EMAIL
+//   2. IdP asserted an unrostered  → pre-token throws, marker SSO_ERROR_NOT_ROSTERED
+//      email
+//   3. IdP asserted a DIFFERENT    → nothing throws at all. The other account is
+//      rostered email                 rostered, so a perfectly valid session is
+//                                     issued — for the wrong person.
+//
+// Cases 1 and 2 are detected by matching our own marker in `error_description`
+// (see @pegasus/domain findSsoErrorMarker for why a marker and not the prose).
+// Case 3 is detected HERE, after the token exchange, by comparing the validated
+// session's email against the one the user typed — which only this side knows,
+// because nothing in the PreTokenGeneration event carries the original authorize
+// request (see the note at pre-token.ts's AuthSession lookup).
+//
+// The case-3 check is a usability guard, NOT a security boundary: the user did
+// authenticate as that other person and is entitled to that session, so bypassing
+// this check gains an attacker exactly nothing. What it prevents is the silent
+// outcome — two coworkers on a shared machine, one types their own address and
+// lands in the other's account with the other's roles, with nothing on screen
+// saying so.
+// ---------------------------------------------------------------------------
+type WrongAccountReason = SsoErrorMarker | 'session-email-mismatch'
+
 type CallbackStatus =
   | { name: 'processing'; step: string }
   | { name: 'done' }
+  | {
+      name: 'wrong-account'
+      reason: WrongAccountReason
+      context: SsoContext
+      /** The account the IdP actually authenticated — known only in case 3. */
+      actualEmail?: string
+    }
   | { name: 'error'; message: string }
+
+/** User-facing explanation for each way the wrong account can arrive here. */
+function describeWrongAccount(status: Extract<CallbackStatus, { name: 'wrong-account' }>): string {
+  const { context, reason, actualEmail } = status
+  const asked = `You asked to sign in as ${context.email}`
+
+  switch (reason) {
+    case 'session-email-mismatch':
+      return `${asked}, but ${context.providerName} signed you in as ${actualEmail ?? 'a different account'}. Sign out of ${context.providerName} and try again.`
+    case 'PEGASUS_IDP_NOT_ROSTERED':
+      return `${asked}, but ${context.providerName} signed you in with an account that is not registered for this organization. This usually means a different account is already signed in to ${context.providerName} in this browser.`
+    case 'PEGASUS_IDP_NO_EMAIL':
+      return `${asked}, but ${context.providerName} did not provide an email address for the account it signed you in with. That is usually a different account than the one you asked for — sign out and try again. If it keeps happening, ask your administrator to check that your account has an email address set.`
+  }
+}
 
 export function LoginCallbackPage() {
   const [status, setStatus] = useState<CallbackStatus>({
     name: 'processing',
     step: 'Verifying your identity…',
   })
+  const [signingOut, setSigningOut] = useState(false)
 
   useEffect(() => {
     void handleCallback()
@@ -79,6 +135,18 @@ export function LoginCallbackPage() {
     const errorParam = params.get('error')
     if (errorParam) {
       const description = params.get('error_description') ?? errorParam
+
+      // Our own marker (cases 1 and 2 above) — offer the IdP sign-out instead of
+      // showing the user a raw AWS exception they cannot act on. Needs the login
+      // context to name the account they asked for; without it there is nothing
+      // useful to say, so fall through to the generic error.
+      const marker = findSsoErrorMarker(description)
+      const context = readSsoContext()
+      if (marker && context) {
+        setStatus({ name: 'wrong-account', reason: marker, context })
+        return
+      }
+
       setStatus({ name: 'error', message: `Sign-in failed: ${description}` })
       return
     }
@@ -155,8 +223,32 @@ export function LoginCallbackPage() {
     }
 
     // -----------------------------------------------------------------------
-    // Step 5 — Persist session (including token) and navigate to dashboard
+    // Step 5 — Confirm we signed in as the account the user actually asked for
+    //
+    // Case 3 above: the IdP authenticated a different account that happens to be
+    // on the same tenant's roster, so everything upstream succeeded. Only the
+    // typed email — which never leaves this browser — can catch it.
+    //
+    // Guarded on having a context AND an SSO login: a password login has no IdP
+    // session to sign out of, and a missing context means we cannot know what was
+    // asked for. In both cases the session stands rather than being refused on a
+    // fact we do not have.
     // -----------------------------------------------------------------------
+    const ssoContext = readSsoContext()
+    if (ssoContext && normalizeEmail(session.email) !== normalizeEmail(ssoContext.email)) {
+      setStatus({
+        name: 'wrong-account',
+        reason: 'session-email-mismatch',
+        context: ssoContext,
+        actualEmail: session.email,
+      })
+      return
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 6 — Persist session (including token) and navigate to dashboard
+    // -----------------------------------------------------------------------
+    clearSsoContext()
     setSession({ ...session, token: idToken })
     setStatus({ name: 'done' })
 
@@ -191,11 +283,18 @@ export function LoginCallbackPage() {
                 Sign-in failed
               </>
             )}
+            {status.name === 'wrong-account' && (
+              <>
+                <UserX size={18} className="text-destructive" />
+                Wrong account
+              </>
+            )}
           </CardTitle>
           <CardDescription>
             {status.name === 'processing' && status.step}
             {status.name === 'done' && 'Redirecting to your dashboard\u2026'}
             {status.name === 'error' && status.message}
+            {status.name === 'wrong-account' && describeWrongAccount(status)}
           </CardDescription>
         </CardHeader>
 
@@ -215,6 +314,43 @@ export function LoginCallbackPage() {
               }}
             >
               Start over
+            </Button>
+          </CardContent>
+        )}
+
+        {status.name === 'wrong-account' && (
+          <CardContent className="space-y-2">
+            <Button
+              className="w-full"
+              disabled={signingOut}
+              onClick={() => {
+                setSigningOut(true)
+                // Clear our own scratch first: whatever happens to the redirect
+                // chain, the next login must start from a clean slate.
+                const { tenantId, providerId } = status.context
+                clearSsoContext()
+                void startIdpSignOut(tenantId, providerId)
+              }}
+            >
+              {signingOut ? (
+                <>
+                  <Loader2 size={16} className="mr-2 animate-spin" />
+                  Signing out…
+                </>
+              ) : (
+                `Sign out of ${status.context.providerName} and try again`
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              disabled={signingOut}
+              onClick={() => {
+                clearSsoContext()
+                window.location.href = '/login'
+              }}
+            >
+              Back to sign-in
             </Button>
           </CardContent>
         )}

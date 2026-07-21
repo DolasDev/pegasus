@@ -131,15 +131,25 @@ export class CognitoStack extends cdk.Stack {
       ? ssm.StringParameter.valueForStringParameter(this, ADMIN_DOMAIN_NAME_PARAM)
       : undefined
 
+    // /login/signed-out is the middle leg of the wrong-account recovery chain:
+    // Cognito returns there after clearing its own session so the SPA can forward
+    // the user to their IdP's end-session endpoint (Cognito's /logout does not
+    // touch the upstream IdP session). It must be registered here or Cognito
+    // rejects the logout_uri. Its own route: apps/tenant-web/src/routes/login.signed-out.tsx
     const tenantCallbackUrls = ['http://localhost:5173/login/callback']
-    const tenantLogoutUrls = ['http://localhost:5173/login']
+    const tenantLogoutUrls = [
+      'http://localhost:5173/login',
+      'http://localhost:5173/login/signed-out',
+    ]
     if (props.tenantDistributionDomain) {
       tenantCallbackUrls.push(`https://${props.tenantDistributionDomain}/login/callback`)
       tenantLogoutUrls.push(`https://${props.tenantDistributionDomain}/login`)
+      tenantLogoutUrls.push(`https://${props.tenantDistributionDomain}/login/signed-out`)
     }
     if (tenantWebDomain) {
       tenantCallbackUrls.push(`https://${tenantWebDomain}/login/callback`)
       tenantLogoutUrls.push(`https://${tenantWebDomain}/login`)
+      tenantLogoutUrls.push(`https://${tenantWebDomain}/login/signed-out`)
     }
 
     const adminCallbackUrls = ['http://localhost:5174/auth/callback']

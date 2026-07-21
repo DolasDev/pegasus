@@ -27,6 +27,16 @@ export {
 // Domain errors
 export { DomainError } from './shared/errors'
 
+// SSO failure markers — wire contract between the pre-token Lambda and the
+// tenant web login callback.
+export type { SsoErrorMarker } from './shared/sso-errors'
+export {
+  SSO_ERROR_NO_EMAIL,
+  SSO_ERROR_NOT_ROSTERED,
+  SSO_ERROR_MARKERS,
+  findSsoErrorMarker,
+} from './shared/sso-errors'
+
 // Customer context
 export type {
   CustomerId,

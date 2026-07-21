@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Context } from 'aws-lambda'
+import { SSO_ERROR_NO_EMAIL, SSO_ERROR_NOT_ROSTERED } from '@pegasus/domain'
 
 // ---------------------------------------------------------------------------
 // Hoisted constants and mocks — available inside vi.mock factories
@@ -424,6 +425,110 @@ describe('pre-token trigger', () => {
       )
 
       expect(mockSsoProviderFindMany).not.toHaveBeenCalled()
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Wrong-account markers.
+  //
+  // A federated user whose browser is signed in to the IdP as a DIFFERENT account
+  // than the one they typed cannot tell that is what happened: the IdP never shows
+  // them, and both failures below read as "your account is broken". Marking them
+  // lets apps/tenant-web offer the IdP sign-out that actually fixes it.
+  //
+  // Only federated sign-ins are marked. A native login has no IdP session to blame
+  // and no recovery to offer, so its message must not change.
+  // -------------------------------------------------------------------------
+  describe('wrong-account markers', () => {
+    it('marks a federated sign-in that asserted no email', async () => {
+      mockSsoProviderFindMany.mockResolvedValue([{ tenantId: 'tenant-x', isEnabled: true }])
+
+      await expect(
+        handler(
+          makeEvent({
+            sub: 'x',
+            identities: identitiesAttr('AcmeOkta'),
+            triggerSource: HOSTED_AUTH,
+          }),
+          fakeContext,
+          fakeCallback,
+        ),
+      ).rejects.toThrow(SSO_ERROR_NO_EMAIL)
+    })
+
+    it('leaves the native no-email message unmarked', async () => {
+      await expect(
+        handler(makeEvent({ groups: [TENANT_GROUP] }), fakeContext, fakeCallback),
+      ).rejects.toThrow('No email associated with identity')
+
+      await expect(
+        handler(makeEvent({ groups: [TENANT_GROUP] }), fakeContext, fakeCallback),
+      ).rejects.not.toThrow(SSO_ERROR_NO_EMAIL)
+    })
+
+    it('marks a federated sign-in whose email is not on the tenant roster', async () => {
+      mockSsoProviderFindMany.mockResolvedValue([{ tenantId: 'tenant-x', isEnabled: true }])
+      mockTenantUserFindFirst.mockResolvedValue(null)
+
+      await expect(
+        handler(
+          makeEvent({
+            email: 'someone.else@acme.com',
+            sub: 'x',
+            identities: identitiesAttr('AcmeOkta'),
+            triggerSource: HOSTED_AUTH,
+          }),
+          fakeContext,
+          fakeCallback,
+        ),
+      ).rejects.toThrow(SSO_ERROR_NOT_ROSTERED)
+    })
+
+    it('leaves the native not-rostered message unmarked', async () => {
+      mockAuthSessionFindFirst.mockResolvedValue({ id: 's1', tenantId: 'tenant-uuid-123' })
+      mockTenantUserFindFirst.mockResolvedValue(null)
+
+      await expect(
+        handler(makeEvent({ email: 'notinvited@acme.com' }), fakeContext, fakeCallback),
+      ).rejects.toThrow('not been granted access')
+    })
+
+    it('does not mark a DEACTIVATED federated user — signing out of the IdP will not help', async () => {
+      mockSsoProviderFindMany.mockResolvedValue([{ tenantId: 'tenant-x', isEnabled: true }])
+      mockTenantUserFindFirst.mockResolvedValue(activeTenantUser({ status: 'DEACTIVATED' }))
+
+      await expect(
+        handler(
+          makeEvent({
+            email: 'gone@acme.com',
+            sub: 'x',
+            identities: identitiesAttr('AcmeOkta'),
+            triggerSource: HOSTED_AUTH,
+          }),
+          fakeContext,
+          fakeCallback,
+        ),
+      ).rejects.toThrow('deactivated')
+    })
+
+    it('still issues claims for a federated sign-in that IS the right account', async () => {
+      mockSsoProviderFindMany.mockResolvedValue([{ tenantId: 'tenant-x', isEnabled: true }])
+      mockTenantUserFindFirst.mockResolvedValue(activeTenantUser())
+
+      const event = await handler(
+        makeEvent({
+          email: 'user@acme.com',
+          sub: 'x',
+          identities: identitiesAttr('AcmeOkta'),
+          triggerSource: HOSTED_AUTH,
+        }),
+        fakeContext,
+        fakeCallback,
+      )
+
+      expect(event?.response.claimsOverrideDetails.claimsToAddOrOverride['custom:tenantId']).toBe(
+        'tenant-x',
+      )
     })
   })
 

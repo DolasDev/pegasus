@@ -29,8 +29,10 @@ import {
   generateState,
   savePkceState,
 } from '@/auth/pkce'
+import { saveSsoContext } from '@/auth/sso-context'
 import { setSession } from '@/auth/session'
 import type { Session } from '@/auth/session'
+import { normalizeEmail } from '@pegasus/auth'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -274,12 +276,17 @@ export function LoginPage() {
   // validate the state (CSRF check) and prove ownership of the code (PKCE).
   //
   // The `identity_provider` parameter routes directly to the tenant's IdP —
-  // no Hosted UI login form is shown. Works for both OIDC and SAML providers.
+  // no Hosted UI login form is shown. Works for both OIDC and SAML providers,
+  // and `login_hint` tells the IdP WHICH account we want so a cached session for
+  // a different one cannot be reused silently (see buildAuthorizeUrl).
   // -------------------------------------------------------------------------
   useEffect(() => {
     if (step.name !== 'redirecting') return
 
-    const provider = step.provider
+    // Destructured out here, not read inside the async closure: the closure
+    // outlives this render, and reading `step.*` from it would depend on the
+    // narrowing above surviving the boundary.
+    const { provider, tenantId, email: typedEmail } = step
 
     // Async work wrapped in an immediately-invoked async function to satisfy
     // the useEffect return-type constraint (must be synchronous or a cleanup).
@@ -294,8 +301,14 @@ export function LoginPage() {
 
         // Persist before redirecting — the callback reads these.
         savePkceState(state, verifier)
+        saveSsoContext({
+          email: normalizeEmail(typedEmail),
+          tenantId,
+          providerId: provider.id,
+          providerName: provider.name,
+        })
 
-        const authorizeUrl = buildAuthorizeUrl(config, provider.id, challenge, state)
+        const authorizeUrl = buildAuthorizeUrl(config, provider.id, challenge, state, typedEmail)
 
         // Full-page redirect to Cognito Hosted UI. Browser leaves the SPA;
         // React state is discarded. The callback route handles the return.

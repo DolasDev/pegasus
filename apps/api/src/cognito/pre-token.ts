@@ -33,6 +33,15 @@
 //   DEACTIVATED → block token generation (fail-closed)
 //   Not found   → block token generation (strict invite-only)
 //
+// WRONG-ACCOUNT MARKERS:
+//   Two federated denials carry a marker from @pegasus/domain in the thrown message
+//   (SSO_ERROR_NO_EMAIL, SSO_ERROR_NOT_ROSTERED). Cognito surfaces the message in
+//   the callback's error_description, which is the only channel back to the SPA when
+//   no token is issued — the login page matches the marker and offers to sign the
+//   user out of their IdP, which is what actually fixes a cached wrong account. The
+//   equivalent NATIVE denials are deliberately left unmarked: no IdP session, no
+//   recovery to offer. See apps/tenant-web/src/routes/login.callback.tsx.
+//
 // NO-GROUP ADMIN USERS:
 //   Allow token issuance with no custom claims (admin setup flow only).
 //   Tenant users with no groups proceed to full tenant resolution.
@@ -42,6 +51,7 @@ import type { PreTokenGenerationTriggerHandler } from 'aws-lambda'
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm'
+import { SSO_ERROR_NO_EMAIL, SSO_ERROR_NOT_ROSTERED } from '@pegasus/domain'
 import { createLogger } from '../lib/logger'
 
 const logger = createLogger('pegasus-pre-token')
@@ -186,7 +196,29 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
   const email = event.request.userAttributes.email
   const sub = event.request.userAttributes.sub
 
+  // Resolved BEFORE the email guard below, not at the tenant-resolution step
+  // where it is used: a federated sign-in that asserts no email needs a
+  // distinguishable failure so the login page can offer to sign the user out of
+  // the IdP. Native logins have no IdP session to blame and no such recovery.
+  const providerName = extractProviderName(event.request.userAttributes.identities)
+  const federated = isFederatedSignIn(event.triggerSource, providerName)
+
   if (!email) {
+    if (federated) {
+      // The IdP authenticated someone but told us nothing we can identify them
+      // by. Two causes, indistinguishable from here and with the same fix: the
+      // account has no mail attribute at the IdP, or — more often — the browser
+      // had a DIFFERENT account cached at the IdP than the one the user asked
+      // for. Either way the user must sign out at the IdP and retry.
+      logger.error('Pre-Token trigger: federated sign-in asserted no email', {
+        providerName,
+        triggerSource: event.triggerSource,
+      })
+      throw new Error(
+        `Authentication failed: the identity provider did not return an email address. [${SSO_ERROR_NO_EMAIL}]`,
+      )
+    }
+
     logger.error('Pre-Token trigger: Missing email claim')
     throw new Error('Authentication failed: No email associated with identity')
   }
@@ -213,6 +245,19 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
   // the normalized email to avoid case-mismatch misses. The session is NOT
   // consumed on read: one login fires several PreTokenGeneration invocations
   // and they must all resolve consistently — it expires naturally instead.
+  //
+  // ⚠️ This lookup is keyed BY the asserted email, so `authSession.email` always
+  // equals `normalizedEmail` — it can never tell us the email the user actually
+  // TYPED on the login form. When an IdP signs someone in as a different account
+  // than they asked for, the asserted email is the other account's, so this finds
+  // no session at all (the real one is filed under the typed email) and the login
+  // falls through to the roster path below as if no tenant had been picked.
+  // Nothing in the PreTokenGeneration event carries the original authorize
+  // request, so the "you asked for A but authenticated as B" comparison is not
+  // makeable here at all — apps/tenant-web/src/routes/login.callback.tsx does it
+  // after the token exchange, where the typed email is still in sessionStorage.
+  // Do not try to reconstruct it by taking the tenant's most recent AuthSession:
+  // two users of one tenant signing in at once would falsely accuse each other.
   const authSession = await db.authSession.findFirst({
     where: { email: normalizedEmail, expiresAt: { gt: now } },
     orderBy: { createdAt: 'desc' },
@@ -236,9 +281,9 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
   // enforce email uniqueness for federated users even with
   // UsernameAttributes: ["email"], so nothing else was standing in the way.
   // -------------------------------------------------------------------------
-  const providerName = extractProviderName(event.request.userAttributes.identities)
-
-  if (isFederatedSignIn(event.triggerSource, providerName)) {
+  // `providerName` / `federated` are resolved near the top of the handler — the
+  // email guard needs them too.
+  if (federated) {
     // findMany, not findFirst: `cognitoProviderName` is NOT unique on its own.
     // TenantSsoProvider is @@unique([tenantId, cognitoProviderName]) — per TENANT — so two
     // tenants can hold rows with the same name and findFirst would pick one arbitrarily
@@ -370,6 +415,23 @@ export const handler: PreTokenGenerationTriggerHandler = async (event) => {
   })
 
   if (!tenantUser) {
+    if (federated) {
+      // Invite-only means an unrostered email is always a denial — but for a
+      // federated sign-in the likeliest cause is not "uninvited", it is "the
+      // browser was already signed in to the IdP as somebody else". The user
+      // never sees which account authenticated, so "contact your administrator"
+      // sends them down the wrong path entirely. Mark it so the login page can
+      // offer the IdP sign-out instead.
+      logger.warn('Pre-Token trigger: federated sign-in for an email not on the tenant roster', {
+        email,
+        tenantId,
+        providerName,
+      })
+      throw new Error(
+        `Authentication failed: the account you signed in with is not registered for this organization. [${SSO_ERROR_NOT_ROSTERED}]`,
+      )
+    }
+
     logger.warn('Pre-Token trigger: User not in tenant roster', { email, tenantId })
     throw new Error('Your account has not been granted access. Contact your administrator.')
   }

@@ -22,6 +22,7 @@ const {
   mockTenantUserFindFirst,
   mockTenantUserFindUnique,
   mockAuthSessionCreate,
+  mockSsoProviderFindFirst,
 } = vi.hoisted(() => ({
   mockTenantFindFirst: vi.fn(),
   mockTenantFindUnique: vi.fn(),
@@ -29,6 +30,7 @@ const {
   mockTenantUserFindFirst: vi.fn(),
   mockTenantUserFindUnique: vi.fn(),
   mockAuthSessionCreate: vi.fn(),
+  mockSsoProviderFindFirst: vi.fn(),
 }))
 
 vi.mock('../db', () => ({
@@ -43,6 +45,7 @@ vi.mock('../db', () => ({
       findUnique: mockTenantUserFindUnique,
     },
     authSession: { create: mockAuthSessionCreate },
+    tenantSsoProvider: { findFirst: mockSsoProviderFindFirst },
   },
 }))
 
@@ -595,5 +598,194 @@ describe('POST /api/auth/validate-token', () => {
     expect(res.status).toBe(401)
     const body = await json(res)
     expect(body['code']).toBe('UNAUTHORIZED')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/idp-sign-out-url
+//
+// The login page calls this only on an error path, to offer "sign out of your
+// IdP and try again". Its contract is therefore unusual: it must NEVER fail the
+// caller. Every unhappy branch below is asserted to be a 200 with a null URL,
+// because a 500 here would replace a recoverable error screen with a dead end.
+//
+// Each test uses a DISTINCT metadataUrl: the handler memoizes discovery lookups
+// per Lambda container for the process lifetime, so shared URLs would leak
+// results between tests. The final test pins that memoization deliberately.
+// ---------------------------------------------------------------------------
+
+describe('POST /api/auth/idp-sign-out-url', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  /** A discovery document response carrying the given end_session_endpoint. */
+  function discoveryDoc(endSessionEndpoint?: string) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => (endSessionEndpoint ? { end_session_endpoint: endSessionEndpoint } : {}),
+    }
+  }
+
+  function oidcProvider(metadataUrl: string) {
+    return { type: 'OIDC', metadataUrl }
+  }
+
+  it('returns the end_session_endpoint from the provider discovery document', async () => {
+    mockSsoProviderFindFirst.mockResolvedValue(
+      oidcProvider('https://idp.test/a/.well-known/openid-configuration'),
+    )
+    fetchMock.mockResolvedValue(discoveryDoc('https://idp.test/a/logout'))
+
+    const res = await authHandler.request(
+      '/idp-sign-out-url',
+      post({ tenantId: 't1', providerId: 'AcmeOkta' }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await json(res)).toEqual({ data: { signOutUrl: 'https://idp.test/a/logout' } })
+  })
+
+  it('scopes the provider lookup to the tenant and requires it to be enabled', async () => {
+    mockSsoProviderFindFirst.mockResolvedValue(null)
+
+    await authHandler.request('/idp-sign-out-url', post({ tenantId: 't1', providerId: 'AcmeOkta' }))
+
+    expect(mockSsoProviderFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { tenantId: 't1', cognitoProviderName: 'AcmeOkta', isEnabled: true },
+      }),
+    )
+  })
+
+  it('returns null for an unknown or disabled provider', async () => {
+    mockSsoProviderFindFirst.mockResolvedValue(null)
+
+    const res = await authHandler.request(
+      '/idp-sign-out-url',
+      post({ tenantId: 't1', providerId: 'Nope' }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await json(res)).toEqual({ data: { signOutUrl: null } })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('returns null for a SAML provider without attempting discovery', async () => {
+    mockSsoProviderFindFirst.mockResolvedValue({
+      type: 'SAML',
+      metadataUrl: 'https://idp.test/saml/metadata',
+    })
+
+    const res = await authHandler.request(
+      '/idp-sign-out-url',
+      post({ tenantId: 't1', providerId: 'AcmeSaml' }),
+    )
+
+    expect(await json(res)).toEqual({ data: { signOutUrl: null } })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('returns null when the IdP publishes no end_session_endpoint', async () => {
+    mockSsoProviderFindFirst.mockResolvedValue(
+      oidcProvider('https://idp.test/b/.well-known/openid-configuration'),
+    )
+    fetchMock.mockResolvedValue(discoveryDoc())
+
+    const res = await authHandler.request(
+      '/idp-sign-out-url',
+      post({ tenantId: 't1', providerId: 'AcmeOkta' }),
+    )
+
+    expect(await json(res)).toEqual({ data: { signOutUrl: null } })
+  })
+
+  it('returns null — not a 500 — when the discovery document is unreachable', async () => {
+    mockSsoProviderFindFirst.mockResolvedValue(
+      oidcProvider('https://idp.test/c/.well-known/openid-configuration'),
+    )
+    fetchMock.mockRejectedValue(new Error('ETIMEDOUT'))
+
+    const res = await authHandler.request(
+      '/idp-sign-out-url',
+      post({ tenantId: 't1', providerId: 'AcmeOkta' }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await json(res)).toEqual({ data: { signOutUrl: null } })
+  })
+
+  it('returns null when the discovery fetch responds non-OK', async () => {
+    mockSsoProviderFindFirst.mockResolvedValue(
+      oidcProvider('https://idp.test/d/.well-known/openid-configuration'),
+    )
+    fetchMock.mockResolvedValue({ ok: false, status: 404, json: async () => ({}) })
+
+    const res = await authHandler.request(
+      '/idp-sign-out-url',
+      post({ tenantId: 't1', providerId: 'AcmeOkta' }),
+    )
+
+    expect(await json(res)).toEqual({ data: { signOutUrl: null } })
+  })
+
+  it('drops a non-https end_session_endpoint — the client turns this into a navigation', async () => {
+    mockSsoProviderFindFirst.mockResolvedValue(
+      oidcProvider('https://idp.test/e/.well-known/openid-configuration'),
+    )
+    fetchMock.mockResolvedValue(discoveryDoc('javascript:alert(1)'))
+
+    const res = await authHandler.request(
+      '/idp-sign-out-url',
+      post({ tenantId: 't1', providerId: 'AcmeOkta' }),
+    )
+
+    expect(await json(res)).toEqual({ data: { signOutUrl: null } })
+  })
+
+  it('returns null — not a 500 — when the provider lookup itself throws', async () => {
+    mockSsoProviderFindFirst.mockRejectedValue(new Error('connection refused'))
+
+    const res = await authHandler.request(
+      '/idp-sign-out-url',
+      post({ tenantId: 't1', providerId: 'AcmeOkta' }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await json(res)).toEqual({ data: { signOutUrl: null } })
+  })
+
+  it('returns 400 VALIDATION_ERROR on a malformed body', async () => {
+    const res = await authHandler.request('/idp-sign-out-url', post({ tenantId: 't1' }))
+
+    expect(res.status).toBe(400)
+    expect((await json(res))['code']).toBe('VALIDATION_ERROR')
+  })
+
+  it('memoizes the discovery lookup across requests', async () => {
+    mockSsoProviderFindFirst.mockResolvedValue(
+      oidcProvider('https://idp.test/cached/.well-known/openid-configuration'),
+    )
+    fetchMock.mockResolvedValue(discoveryDoc('https://idp.test/cached/logout'))
+
+    const body = post({ tenantId: 't1', providerId: 'AcmeOkta' })
+    await authHandler.request('/idp-sign-out-url', body)
+    const res = await authHandler.request(
+      '/idp-sign-out-url',
+      post({ tenantId: 't1', providerId: 'AcmeOkta' }),
+    )
+
+    expect(await json(res)).toEqual({
+      data: { signOutUrl: 'https://idp.test/cached/logout' },
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

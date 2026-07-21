@@ -6,9 +6,10 @@
 // exists). They are mounted BEFORE the /api/v1 tenant block in app.ts.
 //
 // Endpoints:
-//   POST /api/auth/resolve-tenants — email → all tenants the user is invited to
-//   POST /api/auth/select-tenant   — record the user's tenant pick (AuthSession)
-//   POST /api/auth/validate-token  — Cognito ID token → validated session claims
+//   POST /api/auth/resolve-tenants  — email → all tenants the user is invited to
+//   POST /api/auth/select-tenant    — record the user's tenant pick (AuthSession)
+//   POST /api/auth/idp-sign-out-url — provider → its OIDC end-session endpoint
+//   POST /api/auth/validate-token   — Cognito ID token → validated session claims
 //
 // Security posture:
 //   - resolve-tenants returns only non-sensitive display metadata. Client IDs
@@ -66,6 +67,12 @@ const SelectTenantBody = z.object({
   email: z.string().email(),
   /** ID of the tenant the user selected. */
   tenantId: z.string().min(1),
+})
+
+const IdpSignOutUrlBody = z.object({
+  tenantId: z.string().min(1),
+  /** Cognito identity provider name — TenantSsoProvider.cognitoProviderName. */
+  providerId: z.string().min(1),
 })
 
 const ValidateTokenBody = z.object({
@@ -245,6 +252,109 @@ authHandler.post(
       })
     } catch {
       return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
+    }
+  },
+)
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/idp-sign-out-url
+//
+// Returns the IdP's OIDC end-session endpoint for a tenant's SSO provider, or
+// null when it has none.
+//
+// Why this exists: when a user signs in through their IdP as the wrong account
+// (a stale session cached in the browser), retrying is futile — the IdP silently
+// reuses the same session forever. Recovery requires signing out at the IdP, and
+// Cognito's own /logout explicitly does NOT do that:
+//   https://docs.aws.amazon.com/cognito/latest/developerguide/logout-endpoint.html
+// So the login page needs the IdP's own sign-out URL to send the user to.
+//
+// The URL is read from the provider's OIDC discovery document rather than
+// hardcoded per vendor, so this works for any compliant OIDC IdP and not just
+// Entra ID. SAML providers have no equivalent in our config and return null.
+//
+// Public/unauthenticated, like its siblings above: it is called before any
+// session exists, and it returns a URL that the IdP already publishes in a
+// world-readable discovery document. It reveals nothing about the user, and
+// nothing about the provider beyond that one URL — deliberately not the whole
+// discovery document, and never any of TenantSsoProvider's own config.
+//
+// Never fails the caller: a missing provider, a SAML provider, an IdP with no
+// end_session_endpoint, and an unreachable discovery document all return
+// { signOutUrl: null }. The login page degrades to telling the user to sign out
+// of their IdP manually, which is strictly better than a 500 on an error path.
+//
+// Request:  { tenantId: string, providerId: string }
+// Response: { data: { signOutUrl: string | null } }   always 200
+//           { error, code: VALIDATION_ERROR }          if body is malformed (400)
+// ---------------------------------------------------------------------------
+
+// Discovery documents are effectively static; cache per Lambda container so the
+// error path does not add a cold IdP round-trip on every retry. Negative results
+// are cached too — an IdP that has no end_session_endpoint will not grow one
+// between two clicks, and a tenant hammering a broken discovery URL should not
+// re-fetch it each time.
+const endSessionEndpointCache = new Map<string, string | null>()
+
+async function fetchEndSessionEndpoint(metadataUrl: string): Promise<string | null> {
+  const cached = endSessionEndpointCache.get(metadataUrl)
+  if (cached !== undefined) return cached
+
+  let endpoint: string | null = null
+  try {
+    const res = await fetch(metadataUrl, { signal: AbortSignal.timeout(3000) })
+    if (res.ok) {
+      const doc: unknown = await res.json()
+      const value = (doc as Record<string, unknown> | null)?.['end_session_endpoint']
+      // Only ever hand back an https URL we parsed out of the document. The
+      // client turns this into a top-level navigation, so a malformed or
+      // non-https value is dropped rather than forwarded.
+      if (typeof value === 'string' && value.startsWith('https://')) {
+        endpoint = value
+      }
+    } else {
+      logger.warn('idp-sign-out-url: discovery document fetch returned non-OK', {
+        metadataUrl,
+        status: res.status,
+      })
+    }
+  } catch (err) {
+    logger.warn('idp-sign-out-url: discovery document fetch failed', {
+      metadataUrl,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
+  endSessionEndpointCache.set(metadataUrl, endpoint)
+  return endpoint
+}
+
+authHandler.post(
+  '/idp-sign-out-url',
+  validator('json', (value, c) => {
+    const r = IdpSignOutUrlBody.safeParse(value)
+    if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
+    return r.data
+  }),
+  async (c) => {
+    const { tenantId, providerId } = c.req.valid('json')
+
+    try {
+      const provider = await db.tenantSsoProvider.findFirst({
+        where: { tenantId, cognitoProviderName: providerId, isEnabled: true },
+        select: { type: true, metadataUrl: true },
+      })
+
+      if (!provider || provider.type !== 'OIDC' || !provider.metadataUrl) {
+        return c.json({ data: { signOutUrl: null } })
+      }
+
+      return c.json({ data: { signOutUrl: await fetchEndSessionEndpoint(provider.metadataUrl) } })
+    } catch (err) {
+      logger.warn('idp-sign-out-url: lookup failed', {
+        error: err instanceof Error ? err.message : String(err),
+      })
+      return c.json({ data: { signOutUrl: null } })
     }
   },
 )
