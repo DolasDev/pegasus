@@ -706,6 +706,118 @@ describe('DriverPlanningPage', () => {
     })
   })
 
+  // The Ready Date icon must speak the SAME glyph vocabulary as the delivery
+  // rows below it and the planning screen's Gantt bars — it once kept a private
+  // ladder that drifted until actual/estimated rendered each other's icon.
+  describe('ready date icons match the shared confidence vocabulary', () => {
+    function readyIcon() {
+      return screen.getByTestId('ready-tier-icon')
+    }
+
+    it('renders the truck icon (emerald-700) when the ready date is actualized', () => {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            confirmedAvailableDate: null,
+            deliveries: [delivery({ actualDate: '2026-06-15' })],
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      expect(readyIcon().getAttribute('data-icon')).toBe('fa-truck-moving')
+      expect(readyIcon().className).toMatch(/text-emerald-700/)
+    })
+
+    it('renders the flag icon (emerald-600) when the source activity is confirmed', () => {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            confirmedAvailableDate: null,
+            deliveries: [delivery({ actualDate: null, isConfirmed: true })],
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      expect(readyIcon().getAttribute('data-icon')).toBe('fa-flag-checkered')
+      expect(readyIcon().className).toMatch(/text-emerald-600/)
+    })
+
+    it('renders the check icon (emerald-500) when the source activity is committed only', () => {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            confirmedAvailableDate: null,
+            deliveries: [delivery({ actualDate: null, isCommitted: true })],
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      expect(readyIcon().getAttribute('data-icon')).toBe('fa-check')
+      expect(readyIcon().className).toMatch(/text-emerald-500/)
+    })
+
+    it('renders the question icon (muted) for a planned-spread ready date', () => {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            confirmedAvailableDate: null,
+            deliveries: [
+              delivery({ actualDate: null, estimatedDate: null, plannedEnd: '2026-06-10' }),
+            ],
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      expect(readyIcon().getAttribute('data-icon')).toBe('fa-question')
+      expect(readyIcon().className).toMatch(/text-muted-foreground/)
+    })
+
+    it('renders NO icon for a bare ETA with nothing committed behind it', () => {
+      // Matches the Gantt and the delivery rows, where an unconfirmed estimate
+      // is drawn without an icon. The date still shows; only the badge is gone.
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            confirmedAvailableDate: null,
+            deliveries: [
+              delivery({
+                actualDate: null,
+                estimatedDate: '2026-06-09',
+                isCommitted: false,
+                isConfirmed: false,
+              }),
+            ],
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      expect(screen.queryByTestId('ready-tier-icon')).not.toBeInTheDocument()
+      expect(screen.getByTestId('ready-date-cell')).toHaveTextContent('06/09')
+    })
+
+    it('never reuses a delivery-row glyph for the planner-entered availability date', () => {
+      driverPlanningReturn = {
+        data: [makeDriver({ confirmedAvailableDate: '2026-07-01' })],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      // A hand-entered availability date is not an activity date, so it keeps
+      // its own calendar glyph rather than borrowing the "confirmed" flag.
+      expect(readyIcon().getAttribute('data-icon')).toBe('fa-calendar-check')
+    })
+  })
+
   describe('deliveries column', () => {
     it('renders a "-" placeholder when the driver has no deliveries', () => {
       driverPlanningReturn = {
@@ -1155,6 +1267,23 @@ describe('DriverPlanningPage', () => {
       // The styled tooltip reveals the agency on hover (400ms delay).
       fireEvent.mouseEnter(within(cell).getByText('Driver, A.').parentElement!)
       expect(await screen.findByText('Agency: 1511')).toBeInTheDocument()
+    })
+
+    it('uses the shared confidence glyphs on the Empty Date column', () => {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            confirmedAvailableDate: null,
+            deliveries: [delivery({ actualDate: '2026-06-15' })],
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderVariantB()
+      const icon = screen.getByTestId('ready-tier-icon')
+      expect(icon.getAttribute('data-icon')).toBe('fa-truck-moving')
+      expect(icon.className).toMatch(/text-emerald-700/)
     })
 
     it('falls back to the 1111 placeholder in the agency tooltip when no agent code', () => {

@@ -24,9 +24,16 @@ import { Input } from '@/components/ui/input'
 import {
   driverPlanningQueryOptions,
   useUpdateConfirmedAvailability,
+  type Delivery,
   type DriverPlanningRow,
 } from '@/api/queries/driver-planning'
 import { HoverToolTip } from '@/features/driver-planning/containers/ToolTips'
+import {
+  CONFIRMED_AVAILABILITY_TIER,
+  NO_CONFIDENCE,
+  getConfidenceTier,
+  type ConfidenceTier,
+} from '@/features/driver-planning/utils/confidence-tier'
 import { Select } from '@/features/driver-planning/components/Select'
 import type { RootState } from '@/features/driver-planning/redux/store'
 
@@ -116,26 +123,19 @@ function wgsGlyph(v: boolean | null): string {
   return v === true ? '☑' : v === false ? '☐' : '?'
 }
 
+// Which date won. The ICON is not derived from this — it comes from
+// getConfidenceTier() on the activity the date came from, so the Ready Date
+// column speaks the same glyph vocabulary as View A's delivery rows and the
+// planning screen's Gantt.
 type ReadyTier = 'confirmed' | 'actual' | 'estimated' | 'spread' | 'none'
-
-interface ReadyTierMeta {
-  icon: string | null
-  label: string
-}
-
-const READY_TIER: Record<ReadyTier, ReadyTierMeta> = {
-  confirmed: { icon: 'fa-calendar-check', label: 'Confirmed availability' },
-  actual: { icon: 'fa-flag-checkered', label: 'Actual delivery date' },
-  estimated: { icon: 'fa-truck-moving', label: 'Estimated delivery date' },
-  spread: { icon: 'fa-question', label: 'Planned spread (least certain)' },
-  none: { icon: null, label: '' },
-}
 
 interface ReadyGuess {
   kind: ReadyTier
   date: string | null
   state: string | null
   city: string | null
+  /** The activity the date came from — supplies the confidence icon. */
+  source: Delivery | null
 }
 
 function getReadyGuess(driver: DriverPlanningRow): ReadyGuess {
@@ -148,30 +148,30 @@ function getReadyGuess(driver: DriverPlanningRow): ReadyGuess {
     driver.shipments[driver.shipments.length - 1] ?? driver.deliveries[driver.deliveries.length - 1]
   const state = last?.state ?? null
   const city = last?.city ? titleCaseCity(last.city) : null
+  const source = last ?? null
 
   if (last?.actualDate) {
-    return { kind: 'actual', date: last.actualDate, state, city }
+    return { kind: 'actual', date: last.actualDate, state, city, source }
   }
   if (last?.estimatedDate) {
-    return { kind: 'estimated', date: last.estimatedDate, state, city }
+    return { kind: 'estimated', date: last.estimatedDate, state, city, source }
   }
   const spread = last?.plannedEnd ?? last?.plannedStart ?? null
   if (spread) {
-    return { kind: 'spread', date: spread, state, city }
+    return { kind: 'spread', date: spread, state, city, source }
   }
-  return { kind: 'none', date: null, state, city }
+  return { kind: 'none', date: null, state, city, source }
 }
 
-function ReadyTierIcon({ kind }: { kind: ReadyTier }) {
-  const meta = READY_TIER[kind]
-  if (!meta.icon) return null
+function ReadyTierIcon({ tier }: { tier: ConfidenceTier }) {
+  if (!tier.icon) return null
   return (
-    <HoverToolTip content={meta.label} direction="top">
+    <HoverToolTip content={tier.label} direction="top">
       <i
-        className={`fas ${meta.icon}`}
+        className={`fas ${tier.icon} ${tier.colorClass}`}
         data-testid="ready-tier-icon"
-        data-icon={meta.icon}
-        aria-label={meta.label}
+        data-icon={tier.icon}
+        aria-label={tier.label}
       />
     </HoverToolTip>
   )
@@ -440,7 +440,15 @@ function DriverRow({ driver, stateList }: { driver: DriverPlanningRow; stateList
             data-ready-tier={driver.confirmedAvailableDate ? 'confirmed' : guess.kind}
             onClick={() => startEdit('emptyDate')}
           >
-            <ReadyTierIcon kind={driver.confirmedAvailableDate ? 'confirmed' : guess.kind} />
+            <ReadyTierIcon
+              tier={
+                driver.confirmedAvailableDate
+                  ? CONFIRMED_AVAILABILITY_TIER
+                  : guess.source
+                    ? getConfidenceTier(guess.source)
+                    : NO_CONFIDENCE
+              }
+            />
             {driver.confirmedAvailableDate
               ? formatMonthDay(driver.confirmedAvailableDate)
               : guess.date
