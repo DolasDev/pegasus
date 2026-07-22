@@ -287,6 +287,7 @@ _MUTATION_CALLS = [
     lambda c: c.publish_integration_config("demo_partner", mapping={}, rules={}, corpus=[]),
     lambda c: c.rollback_integration_config("demo_partner", version=2),
     lambda c: c.fork_integration_config("demo_partner"),
+    lambda c: c.delete_integration_config("demo_partner"),
     lambda c: c.set_secret("K", "v"),
     lambda c: c.delete_secret("K"),
     lambda c: c.set_config("K", "v"),

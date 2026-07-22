@@ -3,6 +3,41 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.29.0
+
+### Added — delete a published integration config (`delete_integration_config`)
+
+Closes the gap that a published integration config could never be withdrawn — only
+superseded (sdk-feedback 0031, plus 0030's tenant-overlay half).
+
+- **`PegasusClient.delete_integration_config(integration_id, force=False)`** and
+  **`pegasus-workflows integration-config delete <id> [--force] [--yes]`** — ONE
+  verb, scoped by _who_ calls it, removing only the config lineage the caller's own
+  tenant owns:
+  - **platform tenant → the GLOBAL config.** Retires a placeholder or renamed id
+    (e.g. `demo_partner` after a rename to `weichert`) so it stops resolving, drops
+    out of `list_integrations()`, and can no longer be forked — instead of living
+    forever as an orphan next to the real id.
+  - **any other tenant → its own TENANT overlay.** Afterwards
+    `get_integration_config(id)` returns the platform GLOBAL again, so a tenant on a
+    stale overlay can re-inherit upstream instead of hand-republishing a copy that
+    never tracks GLOBAL.
+- **Irreversible by design**: the ENTIRE version lineage is hard-deleted, so
+  `list_integration_config_versions` comes back empty and `rollback` cannot undo it;
+  a later publish starts again at `v1`. The CLI confirms before acting (`--yes`
+  skips it for CI).
+- **Dependency guard**: deleting a GLOBAL that other tenants still overlay is
+  refused with `409 DEPENDENTS_EXIST` (reporting the count) unless `force=True` /
+  `--force`, which acknowledges them but never touches their rows.
+- An id that also has a **built-in** definition in platform code keeps resolving to
+  that code baseline afterwards (still listed, `published: false`) — a built-in is
+  code, not configuration. A config-only id disappears entirely: `get`,
+  `map_from_external` and `fork` all return 404.
+- Platform: `DELETE /api/v1/integrations/{integrationId}/config`, gated by
+  `PublishIntegrationConfig` + `INTEGRATION_CONFIG_PUBLISH_ENABLED` (the same gate
+  as publish) and documented in the OpenAPI spec. Dry-run captures the call as a
+  `PublishIntegrationConfig` mutation instead of sending it.
+
 ## 0.28.0
 
 ### Added — pegII salesman reads (`get_salesman` / `list_salesmen`)

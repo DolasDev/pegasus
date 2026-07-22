@@ -1421,6 +1421,12 @@ enum WorkflowVisibility {
 /// isPlatformTenant flag (GLOBAL ⇒ platform tenant, readable by all), exactly
 /// like Workflow. NOT in TENANT_SCOPED_MODELS — the repository hand-scopes reads
 /// to (owner ∪ GLOBAL).
+///
+/// Append-only with ONE exception: `DELETE /integrations/{id}/config`
+/// (sdk-feedback 0030 + 0031) hard-deletes an entire (integrationId, tenantId)
+/// lineage, so a published id can be withdrawn — a placeholder or renamed
+/// GLOBAL id, or a tenant overlay the tenant wants to drop to re-inherit GLOBAL.
+/// Rows are never updated in place other than the PUBLISHED → SUPERSEDED flip.
 model IntegrationConfig {
   id       String @id @default(uuid())
   tenantId String @map("tenant_id")

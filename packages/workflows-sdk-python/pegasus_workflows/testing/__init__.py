@@ -123,6 +123,7 @@ _MUTATIONS: dict[str, str] = {
     "publish_integration_config": "PublishIntegrationConfig",
     "rollback_integration_config": "PublishIntegrationConfig",
     "fork_integration_config": "PublishIntegrationConfig",
+    "delete_integration_config": "PublishIntegrationConfig",
     "set_secret": "ManageWorkflowSecrets",
     "delete_secret": "ManageWorkflowSecrets",
     "set_config": "ManageWorkflowConfigs",

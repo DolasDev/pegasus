@@ -1616,6 +1616,78 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
+    def delete_integration_config(
+        self,
+        integration_id: str,
+        *,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        """Delete the caller's published config for ``integration_id``.
+
+        The withdrawal path that publish/rollback never had (sdk-feedback 0030 +
+        0031). ONE verb, scoped by *who* calls it — you can only ever remove the
+        lineage your own tenant owns:
+
+        - **platform tenant** → the **GLOBAL** config. Use this to retire a
+          placeholder or renamed id (e.g. ``demo_partner`` after a rename to
+          ``weichert``) so it stops being resolved, listed by
+          :meth:`list_integrations`, and forkable by tenants.
+        - **any other tenant** → your own **TENANT** overlay, after which
+          :meth:`get_integration_config` returns the platform **GLOBAL** again —
+          the supported way to drop a stale overlay and re-inherit upstream
+          instead of hand-republishing a copy that never tracks GLOBAL.
+
+        This is a **hard delete of the entire version lineage** — every version,
+        not just the active one. It is irreversible:
+        :meth:`list_integration_config_versions` returns nothing afterwards, so
+        :meth:`rollback_integration_config` cannot bring it back. A later publish
+        for the same scope starts again at ``v1``.
+
+        An integration id that ALSO has a built-in definition in platform code
+        keeps resolving to that code baseline after its GLOBAL config is deleted
+        (a built-in is code, not configuration) — it stays in
+        :meth:`list_integrations` with ``published: False``. An id that exists
+        only as configuration (the usual case for a partner authored against a
+        floor) disappears completely: ``get``/``map_from_external``/``fork`` all
+        return 404.
+
+        Requires ``PublishIntegrationConfig`` (the ``integration_publisher``
+        role) and the platform's integration-config publish switch — the same
+        gate as :meth:`publish_integration_config`.
+
+        Args:
+            integration_id: The integration whose config to delete.
+            force: Delete a GLOBAL config even though other tenants still have
+                their own overlay for the id. Without it, that case is refused
+                with ``409 DEPENDENTS_EXIST`` so a platform cleanup cannot
+                silently change what a tenant resolves. ``force`` never touches
+                another tenant's rows — it only acknowledges that they exist.
+
+        Returns:
+            ``{"integrationId": ..., "visibility": "GLOBAL" | "TENANT",
+            "deleted": <versions removed>}``.
+
+        Raises:
+            PegasusApiError: On 403 (feature disabled / missing permission), 404
+                (the caller owns no config for this id), 409 (dependent tenant
+                overlays — retry with ``force=True``), or any other non-2xx.
+        """
+        captured = self._capture_mutation(
+            "PublishIntegrationConfig",
+            "delete_integration_config",
+            {"integration_id": integration_id, "force": force},
+            {"integrationId": integration_id, "deleted": 0, "dryRun": True},
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
+        with self._client() as client:
+            response = client.delete(
+                f"/api/v1/integrations/{integration_id}/config",
+                params={"force": "true"} if force else None,
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
     def get_mapping_schema(self) -> dict[str, Any]:
         """The JSON Schema for the ``mapping.json`` DSL (public, live introspection).
 
