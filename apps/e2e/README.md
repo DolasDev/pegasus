@@ -9,7 +9,7 @@ Front door for the e2e suite. One suite, three execution targets, selected via
 | ----------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `local` (default) | Developer laptop, PR CI | Spins up the API via `webServer`, runs `globalSetup` (Prisma migrate + tenant seed), points specs at `http://localhost:3001`.                                                                |
 | `remote`          | Staging E2E gate (CI)   | No `webServer`, no `globalSetup`. Hits the API at `E2E_API_BASE_URL` and excludes specs tagged `@local-only` (DB-seeded / auth-only). Contract: **[REMOTE.md](./REMOTE.md)**.                |
-| `qa`              | On-demand / nightly     | No `webServer`, no `globalSetup`. Real Cognito login → the `/driver-planning` (longhaul) browser + API suite against a QA tenant with a live on-prem tunnel. Contract: **[QA.md](./QA.md)**. |
+| `qa`              | On demand only          | No `webServer`, no `globalSetup`. Real Cognito login → the `/driver-planning` (longhaul) browser + API suite against a QA tenant with a live on-prem tunnel. Contract: **[QA.md](./QA.md)**. |
 
 ## Scripts
 

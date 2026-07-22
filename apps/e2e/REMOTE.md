@@ -7,7 +7,7 @@ via the `E2E_TARGET` env var:
 | ----------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `local` (default) | Developer laptop, default | Spins up the API via `webServer`, runs `globalSetup` (Prisma migrate + tenant seed), points specs at `http://localhost:3001`.                                                          |
 | `remote`          | Staging E2E gate (CI)     | No `webServer`, no `globalSetup`. Hits the API at `E2E_API_BASE_URL` and excludes specs tagged `@local-only` (DB-seeded / auth-only).                                                  |
-| `qa`              | On-demand / nightly       | No `webServer`, no `globalSetup`. Real Cognito login → the `/driver-planning` (longhaul) browser + API suite against a QA tenant with a live on-prem tunnel. See **`apps/e2e/QA.md`**. |
+| `qa`              | On demand only            | No `webServer`, no `globalSetup`. Real Cognito login → the `/driver-planning` (longhaul) browser + API suite against a QA tenant with a live on-prem tunnel. See **`apps/e2e/QA.md`**. |
 
 ## Running remote mode locally (rare)
 

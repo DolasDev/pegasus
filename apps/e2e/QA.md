@@ -96,7 +96,14 @@ Useful slices:
 - API layer only: `... -- --project=qa-api`
 - Browser layer only: `... -- --project=qa-browser`
 
-In CI: the **E2E — QA longhaul** workflow (`workflow_dispatch` + nightly).
+In CI: the **E2E — QA longhaul** workflow — `workflow_dispatch` **only**, no
+schedule. The QA environment isn't permanently stood up, so a cron would spend
+most of its life failing on absent infrastructure. Trigger it yourself once the
+QA tenant + tunnel are confirmed up:
+
+```
+gh workflow run e2e-qa-longhaul.yml --ref main
+```
 
 ## Phase A → Phase B
 
