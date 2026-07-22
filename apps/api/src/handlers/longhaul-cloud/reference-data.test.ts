@@ -110,6 +110,10 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
     // distinct from the drivers view's uppercase ACTIVE.
     expect(sql).toContain("[v_longhaul_salesman].active = 'Y'")
     expect(sql).toContain("active = 'Y' AND ((managed_by_id = 2021 OR roles like '%LO%'))")
+    // The drivers statement backs the Planning typeahead: active drivers only,
+    // with NO placeholder-ID exclusion — every active driver must be pickable.
+    expect(sql).toContain("FROM v_longhaul_drivers\nWHERE ACTIVE = 'Y'")
+    expect(sql).not.toContain('DRIVER_ID NOT IN')
   })
 
   it('omits per-client statements (and returns empty dispatchers + filterOptions) when longhaulClient is null', async () => {

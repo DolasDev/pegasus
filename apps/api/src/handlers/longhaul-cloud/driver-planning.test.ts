@@ -127,8 +127,9 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
     expect(executeSqlMock).toHaveBeenCalledTimes(4)
     expect(body.meta).toEqual({ count: 1 })
 
-    // Planning query (round trip 1) filters to active, real drivers — kept in
-    // lockstep with the /drivers planning dropdown.
+    // Planning query (round trip 1) filters to active drivers AND excludes the
+    // 99994-99999 placeholder range. That exclusion is Availability-only — the
+    // /drivers typeahead deliberately keeps those rows (see ./driver-filter).
     const planningSql = executeSqlMock.mock.calls[0]![1] as string
     expect(planningSql).toContain("d.ACTIVE = 'Y'")
     expect(planningSql).toContain('d.DRIVER_ID NOT IN (99994, 99995, 99996, 99997, 99998, 99999)')
