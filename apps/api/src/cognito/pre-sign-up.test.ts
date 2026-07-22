@@ -47,7 +47,7 @@ vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
   }),
 }))
 
-import { handler, providerNameCandidates } from './pre-sign-up'
+import { handler, providerNameCandidates, isAlreadyLinkedError } from './pre-sign-up'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -158,6 +158,33 @@ describe('providerNameCandidates', () => {
     // A trailing underscore would leave an empty sub — not a real boundary.
     expect(providerNameCandidates('Trailing_')).toEqual([])
     expect(providerNameCandidates('_Leading')).toEqual([])
+  })
+})
+
+describe('isAlreadyLinkedError', () => {
+  it('recognises the Cognito already-linked message', () => {
+    expect(isAlreadyLinkedError(new Error('SourceUser is already linked to DestinationUser'))).toBe(
+      true,
+    )
+  })
+
+  it('matches regardless of case and surrounding text', () => {
+    expect(
+      isAlreadyLinkedError(
+        new Error('InvalidParameterException: already linked to destinationuser'),
+      ),
+    ).toBe(true)
+  })
+
+  it('does not match unrelated link failures', () => {
+    expect(isAlreadyLinkedError(new Error('AliasExistsException'))).toBe(false)
+    expect(isAlreadyLinkedError(new Error('cognito is down'))).toBe(false)
+  })
+
+  it('handles a non-Error thrown value without throwing', () => {
+    expect(isAlreadyLinkedError('already linked to DestinationUser')).toBe(true)
+    expect(isAlreadyLinkedError(undefined)).toBe(false)
+    expect(isAlreadyLinkedError(null)).toBe(false)
   })
 })
 
@@ -383,6 +410,42 @@ describe('pre-sign-up trigger', () => {
         return { Users: [cognitoUser()] }
       }
       throw new Error('AliasExistsException')
+    })
+
+    await expect(invoke(makeEvent())).rejects.toThrow(/Could not link your account/)
+  })
+
+  // -------------------------------------------------------------------------
+  // Idempotency — a duplicate invocation that re-links is a success, not a failure
+  // -------------------------------------------------------------------------
+
+  it('treats "already linked" as success rather than throwing at the user', async () => {
+    // The prod case: Cognito fired PreSignUp_ExternalProvider a second time for an
+    // identity it had already linked 5s earlier. The link errors, but the identity
+    // IS linked — the exact end state this trigger wants.
+    mockSsoProviderFindMany.mockResolvedValue([enabledProvider()])
+    mockTenantUserFindFirst.mockResolvedValue({ id: 'tenant-user-1' })
+    mockCognitoSend.mockImplementation(async (cmd: { __type: string }) => {
+      if (cmd.__type === 'ListUsers') {
+        return { Users: [cognitoUser()] }
+      }
+      throw new Error('SourceUser is already linked to DestinationUser')
+    })
+
+    const event = makeEvent()
+    await expect(invoke(event)).resolves.toBe(event)
+  })
+
+  it('still throws for AliasExistsException — a link that genuinely could not be made', async () => {
+    // Regression guard on the narrowed catch: the idempotency branch must not
+    // widen into other InvalidParameterException-family failures.
+    mockSsoProviderFindMany.mockResolvedValue([enabledProvider()])
+    mockTenantUserFindFirst.mockResolvedValue({ id: 'tenant-user-1' })
+    mockCognitoSend.mockImplementation(async (cmd: { __type: string }) => {
+      if (cmd.__type === 'ListUsers') {
+        return { Users: [cognitoUser()] }
+      }
+      throw new Error('AliasExistsException: An account with this email already exists')
     })
 
     await expect(invoke(makeEvent())).rejects.toThrow(/Could not link your account/)
