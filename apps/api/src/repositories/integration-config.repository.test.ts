@@ -153,4 +153,92 @@ describe.skipIf(!hasDb)('createIntegrationConfigRepository (integration)', () =>
     expect(direct?.forkedFromConfigId).toBeNull()
     expect(direct?.forkedFromVersion).toBeNull()
   })
+
+  // -- delete (sdk-feedback 0030 + 0031) ------------------------------------
+
+  it('countOtherTenantOverlays counts only other tenants live TENANT rows', async () => {
+    const INTEG_DEPS = `${INTEG}-deps`
+    // A GLOBAL (platform-owned) config plus one tenant overlay on the same id.
+    await repo.publish({
+      integrationId: INTEG_DEPS,
+      tenantId: platformId,
+      visibility: 'GLOBAL',
+      mapping,
+      rules,
+      corpus,
+      gateReport,
+      publishedBy: 'platform',
+    })
+    await repo.publish({
+      integrationId: INTEG_DEPS,
+      tenantId,
+      visibility: 'TENANT',
+      mapping,
+      rules,
+      corpus,
+      gateReport,
+      publishedBy: 'u1',
+    })
+
+    // From the platform tenant's view the overlay is a dependent.
+    expect(await repo.countOtherTenantOverlays(INTEG_DEPS, platformId)).toBe(1)
+    // The tenant's own overlay is never its own dependent.
+    expect(await repo.countOtherTenantOverlays(INTEG_DEPS, tenantId)).toBe(0)
+
+    // Superseding the overlay leaves exactly one PUBLISHED row — still 1, not 2.
+    await repo.publish({
+      integrationId: INTEG_DEPS,
+      tenantId,
+      visibility: 'TENANT',
+      mapping,
+      rules,
+      corpus,
+      gateReport,
+      publishedBy: 'u1',
+    })
+    expect(await repo.countOtherTenantOverlays(INTEG_DEPS, platformId)).toBe(1)
+  })
+
+  it('deleteScope removes the whole lineage for one scope and leaves others intact', async () => {
+    const INTEG_DEL = `${INTEG}-del`
+    for (const owner of [platformId, tenantId]) {
+      await repo.publish({
+        integrationId: INTEG_DEL,
+        tenantId: owner,
+        visibility: owner === platformId ? 'GLOBAL' : 'TENANT',
+        mapping,
+        rules,
+        corpus,
+        gateReport,
+        publishedBy: 'u1',
+      })
+    }
+    // Two versions in the tenant lineage, one in the platform lineage.
+    await repo.publish({
+      integrationId: INTEG_DEL,
+      tenantId,
+      visibility: 'TENANT',
+      mapping,
+      rules,
+      corpus,
+      gateReport,
+      publishedBy: 'u1',
+    })
+    expect(await repo.countScope(INTEG_DEL, tenantId)).toBe(2)
+
+    // Deleting the tenant lineage takes EVERY version, not just the active one.
+    expect(await repo.deleteScope(INTEG_DEL, tenantId)).toBe(2)
+    expect(await repo.countScope(INTEG_DEL, tenantId)).toBe(0)
+    expect(await repo.listVersions(INTEG_DEL, tenantId)).toEqual([])
+    // …and the tenant now re-inherits the untouched GLOBAL (0030).
+    expect(await repo.countScope(INTEG_DEL, platformId)).toBe(1)
+    expect((await repo.findActiveForScope(INTEG_DEL, tenantId))?.visibility).toBe('GLOBAL')
+
+    // Deleting the GLOBAL lineage leaves nothing to resolve (0031).
+    expect(await repo.deleteScope(INTEG_DEL, platformId)).toBe(1)
+    expect(await repo.findActiveForScope(INTEG_DEL, tenantId)).toBeNull()
+    expect(await repo.findActiveGlobal(INTEG_DEL)).toBeNull()
+    // Idempotent: a second delete removes nothing rather than erroring.
+    expect(await repo.deleteScope(INTEG_DEL, platformId)).toBe(0)
+  })
 })

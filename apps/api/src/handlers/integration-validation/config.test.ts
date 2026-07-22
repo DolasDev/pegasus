@@ -43,6 +43,9 @@ const {
     findActiveOwn: vi.fn(),
     listVersions: vi.fn(),
     findVersion: vi.fn(),
+    countScope: vi.fn(),
+    countOtherTenantOverlays: vi.fn(),
+    deleteScope: vi.fn(),
   },
   mockTenantFindUnique: vi.fn(),
   mockGetBuiltInDefinition: vi.fn(),
@@ -635,6 +638,98 @@ describe('integration-config handler', () => {
         }),
       )
       expect(mockRefreshRegistryOverlay).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  // ── DELETE /config (sdk-feedback 0030 + 0031) ─────────────────────────────
+
+  describe('DELETE /config', () => {
+    const del = (): RequestInit => ({ method: 'DELETE' })
+    const DEL = PATH
+    const DEL_FORCE = `${PATH}?force=true`
+
+    beforeEach(() => {
+      // Default happy-path delete context: the scope owns one lineage of two
+      // versions and nobody else overlays the id.
+      mockRepo.countScope.mockResolvedValue(2)
+      mockRepo.countOtherTenantOverlays.mockResolvedValue(0)
+      mockRepo.deleteScope.mockResolvedValue(2)
+    })
+
+    it('returns 403 FEATURE_DISABLED when the master switch is off', async () => {
+      process.env['INTEGRATION_CONFIG_PUBLISH_ENABLED'] = 'false'
+      const res = await buildApp().request(DEL, del())
+      expect(res.status).toBe(403)
+      expect((await json(res)).code).toBe('FEATURE_DISABLED')
+      expect(mockRepo.deleteScope).not.toHaveBeenCalled()
+    })
+
+    it('returns 403 without PublishIntegrationConfig (viewer can read but not delete)', async () => {
+      const res = await buildApp(['viewer']).request(DEL, del())
+      expect(res.status).toBe(403)
+      expect(mockRepo.deleteScope).not.toHaveBeenCalled()
+    })
+
+    it('returns 404 when the caller owns no config for the id', async () => {
+      mockRepo.countScope.mockResolvedValue(0)
+      const res = await buildApp().request(DEL, del())
+      expect(res.status).toBe(404)
+      expect((await json(res)).code).toBe('NOT_FOUND')
+      expect(mockRepo.deleteScope).not.toHaveBeenCalled()
+    })
+
+    it('deletes the tenants own overlay so it re-inherits GLOBAL (0030)', async () => {
+      const res = await buildApp().request(DEL, del())
+      expect(res.status).toBe(200)
+      expect((await json(res)).data).toEqual({
+        integrationId: 'demo_partner',
+        visibility: 'TENANT',
+        deleted: 2,
+      })
+      expect(mockRepo.deleteScope).toHaveBeenCalledWith('demo_partner', 'test-tenant-id')
+      // A tenant delete never consults the GLOBAL dependents guard.
+      expect(mockRepo.countOtherTenantOverlays).not.toHaveBeenCalled()
+      expect(mockRefreshRegistryOverlay).toHaveBeenCalledTimes(1)
+    })
+
+    it('deletes the GLOBAL lineage for the platform tenant (0031)', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: true })
+      const res = await buildApp().request(DEL, del())
+      expect(res.status).toBe(200)
+      expect((await json(res)).data).toMatchObject({ visibility: 'GLOBAL', deleted: 2 })
+      expect(mockRepo.deleteScope).toHaveBeenCalledWith('demo_partner', 'test-tenant-id')
+      expect(mockRefreshRegistryOverlay).toHaveBeenCalledTimes(1)
+    })
+
+    it('returns 409 DEPENDENTS_EXIST when other tenants still overlay a GLOBAL id', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: true })
+      mockRepo.countOtherTenantOverlays.mockResolvedValue(3)
+      const res = await buildApp().request(DEL, del())
+      expect(res.status).toBe(409)
+      const body = await json(res)
+      expect(body['code']).toBe('DEPENDENTS_EXIST')
+      expect(body['dependents']).toBe(3)
+      expect(mockRepo.deleteScope).not.toHaveBeenCalled()
+      expect(mockRefreshRegistryOverlay).not.toHaveBeenCalled()
+    })
+
+    it('force=true deletes the GLOBAL despite dependents, without touching their rows', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: true })
+      mockRepo.countOtherTenantOverlays.mockResolvedValue(3)
+      const res = await buildApp().request(DEL_FORCE, del())
+      expect(res.status).toBe(200)
+      // The guard is skipped entirely, and only the caller's own scope is deleted.
+      expect(mockRepo.countOtherTenantOverlays).not.toHaveBeenCalled()
+      expect(mockRepo.deleteScope).toHaveBeenCalledTimes(1)
+      expect(mockRepo.deleteScope).toHaveBeenCalledWith('demo_partner', 'test-tenant-id')
+    })
+
+    it('ignores a non-"true" force value (a tenant cannot fuzz past the guard)', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: true })
+      mockRepo.countOtherTenantOverlays.mockResolvedValue(1)
+      const res = await buildApp().request(`${PATH}?force=1`, del())
+      expect(res.status).toBe(409)
+      expect(mockRepo.deleteScope).not.toHaveBeenCalled()
     })
   })
 })

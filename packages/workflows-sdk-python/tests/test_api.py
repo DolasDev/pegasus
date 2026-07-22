@@ -1409,6 +1409,15 @@ def test_dry_run_delete_projection_returns_none_and_captures() -> None:
     assert client.captured[0]["method"] == "delete_projection"
 
 
+def test_dry_run_delete_integration_config_captured_not_sent() -> None:
+    reset_dry_run_captures()
+    client = _dry_client(_raising_handler)
+    result = client.delete_integration_config("demo_partner", force=True)
+    assert result == {"integrationId": "demo_partner", "deleted": 0, "dryRun": True}
+    assert client.captured[0]["capability"] == "PublishIntegrationConfig"
+    assert client.captured[0]["args"] == {"integration_id": "demo_partner", "force": True}
+
+
 def test_record_side_effect_only_in_dry_run() -> None:
     reset_dry_run_captures()
     live = PegasusClient(base_url="http://api.test", token=_TOKEN)
@@ -1499,6 +1508,51 @@ def test_fork_integration_config_posts_to_fork_endpoint() -> None:
     assert captured["method"] == "POST"
     assert captured["path"] == "/api/v1/integrations/demo_partner/config/fork"
     assert data["visibility"] == "TENANT"
+
+
+def test_delete_integration_config_deletes_config_endpoint() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["method"] = request.method
+        captured["query"] = dict(request.url.params)
+        return httpx.Response(
+            200,
+            json={"data": {"integrationId": "demo_partner", "visibility": "GLOBAL", "deleted": 4}},
+        )
+
+    data = _client_with(handler).delete_integration_config("demo_partner")
+    assert captured["method"] == "DELETE"
+    assert captured["path"] == "/api/v1/integrations/demo_partner/config"
+    # No dependents opt-in unless asked — the server-side guard stays armed.
+    assert captured["query"] == {}
+    assert data["deleted"] == 4
+
+
+def test_delete_integration_config_force_sends_query_flag() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["query"] = dict(request.url.params)
+        return httpx.Response(
+            200,
+            json={"data": {"integrationId": "demo_partner", "visibility": "GLOBAL", "deleted": 1}},
+        )
+
+    _client_with(handler).delete_integration_config("demo_partner", force=True)
+    assert captured["query"] == {"force": "true"}
+
+
+def test_delete_integration_config_dependents_conflict_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            409, json={"error": "2 tenant(s) still have…", "code": "DEPENDENTS_EXIST"}
+        )
+
+    with pytest.raises(PegasusApiError) as exc:
+        _client_with(handler).delete_integration_config("demo_partner")
+    assert exc.value.status_code == 409
 
 
 def test_list_integrations_reads_configs_endpoint() -> None:

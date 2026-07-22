@@ -6,6 +6,11 @@
 // new immutable (integrationId, tenantId, version) row and supersedes prior
 // PUBLISHED rows for the same scope.
 //
+// The one exception is `deleteScope` (sdk-feedback 0030 + 0031): an explicit,
+// permission-gated hard delete of an ENTIRE (integrationId, tenantId) lineage,
+// so a published id can be withdrawn rather than merely superseded. Nothing
+// mutates a row in place; a config is either appended or its lineage is removed.
+//
 // Visibility is derived server-side at publish time from the publishing tenant
 // (GLOBAL for the platform tenant, TENANT otherwise) — exactly like Workflow.
 // IntegrationConfig is intentionally NOT in TENANT_SCOPED_MODELS: the GLOBAL
@@ -216,6 +221,53 @@ export function createIntegrationConfigRepository(db: PrismaClient) {
         orderBy: { version: 'desc' },
         select: SELECT,
       })
+    },
+
+    /**
+     * How many rows (any status, any version) exist for one (integrationId,
+     * tenantId) lineage. Used by the delete handler to distinguish "nothing to
+     * delete" (404) from a real removal, without loading the JSON blobs
+     * `listVersions` returns.
+     */
+    async countScope(integrationId: string, tenantId: string): Promise<number> {
+      return db.integrationConfig.count({ where: { integrationId, tenantId } })
+    },
+
+    /**
+     * Count OTHER tenants' live (PUBLISHED, TENANT-visibility) configs for one
+     * integration id — the dependency guard for deleting a GLOBAL config
+     * (sdk-feedback 0031). Excludes `excludeTenantId` (the platform tenant doing
+     * the delete) and non-PUBLISHED rows, so only tenants actively resolving
+     * their own overlay for the id are counted.
+     */
+    async countOtherTenantOverlays(
+      integrationId: string,
+      excludeTenantId: string,
+    ): Promise<number> {
+      return db.integrationConfig.count({
+        where: {
+          integrationId,
+          visibility: 'TENANT',
+          status: 'PUBLISHED',
+          tenantId: { not: excludeTenantId },
+        },
+      })
+    },
+
+    /**
+     * Hard-delete the ENTIRE (integrationId, tenantId) lineage — every version,
+     * not just the active one (sdk-feedback 0030 + 0031). Scoped strictly by the
+     * owning tenantId, so a caller can only ever remove rows it owns: the
+     * platform tenant its GLOBAL lineage, any other tenant its own overlay.
+     *
+     * Irreversible: unlike a supersede, the versions do not survive in history.
+     * A subsequent publish for the same scope therefore starts again at v1.
+     */
+    async deleteScope(integrationId: string, tenantId: string): Promise<number> {
+      const { count } = await db.integrationConfig.deleteMany({
+        where: { integrationId, tenantId },
+      })
+      return count
     },
 
     /** A specific version within a scope (used by rollback to source a prior config). */

@@ -1,9 +1,10 @@
 // ---------------------------------------------------------------------------
-// Integration-validator config — publish / dry-run validate / versions / rollback.
+// Integration-validator config — publish / dry-run validate / versions /
+// rollback / delete.
 //
 // The DB-backed authoring surface for an integration's mapping + rules. Mounted
 // on the M2M v1 plane (vnd_ keys via dualAuthMiddleware) and RBAC-gated:
-//   - PublishIntegrationConfig — validate (dry-run), publish, rollback
+//   - PublishIntegrationConfig — validate (dry-run), publish, rollback, delete
 //   - ReadIntegrationConfig    — get active config, list versions
 //
 // Every publish runs the deterministic gate pipeline (static checks + golden
@@ -16,8 +17,8 @@
 // refreshed so the platform-scoped (null-tenant) validate path picks up a GLOBAL
 // publish immediately. Mutations are gated behind INTEGRATION_CONFIG_PUBLISH_ENABLED.
 //
-// There is no tenant-plane audit table (writeAuditLog is admin-only); publish
-// and rollback emit a structured logger.info, the convention on this plane.
+// There is no tenant-plane audit table (writeAuditLog is admin-only); publish,
+// rollback and delete emit a structured logger.info, the convention on this plane.
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
@@ -511,5 +512,100 @@ integrationConfigHandler.post(
       newVersion: row.version,
     })
     return c.json({ data: toFull(row) }, 201)
+  },
+)
+
+// DELETE /integrations/:id/config — withdraw a published config (sdk-feedback
+// 0030 + 0031).
+//
+// ONE verb, scoped by WHO calls it — the caller can only ever remove the lineage
+// its own tenant owns:
+//   - platform tenant → the GLOBAL config for the id. A placeholder or renamed
+//     id (e.g. `demo_partner` after a rename to `weichert`) stops being resolved,
+//     listed and forkable instead of living forever as an orphan (0031).
+//   - any other tenant → its own TENANT overlay, after which it re-inherits the
+//     platform GLOBAL rather than being pinned to a stale hand-shipped copy (0030).
+//
+// HARD delete of the ENTIRE lineage (every version), not a supersede — the point
+// is that the id stops existing, so nothing survives in `versions`. The structured
+// log line below is the only trace. A subsequent publish starts again at v1.
+//
+// An id that ALSO has a built-in code overlay (registry.ts BUILTIN_OVERLAYS) keeps
+// resolving to that code baseline afterwards — a built-in is code, not data, and
+// only a code change removes it. For a config-only id (the 0020 "new partner as
+// pure configuration" case) the id disappears entirely.
+//
+// Dependency guard: deleting a GLOBAL that other tenants still overlay is refused
+// with 409 unless `?force=true` — so a platform cleanup can't silently change what
+// a tenant resolves. `force` never touches another tenant's rows; it only
+// acknowledges that they exist.
+integrationConfigHandler.delete(
+  '/integrations/:integrationId/config',
+  requirePermission(Actions.PublishIntegrationConfig),
+  async (c) => {
+    if (featureDisabled()) {
+      return c.json(
+        { error: 'Integration config publishing is not enabled', code: 'FEATURE_DISABLED' },
+        403,
+      )
+    }
+    const integrationId = c.req.param('integrationId') ?? ''
+    const tenantId = c.get('tenantId')
+    if (!tenantId) throw new DomainError('Tenant context required', 'UNAUTHENTICATED')
+    const userId = c.get('userId')
+    if (!userId)
+      throw new DomainError('Authenticated user required to delete config', 'UNAUTHENTICATED')
+
+    const force = c.req.query('force') === 'true'
+
+    const db = c.get('db')
+    const tenant = await db.tenant.findUnique({
+      where: { id: tenantId },
+      select: { isPlatformTenant: true },
+    })
+    if (!tenant) throw new DomainError('Tenant not found', 'NOT_FOUND')
+    const visibility = tenant.isPlatformTenant ? 'GLOBAL' : 'TENANT'
+
+    const repo = createIntegrationConfigRepository(db)
+
+    // Nothing owned in this scope → 404 before any guard runs, so "no such
+    // config" never reads as a dependents conflict.
+    const existing = await repo.countScope(integrationId, tenantId)
+    if (existing === 0) {
+      return c.json(
+        { error: `No ${visibility} config published for "${integrationId}"`, code: 'NOT_FOUND' },
+        404,
+      )
+    }
+
+    if (visibility === 'GLOBAL' && !force) {
+      const dependents = await repo.countOtherTenantOverlays(integrationId, tenantId)
+      if (dependents > 0) {
+        return c.json(
+          {
+            error:
+              `${dependents} tenant(s) still have their own config for "${integrationId}". ` +
+              'Retry with force=true to delete the GLOBAL config anyway ' +
+              '(their overlays are left intact).',
+            code: 'DEPENDENTS_EXIST',
+            dependents,
+          },
+          409,
+        )
+      }
+    }
+
+    const deleted = await repo.deleteScope(integrationId, tenantId)
+
+    await refreshRegistryOverlay(basePrisma)
+    logger.info('integration config deleted', {
+      integrationId,
+      tenantId,
+      visibility,
+      deleted,
+      force,
+      deletedBy: userId,
+    })
+    return c.json({ data: { integrationId, visibility, deleted } })
   },
 )

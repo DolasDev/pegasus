@@ -732,6 +732,7 @@ published_at = "2026-06-29T21:05:48Z"
 | `pegasus-workflows integration-config pull <id> [-C <dir>] [--stdout]`             | Fetch the active config; write the editable surface to disk.   |
 | `pegasus-workflows integration-config versions <id>`                               | List the config version history (newest first).                |
 | `pegasus-workflows integration-config rollback <id> <version>`                     | Re-publish a prior version (re-runs the gate).                 |
+| `pegasus-workflows integration-config delete <id> [--force] [--yes]`               | Permanently remove the caller's config for an integration.     |
 | `pegasus-workflows secrets set <key> <value> [-d <desc>]`                          | Publish a secret (write-once, encrypted at rest).              |
 | `pegasus-workflows secrets list` / `secrets delete <key>`                          | List secret keys (no values) / delete a secret.                |
 | `pegasus-workflows config set <key> <value> [-d <desc>]`                           | Publish a config value (idempotent upsert).                    |
@@ -783,14 +784,46 @@ pegasus-workflows integration-config validate demo_partner -C ./demo_partner
 pegasus-workflows integration-config publish demo_partner -C ./demo_partner
 ```
 
+#### Removing an integration
+
+`delete` is the withdrawal path publish/rollback never had — **one verb, scoped by
+who calls it**, removing only the config lineage your own tenant owns:
+
+```
+pegasus-workflows integration-config delete demo_partner            # prompts first
+pegasus-workflows integration-config delete demo_partner --yes --force
+```
+
+```python
+client.delete_integration_config("demo_partner")               # -> {integrationId, visibility, deleted}
+client.delete_integration_config("demo_partner", force=True)   # despite dependent tenant overlays
+```
+
+- **Platform tenant → the GLOBAL config.** Retires a placeholder or renamed id
+  (e.g. `demo_partner` after a rename to `weichert`) so it stops resolving, drops
+  out of `list_integrations()`, and can no longer be forked by tenants.
+- **Any other tenant → its own TENANT overlay.** Afterwards
+  `get_integration_config(id)` returns the platform GLOBAL again — the supported
+  way to drop a stale overlay and re-inherit upstream, rather than
+  hand-republishing a copy that never tracks GLOBAL.
+
+It is **irreversible**: the whole version lineage is hard-deleted, so `versions`
+comes back empty and `rollback` cannot undo it; a later publish starts again at
+`v1`. Deleting a GLOBAL that other tenants still overlay returns `409
+DEPENDENTS_EXIST` unless you pass `--force` / `force=True` — which acknowledges
+them but never touches their rows. An id that also has a **built-in** definition
+in platform code keeps resolving to that code baseline (it stays listed with
+`published: false`); a config-only id disappears entirely — `get`,
+`map_from_external` and `fork` all 404.
+
 An AI coding agent can do all of this **without platform source**: the MCP
 resources `pegasus://reference/integration-config` (the full guide),
 `pegasus://reference/floors` (live floors), and `pegasus://reference/openapi` (the
 API's OpenAPI 3.1 spec, also at `GET /openapi.json` / Swagger UI `/docs`) carry the
 complete contract.
 
-`publish`/`rollback` require the token's tenant to be the **platform tenant** to
-write GLOBAL (visibility is derived server-side) and to carry the
+`publish`/`rollback`/`delete` require the token's tenant to be the **platform
+tenant** to write GLOBAL (visibility is derived server-side) and to carry the
 `PublishIntegrationConfig` action; they are gated by the server's
 `INTEGRATION_CONFIG_PUBLISH_ENABLED` switch. `validate` and `pull` are
 read-level and never gated.

@@ -59,6 +59,10 @@ class _FakeClient:
         _FakeClient.last["rollback"] = (integration_id, version)
         return {"version": version + 1, "visibility": "GLOBAL"}
 
+    def delete_integration_config(self, integration_id, *, force=False):
+        _FakeClient.last["delete"] = (integration_id, force)
+        return {"integrationId": integration_id, "visibility": "GLOBAL", "deleted": 4}
+
 
 @pytest.fixture(autouse=True)
 def _patch_client(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: ANN001
@@ -225,3 +229,52 @@ def test_rollback_passes_version(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.output
     assert _FakeClient.last["rollback"] == ("demo_partner", 2)
+
+
+def test_delete_confirms_then_deletes(tmp_path: Path) -> None:
+    result = runner.invoke(
+        ic.integration_config_app,
+        ["delete", "demo_partner", "--token", _TOKEN],
+        input="y\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert _FakeClient.last["delete"] == ("demo_partner", False)
+    assert "4 version(s) removed" in result.output
+
+
+def test_delete_aborts_when_confirmation_declined(tmp_path: Path) -> None:
+    _FakeClient.last.pop("delete", None)
+    result = runner.invoke(
+        ic.integration_config_app,
+        ["delete", "demo_partner", "--token", _TOKEN],
+        input="n\n",
+    )
+    # Declining must not reach the API at all — the delete is irreversible.
+    assert result.exit_code == 1
+    assert "delete" not in _FakeClient.last
+
+
+def test_delete_yes_skips_prompt_and_force_is_passed_through(tmp_path: Path) -> None:
+    result = runner.invoke(
+        ic.integration_config_app,
+        ["delete", "demo_partner", "--token", _TOKEN, "--yes", "--force"],
+    )
+    assert result.exit_code == 0, result.output
+    assert _FakeClient.last["delete"] == ("demo_partner", True)
+
+
+def test_delete_surfaces_dependents_conflict_with_force_hint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _raise(self, integration_id, *, force=False):
+        raise PegasusApiError(
+            status_code=409, code="DEPENDENTS_EXIST", message="2 tenant(s) still have…"
+        )
+
+    monkeypatch.setattr(_FakeClient, "delete_integration_config", _raise)
+    result = runner.invoke(
+        ic.integration_config_app,
+        ["delete", "demo_partner", "--token", _TOKEN, "--yes"],
+    )
+    assert result.exit_code == 1
+    assert "--force" in result.output

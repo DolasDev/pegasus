@@ -9,6 +9,7 @@ A small Typer group over the integration-config endpoints
 * ``pull``     — fetch the active config and write the editable surface to disk.
 * ``versions`` — list the version history.
 * ``rollback`` — re-publish a prior version.
+* ``delete``   — permanently remove the caller's config for an integration.
 
 The editable surface lives as JSON files in a working directory: ``mapping.json``,
 ``rules.json``, ``corpus.json`` (required), plus — for the floor/overlay split
@@ -345,5 +346,57 @@ def rollback_command(
         raise typer.Exit(code=1) from exc
     typer.secho(
         f"rolled back {integration_id} from v{version} -> v{row.get('version')}",
+        fg=typer.colors.GREEN,
+    )
+
+
+@integration_config_app.command("delete")
+def delete_command(
+    integration_id: str = typer.Argument(..., help="Integration id, e.g. demo_partner."),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Delete a GLOBAL config even though other tenants still have their own "
+        "overlay for the id (their overlays are left intact).",
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip the confirmation prompt (for scripts/CI)."
+    ),
+) -> None:
+    """Permanently delete the caller's config for an integration.
+
+    Removes the WHOLE version lineage your tenant owns — the platform tenant's
+    GLOBAL config (retiring a placeholder or renamed id), or any other tenant's
+    own overlay (dropping it to re-inherit the platform GLOBAL). Irreversible:
+    nothing survives in ``versions``, so ``rollback`` cannot undo it.
+    """
+    token, base_url = resolve_credentials(token, base_url, profile)
+    if not yes:
+        typer.confirm(
+            f"Permanently delete every published version of '{integration_id}' "
+            "owned by this tenant? This cannot be undone.",
+            abort=True,
+        )
+    client = PegasusClient(base_url=base_url, token=token)
+    try:
+        result = client.delete_integration_config(integration_id, force=force)
+    except PegasusApiError as exc:
+        if exc.status_code == 409:
+            typer.secho(
+                f"not deleted — other tenants still have their own config for "
+                f"'{integration_id}': {exc}\n"
+                "Re-run with --force to delete the GLOBAL config anyway.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+        else:
+            typer.secho(f"delete failed: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(
+        f"deleted {integration_id} ({result.get('visibility')}) — "
+        f"{result.get('deleted')} version(s) removed",
         fg=typer.colors.GREEN,
     )

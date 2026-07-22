@@ -997,6 +997,33 @@ export function getOpenApiSpec() {
             '400': { $ref: '#/components/responses/ValidationError' },
           },
         },
+        delete: {
+          operationId: 'deleteIntegrationConfig',
+          summary: 'Delete the caller’s published config for an integration (API key)',
+          description:
+            'Hard-deletes the caller’s ENTIRE version lineage for this integration — the platform tenant’s GLOBAL config, or any other tenant’s own overlay (after which it re-inherits GLOBAL). Irreversible: no version survives in /config/versions. An id that also has a built-in code overlay keeps resolving to that baseline; a config-only id disappears entirely. Deleting a GLOBAL that other tenants still overlay returns 409 unless `force=true` (which never touches their rows). Gated by PublishIntegrationConfig + INTEGRATION_CONFIG_PUBLISH_ENABLED.',
+          tags: ['Integrations'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'integrationId', in: 'path', required: true, schema: { type: 'string' } },
+            {
+              name: 'force',
+              in: 'query',
+              required: false,
+              schema: { type: 'boolean' },
+              description:
+                'Delete a GLOBAL config even though other tenants still have their own overlay for the id.',
+            },
+          ],
+          responses: {
+            '200': { description: '{ data: { integrationId, visibility, deleted } }' },
+            '404': { $ref: '#/components/responses/NotFound' },
+            '409': {
+              description:
+                'DEPENDENTS_EXIST — other tenants still overlay this id; retry with force=true',
+            },
+          },
+        },
       },
     },
     components: {
