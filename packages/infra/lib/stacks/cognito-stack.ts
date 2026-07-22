@@ -131,6 +131,22 @@ export class CognitoStack extends cdk.Stack {
       ? ssm.StringParameter.valueForStringParameter(this, ADMIN_DOMAIN_NAME_PARAM)
       : undefined
 
+    // ⚠ Editing ANY property of the tenant app client below — a callback URL, a
+    // logout URL, a token TTL — makes CloudFormation rewrite the
+    // AWS::Cognito::UserPoolClient resource, and that resets
+    // SupportedIdentityProviders to this template's value (COGNITO only), silently
+    // breaking SSO for every tenant. Tenant IdP names are chosen at runtime, so this
+    // template can never hold the right list, and omitting the property does not help:
+    // UpdateUserPoolClient sets unspecified attributes to their defaults. Upstream bug:
+    // aws-cloudformation/cloudformation-coverage-roadmap#676.
+    //
+    // This bit prod on 2026-07-21 (PR #494 added the logout URLs below; SSO was dead
+    // for ~22h). The recovery is in the application, not here:
+    // POST /auth/resolve-tenants reconciles the list on every login, so the first
+    // sign-in after a deploy repairs it — see reconcileTenantAppClientFromEnv in
+    // apps/api/src/lib/cognito-app-client.ts. If you change this client, verify SSO
+    // still works after the deploy rather than assuming.
+    //
     // /login/signed-out is the middle leg of the wrong-account recovery chain:
     // Cognito returns there after clearing its own session so the SPA can forward
     // the user to their IdP's end-session endpoint (Cognito's /logout does not

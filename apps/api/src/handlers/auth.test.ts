@@ -50,6 +50,23 @@ vi.mock('../db', () => ({
 }))
 
 // ---------------------------------------------------------------------------
+// App-client reconcile mock
+//
+// resolve-tenants repairs SupportedIdentityProviders drift on the login path.
+// The repair itself is covered in lib/cognito-app-client.test.ts; here we only
+// assert the handler hands it the right provider names and never lets a failure
+// reach the user.
+// ---------------------------------------------------------------------------
+
+const { mockReconcileFromEnv } = vi.hoisted(() => ({
+  mockReconcileFromEnv: vi.fn(),
+}))
+
+vi.mock('../lib/cognito-app-client', () => ({
+  reconcileTenantAppClientFromEnv: mockReconcileFromEnv,
+}))
+
+// ---------------------------------------------------------------------------
 // jose mock — intercept jwtVerify before authHandler import resolves
 // ---------------------------------------------------------------------------
 
@@ -157,6 +174,75 @@ describe('POST /api/auth/resolve-tenants', () => {
     expect(item['tenantName']).toBe('Acme Corp')
     expect(item['cognitoAuthEnabled']).toBe(false)
     expect(item['providers']).toEqual([{ id: 'AcmeOkta', name: 'Acme Okta', type: 'oidc' }])
+  })
+
+  // -------------------------------------------------------------------------
+  // App-client drift repair on the login path
+  //
+  // A CloudFormation deploy resets SupportedIdentityProviders to COGNITO-only on
+  // any app-client property change, and this is the last server-side hop before
+  // the SPA builds /oauth2/authorize itself — so the repair has to happen here or
+  // the user gets an undiagnosable 400 on the callback.
+  // -------------------------------------------------------------------------
+
+  it('reconciles the app client with every enabled provider across resolved tenants', async () => {
+    mockTenantUserFindMany.mockResolvedValue([
+      makeTenantUserWithTenant({
+        tenantId: 'tenant-1',
+        ssoProviders: [{ cognitoProviderName: 'AcmeOkta', name: 'Acme Okta', type: 'OIDC' }],
+      }),
+      makeTenantUserWithTenant({
+        tenantId: 'tenant-2',
+        ssoProviders: [{ cognitoProviderName: 'BetaEntra', name: 'Beta Entra', type: 'OIDC' }],
+      }),
+    ])
+
+    await authHandler.request('/resolve-tenants', post({ email: 'user@company.com' }))
+
+    expect(mockReconcileFromEnv).toHaveBeenCalledWith(['AcmeOkta', 'BetaEntra'])
+  })
+
+  it('deduplicates a provider shared by two resolved tenants', async () => {
+    mockTenantUserFindMany.mockResolvedValue([
+      makeTenantUserWithTenant({
+        tenantId: 'tenant-1',
+        ssoProviders: [{ cognitoProviderName: 'SharedEntra', name: 'Entra', type: 'OIDC' }],
+      }),
+      makeTenantUserWithTenant({
+        tenantId: 'tenant-2',
+        ssoProviders: [{ cognitoProviderName: 'SharedEntra', name: 'Entra', type: 'OIDC' }],
+      }),
+    ])
+
+    await authHandler.request('/resolve-tenants', post({ email: 'user@company.com' }))
+
+    expect(mockReconcileFromEnv).toHaveBeenCalledWith(['SharedEntra'])
+  })
+
+  it('passes an empty list for password-only tenants so no Cognito call is made', async () => {
+    mockTenantUserFindMany.mockResolvedValue([
+      makeTenantUserWithTenant({ tenantId: 'tenant-1', ssoProviders: [] }),
+    ])
+
+    await authHandler.request('/resolve-tenants', post({ email: 'user@company.com' }))
+
+    expect(mockReconcileFromEnv).toHaveBeenCalledWith([])
+  })
+
+  it('still returns 200 when the repair throws', async () => {
+    // reconcileTenantAppClientFromEnv is fail-open by contract, but a regression
+    // there must not become a login outage — belt and braces on the hot path.
+    mockReconcileFromEnv.mockRejectedValueOnce(new Error('AccessDeniedException'))
+    mockTenantUserFindMany.mockResolvedValue([
+      makeTenantUserWithTenant({
+        tenantId: 'tenant-1',
+        ssoProviders: [{ cognitoProviderName: 'AcmeOkta', name: 'Acme Okta', type: 'OIDC' }],
+      }),
+    ])
+
+    const res = await authHandler.request('/resolve-tenants', post({ email: 'user@acme.com' }))
+
+    expect(res.status).toBe(200)
   })
 
   it('lowercases the provider type in the response', async () => {

@@ -441,3 +441,44 @@ survives). Regression coverage lives in `src/__tests__/AppShell.test.tsx` (mocks
 `useRouterState` with a mutable pathname); note a mocked router is inherently reactive, so
 the unit test guards the match logic, not the reactivity — the preview-build check is the
 reactivity proof.
+
+## A CDK deploy silently wipes every tenant's SSO — CFN resets `SupportedIdentityProviders`
+
+Changing **any** property of the tenant `AWS::Cognito::UserPoolClient` in
+`packages/infra/lib/stacks/cognito-stack.ts` — a callback URL, a logout URL, a token
+TTL — makes CloudFormation rewrite the resource, which resets
+`SupportedIdentityProviders` to the template's value (`['COGNITO']`). Every tenant's
+federated login dies at once, with no deploy failure and nothing in the API logs.
+
+The symptom is deliberately undiagnosable from the outside: Cognito still accepts
+`/oauth2/authorize` and still redirects to the IdP, the user authenticates
+successfully at Microsoft, and only the **callback** fails — a bare `400` at
+`https://<domain>/error?code=…&state=…` with no `error_description`. No Lambda
+trigger fires (the rejection precedes pre-sign-up/pre-token), so the trigger log
+groups are silent and look healthy.
+
+This hit prod on 2026-07-21: PR #494 added `/login/signed-out` logout URLs, CFN reset
+the list at 20:57 UTC, and SSO was dead for ~22h until the drift was traced through
+CloudTrail (`UpdateUserPoolClient` by `AWSCloudFormation` with
+`supportedIdentityProviders: ['COGNITO']`).
+
+**There is no template-side fix.** Tenant IdP names are chosen at runtime so IaC can
+never pre-declare the list, and `addPropertyDeletionOverride` does not help either:
+`UpdateUserPoolClient` documents that "if you don't provide a value for an attribute,
+Amazon Cognito sets it to its default value", so omitting the property produces the
+same reset. Upstream: aws-cloudformation/cloudformation-coverage-roadmap#676.
+
+**The recovery lives in the application.** `POST /auth/resolve-tenants` calls
+`reconcileTenantAppClientFromEnv` (`apps/api/src/lib/cognito-app-client.ts`), which
+re-adds every `isEnabled` provider from the DB. That endpoint is the last server-side
+hop in the SSO flow — the SPA builds the `/oauth2/authorize` URL client-side at
+`apps/tenant-web/src/auth/cognito.ts:90` — so the first user to type their email
+after a deploy repairs it for everyone, before any redirect. `GET /providers` (the
+SSO settings page) reconciles too, as a second path. Both are additive-only: the pool
+is shared across tenants, so another tenant's providers must never be stripped.
+
+**Diagnosing it fast:** compare the live client against the DB —
+`aws cognito-idp describe-user-pool-client --user-pool-id <pool> --client-id <tenant client> --query 'UserPoolClient.SupportedIdentityProviders'`.
+If it reads `["COGNITO"]` while tenants have providers enabled, this is it. The
+gzipped `state` param in the `/error` URL base64url-decodes to JSON naming the pool,
+the IdP, the client id and the callback — decode it before theorizing.

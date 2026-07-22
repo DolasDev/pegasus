@@ -14,11 +14,15 @@ import {
   removeProviderFromAppClient,
   reconcileAppClientProviders,
   reconcileAppClientProvidersSafely,
+  reconcileTenantAppClientFromEnv,
 } from './cognito-app-client'
 
 const { mockSend } = vi.hoisted(() => ({ mockSend: vi.fn() }))
 
 vi.mock('@aws-sdk/client-cognito-identity-provider', () => ({
+  CognitoIdentityProviderClient: vi.fn().mockImplementation(function () {
+    return { send: mockSend }
+  }),
   DescribeUserPoolClientCommand: vi.fn().mockImplementation(function (input: unknown) {
     return { __cmd: 'DescribeUserPoolClient', ...(input as object) }
   }),
@@ -227,6 +231,56 @@ describe('cognito-app-client', () => {
       await reconcileAppClientProvidersSafely(cognito, POOL, CLIENT, ['Microsoft'])
 
       expect(sentUpdates()[0]!['SupportedIdentityProviders']).toEqual(['COGNITO', 'Microsoft'])
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Env-aware wrapper — the login-path entry point
+  // -------------------------------------------------------------------------
+  describe('reconcileTenantAppClientFromEnv', () => {
+    beforeEach(() => {
+      vi.stubEnv('COGNITO_USER_POOL_ID', POOL)
+      vi.stubEnv('COGNITO_TENANT_CLIENT_ID', CLIENT)
+    })
+
+    it('repairs drift using the pool and client from the environment', async () => {
+      await reconcileTenantAppClientFromEnv(['Microsoft'])
+
+      expect(sentUpdates()[0]!['SupportedIdentityProviders']).toEqual(['COGNITO', 'Microsoft'])
+    })
+
+    // The whole point of the login-path hook: this is the 2026-07-21 outage state.
+    it('restores a list CloudFormation reset to COGNITO-only', async () => {
+      seedClient(['COGNITO'])
+
+      await reconcileTenantAppClientFromEnv(['Microsoft', 'M365'])
+
+      expect(sentUpdates()[0]!['SupportedIdentityProviders']).toEqual([
+        'COGNITO',
+        'Microsoft',
+        'M365',
+      ])
+    })
+
+    // Password-only tenants are the common case — they must not pay a Cognito call.
+    it('makes no Cognito call at all when the tenant has no enabled providers', async () => {
+      await reconcileTenantAppClientFromEnv([])
+
+      expect(mockSend).not.toHaveBeenCalled()
+    })
+
+    it('is a no-op when the env is not configured', async () => {
+      vi.stubEnv('COGNITO_TENANT_CLIENT_ID', '')
+
+      await reconcileTenantAppClientFromEnv(['Microsoft'])
+
+      expect(mockSend).not.toHaveBeenCalled()
+    })
+
+    it('never throws at the caller — a login must not fail over a failed repair', async () => {
+      mockSend.mockRejectedValue(new Error('AccessDeniedException'))
+
+      await expect(reconcileTenantAppClientFromEnv(['Microsoft'])).resolves.toBeUndefined()
     })
   })
 })
