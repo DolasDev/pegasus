@@ -2,8 +2,11 @@
 // Events handler — integration event queue for M2M (API client) access
 //
 // Implements the inbound event queue previously served by the standalone
-// AWS Lambda API (apps/services/api). The Python integration service polls
-// these endpoints to receive events and delete them once processed.
+// AWS Lambda API, decommissioned in the Pegasus-Services migration
+// (plans/done/pegasus-services-migration.md). Its polling client — the Python
+// integration service that read events here and deleted them once processed —
+// lived at apps/services/ until it was removed as dead code; these routes
+// remain the M2M event-queue contract for any client.
 //
 // All endpoints require a valid API client key (vnd_ prefix). Authentication
 // runs through m2mAppAuthMiddleware, which resolves the service-account
