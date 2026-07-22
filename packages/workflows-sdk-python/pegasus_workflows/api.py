@@ -1588,31 +1588,67 @@ class PegasusClient:
         """
         return self._get_json("/api/v1/integrations/configs")["data"]
 
-    def fork_integration_config(self, integration_id: str) -> dict[str, Any]:
+    def fork_integration_config(
+        self,
+        integration_id: str,
+        *,
+        force: bool = False,
+    ) -> dict[str, Any]:
         """Fork the platform GLOBAL config for ``integration_id`` into the caller's scope.
 
-        Copies the active GLOBAL config into a new TENANT-scoped, unpublished config
-        the caller owns (with fork provenance) — the integration-config analog of
+        Copies the active GLOBAL config into a new TENANT-scoped config the caller
+        owns (with fork provenance) — the integration-config analog of
         :meth:`fork_workflow`, so a tenant can customize a platform default. Requires
         ``PublishIntegrationConfig`` (the ``integration_publisher`` role).
 
+        With ``force=True`` this is also the **re-sync** path. By default a fork is
+        one-shot: a tenant that already owns an overlay gets ``409``, so an overlay
+        forked from an old GLOBAL can never pick up upstream fixes except by
+        hand-republishing a copy that then tracks nothing. ``force`` re-seeds the
+        existing overlay from the **current** GLOBAL as a **new version** — the
+        previous versions stay in :meth:`list_integration_config_versions` and remain
+        reachable via :meth:`rollback_integration_config`, so a refresh that turns out
+        wrong is reversible.
+
+        Choosing between this and :meth:`delete_integration_config`:
+
+        - ``fork(..., force=True)`` — you still want your own overlay, just rebased
+          on the latest GLOBAL. History is preserved; you keep diverging from here.
+        - ``delete_integration_config(...)`` — you want *no* overlay at all and to
+          re-inherit GLOBAL live from now on. The lineage is destroyed.
+
+        The publish gate re-runs against the current floor either way, so neither a
+        fork nor a refresh can resurrect a GLOBAL config the contract has outgrown
+        (``422``).
+
+        Args:
+            integration_id: The integration whose GLOBAL config to fork.
+            force: Refresh an overlay this tenant already owns instead of failing
+                with ``409``. Harmless when there is no overlay yet — it is then an
+                ordinary fork.
+
         Returns:
-            The created TENANT config (full projection).
+            The created (or refreshed) TENANT config (full projection).
 
         Raises:
-            PegasusApiError: 404 (no GLOBAL config to fork), 409/422 (the caller is
-                the platform tenant that already owns the GLOBAL config), or non-2xx.
+            PegasusApiError: 404 (no GLOBAL config to fork), 409 (the tenant already
+                has its own config — retry with ``force=True``), 422 (the GLOBAL
+                config no longer passes the gate), 400 (the caller is the platform
+                tenant that already owns the GLOBAL config), or any other non-2xx.
         """
         captured = self._capture_mutation(
             "PublishIntegrationConfig",
             "fork_integration_config",
-            {"integration_id": integration_id},
+            {"integration_id": integration_id, "force": force},
             {"integrationId": integration_id, "dryRun": True},
         )
         if captured is not _NOT_CAPTURED:
             return captured
         with self._client() as client:
-            response = client.post(f"/api/v1/integrations/{integration_id}/config/fork")
+            response = client.post(
+                f"/api/v1/integrations/{integration_id}/config/fork",
+                params={"force": "true"} if force else None,
+            )
         _raise_for_status(response)
         return response.json()["data"]
 

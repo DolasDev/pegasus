@@ -1502,12 +1502,39 @@ def test_fork_integration_config_posts_to_fork_endpoint() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         captured["path"] = request.url.path
         captured["method"] = request.method
+        captured["query"] = dict(request.url.params)
         return httpx.Response(201, json={"data": {"id": "cfg-1", "visibility": "TENANT"}})
 
     data = _client_with(handler).fork_integration_config("demo_partner")
     assert captured["method"] == "POST"
     assert captured["path"] == "/api/v1/integrations/demo_partner/config/fork"
+    # No refresh opt-in unless asked — the server-side 409 guard stays armed.
+    assert captured["query"] == {}
     assert data["visibility"] == "TENANT"
+
+
+def test_fork_integration_config_force_sends_query_flag() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["query"] = dict(request.url.params)
+        return httpx.Response(201, json={"data": {"id": "cfg-2", "version": 4}})
+
+    data = _client_with(handler).fork_integration_config("demo_partner", force=True)
+    assert captured["query"] == {"force": "true"}
+    # A refresh is a NEW version, not an in-place replacement (sdk-feedback 0030B).
+    assert data["version"] == 4
+
+
+def test_fork_integration_config_existing_overlay_conflict_raises() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            409, json={"error": "already has its own config… force=true", "code": "CONFLICT"}
+        )
+
+    with pytest.raises(PegasusApiError) as exc:
+        _client_with(handler).fork_integration_config("demo_partner")
+    assert exc.value.status_code == 409
 
 
 def test_delete_integration_config_deletes_config_endpoint() -> None:

@@ -401,6 +401,15 @@ integrationConfigHandler.post(
 // current built-in, and publish it as the tenant's own TENANT config (v1) stamped
 // with fork provenance. Mirrors the workflow "fork to my store" flow. Reuses the
 // PublishIntegrationConfig permission and the INTEGRATION_CONFIG_PUBLISH_ENABLED flag.
+//
+// `?force=true` makes fork a REFRESH as well as a seed (sdk-feedback 0030 part B).
+// Without it a tenant that already owns an overlay gets 409 and is stuck: fork is
+// one-shot, so an overlay forked from an old GLOBAL can never pull upstream fixes
+// except by hand-republishing a copy that then tracks nothing. With it the overlay
+// is re-seeded from the CURRENT GLOBAL as a NEW tenant version — publish() supersedes
+// the previous row rather than dropping it, so `versions` and `rollback` still hold
+// the pre-refresh config and a bad refresh is reversible. (Contrast DELETE below,
+// which drops the whole lineage so the tenant re-inherits GLOBAL live.)
 integrationConfigHandler.post(
   '/integrations/:integrationId/config/fork',
   requirePermission(Actions.PublishIntegrationConfig),
@@ -439,12 +448,17 @@ integrationConfigHandler.post(
     const repo = createIntegrationConfigRepository(db)
 
     // Refuse to clobber an existing tenant customization — publishing would
-    // otherwise supersede their own config with a copy of GLOBAL.
+    // otherwise supersede their own config with a copy of GLOBAL. `force` is the
+    // caller stating that clobbering is the point (re-sync with upstream).
+    const force = c.req.query('force') === 'true'
     const own = await repo.findActiveOwn(integrationId, tenantId)
-    if (own) {
+    if (own && !force) {
       return c.json(
         {
-          error: 'This tenant already has its own config for this integration',
+          error:
+            `This tenant already has its own config for "${integrationId}" ` +
+            `(v${own.version}). Retry with force=true to refresh it from the ` +
+            'current GLOBAL config as a new version.',
           code: 'CONFLICT',
         },
         409,
@@ -510,6 +524,9 @@ integrationConfigHandler.post(
       forkedFromConfigId: source.id,
       forkedFromVersion: source.version,
       newVersion: row.version,
+      // Present only on a forced refresh — the tenant version this one replaced,
+      // so a re-sync is distinguishable from a first-time seed in the logs.
+      ...(own ? { refreshedFromVersion: own.version } : {}),
     })
     return c.json({ data: toFull(row) }, 201)
   },

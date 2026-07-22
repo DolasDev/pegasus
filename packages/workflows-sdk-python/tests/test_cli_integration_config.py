@@ -63,6 +63,15 @@ class _FakeClient:
         _FakeClient.last["delete"] = (integration_id, force)
         return {"integrationId": integration_id, "visibility": "GLOBAL", "deleted": 4}
 
+    def fork_integration_config(self, integration_id, *, force=False):
+        _FakeClient.last["fork"] = (integration_id, force)
+        return {
+            "integrationId": integration_id,
+            "visibility": "TENANT",
+            "version": 4 if force else 1,
+            "forkedFromVersion": 7,
+        }
+
 
 @pytest.fixture(autouse=True)
 def _patch_client(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: ANN001
@@ -229,6 +238,68 @@ def test_rollback_passes_version(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.output
     assert _FakeClient.last["rollback"] == ("demo_partner", 2)
+
+
+def test_fork_seeds_without_prompting(tmp_path: Path) -> None:
+    # A plain fork is additive — nothing of the tenant's own is at risk, so no
+    # confirmation gate (unlike delete).
+    result = runner.invoke(
+        ic.integration_config_app,
+        ["fork", "demo_partner", "--token", _TOKEN],
+    )
+    assert result.exit_code == 0, result.output
+    assert _FakeClient.last["fork"] == ("demo_partner", False)
+    assert "forked demo_partner from GLOBAL v7 -> TENANT v1" in result.output
+
+
+def test_fork_force_confirms_then_refreshes(tmp_path: Path) -> None:
+    result = runner.invoke(
+        ic.integration_config_app,
+        ["fork", "demo_partner", "--token", _TOKEN, "--force"],
+        input="y\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert _FakeClient.last["fork"] == ("demo_partner", True)
+    assert "refreshed demo_partner from GLOBAL v7 -> TENANT v4" in result.output
+
+
+def test_fork_force_aborts_when_confirmation_declined(tmp_path: Path) -> None:
+    _FakeClient.last.pop("fork", None)
+    result = runner.invoke(
+        ic.integration_config_app,
+        ["fork", "demo_partner", "--token", _TOKEN, "--force"],
+        input="n\n",
+    )
+    # Declining must not reach the API — a refresh demotes the tenant's own config.
+    assert result.exit_code == 1
+    assert "fork" not in _FakeClient.last
+
+
+def test_fork_yes_skips_the_force_prompt(tmp_path: Path) -> None:
+    result = runner.invoke(
+        ic.integration_config_app,
+        ["fork", "demo_partner", "--token", _TOKEN, "--force", "--yes"],
+    )
+    assert result.exit_code == 0, result.output
+    assert _FakeClient.last["fork"] == ("demo_partner", True)
+
+
+def test_fork_surfaces_existing_overlay_conflict_with_force_hint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _raise(self, integration_id, *, force=False):
+        raise PegasusApiError(
+            status_code=409, code="CONFLICT", message="already has its own config (v3)"
+        )
+
+    monkeypatch.setattr(_FakeClient, "fork_integration_config", _raise)
+    result = runner.invoke(
+        ic.integration_config_app,
+        ["fork", "demo_partner", "--token", _TOKEN],
+    )
+    assert result.exit_code == 1
+    # The whole point of 0030B: the error names the way forward.
+    assert "--force" in result.output
 
 
 def test_delete_confirms_then_deletes(tmp_path: Path) -> None:

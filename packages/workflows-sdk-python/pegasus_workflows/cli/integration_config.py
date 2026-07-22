@@ -9,6 +9,8 @@ A small Typer group over the integration-config endpoints
 * ``pull``     — fetch the active config and write the editable surface to disk.
 * ``versions`` — list the version history.
 * ``rollback`` — re-publish a prior version.
+* ``fork``     — copy the platform GLOBAL config into this tenant (``--force``
+  refreshes an overlay this tenant already owns).
 * ``delete``   — permanently remove the caller's config for an integration.
 
 The editable surface lives as JSON files in a working directory: ``mapping.json``,
@@ -346,6 +348,74 @@ def rollback_command(
         raise typer.Exit(code=1) from exc
     typer.secho(
         f"rolled back {integration_id} from v{version} -> v{row.get('version')}",
+        fg=typer.colors.GREEN,
+    )
+
+
+@integration_config_app.command("fork")
+def fork_command(
+    integration_id: str = typer.Argument(..., help="Integration id, e.g. demo_partner."),
+    token: str = token_option(),
+    base_url: str = base_url_option(),
+    profile: str = profile_option(),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Refresh an overlay this tenant already owns from the current GLOBAL "
+        "config, instead of failing because one exists.",
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip the --force confirmation prompt (for scripts/CI)."
+    ),
+) -> None:
+    """Copy the platform GLOBAL config into this tenant as its own overlay.
+
+    The starting point for customizing a platform default: the GLOBAL config is
+    copied into a TENANT config you own, stamped with fork provenance, after
+    re-running the publish gate against the current floor.
+
+    ``--force`` also makes this the RE-SYNC path. Without it a fork is one-shot —
+    a tenant already holding an overlay gets a conflict, so an overlay forked from
+    an old GLOBAL can never pick up upstream fixes. With it the overlay is re-seeded
+    from the current GLOBAL as a NEW version; prior versions stay in ``versions``
+    and remain reachable via ``rollback``, so a bad refresh is reversible.
+
+    Use ``delete`` instead if you want no overlay at all and to re-inherit GLOBAL
+    live from then on.
+    """
+    token, base_url = resolve_credentials(token, base_url, profile)
+    if force and not yes:
+        typer.confirm(
+            f"Refresh this tenant's '{integration_id}' overlay from the current "
+            "GLOBAL config? Your current mapping/rules stop being the active "
+            "version (they stay in `versions` and can be rolled back to).",
+            abort=True,
+        )
+    client = PegasusClient(base_url=base_url, token=token)
+    try:
+        row = client.fork_integration_config(integration_id, force=force)
+    except PegasusApiError as exc:
+        if exc.status_code == 409:
+            typer.secho(
+                f"not forked — this tenant already has its own config for "
+                f"'{integration_id}': {exc}\n"
+                "Re-run with --force to refresh it from the current GLOBAL config.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+        elif exc.status_code == 422:
+            typer.secho(
+                f"the GLOBAL config no longer passes the gate: {exc}",
+                fg=typer.colors.RED,
+                err=True,
+            )
+        else:
+            typer.secho(f"fork failed: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    verb = "refreshed" if force else "forked"
+    typer.secho(
+        f"{verb} {integration_id} from GLOBAL v{row.get('forkedFromVersion')} "
+        f"-> TENANT v{row.get('version')}",
         fg=typer.colors.GREEN,
     )
 
