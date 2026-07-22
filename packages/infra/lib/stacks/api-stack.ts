@@ -189,6 +189,20 @@ export interface ApiStackProps extends cdk.StackProps {
   readonly integrationConfigPublishEnabled?: boolean
 
   /**
+   * Master switch for the SHARED tier of the outbound OAuth2 token cache
+   * (sdk-feedback 0027). When true, `OUTBOUND_OAUTH_SHARED_CACHE_ENABLED=true` is
+   * set on the api Lambda, so containers reuse a minted partner token through the
+   * `outbound_oauth_tokens` table instead of each re-minting on a cold start.
+   *
+   * Default off. Off, `call_external` behaves exactly as before (per-container
+   * in-memory cache only) — which is also the state in which the new
+   * `outbound oauth token` log line measures how often containers actually are
+   * reused, the open question behind 0027. Turning it on is a behavior change a
+   * partner could object to (token reuse), so it is a flag rather than a rollout.
+   */
+  readonly outboundOAuthSharedCacheEnabled?: boolean
+
+  /**
    * Browser origins allowed to call the API cross-origin. Threaded from
    * bin/app.ts per environment (tenant + admin SPA hostnames in staging/prod).
    * Applied at BOTH layers from this single source of truth:
@@ -438,6 +452,16 @@ export class ApiStack extends cdk.Stack {
     // ---------------------------------------------------------------------------
     if (props.integrationConfigPublishEnabled) {
       apiFunction.addEnvironment('INTEGRATION_CONFIG_PUBLISH_ENABLED', 'true')
+    }
+
+    // ---------------------------------------------------------------------------
+    // Outbound OAuth shared token cache master switch (sdk-feedback 0027). Like
+    // the flag above, only the env var is set: the store is the shared Neon DB,
+    // and the KMS envelope reuses workflowTokenKey, on which this Lambda already
+    // holds grantEncryptDecrypt (see below) — so there is no new IAM to wire.
+    // ---------------------------------------------------------------------------
+    if (props.outboundOAuthSharedCacheEnabled) {
+      apiFunction.addEnvironment('OUTBOUND_OAUTH_SHARED_CACHE_ENABLED', 'true')
     }
 
     // ---------------------------------------------------------------------------

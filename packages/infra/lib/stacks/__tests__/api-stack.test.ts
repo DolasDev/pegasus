@@ -889,6 +889,46 @@ describe('ApiStack — integration-config publish switch (integrationConfigPubli
   })
 })
 
+describe('ApiStack — outbound OAuth shared token cache (outboundOAuthSharedCacheEnabled)', () => {
+  function synthEnabled() {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const apiStack = new ApiStack(app, 'TestApiOauthCacheEnabled', {
+      env: { account: '111111111111', region: 'us-east-1' },
+      outboundOAuthSharedCacheEnabled: true,
+    })
+    return Template.fromStack(apiStack)
+  }
+
+  it('leaves OUTBOUND_OAUTH_SHARED_CACHE_ENABLED unset on every Lambda by default', () => {
+    // Default-off is what makes the measurement phase of sdk-feedback 0027
+    // meaningful — deploying this change must not itself alter behavior.
+    const template = synthApiStack()
+    const fns = template.findResources('AWS::Lambda::Function')
+    const withFlag = Object.values(fns).filter(
+      (fn) =>
+        fn.Properties?.Environment?.Variables?.OUTBOUND_OAUTH_SHARED_CACHE_ENABLED !== undefined,
+    )
+    if (withFlag.length !== 0) {
+      throw new Error(
+        `expected no Lambda to carry OUTBOUND_OAUTH_SHARED_CACHE_ENABLED, found ${withFlag.length}`,
+      )
+    }
+  })
+
+  it('sets OUTBOUND_OAUTH_SHARED_CACHE_ENABLED=true only on the api Lambda when enabled', () => {
+    const template = synthEnabled()
+    const fns = template.findResources('AWS::Lambda::Function')
+    const enabled = Object.values(fns).filter(
+      (fn) => fn.Properties?.Environment?.Variables?.OUTBOUND_OAUTH_SHARED_CACHE_ENABLED === 'true',
+    )
+    if (enabled.length !== 1) {
+      throw new Error(
+        `expected exactly 1 Lambda with OUTBOUND_OAUTH_SHARED_CACHE_ENABLED=true, found ${enabled.length}`,
+      )
+    }
+  })
+})
+
 // ---------------------------------------------------------------------------
 describe('ApiStack — workflow-execution reconcile poller (Phase 2 Unit 6.5)', () => {
   // A complete secret ARN (with the random 6-char suffix) is required by

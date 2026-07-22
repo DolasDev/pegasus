@@ -8,10 +8,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   acquireOutboundToken,
   invalidateOutboundToken,
+  invalidateOutboundTokenEverywhere,
   outboundTokenCacheKey,
   parseAccessToken,
   OutboundOAuthError,
   __resetOutboundTokenCacheForTests,
+  type SharedTokenTier,
 } from './index'
 
 const CFG = {
@@ -108,14 +110,12 @@ describe('acquireOutboundToken', () => {
   })
 
   it('throws OutboundOAuthError on a non-2xx token endpoint', async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValue({
-        ok: false,
-        status: 401,
-        text: async () => 'bad creds',
-        headers: new Headers(),
-      } as unknown as Response)
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: async () => 'bad creds',
+      headers: new Headers(),
+    } as unknown as Response)
     await expect(acquireOutboundToken(KEY, CFG, { now: 0, fetchImpl })).rejects.toMatchObject({
       status: 401,
     })
@@ -126,5 +126,176 @@ describe('acquireOutboundToken', () => {
     await expect(acquireOutboundToken(KEY, CFG, { now: 0, fetchImpl })).rejects.toBeInstanceOf(
       OutboundOAuthError,
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Shared (L2) tier — sdk-feedback 0027.
+//
+// The scenario 0027 filed is CROSS-container: the in-memory Map is per-process,
+// so two sequential call_external requests served by different Lambda containers
+// each mint. `__resetOutboundTokenCacheForTests()` between calls is exactly that
+// — a fresh container with an empty L1 — while the fake repo persists, standing
+// in for the shared table.
+// ---------------------------------------------------------------------------
+
+describe('acquireOutboundToken — shared tier', () => {
+  /** An in-memory stand-in for the outbound_oauth_tokens table. */
+  function fakeRepo() {
+    const rows = new Map<string, { tokenCiphertext: string; expiresAt: Date }>()
+    const id = (k: { tenantId: string; integrationId: string; tokenUrl: string }): string =>
+      `${k.tenantId}:${k.integrationId}:${k.tokenUrl}`
+    return {
+      rows,
+      findFresh: vi.fn(async (k, notExpiringBefore: Date) => {
+        const row = rows.get(id(k))
+        if (!row || row.expiresAt <= notExpiringBefore) return null
+        return row
+      }),
+      upsert: vi.fn(async (k, tokenCiphertext: string, expiresAt: Date) => {
+        rows.set(id(k), { tokenCiphertext, expiresAt })
+      }),
+      deleteKey: vi.fn(async (k) => (rows.delete(id(k)) ? 1 : 0)),
+    }
+  }
+
+  const KEYPARTS = { tenantId: 't1', integrationId: 'sirva_ade_shipment', tokenUrl: CFG.tokenUrl }
+  // Reversible stand-ins for KMS — asserting on the "ciphertext" proves the token
+  // is encrypted before it reaches the store and decrypted on the way back.
+  const enc = async (p: string): Promise<string> => `enc(${p})`
+  const dec = async (c: string): Promise<string> => c.replace(/^enc\(|\)$/g, '')
+
+  const sharedWith = (repo: ReturnType<typeof fakeRepo>): SharedTokenTier =>
+    ({ key: KEYPARTS, repo, encrypt: enc, decrypt: dec }) as unknown as SharedTokenTier
+
+  it('two calls on DIFFERENT containers mint once — 0027 acceptance criterion', async () => {
+    const repo = fakeRepo()
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(okRes(JSON.stringify({ access_token: 'TOK1', expires_in: 600 })))
+
+    const first = await acquireOutboundToken(KEY, CFG, {
+      now: 1_000,
+      fetchImpl,
+      shared: sharedWith(repo),
+    })
+    expect(first).toBe('TOK1')
+
+    // A different container: empty L1, same shared store.
+    __resetOutboundTokenCacheForTests()
+
+    const second = await acquireOutboundToken(KEY, CFG, {
+      now: 2_000,
+      fetchImpl,
+      shared: sharedWith(repo),
+    })
+    expect(second).toBe('TOK1')
+    // The whole point: ONE token-endpoint hit across two containers.
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(repo.findFresh).toHaveBeenCalledTimes(2)
+  })
+
+  it('stores the token encrypted and never in plaintext', async () => {
+    const repo = fakeRepo()
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(okRes(JSON.stringify({ access_token: 'SECRET-TOK', expires_in: 600 })))
+    await acquireOutboundToken(KEY, CFG, { now: 0, fetchImpl, shared: sharedWith(repo) })
+    const stored = [...repo.rows.values()][0]!
+    expect(stored.tokenCiphertext).toBe('enc(SECRET-TOK)')
+    expect(stored.tokenCiphertext).not.toContain('SECRET-TOK'.slice(0, 6) + '"')
+  })
+
+  it('an L1 hit never touches the shared tier', async () => {
+    const repo = fakeRepo()
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(okRes(JSON.stringify({ access_token: 'TOK1', expires_in: 600 })))
+    await acquireOutboundToken(KEY, CFG, { now: 0, fetchImpl, shared: sharedWith(repo) })
+    repo.findFresh.mockClear()
+    // Same container, still warm → the DB must stay untouched (the fast path).
+    await acquireOutboundToken(KEY, CFG, { now: 1_000, fetchImpl, shared: sharedWith(repo) })
+    expect(repo.findFresh).not.toHaveBeenCalled()
+  })
+
+  it('does not serve a shared token inside the 60s skew', async () => {
+    const repo = fakeRepo()
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(okRes(JSON.stringify({ access_token: 'TOK1', expires_in: 600 })))
+      .mockResolvedValueOnce(okRes(JSON.stringify({ access_token: 'TOK2', expires_in: 600 })))
+    await acquireOutboundToken(KEY, CFG, { now: 0, fetchImpl, shared: sharedWith(repo) })
+    __resetOutboundTokenCacheForTests()
+    const again = await acquireOutboundToken(KEY, CFG, {
+      now: 600_000 - 30_000,
+      fetchImpl,
+      shared: sharedWith(repo),
+    })
+    expect(again).toBe('TOK2')
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it('degrades to a mint when the shared read fails (cache is never fatal)', async () => {
+    const repo = fakeRepo()
+    repo.findFresh.mockRejectedValue(new Error('neon: connection terminated'))
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(okRes(JSON.stringify({ access_token: 'TOK1', expires_in: 600 })))
+    const tok = await acquireOutboundToken(KEY, CFG, {
+      now: 0,
+      fetchImpl,
+      shared: sharedWith(repo),
+    })
+    expect(tok).toBe('TOK1')
+  })
+
+  it('degrades when the shared WRITE fails — the caller still gets its token', async () => {
+    const repo = fakeRepo()
+    repo.upsert.mockRejectedValue(new Error('kms: throttled'))
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(okRes(JSON.stringify({ access_token: 'TOK1', expires_in: 600 })))
+    await expect(
+      acquireOutboundToken(KEY, CFG, { now: 0, fetchImpl, shared: sharedWith(repo) }),
+    ).resolves.toBe('TOK1')
+  })
+
+  it('invalidateOutboundTokenEverywhere clears BOTH tiers after a 401', async () => {
+    const repo = fakeRepo()
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(okRes(JSON.stringify({ access_token: 'DEAD', expires_in: 600 })))
+      .mockResolvedValueOnce(okRes(JSON.stringify({ access_token: 'FRESH', expires_in: 600 })))
+    await acquireOutboundToken(KEY, CFG, { now: 0, fetchImpl, shared: sharedWith(repo) })
+
+    await invalidateOutboundTokenEverywhere(KEY, sharedWith(repo))
+    expect(repo.rows.size).toBe(0)
+
+    // Another container must NOT be able to resurrect the rejected token.
+    __resetOutboundTokenCacheForTests()
+    const fresh = await acquireOutboundToken(KEY, CFG, {
+      now: 1_000,
+      fetchImpl,
+      shared: sharedWith(repo),
+    })
+    expect(fresh).toBe('FRESH')
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+  })
+
+  it('swallows a shared-tier invalidation failure (a 401 must stay recoverable)', async () => {
+    const repo = fakeRepo()
+    repo.deleteKey.mockRejectedValue(new Error('neon: timeout'))
+    await expect(invalidateOutboundTokenEverywhere(KEY, sharedWith(repo))).resolves.toBeUndefined()
+  })
+
+  it('is byte-for-byte the old behavior when no shared tier is supplied', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(okRes(JSON.stringify({ access_token: 'TOK1', expires_in: 600 })))
+    await acquireOutboundToken(KEY, CFG, { now: 0, fetchImpl })
+    // Flag off ⇒ a new container re-mints, exactly as before this change.
+    __resetOutboundTokenCacheForTests()
+    await acquireOutboundToken(KEY, CFG, { now: 1_000, fetchImpl })
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 })

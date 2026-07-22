@@ -61,6 +61,14 @@ export const TENANT_SCOPED_MODELS = new Set([
   // prior-state lookup go through the tenant-scoped client, so auto-scoping here
   // enforces isolation.
   'IntegrationProjection',
+  // OutboundOAuthToken (sdk-feedback 0027) — the shared tier of the outbound
+  // OAuth token cache. Purely tenant-owned (no GLOBAL case) and reached only from
+  // the call_external handler via the tenant-scoped client, so auto-scoping is a
+  // free backstop: a future query here that forgets its tenantId predicate still
+  // cannot read another tenant's partner token. Note the extension deliberately
+  // does NOT rewrite `upsert`, so the repository's compound-unique write is
+  // unaffected — it passes tenantId explicitly regardless.
+  'OutboundOAuthToken',
   // Ingress (sdk-feedback 0021) — IngressCredential CRUD + InboundEvent history
   // reads go through the tenant-scoped client on the management routes. The
   // pre-tenant ingress endpoint itself uses the root `db` (it resolves the tenant

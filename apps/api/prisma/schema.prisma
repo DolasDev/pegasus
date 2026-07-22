@@ -288,6 +288,7 @@ model Tenant {
   tenantEventTypes       TenantEventType[]
   workflowSecretConfigs  WorkflowSecretConfig[]
   integrationProjections IntegrationProjection[]
+  outboundOAuthTokens    OutboundOAuthToken[]
   brokerCredential       TenantBrokerCredential?
   vpnPeer                VpnPeer?
 
@@ -1971,6 +1972,58 @@ model IntegrationProjection {
   @@unique([tenantId, integrationId, entityType, entityKey])
   @@index([tenantId, integrationId, entityType])
   @@map("integration_projections")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
+// Outbound OAuth2 token cache (sdk-feedback 0027)
+//
+// The SHARED tier behind services/outbound-oauth. That service already caches a
+// minted client-credentials token in an in-process Map, but the API Lambda scales
+// horizontally: two sequential call_external requests can land on two containers,
+// each with its own empty Map, so the partner's token endpoint gets hit twice for
+// a token that is still valid. Sirva ADE issues ONE credential per agency with a
+// 10-minute token, so mint-per-call turns N data calls into 2N round-trips against
+// a rate-limited credential.
+//
+// This table is the L2 those containers share. The in-memory Map stays as L1, so
+// the warm path costs nothing extra and only a cold/scaled-out container pays the
+// DB read.
+//
+//   - integrationId is a code-defined slug (e.g. "demo_partner"), NOT an FK —
+//     same precedent as IntegrationConfig / IntegrationProjection.
+//   - tokenUrl is part of the key so a tenant's test and prod token endpoints
+//     never share a cached token.
+//   - The token itself is a live partner credential, so it is stored KMS-encrypted
+//     (same envelope + per-tenant encryption context as WorkflowSecretConfig
+//     secrets) and MUST NOT be returned by any API response.
+//   - Rows are disposable: deleting one only forces a re-mint. Deletion is exactly
+//     what a partner 401 triggers.
+// ---------------------------------------------------------------------------
+model OutboundOAuthToken {
+  id            String @id @default(uuid())
+  tenantId      String @map("tenant_id")
+  integrationId String @map("integration_id")
+
+  /// The token endpoint the token was minted from — part of the identity of the
+  /// cached token, not merely metadata.
+  tokenUrl String @map("token_url")
+
+  /// KMS-encrypted (base64) access token. Never returned by any API response.
+  tokenCiphertext String @map("token_ciphertext")
+
+  /// Absolute expiry computed at mint time from the response's `expires_in`.
+  /// Readers apply a safety skew on top of this rather than trusting it exactly.
+  expiresAt DateTime @map("expires_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, integrationId, tokenUrl])
+  @@index([expiresAt])
+  @@map("outbound_oauth_tokens")
   @@schema("public")
 }
 

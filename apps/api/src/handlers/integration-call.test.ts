@@ -17,17 +17,40 @@ import { seedPrincipal } from '../__tests__/_principal'
 import { _clearAuthzCache } from '../lib/authz'
 import { __resetOutboundTokenCacheForTests } from '../services/outbound-oauth'
 
-const { mockFindByKey, mockDecrypt, mockGetDef, mockFetch } = vi.hoisted(() => ({
+const {
+  mockFindByKey,
+  mockDecrypt,
+  mockEncrypt,
+  mockGetDef,
+  mockFetch,
+  mockTokenFindFresh,
+  mockTokenUpsert,
+  mockTokenDelete,
+} = vi.hoisted(() => ({
   mockFindByKey: vi.fn(),
   mockDecrypt: vi.fn(),
+  mockEncrypt: vi.fn(),
   mockGetDef: vi.fn(),
   mockFetch: vi.fn(),
+  mockTokenFindFresh: vi.fn(),
+  mockTokenUpsert: vi.fn(),
+  mockTokenDelete: vi.fn(),
 }))
 
 vi.mock('../repositories/workflow-secret-config.repository', () => ({
   createWorkflowSecretConfigRepository: () => ({ findByKey: mockFindByKey }),
 }))
-vi.mock('../lib/secret-value-crypto', () => ({ decryptSecretValue: mockDecrypt }))
+vi.mock('../lib/secret-value-crypto', () => ({
+  decryptSecretValue: mockDecrypt,
+  encryptSecretValue: mockEncrypt,
+}))
+vi.mock('../repositories/outbound-oauth-token.repository', () => ({
+  createOutboundOAuthTokenRepository: () => ({
+    findFresh: mockTokenFindFresh,
+    upsert: mockTokenUpsert,
+    deleteKey: mockTokenDelete,
+  }),
+}))
 vi.mock('../integration-validation/registry', () => ({ getIntegrationDefinition: mockGetDef }))
 vi.mock('../middleware/dual-auth', () => ({
   dualAuthMiddleware: vi.fn(async (_c, next) => {
@@ -107,6 +130,12 @@ beforeEach(() => {
   )
   // Default: token mint, then the partner call.
   mockFetch.mockImplementation(async (url: string) => (isTokenUrl(url) ? tokenRes() : callRes()))
+  // Shared token tier: off unless a test opts in (production default).
+  delete process.env['OUTBOUND_OAUTH_SHARED_CACHE_ENABLED']
+  mockEncrypt.mockImplementation(async (p: string) => `enc(${p})`)
+  mockTokenFindFresh.mockResolvedValue(null)
+  mockTokenUpsert.mockResolvedValue(undefined)
+  mockTokenDelete.mockResolvedValue(1)
 })
 
 describe('POST /integrations/:id/call-external', () => {
@@ -153,6 +182,86 @@ describe('POST /integrations/:id/call-external', () => {
     expect(tokenCalls).toBe(2)
     expect(partnerCalls).toBe(2)
     expect(((await json(res))['data'] as JsonBody)['response']).toEqual({ ok: true })
+  })
+
+  // ── shared token tier wiring (sdk-feedback 0027) ───────────────────────────
+
+  it('does not touch the shared token tier while the flag is off', async () => {
+    const res = await buildApp().request(ROUTE, post({ method: 'GET', path: '/x' }))
+    expect(res.status).toBe(200)
+    // Flag off is the deployed default — the DB must not be consulted at all.
+    expect(mockTokenFindFresh).not.toHaveBeenCalled()
+    expect(mockTokenUpsert).not.toHaveBeenCalled()
+  })
+
+  it('reads and writes through the shared tier when the flag is on', async () => {
+    process.env['OUTBOUND_OAUTH_SHARED_CACHE_ENABLED'] = 'true'
+    const res = await buildApp().request(ROUTE, post({ method: 'GET', path: '/x' }))
+    expect(res.status).toBe(200)
+    expect(mockTokenFindFresh).toHaveBeenCalledTimes(1)
+    // The minted token is written back ENCRYPTED, keyed by tenant+integration+endpoint.
+    expect(mockTokenUpsert).toHaveBeenCalledWith(
+      {
+        tenantId: 'test-tenant-id',
+        integrationId: 'sirva_ade_shipment',
+        tokenUrl: 'https://openapi.sirva.com/oauth2/accessrequest',
+      },
+      'enc(MINT-TOK)',
+      expect.any(Date),
+    )
+  })
+
+  it('serves a shared-tier token without minting (the cross-container path)', async () => {
+    process.env['OUTBOUND_OAUTH_SHARED_CACHE_ENABLED'] = 'true'
+    // This container's L1 is empty (reset in beforeEach) but another container
+    // already minted — exactly 0027's two-sequential-calls scenario.
+    mockTokenFindFresh.mockResolvedValue({
+      tokenCiphertext: 'shared-cipher',
+      expiresAt: new Date(Date.now() + 600_000),
+    })
+    mockDecrypt.mockImplementation(async (cipher: string) => {
+      if (cipher === 'shared-cipher') return 'SHARED-TOK'
+      return cipher === 'cid-cipher' ? 'the-client-id' : 'the-client-secret'
+    })
+
+    const res = await buildApp().request(ROUTE, post({ method: 'GET', path: '/x' }))
+    expect(res.status).toBe(200)
+    // No token-endpoint round-trip at all — the acceptance criterion of 0027.
+    expect(mockFetch.mock.calls.filter(([u]) => isTokenUrl(u as string))).toHaveLength(0)
+    const partnerCall = mockFetch.mock.calls.find(([u]) => !isTokenUrl(u as string))!
+    expect((partnerCall[1] as RequestInit).headers).toMatchObject({
+      Authorization: 'Bearer SHARED-TOK',
+    })
+  })
+
+  it('a partner 401 deletes the shared row, not just the local one', async () => {
+    process.env['OUTBOUND_OAUTH_SHARED_CACHE_ENABLED'] = 'true'
+    let partnerCalls = 0
+    mockFetch.mockImplementation(async (url: string) => {
+      if (isTokenUrl(url)) return tokenRes()
+      partnerCalls += 1
+      return partnerCalls === 1
+        ? callRes(401, { error: 'invalid_token' })
+        : callRes(200, { ok: true })
+    })
+    const res = await buildApp().request(ROUTE, post({ method: 'GET', path: '/x' }))
+    expect(res.status).toBe(200)
+    // Without this, every OTHER container keeps presenting the rejected token
+    // out of the shared row until its nominal expiry.
+    expect(mockTokenDelete).toHaveBeenCalledWith({
+      tenantId: 'test-tenant-id',
+      integrationId: 'sirva_ade_shipment',
+      tokenUrl: 'https://openapi.sirva.com/oauth2/accessrequest',
+    })
+  })
+
+  it('still succeeds when the shared tier is unavailable', async () => {
+    process.env['OUTBOUND_OAUTH_SHARED_CACHE_ENABLED'] = 'true'
+    mockTokenFindFresh.mockRejectedValue(new Error('neon: connection terminated'))
+    mockTokenUpsert.mockRejectedValue(new Error('neon: connection terminated'))
+    const res = await buildApp().request(ROUTE, post({ method: 'GET', path: '/x' }))
+    // A cache outage must degrade to minting, never fail the caller's call.
+    expect(res.status).toBe(200)
   })
 
   it('POST sends a JSON body with Content-Type', async () => {
