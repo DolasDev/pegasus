@@ -28,6 +28,7 @@ import { z } from 'zod'
 import { createRemoteJWKSet, jwtVerify, errors } from 'jose'
 import { db } from '../db'
 import { logger } from '../lib/logger'
+import { reconcileTenantAppClientFromEnv } from '../lib/cognito-app-client'
 
 // ---------------------------------------------------------------------------
 // JWKS cache — initialized on the first request, shared across warm Lambda
@@ -157,6 +158,30 @@ authHandler.post(
           },
         },
       })
+
+      // Repair app-client IdP drift before the SPA builds its /oauth2/authorize URL.
+      // This is the last server-side moment in the SSO flow — everything after it is
+      // client-side — so a list wiped by a CloudFormation deploy gets fixed here or
+      // the user gets a bare 400 on the callback with nothing to diagnose it by.
+      // Awaited, not fire-and-forget: Lambda freezes the runtime once the response is
+      // returned, which would leave the repair half-done. See
+      // reconcileTenantAppClientFromEnv for why this cannot be fixed in the template.
+      const enabledProviderNames = [
+        ...new Set(
+          tenantUsers.flatMap((tu) => tu.tenant.ssoProviders.map((p) => p.cognitoProviderName)),
+        ),
+      ]
+      try {
+        await reconcileTenantAppClientFromEnv(enabledProviderNames)
+      } catch (err) {
+        // reconcileTenantAppClientFromEnv is fail-open by contract, so reaching here
+        // means a regression inside it. Guarded anyway: this sits in the try/catch
+        // that returns 500, and a broken repair must never take the login page down
+        // with it — degraded SSO beats no login at all.
+        logger.error('resolve-tenants: app-client reconcile threw despite being fail-open', {
+          error: String(err),
+        })
+      }
 
       return c.json({
         data: tenantUsers.map((tu) => ({
