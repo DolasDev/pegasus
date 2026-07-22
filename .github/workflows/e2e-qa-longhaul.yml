@@ -6,8 +6,16 @@ name: E2E — QA longhaul
 #
 # This is intentionally NOT part of the blocking deploy gate (deploy.yml): it
 # depends on external state (the tunnel + on-prem DB) that isn't guaranteed up.
-# Run it on demand, or nightly. The suite self-skips cleanly if the on-prem
-# version ping is unhealthy.
+#
+# ON DEMAND ONLY — deliberately no `schedule:` trigger. The QA environment is
+# not always stood up, so a nightly cron spent most of its life failing on
+# infrastructure that was simply absent, which trains the team to ignore red
+# runs on main. Trigger it when a longhaul change actually warrants it, with
+# the QA tenant + tunnel confirmed up:
+#
+#   gh workflow run e2e-qa-longhaul.yml --ref main
+#
+# See apps/e2e/QA.md for the reseed protocol before a full @qa-mutating run.
 
 on:
   workflow_dispatch:
@@ -16,9 +24,6 @@ on:
         description: 'Reminder: re-seed the QA planning DB from the known-good snapshot before a full @qa-mutating run.'
         required: false
         default: ''
-  schedule:
-    # 07:00 UTC daily — adjust/remove as desired.
-    - cron: '0 7 * * *'
 
 concurrency:
   group: e2e-qa-longhaul
