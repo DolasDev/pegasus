@@ -15,7 +15,44 @@
 //
 // Credentials never touch workflow code: the caller reads CLIENT_ID/CLIENT_SECRET
 // from the tenant's encrypted WorkflowSecretConfig store and passes them here.
+//
+// ── Two tiers (sdk-feedback 0027) ──────────────────────────────────────────
+// L1 is the in-process Map below. It is correct but per-container, and the API
+// Lambda scales horizontally — two sequential call_external requests can land on
+// two containers, each with an empty Map, so the partner's token endpoint gets
+// hit twice for a token that is still valid. That is precisely what 0027 observed
+// (three calls → three mints, expires_in=600).
+//
+// L2 (outbound_oauth_tokens, KMS-encrypted) is the tier those containers share.
+// Lookup order is L1 → L2 → mint, writing through to both. The warm path still
+// costs nothing; only a cold/scaled-out container pays a DB read + KMS decrypt
+// (~15-50ms) in place of a token round-trip (~100-500ms).
+//
+// L2 is opt-in via OUTBOUND_OAUTH_SHARED_CACHE_ENABLED (default off) — see
+// lib/outbound-oauth-feature.ts for why it ships dark.
+//
+// Every outcome emits a structured log line (`outbound oauth token`) carrying the
+// container id, because before this there was NO production signal distinguishing
+// a mint from a cache hit on this path.
 // ---------------------------------------------------------------------------
+
+import { logger } from '../../lib/logger'
+import { randomUUID } from 'node:crypto'
+import type { OutboundOAuthTokenRepository } from '../../repositories/outbound-oauth-token.repository'
+
+/** Re-mint this far ahead of expiry so a token can't die mid-flight. */
+const EXPIRY_SKEW_MS = 60_000
+
+/**
+ * Stable for the life of this container, fresh on every cold start — so the log
+ * line below shows directly whether sequential requests shared a container. This
+ * is the field that distinguishes "the cache is broken" from "the cache worked but
+ * the request landed somewhere else", which is the whole ambiguity in 0027.
+ */
+const INSTANCE_ID = randomUUID().slice(0, 8)
+
+/** Where a token came from — the value reported as `outcome` in the log line. */
+type TokenOutcome = 'l1_hit' | 'l2_hit' | 'mint'
 
 /** A minted access token plus its computed expiry (epoch ms). */
 interface CachedOutboundToken {
@@ -51,6 +88,34 @@ export function outboundTokenCacheKey(
  */
 export function invalidateOutboundToken(cacheKey: string): void {
   tokenCache.delete(cacheKey)
+}
+
+/**
+ * Invalidate BOTH tiers after a partner 401.
+ *
+ * Clearing only L1 would be a correctness bug once the shared tier is on: this
+ * container re-mints, but every other container keeps serving the token the
+ * partner just rejected out of L2 until its nominal expiry. The whole point of a
+ * 401 is that the token is dead earlier than it claims.
+ *
+ * Shared-tier failure is swallowed — the local drop already guarantees THIS
+ * request re-mints, and throwing here would turn a recoverable 401 into a 500.
+ */
+export async function invalidateOutboundTokenEverywhere(
+  cacheKey: string,
+  shared?: SharedTokenTier,
+): Promise<void> {
+  tokenCache.delete(cacheKey)
+  if (!shared) return
+  try {
+    await shared.repo.deleteKey(shared.key)
+  } catch (err) {
+    logger.warn('outbound oauth shared cache invalidation failed', {
+      instanceId: INSTANCE_ID,
+      integrationId: shared.key.integrationId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
 }
 
 /** Credentials + endpoint needed to mint a client-credentials token. */
@@ -122,9 +187,29 @@ export function parseAccessToken(
 }
 
 /**
+ * The shared (L2) tier, injected by the caller. Absent ⇒ L1-only, which is both
+ * the flag-off production path and the default in unit tests.
+ */
+export interface SharedTokenTier {
+  /** Namespaced identity of the cached token in the shared store. */
+  key: { tenantId: string; integrationId: string; tokenUrl: string }
+  repo: OutboundOAuthTokenRepository
+  /** KMS wrappers, injected so this module stays free of AWS imports. */
+  encrypt: (plaintext: string) => Promise<string>
+  decrypt: (ciphertext: string) => Promise<string>
+}
+
+/**
  * Return a valid bearer access token for the given (cacheKey, config), minting a
- * fresh one via the client-credentials grant only when the cache is empty or the
- * cached token is within 60s of expiry. `fetchImpl`/`now` are injectable for tests.
+ * fresh one via the client-credentials grant only when no tier holds a token that
+ * outlives the 60s skew. `fetchImpl`/`now` are injectable for tests.
+ *
+ * Lookup order is L1 (this container's Map) → L2 (`shared`, when supplied) →
+ * mint, writing a freshly minted token through to both tiers.
+ *
+ * A failure in the shared tier is **never** fatal: L2 is a cache, so a DB or KMS
+ * error degrades to a mint (logged) rather than failing the caller's outbound
+ * call. Losing the optimization beats losing the request.
  *
  * @throws {OutboundOAuthError} if the token endpoint rejects the credentials or
  *   returns a body with no parseable access token.
@@ -132,13 +217,50 @@ export function parseAccessToken(
 export async function acquireOutboundToken(
   cacheKey: string,
   config: OutboundOAuthConfig,
-  opts: { now?: number; fetchImpl?: typeof fetch } = {},
+  opts: { now?: number; fetchImpl?: typeof fetch; shared?: SharedTokenTier } = {},
 ): Promise<string> {
   const now = opts.now ?? Date.now()
   const doFetch = opts.fetchImpl ?? fetch
+  const shared = opts.shared
+
+  const report = (outcome: TokenOutcome, extra: Record<string, unknown> = {}): void => {
+    logger.info('outbound oauth token', {
+      outcome,
+      instanceId: INSTANCE_ID,
+      sharedTier: shared ? 'on' : 'off',
+      ...(shared ? { integrationId: shared.key.integrationId, tenantId: shared.key.tenantId } : {}),
+      ...extra,
+    })
+  }
+
   const cached = tokenCache.get(cacheKey)
-  if (cached && cached.expiresAt > now + 60_000) {
+  if (cached && cached.expiresAt > now + EXPIRY_SKEW_MS) {
+    report('l1_hit', { expiresInMs: cached.expiresAt - now })
     return cached.accessToken
+  }
+
+  if (shared) {
+    try {
+      const row = await shared.repo.findFresh(shared.key, new Date(now + EXPIRY_SKEW_MS))
+      if (row) {
+        const accessToken = await shared.decrypt(row.tokenCiphertext)
+        // Promote into L1 so the rest of this container's requests skip the DB.
+        tokenCache.set(cacheKey, {
+          accessToken,
+          tokenType: 'Bearer',
+          expiresAt: row.expiresAt.getTime(),
+        })
+        report('l2_hit', { expiresInMs: row.expiresAt.getTime() - now })
+        return accessToken
+      }
+    } catch (err) {
+      // Degrade to a mint — see the doc comment above.
+      logger.warn('outbound oauth shared cache read failed', {
+        instanceId: INSTANCE_ID,
+        integrationId: shared.key.integrationId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
   }
 
   const basic = Buffer.from(`${config.clientId}:${config.clientSecret}`).toString('base64')
@@ -169,12 +291,30 @@ export async function acquireOutboundToken(
   if (!parsed) {
     throw new OutboundOAuthError('token endpoint response had no access_token', 502)
   }
+  // ADE tokens carry expires_in seconds; if absent, treat as a short 5-min
+  // token so we re-mint conservatively rather than caching indefinitely.
+  const expiresAt = now + (parsed.expiresIn > 0 ? parsed.expiresIn : 300) * 1000
   tokenCache.set(cacheKey, {
     accessToken: parsed.accessToken,
     tokenType: parsed.tokenType,
-    // ADE tokens carry expires_in seconds; if absent, treat as a short 5-min
-    // token so we re-mint conservatively rather than caching indefinitely.
-    expiresAt: now + (parsed.expiresIn > 0 ? parsed.expiresIn : 300) * 1000,
+    expiresAt,
   })
+
+  if (shared) {
+    try {
+      const ciphertext = await shared.encrypt(parsed.accessToken)
+      await shared.repo.upsert(shared.key, ciphertext, new Date(expiresAt))
+    } catch (err) {
+      // The token we just minted is still good and already in L1 — a failed
+      // write-through only costs other containers a mint of their own.
+      logger.warn('outbound oauth shared cache write failed', {
+        instanceId: INSTANCE_ID,
+        integrationId: shared.key.integrationId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  report('mint', { expiresInSec: parsed.expiresIn })
   return parsed.accessToken
 }

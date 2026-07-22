@@ -1057,12 +1057,22 @@ class PegasusClient:
         (which is one fixed JSON ``POST``). You name a ``method`` + ``path`` (+
         ``query``/``body``) and the platform performs the call against the
         integration's ``BASE_URL``, authenticating per its ``AUTH_MODE`` — for
-        ``oauth2_client_credentials`` it mints, caches, and re-mints (on a partner
-        ``401``) an OAuth2 token server-side, so ``client_id``/``client_secret``
+        ``oauth2_client_credentials`` it mints an OAuth2 token server-side and
+        re-mints once on a partner ``401``, so ``client_id``/``client_secret``
         never appear in workflow code. Config + credentials live in the tenant's
         workflow config/secret store (``BASE_URL``/``AUTH_MODE``/``TOKEN_URL``
         configs, ``CLIENT_ID``/``CLIENT_SECRET`` or ``API_KEY`` secrets), read by
         name + ``group``.
+
+        **Token caching is best-effort, not a guarantee** (sdk-feedback 0027).
+        A minted token is reused until 60s before its ``expires_in``, but the
+        platform runs on horizontally-scaled infrastructure: consecutive calls may
+        be served by different instances, and an instance that has not minted yet
+        mints its own. Do **not** size a rate-limited partner credential on the
+        assumption of one mint per token lifetime — assume up to one mint per call
+        and treat anything better as a bonus. A partner ``401`` always discards the
+        token before retrying, so a token the partner has killed early is never
+        presented twice by the same call.
 
         Requires the workflow's manifest to declare
         ``required_actions = ["CallExternal"]``.

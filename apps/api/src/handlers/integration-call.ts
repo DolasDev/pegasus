@@ -46,13 +46,16 @@ import { Actions } from '../authz/actions'
 import type { AppEnv } from '../types'
 import { getIntegrationDefinition } from '../integration-validation/registry'
 import { createWorkflowSecretConfigRepository } from '../repositories/workflow-secret-config.repository'
-import { decryptSecretValue } from '../lib/secret-value-crypto'
+import { createOutboundOAuthTokenRepository } from '../repositories/outbound-oauth-token.repository'
+import { decryptSecretValue, encryptSecretValue } from '../lib/secret-value-crypto'
+import { isOutboundOAuthSharedCacheEnabled } from '../lib/outbound-oauth-feature'
 import { assertDeliverableUrl } from './integration-delivery'
 import {
   acquireOutboundToken,
-  invalidateOutboundToken,
+  invalidateOutboundTokenEverywhere,
   outboundTokenCacheKey,
   OutboundOAuthError,
+  type SharedTokenTier,
 } from '../services/outbound-oauth'
 import { buildBlobS3Key, newBlobId, getObjectBuffer, putObjectBuffer } from '../lib/documents-s3'
 
@@ -223,6 +226,7 @@ integrationCallHandler.post(
     // For OAuth we keep a re-mint closure so a 401 can invalidate + retry once.
     let cacheKey: string | null = null
     let remint: (() => Promise<string>) | null = null
+    let sharedTier: SharedTokenTier | undefined
     const headers: Record<string, string> = { Accept: 'application/json' }
 
     if (authMode === 'oauth2_client_credentials') {
@@ -248,7 +252,19 @@ integrationCallHandler.post(
       const clientSecret = await decryptSecretValue(secretRow.valueCiphertext, tenantId)
       cacheKey = outboundTokenCacheKey(tenantId, integrationId, tokenUrlRow.value)
       const cfg = { tokenUrl: tokenUrlRow.value, clientId, clientSecret }
-      remint = () => acquireOutboundToken(cacheKey!, cfg)
+      // The shared (L2) tier is opt-in — flag off, this is byte-for-byte the
+      // previous in-memory-only behavior. Tokens are KMS-encrypted with the same
+      // per-tenant encryption context as the tenant's workflow secrets.
+      if (isOutboundOAuthSharedCacheEnabled()) {
+        sharedTier = {
+          key: { tenantId, integrationId, tokenUrl: tokenUrlRow.value },
+          repo: createOutboundOAuthTokenRepository(c.get('db')),
+          encrypt: (plaintext) => encryptSecretValue(plaintext, tenantId),
+          decrypt: (ciphertext) => decryptSecretValue(ciphertext, tenantId),
+        }
+      }
+      remint = () =>
+        acquireOutboundToken(cacheKey!, cfg, { ...(sharedTier ? { shared: sharedTier } : {}) })
       try {
         headers.Authorization = `Bearer ${await remint()}`
       } catch (err) {
@@ -298,7 +314,10 @@ integrationCallHandler.post(
     try {
       response = await doRequest()
       if (response.status === 401 && cacheKey && remint) {
-        invalidateOutboundToken(cacheKey)
+        // Clear BOTH tiers: a 401 means the partner killed the token early, so
+        // leaving it in the shared row would let other containers keep presenting
+        // it until its nominal expiry.
+        await invalidateOutboundTokenEverywhere(cacheKey, sharedTier)
         headers.Authorization = `Bearer ${await remint()}`
         response = await doRequest()
       }
