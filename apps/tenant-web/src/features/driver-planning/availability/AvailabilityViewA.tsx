@@ -29,6 +29,12 @@ import {
 import { formatDateShort } from '@/features/driver-planning/utils/format-date'
 import { smsDriver } from '@/features/driver-planning/utils/sms-driver'
 import { HoverToolTip } from '@/features/driver-planning/containers/ToolTips'
+import {
+  CONFIRMED_AVAILABILITY_TIER,
+  NO_CONFIDENCE,
+  getConfidenceTier,
+  type ConfidenceTier,
+} from '@/features/driver-planning/utils/confidence-tier'
 import { Select } from '@/features/driver-planning/components/Select'
 import type { RootState } from '@/features/driver-planning/redux/store'
 
@@ -146,41 +152,6 @@ interface EditState {
   wgs: boolean | null
 }
 
-interface ConfidenceTier {
-  icon: string | null
-  colorClass: string
-  label: string
-}
-
-function getConfidenceTier(d: Delivery): ConfidenceTier {
-  // Per-tier confidence hue, ported from View C: deepening emerald as certainty
-  // rises. View A additionally has a spread tier (View C has none) — muted, as
-  // the least-certain signal.
-  if (d.actualDate) {
-    return { icon: 'fa-truck-moving', colorClass: 'text-emerald-700', label: 'Verified complete' }
-  }
-  if (d.isConfirmed) {
-    return {
-      icon: 'fa-flag-checkered',
-      colorClass: 'text-emerald-600',
-      label: 'Confirmed with driver',
-    }
-  }
-  if (d.isCommitted) {
-    return { icon: 'fa-check', colorClass: 'text-emerald-500', label: 'Driver committed' }
-  }
-  // Spread fallback — the date shown comes from planned_start only (no
-  // estimated / actual). Mirrors the Ready Date "spread" tier.
-  if (!d.estimatedDate && d.plannedStart) {
-    return {
-      icon: 'fa-question',
-      colorClass: 'text-muted-foreground',
-      label: 'Planned spread (least certain)',
-    }
-  }
-  return { icon: null, colorClass: '', label: '' }
-}
-
 function titleCaseCity(value: string | null): string {
   if (!value) return ''
   return value
@@ -247,26 +218,19 @@ function DeliveryLine({
   )
 }
 
+// Which date won, for the `data-ready-tier` marker. The ICON is not derived
+// from this — it comes from getConfidenceTier() on the activity the date came
+// from, so the Ready Date column speaks the same glyph vocabulary as the
+// delivery rows below it and the planning screen's Gantt.
 type ReadyTier = 'confirmed' | 'actual' | 'estimated' | 'spread' | 'none'
-
-interface ReadyTierMeta {
-  icon: string | null
-  label: string
-}
-
-const READY_TIER: Record<ReadyTier, ReadyTierMeta> = {
-  confirmed: { icon: 'fa-calendar-check', label: 'Confirmed availability' },
-  actual: { icon: 'fa-flag-checkered', label: 'Actual delivery date' },
-  estimated: { icon: 'fa-truck-moving', label: 'Estimated delivery date' },
-  spread: { icon: 'fa-question', label: 'Planned spread (least certain)' },
-  none: { icon: null, label: '' },
-}
 
 interface ReadyGuess {
   kind: ReadyTier
   date: string | null
   state: string | null
   city: string | null
+  /** The activity the date came from — supplies the confidence icon. */
+  source: Delivery | null
 }
 
 function getReadyGuess(driver: DriverPlanningRow): ReadyGuess {
@@ -279,30 +243,30 @@ function getReadyGuess(driver: DriverPlanningRow): ReadyGuess {
     driver.shipments[driver.shipments.length - 1] ?? driver.deliveries[driver.deliveries.length - 1]
   const state = last?.state ?? null
   const city = last?.city ? titleCaseCity(last.city) : null
+  const source = last ?? null
 
   if (last?.actualDate) {
-    return { kind: 'actual', date: last.actualDate, state, city }
+    return { kind: 'actual', date: last.actualDate, state, city, source }
   }
   if (last?.estimatedDate) {
-    return { kind: 'estimated', date: last.estimatedDate, state, city }
+    return { kind: 'estimated', date: last.estimatedDate, state, city, source }
   }
   const spread = last?.plannedEnd ?? last?.plannedStart ?? null
   if (spread) {
-    return { kind: 'spread', date: spread, state, city }
+    return { kind: 'spread', date: spread, state, city, source }
   }
-  return { kind: 'none', date: null, state, city }
+  return { kind: 'none', date: null, state, city, source }
 }
 
-function ReadyTierIcon({ kind }: { kind: ReadyTier }) {
-  const meta = READY_TIER[kind]
-  if (!meta.icon) return null
+function ReadyTierIcon({ tier }: { tier: ConfidenceTier }) {
+  if (!tier.icon) return null
   return (
-    <HoverToolTip content={meta.label} direction="top">
+    <HoverToolTip content={tier.label} direction="top">
       <i
-        className={`fas ${meta.icon}`}
+        className={`fas ${tier.icon} ${tier.colorClass}`}
         data-testid="ready-tier-icon"
-        data-icon={meta.icon}
-        aria-label={meta.label}
+        data-icon={tier.icon}
+        aria-label={tier.label}
       />
     </HoverToolTip>
   )
@@ -646,7 +610,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
             data-ready-tier="confirmed"
             onClick={() => startLinkedEdit('date')}
           >
-            <ReadyTierIcon kind="confirmed" />
+            <ReadyTierIcon tier={CONFIRMED_AVAILABILITY_TIER} />
             {formatMonthDay(driver.confirmedAvailableDate)}
           </span>
         ) : (
@@ -656,7 +620,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
             data-ready-tier={guess.kind}
             onClick={() => startLinkedEdit('date')}
           >
-            <ReadyTierIcon kind={guess.kind} />
+            <ReadyTierIcon tier={guess.source ? getConfidenceTier(guess.source) : NO_CONFIDENCE} />
             {guess.date ? formatMonthDay(guess.date) : '-'}
           </span>
         )}
