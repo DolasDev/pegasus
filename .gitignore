@@ -97,3 +97,13 @@ awscliv2.zip
 docs/2026-400ng.pdf
 docs/400NG-BASELINE-RATES.XLSX
 docs/400NG-RATING-TOOL.XLSX
+
+# Workspace-level npm lockfiles. Every app/ and packages/ entry is an npm
+# workspace resolved by the ROOT package-lock.json; a nested lockfile is never
+# installed from, silently drifts out of sync with its own package.json, and
+# still gets scanned by Dependabot — apps/e2e/package-lock.json sat here for
+# four months generating 33 unfixable security alerts against packages the root
+# lock had already patched. If a directory genuinely needs its own install
+# root, it does not belong under a workspace glob.
+apps/*/package-lock.json
+packages/*/package-lock.json

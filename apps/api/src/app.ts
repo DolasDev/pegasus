@@ -232,7 +232,8 @@ app.route('/api/vpn', vpnAgentHandler)
 // Cognito v1 block below.
 //
 // M2M-only routes — authenticated API clients (vnd_ keys). URL mapping from
-// the legacy standalone AWS Lambda API (apps/services/api):
+// the legacy standalone AWS Lambda API, decommissioned in the Pegasus-Services
+// migration (plans/done/pegasus-services-migration.md):
 //   POST   /api/v1/events              ← POST /EventEndpointHandler
 //   GET    /api/v1/events/:eventType   ← GET  /events/{eventType}
 //   DELETE /api/v1/events/:eventId     ← DELETE /events/{eventId}
