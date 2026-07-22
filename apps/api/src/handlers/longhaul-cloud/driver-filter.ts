@@ -1,17 +1,40 @@
 // ---------------------------------------------------------------------------
-// Shared driver filter for every v_longhaul_drivers read.
+// Shared driver predicates for every v_longhaul_drivers read.
 //
-// The Availability screen (/driver-planning) and the Planning driver dropdown
-// (/drivers, /reference-data) must return the SAME set of drivers. Keeping the
-// predicate in one place stops the two lists drifting apart.
+// The two consumers deliberately do NOT return the same set of drivers:
 //
-// Active drivers only, and the 99994–99999 sentinel/system driver IDs are
-// excluded (placeholder / non-real driver rows in the Dolios view).
+//   • Planning driver typeahead (/drivers, /reference-data) — `activeDriverFilter`.
+//     Active drivers only, nothing else. Every active driver must be pickable:
+//     a driver you cannot select is a hard functional gap, while an extra row in
+//     a searchable dropdown costs nothing.
+//
+//   • Availability card (/driver-planning) — `availabilityDriverFilter`.
+//     Active drivers, minus the 99994–99999 ID range. That screen renders one
+//     card per driver with no search, so placeholder rows are real visual noise.
+//
+// The 99994–99999 exclusion is therefore a PRESENTATION filter, not a
+// data-validity one. It was originally applied to all three reads to keep the
+// two screens in lockstep, on the assumption that the whole range is
+// placeholder/system rows — but at least 99995 ("CSS, C&F", agent code 3201,
+// TYPE NWSUB) is a genuine subcontractor, and hiding it made a real driver
+// unselectable in Planning.
 // ---------------------------------------------------------------------------
 
-/** SQL boolean predicate (no leading WHERE). Pass a column prefix when the
+/** Placeholder / system driver rows hidden from the Availability card. */
+const PLACEHOLDER_DRIVER_IDS = [99994, 99995, 99996, 99997, 99998, 99999]
+
+/** Every selectable driver — active only. Backs the Planning typeahead.
+ *  SQL boolean predicate (no leading WHERE). Pass a column prefix when the
  *  query aliases the view (e.g. `d` → `d.ACTIVE`). */
-export function longhaulDriverFilter(prefix = ''): string {
+export function activeDriverFilter(prefix = ''): string {
   const p = prefix ? `${prefix}.` : ''
-  return `${p}ACTIVE = 'Y' AND ${p}DRIVER_ID NOT IN (99994, 99995, 99996, 99997, 99998, 99999)`
+  return `${p}ACTIVE = 'Y'`
+}
+
+/** Drivers shown on the Availability card — active, minus placeholder rows.
+ *  SQL boolean predicate (no leading WHERE). Pass a column prefix when the
+ *  query aliases the view (e.g. `d` → `d.ACTIVE`). */
+export function availabilityDriverFilter(prefix = ''): string {
+  const p = prefix ? `${prefix}.` : ''
+  return `${activeDriverFilter(prefix)} AND ${p}DRIVER_ID NOT IN (${PLACEHOLDER_DRIVER_IDS.join(', ')})`
 }

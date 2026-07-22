@@ -38,7 +38,7 @@ import {
   type LonghaulClientConfig,
 } from '../../lib/longhaul-client-config'
 import { logger } from '../../lib/logger'
-import { longhaulDriverFilter } from './driver-filter'
+import { activeDriverFilter } from './driver-filter'
 import { longhaulSalesmanActiveFilter } from './salesman-filter'
 
 type Row = Record<string, unknown>
@@ -61,7 +61,7 @@ SELECT
   ACTIVE AS active,
   TYPE AS type
 FROM v_longhaul_drivers
-WHERE ${longhaulDriverFilter()};
+WHERE ${activeDriverFilter()};
 
 SELECT * FROM MasterTripStatus;
 

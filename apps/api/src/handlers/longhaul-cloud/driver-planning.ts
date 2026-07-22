@@ -30,7 +30,7 @@ import type { AppEnv } from '../../types'
 import { db } from '../../db'
 import { executeSql } from '../../lib/mssql-executor-client'
 import { logger } from '../../lib/logger'
-import { longhaulDriverFilter } from './driver-filter'
+import { availabilityDriverFilter } from './driver-filter'
 import { ENSURE_CONFIRMED_TABLE_SQL } from './driver-confirmed-availability-schema'
 
 // One round trip: every driver and its latest non-cancelled trip.
@@ -38,8 +38,10 @@ import { ENSURE_CONFIRMED_TABLE_SQL } from './driver-confirmed-availability-sche
 // them to lowercase exactly as the on-prem `lowercaseRowKeys` normalization
 // does, so downstream code sees `driver_id` etc.
 //
-// The WHERE clause keeps this list in lockstep with the Planning driver
-// dropdown (see ./driver-filter) — active, real drivers only.
+// The WHERE clause hides the 99994-99999 placeholder rows on top of the
+// active-only filter (see ./driver-filter). This card renders one row per
+// driver with no search, so it is stricter than the Planning driver dropdown,
+// which lists every active driver.
 const PLANNING_SQL = `
 SELECT
   d.DRIVER_ID   AS driver_id,
@@ -61,7 +63,7 @@ OUTER APPLY (
     AND ISNULL(tm.internal_status, '') <> 'canceled'
   ORDER BY COALESCE(tm.planned_last_day, tm.created_date) DESC
 ) t
-WHERE ${longhaulDriverFilter('d')}
+WHERE ${availabilityDriverFilter('d')}
 `
 
 // Second round trip — TWO recordsets in one batch:
