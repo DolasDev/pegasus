@@ -104,6 +104,28 @@ export function providerNameCandidates(userName: string): string[] {
   return candidates
 }
 
+// ---------------------------------------------------------------------------
+// Is this AdminLinkProviderForUser failure just "already done"?
+//
+// Cognito fires PreSignUp_ExternalProvider more than once for a single login
+// (observed in prod: a duplicate 5s after a successful link). The second call
+// tries to link an identity Cognito already linked and fails with a message
+// containing `SourceUser is already linked to DestinationUser`. That is not a
+// failure — it is the exact end state this trigger exists to produce, reached by
+// a different path — so it must not surface the "contact your administrator"
+// error the generic catch throws.
+//
+// Match the message substring, not the exception type: Cognito raises this in the
+// InvalidParameterException family, which is not distinct enough to switch on. As
+// in pre-token.ts's marker matching, key off a stable, meaningful substring and
+// nothing about its position. Deliberately NARROW — AliasExistsException and every
+// other error still mean the link could not be made and must still throw.
+// ---------------------------------------------------------------------------
+export function isAlreadyLinkedError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err)
+  return /already linked to DestinationUser/i.test(message)
+}
+
 export const handler: PreSignUpTriggerHandler = async (event) => {
   // -------------------------------------------------------------------------
   // Native sign-ups (PreSignUp_SignUp, PreSignUp_AdminCreateUser) are none of
@@ -304,10 +326,26 @@ export const handler: PreSignUpTriggerHandler = async (event) => {
       }),
     )
   } catch (err) {
-    // Deliberately not swallowed. Letting the sign-up proceed unlinked would
-    // recreate the stray duplicate user this trigger exists to prevent — and it
-    // would do so silently, which is how the bug survived this long.
-    // AliasExistsException lands here too: it means the link cannot be made
+    // "Already linked to this exact destination" is a duplicate invocation, not a
+    // failure — the identity IS linked, which is all we wanted. Treat it as
+    // success so a retried trigger does not throw a user-facing error for a state
+    // it reached a moment ago. See isAlreadyLinkedError for why we match the
+    // message and why this stays narrow.
+    if (isAlreadyLinkedError(err)) {
+      logger.info(
+        'Pre-SignUp trigger: federated identity was already linked — treating as success',
+        {
+          providerName,
+          tenantId,
+        },
+      )
+      return event
+    }
+
+    // Everything else is deliberately not swallowed. Letting the sign-up proceed
+    // unlinked would recreate the stray duplicate user this trigger exists to
+    // prevent — and it would do so silently, which is how the bug survived this
+    // long. AliasExistsException lands here too: it means the link cannot be made
     // cleanly, which is a state a human needs to see rather than inherit later.
     logger.error('Pre-SignUp trigger: AdminLinkProviderForUser failed', {
       providerName,
