@@ -596,7 +596,11 @@ describe('integration-config handler', () => {
       mockRepo.findActiveOwn.mockResolvedValue(configRow)
       const res = await buildApp().request(FORK, post())
       expect(res.status).toBe(409)
-      expect((await json(res)).code).toBe('CONFLICT')
+      const body = await json(res)
+      expect(body.code).toBe('CONFLICT')
+      // The 409 has to point at the way out, or the tenant is stuck exactly as
+      // sdk-feedback 0030 describes.
+      expect(String(body.error)).toContain('force=true')
       expect(mockRepo.publish).not.toHaveBeenCalled()
     })
 
@@ -638,6 +642,91 @@ describe('integration-config handler', () => {
         }),
       )
       expect(mockRefreshRegistryOverlay).toHaveBeenCalledTimes(1)
+    })
+
+    // ── ?force=true — refresh an existing overlay (sdk-feedback 0030 part B) ──
+
+    describe('?force=true', () => {
+      const FORK_FORCE = `${FORK}?force=true`
+
+      it('refreshes an existing overlay from GLOBAL as a new tenant version', async () => {
+        // The tenant sits on a stale v3 overlay; publish() supersedes it and
+        // returns v4 — the refresh is a new version, not a replacement in place,
+        // so the pre-refresh config stays rollback-able.
+        mockRepo.findActiveOwn.mockResolvedValue(configRow)
+        mockRepo.publish.mockResolvedValue({
+          ...configRow,
+          id: 'cfg-refreshed-1',
+          version: configRow.version + 1,
+          forkedFromConfigId: globalRow.id,
+          forkedFromVersion: globalRow.version,
+        })
+
+        const res = await buildApp().request(FORK_FORCE, post())
+        expect(res.status).toBe(201)
+        const body = (await json(res)).data as JsonBody
+        expect(body['version']).toBe(configRow.version + 1)
+        expect(body['visibility']).toBe('TENANT')
+        // Provenance points at the CURRENT global, which is the whole point:
+        // the tenant is now tracking upstream again.
+        expect(body['forkedFromConfigId']).toBe(globalRow.id)
+        expect(body['forkedFromVersion']).toBe(globalRow.version)
+        expect(mockRepo.publish).toHaveBeenCalledWith(
+          expect.objectContaining({
+            tenantId: 'test-tenant-id',
+            visibility: 'TENANT',
+            mapping: globalRow.mapping,
+            forkedFromConfigId: globalRow.id,
+            forkedFromVersion: globalRow.version,
+          }),
+        )
+        // The refreshed overlay must become the live one immediately.
+        expect(mockRefreshRegistryOverlay).toHaveBeenCalledTimes(1)
+        // Never a destructive path — the lineage survives (contrast DELETE).
+        expect(mockRepo.deleteScope).not.toHaveBeenCalled()
+      })
+
+      it('behaves like a plain fork when the tenant has no overlay yet', async () => {
+        mockRepo.findActiveOwn.mockResolvedValue(null)
+        const res = await buildApp().request(FORK_FORCE, post())
+        expect(res.status).toBe(201)
+        expect(((await json(res)).data as JsonBody)['version']).toBe(1)
+      })
+
+      it('still refuses the platform tenant', async () => {
+        mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: true })
+        const res = await buildApp().request(FORK_FORCE, post())
+        expect(res.status).toBe(400)
+        expect((await json(res)).code).toBe('PLATFORM_TENANT_CANNOT_FORK')
+        expect(mockRepo.publish).not.toHaveBeenCalled()
+      })
+
+      it('still 404s when there is no GLOBAL config to refresh from', async () => {
+        // Force must not be read as "publish something anyway" — with no
+        // upstream source there is nothing to re-sync to.
+        mockRepo.findActiveOwn.mockResolvedValue(configRow)
+        mockRepo.findActiveGlobal.mockResolvedValue(null)
+        const res = await buildApp().request(FORK_FORCE, post())
+        expect(res.status).toBe(404)
+        expect(mockRepo.publish).not.toHaveBeenCalled()
+      })
+
+      it('still 422s when the GLOBAL config no longer passes the current gate', async () => {
+        // A forced refresh must not resurrect a config the floor has outgrown.
+        mockRepo.findActiveOwn.mockResolvedValue(configRow)
+        mockRunGatePipeline.mockReturnValue(failReport)
+        const res = await buildApp().request(FORK_FORCE, post())
+        expect(res.status).toBe(422)
+        expect((await json(res)).code).toBe('GATE_FAILED')
+        expect(mockRepo.publish).not.toHaveBeenCalled()
+      })
+
+      it('ignores a non-"true" force value (409 stays the default)', async () => {
+        mockRepo.findActiveOwn.mockResolvedValue(configRow)
+        const res = await buildApp().request(`${FORK}?force=1`, post())
+        expect(res.status).toBe(409)
+        expect(mockRepo.publish).not.toHaveBeenCalled()
+      })
     })
   })
 

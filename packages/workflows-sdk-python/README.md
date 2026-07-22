@@ -732,6 +732,7 @@ published_at = "2026-06-29T21:05:48Z"
 | `pegasus-workflows integration-config pull <id> [-C <dir>] [--stdout]`             | Fetch the active config; write the editable surface to disk.   |
 | `pegasus-workflows integration-config versions <id>`                               | List the config version history (newest first).                |
 | `pegasus-workflows integration-config rollback <id> <version>`                     | Re-publish a prior version (re-runs the gate).                 |
+| `pegasus-workflows integration-config fork <id> [--force] [--yes]`                 | Copy the GLOBAL config into this tenant; `--force` re-syncs.   |
 | `pegasus-workflows integration-config delete <id> [--force] [--yes]`               | Permanently remove the caller's config for an integration.     |
 | `pegasus-workflows secrets set <key> <value> [-d <desc>]`                          | Publish a secret (write-once, encrypted at rest).              |
 | `pegasus-workflows secrets list` / `secrets delete <key>`                          | List secret keys (no values) / delete a secret.                |
@@ -784,6 +785,40 @@ pegasus-workflows integration-config validate demo_partner -C ./demo_partner
 pegasus-workflows integration-config publish demo_partner -C ./demo_partner
 ```
 
+#### Forking a platform default — and re-syncing it later
+
+`fork` copies the platform **GLOBAL** config into your tenant as your own overlay
+(stamped with fork provenance, after re-running the gate against the current
+floor). That overlay then **shadows** GLOBAL for your tenant.
+
+```
+pegasus-workflows integration-config fork demo_partner                  # seed my overlay
+pegasus-workflows integration-config fork demo_partner --force          # re-sync it (prompts)
+```
+
+```python
+client.fork_integration_config("demo_partner")               # -> the new TENANT config
+client.fork_integration_config("demo_partner", force=True)   # refresh from the current GLOBAL
+```
+
+Without `--force` / `force=True` a fork is **one-shot**: if you already own an
+overlay you get `409 CONFLICT`, so an overlay forked from an old GLOBAL can never
+pick up upstream fixes. `--force` re-seeds it from the **current** GLOBAL as a
+**new version** — your previous versions stay in `versions` and remain reachable
+via `rollback`, so a refresh you regret is reversible. A stale overlay is easy to
+miss (it silently validates against the old contract while GLOBAL is correct), so
+re-sync after a platform fix rather than hand-republishing a copy.
+
+Choosing between the two withdrawal/refresh paths:
+
+- **`fork --force`** — you still want your own overlay, just rebased on the latest
+  GLOBAL. History preserved; you keep diverging from there.
+- **`delete`** (below) — you want _no_ overlay and to re-inherit GLOBAL live from
+  then on. The lineage is destroyed.
+
+Either way the gate re-runs against the current floor, so neither can resurrect a
+GLOBAL config the contract has outgrown (`422`).
+
 #### Removing an integration
 
 `delete` is the withdrawal path publish/rollback never had — **one verb, scoped by
@@ -825,8 +860,10 @@ complete contract.
 `publish`/`rollback`/`delete` require the token's tenant to be the **platform
 tenant** to write GLOBAL (visibility is derived server-side) and to carry the
 `PublishIntegrationConfig` action; they are gated by the server's
-`INTEGRATION_CONFIG_PUBLISH_ENABLED` switch. `validate` and `pull` are
-read-level and never gated.
+`INTEGRATION_CONFIG_PUBLISH_ENABLED` switch. `fork` takes the same action and
+switch but is the mirror image on tenancy — it writes a TENANT overlay, so the
+platform tenant (which owns GLOBAL already) cannot call it. `validate` and `pull`
+are read-level and never gated.
 
 ## Local Temporal
 

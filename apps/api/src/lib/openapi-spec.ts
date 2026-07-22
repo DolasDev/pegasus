@@ -766,10 +766,25 @@ export function getOpenApiSpec() {
           security: [{ ApiKeyAuth: [] }],
           parameters: [
             { name: 'integrationId', in: 'path', required: true, schema: { type: 'string' } },
+            {
+              name: 'force',
+              in: 'query',
+              required: false,
+              schema: { type: 'string', enum: ['true'] },
+              description:
+                'Refresh an existing TENANT overlay from the current GLOBAL config ' +
+                'instead of failing with 409. The overlay is re-seeded as a new ' +
+                'version; prior versions stay in the history and remain rollback-able.',
+            },
           ],
           responses: {
-            '201': { description: 'The created TENANT config (full projection)' },
+            '201': { description: 'The created (or refreshed) TENANT config (full projection)' },
             '404': { description: 'No GLOBAL config to fork' },
+            '409': {
+              description:
+                'The tenant already has its own config for this integration — ' +
+                'retry with force=true to refresh it',
+            },
           },
         },
       },

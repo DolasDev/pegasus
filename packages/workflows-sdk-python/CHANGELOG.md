@@ -3,6 +3,36 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.30.0
+
+### Added — re-sync a forked integration config (`fork_integration_config(force=True)`)
+
+Completes the withdrawal/refresh story 0.29.0 started: a tenant overlay could be
+_dropped_ (`delete_integration_config`) but never _rebased_ on a newer GLOBAL
+(sdk-feedback 0030 part B).
+
+- **`PegasusClient.fork_integration_config(integration_id, force=False)`** — the new
+  `force` flag turns the one-shot fork into a re-sync. Without it, a tenant that
+  already owns an overlay gets `409 CONFLICT`, so an overlay forked from an old
+  GLOBAL could never pick up upstream fixes except by hand-republishing a copy that
+  then tracks nothing. With it the overlay is re-seeded from the **current** GLOBAL
+  as a **new version** — prior versions stay in
+  `list_integration_config_versions` and remain reachable via
+  `rollback_integration_config`, so a refresh you regret is reversible. (Contrast
+  `delete_integration_config`, which hard-drops the whole lineage so the tenant
+  re-inherits GLOBAL live.) The `409` now names `force=true` as the way forward.
+- **`pegasus-workflows integration-config fork <id> [--force] [--yes]`** — fork had
+  no CLI surface at all; it is now alongside `publish`/`pull`/`versions`/`rollback`/
+  `delete`. A plain fork is additive and runs unprompted; `--force` confirms first
+  (it demotes the tenant's current config), and `--yes` skips that for CI.
+- The publish gate re-runs against the current floor either way, so neither a fork
+  nor a refresh can resurrect a GLOBAL config the contract has outgrown (`422`), and
+  the platform tenant still cannot fork its own GLOBAL (`400`).
+- Platform: `POST /api/v1/integrations/{integrationId}/config/fork?force=true`, gated
+  by `PublishIntegrationConfig` + `INTEGRATION_CONFIG_PUBLISH_ENABLED` (the same gate
+  as publish) and documented in the OpenAPI spec, including the `409`. A forced
+  refresh logs `refreshedFromVersion` so a re-sync is distinguishable from a seed.
+
 ## 0.29.0
 
 ### Added — delete a published integration config (`delete_integration_config`)
