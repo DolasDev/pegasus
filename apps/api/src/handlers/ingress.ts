@@ -21,8 +21,7 @@
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
-import crypto from 'node:crypto'
-import { timingSafeEqual } from 'node:crypto'
+import { tokenMatches } from '../lib/opaque-token'
 import { db as rootDb } from '../db'
 import type { AppEnv } from '../types'
 import { logger } from '../lib/logger'
@@ -55,20 +54,12 @@ function bearer(authHeader: string | undefined): string | null {
   return m ? (m[1] ?? null) : null
 }
 
-/** Timing-safe hash compare. */
-function hashMatches(token: string, expectedHash: string): boolean {
-  const actual = crypto.createHash('sha256').update(token).digest('hex')
-  const a = Buffer.from(actual)
-  const b = Buffer.from(expectedHash)
-  return a.length === b.length && timingSafeEqual(a, b)
-}
-
 /** Resolve the presented bearer to an enabled credential for this integration. */
 async function authenticate(token: string, integrationId: string): Promise<IngressAuthRow | null> {
   const repo = createIngressCredentialRepository(rootDb)
   const rows = await repo.findByTokenPrefix(token.slice(0, 12))
   for (const row of rows) {
-    if (row.integrationId === integrationId && row.enabled && hashMatches(token, row.tokenHash)) {
+    if (row.integrationId === integrationId && row.enabled && tokenMatches(token, row.tokenHash)) {
       return row
     }
   }

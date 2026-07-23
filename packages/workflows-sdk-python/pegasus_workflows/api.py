@@ -307,9 +307,7 @@ class PegasusClient:
             ValueError: If *size_bytes* exceeds :data:`MAX_ARTIFACT_BYTES`.
         """
         if size_bytes <= 0 or size_bytes > MAX_ARTIFACT_BYTES:
-            raise ValueError(
-                f"sizeBytes must be 1..{MAX_ARTIFACT_BYTES} (got {size_bytes})"
-            )
+            raise ValueError(f"sizeBytes must be 1..{MAX_ARTIFACT_BYTES} (got {size_bytes})")
         with self._client() as client:
             response = client.post(
                 "/api/v1/workflows/upload-url",
@@ -438,9 +436,7 @@ class PegasusClient:
         params: dict[str, Any] = {"limit": limit}
         if before:
             params["before"] = before
-        return self._get_json(
-            f"/api/v1/workflows/{workflow_id}/executions", **params
-        )["data"]
+        return self._get_json(f"/api/v1/workflows/{workflow_id}/executions", **params)["data"]
 
     def get_execution(
         self,
@@ -876,6 +872,213 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()
 
+    # -- feedback (magic-link surveys) ---------------------------------------
+    #
+    # A tenant authors a versioned FeedbackForm (validate/publish/pull/versions/
+    # rollback — mirrors the integration-config surface), then a running workflow
+    # mints a per-recipient capability link (create_feedback_request) and sends it
+    # (e.g. via send_sms, or the built-in SMS sugar). A submitted response emits
+    # the built-in ``feedback.submitted`` domain event a workflow EVENT trigger
+    # subscribes to. See apps/api/src/handlers/feedback-*.ts.
+
+    def validate_feedback_form(
+        self, form_key: str, *, title: str, definition: Any
+    ) -> dict[str, Any]:
+        """Dry-run a feedback form definition. No write.
+
+        Checks the ``definition`` (a ``{questions: [...]}`` object) against the
+        supported question-list subset and returns ``{valid, errors}``. A usable
+        pre-check before :meth:`publish_feedback_form`.
+
+        Args:
+            form_key: The form's stable key/slug (e.g. ``"post-move-csat"``).
+            title: Human-facing title shown on the rendered form.
+            definition: ``{questions: [{id, type, label, required?, ...}]}``. Types:
+                ``rating`` (int min..max, default 1..5), ``number`` (min/max),
+                ``text`` (maxLength), ``select`` (options[]), ``boolean``.
+
+        Returns:
+            ``{valid: bool, errors: [str]}``.
+
+        Raises:
+            PegasusApiError: On 400 (bad form key) or any other non-2xx.
+        """
+        with self._client() as client:
+            response = client.post(
+                f"/api/v1/feedback-forms/{form_key}/validate",
+                json={"title": title, "definition": definition},
+            )
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def publish_feedback_form(
+        self,
+        form_key: str,
+        *,
+        title: str,
+        definition: Any,
+        message_template: str | None = None,
+    ) -> dict[str, Any]:
+        """Publish a new immutable feedback form version.
+
+        The server validates the definition and writes nothing if it is invalid
+        (400). A publish supersedes the prior published version for the key.
+        Requires the ``ManageFeedbackForms`` action; flag-gated behind the
+        server's ``FEEDBACK_ENABLED`` switch (404 when off).
+
+        Args:
+            form_key: The form's stable key/slug.
+            title: Human-facing title shown on the rendered form.
+            definition: The question list (see :meth:`validate_feedback_form`).
+            message_template: Optional SMS/email body rendered at MINT time for the
+                send sugar. ``{{url}}`` and ``{{subjectId}}`` substitute. Omit for
+                mint-only (the workflow sends the link itself).
+
+        Returns:
+            The published form row: ``{id, formKey, version, status, title,
+            definition, messageTemplate, publishedBy, createdAt}``.
+
+        Raises:
+            PegasusApiError: On 400 (invalid key/definition), 404 (feature
+                disabled), or any other non-2xx.
+        """
+        captured = self._capture_mutation(
+            "ManageFeedbackForms",
+            "publish_feedback_form",
+            {"form_key": form_key},
+            {"formKey": form_key, "dryRun": True},
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
+        body: dict[str, Any] = {"title": title, "definition": definition}
+        if message_template is not None:
+            body["messageTemplate"] = message_template
+        with self._client() as client:
+            response = client.post(f"/api/v1/feedback-forms/{form_key}", json=body)
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def get_feedback_form(self, form_key: str) -> dict[str, Any]:
+        """Fetch the active (latest published) feedback form for a key.
+
+        The full projection — including the editable ``definition`` — so a pulled
+        form can be edited and republished (round-trip).
+
+        Raises:
+            PegasusApiError: On 404 (no published form / feature disabled).
+        """
+        return self._get_json(f"/api/v1/feedback-forms/{form_key}")["data"]
+
+    def list_feedback_forms(self) -> list[dict[str, Any]]:
+        """List the tenant's active (latest published) feedback forms."""
+        return self._get_json("/api/v1/feedback-forms")["data"]
+
+    def list_feedback_form_versions(self, form_key: str) -> list[dict[str, Any]]:
+        """List the version history for a feedback form key, newest first."""
+        return self._get_json(f"/api/v1/feedback-forms/{form_key}/versions")["data"]
+
+    def rollback_feedback_form(self, form_key: str, version: int) -> dict[str, Any]:
+        """Re-publish a prior feedback form version as a new version.
+
+        Requires ``ManageFeedbackForms``; flag-gated behind ``FEEDBACK_ENABLED``.
+
+        Raises:
+            PegasusApiError: On 404 (version not found / feature disabled).
+        """
+        captured = self._capture_mutation(
+            "ManageFeedbackForms",
+            "rollback_feedback_form",
+            {"form_key": form_key, "version": version},
+            {"formKey": form_key, "dryRun": True},
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
+        with self._client() as client:
+            response = client.post(f"/api/v1/feedback-forms/{form_key}/rollback/{version}")
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def create_feedback_request(
+        self,
+        form_key: str,
+        *,
+        subject_type: str,
+        subject_id: str,
+        ttl_hours: int | None = None,
+        channel: str | None = None,
+        to: str | None = None,
+    ) -> dict[str, Any]:
+        """Mint a per-recipient capability link to a published feedback form.
+
+        The mint is the primitive: returns ``{requestId, url, expiresAt}`` and the
+        workflow sends ``url`` however it likes (typically :meth:`send_sms`). Pass
+        ``channel="sms"`` + ``to`` to also fire one SMS with the form's rendered
+        ``messageTemplate`` through the tenant's RingCentral connection — the
+        response then carries a ``delivery`` sub-object, and a delivery failure
+        never loses the link. Requires the ``CreateFeedbackRequest`` action.
+
+        Args:
+            form_key: A published form's key.
+            subject_type: Opaque correlation type (e.g. ``"move"``).
+            subject_id: Opaque correlation id (e.g. the move id).
+            ttl_hours: Link lifetime in hours (1..2160; default 72).
+            channel: Pass ``"sms"`` to also send the link; omit for mint-only.
+            to: Destination E.164 number, required when ``channel="sms"``.
+
+        Returns:
+            ``{requestId, url, expiresAt, delivery?}``.
+
+        Raises:
+            PegasusApiError: On 400 (bad body / E.164), 404 (no published form or
+                feature disabled), or any other non-2xx.
+        """
+        captured = self._capture_mutation(
+            "CreateFeedbackRequest",
+            "create_feedback_request",
+            {
+                "form_key": form_key,
+                "subject_type": subject_type,
+                "subject_id": subject_id,
+                "ttl_hours": ttl_hours,
+                "channel": channel,
+                "to": to,
+            },
+            {
+                "requestId": "dry-run",
+                "url": "https://dry-run.invalid/f/dry-run",
+                "expiresAt": "1970-01-01T00:00:00.000Z",
+                "dryRun": True,
+            },
+        )
+        if captured is not _NOT_CAPTURED:
+            return captured
+        body: dict[str, Any] = {
+            "formKey": form_key,
+            "subject": {"type": subject_type, "id": subject_id},
+        }
+        if ttl_hours is not None:
+            body["ttlHours"] = ttl_hours
+        if channel is not None:
+            body["channel"] = channel
+        if to is not None:
+            body["to"] = to
+        with self._client() as client:
+            response = client.post("/api/v1/feedback-requests", json=body)
+        _raise_for_status(response)
+        return response.json()["data"]
+
+    def get_feedback_request(self, request_id: str) -> dict[str, Any]:
+        """Fetch the status of a minted feedback request (poll for the response).
+
+        Returns ``{id, formKey, formVersion, subject, status, expiresAt,
+        respondedAt, response, createdAt}``. ``status`` is ``PENDING`` until a
+        response lands, then ``SUBMITTED`` (with ``response`` populated).
+
+        Raises:
+            PegasusApiError: On 404 (unknown id / feature disabled).
+        """
+        return self._get_json(f"/api/v1/feedback-requests/{request_id}")["data"]
+
     def map_to_external(
         self, integration_id: str, data: Any, *, action: str | None = None
     ) -> dict[str, Any]:
@@ -1275,9 +1478,7 @@ class PegasusClient:
         params = {"shape": shape} if shape is not None else {}
         return self._get_json(f"/api/v1/pegii/orders/{order_id}", **params)["data"]
 
-    def dry_run_integration(
-        self, integration_id: str, order_id: str
-    ) -> dict[str, Any]:
+    def dry_run_integration(self, integration_id: str, order_id: str) -> dict[str, Any]:
         """Dry-run a published integration against a REAL pegII order id.
 
         Fetches the order's native pegII payload (``get_order(order_id,
@@ -1311,9 +1512,7 @@ class PegasusClient:
     # uses these. Reads are gated by ``ReadTask``; ``close_task`` by
     # ``CloseTask`` — declared in the workflow manifest ``required_actions``.
 
-    def list_tasks(
-        self, order_id: str | None = None, **params: Any
-    ) -> list[dict[str, Any]]:
+    def list_tasks(self, order_id: str | None = None, **params: Any) -> list[dict[str, Any]]:
         """List pegII tasks, optionally scoped to one order. Requires ``ReadTask``.
 
         Args:
@@ -1792,9 +1991,7 @@ class PegasusClient:
             A list of compact summaries (no mapping/rules/corpus blobs):
             ``{id, integrationId, version, visibility, status, publishedBy, createdAt}``.
         """
-        return self._get_json(
-            f"/api/v1/integrations/{integration_id}/config/versions"
-        )["data"]
+        return self._get_json(f"/api/v1/integrations/{integration_id}/config/versions")["data"]
 
     def rollback_integration_config(
         self,
@@ -1868,9 +2065,9 @@ class PegasusClient:
             PegasusApiError: On 403 (token/manifest lacks ``ReadWorkflowSecret``),
                 404 (no such secret in that group), or any other non-2xx.
         """
-        return self._get_json(
-            f"{self._SECRETS_CONFIG_BASE}/runtime/secrets/{name}", group=group
-        )["data"]["value"]
+        return self._get_json(f"{self._SECRETS_CONFIG_BASE}/runtime/secrets/{name}", group=group)[
+            "data"
+        ]["value"]
 
     def get_config(self, name: str, *, group: str = "global") -> str:
         """Read a workflow config value by name (runtime use).
@@ -1889,9 +2086,9 @@ class PegasusClient:
             PegasusApiError: On 403 (token/manifest lacks ``ReadWorkflowConfig``),
                 404 (no such config entry in that group), or any other non-2xx.
         """
-        return self._get_json(
-            f"{self._SECRETS_CONFIG_BASE}/runtime/configs/{name}", group=group
-        )["data"]["value"]
+        return self._get_json(f"{self._SECRETS_CONFIG_BASE}/runtime/configs/{name}", group=group)[
+            "data"
+        ]["value"]
 
     def list_secrets(self, *, group: str | None = None) -> list[dict[str, Any]]:
         """List secret metadata (never any value). Requires ``ManageWorkflowSecrets``.
@@ -1960,9 +2157,12 @@ class PegasusClient:
             PegasusApiError: On 403, 404 (no such secret in that group), or any
                 other non-2xx.
         """
-        if self._capture_mutation(
-            "ManageWorkflowSecrets", "delete_secret", {"key": key, "group": group}, None
-        ) is not _NOT_CAPTURED:
+        if (
+            self._capture_mutation(
+                "ManageWorkflowSecrets", "delete_secret", {"key": key, "group": group}, None
+            )
+            is not _NOT_CAPTURED
+        ):
             return
         with self._client() as client:
             response = client.delete(
@@ -2020,9 +2220,7 @@ class PegasusClient:
         if captured is not _NOT_CAPTURED:
             return captured
         with self._client() as client:
-            response = client.put(
-                f"{self._SECRETS_CONFIG_BASE}/configs/{key}", json=payload
-            )
+            response = client.put(f"{self._SECRETS_CONFIG_BASE}/configs/{key}", json=payload)
         _raise_for_status(response)
         return response.json()["data"]
 
@@ -2037,9 +2235,12 @@ class PegasusClient:
             PegasusApiError: On 403, 404 (no such entry in that group), or any
                 other non-2xx.
         """
-        if self._capture_mutation(
-            "ManageWorkflowConfigs", "delete_config", {"key": key, "group": group}, None
-        ) is not _NOT_CAPTURED:
+        if (
+            self._capture_mutation(
+                "ManageWorkflowConfigs", "delete_config", {"key": key, "group": group}, None
+            )
+            is not _NOT_CAPTURED
+        ):
             return
         with self._client() as client:
             response = client.delete(
@@ -2059,9 +2260,7 @@ class PegasusClient:
 
     _PROJECTIONS_BASE = "/api/v1/integration-projections"
 
-    def get_projection(
-        self, integration: str, entity_type: str, key: str
-    ) -> dict[str, Any] | None:
+    def get_projection(self, integration: str, entity_type: str, key: str) -> dict[str, Any] | None:
         """Read one cached projection record. Requires ``ReadIntegrationProjection``.
 
         Args:
@@ -2087,9 +2286,7 @@ class PegasusClient:
         _raise_for_status(response)
         return response.json()["data"]
 
-    def list_projections(
-        self, integration: str, entity_type: str
-    ) -> list[dict[str, Any]]:
+    def list_projections(self, integration: str, entity_type: str) -> list[dict[str, Any]]:
         """List all cached projection records for one entity type.
 
         Requires ``ReadIntegrationProjection``.
@@ -2101,9 +2298,9 @@ class PegasusClient:
         Returns:
             A list of projection rows (possibly empty).
         """
-        return self._get_json(
-            f"{self._PROJECTIONS_BASE}/runtime/{integration}/{entity_type}"
-        )["data"]
+        return self._get_json(f"{self._PROJECTIONS_BASE}/runtime/{integration}/{entity_type}")[
+            "data"
+        ]
 
     def put_projection(
         self, integration: str, entity_type: str, key: str, state: Any

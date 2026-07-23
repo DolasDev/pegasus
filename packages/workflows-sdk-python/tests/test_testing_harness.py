@@ -294,6 +294,9 @@ _MUTATION_CALLS = [
     lambda c: c.delete_config("K"),
     lambda c: c.deliver_to_external("demo_partner", {"orderNumber": "S-1"}),
     lambda c: c.put_blob(b"bytes", "application/pdf"),
+    lambda c: c.publish_feedback_form("post-move-csat", title="CSAT", definition={"questions": []}),
+    lambda c: c.rollback_feedback_form("post-move-csat", 2),
+    lambda c: c.create_feedback_request("post-move-csat", subject_type="move", subject_id="1"),
 ]
 
 

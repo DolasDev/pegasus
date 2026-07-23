@@ -91,6 +91,8 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     "get_projection": lambda a, k: a[2] if len(a) > 2 else k.get("key"),
     "get_blob": lambda a, k: _first(a, k, "blob_id"),
     "get_blob_url": lambda a, k: _first(a, k, "blob_id"),
+    "get_feedback_form": lambda a, k: _first(a, k, "form_key"),
+    "get_feedback_request": lambda a, k: _first(a, k, "request_id"),
     # list / whole-value reads: fixture is the value returned as-is
     "list_customers": None,
     "list_quotes": None,
@@ -111,6 +113,11 @@ _READS: dict[str, Callable[[tuple, dict], Any] | None] = {
     "list_integrations": None,
     "get_mapping_schema": None,
     "get_inbound_schema": None,
+    # feedback form authoring reads (validate is a no-write pre-check, like
+    # validate_integration_config)
+    "validate_feedback_form": None,
+    "list_feedback_forms": None,
+    "list_feedback_form_versions": None,
 }
 
 #: mutation method -> the Cedar action (``capability``) it is gated by.
@@ -130,6 +137,9 @@ _MUTATIONS: dict[str, str] = {
     "delete_config": "ManageWorkflowConfigs",
     "deliver_to_external": "DeliverToExternal",
     "put_blob": "WriteBlob",
+    "publish_feedback_form": "ManageFeedbackForms",
+    "rollback_feedback_form": "ManageFeedbackForms",
+    "create_feedback_request": "CreateFeedbackRequest",
 }
 
 #: hybrid method(s) — read *or* mutation depending on the call's arguments, so

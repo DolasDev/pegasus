@@ -93,6 +93,9 @@ import {
 import { ringcentralOauthHandler } from './handlers/integrations/ringcentral-oauth'
 import { ringcentralWebhookHandler } from './handlers/integrations/ringcentral-webhook'
 import { ingressHandler, ingressManagementHandler } from './handlers/ingress'
+import { feedbackFormsHandler } from './handlers/feedback-forms'
+import { feedbackRequestsHandler } from './handlers/feedback-requests'
+import { feedbackPublicHandler } from './handlers/feedback-public'
 import { integrationsHandler } from './handlers/integrations/list'
 import { logger } from './lib/logger'
 import { getOpenApiSpec } from './lib/openapi-spec'
@@ -215,6 +218,14 @@ app.route('/api/integrations/ringcentral', ringcentralWebhookHandler)
 app.route('/api/ingress/v1', ingressHandler)
 
 // ---------------------------------------------------------------------------
+// Public feedback endpoint — pre-tenant (feedback surveys). A respondent opens
+// a capability link carrying only an opaque token in the path; the tenant is
+// resolved FROM the token. No Cognito session. Mounted BEFORE the tenant-
+// protected /api/v1 block. See handlers/feedback-public.ts.
+// ---------------------------------------------------------------------------
+app.route('/api/public/v1', feedbackPublicHandler)
+
+// ---------------------------------------------------------------------------
 // Hub agent API — /api/vpn/**
 //
 // M2M endpoints for the WireGuard hub's reconcile agent. The router applies
@@ -320,6 +331,12 @@ m2mV1.route('/', blobsHandler)
 // POSTs to the pre-tenant ingress endpoint. Dual-auth + RBAC (ManageIngress).
 // See handlers/ingress.ts.
 m2mV1.route('/', ingressManagementHandler)
+// Feedback surveys: author versioned forms (ManageFeedbackForms / ReadFeedbackForms)
+// and mint capability links (CreateFeedbackRequest, granted to workflow_runtime).
+// Dual-auth + RBAC applied inside each handler; feature-gated by FEEDBACK_ENABLED.
+// The public respond endpoint is mounted pre-tenant above. See handlers/feedback-*.ts.
+m2mV1.route('/feedback-forms', feedbackFormsHandler)
+m2mV1.route('/feedback-requests', feedbackRequestsHandler)
 
 app.route('/api/v1', m2mV1)
 

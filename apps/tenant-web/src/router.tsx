@@ -26,6 +26,8 @@ import { DeveloperSettingsPage } from '@/routes/settings.developer'
 import { WorkflowsSettingsPage } from '@/routes/settings.workflows'
 import { WorkflowDetailPage } from '@/routes/settings.workflows.$workflowId'
 import { EventTypesSettingsPage } from '@/routes/settings.event-types'
+import { FeedbackFormsSettingsPage } from '@/routes/settings.feedback-forms'
+import { PublicFeedbackPage } from '@/routes/f.$token'
 import { RingCentralIntegrationPage } from '@/routes/settings.integrations.ringcentral'
 import { AppSettingsLayout } from '@/features/settings/app/AppSettingsLayout'
 import { AppSettingsIndexPage } from '@/routes/settings.app.index'
@@ -92,6 +94,15 @@ const loginSignedOutRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login/signed-out',
   component: LoginSignedOutPage,
+})
+
+// Public feedback form — a customer/driver opens a capability link (`/f/<token>`).
+// No auth: it hangs off the root route (not authLayout), and the API resolves the
+// tenant from the token in the path. See handlers/feedback-public.ts.
+const publicFeedbackRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/f/$token',
+  component: PublicFeedbackPage,
 })
 
 // ---------------------------------------------------------------------------
@@ -233,6 +244,12 @@ const eventTypesSettingsRoute = createRoute({
   component: EventTypesSettingsPage,
 })
 
+const feedbackFormsSettingsRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: '/settings/feedback-forms',
+  component: FeedbackFormsSettingsPage,
+})
+
 const ringCentralRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: '/settings/integrations/ringcentral',
@@ -364,6 +381,7 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   loginCallbackRoute,
   loginSignedOutRoute,
+  publicFeedbackRoute,
   authLayout.addChildren([
     indexRoute,
     movesIndexRoute,
@@ -391,6 +409,7 @@ const routeTree = rootRoute.addChildren([
       workflowsSettingsRoute,
       workflowDetailRoute,
       eventTypesSettingsRoute,
+      feedbackFormsSettingsRoute,
       ringCentralRoute,
       appSettingsLayoutRoute.addChildren([
         appSettingsIndexRoute,

@@ -482,3 +482,27 @@ is shared across tenants, so another tenant's providers must never be stripped.
 If it reads `["COGNITO"]` while tenants have providers enabled, this is it. The
 gzipped `state` param in the `/error` URL base64url-decodes to JSON naming the pool,
 the IdP, the client id and the callback — decode it before theorizing.
+
+## Adding a built-in DOMAIN_EVENT_TYPE breaks four exact-list assertions
+
+`DOMAIN_EVENT_TYPES` in `apps/api/src/lib/domain-events.ts` is a public contract,
+and several tests assert its **exact** contents rather than membership. Adding a
+type (e.g. `feedback.submitted` for the feedback feature, #feedback-requests) fails
+these until each is updated:
+
+- `src/lib/__tests__/domain-events.test.ts` — the "exposes exactly the … event
+  types" assertion (`toEqual` the literal list).
+- `src/handlers/me.test.ts` + `src/lib/authz.test.ts` — the viewer/tenant_user
+  permission-list assertions, if the new feature ALSO adds a read action to the
+  `20-viewer.cedar` baseline (feedback added `ReadFeedbackForms` there).
+
+Separately, any new **m2m GET route** must be added to `lib/openapi-spec.ts` or the
+`openapi-spec.coverage.test.ts` fails — and a path with both a GET and a POST must
+declare **both verbs under one `paths` key**, or the later object literal clobbers
+the earlier (duplicate-key, last-wins) and the GET silently vanishes from the spec.
+
+A new handler that reads the **unscoped base `db`** (the pre-tenant, token-resolved
+pattern — `feedback-public.ts` mirrors `ingress.ts`) must be allowlisted in
+`src/__tests__/db-access-guard.test.ts`. The opaque bearer/capability-token
+mint+hash+timing-safe-compare now lives once in `lib/opaque-token.ts`; reuse it
+(ingress + feedback both do) rather than re-hashing inline.

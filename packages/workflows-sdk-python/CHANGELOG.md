@@ -3,6 +3,34 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.31.0
+
+### Added — feedback (magic-link surveys)
+
+Solicit feedback from customers/drivers via a tokenized capability link, parse the
+response, and route it into a workflow. A tenant authors a versioned form; a
+workflow mints a per-recipient link and sends it; a submitted response emits the
+built-in `feedback.submitted` domain event a workflow EVENT trigger fires on.
+
+- **`PegasusClient.create_feedback_request(form_key, *, subject_type, subject_id,
+ttl_hours=None, channel=None, to=None)`** — the mint primitive. Returns
+  `{requestId, url, expiresAt}`; pass `channel="sms"` + `to` to also send the
+  rendered link through the tenant's RingCentral connection (the response then
+  carries a `delivery` sub-object; a send failure never loses the link). Gated by
+  the new `CreateFeedbackRequest` action (granted to `workflow_runtime`).
+- **`PegasusClient.get_feedback_request(request_id)`** — poll a request's status
+  (`PENDING` → `SUBMITTED`, with the `response` payload).
+- **Form authoring** — `validate_feedback_form` / `publish_feedback_form` /
+  `get_feedback_form` / `list_feedback_forms` / `list_feedback_form_versions` /
+  `rollback_feedback_form`, gated by the new `ManageFeedbackForms` action. Question
+  types: `rating`, `number`, `text`, `select`, `boolean`.
+- **New CLI group `pegasus-workflows feedback-form`** — `validate` / `publish` /
+  `pull` / `versions` / `rollback`, mirroring `integration-config`. The editable
+  surface is `form.json` (`{title, definition}`) + optional `message.txt`.
+
+The whole surface is server-gated behind `FEEDBACK_ENABLED` (404 when off). Email
+delivery is not in this release (SMS only).
+
 ## 0.30.0
 
 ### Added — re-sync a forked integration config (`fork_integration_config(force=True)`)

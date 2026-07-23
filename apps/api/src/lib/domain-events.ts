@@ -14,13 +14,18 @@
 
 import type { Prisma } from '@prisma/client'
 
-/** The five launch domain-event types. Renames are breaking — treat as API. */
+/** The launch domain-event types. Renames are breaking — treat as API. */
 export const DOMAIN_EVENT_TYPES = [
   'quote.accepted',
   'move.status_changed',
   'invoice.paid',
   'customer.created',
   'pegasus_event.received',
+  // Emitted by the public feedback respond endpoint when a valid response is
+  // recorded (handlers/feedback-public.ts). Payload: { requestId, formKey,
+  // subject: { type, id }, response }. A workflow EVENT trigger subscribes to it
+  // (v2 dot-path filters can match on formKey / subject.type).
+  'feedback.submitted',
 ] as const
 
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number]

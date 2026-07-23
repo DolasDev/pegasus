@@ -10,20 +10,12 @@
 // overwrites the hash+prefix in place (old token stops working immediately).
 // ---------------------------------------------------------------------------
 
-import crypto from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
+import { generateOpaqueToken, type MintedToken } from '../lib/opaque-token'
 
 /** Mint a new ingress token: `ing_<48 hex>`, its 12-char prefix, and its hash. */
-export function generateIngressToken(): {
-  plainToken: string
-  tokenPrefix: string
-  tokenHash: string
-} {
-  const hex = crypto.randomBytes(24).toString('hex') // 48 hex chars
-  const plainToken = `ing_${hex}`
-  const tokenPrefix = plainToken.slice(0, 12) // "ing_" + 8 hex chars
-  const tokenHash = crypto.createHash('sha256').update(plainToken).digest('hex')
-  return { plainToken, tokenPrefix, tokenHash }
+export function generateIngressToken(): MintedToken {
+  return generateOpaqueToken('ing')
 }
 
 /** Auth-path row — carries the hash for the timing-safe compare. */

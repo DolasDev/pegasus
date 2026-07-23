@@ -169,6 +169,12 @@ const ALLOWED_BASE_CLIENT_HANDLERS: ReadonlySet<string> = new Set([
   // the base client cross-tenant (credential prefix lookup) before any tenant is
   // known. Tenant isolation is enforced by the token→tenant resolution itself.
   'ingress.ts',
+  // Public feedback respond endpoint: pre-tenant, like the ingress endpoint —
+  // it resolves the tenant FROM the capability token in the path, so it must
+  // query the base client cross-tenant (token prefix lookup) before any tenant
+  // is known. Isolation is enforced by the token→tenant resolution itself, and
+  // the pinned form lookup passes tenantId explicitly (findVersionForTenant).
+  'feedback-public.ts',
   'longhaul-cloud/activity-types.ts',
   'longhaul-cloud/dispatchers.ts',
   'longhaul-cloud/driver-planning.ts',
