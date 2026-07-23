@@ -69,6 +69,9 @@ const VIEWER_PERMISSIONS = [
   // viewer reads the projections a workflow landed (the read-model surface,
   // sdk-feedback/0026) — a non-admin business-user read (20-viewer.cedar).
   'integration_projection:read',
+  // viewer reads published feedback forms for the read-only Feedback Forms
+  // viewer — a non-admin business-user read (20-viewer.cedar).
+  'feedback:read_forms',
   // viewer can rate a shipment and browse published tariff versions
   // (20-viewer.cedar). Importing/activating tariff data is platform-admin only
   // (POST /api/admin/tariffs) — there is no tenant-facing tariff:import action.
@@ -254,7 +257,7 @@ test.describe('authenticated AVP smoke', () => {
       expect([...body.permissions].sort()).toEqual([...SALES_PERMISSIONS].sort())
     })
 
-    test('viewer has exactly its 9 read-only permissions and is denied on invite', async () => {
+    test('viewer has exactly its 10 read-only permissions and is denied on invite', async () => {
       expect(viewerSession, 'viewer persona did not provision').not.toBeNull()
       const fetch_ = fetchWithToken(viewerSession!.token)
 
