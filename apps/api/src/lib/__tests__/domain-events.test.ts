@@ -62,13 +62,14 @@ describe('emitDomainEvent', () => {
     ).rejects.toThrow('insert failed')
   })
 
-  it('exposes exactly the five launch event types (public contract)', () => {
+  it('exposes exactly the launch event types (public contract)', () => {
     const expected: readonly DomainEventType[] = [
       'quote.accepted',
       'move.status_changed',
       'invoice.paid',
       'customer.created',
       'pegasus_event.received',
+      'feedback.submitted',
     ]
     expect([...DOMAIN_EVENT_TYPES]).toEqual([...expected])
   })

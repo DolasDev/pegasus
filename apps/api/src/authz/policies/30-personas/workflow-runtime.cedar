@@ -26,7 +26,9 @@
 // httpx call from the activity. CallExternal is its read/arbitrary-method
 // sibling: a workflow names a method + path and the platform performs the call
 // server-side, minting/caching an OAuth2 client-credentials token so the
-// workflow never handles client_id/client_secret.
+// workflow never handles client_id/client_secret. CreateFeedbackRequest lets a
+// workflow mint a capability link to a published feedback form (the mint-only
+// primitive; the workflow sends it via SendSms), same persona shape as SendSms.
 permit (
   principal in Pegasus::Group::"workflow_runtime",
   action in [
@@ -49,7 +51,8 @@ permit (
     Pegasus::Action::"ReadIntegrationProjection",
     Pegasus::Action::"WriteIntegrationProjection",
     Pegasus::Action::"ReadBlob",
-    Pegasus::Action::"WriteBlob"
+    Pegasus::Action::"WriteBlob",
+    Pegasus::Action::"CreateFeedbackRequest"
   ],
   resource
 );

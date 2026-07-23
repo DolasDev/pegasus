@@ -39,6 +39,7 @@ export type ResourceType =
   | 'IntegrationProjection'
   | 'EventType'
   | 'Blob'
+  | 'Feedback'
 
 export interface ActionDef {
   /** Cedar action identifier (without namespace prefix). */
@@ -339,6 +340,29 @@ export const Actions = {
     id: 'WriteBlob',
     resourceType: 'Blob',
     permission: 'blob:write',
+  },
+  // ── Feedback (magic-link surveys) ─────────────────────────────────────────
+  // ManageFeedbackForms gates the SDK/CLI authoring surface (validate / publish /
+  // versions / rollback), granted to workflow_developer (+ tenant_admin
+  // implicitly). ReadFeedbackForms gates the read-only tenant-web viewer, on the
+  // viewer baseline. CreateFeedbackRequest gates minting a capability link and is
+  // granted to workflow_runtime so a running workflow can request feedback — the
+  // same persona shape as SendSms. The PUBLIC respond endpoint is token-
+  // authenticated (pre-tenant), not Cedar-gated.
+  ManageFeedbackForms: {
+    id: 'ManageFeedbackForms',
+    resourceType: 'Feedback',
+    permission: 'feedback:manage_forms',
+  },
+  ReadFeedbackForms: {
+    id: 'ReadFeedbackForms',
+    resourceType: 'Feedback',
+    permission: 'feedback:read_forms',
+  },
+  CreateFeedbackRequest: {
+    id: 'CreateFeedbackRequest',
+    resourceType: 'Feedback',
+    permission: 'feedback:create_request',
   },
 } as const satisfies Record<string, ActionDef>
 

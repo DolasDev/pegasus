@@ -2090,6 +2090,119 @@ model InboundEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Feedback (magic-link surveys) — a tenant authors a versioned FeedbackForm via
+// the SDK/CLI, mints a per-recipient FeedbackRequest (tokenized capability link)
+// from a workflow, and a submitted response emits the built-in `feedback.submitted`
+// DomainEvent that the trigger dispatcher fires the tenant's workflow off of.
+// Both models are purely tenant-owned (no GLOBAL case) → auto-scoped in
+// TENANT_SCOPED_MODELS; the public respond endpoint uses the root db and resolves
+// the tenant FROM the token, exactly like the ingress endpoint.
+// ---------------------------------------------------------------------------
+
+/// Lifecycle status of a FeedbackForm version. A publish supersedes the prior
+/// PUBLISHED row for the same (tenantId, formKey).
+enum FeedbackFormStatus {
+  /// The current live version for its (tenantId, formKey).
+  PUBLISHED
+  /// Replaced by a newer published version.
+  SUPERSEDED
+
+  @@schema("public")
+}
+
+/// Lifecycle of a minted FeedbackRequest link.
+enum FeedbackRequestStatus {
+  /// Minted, not yet responded to, and not past expiry.
+  PENDING
+  /// A valid response was recorded (single-submit; terminal).
+  SUBMITTED
+  /// Past expiry with no response (a lazily-derived terminal read state).
+  EXPIRED
+
+  @@schema("public")
+}
+
+// FeedbackForm — an immutable, versioned form definition. Append-only, exactly
+// like IntegrationConfig: each publish inserts a new (tenantId, formKey, version)
+// row and supersedes the prior PUBLISHED row for the scope. `definition` is the
+// tenant-authored question list; `messageTemplate` is the optional SMS/email body
+// rendered at MINT time (never exposed on the public GET).
+model FeedbackForm {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// Tenant-chosen stable key for the form (a slug, e.g. "post-move-csat").
+  /// Versions accrue under this key.
+  formKey String @map("form_key")
+
+  /// Monotonic version per (tenantId, formKey). Publishes are immutable.
+  version Int
+
+  status FeedbackFormStatus @default(PUBLISHED)
+
+  /// Human-facing title shown on the rendered form.
+  title String
+
+  /// The tenant-authored question list (validated as a supported subset at
+  /// publish). Compiled to a payload-schema to validate a response at submit.
+  definition Json
+
+  /// Optional message body rendered at mint time for the SMS/email sugar path.
+  /// `{{url}}` and `{{subjectId}}` substitute. Null ⇒ mint-only (caller sends).
+  messageTemplate String? @map("message_template")
+
+  /// TenantUser.id (or service-account id) of the publisher. Denormalized; not an FK.
+  publishedBy String @map("published_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([tenantId, formKey, version])
+  @@index([tenantId, formKey, status])
+  @@map("feedback_forms")
+  @@schema("public")
+}
+
+// FeedbackRequest — one minted capability link. Only the SHA-256 hash of the
+// token is stored; the plaintext (`fbk_<48 hex>`) lives only in the returned URL.
+// The 12-char prefix indexes the public-endpoint lookup, which then timing-safe
+// compares the full hash (same shape as IngressCredential / ApiClient keys). The
+// pinned (formKey, formVersion) freezes which definition the respondent sees even
+// if the tenant publishes a new version after minting.
+model FeedbackRequest {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  /// First 12 chars of the token (e.g. "fbk_a1b2c3d4") — indexes the hash lookup.
+  tokenPrefix String @map("token_prefix")
+  /// SHA-256 of the full token. Never returned by any API.
+  tokenHash String @map("token_hash")
+
+  /// The form this request renders, pinned at mint time.
+  formKey     String @map("form_key")
+  formVersion Int    @map("form_version")
+
+  /// Opaque correlation to the thing feedback is about (e.g. "move" / "123").
+  /// Not an FK — the subject may be a legacy/on-prem id.
+  subjectType String @map("subject_type")
+  subjectId   String @map("subject_id")
+
+  status FeedbackRequestStatus @default(PENDING)
+
+  expiresAt   DateTime  @map("expires_at")
+  respondedAt DateTime? @map("responded_at")
+
+  /// The validated response payload once submitted; null while PENDING.
+  responsePayload Json? @map("response_payload")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tokenPrefix])
+  @@index([tenantId, status, createdAt])
+  @@map("feedback_requests")
+  @@schema("public")
+}
+
+// ---------------------------------------------------------------------------
 // Tenant broker credentials — per-tenant tokens for the workflow broker.
 //
 // Phase 3 Unit 7 (the sandbox security keystone). A tenant-runner container

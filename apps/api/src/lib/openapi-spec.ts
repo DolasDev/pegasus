@@ -207,6 +207,21 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
     'Presigned download URL for a blob (ReadBlob)',
     { tags: ['Blobs'], path: ['blobId'] },
   ),
+  '/api/v1/feedback-forms': apiKeyGet(
+    'listFeedbackForms',
+    'List the tenant’s active (latest published) feedback forms',
+    { tags: ['Feedback'], responseDescription: '{data: FeedbackFormSummary[]}' },
+  ),
+  '/api/v1/feedback-forms/{formKey}/versions': apiKeyGet(
+    'listFeedbackFormVersions',
+    'Version history for a feedback form key, newest first',
+    { tags: ['Feedback'], path: ['formKey'] },
+  ),
+  '/api/v1/feedback-requests/{id}': apiKeyGet(
+    'getFeedbackRequest',
+    'Status of a minted feedback request (poll for the response)',
+    { tags: ['Feedback'], path: ['id'], responseDescription: '{data: FeedbackRequestStatus}' },
+  ),
 }
 
 export function getOpenApiSpec() {
@@ -812,6 +827,102 @@ export function getOpenApiSpec() {
             { name: 'executionId', in: 'path', required: true, schema: { type: 'string' } },
           ],
           responses: { '201': { description: 'New execution started ({data: execution})' } },
+        },
+      },
+      '/api/v1/feedback-forms/{formKey}': {
+        get: {
+          operationId: 'getFeedbackForm',
+          summary: 'Get the active feedback form for a key (ReadFeedbackForms)',
+          tags: ['Feedback'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [{ name: 'formKey', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '200': { description: 'The active form (full projection)' },
+            '404': { description: 'No published form' },
+          },
+        },
+        post: {
+          operationId: 'publishFeedbackForm',
+          summary: 'Publish a new immutable feedback form version (ManageFeedbackForms)',
+          description:
+            'Body: { title, definition: { questions: [...] }, messageTemplate? }. The definition is validated as a supported question-list subset; a publish supersedes the prior published version for the key.',
+          tags: ['Feedback'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [{ name: 'formKey', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '201': { description: 'The published form version (full projection)' },
+            '400': { description: 'Invalid form key or definition' },
+            '404': { description: 'Feedback is not enabled' },
+          },
+        },
+      },
+      '/api/v1/feedback-forms/{formKey}/validate': {
+        post: {
+          operationId: 'validateFeedbackForm',
+          summary: 'Dry-run a feedback form definition, no write (ManageFeedbackForms)',
+          tags: ['Feedback'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [{ name: 'formKey', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: { '200': { description: '{data: { valid, errors }}' } },
+        },
+      },
+      '/api/v1/feedback-forms/{formKey}/rollback/{version}': {
+        post: {
+          operationId: 'rollbackFeedbackForm',
+          summary: 'Re-publish a prior feedback form version (ManageFeedbackForms)',
+          tags: ['Feedback'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'formKey', in: 'path', required: true, schema: { type: 'string' } },
+            { name: 'version', in: 'path', required: true, schema: { type: 'integer' } },
+          ],
+          responses: {
+            '201': { description: 'The re-published form version' },
+            '404': { description: 'Version not found' },
+          },
+        },
+      },
+      '/api/v1/feedback-requests': {
+        post: {
+          operationId: 'createFeedbackRequest',
+          summary: 'Mint a capability link to a published form (CreateFeedbackRequest)',
+          description:
+            'Body: { formKey, subject: { type, id }, ttlHours?, channel?, to? }. Returns { requestId, url, expiresAt }. Pass channel:"sms" + to to also send the rendered message via the tenant’s RingCentral connection (best-effort; the response always carries the url and a delivery status).',
+          tags: ['Feedback'],
+          security: [{ ApiKeyAuth: [] }],
+          responses: {
+            '201': { description: '{data: { requestId, url, expiresAt, delivery? }}' },
+            '400': { description: 'Invalid body (e.g. bad E.164 when channel is sms)' },
+            '404': { description: 'No published form for the key, or feedback not enabled' },
+          },
+        },
+      },
+      '/api/public/v1/feedback/{token}': {
+        get: {
+          operationId: 'getPublicFeedbackForm',
+          summary: 'Public: the form definition to render for a capability token',
+          description:
+            'No auth — the opaque token in the path resolves the tenant + pinned form version. Leaks no subject PII: returns { status: pending|submitted|expired, title, definition }.',
+          tags: ['Feedback'],
+          parameters: [{ name: 'token', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '200': { description: '{data: { status, title, definition }}' },
+            '404': { description: 'Invalid/unknown token' },
+          },
+        },
+        post: {
+          operationId: 'submitPublicFeedback',
+          summary: 'Public: submit a response for a capability token',
+          description:
+            'Body: { response: { [questionId]: value } } (or the bare response object). Validated against the pinned form; on success records the response (single-submit) and emits the built-in feedback.submitted domain event.',
+          tags: ['Feedback'],
+          parameters: [{ name: 'token', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '201': { description: '{data: { status: "submitted" }}' },
+            '400': { description: 'Response failed validation' },
+            '409': { description: 'Already submitted' },
+            '410': { description: 'Link expired' },
+          },
         },
       },
       '/api/v1/integrations/floors': {

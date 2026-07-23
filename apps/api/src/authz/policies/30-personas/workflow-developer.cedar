@@ -24,7 +24,8 @@ permit (
     Pegasus::Action::"ManageEventTypes",
     Pegasus::Action::"ManageWorkflowSecrets",
     Pegasus::Action::"ManageWorkflowConfigs",
-    Pegasus::Action::"ManageIngress"
+    Pegasus::Action::"ManageIngress",
+    Pegasus::Action::"ManageFeedbackForms"
   ],
   resource
 );

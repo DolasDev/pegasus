@@ -189,6 +189,58 @@ required_actions = ["SendSms"]
 or (404) if the tenant has no SMS provider connected. The `to` number must be E.164
 (e.g. `"+16308868537"`).
 
+### Soliciting feedback (magic-link surveys)
+
+Ask a customer or driver for feedback via a tokenized link, then act on the
+response. You author a versioned form once (via the `feedback-form` CLI), then a
+workflow **mints a per-recipient link** and sends it. When the recipient submits,
+the platform records the response and emits the built-in `feedback.submitted`
+domain event — so a second workflow with an `EVENT` trigger on `feedback.submitted`
+picks up and routes it (alert on a low rating, log a testimonial, etc.).
+
+Author the form (once), from a working directory holding `form.json`:
+
+```json
+{
+  "title": "How did we do?",
+  "definition": {
+    "questions": [
+      { "id": "rating", "type": "rating", "label": "Rate your crew", "required": true },
+      { "id": "comments", "type": "text", "label": "Anything else?", "maxLength": 500 }
+    ]
+  }
+}
+```
+
+```bash
+pegasus-workflows feedback-form validate post-move-csat   # dry-run the definition
+pegasus-workflows feedback-form publish  post-move-csat   # publish v1
+```
+
+Then, inside a workflow activity, mint + send the link:
+
+```python
+@activity.defn
+async def request_feedback_activity(move: dict) -> dict:
+    client = PegasusClient.from_runtime()
+    # channel="sms" also sends the form's messageTemplate; omit it to mint-only
+    # and send the returned url yourself (e.g. via client.send_sms or email).
+    return client.create_feedback_request(
+        "post-move-csat",
+        subject_type="move",
+        subject_id=move["id"],
+        ttl_hours=72,
+        channel="sms",
+        to=move["contactPhone"],
+    )
+```
+
+`create_feedback_request` needs `required_actions = ["CreateFeedbackRequest"]`;
+form authoring (`publish_feedback_form`, …) needs `ManageFeedbackForms`. Question
+types: `rating` (int, default 1..5), `number`, `text`, `select` (options), `boolean`.
+Poll a request with `client.get_feedback_request(request_id)`. The whole feature is
+server-gated behind `FEEDBACK_ENABLED`.
+
 ### Delivering a body to a partner endpoint
 
 To POST a mapped body to a partner API, use `client.deliver_to_external` rather than
@@ -741,6 +793,10 @@ published_at = "2026-06-29T21:05:48Z"
 | `pegasus-workflows schedule create <wf-id> --cron "<5-field UTC>"`                 | Attach a cron SCHEDULE trigger that runs the workflow.         |
 | `pegasus-workflows schedule list <wf-id>` / `schedule delete <wf-id> <trigger-id>` | List / remove a workflow's schedule triggers.                  |
 | `pegasus-workflows ingress create <id>` / `rotate <id>` / `list <id>`              | Provision / rotate / inspect a partner-ingress bearer.         |
+| `pegasus-workflows feedback-form validate <key> [-d <dir>]`                        | Dry-run a feedback form definition (no write).                 |
+| `pegasus-workflows feedback-form publish <key> [-d <dir>]`                         | Publish a new feedback form version.                           |
+| `pegasus-workflows feedback-form pull <key> [-d <dir>]`                            | Fetch the active form; write `form.json` (+ `message.txt`).    |
+| `pegasus-workflows feedback-form versions <key>` / `rollback <key> <version>`      | List versions / re-publish a prior version.                    |
 
 Credentials resolve via `--token`/`--base-url`, `--profile`, the
 `PEGASUS_WORKFLOW_TOKEN`/`PEGASUS_BASE_URL` env vars, or the `[default]` profile

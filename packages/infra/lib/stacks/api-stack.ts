@@ -203,6 +203,27 @@ export interface ApiStackProps extends cdk.StackProps {
   readonly outboundOAuthSharedCacheEnabled?: boolean
 
   /**
+   * Master switch for the feedback (magic-link surveys) feature. When true,
+   * `FEEDBACK_ENABLED=true` is set on the api Lambda, ungating the whole feedback
+   * surface: the FeedbackForm authoring routes, the FeedbackRequest mint, and the
+   * public respond endpoint (all 404 when off). `feedbackPublicWebUrl` is set
+   * alongside so the mint can build the capability link.
+   *
+   * Inert-safe: a tenant must first publish a form (a `vnd_` key carrying
+   * `Actions.ManageFeedbackForms`) and a workflow must mint a request before any
+   * link exists. Only env vars are set — no IAM/secret wiring (the store is the
+   * shared Neon DB). Default off.
+   */
+  readonly feedbackEnabled?: boolean
+
+  /**
+   * Public base URL of the tenant SPA, used to build the feedback capability link
+   * (`<url>/f/<token>`). Threaded from bin/app.ts per environment (the same
+   * tenant-web origin used for CORS). Only consulted when `feedbackEnabled`.
+   */
+  readonly feedbackPublicWebUrl?: string
+
+  /**
    * Browser origins allowed to call the API cross-origin. Threaded from
    * bin/app.ts per environment (tenant + admin SPA hostnames in staging/prod).
    * Applied at BOTH layers from this single source of truth:
@@ -462,6 +483,19 @@ export class ApiStack extends cdk.Stack {
     // ---------------------------------------------------------------------------
     if (props.outboundOAuthSharedCacheEnabled) {
       apiFunction.addEnvironment('OUTBOUND_OAUTH_SHARED_CACHE_ENABLED', 'true')
+    }
+
+    // ---------------------------------------------------------------------------
+    // Feedback (magic-link surveys) master switch. Like the flags above, only env
+    // vars are set: the store is the shared Neon DB, and the public respond
+    // endpoint resolves the tenant from the token (no new IAM). FEEDBACK_PUBLIC_WEB_URL
+    // is the tenant SPA origin the mint uses to build the `/f/<token>` link.
+    // ---------------------------------------------------------------------------
+    if (props.feedbackEnabled) {
+      apiFunction.addEnvironment('FEEDBACK_ENABLED', 'true')
+      if (props.feedbackPublicWebUrl) {
+        apiFunction.addEnvironment('FEEDBACK_PUBLIC_WEB_URL', props.feedbackPublicWebUrl)
+      }
     }
 
     // ---------------------------------------------------------------------------

@@ -217,6 +217,7 @@ describe('listAllowedPermissions — offline', () => {
         Actions.ReadWorkflow.permission,
         Actions.ReadIntegrationConfig.permission,
         Actions.ReadIntegrationProjection.permission,
+        Actions.ReadFeedbackForms.permission,
         Actions.RateShipment.permission,
         Actions.ReadTariff.permission,
       ]),
