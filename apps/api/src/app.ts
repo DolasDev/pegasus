@@ -262,6 +262,21 @@ app.route('/api/vpn', vpnAgentHandler)
 //                        tenantMiddleware (see middleware/dual-auth.ts).
 // ---------------------------------------------------------------------------
 const m2mV1 = new Hono<AppEnv>()
+// Worker-only internal endpoints — gated by the shared-secret header
+// X-Workflow-Broker-Secret or a per-tenant X-Workflow-Broker-Token (see
+// handlers/workflow-internal.ts, requireBrokerAuth). No tenant/dual-auth
+// middleware involvement; tenant scope is derived from the WorkflowExecution
+// row each call references.
+//
+// MUST be registered FIRST on m2mV1: several later handlers are mounted at
+// root ('/') and apply `.use('*', dualAuthMiddleware)`, whose wildcard would
+// otherwise run BEFORE this handler for `/internal/*` and reject the worker's
+// broker-token request with a generic "Missing or malformed Authorization
+// header" 401 (dualAuth/tenant), never reaching requireBrokerAuth. That
+// exact shadowing shipped in #447 (a root '/' projection-read handler landed
+// one line above this mount) and crash-looped every tenant runner for a week.
+// Keeping /internal first makes the broker routes immune to catch-all order.
+m2mV1.route('/internal', workflowInternalHandler)
 m2mV1.route('/events', eventsHandler)
 m2mV1.route('/event-types', eventTypesHandler)
 m2mV1.route('/orders', ordersHandler)
@@ -298,11 +313,6 @@ m2mV1.route('/integration-projections', integrationProjectionsHandler)
 // (ReadIntegrationProjection, now granted to viewer). Mounted at root so it lives
 // under /integrations. See handlers/integration-projections.ts.
 m2mV1.route('/', integrationProjectionReadHandler)
-// Worker-only internal endpoints — gated by the shared-secret header
-// X-Workflow-Broker-Secret (see handlers/workflow-internal.ts). No tenant
-// middleware involvement; tenant scope is derived from the WorkflowExecution
-// row each call references.
-m2mV1.route('/internal', workflowInternalHandler)
 // Declarative integration validation (POC) — synchronous, STATELESS order
 // validation against a global declarative definition. Mounted on the pre-tenant
 // m2m router because the caller (the legacy desktop / an M2M client) has no
