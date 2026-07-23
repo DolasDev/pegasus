@@ -80,6 +80,7 @@ const METRIC_NAMESPACE = 'Pegasus/Workflows'
 const METRIC_RUNNER_LAUNCHED = 'TenantRunnerLaunched'
 const METRIC_RUNNER_LAUNCH_FAILED = 'TenantRunnerLaunchFailed'
 const METRIC_RUNNERS_RUNNING = 'TenantRunnersRunning'
+const METRIC_RUNNERS_NEEDED = 'TenantRunnersNeeded'
 const METRIC_RUNNER_COLD_START_SECONDS = 'TenantRunnerColdStartSeconds'
 
 /** Canonical lowercase-UUID shape — the only tenant id form we will pass as
@@ -413,6 +414,14 @@ export async function sweepTenantRunners(
     ),
   ]
   result.tenantsNeedingRunner = tenantIds.length
+
+  // Publish the demand gauge EVERY tick (0 included, like TenantRunnersRunning)
+  // so the starvation alarm — Needed >= 1 while Running < 1 — has a continuous
+  // series and can use NOT_BREACHING missing-data semantics. Emitted before the
+  // launch loop so a slow/failing RunTask never delays or drops it.
+  await publishMetrics([
+    { MetricName: METRIC_RUNNERS_NEEDED, Value: tenantIds.length, Unit: 'Count' },
+  ])
 
   // Sequential on purpose: per-tenant isolation (one tenant's failure never
   // skips another) and no thundering RunTask herd on a busy tick.

@@ -125,6 +125,12 @@ function emittedMetricNames(): string[] {
   return putMetricDataInputs.flatMap((p) => (p.MetricData ?? []).map((m) => m.MetricName ?? ''))
 }
 
+/** The Value of the most recent datapoint emitted for `name` (undefined if none). */
+function emittedMetricValue(name: string): number | undefined {
+  const data = putMetricDataInputs.flatMap((p) => p.MetricData ?? [])
+  return data.filter((m) => m.MetricName === name).at(-1)?.Value
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   putMetricDataInputs.length = 0
@@ -405,6 +411,9 @@ describe('sweepTenantRunners', () => {
     expect(ecs.calls.runTask.map((c) => c.startedBy)).toEqual([TENANT_ID, OTHER_TENANT_ID])
     // The pool gauge is published as part of the sweep.
     expect(emittedMetricNames()).toContain('TenantRunnersRunning')
+    // Demand gauge is published with the deduped tenant count — the starvation
+    // alarm pairs this with TenantRunnersRunning.
+    expect(emittedMetricValue('TenantRunnersNeeded')).toBe(2)
   })
 
   it('isolates per-tenant failures — one broken launch never skips the next tenant', async () => {
@@ -443,6 +452,9 @@ describe('sweepTenantRunners', () => {
 
     expect(result).toEqual({ tenantsNeedingRunner: 0, launched: 0, launchFailed: 0 })
     expect(ecs.calls.runTask).toHaveLength(0)
+    // The demand gauge is still emitted as 0 — a continuous series is what lets
+    // the starvation alarm use NOT_BREACHING (no data during downtime, not a 0).
+    expect(emittedMetricValue('TenantRunnersNeeded')).toBe(0)
   })
 
   // ── Kill switch (Phase 3 Unit 11) ──────────────────────────────────────

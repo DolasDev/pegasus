@@ -90,6 +90,17 @@ export const TENANT_RUNNER_LAUNCH_FAILED_METRIC_NAME = 'TenantRunnerLaunchFailed
  * dispatcher tick (0 included — scale-to-zero is the steady state). */
 export const TENANT_RUNNERS_RUNNING_METRIC_NAME = 'TenantRunnersRunning'
 
+/**
+ * Gauge: number of tenants with QUEUED/RUNNING tenant-runner-lane executions
+ * this dispatcher tick (0 included). Paired with TenantRunnersRunning to
+ * detect starvation: demand exists (Needed >= 1) but supply is zero
+ * (Running < 1) sustained. This is the ONLY signal that catches a
+ * launch-succeeds-then-container-crashes loop — TenantRunnerLaunchFailed
+ * stays 0 there (RunTask succeeded), and WorkflowExecutionReconciled lags by
+ * the Temporal timeout. See the starvation alarm in monitoring-stack.ts.
+ */
+export const TENANT_RUNNERS_NEEDED_METRIC_NAME = 'TenantRunnersNeeded'
+
 /** Cold-start latency in seconds (RunTask accept → task RUNNING), emitted
  * for tasks that reached RUNNING within the last tick window. The accepted
  * Resolved-#1 budget is ~30–60 s. */

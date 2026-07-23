@@ -88,11 +88,11 @@ describe('MonitoringStack — OK actions', () => {
   it('wires every alarm with both AlarmActions and OKActions', () => {
     const template = synthMonitoringStack()
     const alarms = template.findResources('AWS::CloudWatch::Alarm')
-    // 11 original + 4 workflow-plane (Unit 11) + 2 account-wide (throttles,
-    // errors) + 2 rating (FSC-update failure + tariff coverage-days) = 19. No
-    // worker-down alarm here (default synth has no worker props); reconcile
-    // alarm is Unit 11's.
-    expect(Object.keys(alarms)).toHaveLength(19)
+    // 11 original + 5 workflow-plane (Unit 11 + starvation) + 2 account-wide
+    // (throttles, errors) + 2 rating (FSC-update failure + tariff coverage-days)
+    // = 20. No worker-down alarm here (default synth has no worker props);
+    // reconcile alarm is Unit 11's.
+    expect(Object.keys(alarms)).toHaveLength(20)
     for (const [id, alarm] of Object.entries(alarms)) {
       expect(alarm['Properties']?.['AlarmActions'], `${id} AlarmActions`).toHaveLength(1)
       expect(alarm['Properties']?.['OKActions'], `${id} OKActions`).toHaveLength(1)
@@ -319,19 +319,19 @@ describe('MonitoringStack — RingCentral capture-health alarms', () => {
 })
 
 describe('MonitoringStack — alarm count', () => {
-  it('creates 19 alarms (3 service + 2 AVP + 5 RC gauges + 1 DLQ + 4 workflow-plane + 2 account-wide + 2 rating)', () => {
+  it('creates 20 alarms (3 service + 2 AVP + 5 RC gauges + 1 DLQ + 5 workflow-plane + 2 account-wide + 2 rating)', () => {
     const template = synthMonitoringStack()
+    template.resourceCountIs('AWS::CloudWatch::Alarm', 20)
+  })
+
+  it('creates 19 alarms when the capture DLQ name is absent', () => {
+    const template = synthMonitoringStackWithoutDlq()
     template.resourceCountIs('AWS::CloudWatch::Alarm', 19)
   })
 
-  it('creates 18 alarms when the capture DLQ name is absent', () => {
-    const template = synthMonitoringStackWithoutDlq()
-    template.resourceCountIs('AWS::CloudWatch::Alarm', 18)
-  })
-
-  it('creates 20 alarms when the temporal worker props are provided (+1 RunningTaskCount)', () => {
+  it('creates 21 alarms when the temporal worker props are provided (+1 RunningTaskCount)', () => {
     const template = synthMonitoringStackWithWorker()
-    template.resourceCountIs('AWS::CloudWatch::Alarm', 20)
+    template.resourceCountIs('AWS::CloudWatch::Alarm', 21)
   })
 
   it('creates the tariff coverage-days alarm on Pegasus/Rating, < 45, BREACHING, wired to SNS', () => {
@@ -377,6 +377,34 @@ describe('MonitoringStack — workflow execution-plane alarms (Phase 3 Unit 11)'
     })
   })
 
+  it('alarms on tenant-runner starvation — demand with no runner up (12 of 15 min)', () => {
+    const template = synthMonitoringStack()
+    template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+      AlarmName: 'pegasus-tenant-runner-starvation',
+      ComparisonOperator: 'GreaterThanThreshold',
+      Threshold: 0,
+      EvaluationPeriods: 15,
+      DatapointsToAlarm: 12,
+      TreatMissingData: 'notBreaching',
+      // Metric-math over both gauges: 1 only when Needed>=1 AND Running<1.
+      Metrics: Match.arrayWith([
+        Match.objectLike({ Expression: '(needed >= 1) * (running < 1)' }),
+        Match.objectLike({
+          MetricStat: Match.objectLike({
+            Metric: Match.objectLike({ MetricName: 'TenantRunnersNeeded' }),
+            Stat: 'Maximum',
+          }),
+        }),
+        Match.objectLike({
+          MetricStat: Match.objectLike({
+            Metric: Match.objectLike({ MetricName: 'TenantRunnersRunning' }),
+            Stat: 'Maximum',
+          }),
+        }),
+      ]),
+    })
+  })
+
   it('alarms on a non-zero domain-event dispatch backlog in 5 min', () => {
     const template = synthMonitoringStack()
     template.hasResourceProperties('AWS::CloudWatch::Alarm', {
@@ -413,10 +441,11 @@ describe('MonitoringStack — workflow execution-plane alarms (Phase 3 Unit 11)'
     })
   })
 
-  it('wires all four workflow alarms to the SNS topic', () => {
+  it('wires all five workflow alarms to the SNS topic', () => {
     const template = synthMonitoringStack()
     for (const name of [
       'pegasus-tenant-runner-launch-failed',
+      'pegasus-tenant-runner-starvation',
       'pegasus-domain-event-dispatch-backlog',
       'pegasus-workflow-execution-reconciled',
       'pegasus-workflow-trigger-skipped-start-failed',

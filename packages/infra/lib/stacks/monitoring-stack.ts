@@ -18,6 +18,7 @@ import {
   TENANT_RUNNER_LAUNCHED_METRIC_NAME,
   TENANT_RUNNER_LAUNCH_FAILED_METRIC_NAME,
   TENANT_RUNNERS_RUNNING_METRIC_NAME,
+  TENANT_RUNNERS_NEEDED_METRIC_NAME,
   TENANT_RUNNER_COLD_START_SECONDS_METRIC_NAME,
   WORKFLOW_EXECUTION_RECONCILED_METRIC_NAME,
   PEGASUS_RATING_METRIC_NAMESPACE,
@@ -549,6 +550,68 @@ export class MonitoringStack extends cdk.Stack {
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     })
     wire(runnerLaunchFailedAlarm)
+
+    // Tenant-runner STARVATION: demand exists but no runner is up.
+    //
+    // This is the alarm that would have caught the 2026-07 outage, where the
+    // /internal broker routes were shadowed by a dual-auth wildcard (#447): every
+    // per-tenant runner LAUNCHED fine (so TenantRunnerLaunchFailed stayed 0) but
+    // its container crashed ~29 s into startup on a broker 401, so nothing ever
+    // polled the tenant Temporal queues and tenant-lane runs stranded at
+    // WorkflowTaskScheduled for a week. WorkflowExecutionReconciled only fires
+    // after the 15-min Temporal timeout and its threshold is >5/hr, so light
+    // traffic never tripped it.
+    //
+    // Signal: (TenantRunnersNeeded >= 1) AND (TenantRunnersRunning < 1), per
+    // 1-min datapoint, breaching for 12 of the last 15 minutes. Both gauges are
+    // published every dispatcher tick (0 included). Because the dispatcher
+    // snapshots the running gauge right AFTER launching (the new task is still
+    // PROVISIONING and any prior crashed task is already dead), a crash loop
+    // reads Running=0 at snapshot time, so the AND holds throughout the loop —
+    // while a healthy runner processing work reads Running>=1 and never breaches.
+    // The 12-of-15 window clears the normal ~30-60 s cold-start gap (Needed=1,
+    // Running=0 for ~1 tick) and a single ≤15-min long-running execution (which
+    // keeps Running>=1 while it runs).
+    const starvationNeededMetric = wfMetric(
+      TENANT_RUNNERS_NEEDED_METRIC_NAME,
+      {},
+      'Maximum',
+      cdk.Duration.minutes(1),
+    )
+    const starvationRunningMetric = wfMetric(
+      TENANT_RUNNERS_RUNNING_METRIC_NAME,
+      {},
+      'Maximum',
+      cdk.Duration.minutes(1),
+    )
+    const starvationExpression = new cloudwatch.MathExpression({
+      // Comparison operators yield 1/0 per datapoint; the product is 1 only when
+      // there is unmet demand AND zero runners are up.
+      expression: '(needed >= 1) * (running < 1)',
+      usingMetrics: { needed: starvationNeededMetric, running: starvationRunningMetric },
+      period: cdk.Duration.minutes(1),
+      label: 'TenantRunnerStarvation',
+    })
+    const runnerStarvationAlarm = new cloudwatch.Alarm(this, 'TenantRunnerStarvationAlarm', {
+      alarmName: 'pegasus-tenant-runner-starvation',
+      alarmDescription:
+        'Tenant-runner-lane workflows have work outstanding (TenantRunnersNeeded >= 1) but no ' +
+        'runner is up (TenantRunnersRunning < 1) for 12 of the last 15 min — runs are stranded at ' +
+        'WorkflowTaskScheduled. Likely a crash-looping runner (RunTask succeeds, container exits ' +
+        'on startup) — TenantRunnerLaunchFailed will be 0. Source: Pegasus/Workflows ' +
+        TENANT_RUNNERS_NEEDED_METRIC_NAME +
+        ' / ' +
+        TENANT_RUNNERS_RUNNING_METRIC_NAME +
+        '. Check ECS STOPPED tasks (cluster pegasus-temporal-worker-*, family ' +
+        'pegasus-tenant-runner-*) and /pegasus/*/tenant-runner logs for the crash reason.',
+      metric: starvationExpression,
+      threshold: 0,
+      evaluationPeriods: 15,
+      datapointsToAlarm: 12,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    })
+    wire(runnerStarvationAlarm)
 
     // DomainEventDispatchBacklog > 0 means the dispatcher processed its 100-
     // event tick cap without draining all pending events. If it fires on every
