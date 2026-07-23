@@ -889,6 +889,45 @@ describe('ApiStack — integration-config publish switch (integrationConfigPubli
   })
 })
 
+describe('ApiStack — feedback switch (feedbackEnabled / feedbackPublicWebUrl)', () => {
+  function synthEnabled() {
+    const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })
+    const apiStack = new ApiStack(app, 'TestApiFeedbackEnabled', {
+      env: { account: '111111111111', region: 'us-east-1' },
+      feedbackEnabled: true,
+      feedbackPublicWebUrl: 'https://pegasus.dolas.dev',
+    })
+    return Template.fromStack(apiStack)
+  }
+
+  it('leaves FEEDBACK_ENABLED unset on every Lambda by default', () => {
+    const template = synthApiStack()
+    const fns = template.findResources('AWS::Lambda::Function')
+    const withFlag = Object.values(fns).filter(
+      (fn) => fn.Properties?.Environment?.Variables?.FEEDBACK_ENABLED !== undefined,
+    )
+    if (withFlag.length !== 0) {
+      throw new Error(`expected no Lambda to carry FEEDBACK_ENABLED, found ${withFlag.length}`)
+    }
+  })
+
+  it('sets FEEDBACK_ENABLED=true + FEEDBACK_PUBLIC_WEB_URL only on the api Lambda when enabled', () => {
+    const template = synthEnabled()
+    const fns = template.findResources('AWS::Lambda::Function')
+    const enabled = Object.values(fns).filter(
+      (fn) =>
+        fn.Properties?.Environment?.Variables?.FEEDBACK_ENABLED === 'true' &&
+        fn.Properties?.Environment?.Variables?.FEEDBACK_PUBLIC_WEB_URL ===
+          'https://pegasus.dolas.dev',
+    )
+    if (enabled.length !== 1) {
+      throw new Error(
+        `expected exactly 1 Lambda with FEEDBACK_ENABLED + FEEDBACK_PUBLIC_WEB_URL, found ${enabled.length}`,
+      )
+    }
+  })
+})
+
 describe('ApiStack — outbound OAuth shared token cache (outboundOAuthSharedCacheEnabled)', () => {
   function synthEnabled() {
     const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } })

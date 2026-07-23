@@ -113,6 +113,21 @@ const ringcentralEnabled = envName === 'prod'
 // gated by this switch.
 const integrationConfigPublishEnabled = envName === 'staging' || envName === 'prod'
 
+// ── Feedback (magic-link surveys) master switch (staging + prod) ─────────────
+// Ungates the whole feedback surface behind FEEDBACK_ENABLED on the api Lambda:
+// FeedbackForm authoring (publish/rollback), the FeedbackRequest mint, and the
+// public respond endpoint (all 404 when off). feedbackPublicWebUrl is the tenant
+// SPA origin the mint uses to build the `/f/<token>` capability link — the same
+// host as the tenant CORS origin below. Env-gated (not a one-shot context flag)
+// so it stays on across routine main-push deploys. Inert until a tenant publishes
+// a form and a workflow mints a request.
+const FEEDBACK_PUBLIC_WEB_URL: Record<Exclude<EnvName, 'dev'>, string> = {
+  staging: 'https://pegasus-qa.dolas.dev',
+  prod: 'https://pegasus.dolas.dev',
+}
+const feedbackEnabled = envName === 'staging' || envName === 'prod'
+const feedbackPublicWebUrl = envName === 'dev' ? undefined : FEEDBACK_PUBLIC_WEB_URL[envName]
+
 // ── CORS allowlist (staging/prod) ────────────────────────────────────────────
 // Browser origins allowed to call the API cross-origin. Tenant + admin SPA
 // hostnames per env (the same dolas-managed domains the frontend stacks attach
@@ -321,6 +336,8 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   tenantRunnerSecurityGroup: wireguardStack.tenantRunnerSecurityGroup,
   ringcentralEnabled,
   integrationConfigPublishEnabled,
+  feedbackEnabled,
+  feedbackPublicWebUrl,
   corsAllowedOrigins,
 })
 apiStack.addDependency(cognitoStack)
