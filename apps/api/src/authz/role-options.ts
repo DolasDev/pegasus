@@ -121,7 +121,8 @@ export const ROLE_OPTIONS: readonly RoleOption[] = [
   {
     name: 'workflow_developer',
     label: 'Workflow Dev',
-    description: 'Upload Python workflow artifacts via the SDK. Read access included.',
+    description:
+      'Upload Python workflows and publish feedback forms via the SDK. Read access included.',
   },
   {
     name: 'workflow_runtime',
