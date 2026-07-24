@@ -464,7 +464,9 @@ or from Python (`client.set_secret(...)`, `client.set_config(...)`,
 `client.list_secrets()`, `client.delete_secret(...)`). Secrets are write-once —
 delete then set again to rotate; `set_config` is an idempotent upsert.
 
-**2. Declare the read actions** your workflow needs in `pegasus-workflows.toml`:
+**2. Declare the read actions** your workflow needs in `pegasus-workflows.toml`,
+and — recommended — the specific keys it reads, so the tenant sees up front which
+values to provide and whether they are set:
 
 ```toml
 [[workflow]]
@@ -472,7 +474,17 @@ name = "charge-on-quote-accepted"
 version = "0.1.0"
 entry_points = ["charge.workflow:ChargeWorkflow"]
 required_actions = ["ReadWorkflowSecret", "ReadWorkflowConfig"]
+# Which keys this workflow reads. Each is a table with a required `key`, an
+# optional `group` (default "global"), and an optional `description`. Purely
+# informational — it does not gate execution — but it drives the tenant UI's
+# "keys still needed" view in Settings → Developer → Configs and the badges on
+# the workflow's detail page.
+required_secrets = [{ key = "STRIPE_API_KEY", group = "billing", description = "Stripe secret key" }]
+required_configs = [{ key = "DEFAULT_REGION" }]
 ```
+
+The resolved present/missing state for every visible workflow is available at
+`GET /api/v1/workflows/requirements-summary` (presence only — never values).
 
 **3. Read the values inside an activity** (never in workflow code):
 

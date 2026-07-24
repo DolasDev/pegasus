@@ -4,6 +4,7 @@ import {
   createTrigger,
   deleteTrigger,
   forkWorkflow,
+  getRequirementsSummary,
   getWorkflow,
   listExecutionHistory,
   listExecutions,
@@ -28,6 +29,7 @@ export const workflowKeys = {
   executionHistory: (id: string, executionId: string) =>
     [...workflowKeys.all, id, 'executions', executionId, 'history'] as const,
   triggers: (id: string) => [...workflowKeys.all, id, 'triggers'] as const,
+  requirementsSummary: () => [...workflowKeys.all, 'requirements-summary'] as const,
 }
 
 // ---------------------------------------------------------------------------
@@ -44,6 +46,16 @@ export const workflowQueryOptions = (workflowId: string) =>
     queryKey: workflowKeys.detail(workflowId),
     queryFn: () => getWorkflow(workflowId),
   })
+
+/**
+ * Resolved secret/config requirements for every visible workflow (present/missing
+ * against the tenant's store). Powers the detail-page badges and the Configs-page
+ * "keys still needed" summary.
+ */
+export const workflowRequirementsSummaryQueryOptions = queryOptions({
+  queryKey: workflowKeys.requirementsSummary(),
+  queryFn: () => getRequirementsSummary(),
+})
 
 /** The Temporal event-history timeline for one execution. */
 export const executionHistoryQueryOptions = (workflowId: string, executionId: string) =>

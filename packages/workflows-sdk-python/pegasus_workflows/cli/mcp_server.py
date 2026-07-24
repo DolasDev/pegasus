@@ -287,13 +287,23 @@ organizational only; they are not an access-control boundary.
 ## 1. Declare what your workflow needs (manifest)
 
 Add the read actions to ``required_actions`` in ``pegasus-workflows.toml`` so the
-runtime service account is authorized to read them:
+runtime service account is authorized to read them. Also — recommended — list the
+specific keys via ``required_secrets`` / ``required_configs`` so the tenant sees
+which values to provide and whether they are set (informational; each is a table
+with a required ``key``, optional ``group`` default "global", optional
+``description``):
 
     [[workflow]]
     name = "send_quote_followup"
     version = "0.1.0"
     entry_points = ["send_quote_followup.workflow:SendQuoteFollowup"]
     required_actions = ["ReadQuote", "ReadWorkflowSecret", "ReadWorkflowConfig"]
+    required_secrets = [{ key = "STRIPE_API_KEY", group = "billing" }]
+    required_configs = [{ key = "DEFAULT_REGION" }]
+
+The tenant's present/missing view (Settings -> Developer -> Configs and the
+workflow detail page) reads ``GET /api/v1/workflows/requirements-summary``
+(presence only, never values).
 
 ## 2. Publish values (one-time, by a developer/admin)
 

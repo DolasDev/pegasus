@@ -20,6 +20,7 @@ import {
   createTrigger,
   updateTrigger,
   deleteTrigger,
+  getRequirementsSummary,
 } from '../api/workflows'
 
 const mockApiFetch = vi.mocked(apiFetch)
@@ -30,6 +31,16 @@ beforeEach(() => {
 })
 
 describe('workflows execution API', () => {
+  it('getRequirementsSummary GETs /workflows/requirements-summary', async () => {
+    const summary = { workflows: [], totalMissing: 0 }
+    mockApiFetch.mockResolvedValueOnce(summary)
+
+    const result = await getRequirementsSummary()
+
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/workflows/requirements-summary')
+    expect(result).toEqual(summary)
+  })
+
   it('runWorkflow POSTs to /:id/run with the input body', async () => {
     const exec = { id: 'e-1', status: 'QUEUED' }
     mockApiFetch.mockResolvedValueOnce(exec)

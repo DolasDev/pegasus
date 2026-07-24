@@ -4,11 +4,14 @@ import { Link, useParams, useSearch } from '@tanstack/react-router'
 import {
   ArrowLeft,
   Calendar,
+  Check,
   ChevronDown,
   ChevronRight,
   FlaskConical,
+  KeyRound,
   RotateCcw,
   ShieldCheck,
+  TriangleAlert,
   Webhook,
   XCircle,
 } from 'lucide-react'
@@ -31,10 +34,12 @@ import {
   useRetryExecution,
   useRunWorkflow,
   workflowQueryOptions,
+  workflowRequirementsSummaryQueryOptions,
 } from '@/api/queries/workflows'
 import {
   asDryRunResult,
   type DryRunCapture,
+  type ResolvedWorkflowRequirement,
   type Workflow,
   type WorkflowExecution,
   type WorkflowTrigger,
@@ -117,8 +122,11 @@ function BackLink() {
 
 function OverviewTab({ workflowId, workflow }: { workflowId: string; workflow: Workflow }) {
   const { data: triggers = [] } = useQuery(triggersQueryOptions(workflowId))
+  const { data: requirementsSummary } = useQuery(workflowRequirementsSummaryQueryOptions)
   const diagram = workflow.manifest.diagram
   const requiredActions = workflow.manifest.requiredActions ?? []
+  const requirements =
+    requirementsSummary?.workflows.find((w) => w.workflowId === workflowId)?.requirements ?? []
 
   return (
     <>
@@ -190,9 +198,70 @@ function OverviewTab({ workflowId, workflow }: { workflowId: string; workflow: W
               </div>
             )}
           </section>
+
+          <Separator />
+
+          <RequiredValuesSection requirements={requirements} />
         </CardContent>
       </Card>
     </>
+  )
+}
+
+/**
+ * Secret/config keys this workflow's manifest declares it reads, each tagged
+ * present or missing against the tenant's store. Author-declared and
+ * informational — a missing key doesn't block execution, but the workflow will
+ * fail at runtime when it reads one. Links to where the values are managed.
+ */
+function RequiredValuesSection({ requirements }: { requirements: ResolvedWorkflowRequirement[] }) {
+  const missing = requirements.filter((r) => !r.present).length
+
+  return (
+    <section>
+      <h4 className="mb-2 flex items-center text-sm font-medium">
+        <KeyRound className="text-muted-foreground mr-1.5 h-4 w-4" />
+        Secrets &amp; configuration
+      </h4>
+      {requirements.length === 0 ? (
+        <p className="text-muted-foreground text-sm">
+          This workflow declared no required secrets or configuration.
+        </p>
+      ) : (
+        <>
+          <ul className="space-y-1.5">
+            {requirements.map((r) => (
+              <li key={`${r.kind}:${r.group}:${r.key}`} className="flex items-center gap-2 text-sm">
+                {r.present ? (
+                  <Check className="h-4 w-4 shrink-0 text-emerald-600" aria-label="set" />
+                ) : (
+                  <TriangleAlert className="h-4 w-4 shrink-0 text-amber-600" aria-label="missing" />
+                )}
+                <code className="font-mono text-xs text-foreground">{r.key}</code>
+                <Badge variant="outline" className="text-[10px]">
+                  {r.kind === 'SECRET' ? 'secret' : 'config'}
+                </Badge>
+                {r.group !== 'global' && (
+                  <span className="text-muted-foreground font-mono text-xs">{r.group}</span>
+                )}
+                {r.description && (
+                  <span className="text-muted-foreground truncate text-xs">{r.description}</span>
+                )}
+                {!r.present && <span className="text-amber-600 text-xs">not set</span>}
+              </li>
+            ))}
+          </ul>
+          {missing > 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              {missing} value{missing === 1 ? '' : 's'} not yet set.{' '}
+              <Link to="/settings/developer/configs" className="text-primary hover:underline">
+                Manage secrets &amp; configs
+              </Link>
+            </p>
+          )}
+        </>
+      )}
+    </section>
   )
 }
 
