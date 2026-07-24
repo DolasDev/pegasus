@@ -61,6 +61,7 @@
     "rollup": "esbuild CVE transitive fix",
     "yaml": "CVE-2023-2251 code injection",
     "js-yaml@3": "GHSA-52cp-r559-cp3m (high, quadratic-complexity DoS via YAML merge-key alias chains, range <=3.14.2). @istanbuljs/load-nyc-config (babel-plugin-istanbul coverage tooling) pins js-yaml@^3.13.1; force >=3.15.0 <4 (resolves 3.15.0, the 3.x fix) scoped to the 3.x line so the js-yaml@4.x instance (Expo) is untouched. Remove once the coverage toolchain moves off js-yaml 3.",
+    "brace-expansion@5": "GHSA-mh99-v99m-4gvg (high, ReDoS, range <=5.0.7). The reachable copy is minimatch@10.2.5 > brace-expansion@5.0.6; force >=5.0.8 (the 5.x fix) scoped to the 5.x line so minimatch@3's brace-expansion@1.1.16 (already patched) is untouched. The copy bundled INSIDE aws-cdk-lib is unreachable by overrides and is handled by the audit-ci allowlist instead. Remove once no transitive dep pulls brace-expansion <=5.0.7.",
     "minimatch": "ReDoS vulnerability",
     "ajv": "prototype pollution",
     "eslint.ajv": "ESLint uses ajv v6 internally",
@@ -99,6 +100,7 @@
     "rollup": ">=4.58.1",
     "yaml": ">=2.8.3",
     "js-yaml@3": ">=3.15.0 <4",
+    "brace-expansion@5": ">=5.0.8",
     "minimatch": ">=3.1.4",
     "ajv": ">=8.18.0",
     "eslint": {
