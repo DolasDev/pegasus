@@ -506,3 +506,53 @@ pattern — `feedback-public.ts` mirrors `ingress.ts`) must be allowlisted in
 `src/__tests__/db-access-guard.test.ts`. The opaque bearer/capability-token
 mint+hash+timing-safe-compare now lives once in `lib/opaque-token.ts`; reuse it
 (ingress + feedback both do) rather than re-hashing inline.
+
+## `v_longhaul_states` is keyed by `id`, NOT `geo_code` — join on geo_code and rows fan out
+
+The shipments list showed the same shipment twice on the Operations Planning screen.
+Cause: `buildBaseSql` in `apps/api/src/handlers/longhaul-cloud/shipments-list.ts`
+reached the origin/destination state rows with
+`LEFT JOIN v_longhaul_states AS os ON <view>.shipper_state = os.geo_code`. `geo_code`
+is not a key — every state row sharing that code multiplied the shipment row.
+
+This was the **only** geo_code join in the repo; every other site joins on the `id`
+key (`longhaul-trip-fetch.ts`, `trips-list.ts`, `driver-planning.ts`). The shipments
+view has no state_id column, so it can't use the key — the fix was to stop joining
+at all and run the zone predicates as `EXISTS (SELECT 1 FROM v_longhaul_states …)`,
+which asks the same question without multiplying rows.
+
+Two related traps in the same query family:
+
+- **`sales` is 1:1 with a shipment by convention only.** `shipments-write.ts` guards
+  its INSERT with `IF NOT EXISTS`, but no constraint enforces it. Read it through
+  `OUTER APPLY (SELECT TOP (1) …)`, never a bare `LEFT JOIN`.
+- **A join that projects nothing can still duplicate.** `buildShipmentBundleSql` in
+  `lib/longhaul-trip-fetch.ts` joined `sales` while selecting only `s.*` — pure
+  fan-out, zero value, and it duplicated a trip's shipments (and their Gantt rows).
+
+Downstream code assumes one row per order everywhere — the enrichment maps are keyed
+by `order_num` and the planning list uses `key={shipment.order_num}` — so
+`dedupeByOrderNum` backstops the (tenant-owned, un-owned-by-us) view itself and warns
+when it fires.
+
+## Gantt date columns must be keyed by UTC calendar day, not by timestamp
+
+Adding a planned date on the trip screen rendered the same date as two columns.
+`parseActivities` built the column list as a `Set` of full ISO timestamps, while the
+header renders `formatDateShort(day)` with `timeZone: 'UTC'` — so two values on the
+same UTC day but different times-of-day were two Set entries with one visible label.
+
+The values genuinely disagree on time-of-day: an activity's `planned_start`, its
+ETA/actual dates, the shipment's pegged `plan_pack`/`plan_load`/`plan_del`, and the
+`addDays` day-walk all come from different legacy columns. `getPegDates` compares
+them with `sameDayCheck` (calendar-day granularity), then the pegged value — carrying
+the _shipment_ row's time-of-day — was pushed into `days` next to the activity's own.
+That's why the duplicate appeared exactly when a planned date was added.
+
+`toUtcDayKey` (`features/driver-planning/utils/date.ts`) is now the one key. Both
+`parseActivities` and `ActivityGantt.getOffset` use it. Two follow-on bugs died with
+it: `getOffset` was an exact string match whose `-1` fallback silently parked bars in
+column 0, and `addDays` (local-time `setDate`) shifts the UTC time-of-day by an hour
+across a DST boundary. Note `sameDayCheck` compares in **local** time while the label
+and the key are **UTC** — deliberate, since changing `sameDayCheck` would move the
+drift-detection semantics.

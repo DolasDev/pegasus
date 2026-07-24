@@ -111,6 +111,13 @@ describe('GET longhaul/trips/:id (cloud-direct)', () => {
 
     // Three round trips: trip bundle + shipment bundle + extra-locations.
     expect(executeSqlMock).toHaveBeenCalledTimes(3)
+
+    // The shipment bundle must not join `sales`. It projected nothing from that
+    // table (only `s.*`), but an order with two `sales` rows duplicated the
+    // shipment — and with it every Gantt row the shipment contributes.
+    const shipmentBundleSql = executeSqlMock.mock.calls[1]![1] as string
+    expect(shipmentBundleSql).toContain('FROM v_longhaul_shipments_v2 s')
+    expect(shipmentBundleSql).not.toMatch(/JOIN\s+sales/)
   })
 
   it('soft-fails when pegasus_extra_location is absent — extra_locations is [] and the trip still returns 200', async () => {

@@ -91,9 +91,11 @@ SELECT * FROM TripNotes WHERE tripId = @id;
 function buildShipmentBundleSql(orderNums: number[]): string {
   const inList = orderNums.map((_, i) => `@on${i}`).join(', ')
   return `
+-- No join to "sales": it contributed no columns to this SELECT (only s.* is
+-- projected) but could still duplicate a shipment -- and therefore its Gantt
+-- rows -- whenever an order had more than one "sales" row.
 SELECT s.*
 FROM v_longhaul_shipments_v2 s
-LEFT JOIN sales ps ON s.order_num = ps.order_num
 WHERE s.order_num IN (${inList});
 
 SELECT a.*,

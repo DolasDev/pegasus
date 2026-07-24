@@ -254,8 +254,10 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
       expect(sql).toContain('os.zone IN (@')
       expect(sql).not.toContain("'NE'")
       expect(opts.params.map((p) => p.value)).toContain('NE')
-      // The predicate is meaningless without the join that defines `os`.
-      expect(sql).toContain('LEFT JOIN v_longhaul_states AS os')
+      // The predicate is meaningless without the subquery that defines `os`,
+      // and that subquery must correlate on the ORIGIN state column.
+      expect(sql).toContain('EXISTS (SELECT 1 FROM v_longhaul_states AS os')
+      expect(sql).toContain('os.geo_code = v_longhaul_shipments_v2.shipper_state')
     })
 
     it('filters destination_zone on the destination-state join, not the origin one', async () => {
@@ -266,7 +268,8 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
       expect(sql).toContain('ds.zone IN (@')
       expect(sql).not.toContain('os.zone IN (')
       expect(opts.params.map((p) => p.value)).toContain('SE')
-      expect(sql).toContain('LEFT JOIN v_longhaul_states AS ds')
+      expect(sql).toContain('EXISTS (SELECT 1 FROM v_longhaul_states AS ds')
+      expect(sql).toContain('ds.geo_code = v_longhaul_shipments_v2.consignee_state')
     })
 
     it('binds every selected zone when several are picked', async () => {
@@ -313,6 +316,112 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
       const [, sql] = executeSqlMock.mock.calls[0] as [string, string, unknown]
       expect(sql).not.toContain('os.zone IN')
       expect(sql).toContain('shipper_name')
+    })
+  })
+
+  // One shipment must produce exactly one row. The planning list keys its
+  // React rows by `shipment.order_num`, so a duplicate renders the same
+  // shipment twice (and warns on the duplicate key). Two independent guards:
+  // the base query can't fan out, and anything that slips through the view
+  // itself is collapsed in JS.
+  describe('duplicate rows', () => {
+    async function baseSqlFor(filters: Record<string, unknown> = {}) {
+      findUnique.mockResolvedValue({
+        mssqlConnectionString: 'Server=a,1433',
+        longhaulClient: 'nwi',
+      })
+      stubExecutor({ shipments: [] })
+      const encoded = encodeURIComponent(JSON.stringify({ filters }))
+      await buildApp().request(`/onprem/longhaul/shipments?filters=${encoded}`)
+      return executeSqlMock.mock.calls[0]![1] as string
+    }
+
+    it('never joins a non-key table into the base query', async () => {
+      const sql = await baseSqlFor({
+        origin_zone: [{ value: 'NE' }],
+        destination_zone: [{ value: 'SE' }],
+      })
+
+      // `sales` is 1:1 by contract only, and `geo_code` is not a key of
+      // v_longhaul_states — a join on either multiplies the shipment row.
+      expect(sql).not.toContain('LEFT JOIN sales')
+      expect(sql).not.toContain('LEFT JOIN v_longhaul_states')
+      expect(sql).not.toMatch(/JOIN\s+sales/)
+    })
+
+    it('reads the sales shadow columns through a TOP (1) OUTER APPLY', async () => {
+      const sql = await baseSqlFor()
+
+      expect(sql).toContain('OUTER APPLY')
+      expect(sql).toContain('SELECT TOP (1)')
+      expect(sql).toContain(
+        'FROM sales AS sal WHERE sal.order_num = v_longhaul_shipments_v2.order_num',
+      )
+      // The four aliased shadow columns the reshape layer depends on survive.
+      expect(sql).toContain('ps.weight AS shadow_weight')
+      expect(sql).toContain('ps.lng_dis_comments AS shadow_comments')
+      expect(sql).toContain('ps.operations_id AS operations_id')
+      expect(sql).toContain('ps.operations_name AS operations_name')
+    })
+
+    it('collapses rows the view returns twice for one order_num', async () => {
+      findUnique.mockResolvedValue({
+        mssqlConnectionString: 'Server=a,1433',
+        longhaulClient: 'nwi',
+      })
+      stubExecutor({
+        shipments: [
+          { order_num: 5001, shipper_name: 'DOE, JANE' },
+          { order_num: 5001, shipper_name: 'DOE, JANE' },
+          { order_num: 5002, shipper_name: 'ROE, RICHARD' },
+        ],
+      })
+
+      const res = await buildApp().request('/onprem/longhaul/shipments')
+      const body = (await res.json()) as {
+        data: Array<{ order_num: number }>
+        meta: { count: number }
+      }
+
+      expect(body.data.map((s) => s.order_num)).toEqual([5001, 5002])
+      expect(body.meta.count).toBe(2)
+    })
+
+    it('keeps the first duplicate so the ORDER BY still decides list order', async () => {
+      findUnique.mockResolvedValue({
+        mssqlConnectionString: 'Server=a,1433',
+        longhaulClient: 'nwi',
+      })
+      stubExecutor({
+        shipments: [
+          { order_num: 7001, shipper_name: 'FIRST' },
+          { order_num: 7001, shipper_name: 'SECOND' },
+        ],
+      })
+
+      const res = await buildApp().request('/onprem/longhaul/shipments')
+      const body = (await res.json()) as { data: Array<{ shipper_name: string }> }
+
+      expect(body.data).toHaveLength(1)
+      expect(body.data[0]!.shipper_name).toBe('FIRST')
+    })
+
+    it('passes through rows with no order_num rather than collapsing them', async () => {
+      findUnique.mockResolvedValue({
+        mssqlConnectionString: 'Server=a,1433',
+        longhaulClient: 'nwi',
+      })
+      stubExecutor({
+        shipments: [
+          { order_num: null, shipper_name: 'A' },
+          { order_num: null, shipper_name: 'B' },
+        ],
+      })
+
+      const res = await buildApp().request('/onprem/longhaul/shipments')
+      const body = (await res.json()) as { data: unknown[]; meta: { count: number } }
+
+      expect(body.meta.count).toBe(2)
     })
   })
 

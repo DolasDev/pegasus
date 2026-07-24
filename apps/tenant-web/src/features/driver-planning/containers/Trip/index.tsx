@@ -282,7 +282,7 @@ function TripInternal() {
                 </div>
                 <ActivityGantt
                   reloadTrip={reloadTrip}
-                  days={days.sort()}
+                  days={days}
                   activities={sortedActivities}
                   orderIdToColor={orderIdToColor}
                   readOnly={isRejected}

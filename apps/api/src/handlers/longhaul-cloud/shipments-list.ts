@@ -10,8 +10,8 @@
 // Semantics are a faithful port of the on-prem handler
 // (handlers/longhaul/shipments.ts) + repository
 // (repositories/longhaul/shipments.repository.ts):
-//   - base query against v_longhaul_shipments_v2 with the same LEFT JOINs,
-//     searchTerm behavior, filter set, ordering, and 1001-row base cap;
+//   - base query against v_longhaul_shipments_v2 with the same searchTerm
+//     behavior, filter set, ordering, and 1001-row base cap;
 //   - per-row JS enrichment: getTripInfo trip-info merge, the post-fetch
 //     TripStatus_id filter, buildShipmentActivities (required PACK/LOAD-or-R19O/
 //     RDEL templates), buildExtraShipmentActivities (optional extras);
@@ -26,6 +26,13 @@
 //      catalog UNION ALL'd into a single recordset tagged with `__src`;
 //   3. extra_locations (kept separate because the table may not exist on every
 //      tenant — it is soft-failed exactly as on-prem does).
+//
+// One shipment = one row. The on-prem query reached `sales` and the origin /
+// destination state rows through LEFT JOINs on non-key columns, so a shipment
+// whose order had two `sales` rows — or whose state code appeared twice in
+// v_longhaul_states — came back duplicated in the planning list. The joins are
+// gone: `sales` is read through a TOP (1) OUTER APPLY, the zone filters run as
+// EXISTS, and dedupeByOrderNum backstops the view itself.
 // ---------------------------------------------------------------------------
 
 import type { Handler } from 'hono'
@@ -132,17 +139,33 @@ function buildBaseSql(query: ShipmentQuery, bag: ParamBag, importExportTypes: st
       }
     }
 
+    // Zone predicates run as EXISTS rather than through a join. `geo_code` is
+    // not a key of v_longhaul_states, so joining on it multiplied a shipment by
+    // however many state rows shared its code — the duplicate-row bug on the
+    // planning list. (Every other v_longhaul_states join in the codebase is on
+    // the `id` key; this was the sole geo_code join.) EXISTS asks the same
+    // question — "is any state row for this shipment's state in the selected
+    // zones?" — without multiplying rows, and needs no join at all when the
+    // filter is unset.
     if (f.origin_zone?.length) {
       const vals = f.origin_zone.map((z) => z.value).filter(Boolean)
       if (vals.length) {
-        where.push(`os.zone IN (${vals.map((v) => bag.bind(v)).join(', ')})`)
+        where.push(
+          `EXISTS (SELECT 1 FROM v_longhaul_states AS os` +
+            ` WHERE os.geo_code = ${S}.shipper_state` +
+            ` AND os.zone IN (${vals.map((v) => bag.bind(v)).join(', ')}))`,
+        )
       }
     }
 
     if (f.destination_zone?.length) {
       const vals = f.destination_zone.map((z) => z.value).filter(Boolean)
       if (vals.length) {
-        where.push(`ds.zone IN (${vals.map((v) => bag.bind(v)).join(', ')})`)
+        where.push(
+          `EXISTS (SELECT 1 FROM v_longhaul_states AS ds` +
+            ` WHERE ds.geo_code = ${S}.consignee_state` +
+            ` AND ds.zone IN (${vals.map((v) => bag.bind(v)).join(', ')}))`,
+        )
       }
     }
 
@@ -248,12 +271,54 @@ function buildBaseSql(query: ShipmentQuery, bag: ParamBag, importExportTypes: st
     `\n  ps.operations_id AS operations_id,` +
     `\n  ps.operations_name AS operations_name` +
     `\nFROM ${S}` +
-    `\nLEFT JOIN sales AS ps ON ${S}.order_num = ps.order_num` +
-    `\nLEFT JOIN v_longhaul_states AS os ON ${S}.shipper_state = os.geo_code` +
-    `\nLEFT JOIN v_longhaul_states AS ds ON ${S}.consignee_state = ds.geo_code` +
+    // OUTER APPLY, not LEFT JOIN: `sales` is 1:1 with a shipment by contract
+    // (shipments-write.ts guards its INSERT with IF NOT EXISTS) but nothing in
+    // the schema enforces it, and a second row silently duplicated the shipment
+    // in the list. TOP (1) caps the contribution at one row per shipment while
+    // keeping the same four shadow columns and LEFT-JOIN null semantics. There
+    // is no tiebreaker column to order by — this is a fan-out guard, not a
+    // selection strategy; with the 1:1 contract held there is only ever one row.
+    `\nOUTER APPLY (` +
+    `\n  SELECT TOP (1) sal.weight, sal.lng_dis_comments, sal.operations_id, sal.operations_name` +
+    `\n  FROM sales AS sal WHERE sal.order_num = ${S}.order_num` +
+    `\n) AS ps` +
     whereSql +
     `\nORDER BY ${orderBy}`
   )
+}
+
+/**
+ * Collapse rows sharing an `order_num` down to the first one, preserving the
+ * base query's ORDER BY.
+ *
+ * The query above can no longer fan out, but `v_longhaul_shipments_v2` is a
+ * per-tenant legacy view this code does not own, so a duplicate order can still
+ * reach us from the view itself. Everything downstream assumes one row per
+ * order: the enrichment maps are keyed by order_num, the planning list keys its
+ * React rows by `shipment.order_num`, and duplicates burn rows against both the
+ * 1001-row base cap and the 1000-row RESULT_LIMIT_EXCEEDED guard.
+ *
+ * Rows with no usable order_num can't collide and are passed through untouched
+ * — dropping them would hide data rather than deduplicate it.
+ */
+function dedupeByOrderNum(rows: ShipmentRow[]): { rows: ShipmentRow[]; dropped: number } {
+  const seen = new Set<unknown>()
+  const out: ShipmentRow[] = []
+  let dropped = 0
+  for (const row of rows) {
+    const on = row.order_num
+    if (on == null) {
+      out.push(row)
+      continue
+    }
+    if (seen.has(on)) {
+      dropped += 1
+      continue
+    }
+    seen.add(on)
+    out.push(row)
+  }
+  return { rows: out, dropped }
 }
 
 // ---------------------------------------------------------------------------
@@ -374,7 +439,18 @@ export const longhaulShipmentsListHandler: Handler<AppEnv> = async (c) => {
     const baseBag = new ParamBag()
     const baseSql = buildBaseSql(query, baseBag, importExportTypes)
     const baseRes = await executeSql(connectionString, baseSql, { params: baseBag.params })
-    const rawShipments = baseRes.recordset as ShipmentRow[]
+    const { rows: rawShipments, dropped: duplicateRows } = dedupeByOrderNum(
+      baseRes.recordset as ShipmentRow[],
+    )
+    if (duplicateRows > 0) {
+      // Warn rather than swallow: the query can't fan out any more, so a hit
+      // here means the tenant's shipments view itself is returning an order
+      // twice — worth seeing, even though the list is now correct regardless.
+      logger.warn('longhaul shipments-list collapsed duplicate order_num rows', {
+        tenantId,
+        duplicateRows,
+      })
+    }
 
     const orderNums = rawShipments
       .map((s) => s.order_num)
