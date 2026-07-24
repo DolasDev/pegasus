@@ -3,6 +3,7 @@ import { useFloating, offset } from '@floating-ui/react'
 
 import styles from './ActivityGantt.module.css'
 import { formatDateShort } from '../../../../utils/format-date'
+import { toUtcDayKey } from '../../../../utils/date'
 import { PopoverShell } from '../../../../components/PopoverShell'
 import { DatePicker } from '../../../../components/DatePicker'
 import { updateActivityForTrip } from '../../../../redux/trips'
@@ -31,8 +32,11 @@ function getTotalDays(activity: any): number {
 }
 
 function getOffset(targetDay: any, days: any[]): number {
-  const activityStart = targetDay === null ? null : new Date(targetDay).toISOString()
-  const index = days.indexOf(activityStart)
+  // `days` is keyed by UTC-midnight day key (see parseActivities) — normalize
+  // the lookup the same way. Matching on the raw timestamp missed whenever the
+  // value carried a different time-of-day than the one that seeded the column,
+  // and the -1 fallback below silently parked the bar in the first column.
+  const index = days.indexOf(toUtcDayKey(targetDay))
   if (index === -1) {
     // default to offset of 0
     return 0

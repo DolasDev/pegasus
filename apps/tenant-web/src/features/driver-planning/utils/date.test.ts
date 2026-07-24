@@ -1,5 +1,43 @@
 import { describe, it, expect } from 'vitest'
-import { datediff, addDays, sameDayCheck } from './date'
+import { datediff, addDays, sameDayCheck, toUtcDayKey } from './date'
+
+describe('toUtcDayKey', () => {
+  it('collapses any time-of-day on a UTC day to that day at midnight', () => {
+    expect(toUtcDayKey('2024-06-15T00:00:00Z')).toBe('2024-06-15T00:00:00.000Z')
+    expect(toUtcDayKey('2024-06-15T13:30:00Z')).toBe('2024-06-15T00:00:00.000Z')
+    expect(toUtcDayKey('2024-06-15T23:59:59.999Z')).toBe('2024-06-15T00:00:00.000Z')
+  })
+
+  it('gives two values on the same UTC day the same key', () => {
+    expect(toUtcDayKey('2024-06-15T01:00:00Z')).toBe(toUtcDayKey('2024-06-15T22:00:00Z'))
+  })
+
+  it('gives adjacent days different keys', () => {
+    expect(toUtcDayKey('2024-06-15T23:00:00Z')).not.toBe(toUtcDayKey('2024-06-16T01:00:00Z'))
+  })
+
+  it('accepts Date instances, date-only strings, and epoch numbers', () => {
+    expect(toUtcDayKey(new Date('2024-06-15T18:00:00Z'))).toBe('2024-06-15T00:00:00.000Z')
+    expect(toUtcDayKey('2024-06-15')).toBe('2024-06-15T00:00:00.000Z')
+    expect(toUtcDayKey(Date.UTC(2024, 5, 15, 9, 0))).toBe('2024-06-15T00:00:00.000Z')
+  })
+
+  it('maps missing and unparseable input to null instead of throwing', () => {
+    // `new Date('not-a-date').toISOString()` throws a RangeError — the reason
+    // this helper exists rather than an inline toISOString().
+    expect(toUtcDayKey(null)).toBeNull()
+    expect(toUtcDayKey(undefined)).toBeNull()
+    expect(toUtcDayKey('')).toBeNull()
+    expect(toUtcDayKey('not-a-date')).toBeNull()
+  })
+
+  it('is stable across a DST boundary', () => {
+    // addDays() walks days with local-time setDate, which shifts the UTC
+    // time-of-day by an hour across a US DST transition. The key must not.
+    expect(toUtcDayKey(addDays('2024-03-09T12:00:00Z', 1))).toBe('2024-03-10T00:00:00.000Z')
+    expect(toUtcDayKey(addDays('2024-11-02T12:00:00Z', 1))).toBe('2024-11-03T00:00:00.000Z')
+  })
+})
 
 describe('datediff', () => {
   it('returns whole-day difference (second - first)', () => {

@@ -13,6 +13,28 @@ export function addDays(date: Date | string | number, days: number): Date {
 }
 
 /**
+ * Collapse a date to the ISO string for UTC midnight of its calendar day, or
+ * `null` when the input can't be parsed.
+ *
+ * This is the canonical key for a Gantt date column. The column header renders
+ * via `formatDateShort`, which formats with `timeZone: 'UTC'` — so two values
+ * sharing a UTC calendar day render the *same* label. Keying columns by the
+ * full timestamp instead made those two values two separate columns showing
+ * the same date, and made the exact-match column lookup miss (silently falling
+ * back to column 0). Normalize once, here, so the key and the label agree.
+ *
+ * Unparseable input maps to `null` — the same bucket as a missing date (the
+ * "Unknown" column) — rather than throwing, which is what a bare
+ * `new Date(x).toISOString()` does on an Invalid Date.
+ */
+export function toUtcDayKey(value: Date | string | number | null | undefined): string | null {
+  if (value === null || value === undefined || value === '') return null
+  const d = new Date(value)
+  if (isNaN(d.getTime())) return null
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString()
+}
+
+/**
  * Two dates fall on the same calendar day in local time. Times of day are
  * ignored (only year/month/day are compared). Invalid Date inputs (NaN
  * timestamp, e.g. `new Date(undefined)`) compare as NOT same-day.

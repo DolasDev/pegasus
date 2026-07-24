@@ -17,6 +17,7 @@ vi.mock('../../../../utils/api', () => ({
 
 import { renderWithStore } from '../../../../__test-utils__/render-with-store'
 import { ActivityGantt } from './ActivityGantt'
+import { parseActivities } from '../../utils/parse-activities'
 
 const days = ['2024-01-01T00:00:00.000Z', '2024-01-02T00:00:00.000Z']
 
@@ -149,6 +150,92 @@ describe('ActivityGantt', () => {
     expect(container.querySelector('[class*="eta"]')).toBeInTheDocument()
   })
 
+  // A bar's column is resolved by looking its date up in `days`. That lookup
+  // used to be an exact timestamp match, so any difference in time-of-day
+  // missed and fell through to the `-1 → 0` default, parking the bar in the
+  // first column. Column geometry: left = (80 + 1 + 10*2) * offset + 10.
+  describe('column resolution', () => {
+    const barFor = (container: HTMLElement) => {
+      const row = container.querySelector('[data-target="gantt-activity-row"]')!
+      return row.querySelector('[style*="left"]') as HTMLElement
+    }
+
+    it('places a bar in its own column when planned_start carries a time-of-day', () => {
+      const activities = [
+        baseActivity({
+          planned_start: '2024-01-02T09:30:00Z',
+          planned_end: '2024-01-02T17:00:00Z',
+        }),
+      ]
+      const { container } = renderWithStore(
+        <ActivityGantt
+          days={days}
+          activities={activities}
+          orderIdToColor={{ O1: 'c1' }}
+          reloadTrip={() => {}}
+        />,
+      )
+
+      // Second column, not the 0-offset fallback.
+      expect(barFor(container).style.left).toBe('111px')
+    })
+
+    it('still places a midnight planned_start in the first column', () => {
+      const activities = [
+        baseActivity({
+          planned_start: '2024-01-01T00:00:00Z',
+          planned_end: '2024-01-01T00:00:00Z',
+        }),
+      ]
+      const { container } = renderWithStore(
+        <ActivityGantt
+          days={days}
+          activities={activities}
+          orderIdToColor={{ O1: 'c1' }}
+          reloadTrip={() => {}}
+        />,
+      )
+
+      expect(barFor(container).style.left).toBe('10px')
+    })
+
+    it('offsets the ETA marker by calendar day, not exact timestamp', () => {
+      const activities = [
+        baseActivity({
+          planned_start: '2024-01-01T06:00:00Z',
+          planned_end: '2024-01-01T06:00:00Z',
+          estimated_date: '2024-01-02T14:45:00Z',
+        }),
+      ]
+      const { container } = renderWithStore(
+        <ActivityGantt
+          days={days}
+          activities={activities}
+          orderIdToColor={{ O1: 'c1' }}
+          reloadTrip={() => {}}
+        />,
+      )
+
+      const eta = container.querySelector('[class*="eta"]') as HTMLElement
+      // One column past the bar's own column.
+      expect(eta.style.left).toBe('101px')
+    })
+
+    it('resolves a missing planned_start to the Unknown column', () => {
+      const activities = [baseActivity({ planned_start: '', planned_end: '' })]
+      const { container } = renderWithStore(
+        <ActivityGantt
+          days={['2024-01-01T00:00:00.000Z', null]}
+          activities={activities}
+          orderIdToColor={{ O1: 'c1' }}
+          reloadTrip={() => {}}
+        />,
+      )
+
+      expect(barFor(container).style.left).toBe('111px')
+    })
+  })
+
   it('renders the orange "New Dates!" overlay bar for a date-changed activity', () => {
     const activities = [
       baseActivity({
@@ -166,5 +253,116 @@ describe('ActivityGantt', () => {
       />,
     )
     expect(screen.getByText('New Dates!')).toBeInTheDocument()
+  })
+
+  // The reported bug, end to end: parseActivities feeds the Gantt, so pin the
+  // pair rather than each half. Adding a planned date pushes the SHIPMENT row's
+  // dates — with the shipment's time-of-day — alongside the activity's own,
+  // which used to render as a second column showing the same date.
+  describe('adding a planned date (regression)', () => {
+    const trippedActivity = (overrides: any = {}) =>
+      baseActivity({
+        planned_start: '2024-01-01T00:00:00Z',
+        planned_end: '2024-01-01T00:00:00Z',
+        activityType: { abbreviation: 'PK', code: 'PACK', isHasETA: true },
+        ...overrides,
+      })
+
+    const headerText = (container: HTMLElement) =>
+      Array.from(container.querySelectorAll('h5')).map((h) => h.textContent)
+
+    it('adds no duplicate column when the pegged date is the same day', () => {
+      const activities = [
+        trippedActivity({
+          // Planned date just added on the shipment: same day, 08:15 local to
+          // the legacy row rather than midnight.
+          shipment: {
+            total_est_wt: 5000,
+            pegasus_shadow: null,
+            pack_date2: '2024-01-01T08:15:00Z',
+            plan_pack: '2024-01-01T08:15:00Z',
+          },
+        }),
+      ]
+      const { days: parsedDays, sortedActivities } = parseActivities(activities, (i) => `c${i}`)
+      const { container } = renderWithStore(
+        <ActivityGantt
+          days={parsedDays}
+          activities={sortedActivities}
+          orderIdToColor={{ O1: 'c1' }}
+          reloadTrip={() => {}}
+        />,
+      )
+
+      expect(headerText(container)).toEqual(['01/01'])
+    })
+
+    it('adds exactly one column when the pegged date moves to a new day', () => {
+      const activities = [
+        trippedActivity({
+          shipment: {
+            total_est_wt: 5000,
+            pegasus_shadow: null,
+            pack_date2: '2024-01-03T08:15:00Z',
+            plan_pack: '2024-01-03T08:15:00Z',
+          },
+        }),
+      ]
+      const { days: parsedDays, sortedActivities } = parseActivities(activities, (i) => `c${i}`)
+      const { container } = renderWithStore(
+        <ActivityGantt
+          days={parsedDays}
+          activities={sortedActivities}
+          orderIdToColor={{ O1: 'c1' }}
+          reloadTrip={() => {}}
+        />,
+      )
+
+      // The activity's own day plus the new pegged day — no repeats.
+      expect(headerText(container)).toEqual(['01/01', '01/03'])
+      expect(screen.getByText('New Dates!')).toBeInTheDocument()
+    })
+
+    it('renders one header per calendar day across activities with mixed times', () => {
+      // Non-pegged activity type, so the only thing under test is that three
+      // activities on two calendar days produce two columns.
+      const travel = { abbreviation: 'TR', code: 'TRAVEL', isHasETA: false }
+      const activities = [
+        trippedActivity({
+          activityId: 1,
+          order_num: 'O1',
+          activityType: travel,
+          planned_start: '2024-01-01T00:00:00Z',
+          planned_end: '2024-01-01T00:00:00Z',
+        }),
+        trippedActivity({
+          activityId: 2,
+          order_num: 'O2',
+          state: 'CA',
+          activityType: travel,
+          planned_start: '2024-01-01T13:30:00Z',
+          planned_end: '2024-01-01T13:30:00Z',
+        }),
+        trippedActivity({
+          activityId: 3,
+          order_num: 'O3',
+          state: 'AZ',
+          activityType: travel,
+          planned_start: '2024-01-02T22:05:00Z',
+          planned_end: '2024-01-02T22:05:00Z',
+        }),
+      ]
+      const { days: parsedDays, sortedActivities } = parseActivities(activities, (i) => `c${i}`)
+      const { container } = renderWithStore(
+        <ActivityGantt
+          days={parsedDays}
+          activities={sortedActivities}
+          orderIdToColor={{ O1: 'c1', O2: 'c2', O3: 'c3' }}
+          reloadTrip={() => {}}
+        />,
+      )
+
+      expect(headerText(container)).toEqual(['01/01', '01/02'])
+    })
   })
 })

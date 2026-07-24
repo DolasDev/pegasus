@@ -1,4 +1,4 @@
-import { datediff, addDays } from '@/features/driver-planning/utils/date'
+import { datediff, addDays, toUtcDayKey } from '@/features/driver-planning/utils/date'
 import { getPegDates } from './peg-dates'
 import { sortActivities } from './sort-activities'
 
@@ -11,9 +11,18 @@ export interface ParseActivitiesResult<A> {
 
 /**
  * Walks the trip's activities and produces the inputs the ActivityGantt needs:
- *   - `days`: every distinct calendar day touched by any activity (as ISO
- *     strings) plus `null` for missing planned_start values. Order is
- *     insertion-driven (Set semantics); the Gantt sorts itself.
+ *   - `days`: every distinct calendar day touched by any activity, as the ISO
+ *     string for UTC midnight of that day (see {@link toUtcDayKey}), plus
+ *     `null` for missing/unparseable dates. Sorted ascending with the `null`
+ *     ("Unknown") column last, so the Gantt can render them as-is.
+ *
+ *     Normalizing to a day key is what keeps one calendar day to one column:
+ *     these values come from several sources (an activity's planned_start, its
+ *     ETA/actual dates, the shipment's pegged planned dates, the day-walk
+ *     between start and end) that do NOT agree on time-of-day. Keying by the
+ *     raw timestamp turned one day into several identically-labeled columns —
+ *     most visibly right after a planned date was added, since that writes the
+ *     shipment row's time-of-day onto the activity.
  *   - `sortedActivities`: the activities in render order ({@link sortActivities}).
  *   - `orderIdToColor`: a stable shipment-order → CSS-class mapping. The CSS
  *     accessor is passed in so this util has no CSS-module dependency.
@@ -32,12 +41,7 @@ export function parseActivities<A extends Record<string, any>>(
   const days = new Set<string | null>()
   const orderIds = new Set<string>()
   const pushToDays = (unformattedDate: unknown) => {
-    if (unformattedDate) {
-      const date = new Date(unformattedDate as string | number | Date).toISOString()
-      days.add(date)
-    } else {
-      days.add(null)
-    }
+    days.add(toUtcDayKey(unformattedDate as string | number | Date | null | undefined))
   }
   let hasDateChange = false
 
@@ -74,8 +78,13 @@ export function parseActivities<A extends Record<string, any>>(
     }
   })
 
+  // Ascending, with the "Unknown" column pinned to the end. Day keys are
+  // fixed-width ISO strings, so a lexicographic sort is chronological.
+  const sortedDays: (string | null)[] = [...days].filter((d): d is string => d !== null).sort()
+  if (days.has(null)) sortedDays.push(null)
+
   return {
-    days: [...days],
+    days: sortedDays,
     sortedActivities: sortActivities(activities),
     orderIdToColor: [...orderIds].reduce<Record<string, string>>(
       (accum, orderId, i) => ({ ...accum, [orderId]: getColor(i) }),
