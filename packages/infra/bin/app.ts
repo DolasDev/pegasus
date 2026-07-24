@@ -113,17 +113,18 @@ const ringcentralEnabled = envName === 'prod'
 // gated by this switch.
 const integrationConfigPublishEnabled = envName === 'staging' || envName === 'prod'
 
-// ── Outbound OAuth shared token cache master switch (QA first, sdk-feedback 0027) ─
+// ── Outbound OAuth shared token cache master switch (staging + prod, sdk-feedback 0027) ─
 // Ungates the SHARED (DB-backed) tier of the outbound OAuth2 token cache behind
 // OUTBOUND_OAUTH_SHARED_CACHE_ENABLED on the api Lambda, so call_external reuses a
 // minted partner token across Lambda containers instead of each re-minting on a
-// cold start. STAGING (QA) ONLY for now: a flag-off probe on QA (2026-07-24)
+// cold start. Enabled in staging (QA) and prod: a QA flag-off probe (2026-07-24)
 // confirmed the failure mode 0027 reported — 6 concurrent calls minted 6 tokens
-// across 6 distinct container instanceIds, 0 cache hits. Prod stays off until the
-// QA re-probe confirms the fix (one mint + L2 hits). The prop→env-var wiring
-// shipped in #521; this only turns it on. Env-gated (not a one-shot context flag)
-// so it survives routine main-push deploys.
-const outboundOAuthSharedCacheEnabled = envName === 'staging'
+// across 6 distinct container instanceIds, 0 cache hits — and the flag-on re-probe
+// showed 0 mints (1 L1 + 5 L2 hits) across 6 containers, i.e. token-endpoint hits
+// 6 → 0. #532 turned it on for staging first; prod follows here. The prop→env-var
+// wiring shipped in #521. Env-gated (not a one-shot context flag) so it survives
+// routine main-push deploys. Instantly revocable if a partner rejects token reuse.
+const outboundOAuthSharedCacheEnabled = envName === 'staging' || envName === 'prod'
 
 // ── Feedback (magic-link surveys) master switch (staging + prod) ─────────────
 // Ungates the whole feedback surface behind FEEDBACK_ENABLED on the api Lambda:
