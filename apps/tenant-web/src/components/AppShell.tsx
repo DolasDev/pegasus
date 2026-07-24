@@ -144,6 +144,11 @@ const NAV_ITEMS = [
   },
 ] as const
 
+// Submenu under the Developer settings group.
+const DEVELOPER_CHILDREN = [
+  { to: '/settings/developer/configs' as const, label: 'Configs', exact: false },
+] as const
+
 // One submenu entry per main-menu section — mirrors NAV_ITEMS order so the
 // rail inside /settings/app and the App Settings group here read the same.
 const APP_SETTINGS_CHILDREN = [
@@ -186,7 +191,7 @@ const SETTINGS_NAV_ITEMS = [
     icon: Key,
     exact: false,
     roles: ADMIN_ONLY,
-    children: null,
+    children: DEVELOPER_CHILDREN,
   },
   {
     to: '/settings/workflows' as const,
