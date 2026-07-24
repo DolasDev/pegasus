@@ -15,7 +15,7 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DeveloperSettingsPage } from '../routes/settings.developer'
 import type { ApiClient } from '../api/api-clients'
@@ -44,6 +44,7 @@ const mockUseCreateApiClient = vi.fn()
 const mockUseUpdateApiClient = vi.fn()
 const mockUseRevokeApiClient = vi.fn()
 const mockUseRotateApiClient = vi.fn()
+const mockUseDeleteApiClient = vi.fn()
 
 vi.mock('@/api/queries/api-clients', () => ({
   apiClientsQueryOptions: {
@@ -54,6 +55,7 @@ vi.mock('@/api/queries/api-clients', () => ({
   useUpdateApiClient: () => mockUseUpdateApiClient(),
   useRevokeApiClient: () => mockUseRevokeApiClient(),
   useRotateApiClient: () => mockUseRotateApiClient(),
+  useDeleteApiClient: () => mockUseDeleteApiClient(),
 }))
 
 // Mock the permissions hook — these tests assume an admin who has every
@@ -202,6 +204,7 @@ describe('DeveloperSettingsPage', () => {
     mockUseUpdateApiClient.mockReturnValue(makeMutationResult())
     mockUseRevokeApiClient.mockReturnValue(makeMutationResult())
     mockUseRotateApiClient.mockReturnValue(makeMutationResult())
+    mockUseDeleteApiClient.mockReturnValue(makeMutationResult())
     mockUseUpdateMssqlSettings.mockReturnValue(makeMutationResult())
     mockUseTestMssqlConnection.mockReturnValue(makeMutationResult())
     mockUseTestPegiiConnection.mockReturnValue(makeMutationResult())
@@ -271,6 +274,9 @@ describe('DeveloperSettingsPage', () => {
     expect(screen.queryByText('Rotate')).not.toBeInTheDocument()
     // The "Revoke" button should also be hidden for already-revoked clients
     expect(screen.queryByRole('button', { name: /revoke/i })).not.toBeInTheDocument()
+    // Delete IS still offered for a revoked key — permanently removing it (and
+    // its service-account principal) is how you clean a revoked key up.
+    expect(screen.getByRole('button', { name: /delete/i })).toBeInTheDocument()
   })
 
   it('opens the create form when "Create API Client" is clicked', () => {
@@ -328,6 +334,23 @@ describe('DeveloperSettingsPage', () => {
     fireEvent.click(screen.getByText('Rotate'))
     expect(screen.getByText('Rotate API Key?')).toBeInTheDocument()
     expect(screen.getByText('Rotate Key')).toBeInTheDocument()
+  })
+
+  it('shows delete confirmation and calls the delete mutation on confirm', async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({ id: 'client-1', deleted: true })
+    mockUseDeleteApiClient.mockReturnValue(makeMutationResult({ mutateAsync }))
+    apiClientsReturn = {
+      data: [makeClient({ name: 'Test Key' })],
+      isLoading: false,
+      isError: false,
+    }
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: /delete/i }))
+    expect(screen.getByText('Delete API Client?')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Delete permanently'))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
   })
 
   it('dismisses revoke confirmation when Cancel is clicked', () => {

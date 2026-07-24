@@ -131,6 +131,11 @@ export const Actions = {
     resourceType: 'ApiClient',
     permission: 'api_client:revoke',
   },
+  DeleteApiClient: {
+    id: 'DeleteApiClient',
+    resourceType: 'ApiClient',
+    permission: 'api_client:delete',
+  },
   // ── Quotes ──────────────────────────────────────────────────────────────
   ReadQuote: { id: 'ReadQuote', resourceType: 'Quote', permission: 'quote:read' },
   CreateQuote: { id: 'CreateQuote', resourceType: 'Quote', permission: 'quote:create' },

@@ -21,6 +21,7 @@ let testUserId: string
 
 afterAll(async () => {
   if (hasDb) {
+    await db.workflow.deleteMany({ where: { tenantId: testTenantId } })
     await db.apiClient.deleteMany({ where: { tenantId: testTenantId } })
     await db.tenantUser.deleteMany({ where: { tenantId: testTenantId } })
     await db.tenant.deleteMany({ where: { slug: TEST_TENANT_SLUG } })
@@ -179,6 +180,66 @@ describe.skipIf(!hasDb)('ApiClientRepository (integration)', () => {
 
     const updated = await repo.findById(created.row.id, testTenantId)
     expect(updated!.lastUsedAt).toBeInstanceOf(Date)
+  })
+
+  it('deleteWithServiceAccount: hard-deletes the client AND its bound service account', async () => {
+    const repo = createApiClientRepository(db)
+
+    // A service-account principal + a key bound to it (mirrors the create path).
+    const svc = await db.tenantUser.create({
+      data: {
+        tenantId: testTenantId,
+        email: `svc-del-${Date.now()}@svc.invalid`,
+        isServiceAccount: true,
+        roleNames: ['integrations'],
+        status: 'ACTIVE',
+      },
+    })
+    const created = await repo.create(testTenantId, 'Delete Me', [], testUserId, svc.id)
+
+    await repo.deleteWithServiceAccount(created.row.id, testTenantId)
+
+    // Both the key and its service-account principal are gone.
+    expect(await repo.findById(created.row.id, testTenantId)).toBeNull()
+    expect(await db.tenantUser.findUnique({ where: { id: svc.id } })).toBeNull()
+  })
+
+  it('deleteWithServiceAccount: never removes a non-service-account principal', async () => {
+    const repo = createApiClientRepository(db)
+
+    // Bind a key to the human admin user (isServiceAccount = false).
+    const created = await repo.create(testTenantId, 'Human-bound', [], testUserId, testUserId)
+
+    await repo.deleteWithServiceAccount(created.row.id, testTenantId)
+
+    // Key deleted, but the human principal survives.
+    expect(await repo.findById(created.row.id, testTenantId)).toBeNull()
+    expect(await db.tenantUser.findUnique({ where: { id: testUserId } })).not.toBeNull()
+  })
+
+  it('listByTenant: excludes workflow-runtime clients (referenced by Workflow.runtimeApiClientId)', async () => {
+    const repo = createApiClientRepository(db)
+
+    const normal = await repo.create(testTenantId, 'Vendor Key', [], testUserId)
+    const runtime = await repo.create(testTenantId, 'wf-runtime-key', [], testUserId)
+
+    // A workflow that owns `runtime` as its runtime credential.
+    await db.workflow.create({
+      data: {
+        tenantId: testTenantId,
+        name: `wf-hide-${Date.now()}`,
+        version: '1.0.0',
+        artifactKey: 'artifacts/test.zip',
+        manifest: {},
+        createdByUserId: testUserId,
+        runtimeApiClientId: runtime.row.id,
+      },
+    })
+
+    const rows = await repo.listByTenant(testTenantId)
+    const ids = rows.map((r) => r.id)
+    expect(ids).toContain(normal.row.id)
+    expect(ids).not.toContain(runtime.row.id)
   })
 })
 

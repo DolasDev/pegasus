@@ -16,6 +16,7 @@ import {
   updateApiClient,
   revokeApiClient,
   rotateApiClient,
+  deleteApiClient,
 } from '../api/api-clients'
 
 const mockApiFetch = vi.mocked(apiFetch)
@@ -85,6 +86,15 @@ describe('api-clients', () => {
       method: 'POST',
     })
     expect(result).toEqual(rotated)
+  })
+
+  it('deleteApiClient calls DELETE /api/v1/api-clients/:id', async () => {
+    mockApiFetch.mockResolvedValueOnce({ id: 'c-1', deleted: true })
+    const result = await deleteApiClient('c-1')
+    expect(mockApiFetch).toHaveBeenCalledWith('/api/v1/api-clients/c-1', {
+      method: 'DELETE',
+    })
+    expect(result).toEqual({ id: 'c-1', deleted: true })
   })
 
   it('propagates errors thrown by apiFetch', async () => {
