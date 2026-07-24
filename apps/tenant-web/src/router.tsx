@@ -23,6 +23,7 @@ import { IntegrationDetailPage } from '@/routes/integrations.$integrationId'
 import { SsoConfigPage } from '@/routes/sso-config'
 import { UsersPage } from '@/routes/users'
 import { DeveloperSettingsPage } from '@/routes/settings.developer'
+import { ConfigsSettingsPage } from '@/routes/settings.developer.configs'
 import { WorkflowsSettingsPage } from '@/routes/settings.workflows'
 import { WorkflowDetailPage } from '@/routes/settings.workflows.$workflowId'
 import { EventTypesSettingsPage } from '@/routes/settings.event-types'
@@ -222,6 +223,12 @@ const developerSettingsRoute = createRoute({
   component: DeveloperSettingsPage,
 })
 
+const developerConfigsRoute = createRoute({
+  getParentRoute: () => settingsLayout,
+  path: '/settings/developer/configs',
+  component: ConfigsSettingsPage,
+})
+
 const workflowsSettingsRoute = createRoute({
   getParentRoute: () => settingsLayout,
   path: '/settings/workflows',
@@ -406,6 +413,7 @@ const routeTree = rootRoute.addChildren([
       ssoConfigRoute,
       usersRoute,
       developerSettingsRoute,
+      developerConfigsRoute,
       workflowsSettingsRoute,
       workflowDetailRoute,
       eventTypesSettingsRoute,
