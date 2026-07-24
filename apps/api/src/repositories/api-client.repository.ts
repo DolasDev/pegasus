@@ -186,10 +186,30 @@ export function createApiClientRepository(db: PrismaClient) {
       return row ? mapRow(row) : null
     },
 
-    /** List all clients for a tenant — no keyHash, no plainKey. */
+    /**
+     * List tenant-managed API keys — no keyHash, no plainKey.
+     *
+     * Workflow-runtime credentials (the `wf-runtime-<id>` keys provisioned per
+     * workflow, referenced by `Workflow.runtimeApiClientId`) are excluded: they
+     * are internal machine credentials owned by the workflow lifecycle, not
+     * vendor keys a tenant admin created or should hand-manage. Hiding them
+     * keeps the API-keys surface to keys the admin actually controls and keeps
+     * their `svc-<uuid>@svc.invalid` principals off every human-facing list.
+     */
     async listByTenant(tenantId: string): Promise<ApiClientRow[]> {
+      const runtimeOwners = await db.workflow.findMany({
+        where: { tenantId, runtimeApiClientId: { not: null } },
+        select: { runtimeApiClientId: true },
+      })
+      const runtimeClientIds = runtimeOwners
+        .map((w) => w.runtimeApiClientId)
+        .filter((cid): cid is string => cid !== null)
+
       const rows = await db.apiClient.findMany({
-        where: { tenantId },
+        where: {
+          tenantId,
+          ...(runtimeClientIds.length ? { id: { notIn: runtimeClientIds } } : {}),
+        },
         select: API_CLIENT_SELECT,
         orderBy: { createdAt: 'desc' },
       })
@@ -232,6 +252,48 @@ export function createApiClientRepository(db: PrismaClient) {
         select: API_CLIENT_SELECT,
       })
       return { row: mapRow(row), plainKey }
+    },
+
+    /**
+     * Hard-delete an ApiClient and, when it is the sole owner, its bound
+     * service-account TenantUser — in one transaction so no orphaned principal
+     * is ever left behind (the whole point of deleting a key rather than just
+     * soft-revoking it).
+     *
+     * Order matters: the ApiClient row is deleted FIRST so the
+     * `onDelete: Restrict` FK from ApiClient.actsAsUser is released before the
+     * user row is removed. The principal is only deleted when it is an actual
+     * service account (`isServiceAccount = true`) AND no other ApiClient still
+     * acts as it — so a shared or (defensively) human principal is never
+     * collaterally removed.
+     *
+     * Caller must have verified tenant ownership via findById first, and must
+     * have ruled out live workflow-runtime credentials (that guard lives in the
+     * handler, which has the Workflow table in view).
+     */
+    async deleteWithServiceAccount(id: string, tenantId: string): Promise<void> {
+      await db.$transaction(async (tx) => {
+        const client = await tx.apiClient.findFirst({
+          where: { id, tenantId },
+          select: { id: true, actsAsUserId: true },
+        })
+        if (!client) return
+
+        await tx.apiClient.delete({ where: { id: client.id } })
+
+        if (client.actsAsUserId) {
+          const stillReferenced = await tx.apiClient.count({
+            where: { actsAsUserId: client.actsAsUserId },
+          })
+          if (stillReferenced === 0) {
+            // deleteMany + isServiceAccount guard: a no-op (never an error) if
+            // the bound principal is somehow a human/non-service account.
+            await tx.tenantUser.deleteMany({
+              where: { id: client.actsAsUserId, isServiceAccount: true },
+            })
+          }
+        }
+      })
     },
 
     /**

@@ -17,7 +17,7 @@ import { _clearAuthzCache } from '../lib/authz'
 // Mock the repository
 // ---------------------------------------------------------------------------
 
-const { mockRepo, mockTx } = vi.hoisted(() => ({
+const { mockRepo, mockTx, mockDb } = vi.hoisted(() => ({
   mockRepo: {
     create: vi.fn(),
     listByTenant: vi.fn(),
@@ -25,6 +25,7 @@ const { mockRepo, mockTx } = vi.hoisted(() => ({
     update: vi.fn(),
     revoke: vi.fn(),
     rotate: vi.fn(),
+    deleteWithServiceAccount: vi.fn(),
     touchLastUsed: vi.fn(),
   },
   mockTx: {
@@ -32,6 +33,11 @@ const { mockRepo, mockTx } = vi.hoisted(() => ({
       create: vi.fn(),
       update: vi.fn(),
     },
+  },
+  mockDb: {
+    // The DELETE handler reads the Workflow table directly to guard against
+    // deleting a live workflow-runtime credential.
+    workflow: { findFirst: vi.fn() },
   },
 }))
 
@@ -70,6 +76,7 @@ function patch(body: unknown): RequestInit {
 function buildApp(role: string | null = 'tenant_admin', userId = 'user-1') {
   const fakeDb = {
     $transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(mockTx),
+    workflow: mockDb.workflow,
   } as unknown as PrismaClient
   const app = new Hono<AppEnv>()
   registerTestErrorHandler(app)
@@ -358,6 +365,46 @@ describe('api-clients handler', () => {
       const data = body.data as JsonBody
       expect(data['plainKey']).toBe('vnd_newplainkey')
       expect('keyHash' in data).toBe(false)
+    })
+  })
+
+  // ── DELETE /:id ───────────────────────────────────────────────────────────
+
+  describe('DELETE /:id', () => {
+    it('returns 404 NOT_FOUND when client does not exist', async () => {
+      mockRepo.findById.mockResolvedValue(null)
+      const res = await buildApp().request('/client-1', { method: 'DELETE' })
+      expect(res.status).toBe(404)
+      expect((await json(res)).code).toBe('NOT_FOUND')
+      expect(mockRepo.deleteWithServiceAccount).not.toHaveBeenCalled()
+    })
+
+    it('returns 409 RUNTIME_CLIENT_IN_USE when the key is a workflow runtime credential', async () => {
+      mockRepo.findById.mockResolvedValue(mockRow)
+      mockDb.workflow.findFirst.mockResolvedValue({ id: 'wf-1', name: 'nightly-sync' })
+      const res = await buildApp().request('/client-1', { method: 'DELETE' })
+      expect(res.status).toBe(409)
+      expect((await json(res)).code).toBe('RUNTIME_CLIENT_IN_USE')
+      expect(mockRepo.deleteWithServiceAccount).not.toHaveBeenCalled()
+    })
+
+    it('returns 200 and hard-deletes the key + service account on success', async () => {
+      mockRepo.findById.mockResolvedValue(mockRow)
+      mockDb.workflow.findFirst.mockResolvedValue(null)
+      mockRepo.deleteWithServiceAccount.mockResolvedValue(undefined)
+      const res = await buildApp().request('/client-1', { method: 'DELETE' })
+      expect(res.status).toBe(200)
+      const body = await json(res)
+      const data = body.data as JsonBody
+      expect(data['id']).toBe('client-1')
+      expect(data['deleted']).toBe(true)
+      expect(mockRepo.deleteWithServiceAccount).toHaveBeenCalledWith('client-1', 'test-tenant-id')
+    })
+
+    it('returns 403 FORBIDDEN when role lacks api_client:delete', async () => {
+      const res = await buildApp('viewer').request('/client-1', { method: 'DELETE' })
+      expect(res.status).toBe(403)
+      expect(mockRepo.deleteWithServiceAccount).not.toHaveBeenCalled()
     })
   })
 })

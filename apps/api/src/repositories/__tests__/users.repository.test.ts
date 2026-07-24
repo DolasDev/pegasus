@@ -156,6 +156,39 @@ describe.skipIf(!hasDb)('UsersRepository (integration)', () => {
     expect(countAfterDeactivate).toBe(countBefore)
     expect(countAfterInvite).toBe(countBefore + 1)
   })
+
+  // ── Service-account exclusion ─────────────────────────────────────────────
+  //
+  // Service accounts (`isServiceAccount = true`, the `svc-<uuid>@svc.invalid`
+  // principals an ApiClient acts as) are machine identities and must never
+  // surface on any human-facing user read.
+  it('excludes service accounts from every read + admin count', async () => {
+    const repo = createUsersRepository(testDb)
+    const svcEmail = `svc-${Date.now()}@svc.invalid`
+    const svc = await db.tenantUser.create({
+      data: {
+        tenantId: testTenantId,
+        email: svcEmail,
+        isServiceAccount: true,
+        cognitoSub: null,
+        // Even with the tenant_admin role, a service account must not count as
+        // a human admin or appear on the roster.
+        roleNames: ['tenant_admin'],
+        status: 'ACTIVE',
+      },
+    })
+
+    const list = await repo.listByTenant(testTenantId)
+    expect(list.some((u) => u.id === svc.id)).toBe(false)
+
+    expect(await repo.findById(svc.id, testTenantId)).toBeNull()
+    expect(await repo.findByEmail(svcEmail, testTenantId)).toBeNull()
+
+    const adminsExcludingSvc = await repo.countAdmins(testTenantId)
+    // Promote it to nothing else; the count must be unchanged by its presence.
+    await db.tenantUser.update({ where: { id: svc.id }, data: { status: 'DEACTIVATED' } })
+    expect(await repo.countAdmins(testTenantId)).toBe(adminsExcludingSvc)
+  })
 })
 
 // This test always runs — it verifies the skip logic itself

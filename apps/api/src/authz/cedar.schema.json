@@ -204,6 +204,9 @@
       "RevokeApiClient": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["ApiClient"] }
       },
+      "DeleteApiClient": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["ApiClient"] }
+      },
       "ReadQuote": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Quote"] }
       },

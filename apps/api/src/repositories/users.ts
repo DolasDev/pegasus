@@ -50,27 +50,45 @@ const USER_SELECT = {
 
 export function createUsersRepository(db: PrismaClient) {
   return {
-    /** List all TenantUsers for a tenant, ordered by invitedAt descending. */
+    /**
+     * List all human TenantUsers for a tenant, ordered by invitedAt descending.
+     *
+     * Service accounts (`isServiceAccount = true` — the synthetic
+     * `svc-<uuid>@svc.invalid` principals an ApiClient acts as) are excluded:
+     * they are machine identities managed through the API-keys surface, not
+     * people, and must never appear on the user-management roster. This filter
+     * is the single choke point for `GET /users` and the platform-admin
+     * per-tenant user view (both call this method).
+     */
     listByTenant(tenantId: string): Promise<TenantUserRow[]> {
       return db.tenantUser.findMany({
-        where: { tenantId },
+        where: { tenantId, isServiceAccount: false },
         select: USER_SELECT,
         orderBy: { invitedAt: 'desc' },
       })
     },
 
-    /** Find a TenantUser by ID within a specific tenant (ownership check). */
+    /**
+     * Find a human TenantUser by ID within a specific tenant (ownership check).
+     * Service accounts are invisible here too, so the user-management handlers
+     * (patch roles / deactivate / link crew) 404 rather than mutating a
+     * machine principal.
+     */
     findById(id: string, tenantId: string): Promise<TenantUserRow | null> {
       return db.tenantUser.findFirst({
-        where: { id, tenantId },
+        where: { id, tenantId, isServiceAccount: false },
         select: USER_SELECT,
       })
     },
 
-    /** Find a TenantUser by email within a specific tenant. */
+    /** Find a human TenantUser by email within a specific tenant. */
     findByEmail(email: string, tenantId: string): Promise<TenantUserRow | null> {
       return db.tenantUser.findFirst({
-        where: { email: { equals: email, mode: 'insensitive' }, tenantId },
+        where: {
+          email: { equals: email, mode: 'insensitive' },
+          tenantId,
+          isServiceAccount: false,
+        },
         select: USER_SELECT,
       })
     },
@@ -157,11 +175,17 @@ export function createUsersRepository(db: PrismaClient) {
       })
     },
 
-    /** Count tenant_admin users for the tenant — used to prevent last-admin lockout. */
+    /**
+     * Count human tenant_admin users for the tenant — used to prevent
+     * last-admin lockout. Service accounts are excluded: an API key granted the
+     * `tenant_admin` role is not a person who can recover the account, so it
+     * must not mask the "last real admin" condition.
+     */
     countAdmins(tenantId: string): Promise<number> {
       return db.tenantUser.count({
         where: {
           tenantId,
+          isServiceAccount: false,
           roleNames: { has: 'tenant_admin' },
           status: { not: 'DEACTIVATED' },
         },

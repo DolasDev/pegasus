@@ -62,3 +62,13 @@ export async function rotateApiClient(id: string): Promise<ApiClientWithKey> {
     method: 'POST',
   })
 }
+
+/**
+ * Permanently delete an API key and its bound service-account principal.
+ * Unlike revoke (reversible), this cannot be undone.
+ */
+export async function deleteApiClient(id: string): Promise<{ id: string; deleted: boolean }> {
+  return apiFetch<{ id: string; deleted: boolean }>(`/api/v1/api-clients/${id}`, {
+    method: 'DELETE',
+  })
+}

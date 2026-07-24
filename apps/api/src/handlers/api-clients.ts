@@ -17,11 +17,12 @@
 //   PATCH  /:id                 — update name and/or roleNames
 //   POST   /:id/revoke          — soft-revoke (sets revokedAt)
 //   POST   /:id/rotate          — issue new key; returns plainKey once
+//   DELETE /:id                 — hard-delete key + its service-account user
 //
 // Security invariants:
 //   - keyHash is NEVER in any response (excluded at repository select level)
 //   - plainKey is NEVER logged; only logged fields: id, keyPrefix
-//   - permission gating via Actions.{Create,List,Rotate,Revoke}ApiClient
+//   - permission gating via Actions.{Create,List,Rotate,Revoke,Delete}ApiClient
 // ---------------------------------------------------------------------------
 
 import crypto from 'node:crypto'
@@ -298,4 +299,55 @@ apiClientsHandler.post('/:id/rotate', requirePermission(Actions.RotateApiClient)
   logger.info('API client rotated', { id: row.id, keyPrefix: row.keyPrefix, tenantId })
   const response: ApiClientCreateResponse = { ...toResponse(row), plainKey }
   return c.json({ data: response })
+})
+
+// ---------------------------------------------------------------------------
+// DELETE /:id
+//
+// Hard-deletes the API client AND its bound service-account TenantUser (the
+// `svc-<uuid>@svc.invalid` principal) in one transaction — leaving no orphaned
+// user behind. Unlike revoke (soft, reversible), delete is permanent; the key
+// and its principal are gone.
+//
+// Refused with 409 RUNTIME_CLIENT_IN_USE when the key is a workflow-runtime
+// credential (referenced by a Workflow.runtimeApiClientId): those are owned by
+// the workflow lifecycle and deleting one would strand that workflow's runtime
+// auth. Such keys are also hidden from GET / entirely.
+//
+// Response: { data: { id, deleted: true } } (200) | 404 | 409
+// ---------------------------------------------------------------------------
+apiClientsHandler.delete('/:id', requirePermission(Actions.DeleteApiClient), async (c) => {
+  const tenantId = c.get('tenantId')
+  const id = c.req.param('id') ?? ''
+  const db = c.get('db')
+  const repo = createApiClientRepository(db)
+
+  const existing = await repo.findById(id, tenantId)
+  if (!existing) return c.json({ error: 'API client not found', code: 'NOT_FOUND' }, 404)
+
+  // Guard: never delete a live workflow-runtime credential out from under its
+  // workflow. Authoritative check against the Workflow table (not the key's
+  // name), so a hand-renamed key can't dodge it.
+  const runtimeOwner = await db.workflow.findFirst({
+    where: { tenantId, runtimeApiClientId: id },
+    select: { id: true, name: true },
+  })
+  if (runtimeOwner) {
+    return c.json(
+      {
+        error:
+          'This key is the runtime credential for a workflow and cannot be deleted here — it is managed by the workflow lifecycle.',
+        code: 'RUNTIME_CLIENT_IN_USE',
+      },
+      409,
+    )
+  }
+
+  await repo.deleteWithServiceAccount(id, tenantId)
+  logger.info('API client deleted', {
+    id,
+    tenantId,
+    serviceAccountId: existing.actsAsUserId,
+  })
+  return c.json({ data: { id, deleted: true } })
 })

@@ -5,6 +5,7 @@ import {
   Plus,
   Pencil,
   Trash2,
+  Ban,
   Key,
   Loader2,
   AlertCircle,
@@ -42,6 +43,7 @@ import {
   useUpdateApiClient,
   useRevokeApiClient,
   useRotateApiClient,
+  useDeleteApiClient,
 } from '@/api/queries/api-clients'
 import {
   mssqlSettingsQueryOptions,
@@ -649,9 +651,11 @@ type ApiClientRowProps = {
   canEdit: boolean
   canRotate: boolean
   canRevoke: boolean
+  canDelete: boolean
   onEdit: (client: ApiClient) => void
   onRevoke: (client: ApiClient) => void
   onRotate: (client: ApiClient) => void
+  onDelete: (client: ApiClient) => void
 }
 
 function ApiClientRowItem({
@@ -660,9 +664,11 @@ function ApiClientRowItem({
   canEdit,
   canRotate,
   canRevoke,
+  canDelete,
   onEdit,
   onRevoke,
   onRotate,
+  onDelete,
 }: ApiClientRowProps) {
   const isRevoked = client.revokedAt !== null
   const isStale = client.actsAsUserId === null
@@ -744,11 +750,25 @@ function ApiClientRowItem({
                 className="gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
                 onClick={() => onRevoke(client)}
               >
-                <Trash2 size={13} />
+                <Ban size={13} />
                 Revoke
               </Button>
             )}
           </>
+        )}
+        {/* Delete is offered for both active and revoked keys — permanently
+            removing a key (and its service-account principal) is the way to
+            clean up a revoked key you no longer need. */}
+        {canDelete && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+            onClick={() => onDelete(client)}
+          >
+            <Trash2 size={13} />
+            Delete
+          </Button>
         )}
       </div>
     </div>
@@ -823,6 +843,41 @@ function RotateConfirm({ client, onConfirm, onCancel, isPending }: RotateConfirm
         >
           {isPending && <Loader2 size={14} className="animate-spin" />}
           Rotate Key
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Delete confirmation
+// ---------------------------------------------------------------------------
+
+type DeleteConfirmProps = {
+  client: ApiClient
+  onConfirm: () => void
+  onCancel: () => void
+  isPending: boolean
+}
+
+function DeleteConfirm({ client, onConfirm, onCancel, isPending }: DeleteConfirmProps) {
+  return (
+    <Card className="border-destructive/50">
+      <CardHeader>
+        <CardTitle className="text-destructive">Delete API Client?</CardTitle>
+        <CardDescription>
+          This permanently deletes <strong>{client.name}</strong> and its underlying service-account
+          user. Any systems using this key will stop working immediately, and unlike revoking, this
+          cannot be undone. Prefer <em>Revoke</em> if you only want to disable the key.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex justify-end gap-2">
+        <Button variant="outline" onClick={onCancel} disabled={isPending}>
+          Cancel
+        </Button>
+        <Button variant="destructive" onClick={onConfirm} disabled={isPending} className="gap-2">
+          {isPending && <Loader2 size={14} className="animate-spin" />}
+          Delete permanently
         </Button>
       </CardContent>
     </Card>
@@ -1138,20 +1193,24 @@ type PanelState =
   | { kind: 'edit'; client: ApiClient }
   | { kind: 'revoke'; client: ApiClient }
   | { kind: 'rotate'; client: ApiClient }
+  | { kind: 'delete'; client: ApiClient }
 
 export function DeveloperSettingsPage() {
   const { data: clients, isLoading, isError } = useQuery(apiClientsQueryOptions)
   const { data: roleOptions } = useQuery(roleOptionsQueryOptions)
   const revokeMutation = useRevokeApiClient()
   const rotateMutation = useRotateApiClient()
+  const deleteMutation = useDeleteApiClient()
   const perms = usePermissions()
   const canCreate = perms.has('api_client:create')
   const canRotate = perms.has('api_client:rotate')
   const canRevoke = perms.has('api_client:revoke')
+  const canDelete = perms.has('api_client:delete')
   const safeRoleOptions = roleOptions ?? []
 
   const [panel, setPanel] = useState<PanelState>({ kind: 'none' })
   const [newKey, setNewKey] = useState<ApiClientWithKey | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   function closePanel() {
     setPanel({ kind: 'none' })
@@ -1173,6 +1232,20 @@ export function DeveloperSettingsPage() {
       setNewKey(generated)
     } catch {
       // Ignore
+    }
+  }
+
+  async function handleDelete(client: ApiClient) {
+    setActionError(null)
+    try {
+      await deleteMutation.mutateAsync(client.id)
+      closePanel()
+    } catch (err) {
+      // Surface the 409 (runtime-owned key) or any other failure inline rather
+      // than silently leaving the confirm panel open.
+      setActionError(
+        err instanceof Error ? err.message : 'Could not delete this key. Please try again.',
+      )
     }
   }
 
@@ -1250,9 +1323,11 @@ export function DeveloperSettingsPage() {
                     canEdit={canCreate}
                     canRotate={canRotate}
                     canRevoke={canRevoke}
+                    canDelete={canDelete}
                     onEdit={() => setPanel({ kind: 'edit', client })}
                     onRevoke={() => setPanel({ kind: 'revoke', client })}
                     onRotate={() => setPanel({ kind: 'rotate', client })}
+                    onDelete={() => setPanel({ kind: 'delete', client })}
                   />
                   <ApiClientForm
                     mode={{ kind: 'edit', client }}
@@ -1273,9 +1348,11 @@ export function DeveloperSettingsPage() {
                     canEdit={canCreate}
                     canRotate={canRotate}
                     canRevoke={canRevoke}
+                    canDelete={canDelete}
                     onEdit={() => setPanel({ kind: 'edit', client })}
                     onRevoke={() => setPanel({ kind: 'revoke', client })}
                     onRotate={() => setPanel({ kind: 'rotate', client })}
+                    onDelete={() => setPanel({ kind: 'delete', client })}
                   />
                   <RevokeConfirm
                     client={client}
@@ -1296,9 +1373,11 @@ export function DeveloperSettingsPage() {
                     canEdit={canCreate}
                     canRotate={canRotate}
                     canRevoke={canRevoke}
+                    canDelete={canDelete}
                     onEdit={() => setPanel({ kind: 'edit', client })}
                     onRevoke={() => setPanel({ kind: 'revoke', client })}
                     onRotate={() => setPanel({ kind: 'rotate', client })}
+                    onDelete={() => setPanel({ kind: 'delete', client })}
                   />
                   <RotateConfirm
                     client={client}
@@ -1306,6 +1385,40 @@ export function DeveloperSettingsPage() {
                     onCancel={closePanel}
                     isPending={rotateMutation.isPending}
                   />
+                </div>
+              )
+            }
+
+            if (panel.kind === 'delete' && panel.client.id === client.id) {
+              return (
+                <div key={client.id} className="space-y-2">
+                  <ApiClientRowItem
+                    client={client}
+                    roleOptions={safeRoleOptions}
+                    canEdit={canCreate}
+                    canRotate={canRotate}
+                    canRevoke={canRevoke}
+                    canDelete={canDelete}
+                    onEdit={() => setPanel({ kind: 'edit', client })}
+                    onRevoke={() => setPanel({ kind: 'revoke', client })}
+                    onRotate={() => setPanel({ kind: 'rotate', client })}
+                    onDelete={() => setPanel({ kind: 'delete', client })}
+                  />
+                  <DeleteConfirm
+                    client={client}
+                    onConfirm={() => void handleDelete(client)}
+                    onCancel={() => {
+                      setActionError(null)
+                      closePanel()
+                    }}
+                    isPending={deleteMutation.isPending}
+                  />
+                  {actionError && (
+                    <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      <AlertCircle size={14} className="shrink-0" />
+                      {actionError}
+                    </div>
+                  )}
                 </div>
               )
             }
@@ -1318,9 +1431,11 @@ export function DeveloperSettingsPage() {
                 canEdit={canCreate}
                 canRotate={canRotate}
                 canRevoke={canRevoke}
+                canDelete={canDelete}
                 onEdit={(c) => setPanel({ kind: 'edit', client: c })}
                 onRevoke={(c) => setPanel({ kind: 'revoke', client: c })}
                 onRotate={(c) => setPanel({ kind: 'rotate', client: c })}
+                onDelete={(c) => setPanel({ kind: 'delete', client: c })}
               />
             )
           })}

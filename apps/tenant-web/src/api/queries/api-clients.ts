@@ -5,6 +5,7 @@ import {
   updateApiClient,
   revokeApiClient,
   rotateApiClient,
+  deleteApiClient,
 } from '@/api/api-clients'
 
 // ---------------------------------------------------------------------------
@@ -61,6 +62,16 @@ export function useRotateApiClient() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => rotateApiClient(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: apiClientKeys.list() })
+    },
+  })
+}
+
+export function useDeleteApiClient() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteApiClient(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: apiClientKeys.list() })
     },
