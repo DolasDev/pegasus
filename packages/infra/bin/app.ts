@@ -113,6 +113,18 @@ const ringcentralEnabled = envName === 'prod'
 // gated by this switch.
 const integrationConfigPublishEnabled = envName === 'staging' || envName === 'prod'
 
+// ── Outbound OAuth shared token cache master switch (QA first, sdk-feedback 0027) ─
+// Ungates the SHARED (DB-backed) tier of the outbound OAuth2 token cache behind
+// OUTBOUND_OAUTH_SHARED_CACHE_ENABLED on the api Lambda, so call_external reuses a
+// minted partner token across Lambda containers instead of each re-minting on a
+// cold start. STAGING (QA) ONLY for now: a flag-off probe on QA (2026-07-24)
+// confirmed the failure mode 0027 reported — 6 concurrent calls minted 6 tokens
+// across 6 distinct container instanceIds, 0 cache hits. Prod stays off until the
+// QA re-probe confirms the fix (one mint + L2 hits). The prop→env-var wiring
+// shipped in #521; this only turns it on. Env-gated (not a one-shot context flag)
+// so it survives routine main-push deploys.
+const outboundOAuthSharedCacheEnabled = envName === 'staging'
+
 // ── Feedback (magic-link surveys) master switch (staging + prod) ─────────────
 // Ungates the whole feedback surface behind FEEDBACK_ENABLED on the api Lambda:
 // FeedbackForm authoring (publish/rollback), the FeedbackRequest mint, and the
@@ -336,6 +348,7 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   tenantRunnerSecurityGroup: wireguardStack.tenantRunnerSecurityGroup,
   ringcentralEnabled,
   integrationConfigPublishEnabled,
+  outboundOAuthSharedCacheEnabled,
   feedbackEnabled,
   feedbackPublicWebUrl,
   corsAllowedOrigins,
