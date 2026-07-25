@@ -89,6 +89,8 @@ describe.skipIf(!hasDb)('resolveIntegrationDefinition — tenant config governs 
       corpus,
       gateReport,
       publishedBy: 'test',
+      requiredSecrets: [{ key: 'SEND_API_KEY', group: 'demo' }],
+      requiredConfigs: [{ key: 'SEND_URL' }],
     })
   })
 
@@ -108,6 +110,19 @@ describe.skipIf(!hasDb)('resolveIntegrationDefinition — tenant config governs 
   it('a different tenant with no own config falls back to the GLOBAL config', async () => {
     const def = (await resolveIntegrationDefinition(db, 'demo_partner', otherId))!
     expect(def.mapping).toEqual(GLOBAL_MAPPING)
+  })
+
+  it("carries the config's declared requiredSecrets/requiredConfigs onto the definition", async () => {
+    const def = (await resolveIntegrationDefinition(db, 'demo_partner', tenantId))!
+    expect(def.requiredSecrets).toEqual([{ key: 'SEND_API_KEY', group: 'demo' }])
+    // The config omitted the group, so it resolves without one (store defaults to "global").
+    expect(def.requiredConfigs).toEqual([{ key: 'SEND_URL' }])
+  })
+
+  it('a tenant without a declaration leaves requiredSecrets/requiredConfigs undefined', async () => {
+    const def = (await resolveIntegrationDefinition(db, 'demo_partner', otherId))!
+    expect(def.requiredSecrets).toBeUndefined()
+    expect(def.requiredConfigs).toBeUndefined()
   })
 
   it('a platform-scoped (null tenant) caller resolves the GLOBAL overlay', async () => {

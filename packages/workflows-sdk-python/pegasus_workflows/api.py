@@ -135,12 +135,15 @@ def _integration_config_body(
     external_shape: Any | None,
     external_mapping: Any | None,
     inbound: Any | None = None,
+    required_secrets: Any | None = None,
+    required_configs: Any | None = None,
 ) -> dict[str, Any]:
     """Assemble the integration-config request body, omitting unset overlay fields.
 
     ``mapping``/``rules``/``corpus`` are the editable surface; the rest are the
-    floor/overlay fields (sdk-feedback 0019 + 0020) and the ``inbound`` ingress
-    block (0021), sent only when provided, so an older-style publish is byte-identical.
+    floor/overlay fields (sdk-feedback 0019 + 0020), the ``inbound`` ingress block
+    (0021), and the declared ``required_secrets``/``required_configs`` keys — each
+    sent only when provided, so an older-style publish is byte-identical.
     """
     body: dict[str, Any] = {"mapping": mapping, "rules": rules, "corpus": corpus}
     if floor is not None:
@@ -153,6 +156,10 @@ def _integration_config_body(
         body["externalMapping"] = external_mapping
     if inbound is not None:
         body["inbound"] = inbound
+    if required_secrets is not None:
+        body["requiredSecrets"] = required_secrets
+    if required_configs is not None:
+        body["requiredConfigs"] = required_configs
     return body
 
 
@@ -1653,6 +1660,8 @@ class PegasusClient:
         external_shape: Any | None = None,
         external_mapping: Any | None = None,
         inbound: Any | None = None,
+        required_secrets: list[dict[str, Any]] | None = None,
+        required_configs: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Dry-run the publish gate for a candidate config. No write.
 
@@ -1676,6 +1685,12 @@ class PegasusClient:
             inbound: The ingress ack/validation block (0021) — see the
                 ``/api/v1/integrations/inbound-schema`` JSON Schema. Omit for a
                 non-ingress integration.
+            required_secrets: Secret keys this integration reads at runtime, each
+                ``{"key", "group"?, "description"?}`` (group defaults to
+                ``"global"``). Informational — surfaced in the tenant UI so the
+                keys can be provisioned; does not gate the publish. Omit for none.
+            required_configs: Config keys this integration reads, same shape as
+                ``required_secrets``. Omit for none.
 
         Returns:
             The ``GateReport``: ``{ok, problems, corpus: {total, passed, failures}}``.
@@ -1695,6 +1710,8 @@ class PegasusClient:
                     external_shape,
                     external_mapping,
                     inbound,
+                    required_secrets,
+                    required_configs,
                 ),
             )
         _raise_for_status(response)
@@ -1712,6 +1729,8 @@ class PegasusClient:
         external_shape: Any | None = None,
         external_mapping: Any | None = None,
         inbound: Any | None = None,
+        required_secrets: list[dict[str, Any]] | None = None,
+        required_configs: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Gate then publish a config, creating a new version.
 
@@ -1741,11 +1760,20 @@ class PegasusClient:
                 ingress return the partner's ack envelope (e.g. ADE ``Result{…}``)
                 instead of the generic ``{"status":"accepted"}``. Omit for a
                 non-ingress integration.
+            required_secrets: Secret keys this integration reads at runtime (e.g.
+                the ``deliver_to_external`` API key + URL), each ``{"key",
+                "group"?, "description"?}`` (group defaults to ``"global"``).
+                Informational — surfaced in the tenant UI as a present/missing view
+                so the keys can be provisioned; does not gate the publish or the
+                runtime read. Omit for none.
+            required_configs: Config keys this integration reads, same shape as
+                ``required_secrets``. Omit for none.
 
         Returns:
             The created config row: ``{id, integrationId, version, visibility,
             status, mapping, rules, corpus, floor, displayName, externalShape,
-            externalMapping, inbound, publishedBy, createdAt}``.
+            externalMapping, inbound, requiredSecrets, requiredConfigs,
+            publishedBy, createdAt}``.
 
         Raises:
             PegasusApiError: On 403 (feature disabled), 404, 422 (gate failed —
@@ -1771,6 +1799,8 @@ class PegasusClient:
                     external_shape,
                     external_mapping,
                     inbound,
+                    required_secrets,
+                    required_configs,
                 ),
             )
         _raise_for_status(response)

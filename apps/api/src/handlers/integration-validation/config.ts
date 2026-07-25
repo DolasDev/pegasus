@@ -40,9 +40,16 @@ import {
   refreshRegistryOverlay,
   listIntegrationIds,
   getIntegrationDefinition,
+  resolveIntegrationDefinition,
 } from '../../integration-validation/registry'
 import { runGatePipeline, type GateCorpusCase } from '../../integration-validation/gate-pipeline'
 import { isIntegrationConfigPublishEnabled } from '../../lib/integration-config-feature'
+import {
+  RequirementSchema,
+  loadPresenceSets,
+  resolveAgainst,
+  countMissing,
+} from '../../lib/workflow-secret-requirements'
 import type { Prisma } from '@prisma/client'
 import { logger } from '../../lib/logger'
 
@@ -73,6 +80,11 @@ const ConfigBody = z.object({
   // Inbound (ingress) behavior published with the definition (sdk-feedback 0021):
   // { eventType, dedupKeyPath?, orderByPath?, ackTemplate: {success, failure} }.
   inbound: z.record(z.string(), z.unknown()).optional(),
+  // Secret/config keys this integration reads at runtime (e.g. deliver-to-external's
+  // API key + URL), declared so the tenant sees which values to provide and whether
+  // they are set. Informational — does not gate the publish or the runtime read.
+  requiredSecrets: z.array(RequirementSchema).optional(),
+  requiredConfigs: z.array(RequirementSchema).optional(),
 })
 
 export const integrationConfigHandler = new Hono<AppEnv>()
@@ -95,6 +107,8 @@ function toFull(row: IntegrationConfigRow) {
     externalShape: row.externalShape,
     externalMapping: row.externalMapping,
     inbound: row.inbound,
+    requiredSecrets: row.requiredSecrets,
+    requiredConfigs: row.requiredConfigs,
     publishedBy: row.publishedBy,
     forkedFromConfigId: row.forkedFromConfigId,
     forkedFromVersion: row.forkedFromVersion,
@@ -180,8 +194,18 @@ integrationConfigHandler.post(
     if (!userId)
       throw new DomainError('Authenticated user required to publish config', 'UNAUTHENTICATED')
 
-    const { mapping, rules, corpus, floor, displayName, externalShape, externalMapping, inbound } =
-      c.req.valid('json')
+    const {
+      mapping,
+      rules,
+      corpus,
+      floor,
+      displayName,
+      externalShape,
+      externalMapping,
+      inbound,
+      requiredSecrets,
+      requiredConfigs,
+    } = c.req.valid('json')
     if (floor && !getFloor(floor))
       return c.json({ error: `Unknown floor "${floor}"`, code: 'NOT_FOUND' }, 404)
     const base = getGateBase(integrationId, floor)
@@ -235,6 +259,12 @@ integrationConfigHandler.post(
         ? { externalMapping: externalMapping as Prisma.InputJsonValue }
         : {}),
       ...(inbound !== undefined ? { inbound: inbound as Prisma.InputJsonValue } : {}),
+      ...(requiredSecrets !== undefined
+        ? { requiredSecrets: requiredSecrets as unknown as Prisma.InputJsonValue }
+        : {}),
+      ...(requiredConfigs !== undefined
+        ? { requiredConfigs: requiredConfigs as unknown as Prisma.InputJsonValue }
+        : {}),
     })
 
     await refreshRegistryOverlay(basePrisma)
@@ -291,6 +321,42 @@ integrationConfigHandler.get(
       })
     }
     return c.json({ data, meta: { count: data.length } })
+  },
+)
+
+// GET /integrations/requirements-summary — for every integration, the secret/
+// config keys its (tenant-effective) definition declares, each tagged present/
+// missing against the tenant's workflow-secrets-configs store. Presence only —
+// never returns values. Powers the integration detail badges and the Configs-
+// page "keys still needed" summary. Two static segments, so it never collides
+// with the `/integrations/:integrationId/config…` (three-segment) routes.
+integrationConfigHandler.get(
+  '/integrations/requirements-summary',
+  requirePermission(Actions.ReadIntegrationConfig),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    if (!tenantId) throw new DomainError('Tenant context required', 'UNAUTHENTICATED')
+    const sets = await loadPresenceSets(c.get('db'))
+
+    const integrations = []
+    let totalMissing = 0
+    for (const id of listIntegrationIds()) {
+      // Tenant-effective definition (tenant config over GLOBAL over built-in), so
+      // a tenant's own overlay can declare different keys than the platform's.
+      const def = await resolveIntegrationDefinition(basePrisma, id, tenantId)
+      if (!def) continue
+      const requirements = resolveAgainst(def, sets)
+      const missingCount = countMissing(requirements)
+      totalMissing += missingCount
+      integrations.push({
+        integrationId: def.id,
+        displayName: def.displayName,
+        requirements,
+        missingCount,
+      })
+    }
+
+    return c.json({ data: { integrations, totalMissing } })
   },
 )
 

@@ -198,6 +198,14 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
     'Integration-config version history, newest first (ReadIntegrationConfig)',
     { tags: ['Integrations'], path: ['integrationId'] },
   ),
+  '/api/v1/integrations/requirements-summary': apiKeyGet(
+    'getIntegrationRequirementsSummary',
+    "For each integration, its declared secret/config keys tagged present/missing against the tenant's store (presence only, no values) (ReadIntegrationConfig)",
+    {
+      tags: ['Integrations'],
+      responseDescription: '{data: {integrations: [...], totalMissing: number}}',
+    },
+  ),
   '/api/v1/events/{eventType}': apiKeyGet(
     'listPendingEvents',
     'Poll the pending inbound events of a type (ReadEvent)',

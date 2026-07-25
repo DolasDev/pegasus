@@ -26,6 +26,39 @@ export async function listIntegrations(): Promise<IntegrationSummary[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Required secrets/configs — which keys each integration reads at runtime, each
+// resolved present/missing against the tenant's store (presence only, no values).
+// Mirrors the workflow requirements-summary; same resolved-requirement shape.
+// ---------------------------------------------------------------------------
+
+/** A declared requirement resolved against the tenant's store (presence only). */
+export interface ResolvedRequirement {
+  kind: 'SECRET' | 'CONFIG'
+  key: string
+  group: string
+  description: string | null
+  present: boolean
+}
+
+/** One integration's resolved requirements in the summary. */
+export interface IntegrationRequirements {
+  integrationId: string
+  displayName: string
+  requirements: ResolvedRequirement[]
+  missingCount: number
+}
+
+/** Response of GET /api/v1/integrations/requirements-summary. */
+export interface IntegrationRequirementsSummary {
+  integrations: IntegrationRequirements[]
+  totalMissing: number
+}
+
+export async function getIntegrationRequirementsSummary(): Promise<IntegrationRequirementsSummary> {
+  return apiFetch<IntegrationRequirementsSummary>('/api/v1/integrations/requirements-summary')
+}
+
+// ---------------------------------------------------------------------------
 // Active config (mapping + rules + corpus) for a single integration.
 //
 // Mirrors the `toFull` projection in

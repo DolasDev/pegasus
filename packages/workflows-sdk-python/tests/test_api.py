@@ -502,6 +502,40 @@ def test_publish_integration_config_sends_floor_overlay_fields() -> None:
     }
 
 
+def test_publish_integration_config_sends_required_secrets_and_configs() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(201, json={"data": {"version": 1}})
+
+    client = _client_with(handler)
+    client.publish_integration_config(
+        "sirva_ade",
+        mapping={"a": "x"},
+        rules=[],
+        corpus=[],
+        floor="shipment_status_update",
+        required_secrets=[{"key": "SEND_API_KEY", "group": "sirva"}],
+        required_configs=[{"key": "SEND_URL"}],
+    )
+    assert captured["body"]["requiredSecrets"] == [{"key": "SEND_API_KEY", "group": "sirva"}]
+    assert captured["body"]["requiredConfigs"] == [{"key": "SEND_URL"}]
+
+
+def test_integration_config_omits_required_keys_when_absent() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(201, json={"data": {"version": 1}})
+
+    client = _client_with(handler)
+    client.publish_integration_config("weichert", mapping={"a": "x"}, rules=[], corpus=[])
+    assert "requiredSecrets" not in captured["body"]
+    assert "requiredConfigs" not in captured["body"]
+
+
 def test_publish_integration_config_sends_inbound_block() -> None:
     captured: dict = {}
 

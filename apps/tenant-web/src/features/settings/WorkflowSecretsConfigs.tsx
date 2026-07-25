@@ -27,6 +27,7 @@ import {
   useDeleteConfig,
 } from '@/api/queries/workflow-secrets-configs'
 import { workflowRequirementsSummaryQueryOptions } from '@/api/queries/workflows'
+import { integrationRequirementsSummaryQueryOptions } from '@/api/queries/integrations'
 import {
   DEFAULT_GROUP,
   type WorkflowSecretMeta,
@@ -620,25 +621,30 @@ function ConfigsSection() {
 }
 
 /**
- * Banner summarizing which workflows declare secret/config keys the tenant has
- * not set yet. Silent when nothing is missing (or the summary can't be read).
+ * Banner summarizing which workflows AND integrations declare secret/config keys
+ * the tenant has not set yet. Silent when nothing is missing (or a summary can't
+ * be read — each query fails open independently).
  */
 function MissingRequirementsBanner() {
-  const { data } = useQuery({ ...workflowRequirementsSummaryQueryOptions, retry: false })
-  const needy = (data?.workflows ?? []).filter((w) => w.missingCount > 0)
-  if (needy.length === 0) return null
+  const { data: wf } = useQuery({ ...workflowRequirementsSummaryQueryOptions, retry: false })
+  const { data: intg } = useQuery({ ...integrationRequirementsSummaryQueryOptions, retry: false })
 
-  const total = data?.totalMissing ?? 0
+  const needyWorkflows = (wf?.workflows ?? []).filter((w) => w.missingCount > 0)
+  const needyIntegrations = (intg?.integrations ?? []).filter((i) => i.missingCount > 0)
+  const needyCount = needyWorkflows.length + needyIntegrations.length
+  if (needyCount === 0) return null
+
+  const total = (wf?.totalMissing ?? 0) + (intg?.totalMissing ?? 0)
   return (
     <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-4">
       <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
         <TriangleAlert className="h-4 w-4 text-amber-600" />
-        {total} key{total === 1 ? '' : 's'} still needed by {needy.length} workflow
-        {needy.length === 1 ? '' : 's'}
+        {total} key{total === 1 ? '' : 's'} still needed by {needyCount} workflow/integration
+        {needyCount === 1 ? '' : 's'}
       </h3>
       <ul className="mt-2 space-y-1">
-        {needy.map((w) => (
-          <li key={w.workflowId} className="text-sm">
+        {needyWorkflows.map((w) => (
+          <li key={`wf:${w.workflowId}`} className="text-sm">
             <Link
               to="/settings/workflows/$workflowId"
               params={{ workflowId: w.workflowId }}
@@ -646,7 +652,19 @@ function MissingRequirementsBanner() {
             >
               {w.name}
             </Link>{' '}
-            <span className="text-muted-foreground">— {w.missingCount} missing</span>
+            <span className="text-muted-foreground">— workflow, {w.missingCount} missing</span>
+          </li>
+        ))}
+        {needyIntegrations.map((i) => (
+          <li key={`intg:${i.integrationId}`} className="text-sm">
+            <Link
+              to="/integrations/$integrationId"
+              params={{ integrationId: i.integrationId }}
+              className="text-primary hover:underline"
+            >
+              {i.displayName}
+            </Link>{' '}
+            <span className="text-muted-foreground">— integration, {i.missingCount} missing</span>
           </li>
         ))}
       </ul>

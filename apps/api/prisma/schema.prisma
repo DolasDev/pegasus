@@ -1493,6 +1493,17 @@ model IntegrationConfig {
   /// synchronous partner ack. Null ⇒ a generic `{status:"accepted"}` ack.
   inbound Json?
 
+  /// Secret keys this integration reads at runtime (e.g. the delivery API key +
+  /// URL used by deliver-to-external), each `{ key, group?, description? }`.
+  /// Informational — the runtime read still resolves lazily against the
+  /// workflow-secrets-configs store — but it powers the tenant's present/missing
+  /// view. Null ⇒ none declared. Mirrors the workflow manifest's requiredSecrets.
+  requiredSecrets Json? @map("required_secrets")
+
+  /// Config keys this integration reads at runtime, same shape/semantics as
+  /// `requiredSecrets`. Null ⇒ none declared.
+  requiredConfigs Json? @map("required_configs")
+
   createdAt DateTime @default(now()) @map("created_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])

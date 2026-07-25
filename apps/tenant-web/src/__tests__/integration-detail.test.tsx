@@ -51,6 +51,10 @@ vi.mock('@/api/queries/integrations', () => ({
     queryKey: ['integrations', 'versions', id],
     queryFn: vi.fn(),
   }),
+  integrationRequirementsSummaryQueryOptions: {
+    queryKey: ['integrations', 'requirements-summary'],
+    queryFn: vi.fn(),
+  },
   useForkIntegrationConfig: () => mockFork,
   useValidateIntegrationConfig: () => mockValidate,
   usePublishIntegrationConfig: () => mockPublish,
@@ -58,17 +62,25 @@ vi.mock('@/api/queries/integrations', () => ({
 }))
 
 let configReturn: Record<string, unknown> = { data: undefined, isLoading: true, isError: false }
+let requirementsReturn: Record<string, unknown> = {
+  data: undefined,
+  isLoading: false,
+  isError: false,
+}
 
 vi.mock('@tanstack/react-query', async () => {
   const actual = await vi.importActual('@tanstack/react-query')
   return {
     ...actual,
-    // The versions query (ConfigVersionsCard) returns an empty list; every other
+    // The versions query (ConfigVersionsCard) returns an empty list; the
+    // requirements-summary query returns its controllable return; every other
     // query resolves to the controllable config return.
-    useQuery: (opts: { queryKey?: unknown[] }) =>
-      Array.isArray(opts?.queryKey) && opts.queryKey.includes('versions')
-        ? { data: [], isLoading: false, isError: false }
-        : configReturn,
+    useQuery: (opts: { queryKey?: unknown[] }) => {
+      const key = Array.isArray(opts?.queryKey) ? opts.queryKey : []
+      if (key.includes('versions')) return { data: [], isLoading: false, isError: false }
+      if (key.includes('requirements-summary')) return requirementsReturn
+      return configReturn
+    },
   }
 })
 
@@ -133,6 +145,56 @@ describe('IntegrationDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     configReturn = { data: undefined, isLoading: true, isError: false }
+    requirementsReturn = { data: undefined, isLoading: false, isError: false }
+  })
+
+  it('renders the required secrets/configs card with present/missing badges', () => {
+    configReturn = { data: config, isLoading: false, isError: false }
+    requirementsReturn = {
+      data: {
+        integrations: [
+          {
+            integrationId: 'demo_partner',
+            displayName: 'Demo Partner',
+            missingCount: 1,
+            requirements: [
+              {
+                kind: 'SECRET',
+                key: 'SEND_API_KEY',
+                group: 'demo',
+                description: null,
+                present: true,
+              },
+              {
+                kind: 'CONFIG',
+                key: 'SEND_URL',
+                group: 'global',
+                description: null,
+                present: false,
+              },
+            ],
+          },
+        ],
+        totalMissing: 1,
+      },
+      isLoading: false,
+      isError: false,
+    }
+    renderPage()
+    expect(screen.getByText('SEND_API_KEY')).toBeInTheDocument()
+    expect(screen.getByText('SEND_URL')).toBeInTheDocument()
+    expect(screen.getByText(/1 value not yet set/i)).toBeInTheDocument()
+  })
+
+  it('hides the required-values card when the integration declares none', () => {
+    configReturn = { data: config, isLoading: false, isError: false }
+    requirementsReturn = {
+      data: { integrations: [], totalMissing: 0 },
+      isLoading: false,
+      isError: false,
+    }
+    renderPage()
+    expect(screen.queryByText(/secrets & configuration/i)).not.toBeInTheDocument()
   })
 
   it('shows a Fork button on a GLOBAL (platform) config and forks on click', () => {

@@ -71,6 +71,8 @@ class _Surface:
     external_shape: Any | None = None
     external_mapping: Any | None = None
     inbound: Any | None = None
+    required_secrets: Any | None = None
+    required_configs: Any | None = None
 
 integration_config_app = typer.Typer(
     name="integration-config",
@@ -106,9 +108,12 @@ def _load_surface(directory: Path) -> _Surface:
     """Read the editable surface (required) + optional floor/overlay files.
 
     ``mapping.json`` / ``rules.json`` / ``corpus.json`` are required. ``meta.json``
-    (``{floor, displayName}``) and ``external-shape.json`` / ``external-mapping.json``
-    are optional (sdk-feedback 0019 + 0020) — absent ⇒ the built-in floor / identity
-    external, so a pre-0020 directory publishes byte-identically.
+    (``{floor, displayName, requiredSecrets?, requiredConfigs?}``) and
+    ``external-shape.json`` / ``external-mapping.json`` are optional (sdk-feedback
+    0019 + 0020) — absent ⇒ the built-in floor / identity external, so a pre-0020
+    directory publishes byte-identically. ``requiredSecrets``/``requiredConfigs``
+    (each a list of ``{key, group?, description?}``) declare the keys the
+    integration reads at runtime, for the tenant's present/missing view.
     """
     meta = _load_optional_json(directory, META_FILE)
     meta_dict = meta if isinstance(meta, dict) else {}
@@ -121,6 +126,8 @@ def _load_surface(directory: Path) -> _Surface:
         external_shape=_load_optional_json(directory, EXTERNAL_SHAPE_FILE),
         external_mapping=_load_optional_json(directory, EXTERNAL_MAPPING_FILE),
         inbound=_load_optional_json(directory, INBOUND_FILE),
+        required_secrets=meta_dict.get("requiredSecrets"),
+        required_configs=meta_dict.get("requiredConfigs"),
     )
 
 
@@ -187,6 +194,8 @@ def validate_command(
             external_shape=surface.external_shape,
             external_mapping=surface.external_mapping,
             inbound=surface.inbound,
+            required_secrets=surface.required_secrets,
+            required_configs=surface.required_configs,
         )
     except PegasusApiError as exc:
         typer.secho(f"validate failed: {exc}", fg=typer.colors.RED, err=True)
@@ -219,6 +228,8 @@ def publish_command(
             external_shape=surface.external_shape,
             external_mapping=surface.external_mapping,
             inbound=surface.inbound,
+            required_secrets=surface.required_secrets,
+            required_configs=surface.required_configs,
         )
     except PegasusApiError as exc:
         # A gate failure (422) carries the report; surface it.
@@ -270,15 +281,20 @@ def pull_command(
         )
         written.append(filename)
 
-    # Floor/overlay round-trip (0019 + 0020): preserve floor + displayName and the
-    # partner external shape/mapping so a subsequent publish does not strip them.
+    # Floor/overlay round-trip (0019 + 0020): preserve floor + displayName, the
+    # declared required secret/config keys, and the partner external shape/mapping
+    # so a subsequent publish does not strip them.
     floor = config.get("floor")
     display_name = config.get("displayName")
-    if floor is not None or display_name is not None:
-        (directory / META_FILE).write_text(
-            json.dumps({"floor": floor, "displayName": display_name}, indent=2, sort_keys=True)
-            + "\n"
-        )
+    required_secrets = config.get("requiredSecrets")
+    required_configs = config.get("requiredConfigs")
+    meta = {"floor": floor, "displayName": display_name}
+    if required_secrets is not None:
+        meta["requiredSecrets"] = required_secrets
+    if required_configs is not None:
+        meta["requiredConfigs"] = required_configs
+    if any(v is not None for v in meta.values()):
+        (directory / META_FILE).write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n")
         written.append(META_FILE)
     for filename, key in (
         (EXTERNAL_SHAPE_FILE, "externalShape"),

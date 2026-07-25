@@ -2,6 +2,7 @@ import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query
 import {
   listIntegrations,
   getIntegrationConfig,
+  getIntegrationRequirementsSummary,
   listIntegrationConfigVersions,
   forkIntegrationConfig,
   validateIntegrationConfig,
@@ -18,6 +19,7 @@ export const integrationKeys = {
   list: () => [...integrationKeys.all, 'list'] as const,
   config: (id: string) => [...integrationKeys.all, 'config', id] as const,
   versions: (id: string) => [...integrationKeys.all, 'versions', id] as const,
+  requirementsSummary: () => [...integrationKeys.all, 'requirements-summary'] as const,
 }
 
 // ---------------------------------------------------------------------------
@@ -26,6 +28,16 @@ export const integrationKeys = {
 export const integrationsQueryOptions = queryOptions({
   queryKey: integrationKeys.list(),
   queryFn: () => listIntegrations(),
+})
+
+/**
+ * Resolved secret/config requirements for every integration (present/missing
+ * against the tenant's store). Powers the integration detail badges and the
+ * Configs-page "keys still needed" summary.
+ */
+export const integrationRequirementsSummaryQueryOptions = queryOptions({
+  queryKey: integrationKeys.requirementsSummary(),
+  queryFn: () => getIntegrationRequirementsSummary(),
 })
 
 export const integrationConfigQueryOptions = (integrationId: string) =>

@@ -196,7 +196,45 @@ def test_pull_then_publish_round_trips_overlay_fields(tmp_path: Path) -> None:
         "external_shape": {"type": "object", "properties": {"ref": {"type": "string"}}},
         "external_mapping": {"ref": "serviceOrderNumber"},
         "inbound": None,
+        "required_secrets": None,
+        "required_configs": None,
     }
+
+
+def test_pull_then_publish_round_trips_required_keys(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _cfg(self, integration_id):
+        return {
+            "version": 3,
+            "visibility": "GLOBAL",
+            "mapping": {"a": "x"},
+            "rules": [{"id": "r"}],
+            "corpus": [{"name": "c"}],
+            "requiredSecrets": [{"key": "SEND_API_KEY", "group": "sirva"}],
+            "requiredConfigs": [{"key": "SEND_URL"}],
+        }
+
+    monkeypatch.setattr(_FakeClient, "get_integration_config", _cfg)
+    runner.invoke(
+        ic.integration_config_app,
+        ["pull", "sirva_ade", "--dir", str(tmp_path), "--token", _TOKEN],
+    )
+    # The declared keys land in meta.json...
+    meta = json.loads((tmp_path / "meta.json").read_text())
+    assert meta["requiredSecrets"] == [{"key": "SEND_API_KEY", "group": "sirva"}]
+    assert meta["requiredConfigs"] == [{"key": "SEND_URL"}]
+
+    result = runner.invoke(
+        ic.integration_config_app,
+        ["publish", "sirva_ade", "--dir", str(tmp_path), "--token", _TOKEN],
+    )
+    assert result.exit_code == 0, result.output
+    # ...and survive to the publish call.
+    assert _FakeClient.last["publish_overlay"]["required_secrets"] == [
+        {"key": "SEND_API_KEY", "group": "sirva"}
+    ]
+    assert _FakeClient.last["publish_overlay"]["required_configs"] == [{"key": "SEND_URL"}]
 
 
 def test_publish_without_overlay_files_sends_none(tmp_path: Path) -> None:
@@ -213,6 +251,8 @@ def test_publish_without_overlay_files_sends_none(tmp_path: Path) -> None:
         "external_shape": None,
         "external_mapping": None,
         "inbound": None,
+        "required_secrets": None,
+        "required_configs": None,
     }
 
 

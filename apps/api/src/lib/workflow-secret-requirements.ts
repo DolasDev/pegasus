@@ -11,8 +11,36 @@
 // UI's "which keys are set / missing" view.
 // ---------------------------------------------------------------------------
 
+import { z } from 'zod'
 import type { PrismaClient } from '@prisma/client'
 import { createWorkflowSecretConfigRepository } from '../repositories/workflow-secret-config.repository'
+
+// Key/group rules for a declared secret/config requirement — mirror the store's
+// KEY_RE / GROUP_RE in handlers/workflow-secrets-configs.ts so a declaration can
+// only name keys the store could actually hold.
+export const REQUIREMENT_KEY_RE = /^[a-zA-Z_][a-zA-Z0-9_]{0,127}$/
+export const REQUIREMENT_GROUP_RE = /^[a-zA-Z0-9_-]{1,64}$/
+
+/**
+ * Zod schema for one declared secret/config requirement `{ key, group?,
+ * description? }`. Shared by the workflow manifest and the integration config so
+ * both validate identically. `group` is left optional (no default) — the
+ * resolver treats a missing group as "global".
+ */
+export const RequirementSchema = z
+  .object({
+    key: z.string().regex(REQUIREMENT_KEY_RE, {
+      message: 'key must start with a letter or _ and use only letters, digits, and _ (max 128)',
+    }),
+    group: z
+      .string()
+      .regex(REQUIREMENT_GROUP_RE, {
+        message: 'group must use only letters, digits, - and _ (max 64)',
+      })
+      .optional(),
+    description: z.string().max(500).optional(),
+  })
+  .strict()
 
 export type RequirementKind = 'SECRET' | 'CONFIG'
 
