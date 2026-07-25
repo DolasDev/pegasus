@@ -191,7 +191,11 @@ authHandler.post(
           providers: mapProviders(tu.tenant.ssoProviders),
         })),
       })
-    } catch {
+    } catch (err) {
+      // Never swallow: a 500 here (e.g. a DB connectivity problem in one
+      // environment) is otherwise invisible and surfaces to the driver as a
+      // bare "Unable to look up account" with nothing to diagnose it by.
+      logger.error('resolve-tenants: unhandled error', { error: String(err) })
       return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
     }
   },
@@ -275,7 +279,8 @@ authHandler.post(
           providers: mapProviders(tenant.ssoProviders),
         },
       })
-    } catch {
+    } catch (err) {
+      logger.error('select-tenant: unhandled error', { error: String(err) })
       return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500)
     }
   },

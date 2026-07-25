@@ -221,6 +221,25 @@ describe('createAuthService', () => {
         expect((err as AuthError).code).toBe('ResolveTenantsFailed')
       }
     })
+
+    it('carries the HTTP status on the thrown AuthError', async () => {
+      ;(global.fetch as jest.Mock).mockImplementationOnce(() =>
+        Promise.resolve(new Response('Internal server error', { status: 500 })),
+      )
+
+      const { resolveTenants } = createAuthService({
+        config: mockConfig,
+        cognitoService: mockCognitoService,
+        oauthService: mockOAuthService,
+      })
+
+      try {
+        await resolveTenants('a@b.com')
+        throw new Error('expected resolveTenants to throw')
+      } catch (err) {
+        expect((err as AuthError).status).toBe(500)
+      }
+    })
   })
 
   describe('selectTenant', () => {
