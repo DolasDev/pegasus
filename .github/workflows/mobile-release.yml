@@ -39,13 +39,15 @@ on:
         default: android
         options: [android, ios, all]
       submit:
-        # Defaults OFF: build-only until Google grants production access. Opt in
-        # per-release by ticking this. (When production access lands, this can go
-        # back to default true alongside flipping the eas.json track to production.)
+        # Defaults ON: Google production access is granted and the first AAB is
+        # uploaded, so the Play Developer API accepts submits. Auto-submit targets
+        # the Closed testing (`alpha`) track (eas.json submit.production.android);
+        # a validated build is promoted to Production manually in the Play Console
+        # (staged rollout recommended). Untick for a build-only release.
         description: 'Android: auto-submit to Google Play (Closed testing) after the build'
         type: boolean
         required: false
-        default: false
+        default: true
 
 concurrency:
   group: mobile-release-${{ github.ref }}
