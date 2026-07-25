@@ -13,6 +13,7 @@ import { useAuth } from '../../src/context/AuthContext'
 import { AuthError, type TenantProvider } from '../../src/auth/types'
 import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
 import { getAuthService } from '../../src/auth/authServiceInstance'
+import { getMobileConfig } from '../../src/config'
 
 type LoginStep = 'email' | 'password' | 'providers'
 
@@ -110,8 +111,26 @@ export default function LoginScreen() {
           tenantsJson: JSON.stringify(tenants),
         },
       })
-    } catch {
-      setEmailError('Unable to look up account. Please try again.')
+    } catch (error) {
+      // A non-2xx response carries a status; a network reject does not. Surface
+      // which host we tried to reach so a misrouted release build (e.g. a dev
+      // API URL baked into a production build) is obvious in logs instead of
+      // hiding behind one generic message.
+      const status = error instanceof AuthError ? error.status : undefined
+      let host = 'unknown'
+      try {
+        host = new URL(getMobileConfig().apiUrl).host
+      } catch {
+        // apiUrl is validated at boot; ignore any late parse failure here.
+      }
+      console.warn(
+        `resolve-tenants failed against ${host} (${status ? `HTTP ${status}` : 'network error'})`,
+      )
+      setEmailError(
+        status && status >= 500
+          ? 'Server error looking up your account. Please try again shortly.'
+          : 'Unable to look up account. Check your connection and try again.',
+      )
       setIsLoading(false)
     }
   }

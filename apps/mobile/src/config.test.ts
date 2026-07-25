@@ -78,6 +78,46 @@ describe('getMobileConfig', () => {
     expect(() => getMobileConfig()).toThrow(ConfigError)
   })
 
+  it('throws ConfigError(INVALID_API_URL) when EXPO_PUBLIC_API_URL is not a URL', () => {
+    process.env.EXPO_PUBLIC_API_URL = 'not-a-url'
+
+    expect(() => getMobileConfig()).toThrow(ConfigError)
+    try {
+      getMobileConfig()
+    } catch (err) {
+      expect((err as ConfigError).code).toBe('INVALID_API_URL')
+    }
+  })
+
+  it('throws ConfigError(INVALID_API_URL) on a double-scheme URL', () => {
+    process.env.EXPO_PUBLIC_API_URL = 'https://https://api.pegasus.dolas.dev'
+
+    try {
+      getMobileConfig()
+      throw new Error('expected getMobileConfig to throw')
+    } catch (err) {
+      expect(err).toBeInstanceOf(ConfigError)
+      expect((err as ConfigError).code).toBe('INVALID_API_URL')
+    }
+  })
+
+  it('throws ConfigError(INVALID_API_URL) for a non-http(s) scheme', () => {
+    process.env.EXPO_PUBLIC_API_URL = 'ftp://api.pegasus.dolas.dev'
+
+    try {
+      getMobileConfig()
+      throw new Error('expected getMobileConfig to throw')
+    } catch (err) {
+      expect((err as ConfigError).code).toBe('INVALID_API_URL')
+    }
+  })
+
+  it('accepts a well-formed https API URL', () => {
+    process.env.EXPO_PUBLIC_API_URL = 'https://api.pegasus.dolas.dev'
+
+    expect(getMobileConfig().apiUrl).toBe('https://api.pegasus.dolas.dev')
+  })
+
   it('returns domain as null when EXPO_PUBLIC_COGNITO_DOMAIN is empty', () => {
     process.env.EXPO_PUBLIC_COGNITO_DOMAIN = ''
 

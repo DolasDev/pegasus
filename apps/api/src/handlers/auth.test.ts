@@ -10,6 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { authHandler } from './auth'
+import { logger } from '../lib/logger'
 
 // ---------------------------------------------------------------------------
 // db mock
@@ -295,12 +296,20 @@ describe('POST /api/auth/resolve-tenants', () => {
     expect((await json(res)).code).toBe('VALIDATION_ERROR')
   })
 
-  it('returns 500 on DB error', async () => {
+  it('returns 500 on DB error and logs the underlying error', async () => {
+    const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {})
     mockTenantUserFindMany.mockRejectedValue(new Error('DB connection failed'))
 
     const res = await authHandler.request('/resolve-tenants', post({ email: 'user@acme.com' }))
     expect(res.status).toBe(500)
     expect((await json(res)).code).toBe('INTERNAL_ERROR')
+    // The error must not be swallowed — it's the only breadcrumb for an
+    // environment-specific 500 that otherwise reads as "Unable to look up account".
+    expect(errorSpy).toHaveBeenCalledWith(
+      'resolve-tenants: unhandled error',
+      expect.objectContaining({ error: expect.stringContaining('DB connection failed') }),
+    )
+    errorSpy.mockRestore()
   })
 })
 
@@ -411,7 +420,8 @@ describe('POST /api/auth/select-tenant', () => {
     expect((await json(res)).code).toBe('VALIDATION_ERROR')
   })
 
-  it('returns 500 on DB error', async () => {
+  it('returns 500 on DB error and logs the underlying error', async () => {
+    const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => {})
     mockTenantUserFindFirst.mockRejectedValue(new Error('timeout'))
 
     const res = await authHandler.request(
@@ -420,6 +430,11 @@ describe('POST /api/auth/select-tenant', () => {
     )
     expect(res.status).toBe(500)
     expect((await json(res)).code).toBe('INTERNAL_ERROR')
+    expect(errorSpy).toHaveBeenCalledWith(
+      'select-tenant: unhandled error',
+      expect.objectContaining({ error: expect.stringContaining('timeout') }),
+    )
+    errorSpy.mockRestore()
   })
 
   it('accepts PENDING TenantUser status (invited, not yet logged in)', async () => {

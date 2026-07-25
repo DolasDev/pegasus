@@ -88,7 +88,11 @@ export function createAuthService({ config, cognitoService, oauthService }: Auth
       body: JSON.stringify({ email: normalizeEmail(email) }),
     })
     if (!res.ok) {
-      throw new AuthError('ResolveTenantsFailed', `resolve-tenants returned ${res.status}`)
+      throw new AuthError(
+        'ResolveTenantsFailed',
+        `resolve-tenants returned ${res.status}`,
+        res.status,
+      )
     }
     const body = (await res.json()) as { data: TenantResolution[] }
     return body.data

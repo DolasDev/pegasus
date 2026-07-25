@@ -148,6 +148,42 @@ describe('LoginScreen', () => {
       expect(routerPush).not.toHaveBeenCalled()
     })
 
+    it('shows a server-error message when resolve-tenants returns 5xx', async () => {
+      jest.spyOn(console, 'warn').mockImplementation(() => {})
+      mockResolveTenants.mockRejectedValueOnce(
+        new AuthError('ResolveTenantsFailed', 'resolve-tenants returned 500', 500),
+      )
+
+      const { getByText, getByPlaceholderText } = render(<LoginScreen />)
+      fireEvent.changeText(getByPlaceholderText('driver@company.com'), 'driver@example.com')
+
+      await act(async () => {
+        fireEvent.press(getByText('FIND MY COMPANY'))
+      })
+
+      expect(
+        getByText('Server error looking up your account. Please try again shortly.'),
+      ).toBeTruthy()
+      expect(routerPush).not.toHaveBeenCalled()
+    })
+
+    it('shows a connectivity message when resolve-tenants rejects without a status', async () => {
+      jest.spyOn(console, 'warn').mockImplementation(() => {})
+      mockResolveTenants.mockRejectedValueOnce(new Error('Network request failed'))
+
+      const { getByText, getByPlaceholderText } = render(<LoginScreen />)
+      fireEvent.changeText(getByPlaceholderText('driver@company.com'), 'driver@example.com')
+
+      await act(async () => {
+        fireEvent.press(getByText('FIND MY COMPANY'))
+      })
+
+      expect(
+        getByText('Unable to look up account. Check your connection and try again.'),
+      ).toBeTruthy()
+      expect(routerPush).not.toHaveBeenCalled()
+    })
+
     it('does not navigate when email field is empty', async () => {
       const { getByText } = render(<LoginScreen />)
 

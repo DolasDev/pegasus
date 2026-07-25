@@ -14,6 +14,8 @@ export class AuthError extends Error {
   constructor(
     public readonly code: string,
     message: string,
+    /** HTTP status when the failure came from a non-2xx API response. */
+    public readonly status?: number,
   ) {
     super(message)
     this.name = code
