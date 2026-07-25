@@ -6,6 +6,39 @@ import { apiFetch, apiFetchPaginated } from './client'
 
 export type WorkflowVisibility = 'GLOBAL' | 'TENANT'
 
+/** A secret/config key a workflow manifest declares it reads at runtime. */
+export interface WorkflowRequirementDecl {
+  key: string
+  group?: string
+  description?: string
+}
+
+/** A declared requirement resolved against the tenant's store (presence only). */
+export interface ResolvedWorkflowRequirement {
+  kind: 'SECRET' | 'CONFIG'
+  key: string
+  group: string
+  description: string | null
+  /** Whether a matching entry exists in the tenant's secret/config store. */
+  present: boolean
+}
+
+/** One workflow's resolved requirements in the requirements summary. */
+export interface WorkflowRequirements {
+  workflowId: string
+  name: string
+  version: string
+  visibility: WorkflowVisibility
+  requirements: ResolvedWorkflowRequirement[]
+  missingCount: number
+}
+
+/** Response of GET /api/v1/workflows/requirements-summary. */
+export interface WorkflowRequirementsSummary {
+  workflows: WorkflowRequirements[]
+  totalMissing: number
+}
+
 export interface WorkflowManifest {
   name: string
   version: string
@@ -17,6 +50,14 @@ export interface WorkflowManifest {
    * uploaded after Unit 10; absent in earlier rows.
    */
   requiredActions?: string[]
+  /**
+   * Secret/config keys the manifest declared it reads at runtime. Author-declared
+   * and informational (the runtime read still resolves lazily). Absent on rows
+   * uploaded before the feature. See {@link getRequirementsSummary} for the
+   * resolved present/missing state.
+   */
+  requiredSecrets?: WorkflowRequirementDecl[]
+  requiredConfigs?: WorkflowRequirementDecl[]
   /**
    * Per-execution Temporal workflow timeout the manifest declared (seconds).
    * Absent means the platform default (900 s). Display-only.
@@ -267,6 +308,14 @@ export async function listWorkflows(): Promise<Workflow[]> {
 
 export async function getWorkflow(id: string): Promise<Workflow> {
   return apiFetch<Workflow>(`/api/v1/workflows/${id}`)
+}
+
+/**
+ * Resolved secret/config requirements for every visible workflow, each key
+ * tagged present/missing against the tenant's store (presence only — no values).
+ */
+export async function getRequirementsSummary(): Promise<WorkflowRequirementsSummary> {
+  return apiFetch<WorkflowRequirementsSummary>('/api/v1/workflows/requirements-summary')
 }
 
 export async function getWorkflowDownloadUrl(id: string): Promise<WorkflowDownload> {

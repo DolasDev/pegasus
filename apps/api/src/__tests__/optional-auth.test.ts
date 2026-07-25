@@ -19,6 +19,11 @@ vi.mock('../db', () => ({
   db: {
     tenant: { findUnique: vi.fn() },
     tenantUser: { findFirst: vi.fn() },
+    // The SKIP_AUTH path injects this base client as the request `db`, and the
+    // /customers route below reads through it. Stub the read so the request
+    // resolves cleanly (200) instead of throwing deep in the handler and leaving
+    // a rejected promise that pollutes the shared worker for later suites.
+    customer: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(0) },
     $queryRaw: vi.fn(),
     $disconnect: vi.fn(),
   },

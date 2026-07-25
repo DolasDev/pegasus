@@ -118,6 +118,12 @@ vi.mock('../repositories/tenant-event-type.repository', () => ({
   createTenantEventTypeRepository: vi.fn(() => mockEventTypeRepo),
 }))
 
+// The requirements-summary endpoint reads the secret/config store via this repo.
+const mockSecretConfigRepo = vi.hoisted(() => ({ listByKind: vi.fn() }))
+vi.mock('../repositories/workflow-secret-config.repository', () => ({
+  createWorkflowSecretConfigRepository: vi.fn(() => mockSecretConfigRepo),
+}))
+
 // Keep the real module (notably summarizeWorkflowHistory, used by the history
 // endpoint, and temporalTaskQueue) and override only the client constructor so
 // no real Temporal connection is opened.
@@ -315,6 +321,9 @@ describe('workflows handler', () => {
     // Custom event-type registry: default to "not registered" so a non-built-in
     // eventType is rejected unless a test opts in by returning an enabled row.
     mockEventTypeRepo.findByName.mockResolvedValue(null)
+    // Secret/config store defaults to empty so requirements resolve as missing
+    // unless a test opts in.
+    mockSecretConfigRepo.listByKind.mockResolvedValue([])
   })
 
   // ── RBAC ──────────────────────────────────────────────────────────────────
@@ -421,6 +430,85 @@ describe('workflows handler', () => {
     })
   })
 
+  // ── GET /requirements-summary ─────────────────────────────────────────────
+
+  describe('GET /requirements-summary', () => {
+    it('tags each declared key present/missing and totals the gaps', async () => {
+      mockRepo.listForTenant.mockResolvedValue([
+        {
+          ...mockRow,
+          id: 'wf-a',
+          name: 'a',
+          manifest: {
+            ...validManifest,
+            requiredSecrets: [
+              { key: 'STRIPE_API_KEY', group: 'billing' },
+              { key: 'MISSING_SECRET' },
+            ],
+            requiredConfigs: [{ key: 'DEFAULT_REGION' }],
+          },
+        },
+        { ...mockRow, id: 'wf-b', name: 'b', manifest: validManifest },
+      ])
+      mockSecretConfigRepo.listByKind.mockImplementation((kind: string) =>
+        kind === 'SECRET'
+          ? Promise.resolve([{ group: 'billing', key: 'STRIPE_API_KEY' }])
+          : Promise.resolve([{ group: 'global', key: 'DEFAULT_REGION' }]),
+      )
+
+      const res = await buildApp(['viewer']).request('/requirements-summary')
+      expect(res.status).toBe(200)
+      const data = (await json(res)).data as {
+        totalMissing: number
+        workflows: Array<{
+          workflowId: string
+          missingCount: number
+          requirements: Array<Record<string, unknown>>
+        }>
+      }
+      expect(data.totalMissing).toBe(1)
+      const a = data.workflows.find((w) => w.workflowId === 'wf-a')!
+      expect(a.missingCount).toBe(1)
+      expect(a.requirements).toEqual([
+        {
+          kind: 'SECRET',
+          key: 'STRIPE_API_KEY',
+          group: 'billing',
+          description: null,
+          present: true,
+        },
+        {
+          kind: 'SECRET',
+          key: 'MISSING_SECRET',
+          group: 'global',
+          description: null,
+          present: false,
+        },
+        {
+          kind: 'CONFIG',
+          key: 'DEFAULT_REGION',
+          group: 'global',
+          description: null,
+          present: true,
+        },
+      ])
+      const b = data.workflows.find((w) => w.workflowId === 'wf-b')!
+      expect(b.requirements).toEqual([])
+    })
+
+    it('is the literal path, not captured by GET /:id', async () => {
+      mockRepo.listForTenant.mockResolvedValue([])
+      const res = await buildApp(['viewer']).request('/requirements-summary')
+      expect(res.status).toBe(200)
+      expect(mockRepo.findByIdForTenant).not.toHaveBeenCalled()
+    })
+
+    it('returns 403 without the ReadWorkflow permission', async () => {
+      const res = await buildApp([]).request('/requirements-summary')
+      expect(res.status).toBe(403)
+    })
+  })
+
   // ── POST / (finalize) ─────────────────────────────────────────────────────
 
   describe('POST /', () => {
@@ -462,6 +550,43 @@ describe('workflows handler', () => {
           workflowId,
           manifest: { ...validManifest, requiredActions: ['ReadQuote', 'NotARealAction'] },
         }),
+      )
+      expect(res.status).toBe(400)
+      expect((await json(res)).code).toBe('VALIDATION_ERROR')
+    })
+
+    it('accepts and persists requiredSecrets/requiredConfigs (group defaults to "global")', async () => {
+      mockTenantFindUnique.mockResolvedValue({ isPlatformTenant: false })
+      mockRepo.create.mockResolvedValue(mockRow)
+      const res = await buildApp().request(
+        '/',
+        post({
+          workflowId,
+          manifest: {
+            ...validManifest,
+            requiredSecrets: [{ key: 'STRIPE_API_KEY', group: 'billing' }, { key: 'SENDGRID_KEY' }],
+            requiredConfigs: [{ key: 'DEFAULT_REGION' }],
+          },
+        }),
+      )
+      expect(res.status).toBe(201)
+      expect(mockRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          manifest: expect.objectContaining({
+            requiredSecrets: [
+              { key: 'STRIPE_API_KEY', group: 'billing' },
+              { key: 'SENDGRID_KEY', group: 'global' },
+            ],
+            requiredConfigs: [{ key: 'DEFAULT_REGION', group: 'global' }],
+          }),
+        }),
+      )
+    })
+
+    it('returns 400 VALIDATION_ERROR on a requiredSecrets entry with a malformed key', async () => {
+      const res = await buildApp().request(
+        '/',
+        post({ workflowId, manifest: { ...validManifest, requiredSecrets: [{ key: '1bad' }] } }),
       )
       expect(res.status).toBe(400)
       expect((await json(res)).code).toBe('VALIDATION_ERROR')

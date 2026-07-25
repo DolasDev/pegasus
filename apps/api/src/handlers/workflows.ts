@@ -42,6 +42,7 @@ import {
 import type { WorkflowExecutionRow } from '../repositories/workflow-execution.repository'
 import { createWorkflowTriggerRepository } from '../repositories/workflow-trigger.repository'
 import { createTenantEventTypeRepository } from '../repositories/tenant-event-type.repository'
+import { loadPresenceSets, resolveAgainst, countMissing } from '../lib/workflow-secret-requirements'
 import { validateFilterExpr } from '../lib/event-filter'
 import type { WorkflowTriggerRow } from '../repositories/workflow-trigger.repository'
 import type { AppEnv } from '../types'
@@ -80,6 +81,31 @@ const MAX_DIAGRAM_CHARS = 50_000
 
 /** Every valid action id in the Cedar action catalog. */
 const VALID_ACTION_IDS = new Set(ALL_ACTIONS.map((a) => a.id))
+
+// Key/group rules for a declared secret/config requirement — mirror the store's
+// KEY_RE / GROUP_RE in handlers/workflow-secrets-configs.ts so a manifest can
+// only name keys the store could actually hold.
+const REQUIREMENT_KEY_RE = /^[a-zA-Z_][a-zA-Z0-9_]{0,127}$/
+const REQUIREMENT_GROUP_RE = /^[a-zA-Z0-9_-]{1,64}$/
+
+// One declared secret/config the workflow reads at runtime. `group` defaults to
+// "global" — the same default the store uses when an entry is created without
+// one, so a requirement and its stored entry resolve to the same namespace.
+const RequirementSchema = z
+  .object({
+    key: z.string().regex(REQUIREMENT_KEY_RE, {
+      message: 'key must start with a letter or _ and use only letters, digits, and _ (max 128)',
+    }),
+    group: z
+      .string()
+      .regex(REQUIREMENT_GROUP_RE, {
+        message: 'group must use only letters, digits, - and _ (max 64)',
+      })
+      .optional()
+      .default('global'),
+    description: z.string().max(500).optional(),
+  })
+  .strict()
 
 const ManifestSchema = z.object({
   name: z.string().regex(NAME_REGEX, {
@@ -120,6 +146,14 @@ const ManifestSchema = z.object({
         }
       }
     }),
+  // Secret/config keys the workflow reads at runtime, declared so the tenant can
+  // see up front which values it must provide and whether they are set. Purely
+  // informational for the platform (the runtime read still resolves lazily via
+  // get_secret/get_config, 404 if absent) — this drives the tenant UI's
+  // present/missing view, it does not gate execution. Author-declared, so it is
+  // shown as author-declared (not a verified fact). Absent → [].
+  requiredSecrets: z.array(RequirementSchema).optional().default([]),
+  requiredConfigs: z.array(RequirementSchema).optional().default([]),
   // Per-execution Temporal workflow timeout in seconds (Phase 3 Unit 10).
   // Optional; when present the runner honors it as the maximum wall-clock
   // budget for the execution (default: 900 s = 15 min). The manifest may
@@ -786,6 +820,44 @@ workflowsHandler.get('/', requirePermission(Actions.ReadWorkflow), async (c) => 
   const rows = await repo.listForTenant(tenantId)
   return c.json({ data: rows.map(toResponse), meta: { count: rows.length } })
 })
+
+// ---------------------------------------------------------------------------
+// GET /requirements-summary
+//
+// For every workflow visible to the caller (own tenant ∪ GLOBAL), resolve the
+// secret/config keys its manifest declares against the tenant's store and tag
+// each present/missing. Presence only — never returns values. Powers the
+// tenant UI's per-workflow badges and the Configs-page "keys still needed"
+// summary from a single request. Registered BEFORE `/:id` so the literal path
+// is not captured by the `:id` param.
+// ---------------------------------------------------------------------------
+workflowsHandler.get(
+  '/requirements-summary',
+  requirePermission(Actions.ReadWorkflow),
+  async (c) => {
+    const tenantId = c.get('tenantId')
+    const db = c.get('db')
+    const repo = createWorkflowRepository(db)
+    const [rows, sets] = await Promise.all([repo.listForTenant(tenantId), loadPresenceSets(db)])
+
+    let totalMissing = 0
+    const workflows = rows.map((row) => {
+      const requirements = resolveAgainst(row.manifest, sets)
+      const missingCount = countMissing(requirements)
+      totalMissing += missingCount
+      return {
+        workflowId: row.id,
+        name: row.name,
+        version: row.version,
+        visibility: row.visibility,
+        requirements,
+        missingCount,
+      }
+    })
+
+    return c.json({ data: { workflows, totalMissing } })
+  },
+)
 
 // ---------------------------------------------------------------------------
 // GET /:id

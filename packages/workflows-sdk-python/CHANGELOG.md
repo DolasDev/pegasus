@@ -3,6 +3,25 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.32.0
+
+### Added — declare a workflow's required secrets/configs
+
+A workflow manifest can now declare the specific secret/config **keys** it reads
+at runtime, via `required_secrets` / `required_configs` in `pegasus-workflows.toml`
+(each a table with a required `key`, optional `group` defaulting to `"global"`,
+and optional `description`). This is informational — the runtime read still
+resolves lazily via `get_secret`/`get_config` — but it lets the tenant see up
+front which values a workflow needs and whether they are set, surfaced as badges
+on the workflow's detail page and a "keys still needed" summary in
+Settings → Developer → Configs.
+
+- New `Requirement` dataclass and `Manifest.required_secrets` / `required_configs`
+  (validated in lockstep with the server's `RequirementSchema`).
+- `Manifest.to_api_manifest()` emits `requiredSecrets` / `requiredConfigs`.
+- Resolved present/missing state for all visible workflows is served at
+  `GET /api/v1/workflows/requirements-summary` (presence only — never values).
+
 ## 0.31.0
 
 ### Added — feedback (magic-link surveys)

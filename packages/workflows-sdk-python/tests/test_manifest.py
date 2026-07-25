@@ -16,6 +16,7 @@ from pegasus_workflows.manifest import (
     NAME_REGEX,
     VERSION_REGEX,
     ManifestError,
+    Requirement,
     load_manifest,
     validate_manifest_fields,
 )
@@ -83,6 +84,8 @@ def test_to_api_manifest_shape(workflow_project: Path) -> None:
         "version": "0.1.0",
         "entryPoints": ["demo.workflow:HelloWorkflow"],
         "requiredActions": [],
+        "requiredSecrets": [],
+        "requiredConfigs": [],
         "description": "A demo workflow.",
     }
 
@@ -157,6 +160,78 @@ def test_load_manifest_rejects_non_string_required_actions(tmp_path: Path) -> No
 def test_validate_manifest_fields_rejects_non_list_required_actions() -> None:
     with pytest.raises(ManifestError, match="required_actions must be a list"):
         validate_manifest_fields("demo", "0.1.0", ["a:B"], None, "ReadQuote")
+
+
+def test_load_manifest_parses_required_secrets_and_configs(tmp_path: Path) -> None:
+    (tmp_path / "pegasus-workflows.toml").write_text(
+        textwrap.dedent(
+            """
+            [[workflow]]
+            name = "demo"
+            version = "0.1.0"
+            entry_points = ["demo.workflow:Hello"]
+            required_secrets = [
+              { key = "STRIPE_API_KEY", group = "billing", description = "Stripe" },
+              { key = "SENDGRID_KEY" },
+            ]
+            required_configs = [{ key = "DEFAULT_REGION" }]
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    m = load_manifest(tmp_path)[0]
+    assert m.required_secrets == [
+        Requirement(key="STRIPE_API_KEY", group="billing", description="Stripe"),
+        Requirement(key="SENDGRID_KEY", group="global", description=None),
+    ]
+    assert m.required_configs == [Requirement(key="DEFAULT_REGION", group="global")]
+    api = m.to_api_manifest()
+    assert api["requiredSecrets"] == [
+        {"key": "STRIPE_API_KEY", "group": "billing", "description": "Stripe"},
+        {"key": "SENDGRID_KEY", "group": "global"},
+    ]
+    assert api["requiredConfigs"] == [{"key": "DEFAULT_REGION", "group": "global"}]
+
+
+def test_load_manifest_rejects_malformed_requirement_key(tmp_path: Path) -> None:
+    (tmp_path / "pegasus-workflows.toml").write_text(
+        textwrap.dedent(
+            """
+            [[workflow]]
+            name = "demo"
+            version = "0.1.0"
+            entry_points = ["demo.workflow:Hello"]
+            required_secrets = [{ key = "1bad" }]
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ManifestError, match="required_secrets key"):
+        load_manifest(tmp_path)
+
+
+def test_load_manifest_rejects_malformed_requirement_group(tmp_path: Path) -> None:
+    (tmp_path / "pegasus-workflows.toml").write_text(
+        textwrap.dedent(
+            """
+            [[workflow]]
+            name = "demo"
+            version = "0.1.0"
+            entry_points = ["demo.workflow:Hello"]
+            required_configs = [{ key = "OK", group = "bad group" }]
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(ManifestError, match="required_configs group"):
+        load_manifest(tmp_path)
+
+
+def test_validate_manifest_fields_rejects_non_list_required_secrets() -> None:
+    with pytest.raises(ManifestError, match="required_secrets must be a list"):
+        validate_manifest_fields(
+            "demo", "0.1.0", ["a:B"], None, None, None, "nope", None
+        )
 
 
 def test_load_manifest_missing_file(tmp_path: Path) -> None:

@@ -1,6 +1,16 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Folder, KeyRound, Loader2, Pencil, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import {
+  Folder,
+  KeyRound,
+  Loader2,
+  Pencil,
+  Plus,
+  SlidersHorizontal,
+  Trash2,
+  TriangleAlert,
+} from 'lucide-react'
 import { EmptyState } from '@/components/EmptyState'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -16,6 +26,7 @@ import {
   useUpsertConfig,
   useDeleteConfig,
 } from '@/api/queries/workflow-secrets-configs'
+import { workflowRequirementsSummaryQueryOptions } from '@/api/queries/workflows'
 import {
   DEFAULT_GROUP,
   type WorkflowSecretMeta,
@@ -609,6 +620,41 @@ function ConfigsSection() {
 }
 
 /**
+ * Banner summarizing which workflows declare secret/config keys the tenant has
+ * not set yet. Silent when nothing is missing (or the summary can't be read).
+ */
+function MissingRequirementsBanner() {
+  const { data } = useQuery({ ...workflowRequirementsSummaryQueryOptions, retry: false })
+  const needy = (data?.workflows ?? []).filter((w) => w.missingCount > 0)
+  if (needy.length === 0) return null
+
+  const total = data?.totalMissing ?? 0
+  return (
+    <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-4">
+      <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+        <TriangleAlert className="h-4 w-4 text-amber-600" />
+        {total} key{total === 1 ? '' : 's'} still needed by {needy.length} workflow
+        {needy.length === 1 ? '' : 's'}
+      </h3>
+      <ul className="mt-2 space-y-1">
+        {needy.map((w) => (
+          <li key={w.workflowId} className="text-sm">
+            <Link
+              to="/settings/workflows/$workflowId"
+              params={{ workflowId: w.workflowId }}
+              className="text-primary hover:underline"
+            >
+              {w.name}
+            </Link>{' '}
+            <span className="text-muted-foreground">— {w.missingCount} missing</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/**
  * Per-tenant secrets & configuration the workflows read at runtime. Each section
  * self-hides if the user lacks its manage permission; if the user can manage
  * neither, the whole panel shows a no-access note.
@@ -628,6 +674,7 @@ export function WorkflowSecretsConfigsPanel() {
 
   return (
     <div className="space-y-8">
+      <MissingRequirementsBanner />
       <SecretsSection />
       <ConfigsSection />
     </div>

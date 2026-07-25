@@ -59,6 +59,14 @@ const OPERATIONAL_READ_PATHS: Record<string, { get: Record<string, unknown> }> =
       responseDescription: '{data: WorkflowResponse[]}',
     },
   ),
+  '/api/v1/workflows/requirements-summary': apiKeyGet(
+    'getWorkflowRequirementsSummary',
+    "For each visible workflow, its manifest-declared secret/config keys tagged present/missing against the tenant's store (presence only, no values) (ReadWorkflow)",
+    {
+      tags: ['Workflows'],
+      responseDescription: '{data: {workflows: [...], totalMissing: number}}',
+    },
+  ),
   '/api/v1/workflows/{id}': apiKeyGet('getWorkflow', 'Get a workflow by id', {
     tags: ['Workflows'],
     path: ['id'],
