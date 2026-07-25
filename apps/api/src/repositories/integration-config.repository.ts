@@ -51,6 +51,10 @@ export type IntegrationConfigRow = {
   externalMapping: Prisma.JsonValue | null
   /** Inbound (ingress) behavior block (0021). Null ⇒ generic ack. */
   inbound: Prisma.JsonValue | null
+  /** Declared secret keys the integration reads at runtime. Null ⇒ none. */
+  requiredSecrets: Prisma.JsonValue | null
+  /** Declared config keys the integration reads at runtime. Null ⇒ none. */
+  requiredConfigs: Prisma.JsonValue | null
   createdAt: Date
 }
 
@@ -73,6 +77,8 @@ const SELECT = {
   externalShape: true,
   externalMapping: true,
   inbound: true,
+  requiredSecrets: true,
+  requiredConfigs: true,
   createdAt: true,
 } as const
 
@@ -101,6 +107,10 @@ export interface PublishConfigInput {
   externalMapping?: Prisma.InputJsonValue
   /** Inbound (ingress) behavior block (0021). Omit ⇒ generic ack. */
   inbound?: Prisma.InputJsonValue
+  /** Declared secret keys the integration reads (informational). Omit ⇒ none. */
+  requiredSecrets?: Prisma.InputJsonValue
+  /** Declared config keys the integration reads (informational). Omit ⇒ none. */
+  requiredConfigs?: Prisma.InputJsonValue
 }
 
 export function createIntegrationConfigRepository(db: PrismaClient) {

@@ -1,7 +1,18 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from '@tanstack/react-router'
-import { AlertTriangle, Check, Copy, GitFork, Loader2, Pencil, RotateCcw, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  Check,
+  Copy,
+  GitFork,
+  KeyRound,
+  Loader2,
+  Pencil,
+  RotateCcw,
+  TriangleAlert,
+  X,
+} from 'lucide-react'
 import { PageHeader } from '@/components/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -22,6 +33,7 @@ import { ApiError } from '@/api/client'
 import {
   integrationConfigQueryOptions,
   integrationConfigVersionsQueryOptions,
+  integrationRequirementsSummaryQueryOptions,
   useForkIntegrationConfig,
   useValidateIntegrationConfig,
   usePublishIntegrationConfig,
@@ -629,7 +641,64 @@ export function IntegrationDetailPage() {
         </Tabs>
       )}
 
+      {!editing && <IntegrationRequiredValuesCard integrationId={config.integrationId} />}
+
       {isTenantOwned && !editing && <ConfigVersionsCard integrationId={config.integrationId} />}
     </div>
+  )
+}
+
+/**
+ * Secret/config keys this integration declares it reads at runtime (e.g. the
+ * deliver-to-external API key + URL), each tagged present or missing against the
+ * tenant's store. Author-declared and informational; links to where the values
+ * are managed. Hidden when the integration declares none.
+ */
+function IntegrationRequiredValuesCard({ integrationId }: { integrationId: string }) {
+  const { data } = useQuery({ ...integrationRequirementsSummaryQueryOptions, retry: false })
+  const requirements =
+    data?.integrations.find((i) => i.integrationId === integrationId)?.requirements ?? []
+  if (requirements.length === 0) return null
+  const missing = requirements.filter((r) => !r.present).length
+
+  return (
+    <Card className="mt-4">
+      <CardContent className="pt-6">
+        <h3 className="mb-3 flex items-center text-sm font-medium">
+          <KeyRound className="text-muted-foreground mr-1.5 h-4 w-4" />
+          Secrets &amp; configuration
+        </h3>
+        <ul className="space-y-1.5">
+          {requirements.map((r) => (
+            <li key={`${r.kind}:${r.group}:${r.key}`} className="flex items-center gap-2 text-sm">
+              {r.present ? (
+                <Check className="h-4 w-4 shrink-0 text-emerald-600" aria-label="set" />
+              ) : (
+                <TriangleAlert className="h-4 w-4 shrink-0 text-amber-600" aria-label="missing" />
+              )}
+              <code className="font-mono text-xs text-foreground">{r.key}</code>
+              <Badge variant="outline" className="text-[10px]">
+                {r.kind === 'SECRET' ? 'secret' : 'config'}
+              </Badge>
+              {r.group !== 'global' && (
+                <span className="text-muted-foreground font-mono text-xs">{r.group}</span>
+              )}
+              {r.description && (
+                <span className="text-muted-foreground truncate text-xs">{r.description}</span>
+              )}
+              {!r.present && <span className="text-amber-600 text-xs">not set</span>}
+            </li>
+          ))}
+        </ul>
+        {missing > 0 && (
+          <p className="text-muted-foreground mt-3 text-xs">
+            {missing} value{missing === 1 ? '' : 's'} not yet set.{' '}
+            <Link to="/settings/developer/configs" className="text-primary hover:underline">
+              Manage secrets &amp; configs
+            </Link>
+          </p>
+        )}
+      </CardContent>
+    </Card>
   )
 }

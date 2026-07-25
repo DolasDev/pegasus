@@ -90,6 +90,22 @@ export interface TypeFloor {
  * (`externalShape`) + canonical→external projection (`externalMapping`). A new
  * partner on an existing floor is thus authorable as an overlay alone.
  */
+/**
+ * A secret/config key an integration declares it reads at runtime (e.g. the
+ * delivery API key + URL used by `deliver-to-external`). Purely informational —
+ * the runtime read still resolves lazily against the workflow-secrets-configs
+ * store — but it powers the tenant's "which keys are set / missing" view. Same
+ * shape the workflow manifest uses (see lib/workflow-secret-requirements).
+ */
+export interface SecretRequirement {
+  /** Lookup key, env-var style. */
+  key: string
+  /** Logical group; defaults to "global" when omitted (matches the store). */
+  group?: string
+  /** Optional note on what the value is for. */
+  description?: string
+}
+
 export interface IntegrationOverlay {
   /** Integration id (e.g. `demo_partner`). */
   id: string
@@ -103,6 +119,12 @@ export interface IntegrationOverlay {
   mapping: MappingTemplate
   /** Declarative behavioral rules evaluated against the floor's facts. */
   rules: RuleSet
+  /**
+   * Secret/config keys this integration reads at runtime, declared so the tenant
+   * can see and provision them up front. Informational — does not gate anything.
+   */
+  requiredSecrets?: SecretRequirement[]
+  requiredConfigs?: SecretRequirement[]
   /**
    * The partner external output shape, as a JSON Schema. Absent ⇒ the external
    * body IS the canonical (identity) — the pre-0020 behavior. When present, two
@@ -170,6 +192,12 @@ export interface IntegrationDefinition {
    * external body IS the canonical, byte-identical to the pre-0020 map result.
    */
   externalTransform?: TransformSpec
+  /**
+   * Secret/config keys this integration reads at runtime (informational). Drives
+   * the tenant's present/missing view; resolved against the store separately.
+   */
+  requiredSecrets?: SecretRequirement[]
+  requiredConfigs?: SecretRequirement[]
 }
 
 /** Identifies a record so its cached projection can be looked up as `prior`. */

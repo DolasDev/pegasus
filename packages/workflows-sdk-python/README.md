@@ -270,6 +270,16 @@ manifest. Returns `{delivered, status, response, dryRun}`; raises `PegasusApiErr
 on 403 (missing action), 404 (unknown integration, or the URL config / API-key
 secret is not set), or 400 (a delivery URL pointing at a private/loopback host).
 
+So the tenant can see which keys to provision, **declare them on the integration
+config** via `required_secrets` / `required_configs` (each `{key, group?,
+description?}`) — e.g. `required_secrets=[{"key": "SEND_API_KEY", "group": "sirva"}]`,
+`required_configs=[{"key": "SEND_URL", "group": "sirva"}]` on
+`publish_integration_config`, or as `requiredSecrets`/`requiredConfigs` in the
+config directory's `meta.json`. It is informational (the runtime read still resolves
+lazily) but surfaces a present/missing view on the integration's detail page and the
+Settings → Developer → Configs summary. The resolved status for every integration is
+at `GET /api/v1/integrations/requirements-summary` (presence only — never values).
+
 ### Ingesting a partner payload (inbound: native → canonical)
 
 `map_to_external` is the **outbound** direction (entity → partner body). To go the

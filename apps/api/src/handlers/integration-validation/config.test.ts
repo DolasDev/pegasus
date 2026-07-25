@@ -35,6 +35,7 @@ const {
   mockRunGatePipeline,
   mockListIntegrationIds,
   mockGetIntegrationDefinition,
+  mockResolveIntegrationDefinition,
 } = vi.hoisted(() => ({
   mockRepo: {
     publish: vi.fn(),
@@ -54,6 +55,16 @@ const {
   mockRunGatePipeline: vi.fn(),
   mockListIntegrationIds: vi.fn(() => [] as string[]),
   mockGetIntegrationDefinition: vi.fn(),
+  mockResolveIntegrationDefinition: vi.fn(),
+}))
+
+// The requirements-summary endpoint reads the tenant's secret/config store via
+// this repo; stub listByKind so loadPresenceSets resolves without a real DB.
+const mockSecretConfigRepo = vi.hoisted(() => ({
+  listByKind: vi.fn(async (_kind: string) => [] as Array<{ group: string; key: string }>),
+}))
+vi.mock('../../repositories/workflow-secret-config.repository', () => ({
+  createWorkflowSecretConfigRepository: vi.fn(() => mockSecretConfigRepo),
 }))
 
 vi.mock('../../repositories/integration-config.repository', () => ({
@@ -68,6 +79,7 @@ vi.mock('../../integration-validation/registry', () => ({
   refreshRegistryOverlay: mockRefreshRegistryOverlay,
   listIntegrationIds: mockListIntegrationIds,
   getIntegrationDefinition: mockGetIntegrationDefinition,
+  resolveIntegrationDefinition: mockResolveIntegrationDefinition,
 }))
 
 vi.mock('../../integration-validation/gate-pipeline', () => ({
@@ -865,5 +877,68 @@ describe('GET /integrations/configs (m2m list)', () => {
     const res = await buildApp(['driver']).request('/integrations/configs')
     expect(res.status).toBe(403)
     expect(mockListIntegrationIds).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET /integrations/requirements-summary', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env['AUTHZ_OFFLINE'] = 'true'
+    _clearAuthzCache()
+    mockListIntegrationIds.mockReturnValue(['sirva_ade', 'demo_partner'])
+    mockResolveIntegrationDefinition.mockImplementation(
+      async (_db: unknown, id: string) =>
+        id === 'sirva_ade'
+          ? {
+              id: 'sirva_ade',
+              displayName: 'Sirva ADE',
+              requiredSecrets: [{ key: 'SEND_API_KEY', group: 'sirva' }],
+              requiredConfigs: [{ key: 'SEND_URL', group: 'sirva' }],
+            }
+          : { id: 'demo_partner', displayName: 'Demo Partner' }, // declares nothing
+    )
+  })
+
+  it('resolves each declared key present/missing and totals the gaps', async () => {
+    mockSecretConfigRepo.listByKind.mockImplementation(
+      async (kind: string) => (kind === 'SECRET' ? [{ group: 'sirva', key: 'SEND_API_KEY' }] : []), // URL config missing
+    )
+
+    const res = await buildApp(['integration_publisher']).request(
+      '/integrations/requirements-summary',
+    )
+    expect(res.status).toBe(200)
+    const { data } = (await json(res)) as {
+      data: {
+        totalMissing: number
+        integrations: Array<{
+          integrationId: string
+          missingCount: number
+          requirements: Array<Record<string, unknown>>
+        }>
+      }
+    }
+    expect(data.totalMissing).toBe(1)
+    const sirva = data.integrations.find((i) => i.integrationId === 'sirva_ade')!
+    expect(sirva.missingCount).toBe(1)
+    expect(sirva.requirements).toEqual([
+      { kind: 'SECRET', key: 'SEND_API_KEY', group: 'sirva', description: null, present: true },
+      { kind: 'CONFIG', key: 'SEND_URL', group: 'sirva', description: null, present: false },
+    ])
+    const demo = data.integrations.find((i) => i.integrationId === 'demo_partner')!
+    expect(demo.requirements).toEqual([])
+  })
+
+  it('is the literal path, not captured by /:integrationId/config', async () => {
+    const res = await buildApp(['integration_publisher']).request(
+      '/integrations/requirements-summary',
+    )
+    expect(res.status).toBe(200)
+    expect(mockRepo.findActiveForScope).not.toHaveBeenCalled()
+  })
+
+  it('rejects a role without ReadIntegrationConfig with 403', async () => {
+    const res = await buildApp(['driver']).request('/integrations/requirements-summary')
+    expect(res.status).toBe(403)
   })
 })

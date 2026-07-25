@@ -6,6 +6,7 @@ import {
   refreshRegistryOverlay,
   loadRegistryOverlayIfStale,
   resolveIntegrationDefinition,
+  coerceRequirements,
 } from './registry'
 import { compileMapping } from './transform/mapping-format'
 
@@ -193,5 +194,33 @@ describe('registry overlay', () => {
     vi.setSystemTime(12_000)
     await loadRegistryOverlayIfStale(db, 1000) // TTL elapsed → reload
     expect(calls).toBe(2)
+  })
+})
+
+describe('coerceRequirements', () => {
+  it('keeps valid entries, defaults away blanks, and drops malformed ones', () => {
+    expect(
+      coerceRequirements([
+        { key: 'SEND_API_KEY', group: 'sirva', description: 'key' },
+        { key: 'A' }, // no group → left undefined (resolves to "global")
+        { key: 'B', group: '' }, // blank group dropped
+        42, // not an object
+        null, // not an object
+        {}, // no key
+        { key: '' }, // empty key
+        { key: 'C', description: 7 }, // non-string description dropped
+      ]),
+    ).toEqual([
+      { key: 'SEND_API_KEY', group: 'sirva', description: 'key' },
+      { key: 'A' },
+      { key: 'B' },
+      { key: 'C' },
+    ])
+  })
+
+  it('returns undefined for a non-array or an all-invalid list', () => {
+    expect(coerceRequirements(null)).toBeUndefined()
+    expect(coerceRequirements('nope')).toBeUndefined()
+    expect(coerceRequirements([42, {}, { key: '' }])).toBeUndefined()
   })
 })

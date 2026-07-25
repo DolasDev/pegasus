@@ -3,6 +3,23 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.33.0
+
+### Added — declare an integration's required secrets/configs
+
+The integration-config counterpart to 0.32.0's workflow feature. An integration
+config can now declare the specific secret/config **keys** it reads at runtime —
+e.g. the `SEND_API_KEY` + `SEND_URL` that `deliver_to_external` uses — via
+`required_secrets` / `required_configs` on `validate_integration_config` /
+`publish_integration_config` (each a list of `{key, group?, description?}`), or as
+`requiredSecrets` / `requiredConfigs` in the config directory's `meta.json` (the CLI
+`pull` round-trips them). Informational — the runtime read still resolves lazily —
+but it surfaces a present/missing view on the integration's detail page and the
+Settings → Developer → Configs summary.
+
+- Resolved status for every integration is served at
+  `GET /api/v1/integrations/requirements-summary` (presence only — never values).
+
 ## 0.32.0
 
 ### Added — declare a workflow's required secrets/configs

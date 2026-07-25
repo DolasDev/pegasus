@@ -37,7 +37,34 @@ import { alliedStatusOverlay } from './overlays/allied-status.overlay'
 import { createIntegrationConfigRepository } from '../repositories/integration-config.repository'
 import { logger } from '../lib/logger'
 import type { IntegrationConfigRow } from '../repositories/integration-config.repository'
-import type { IntegrationDefinition, IntegrationOverlay, TypeFloor } from './types'
+import type {
+  IntegrationDefinition,
+  IntegrationOverlay,
+  SecretRequirement,
+  TypeFloor,
+} from './types'
+
+/**
+ * Coerce a stored JSON value into a SecretRequirement[] defensively (the DB
+ * column is untyped Json). Drops entries without a string `key`; a blank group
+ * is left undefined so it resolves to the store's "global" default. Exported for
+ * unit testing of the defensive paths.
+ */
+export function coerceRequirements(value: unknown): SecretRequirement[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const out: SecretRequirement[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const r = item as Record<string, unknown>
+    if (typeof r.key !== 'string' || r.key === '') continue
+    out.push({
+      key: r.key,
+      ...(typeof r.group === 'string' && r.group !== '' ? { group: r.group } : {}),
+      ...(typeof r.description === 'string' ? { description: r.description } : {}),
+    })
+  }
+  return out.length ? out : undefined
+}
 
 // ── Built-in floors (types) and overlays (partners) ────────────────────────
 
@@ -72,6 +99,9 @@ interface OverlayParts {
   externalShape?: Record<string, unknown>
   /** Canonical → external projection. Undefined ⇒ identity. */
   externalMapping?: MappingTemplate
+  /** Declared secret/config keys the integration reads (informational). */
+  requiredSecrets?: SecretRequirement[]
+  requiredConfigs?: SecretRequirement[]
 }
 
 /** Compose a floor and overlay parts into the resolved definition consumers use. */
@@ -92,6 +122,8 @@ function composeDefinition(floor: TypeFloor, parts: OverlayParts): IntegrationDe
     ...(floor.projection ? { projection: floor.projection } : {}),
     ...(parts.externalShape ? { externalJsonSchema: parts.externalShape } : {}),
     ...(parts.externalMapping ? { externalTransform: compileMapping(parts.externalMapping) } : {}),
+    ...(parts.requiredSecrets ? { requiredSecrets: parts.requiredSecrets } : {}),
+    ...(parts.requiredConfigs ? { requiredConfigs: parts.requiredConfigs } : {}),
   }
 }
 
@@ -110,6 +142,8 @@ function resolveComposed(input: {
   rules: RuleSet
   externalShape?: Record<string, unknown>
   externalMapping?: MappingTemplate
+  requiredSecrets?: SecretRequirement[]
+  requiredConfigs?: SecretRequirement[]
 }): IntegrationDefinition | null {
   const builtIn = BUILTIN_OVERLAYS[input.id]
   const floorId = input.floorId ?? builtIn?.floor
@@ -118,6 +152,8 @@ function resolveComposed(input: {
 
   const externalShape = input.externalShape ?? builtIn?.externalShape
   const externalMapping = input.externalMapping ?? builtIn?.externalMapping
+  const requiredSecrets = input.requiredSecrets ?? builtIn?.requiredSecrets
+  const requiredConfigs = input.requiredConfigs ?? builtIn?.requiredConfigs
   const parts: OverlayParts = {
     id: input.id,
     displayName: input.displayName ?? builtIn?.displayName ?? input.id,
@@ -126,6 +162,8 @@ function resolveComposed(input: {
     rules: input.rules,
     ...(externalShape ? { externalShape } : {}),
     ...(externalMapping ? { externalMapping } : {}),
+    ...(requiredSecrets ? { requiredSecrets } : {}),
+    ...(requiredConfigs ? { requiredConfigs } : {}),
   }
   return composeDefinition(floor, parts)
 }
@@ -145,6 +183,8 @@ function composeBuiltIn(overlay: IntegrationOverlay): IntegrationDefinition {
     rules: overlay.rules,
     ...(overlay.externalShape ? { externalShape: overlay.externalShape } : {}),
     ...(overlay.externalMapping ? { externalMapping: overlay.externalMapping } : {}),
+    ...(overlay.requiredSecrets ? { requiredSecrets: overlay.requiredSecrets } : {}),
+    ...(overlay.requiredConfigs ? { requiredConfigs: overlay.requiredConfigs } : {}),
   })
 }
 
@@ -206,6 +246,8 @@ function toDefinitionFromRow(row: IntegrationConfigRow): IntegrationDefinition |
       : undefined
 
   try {
+    const requiredSecrets = coerceRequirements(row.requiredSecrets)
+    const requiredConfigs = coerceRequirements(row.requiredConfigs)
     return resolveComposed({
       id: row.integrationId,
       ...(row.floor ? { floorId: row.floor } : {}),
@@ -214,6 +256,8 @@ function toDefinitionFromRow(row: IntegrationConfigRow): IntegrationDefinition |
       rules: rules.data,
       ...(externalShape ? { externalShape } : {}),
       ...(externalMapping ? { externalMapping } : {}),
+      ...(requiredSecrets ? { requiredSecrets } : {}),
+      ...(requiredConfigs ? { requiredConfigs } : {}),
     })
   } catch (err) {
     logger.warn('integration config row failed to compose — ignoring', {
