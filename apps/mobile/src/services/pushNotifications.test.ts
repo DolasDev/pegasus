@@ -103,18 +103,18 @@ describe('setupNotificationTapHandler', () => {
     notification: { request: { content: { data } } },
   })
 
-  it('routes a move.assigned tap to the order detail screen', () => {
+  it('routes a move.assigned tap to the My Trips screen', () => {
     const navigate = jest.fn()
     setupNotificationTapHandler(navigate)
     lastListener()(responseWith({ type: 'move.assigned', moveId: 'm-1' }))
-    expect(navigate).toHaveBeenCalledWith('/order/m-1')
+    expect(navigate).toHaveBeenCalledWith('/(drawer)/trips')
   })
 
-  it('falls back to paperwork when a move.assigned tap lacks a moveId', () => {
+  it('routes a move.assigned tap to My Trips even without a moveId', () => {
     const navigate = jest.fn()
     setupNotificationTapHandler(navigate)
     lastListener()(responseWith({ type: 'move.assigned' }))
-    expect(navigate).toHaveBeenCalledWith('/(drawer)/paperwork')
+    expect(navigate).toHaveBeenCalledWith('/(drawer)/trips')
   })
 
   it('ignores taps with an unknown type', () => {

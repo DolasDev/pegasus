@@ -16,8 +16,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.movingstorage.driverapp",
       "infoPlist": {
-        "NSCameraUsageDescription": "This app requires camera access to capture proof of delivery photos.",
-        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to select delivery photos.",
+        "NSCameraUsageDescription": "This app uses the camera to scan shipment documents.",
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to attach shipment documents.",
         "NSLocationWhenInUseUsageDescription": "This app uses your location to optimize delivery routes and track order progress."
       }
     },
@@ -51,7 +51,13 @@
       ],
       "expo-secure-store",
       "expo-web-browser",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "react-native-document-scanner-plugin",
+        {
+          "cameraPermission": "Allow Pegasus to use the camera to scan shipment documents."
+        }
+      ]
     ],
     "extra": {
       "router": {

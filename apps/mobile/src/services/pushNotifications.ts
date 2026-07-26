@@ -147,8 +147,11 @@ export function setupNotificationTapHandler(navigate: (path: string) => void): {
   const route = (data: Record<string, unknown> | undefined): string | null => {
     if (!data) return null
     switch (data['type']) {
+      // Driver-facing orders now live in My Trips (sourced from longhaul); the
+      // legacy per-move order screen was removed. A cloud moveId doesn't map to
+      // a longhaul trip id, so route assignment taps to the trips list.
       case 'move.assigned':
-        return data['moveId'] ? `/order/${String(data['moveId'])}` : '/(drawer)/paperwork'
+        return '/(drawer)/trips'
       default:
         return null
     }

@@ -24,7 +24,7 @@ module.exports = {
   // See jest.environment.js for the details.
   testEnvironment: require.resolve('./jest.environment.js'),
   transformIgnorePatterns: [
-    'node_modules/(?!(react-native|@react-native|@react-native-async-storage|expo|@expo|expo-status-bar|expo-router|expo-constants|expo-image-picker|expo-linking|expo-secure-store|react-native-web|react-native-safe-area-context|react-native-screens|react-native-get-random-values)/)',
+    'node_modules/(?!(react-native|@react-native|@react-native-async-storage|expo|@expo|expo-status-bar|expo-router|expo-constants|expo-image-picker|expo-file-system|expo-print|expo-document-picker|expo-linking|expo-secure-store|react-native-web|react-native-safe-area-context|react-native-screens|react-native-get-random-values|react-native-document-scanner-plugin)/)',
   ],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   testTimeout: 15000,

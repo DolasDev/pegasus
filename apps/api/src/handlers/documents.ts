@@ -61,7 +61,12 @@ const ALLOWED_MIME_PREFIXES = [
   'text/',
 ] as const
 
-const ALLOWED_ENTITY_TYPES = new Set(['customer', 'quote', 'move', 'invoice'])
+// `shipment` links a document to a longhaul order/shipment. Its `entityId` is
+// the legacy `order_num` (a string) read from on-prem MSSQL — there is no
+// Postgres row to FK against, which is fine: the linkage is a polymorphic
+// (entityType, entityId) string pair, not a foreign key. The mobile driver app
+// uploads scanned paperwork against this type.
+const ALLOWED_ENTITY_TYPES = new Set(['customer', 'quote', 'move', 'invoice', 'shipment'])
 
 function isAllowedMime(mime: string): boolean {
   return ALLOWED_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix))
@@ -73,7 +78,7 @@ function isAllowedMime(mime: string): boolean {
 
 const CreateUploadBody = z.object({
   entityType: z.string().refine((v) => ALLOWED_ENTITY_TYPES.has(v), {
-    message: 'entityType must be one of customer, quote, move, invoice',
+    message: 'entityType must be one of customer, quote, move, invoice, shipment',
   }),
   entityId: z.string().min(1),
   documentType: z.string().min(1),
