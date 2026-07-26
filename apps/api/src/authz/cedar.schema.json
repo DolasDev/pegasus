@@ -156,6 +156,13 @@
           "attributes": {}
         }
       },
+      "Document": {
+        "memberOfTypes": [],
+        "shape": {
+          "type": "Record",
+          "attributes": {}
+        }
+      },
       "Feedback": {
         "memberOfTypes": [],
         "shape": {
@@ -356,6 +363,15 @@
       },
       "WriteBlob": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Blob"] }
+      },
+      "ReadDocument": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Document"] }
+      },
+      "UploadDocument": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Document"] }
+      },
+      "DeleteDocument": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Document"] }
       },
       "WriteIntegrationProjection": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["IntegrationProjection"] }

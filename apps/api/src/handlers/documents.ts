@@ -22,6 +22,8 @@ import { validator } from 'hono/validator'
 import { z } from 'zod'
 import { DomainError } from '@pegasus/domain'
 import type { AppEnv } from '../types'
+import { requirePermission } from '../middleware/rbac'
+import { Actions } from '../authz/actions'
 import {
   archiveDocument,
   createPendingDocument,
@@ -97,6 +99,7 @@ export const documentsHandler = new Hono<AppEnv>()
 // POST /api/v1/documents/upload-url -------------------------------------------------
 documentsHandler.post(
   '/upload-url',
+  requirePermission(Actions.UploadDocument),
   validator('json', (value, c) => {
     const r = CreateUploadBody.safeParse(value)
     if (!r.success) return c.json({ error: r.error.message, code: 'VALIDATION_ERROR' }, 400)
@@ -157,13 +160,17 @@ documentsHandler.post(
 )
 
 // POST /api/v1/documents/:documentId/finalize ---------------------------------------
-documentsHandler.post('/:documentId/finalize', async (c) => {
-  const db = c.get('db')
-  const id = c.req.param('documentId')
-  const data = await finalizeDocument(db, id)
-  if (!data) return c.json({ error: 'Document not found', code: 'NOT_FOUND' }, 404)
-  return c.json({ data })
-})
+documentsHandler.post(
+  '/:documentId/finalize',
+  requirePermission(Actions.UploadDocument),
+  async (c) => {
+    const db = c.get('db')
+    const id = c.req.param('documentId')!
+    const data = await finalizeDocument(db, id)
+    if (!data) return c.json({ error: 'Document not found', code: 'NOT_FOUND' }, 404)
+    return c.json({ data })
+  },
+)
 
 // GET /api/v1/documents/:documentId/download-url?variant=thumb|web|original ---------
 //
@@ -178,114 +185,127 @@ documentsHandler.post('/:documentId/finalize', async (c) => {
 // Falling back to the original for PENDING/FAILED/missing means callers can
 // always render *something*, and the `variantStatus` hint tells them whether
 // to poll (pending) or give up (unavailable).
-documentsHandler.get('/:documentId/download-url', async (c) => {
-  const db = c.get('db')
-  const id = c.req.param('documentId')
-  const variantParam = c.req.query('variant')
+documentsHandler.get(
+  '/:documentId/download-url',
+  requirePermission(Actions.ReadDocument),
+  async (c) => {
+    const db = c.get('db')
+    const id = c.req.param('documentId')!
+    const variantParam = c.req.query('variant')
 
-  if (
-    variantParam &&
-    variantParam !== 'thumb' &&
-    variantParam !== 'web' &&
-    variantParam !== 'original'
-  ) {
-    return c.json(
-      { error: 'variant must be one of thumb, web, original', code: 'VALIDATION_ERROR' },
-      400,
-    )
-  }
+    if (
+      variantParam &&
+      variantParam !== 'thumb' &&
+      variantParam !== 'web' &&
+      variantParam !== 'original'
+    ) {
+      return c.json(
+        { error: 'variant must be one of thumb, web, original', code: 'VALIDATION_ERROR' },
+        400,
+      )
+    }
 
-  const found = await findDocumentByIdWithLocation(db, id)
-  // Fold "missing" and "not yet ACTIVE" into the same response so an attacker
-  // cannot probe for the existence of pending uploads.
-  if (!found || found.document.status !== 'ACTIVE') {
-    return c.json({ error: 'Document not found', code: 'NOT_FOUND' }, 404)
-  }
+    const found = await findDocumentByIdWithLocation(db, id)
+    // Fold "missing" and "not yet ACTIVE" into the same response so an attacker
+    // cannot probe for the existence of pending uploads.
+    if (!found || found.document.status !== 'ACTIVE') {
+      return c.json({ error: 'Document not found', code: 'NOT_FOUND' }, 404)
+    }
 
-  if (!variantParam || variantParam === 'original') {
+    if (!variantParam || variantParam === 'original') {
+      const downloadUrl = await presignDownload(found.s3Key)
+      return c.json({
+        data: {
+          downloadUrl,
+          expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS,
+          variant: 'original' as const,
+        },
+      })
+    }
+
+    const kind = variantParam === 'thumb' ? 'THUMB' : 'WEB'
+    const located = await findVariantWithLocation(db, id, kind)
+
+    if (located && located.variant.status === 'READY' && located.s3Key) {
+      const downloadUrl = await presignDownload(located.s3Key)
+      return c.json({
+        data: {
+          downloadUrl,
+          expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS,
+          variant: variantParam,
+        },
+      })
+    }
+
+    const variantStatus =
+      located && located.variant.status === 'PENDING' ? 'pending' : 'unavailable'
     const downloadUrl = await presignDownload(found.s3Key)
     return c.json({
       data: {
         downloadUrl,
         expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS,
-        variant: 'original' as const,
-      },
-    })
-  }
-
-  const kind = variantParam === 'thumb' ? 'THUMB' : 'WEB'
-  const located = await findVariantWithLocation(db, id, kind)
-
-  if (located && located.variant.status === 'READY' && located.s3Key) {
-    const downloadUrl = await presignDownload(located.s3Key)
-    return c.json({
-      data: {
-        downloadUrl,
-        expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS,
         variant: variantParam,
+        variantStatus,
       },
     })
-  }
-
-  const variantStatus = located && located.variant.status === 'PENDING' ? 'pending' : 'unavailable'
-  const downloadUrl = await presignDownload(found.s3Key)
-  return c.json({
-    data: {
-      downloadUrl,
-      expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS,
-      variant: variantParam,
-      variantStatus,
-    },
-  })
-})
+  },
+)
 
 // GET /api/v1/documents/entity/:entityType/:entityId --------------------------------
 //
 // Each listed document is decorated with a `variants` map so the frontend can
 // decide whether to render a thumbnail URL immediately, poll for one, or
 // skip it entirely.
-documentsHandler.get('/entity/:entityType/:entityId', async (c) => {
-  const db = c.get('db')
-  const entityType = c.req.param('entityType')
-  const entityId = c.req.param('entityId')
-  if (!ALLOWED_ENTITY_TYPES.has(entityType)) {
-    return c.json({ error: 'Invalid entityType', code: 'VALIDATION_ERROR' }, 400)
-  }
-  const docs = await listDocumentsForEntity(db, entityType, entityId)
-  const variantMap = await variantStatusMapsForDocuments(
-    db,
-    docs.map((d) => d.id),
-  )
-  const data = docs.map((doc) => ({
-    ...doc,
-    variants: variantMap.get(doc.id) ?? { thumb: 'none', web: 'none' },
-  }))
-  return c.json({ data, meta: { count: data.length } })
-})
+documentsHandler.get(
+  '/entity/:entityType/:entityId',
+  requirePermission(Actions.ReadDocument),
+  async (c) => {
+    const db = c.get('db')
+    const entityType = c.req.param('entityType')!
+    const entityId = c.req.param('entityId')!
+    if (!ALLOWED_ENTITY_TYPES.has(entityType)) {
+      return c.json({ error: 'Invalid entityType', code: 'VALIDATION_ERROR' }, 400)
+    }
+    const docs = await listDocumentsForEntity(db, entityType, entityId)
+    const variantMap = await variantStatusMapsForDocuments(
+      db,
+      docs.map((d) => d.id),
+    )
+    const data = docs.map((doc) => ({
+      ...doc,
+      variants: variantMap.get(doc.id) ?? { thumb: 'none', web: 'none' },
+    }))
+    return c.json({ data, meta: { count: data.length } })
+  },
+)
 
 // GET /api/v1/documents/:documentId -------------------------------------------------
-documentsHandler.get('/:documentId', async (c) => {
+documentsHandler.get('/:documentId', requirePermission(Actions.ReadDocument), async (c) => {
   const db = c.get('db')
-  const id = c.req.param('documentId')
+  const id = c.req.param('documentId')!
   const data = await findDocumentById(db, id)
   if (!data) return c.json({ error: 'Document not found', code: 'NOT_FOUND' }, 404)
   return c.json({ data })
 })
 
 // DELETE /api/v1/documents/:documentId ----------------------------------------------
-documentsHandler.delete('/:documentId', async (c) => {
+documentsHandler.delete('/:documentId', requirePermission(Actions.DeleteDocument), async (c) => {
   const db = c.get('db')
-  const id = c.req.param('documentId')
+  const id = c.req.param('documentId')!
   const data = await softDeleteDocument(db, id)
   if (!data) return c.json({ error: 'Document not found', code: 'NOT_FOUND' }, 404)
   return c.json({ data })
 })
 
 // PATCH /api/v1/documents/:documentId/archive ---------------------------------------
-documentsHandler.patch('/:documentId/archive', async (c) => {
-  const db = c.get('db')
-  const id = c.req.param('documentId')
-  const data = await archiveDocument(db, id)
-  if (!data) return c.json({ error: 'Document not found', code: 'NOT_FOUND' }, 404)
-  return c.json({ data })
-})
+documentsHandler.patch(
+  '/:documentId/archive',
+  requirePermission(Actions.DeleteDocument),
+  async (c) => {
+    const db = c.get('db')
+    const id = c.req.param('documentId')!
+    const data = await archiveDocument(db, id)
+    if (!data) return c.json({ error: 'Document not found', code: 'NOT_FOUND' }, 404)
+    return c.json({ data })
+  },
+)

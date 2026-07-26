@@ -44,7 +44,7 @@ describe('GET /permissions', () => {
     expect(new Set(body.permissions)).toEqual(new Set(ALL_ACTIONS.map((a) => a.permission)))
   })
 
-  it('returns only read permissions for tenant_user', async () => {
+  it('returns the viewer read set plus the shared document baseline', async () => {
     const res = await buildApp(['viewer']).app.request('/permissions')
     expect(res.status).toBe(200)
     const body = (await res.json()) as { roles: string[]; permissions: string[] }
@@ -62,16 +62,21 @@ describe('GET /permissions', () => {
         Actions.ReadFeedbackForms.permission,
         Actions.RateShipment.permission,
         Actions.ReadTariff.permission,
+        // Document read/upload is granted to every authenticated user.
+        Actions.ReadDocument.permission,
+        Actions.UploadDocument.permission,
       ]),
     )
   })
 
-  it('returns an empty permissions array for an empty-roles principal', async () => {
+  it('returns only the shared document baseline for an empty-roles principal', async () => {
     const res = await buildApp([]).app.request('/permissions')
     expect(res.status).toBe(200)
     const body = (await res.json()) as { roles: string[]; permissions: string[] }
     expect(body.roles).toEqual([])
-    expect(body.permissions).toEqual([])
+    expect(new Set(body.permissions)).toEqual(
+      new Set([Actions.ReadDocument.permission, Actions.UploadDocument.permission]),
+    )
   })
 
   describe('capabilities.longhaul', () => {

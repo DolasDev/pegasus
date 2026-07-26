@@ -39,6 +39,7 @@ export type ResourceType =
   | 'IntegrationProjection'
   | 'EventType'
   | 'Blob'
+  | 'Document'
   | 'Feedback'
 
 export interface ActionDef {
@@ -345,6 +346,26 @@ export const Actions = {
     id: 'WriteBlob',
     resourceType: 'Blob',
     permission: 'blob:write',
+  },
+  // ── Documents (entity-attached files: BOL/POD/invoices/etc.) ──────────────
+  // ReadDocument gates list + download-url; UploadDocument gates upload-url +
+  // finalize. Both are granted to every role (see 50-documents-shared.cedar).
+  // DeleteDocument gates hard-delete + archive and is restricted to the
+  // billing/accounting roles (accountant, billing_manager) and tenant_admin.
+  ReadDocument: {
+    id: 'ReadDocument',
+    resourceType: 'Document',
+    permission: 'document:read',
+  },
+  UploadDocument: {
+    id: 'UploadDocument',
+    resourceType: 'Document',
+    permission: 'document:upload',
+  },
+  DeleteDocument: {
+    id: 'DeleteDocument',
+    resourceType: 'Document',
+    permission: 'document:delete',
   },
   // ── Feedback (magic-link surveys) ─────────────────────────────────────────
   // ManageFeedbackForms gates the SDK/CLI authoring surface (validate / publish /

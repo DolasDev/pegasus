@@ -65,13 +65,28 @@ function post(body: unknown): RequestInit {
   }
 }
 
-function buildApp() {
+type TestPrincipal = {
+  sub: string
+  tenantId: string
+  roleNames: string[]
+}
+
+const ADMIN_PRINCIPAL: TestPrincipal = {
+  sub: 'user-1',
+  tenantId: 'tenant-1',
+  roleNames: ['tenant_admin'],
+}
+
+function buildApp(principal: TestPrincipal = ADMIN_PRINCIPAL) {
   const app = new Hono<AppEnv>()
   registerTestErrorHandler(app)
   app.use('*', async (c, next) => {
     c.set('tenantId', 'tenant-1')
     c.set('userId', 'user-1')
     c.set('db', {} as unknown as PrismaClient)
+    // requirePermission evaluates via the offline Cedar backend (no
+    // policyStoreId set), so these tests exercise the real document policies.
+    c.set('principal', principal)
     await next()
   })
   app.route('/', documentsHandler)
@@ -444,5 +459,64 @@ describe('GET /:documentId', () => {
     const body = await json(res)
     expect(JSON.stringify(body)).not.toContain('s3Key')
     expect(JSON.stringify(body)).not.toContain('s3Bucket')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// RBAC — all roles may upload/read; only billing/accounting + tenant_admin
+// may delete/archive.
+// ---------------------------------------------------------------------------
+
+const DRIVER: TestPrincipal = { sub: 'u-d', tenantId: 'tenant-1', roleNames: ['driver'] }
+const ACCOUNTANT: TestPrincipal = { sub: 'u-a', tenantId: 'tenant-1', roleNames: ['accountant'] }
+const BILLING: TestPrincipal = { sub: 'u-b', tenantId: 'tenant-1', roleNames: ['billing_manager'] }
+
+describe('documents RBAC', () => {
+  it('lets a non-privileged role (driver) request an upload URL', async () => {
+    ;(createPendingDocument as ReturnType<typeof vi.fn>).mockResolvedValue({
+      document: { ...mockDoc, status: 'PENDING_UPLOAD' },
+      s3Bucket: 'pegasus-documents-test',
+      s3Key: 'pending',
+    })
+    const res = await buildApp(DRIVER).request('/upload-url', post(validUploadBody))
+    expect(res.status).toBe(201)
+  })
+
+  it('lets a non-privileged role (driver) list documents', async () => {
+    ;(listDocumentsForEntity as ReturnType<typeof vi.fn>).mockResolvedValue([mockDoc])
+    const res = await buildApp(DRIVER).request('/entity/shipment/12345')
+    expect(res.status).toBe(200)
+  })
+
+  it('forbids a driver from deleting a document (403)', async () => {
+    const res = await buildApp(DRIVER).request('/doc-1', { method: 'DELETE' })
+    expect(res.status).toBe(403)
+    const body = await json(res)
+    expect(body['code']).toBe('FORBIDDEN')
+    expect(softDeleteDocument).not.toHaveBeenCalled()
+  })
+
+  it('forbids a driver from archiving a document (403)', async () => {
+    const res = await buildApp(DRIVER).request('/doc-1/archive', { method: 'PATCH' })
+    expect(res.status).toBe(403)
+    expect(archiveDocument).not.toHaveBeenCalled()
+  })
+
+  it('lets an accountant delete a document', async () => {
+    ;(softDeleteDocument as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...mockDoc,
+      status: 'PENDING_DELETION',
+    })
+    const res = await buildApp(ACCOUNTANT).request('/doc-1', { method: 'DELETE' })
+    expect(res.status).toBe(200)
+  })
+
+  it('lets a billing_manager delete a document', async () => {
+    ;(softDeleteDocument as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...mockDoc,
+      status: 'PENDING_DELETION',
+    })
+    const res = await buildApp(BILLING).request('/doc-1', { method: 'DELETE' })
+    expect(res.status).toBe(200)
   })
 })
