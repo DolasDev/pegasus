@@ -79,12 +79,9 @@ Work:
 - `src/services/documentService.ts`:
   - `listForShipment(orderNum)` → `GET /documents/entity/shipment/:orderNum`
   - `getDownloadUrl(documentId, variant?)`
-  - `uploadDocument({ orderNum, documentType, fileUri, mimeType, filename, sizeBytes })`:
-    1. `POST /api/v1/documents/upload-url` (JSON via api client)
-    2. `FileSystem.uploadAsync(uploadUrl, fileUri, { httpMethod:'PUT',
+  - `uploadDocument({ orderNum, documentType, fileUri, mimeType, filename, sizeBytes })`: 1. `POST /api/v1/documents/upload-url` (JSON via api client) 2. `FileSystem.uploadAsync(uploadUrl, fileUri, { httpMethod:'PUT',
 uploadType: BINARY_CONTENT, headers:{ 'Content-Type': mimeType } })`
-       (Content-Type/Length must match the presign)
-    3. `POST /api/v1/documents/:id/finalize`
+    (Content-Type/Length must match the presign) 3. `POST /api/v1/documents/:id/finalize`
 - Scan flow (modal route under `app/shipment/`, e.g. `[orderNum]/scan` or a
   sibling `scan/[orderNum]`): source pages either by **scanning** (`scanDocument`,
   multi-page) OR **choosing a file from the device** (`expo-document-picker`,
