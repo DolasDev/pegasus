@@ -51,12 +51,18 @@ export async function tenantMiddleware(c: Context<AppEnv>, next: Next): Promise<
   const token = authHeader.slice(7)
   const jwksUrl = process.env['COGNITO_JWKS_URL'] ?? ''
   const tenantClientId = process.env['COGNITO_TENANT_CLIENT_ID'] ?? ''
+  const mobileClientId = process.env['COGNITO_MOBILE_CLIENT_ID'] ?? ''
 
   let payload: Record<string, unknown>
   try {
     const result = await jwtVerify(token, getJwks(), {
       issuer: deriveIssuer(jwksUrl),
-      audience: tenantClientId,
+      // Accept tokens from either app client — the web app (tenantClientId) or
+      // the mobile driver app (mobileClientId). validate-token accepts both the
+      // same way; the tenant is still taken from the custom:tenantId claim, so
+      // broadening the audience does not widen authz. filter(Boolean) so an
+      // unset mobile client id can't collapse to an empty-string audience.
+      audience: [tenantClientId, mobileClientId].filter(Boolean),
       algorithms: ['RS256'],
     })
     payload = result.payload as Record<string, unknown>
