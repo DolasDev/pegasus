@@ -3,6 +3,16 @@
   // matching the prior `npm audit --audit-level=high` policy.
   "high": true,
 
+  // Pass when the audit itself cannot be completed — e.g. npm's advisory endpoint
+  // (registry.npmjs.org/-/npm/v1/security/advisories/bulk) returns errors, which it
+  // does intermittently and which audit-ci reports as "code undefined: Exiting...".
+  // audit-ci already retries (retry-count default 5); when even that fails, the whole
+  // merge queue stalls on an external outage that is NOT a vulnerability. This makes
+  // audit-ci treat an unreachable endpoint as a pass while STILL failing on real
+  // high/critical advisories whenever the endpoint is reachable. (Stalled the queue
+  // on 2026-07-26.)
+  "pass-enoaudit": true,
+
   // Advisories listed here are explicitly accepted. Each entry MUST have a tracking note
   // explaining why it's safe and when it can be removed.
   "allowlist": [
