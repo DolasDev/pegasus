@@ -88,6 +88,11 @@ describe('authorize — offline (cedar-wasm)', () => {
     }
   })
 
+  // Every authenticated principal — regardless of role — may read and upload
+  // documents (50-documents-shared.cedar, unconstrained permit). This baseline
+  // therefore shows up in every persona's allowed set below.
+  const DOC_BASELINE = [Actions.ReadDocument.id, Actions.UploadDocument.id]
+
   it('sales matches its persona policy (invariant c)', async () => {
     const ids = new Set(await allowedActionIds(principal(['sales'])))
     expect(ids).toEqual(
@@ -100,6 +105,7 @@ describe('authorize — offline (cedar-wasm)', () => {
         Actions.UpdateCustomer.id,
         Actions.ListMoves.id,
         Actions.ReadMove.id,
+        ...DOC_BASELINE,
       ]),
     )
   })
@@ -116,22 +122,33 @@ describe('authorize — offline (cedar-wasm)', () => {
         Actions.ListMoves.id,
         Actions.ReadMove.id,
         Actions.ReadCustomer.id,
+        // billing/accounting role: may also delete/archive documents.
+        Actions.DeleteDocument.id,
+        ...DOC_BASELINE,
       ]),
     )
   })
 
-  it('stub legacy persona grants zero permissions until its policy is authored (invariant f)', async () => {
-    // Sanity-check that the placeholder Cedar files for the legacy-derived
-    // personas (billing_manager, operations_admin, coordinator, …) are inert:
-    // assigning the role today must grant nothing, otherwise we have either a
-    // stray permit clause leaking through or a misconfigured group hierarchy.
-    const allowed = await allowedActionIds(principal(['billing_manager']))
-    expect(allowed).toEqual([])
+  it('a pure placeholder persona grants only the shared document baseline (invariant f)', async () => {
+    // The placeholder Cedar files for the legacy-derived personas
+    // (operations_admin, coordinator, senior_management, …) carry no permit
+    // clause of their own, so assigning such a role grants nothing BEYOND the
+    // universal document read/upload baseline — a stray persona permit would
+    // show up here as an extra id.
+    const ids = new Set(await allowedActionIds(principal(['operations_admin'])))
+    expect(ids).toEqual(new Set(DOC_BASELINE))
   })
 
-  it('empty-roles principal is denied everything (invariant d)', async () => {
-    const allowed = await allowedActionIds(principal([]))
-    expect(allowed.length).toBe(0)
+  it('billing_manager may delete documents (billing/accounting role)', async () => {
+    const ids = new Set(await allowedActionIds(principal(['billing_manager'])))
+    expect(ids).toEqual(new Set([Actions.DeleteDocument.id, ...DOC_BASELINE]))
+  })
+
+  it('empty-roles principal gets only the shared document baseline (invariant d)', async () => {
+    // Fail-closed for everything role-gated; the only cross-role grant is the
+    // universal document read/upload baseline (50-documents-shared.cedar).
+    const ids = new Set(await allowedActionIds(principal([])))
+    expect(ids).toEqual(new Set(DOC_BASELINE))
   })
 
   it('decision source is "offline" when no policyStoreId is provided', async () => {
@@ -205,7 +222,7 @@ describe('listAllowedPermissions — offline', () => {
     expect(new Set(perms)).toEqual(new Set(ALL_ACTIONS.map((a) => a.permission)))
   })
 
-  it('returns only read permissions for viewer', async () => {
+  it('returns the viewer read set plus the shared document baseline', async () => {
     const perms = await listAllowedPermissions(principal(['viewer']), undefined, undefined)
     expect(new Set(perms)).toEqual(
       new Set([
@@ -220,13 +237,18 @@ describe('listAllowedPermissions — offline', () => {
         Actions.ReadFeedbackForms.permission,
         Actions.RateShipment.permission,
         Actions.ReadTariff.permission,
+        // Universal document baseline (upload is a write, but granted to all).
+        Actions.ReadDocument.permission,
+        Actions.UploadDocument.permission,
       ]),
     )
   })
 
-  it('returns empty array for an empty-roles principal', async () => {
+  it('returns only the shared document baseline for an empty-roles principal', async () => {
     const perms = await listAllowedPermissions(principal([]), undefined, undefined)
-    expect(perms).toEqual([])
+    expect(new Set(perms)).toEqual(
+      new Set([Actions.ReadDocument.permission, Actions.UploadDocument.permission]),
+    )
   })
 })
 

@@ -1,5 +1,10 @@
-// Placeholder for billing_manager (legacy BM) -- permissions TBD.
-// Persona group: Pegasus::Group::"billing_manager"
-// Intended scope: payroll, driver debits, budgets, invoice key dates, currency
-// rates. No permit clauses yet -- assigned users have no permissions until the
-// real policy is authored.
+// billing_manager (legacy BM): broader billing/accounting permissions are still
+// TBD (payroll, driver debits, budgets, invoice key dates, currency rates).
+// For now the only granted permission is deleting/archiving documents, alongside
+// accountant and tenant_admin. Read + upload come from the shared grant in
+// 50-documents-shared.cedar.
+permit (
+  principal in Pegasus::Group::"billing_manager",
+  action in [Pegasus::Action::"DeleteDocument"],
+  resource
+);
