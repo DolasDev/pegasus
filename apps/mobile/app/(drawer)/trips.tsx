@@ -60,7 +60,22 @@ export default function TripsScreen() {
     )
   }
 
-  // Mapping resolved but no driver linked → onboarding empty state.
+  // The mapping lookup itself failed (network/client error) — this is NOT the
+  // same as "resolved, and you have no driver". Surface it as an error so a
+  // broken request isn't misreported as an onboarding state.
+  if (error && driverId == null) {
+    return (
+      <SafeAreaView style={styles.centered} edges={['bottom', 'left', 'right']}>
+        <Text style={styles.emptyTitle}>Couldn’t load your driver</Text>
+        <Text style={styles.emptySubtext}>{error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={() => void handleRefresh()}>
+          <Text style={styles.retryText}>Retry</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    )
+  }
+
+  // Mapping resolved successfully but no driver linked → onboarding empty state.
   if (mappingResolved && driverId == null) {
     return (
       <SafeAreaView style={styles.centered} edges={['bottom', 'left', 'right']}>
