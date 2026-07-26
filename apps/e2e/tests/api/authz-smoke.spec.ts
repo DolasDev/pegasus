@@ -55,6 +55,10 @@ const SALES_PERMISSIONS = [
   'customer:update',
   'move:list',
   'move:read',
+  // Document read/upload is granted to every authenticated user
+  // (50-documents-shared.cedar), so it appears in every persona's set.
+  'document:read',
+  'document:upload',
 ] as const
 const VIEWER_PERMISSIONS = [
   'quote:read',
@@ -77,6 +81,9 @@ const VIEWER_PERMISSIONS = [
   // (POST /api/admin/tariffs) — there is no tenant-facing tariff:import action.
   'tariff:rate',
   'tariff:read',
+  // Document read/upload baseline granted to all roles (50-documents-shared.cedar).
+  'document:read',
+  'document:upload',
 ] as const
 
 type PersonaSession = {
