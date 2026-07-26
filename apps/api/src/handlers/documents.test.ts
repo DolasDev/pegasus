@@ -158,6 +158,21 @@ describe('POST /upload-url', () => {
     const res = await app.request('/upload-url', post({ ...validUploadBody, entityType: 'foo' }))
     expect(res.status).toBe(400)
   })
+
+  it('accepts the shipment entity type (longhaul order_num linkage)', async () => {
+    ;(createPendingDocument as ReturnType<typeof vi.fn>).mockResolvedValue({
+      document: { ...mockDoc, status: 'PENDING_UPLOAD' },
+      s3Bucket: 'pegasus-documents-test',
+      s3Key: 'pending',
+    })
+
+    const app = buildApp()
+    const res = await app.request(
+      '/upload-url',
+      post({ ...validUploadBody, entityType: 'shipment', entityId: '123456' }),
+    )
+    expect(res.status).toBe(201)
+  })
 })
 
 // ---------------------------------------------------------------------------

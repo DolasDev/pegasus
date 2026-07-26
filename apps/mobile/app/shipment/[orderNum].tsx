@@ -1,8 +1,16 @@
 import React, { useEffect, useState } from 'react'
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native'
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  ActivityIndicator,
+  TouchableOpacity,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, Stack } from 'expo-router'
 import { TripStatusBadge } from '../../src/components/TripStatusBadge'
+import { DocumentsTab } from '../../src/components/DocumentsTab'
 import { TripService } from '../../src/services/tripService'
 import { formatLonghaulDate, formatLonghaulSpread } from '../../src/utils/longhaul-format'
 import type { LonghaulShipment } from '../../src/types/longhaul'
@@ -32,6 +40,7 @@ export default function ShipmentDetailScreen() {
   const [shipment, setShipment] = useState<LonghaulShipment | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [tab, setTab] = useState<'details' | 'documents'>('details')
 
   useEffect(() => {
     let active = true
@@ -124,13 +133,38 @@ export default function ShipmentDetailScreen() {
           {s.shipper_name ? <Text style={styles.shipper}>{s.shipper_name}</Text> : null}
         </View>
 
-        <Section title="Move" rows={move} />
-        <Section title="Key dates" rows={dates} />
-        <Section title="Locations" rows={locations} stacked />
-        <Section title="Weight" rows={weight} />
-        <Section title="Notes" rows={notes} stacked />
+        <View style={styles.tabBar}>
+          <Tab label="Details" active={tab === 'details'} onPress={() => setTab('details')} />
+          <Tab label="Documents" active={tab === 'documents'} onPress={() => setTab('documents')} />
+        </View>
+
+        {tab === 'details' ? (
+          <>
+            <Section title="Move" rows={move} />
+            <Section title="Key dates" rows={dates} />
+            <Section title="Locations" rows={locations} stacked />
+            <Section title="Weight" rows={weight} />
+            <Section title="Notes" rows={notes} stacked />
+          </>
+        ) : (
+          <DocumentsTab orderNum={s.order_num} />
+        )}
       </ScrollView>
     </SafeAreaView>
+  )
+}
+
+function Tab({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      style={[styles.tab, active && styles.tabActive]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+    >
+      <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
+    </TouchableOpacity>
   )
 }
 
@@ -190,6 +224,26 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.xs,
   },
+  tabBar: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.medium,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  tabActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  tabText: { fontSize: fontSize.medium, fontWeight: '600', color: colors.textPrimary },
+  tabTextActive: { color: colors.textLight },
   section: { marginBottom: spacing.lg },
   sectionTitle: {
     fontSize: fontSize.small,

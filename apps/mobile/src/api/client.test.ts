@@ -27,9 +27,9 @@ describe('mobile API client', () => {
     mockFetch.mockResolvedValueOnce({ id: '1', name: 'Test' })
 
     const client = getApiClient()
-    const result = await client.fetch('/api/v1/moves')
+    const result = await client.fetch('/api/v1/onprem/longhaul/trips')
 
-    expect(mockFetch).toHaveBeenCalledWith('/api/v1/moves')
+    expect(mockFetch).toHaveBeenCalledWith('/api/v1/onprem/longhaul/trips')
     expect(result).toEqual({ id: '1', name: 'Test' })
   })
 
@@ -41,9 +41,9 @@ describe('mobile API client', () => {
     mockFetchPaginated.mockResolvedValueOnce(mockResponse)
 
     const client = getApiClient()
-    const result = await client.fetchPaginated('/api/v1/moves')
+    const result = await client.fetchPaginated('/api/v1/onprem/longhaul/trips')
 
-    expect(mockFetchPaginated).toHaveBeenCalledWith('/api/v1/moves')
+    expect(mockFetchPaginated).toHaveBeenCalledWith('/api/v1/onprem/longhaul/trips')
     expect(result).toEqual(mockResponse)
   })
 

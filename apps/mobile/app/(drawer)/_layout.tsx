@@ -38,7 +38,6 @@ export default function DrawerLayout() {
         >
           <Drawer.Screen name="index" options={{ title: 'Dashboard' }} />
           <Drawer.Screen name="trips" options={{ title: 'My Trips' }} />
-          <Drawer.Screen name="paperwork" options={{ title: 'Paperwork' }} />
           <Drawer.Screen
             name="settings"
             options={{

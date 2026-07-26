@@ -38,11 +38,6 @@ export function DrawerContent(props: DrawerContentComponentProps) {
           )}
           onPress={() => props.navigation.navigate('trips')}
         />
-        <DrawerItem
-          label="Paperwork"
-          labelStyle={styles.itemLabel}
-          onPress={() => props.navigation.navigate('paperwork')}
-        />
       </View>
     </DrawerContentScrollView>
   )
