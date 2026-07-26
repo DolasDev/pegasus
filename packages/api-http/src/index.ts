@@ -41,13 +41,32 @@ export interface ApiClient {
   fetchPaginated<T>(path: string, init?: RequestInit): Promise<{ data: T[]; meta: PaginationMeta }>
 }
 
+/**
+ * Correlation id for the `x-correlation-id` header. Prefers the platform
+ * `crypto.randomUUID()` when present (browsers, Node), but falls back to a
+ * Math.random v4 UUID otherwise — React Native's Hermes runtime has no global
+ * `crypto.randomUUID`, and calling it there throws before the request is sent,
+ * silently killing every request. A correlation id is not security-sensitive,
+ * so the non-crypto fallback is acceptable.
+ */
+export function randomCorrelationId(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto
+  if (c && typeof c.randomUUID === 'function') {
+    return c.randomUUID()
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
+    const r = (Math.random() * 16) | 0
+    return (ch === 'x' ? r : (r & 0x3) | 0x8).toString(16)
+  })
+}
+
 export function createApiClient(options: ApiClientOptions): ApiClient {
   const { getBaseUrl, getToken } = options
 
   function buildHeaders(init?: RequestInit): Headers {
     const headers = new Headers(init?.headers)
     headers.set('Content-Type', 'application/json')
-    headers.set('x-correlation-id', crypto.randomUUID())
+    headers.set('x-correlation-id', randomCorrelationId())
     const token = getToken()
     if (token) {
       headers.set('Authorization', `Bearer ${token}`)

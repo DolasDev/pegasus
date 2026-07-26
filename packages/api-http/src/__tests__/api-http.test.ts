@@ -2,8 +2,8 @@
 // @pegasus/api-http — ApiError + createApiClient factory tests
 // ---------------------------------------------------------------------------
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { ApiError, createApiClient } from '../index'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { ApiError, createApiClient, randomCorrelationId } from '../index'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -99,6 +99,40 @@ describe('createApiClient().fetch', () => {
     const [, init] = fetchSpy.mock.calls[0]!
     const headers = new Headers(init?.headers)
     expect(headers.get('Authorization')).toBeNull()
+  })
+})
+
+describe('randomCorrelationId without a platform crypto.randomUUID (React Native / Hermes)', () => {
+  beforeEach(() => vi.restoreAllMocks())
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('still returns a valid v4 UUID when crypto is undefined', () => {
+    vi.stubGlobal('crypto', undefined)
+    expect(UUID_REGEX.test(randomCorrelationId())).toBe(true)
+  })
+
+  it('still returns a valid v4 UUID when crypto lacks randomUUID', () => {
+    vi.stubGlobal('crypto', { getRandomValues: () => new Uint8Array() })
+    expect(UUID_REGEX.test(randomCorrelationId())).toBe(true)
+  })
+
+  it('does NOT throw and STILL sends the request when randomUUID is missing', async () => {
+    // Regression: crypto.randomUUID() threw before fetch ran in RN, silently
+    // killing every api-http request (mobile "No driver linked" bug).
+    vi.stubGlobal('crypto', undefined)
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(makeResponse({ data: 'ok' }))
+    const client = makeClient()
+    await expect(client.fetch('/me/driver')).resolves.toBe('ok')
+    expect(fetchSpy).toHaveBeenCalledOnce()
+    const [, init] = fetchSpy.mock.calls[0]!
+    const id = new Headers(init?.headers).get('x-correlation-id')
+    expect(id).not.toBeNull()
+    expect(UUID_REGEX.test(id!)).toBe(true)
+  })
+
+  it('prefers the native crypto.randomUUID when present', () => {
+    vi.stubGlobal('crypto', { randomUUID: () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' })
+    expect(randomCorrelationId()).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
   })
 })
 
