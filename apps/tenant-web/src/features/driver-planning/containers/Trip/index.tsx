@@ -271,6 +271,15 @@ function TripInternal() {
                       ) : (
                         ''
                       )
+                    // A stop can arrive without a city (partial/legacy data).
+                    // `activity.city[0]` on a null/undefined city throws mid-
+                    // render and blows up the whole Trip screen, so title-case
+                    // defensively and compose the "City, State" label from only
+                    // the parts that are actually present.
+                    const cityLabel = activity.city
+                      ? activity.city[0] + activity.city.slice(1).toLowerCase()
+                      : ''
+                    const location = [cityLabel, activity.state].filter(Boolean).join(', ')
                     return (
                       <div
                         className={styles.activityCard}
@@ -287,7 +296,7 @@ function TripInternal() {
                         <span>{`${startCase(activity.shipment?.shipper_name.split(', ')[0].toLowerCase())}`}</span>
                         <span>{` - ${activity.shipment?.order_num}`}</span>
                         <div>
-                          <span>{`${activity.city[0] + activity.city.slice(1).toLowerCase()}, ${activity.state}`}</span>
+                          <span>{location}</span>
                           <span> </span>
                           <span>
                             {vipIndicator}
