@@ -214,6 +214,23 @@ describe('Trip dateContainer (Trip Itinerary)', () => {
     expect(container.querySelectorAll('i.fa-id-badge')).toHaveLength(1)
   })
 
+  // Regression: a stop can arrive without a city (partial/legacy data). The
+  // old `activity.city[0]` read threw mid-render and blew up the whole Trip
+  // screen. The card must still render, showing just the state.
+  it('renders the itinerary when a stop has no city', async () => {
+    fetchTripMock.mockResolvedValue({
+      ...tripFixture,
+      activities: [activity({ activityId: 1, order_num: 'O1', city: null, state: 'TX' })],
+    })
+    const { container } = renderWithStore(<Trip />)
+    await waitFor(() => expect(screen.getByText('Trip Itinerary')).toBeInTheDocument())
+    const cards = container.querySelectorAll('[data-target="trip-shipment-activity"]')
+    expect(cards).toHaveLength(1)
+    // With no city, the label collapses to the state alone — no leading comma.
+    expect(cards[0].textContent).toContain('TX')
+    expect(cards[0].textContent).not.toContain(', TX')
+  })
+
   it('renders the WGS indicator for type_packing shipments, alongside the VIP badge', async () => {
     const { container } = renderWithStore(<Trip />)
     await waitFor(() => expect(screen.getByText('Trip Itinerary')).toBeInTheDocument())
