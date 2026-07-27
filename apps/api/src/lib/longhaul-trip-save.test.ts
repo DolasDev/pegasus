@@ -170,4 +170,178 @@ describe('computeTripSavePlan', () => {
     if (plan.kind !== 'plan') throw new Error('expected plan')
     expect(plan.dispatcherCascade).toBeNull()
   })
+
+  // -------------------------------------------------------------------------
+  // The DTO's activities are the final set — never re-derived.
+  //
+  // GET /trips/:id embeds each shipment's activities carrying this trip's
+  // TripMaster_id. Running them back through buildShipmentActivities on save
+  // dropped every one of them (it keeps only TripMaster_id == null rows) and
+  // regenerated just PACK / LOAD-or-R19O / RDEL, so anything else the trip owned
+  // fell into the remove set — 403ing the save when it had an actual_date, and
+  // silently deleting it otherwise.
+  // -------------------------------------------------------------------------
+  describe('activities sent by the caller', () => {
+    /** A shipment as GET /trips/:id returns it: activities already on THIS trip. */
+    const trippedShipment = (orderNum: number, acts: Array<Record<string, unknown>>) => ({
+      ...shipment(orderNum),
+      activities: acts.map((a) => ({ order_num: orderNum, TripMaster_id: 55, ...a })),
+    })
+
+    it('keeps an extra-type activity the required-template set cannot regenerate', () => {
+      // SIT-In was attached from the Add Activity menu and has since been
+      // performed — the reported "Cannot remove 2 activity(s) with actual dates".
+      const existing: ExistingActivity[] = [
+        { id: 1, order_num: 100, activityType_code: 'R19O', actual_date: null, TripMaster_id: 55 },
+        {
+          id: 2,
+          order_num: 100,
+          activityType_code: 'SITIN',
+          actual_date: '2026-06-03',
+          TripMaster_id: 55,
+        },
+        { id: 3, order_num: 100, activityType_code: 'RDEL', actual_date: null, TripMaster_id: 55 },
+      ]
+      const dto = baseDto({
+        id: 55,
+        shipments: [
+          trippedShipment(100, [
+            { id: 1, ActivityType_code: 'R19O', activityType: { code: 'R19O' } },
+            {
+              id: 2,
+              ActivityType_code: 'SITIN',
+              activityType: { code: 'SITIN' },
+              actual_date: '2026-06-03',
+            },
+            { id: 3, ActivityType_code: 'RDEL', activityType: { code: 'RDEL' } },
+          ]),
+        ],
+      })
+
+      const plan = computeTripSavePlan(dto, { driver_id: 9, dispatcher_id: 5 }, existing)
+      if (plan.kind !== 'plan') throw new Error(`expected plan, got: ${plan.error}`)
+      expect(plan.removeIds).toEqual([])
+      expect(plan.activitiesToUpdate.map((u) => u.id).sort()).toEqual([1, 2, 3])
+      expect(plan.activitiesToAdd).toEqual([])
+    })
+
+    it('keeps a required-type activity whose trigger column is no longer set', () => {
+      // R19O only regenerates while the shipment row still carries rule19_id.
+      const existing: ExistingActivity[] = [
+        {
+          id: 7,
+          order_num: 100,
+          activityType_code: 'R19O',
+          actual_date: '2026-06-02',
+          TripMaster_id: 55,
+        },
+      ]
+      const dto = baseDto({
+        id: 55,
+        shipments: [
+          {
+            ...trippedShipment(100, [
+              {
+                id: 7,
+                ActivityType_code: 'R19O',
+                activityType: { code: 'R19O' },
+                actual_date: '2026-06-02',
+              },
+            ]),
+            rule19_id: null,
+          },
+        ],
+      })
+
+      const plan = computeTripSavePlan(dto, { driver_id: 9, dispatcher_id: 5 }, existing)
+      if (plan.kind !== 'plan') throw new Error(`expected plan, got: ${plan.error}`)
+      expect(plan.removeIds).toEqual([])
+    })
+
+    it('still removes an activity the planner deleted from the shipment', () => {
+      // Deletion has to keep working — and must not be undone by auto-fill
+      // regenerating the dropped RDEL template.
+      const existing: ExistingActivity[] = [
+        { id: 1, order_num: 100, activityType_code: 'LOAD', actual_date: null, TripMaster_id: 55 },
+        { id: 2, order_num: 100, activityType_code: 'RDEL', actual_date: null, TripMaster_id: 55 },
+      ]
+      const dto = baseDto({
+        id: 55,
+        shipments: [
+          trippedShipment(100, [
+            { id: 1, ActivityType_code: 'LOAD', activityType: { code: 'LOAD' } },
+          ]),
+        ],
+      })
+
+      const plan = computeTripSavePlan(dto, { driver_id: 9, dispatcher_id: 5 }, existing)
+      if (plan.kind !== 'plan') throw new Error(`expected plan, got: ${plan.error}`)
+      expect(plan.removeIds).toEqual([2])
+    })
+
+    it("persists the planner's edited dates instead of the shipment's", () => {
+      const existing: ExistingActivity[] = [
+        { id: 1, order_num: 100, activityType_code: 'LOAD', actual_date: null, TripMaster_id: 55 },
+      ]
+      const dto = baseDto({
+        id: 55,
+        shipments: [
+          trippedShipment(100, [
+            {
+              id: 1,
+              ActivityType_code: 'LOAD',
+              activityType: { code: 'LOAD' },
+              planned_start: '2026-06-09',
+              planned_end: '2026-06-10',
+            },
+          ]),
+        ],
+      })
+
+      const plan = computeTripSavePlan(dto, { driver_id: 9, dispatcher_id: 5 }, existing)
+      if (plan.kind !== 'plan') throw new Error(`expected plan, got: ${plan.error}`)
+      // shipment.load_date2 is 2026-06-02; the planner moved the activity to 06-09.
+      expect(plan.activitiesToUpdate[0]!.fields['planned_start']).toBe('2026-06-09')
+      expect(plan.activitiesToUpdate[0]!.fields['planned_end']).toBe('2026-06-10')
+    })
+
+    it('carries actual dates into the summary set the trip header is rolled up from', () => {
+      const dto = baseDto({
+        id: 55,
+        shipments: [
+          trippedShipment(100, [
+            {
+              id: 1,
+              ActivityType_code: 'LOAD',
+              activityType: { code: 'LOAD' },
+              actual_date: '2026-06-02',
+            },
+          ]),
+        ],
+      })
+      const plan = computeTripSavePlan(dto, { driver_id: 9, dispatcher_id: 5 }, [])
+      if (plan.kind !== 'plan') throw new Error('expected plan')
+      expect(plan.finalActivities.map((a) => a['actual_date'])).toEqual(['2026-06-02'])
+    })
+
+    it('auto-fills the required templates for a shipment sent without activities', () => {
+      const plan = computeTripSavePlan(baseDto(), null, [])
+      if (plan.kind !== 'plan') throw new Error('expected plan')
+      expect(plan.activitiesToAdd.map((a) => a['ActivityType_code']).sort()).toEqual([
+        'LOAD',
+        'PACK',
+        'RDEL',
+      ])
+    })
+
+    it('auto-fills for a shipment sent with an empty activities array', () => {
+      const plan = computeTripSavePlan(
+        baseDto({ shipments: [{ ...shipment(100), activities: [] }] }),
+        null,
+        [],
+      )
+      if (plan.kind !== 'plan') throw new Error('expected plan')
+      expect(plan.activitiesToAdd).toHaveLength(3)
+    })
+  })
 })
