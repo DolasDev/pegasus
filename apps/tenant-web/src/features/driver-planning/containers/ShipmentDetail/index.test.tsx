@@ -44,13 +44,16 @@ import { API } from '../../utils/api'
 const happyShipment = {
   order_num: '12345',
   shipper_name: 'ACME Shipper',
+  shipper_add1: '99 Congress Ave',
+  shipper_add2: 'Floor 2',
   shipper_city: 'Austin',
   shipper_state: 'TX',
+  shipper_zip: '78701',
+  del_address1: '123 Main',
+  del_address2: 'Suite 4',
   consignee_city: 'Denver',
   consignee_state: 'CO',
-  destination_address1: '123 Main',
-  destination_address2: 'Suite 4',
-  destination_zip: '80202',
+  consignee_zip: '80202',
   ba_name: 'Big Account',
   booker_name: 'Boo Booker',
   haul_name: 'Hauler Inc',
@@ -92,6 +95,47 @@ describe('ShipmentDetail container', () => {
     expect(screen.getByText('Order Number')).toBeInTheDocument()
     expect(screen.getByText('Account Name')).toBeInTheDocument()
     expect(screen.getByText('Long Distance Instructions')).toBeInTheDocument()
+  })
+
+  it('renders origin/destination street + city-state-zip from the real shipment keys', () => {
+    renderWithStore(<ShipmentDetail />, {
+      shipments: { selectedShipment: happyShipment } as any,
+      user: { user: sampleUser } as any,
+    })
+    expect(screen.getByText('Origin Address')).toBeInTheDocument()
+    expect(screen.getByText('99 Congress Ave, Floor 2')).toBeInTheDocument()
+    expect(screen.getByText('Austin, TX 78701')).toBeInTheDocument()
+    expect(screen.getByText('Destination Address')).toBeInTheDocument()
+    expect(screen.getByText('123 Main, Suite 4')).toBeInTheDocument()
+    expect(screen.getByText('Denver, CO 80202')).toBeInTheDocument()
+  })
+
+  it('never renders the literal "undefined" when address parts are missing', () => {
+    // Regression: the accessors read legacy keys (origin_address1, origin_zip,
+    // destination_*) that don't exist on the enriched row, so every part
+    // interpolated as "undefined". Missing parts must now simply drop out.
+    const noAddr = { ...happyShipment }
+    for (const k of [
+      'shipper_add1',
+      'shipper_add2',
+      'shipper_zip',
+      'del_address1',
+      'del_address2',
+      'consignee_zip',
+    ]) {
+      delete (noAddr as any)[k]
+    }
+    renderWithStore(<ShipmentDetail />, {
+      shipments: { selectedShipment: noAddr } as any,
+      user: { user: sampleUser } as any,
+    })
+    // City + state still present → the city/state line survives without a zip
+    // (no trailing ", undefined"), and the empty street rows render nothing
+    // rather than "undefined, undefined".
+    expect(screen.getByText('Austin, TX')).toBeInTheDocument()
+    expect(screen.getByText('Denver, CO')).toBeInTheDocument()
+    expect(screen.queryByText('undefined, undefined')).not.toBeInTheDocument()
+    expect(screen.queryByText(/,\s*undefined/)).not.toBeInTheDocument()
   })
 
   it('does NOT crash when pegasus_shadow is missing entirely (sparse data)', () => {
