@@ -231,6 +231,25 @@ describe('Trip dateContainer (Trip Itinerary)', () => {
     expect(cards[0].textContent).not.toContain(', TX')
   })
 
+  // Regression: `activity.shipment?.shipper_name.split(...)` only guarded the
+  // shipment, not shipper_name — a stitched shipment with a null shipper_name
+  // threw mid-render and blew up the whole Trip screen.
+  it('renders the itinerary when a shipment has no shipper_name', async () => {
+    fetchTripMock.mockResolvedValue({
+      ...tripFixture,
+      activities: [
+        activity({
+          activityId: 1,
+          order_num: 'O1',
+          shipment: { shipper_name: null, order_num: 'O1', vip: 'N', supervip: 'N' },
+        }),
+      ],
+    })
+    const { container } = renderWithStore(<Trip />)
+    await waitFor(() => expect(screen.getByText('Trip Itinerary')).toBeInTheDocument())
+    expect(container.querySelectorAll('[data-target="trip-shipment-activity"]')).toHaveLength(1)
+  })
+
   it('renders the WGS indicator for type_packing shipments, alongside the VIP badge', async () => {
     const { container } = renderWithStore(<Trip />)
     await waitFor(() => expect(screen.getByText('Trip Itinerary')).toBeInTheDocument())
