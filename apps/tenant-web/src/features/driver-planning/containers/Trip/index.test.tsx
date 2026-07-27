@@ -98,6 +98,8 @@ const tripWithActivitiesFixture = {
         order_num: 'O1',
         vip: 'Y',
         supervip: 'N',
+        // Also WGS — the combined V-WGS case renders both indicators.
+        type_packing: 'Y',
         total_est_wt: 5000,
         pegasus_shadow: null,
       },
@@ -114,6 +116,7 @@ const tripWithActivitiesFixture = {
         order_num: 'O2',
         vip: 'N',
         supervip: 'N',
+        type_packing: 'N',
         total_est_wt: 3000,
         pegasus_shadow: null,
       },
@@ -209,6 +212,27 @@ describe('Trip dateContainer (Trip Itinerary)', () => {
     expect(screen.getByText(/Dallas, TX/)).toBeInTheDocument()
     // VIP shipper (vip: 'Y') renders the id-badge icon; the plain one does not.
     expect(container.querySelectorAll('i.fa-id-badge')).toHaveLength(1)
+  })
+
+  it('renders the WGS indicator for type_packing shipments, alongside the VIP badge', async () => {
+    const { container } = renderWithStore(<Trip />)
+    await waitFor(() => expect(screen.getByText('Trip Itinerary')).toBeInTheDocument())
+    const cards = container.querySelectorAll('[data-target="trip-shipment-activity"]')
+    expect(cards).toHaveLength(2)
+    // Exactly one WGS shipment (O1: type_packing 'Y'); the plain O2 has none.
+    expect(container.querySelectorAll('i.fa-hand-sparkles')).toHaveLength(1)
+    // O1 is both VIP and WGS (V-WGS) → its card carries BOTH icons.
+    const wgsCard = container.querySelector(
+      '[data-target="trip-shipment-activity"][data-order-num="O1"]',
+    )
+    expect(wgsCard?.querySelector('i.fa-hand-sparkles')).not.toBeNull()
+    expect(wgsCard?.querySelector('i.fa-id-badge')).not.toBeNull()
+    // The plain O2 card carries neither indicator.
+    const plainCard = container.querySelector(
+      '[data-target="trip-shipment-activity"][data-order-num="O2"]',
+    )
+    expect(plainCard?.querySelector('i.fa-hand-sparkles')).toBeNull()
+    expect(plainCard?.querySelector('i.fa-id-badge')).toBeNull()
   })
 
   it('keeps the fixed card column and gantt rows row-aligned (1:1 count)', async () => {

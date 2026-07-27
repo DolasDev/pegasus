@@ -255,6 +255,22 @@ function TripInternal() {
                       ) : (
                         ''
                       )
+                    // WGS (White Glove Service) is driven purely by type_packing,
+                    // mirroring ShipmentCard's getShipmentIndicator(). It renders
+                    // alongside the VIP badge so combined cases (S-WGS/V-WGS) show
+                    // both. Red matches the ShipmentCard's WGS border color.
+                    const wgsIndicator =
+                      activity.shipment.type_packing === 'Y' ? (
+                        <HoverToolTip
+                          key={`wgs-${index}`}
+                          content="White Glove Service (WGS)"
+                          direction="right"
+                        >
+                          <i style={{ color: 'red' }} className="fas fa-hand-sparkles"></i>
+                        </HoverToolTip>
+                      ) : (
+                        ''
+                      )
                     return (
                       <div
                         className={styles.activityCard}
@@ -273,7 +289,11 @@ function TripInternal() {
                         <div>
                           <span>{`${activity.city[0] + activity.city.slice(1).toLowerCase()}, ${activity.state}`}</span>
                           <span> </span>
-                          <span>{vipIndicator}</span>
+                          <span>
+                            {vipIndicator}
+                            {wgsIndicator ? <span> </span> : ''}
+                            {wgsIndicator}
+                          </span>
                         </div>
                         {/*`${activity.shipment?.avl_reg}, ${activity.shipment?.order_num}`*/}
                       </div>
