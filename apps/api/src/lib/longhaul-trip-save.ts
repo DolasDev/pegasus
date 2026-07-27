@@ -161,10 +161,26 @@ export function computeTripSavePlan(
   const currentStatusTripId = (tripDto['status'] as Record<string, unknown> | null)?.['id'] ?? 1
   const modifiedBy = (tripDto['updated_by_id'] as number | undefined) ?? null
 
-  // Auto-fill required activity templates per shipment → the final activity set.
+  // The final activity set = what the caller sent, verbatim (saveTripLogic:
+  // `activities.push(...shipment.activities)`). It must NOT be re-derived:
+  // buildShipmentActivities drops every activity that already sits on a trip
+  // (TripMaster_id != null) and regenerates only the four required templates, so
+  // re-deriving here would silently drop the trip's own persisted activities —
+  // extra types (R19I/SITIN/UNPK/XPU/...) and any required type whose trigger
+  // column has since been cleared — straight into the remove set, 403ing the
+  // save whenever one carries an actual_date, and discarding the planner's date
+  // edits and deletions on the rest.
+  //
+  // Auto-fill is the fallback for a shipment that arrives with no activities at
+  // all (an API client posting a bare shipment). The planner UI never hits it:
+  // GET /shipments already expands the required templates (shipments-list.ts)
+  // before a shipment can be added to a trip.
   const dtoShipments = (tripDto['shipments'] as Activity[]) ?? []
   const dtoActivities: Activity[] = []
-  for (const shipment of dtoShipments) dtoActivities.push(...buildShipmentActivities(shipment))
+  for (const shipment of dtoShipments) {
+    const sent = shipment['activities'] as Activity[] | undefined
+    dtoActivities.push(...(sent?.length ? sent : buildShipmentActivities(shipment)))
+  }
 
   // Match key: same order_num + activity-type code on the same (existing) trip.
   const sameSlot = (dto: Activity, dbo: ExistingActivity): boolean =>
