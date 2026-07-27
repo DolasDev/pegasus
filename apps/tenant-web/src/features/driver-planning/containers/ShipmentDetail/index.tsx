@@ -21,6 +21,19 @@ const createFromToDateString = (startDate: any, endDate?: any) =>
 const createTripString = (shipment: any) =>
   `${shipment.shipper_city}, ${shipment.shipper_state} - ${shipment.consignee_city}, ${shipment.consignee_state}`
 
+// Join only the parts that are actually present so a missing field never
+// renders the literal string "undefined". (The legacy field names these
+// accessors were ported against — origin_address*/origin_zip/destination_* —
+// don't exist on the enriched shipment row; the real keys are shipper_add1/2 +
+// shipper_zip for origin and del_address1/2 + consignee_zip for destination.)
+const joinPresent = (parts: any[], sep: string) =>
+  parts.filter((p) => p != null && String(p).trim() !== '').join(sep)
+
+const createStreetString = (address1: any, address2: any) => joinPresent([address1, address2], ', ')
+
+const createCityStateZipString = (city: any, state: any, zip: any) =>
+  joinPresent([joinPresent([city, state], ', '), zip], ' ')
+
 export function ShipmentDetail({
   onUpdateShadow,
   onUpdateNote,
@@ -194,12 +207,16 @@ export function ShipmentDetail({
       label: 'Origin Address',
     },
     {
-      accessor: (shipment: any) => `${shipment.origin_address1}, ${shipment.origin_address2}`,
+      accessor: (shipment: any) => createStreetString(shipment.shipper_add1, shipment.shipper_add2),
       label: '',
     },
     {
       accessor: (shipment: any) =>
-        `${shipment.shipper_city}, ${shipment.shipper_state}, ${shipment.origin_zip}`,
+        createCityStateZipString(
+          shipment.shipper_city,
+          shipment.shipper_state,
+          shipment.shipper_zip,
+        ),
 
       label: '',
     },
@@ -208,13 +225,16 @@ export function ShipmentDetail({
       label: 'Destination Address',
     },
     {
-      accessor: (shipment: any) =>
-        `${shipment.destination_address1}, ${shipment.destination_address2}`,
+      accessor: (shipment: any) => createStreetString(shipment.del_address1, shipment.del_address2),
       label: '',
     },
     {
       accessor: (shipment: any) =>
-        `${shipment.consignee_city} ${shipment.consignee_state}, ${shipment.destination_zip}`,
+        createCityStateZipString(
+          shipment.consignee_city,
+          shipment.consignee_state,
+          shipment.consignee_zip,
+        ),
 
       label: '',
     },
