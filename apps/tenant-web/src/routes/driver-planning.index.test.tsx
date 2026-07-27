@@ -275,10 +275,13 @@ describe('DriverPlanningPage', () => {
   })
 
   describe('ready state / ready city columns', () => {
-    it('falls back to the best-guess city/state when no confirmed location is set', () => {
+    it('shows the best-guess city/state from the activity when the Ready Date is not manually entered', () => {
       driverPlanningReturn = {
         data: [
           makeDriver({
+            // No confirmed availability at all → the whole triple is the guess,
+            // so state/city come from the same activity the guess date did.
+            confirmedAvailableDate: null,
             confirmedAvailableLocation: null,
             deliveries: [delivery({ city: 'EL PASO', state: 'TX', actualDate: '2026-06-02' })],
           }),
@@ -294,6 +297,50 @@ describe('DriverPlanningPage', () => {
       expect(stateBold).toHaveLength(1)
       expect(stateBold[0]).toHaveTextContent('TX')
       expect(cityCell).toHaveTextContent('El Paso')
+    })
+
+    it('shows no ready state/city when the Ready Date is manually entered but no location was', () => {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            // Manual (confirmed) date, but the planner left the location blank.
+            // State/city must reflect the manual entry (empty) — NOT the last
+            // activity — so they stay in lockstep with the displayed date.
+            confirmedAvailableDate: '2026-06-01',
+            confirmedAvailableLocation: null,
+            deliveries: [delivery({ city: 'EL PASO', state: 'TX', actualDate: '2026-06-02' })],
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      const stateCell = screen.getByTestId('ready-state-cell')
+      const cityCell = screen.getByTestId('ready-city-cell')
+      expect(stateCell).toHaveTextContent('-')
+      expect(stateCell.querySelectorAll('b')).toHaveLength(0)
+      expect(cityCell).toHaveTextContent('-')
+    })
+
+    it('keeps the manually-entered state/city even when the last activity is elsewhere', () => {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            confirmedAvailableDate: '2026-06-01',
+            confirmedAvailableLocation: 'TX, Dallas',
+            // A competing activity in a different place must not bleed through.
+            deliveries: [delivery({ city: 'FRESNO', state: 'CA', actualDate: '2026-06-02' })],
+          }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+      renderPage()
+      const stateCell = screen.getByTestId('ready-state-cell')
+      const cityCell = screen.getByTestId('ready-city-cell')
+      expect(stateCell).toHaveTextContent('TX')
+      expect(cityCell).toHaveTextContent('Dallas')
+      expect(cityCell).not.toHaveTextContent('Fresno')
     })
 
     it('splits a "STATE, City" confirmed location across the two columns', () => {
@@ -376,22 +423,27 @@ describe('DriverPlanningPage', () => {
     it('narrows the visible rows to drivers whose ready state maps to a selected zone', () => {
       driverPlanningReturn = {
         data: [
+          // Ready state is derived from the guess activity, so these rows carry
+          // no confirmed availability — their zone comes from the delivery state.
           // Alice → TX (Southwest)
           makeDriver({
             driverId: 1,
             driverName: 'Alice',
+            confirmedAvailableDate: null,
             deliveries: [delivery({ state: 'TX', actualDate: '2026-06-02' })],
           }),
           // Bob → NY (Northeast)
           makeDriver({
             driverId: 2,
             driverName: 'Bob',
+            confirmedAvailableDate: null,
             deliveries: [delivery({ activityId: 9, state: 'NY', actualDate: '2026-06-02' })],
           }),
           // Carol → CA (West)
           makeDriver({
             driverId: 3,
             driverName: 'Carol',
+            confirmedAvailableDate: null,
             deliveries: [delivery({ activityId: 8, state: 'CA', actualDate: '2026-06-02' })],
           }),
         ],

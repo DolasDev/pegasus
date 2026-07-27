@@ -258,6 +258,30 @@ function getReadyGuess(driver: DriverPlanningRow): ReadyGuess {
   return { kind: 'none', date: null, state, city, source }
 }
 
+/**
+ * Single source of truth for the Ready Date / Ready State / Ready City triple.
+ * The three cells must never mix sources — they either ALL reflect the planner's
+ * manually-entered confirmed availability (whenever a confirmed Ready Date is
+ * present) or ALL reflect the one activity the best-guess Ready Date came from.
+ * Keying the whole triple off `confirmedAvailableDate` keeps state and city
+ * aligned with whatever produced the displayed date: a manual date with no
+ * manual location shows no location rather than borrowing the last activity's,
+ * and an activity-derived date always shows that same activity's state/city.
+ */
+function getReadyDisplay(driver: DriverPlanningRow): ReadyGuess {
+  if (driver.confirmedAvailableDate) {
+    const { state, city } = parseLocation(driver.confirmedAvailableLocation)
+    return {
+      kind: 'confirmed',
+      date: driver.confirmedAvailableDate,
+      state: state || null,
+      city: city || null,
+      source: null,
+    }
+  }
+  return getReadyGuess(driver)
+}
+
 function ReadyTierIcon({ tier }: { tier: ConfidenceTier }) {
   if (!tier.icon) return null
   return (
@@ -284,13 +308,9 @@ interface ZoneRefRow {
 }
 
 function getDriverReadyState(driver: DriverPlanningRow): string | null {
-  if (driver.confirmedAvailableLocation) {
-    for (const part of driver.confirmedAvailableLocation.split(',')) {
-      const t = part.trim()
-      if (/^[A-Za-z]{2}$/.test(t)) return t.toUpperCase()
-    }
-  }
-  return getReadyGuess(driver).state
+  // Read off the same coherent triple the cells render, so the zone the row is
+  // filtered into always matches the Ready State the planner sees.
+  return getReadyDisplay(driver).state
 }
 
 function getDriverZoneCode(driver: DriverPlanningRow, stateList: StateRefRow[]): string | null {
@@ -301,7 +321,7 @@ function getDriverZoneCode(driver: DriverPlanningRow, stateList: StateRefRow[]):
 }
 
 function getReadyDateKey(driver: DriverPlanningRow): string | null {
-  return driver.confirmedAvailableDate ?? getReadyGuess(driver).date
+  return getReadyDisplay(driver).date
 }
 
 type SortOrder = 'asc' | 'desc'
@@ -363,7 +383,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
   const skipBlur = useRef(false)
 
   const mutation = useUpdateConfirmedAvailability()
-  const guess = getReadyGuess(driver)
+  const display = getReadyDisplay(driver)
   const agency = driver.agentCode ?? AGENCY_PLACEHOLDER
 
   // The PATCH upsert overwrites the whole row, so EVERY save must send the full
@@ -603,25 +623,23 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
       <TableCell>
         {editMode?.kind === 'linked' ? (
           linkedInput('date', 'confirmedDate', { type: 'date', className: 'w-40' })
-        ) : driver.confirmedAvailableDate ? (
-          <span
-            className="cursor-pointer hover:underline inline-flex items-center gap-1 font-bold"
-            data-testid="ready-date-cell"
-            data-ready-tier="confirmed"
-            onClick={() => startLinkedEdit('date')}
-          >
-            <ReadyTierIcon tier={CONFIRMED_AVAILABILITY_TIER} />
-            {formatMonthDay(driver.confirmedAvailableDate)}
-          </span>
         ) : (
           <span
             className="cursor-pointer hover:underline inline-flex items-center gap-1 font-bold"
             data-testid="ready-date-cell"
-            data-ready-tier={guess.kind}
+            data-ready-tier={display.kind}
             onClick={() => startLinkedEdit('date')}
           >
-            <ReadyTierIcon tier={guess.source ? getConfidenceTier(guess.source) : NO_CONFIDENCE} />
-            {guess.date ? formatMonthDay(guess.date) : '-'}
+            <ReadyTierIcon
+              tier={
+                display.kind === 'confirmed'
+                  ? CONFIRMED_AVAILABILITY_TIER
+                  : display.source
+                    ? getConfidenceTier(display.source)
+                    : NO_CONFIDENCE
+              }
+            />
+            {display.date ? formatMonthDay(display.date) : '-'}
           </span>
         )}
       </TableCell>
@@ -639,11 +657,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
             data-testid="ready-state-cell"
             onClick={() => startLinkedEdit('state')}
           >
-            {(() => {
-              const parsed = parseLocation(driver.confirmedAvailableLocation)
-              const state = parsed.state || guess.state || ''
-              return state ? <b>{state}</b> : '-'
-            })()}
+            {display.state ? <b>{display.state}</b> : '-'}
           </span>
         )}
       </TableCell>
@@ -657,11 +671,7 @@ function DriverRow({ driver }: { driver: DriverPlanningRow }) {
             data-testid="ready-city-cell"
             onClick={() => startLinkedEdit('city')}
           >
-            {(() => {
-              const parsed = parseLocation(driver.confirmedAvailableLocation)
-              const city = parsed.city || guess.city || ''
-              return city || '-'
-            })()}
+            {display.city || '-'}
           </span>
         )}
       </TableCell>
