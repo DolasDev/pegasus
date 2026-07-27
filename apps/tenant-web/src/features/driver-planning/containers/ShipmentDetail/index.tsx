@@ -22,10 +22,12 @@ const createTripString = (shipment: any) =>
   `${shipment.shipper_city}, ${shipment.shipper_state} - ${shipment.consignee_city}, ${shipment.consignee_state}`
 
 // Join only the parts that are actually present so a missing field never
-// renders the literal string "undefined". (The legacy field names these
-// accessors were ported against — origin_address*/origin_zip/destination_* —
-// don't exist on the enriched shipment row; the real keys are shipper_add1/2 +
-// shipper_zip for origin and del_address1/2 + consignee_zip for destination.)
+// renders the literal string "undefined". Several accessors here were ported
+// against legacy field names that don't exist on the enriched shipment row
+// (e.g. origin_address*/origin_zip/destination_*, oa_id/da_id, extrapu/
+// extradel); interpolating them straight into a template literal printed
+// "undefined" to the user. Composing through joinPresent degrades those to
+// blank instead — and is a no-op for the fields that are present.
 const joinPresent = (parts: any[], sep: string) =>
   parts.filter((p) => p != null && String(p).trim() !== '').join(sep)
 
@@ -124,7 +126,7 @@ export function ShipmentDetail({
     {
       accessor: (shipment: any) => (
         <span>
-          {`${shipment.oa_id} - ${shipment.oa_name}`}
+          {joinPresent([shipment.oa_id, shipment.oa_name], ' - ')}
           <ShipmentCoverage onUpdate={ifUpdateShadow} />
         </span>
       ),
@@ -132,7 +134,7 @@ export function ShipmentDetail({
     },
 
     {
-      accessor: (shipment: any) => `${shipment.da_id} - ${shipment.da_name}`,
+      accessor: (shipment: any) => joinPresent([shipment.da_id, shipment.da_name], ' - '),
       label: 'D/A',
     },
 
@@ -240,7 +242,7 @@ export function ShipmentDetail({
     },
 
     {
-      accessor: (shipment: any) => `${shipment.extrapu}  ${shipment.extradel}`,
+      accessor: (shipment: any) => joinPresent([shipment.extrapu, shipment.extradel], '  '),
       label: '',
     },
 

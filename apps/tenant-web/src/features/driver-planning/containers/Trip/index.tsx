@@ -293,7 +293,7 @@ function TripInternal() {
                           selectShipment(shipment)
                         }}
                       >
-                        <span>{`${startCase(activity.shipment?.shipper_name.split(', ')[0].toLowerCase())}`}</span>
+                        <span>{`${startCase((activity.shipment?.shipper_name ?? '').split(', ')[0].toLowerCase())}`}</span>
                         <span>{` - ${activity.shipment?.order_num}`}</span>
                         <div>
                           <span>{location}</span>

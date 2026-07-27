@@ -61,6 +61,10 @@ const happyShipment = {
   move_desc: 'COD',
   coordinator: 'Coord Name',
   OpsLastName: 'Operations',
+  oa_id: 'OA1',
+  oa_name: 'Origin Agent',
+  da_id: 'DA1',
+  da_name: 'Dest Agent',
   pegasus_shadow: { weight: 50, lng_dis_comments: 'hello @Sam there' },
 }
 
@@ -136,6 +140,34 @@ describe('ShipmentDetail container', () => {
     expect(screen.getByText('Denver, CO')).toBeInTheDocument()
     expect(screen.queryByText('undefined, undefined')).not.toBeInTheDocument()
     expect(screen.queryByText(/,\s*undefined/)).not.toBeInTheDocument()
+  })
+
+  it('renders O/A and D/A from their fields, and degrades to blank when absent', () => {
+    // Present: the row shows "id - name".
+    renderWithStore(<ShipmentDetail />, {
+      shipments: { selectedShipment: happyShipment } as any,
+      user: { user: sampleUser } as any,
+    })
+    expect(screen.getByText('OA1 - Origin Agent')).toBeInTheDocument()
+    expect(screen.getByText('DA1 - Dest Agent')).toBeInTheDocument()
+  })
+
+  it('never renders "undefined" for O/A, D/A, or the extra-stops row when absent', () => {
+    // Regression: these accessors interpolated oa_id/oa_name, da_id/da_name and
+    // extrapu/extradel straight into a template literal, so a shipment without
+    // them printed "undefined - undefined" to the user.
+    const noAgents = { ...happyShipment }
+    for (const k of ['oa_id', 'oa_name', 'da_id', 'da_name', 'extrapu', 'extradel']) {
+      delete (noAgents as any)[k]
+    }
+    renderWithStore(<ShipmentDetail />, {
+      shipments: { selectedShipment: noAgents } as any,
+      user: { user: sampleUser } as any,
+    })
+    expect(screen.queryByText(/undefined/)).not.toBeInTheDocument()
+    // O/A and D/A labels still render, just with an empty value.
+    expect(screen.getByText('O/A')).toBeInTheDocument()
+    expect(screen.getByText('D/A')).toBeInTheDocument()
   })
 
   it('does NOT crash when pegasus_shadow is missing entirely (sparse data)', () => {
