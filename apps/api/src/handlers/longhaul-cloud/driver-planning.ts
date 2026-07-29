@@ -47,6 +47,8 @@ SELECT
   d.DRIVER_ID   AS driver_id,
   d.DRIVER_NAME AS driver_name,
   d.AGENT_CODE  AS agent_code,
+  d.is_local_drv     AS is_local_drv,
+  d.is_long_dist_drv AS is_long_dist_drv,
   t.id            AS trip_id,
   t.trip_title    AS trip_title,
   t.planned_last_day AS planned_last_day,
@@ -140,6 +142,9 @@ interface PlanningRow {
   driver_id: number
   driver_name: string
   agent_code: string | null
+  // v_longhaul_drivers move-type flags, stored as 'Y' / 'N' (uppercase).
+  is_local_drv: string | null
+  is_long_dist_drv: string | null
   trip_id: number | null
   trip_title: string | null
   planned_last_day: string | null
@@ -215,6 +220,10 @@ interface DriverPlanningRow {
   homeState: string | null
   /** Tri-state: true = Yes, false = No, null = Maybe (the unset default). */
   wgs: boolean | null
+  /** Handles local moves (v_longhaul_drivers.is_local_drv = 'Y'). */
+  isLocal: boolean
+  /** Handles long-distance moves (v_longhaul_drivers.is_long_dist_drv = 'Y'). */
+  isLongDistance: boolean
   deliveries: Delivery[]
   shipments: Shipment[]
 }
@@ -236,6 +245,12 @@ function sortDeliveries(deliveries: Delivery[]): Delivery[] {
 /** MSSQL bit may surface as boolean | 0 | 1 | null — normalize to boolean. */
 function toBool(v: boolean | number | null | undefined): boolean {
   return v === true || v === 1
+}
+
+/** v_longhaul_drivers stores move-type flags as 'Y' / 'N' (uppercase). Treat
+ *  'Y' (case-insensitively, trimmed) as true; anything else — including NULL — as false. */
+function toYnBool(v: string | null | undefined): boolean {
+  return (v ?? '').trim().toUpperCase() === 'Y'
 }
 
 /** Tri-state bit: 1/true = Yes, 0/false = No, NULL/absent = Maybe. Unlike
@@ -407,6 +422,8 @@ export const longhaulDriverPlanningHandler: Handler<AppEnv> = async (c) => {
         homeCity: conf?.home_city ?? null,
         homeState: conf?.home_state ?? null,
         wgs: toTriBool(conf?.wgs),
+        isLocal: toYnBool(row.is_local_drv),
+        isLongDistance: toYnBool(row.is_long_dist_drv),
         deliveries,
         shipments,
       }

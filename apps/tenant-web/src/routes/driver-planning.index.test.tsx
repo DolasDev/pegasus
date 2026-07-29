@@ -130,6 +130,8 @@ function makeDriver(overrides?: Partial<DriverPlanningRow>): DriverPlanningRow {
     homeCity: null,
     homeState: null,
     wgs: null,
+    isLocal: false,
+    isLongDistance: true,
     deliveries: [],
     shipments: [],
     ...overrides,
@@ -465,6 +467,64 @@ describe('DriverPlanningPage', () => {
       const rows = screen.getAllByTestId('driver-row')
       expect(rows).toHaveLength(1)
       expect(rows[0]!.getAttribute('data-driver-id')).toBe('1')
+    })
+  })
+
+  describe('move-type filters (Local / Long Distance)', () => {
+    // Three drivers spanning every combination; all carry the default confirmed
+    // date so they sit inside the default ready-date range window.
+    function seedMoveTypeDrivers() {
+      driverPlanningReturn = {
+        data: [
+          makeDriver({
+            driverId: 1,
+            driverName: 'LocalOnly',
+            isLocal: true,
+            isLongDistance: false,
+          }),
+          makeDriver({ driverId: 2, driverName: 'LongOnly', isLocal: false, isLongDistance: true }),
+          makeDriver({ driverId: 3, driverName: 'Both', isLocal: true, isLongDistance: true }),
+        ],
+        isLoading: false,
+        isError: false,
+      }
+    }
+    const visibleIds = () =>
+      screen.getAllByTestId('driver-row').map((r) => r.getAttribute('data-driver-id'))
+
+    it('shows every driver when both filters are on "Any" (the default)', () => {
+      seedMoveTypeDrivers()
+      renderPage()
+      expect(visibleIds()).toEqual(['1', '2', '3'])
+    })
+
+    it('Local = Yes keeps only drivers who handle local moves', () => {
+      seedMoveTypeDrivers()
+      renderPage()
+      fireEvent.change(screen.getByTestId('local-filter'), { target: { value: 'yes' } })
+      expect(visibleIds()).toEqual(['1', '3'])
+    })
+
+    it('Local = No keeps only drivers who do not handle local moves', () => {
+      seedMoveTypeDrivers()
+      renderPage()
+      fireEvent.change(screen.getByTestId('local-filter'), { target: { value: 'no' } })
+      expect(visibleIds()).toEqual(['2'])
+    })
+
+    it('Long Distance = Yes keeps only long-distance drivers', () => {
+      seedMoveTypeDrivers()
+      renderPage()
+      fireEvent.change(screen.getByTestId('long-dist-filter'), { target: { value: 'yes' } })
+      expect(visibleIds()).toEqual(['2', '3'])
+    })
+
+    it('combines both filters — Local=Yes AND Long Distance=Yes keeps only the driver who does both', () => {
+      seedMoveTypeDrivers()
+      renderPage()
+      fireEvent.change(screen.getByTestId('local-filter'), { target: { value: 'yes' } })
+      fireEvent.change(screen.getByTestId('long-dist-filter'), { target: { value: 'yes' } })
+      expect(visibleIds()).toEqual(['3'])
     })
   })
 
