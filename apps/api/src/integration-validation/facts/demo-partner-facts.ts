@@ -5,6 +5,25 @@
 // example API computes "Estimated Total Cost" from amounts on the related
 // Shipment Orders), so the "required to submit this estimate" rule can test it
 // as `> 0`.
+//
+// Milestone actuals come in two granularities, because "which dates make up a
+// milestone" is partner-varying policy the overlay owns (sdk-feedback 0035 —
+// load-without-pack moves are real: the shipper packs, the crew only loads, so
+// a Pack Date 1 Actual never exists):
+//
+//   - Composite  — shipmentsWithPackLoad[Delivery]Actual: all of the dates
+//     present on the SAME shipment. Unchanged; partners that genuinely require
+//     pack keep pointing here.
+//   - Per date   — shipmentsWith{Pack,Load,Delivery}Actual: one count each. A
+//     rule ANDs the predicates it wants, so a partner composes its own
+//     milestone. Note the predicates then count INDEPENDENTLY: with 2+
+//     shipments, load on one and delivery on another satisfies both.
+//   - Paired     — shipmentsWithLoadDeliveryActual: load + delivery on the same
+//     shipment, for partners that need the strict reading of the above without
+//     dragging pack in.
+//
+// All counts keep the existing "at least one of the related Shipment Orders"
+// semantics, so a rule reads `{fact, op: 'lte', value: 0}`.
 // ---------------------------------------------------------------------------
 
 import type { CanonicalContext } from '../types'
@@ -40,6 +59,12 @@ export const demoPartnerFactCatalog: FactCatalog = {
   // API requires "at least one of the related Shipment Orders" to be complete).
   shipmentsWithPackLoadActual: 'number',
   shipmentsWithPackLoadDeliveryActual: 'number',
+  // One count per milestone date, so an overlay can decide WHICH dates make up
+  // a milestone rather than only whether the composite one is required.
+  shipmentsWithPackActual: 'number',
+  shipmentsWithLoadActual: 'number',
+  shipmentsWithDeliveryActual: 'number',
+  shipmentsWithLoadDeliveryActual: 'number',
   action: 'string',
 }
 
@@ -61,6 +86,12 @@ export function deriveDemoPartnerFacts(ctx: CanonicalContext<DemoPartnerOrder>):
     shipmentsWithPackLoadActual: order.shipments.filter(packLoad).length,
     shipmentsWithPackLoadDeliveryActual: order.shipments.filter(
       (s) => packLoad(s) && has(s.deliveryDate1.actual),
+    ).length,
+    shipmentsWithPackActual: order.shipments.filter((s) => has(s.packDate1.actual)).length,
+    shipmentsWithLoadActual: order.shipments.filter((s) => has(s.loadDate1.actual)).length,
+    shipmentsWithDeliveryActual: order.shipments.filter((s) => has(s.deliveryDate1.actual)).length,
+    shipmentsWithLoadDeliveryActual: order.shipments.filter(
+      (s) => has(s.loadDate1.actual) && has(s.deliveryDate1.actual),
     ).length,
     action,
   }
