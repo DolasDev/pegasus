@@ -147,6 +147,10 @@ const NAV_ITEMS = [
 // Submenu under the Developer settings group.
 const DEVELOPER_CHILDREN = [
   { to: '/settings/developer/configs' as const, label: 'Configs', exact: false },
+  // The admin view of the integration catalog (floors / platform / built-in /
+  // owned) with fork + delete. The all-user `/integrations` entry above is the
+  // operator view of the same data, narrowed to what is live.
+  { to: '/settings/developer/integrations' as const, label: 'Integrations', exact: false },
 ] as const
 
 // One submenu entry per main-menu section — mirrors NAV_ITEMS order so the

@@ -18,7 +18,6 @@ import {
   Stethoscope,
   CheckCircle2,
   Package,
-  Blocks,
   Building2,
   Server,
 } from 'lucide-react'
@@ -53,7 +52,6 @@ import {
 } from '@/api/queries/settings'
 import type { MssqlTestResult, PegiiTestResult } from '@/api/settings'
 import { roleOptionsQueryOptions, type RoleOption } from '@/api/queries/users'
-import { integrationsQueryOptions } from '@/api/queries/integrations'
 import type { ApiClient, ApiClientWithKey } from '@/api/api-clients'
 import { getConfig } from '@/config'
 import { getSession } from '@/auth/session'
@@ -561,81 +559,6 @@ function WorkflowsSdkCard() {
           still accept <code className="font-mono">--token</code> or the{' '}
           <code className="font-mono">PEGASUS_WORKFLOW_TOKEN</code> environment variable.
         </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Integrations (view-only)
-// ---------------------------------------------------------------------------
-
-function IntegrationsCard() {
-  // The integration-validator integrations the platform checks inbound orders
-  // against (apps/api/src/handlers/integrations/list.ts). Read-only.
-  const { data, isLoading, isError } = useQuery(integrationsQueryOptions)
-  const integrations = data ?? []
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <Blocks size={18} className="text-muted-foreground" />
-          <CardTitle>Integrations</CardTitle>
-        </div>
-        <CardDescription>
-          Published integrations the platform validates inbound orders against. View-only.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 size={14} className="animate-spin" />
-            Loading integrations…
-          </div>
-        ) : isError ? (
-          <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            <AlertCircle size={14} className="shrink-0" />
-            Failed to load integrations.
-          </div>
-        ) : integrations.length === 0 ? (
-          <EmptyState
-            title="No integrations"
-            description="The platform team hasn't published any integrations yet."
-          />
-        ) : (
-          <ul className="divide-y rounded-md border">
-            {integrations.map((it) => (
-              <li key={it.id} className="flex items-start gap-3 px-4 py-3">
-                <Blocks size={16} className="mt-0.5 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium">{it.name}</span>
-                    <Badge variant="outline" className="font-mono text-xs">
-                      {it.id}
-                    </Badge>
-                    {it.published ? (
-                      <Badge variant="secondary" className="text-xs">
-                        Published v{it.version}
-                        {it.visibility ? ` · ${it.visibility}` : ''}
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground italic">Built-in</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">{it.description}</p>
-                  <Link
-                    to="/integrations/$integrationId"
-                    params={{ integrationId: it.id }}
-                    className="mt-1 inline-block text-xs text-primary hover:underline"
-                  >
-                    View mapping &amp; rules
-                  </Link>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
       </CardContent>
     </Card>
   )
@@ -1456,10 +1379,6 @@ export function DeveloperSettingsPage() {
         <Separator className="my-6" />
 
         <WorkflowsSdkCard />
-
-        <Separator className="my-6" />
-
-        <IntegrationsCard />
 
         <Separator className="my-6" />
 

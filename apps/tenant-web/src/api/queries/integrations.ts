@@ -1,10 +1,12 @@
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   listIntegrations,
+  listIntegrationFloors,
   getIntegrationConfig,
   getIntegrationRequirementsSummary,
   listIntegrationConfigVersions,
   forkIntegrationConfig,
+  deleteIntegrationConfig,
   validateIntegrationConfig,
   publishIntegrationConfig,
   rollbackIntegrationConfig,
@@ -17,6 +19,7 @@ import {
 export const integrationKeys = {
   all: ['integrations'] as const,
   list: () => [...integrationKeys.all, 'list'] as const,
+  floors: () => [...integrationKeys.all, 'floors'] as const,
   config: (id: string) => [...integrationKeys.all, 'config', id] as const,
   versions: (id: string) => [...integrationKeys.all, 'versions', id] as const,
   requirementsSummary: () => [...integrationKeys.all, 'requirements-summary'] as const,
@@ -28,6 +31,17 @@ export const integrationKeys = {
 export const integrationsQueryOptions = queryOptions({
   queryKey: integrationKeys.list(),
   queryFn: () => listIntegrations(),
+})
+
+/**
+ * The type floors integrations are built on. Floors are code, not data — the API
+ * serves them with `Cache-Control: max-age=3600` — so hold them for the session
+ * rather than refetching on every mount.
+ */
+export const integrationFloorsQueryOptions = queryOptions({
+  queryKey: integrationKeys.floors(),
+  queryFn: () => listIntegrationFloors(),
+  staleTime: 60 * 60 * 1000,
 })
 
 /**
@@ -81,6 +95,20 @@ export function useForkIntegrationConfig() {
   return useMutation({
     mutationFn: (integrationId: string) => forkIntegrationConfig(integrationId),
     onSuccess: (row) => invalidate(row.integrationId),
+  })
+}
+
+/**
+ * Delete the caller's whole config lineage for an integration. On success the
+ * list is invalidated, so a tenant's deleted overlay is replaced by whatever it
+ * now re-inherits (the platform config, or the built-in baseline).
+ */
+export function useDeleteIntegrationConfig() {
+  const invalidate = useInvalidateIntegration()
+  return useMutation({
+    mutationFn: (vars: { integrationId: string; force?: boolean }) =>
+      deleteIntegrationConfig(vars.integrationId, { force: vars.force ?? false }),
+    onSuccess: (result) => invalidate(result.integrationId),
   })
 }
 
