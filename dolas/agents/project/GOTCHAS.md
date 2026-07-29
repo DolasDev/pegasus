@@ -595,7 +595,10 @@ test that _cannot_ observe an id-set regression. The regression test that matter
 DB-backed (`summaries.test.ts`): publish under a new-partner id, assert the sync
 accessor does **not** know it, then assert the endpoint lists it anyway.
 
-## `resolve-tenant-config.test.ts` poisons the shared test DB for the other integration-validation handler tests
+## A GLOBAL config row published by one test file poisons every other file's reads of that integration
+
+_Hit and fixed 2026-07-29 (#559). Kept because the shape recurs: any test that publishes a
+`GLOBAL` integration config is publishing it for the whole process pool._
 
 `apps/api` test files run in parallel workers against ONE Postgres. Between its
 `beforeAll` and `afterAll`, `src/integration-validation/resolve-tenant-config.test.ts`
@@ -618,5 +621,12 @@ Symptom to recognize: `map-to-external.test.ts` / `validate.test.ts` failing wit
 the facts/floors can cause. Re-running usually goes green, which is exactly why it is
 worth writing down: it is **not** the change under test.
 
-The fix is test-DB isolation for the DB-writing file (its own integration id with a
-built-in baseline, or serializing it), not a retry — untaken as of 2026-07-29.
+It is not a retry candidate: re-running is what hides it. The fix was to give the
+writing file an integration id nobody else reads from the DB — it now overlays
+`allied_status` (a built-in overlay on the same `shipment_status_update` floor, read
+only by `floor-overlay.test.ts`, which mocks Prisma) instead of `demo_partner`. The
+pair went 5/8 failing → 0/10, the whole directory 2/10 → 0/6.
+
+The general rule: **a GLOBAL row has no tenant scope**, so a test publishing one is
+publishing it for every concurrently-running file. Overlay an integration id whose
+runtime behavior no other DB-backed test asserts, and clean up in `afterAll`.

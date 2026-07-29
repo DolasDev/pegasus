@@ -80,11 +80,14 @@ in the OpenAPI description, the SDK `get_floor()` docstring, the README (with a 
 and both MCP prose surfaces; the MCP `pegasus://reference/floors` resource proxies the live payload,
 so the docs themselves flow through with no SDK change.
 
-### Found en route — a pre-existing flake, NOT fixed here
+### Found en route — a pre-existing flake, fixed here
 
 `resolve-tenant-config.test.ts` publishes a degenerate GLOBAL `demo_partner` overlay into the shared
 test Postgres and refreshes the registry, so `map-to-external.test.ts` / `validate.test.ts` running
 concurrently in another worker intermittently resolve it and fail with a wall of
 `structural-contract` issues. Reproduced on a **clean tree** (2/10 for the directory, 5/8 for that
-file pair) — independent of this change. Written up in `dolas/agents/project/GOTCHAS.md`; the fix
-(test-DB isolation for the writing file) is its own workstream.
+file pair) — independent of this change, but it then failed the pre-push gate, so it is fixed here
+rather than deferred: the writing file now overlays `allied_status` (a built-in on the same floor
+that only a Prisma-mocking test reads) instead of `demo_partner`. Pair 5/8 → 0/10, directory
+2/10 → 0/6. Written up in `dolas/agents/project/GOTCHAS.md` — a GLOBAL row has no tenant scope, so
+publishing one in a test publishes it for every concurrently-running file.

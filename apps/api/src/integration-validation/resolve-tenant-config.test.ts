@@ -8,6 +8,16 @@
  *   tenant's own config  >  GLOBAL (platform) config  >  built-in code baseline
  * A second tenant with no own config sees GLOBAL; a platform-scoped (null-tenant)
  * caller sees the GLOBAL overlay.
+ *
+ * Deliberately overlays `allied_status`, NOT `demo_partner`. Test files run in
+ * parallel workers against ONE Postgres, and the GLOBAL row published here is
+ * global by definition — every reader of that integration sees it until afterAll
+ * cleans up. `demo_partner` is the id the corpus + handler tests validate real
+ * orders against, so overlaying it here made map-to-external.test.ts and
+ * validate.test.ts fail intermittently with a wall of `structural-contract`
+ * issues (the degenerate mapping below produces an almost-empty canonical).
+ * `allied_status` is a built-in overlay on the same floor that no DB-backed test
+ * reads. See GOTCHAS.md.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import type { Prisma } from '@prisma/client'
@@ -66,12 +76,12 @@ describe.skipIf(!hasDb)('resolveIntegrationDefinition — tenant config governs 
     tenantId = t.id
     otherId = o.id
     await db.integrationConfig.deleteMany({
-      where: { tenantId: { in: [platformId, tenantId, otherId] }, integrationId: 'demo_partner' },
+      where: { tenantId: { in: [platformId, tenantId, otherId] }, integrationId: 'allied_status' },
     })
 
     // Publish a GLOBAL (platform) config and a TENANT config for the same integration.
     await repo.publish({
-      integrationId: 'demo_partner',
+      integrationId: 'allied_status',
       tenantId: platformId,
       visibility: 'GLOBAL',
       mapping: GLOBAL_MAPPING,
@@ -81,7 +91,7 @@ describe.skipIf(!hasDb)('resolveIntegrationDefinition — tenant config governs 
       publishedBy: 'test',
     })
     await repo.publish({
-      integrationId: 'demo_partner',
+      integrationId: 'allied_status',
       tenantId,
       visibility: 'TENANT',
       mapping: TENANT_MAPPING,
@@ -96,44 +106,44 @@ describe.skipIf(!hasDb)('resolveIntegrationDefinition — tenant config governs 
 
   afterAll(async () => {
     await db.integrationConfig.deleteMany({
-      where: { tenantId: { in: [platformId, tenantId, otherId] }, integrationId: 'demo_partner' },
+      where: { tenantId: { in: [platformId, tenantId, otherId] }, integrationId: 'allied_status' },
     })
     await refreshRegistryOverlay({ integrationConfig: { findMany: async () => [] } } as never)
     await db.$disconnect()
   })
 
   it('a tenant with its own published config resolves to THAT config', async () => {
-    const def = (await resolveIntegrationDefinition(db, 'demo_partner', tenantId))!
+    const def = (await resolveIntegrationDefinition(db, 'allied_status', tenantId))!
     expect(def.mapping).toEqual(TENANT_MAPPING)
   })
 
   it('a different tenant with no own config falls back to the GLOBAL config', async () => {
-    const def = (await resolveIntegrationDefinition(db, 'demo_partner', otherId))!
+    const def = (await resolveIntegrationDefinition(db, 'allied_status', otherId))!
     expect(def.mapping).toEqual(GLOBAL_MAPPING)
   })
 
   it("carries the config's declared requiredSecrets/requiredConfigs onto the definition", async () => {
-    const def = (await resolveIntegrationDefinition(db, 'demo_partner', tenantId))!
+    const def = (await resolveIntegrationDefinition(db, 'allied_status', tenantId))!
     expect(def.requiredSecrets).toEqual([{ key: 'SEND_API_KEY', group: 'demo' }])
     // The config omitted the group, so it resolves without one (store defaults to "global").
     expect(def.requiredConfigs).toEqual([{ key: 'SEND_URL' }])
   })
 
   it('a tenant without a declaration leaves requiredSecrets/requiredConfigs undefined', async () => {
-    const def = (await resolveIntegrationDefinition(db, 'demo_partner', otherId))!
+    const def = (await resolveIntegrationDefinition(db, 'allied_status', otherId))!
     expect(def.requiredSecrets).toBeUndefined()
     expect(def.requiredConfigs).toBeUndefined()
   })
 
   it('a platform-scoped (null tenant) caller resolves the GLOBAL overlay', async () => {
     await refreshRegistryOverlay(db)
-    const def = (await resolveIntegrationDefinition(db, 'demo_partner', null))!
+    const def = (await resolveIntegrationDefinition(db, 'allied_status', null))!
     expect(def.mapping).toEqual(GLOBAL_MAPPING)
   })
 
   it('never overrides the code ground truth (structuralContract/deriveFacts)', async () => {
-    const def = (await resolveIntegrationDefinition(db, 'demo_partner', tenantId))!
-    const builtIn = getBuiltInDefinition('demo_partner')!
+    const def = (await resolveIntegrationDefinition(db, 'allied_status', tenantId))!
+    const builtIn = getBuiltInDefinition('allied_status')!
     expect(def.structuralContract).toBe(builtIn.structuralContract)
     expect(def.deriveFacts).toBe(builtIn.deriveFacts)
   })
