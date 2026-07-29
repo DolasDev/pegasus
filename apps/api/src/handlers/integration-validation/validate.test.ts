@@ -111,6 +111,23 @@ describe('POST /integrations/:integrationId/validate', () => {
     expect(body.data.inputFieldRoots).not.toContain('UnusedFields')
   })
 
+  it('exposes the per-date milestone actuals facts (0035) alongside the composites', async () => {
+    // This endpoint is how an SDK user discovers the legal rule facts without
+    // repo access, so the new per-date facts have to be visible here.
+    const res = await buildApp().request('/api/v1/integrations/floors/shipment_status_update')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: { factCatalog: Record<string, string> } }
+    expect(body.data.factCatalog).toMatchObject({
+      shipmentsWithPackActual: 'number',
+      shipmentsWithLoadActual: 'number',
+      shipmentsWithDeliveryActual: 'number',
+      shipmentsWithLoadDeliveryActual: 'number',
+      // The composites stay, so already-published configs keep validating.
+      shipmentsWithPackLoadActual: 'number',
+      shipmentsWithPackLoadDeliveryActual: 'number',
+    })
+  })
+
   it('omits inputFieldRoots for a partner-neutral floor that declares none', async () => {
     const res = await buildApp().request('/api/v1/integrations/floors/shipment_lifecycle_event')
     expect(res.status).toBe(200)
