@@ -312,6 +312,21 @@ describe('AppShell — submenu active highlight follows the current route', () =
     expect(isLinkActive(container, '/settings/app/quotes')).toBe(false)
   })
 
+  it('lists both Developer children, and highlights only the active one', () => {
+    // The Developer submenu IS the "tabs" mechanism under Settings → Developer;
+    // a missing entry silently strands a whole page.
+    currentPathname = '/settings/developer/integrations'
+    const { container } = render(
+      <AppShell>
+        <div />
+      </AppShell>,
+    )
+
+    expect(container.querySelector('a[href="/settings/developer/configs"]')).not.toBeNull()
+    expect(isLinkActive(container, '/settings/developer/integrations')).toBe(true)
+    expect(isLinkActive(container, '/settings/developer/configs')).toBe(false)
+  })
+
   it('highlights the matching Operations child and not its siblings', () => {
     currentPathname = '/driver-planning/trips'
     const { container } = render(

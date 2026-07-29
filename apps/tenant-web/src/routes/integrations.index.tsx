@@ -10,15 +10,20 @@ import { integrationsQueryOptions } from '@/api/queries/integrations'
 // ---------------------------------------------------------------------------
 // Integrations index — /integrations
 //
-// All-user (non-admin) read-only list of the integration-validator integrations
-// the platform checks inbound orders against. Each row links to the detail page
-// that visualizes the active config's mapping + rules. The admin Developer page
-// hosts a compact twin of this list (settings.developer.tsx IntegrationsCard).
+// All-user (non-admin) read-only list of the integrations ACTIVE for this tenant:
+// those with a published config, whether the tenant's own overlay or an inherited
+// platform (GLOBAL) one. Each row links to the detail page that visualizes the
+// active config's mapping + rules.
+//
+// Built-in code baselines (published: false) are deliberately excluded — they are
+// reference material, not something this tenant runs, and showing them here read
+// as "your integration is broken". The full catalog, including built-ins and the
+// fork/delete actions, lives at Settings → Developer → Integrations.
 // ---------------------------------------------------------------------------
 
 export function IntegrationsIndexPage() {
   const { data, isLoading, isError } = useQuery(integrationsQueryOptions)
-  const integrations = data ?? []
+  const integrations = (data ?? []).filter((it) => it.published)
 
   return (
     <div>
@@ -38,8 +43,8 @@ export function IntegrationsIndexPage() {
             </div>
           ) : integrations.length === 0 ? (
             <EmptyState
-              title="No integrations"
-              description="The platform team hasn't published any integrations yet."
+              title="No active integrations"
+              description="Nothing is published for this tenant yet. A tenant admin can fork a platform integration under Settings → Developer → Integrations."
             />
           ) : (
             <ul className="divide-y rounded-md border">
@@ -57,16 +62,13 @@ export function IntegrationsIndexPage() {
                         <Badge variant="outline" className="font-mono text-xs">
                           {it.id}
                         </Badge>
-                        {it.published ? (
-                          <Badge variant="secondary" className="text-xs">
-                            v{it.version}
-                            {it.visibility
-                              ? ` · ${it.visibility === 'TENANT' ? 'Your config' : 'Platform'}`
-                              : ''}
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground italic">Built-in</span>
-                        )}
+                        {/* Every row here is published — the list is filtered. */}
+                        <Badge variant="secondary" className="text-xs">
+                          v{it.version}
+                          {it.visibility
+                            ? ` · ${it.visibility === 'TENANT' ? 'Your config' : 'Platform'}`
+                            : ''}
+                        </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground">{it.description}</p>
                     </div>
