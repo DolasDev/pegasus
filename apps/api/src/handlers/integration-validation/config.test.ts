@@ -33,8 +33,8 @@ const {
   mockGetFloor,
   mockRefreshRegistryOverlay,
   mockRunGatePipeline,
-  mockListIntegrationIds,
-  mockGetIntegrationDefinition,
+  mockListIntegrationIdsForScope,
+  mockListIntegrationSummaries,
   mockResolveIntegrationDefinition,
 } = vi.hoisted(() => ({
   mockRepo: {
@@ -53,8 +53,8 @@ const {
   mockGetFloor: vi.fn(),
   mockRefreshRegistryOverlay: vi.fn(async () => {}),
   mockRunGatePipeline: vi.fn(),
-  mockListIntegrationIds: vi.fn(() => [] as string[]),
-  mockGetIntegrationDefinition: vi.fn(),
+  mockListIntegrationIdsForScope: vi.fn(async () => [] as string[]),
+  mockListIntegrationSummaries: vi.fn(async () => [] as Array<Record<string, unknown>>),
   mockResolveIntegrationDefinition: vi.fn(),
 }))
 
@@ -77,9 +77,15 @@ vi.mock('../../integration-validation/registry', () => ({
   getGateBase: mockGetBuiltInDefinition,
   getFloor: mockGetFloor,
   refreshRegistryOverlay: mockRefreshRegistryOverlay,
-  listIntegrationIds: mockListIntegrationIds,
-  getIntegrationDefinition: mockGetIntegrationDefinition,
+  listIntegrationIdsForScope: mockListIntegrationIdsForScope,
   resolveIntegrationDefinition: mockResolveIntegrationDefinition,
+}))
+
+// The shared list read model is exercised against a real DB in
+// integration-validation/summaries.test.ts; here it is a control point, so these
+// tests stay about the route (RBAC, payload envelope) rather than re-testing it.
+vi.mock('../../integration-validation/summaries', () => ({
+  listIntegrationSummaries: mockListIntegrationSummaries,
 }))
 
 vi.mock('../../integration-validation/gate-pipeline', () => ({
@@ -840,43 +846,48 @@ describe('GET /integrations/configs (m2m list)', () => {
     vi.clearAllMocks()
     process.env['AUTHZ_OFFLINE'] = 'true'
     _clearAuthzCache()
-    mockListIntegrationIds.mockReturnValue(['demo_partner', 'ghost'])
-    mockGetIntegrationDefinition.mockImplementation((id: string) =>
-      id === 'ghost'
-        ? undefined // an id with no definition is skipped
-        : { id, displayName: 'Demo Partner', description: 'a demo' },
-    )
+    mockListIntegrationSummaries.mockResolvedValue([
+      {
+        id: 'demo_partner',
+        name: 'Demo Partner',
+        description: 'a demo',
+        published: true,
+        version: 3,
+        visibility: 'TENANT',
+      },
+    ])
   })
 
   it('lists the tenant integrations with active-config summary for integration_publisher', async () => {
-    mockRepo.findActiveForScope.mockResolvedValue(configRow)
     const res = await buildApp(['integration_publisher']).request('/integrations/configs')
     expect(res.status).toBe(200)
     const body = (await res.json()) as { data: unknown[]; meta: { count: number } }
-    // 'ghost' (no definition) is skipped → only demo_partner.
     expect(body.meta.count).toBe(1)
     expect(body.data[0]).toMatchObject({
-      // configRow has no displayName, so the route falls back to def.displayName.
       id: 'demo_partner',
       name: 'Demo Partner',
       published: true,
-      version: configRow.version,
+      version: 3,
       visibility: 'TENANT',
     })
   })
 
-  it('marks an integration with no active config as unpublished', async () => {
-    mockRepo.findActiveForScope.mockResolvedValue(null)
+  it('scopes the read model to the calling tenant', async () => {
+    await buildApp(['integration_publisher']).request('/integrations/configs')
+    expect(mockListIntegrationSummaries).toHaveBeenCalledWith(expect.anything(), 'test-tenant-id')
+  })
+
+  it('returns an empty list (count 0) when the tenant has no integrations', async () => {
+    mockListIntegrationSummaries.mockResolvedValue([])
     const res = await buildApp(['integration_publisher']).request('/integrations/configs')
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { data: Array<{ published: boolean; version: null }> }
-    expect(body.data[0]).toMatchObject({ published: false, version: null, visibility: null })
+    expect(await res.json()).toEqual({ data: [], meta: { count: 0 } })
   })
 
   it('rejects a role without ReadIntegrationConfig with 403', async () => {
     const res = await buildApp(['driver']).request('/integrations/configs')
     expect(res.status).toBe(403)
-    expect(mockListIntegrationIds).not.toHaveBeenCalled()
+    expect(mockListIntegrationSummaries).not.toHaveBeenCalled()
   })
 })
 
@@ -885,7 +896,7 @@ describe('GET /integrations/requirements-summary', () => {
     vi.clearAllMocks()
     process.env['AUTHZ_OFFLINE'] = 'true'
     _clearAuthzCache()
-    mockListIntegrationIds.mockReturnValue(['sirva_ade', 'demo_partner'])
+    mockListIntegrationIdsForScope.mockResolvedValue(['sirva_ade', 'demo_partner'])
     mockResolveIntegrationDefinition.mockImplementation(
       async (_db: unknown, id: string) =>
         id === 'sirva_ade'

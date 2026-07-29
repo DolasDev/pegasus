@@ -215,8 +215,12 @@ let overlayLoadedAt = 0
  * when the row can't be trusted (unparseable/uncompilable mapping/rules/external
  * mapping, or an unknown floor). Shared by the GLOBAL overlay build and the
  * per-request tenant resolver so both apply — and reject — a row identically.
+ *
+ * Exported so the list/discovery endpoints can resolve a TENANT-scoped row whose
+ * integration id has no built-in and is absent from the GLOBAL overlay — without
+ * it, such a row has no resolvable displayName to show.
  */
-function toDefinitionFromRow(row: IntegrationConfigRow): IntegrationDefinition | null {
+export function toDefinitionFromRow(row: IntegrationConfigRow): IntegrationDefinition | null {
   const mapping = MappingTemplateSchema.safeParse(row.mapping)
   const rules = RuleSetSchema.safeParse(row.rules)
   if (!mapping.success || !rules.success) {
@@ -398,9 +402,47 @@ export async function resolveIntegrationDefinition(
   }
 }
 
-/** Known integration ids — built-ins plus any GLOBAL-overlay (new-partner) ids. */
+/**
+ * Known integration ids — built-ins plus any GLOBAL-overlay (new-partner) ids.
+ *
+ * SYNCHRONOUS, so it reports whatever the overlay cache happens to hold: in a
+ * process that has never published or served a platform-scoped request, the
+ * overlay is null and this returns the built-ins ALONE. Read-only listing
+ * endpoints must use `listIntegrationIdsForScope`, which warms the overlay and
+ * adds the caller's own tenant-scoped ids.
+ */
 export function listIntegrationIds(): string[] {
   const ids = new Set<string>(Object.keys(REGISTRY))
   if (overlay) for (const id of overlay.keys()) ids.add(id)
+  return [...ids]
+}
+
+/**
+ * Every integration id that applies to one tenant:
+ * built-ins ∪ GLOBAL-overlay ids ∪ the tenant's OWN published ids.
+ *
+ * Warms the overlay first (`loadRegistryOverlayIfStale`), so a caller that has
+ * only ever served UI traffic still sees GLOBAL new-partner ids — the cache is
+ * otherwise populated only by a publish in this same container or by a
+ * platform-scoped (`tenantId === null`) resolve.
+ *
+ * Fails open: a DB error degrades to the synchronous built-in ∪ overlay set
+ * rather than erroring the caller's page.
+ */
+export async function listIntegrationIdsForScope(
+  db: PrismaClient,
+  tenantId: string,
+): Promise<string[]> {
+  await loadRegistryOverlayIfStale(db)
+  const ids = new Set<string>(listIntegrationIds())
+  try {
+    const repo = createIntegrationConfigRepository(db)
+    for (const id of await repo.listActiveIntegrationIdsForTenant(tenantId)) ids.add(id)
+  } catch (err) {
+    logger.warn('tenant integration id lookup failed — listing built-ins + GLOBAL only', {
+      tenantId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
   return [...ids]
 }

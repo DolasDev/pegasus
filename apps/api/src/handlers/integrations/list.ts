@@ -2,10 +2,11 @@
 // Integrations list handler — GET /api/v1/integrations
 //
 // Read-only, tenant-session surface for the Developer settings "Integrations"
-// card. Lists the integrations the platform validates inbound orders against —
-// the integration-validator registry (demo_partner, …) — joined with each
-// integration's active published config (version + visibility) for the caller's
-// tenant, when one exists.
+// card. Lists the integrations that apply to the caller's tenant — built-in code
+// overlays, GLOBAL platform configs, and the tenant's own published configs —
+// joined with each integration's active config (version + visibility) for that
+// tenant, when one exists. The id set + resolution live in
+// `integration-validation/summaries`, shared with the m2m discovery endpoints.
 //
 // RBAC: ReadIntegrationConfig (tenant_admin covers it via permit-everything).
 // This is the session-plane sibling of the M2M `integrationConfig` handler; it
@@ -17,43 +18,14 @@ import { DomainError } from '@pegasus/domain'
 import { requirePermission } from '../../middleware/rbac'
 import { Actions } from '../../authz/actions'
 import type { AppEnv } from '../../types'
-import { listIntegrationIds, getIntegrationDefinition } from '../../integration-validation/registry'
-import { createIntegrationConfigRepository } from '../../repositories/integration-config.repository'
+import { listIntegrationSummaries } from '../../integration-validation/summaries'
 
-export interface IntegrationSummary {
-  id: string
-  name: string
-  description: string
-  /** True when an active published config exists for the caller's scope. */
-  published: boolean
-  /** Active config version, or null when only the built-in baseline applies. */
-  version: number | null
-  /** Active config visibility, or null when unpublished. */
-  visibility: 'GLOBAL' | 'TENANT' | null
-}
+export type { IntegrationSummary } from '../../integration-validation/summaries'
 
 export const integrationsHandler = new Hono<AppEnv>()
 
 integrationsHandler.get('/', requirePermission(Actions.ReadIntegrationConfig), async (c) => {
   const tenantId = c.get('tenantId')
   if (!tenantId) throw new DomainError('Tenant context required', 'UNAUTHENTICATED')
-  const repo = createIntegrationConfigRepository(c.get('db'))
-
-  const data: IntegrationSummary[] = []
-  for (const id of listIntegrationIds()) {
-    const def = getIntegrationDefinition(id)
-    if (!def) continue
-    const active = await repo.findActiveForScope(id, tenantId)
-    data.push({
-      id: def.id,
-      // The active config's displayName (0019) wins over the built-in label, so a
-      // published "Weichert" reads as Weichert rather than its floor/id.
-      name: active?.displayName ?? def.displayName,
-      description: def.description,
-      published: active !== null,
-      version: active?.version ?? null,
-      visibility: active?.visibility ?? null,
-    })
-  }
-  return c.json({ data })
+  return c.json({ data: await listIntegrationSummaries(c.get('db'), tenantId) })
 })

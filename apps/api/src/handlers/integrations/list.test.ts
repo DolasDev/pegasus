@@ -3,11 +3,17 @@
 //
 // Mirrors config.test.ts:
 //   - createIntegrationConfigRepository is mocked (no DB).
-//   - listIntegrationIds / getIntegrationDefinition are mocked (no registry state).
+//   - listIntegrationIdsForScope / getIntegrationDefinition / toDefinitionFromRow
+//     are mocked (no registry state).
 //   - requirePermission is NOT mocked — the real RBAC enforces ReadIntegrationConfig
 //     against the principal's roleNames via the offline Cedar backend.
 // A context-injecting stub middleware supplies principal / db / tenantId, exactly
 // as the v1 tenantMiddleware would at runtime.
+//
+// Scope note: with the registry stubbed, these tests cover the handler's RBAC and
+// response shape ONLY — they cannot observe which ids the real registry would
+// enumerate. That is what summaries.test.ts (DB-backed) is for; a mocked test
+// here is structurally incapable of catching a cold-cache/id-set regression.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -17,10 +23,16 @@ import type { AppEnv } from '../../types'
 import { registerTestErrorHandler } from '../../test-helpers'
 import { _clearAuthzCache } from '../../lib/authz'
 
-const { mockRepo, mockListIntegrationIds, mockGetIntegrationDefinition } = vi.hoisted(() => ({
+const {
+  mockRepo,
+  mockListIntegrationIdsForScope,
+  mockGetIntegrationDefinition,
+  mockToDefinitionFromRow,
+} = vi.hoisted(() => ({
   mockRepo: { findActiveForScope: vi.fn() },
-  mockListIntegrationIds: vi.fn(),
+  mockListIntegrationIdsForScope: vi.fn(),
   mockGetIntegrationDefinition: vi.fn(),
+  mockToDefinitionFromRow: vi.fn(),
 }))
 
 vi.mock('../../repositories/integration-config.repository', () => ({
@@ -28,8 +40,9 @@ vi.mock('../../repositories/integration-config.repository', () => ({
 }))
 
 vi.mock('../../integration-validation/registry', () => ({
-  listIntegrationIds: mockListIntegrationIds,
+  listIntegrationIdsForScope: mockListIntegrationIdsForScope,
   getIntegrationDefinition: mockGetIntegrationDefinition,
+  toDefinitionFromRow: mockToDefinitionFromRow,
 }))
 
 import { integrationsHandler } from './list'
@@ -75,8 +88,9 @@ describe('integrations list handler', () => {
     vi.clearAllMocks()
     process.env['AUTHZ_OFFLINE'] = 'true'
     _clearAuthzCache()
-    mockListIntegrationIds.mockReturnValue(['demo_partner'])
+    mockListIntegrationIdsForScope.mockResolvedValue(['demo_partner'])
     mockGetIntegrationDefinition.mockImplementation((id: string) => DEFS[id])
+    mockToDefinitionFromRow.mockReturnValue(null)
     mockRepo.findActiveForScope.mockResolvedValue(null)
   })
 
@@ -117,5 +131,58 @@ describe('integrations list handler', () => {
       version: 4,
       visibility: 'GLOBAL',
     })
+  })
+
+  it('refuses to list anything without tenant context', async () => {
+    // The read model is tenant-scoped end to end; no tenant means no query, not
+    // an unscoped one.
+    const res = await buildApp(['tenant_admin'], '').request('/integrations')
+    // The test error handler collapses every DomainError to 422, so assert the
+    // code — that is the part the real error handler keys off.
+    expect(await json(res)).toMatchObject({ code: 'UNAUTHENTICATED' })
+    expect(mockListIntegrationIdsForScope).not.toHaveBeenCalled()
+  })
+
+  it('resolves an id with no built-in definition from its published row', async () => {
+    // A TENANT-scoped config may introduce an id the code registry has never
+    // heard of; its display metadata can only come from the row itself.
+    mockListIntegrationIdsForScope.mockResolvedValue(['my_partner'])
+    mockGetIntegrationDefinition.mockReturnValue(undefined)
+    mockRepo.findActiveForScope.mockResolvedValue({
+      version: 2,
+      visibility: 'TENANT' as const,
+      displayName: 'My Partner',
+    })
+    mockToDefinitionFromRow.mockReturnValue({
+      id: 'my_partner',
+      displayName: 'My Partner',
+      description: 'Tenant-authored partner.',
+    })
+
+    const res = await buildApp(['tenant_admin']).request('/integrations')
+    expect(res.status).toBe(200)
+    expect((await json(res)).data).toEqual([
+      {
+        id: 'my_partner',
+        name: 'My Partner',
+        description: 'Tenant-authored partner.',
+        published: true,
+        version: 2,
+        visibility: 'TENANT',
+      },
+    ])
+  })
+
+  it('skips an id that resolves to no definition at all', async () => {
+    // e.g. a row naming an unknown floor — it can never take effect, so listing
+    // it would misrepresent what the tenant has.
+    mockListIntegrationIdsForScope.mockResolvedValue(['ghost'])
+    mockGetIntegrationDefinition.mockReturnValue(undefined)
+    mockRepo.findActiveForScope.mockResolvedValue({ version: 1, visibility: 'TENANT' as const })
+    mockToDefinitionFromRow.mockReturnValue(null)
+
+    const res = await buildApp(['tenant_admin']).request('/integrations')
+    expect(res.status).toBe(200)
+    expect((await json(res)).data).toEqual([])
   })
 })
