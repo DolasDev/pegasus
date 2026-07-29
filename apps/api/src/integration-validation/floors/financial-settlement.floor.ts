@@ -62,6 +62,14 @@ export const financialSettlementFactCatalog: FactCatalog = {
   brandPresent: 'boolean',
 }
 
+export const financialSettlementFactDocs: Record<string, string> = {
+  idPresent: 'True when the settlement carries an id.',
+  partyIdPresent: 'True when the settlement names a party id (who is being settled with).',
+  brand:
+    'The reference brand code, UPPER-CASED; empty string when absent. Compare with `in`/`nin` to enforce your own brand vocabulary.',
+  brandPresent: 'True when a reference brand code is present.',
+}
+
 export function deriveFinancialSettlementFacts(ctx: CanonicalContext<FinancialSettlement>): Facts {
   const { order } = ctx
   const brand = order.Reference?.Brand
@@ -78,6 +86,7 @@ export const financialSettlementFloor: TypeFloor = {
   structuralContract: FinancialSettlementSchema,
   deriveFacts: deriveFinancialSettlementFacts,
   factCatalog: financialSettlementFactCatalog,
+  factDocs: financialSettlementFactDocs,
   defaultAction: 'save',
   // Natural key {Id}:{PartyId} (0026).
   projection: {

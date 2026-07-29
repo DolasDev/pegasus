@@ -21,7 +21,11 @@
 
 import { DemoPartnerOrderSchema } from '../canonical-demo-partner'
 import { demoPartnerInputFieldRoots } from '../transform/demo-partner.transform'
-import { deriveDemoPartnerFacts, demoPartnerFactCatalog } from '../facts/demo-partner-facts'
+import {
+  deriveDemoPartnerFacts,
+  demoPartnerFactCatalog,
+  demoPartnerFactDocs,
+} from '../facts/demo-partner-facts'
 import type { TypeFloor } from '../types'
 
 /** The stable id for the shipment-status-update integration type. */
@@ -33,6 +37,7 @@ export const shipmentStatusUpdateFloor: TypeFloor = {
   inputFieldRoots: demoPartnerInputFieldRoots,
   deriveFacts: deriveDemoPartnerFacts,
   factCatalog: demoPartnerFactCatalog,
+  factDocs: demoPartnerFactDocs,
   defaultAction: 'save',
   // A shipment-status order is keyed by its service order number, so the
   // validator can load the order's last-known state as `prior`.

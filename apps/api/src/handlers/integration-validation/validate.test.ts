@@ -128,6 +128,21 @@ describe('POST /integrations/:integrationId/validate', () => {
     })
   })
 
+  it('explains what each fact means (factDocs), incl. the same-shipment caveat', async () => {
+    // Six shipmentsWith*Actual counts are indistinguishable by name + type, so
+    // the floor contract has to carry their semantics or an author guesses.
+    const res = await buildApp().request('/api/v1/integrations/floors/shipment_status_update')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      data: { factCatalog: Record<string, string>; factDocs: Record<string, string> }
+    }
+    expect(Object.keys(body.data.factDocs).sort()).toEqual(
+      Object.keys(body.data.factCatalog).sort(),
+    )
+    expect(body.data.factDocs['shipmentsWithLoadDeliveryActual']).toMatch(/SAME shipment/)
+    expect(body.data.factDocs['shipmentsWithLoadDeliveryActual']).toMatch(/independently/)
+  })
+
   it('omits inputFieldRoots for a partner-neutral floor that declares none', async () => {
     const res = await buildApp().request('/api/v1/integrations/floors/shipment_lifecycle_event')
     expect(res.status).toBe(200)

@@ -46,6 +46,16 @@ export const documentRecordFactCatalog: FactCatalog = {
   brandPresent: 'boolean',
 }
 
+export const documentRecordFactDocs: Record<string, string> = {
+  idPresent: 'True when the document carries an id.',
+  format:
+    'The document format, UPPER-CASED (e.g. "PDF"); empty string when absent. Compare with `in`/`nin` to enforce your own accepted formats — the floor accepts any.',
+  formatPresent: 'True when a document format is present.',
+  brand:
+    'The reference brand code, UPPER-CASED; empty string when absent. Compare with `in`/`nin` to enforce your own brand vocabulary.',
+  brandPresent: 'True when a reference brand code is present.',
+}
+
 export function deriveDocumentRecordFacts(ctx: CanonicalContext<DocumentRecord>): Facts {
   const { order } = ctx
   const format = order.Format
@@ -64,6 +74,7 @@ export const documentRecordFloor: TypeFloor = {
   structuralContract: DocumentRecordSchema,
   deriveFacts: deriveDocumentRecordFacts,
   factCatalog: documentRecordFactCatalog,
+  factDocs: documentRecordFactDocs,
   defaultAction: 'save',
   // Natural key {Id} (0026).
   projection: {

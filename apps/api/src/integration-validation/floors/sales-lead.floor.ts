@@ -85,6 +85,16 @@ export const salesLeadFactCatalog: FactCatalog = {
   primaryPhoneTypePresent: 'boolean',
 }
 
+export const salesLeadFactDocs: Record<string, string> = {
+  idPresent: 'True when the lead carries an id.',
+  status:
+    'The lead status, verbatim (NOT case-folded); empty string when absent. Compare with `in`/`nin` to enforce your own status vocabulary.',
+  statusPresent: 'True when a lead status is present.',
+  primaryPhoneType:
+    'The primary phone type, verbatim (e.g. "Cell"); empty string when absent. The floor bakes in no picklist.',
+  primaryPhoneTypePresent: 'True when a primary phone type is present.',
+}
+
 export function deriveSalesLeadFacts(ctx: CanonicalContext<SalesLead>): Facts {
   const { order } = ctx
   const status = order.Status
@@ -103,6 +113,7 @@ export const salesLeadFloor: TypeFloor = {
   structuralContract: SalesLeadSchema,
   deriveFacts: deriveSalesLeadFacts,
   factCatalog: salesLeadFactCatalog,
+  factDocs: salesLeadFactDocs,
   defaultAction: 'save',
   // Natural key {OpportunityId||LeadId} (0026).
   projection: {

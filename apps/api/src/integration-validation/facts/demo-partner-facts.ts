@@ -68,6 +68,35 @@ export const demoPartnerFactCatalog: FactCatalog = {
   action: 'string',
 }
 
+/**
+ * What each fact MEANS — served on `GET /integrations/floors/:id` so a config
+ * author picks the right one without reading this file. The six shipment
+ * milestone counts are near-indistinguishable by name, so the same-shipment vs
+ * independent-count distinction is spelled out on each.
+ */
+export const demoPartnerFactDocs: Record<string, string> = {
+  serviceStatus: "The order's current service status, verbatim from the canonical order.",
+  supplierContactPresent: 'True when the supplier contact name is non-blank.',
+  supplierContactEmailValid:
+    'True when the supplier contact email is empty OR parses as an email address — so it is a format check, not a presence check.',
+  contactMadeDatePresent: 'True when the order carries a contact-made date.',
+  surveyDatePresent: 'True when the order carries a survey date.',
+  estimatedTotalCost:
+    'Sum of every surveyed cost field across all shipments (storage, third-party, crate/uncrate). 0 when nothing is surveyed.',
+  shipmentCount: 'Number of shipments on the order.',
+  shipmentsWithPackLoadActual:
+    'Shipments with BOTH pack and load actual dates present on the SAME shipment. Composite — use it when a partner genuinely requires pack; otherwise compose the per-date facts.',
+  shipmentsWithPackLoadDeliveryActual:
+    'Shipments with pack, load AND delivery actual dates all present on the SAME shipment.',
+  shipmentsWithPackActual: 'Shipments with a pack actual date present.',
+  shipmentsWithLoadActual:
+    'Shipments with a load actual date present. Requiring load alone is how a load-without-pack move (the shipper packed) reaches In Progress.',
+  shipmentsWithDeliveryActual: 'Shipments with a delivery actual date present.',
+  shipmentsWithLoadDeliveryActual:
+    'Shipments with BOTH load and delivery actual dates on the SAME shipment. Use this instead of AND-ing shipmentsWithLoadActual + shipmentsWithDeliveryActual when the two dates must belong to one shipment — AND-ed count predicates are evaluated independently, so with 2+ shipments load on one and delivery on another satisfies both.',
+  action: 'The action being validated (e.g. save, submit), from the request or the floor default.',
+}
+
 export function deriveDemoPartnerFacts(ctx: CanonicalContext<DemoPartnerOrder>): Facts {
   const { order, action } = ctx
   const email = order.supplierContactEmail

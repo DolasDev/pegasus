@@ -946,7 +946,7 @@ export function getOpenApiSpec() {
           operationId: 'listFloors',
           summary: 'List built-in integration floors (public)',
           description:
-            'Each floor is a per-type, partner-neutral contract. Returns each floor id + its canonicalFields (legal mapping targets) + factCatalog (legal rule facts) + inputFieldRoots (legal mapping source roots, when declared) + defaultAction + projection.',
+            'Each floor is a per-type, partner-neutral contract. Returns each floor id + its canonicalFields (legal mapping targets) + factCatalog (legal rule facts) + factDocs (what each fact means, when documented) + inputFieldRoots (legal mapping source roots, when declared) + defaultAction + projection.',
           tags: ['Integrations'],
           responses: {
             '200': { description: 'data: array of floor detail objects (see /floors/{floorId})' },
@@ -958,7 +958,7 @@ export function getOpenApiSpec() {
           operationId: 'getFloor',
           summary: 'A floor’s machine-readable contract (public)',
           description:
-            'The contract an author writes a config AGAINST: `canonicalFields` are the only legal mapping targets; `factCatalog` are the only legal rule facts; `inputFieldRoots` (when present) are the legal mapping SOURCE roots a `$from` may read — a bare entry opens a whole native root, a dotted entry opens only that curated sub-path.',
+            'The contract an author writes a config AGAINST: `canonicalFields` are the only legal mapping targets; `factCatalog` are the only legal rule facts; `factDocs` (when present) says what each fact MEANS — read it before choosing between similarly-named facts, since AND-ed count predicates are evaluated independently (a paired fact exists where two dates must belong to the same related record), and counts of related records use the `{op:"lte", value:0}` idiom for "at least one"; `inputFieldRoots` (when present) are the legal mapping SOURCE roots a `$from` may read — a bare entry opens a whole native root, a dotted entry opens only that curated sub-path.',
           tags: ['Integrations'],
           parameters: [{ name: 'floorId', in: 'path', required: true, schema: { type: 'string' } }],
           responses: {
@@ -977,6 +977,12 @@ export function getOpenApiSpec() {
                           factCatalog: {
                             type: 'object',
                             additionalProperties: { enum: ['string', 'number', 'boolean'] },
+                          },
+                          factDocs: {
+                            type: 'object',
+                            description:
+                              'Fact name → one-line meaning. Present when the floor documents its facts; every key is a factCatalog fact.',
+                            additionalProperties: { type: 'string' },
                           },
                           inputFieldRoots: { type: 'array', items: { type: 'string' } },
                           defaultAction: { type: 'string' },

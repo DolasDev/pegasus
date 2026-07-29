@@ -576,6 +576,10 @@ def test_list_and_get_floor_hit_public_endpoints() -> None:
                     "floor": "shipment_lifecycle_event",
                     "canonicalFields": ["Id", "Reference.Brand"],
                     "factCatalog": {"brand": "string", "brandPresent": "boolean"},
+                    "factDocs": {
+                        "brand": "The reference brand code, UPPER-CASED.",
+                        "brandPresent": "True when a reference brand code is present.",
+                    },
                     "inputFieldRoots": ["Survey", "UnusedFields.survey_received"],
                     "defaultAction": "save",
                 }
@@ -594,6 +598,9 @@ def test_list_and_get_floor_hit_public_endpoints() -> None:
     # The legal mapping SOURCE roots — incl. curated sub-paths — flow through so an
     # author can discover which native fields are readable (sdk-feedback 0028).
     assert "UnusedFields.survey_received" in floor["inputFieldRoots"]
+    # What each fact MEANS rides along too, so an author can tell near-identically
+    # named facts apart without platform source (sdk-feedback 0035).
+    assert floor["factDocs"]["brand"].startswith("The reference brand code")
 
 
 def test_publish_integration_config_gate_failure_raises() -> None:

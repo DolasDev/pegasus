@@ -109,6 +109,11 @@ function floorDetail(floorId: string): Record<string, unknown> | null {
     // Legal rule FACTS (name → type). A rule's `fact` must be one of these; its
     // `field` must be one of `canonicalFields`.
     factCatalog: floor.factCatalog,
+    // What each fact MEANS (name → one line), when the floor documents them. A
+    // name + type doesn't say what a count counts — notably whether two AND-ed
+    // count predicates must hold on the SAME related record — so an author
+    // reads this to pick the right fact without platform source.
+    ...(floor.factDocs ? { factDocs: floor.factDocs } : {}),
     // Legal mapping SOURCE roots (what a mapping's `$from` may READ). A bare entry
     // (`Survey`) opens a whole native root; a dotted entry
     // (`UnusedFields.survey_received`) opens only that curated sub-path, so an

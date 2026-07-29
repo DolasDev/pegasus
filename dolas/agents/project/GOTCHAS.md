@@ -594,3 +594,29 @@ so it asserted the handler faithfully rendered whatever the registry returned �
 test that _cannot_ observe an id-set regression. The regression test that matters is
 DB-backed (`summaries.test.ts`): publish under a new-partner id, assert the sync
 accessor does **not** know it, then assert the endpoint lists it anyway.
+
+## `resolve-tenant-config.test.ts` poisons the shared test DB for the other integration-validation handler tests
+
+`apps/api` test files run in parallel workers against ONE Postgres. Between its
+`beforeAll` and `afterAll`, `src/integration-validation/resolve-tenant-config.test.ts`
+publishes a **GLOBAL** `demo_partner` config whose mapping is deliberately degenerate
+(`{serviceOrderNumber: 'Global.Source'}`, so the winning overlay is observable) and
+calls `refreshRegistryOverlay(db)`. Any test in another file that resolves
+`demo_partner` in that window gets that overlay — the canonical comes back nearly
+empty and the assertion fails with a wall of `structural-contract` issues on fields
+the input clearly had.
+
+Reproduce (pre-existing on a clean `main`; ~2/10 for the whole directory, ~5/8 for the
+pair):
+
+    npx vitest run src/handlers/integration-validation/map-to-external.test.ts src/integration-validation/resolve-tenant-config.test.ts
+
+Symptom to recognize: `map-to-external.test.ts` / `validate.test.ts` failing with
+`expected { external: {}, valid: false } to match object { valid: true }` and
+`Invalid input: expected string, received undefined` on `serviceOrderNumber`,
+`supplierContactName`, … — i.e. the mapping produced nothing, which no code change to
+the facts/floors can cause. Re-running usually goes green, which is exactly why it is
+worth writing down: it is **not** the change under test.
+
+The fix is test-DB isolation for the DB-writing file (its own integration id with a
+built-in baseline, or serializing it), not a retry — untaken as of 2026-07-29.
