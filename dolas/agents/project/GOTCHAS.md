@@ -597,7 +597,7 @@ accessor does **not** know it, then assert the endpoint lists it anyway.
 
 ## A GLOBAL config row published by one test file poisons every other file's reads of that integration
 
-_Hit and fixed 2026-07-29 (#559). Kept because the shape recurs: any test that publishes a
+_Hit and fixed 2026-07-29 while shipping the floor `factDocs` change. Kept because the shape recurs: any test that publishes a
 `GLOBAL` integration config is publishing it for the whole process pool._
 
 `apps/api` test files run in parallel workers against ONE Postgres. Between its
