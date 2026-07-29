@@ -50,6 +50,8 @@ function planningRow(overrides: Record<string, unknown> = {}) {
     driver_id: 1,
     driver_name: 'Alice Hauler',
     agent_code: 'AG1',
+    is_local_drv: 'Y',
+    is_long_dist_drv: 'Y',
     trip_id: 10,
     trip_title: 'Trip Ten',
     planned_last_day: '2026-06-10',
@@ -355,6 +357,39 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
       isCommitted: false,
       isConfirmed: false,
     })
+  })
+
+  it('selects and maps the Y/N move-type flags to booleans', async () => {
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    executeSqlMock
+      .mockResolvedValueOnce({
+        recordset: [
+          // 'Y' -> true, 'N' -> false.
+          planningRow({ driver_id: 1, is_local_drv: 'Y', is_long_dist_drv: 'N' }),
+          // Lowercase 'y' still true; NULL treated as false. No trip so the
+          // deliveries round trip is still driven by driver 1's trip_id.
+          planningRow({ driver_id: 2, trip_id: null, is_local_drv: null, is_long_dist_drv: 'y' }),
+        ],
+        rowsAffected: [],
+      })
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // deliveries (driver 1 has a trip)
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // ensure
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // confirmed
+
+    const res = await buildApp().request('/onprem/longhaul/driver-planning')
+    const body = (await res.json()) as {
+      data: Array<{ driverId: number; isLocal: boolean; isLongDistance: boolean }>
+    }
+
+    // The flags are pulled straight off v_longhaul_drivers in the planning SQL.
+    const planningSql = executeSqlMock.mock.calls[0]![1] as string
+    expect(planningSql).toContain('d.is_local_drv')
+    expect(planningSql).toContain('d.is_long_dist_drv')
+
+    const d1 = body.data.find((d) => d.driverId === 1)!
+    expect(d1).toMatchObject({ isLocal: true, isLongDistance: false })
+    const d2 = body.data.find((d) => d.driverId === 2)!
+    expect(d2).toMatchObject({ isLocal: false, isLongDistance: true })
   })
 
   it('applies confirmed-availability overrides from the third round trip', async () => {

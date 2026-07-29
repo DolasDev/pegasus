@@ -347,6 +347,16 @@ function dateInRange(dateStr: string | null, from: string, to: string): boolean 
   return true
 }
 
+// Move-type filter: 'any' passes every driver; 'yes'/'no' require the driver's
+// boolean flag to match. Used for both the Local and Long-Distance columns.
+type MoveTypeFilter = 'any' | 'yes' | 'no'
+
+function moveTypeMatches(flag: boolean, selection: MoveTypeFilter): boolean {
+  if (selection === 'yes') return flag
+  if (selection === 'no') return !flag
+  return true
+}
+
 // Ready Date / Ready State / Ready City are linked: editing any of the three
 // opens all three at once and the mutation only fires when every one is
 // filled in. Notes still edits independently, as do the roster free-text /
@@ -820,6 +830,10 @@ export function AvailabilityViewA() {
 
   const [filter, setFilter] = useState('')
   const [selectedZones, setSelectedZones] = useState<ZoneOption[]>([])
+  // Move-type filters, each backed by a driver's Y/N v_longhaul_drivers flag.
+  // 'any' shows every driver; 'yes'/'no' require the flag to be set/unset.
+  const [localFilter, setLocalFilter] = useState<MoveTypeFilter>('any')
+  const [longDistFilter, setLongDistFilter] = useState<MoveTypeFilter>('any')
   // Default sort: earliest calculated availability first.
   const [sortOrder, setSortOrder] = useState<SortOrder | null>('asc')
   // Default date range: today ±3 months, around the calculated availability.
@@ -849,6 +863,8 @@ export function AvailabilityViewA() {
       if (rangeActive && !dateInRange(getReadyDateKey(d), dateFrom, dateTo)) {
         return false
       }
+      if (!moveTypeMatches(d.isLocal, localFilter)) return false
+      if (!moveTypeMatches(d.isLongDistance, longDistFilter)) return false
       return true
     })
     if (!sortOrder) return filtered
@@ -861,7 +877,17 @@ export function AvailabilityViewA() {
       const diff = +new Date(aKey) - +new Date(bKey)
       return sortOrder === 'asc' ? diff : -diff
     })
-  }, [drivers, filter, selectedZones, sortOrder, stateList, dateFrom, dateTo])
+  }, [
+    drivers,
+    filter,
+    selectedZones,
+    sortOrder,
+    stateList,
+    dateFrom,
+    dateTo,
+    localFilter,
+    longDistFilter,
+  ])
 
   if (isLoading) {
     return (
@@ -899,6 +925,32 @@ export function AvailabilityViewA() {
                 }
               />
             </div>
+            <label className={`flex items-center gap-2 text-sm ${CARD_TEXT_CLASS}`}>
+              <span>Local</span>
+              <select
+                data-testid="local-filter"
+                value={localFilter}
+                onChange={(e) => setLocalFilter(e.target.value as MoveTypeFilter)}
+                className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
+              >
+                <option value="any">Any</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+            <label className={`flex items-center gap-2 text-sm ${CARD_TEXT_CLASS}`}>
+              <span>Long Dist.</span>
+              <select
+                data-testid="long-dist-filter"
+                value={longDistFilter}
+                onChange={(e) => setLongDistFilter(e.target.value as MoveTypeFilter)}
+                className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
+              >
+                <option value="any">Any</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
             <div
               className={`flex items-center gap-2 text-sm ${CARD_TEXT_CLASS}`}
               data-testid="ready-date-range-filter"

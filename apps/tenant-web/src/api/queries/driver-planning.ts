@@ -48,6 +48,10 @@ export interface DriverPlanningRow {
   homeState: string | null
   /** Tri-state WGS flag: true = Yes, false = No, null = Maybe (the unset default). */
   wgs: boolean | null
+  /** Driver handles local moves (v_longhaul_drivers.is_local_drv = 'Y'). */
+  isLocal: boolean
+  /** Driver handles long-distance moves (v_longhaul_drivers.is_long_dist_drv = 'Y'). */
+  isLongDistance: boolean
   /** Every RDEL activity on the driver's current trip, sorted by effective date. */
   deliveries: Delivery[]
   /** One row per shipment, dates from the final activity on each. */

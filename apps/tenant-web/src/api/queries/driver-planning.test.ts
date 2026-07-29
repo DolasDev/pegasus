@@ -79,6 +79,8 @@ describe('driverPlanningQueryOptions', () => {
         homeCity: null,
         homeState: null,
         wgs: null,
+        isLocal: false,
+        isLongDistance: true,
         deliveries: [
           {
             activityId: 999,
@@ -125,6 +127,8 @@ describe('driverPlanningQueryOptions', () => {
         homeCity: 'Dallas',
         homeState: 'TX',
         wgs: true,
+        isLocal: true,
+        isLongDistance: false,
         deliveries: [],
         shipments: [],
       },
