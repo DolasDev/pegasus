@@ -216,6 +216,25 @@ export function createIntegrationConfigRepository(db: PrismaClient) {
       return latest
     },
 
+    /**
+     * The distinct integration ids the tenant has an active (PUBLISHED) config
+     * of its own for. Ids only — the caller resolves each one through
+     * `findActiveForScope`, so this stays cheap (no JSON blobs loaded).
+     *
+     * Needed because a TENANT-visibility config may introduce an integration id
+     * that exists in NEITHER the built-in registry nor the GLOBAL overlay (the
+     * overlay is warmed from `listActiveGlobal` alone). Without this, a tenant
+     * cannot see an integration it published itself.
+     */
+    async listActiveIntegrationIdsForTenant(tenantId: string): Promise<string[]> {
+      const rows = await db.integrationConfig.findMany({
+        where: { tenantId, status: 'PUBLISHED' },
+        select: { integrationId: true },
+        distinct: ['integrationId'],
+      })
+      return rows.map((r) => r.integrationId)
+    },
+
     /** Fetch one row by id, visible to the tenant (own ∪ GLOBAL); null otherwise. */
     async findByIdForScope(id: string, tenantId: string): Promise<IntegrationConfigRow | null> {
       return db.integrationConfig.findFirst({

@@ -113,6 +113,16 @@ describe.skipIf(!hasDb)('createIntegrationConfigRepository (integration)', () =>
     expect(globals.every((g) => g.visibility === 'GLOBAL' && g.status === 'PUBLISHED')).toBe(true)
   })
 
+  it('listActiveIntegrationIdsForTenant returns the tenant OWN ids, deduped', async () => {
+    // Publishing supersedes, so a scope has at most one PUBLISHED row today —
+    // the distinct is defensive, and the id must appear exactly once regardless.
+    const ids = await repo.listActiveIntegrationIdsForTenant(tenantId)
+    expect(ids.filter((id) => id === INTEG)).toEqual([INTEG])
+    // The GLOBAL-only integration belongs to the platform tenant, not this one.
+    expect(ids).not.toContain(INTEG_GLOBAL)
+    expect(await repo.listActiveIntegrationIdsForTenant(platformId)).toContain(INTEG_GLOBAL)
+  })
+
   it('findActiveGlobal returns the GLOBAL row for the integration, null otherwise', async () => {
     const global = await repo.findActiveGlobal(INTEG_GLOBAL)
     expect(global?.visibility).toBe('GLOBAL')

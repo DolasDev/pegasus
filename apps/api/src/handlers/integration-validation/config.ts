@@ -38,10 +38,10 @@ import {
   getGateBase,
   getFloor,
   refreshRegistryOverlay,
-  listIntegrationIds,
-  getIntegrationDefinition,
+  listIntegrationIdsForScope,
   resolveIntegrationDefinition,
 } from '../../integration-validation/registry'
+import { listIntegrationSummaries } from '../../integration-validation/summaries'
 import { runGatePipeline, type GateCorpusCase } from '../../integration-validation/gate-pipeline'
 import { isIntegrationConfigPublishEnabled } from '../../lib/integration-config-feature'
 import {
@@ -305,21 +305,9 @@ integrationConfigHandler.get(
   async (c) => {
     const tenantId = c.get('tenantId')
     if (!tenantId) throw new DomainError('Tenant context required', 'UNAUTHENTICATED')
-    const repo = createIntegrationConfigRepository(c.get('db'))
-    const data = []
-    for (const id of listIntegrationIds()) {
-      const def = getIntegrationDefinition(id)
-      if (!def) continue
-      const active = await repo.findActiveForScope(id, tenantId)
-      data.push({
-        id: def.id,
-        name: active?.displayName ?? def.displayName,
-        description: def.description,
-        published: active !== null,
-        version: active?.version ?? null,
-        visibility: active?.visibility ?? null,
-      })
-    }
+    // Same read model as the browser list — the two must never disagree about
+    // which integrations a tenant has.
+    const data = await listIntegrationSummaries(c.get('db'), tenantId)
     return c.json({ data, meta: { count: data.length } })
   },
 )
@@ -340,7 +328,9 @@ integrationConfigHandler.get(
 
     const integrations = []
     let totalMissing = 0
-    for (const id of listIntegrationIds()) {
+    // Scope-aware id set (built-ins ∪ GLOBAL ∪ the tenant's own), so a tenant's
+    // own integration's declared keys are not silently omitted from the summary.
+    for (const id of await listIntegrationIdsForScope(c.get('db'), tenantId)) {
       // Tenant-effective definition (tenant config over GLOBAL over built-in), so
       // a tenant's own overlay can declare different keys than the platform's.
       const def = await resolveIntegrationDefinition(basePrisma, id, tenantId)

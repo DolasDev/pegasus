@@ -556,3 +556,41 @@ column 0, and `addDays` (local-time `setDate`) shifts the UTC time-of-day by an 
 across a DST boundary. Note `sameDayCheck` compares in **local** time while the label
 and the key are **UTC** — deliberate, since changing `sameDayCheck` would move the
 drift-detection semantics.
+
+## A sync read of a lazily-warmed module cache reports "no data" as "no such thing"
+
+`GET /api/v1/integrations` listed only the two built-in code overlays
+(`demo_partner`, `allied_status`) for every tenant, both badged unpublished — no
+Weichert, no Sirva ADE. Nothing was wrong with the data: every real integration was
+published in `integration_configs`.
+
+The list enumerated `listIntegrationIds()`, which is **synchronous** and therefore
+reports whatever the module-level GLOBAL overlay cache (`registry.ts`) happens to
+hold. That cache is warmed only by `refreshRegistryOverlay` (after a publish, in
+that one container) or by `loadRegistryOverlayIfStale`, whose sole caller was
+`resolveIntegrationDefinition` — and only on its `tenantId === null`
+(platform-scoped m2m key) branch. A Lambda container serving browser traffic
+therefore read a permanently-null map and truthfully reported the code baseline as
+the whole world.
+
+Two lessons, both general:
+
+- **A lazily-warmed cache needs a warm call on _every_ read path, not just the one
+  it was written for.** Grep the warm function's call sites before trusting a
+  sync accessor that reads it. Runtime validation was fine throughout, because
+  `validate.ts` goes through `findActiveForScope` and never consults the cache —
+  which is exactly why the bug survived: the engine worked, only the _inventory_
+  of what exists was wrong.
+- **Enumeration and resolution are different questions.** `findActiveForScope`
+  resolves tenant-over-GLOBAL-over-built-in correctly for an id you already have,
+  but nothing enumerated TENANT-visibility ids at all (the overlay is built from
+  `listActiveGlobal` alone), so a tenant could not see an integration it had
+  published itself. `listIntegrationIdsForScope` + `listIntegrationSummaries`
+  (`integration-validation/summaries.ts`) are now the one read model behind all
+  three list endpoints.
+
+Test lesson: `list.test.ts` mocked `listIntegrationIds`/`getIntegrationDefinition`,
+so it asserted the handler faithfully rendered whatever the registry returned — a
+test that _cannot_ observe an id-set regression. The regression test that matters is
+DB-backed (`summaries.test.ts`): publish under a new-partner id, assert the sync
+accessor does **not** know it, then assert the endpoint lists it anyway.
