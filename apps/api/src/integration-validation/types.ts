@@ -75,6 +75,15 @@ export interface TypeFloor {
   deriveFacts: (ctx: CanonicalContext<any>) => Facts
   /** The facts overlay rules may reference (enforced against the overlay). */
   factCatalog: FactCatalog
+  /**
+   * One-line semantics per fact, served on the floor-contract endpoint so an
+   * author (or their agent) can pick the right fact without platform source.
+   * A name + type alone doesn't say what a fact counts — e.g. whether two
+   * AND-ed count predicates must hold on the SAME related record. Optional and
+   * purely informational: nothing validates against it. Keys must name facts in
+   * `factCatalog` (asserted by floor-facts.test.ts).
+   */
+  factDocs?: Record<string, string>
   /** Default action assumed when a caller omits one. */
   defaultAction: OrderAction
   /** Optional cached-projection binding (keyed off the canonical order). */

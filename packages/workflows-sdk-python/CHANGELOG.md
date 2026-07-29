@@ -3,6 +3,36 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.34.0
+
+### Added — a floor now says what each fact MEANS (`factDocs`)
+
+`get_floor()` / `list_floors()` (and the `pegasus://reference/floors` MCP resource)
+now carry `factDocs` — fact name → one line — alongside `factCatalog`. A name and a
+type don't say what a fact counts, and floors have grown families of
+near-identically-named facts, so an author picking between them was guessing.
+
+Read it before writing a rule. Two things it tells you that nothing else could:
+
+- Facts that **count related records** carry "at least one" semantics, so you forbid
+  the milestone with `{"op": "lte", "value": 0}`.
+- Two count predicates AND-ed in one rule are evaluated **independently** — with 2+
+  related records, one may satisfy the first and a _different_ one the second. Where
+  the values must belong to the same record, the floor publishes a **paired** fact
+  (e.g. `shipmentsWithLoadDeliveryActual` rather than AND-ing
+  `shipmentsWithLoadActual` + `shipmentsWithDeliveryActual`).
+
+The `shipment_status_update` floor also gained per-date milestone facts
+(`shipmentsWithPackActual`, `shipmentsWithLoadActual`, `shipmentsWithDeliveryActual`,
+and the paired `shipmentsWithLoadDeliveryActual`), so a config can require the dates a
+partner actually has — a load-without-pack move (the shipper packed) can reach
+`In Progress` without a fabricated pack date. Purely additive: the composite
+`shipmentsWithPackLoad…` facts are unchanged and every published config keeps working.
+
+Server-side (no SDK change needed to consume it): `GET /api/v1/integrations/floors`
+and `/floors/{floorId}` include `factDocs` when the floor documents its facts.
+Addresses sdk-feedback 0035.
+
 ## 0.33.0
 
 ### Added — declare an integration's required secrets/configs

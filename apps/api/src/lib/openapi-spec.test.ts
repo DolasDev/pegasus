@@ -21,6 +21,26 @@ describe('getOpenApiSpec', () => {
     expect(paths).toContain('/api/v1/integrations/{integrationId}/config')
   })
 
+  it('documents factDocs on the floor contract, so the spec matches what the route serves', () => {
+    const props = (
+      spec.paths['/api/v1/integrations/floors/{floorId}'] as unknown as {
+        get: {
+          responses: Record<
+            string,
+            {
+              content?: Record<
+                string,
+                { schema: { properties: { data: { properties: Record<string, unknown> } } } }
+              >
+            }
+          >
+        }
+      }
+    ).get.responses['200']!.content!['application/json']!.schema.properties.data.properties
+    expect(props).toHaveProperty('factCatalog')
+    expect(props).toHaveProperty('factDocs')
+  })
+
   it('declares the vnd_ API-key security scheme, applied to the authoring routes', () => {
     expect(spec.components.securitySchemes).toHaveProperty('ApiKeyAuth')
     // Public discovery routes carry no security; authoring routes do.

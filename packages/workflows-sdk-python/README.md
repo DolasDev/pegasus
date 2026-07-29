@@ -844,13 +844,36 @@ rules** (the DB-backed authoring surface). The working directory (`-C`, default
 declares the only legal mapping _targets_ and rule _facts_. Author against it:
 
 ```python
-client.list_floors()                    # [{floor, canonicalFields, factCatalog, inputFieldRoots?, …}]
+client.list_floors()                    # [{floor, canonicalFields, factCatalog, factDocs?, …}]
 client.get_floor("shipment_lifecycle_event")
 #  → canonicalFields:  legal mapping targets    (what a mapping may WRITE)
-#  → factCatalog:      legal rule facts
+#  → factCatalog:      legal rule facts         (name → type)
+#  → factDocs:         what each fact MEANS     (name → one line), when documented
 #  → inputFieldRoots:  legal mapping source roots (what a $from may READ), when declared.
 #      bare "Survey" opens a whole native root; dotted "UnusedFields.survey_received"
 #      opens ONLY that curated sub-path (siblings stay closed).
+```
+
+**Read `factDocs` before picking a fact.** A name and a type don't say what a fact
+counts. Facts that count related records (`shipmentsWith…`) carry "at least one"
+semantics, so you forbid the milestone with `{"op": "lte", "value": 0}` — and two
+such predicates AND-ed in one rule are evaluated **independently**, so with 2+
+related records one may satisfy the first and a different one the second. Where the
+values must belong to the _same_ record the floor publishes a paired fact; `factDocs`
+is what tells you which is which:
+
+```jsonc
+// "at least one shipment has a load actual" — the load-only milestone
+"when": [
+  {"fact": "serviceStatus", "op": "eq",  "value": "In Progress"},
+  {"fact": "shipmentsWithLoadActual", "op": "lte", "value": 0}
+]
+
+// load AND delivery on the SAME shipment — use the paired fact, not two predicates
+"when": [
+  {"fact": "serviceStatus", "op": "in",  "value": ["Delivered", "Completed"]},
+  {"fact": "shipmentsWithLoadDeliveryActual", "op": "lte", "value": 0}
+]
 ```
 
 (or public `GET /api/v1/integrations/floors[/{id}]`). Then the round-trip is

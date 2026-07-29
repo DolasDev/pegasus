@@ -16,9 +16,26 @@ import {
   financialSettlementFloor,
 } from './financial-settlement.floor'
 import { deriveDocumentRecordFacts, documentRecordFloor } from './document-record.floor'
+import { listFloorIds, getFloor } from '../registry'
 import type { CanonicalContext } from '../types'
 
 const ctx = <T>(order: T): CanonicalContext<T> => ({ order, prior: null, action: 'save' })
+
+describe('every floor documents its facts, and only its facts', () => {
+  // factDocs is what an author reads to choose between similarly-named facts, so
+  // a doc for a fact that no longer exists — or a fact that gained no doc — is a
+  // silent hole in the authoring contract. Both directions are pinned here.
+  for (const id of listFloorIds()) {
+    it(`${id}: factDocs covers exactly the fact catalog`, () => {
+      const floor = getFloor(id)!
+      expect(floor.factDocs, `floor "${id}" declares no factDocs`).toBeDefined()
+      expect(Object.keys(floor.factDocs!).sort()).toEqual(Object.keys(floor.factCatalog).sort())
+      for (const [fact, doc] of Object.entries(floor.factDocs!)) {
+        expect(doc.trim().length, `fact "${fact}" has an empty doc`).toBeGreaterThan(0)
+      }
+    })
+  }
+})
 
 describe('shipment_lifecycle_event facts + key', () => {
   it('derives presence + upper-cased raw values from a full entity', () => {

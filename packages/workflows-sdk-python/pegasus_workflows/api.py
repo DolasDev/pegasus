@@ -1993,13 +1993,22 @@ class PegasusClient:
     def get_floor(self, floor_id: str) -> dict[str, Any]:
         """A floor's machine-readable authoring contract (sdk-feedback 0024).
 
-        Returns ``{floor, canonicalFields, factCatalog, inputFieldRoots?,
+        Returns ``{floor, canonicalFields, factCatalog, factDocs?, inputFieldRoots?,
         defaultAction, projection?}``:
 
         - ``canonicalFields`` — the ONLY legal mapping *targets* (a ``mapping.json``
           may only write these paths; array-element paths are marked ``[]``).
         - ``factCatalog`` — the ONLY legal rule *facts* (name → type). A rule's
           ``fact`` must be one of these; its ``field`` one of ``canonicalFields``.
+        - ``factDocs`` — what each fact MEANS (name → one line), when the floor
+          documents them. READ THIS before choosing between similarly-named facts:
+          a name and type don't say what a count counts. Two count predicates
+          AND-ed in one rule are evaluated *independently*, so where two values
+          must belong to the same related record a floor publishes a paired fact
+          (e.g. ``shipmentsWithLoadDeliveryActual`` vs AND-ing
+          ``shipmentsWithLoadActual`` + ``shipmentsWithDeliveryActual``). Counts of
+          related records use the "at least one" idiom — forbid with
+          ``{"fact": ..., "op": "lte", "value": 0}`` (sdk-feedback 0035).
         - ``inputFieldRoots`` — the legal mapping *source* roots a ``$from`` may
           READ (present only when the floor declares them). A bare entry
           (``"Survey"``) opens a whole native root; a dotted entry

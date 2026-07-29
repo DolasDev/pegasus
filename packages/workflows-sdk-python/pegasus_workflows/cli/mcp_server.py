@@ -481,9 +481,16 @@ def resource_reference_integration_config() -> str:
         "body shape + projection (only for send-to-partner integrations).\n\n"
         "## Discover the floor FIRST (so the gate accepts your files)\n\n"
         "A floor tells you the ONLY legal mapping *targets* (``canonicalFields``), rule "
-        "*facts* (``factCatalog``), and — when declared — the legal mapping *source* roots a "
-        "``$from`` may READ (``inputFieldRoots``: a bare entry opens a whole native root, a "
-        "dotted entry like ``UnusedFields.survey_received`` opens ONLY that curated sub-path). "
+        "*facts* (``factCatalog``), what each fact MEANS (``factDocs``), and — when declared — "
+        "the legal mapping *source* roots a ``$from`` may READ (``inputFieldRoots``: a bare "
+        "entry opens a whole native root, a dotted entry like "
+        "``UnusedFields.survey_received`` opens ONLY that curated sub-path). "
+        "**Read ``factDocs`` before picking a fact** — a name + type doesn't say what a count "
+        "counts. Counts of related records carry 'at least one' semantics, so you forbid with "
+        "``{op:'lte', value:0}``; two such predicates AND-ed in one rule are evaluated "
+        "INDEPENDENTLY, so where two values must belong to the SAME related record the floor "
+        "publishes a paired fact (e.g. ``shipmentsWithLoadDeliveryActual`` instead of AND-ing "
+        "``shipmentsWithLoadActual`` + ``shipmentsWithDeliveryActual``). "
         "Author against them:\n\n"
         "- ``client.list_floors()`` / ``client.get_floor(floor_id)`` (SDK), or\n"
         "- ``GET /api/v1/integrations/floors`` / ``/floors/{floorId}`` (public) — see the "
@@ -544,7 +551,7 @@ def resource_reference_integration_config() -> str:
 
 
 def resource_reference_floors() -> str:
-    """Live list of built-in floors (canonicalFields + factCatalog + inputFieldRoots).
+    """Live list of built-in floors (canonicalFields + factCatalog + factDocs + inputFieldRoots).
 
     Fetched from the API.
     """
@@ -552,10 +559,15 @@ def resource_reference_floors() -> str:
     header = (
         "# Integration floors (live)\n\n"
         "Each floor is a per-type, partner-neutral contract. ``canonicalFields`` are the only "
-        "legal mapping targets; ``factCatalog`` the only legal rule facts; ``inputFieldRoots`` "
+        "legal mapping targets; ``factCatalog`` the only legal rule facts; ``factDocs`` (when "
+        "present) what each fact MEANS; ``inputFieldRoots`` "
         "(when present) the legal mapping source roots a ``$from`` may read — a bare entry opens "
         "a whole native root, a dotted entry opens only that curated sub-path. Author "
         "``mapping.json``/``rules.json`` against these. Also via ``client.get_floor(id)``.\n\n"
+        "Facts that COUNT related records use 'at least one' semantics — forbid with "
+        "``{op:'lte', value:0}`` — and two count predicates AND-ed in one rule are evaluated "
+        "INDEPENDENTLY; use the floor's paired fact when two values must belong to the same "
+        "record. ``factDocs`` says which is which.\n\n"
         f"Source: ``GET {_public_base_url()}/api/v1/integrations/floors``\n\n"
     )
     if body:

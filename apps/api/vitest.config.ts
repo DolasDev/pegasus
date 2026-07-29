@@ -22,8 +22,8 @@ export default defineConfig({
       reporter: ['text', 'lcov'],
       reportsDirectory: './coverage',
       thresholds: {
-        lines: 91.67,
-        branches: 78.85,
+        lines: 91.68,
+        branches: 78.84,
         functions: 87.86,
         statements: 90.28,
         autoUpdate: true,

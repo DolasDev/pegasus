@@ -73,6 +73,17 @@ export const shipmentLifecycleEventFactCatalog: FactCatalog = {
   deliveryDatePresent: 'boolean',
 }
 
+export const shipmentLifecycleEventFactDocs: Record<string, string> = {
+  idPresent: 'True when the event carries a shipment id.',
+  brand:
+    'The reference brand code, UPPER-CASED; empty string when absent. Compare with `in`/`nin` to enforce your own brand vocabulary — the floor bakes in none.',
+  brandPresent: 'True when a reference brand code is present.',
+  status:
+    'The lifecycle status, UPPER-CASED; empty string when absent. Value sets are partner business rules, so author them in the overlay.',
+  statusPresent: 'True when a lifecycle status is present.',
+  deliveryDatePresent: 'True when an actual delivery date is present.',
+}
+
 export function deriveShipmentLifecycleEventFacts(
   ctx: CanonicalContext<ShipmentLifecycleEvent>,
 ): Facts {
@@ -96,6 +107,7 @@ export const shipmentLifecycleEventFloor: TypeFloor = {
   // field names — the overlay mapping is checked only against the canonical targets.
   deriveFacts: deriveShipmentLifecycleEventFacts,
   factCatalog: shipmentLifecycleEventFactCatalog,
+  factDocs: shipmentLifecycleEventFactDocs,
   defaultAction: 'save',
   // Natural key {Brand}:{Number}:{Year} (0026 landing-zone convention).
   projection: {
