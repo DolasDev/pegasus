@@ -15,6 +15,10 @@ import { DispatchNote } from './components/DispatchNote'
 import { useAppDispatch } from '../../redux/hooks'
 import type { RootState } from '../../redux/store'
 
+// Atlas web dispatch opens a shipment by its registration number:
+// https://atlasnet.atlasworldgroup.com/webdispatch/editshipment/RC086240
+const ATLAS_WEBDISPATCH_BASE = 'https://atlasnet.atlasworldgroup.com/webdispatch/editshipment'
+
 const createFromToDateString = (startDate: any, endDate?: any) =>
   `${formatDate(startDate)} - ${formatDate(endDate)}`
 
@@ -69,7 +73,21 @@ export function ShipmentDetail({
       label: 'Order Number',
     },
     {
-      accessor: 'avl_reg',
+      accessor: (shipment: any) => {
+        const reg = shipment.avl_reg == null ? '' : String(shipment.avl_reg).trim()
+        if (!reg) return ''
+        return (
+          <a
+            href={`${ATLAS_WEBDISPATCH_BASE}/${encodeURIComponent(reg)}`}
+            title="open in Atlas"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-target="atlas-reg-link"
+          >
+            {reg}
+          </a>
+        )
+      },
       label: 'Reg Number',
     },
     {
