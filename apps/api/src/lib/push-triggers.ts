@@ -42,3 +42,58 @@ export async function enqueueCrewAssignmentPush(
     },
   })
 }
+
+export type TripAssignmentPushInput = {
+  /** Legacy TripMaster id — the deep-link target (`/trip/[id]` in the app). */
+  tripId: number
+  /** v_longhaul_drivers.driver_id of the newly assigned driver. */
+  longhaulDriverId: number
+}
+
+/**
+ * Enqueues a "you've been assigned a trip" push for the driver a longhaul trip
+ * was just assigned to (see handlers/longhaul-cloud/trip-save).
+ *
+ * Longhaul is the system drivers actually work out of, so the target is a
+ * legacy `driver_id` rather than a cloud CrewMember. It resolves to a login via
+ * `TenantUser.longhaulDriverId` — the same mapping `/api/v1/me/driver` uses to
+ * scope My Trips. That mapping is set by a tenant admin and is nullable, so an
+ * unmapped driver is a silent no-op (returns false): they can't see the trip in
+ * the app either, so there is nothing to notify them about.
+ *
+ * Dedupe is per (trip, driver): saving the same trip repeatedly — the common
+ * case, since every trip edit re-saves the header — can never double-notify.
+ * The tradeoff is that reassigning A → B → A won't re-notify A; duplicate
+ * suppression is the more valuable half of that trade.
+ *
+ * Returns whether a row was enqueued, so the caller can log the unmapped case.
+ */
+export async function enqueueTripAssignmentPush(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  input: TripAssignmentPushInput,
+): Promise<boolean> {
+  const user = await tx.tenantUser.findFirst({
+    where: {
+      tenantId,
+      longhaulDriverId: input.longhaulDriverId,
+      // A revoked login has no business receiving work, and a service account
+      // is not a person holding a phone.
+      isServiceAccount: false,
+      status: { not: 'DEACTIVATED' },
+    },
+    select: { id: true },
+  })
+  if (!user) return false
+
+  await enqueuePush(tx, tenantId, {
+    userId: user.id,
+    dedupeKey: `trip.assigned:${input.tripId}:${input.longhaulDriverId}`,
+    payload: {
+      title: 'New trip assigned',
+      body: 'You have been assigned to a trip. Tap to view the details.',
+      data: { type: 'trip.assigned', tripId: input.tripId },
+    },
+  })
+  return true
+}
