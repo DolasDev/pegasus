@@ -232,6 +232,39 @@ describe('ShipmentDetail container', () => {
     })
   })
 
+  describe('reg number → Atlas web dispatch link', () => {
+    it('links the reg number to Atlas with an "open in Atlas" tooltip', () => {
+      renderWithStore(<ShipmentDetail />, {
+        shipments: { selectedShipment: { ...happyShipment, avl_reg: 'RC086240' } } as any,
+        user: { user: sampleUser } as any,
+      })
+      const link = document.querySelector('[data-target="atlas-reg-link"]') as HTMLAnchorElement
+      expect(link).not.toBeNull()
+      expect(link.tagName.toLowerCase()).toBe('a')
+      expect(link.textContent).toBe('RC086240')
+      expect(link.getAttribute('href')).toBe(
+        'https://atlasnet.atlasworldgroup.com/webdispatch/editshipment/RC086240',
+      )
+      expect(link.getAttribute('title')).toBe('open in Atlas')
+      // Opens Atlas in its own tab without handing it window.opener.
+      expect(link.getAttribute('target')).toBe('_blank')
+      expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+    })
+
+    it('renders no link (and no ".../undefined" href) when the reg number is absent', () => {
+      const noReg = { ...happyShipment }
+      delete (noReg as any).avl_reg
+      renderWithStore(<ShipmentDetail />, {
+        shipments: { selectedShipment: noReg } as any,
+        user: { user: sampleUser } as any,
+      })
+      expect(document.querySelector('[data-target="atlas-reg-link"]')).toBeNull()
+      expect(document.querySelector('a[href*="editshipment"]')).toBeNull()
+      // The row itself still renders its label, just with an empty value.
+      expect(screen.getByText('Reg Number')).toBeInTheDocument()
+    })
+  })
+
   it('dispatches a deselect (thunk) when the close button is clicked', async () => {
     // selectShipment(null) is a thunk; we just verify the close click runs
     // through dispatch — the resulting reducer behavior is covered in the
