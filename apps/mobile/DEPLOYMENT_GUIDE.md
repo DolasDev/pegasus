@@ -506,7 +506,8 @@ eas credentials --platform android
 
 1. **Monitor Reviews:** Respond to user feedback
 2. **Analytics:** Add Expo Analytics or Firebase Analytics
-3. **Push Notifications:** Implement for order updates
+3. **Push Notifications:** Pipeline is built and wired — delivery needs the FCM
+   (Android) and APNs (iOS) credentials. See [PUSH_NOTIFICATIONS.md](./PUSH_NOTIFICATIONS.md)
 4. **Backend Integration:** Replace mock data with real API
 5. **OTA Updates:** Use `eas update` for quick fixes without store review
 

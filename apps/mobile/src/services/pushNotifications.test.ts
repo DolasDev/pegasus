@@ -103,6 +103,20 @@ describe('setupNotificationTapHandler', () => {
     notification: { request: { content: { data } } },
   })
 
+  it('deep-links a trip.assigned tap to that trip', () => {
+    const navigate = jest.fn()
+    setupNotificationTapHandler(navigate)
+    lastListener()(responseWith({ type: 'trip.assigned', tripId: 4242 }))
+    expect(navigate).toHaveBeenCalledWith('/trip/4242')
+  })
+
+  it('falls back to My Trips for a trip.assigned tap with no tripId', () => {
+    const navigate = jest.fn()
+    setupNotificationTapHandler(navigate)
+    lastListener()(responseWith({ type: 'trip.assigned' }))
+    expect(navigate).toHaveBeenCalledWith('/(drawer)/trips')
+  })
+
   it('routes a move.assigned tap to the My Trips screen', () => {
     const navigate = jest.fn()
     setupNotificationTapHandler(navigate)

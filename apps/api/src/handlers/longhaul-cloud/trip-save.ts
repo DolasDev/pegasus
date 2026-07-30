@@ -36,6 +36,7 @@ import {
   type SummaryShipmentRow,
   type TripSummary,
 } from '../../lib/longhaul-cloud-trip-summary'
+import { enqueueTripAssignmentPush } from '../../lib/push-triggers'
 import { logger } from '../../lib/logger'
 
 const TripBody = z
@@ -142,12 +143,72 @@ async function handleSave(c: Parameters<Handler<AppEnv>>[0], tripId: number | un
     // --- RT2: one atomic batch.
     const { sql, params } = buildSaveBatch(plan, summary, tripId)
     const { recordset } = await executeSql(connectionString, sql, { params })
+    const saved = (recordset[0] as Record<string, unknown> | undefined) ?? null
 
-    return c.json({ data: recordset[0] ?? null }, isUpdate ? 200 : 201)
+    // --- Post-commit: notify a newly assigned driver. Deliberately AFTER the
+    // write and never able to fail it (see notifyDriverAssignment).
+    await notifyDriverAssignment(c, {
+      tripId: tripId ?? asDriverId(saved?.['id']),
+      previousDriverId: asDriverId(existingTrip?.['driver_id']),
+      newDriverId: asDriverId(plan.tripRow['driver_id']),
+    })
+
+    return c.json({ data: saved }, isUpdate ? 200 : 201)
   } catch (err) {
     const detail = err instanceof MssqlExecError ? err.message : String(err)
     logger.error('longhaul cloud trip save failed', { error: detail, isUpdate })
     return c.json({ error: 'Failed to save trip', code: 'INTERNAL_ERROR', correlationId }, 500)
+  }
+}
+
+/**
+ * Coerces a legacy id (which reaches us as a number, a numeric string, or the
+ * "None" sentinel 0) to a positive number, else null.
+ */
+function asDriverId(value: unknown): number | null {
+  if (value == null) return null
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+/**
+ * Queues a push to the driver when a save ASSIGNS a driver the trip didn't
+ * already have (create-with-driver, or a change on update). Unchanged drivers
+ * are skipped, so the routine trip edit — which re-saves the header every time
+ * — stays silent.
+ *
+ * Best-effort by design: the trip is already committed on-prem by the time we
+ * get here, so a notification problem must never turn a successful save into a
+ * 500. Everything is caught and logged. (This is the one place the outbox's
+ * atomic-with-the-state-change property can't hold — the state lives in MSSQL,
+ * the outbox in Postgres, so there is no shared transaction to enlist in.)
+ */
+async function notifyDriverAssignment(
+  c: Parameters<Handler<AppEnv>>[0],
+  args: { tripId: number | null; previousDriverId: number | null; newDriverId: number | null },
+): Promise<void> {
+  const { tripId, previousDriverId, newDriverId } = args
+  if (tripId == null || newDriverId == null || newDriverId === previousDriverId) return
+
+  try {
+    const db = c.get('db')
+    if (!db) return
+    const enqueued = await enqueueTripAssignmentPush(db, c.get('tenantId'), {
+      tripId,
+      longhaulDriverId: newDriverId,
+    })
+    if (!enqueued) {
+      logger.info('No tenant user mapped to assigned driver — push skipped', {
+        tripId,
+        driverId: newDriverId,
+      })
+    }
+  } catch (err) {
+    logger.warn('Trip assignment push enqueue failed', {
+      error: String(err),
+      tripId,
+      driverId: newDriverId,
+    })
   }
 }
 

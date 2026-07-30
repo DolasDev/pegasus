@@ -10,6 +10,7 @@ import { registerTestErrorHandler } from '../../test-helpers'
 import type * as MssqlClient from '../../lib/mssql-executor-client'
 
 vi.mock('../../lib/longhaul-cloud-user', () => ({ resolveLonghaulUser: vi.fn() }))
+vi.mock('../../lib/push-triggers', () => ({ enqueueTripAssignmentPush: vi.fn() }))
 vi.mock('../../lib/mssql-executor-client', async (orig) => ({
   ...(await orig<typeof MssqlClient>()),
   executeSql: vi.fn(),
@@ -18,9 +19,14 @@ vi.mock('../../lib/mssql-executor-client', async (orig) => ({
 import { longhaulCreateTripHandler, longhaulUpdateTripHandler } from './trip-save'
 import { resolveLonghaulUser } from '../../lib/longhaul-cloud-user'
 import { executeSql } from '../../lib/mssql-executor-client'
+import { enqueueTripAssignmentPush } from '../../lib/push-triggers'
 
 const resolveMock = resolveLonghaulUser as unknown as Mock
 const executeSqlMock = executeSql as unknown as Mock
+const pushMock = enqueueTripAssignmentPush as unknown as Mock
+
+/** Stand-in for the tenant-scoped Prisma client the tenant middleware sets. */
+const dbStub = {} as never
 
 function buildApp() {
   const app = new Hono<AppEnv>()
@@ -29,6 +35,7 @@ function buildApp() {
     c.set('tenantId', 'tenant-1')
     c.set('correlationId', 'corr-1')
     c.set('userId', 'user-1')
+    c.set('db', dbStub)
     await next()
   })
   app.post('/onprem/longhaul/trips', longhaulCreateTripHandler)
@@ -59,7 +66,30 @@ const tripBody = (over: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   vi.clearAllMocks()
   resolveMock.mockResolvedValue({ ok: true, connectionString: 'Server=a,1433', code: 7, user: {} })
+  pushMock.mockResolvedValue(true)
 })
+
+/** RT1 (existing header + activities + shipments) for an update. */
+function mockUpdateReads(existingDriverId: number | null) {
+  executeSqlMock.mockResolvedValueOnce({
+    recordset: [],
+    recordsets: [
+      [{ driver_id: existingDriverId, dispatcher_id: 5 }],
+      [],
+      [{ order_num: 100, vip: 'N', total_est_wt: 0, line_haul: 0 }],
+    ],
+    rowsAffected: [],
+  })
+}
+
+/** RT2 (the atomic batch) returning the saved trip row. */
+function mockSaveBatch(id = 55) {
+  executeSqlMock.mockResolvedValueOnce({
+    recordset: [{ id, trip_title: 'T' }],
+    recordsets: [[]],
+    rowsAffected: [1],
+  })
+}
 
 describe('POST /trips (cloud-direct create)', () => {
   it('reads shipments then runs one atomic insert batch, returns the trip 201', async () => {
@@ -173,5 +203,84 @@ describe('PUT /trips/:id (cloud-direct update)', () => {
     const res = await req('/onprem/longhaul/trips/abc', 'PUT', tripBody())
     expect(res.status).toBe(400)
     expect(executeSqlMock).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Driver-assignment push. Fires only when a save ASSIGNS a driver the trip
+// didn't already have, and can never fail the (already committed) save.
+// ---------------------------------------------------------------------------
+describe('driver-assignment push', () => {
+  it('enqueues for the assigned driver on create, keyed to the new trip id', async () => {
+    executeSqlMock.mockResolvedValueOnce({
+      recordset: [{ order_num: 100, vip: 'N', total_est_wt: 100, line_haul: 500 }],
+      recordsets: [[]],
+      rowsAffected: [1],
+    })
+    mockSaveBatch(77)
+
+    const res = await req('/onprem/longhaul/trips', 'POST', tripBody())
+
+    expect(res.status).toBe(201)
+    expect(pushMock).toHaveBeenCalledWith(dbStub, 'tenant-1', {
+      tripId: 77,
+      longhaulDriverId: 9,
+    })
+  })
+
+  it('enqueues on update when the driver changes', async () => {
+    mockUpdateReads(9)
+    mockSaveBatch(55)
+
+    const res = await req(
+      '/onprem/longhaul/trips/55',
+      'PUT',
+      tripBody({ id: 55, driver: { id: 12, agent_code: 'AG' } }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(pushMock).toHaveBeenCalledWith(dbStub, 'tenant-1', {
+      tripId: 55,
+      longhaulDriverId: 12,
+    })
+  })
+
+  it('stays silent when the driver is unchanged (the routine trip edit)', async () => {
+    mockUpdateReads(9)
+    mockSaveBatch(55)
+
+    const res = await req('/onprem/longhaul/trips/55', 'PUT', tripBody({ id: 55 }))
+
+    expect(res.status).toBe(200)
+    expect(pushMock).not.toHaveBeenCalled()
+  })
+
+  it('stays silent when the driver is cleared (the "None" sentinel 0)', async () => {
+    mockUpdateReads(9)
+    mockSaveBatch(55)
+
+    const res = await req(
+      '/onprem/longhaul/trips/55',
+      'PUT',
+      tripBody({ id: 55, driver: { id: 0 } }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(pushMock).not.toHaveBeenCalled()
+  })
+
+  it('still returns the saved trip when the push enqueue throws', async () => {
+    mockUpdateReads(9)
+    mockSaveBatch(55)
+    pushMock.mockRejectedValue(new Error('postgres unreachable'))
+
+    const res = await req(
+      '/onprem/longhaul/trips/55',
+      'PUT',
+      tripBody({ id: 55, driver: { id: 12, agent_code: 'AG' } }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ data: { id: 55, trip_title: 'T' } })
   })
 })
