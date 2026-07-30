@@ -7,6 +7,9 @@ import { useOutsideClick } from '../../utils/hooks/use-outside-click'
 import { formatDate } from '../../utils/format-date'
 import { Link } from '@/features/driver-planning/utils/router-compat'
 import { Clickable } from '../../components/Clickable'
+// Reuse the Clickable link styling rather than re-declaring it here, so the
+// Atlas anchor and the Order Number link right above it can't drift apart.
+import clickableStyles from '../../components/Clickable/Clickable.module.css'
 import { API } from '../../utils/api'
 import { isJumpToOrderEnabled } from '../../utils/jump-to-order'
 import { ShipmentCoverage } from './components/Coverage'
@@ -78,6 +81,7 @@ export function ShipmentDetail({
         if (!reg) return ''
         return (
           <a
+            className={clickableStyles.clickable}
             href={`${ATLAS_WEBDISPATCH_BASE}/${encodeURIComponent(reg)}`}
             title="open in Atlas"
             target="_blank"

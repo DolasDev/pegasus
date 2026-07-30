@@ -251,6 +251,23 @@ describe('ShipmentDetail container', () => {
       expect(link.getAttribute('rel')).toBe('noopener noreferrer')
     })
 
+    it('looks like the Order Number link above it (shared Clickable styling)', () => {
+      // Tailwind preflight resets bare anchors to `color: inherit;
+      // text-decoration: inherit`, so without an explicit class this renders as
+      // plain body text instead of a blue underlined link. It must carry the
+      // same class the Order Number Clickable uses, one row above.
+      isJumpToOrderEnabledMock.mockReturnValue(true)
+      renderWithStore(<ShipmentDetail />, {
+        shipments: { selectedShipment: { ...happyShipment, avl_reg: 'RC086240' } } as any,
+        user: { user: sampleUser } as any,
+      })
+      const link = document.querySelector('[data-target="atlas-reg-link"]') as HTMLAnchorElement
+      const orderNumber = screen.getByText('12345')
+      const sharedClass = orderNumber.className.split(/\s+/)[0]
+      expect(sharedClass).toBeTruthy()
+      expect(link.className.split(/\s+/)).toContain(sharedClass)
+    })
+
     it('renders no link (and no ".../undefined" href) when the reg number is absent', () => {
       const noReg = { ...happyShipment }
       delete (noReg as any).avl_reg
