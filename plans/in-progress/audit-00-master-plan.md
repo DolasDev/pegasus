@@ -2,6 +2,13 @@
 
 > **Status: WAVES 1–2 COMPLETE & DEPLOYED — Wave 3 in progress** — updated 2026-06-13
 
+> **Cleanup audit 2026-07-30 — KEEP OPEN.** Waves 1-2 and most of Wave 3 are
+> verified on `main`. This file stays because it is the live index for the 11
+> still-open audit plans below (AI automation, ntfy deploy notifications, e2e
+> Phases 3-4, the lint ratchet / `no-explicit-any` burn-down, and the Python
+> toolchain), and because its own 7 acceptance-criteria measurements (lines
+> 118-124) were never recorded.
+
 ## Execution status (resume here)
 
 Executed via parallel-worktree batch sessions (no PRs; merge locally on an

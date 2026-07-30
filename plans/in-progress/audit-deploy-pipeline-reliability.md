@@ -2,6 +2,13 @@
 
 > **Status: SCOPED** — 2026-06-10
 
+> **Cleanup audit 2026-07-30 — PARTIAL.** Phases 1, 3 and 4 plus the headline
+> cancellation fix (2.1, via a force-pushed `last-deploy` tag) are live.
+> **Remaining:** 2.2-2.4, the ntfy deploy-watch notifier / prod-approval ping /
+> AI triage — all explicitly user-deferred 2026-06-11 — plus one unticked
+> sub-item of 4.1: the belt-and-braces `prisma migrate status` assertion inside
+> the deploy job for when `skip-migrate` is true.
+
 Audit scope: `.github/workflows/deploy.yml`, `_deploy.yml`, `temporal-worker.yml`, `publish-vpn-agent.yml`, `_publish-vpn-agent.yml`, `packages/infra/bin/app.ts`, `packages/infra/deploy.sh`. Goal: make deploys **reliable** (nothing silently undeployed), **deduplicated** (one source of truth for stack/path mappings), **observable in flight** (push notifications, rollout polling), and **pre-flight-validated** (fail fast on missing secrets/params). Out of scope (owned by other audit units): rollback/release safety (Unit 3), `ci.yml` (Unit 1), CloudWatch monitoring/alerting (Unit 4).
 
 ## Context

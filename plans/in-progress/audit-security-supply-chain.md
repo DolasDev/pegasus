@@ -10,6 +10,18 @@
 > Phase 5 SBOM export 404s until the dependency graph populates (activates after the
 > dependency-review workflow first runs on main). — updated 2026-06-13
 
+> **Cleanup audit 2026-07-30 — PARTIAL, one item left.** Every file, workflow
+> and repo-setting deliverable across Phases 0-5 has shipped (#258, `29db5f00`,
+> `c4755104`), live-verified against the GitHub API: secret scanning + push
+> protection on, Dependabot security updates on, CodeQL default setup
+> `configured`, private vulnerability reporting on. Phase 5's SBOM blocker has
+> since cleared — `dependency-graph/sbom` now returns instead of 404. Phase 4's
+> AI override-agent is **stale by decision**: the repo chose the
+> deterministic-only path on purpose. **Remaining:** triage the 26 open
+> code-scanning alerts (0 dismissed), which gates the "promote CodeQL to a
+> required check" decision. Better tracked as a GitHub issue than by holding
+> this plan open.
+
 ## Context
 
 Audit of dependency security, SAST, secret scanning, SBOM, and the dependency-update
@@ -177,12 +189,12 @@ jobs:
     schedule:
     interval: 'weekly'
     `
-    Actions updates flow through the existing auto-merge gate. SHA-pinning every
-    action ref is the stricter posture but adds churn; with Dependabot watching the
-    tags, major-tag pinning is an acceptable lean middle ground — **except** consider
-    SHA-pinning just the deploy-path workflows (`\_deploy.yml`, `deploy.yml`) that hold
-    AWS OIDC role access, where a hijacked tag is highest-impact. Defer; revisit if
-    CodeQL's `actions` queries flag it.
+Actions updates flow through the existing auto-merge gate. SHA-pinning every
+action ref is the stricter posture but adds churn; with Dependabot watching the
+tags, major-tag pinning is an acceptable lean middle ground — **except** consider
+SHA-pinning just the deploy-path workflows (`\_deploy.yml`, `deploy.yml`) that hold
+AWS OIDC role access, where a hijacked tag is highest-impact. Defer; revisit if
+CodeQL's `actions` queries flag it.
 - [x] **Verify the Betterleaks download.** (10 min) In `ci.yml`, after the `curl`
       (line 31-33), add a checksum gate. Compute once from the official release asset
       (`sha256sum betterleaks.tar.gz`) and pin:

@@ -2,6 +2,15 @@
 
 > **Status: SCOPED** — 2026-06-10
 
+> **Cleanup audit 2026-07-30 — PARTIAL.** Phases 1-3 shipped (`7b555b4e`,
+> #292/#293/#294, #296): dead `vitest.workspace.ts` deleted, CI fail-fast on a
+> DB-less run, loud skip banner, `ts-jest` dropped, coverage ratchets with
+> `autoUpdate` on domain + api, dormant coverage stripped, policy in
+> PATTERNS.md, monthly mutation-test workflow. **Remaining:** Phase 4 — the
+> mobile `--forceExit` leak hunt (`apps/mobile/package.json` still carries it
+> unexamined and unannotated) and a one-line "no Jest→Vitest migration" entry
+> in DECISIONS.md; Phase 5 is optional by design.
+
 Part of the 12-unit lean-delivery audit. Scope: the Vitest/Jest unit + integration layer — configs, coverage, the DB-skip pattern, mutation testing, and mobile's Jest divergence. Out of scope (owned elsewhere): Playwright/e2e (Unit 9), Python tests (Unit 11), CI job mechanics (Unit 1), pre-push hook speed (Unit 10).
 
 ## Context

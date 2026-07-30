@@ -2,6 +2,15 @@
 
 > **Status: SCOPED** — 2026-06-10
 
+> **Cleanup audit 2026-07-30 — PARTIAL, headline risk still live.** Only a
+> slice of Phase 1 landed opportunistically via #349 (ruff + pytest on the SDK,
+> pytest on the stdlib, both path-filtered). **The risk this plan was written
+> for is untouched:** `apps/temporal-worker` is referenced nowhere in `ci.yml`,
+> so its ~480 lines of tests run in no workflow while its image builds and
+> pushes straight to staging and prod ECR with no test or lint gate. Phases
+> 2-5 are essentially unstarted. **Rescope on resumption:** the plan predates
+> `apps/tenant-runner`, so Phase 1 now spans four Python trees, not three.
+
 Unit 11 of the CI/CD + devops audit batch. Scope: make Python a first-class
 citizen in the dev/CI flow. Covers `packages/workflows-sdk-python`,
 `packages/workflows-stdlib`, `apps/temporal-worker`, and the three Python
