@@ -1,0 +1,621 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Questionnaire",
+    "description": "Service to expose questionnaire",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/questionnaire/v1"
+    }
+  ],
+  "paths": {
+    "/API/Questionnaire": {
+      "get": {
+        "tags": ["Questionnaire"],
+        "summary": "Search Questionnaire Data",
+        "description": "Search Questionnaire Data",
+        "operationId": "SearchQuestionnaireData",
+        "parameters": [
+          {
+            "name": "AccountNumber",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "AgentView",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "AtlasRep",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "BeginDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "Booker",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "CorporateNumber",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "DeliveryDateBegin",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "DeliveryDateEnd",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "Driver",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "DriversPerf",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "EndDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "Hauler",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "PackingCrew",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "PayType",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "PrimaryReason",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "RateDriverOverall",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "RateMoveOverall",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "RegistrationNumber",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Role",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "UniformAtDestination",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "UniformAtOrigin",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "UseAgain",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "CsrUser",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/iQuestionnaireDVO"
+                  }
+                },
+                "example": [
+                  {
+                    "reg_Number": "string",
+                    "shipper": "string",
+                    "delivery_Addr1": "string",
+                    "delivery_Addr2": "string",
+                    "delivery_City": "string",
+                    "delivery_State": "string",
+                    "delivery_Zip": "string",
+                    "delivery_Date": "string",
+                    "mailed_date": "string",
+                    "respond_Date": "string",
+                    "entered_date": "string",
+                    "booker": "string",
+                    "bookerName": "string",
+                    "hauler1": "string",
+                    "hauler1_Name": "string",
+                    "driver1": "string",
+                    "driver1_Name": "string",
+                    "contract": "string",
+                    "pay_Type": "string",
+                    "e_Mail": "string",
+                    "q1_Atlas_Rep": "string",
+                    "q2_Packing_Crew": "string",
+                    "q3_Drivers_Perf": "string",
+                    "q4_Uniform_at_Orig": "string",
+                    "q5_Uniform_at_Dest": "string",
+                    "q6_Rate_Move_Ovrl": "string",
+                    "q7_Rate_Dvr_Ovrl": "string",
+                    "q8_Use_Again": "string",
+                    "q9_No_Due_To": "string",
+                    "q9_Packing": "string",
+                    "q9_OrigDvr": "string",
+                    "q9_DestDvr": "string",
+                    "q9_Agent": "string",
+                    "q9_Other": "string",
+                    "q9_Other_Specify": "string",
+                    "q10_Comments": "string",
+                    "corp_Nbr": "string",
+                    "acct_Nbr": "string",
+                    "contact": "string",
+                    "reason": "string",
+                    "mailingName": "string",
+                    "how": "string",
+                    "line1": "string",
+                    "line2": "string",
+                    "line3": "string",
+                    "primaryReason": "string",
+                    "q8_Pickup": "string",
+                    "q8_Delivery": "string",
+                    "q8_DamageMissing": "string",
+                    "q8_Packing": "string",
+                    "q8_Charges": "string",
+                    "q8_Professionalism": "string",
+                    "q8_Communication": "string",
+                    "q8_Comments": "string",
+                    "clients": "string",
+                    "subclient": "string",
+                    "cordinator": "string",
+                    "shipmentType": "string",
+                    "phoneNumber1": "string",
+                    "phoneNumber2": "string",
+                    "oa": "string",
+                    "da": "string"
+                  }
+                ]
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "iQuestionnaireDVO": {
+        "type": "object",
+        "properties": {
+          "reg_Number": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "shipper": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "delivery_Addr1": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "delivery_Addr2": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "delivery_City": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "delivery_State": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "delivery_Zip": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "delivery_Date": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true
+          },
+          "mailed_date": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true
+          },
+          "respond_Date": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true
+          },
+          "entered_date": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true
+          },
+          "booker": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "bookerName": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "hauler1": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "hauler1_Name": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "driver1": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "driver1_Name": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "contract": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "pay_Type": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "e_Mail": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q1_Atlas_Rep": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q2_Packing_Crew": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q3_Drivers_Perf": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q4_Uniform_at_Orig": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q5_Uniform_at_Dest": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q6_Rate_Move_Ovrl": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q7_Rate_Dvr_Ovrl": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q8_Use_Again": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q9_No_Due_To": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q9_Packing": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q9_OrigDvr": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q9_DestDvr": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q9_Agent": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q9_Other": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q9_Other_Specify": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q10_Comments": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "corp_Nbr": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "acct_Nbr": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "contact": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "mailingName": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "how": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "line1": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "line2": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "line3": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "primaryReason": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q8_Pickup": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q8_Delivery": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q8_DamageMissing": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q8_Packing": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q8_Charges": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q8_Professionalism": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q8_Communication": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "q8_Comments": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "clients": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "subclient": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "cordinator": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "shipmentType": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "phoneNumber1": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "phoneNumber2": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "oa": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "da": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ]
+}

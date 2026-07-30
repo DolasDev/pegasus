@@ -1,0 +1,373 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Holidays",
+    "description": "Service to expose holidays",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/holidays/v1"
+    }
+  ],
+  "paths": {
+    "/Calendars/Names": {
+      "get": {
+        "tags": ["Atlas.AzureApi.Holidays"],
+        "summary": "Get Calendar Names",
+        "description": "Gets the names of all calendars.",
+        "operationId": "get-calendars-names",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Calendars/{calendarName}/Holidays": {
+      "get": {
+        "tags": ["Atlas.AzureApi.Holidays"],
+        "summary": "Get Holidays",
+        "description": "Gets all holidays for the calendar that exist between the startdate and enddate for the given calendar.",
+        "operationId": "get-calendar-holidays",
+        "parameters": [
+          {
+            "name": "calendarName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HolidayModel"
+                  }
+                },
+                "example": [
+                  {
+                    "name": "string",
+                    "date": "string"
+                  }
+                ]
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string",
+                  "errors": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Calendars/{calendarName}/NextWorkingDay": {
+      "get": {
+        "tags": ["Atlas.AzureApi.Holidays"],
+        "summary": "Get Next Working Day",
+        "description": "Gets the next working day for the calendar that beginning at the startdate counting forward into the future.",
+        "operationId": "get-calendar-next-working-day",
+        "parameters": [
+          {
+            "name": "calendarName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "numberOfDays",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "isSaturdayAWorkDay",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HolidayModel"
+                  }
+                },
+                "example": [
+                  {
+                    "name": "string",
+                    "date": "string"
+                  }
+                ]
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string",
+                  "errors": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Calendars/{calendarName}/PreviousWorkingDay": {
+      "get": {
+        "tags": ["Atlas.AzureApi.Holidays"],
+        "summary": "Get Previous Working Day",
+        "description": "Gets the next working day for the calendar that beginning at the startdate counting forward into the future.",
+        "operationId": "get-calendar-next-previous-day",
+        "parameters": [
+          {
+            "name": "calendarName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "numberOfDays",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "isSaturdayAWorkDay",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HolidayModel"
+                  }
+                },
+                "example": [
+                  {
+                    "name": "string",
+                    "date": "string"
+                  }
+                ]
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string",
+                  "errors": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HolidayModel": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The name of the Holiday.",
+            "nullable": true
+          },
+          "date": {
+            "type": "string",
+            "description": "The date of the Holiday.",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ValidationProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Atlas.AzureApi.Holidays"
+    }
+  ]
+}

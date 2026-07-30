@@ -1,0 +1,570 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Transit Guide",
+    "description": "Service to expose Transit Guide",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/transitguide/v1"
+    }
+  ],
+  "paths": {
+    "/TransitGuide": {
+      "post": {
+        "tags": ["TransitGuide"],
+        "summary": "Get Transit Guide",
+        "description": "Gets Transit Guide.",
+        "operationId": "get-transit-guide",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransitGuideRequestModel"
+              },
+              "examples": {
+                "ATVL1000TR": {
+                  "summary": "ATVL1000TR",
+                  "value": {
+                    "tariffName": "ATVL1000TR",
+                    "division": "RSG",
+                    "loadDate": "2024-06-24T00:00:00.0000000+00:00",
+                    "bookDate": null,
+                    "weight": 12000,
+                    "miles": 1024,
+                    "origCity": "Evansville",
+                    "origStateProvCode": "IN",
+                    "origZipPostalCode": null,
+                    "origCountry": "USA",
+                    "destCity": "Denver",
+                    "destStateProvCode": "CO",
+                    "destZipPostalCode": null,
+                    "destCountry": "USA",
+                    "conditions": null
+                  }
+                },
+                "ATVL1000TR Ottawa Cross-Border": {
+                  "summary": "ATVL1000TR Ottawa Cross-Border",
+                  "value": {
+                    "tariffName": "ATVL1000TR",
+                    "division": "RSG",
+                    "loadDate": "2024-06-24T00:00:00.0000000+00:00",
+                    "bookDate": null,
+                    "weight": 12000,
+                    "miles": 1024,
+                    "origCity": "Evansville",
+                    "origStateProvCode": "IN",
+                    "origZipPostalCode": null,
+                    "origCountry": "USA",
+                    "destCity": "Ottawa",
+                    "destStateProvCode": "ON",
+                    "destZipPostalCode": null,
+                    "destCountry": "CAN",
+                    "conditions": null
+                  }
+                },
+                "Canada Govt Cross-Border": {
+                  "summary": "Canada Govt Cross-Border",
+                  "value": {
+                    "tariffName": "0645-07-01",
+                    "division": "CAH",
+                    "loadDate": "2024-06-24T00:00:00.0000000+00:00",
+                    "bookDate": "2024-06-22T00:00:00.0000000+00:00",
+                    "weight": 2500,
+                    "miles": 650,
+                    "origCity": "Ottawa",
+                    "origStateProvCode": "ON",
+                    "origZipPostalCode": null,
+                    "origCountry": "CAN",
+                    "destCity": "Denver",
+                    "destStateProvCode": "CO",
+                    "destZipPostalCode": null,
+                    "destCountry": "USA",
+                    "conditions": null
+                  }
+                },
+                "Canada Govt": {
+                  "summary": "Canada Govt",
+                  "value": {
+                    "tariffName": "0640-07-01",
+                    "division": "CAH",
+                    "loadDate": "2024-06-24T00:00:00.0000000+00:00",
+                    "bookDate": "2024-06-22T00:00:00.0000000+00:00",
+                    "weight": 2500,
+                    "miles": 650,
+                    "origCity": "Ottawa",
+                    "origStateProvCode": "ON",
+                    "origZipPostalCode": null,
+                    "origCountry": "CAN",
+                    "destCity": "Bedford",
+                    "destStateProvCode": "NS",
+                    "destZipPostalCode": null,
+                    "destCountry": "CAN",
+                    "conditions": null
+                  }
+                },
+                "Canada Govt Conditions - No Match": {
+                  "summary": "Canada Govt Conditions - No Match",
+                  "value": {
+                    "tariffName": "0640-07-01",
+                    "division": "CAH",
+                    "loadDate": "2024-06-24T00:00:00.0000000+00:00",
+                    "bookDate": "2024-06-22T00:00:00.0000000+00:00",
+                    "weight": 2500,
+                    "miles": 650,
+                    "origCity": "Ottawa",
+                    "origStateProvCode": "ON",
+                    "origZipPostalCode": null,
+                    "origCountry": "CAN",
+                    "destCity": "Bedford",
+                    "destStateProvCode": "NS",
+                    "destZipPostalCode": null,
+                    "destCountry": "CAN",
+                    "conditions": [
+                      {
+                        "type": "NOMATCH",
+                        "id": "283",
+                        "description": null
+                      },
+                      {
+                        "type": "BridgeFerry",
+                        "id": "123",
+                        "description": null
+                      }
+                    ]
+                  }
+                },
+                "Canada Govt PMV Only - With Description": {
+                  "summary": "Canada Govt PMV Only - With Description",
+                  "value": {
+                    "tariffName": "0640-07-01",
+                    "division": "CAH",
+                    "loadDate": "2024-06-24T00:00:00.0000000+00:00",
+                    "bookDate": "2024-06-22T00:00:00.0000000+00:00",
+                    "weight": 2500,
+                    "miles": 650,
+                    "origCity": "Ottawa",
+                    "origStateProvCode": "ON",
+                    "origZipPostalCode": null,
+                    "origCountry": "CAN",
+                    "destCity": "Bedford",
+                    "destStateProvCode": "NS",
+                    "destZipPostalCode": null,
+                    "destCountry": "CAN",
+                    "conditions": [
+                      {
+                        "type": "PMV_ONLY",
+                        "id": null,
+                        "description": "PMV Class 4"
+                      }
+                    ]
+                  }
+                },
+                "Canada Govt PMV Only - With Type Id": {
+                  "summary": "Canada Govt PMV Only - With Type Id",
+                  "value": {
+                    "tariffName": "0640-07-01",
+                    "division": "CAH",
+                    "loadDate": "2024-06-24T00:00:00.0000000+00:00",
+                    "bookDate": "2024-06-22T00:00:00.0000000+00:00",
+                    "weight": 2500,
+                    "miles": 650,
+                    "origCity": "Ottawa",
+                    "origStateProvCode": "ON",
+                    "origZipPostalCode": null,
+                    "origCountry": "CAN",
+                    "destCity": "Bedford",
+                    "destStateProvCode": "NS",
+                    "destZipPostalCode": null,
+                    "destCountry": "CAN",
+                    "conditions": [
+                      {
+                        "type": "PMV_ONLY",
+                        "id": "283",
+                        "description": null
+                      }
+                    ]
+                  }
+                },
+                "Canada Govt NL at Orig and Dest": {
+                  "summary": "Canada Govt NL at Orig and Dest",
+                  "value": {
+                    "tariffName": "0640-07-01",
+                    "division": "CAH",
+                    "loadDate": "2024-06-24T00:00:00.0000000+00:00",
+                    "bookDate": "2024-06-22T00:00:00.0000000+00:00",
+                    "weight": 813,
+                    "miles": 747,
+                    "origCity": "GRAND FALLS-WINDSO",
+                    "origStateProvCode": "NL",
+                    "origZipPostalCode": "A2A 2J2",
+                    "origCountry": "CAN",
+                    "destCity": "NORTH WEST RIVER",
+                    "destStateProvCode": "NL",
+                    "destZipPostalCode": "A0P 1M0",
+                    "destCountry": "CAN",
+                    "conditions": null
+                  }
+                },
+                "Canada Private Client": {
+                  "summary": "Canada Private Client",
+                  "value": {
+                    "tariffName": "0087-04-01",
+                    "division": "CAH",
+                    "loadDate": "2024-06-24T00:00:00.0000000+00:00",
+                    "bookDate": "2024-06-22T00:00:00.0000000+00:00",
+                    "weight": 2500,
+                    "miles": 650,
+                    "origCity": "Ottawa",
+                    "origStateProvCode": "ON",
+                    "origZipPostalCode": null,
+                    "origCountry": "CAN",
+                    "destCity": "Bedford",
+                    "destStateProvCode": "NS",
+                    "destZipPostalCode": null,
+                    "destCountry": "CAN",
+                    "conditions": null
+                  }
+                },
+                "Canada Private Client - Goose Bay": {
+                  "summary": "Canada Private Client - Goose Bay",
+                  "value": {
+                    "tariffName": "0087-04-01",
+                    "division": "CAH",
+                    "loadDate": "2024-06-24T00:00:00.0000000+00:00",
+                    "bookDate": "2024-06-22T00:00:00.0000000+00:00",
+                    "weight": 2500,
+                    "miles": 650,
+                    "origCity": "Ottawa",
+                    "origStateProvCode": "ON",
+                    "origZipPostalCode": null,
+                    "origCountry": "CAN",
+                    "destCity": "Goose Bay",
+                    "destStateProvCode": "NL",
+                    "destZipPostalCode": null,
+                    "destCountry": "CAN",
+                    "conditions": [
+                      {
+                        "type": "BridgeFerry",
+                        "id": "1158",
+                        "description": "A0P - HV-GB/Cartwright area, NF - HV (incl of Loc Svc) (5000 lb min Jun 1-Sep 30) (10000 lb min Oct 1-May 31) - miles from O/D to Sept-Iles, QC plus 571 miles (incl Tadoussac S/C) Canada"
+                      }
+                    ]
+                  }
+                },
+                "Canada Private Client - Bridge Ferry": {
+                  "summary": "Canada Private Client - Bridge Ferry",
+                  "value": {
+                    "tariffName": "0087-04-01",
+                    "division": "CAH",
+                    "loadDate": "2024-06-24T00:00:00.0000000+00:00",
+                    "bookDate": "2024-06-22T00:00:00.0000000+00:00",
+                    "weight": 2500,
+                    "miles": 650,
+                    "origCity": "Ottawa",
+                    "origStateProvCode": "ON",
+                    "origZipPostalCode": null,
+                    "origCountry": "CAN",
+                    "destCity": "Victoria",
+                    "destStateProvCode": "BC",
+                    "destZipPostalCode": null,
+                    "destCountry": "CAN",
+                    "conditions": [
+                      {
+                        "type": "BridgeFerry",
+                        "id": "1359",
+                        "description": "V8L - Vancouver Island, BC (when Gulf, Alert Bay, Sointula and Texada ferries are n/a) Canada"
+                      }
+                    ]
+                  }
+                },
+                "Canada Private Client - NL Bridge Ferry": {
+                  "summary": "Canada Private Client - NL Bridge Ferry",
+                  "value": {
+                    "tariffName": "0087-04-01",
+                    "division": "CAH",
+                    "loadDate": "2024-06-24T00:00:00.0000000+00:00",
+                    "bookDate": "2024-06-22T00:00:00.0000000+00:00",
+                    "weight": 2500,
+                    "miles": 1703,
+                    "origCity": "Ottawa",
+                    "origStateProvCode": "ON",
+                    "origZipPostalCode": null,
+                    "origCountry": "CAN",
+                    "destCity": "Mount Pearl",
+                    "destStateProvCode": "NL",
+                    "destZipPostalCode": null,
+                    "destCountry": "CAN",
+                    "conditions": [
+                      {
+                        "type": "BridgeFerry",
+                        "id": "1231",
+                        "description": null
+                      }
+                    ]
+                  }
+                },
+                "Canada Private Client - Surcharge": {
+                  "summary": "Canada Private Client - Surcharge",
+                  "value": {
+                    "tariffName": "0087-04-01",
+                    "division": "CAH",
+                    "loadDate": "2024-06-24T00:00:00.0000000+00:00",
+                    "bookDate": "2024-06-22T00:00:00.0000000+00:00",
+                    "weight": 2500,
+                    "miles": 650,
+                    "origCity": "Ottawa",
+                    "origStateProvCode": "ON",
+                    "origZipPostalCode": null,
+                    "origCountry": "CAN",
+                    "destCity": "Vancouver",
+                    "destStateProvCode": "BC",
+                    "destZipPostalCode": null,
+                    "destCountry": "CAN",
+                    "conditions": [
+                      {
+                        "type": "BridgeFerry",
+                        "id": "1080",
+                        "description": "V0E - Mica Creek Camp and Dam Site, BC Canada"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransitGuideResponseModel"
+                },
+                "example": {
+                  "minDays": 0,
+                  "maxDays": 0,
+                  "deliveryDateFrom": "string",
+                  "deliveryDateTo": "string",
+                  "calculationLog": ["string"]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AggregateErrorsDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string",
+                  "errors": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AggregateErrorsDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "additionalProperties": {}
+      },
+      "RequestConditionsModel": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransitGuideRequestModel": {
+        "type": "object",
+        "properties": {
+          "tariffName": {
+            "type": "string",
+            "description": "Name of Tariff",
+            "nullable": true
+          },
+          "division": {
+            "type": "string",
+            "description": "Request Division",
+            "nullable": true
+          },
+          "loadDate": {
+            "type": "string",
+            "description": "Load Date",
+            "format": "date-time",
+            "nullable": true
+          },
+          "bookDate": {
+            "type": "string",
+            "description": "Book Date",
+            "format": "date-time",
+            "nullable": true
+          },
+          "weight": {
+            "type": "integer",
+            "description": "Weight",
+            "format": "int32"
+          },
+          "miles": {
+            "type": "integer",
+            "description": "Miles",
+            "format": "int32"
+          },
+          "origCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "origStateProvCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "origZipPostalCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "origCountry": {
+            "type": "string",
+            "nullable": true
+          },
+          "destCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "destStateProvCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "destZipPostalCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "destCountry": {
+            "type": "string",
+            "nullable": true
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RequestConditionsModel"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TransitGuideResponseModel": {
+        "type": "object",
+        "properties": {
+          "minDays": {
+            "type": "integer",
+            "description": "Min Days",
+            "format": "int32"
+          },
+          "maxDays": {
+            "type": "integer",
+            "description": "Max Days",
+            "format": "int32"
+          },
+          "deliveryDateFrom": {
+            "type": "string",
+            "description": "Delivery Date From",
+            "format": "date-time",
+            "nullable": true
+          },
+          "deliveryDateTo": {
+            "type": "string",
+            "description": "Delivery Date To",
+            "format": "date-time",
+            "nullable": true
+          },
+          "calculationLog": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ]
+}

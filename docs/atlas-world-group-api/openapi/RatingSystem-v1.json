@@ -1,0 +1,1334 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Rating System",
+    "description": "Service to expose Rads Rating System",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/RatingSystem/v1"
+    }
+  ],
+  "paths": {
+    "/RateOrder/{orderNumber}": {
+      "get": {
+        "tags": ["Rating"],
+        "summary": "Rate Order",
+        "description": "Rates the Order.",
+        "operationId": "rate-order",
+        "parameters": [
+          {
+            "name": "orderNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.GPRatingResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          }
+        }
+      }
+    },
+    "/IsEligibile/{orderNumber}": {
+      "get": {
+        "tags": ["Rating"],
+        "summary": "Order Eligbility for the new Rating System",
+        "description": "Determines if the Order Eligbile for the new Rating System.",
+        "operationId": "order-eligibility",
+        "parameters": [
+          {
+            "name": "orderNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                },
+                "example": "True"
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.AVGMAgent": {
+        "required": ["agentCode"],
+        "type": "object",
+        "properties": {
+          "agentCode": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.DestinationData": {
+        "required": [
+          "awg_ivh_dest_address1",
+          "awg_ivh_dest_city",
+          "awg_ivh_dest_country",
+          "awg_ivh_dest_county",
+          "awg_ivh_dest_name",
+          "awg_ivh_dest_state",
+          "awg_ivh_dest_zip",
+          "ivh_deliverydate"
+        ],
+        "type": "object",
+        "properties": {
+          "awg_ivh_dest_agent": {
+            "type": "string",
+            "nullable": true
+          },
+          "awg_ivh_dest_name": {
+            "type": "string"
+          },
+          "awg_ivh_dest_address1": {
+            "type": "string"
+          },
+          "awg_ivh_dest_city": {
+            "type": "string"
+          },
+          "awg_ivh_dest_state": {
+            "type": "string"
+          },
+          "awg_ivh_dest_zip": {
+            "type": "string"
+          },
+          "awg_ivh_dest_county": {
+            "type": "string"
+          },
+          "awg_ivh_dest_country": {
+            "type": "string"
+          },
+          "awg_ivh_dest_address2": {
+            "type": "string"
+          },
+          "awg_ivh_dest_address3": {
+            "type": "string"
+          },
+          "ivh_deliverydate": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.DistributionLineItem": {
+        "required": ["amount", "itemCode"],
+        "type": "object",
+        "properties": {
+          "itemCode": {
+            "type": "string"
+          },
+          "basis": {
+            "type": "string",
+            "nullable": true
+          },
+          "basisName": {
+            "type": "string",
+            "nullable": true
+          },
+          "basisCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "longDescription": {
+            "type": "string",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "discountPercent": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "includedInEBLD": {
+            "type": "boolean"
+          },
+          "addedToEBLD": {
+            "type": "boolean"
+          },
+          "glNum": {
+            "type": "string",
+            "nullable": true
+          },
+          "discountAmount": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "invoiceNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "headerNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "memoDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "region": {
+            "type": "string",
+            "nullable": true
+          },
+          "number": {
+            "type": "string",
+            "nullable": true
+          },
+          "apHeaderNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "apAgentID": {
+            "type": "string",
+            "nullable": true
+          },
+          "apPercentOfTotalBasis": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "idGrossOffRefundAmount": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "idGrossOnRefundAmount": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "idNetOffRefundAmount": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "idNetOnRefundAmount": {
+            "type": "number",
+            "format": "decimal"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.FinanceData": {
+        "required": [
+          "adhd_awg_ivh_sub_tariff_section",
+          "adhd_awg_ivh_tariff",
+          "adhd_awg_ivh_tariff_section",
+          "adhd_ebld_gross_distributable",
+          "adhd_ebld_net_billable",
+          "adhd_InvoicDscntPct",
+          "adhd_ivh_ref_number",
+          "adhd_PBLD_pct",
+          "adhd_shared_pct",
+          "adhd_Total_Invoice_Discount",
+          "adhd_Total_Invoice_Gross",
+          "est_net_dist_lnhl",
+          "ivh_lnhl_dist_sliding_scale",
+          "ord_est_accessorial",
+          "ord_est_charges",
+          "ord_est_linehaul"
+        ],
+        "type": "object",
+        "properties": {
+          "adhd_Total_Invoice_Gross": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "adhd_Total_Invoice_Discount": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "adhd_InvoicDscntPct": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "adhd_shared_pct": {
+            "type": "string"
+          },
+          "ivh_totalcharge": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "adhd_awg_ivh_tariff": {
+            "type": "string"
+          },
+          "adhd_awg_ivh_tariff_section": {
+            "type": "string"
+          },
+          "adhd_awg_ivh_sub_tariff": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_awg_ivh_sub_tariff_section": {
+            "type": "string"
+          },
+          "adhd_PBLD_pct": {
+            "type": "string"
+          },
+          "adhd_EBLD_pct": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_ebld_gross_distributable": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "adhd_ebld_net_billable": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "ord_est_accessorial": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "ord_est_charges": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "ord_est_linehaul": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "est_net_dist_lnhl": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "adhd_ivh_ref_number": {
+            "type": "string"
+          },
+          "adhd_NationalAccount": {
+            "type": "string",
+            "nullable": true
+          },
+          "ivh_lnhl_dist_sliding_scale": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.GPRatingResult": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.Rating"
+          },
+          {
+            "required": ["invoiceHeader"],
+            "type": "object",
+            "properties": {
+              "rating": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.RatingInfoAVGM"
+                  }
+                ],
+                "nullable": true
+              },
+              "invoiceHeader": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.InvoiceHeaderData"
+                  }
+                ]
+              },
+              "invoiceDistributions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.DistributionLineItem"
+                }
+              },
+              "apDistributions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.DistributionLineItem"
+                }
+              },
+              "printDetails": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.PrintDetail"
+                }
+              },
+              "grossInvoiceDetails": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.PrintDetail"
+                }
+              },
+              "sosMessages": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "agents": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.AVGMAgent"
+                }
+              },
+              "invoiceHeaderOverrides": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "isCanadian": {
+                "type": "boolean"
+              },
+              "errorMessages": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "rtf": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.ReleaseToFinanceAVGM"
+                  }
+                ]
+              },
+              "orderHeaderNumber": {
+                "type": "integer",
+                "format": "int32"
+              },
+              "adhdBillAddress1": {
+                "type": "string",
+                "nullable": true
+              },
+              "adhdBillCity": {
+                "type": "string",
+                "nullable": true
+              },
+              "adhdBillState": {
+                "type": "string",
+                "nullable": true
+              },
+              "adhdBillZip": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.InvoiceHeaderData": {
+        "required": ["destinationData", "financeData", "miscData", "originData"],
+        "type": "object",
+        "properties": {
+          "shipmentErrorMessages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "originData": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.OriginData"
+              }
+            ]
+          },
+          "destinationData": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.DestinationData"
+              }
+            ]
+          },
+          "financeData": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.FinanceData"
+              }
+            ]
+          },
+          "miscData": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.MiscData"
+              }
+            ]
+          },
+          "optionalData": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.OptionalData"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.MiscData": {
+        "required": [
+          "adhd_ivh_billed_weight",
+          "adhd_ivh_constructiveweight",
+          "adhd_ivh_weightadditive",
+          "adhd_TariffRateDate",
+          "awg_ivh_billed_milesaklh",
+          "awg_ivh_billed_mileslh",
+          "awg_ivh_reg_miles",
+          "ivh_deliverydate",
+          "ivh_linehaulcalcmethod",
+          "ivh_shipdate",
+          "ord_tareweight"
+        ],
+        "type": "object",
+        "properties": {
+          "adhd_ReferenceNbr": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_MemoType": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_InvoiceType": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_Shipment_Count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "adhd_InvoiceFormat": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_InvoicePrint": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_MemoDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ivh_creditmemo": {
+            "type": "string",
+            "nullable": true
+          },
+          "awg_ivh_auto_weight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "awg_ivh_boat_weight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "awg_ivh_autos": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_ivh_billed_weight": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ord_tareweight": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "adhd_ivh_constructiveweight": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "adhd_ivh_weightadditive": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "awg_ivh_billed_mileslh": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "awg_ivh_billed_milesaklh": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "awg_ivh_reg_miles": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "adhd_EccDays": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_EccDays2": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_EccMinAmt": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_EccPercent": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_EccAddlDays": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_EccAddlPct": {
+            "type": "string",
+            "nullable": true
+          },
+          "ivh_linehaulcalcmethod": {
+            "type": "string"
+          },
+          "ivh_billedlhrate": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "ivh_flatcubicfeet": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "ivh_shipdate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ivh_deliverydate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ivh_billdate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "adhd_TariffRateDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "adhd_SInvDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "adhd_SettlementDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ivh_invoicenumber": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.OptionalData": {
+        "type": "object",
+        "properties": {
+          "adhd_bill_address3": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_carrier_check_code": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_ccc_heading": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_dfas": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_display_address1": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_display_address2": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_display_address3": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_display_city": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_display_country": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_display_state": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_display_zip": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_ebld_pct": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_payee_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_payee_title": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_scac_code": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_schedule_prefix": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_services": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_to_company_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_to_code": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_remit_type2": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_SelectRating": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_Total_Invoice_On_Off_Discount": {
+            "type": "string",
+            "nullable": true
+          },
+          "awg_ivh_boats": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_ivh_gbl_number": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_ivh_item_number": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_ivh_remark_other": {
+            "type": "string",
+            "nullable": true
+          },
+          "awg_ivh_freight_forwarder": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_ivh_rated_by_team": {
+            "type": "string",
+            "nullable": true
+          },
+          "adhd_taxid": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.OriginData": {
+        "required": [
+          "awg_ivh_origin_address1",
+          "awg_ivh_origin_city",
+          "awg_ivh_origin_country",
+          "awg_ivh_origin_county",
+          "awg_ivh_origin_name",
+          "awg_ivh_origin_state",
+          "awg_ivh_origin_zip",
+          "ivh_shipdate"
+        ],
+        "type": "object",
+        "properties": {
+          "awg_ivh_origin_agent": {
+            "type": "string",
+            "nullable": true
+          },
+          "awg_ivh_origin_name": {
+            "type": "string"
+          },
+          "awg_ivh_origin_address1": {
+            "type": "string"
+          },
+          "awg_ivh_origin_address2": {
+            "type": "string"
+          },
+          "awg_ivh_origin_city": {
+            "type": "string"
+          },
+          "awg_ivh_origin_state": {
+            "type": "string"
+          },
+          "awg_ivh_origin_zip": {
+            "type": "string"
+          },
+          "awg_ivh_origin_county": {
+            "type": "string"
+          },
+          "awg_ivh_origin_country": {
+            "type": "string"
+          },
+          "awg_ivh_origin_address3": {
+            "type": "string"
+          },
+          "ivh_shipdate": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.PrintDetail": {
+        "required": ["amount", "description", "itemCode", "printIndicator", "sequence"],
+        "type": "object",
+        "properties": {
+          "itemCode": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "adrd_ServicesInstances": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "adrd_Hours": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "adrd_ServiceType": {
+            "type": "string"
+          },
+          "adrd_ServiceRate": {
+            "type": "number",
+            "format": "decimal"
+          },
+          "adrd_IsRemark": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "discountPercent": {
+            "type": "number",
+            "format": "decimal",
+            "nullable": true
+          },
+          "printIndicator": {
+            "type": "string"
+          },
+          "adrdNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.Rating": {
+        "required": ["orderNumber"],
+        "type": "object",
+        "properties": {
+          "orderNumber": {
+            "type": "string"
+          },
+          "hasOverflows": {
+            "type": "boolean"
+          },
+          "collections": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.RatingCollections"
+              }
+            ]
+          },
+          "sos": {
+            "type": "string",
+            "nullable": true
+          },
+          "invoice": {
+            "type": "string",
+            "nullable": true
+          },
+          "errors": {
+            "type": "array",
+            "items": {}
+          },
+          "warnings": {
+            "type": "array",
+            "items": {}
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ledgerXML": {
+            "type": "string"
+          },
+          "ratingEngine": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.RatingEngine"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.RatingCollections": {
+        "type": "object",
+        "properties": {
+          "serviceUIdList": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.RatingService"
+            },
+            "nullable": true
+          },
+          "stopList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.RatingStop"
+            }
+          },
+          "excludedStopList": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.RatingStop"
+            }
+          },
+          "orderBasedServices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.RatingService"
+            }
+          },
+          "weightAdditiveServices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.RatingService"
+            }
+          },
+          "virtualServices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.RatingService"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.RatingEngine": {
+        "required": ["environment", "version"],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.RatingInfoAVGM": {
+        "required": [
+          "batchNumber",
+          "canBeEdited",
+          "canBeRated",
+          "canBeRefreshed",
+          "checkServicesPerformed",
+          "correctedByRatingId",
+          "correctsRatingId",
+          "createdDate",
+          "invNumber",
+          "invoiceFlag",
+          "invoiceType",
+          "isManual",
+          "isRatingViewOnly",
+          "purposeTypeId",
+          "purposeTypeTitle",
+          "ratingId",
+          "ratingPurposeId",
+          "ratingPurposeTitle",
+          "ratingStatusId",
+          "ratingStatusTitle",
+          "rejected",
+          "releasedDate",
+          "releasedToAtlasByUserName",
+          "releasedToAtlasDate",
+          "shipmentId"
+        ],
+        "type": "object",
+        "properties": {
+          "ratingId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "shipmentId": {
+            "type": "string"
+          },
+          "ratingStatusId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ratingPurposeId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "invoiceFlag": {
+            "type": "boolean"
+          },
+          "createdDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "releasedDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "rejected": {
+            "type": "boolean"
+          },
+          "ratingStatusTitle": {
+            "type": "string"
+          },
+          "ratingPurposeTitle": {
+            "type": "string"
+          },
+          "purposeTypeTitle": {
+            "type": "string"
+          },
+          "purposeTypeId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "correctedByRatingId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "canBeRated": {
+            "type": "boolean"
+          },
+          "canBeEdited": {
+            "type": "boolean"
+          },
+          "canBeRefreshed": {
+            "type": "boolean"
+          },
+          "checkServicesPerformed": {
+            "type": "boolean"
+          },
+          "batchNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "invNumber": {
+            "type": "string"
+          },
+          "releasedToAtlasDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "releasedToAtlasByUserName": {
+            "type": "string"
+          },
+          "invoiceType": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "remarkNoPrint": {
+            "type": "string",
+            "nullable": true
+          },
+          "remarkPrintOnInvoice": {
+            "type": "string",
+            "nullable": true
+          },
+          "isRatingViewOnly": {
+            "type": "boolean"
+          },
+          "isManual": {
+            "type": "boolean"
+          },
+          "correctsRatingId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "correctsRatingIdSet": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "tariff": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.RatingService": {
+        "required": [
+          "dataStoreId",
+          "overtimeAuthorized",
+          "performedFlatAutoOtLoad",
+          "performedFlatAutoOtUnload",
+          "performedInOvertime",
+          "priceIncludesFuelSurcharge",
+          "priceIncludesSpecialInsurance",
+          "psServiceName",
+          "serviceName",
+          "serviceWeight"
+        ],
+        "type": "object",
+        "properties": {
+          "componentServices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.RatingService"
+            }
+          },
+          "stopNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "overflowOrderNumber": {
+            "type": "string"
+          },
+          "dataStoreId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "serviceName": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "psServiceName": {
+            "type": "string"
+          },
+          "displayText": {
+            "type": "string"
+          },
+          "showCheckbox": {
+            "type": "boolean"
+          },
+          "hasBeenBilled": {
+            "type": "boolean"
+          },
+          "isEstimated": {
+            "type": "boolean"
+          },
+          "includeOvertime": {
+            "type": "boolean"
+          },
+          "authorized": {
+            "type": "boolean"
+          },
+          "overtimeAuthorized": {
+            "type": "boolean"
+          },
+          "performedInOvertime": {
+            "type": "boolean"
+          },
+          "performedFlatAutoOtLoad": {
+            "type": "boolean"
+          },
+          "performedFlatAutoOtUnload": {
+            "type": "boolean"
+          },
+          "serviceWeight": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "priceIncludesFuelSurcharge": {
+            "type": "boolean"
+          },
+          "priceIncludesSpecialInsurance": {
+            "type": "boolean"
+          },
+          "idCode": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.RatingStop": {
+        "required": ["city", "description", "state"],
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "include": {
+            "type": "boolean"
+          },
+          "city": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "stopNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.RatingService"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "Domain.GPInvoiceBuilder.Models.ReturnObjects.GPInvoice.ReleaseToFinanceAVGM": {
+        "type": "object",
+        "properties": {
+          "sos": {
+            "type": "string",
+            "nullable": true
+          },
+          "printDetails": {
+            "type": "string",
+            "nullable": true
+          },
+          "netEffectUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "financalViewUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "adjustmentsUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "isFactracEligible": {
+            "type": "boolean"
+          },
+          "shipmentXML": {
+            "type": "string",
+            "nullable": true
+          },
+          "formattedTimeStamp": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Rating"
+    }
+  ]
+}

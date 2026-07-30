@@ -1,0 +1,1116 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Agents",
+    "description": "Service to expose agents",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/agents/v1"
+    }
+  ],
+  "paths": {
+    "/Agents/{agentCode}": {
+      "get": {
+        "tags": ["Agent"],
+        "summary": "Get Agent",
+        "description": "Gets information about a van line agent.",
+        "operationId": "get-agent",
+        "parameters": [
+          {
+            "name": "agentCode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentModel"
+                },
+                "example": {
+                  "code": "string",
+                  "name": "string",
+                  "type": "string",
+                  "parentAgentCode": "string",
+                  "address1": "string",
+                  "address2": "string",
+                  "city": "string",
+                  "state": "string",
+                  "zip": "string",
+                  "county": "string",
+                  "countryCode": "string",
+                  "activityStatus": "string",
+                  "retentionStatus": "string",
+                  "shipmentAuth": "string",
+                  "latitude": 0,
+                  "longitude": 0,
+                  "excludeOnLocator": true,
+                  "excludeFromiSalesProgram": true,
+                  "lastUpdatedDate": "string",
+                  "telephones": [
+                    {
+                      "type": "string",
+                      "number": "string",
+                      "info": "string"
+                    }
+                  ],
+                  "emails": [
+                    {
+                      "type": "string",
+                      "address": "string",
+                      "info": "string"
+                    }
+                  ],
+                  "websites": ["string"],
+                  "dotTypes": [
+                    {
+                      "referenceNumber": "string",
+                      "stateType": "string"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Agents/{agentCode}/SalesPeople": {
+      "get": {
+        "tags": ["Agent"],
+        "summary": "Get Agent Sales People",
+        "description": "Gets list of sales people for a van line agent.",
+        "operationId": "get-agent-sales-people",
+        "parameters": [
+          {
+            "name": "agentCode",
+            "in": "path",
+            "description": "The agent code",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The agent code"
+            }
+          },
+          {
+            "name": "userName",
+            "in": "query",
+            "description": "Username of the salesperson",
+            "schema": {
+              "type": "string",
+              "description": "Username of the salesperson"
+            }
+          },
+          {
+            "name": "effectiveDate",
+            "in": "query",
+            "description": "Date when the salesperson is active",
+            "schema": {
+              "type": "string",
+              "description": "Date when the salesperson is active",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentSalesPersonModel"
+                  }
+                },
+                "example": [
+                  {
+                    "agentCode": "string",
+                    "contactCode": "string",
+                    "altContactCode": "string",
+                    "name": "string",
+                    "emailAddress": "string",
+                    "userName": "string",
+                    "effectiveDate": "string",
+                    "expirationDate": "string"
+                  }
+                ]
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Agents": {
+      "get": {
+        "tags": ["Agent"],
+        "summary": "Get Agents",
+        "description": "Retrieves a list of all the van line agents that satisfy the specified search criteria.",
+        "operationId": "get-agents",
+        "parameters": [
+          {
+            "name": "agentName",
+            "in": "query",
+            "description": "Name of the Agent to search for.",
+            "schema": {
+              "type": "string",
+              "description": "Name of the Agent to search for."
+            }
+          },
+          {
+            "name": "shipmentAuths",
+            "in": "query",
+            "description": "Types of the shipment auths to search for.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Types of the shipment auths to search for."
+            }
+          },
+          {
+            "name": "activityStatuses",
+            "in": "query",
+            "description": "Activity Statuses of the agent to search for.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Activity Statuses of the agent to search for."
+            }
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "description": "Name of the city to search within for an Agent.",
+            "schema": {
+              "type": "string",
+              "description": "Name of the city to search within for an Agent."
+            }
+          },
+          {
+            "name": "stateOrProvince",
+            "in": "query",
+            "description": "Two character abbreviation of the state to search within for an Agent.",
+            "schema": {
+              "type": "string",
+              "description": "Two character abbreviation of the state to search within for an Agent."
+            }
+          },
+          {
+            "name": "postalCode",
+            "in": "query",
+            "description": "Partial or full postal code to search within for an Agent.",
+            "schema": {
+              "type": "string",
+              "description": "Partial or full postal code to search within for an Agent."
+            }
+          },
+          {
+            "name": "radiusInMiles",
+            "in": "query",
+            "description": "Search radius in miles to search within for an Agent. Valid Range is 0 exclusive through 1000 inclusive.",
+            "schema": {
+              "type": "number",
+              "description": "Search radius in miles to search within for an Agent. Valid Range is 0 exclusive through 1000 inclusive.",
+              "format": "decimal"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentModel"
+                  }
+                },
+                "example": [
+                  {
+                    "code": "string",
+                    "name": "string",
+                    "type": "string",
+                    "parentAgentCode": "string",
+                    "address1": "string",
+                    "address2": "string",
+                    "city": "string",
+                    "state": "string",
+                    "zip": "string",
+                    "county": "string",
+                    "countryCode": "string",
+                    "activityStatus": "string",
+                    "retentionStatus": "string",
+                    "shipmentAuth": "string",
+                    "latitude": 0,
+                    "longitude": 0,
+                    "excludeOnLocator": true,
+                    "excludeFromiSalesProgram": true,
+                    "lastUpdatedDate": "string",
+                    "telephones": [
+                      {
+                        "type": "string",
+                        "number": "string",
+                        "info": "string"
+                      }
+                    ],
+                    "emails": [
+                      {
+                        "type": "string",
+                        "address": "string",
+                        "info": "string"
+                      }
+                    ],
+                    "websites": ["string"],
+                    "dotTypes": [
+                      {
+                        "referenceNumber": "string",
+                        "stateType": "string"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/SalesPeople/{salesCode}": {
+      "get": {
+        "tags": ["Agent"],
+        "summary": "Get Salesperson",
+        "description": "Gets a salesperson by salescode.",
+        "operationId": "get-salesperson",
+        "parameters": [
+          {
+            "name": "salesCode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSalesPersonModel"
+                },
+                "example": {
+                  "agentCode": "string",
+                  "contactCode": "string",
+                  "altContactCode": "string",
+                  "name": "string",
+                  "emailAddress": "string",
+                  "userName": "string",
+                  "effectiveDate": "string",
+                  "expirationDate": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Companies/{companyId}": {
+      "get": {
+        "tags": ["Companies"],
+        "summary": "Get Company",
+        "description": "Gets a Company.",
+        "operationId": "get-company",
+        "parameters": [
+          {
+            "name": "companyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyModel"
+                },
+                "example": {
+                  "id": 0,
+                  "effectiveDate": "string",
+                  "expirationDate": "string",
+                  "name": "string",
+                  "code": "string",
+                  "status": "string",
+                  "addresses": [
+                    {
+                      "id": 0,
+                      "effectiveDate": "string",
+                      "expirationDate": "string",
+                      "type": "string",
+                      "code": "string",
+                      "line1": "string",
+                      "line2": "string",
+                      "line3": "string",
+                      "line4": "string",
+                      "city": "string",
+                      "state": "string",
+                      "zipCode": "string",
+                      "contacts": [
+                        {
+                          "id": 0,
+                          "effectiveDate": "string",
+                          "expirationDate": "string",
+                          "name": "string",
+                          "title": "string",
+                          "department": "string",
+                          "emailAddress": "string",
+                          "code": "string",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  ],
+                  "xRefs": [
+                    {
+                      "id": 0,
+                      "application": "string",
+                      "xRefType": "string",
+                      "foreignKey": "string",
+                      "addressId": 0,
+                      "contactId": 0
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Agents/{agentCode}/Family": {
+      "get": {
+        "tags": ["Agent"],
+        "summary": "Get Agent Family",
+        "description": "Gets all agents that are family members of the agent.",
+        "operationId": "get-agent-family",
+        "parameters": [
+          {
+            "name": "agentCode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentModel"
+                  }
+                },
+                "example": [
+                  {
+                    "code": "string",
+                    "name": "string",
+                    "type": "string",
+                    "parentAgentCode": "string",
+                    "address1": "string",
+                    "address2": "string",
+                    "city": "string",
+                    "state": "string",
+                    "zip": "string",
+                    "county": "string",
+                    "countryCode": "string",
+                    "activityStatus": "string",
+                    "retentionStatus": "string",
+                    "shipmentAuth": "string",
+                    "latitude": 0,
+                    "longitude": 0,
+                    "excludeOnLocator": true,
+                    "excludeFromiSalesProgram": true,
+                    "lastUpdatedDate": "string",
+                    "telephones": [
+                      {
+                        "type": "string",
+                        "number": "string",
+                        "info": "string"
+                      }
+                    ],
+                    "emails": [
+                      {
+                        "type": "string",
+                        "address": "string",
+                        "info": "string"
+                      }
+                    ],
+                    "websites": ["string"],
+                    "dotTypes": [
+                      {
+                        "referenceNumber": "string",
+                        "stateType": "string"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Companies": {
+      "get": {
+        "tags": ["Companies"],
+        "summary": "Get Companies",
+        "description": "Gets Companies.",
+        "operationId": "get-companies",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CompanyModel"
+                  }
+                },
+                "example": [
+                  {
+                    "id": 0,
+                    "effectiveDate": "string",
+                    "expirationDate": "string",
+                    "name": "string",
+                    "code": "string",
+                    "status": "string",
+                    "addresses": [
+                      {
+                        "id": 0,
+                        "effectiveDate": "string",
+                        "expirationDate": "string",
+                        "type": "string",
+                        "code": "string",
+                        "line1": "string",
+                        "line2": "string",
+                        "line3": "string",
+                        "line4": "string",
+                        "city": "string",
+                        "state": "string",
+                        "zipCode": "string",
+                        "contacts": [
+                          {
+                            "id": 0,
+                            "effectiveDate": "string",
+                            "expirationDate": "string",
+                            "name": "string",
+                            "title": "string",
+                            "department": "string",
+                            "emailAddress": "string",
+                            "code": "string",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    ],
+                    "xRefs": [
+                      {
+                        "id": 0,
+                        "application": "string",
+                        "xRefType": "string",
+                        "foreignKey": "string",
+                        "addressId": 0,
+                        "contactId": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Agents/ActivityStatuses": {
+      "get": {
+        "tags": ["Agent"],
+        "summary": "Get Agent Activity Statuses",
+        "description": "Gets list of all agent activity statuses.",
+        "operationId": "get-agent-activity-statuses",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Agents/ShipmentAuths": {
+      "get": {
+        "tags": ["Agent"],
+        "summary": "Get Agent Shipment Authorizations",
+        "description": "Gets list of all agent Shipment Authorizations.",
+        "operationId": "get-agent-shipment-authorizations",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AddressModel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "effectiveDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "expirationDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": {
+            "type": "string",
+            "nullable": true
+          },
+          "line1": {
+            "type": "string",
+            "nullable": true
+          },
+          "line2": {
+            "type": "string",
+            "nullable": true
+          },
+          "line3": {
+            "type": "string",
+            "nullable": true
+          },
+          "line4": {
+            "type": "string",
+            "nullable": true
+          },
+          "city": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "nullable": true
+          },
+          "zipCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "contacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContactModel"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgentModel": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "The unique code of the agent",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "description": "The name of the agent",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "description": "The type of the agent",
+            "nullable": true
+          },
+          "parentAgentCode": {
+            "type": "string",
+            "description": "The parent agent",
+            "nullable": true
+          },
+          "address1": {
+            "type": "string",
+            "description": "The first line of the address",
+            "nullable": true
+          },
+          "address2": {
+            "type": "string",
+            "description": "The second line of the address",
+            "nullable": true
+          },
+          "city": {
+            "type": "string",
+            "description": "The city of the address",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "description": "The state of the address",
+            "nullable": true
+          },
+          "zip": {
+            "type": "string",
+            "description": "The ZIP code of the address",
+            "nullable": true
+          },
+          "county": {
+            "type": "string",
+            "description": "The county of the address",
+            "nullable": true
+          },
+          "countryCode": {
+            "type": "string",
+            "description": "The country code",
+            "nullable": true
+          },
+          "activityStatus": {
+            "type": "string",
+            "description": "The activity status of the agent",
+            "nullable": true
+          },
+          "retentionStatus": {
+            "type": "string",
+            "description": "The retention status of the agent",
+            "nullable": true
+          },
+          "shipmentAuth": {
+            "type": "string",
+            "description": "The shipping authorization status",
+            "nullable": true
+          },
+          "latitude": {
+            "type": "number",
+            "description": "The latitude of the agent location",
+            "format": "decimal",
+            "nullable": true
+          },
+          "longitude": {
+            "type": "number",
+            "description": "The longitude of the agent location",
+            "format": "decimal",
+            "nullable": true
+          },
+          "excludeOnLocator": {
+            "type": "boolean",
+            "description": "Indicates if the agent is excluded from the locator",
+            "nullable": true
+          },
+          "excludeFromiSalesProgram": {
+            "type": "boolean",
+            "description": "Indicates if the agent is excluded from the iSales program",
+            "nullable": true
+          },
+          "lastUpdatedDate": {
+            "type": "string",
+            "description": "The date when the agent was last updated",
+            "format": "date-time",
+            "nullable": true
+          },
+          "telephones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TelephoneModel"
+            },
+            "description": "The list of telephones associated with the agent"
+          },
+          "emails": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EmailModel"
+            },
+            "description": "The list of emails associated with the agent"
+          },
+          "websites": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The list of websites associated with the agent"
+          },
+          "dotTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DotInfoModel"
+            },
+            "description": "The list of State DOT Types and DOT References associated with the agent."
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgentSalesPersonModel": {
+        "type": "object",
+        "properties": {
+          "agentCode": {
+            "type": "string",
+            "description": "The unique code of the agent",
+            "nullable": true
+          },
+          "contactCode": {
+            "type": "string",
+            "description": "The unique code of the sales person",
+            "nullable": true
+          },
+          "altContactCode": {
+            "type": "string",
+            "description": "Alternative code of the sales person",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "description": "Name of the sales person",
+            "nullable": true
+          },
+          "emailAddress": {
+            "type": "string",
+            "description": "Email address of the sales person",
+            "nullable": true
+          },
+          "userName": {
+            "type": "string",
+            "description": "The username of the salesperson.",
+            "nullable": true
+          },
+          "effectiveDate": {
+            "type": "string",
+            "description": "Effective date of the sales person",
+            "format": "date-time",
+            "nullable": true
+          },
+          "expirationDate": {
+            "type": "string",
+            "description": "Expiration date of the sales person",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ApplicationXRefModel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "application": {
+            "type": "string",
+            "nullable": true
+          },
+          "xRefType": {
+            "type": "string",
+            "nullable": true
+          },
+          "foreignKey": {
+            "type": "string",
+            "nullable": true
+          },
+          "addressId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "contactId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CompanyModel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "effectiveDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "expirationDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "addresses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AddressModel"
+            }
+          },
+          "xRefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApplicationXRefModel"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ContactModel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "effectiveDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "expirationDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "department": {
+            "type": "string",
+            "nullable": true
+          },
+          "emailAddress": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DotInfoModel": {
+        "type": "object",
+        "properties": {
+          "referenceNumber": {
+            "type": "string",
+            "description": "The DOT Reference Number.",
+            "nullable": true
+          },
+          "stateType": {
+            "type": "string",
+            "description": "The State's DOT Type.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "EmailModel": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "The type of the email (e.g., personal, work)",
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "description": "The email address",
+            "nullable": true
+          },
+          "info": {
+            "type": "string",
+            "description": "Additional information or description about the email",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TelephoneModel": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "The type of the telephone (e.g., mobile, office)",
+            "nullable": true
+          },
+          "number": {
+            "type": "string",
+            "description": "The telephone number",
+            "nullable": true
+          },
+          "info": {
+            "type": "string",
+            "description": "Additional information or description about the telephone",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Companies"
+    },
+    {
+      "name": "Agent"
+    }
+  ]
+}

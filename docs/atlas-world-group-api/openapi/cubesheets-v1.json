@@ -1,0 +1,813 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Cubesheets",
+    "description": "Service to expose cubesheets",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/cubesheets/v1"
+    }
+  ],
+  "paths": {
+    "/Cubesheets/{cubesheetId}": {
+      "get": {
+        "tags": ["Atlas.AzureApi.Cubesheets"],
+        "summary": "Gets cubesheet and inventory",
+        "description": "Gets cubesheet and inventory",
+        "operationId": "get-cubesheet",
+        "parameters": [
+          {
+            "name": "cubesheetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CubesheetModel"
+                },
+                "example": {
+                  "cubesheetId": 0,
+                  "businessId": 0,
+                  "customerId": 0,
+                  "user": "string",
+                  "settings": {
+                    "language": "string",
+                    "itemList": "string",
+                    "ratingMode": "string"
+                  },
+                  "rooms": [
+                    {
+                      "roomId": 0,
+                      "roomName": "string",
+                      "items": [
+                        {
+                          "itemId": 0,
+                          "surveyedItemId": 0,
+                          "itemName": "string",
+                          "weight": 0,
+                          "defaultWeight": 0,
+                          "volume": 0,
+                          "defaultVolume": 0,
+                          "width": 0,
+                          "height": 0,
+                          "length": 0,
+                          "isCrate": true,
+                          "isCartonCP": true,
+                          "isCartonPBO": true,
+                          "isBulky": true,
+                          "shippingQuantity": 0,
+                          "notShippingQuantity": 0,
+                          "packQuantity": 0,
+                          "unpackQuantity": 0,
+                          "comment": "string",
+                          "canadaGovernmentItemCode": 0
+                        }
+                      ],
+                      "canadaRoomCode": 0
+                    }
+                  ],
+                  "region": "string",
+                  "businessLine": "string",
+                  "shipmentId": "string",
+                  "hubspotContactId": 0,
+                  "hubspotMoveId": 0
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Cubesheets": {
+      "post": {
+        "tags": ["Atlas.AzureApi.Cubesheets"],
+        "summary": "Create cubesheet and inventory",
+        "description": "Create cubesheet and inventory",
+        "operationId": "post-cubesheet",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CubesheetModel"
+              },
+              "example": {
+                "cubesheetId": 0,
+                "businessId": 0,
+                "customerId": 0,
+                "user": "string",
+                "settings": {
+                  "language": "string",
+                  "itemList": "string",
+                  "ratingMode": "string"
+                },
+                "rooms": [
+                  {
+                    "roomId": 0,
+                    "roomName": "string",
+                    "items": [
+                      {
+                        "itemId": 0,
+                        "surveyedItemId": 0,
+                        "itemName": "string",
+                        "weight": 0,
+                        "defaultWeight": 0,
+                        "volume": 0,
+                        "defaultVolume": 0,
+                        "width": 0,
+                        "height": 0,
+                        "length": 0,
+                        "isCrate": true,
+                        "isCartonCP": true,
+                        "isCartonPBO": true,
+                        "isBulky": true,
+                        "shippingQuantity": 0,
+                        "notShippingQuantity": 0,
+                        "packQuantity": 0,
+                        "unpackQuantity": 0,
+                        "comment": "string",
+                        "canadaGovernmentItemCode": 0
+                      }
+                    ],
+                    "canadaRoomCode": 0
+                  }
+                ],
+                "region": "string",
+                "businessLine": "string",
+                "shipmentId": "string",
+                "hubspotContactId": 0,
+                "hubspotMoveId": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CubesheetModel"
+                },
+                "example": {
+                  "cubesheetId": 0,
+                  "businessId": 0,
+                  "customerId": 0,
+                  "user": "string",
+                  "settings": {
+                    "language": "string",
+                    "itemList": "string",
+                    "ratingMode": "string"
+                  },
+                  "rooms": [
+                    {
+                      "roomId": 0,
+                      "roomName": "string",
+                      "items": [
+                        {
+                          "itemId": 0,
+                          "surveyedItemId": 0,
+                          "itemName": "string",
+                          "weight": 0,
+                          "defaultWeight": 0,
+                          "volume": 0,
+                          "defaultVolume": 0,
+                          "width": 0,
+                          "height": 0,
+                          "length": 0,
+                          "isCrate": true,
+                          "isCartonCP": true,
+                          "isCartonPBO": true,
+                          "isBulky": true,
+                          "shippingQuantity": 0,
+                          "notShippingQuantity": 0,
+                          "packQuantity": 0,
+                          "unpackQuantity": 0,
+                          "comment": "string",
+                          "canadaGovernmentItemCode": 0
+                        }
+                      ],
+                      "canadaRoomCode": 0
+                    }
+                  ],
+                  "region": "string",
+                  "businessLine": "string",
+                  "shipmentId": "string",
+                  "hubspotContactId": 0,
+                  "hubspotMoveId": 0
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AggregateErrorsDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string",
+                  "errors": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      },
+      "get": {
+        "tags": ["Atlas.AzureApi.Cubesheets"],
+        "summary": "Gets cubesheets and inventory",
+        "description": "Gets cubesheets and inventory",
+        "operationId": "get-cubesheets",
+        "parameters": [
+          {
+            "name": "shipmentId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "businessId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CubesheetModel"
+                  }
+                },
+                "example": [
+                  {
+                    "cubesheetId": 0,
+                    "businessId": 0,
+                    "customerId": 0,
+                    "user": "string",
+                    "settings": {
+                      "language": "string",
+                      "itemList": "string",
+                      "ratingMode": "string"
+                    },
+                    "rooms": [
+                      {
+                        "roomId": 0,
+                        "roomName": "string",
+                        "items": [
+                          {
+                            "itemId": 0,
+                            "surveyedItemId": 0,
+                            "itemName": "string",
+                            "weight": 0,
+                            "defaultWeight": 0,
+                            "volume": 0,
+                            "defaultVolume": 0,
+                            "width": 0,
+                            "height": 0,
+                            "length": 0,
+                            "isCrate": true,
+                            "isCartonCP": true,
+                            "isCartonPBO": true,
+                            "isBulky": true,
+                            "shippingQuantity": 0,
+                            "notShippingQuantity": 0,
+                            "packQuantity": 0,
+                            "unpackQuantity": 0,
+                            "comment": "string",
+                            "canadaGovernmentItemCode": 0
+                          }
+                        ],
+                        "canadaRoomCode": 0
+                      }
+                    ],
+                    "region": "string",
+                    "businessLine": "string",
+                    "shipmentId": "string",
+                    "hubspotContactId": 0,
+                    "hubspotMoveId": 0
+                  }
+                ]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Cubesheets/regions": {
+      "get": {
+        "tags": ["Atlas.AzureApi.Cubesheets"],
+        "summary": "Gets all cubesheet regions",
+        "description": "Gets all cubesheet regions",
+        "operationId": "get-cubesheet-regions",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Cubesheets/businessLines": {
+      "get": {
+        "tags": ["Atlas.AzureApi.Cubesheets"],
+        "summary": "Gets all cubesheet business lines.",
+        "description": "Gets all cubesheet business lines.",
+        "operationId": "get-cubesheet-businessLines",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Cubesheets/settings/language": {
+      "get": {
+        "tags": ["Atlas.AzureApi.Cubesheets"],
+        "summary": "Gets all cubesheet setting languages.",
+        "description": "Gets all cubesheet setting languages.",
+        "operationId": "get-cubesheet-setting-languageCodes",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Cubesheets/settings/itemLists": {
+      "get": {
+        "tags": ["Atlas.AzureApi.Cubesheets"],
+        "summary": "Gets all cubesheet setting item lists.",
+        "description": "Gets all cubesheet setting item lists.",
+        "operationId": "get-cubesheet-setting-itemLists",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Cubesheets/settings/ratingModes": {
+      "get": {
+        "tags": ["Atlas.AzureApi.Cubesheets"],
+        "summary": "Gets all cubesheet setting rating modes.",
+        "description": "Gets all cubesheet setting rating modes.",
+        "operationId": "get-cubesheet-setting-ratingModes",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AggregateErrorsDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "additionalProperties": {}
+      },
+      "CubesheetModel": {
+        "type": "object",
+        "properties": {
+          "cubesheetId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "businessId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "customerId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "user": {
+            "type": "string",
+            "nullable": true
+          },
+          "settings": {
+            "$ref": "#/components/schemas/CubesheetSettingsModel"
+          },
+          "rooms": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoomModel"
+            }
+          },
+          "region": {
+            "type": "string",
+            "description": "Refer to Cubesheets/regions for valid values.",
+            "nullable": true
+          },
+          "businessLine": {
+            "type": "string",
+            "description": "Refer to Cubesheets/businessLines for valid values.",
+            "nullable": true
+          },
+          "shipmentId": {
+            "type": "string",
+            "nullable": true
+          },
+          "hubspotContactId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "hubspotMoveId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CubesheetSettingsModel": {
+        "type": "object",
+        "properties": {
+          "language": {
+            "type": "string",
+            "description": "Refer to Cubesheets/settings/language for valid values.",
+            "nullable": true
+          },
+          "itemList": {
+            "type": "string",
+            "description": "Refer to Cubesheets/settings/itemLists for valid values.",
+            "nullable": true
+          },
+          "ratingMode": {
+            "type": "string",
+            "description": "Refer to Cubesheets/settings/ratingModes for valid values.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ItemModel": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "surveyedItemId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "itemName": {
+            "type": "string",
+            "nullable": true
+          },
+          "weight": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "defaultWeight": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "volume": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "defaultVolume": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "width": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "height": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "length": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "isCrate": {
+            "type": "boolean"
+          },
+          "isCartonCP": {
+            "type": "boolean"
+          },
+          "isCartonPBO": {
+            "type": "boolean"
+          },
+          "isBulky": {
+            "type": "boolean"
+          },
+          "shippingQuantity": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "notShippingQuantity": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "packQuantity": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "unpackQuantity": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "comment": {
+            "type": "string",
+            "nullable": true
+          },
+          "canadaGovernmentItemCode": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RoomModel": {
+        "type": "object",
+        "properties": {
+          "roomId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "roomName": {
+            "type": "string",
+            "nullable": true
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ItemModel"
+            }
+          },
+          "canadaRoomCode": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Atlas.AzureApi.Cubesheets"
+    }
+  ]
+}

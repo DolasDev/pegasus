@@ -1,0 +1,421 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Move4UIntegration",
+    "description": "Service to expose Move4U",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/move4u-integration/v1"
+    }
+  ],
+  "paths": {
+    "/callbacks": {
+      "post": {
+        "tags": ["Callbacks"],
+        "summary": "Post Callback",
+        "description": "Receives a Move4U callback and sends it to pipeline.",
+        "operationId": "post-callback",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "get": {
+        "tags": ["Callbacks"],
+        "summary": "Get Callback Logs",
+        "description": "Gets callback logs; intended for debugging.",
+        "operationId": "get-callbacks",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Format - int32.",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The callback logs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CallbackLog"
+                  }
+                },
+                "example": [
+                  {
+                    "timestamp": "string",
+                    "payload": {}
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/items": {
+      "get": {
+        "tags": ["Items"],
+        "summary": "/items - GET",
+        "operationId": "get-items",
+        "parameters": [
+          {
+            "name": "shipmentId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "useSurvey",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetItemsResponse"
+                },
+                "example": {
+                  "source": "string",
+                  "shipmentId": "string",
+                  "rooms": [
+                    {
+                      "roomCode": "string",
+                      "externalKey": "string",
+                      "roomName": "string",
+                      "items": [
+                        {
+                          "itemCode": "string",
+                          "externalKey": "string",
+                          "itemName": "string",
+                          "barcode": "string",
+                          "lotNumber": "string",
+                          "itemNumber": "string",
+                          "colorCode": "string",
+                          "weight": 0,
+                          "defaultWeight": 0,
+                          "volume": 0,
+                          "defaultVolume": 0,
+                          "width": 0,
+                          "height": 0,
+                          "length": 0,
+                          "isCrate": true,
+                          "canContainItems": true,
+                          "isDefaultPackedByOwner": true,
+                          "quantity": 0,
+                          "generalComment": "string",
+                          "isValuable": true,
+                          "valuableEstimatedValue": 0,
+                          "isVoid": true,
+                          "voidReason": "string",
+                          "isMissing": true,
+                          "conditions": [
+                            {
+                              "damages": ["string"],
+                              "locations": ["string"]
+                            }
+                          ],
+                          "contents": [
+                            {
+                              "itemCode": "string",
+                              "externalKey": "string",
+                              "itemName": "string",
+                              "quantity": 0,
+                              "generalComment": "string",
+                              "isValuable": true,
+                              "valuableEstimatedValue": 0,
+                              "isVoid": true,
+                              "voidReason": "string",
+                              "conditions": [
+                                {
+                                  "damages": ["string"],
+                                  "locations": ["string"]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CallbackLog": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "payload": {
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "GetItemsCondition": {
+        "type": "object",
+        "properties": {
+          "damages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "locations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "GetItemsContent": {
+        "type": "object",
+        "properties": {
+          "itemCode": {
+            "type": "string"
+          },
+          "externalKey": {
+            "type": "string"
+          },
+          "itemName": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "generalComment": {
+            "type": "string"
+          },
+          "isValuable": {
+            "type": "boolean"
+          },
+          "valuableEstimatedValue": {
+            "type": "number",
+            "format": "decimal",
+            "nullable": true
+          },
+          "isVoid": {
+            "type": "boolean"
+          },
+          "voidReason": {
+            "type": "string"
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GetItemsCondition"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "GetItemsItem": {
+        "type": "object",
+        "properties": {
+          "itemCode": {
+            "type": "string"
+          },
+          "externalKey": {
+            "type": "string"
+          },
+          "itemName": {
+            "type": "string"
+          },
+          "barcode": {
+            "type": "string"
+          },
+          "lotNumber": {
+            "type": "string"
+          },
+          "itemNumber": {
+            "type": "string"
+          },
+          "colorCode": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "number",
+            "format": "double"
+          },
+          "defaultWeight": {
+            "type": "number",
+            "format": "double"
+          },
+          "volume": {
+            "type": "number",
+            "format": "double"
+          },
+          "defaultVolume": {
+            "type": "number",
+            "format": "double"
+          },
+          "width": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "height": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "length": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "isCrate": {
+            "type": "boolean"
+          },
+          "canContainItems": {
+            "type": "boolean"
+          },
+          "isDefaultPackedByOwner": {
+            "type": "boolean"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "generalComment": {
+            "type": "string"
+          },
+          "isValuable": {
+            "type": "boolean"
+          },
+          "valuableEstimatedValue": {
+            "type": "number",
+            "format": "decimal",
+            "nullable": true
+          },
+          "isVoid": {
+            "type": "boolean"
+          },
+          "voidReason": {
+            "type": "string"
+          },
+          "isMissing": {
+            "type": "boolean"
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GetItemsCondition"
+            }
+          },
+          "contents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GetItemsContent"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "GetItemsResponse": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "shipmentId": {
+            "type": "string"
+          },
+          "rooms": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GetItemsRoom"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "GetItemsRoom": {
+        "type": "object",
+        "properties": {
+          "roomCode": {
+            "type": "string"
+          },
+          "externalKey": {
+            "type": "string"
+          },
+          "roomName": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GetItemsItem"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ]
+}

@@ -1,0 +1,1241 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Customers",
+    "description": "Service to expose customers",
+    "version": "v2"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/customers/v2"
+    }
+  ],
+  "paths": {
+    "/Businesses/Statuses": {
+      "get": {
+        "tags": ["Businesses"],
+        "summary": "Get Business Statuses",
+        "description": "Gets the collection of business statuses",
+        "operationId": "get-business-statuses",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Businesses/Tariffs": {
+      "get": {
+        "tags": ["Businesses"],
+        "summary": "Get Business Tariffs",
+        "description": "Gets the collection of business tariffs.",
+        "operationId": "get-business-tariffs",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Businesses/Lines": {
+      "get": {
+        "tags": ["Businesses"],
+        "summary": "Get Business Lines",
+        "description": "Gets the collection of business lines",
+        "operationId": "get-business-lines",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Customers/{customerId}": {
+      "get": {
+        "tags": ["Customers"],
+        "summary": "Get Customer",
+        "description": "Gets a customer for the given customerId.",
+        "operationId": "get-customer",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerModel"
+                },
+                "example": {
+                  "customerId": 0,
+                  "hubspotContactId": 0,
+                  "firstName": "string",
+                  "lastName": "string",
+                  "doNotContact": true,
+                  "phones": [
+                    {
+                      "phoneId": 0,
+                      "type": "string",
+                      "number": "string",
+                      "priority": 0,
+                      "isPreferred": true
+                    }
+                  ],
+                  "emails": [
+                    {
+                      "emailId": 0,
+                      "address": "string",
+                      "priority": 0,
+                      "isPreferred": true
+                    }
+                  ],
+                  "businesses": [
+                    {
+                      "aaaMembershipNumber": "string",
+                      "referralEntityCode": "string",
+                      "referralMemberCode": "string",
+                      "bookingAgentCode": "string",
+                      "businessId": 0,
+                      "businessLine": "string",
+                      "destinationAgentCode": "string",
+                      "locations": [
+                        {
+                          "locationId": 0,
+                          "type": "string",
+                          "address1": "string",
+                          "address2": "string",
+                          "city": "string",
+                          "state": "string",
+                          "zip": "string",
+                          "country": "string",
+                          "county": "string"
+                        }
+                      ],
+                      "nationalAccountCode": "string",
+                      "notes": "string",
+                      "orderNumber": "string",
+                      "originAgentCode": "string",
+                      "source": "string",
+                      "startDate": "string",
+                      "status": "string",
+                      "tariff": "string",
+                      "weight": 0,
+                      "hubspotMoveId": 0,
+                      "salesPerson": "string"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Customers"],
+        "summary": "Put Customer",
+        "description": "Updates a customer.",
+        "operationId": "put-customer",
+        "parameters": [
+          {
+            "name": "customerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerModel"
+              },
+              "example": {
+                "customerId": 0,
+                "hubspotContactId": 0,
+                "firstName": "string",
+                "lastName": "string",
+                "doNotContact": true,
+                "phones": [
+                  {
+                    "phoneId": 0,
+                    "type": "string",
+                    "number": "string",
+                    "priority": 0,
+                    "isPreferred": true
+                  }
+                ],
+                "emails": [
+                  {
+                    "emailId": 0,
+                    "address": "string",
+                    "priority": 0,
+                    "isPreferred": true
+                  }
+                ],
+                "businesses": [
+                  {
+                    "aaaMembershipNumber": "string",
+                    "referralEntityCode": "string",
+                    "referralMemberCode": "string",
+                    "bookingAgentCode": "string",
+                    "businessId": 0,
+                    "businessLine": "string",
+                    "destinationAgentCode": "string",
+                    "locations": [
+                      {
+                        "locationId": 0,
+                        "type": "string",
+                        "address1": "string",
+                        "address2": "string",
+                        "city": "string",
+                        "state": "string",
+                        "zip": "string",
+                        "country": "string",
+                        "county": "string"
+                      }
+                    ],
+                    "nationalAccountCode": "string",
+                    "notes": "string",
+                    "orderNumber": "string",
+                    "originAgentCode": "string",
+                    "source": "string",
+                    "startDate": "string",
+                    "status": "string",
+                    "tariff": "string",
+                    "weight": 0,
+                    "hubspotMoveId": 0,
+                    "salesPerson": "string"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerModel"
+                },
+                "example": {
+                  "customerId": 0,
+                  "hubspotContactId": 0,
+                  "firstName": "string",
+                  "lastName": "string",
+                  "doNotContact": true,
+                  "phones": [
+                    {
+                      "phoneId": 0,
+                      "type": "string",
+                      "number": "string",
+                      "priority": 0,
+                      "isPreferred": true
+                    }
+                  ],
+                  "emails": [
+                    {
+                      "emailId": 0,
+                      "address": "string",
+                      "priority": 0,
+                      "isPreferred": true
+                    }
+                  ],
+                  "businesses": [
+                    {
+                      "aaaMembershipNumber": "string",
+                      "referralEntityCode": "string",
+                      "referralMemberCode": "string",
+                      "bookingAgentCode": "string",
+                      "businessId": 0,
+                      "businessLine": "string",
+                      "destinationAgentCode": "string",
+                      "locations": [
+                        {
+                          "locationId": 0,
+                          "type": "string",
+                          "address1": "string",
+                          "address2": "string",
+                          "city": "string",
+                          "state": "string",
+                          "zip": "string",
+                          "country": "string",
+                          "county": "string"
+                        }
+                      ],
+                      "nationalAccountCode": "string",
+                      "notes": "string",
+                      "orderNumber": "string",
+                      "originAgentCode": "string",
+                      "source": "string",
+                      "startDate": "string",
+                      "status": "string",
+                      "tariff": "string",
+                      "weight": 0,
+                      "hubspotMoveId": 0,
+                      "salesPerson": "string"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AggregateErrorsDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string",
+                  "errors": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Customers": {
+      "get": {
+        "tags": ["Customers"],
+        "summary": "Get Customers",
+        "description": "Gets customers that match the given parameters.",
+        "operationId": "get-customers",
+        "parameters": [
+          {
+            "name": "firstName",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lastName",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "emailAddress",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "phoneNumber",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderNumber",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "businessId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "firstName",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lastName",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "emailAddress",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "phoneNumber",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "orderNumber",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "businessId",
+            "in": "header",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CustomerModel"
+                  }
+                },
+                "example": [
+                  {
+                    "customerId": 0,
+                    "hubspotContactId": 0,
+                    "firstName": "string",
+                    "lastName": "string",
+                    "doNotContact": true,
+                    "phones": [
+                      {
+                        "phoneId": 0,
+                        "type": "string",
+                        "number": "string",
+                        "priority": 0,
+                        "isPreferred": true
+                      }
+                    ],
+                    "emails": [
+                      {
+                        "emailId": 0,
+                        "address": "string",
+                        "priority": 0,
+                        "isPreferred": true
+                      }
+                    ],
+                    "businesses": [
+                      {
+                        "aaaMembershipNumber": "string",
+                        "referralEntityCode": "string",
+                        "referralMemberCode": "string",
+                        "bookingAgentCode": "string",
+                        "businessId": 0,
+                        "businessLine": "string",
+                        "destinationAgentCode": "string",
+                        "locations": [
+                          {
+                            "locationId": 0,
+                            "type": "string",
+                            "address1": "string",
+                            "address2": "string",
+                            "city": "string",
+                            "state": "string",
+                            "zip": "string",
+                            "country": "string",
+                            "county": "string"
+                          }
+                        ],
+                        "nationalAccountCode": "string",
+                        "notes": "string",
+                        "orderNumber": "string",
+                        "originAgentCode": "string",
+                        "source": "string",
+                        "startDate": "string",
+                        "status": "string",
+                        "tariff": "string",
+                        "weight": 0,
+                        "hubspotMoveId": 0,
+                        "salesPerson": "string"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Customers"],
+        "summary": "Post Customer",
+        "description": "Creates a customer and returns the location header of the customer.",
+        "operationId": "post-customer",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomerModel"
+              },
+              "example": {
+                "customerId": 0,
+                "hubspotContactId": 0,
+                "firstName": "string",
+                "lastName": "string",
+                "doNotContact": true,
+                "phones": [
+                  {
+                    "phoneId": 0,
+                    "type": "string",
+                    "number": "string",
+                    "priority": 0,
+                    "isPreferred": true
+                  }
+                ],
+                "emails": [
+                  {
+                    "emailId": 0,
+                    "address": "string",
+                    "priority": 0,
+                    "isPreferred": true
+                  }
+                ],
+                "businesses": [
+                  {
+                    "aaaMembershipNumber": "string",
+                    "referralEntityCode": "string",
+                    "referralMemberCode": "string",
+                    "bookingAgentCode": "string",
+                    "businessId": 0,
+                    "businessLine": "string",
+                    "destinationAgentCode": "string",
+                    "locations": [
+                      {
+                        "locationId": 0,
+                        "type": "string",
+                        "address1": "string",
+                        "address2": "string",
+                        "city": "string",
+                        "state": "string",
+                        "zip": "string",
+                        "country": "string",
+                        "county": "string"
+                      }
+                    ],
+                    "nationalAccountCode": "string",
+                    "notes": "string",
+                    "orderNumber": "string",
+                    "originAgentCode": "string",
+                    "source": "string",
+                    "startDate": "string",
+                    "status": "string",
+                    "tariff": "string",
+                    "weight": 0,
+                    "hubspotMoveId": 0,
+                    "salesPerson": "string"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerModel"
+                },
+                "example": {
+                  "customerId": 0,
+                  "hubspotContactId": 0,
+                  "firstName": "string",
+                  "lastName": "string",
+                  "doNotContact": true,
+                  "phones": [
+                    {
+                      "phoneId": 0,
+                      "type": "string",
+                      "number": "string",
+                      "priority": 0,
+                      "isPreferred": true
+                    }
+                  ],
+                  "emails": [
+                    {
+                      "emailId": 0,
+                      "address": "string",
+                      "priority": 0,
+                      "isPreferred": true
+                    }
+                  ],
+                  "businesses": [
+                    {
+                      "aaaMembershipNumber": "string",
+                      "referralEntityCode": "string",
+                      "referralMemberCode": "string",
+                      "bookingAgentCode": "string",
+                      "businessId": 0,
+                      "businessLine": "string",
+                      "destinationAgentCode": "string",
+                      "locations": [
+                        {
+                          "locationId": 0,
+                          "type": "string",
+                          "address1": "string",
+                          "address2": "string",
+                          "city": "string",
+                          "state": "string",
+                          "zip": "string",
+                          "country": "string",
+                          "county": "string"
+                        }
+                      ],
+                      "nationalAccountCode": "string",
+                      "notes": "string",
+                      "orderNumber": "string",
+                      "originAgentCode": "string",
+                      "source": "string",
+                      "startDate": "string",
+                      "status": "string",
+                      "tariff": "string",
+                      "weight": 0,
+                      "hubspotMoveId": 0,
+                      "salesPerson": "string"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AggregateErrorsDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string",
+                  "errors": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Location/Types": {
+      "get": {
+        "tags": ["Locations"],
+        "summary": "Get Location Types",
+        "description": "Gets the collection of location types",
+        "operationId": "get-location-types",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Phones/Types": {
+      "get": {
+        "tags": ["Phones"],
+        "summary": "Get Phone Types",
+        "description": "Gets the collection of phone types",
+        "operationId": "get-phone-types",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "string"
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Location/States": {
+      "get": {
+        "tags": ["Locations"],
+        "summary": "Get Location States",
+        "description": "Gets the collection of location states",
+        "operationId": "get-location-states",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AggregateErrorsDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "additionalProperties": {}
+      },
+      "BusinessModel": {
+        "type": "object",
+        "properties": {
+          "aaaMembershipNumber": {
+            "type": "string",
+            "description": "Depericated: use ReferralEntityCode and ReferralMemberCode. The membership number for AAA.",
+            "nullable": true
+          },
+          "referralEntityCode": {
+            "type": "string",
+            "description": "The Referring Entity's Code that referred the customer.",
+            "nullable": true
+          },
+          "referralMemberCode": {
+            "type": "string",
+            "description": "The customer's member code within the referring entity.",
+            "nullable": true
+          },
+          "bookingAgentCode": {
+            "type": "string",
+            "description": "The agent's code that booked the customer's business.",
+            "nullable": true
+          },
+          "businessId": {
+            "type": "integer",
+            "description": "The id of the current business.",
+            "format": "int32",
+            "nullable": true
+          },
+          "businessLine": {
+            "type": "string",
+            "description": "The line of business. Refer to Businesses/Lines for valid types.",
+            "nullable": true
+          },
+          "destinationAgentCode": {
+            "type": "string",
+            "description": "The agent's code that handles destination.",
+            "nullable": true
+          },
+          "locations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LocationModel"
+            }
+          },
+          "nationalAccountCode": {
+            "type": "string",
+            "description": "The National Account's entity code.",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "description": "Notes pertaining the business.",
+            "nullable": true
+          },
+          "orderNumber": {
+            "type": "string",
+            "description": "Atlas's order number for the business.",
+            "nullable": true
+          },
+          "originAgentCode": {
+            "type": "string",
+            "description": "The agent's code that handles origin.",
+            "nullable": true
+          },
+          "source": {
+            "type": "string",
+            "description": "The name from where this customer came from.",
+            "nullable": true
+          },
+          "startDate": {
+            "type": "string",
+            "description": "The starting date the business came into existence.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "description": "The status of the business. Refer to Businesses/Statuses for valid types.",
+            "nullable": true
+          },
+          "tariff": {
+            "type": "string",
+            "description": "The tariff of the business. Refer to Businesses/Tariffs for valid types.",
+            "nullable": true
+          },
+          "weight": {
+            "type": "integer",
+            "description": "The weight of good for the business in pounds.",
+            "format": "int32",
+            "nullable": true
+          },
+          "hubspotMoveId": {
+            "type": "integer",
+            "description": "The Hubspot MoveId associated with the business.",
+            "format": "int64",
+            "nullable": true
+          },
+          "salesPerson": {
+            "type": "string",
+            "description": "The username associated with the Salesperson.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CustomerModel": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "hubspotContactId": {
+            "type": "integer",
+            "description": "The Hubspot Contact Id of the customer.",
+            "format": "int64",
+            "nullable": true
+          },
+          "firstName": {
+            "type": "string",
+            "description": "The first name of the customer.",
+            "nullable": true
+          },
+          "lastName": {
+            "type": "string",
+            "description": "The last name of the customer.",
+            "nullable": true
+          },
+          "doNotContact": {
+            "type": "boolean",
+            "description": "Flag stating the customer should not be contacted.",
+            "nullable": true
+          },
+          "phones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhoneModel"
+            },
+            "description": "Phone numbers the customer can be reached by."
+          },
+          "emails": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EmailModel"
+            },
+            "description": "Emails the customer can be reached by."
+          },
+          "businesses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BusinessModel"
+            },
+            "description": "Businesses performed for the customer by Atlas."
+          }
+        },
+        "additionalProperties": false
+      },
+      "EmailModel": {
+        "type": "object",
+        "properties": {
+          "emailId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "description": "Address of the email. Must match pattern ^[^@ \\t\\r\\n]+@[^@ \\t\\r\\n]+\\.[^@ \\t\\r\\n]+$",
+            "nullable": true
+          },
+          "priority": {
+            "type": "integer",
+            "description": "The priority of the number relative to other emails. Min is 1. Max is 3.",
+            "format": "int32",
+            "nullable": true
+          },
+          "isPreferred": {
+            "type": "boolean",
+            "description": "Marks this phone as the preferred commincation method.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LocationModel": {
+        "type": "object",
+        "properties": {
+          "locationId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "description": "The type of the Location. Refer to Location/Types for valid types.",
+            "nullable": true
+          },
+          "address1": {
+            "type": "string",
+            "nullable": true
+          },
+          "address2": {
+            "type": "string",
+            "nullable": true
+          },
+          "city": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "description": "The state or provience of the Location. Refer to Location/States for valid types.",
+            "nullable": true
+          },
+          "zip": {
+            "type": "string",
+            "description": "The zip or postal code of the Location.",
+            "nullable": true
+          },
+          "country": {
+            "type": "string",
+            "description": "The three letter ISO 3166-1 name.",
+            "nullable": true
+          },
+          "county": {
+            "type": "string",
+            "description": "The full name of the county of the location.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PhoneModel": {
+        "type": "object",
+        "properties": {
+          "phoneId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "description": "The type of the Phone. Refer to Phones/Types for valid types.",
+            "nullable": true
+          },
+          "number": {
+            "type": "string",
+            "description": "The number of the Phone in E164 form.",
+            "nullable": true
+          },
+          "priority": {
+            "type": "integer",
+            "description": "The priority of the number relative to other numbers. Min is 1. Max is 3.",
+            "format": "int32",
+            "nullable": true
+          },
+          "isPreferred": {
+            "type": "boolean",
+            "description": "Marks this phone as the preferred commincation method.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Customers"
+    },
+    {
+      "name": "Locations"
+    },
+    {
+      "name": "Businesses"
+    },
+    {
+      "name": "Phones"
+    }
+  ]
+}

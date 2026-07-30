@@ -1,0 +1,1231 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Documents",
+    "description": "Service to expose documents.",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/documents/v1"
+    }
+  ],
+  "paths": {
+    "/RiskMgt/Documents/{documentId}": {
+      "get": {
+        "tags": ["RiskMgtDocuments"],
+        "summary": "Get RiskMgt Document.",
+        "description": "Gets a RiskMgt document for the given documentId.",
+        "operationId": "get-riskmgt-document",
+        "parameters": [
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "convertContentTo",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RiskMgtDocument"
+                },
+                "example": {
+                  "id": "string",
+                  "name": "string",
+                  "type": "string",
+                  "createdAt": "string",
+                  "createdBy": "string",
+                  "content": "string",
+                  "contentType": "string",
+                  "category": "string",
+                  "agentCode": "string",
+                  "unitNumber": "string",
+                  "pvoCode": "string",
+                  "date": "string",
+                  "year": 0
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["RiskMgtDocuments"],
+        "summary": "Delete RiskMgt Document.",
+        "description": "Deletes a RiskMgt document.",
+        "operationId": "delete-riskmgt-documents",
+        "parameters": [
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/RiskMgt/Documents": {
+      "post": {
+        "tags": ["RiskMgtDocuments"],
+        "summary": "Post RiskMgt Document.",
+        "description": "Creates a RiskMgt document and returns the document except the content.",
+        "operationId": "post-riskmgt-documents",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RiskMgtDocument"
+              },
+              "example": {
+                "id": "string",
+                "name": "string",
+                "type": "string",
+                "createdAt": "string",
+                "createdBy": "string",
+                "content": "string",
+                "contentType": "string",
+                "category": "string",
+                "agentCode": "string",
+                "unitNumber": "string",
+                "pvoCode": "string",
+                "date": "string",
+                "year": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RiskMgtDocument"
+                },
+                "example": {
+                  "id": "string",
+                  "name": "string",
+                  "type": "string",
+                  "createdAt": "string",
+                  "createdBy": "string",
+                  "content": "string",
+                  "contentType": "string",
+                  "category": "string",
+                  "agentCode": "string",
+                  "unitNumber": "string",
+                  "pvoCode": "string",
+                  "date": "string",
+                  "year": 0
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Shipment/Documents/{documentId}": {
+      "get": {
+        "tags": ["ShipmentDocuments"],
+        "summary": "Get Shipment Document",
+        "description": "Gets a shipment document for the given documentId.",
+        "operationId": "get-shipment-document",
+        "parameters": [
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "convertContentTo",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDocument"
+                },
+                "example": {
+                  "id": "string",
+                  "name": "string",
+                  "type": "string",
+                  "createdAt": "string",
+                  "createdBy": "string",
+                  "content": "string",
+                  "contentType": "string",
+                  "customerId": 0,
+                  "businessId": 0,
+                  "orderNumber": "string",
+                  "invoiceNumber": "string",
+                  "vendorCode": "string",
+                  "invoiceDate": "string",
+                  "thirdPartyInvAmount": 0
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["ShipmentDocuments"],
+        "summary": "Delete Shipment Document",
+        "description": "Deletes a shipment document.",
+        "operationId": "delete-shipment-documents",
+        "parameters": [
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Shipment/Documents": {
+      "get": {
+        "tags": ["ShipmentDocuments"],
+        "summary": "Get Shipment Documents",
+        "description": "Gets a shipment document for the given documentId.",
+        "operationId": "get-shipment-documents",
+        "parameters": [
+          {
+            "name": "orderNumber",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "businessId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "types",
+            "in": "query",
+            "description": "Comma delimited list of types of document to retreive.",
+            "schema": {
+              "pattern": "(\\w+, ?)*(\\w+)",
+              "type": "string",
+              "description": "Comma delimited list of types of document to retreive."
+            }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "description": "Comma delimited list of fields to retreive for the found documents.",
+            "schema": {
+              "pattern": "(\\w+, ?)*(\\w+)",
+              "type": "string",
+              "description": "Comma delimited list of fields to retreive for the found documents."
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "The maximum number of items to be returned.",
+            "schema": {
+              "type": "integer",
+              "description": "The maximum number of items to be returned.",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "The number of items to be skipped.",
+            "schema": {
+              "type": "integer",
+              "description": "The number of items to be skipped.",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "convertContentTo",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ShipmentDocument"
+                  }
+                },
+                "example": [
+                  {
+                    "id": "string",
+                    "name": "string",
+                    "type": "string",
+                    "createdAt": "string",
+                    "createdBy": "string",
+                    "content": "string",
+                    "contentType": "string",
+                    "customerId": 0,
+                    "businessId": 0,
+                    "orderNumber": "string",
+                    "invoiceNumber": "string",
+                    "vendorCode": "string",
+                    "invoiceDate": "string",
+                    "thirdPartyInvAmount": 0
+                  }
+                ]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      },
+      "post": {
+        "tags": ["ShipmentDocuments"],
+        "summary": "Post Shipment Document",
+        "description": "Creates a shipment document and returns the document except the content.",
+        "operationId": "post-shipment-documents",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShipmentDocument"
+              },
+              "example": {
+                "id": "string",
+                "name": "string",
+                "type": "string",
+                "createdAt": "string",
+                "createdBy": "string",
+                "content": "string",
+                "contentType": "string",
+                "customerId": 0,
+                "businessId": 0,
+                "orderNumber": "string",
+                "invoiceNumber": "string",
+                "vendorCode": "string",
+                "invoiceDate": "string",
+                "thirdPartyInvAmount": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDocument"
+                },
+                "example": {
+                  "id": "string",
+                  "name": "string",
+                  "type": "string",
+                  "createdAt": "string",
+                  "createdBy": "string",
+                  "content": "string",
+                  "contentType": "string",
+                  "customerId": 0,
+                  "businessId": 0,
+                  "orderNumber": "string",
+                  "invoiceNumber": "string",
+                  "vendorCode": "string",
+                  "invoiceDate": "string",
+                  "thirdPartyInvAmount": 0
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AggregateErrorsDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string",
+                  "errors": {}
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Shipment/Documents/types": {
+      "get": {
+        "tags": ["ShipmentDocuments"],
+        "summary": "Get Shipment Documents Types",
+        "description": "Get the types that documents can be.",
+        "operationId": "get-shipment-document-types",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/AccountsPayable/Documents/{documentId}": {
+      "get": {
+        "tags": ["AccountsPayableDocuments"],
+        "summary": "Gets a Accounts Payable Document.",
+        "description": "Gets a Accounts Payable Document.",
+        "operationId": "get-AccountsPayable-document",
+        "parameters": [
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "convertContentTo",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountsPayableDocument"
+                },
+                "example": {
+                  "id": "string",
+                  "name": "string",
+                  "type": "string",
+                  "createdAt": "string",
+                  "createdBy": "string",
+                  "content": "string",
+                  "contentType": "string",
+                  "vendorId": "string",
+                  "paymentNumber": "string",
+                  "paymentDate": "string",
+                  "documentNumber": "string",
+                  "mInvoice": "string",
+                  "project": "string",
+                  "shipment": "string",
+                  "po": "string",
+                  "invoiceDate": "string",
+                  "dueDate": "string",
+                  "workFlow": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["AccountsPayableDocuments"],
+        "summary": "Deletes a Accounts Payable Document.",
+        "description": "Deletes a Accounts Payable Document.",
+        "operationId": "delete-AccountsPayable-documents",
+        "parameters": [
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/AccountsPayable/Documents": {
+      "post": {
+        "tags": ["AccountsPayableDocuments"],
+        "summary": "Posts a Accounts Payable Document.",
+        "description": "Posts a Accounts Payable Document.",
+        "operationId": "post-AccountsPayable-documents",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountsPayableDocument"
+              },
+              "example": {
+                "id": "string",
+                "name": "string",
+                "type": "string",
+                "createdAt": "string",
+                "createdBy": "string",
+                "content": "string",
+                "contentType": "string",
+                "vendorId": "string",
+                "paymentNumber": "string",
+                "paymentDate": "string",
+                "documentNumber": "string",
+                "mInvoice": "string",
+                "project": "string",
+                "shipment": "string",
+                "po": "string",
+                "invoiceDate": "string",
+                "dueDate": "string",
+                "workFlow": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountsPayableDocument"
+                },
+                "example": {
+                  "id": "string",
+                  "name": "string",
+                  "type": "string",
+                  "createdAt": "string",
+                  "createdBy": "string",
+                  "content": "string",
+                  "contentType": "string",
+                  "vendorId": "string",
+                  "paymentNumber": "string",
+                  "paymentDate": "string",
+                  "documentNumber": "string",
+                  "mInvoice": "string",
+                  "project": "string",
+                  "shipment": "string",
+                  "po": "string",
+                  "invoiceDate": "string",
+                  "dueDate": "string",
+                  "workFlow": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Canada/Documents": {
+      "post": {
+        "tags": ["CanadaDocuments"],
+        "summary": "Creates a Canada document.",
+        "description": "Creates a Canada document.",
+        "operationId": "post-canada-documents",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShipmentDocument"
+              },
+              "example": {
+                "id": "string",
+                "name": "string",
+                "type": "string",
+                "createdAt": "string",
+                "createdBy": "string",
+                "content": "string",
+                "contentType": "string",
+                "customerId": 0,
+                "businessId": 0,
+                "orderNumber": "string",
+                "invoiceNumber": "string",
+                "vendorCode": "string",
+                "invoiceDate": "string",
+                "thirdPartyInvAmount": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AggregateErrorsDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string",
+                  "errors": {}
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Canada/Documents/ivan-DocType": {
+      "post": {
+        "tags": ["CanadaDocuments"],
+        "summary": "Creates a Canada document (using Ivan Document Type)",
+        "description": "Creates a Canada document using an Ivan document type directly, without mapping.",
+        "operationId": "post-canada-documents-ivan-doctype",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShipmentDocument"
+              },
+              "example": {
+                "id": "string",
+                "name": "string",
+                "type": "string",
+                "createdAt": "string",
+                "createdBy": "string",
+                "content": "string",
+                "contentType": "string",
+                "customerId": 0,
+                "businessId": 0,
+                "orderNumber": "string",
+                "invoiceNumber": "string",
+                "vendorCode": "string",
+                "invoiceDate": "string",
+                "thirdPartyInvAmount": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AggregateErrorsDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string",
+                  "errors": {}
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AccountsPayableDocument": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The identity of the document.",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "description": "The file name of the document. Should not include the extension.",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "description": "The type name of the document. Refer to /Types endpoint for valid values.",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "The datetime the document was created.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdBy": {
+            "type": "string",
+            "description": "The user or application that created the document.",
+            "nullable": true
+          },
+          "content": {
+            "type": "string",
+            "description": "The actual contents of the document.",
+            "format": "byte",
+            "nullable": true
+          },
+          "contentType": {
+            "type": "string",
+            "description": "The file type (pdf|tiff|etc) of the document.",
+            "nullable": true
+          },
+          "vendorId": {
+            "type": "string",
+            "nullable": true
+          },
+          "paymentNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "paymentDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "documentNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "mInvoice": {
+            "type": "string",
+            "nullable": true
+          },
+          "project": {
+            "type": "string",
+            "nullable": true
+          },
+          "shipment": {
+            "type": "string",
+            "nullable": true
+          },
+          "po": {
+            "type": "string",
+            "nullable": true
+          },
+          "invoiceDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "dueDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "workFlow": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AggregateErrorsDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "additionalProperties": {}
+      },
+      "RiskMgtDocument": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The identity of the document.",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "description": "The file name of the document. Should not include the extension.",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "description": "The type name of the document. Refer to /Types endpoint for valid values.",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "The datetime the document was created.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdBy": {
+            "type": "string",
+            "description": "The user or application that created the document.",
+            "nullable": true
+          },
+          "content": {
+            "type": "string",
+            "description": "The actual contents of the document.",
+            "format": "byte",
+            "nullable": true
+          },
+          "contentType": {
+            "type": "string",
+            "description": "The file type (pdf|tiff|etc) of the document.",
+            "nullable": true
+          },
+          "category": {
+            "type": "string",
+            "nullable": true
+          },
+          "agentCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "unitNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "pvoCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "date": {
+            "type": "string",
+            "description": "Date the document was generated.",
+            "nullable": true
+          },
+          "year": {
+            "type": "integer",
+            "description": "The Year the document is valid for.",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ShipmentDocument": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The identity of the document.",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "description": "The file name of the document. Should not include the extension.",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "description": "The type name of the document. Refer to /Types endpoint for valid values.",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "The datetime the document was created.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdBy": {
+            "type": "string",
+            "description": "The user or application that created the document.",
+            "nullable": true
+          },
+          "content": {
+            "type": "string",
+            "description": "The actual contents of the document.",
+            "format": "byte",
+            "nullable": true
+          },
+          "contentType": {
+            "type": "string",
+            "description": "The file type (pdf|tiff|etc) of the document.",
+            "nullable": true
+          },
+          "customerId": {
+            "type": "integer",
+            "description": "The Atlas customerId of the document.",
+            "format": "int32",
+            "nullable": true
+          },
+          "businessId": {
+            "type": "integer",
+            "description": "The Atlas businessId of the document.",
+            "format": "int32",
+            "nullable": true
+          },
+          "orderNumber": {
+            "type": "string",
+            "description": "The Atlas order number (registration Number) of the document.",
+            "nullable": true
+          },
+          "invoiceNumber": {
+            "type": "string",
+            "description": "The third party invoiceNumber of the document.",
+            "nullable": true
+          },
+          "vendorCode": {
+            "type": "string",
+            "description": "The code for the vendor of the document.",
+            "nullable": true
+          },
+          "invoiceDate": {
+            "type": "string",
+            "description": "The date the document has been invoiced for.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "thirdPartyInvAmount": {
+            "type": "number",
+            "description": "The amount the document has been invoiced for.",
+            "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "RiskMgtDocuments"
+    },
+    {
+      "name": "ShipmentDocuments"
+    },
+    {
+      "name": "AccountsPayableDocuments"
+    },
+    {
+      "name": "CanadaDocuments"
+    }
+  ]
+}

@@ -1,0 +1,657 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Yembo",
+    "description": "Service to expose Atlas.Yembo methods",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/Yembo/v1"
+    }
+  ],
+  "paths": {
+    "/Companies": {
+      "get": {
+        "tags": ["Companies"],
+        "summary": "Get Companies",
+        "description": "Gets the Companies.",
+        "operationId": "get-companies",
+        "responses": {
+          "200": {
+            "description": "The companies for the user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CompanyModel"
+                  }
+                },
+                "example": [
+                  {
+                    "key": "string",
+                    "name": "string",
+                    "phone": "string",
+                    "email": "string",
+                    "agentCode": "string",
+                    "streetAddress": "string",
+                    "streetAddress2": "string",
+                    "city": "string",
+                    "state": "string",
+                    "zip": "string",
+                    "country": "string"
+                  }
+                ]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Moves/{moveId}": {
+      "get": {
+        "tags": ["Moves"],
+        "summary": "Get Move",
+        "description": "Gets the move for moveId",
+        "operationId": "get-move",
+        "parameters": [
+          {
+            "name": "moveId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The move for the customer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveModel"
+                },
+                "example": {
+                  "id": 0,
+                  "createdBy": "string",
+                  "createdAt": "string",
+                  "loadDate": "string",
+                  "company": {
+                    "key": "string",
+                    "name": "string",
+                    "phone": "string",
+                    "email": "string",
+                    "agentCode": "string",
+                    "streetAddress": "string",
+                    "streetAddress2": "string",
+                    "city": "string",
+                    "state": "string",
+                    "zip": "string",
+                    "country": "string"
+                  },
+                  "customer": {
+                    "atlasCustomerId": 0,
+                    "firstName": "string",
+                    "lastName": "string",
+                    "emailAddress": "string",
+                    "phoneNumber": "string",
+                    "aaaMembershipNumber": "string",
+                    "nationalAccountName": "string",
+                    "nationalAccountEntityCode": "string"
+                  },
+                  "locations": [
+                    {
+                      "type": "string",
+                      "streetAddress": "string",
+                      "streetAddress2": "string",
+                      "city": "string",
+                      "state": "string",
+                      "zip": "string",
+                      "country": "string",
+                      "bedrooms": 0
+                    }
+                  ],
+                  "notes": "string",
+                  "businessId": 0,
+                  "leadId": 0,
+                  "moveKey": "string",
+                  "moveUrl": "string",
+                  "invitationUrl": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Moves": {
+      "get": {
+        "tags": ["Moves"],
+        "summary": "Get Moves",
+        "description": "Gets the moves that matches all query parameters.",
+        "operationId": "get-moves",
+        "parameters": [
+          {
+            "name": "BusinessId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "LeadId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "MoveKey",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The move for the customer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveModel"
+                },
+                "example": {
+                  "id": 0,
+                  "createdBy": "string",
+                  "createdAt": "string",
+                  "loadDate": "string",
+                  "company": {
+                    "key": "string",
+                    "name": "string",
+                    "phone": "string",
+                    "email": "string",
+                    "agentCode": "string",
+                    "streetAddress": "string",
+                    "streetAddress2": "string",
+                    "city": "string",
+                    "state": "string",
+                    "zip": "string",
+                    "country": "string"
+                  },
+                  "customer": {
+                    "atlasCustomerId": 0,
+                    "firstName": "string",
+                    "lastName": "string",
+                    "emailAddress": "string",
+                    "phoneNumber": "string",
+                    "aaaMembershipNumber": "string",
+                    "nationalAccountName": "string",
+                    "nationalAccountEntityCode": "string"
+                  },
+                  "locations": [
+                    {
+                      "type": "string",
+                      "streetAddress": "string",
+                      "streetAddress2": "string",
+                      "city": "string",
+                      "state": "string",
+                      "zip": "string",
+                      "country": "string",
+                      "bedrooms": 0
+                    }
+                  ],
+                  "notes": "string",
+                  "businessId": 0,
+                  "leadId": 0,
+                  "moveKey": "string",
+                  "moveUrl": "string",
+                  "invitationUrl": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      },
+      "post": {
+        "tags": ["Moves"],
+        "summary": "Post Move",
+        "description": "Post the move.",
+        "operationId": "post-move",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveModel"
+              },
+              "example": {
+                "id": 0,
+                "createdBy": "string",
+                "createdAt": "string",
+                "loadDate": "string",
+                "company": {
+                  "key": "string",
+                  "name": "string",
+                  "phone": "string",
+                  "email": "string",
+                  "agentCode": "string",
+                  "streetAddress": "string",
+                  "streetAddress2": "string",
+                  "city": "string",
+                  "state": "string",
+                  "zip": "string",
+                  "country": "string"
+                },
+                "customer": {
+                  "atlasCustomerId": 0,
+                  "firstName": "string",
+                  "lastName": "string",
+                  "emailAddress": "string",
+                  "phoneNumber": "string",
+                  "aaaMembershipNumber": "string",
+                  "nationalAccountName": "string",
+                  "nationalAccountEntityCode": "string"
+                },
+                "locations": [
+                  {
+                    "type": "string",
+                    "streetAddress": "string",
+                    "streetAddress2": "string",
+                    "city": "string",
+                    "state": "string",
+                    "zip": "string",
+                    "country": "string",
+                    "bedrooms": 0
+                  }
+                ],
+                "notes": "string",
+                "businessId": 0,
+                "leadId": 0,
+                "moveKey": "string",
+                "moveUrl": "string",
+                "invitationUrl": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The created move.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveModel"
+                },
+                "example": {
+                  "id": 0,
+                  "createdBy": "string",
+                  "createdAt": "string",
+                  "loadDate": "string",
+                  "company": {
+                    "key": "string",
+                    "name": "string",
+                    "phone": "string",
+                    "email": "string",
+                    "agentCode": "string",
+                    "streetAddress": "string",
+                    "streetAddress2": "string",
+                    "city": "string",
+                    "state": "string",
+                    "zip": "string",
+                    "country": "string"
+                  },
+                  "customer": {
+                    "atlasCustomerId": 0,
+                    "firstName": "string",
+                    "lastName": "string",
+                    "emailAddress": "string",
+                    "phoneNumber": "string",
+                    "aaaMembershipNumber": "string",
+                    "nationalAccountName": "string",
+                    "nationalAccountEntityCode": "string"
+                  },
+                  "locations": [
+                    {
+                      "type": "string",
+                      "streetAddress": "string",
+                      "streetAddress2": "string",
+                      "city": "string",
+                      "state": "string",
+                      "zip": "string",
+                      "country": "string",
+                      "bedrooms": 0
+                    }
+                  ],
+                  "notes": "string",
+                  "businessId": 0,
+                  "leadId": 0,
+                  "moveKey": "string",
+                  "moveUrl": "string",
+                  "invitationUrl": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string",
+                  "errors": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Locations/Type": {
+      "get": {
+        "tags": ["Locations"],
+        "summary": "Get Location Types",
+        "description": "Gets the types of location.",
+        "operationId": "get-location-types",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CompanyModel": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "agentCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "streetAddress": {
+            "type": "string",
+            "nullable": true
+          },
+          "streetAddress2": {
+            "type": "string",
+            "nullable": true
+          },
+          "city": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "nullable": true
+          },
+          "zip": {
+            "type": "string",
+            "nullable": true
+          },
+          "country": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CustomerModel": {
+        "type": "object",
+        "properties": {
+          "atlasCustomerId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "firstName": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastName": {
+            "type": "string",
+            "nullable": true
+          },
+          "emailAddress": {
+            "type": "string",
+            "nullable": true
+          },
+          "phoneNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "aaaMembershipNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "nationalAccountName": {
+            "type": "string",
+            "nullable": true
+          },
+          "nationalAccountEntityCode": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LocationModel": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "streetAddress": {
+            "type": "string",
+            "nullable": true
+          },
+          "streetAddress2": {
+            "type": "string",
+            "nullable": true
+          },
+          "city": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "nullable": true
+          },
+          "zip": {
+            "type": "string",
+            "nullable": true
+          },
+          "country": {
+            "type": "string",
+            "nullable": true
+          },
+          "bedrooms": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MoveModel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "createdBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "loadDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "company": {
+            "$ref": "#/components/schemas/CompanyModel"
+          },
+          "customer": {
+            "$ref": "#/components/schemas/CustomerModel"
+          },
+          "locations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LocationModel"
+            },
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "businessId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "leadId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "moveKey": {
+            "type": "string",
+            "nullable": true
+          },
+          "moveUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "invitationUrl": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ValidationProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ]
+}
