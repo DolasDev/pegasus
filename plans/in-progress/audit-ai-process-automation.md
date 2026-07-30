@@ -4,6 +4,13 @@
 > **Branch:** `worktree-agent-a865321e57100f5fc` (audit batch, Unit 12)
 > **Goal:** Add AI where it provides a quality gate a solo dev can't provide alone (PR review, CI-failure triage, docs-drift detection), automate the plans-lifecycle hygiene that today runs on pure discipline, and cut ceremony that adds no value (CODEOWNERS, heavyweight process gates).
 
+> **Cleanup audit 2026-07-30 — OPEN, untouched.** None of this plan's seven
+> files exist and `git log --all` shows none ever did; the premise (zero AI in
+> GitHub CI) is still literally true. User-deferred 2026-06-11. The cheap
+> non-AI pickup is Phase 1: consolidate the legacy `plans/done`, `plans/archive`
+> and `plans/archived` dirs into `plans/completed/` and add
+> `.github/PULL_REQUEST_TEMPLATE.md`.
+
 ## Context
 
 ### What exists today (verified 2026-06-10)

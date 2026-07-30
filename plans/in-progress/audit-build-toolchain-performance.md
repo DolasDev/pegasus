@@ -2,6 +2,14 @@
 
 > **Status: SCOPED** — 2026-06-10
 
+> **Cleanup audit 2026-07-30 — PARTIAL.** Phases 1-2 are on `main` (pre-push
+> `--affected` scoping, shellcheck moved to lint-staged, eslint rule pruning,
+> Vercel remote cache + signature, Prisma typecheck input guard). **Remaining:**
+> Phase 3 — `lint` scripts for `packages/api-http`, `packages/auth`,
+> `packages/theme` (all silently skipped by `turbo run lint` today) and the
+> `eslint-suppressions.json` ratchet replacing the `driver-planning` override
+> block; Phase 4 — the ~727-violation `no-explicit-any` burn-down.
+
 Audit unit: Turbo pipeline, git hooks, lint toolchain, local feedback-loop speed.
 Out of scope (owned by other units): CI workflow YAML edits (Unit 1 — except the remote-cache env vars specified below, which span both), vitest config consolidation (Unit 8), Node version pinning / `.nvmrc` (Unit 7).
 

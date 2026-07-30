@@ -2,6 +2,16 @@
 
 > **Status: SCOPED** — 2026-06-10
 
+> **Cleanup audit 2026-07-30 — PARTIAL.** Phases 1-2 shipped completely
+> (skip-guard floors, browser caches, `e2e:remote` + README front door, served
+> tenant-web build with the `MODE === 'e2e'` auth seam, three browser specs).
+> **Remaining:** all of Phase 3 (Neon baseline-branch reset in the staging gate
+> — blocked on `plans/todo/neon-branches-for-e2e-isolation.md`; the `@smoke`
+> retag) and all of Phase 4 (flake policy + `@flaky` quarantine, remote-mode
+> `retain-on-failure` traces). **Rescope 4.1:** its nightly-failure premise is
+> gone — #510 removed the QA longhaul cron, so the workflow is
+> `workflow_dispatch`-only.
+
 Unit 9 of the CI/CD + devops audit batch. Scope: the Playwright e2e suite
 (`apps/e2e`), its three execution modes, the CI jobs that run it, and the
 existing `plans/todo/neon-branches-for-e2e-isolation.md` plan.

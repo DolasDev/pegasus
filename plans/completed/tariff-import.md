@@ -127,7 +127,7 @@ list/status ► GET /api/admin/tariffs, GET /api/admin/tariffs/:id
     plus a table of existing versions with STATUS badges (STAGED/ACTIVE/SUPERSEDED) from `listTariffVersions`,
     so an operator sees what's live before flipping.
 - [ ] Wire routing: add a `createRoute({ getParentRoute: () => authLayout, path: '/tariffs', component:
-    TariffsPage })` in `apps/admin-web/src/router.tsx` (into `authLayout.addChildren([...])`), and a
+  TariffsPage })` in `apps/admin-web/src/router.tsx` (into `authLayout.addChildren([...])`), and a
       `NAV_ITEMS` entry in `apps/admin-web/src/routes/_auth.tsx`.
 - [ ] Component test for the wizard (RTL): pick fixture → preview asserts counts/warnings → import calls
       the client with the parsed doc → activate calls with the returned id.

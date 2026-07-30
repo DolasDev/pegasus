@@ -73,6 +73,22 @@ We use a **self-managed CA** (no ACM Private CA, no monthly cost). Ops owns one 
 
 > **Staging (dolios) and prod are both wired** — staging 2026-06-21, prod 2026-06-26. Each env's full SSM param set (per `aws ssm get-parameters-by-path --path /pegasus/<env>/ --recursive`): `outbox-relay-ca-key` (SecureString), `outbox-relay-ca-pem` (String), and — once the renewal Lambda has run — `outbox-relay-leaf-pem` (String) + `outbox-relay-leaf-key` (SecureString). The public CA cert is also committed at `packages/infra/config/outbox-relay/<env>-ca.pem`. To do another env, repeat §A–B with `<env>` and account (staging `248812875460`, prod `331145994639`, region `us-east-1`).
 
+> **Cleanup audit 2026-07-30 — DO NOT ARCHIVE, but it needs a rewrite.** This
+> is an ops runbook, not a phased plan, and it is referenced from code:
+> `packages/infra/lib/stacks/outbox-relay-stack.ts:29` and
+> `packages/infra/bin/app.ts:202` both cite this path, so moving the file
+> dangles them. Its **SNS-FIFO half is retired** — #358 cut the relay over to
+> EventBridge (see `plans/completed/pegii-eventbridge-integration.md`), so §1
+> `TopicArn`, §2's `sns:Publish` + KMS-for-SNS grants, §4's "arrives on the
+> subscriber SQS queue" smoke test, §5's `NumberOfNotificationsFailed` alarm
+> and prereq P1 all describe a path that no longer exists. The \*\*Roles Anywhere
+>
+> - leaf-cert renewal half is current and correct.\*\* Follow-ups: rewrite the
+>   publish-target sections for `events:PutEvents`, drop the two dead doc links
+>   (`aws-outbox-sns-sqs-handoff.md` and
+>   `plans/in-progress/shipment-outbox-event-publishing.md` — neither exists),
+>   and consider relocating to `docs/` with those two infra comments updated.
+
 Examples use **openssl** (EC P-256, what staging was built with).
 
 #### A. CA — one-time, on a trusted admin machine (not the relay host)

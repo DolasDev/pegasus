@@ -2,6 +2,14 @@
 
 > **Status: SCOPED** — 2026-06-10
 
+> **Cleanup audit 2026-07-30 — PARTIAL, nearly done.** Phases 1-3 all shipped
+> and were hardened past the plan (expo-doctor guard, job timeouts, Node 24 via
+> `.nvmrc`, composite setup action, Playwright + Betterleaks caches with a
+> SHA-256 gate, audit-ci moved to Lint, `dorny/paths-filter` docs-skip).
+> **Remaining:** Phase 4 only — the optional, user-deferred `ci-triage.yml` AI
+> failure triage. Archive this once Phase 4 is dropped or folded into
+> `audit-ai-process-automation.md`, which already owns the deferral.
+
 ## Context
 
 Audit of `.github/workflows/ci.yml` (246 lines, 5 jobs) and `audit-ci.jsonc`, with measured timings from recent runs (`gh run list --workflow ci.yml`).

@@ -2,6 +2,14 @@
 
 > **Status: SCOPED** — 2026-06-10
 
+> **Cleanup audit 2026-07-30 — PARTIAL, one small item left.** Phases 1-4 all
+> shipped (`20486c3d` + `90d8ccfc`): `.nvmrc` 24.16.0 + `engine-strict`, the
+> seed rewrite and its test, `scripts/setup.sh` one-command bootstrap, and
+> `npm run doctor`. **Remaining:** Phase 5 only — record the four deliberate
+> non-actions (no `.editorconfig`, `create-admin-user.ts` unchanged,
+> `docker-compose.temporal.yml` unchanged, no AI in local-dev tooling) in
+> `dolas/agents/project/DECISIONS.md`. Archive as soon as that note is written.
+
 Unit 7 of the lean-delivery audit batch. Scope: bootstrap (`scripts/setup.sh`), DB seeding, env files, Docker compose stacks, Node version management. Out of scope (owned by other units): vitest/test infra (Unit 8), e2e (Unit 9), turbo/hooks (Unit 10), Python toolchain (Unit 11).
 
 ## Context

@@ -43,10 +43,8 @@ Availability card); narrowing the ID list (we have no read access to
 
 1. `apps/api/src/handlers/longhaul-cloud/driver-filter.ts`
    - Replace the single `longhaulDriverFilter(prefix)` export with two named
-     predicates that say what they are for:
-     - `activeDriverFilter(prefix)` → `ACTIVE = 'Y'` — selectable drivers
-       (typeahead + reference-data).
-     - `availabilityDriverFilter(prefix)` → `ACTIVE = 'Y' AND DRIVER_ID NOT IN
+     predicates that say what they are for: - `activeDriverFilter(prefix)` → `ACTIVE = 'Y'` — selectable drivers
+     (typeahead + reference-data). - `availabilityDriverFilter(prefix)` → `ACTIVE = 'Y' AND DRIVER_ID NOT IN
 (…)` — the Availability card only, composed from `activeDriverFilter`.
    - Rewrite the header comment: it currently asserts the two lists MUST match.
      Record the split and why, and note that the sentinel range is a

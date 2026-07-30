@@ -61,7 +61,7 @@ placeholder/renamed ids like `demo_partner` stop living forever in
       lineage delete scoped to one tenant, other scopes untouched; dependent count
       excludes the caller and non-PUBLISHED rows.
 - [x] `src/handlers/integration-validation/config.ts` — `DELETE
-    /integrations/:integrationId/config`.
+  /integrations/:integrationId/config`.
 - [x] `src/handlers/integration-validation/config.test.ts` — feature-disabled 403,
       missing-permission 403, no-config 404, platform→GLOBAL delete, tenant→TENANT
       delete, `409 DEPENDENTS_EXIST` + `?force=true` override, overlay refreshed.
@@ -72,11 +72,11 @@ placeholder/renamed ids like `demo_partner` stop living forever in
 ### SDK — packages/workflows-sdk-python
 
 - [x] `pegasus_workflows/api.py` — `delete_integration_config(integration_id, *,
-    force=False) -> dict` (returns `{integrationId, visibility, deleted}`), with
+  force=False) -> dict` (returns `{integrationId, visibility, deleted}`), with
       `_capture_mutation` dry-run support and a docstring covering the built-in
       fallback + the dependents guard.
 - [x] `pegasus_workflows/cli/integration_config.py` — `integration-config delete
-    <id> [--force] [--yes]`; **interactive confirmation** (irreversible) unless
+  <id> [--force] [--yes]`; **interactive confirmation** (irreversible) unless
       `--yes`; a `409` prints the dependents count and the `--force` hint.
 - [x] `pegasus_workflows/cli/mcp_server.py` — add the delete/retire flow to the
       `pegasus://reference/integration-config` resource and the m2m surface

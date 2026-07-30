@@ -2,6 +2,17 @@
 
 > **Status: SCOPED** — 2026-06-10
 
+> **Cleanup audit 2026-07-30 — PARTIAL; the "SCOPED" status above is STALE.**
+> Phases 1-3 are all on `main` via `514d51b1`, #295, #297 and #301 (CORS
+> allowlist both layers, `SKIP_AUTH` prod fail-fast, API GW throttling,
+> ResponseHeadersPolicy on all three distributions, CSP report-only,
+> db-access-guard test, RLS-deferred decision) — the unchecked boxes in those
+> phases are wrong. **Remaining:** Phase 4 ops follow-ups only — re-chase
+> Service Quotas L-B99A9384 (Lambda concurrency still capped at 10), WAF on the
+> API distribution (deliberately deferred), a path-filtered `/security-review`
+> CI step, and the one genuine open decision: gate `/docs` + `/openapi.json`
+> behind `EXPOSE_API_DOCS` or explicitly accept them as public.
+
 Audit unit 6 of the lean-delivery audit batch. Scope: the **running** API + frontends' security posture. Explicitly out of scope (owned by sibling units/plans): SAST/dependency scanning/SBOM (Unit 5), observability (Unit 4), workflow-sandbox security (already scoped in `plans/todo/workflows-phase3-sandboxed-tenant-code-and-triggers.md`), and the Cognito/jose/Cedar auth chain itself — which was spot-checked and is solid (see Context §5).
 
 ## Context

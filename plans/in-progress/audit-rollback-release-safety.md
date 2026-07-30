@@ -7,6 +7,13 @@
 > `plans/todo/neon-branches-for-e2e-isolation.md`) and 2c AI migration review (deferred
 > under the AI-automation hold). Keep in-progress until 2a/2c land or are dropped. — updated 2026-06-13
 
+> **Cleanup audit 2026-07-30 — PARTIAL; the status header above is accurate.**
+> Phase 1 (1a-1d), 2b and all of Phase 3 verified on `main`. **Remaining:** 2a
+> the automated Neon pre-migration safety branch (still blocked on
+> `plans/todo/neon-branches-for-e2e-isolation.md`, itself untouched) and 2c the
+> AI migration-safety review — its slot is marked by a placeholder comment at
+> `.github/workflows/ci.yml:240`.
+
 Unit 3 of the CI/CD + DevOps audit batch. Scope: what happens when a deploy or
 migration goes BAD — the detection-to-recovery path for the API Lambda, both
 frontends, the Temporal worker, and the Neon database. Out of scope (owned by
