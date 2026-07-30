@@ -413,6 +413,245 @@ describe('POST /integrations/:id/call-external', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Azure API Management partners (docs/atlas-world-group-api).
+//
+// An APIM gateway authenticates with a NAMED HEADER rather than a bearer, and
+// Atlas additionally declares `On-Behalf-Of` on 142 of its 255 operations.
+// Neither was expressible before, so no Atlas operation was callable at all.
+// ---------------------------------------------------------------------------
+describe('call-external — APIM-shaped partners', () => {
+  /** Config for an `AUTH_MODE=apikey` integration (the Atlas shape). */
+  const APIKEY_CONFIG: Record<string, { value?: string | null; valueCiphertext?: string | null }> =
+    {
+      'CONFIG:BASE_URL': {
+        value: 'https://qa-azapi.atlasworldgroup.com/estimating/v2',
+        valueCiphertext: null,
+      },
+      'CONFIG:AUTH_MODE': { value: 'apikey', valueCiphertext: null },
+      'SECRET:API_KEY': { value: null, valueCiphertext: 'subkey-cipher' },
+    }
+
+  const useApiKeyConfig = (
+    extra: Record<string, { value?: string | null; valueCiphertext?: string | null }> = {},
+  ) => {
+    const cfg = { ...APIKEY_CONFIG, ...extra }
+    mockFindByKey.mockImplementation(
+      async (kind: string, _group: string, key: string) => cfg[`${kind}:${key}`] ?? null,
+    )
+    mockDecrypt.mockImplementation(async (cipher: string) =>
+      cipher === 'subkey-cipher' ? 'sub-key-abc123' : 'other-secret',
+    )
+    mockFetch.mockImplementation(async () => callRes())
+  }
+
+  const lastFetchHeaders = (): Record<string, string> =>
+    (mockFetch.mock.calls.at(-1)?.[1] as { headers: Record<string, string> }).headers
+
+  it('sends the subscription key as Ocp-Apim-Subscription-Key by default', async () => {
+    useApiKeyConfig()
+    const res = await buildApp().request(ROUTE, post({ method: 'GET', path: '/Estimating/1' }))
+    expect(res.status).toBe(200)
+    expect(lastFetchHeaders()['Ocp-Apim-Subscription-Key']).toBe('sub-key-abc123')
+    // apikey mode must NOT also set an Authorization header.
+    expect(lastFetchHeaders()['Authorization']).toBeUndefined()
+  })
+
+  it('honors a custom API_KEY_HEADER name from config', async () => {
+    useApiKeyConfig({ 'CONFIG:API_KEY_HEADER': { value: 'X-Api-Key', valueCiphertext: null } })
+    await buildApp().request(ROUTE, post({ method: 'GET', path: '/Estimating/1' }))
+    expect(lastFetchHeaders()['X-Api-Key']).toBe('sub-key-abc123')
+  })
+
+  it('400s when API_KEY_HEADER config names a reserved header', async () => {
+    // Otherwise `API_KEY_HEADER=Authorization` would reintroduce the very
+    // override the reserved list exists to prevent, via the config back door.
+    useApiKeyConfig({ 'CONFIG:API_KEY_HEADER': { value: 'Authorization', valueCiphertext: null } })
+    const res = await buildApp().request(ROUTE, post({ method: 'GET', path: '/x' }))
+    expect(res.status).toBe(400)
+    expect(String((await json(res))['error'])).toMatch(/reserved/i)
+  })
+
+  it('404s when the api-key secret is not set', async () => {
+    const cfg = { ...APIKEY_CONFIG }
+    delete cfg['SECRET:API_KEY']
+    mockFindByKey.mockImplementation(
+      async (kind: string, _group: string, key: string) => cfg[`${kind}:${key}`] ?? null,
+    )
+    const res = await buildApp().request(ROUTE, post({ method: 'GET', path: '/x' }))
+    expect(res.status).toBe(404)
+  })
+
+  it('passes a literal `headers` entry through (On-Behalf-Of)', async () => {
+    useApiKeyConfig()
+    await buildApp().request(
+      ROUTE,
+      post({ method: 'GET', path: '/Estimating/1', headers: { 'On-Behalf-Of': 'jdoe' } }),
+    )
+    expect(lastFetchHeaders()['On-Behalf-Of']).toBe('jdoe')
+  })
+
+  it('resolves a `secretHeaders` entry from the encrypted store', async () => {
+    useApiKeyConfig({ 'SECRET:PARTNER_TOKEN': { value: null, valueCiphertext: 'ptok-cipher' } })
+    mockDecrypt.mockImplementation(async (cipher: string) =>
+      cipher === 'subkey-cipher' ? 'sub-key-abc123' : 'resolved-partner-token',
+    )
+    await buildApp().request(
+      ROUTE,
+      post({ method: 'GET', path: '/x', secretHeaders: { 'X-Partner-Token': 'PARTNER_TOKEN' } }),
+    )
+    expect(lastFetchHeaders()['X-Partner-Token']).toBe('resolved-partner-token')
+  })
+
+  it('404s (naming the key) when a secretHeaders secret is unset', async () => {
+    useApiKeyConfig()
+    const res = await buildApp().request(
+      ROUTE,
+      post({ method: 'GET', path: '/x', secretHeaders: { 'X-K': 'NO_SUCH_SECRET' } }),
+    )
+    expect(res.status).toBe(404)
+    expect(String((await json(res))['error'])).toContain('NO_SUCH_SECRET')
+  })
+
+  it('400s on a reserved header, before any config read', async () => {
+    // The guard that stops a workflow from overriding AUTH_MODE's credential.
+    useApiKeyConfig()
+    const res = await buildApp().request(
+      ROUTE,
+      post({ method: 'GET', path: '/x', headers: { Authorization: 'Bearer attacker' } }),
+    )
+    expect(res.status).toBe(400)
+    expect(String((await json(res))['error'])).toMatch(/reserved/i)
+    expect(mockFindByKey).not.toHaveBeenCalled()
+  })
+
+  it('400s on a CRLF-bearing header value (request splitting)', async () => {
+    useApiKeyConfig()
+    const res = await buildApp().request(
+      ROUTE,
+      post({ method: 'GET', path: '/x', headers: { 'X-A': 'ok\r\nX-Evil: 1' } }),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('returns the full response header set, not just content-type', async () => {
+    useApiKeyConfig()
+    mockFetch.mockImplementation(async () => {
+      const h = new Headers({
+        'content-type': 'application/json',
+        'x-ms-request-id': 'req-42',
+        'ocp-apim-trace-location': 'https://trace.example/1',
+      })
+      h.append('set-cookie', 'session=leak')
+      return {
+        ok: true,
+        status: 200,
+        text: async () => '{}',
+        headers: h,
+      } as unknown as Response
+    })
+    const res = await buildApp().request(ROUTE, post({ method: 'GET', path: '/x' }))
+    const headers = ((await json(res))['data'] as JsonBody)['headers'] as Record<string, string>
+    expect(headers['x-ms-request-id']).toBe('req-42')
+    expect(headers['ocp-apim-trace-location']).toBe('https://trace.example/1')
+    expect(headers['set-cookie']).toBeUndefined()
+  })
+})
+
+describe('call-external — timeout and throttling', () => {
+  const NO_AUTH_CONFIG: Record<string, { value?: string | null; valueCiphertext?: string | null }> =
+    {
+      'CONFIG:BASE_URL': {
+        value: 'https://qa-azapi.atlasworldgroup.com/agents/v1',
+        valueCiphertext: null,
+      },
+      'CONFIG:AUTH_MODE': { value: 'none', valueCiphertext: null },
+    }
+
+  const useConfig = (
+    extra: Record<string, { value?: string | null; valueCiphertext?: string | null }> = {},
+  ) => {
+    const cfg = { ...NO_AUTH_CONFIG, ...extra }
+    mockFindByKey.mockImplementation(
+      async (kind: string, _group: string, key: string) => cfg[`${kind}:${key}`] ?? null,
+    )
+  }
+
+  /** A 429 carrying `Retry-After: 0` so the test does not actually sleep. */
+  const throttled = (): Response =>
+    ({
+      ok: false,
+      status: 429,
+      text: async () => 'rate limited',
+      headers: new Headers({ 'content-type': 'text/plain', 'retry-after': '0' }),
+    }) as unknown as Response
+
+  it('504 UPSTREAM_TIMEOUT when the partner does not respond', async () => {
+    useConfig()
+    mockFetch.mockImplementation(async () => {
+      const err = new Error('The operation was aborted due to timeout')
+      err.name = 'TimeoutError'
+      throw err
+    })
+    const res = await buildApp().request(ROUTE, post({ method: 'GET', path: '/Agents' }))
+    expect(res.status).toBe(504)
+    expect((await json(res))['code']).toBe('UPSTREAM_TIMEOUT')
+  })
+
+  it('retries a 429 on an idempotent GET and reports the attempt count', async () => {
+    useConfig()
+    mockFetch
+      .mockImplementationOnce(async () => throttled())
+      .mockImplementation(async () => callRes())
+    const res = await buildApp().request(ROUTE, post({ method: 'GET', path: '/Agents' }))
+    expect(res.status).toBe(200)
+    const data = (await json(res))['data'] as JsonBody
+    expect(data['status']).toBe(200)
+    expect(data['attempts']).toBe(2)
+  })
+
+  it('does NOT retry a 429 on a POST — a repeat could double-write at the partner', async () => {
+    useConfig()
+    mockFetch.mockImplementation(async () => throttled())
+    const res = await buildApp().request(
+      ROUTE,
+      post({ method: 'POST', path: '/Agents', body: { a: 1 } }),
+    )
+    const data = (await json(res))['data'] as JsonBody
+    expect(data['status']).toBe(429)
+    expect(data['attempts']).toBe(1)
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries a POST the caller declared non-mutating', async () => {
+    useConfig()
+    mockFetch
+      .mockImplementationOnce(async () => throttled())
+      .mockImplementation(async () => callRes())
+    const res = await buildApp().request(
+      ROUTE,
+      post({ method: 'POST', path: '/report', body: {}, mutating: false }),
+    )
+    expect(((await json(res))['data'] as JsonBody)['attempts']).toBe(2)
+  })
+
+  it('stops after MAX_RETRIES and returns the last 429', async () => {
+    useConfig({ 'CONFIG:MAX_RETRIES': { value: '1', valueCiphertext: null } })
+    mockFetch.mockImplementation(async () => throttled())
+    const res = await buildApp().request(ROUTE, post({ method: 'GET', path: '/Agents' }))
+    const data = (await json(res))['data'] as JsonBody
+    expect(data['status']).toBe(429)
+    expect(data['attempts']).toBe(2) // initial + 1 retry
+  })
+
+  it('does not retry a 500 — usually a deterministic partner bug', async () => {
+    useConfig()
+    mockFetch.mockImplementation(async () => callRes(500, { error: 'boom' }))
+    const res = await buildApp().request(ROUTE, post({ method: 'GET', path: '/Agents' }))
+    expect(((await json(res))['data'] as JsonBody)['attempts']).toBe(1)
+  })
+})
+
 describe('resolveOutboundUrl', () => {
   it('joins base + path without dropping the base path segment', () => {
     expect(resolveOutboundUrl('https://openapi.sirva.com/ms', '/OM/m1/Get')).toBe(

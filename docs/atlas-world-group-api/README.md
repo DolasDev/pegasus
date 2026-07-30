@@ -120,7 +120,10 @@ subscriber URL. Any Pegasus↔Atlas integration is **polling plus our own outbou
 
 Evidence cited against `main` as of 2026-07-30.
 
-### Blocking — 255 of 255 operations are unreachable today
+### Blocking — CLOSED (PR: Atlas APIM enablement)
+
+> **Status: fixed.** All five gaps below were closed together. What follows is kept as
+> the record of what was wrong and why, since it is the justification for the design.
 
 **G1. No API-key / custom-header auth mode.**
 `AUTH_MODE` accepts exactly `oauth2_client_credentials | bearer | none`
@@ -145,7 +148,7 @@ There is a workaround: Atlas also accepts `?subscription-key=`, and we do suppor
 itself (defeating the entire "credentials never touch workflow code" design of this endpoint) and
 puts a live credential into URLs and logs.
 
-### Significant
+### Significant — partially closed
 
 **G3. `multipart/form-data` cannot be sent.** Bodies are always `JSON.stringify` +
 `Content-Type: application/json` (`integration-call.ts:304,310`). Blocks the 12 `assetmanagement-v1`
@@ -157,14 +160,13 @@ fit for our blob mechanism — this is the one place our design and theirs line 
 scanned BOLs, claims photo sets and trailer control sheets will exceed 5 MB, and base64 inflates by
 ~33% on top.
 
-**G5. Response headers are discarded.** Only `content-type` is returned
-(`integration-call.ts:355,367`). Loses `Retry-After` (APIM throttles per subscription by policy and
+**G5. Response headers are discarded — CLOSED.** Only `content-type` was returned. Loses `Retry-After` (APIM throttles per subscription by policy and
 429 is a normal signal), `x-ms-request-id` / `Ocp-Apim-Trace-Location` (the only identifiers Atlas
 support can act on), and `ETag`.
 
-**G6. No 429/5xx retry, no backoff, no timeout.** The only retry in the path is a single OAuth-401
-re-mint (`integration-call.ts:316-323`) — dead code for Atlas, which uses no OAuth. `fetch` is called
-with no `AbortSignal`, so a hung partner burns the Lambda timeout.
+**G6. No 429/5xx retry, no backoff, no timeout — CLOSED.** The only retry in the path was a single
+OAuth-401 re-mint — dead code for Atlas, which uses no OAuth — and `fetch` was called with no
+`AbortSignal`, so a hung partner burned the whole Lambda budget.
 
 ### Semantic layer
 
@@ -217,24 +219,32 @@ Worth recording, because these were live concerns before the specs were readable
 
 ---
 
-## 4. Recommended sequencing
+## 4. Sequencing — status
 
-1. **G1 + G2 together — the only true blocker.** Add an `apikey` auth mode plus a secret-sourced
-   header passthrough on `call-external`: header _names_ from CONFIG, header _values_ resolved from
-   the encrypted SECRET store so the key never enters workflow code, and an allowlist for non-secret
-   per-call headers like `On-Behalf-Of`. This alone takes Atlas reachability from 0 → ~all 255
-   operations. Fix the `deliver-to-external` plaintext-config asymmetry in the same change.
-2. **G5 + G6** — return the full response header map, add a request timeout, and add
-   `Retry-After`-aware retry on 429/503. Small, and needed before any polling loop runs in anger.
-3. **G3 + G4** — multipart support and a streaming path above 5 MB. Scope depends on whether we
-   actually need `assetmanagement-v1` and large documents; defer until the business case is known.
-4. **G7** — new floors, one per domain we commit to. `estimate/quote` and `survey_inventory` first;
-   they're the largest surface and the ones Atlas's own integration story centers on.
-5. **G8** — revisit only if a concrete mapping proves unexpressible.
+1. ✅ **G1 + G2 + G2b — DONE.** `AUTH_MODE=apikey` sends the `API_KEY` secret as the header named by
+   config `API_KEY_HEADER` (default `Ocp-Apim-Subscription-Key`). Both `call-external` and
+   `deliver-to-external` now take `headers` (literal, non-secret) and `secretHeaders` (header name →
+   SECRET key name, resolved server-side so the credential never enters workflow code).
+   `Authorization`/`Host`/`Content-Length`/`Content-Type` are reserved and rejected, header names
+   must be RFC 7230 tokens, and CR/LF values are refused.
+   **Atlas reachability: 0 → 243 of 255 operations** — the 12 remaining are the multipart ops in G3.
+2. ✅ **G5 + G6 — DONE.** Both handlers return the full response header map (lowercase keys, minus
+   `set-cookie`). Every attempt is bounded by `REQUEST_TIMEOUT_MS` (default 30s, clamped to
+   [1000, 60000]) with a distinct `504 UPSTREAM_TIMEOUT`, and 429/503 is retried per `Retry-After`
+   (capped at 10s) up to `MAX_RETRIES` — **for idempotent requests only**, so a POST is never
+   auto-retried into a duplicate write.
+3. ⬜ **G3 + G4** — multipart support and a streaming path above 5 MB. Deferred: needs a request-body
+   encoding design, and no business case for `assetmanagement-v1` is identified yet.
+4. ⬜ **G7** — new floors, one per domain we commit to. `estimate/quote` and `survey_inventory`
+   first; they're the largest surface and the ones Atlas's own integration story centers on.
+   Deferred: each is a platform PR _and_ a domain-modeling decision about which Atlas domains we
+   actually integrate. Needs a product call.
+5. ⬜ **G8** — revisit only if a concrete mapping proves unexpressible.
 
-Per `CLAUDE.md`, every one of these must land in the SDK as well as the API — `call_external` has no
-`headers` parameter today (`packages/workflows-sdk-python/pegasus_workflows/api.py:1252`) — plus the
-SDK README/CLAUDE.md, the MCP `pegasus://reference/*` resources, and `GET /openapi.json`.
+Items 1–2 shipped in SDK **0.35.0**: `call_external` and `deliver_to_external` gained `headers`,
+`secret_headers` and `timeout_config`, documented in the SDK README + CHANGELOG, surfaced through
+`pegasus://reference/api` (introspection-generated, so the docstrings carry it), and added to
+`GET /openapi.json` — both routes were previously undocumented there.
 
 ---
 

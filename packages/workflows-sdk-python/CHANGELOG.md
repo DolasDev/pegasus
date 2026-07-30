@@ -3,6 +3,70 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.35.0
+
+### Added — custom request headers, `AUTH_MODE=apikey`, timeouts and 429 retry
+
+Before this release, `call_external` sent a fixed header set: `Accept`,
+`Authorization`, `Content-Type`. Nothing else was expressible. That made an entire
+class of partner uncallable — one fronted by **Azure API Management**, where the
+credential is a _named header_ (`Ocp-Apim-Subscription-Key`) rather than a bearer,
+and per-request identity headers are routine.
+
+**`AUTH_MODE=apikey`** sends the `API_KEY` secret as the header named by config
+`API_KEY_HEADER`, defaulting to `Ocp-Apim-Subscription-Key`. The full set is now
+`oauth2_client_credentials` (default) · `bearer` · `apikey` · `none`.
+
+**Two header maps on `call_external` and `deliver_to_external`**, split by trust
+level — pick by whether the value is a credential:
+
+```python
+client.call_external(
+    "atlas_estimating",
+    method="GET",
+    path="/Estimating/Order/12345",
+    headers={"On-Behalf-Of": "jdoe"},                  # literal, non-secret
+    secret_headers={"X-Partner-Token": "PARTNER_TOKEN"},  # secret KEY NAME
+)
+```
+
+`secret_headers` values are secret _key names_; the platform resolves them from
+the encrypted store, so a credential never appears in workflow source, logs, or a
+captured dry-run payload.
+
+`Authorization`, `Host`, `Content-Length` and `Content-Type` are rejected with a
+`400` through either map — allowing an override would let a workflow bypass
+`AUTH_MODE`. Header names must be RFC 7230 tokens and values may not contain
+CR/LF.
+
+**Full response headers.** `headers` in the result is now _every_ partner response
+header (lowercase keys, `set-cookie` removed), not just `content-type`. That makes
+`retry-after`, `etag`, and vendor diagnostics like `x-ms-request-id` /
+`ocp-apim-trace-location` readable — the last of which is often the only
+identifier a gateway operator can act on.
+
+**Timeouts.** Every attempt is bounded by config `REQUEST_TIMEOUT_MS` (default
+30s, clamped to [1000, 60000]) and raises a **`504`** on expiry. Previously there
+was no timeout at all: a partner that accepted the connection and went quiet burned
+the whole request budget.
+
+**Throttling.** A `429`/`503` is retried up to config `MAX_RETRIES` (default 2,
+clamped to [0, 5]), honoring `Retry-After` capped at 10s, else exponential backoff.
+**Only idempotent requests are retried** — `GET`/`HEAD`/`OPTIONS`, or an explicit
+`mutating=False`. A `POST` is never auto-retried, because a repeat could
+double-write at the partner. The new `attempts` field reports how many HTTP
+requests were actually made.
+
+### Changed
+
+- `deliver_to_external` now returns `headers` alongside `{delivered, status,
+response, dryRun}`.
+- `deliver_to_external`'s `headers_config` is documented as **non-secret only** —
+  it reads a config row, whose value is stored in plaintext. Use `secret_headers`
+  for credentials. The argument still works unchanged.
+- Both methods send a `timeoutConfig` field, so the request payload differs from
+  0.34.0. No caller-visible behavior change.
+
 ## 0.34.0
 
 ### Added — a floor now says what each fact MEANS (`factDocs`)

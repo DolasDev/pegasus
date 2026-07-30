@@ -46,6 +46,14 @@ import type { AppEnv } from '../types'
 import { getIntegrationDefinition } from '../integration-validation/registry'
 import { createWorkflowSecretConfigRepository } from '../repositories/workflow-secret-config.repository'
 import { decryptSecretValue } from '../lib/secret-value-crypto'
+import {
+  validateHeaderMaps,
+  resolveOutboundHeaders,
+  collectResponseHeaders,
+  MissingHeaderSecretError,
+  MAX_HEADER_VALUE,
+} from '../lib/outbound-headers'
+import { clampTimeoutMs } from '../lib/outbound-retry'
 
 const DeliverBody = z.object({
   /** The mapped partner payload to POST (typically a `map_to_external` result). */
@@ -54,8 +62,28 @@ const DeliverBody = z.object({
   urlConfig: z.string().min(1).max(128).default('SEND_URL'),
   /** Secret key holding the bearer API key. Default `SEND_API_KEY`. */
   apiKeySecret: z.string().min(1).max(128).default('SEND_API_KEY'),
-  /** Optional config key holding extra headers as a JSON object string. */
+  /**
+   * Optional config key holding extra headers as a JSON object string.
+   *
+   * NON-SECRET ONLY: a CONFIG row stores its value in plaintext. Use
+   * `secretHeaders` for anything that is a credential — that is the whole
+   * reason it exists.
+   */
   headersConfig: z.string().min(1).max(128).optional(),
+  /**
+   * Extra request headers with LITERAL, non-secret values (e.g.
+   * `{"On-Behalf-Of": "jdoe"}`). Reserved names are refused.
+   */
+  headers: z.record(z.string(), z.string().max(MAX_HEADER_VALUE)).optional(),
+  /**
+   * Extra request headers whose values are SECRET KEY NAMES, resolved
+   * server-side from the tenant's encrypted store. This is the safe home for a
+   * partner credential like `Ocp-Apim-Subscription-Key` — unlike
+   * `headersConfig`, the value never sits in plaintext.
+   */
+  secretHeaders: z.record(z.string(), z.string().max(128)).optional(),
+  /** Config key holding the request timeout in ms (clamped to [1000, 60000]). */
+  timeoutConfig: z.string().min(1).max(128).default('REQUEST_TIMEOUT_MS'),
   /** Group the config/secret entries live in. Default `global`. */
   group: z.string().min(1).max(128).default('global'),
 })
@@ -77,12 +105,7 @@ export function assertDeliverableUrl(raw: string): string | null {
     return `delivery URL scheme ${url.protocol} is not allowed (use http/https)`
   }
   const host = url.hostname.toLowerCase()
-  if (
-    host === 'localhost' ||
-    host === '0.0.0.0' ||
-    host === '::1' ||
-    host.endsWith('.localhost')
-  ) {
+  if (host === 'localhost' || host === '0.0.0.0' || host === '::1' || host.endsWith('.localhost')) {
     return 'delivery URL host is not allowed (loopback)'
   }
   // IPv4 literal in a private / loopback / link-local range.
@@ -122,9 +145,14 @@ integrationDeliveryHandler.post(
       return c.json({ error: `Unknown integration '${integrationId}'`, code: 'NOT_FOUND' }, 404)
     }
 
-    const { external, urlConfig, apiKeySecret, headersConfig, group } = c.req.valid('json')
+    const input = c.req.valid('json')
+    const { external, urlConfig, apiKeySecret, headersConfig, group } = input
     const tenantId = c.get('tenantId')
     const repo = createWorkflowSecretConfigRepository(c.get('db'))
+
+    // Reject bad custom headers before any config/secret read.
+    const headerError = validateHeaderMaps(input)
+    if (headerError) return c.json({ error: headerError, code: 'VALIDATION_ERROR' }, 400)
 
     const urlRow = await repo.findByKey('CONFIG', group, urlConfig)
     if (!urlRow || urlRow.value == null) {
@@ -165,14 +193,43 @@ integrationDeliveryHandler.post(
       }
     }
 
+    // Caller-supplied headers win over `headersConfig`, and resolved secrets win
+    // over both — a plain entry must never shadow a credential.
+    let finalHeaders: Record<string, string>
+    try {
+      finalHeaders = await resolveOutboundHeaders(headers, input, async (secretKey) => {
+        const row = await repo.findByKey('SECRET', group, secretKey)
+        if (!row?.valueCiphertext) return null
+        return decryptSecretValue(row.valueCiphertext, tenantId)
+      })
+    } catch (err) {
+      if (err instanceof MissingHeaderSecretError) {
+        return c.json({ error: err.message, code: 'NOT_FOUND' }, 404)
+      }
+      throw err
+    }
+
+    const timeoutRow = await repo.findByKey('CONFIG', group, input.timeoutConfig)
+    const timeoutMs = clampTimeoutMs(timeoutRow?.value)
+
     let response: Response
     try {
       response = await fetch(urlRow.value, {
         method: 'POST',
-        headers,
+        headers: finalHeaders,
+        // Delivery is always a mutation, so it is never auto-retried — but a
+        // partner that goes quiet must still not burn the whole Lambda budget.
+        signal: AbortSignal.timeout(timeoutMs),
         body: JSON.stringify(external),
       })
     } catch (err) {
+      const name = err instanceof Error ? err.name : ''
+      if (name === 'TimeoutError' || name === 'AbortError') {
+        return c.json(
+          { error: `partner did not respond within ${timeoutMs}ms`, code: 'UPSTREAM_TIMEOUT' },
+          504,
+        )
+      }
       const message = err instanceof Error ? err.message : 'delivery request failed'
       return c.json({ error: message, code: 'UPSTREAM_ERROR' }, 502)
     }
@@ -190,6 +247,7 @@ integrationDeliveryHandler.post(
         delivered: response.ok,
         status: response.status,
         response: body,
+        headers: collectResponseHeaders(response.headers),
         dryRun: false,
       },
     })

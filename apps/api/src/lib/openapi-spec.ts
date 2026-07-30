@@ -1084,6 +1084,121 @@ export function getOpenApiSpec() {
           },
         },
       },
+      '/api/v1/integrations/{integrationId}/call-external': {
+        post: {
+          operationId: 'callExternal',
+          summary: 'Call a partner API server-side with the integration’s configured auth',
+          description:
+            'Performs an authenticated outbound HTTP call against the integration’s BASE_URL so credentials never enter workflow code. Auth comes from CONFIG AUTH_MODE: `oauth2_client_credentials` (default; mints + caches a token, re-mints once on 401), `bearer` (SECRET API_KEY as a bearer), `apikey` (SECRET API_KEY sent as the header named by CONFIG API_KEY_HEADER, default `Ocp-Apim-Subscription-Key` — the Azure API Management convention), or `none`. Extra headers come from `headers` (literal, non-secret) and `secretHeaders` (header name → SECRET key name, resolved server-side); Authorization/Host/Content-Length/Content-Type are reserved and rejected, as are non-token header names and CR/LF-bearing values. 429/503 are retried with `Retry-After` honored (capped at 10s) up to CONFIG MAX_RETRIES (default 2) — but ONLY for idempotent requests (GET/HEAD/OPTIONS, or an explicit `mutating: false`). CONFIG REQUEST_TIMEOUT_MS (default 30000, clamped to [1000, 60000]) bounds each attempt.',
+          tags: ['Integrations'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'integrationId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['method', 'path'],
+                  properties: {
+                    method: { enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
+                    path: { type: 'string', description: 'appended to BASE_URL' },
+                    query: { type: 'object', additionalProperties: true },
+                    body: { description: 'JSON request body (mutations)' },
+                    mutating: {
+                      type: 'boolean',
+                      description:
+                        'Force read (false) / mutation (true) classification. Also gates retry: only non-mutating requests are retried.',
+                    },
+                    responseToBlob: {
+                      type: 'boolean',
+                      description:
+                        'Land the response body into a blob instead of returning inline.',
+                    },
+                    headers: {
+                      type: 'object',
+                      additionalProperties: { type: 'string' },
+                      description: 'Literal, NON-SECRET request headers (e.g. On-Behalf-Of).',
+                    },
+                    secretHeaders: {
+                      type: 'object',
+                      additionalProperties: { type: 'string' },
+                      description:
+                        'Header name → SECRET key name; the platform resolves the value from the encrypted store.',
+                    },
+                    group: { type: 'string', default: 'global' },
+                    baseUrlConfig: { type: 'string', default: 'BASE_URL' },
+                    authModeConfig: { type: 'string', default: 'AUTH_MODE' },
+                    tokenUrlConfig: { type: 'string', default: 'TOKEN_URL' },
+                    clientIdSecret: { type: 'string', default: 'CLIENT_ID' },
+                    clientSecretSecret: { type: 'string', default: 'CLIENT_SECRET' },
+                    bearerSecret: { type: 'string', default: 'API_KEY' },
+                    apiKeyHeaderConfig: { type: 'string', default: 'API_KEY_HEADER' },
+                    timeoutConfig: { type: 'string', default: 'REQUEST_TIMEOUT_MS' },
+                    maxRetriesConfig: { type: 'string', default: 'MAX_RETRIES' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description:
+                '{ status, ok, response | blobId+size, headers (all partner response headers, lowercase, minus set-cookie), attempts, dryRun }',
+            },
+            '400': { description: 'Bad body, disallowed URL, or a rejected custom header' },
+            '404': { $ref: '#/components/responses/NotFound' },
+            '502': { description: 'Token mint or outbound call could not be completed' },
+            '504': { description: 'Partner did not respond within the timeout' },
+          },
+        },
+      },
+      '/api/v1/integrations/{integrationId}/deliver-to-external': {
+        post: {
+          operationId: 'deliverToExternal',
+          summary: 'POST a mapped partner body server-side (API key)',
+          description:
+            'The single fixed JSON POST counterpart to call-external. Reads the delivery URL from CONFIG (default SEND_URL) and a bearer key from SECRET (default SEND_API_KEY). Extra headers: `headers` (literal, non-secret), `secretHeaders` (header name → SECRET key name, resolved server-side — the safe home for a credential), and the legacy `headersConfig` (a CONFIG row holding a JSON object; NON-SECRET ONLY, since CONFIG values are stored in plaintext). Always a mutation, so it is never auto-retried; CONFIG REQUEST_TIMEOUT_MS still bounds it.',
+          tags: ['Integrations'],
+          security: [{ ApiKeyAuth: [] }],
+          parameters: [
+            { name: 'integrationId', in: 'path', required: true, schema: { type: 'string' } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['external'],
+                  properties: {
+                    external: { description: 'The mapped partner payload to POST.' },
+                    urlConfig: { type: 'string', default: 'SEND_URL' },
+                    apiKeySecret: { type: 'string', default: 'SEND_API_KEY' },
+                    headersConfig: {
+                      type: 'string',
+                      description: 'CONFIG key holding extra headers as JSON. Non-secret only.',
+                    },
+                    headers: { type: 'object', additionalProperties: { type: 'string' } },
+                    secretHeaders: { type: 'object', additionalProperties: { type: 'string' } },
+                    timeoutConfig: { type: 'string', default: 'REQUEST_TIMEOUT_MS' },
+                    group: { type: 'string', default: 'global' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: '{ delivered, status, response, headers, dryRun }' },
+            '400': { description: 'Bad body, disallowed URL, or a rejected custom header' },
+            '404': { $ref: '#/components/responses/NotFound' },
+            '502': { description: 'The outbound POST could not be completed' },
+            '504': { description: 'Partner did not respond within the timeout' },
+          },
+        },
+      },
       '/api/v1/integrations/{integrationId}/config': {
         get: {
           operationId: 'getIntegrationConfig',

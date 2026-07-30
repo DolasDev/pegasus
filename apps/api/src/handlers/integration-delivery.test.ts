@@ -88,6 +88,7 @@ beforeEach(() => {
     ok: true,
     status: 200,
     text: async () => JSON.stringify({ accepted: true }),
+    headers: new Headers({ 'content-type': 'application/json' }),
   })
 })
 
@@ -106,7 +107,9 @@ describe('POST /integrations/:id/deliver-to-external', () => {
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('https://partner.example.com/orders')
     expect(init.method).toBe('POST')
-    expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer super-secret-key')
+    expect((init.headers as Record<string, string>)['Authorization']).toBe(
+      'Bearer super-secret-key',
+    )
     expect(init.body).toBe(JSON.stringify({ orderNumber: 'S-1' }))
   })
 
@@ -169,7 +172,12 @@ describe('POST /integrations/:id/deliver-to-external', () => {
   })
 
   it('200 delivered:false — partner returns a non-2xx status', async () => {
-    mockFetch.mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' })
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => 'boom',
+      headers: new Headers({ 'content-type': 'text/plain' }),
+    })
     const res = await buildApp().request(ROUTE, post({ external: {} }))
     expect(res.status).toBe(200)
     const data = (await json(res))['data'] as JsonBody
@@ -200,15 +208,83 @@ describe('POST /integrations/:id/deliver-to-external', () => {
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect((init.headers as Record<string, string>)['X-Partner']).toBe('demo')
   })
+
+  // ── header symmetry with call-external (docs/atlas-world-group-api) ───────
+  // `headersConfig` reads a plaintext CONFIG row, so it was never a safe home
+  // for a partner credential. `secretHeaders` is.
+
+  const sentHeaders = (): Record<string, string> =>
+    (mockFetch.mock.calls[0] as [string, RequestInit])[1].headers as Record<string, string>
+
+  it('passes literal `headers` through', async () => {
+    const res = await buildApp().request(
+      ROUTE,
+      post({ external: {}, headers: { 'On-Behalf-Of': 'jdoe' } }),
+    )
+    expect(res.status).toBe(200)
+    expect(sentHeaders()['On-Behalf-Of']).toBe('jdoe')
+  })
+
+  it('resolves `secretHeaders` from the encrypted store, not plaintext config', async () => {
+    mockFindByKey.mockImplementation(async (kind: string, _g: string, key: string) => {
+      if (kind === 'CONFIG' && key === 'SEND_URL') return URL_ROW
+      if (kind === 'SECRET' && key === 'SEND_API_KEY') return SECRET_ROW
+      if (kind === 'SECRET' && key === 'ATLAS_SUB_KEY')
+        return { value: null, valueCiphertext: 'atlas-cipher' }
+      return null
+    })
+    mockDecrypt.mockImplementation(async (cipher: string) =>
+      cipher === 'atlas-cipher' ? 'sub-key-abc' : 'super-secret-key',
+    )
+    const res = await buildApp().request(
+      ROUTE,
+      post({ external: {}, secretHeaders: { 'Ocp-Apim-Subscription-Key': 'ATLAS_SUB_KEY' } }),
+    )
+    expect(res.status).toBe(200)
+    expect(sentHeaders()['Ocp-Apim-Subscription-Key']).toBe('sub-key-abc')
+  })
+
+  it('400 — a reserved header cannot be overridden', async () => {
+    const res = await buildApp().request(
+      ROUTE,
+      post({ external: {}, headers: { Authorization: 'Bearer attacker' } }),
+    )
+    expect(res.status).toBe(400)
+    expect(String((await json(res))['error'])).toMatch(/reserved/i)
+  })
+
+  it('404 — a secretHeaders key that is not set', async () => {
+    const res = await buildApp().request(
+      ROUTE,
+      post({ external: {}, secretHeaders: { 'X-K': 'MISSING_KEY' } }),
+    )
+    expect(res.status).toBe(404)
+    expect(String((await json(res))['error'])).toContain('MISSING_KEY')
+  })
+
+  it('returns the partner response headers', async () => {
+    const res = await buildApp().request(ROUTE, post({ external: {} }))
+    const data = (await json(res))['data'] as JsonBody
+    expect((data['headers'] as Record<string, string>)['content-type']).toBe('application/json')
+  })
+
+  it('504 — the partner does not respond within the timeout', async () => {
+    const err = new Error('aborted')
+    err.name = 'TimeoutError'
+    mockFetch.mockRejectedValue(err)
+    const res = await buildApp().request(ROUTE, post({ external: {} }))
+    expect(res.status).toBe(504)
+    expect((await json(res))['code']).toBe('UPSTREAM_TIMEOUT')
+  })
 })
 
 describe('assertDeliverableUrl', () => {
-  it.each([
-    'https://partner.example.com/x',
-    'http://partner.example.com:8080/x',
-  ])('allows public http(s): %s', (u) => {
-    expect(assertDeliverableUrl(u)).toBeNull()
-  })
+  it.each(['https://partner.example.com/x', 'http://partner.example.com:8080/x'])(
+    'allows public http(s): %s',
+    (u) => {
+      expect(assertDeliverableUrl(u)).toBeNull()
+    },
+  )
 
   it.each([
     'ftp://partner.example.com',
