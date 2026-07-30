@@ -92,6 +92,64 @@ decorative.
 Note also that `questionnaire-v1` passes `firstName`, `lastName`, `emailAddress`, `phoneNumber`,
 `orderNumber` and `businessId` as **header** parameters.
 
+### Products — what each subscription actually grants
+
+A subscription key is scoped to a **product**, and a product grants a specific subset of the 24
+APIs. The per-product API list _is_ readable at developer role
+(`GET {mgmt}/products/{productId}/apis`), even though `/subscriptions`, `/groups` and the policy
+documents are not.
+
+| Product              | APIs |     Ops | Approval       | Grants                                                                                                                                       |
+| -------------------- | ---: | ------: | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`agent-limited`**  |    8 | **117** | required       | `estimating-v2`, `RadsSupport-v1`, `documents-v1`, `customers-v2`, `agents-v1`, `cubesheets-v1`, `shipment-management-v1`, `transitguide-v1` |
+| `unlimited`          |   23 |     252 | required       | everything except `move4u-integration-v1`                                                                                                    |
+| `customer-shipment`  |    1 |       4 | required       | `customer-shipment-v1`                                                                                                                       |
+| `move4u-integration` |    1 |       3 | required       | `move4u-integration-v1`                                                                                                                      |
+| `starter`            |    1 |       6 | **self-serve** | `echo-api` only                                                                                                                              |
+
+**`starter` is not a trial of the real APIs** — it grants APIM's stock echo endpoint and nothing
+else. Self-subscribing to it buys no access to anything in §2.
+
+#### Agent-Limited is our tier
+
+Atlas has confirmed we are scoped to **`agent-limited`** — 117 of 255 operations (46%). Three
+consequences, all load-bearing:
+
+|                          | Catalog-wide | Agent-Limited |
+| ------------------------ | -----------: | ------------: |
+| Operations               |          255 |           117 |
+| Declare `On-Behalf-Of`   |    142 (55%) | **107 (91%)** |
+| `multipart/form-data`    |           12 |         **0** |
+| Map to an existing floor |          ~25 |        **17** |
+
+- **`On-Behalf-Of` jumps to 91%** — every operation in Estimating, RadsSupport, Documents,
+  Customers, Cubesheets and Shipment Management. Only `agents-v1` (9) and `transitguide-v1` (1)
+  omit it. Without the header passthrough (G2), Agent-Limited would yield **10 usable operations
+  out of 117**.
+- **Multipart is moot.** All 12 multipart ops are in `assetmanagement-v1`, which Agent-Limited
+  excludes. G3 is not merely deferred — it is out of scope unless the tier changes.
+- **The floor gap widens.** Only `documents-v1` (13) and `shipment-management-v1` (4) land on an
+  existing floor. The remaining 100 ops — Estimating 58, RadsSupport 14, Customers 10, Cubesheets 8
+  — are precisely the domains with no floor (G7).
+
+Notable **exclusions** from Agent-Limited: `atlasorder-v1` (so shipment reads come from
+`shipment-management-v1 GET /shipments/{orderNumber}`, not `GetShipmentJson`), `RadsSupport-v2`
+(31 ops — we get only v1's 14), `claims-v1`, `RatingSystem-v1`, `authorizations-v1`, `finance-v1`,
+`tonnages-v1`, `yembo-v1`, and `customer-shipment-v1` — that last one being order/shipment
+**creation**, which is a separate product. Under Agent-Limited we can read and estimate, but cannot
+create a shipment at Atlas.
+
+### Rate limits
+
+Only one figure is published, in the `starter` product description: **5 calls/minute, max 100 calls
+per week**. No limit is stated for any other product.
+
+The enforced numbers live in APIM **policy documents**, which return 403 at developer role
+(`/products/{id}/policies` and `/products/{id}/policies/policy` both refused). So Agent-Limited's
+actual budget is **unknown** until we hold a key and can observe `429`s — which is exactly why the
+outbound path treats `Retry-After` as a normal steady-state signal rather than an error (§4, item 2).
+On a pull-only integration this budget, not the endpoint list, is the binding design constraint.
+
 ### Payload shapes
 
 - **Request bodies:** `application/json` (52), `text/json` (24), `application/*+json` (24),
@@ -194,6 +252,11 @@ master, tariffs** — have no floor at all. This matches Atlas's own public desc
 API integration as carrying _"customer details, addresses, and surveyed household goods data"_: the
 survey/inventory floor is exactly what we're missing.
 
+Scoped to our actual `agent-limited` tier this gets **worse**, not better: of the 117 operations we
+can reach, only `documents-v1` (13) and `shipment-management-v1` (4) land on an existing floor. The
+other 100 are Estimating (58), RadsSupport (14), Customers (10) and Cubesheets (8) — four domains,
+none of which has a floor. See "Agent-Limited is our tier" in §2.
+
 Structural note: **overlays are publishable, floors are not.** `FLOORS` is a code map
 (`registry.ts:72-81`), so each missing floor is a platform PR + deploy, not tenant configuration.
 
@@ -250,14 +313,20 @@ Items 1–2 shipped in SDK **0.35.0**: `call_external` and `deliver_to_external`
 
 ## 5. Open questions
 
-- **Is `On-Behalf-Of` actually enforced?** Declared optional; present on 55% of operations. Needs one
-  live call to settle, which needs a subscription key.
-- **Which product do we need?** `starter` is self-serve; `agent-limited`, `customer-shipment`,
-  `move4u-integration` and `unlimited` all require Atlas approval. The product→API mapping was not
-  readable at developer role (`/subscriptions`, `/groups`, `/namedValues`, `/authorizationServers`
-  all returned 403), so which APIs each product grants is unknown.
-- **Rate limits.** APIM enforces them by policy; policy documents are not readable at developer role.
-  Unknown until we hold a key and can observe 429s.
+- **Is `On-Behalf-Of` actually enforced, and what goes in it?** Declared optional, but present on
+  **91% of our Agent-Limited surface**. Needs one live call to settle, which needs a subscription
+  key. Also unanswered: what identifier Atlas expects — an Atlas user id, an agent code, or an
+  email.
+- ~~**Which product do we need?**~~ **Answered** — see "Products" in §2. We are scoped to
+  `agent-limited`: 8 APIs, 117 operations. The per-product API list is readable at developer role
+  even though `/subscriptions` and `/groups` are not.
+- **Rate limits — partially answered.** `starter` publishes 5 calls/min, 100/week; no other product
+  states one, and the enforced policies are 403 at developer role. **Agent-Limited's budget is still
+  unknown**, and on a pull-only integration it is the binding constraint. Worth asking Atlas
+  directly rather than discovering it through 429s in production.
+- **Do we need anything outside Agent-Limited?** Order/shipment _creation_ (`customer-shipment-v1`),
+  claims, rating, and the newer `RadsSupport-v2` are all excluded from our tier. If the roadmap needs
+  any of them, that is a product-tier conversation with Atlas, not an engineering one.
 - **Prod parity.** `atlas-prod-api-apim` was not accessible with the QA account; assume the catalog
   differs until verified.
 - **Does Atlas offer any push/event feed outside this catalog?** Everything published is pull-only.
