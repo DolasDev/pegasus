@@ -1,0 +1,5728 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Asset Management",
+    "description": "Capacity Management API",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/assetmanagement/v1"
+    }
+  ],
+  "paths": {
+    "/api/containers/{pk}": {
+      "get": {
+        "tags": ["Containers"],
+        "summary": "Get Container",
+        "description": "Get a single container based on PK.",
+        "operationId": "GetContainer",
+        "parameters": [
+          {
+            "name": "pk",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/Container"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Container"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Container"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/containers/container-id/{id}": {
+      "get": {
+        "tags": ["Containers"],
+        "summary": "Get Container by ContainerId",
+        "description": "Get a single container based on ContainerId.",
+        "operationId": "GetContainerByContainerId",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/Container"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Container"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Container"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/containers": {
+      "get": {
+        "tags": ["Containers"],
+        "summary": "List Containers",
+        "description": "Lists multiple containers based on a variety of parameters.",
+        "operationId": "ListContainers",
+        "parameters": [
+          {
+            "name": "pk",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          },
+          {
+            "name": "containerID",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "containerIDs",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "condition",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "contributorAgentCode",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "contributorFamilyCode",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "contributionDateStart",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "builder",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "void",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "batchID",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Container"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Container"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Container"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Containers"],
+        "summary": "Upsert Container",
+        "description": "Update an existing container or insert a new container, based on ContainerId.  If a valid ContainerId is provided then an update will be performed, otherwise an insert will occur.",
+        "operationId": "UpsertContainer",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/UpsertContainerRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "Type": "string",
+                "Country": "string",
+                "Status": "string",
+                "Condition": "string",
+                "ContributorAgentCode": "string",
+                "ContributionDateStart": "string",
+                "Cost": 0,
+                "Builder": "string",
+                "TrackerNumber": "string",
+                "Void": true
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/UpsertContainerRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "Type": "string",
+                "Country": "string",
+                "Status": "string",
+                "Condition": "string",
+                "ContributorAgentCode": "string",
+                "ContributionDateStart": "string",
+                "Cost": 0,
+                "Builder": "string",
+                "TrackerNumber": "string",
+                "Void": true
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/UpsertContainerRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "Type": "string",
+                "Country": "string",
+                "Status": "string",
+                "Condition": "string",
+                "ContributorAgentCode": "string",
+                "ContributionDateStart": "string",
+                "Cost": 0,
+                "Builder": "string",
+                "TrackerNumber": "string",
+                "Void": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/Container"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Container"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Container"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mass-containers/add": {
+      "post": {
+        "tags": ["Mass Containers"],
+        "summary": "Mass Add Containers",
+        "description": "Mass add multiple containers all at once.",
+        "operationId": "MassAddContainers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/MassAddContainersRequest"
+                  }
+                ]
+              },
+              "example": {
+                "Type": "string",
+                "Country": "string",
+                "Quantity": 0,
+                "ContributorAgentCode": "string",
+                "Cost": 0,
+                "Builder": "string"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/MassAddContainersRequest"
+                  }
+                ]
+              },
+              "example": {
+                "Type": "string",
+                "Country": "string",
+                "Quantity": 0,
+                "ContributorAgentCode": "string",
+                "Cost": 0,
+                "Builder": "string"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/MassAddContainersRequest"
+                  }
+                ]
+              },
+              "example": {
+                "Type": "string",
+                "Country": "string",
+                "Quantity": 0,
+                "ContributorAgentCode": "string",
+                "Cost": 0,
+                "Builder": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/MassAddContainersResponse"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MassAddContainersResponse"
+                },
+                "example": {
+                  "Message": "string",
+                  "AddedContainerIDs": "string"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MassAddContainersResponse"
+                },
+                "example": {
+                  "Message": "string",
+                  "AddedContainerIDs": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mass-containers/add-report": {
+      "post": {
+        "tags": ["Mass Containers"],
+        "summary": "Generate Mass Add Report",
+        "description": "Generates a mass add report in Excel format.",
+        "operationId": "MassAddContainersReport",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "containerIDs": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/mass-containers/edit": {
+      "post": {
+        "tags": ["Mass Containers"],
+        "summary": "Mass Edit Containers",
+        "description": "Mass edit multiple containers all at once.",
+        "operationId": "MassEditContainers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/MassEditContainersRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerIDs": "string",
+                "ContributorAgentCode": "string",
+                "ContributionDateStart": "string",
+                "Status": "string",
+                "Condition": "string",
+                "Cost": 0,
+                "Builder": "string"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/MassEditContainersRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerIDs": "string",
+                "ContributorAgentCode": "string",
+                "ContributionDateStart": "string",
+                "Status": "string",
+                "Condition": "string",
+                "Cost": 0,
+                "Builder": "string"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/MassEditContainersRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerIDs": "string",
+                "ContributorAgentCode": "string",
+                "ContributionDateStart": "string",
+                "Status": "string",
+                "Condition": "string",
+                "Cost": 0,
+                "Builder": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/MassEditContainersResponse"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MassEditContainersResponse"
+                },
+                "example": {
+                  "Message": "string",
+                  "EditedContainerIDs": "string"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MassEditContainersResponse"
+                },
+                "example": {
+                  "Message": "string",
+                  "EditedContainerIDs": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mass-containers/edit-report": {
+      "post": {
+        "tags": ["Mass Containers"],
+        "summary": "Generate Mass Edit Report",
+        "description": "Generates a mass edit report in Excel format.",
+        "operationId": "MassEditContainersReport",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "containerIDs": {
+                    "type": "string"
+                  },
+                  "contributorAgentCode": {
+                    "type": "string"
+                  },
+                  "contributionDateStart": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "condition": {
+                    "type": "string"
+                  },
+                  "cost": {
+                    "type": "number",
+                    "format": "decimal"
+                  },
+                  "builder": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/mass-containers/validate-edit": {
+      "post": {
+        "tags": ["Mass Containers"],
+        "summary": "Validate Mass Edit Containers",
+        "description": "Validates a mass edit operation and returns info, warnings, and errors.  Use this prior to executing the actual mass edit operation.",
+        "operationId": "ValidateMassEditContainers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/MassEditContainersRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerIDs": "string",
+                "ContributorAgentCode": "string",
+                "ContributionDateStart": "string",
+                "Status": "string",
+                "Condition": "string",
+                "Cost": 0,
+                "Builder": "string"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/MassEditContainersRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerIDs": "string",
+                "ContributorAgentCode": "string",
+                "ContributionDateStart": "string",
+                "Status": "string",
+                "Condition": "string",
+                "Cost": 0,
+                "Builder": "string"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/MassEditContainersRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerIDs": "string",
+                "ContributorAgentCode": "string",
+                "ContributionDateStart": "string",
+                "Status": "string",
+                "Condition": "string",
+                "Cost": 0,
+                "Builder": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateMassEditContainersResponse"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateMassEditContainersResponse"
+                },
+                "example": {
+                  "Valid": true,
+                  "Messages": [
+                    {
+                      "Type": "string",
+                      "Text": "string"
+                    }
+                  ]
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateMassEditContainersResponse"
+                },
+                "example": {
+                  "Valid": true,
+                  "Messages": [
+                    {
+                      "Type": "string",
+                      "Text": "string"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/container-usages/container-id/{id}": {
+      "get": {
+        "tags": ["Container Usages"],
+        "summary": "Get Current Container Usage by ContainerId",
+        "description": "Get a single current container usage based on ContainerId.",
+        "operationId": "GetCurrentContainerUsage",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContainerUsage"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContainerUsage"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContainerUsage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/containers/import-shipment-data": {
+      "post": {
+        "tags": ["Container Usages"],
+        "summary": "Import Shipment Data",
+        "description": "Import shipment data.",
+        "operationId": "ImportShipmentData",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ImportContainerShipmentDataRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "ContainerType": "string",
+                "RegistrationNumber": "string",
+                "OrderStatus": "string",
+                "AgentInPossession": "string",
+                "OriginAgent": "string",
+                "DestinationAgent": "string",
+                "SITAgent": "string",
+                "LinehaulLegLegNumber": "string",
+                "LinehaulLegTripNumber": "string",
+                "TripArrivalDate": "string",
+                "DateIntoSIT": "string",
+                "AgreedLiveLoadDate": "string",
+                "DeliverySpreadFinalDate": "string",
+                "ActualDeliveryDate": "string",
+                "LiveLoadDate": "string",
+                "SITNumber": "string",
+                "ContainerRemovedReason": "string",
+                "SealNumber": "string",
+                "UpdatedByUserID": "string",
+                "UpdatedDateTime": "string"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ImportContainerShipmentDataRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "ContainerType": "string",
+                "RegistrationNumber": "string",
+                "OrderStatus": "string",
+                "AgentInPossession": "string",
+                "OriginAgent": "string",
+                "DestinationAgent": "string",
+                "SITAgent": "string",
+                "LinehaulLegLegNumber": "string",
+                "LinehaulLegTripNumber": "string",
+                "TripArrivalDate": "string",
+                "DateIntoSIT": "string",
+                "AgreedLiveLoadDate": "string",
+                "DeliverySpreadFinalDate": "string",
+                "ActualDeliveryDate": "string",
+                "LiveLoadDate": "string",
+                "SITNumber": "string",
+                "ContainerRemovedReason": "string",
+                "SealNumber": "string",
+                "UpdatedByUserID": "string",
+                "UpdatedDateTime": "string"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ImportContainerShipmentDataRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "ContainerType": "string",
+                "RegistrationNumber": "string",
+                "OrderStatus": "string",
+                "AgentInPossession": "string",
+                "OriginAgent": "string",
+                "DestinationAgent": "string",
+                "SITAgent": "string",
+                "LinehaulLegLegNumber": "string",
+                "LinehaulLegTripNumber": "string",
+                "TripArrivalDate": "string",
+                "DateIntoSIT": "string",
+                "AgreedLiveLoadDate": "string",
+                "DeliverySpreadFinalDate": "string",
+                "ActualDeliveryDate": "string",
+                "LiveLoadDate": "string",
+                "SITNumber": "string",
+                "ContainerRemovedReason": "string",
+                "SealNumber": "string",
+                "UpdatedByUserID": "string",
+                "UpdatedDateTime": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              },
+              "text/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/container-usages/start-reposition": {
+      "post": {
+        "tags": ["Container Usages"],
+        "summary": "Start a Repositioning",
+        "description": "Start repositioning a container.",
+        "operationId": "StartReposition",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/StartRepositionRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "ContainerType": "string",
+                "RepositionStartDate": "string",
+                "RepositionStartAgent": "string",
+                "RepositionEndDate": "string",
+                "RepositionEndAgent": "string"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/StartRepositionRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "ContainerType": "string",
+                "RepositionStartDate": "string",
+                "RepositionStartAgent": "string",
+                "RepositionEndDate": "string",
+                "RepositionEndAgent": "string"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/StartRepositionRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "ContainerType": "string",
+                "RepositionStartDate": "string",
+                "RepositionStartAgent": "string",
+                "RepositionEndDate": "string",
+                "RepositionEndAgent": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              },
+              "text/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/container-usages/location-correction": {
+      "post": {
+        "tags": ["Container Usages"],
+        "summary": "Perform a Location Correction",
+        "description": "Perform a location correction on a container.",
+        "operationId": "LocationCorrection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/LocationCorrectionRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "ContainerType": "string",
+                "CorrectionAgent": "string"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/LocationCorrectionRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "ContainerType": "string",
+                "CorrectionAgent": "string"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/LocationCorrectionRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "ContainerType": "string",
+                "CorrectionAgent": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              },
+              "text/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/container-usages/end-reposition": {
+      "post": {
+        "tags": ["Container Usages"],
+        "summary": "End a Repositioning",
+        "description": "End repositioning a container.",
+        "operationId": "EndReposition",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EndRepositionRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "ContainerType": "string",
+                "RepositionEndDate": "string",
+                "RepositionEndAgent": "string"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EndRepositionRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "ContainerType": "string",
+                "RepositionEndDate": "string",
+                "RepositionEndAgent": "string"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EndRepositionRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "ContainerType": "string",
+                "RepositionEndDate": "string",
+                "RepositionEndAgent": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              },
+              "text/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/container-usages/current-usages-report": {
+      "post": {
+        "tags": ["Container Usages"],
+        "summary": "Usage Current Report",
+        "description": "Generate report for current usages.",
+        "operationId": "CurrentUsagesReport",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "containerID": {
+                    "type": "string"
+                  },
+                  "types": {
+                    "type": "string"
+                  },
+                  "contributorFamily": {
+                    "type": "string"
+                  },
+                  "country": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/container-usages/usage-history-report": {
+      "post": {
+        "tags": ["Container Usages"],
+        "summary": "Usage History Report",
+        "description": "Generate report for past and current usages.",
+        "operationId": "UsageHistoryReport",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "containerID": {
+                    "type": "string"
+                  },
+                  "types": {
+                    "type": "string"
+                  },
+                  "contributorFamily": {
+                    "type": "string"
+                  },
+                  "country": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/containers/container-info-report": {
+      "post": {
+        "tags": ["Containers"],
+        "summary": "Container Info Report",
+        "description": "Generate report for container information.",
+        "operationId": "ContainerInfoReport",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "containerID": {
+                    "type": "string"
+                  },
+                  "types": {
+                    "type": "string"
+                  },
+                  "contributorFamily": {
+                    "type": "string"
+                  },
+                  "country": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/metadata/all": {
+      "get": {
+        "tags": ["Metadata"],
+        "summary": "List All Metadata",
+        "description": "Lists all metadata.",
+        "operationId": "ListMetadata",
+        "parameters": [
+          {
+            "name": "keys",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllMetadata"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllMetadata"
+                },
+                "example": {
+                  "ContainerTypes": [
+                    {
+                      "PK": 0,
+                      "Type": "string",
+                      "Display": "string",
+                      "Suffix": "string",
+                      "Enabled": true,
+                      "Format": "string",
+                      "Placard": "string",
+                      "Remaining": 0
+                    }
+                  ],
+                  "ContainerStatuses": ["string"],
+                  "TrailerStatuses": ["string"],
+                  "ContainerConditions": ["string"],
+                  "ContainerUsageStatuses": ["string"],
+                  "Countries": [
+                    {
+                      "Code": "string",
+                      "Display": "string",
+                      "Sort": 0
+                    }
+                  ],
+                  "Geofences": ["string"]
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllMetadata"
+                },
+                "example": {
+                  "ContainerTypes": [
+                    {
+                      "PK": 0,
+                      "Type": "string",
+                      "Display": "string",
+                      "Suffix": "string",
+                      "Enabled": true,
+                      "Format": "string",
+                      "Placard": "string",
+                      "Remaining": 0
+                    }
+                  ],
+                  "ContainerStatuses": ["string"],
+                  "TrailerStatuses": ["string"],
+                  "ContainerConditions": ["string"],
+                  "ContainerUsageStatuses": ["string"],
+                  "Countries": [
+                    {
+                      "Code": "string",
+                      "Display": "string",
+                      "Sort": 0
+                    }
+                  ],
+                  "Geofences": ["string"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/containers/gps/{id}": {
+      "put": {
+        "tags": ["Containers"],
+        "summary": "Update Container GPS data",
+        "description": "Update Container GPS data.",
+        "operationId": "UpdateContainerGps",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/UpdateGpsRequest"
+                  }
+                ]
+              },
+              "example": {
+                "PwfVehicleId": "string",
+                "PwfGroupId": "string",
+                "PwfLat": 0,
+                "PwfLng": 0,
+                "PwfBatteryChargeLevel": 0,
+                "PwfFleetNumber": "string",
+                "PwfReportTime": "string",
+                "PwfRowReferenceTime": "string",
+                "PwfGpsDateTime": "string",
+                "PwfDeviceType": "string",
+                "PwfGeofence": "string",
+                "PwfSerialNumber": "string",
+                "PwfAddress": "string",
+                "PwfCity": "string",
+                "PwfState": "string"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/UpdateGpsRequest"
+                  }
+                ]
+              },
+              "example": {
+                "PwfVehicleId": "string",
+                "PwfGroupId": "string",
+                "PwfLat": 0,
+                "PwfLng": 0,
+                "PwfBatteryChargeLevel": 0,
+                "PwfFleetNumber": "string",
+                "PwfReportTime": "string",
+                "PwfRowReferenceTime": "string",
+                "PwfGpsDateTime": "string",
+                "PwfDeviceType": "string",
+                "PwfGeofence": "string",
+                "PwfSerialNumber": "string",
+                "PwfAddress": "string",
+                "PwfCity": "string",
+                "PwfState": "string"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/UpdateGpsRequest"
+                  }
+                ]
+              },
+              "example": {
+                "PwfVehicleId": "string",
+                "PwfGroupId": "string",
+                "PwfLat": 0,
+                "PwfLng": 0,
+                "PwfBatteryChargeLevel": 0,
+                "PwfFleetNumber": "string",
+                "PwfReportTime": "string",
+                "PwfRowReferenceTime": "string",
+                "PwfGpsDateTime": "string",
+                "PwfDeviceType": "string",
+                "PwfGeofence": "string",
+                "PwfSerialNumber": "string",
+                "PwfAddress": "string",
+                "PwfCity": "string",
+                "PwfState": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "boolean"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                },
+                "example": "True"
+              },
+              "text/json": {
+                "schema": {
+                  "type": "boolean"
+                },
+                "example": "True"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/containers/container-status-report": {
+      "post": {
+        "tags": ["Containers"],
+        "summary": "Container Status Report",
+        "description": "Generate report for container status.",
+        "operationId": "ContainerStatusReport",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "containerID": {
+                    "type": "string"
+                  },
+                  "types": {
+                    "type": "string"
+                  },
+                  "contributorFamily": {
+                    "type": "string"
+                  },
+                  "country": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/containers/import-trailer-trip-data": {
+      "post": {
+        "tags": ["Container Usages"],
+        "summary": "Import Trailer Trip Data",
+        "description": "Import trailer trip data.",
+        "operationId": "ImportTrailerTripData",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ImportTrailerTripDataRequest"
+                  }
+                ]
+              },
+              "example": {
+                "TrailerID": "string",
+                "TrailerSubType": "string",
+                "TripStatus": "string",
+                "LegNumber": "string",
+                "TripNumber": "string",
+                "DestinationAgentOnTheLastShipmentOnThisTrip": "string",
+                "PickupAgent": "string",
+                "DeliveryAgent": "string",
+                "ActualTripStartDate": "string",
+                "ActualTripEndDate": "string",
+                "EstimatedTripStartDate": "string",
+                "EstimatedTripEndDate": "string",
+                "TrailerRemovedReason": "string",
+                "UpdatedByUserID": "string",
+                "UpdatedDateTime": "string"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ImportTrailerTripDataRequest"
+                  }
+                ]
+              },
+              "example": {
+                "TrailerID": "string",
+                "TrailerSubType": "string",
+                "TripStatus": "string",
+                "LegNumber": "string",
+                "TripNumber": "string",
+                "DestinationAgentOnTheLastShipmentOnThisTrip": "string",
+                "PickupAgent": "string",
+                "DeliveryAgent": "string",
+                "ActualTripStartDate": "string",
+                "ActualTripEndDate": "string",
+                "EstimatedTripStartDate": "string",
+                "EstimatedTripEndDate": "string",
+                "TrailerRemovedReason": "string",
+                "UpdatedByUserID": "string",
+                "UpdatedDateTime": "string"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ImportTrailerTripDataRequest"
+                  }
+                ]
+              },
+              "example": {
+                "TrailerID": "string",
+                "TrailerSubType": "string",
+                "TripStatus": "string",
+                "LegNumber": "string",
+                "TripNumber": "string",
+                "DestinationAgentOnTheLastShipmentOnThisTrip": "string",
+                "PickupAgent": "string",
+                "DeliveryAgent": "string",
+                "ActualTripStartDate": "string",
+                "ActualTripEndDate": "string",
+                "EstimatedTripStartDate": "string",
+                "EstimatedTripEndDate": "string",
+                "TrailerRemovedReason": "string",
+                "UpdatedByUserID": "string",
+                "UpdatedDateTime": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              },
+              "text/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/containers/container-location-report": {
+      "post": {
+        "tags": ["Containers"],
+        "summary": "Container Location Report",
+        "description": "Generate report for container location.",
+        "operationId": "ContainerLocationReport",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "types": {
+                    "type": "string"
+                  },
+                  "contributorFamily": {
+                    "type": "string"
+                  },
+                  "country": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/containers/summary": {
+      "get": {
+        "tags": ["Containers"],
+        "summary": "List Containers Summary",
+        "description": "Lists multiple containers with a set of fields.",
+        "operationId": "ListContainersSummary",
+        "parameters": [
+          {
+            "name": "ContainerID",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Types",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "UsageStatus",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "OpenForUse",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "Condition",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "GpsState",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "GpsLandmark",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "GpsAgentCode",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "GPSRadius",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ContainerIDStart",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "ContainerIDEnd",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "Country",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ContributorAgentCode",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ContributorFamilyCode",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Void",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ContainerSummary"
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ContainerSummary"
+                  }
+                },
+                "example": [
+                  {
+                    "PK": 0,
+                    "ContainerID": "string",
+                    "Type": "string",
+                    "TypeDisplay": "string",
+                    "TrailerSubType": "string",
+                    "Status": "string",
+                    "UsageStatus": "string",
+                    "PwfLat": 0,
+                    "PwfLng": 0,
+                    "PwfCity": "string",
+                    "PwfState": "string",
+                    "PwfReportTime": "string",
+                    "PwfGeofence": "string",
+                    "AgentInPossession": "string",
+                    "AgentInPossessionCity": "string",
+                    "AgentInPossessionState": "string",
+                    "DestinationAgent": "string",
+                    "DestinationAgentCity": "string",
+                    "DestinationAgentState": "string",
+                    "RepositionEndAgent": "string",
+                    "RepositionEndAgentCity": "string",
+                    "RepositionEndAgentState": "string",
+                    "DeliverySpreadFinalDate": "string",
+                    "EstimatedTripEndDate": "string",
+                    "RepositionEndDate": "string",
+                    "Condition": "string",
+                    "TimesUsed": 0,
+                    "Country": "string",
+                    "AgentVisible": true,
+                    "OpenForUse": true,
+                    "ParametersForUse": "string",
+                    "ContributorAgentCode": "string",
+                    "ContributorFamilyCode": "string",
+                    "TrailerLength": 0,
+                    "UsageEventType": "string",
+                    "HasCoordinates": true
+                  }
+                ]
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ContainerSummary"
+                  }
+                },
+                "example": [
+                  {
+                    "PK": 0,
+                    "ContainerID": "string",
+                    "Type": "string",
+                    "TypeDisplay": "string",
+                    "TrailerSubType": "string",
+                    "Status": "string",
+                    "UsageStatus": "string",
+                    "PwfLat": 0,
+                    "PwfLng": 0,
+                    "PwfCity": "string",
+                    "PwfState": "string",
+                    "PwfReportTime": "string",
+                    "PwfGeofence": "string",
+                    "AgentInPossession": "string",
+                    "AgentInPossessionCity": "string",
+                    "AgentInPossessionState": "string",
+                    "DestinationAgent": "string",
+                    "DestinationAgentCity": "string",
+                    "DestinationAgentState": "string",
+                    "RepositionEndAgent": "string",
+                    "RepositionEndAgentCity": "string",
+                    "RepositionEndAgentState": "string",
+                    "DeliverySpreadFinalDate": "string",
+                    "EstimatedTripEndDate": "string",
+                    "RepositionEndDate": "string",
+                    "Condition": "string",
+                    "TimesUsed": 0,
+                    "Country": "string",
+                    "AgentVisible": true,
+                    "OpenForUse": true,
+                    "ParametersForUse": "string",
+                    "ContributorAgentCode": "string",
+                    "ContributorFamilyCode": "string",
+                    "TrailerLength": 0,
+                    "UsageEventType": "string",
+                    "HasCoordinates": true
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/containers/trailer": {
+      "post": {
+        "tags": ["Containers"],
+        "summary": "Upsert Trailer",
+        "description": "Update an existing trailer or insert a new container, based on ContainerId.  If a valid ContainerId is provided then an update will be performed, otherwise an insert will occur.",
+        "operationId": "UpsertTrailer",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/UpsertTrailerRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "AgentVisible": true,
+                "OpenForUse": true,
+                "ParametersForUse": "string"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/UpsertTrailerRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "AgentVisible": true,
+                "OpenForUse": true,
+                "ParametersForUse": "string"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/UpsertTrailerRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "AgentVisible": true,
+                "OpenForUse": true,
+                "ParametersForUse": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/Container"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Container"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Container"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/containers/request-trailer": {
+      "post": {
+        "tags": ["Containers"],
+        "summary": "Request a Trailer",
+        "description": "Sends an email to Atlas requesting use of trailer.",
+        "operationId": "RequestTrailer",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/RequestTrailerRequest"
+                  }
+                ]
+              },
+              "example": {
+                "TrailerID": "string",
+                "ContactEmails": "string",
+                "Comments": "string"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/RequestTrailerRequest"
+                  }
+                ]
+              },
+              "example": {
+                "TrailerID": "string",
+                "ContactEmails": "string",
+                "Comments": "string"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/RequestTrailerRequest"
+                  }
+                ]
+              },
+              "example": {
+                "TrailerID": "string",
+                "ContactEmails": "string",
+                "Comments": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/containers/trailer-admins-report": {
+      "post": {
+        "tags": ["Containers"],
+        "summary": "Trailer Admins Report",
+        "description": "Lists all trailer admins.",
+        "operationId": "TrailerAdminsReport",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "contributorFamily": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/trailer-control-sheets": {
+      "post": {
+        "tags": ["TrailerControlSheetsApi"],
+        "summary": "Create a Trailer Control Sheet",
+        "description": "Create a Trailer Control Sheet",
+        "operationId": "CreateTrailerControlSheet",
+        "parameters": [
+          {
+            "name": "flattenPdf",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "containerID": {
+                    "type": "string"
+                  },
+                  "sheet": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "example": "string"
+              },
+              "text/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "example": "string"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["TrailerControlSheetsApi"],
+        "summary": "List Trailer Control Sheets",
+        "description": "List Trailer Control Sheets",
+        "operationId": "ListTrailerControlSheets",
+        "parameters": [
+          {
+            "name": "containerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeData",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TrailerControlSheet"
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TrailerControlSheet"
+                  }
+                },
+                "example": [
+                  {
+                    "Id": "string",
+                    "ContainerId": "string",
+                    "Data": "string",
+                    "Name": "string",
+                    "Type": "string",
+                    "Size": 0,
+                    "CreatedBy": "string",
+                    "CreatedByName": "string",
+                    "CreatedDate": "string",
+                    "UpdatedBy": "string",
+                    "UpdatedByName": "string",
+                    "UpdatedDate": "string",
+                    "Deleted": true,
+                    "CreatedDateDisplay": "string"
+                  }
+                ]
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TrailerControlSheet"
+                  }
+                },
+                "example": [
+                  {
+                    "Id": "string",
+                    "ContainerId": "string",
+                    "Data": "string",
+                    "Name": "string",
+                    "Type": "string",
+                    "Size": 0,
+                    "CreatedBy": "string",
+                    "CreatedByName": "string",
+                    "CreatedDate": "string",
+                    "UpdatedBy": "string",
+                    "UpdatedByName": "string",
+                    "UpdatedDate": "string",
+                    "Deleted": true,
+                    "CreatedDateDisplay": "string"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trailer-control-sheets/{id}": {
+      "get": {
+        "tags": ["TrailerControlSheetsApi"],
+        "summary": "Get a Trailer Control Sheet",
+        "description": "Get a Trailer Control Sheet",
+        "operationId": "GetTrailerControlSheet",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeData",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrailerControlSheet"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrailerControlSheet"
+                },
+                "example": {
+                  "Id": "string",
+                  "ContainerId": "string",
+                  "Data": "string",
+                  "Name": "string",
+                  "Type": "string",
+                  "Size": 0,
+                  "CreatedBy": "string",
+                  "CreatedByName": "string",
+                  "CreatedDate": "string",
+                  "UpdatedBy": "string",
+                  "UpdatedByName": "string",
+                  "UpdatedDate": "string",
+                  "Deleted": true,
+                  "CreatedDateDisplay": "string"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrailerControlSheet"
+                },
+                "example": {
+                  "Id": "string",
+                  "ContainerId": "string",
+                  "Data": "string",
+                  "Name": "string",
+                  "Type": "string",
+                  "Size": 0,
+                  "CreatedBy": "string",
+                  "CreatedByName": "string",
+                  "CreatedDate": "string",
+                  "UpdatedBy": "string",
+                  "UpdatedByName": "string",
+                  "UpdatedDate": "string",
+                  "Deleted": true,
+                  "CreatedDateDisplay": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["TrailerControlSheetsApi"],
+        "summary": "Delete a Trailer Control Sheet",
+        "description": "Delete a Trailer Control Sheet",
+        "operationId": "DeleteTrailerControlSheet",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/trailer-control-sheets/file/{id}": {
+      "get": {
+        "tags": ["TrailerControlSheetsApi"],
+        "summary": "Get a Trailer Control Sheet File",
+        "description": "Get a Trailer Control Sheet File",
+        "operationId": "GetTrailerControlSheetFile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "inline",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/trailer-control-sheets/build": {
+      "post": {
+        "tags": ["TrailerControlSheetsApi"],
+        "summary": "Build Trailer Control Sheet",
+        "description": "Build Trailer Control Sheet",
+        "operationId": "BuildTrailerControlSheet",
+        "parameters": [
+          {
+            "name": "flattenPdf",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "inline",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "containerId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/downloadable-documents": {
+      "post": {
+        "tags": ["DownloadableDocuments"],
+        "summary": "Create a Downloadable Document",
+        "description": "Create a Downloadable Document",
+        "operationId": "CreateDownloadableDocument",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "containerID": {
+                    "type": "string"
+                  },
+                  "document": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "example": "string"
+              },
+              "text/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "example": "string"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["DownloadableDocuments"],
+        "summary": "List Downloadable Documents",
+        "description": "List Downloadable Documents",
+        "operationId": "ListDownloadableDocuments",
+        "parameters": [
+          {
+            "name": "containerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeData",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Attachment"
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Attachment"
+                  }
+                },
+                "example": [
+                  {
+                    "Id": "string",
+                    "Category": "string",
+                    "ContainerId": "string",
+                    "RelatedId": 0,
+                    "Data": "string",
+                    "Name": "string",
+                    "Type": "string",
+                    "Size": 0,
+                    "CreatedBy": "string",
+                    "CreatedByName": "string",
+                    "CreatedDate": "string",
+                    "UpdatedBy": "string",
+                    "UpdatedByName": "string",
+                    "UpdatedDate": "string",
+                    "Deleted": true,
+                    "CreatedDateDisplay": "string"
+                  }
+                ]
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Attachment"
+                  }
+                },
+                "example": [
+                  {
+                    "Id": "string",
+                    "Category": "string",
+                    "ContainerId": "string",
+                    "RelatedId": 0,
+                    "Data": "string",
+                    "Name": "string",
+                    "Type": "string",
+                    "Size": 0,
+                    "CreatedBy": "string",
+                    "CreatedByName": "string",
+                    "CreatedDate": "string",
+                    "UpdatedBy": "string",
+                    "UpdatedByName": "string",
+                    "UpdatedDate": "string",
+                    "Deleted": true,
+                    "CreatedDateDisplay": "string"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/downloadable-documents/{id}": {
+      "get": {
+        "tags": ["DownloadableDocuments"],
+        "summary": "Get a Downloadable Document",
+        "description": "Get a Downloadable Document",
+        "operationId": "GetDownloadableDocument",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeData",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attachment"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attachment"
+                },
+                "example": {
+                  "Id": "string",
+                  "Category": "string",
+                  "ContainerId": "string",
+                  "RelatedId": 0,
+                  "Data": "string",
+                  "Name": "string",
+                  "Type": "string",
+                  "Size": 0,
+                  "CreatedBy": "string",
+                  "CreatedByName": "string",
+                  "CreatedDate": "string",
+                  "UpdatedBy": "string",
+                  "UpdatedByName": "string",
+                  "UpdatedDate": "string",
+                  "Deleted": true,
+                  "CreatedDateDisplay": "string"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attachment"
+                },
+                "example": {
+                  "Id": "string",
+                  "Category": "string",
+                  "ContainerId": "string",
+                  "RelatedId": 0,
+                  "Data": "string",
+                  "Name": "string",
+                  "Type": "string",
+                  "Size": 0,
+                  "CreatedBy": "string",
+                  "CreatedByName": "string",
+                  "CreatedDate": "string",
+                  "UpdatedBy": "string",
+                  "UpdatedByName": "string",
+                  "UpdatedDate": "string",
+                  "Deleted": true,
+                  "CreatedDateDisplay": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["DownloadableDocuments"],
+        "summary": "Delete a Downloadable Document",
+        "description": "Delete a Downloadable Document",
+        "operationId": "DeleteDownloadableDocument",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/downloadable-documents/file/{id}": {
+      "get": {
+        "tags": ["DownloadableDocuments"],
+        "summary": "Get a Downloadable Document File",
+        "description": "Get a Downloadable Document File",
+        "operationId": "GetDownloadableDocumentFile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "inline",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/notes": {
+      "post": {
+        "tags": ["Notes"],
+        "summary": "Create a Note",
+        "description": "Create a Note",
+        "operationId": "CreateNote",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "containerID": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "documents": {
+                    "type": "array"
+                  },
+                  "noteText": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              },
+              "text/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["Notes"],
+        "summary": "List Notes",
+        "description": "List Notes",
+        "operationId": "ListNotes",
+        "parameters": [
+          {
+            "name": "containerId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Note"
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Note"
+                  }
+                },
+                "example": [
+                  {
+                    "NoteID": 0,
+                    "ContainerID": "string",
+                    "Description": "string",
+                    "NoteText": "string",
+                    "CreatedBy": "string",
+                    "CreatedByName": "string",
+                    "CreatedDate": "string",
+                    "UpdatedBy": "string",
+                    "UpdatedByName": "string",
+                    "UpdatedDate": "string",
+                    "AttachmentCount": 0,
+                    "CreatedDateDisplay": "string",
+                    "Attachments": [
+                      {
+                        "Id": "string",
+                        "Category": "string",
+                        "ContainerId": "string",
+                        "RelatedId": 0,
+                        "Data": "string",
+                        "Name": "string",
+                        "Type": "string",
+                        "Size": 0,
+                        "CreatedBy": "string",
+                        "CreatedByName": "string",
+                        "CreatedDate": "string",
+                        "UpdatedBy": "string",
+                        "UpdatedByName": "string",
+                        "UpdatedDate": "string",
+                        "Deleted": true,
+                        "CreatedDateDisplay": "string"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Note"
+                  }
+                },
+                "example": [
+                  {
+                    "NoteID": 0,
+                    "ContainerID": "string",
+                    "Description": "string",
+                    "NoteText": "string",
+                    "CreatedBy": "string",
+                    "CreatedByName": "string",
+                    "CreatedDate": "string",
+                    "UpdatedBy": "string",
+                    "UpdatedByName": "string",
+                    "UpdatedDate": "string",
+                    "AttachmentCount": 0,
+                    "CreatedDateDisplay": "string",
+                    "Attachments": [
+                      {
+                        "Id": "string",
+                        "Category": "string",
+                        "ContainerId": "string",
+                        "RelatedId": 0,
+                        "Data": "string",
+                        "Name": "string",
+                        "Type": "string",
+                        "Size": 0,
+                        "CreatedBy": "string",
+                        "CreatedByName": "string",
+                        "CreatedDate": "string",
+                        "UpdatedBy": "string",
+                        "UpdatedByName": "string",
+                        "UpdatedDate": "string",
+                        "Deleted": true,
+                        "CreatedDateDisplay": "string"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/{id}": {
+      "get": {
+        "tags": ["Notes"],
+        "summary": "Get a Note",
+        "description": "Get a Note",
+        "operationId": "GetNote",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "includeAttachmentData",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/Note"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Note"
+                },
+                "example": {
+                  "NoteID": 0,
+                  "ContainerID": "string",
+                  "Description": "string",
+                  "NoteText": "string",
+                  "CreatedBy": "string",
+                  "CreatedByName": "string",
+                  "CreatedDate": "string",
+                  "UpdatedBy": "string",
+                  "UpdatedByName": "string",
+                  "UpdatedDate": "string",
+                  "AttachmentCount": 0,
+                  "CreatedDateDisplay": "string",
+                  "Attachments": [
+                    {
+                      "Id": "string",
+                      "Category": "string",
+                      "ContainerId": "string",
+                      "RelatedId": 0,
+                      "Data": "string",
+                      "Name": "string",
+                      "Type": "string",
+                      "Size": 0,
+                      "CreatedBy": "string",
+                      "CreatedByName": "string",
+                      "CreatedDate": "string",
+                      "UpdatedBy": "string",
+                      "UpdatedByName": "string",
+                      "UpdatedDate": "string",
+                      "Deleted": true,
+                      "CreatedDateDisplay": "string"
+                    }
+                  ]
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Note"
+                },
+                "example": {
+                  "NoteID": 0,
+                  "ContainerID": "string",
+                  "Description": "string",
+                  "NoteText": "string",
+                  "CreatedBy": "string",
+                  "CreatedByName": "string",
+                  "CreatedDate": "string",
+                  "UpdatedBy": "string",
+                  "UpdatedByName": "string",
+                  "UpdatedDate": "string",
+                  "AttachmentCount": 0,
+                  "CreatedDateDisplay": "string",
+                  "Attachments": [
+                    {
+                      "Id": "string",
+                      "Category": "string",
+                      "ContainerId": "string",
+                      "RelatedId": 0,
+                      "Data": "string",
+                      "Name": "string",
+                      "Type": "string",
+                      "Size": 0,
+                      "CreatedBy": "string",
+                      "CreatedByName": "string",
+                      "CreatedDate": "string",
+                      "UpdatedBy": "string",
+                      "UpdatedByName": "string",
+                      "UpdatedDate": "string",
+                      "Deleted": true,
+                      "CreatedDateDisplay": "string"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/file/{id}": {
+      "get": {
+        "tags": ["Notes"],
+        "summary": "Get a Note File",
+        "description": "Get a Note File",
+        "operationId": "GetNoteFile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "inline",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/container-usages/trailer-location-correction": {
+      "post": {
+        "tags": ["Container Usages"],
+        "summary": "Perform a Trailer Location Correction",
+        "description": "Perform a trailer location correction on a container.",
+        "operationId": "TrailerLocationCorrection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/LocationCorrectionRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "ContainerType": "string",
+                "CorrectionAgent": "string"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/LocationCorrectionRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "ContainerType": "string",
+                "CorrectionAgent": "string"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/LocationCorrectionRequest"
+                  }
+                ]
+              },
+              "example": {
+                "ContainerID": "string",
+                "ContainerType": "string",
+                "CorrectionAgent": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              },
+              "text/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trips/exists/{moveNumber}": {
+      "get": {
+        "tags": ["TripsApi"],
+        "summary": "Check if trip exists",
+        "description": "Check if trip exists",
+        "operationId": "TripExists",
+        "parameters": [
+          {
+            "name": "moveNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "boolean"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                },
+                "example": "True"
+              },
+              "text/json": {
+                "schema": {
+                  "type": "boolean"
+                },
+                "example": "True"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trailerprofile/UnaddedTrailers": {
+      "get": {
+        "tags": ["TrailerProfile"],
+        "summary": "/api/trailerprofile/UnaddedTrailers - GET",
+        "operationId": "get-api-trailerprofile-unaddedtrailers",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TrailerProfile"
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TrailerProfile"
+                  }
+                },
+                "example": [
+                  {
+                    "TrailerNumber": "string",
+                    "TrailerCompany": "string",
+                    "TrailerOwner": "string",
+                    "OwnerIsValidAgent": true,
+                    "OwnerAgentCode": "string",
+                    "OwnerAgentName": "string",
+                    "OwnerFamilyCode": "string",
+                    "OwnerFamilyName": "string",
+                    "Division": "string",
+                    "UnitType": "string",
+                    "GateType": "string",
+                    "Year": 0,
+                    "Make": "string",
+                    "StartDate": "string",
+                    "RetireDate": "string",
+                    "ExpirationDate": "string",
+                    "PhotoReceivedDate": "string",
+                    "PhotoAcceptedDate": "string",
+                    "LeaseReceivedDate": "string",
+                    "PaintSpec": "string",
+                    "OosOwner": 0,
+                    "OosOther": 0,
+                    "OosInspection": 0,
+                    "OosAccident": 0,
+                    "NoCurrentInspection": 0,
+                    "NoCurrentDotInspection": 0,
+                    "EstablishedPaintDate": "string",
+                    "DateAcquired": "string",
+                    "CreateDate": "string",
+                    "UpdateOn": "string",
+                    "UpdatedBy": "string",
+                    "Misc3": "string",
+                    "TrailerLength": 0,
+                    "Hidden": true,
+                    "IsOutOfService": true
+                  }
+                ]
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TrailerProfile"
+                  }
+                },
+                "example": [
+                  {
+                    "TrailerNumber": "string",
+                    "TrailerCompany": "string",
+                    "TrailerOwner": "string",
+                    "OwnerIsValidAgent": true,
+                    "OwnerAgentCode": "string",
+                    "OwnerAgentName": "string",
+                    "OwnerFamilyCode": "string",
+                    "OwnerFamilyName": "string",
+                    "Division": "string",
+                    "UnitType": "string",
+                    "GateType": "string",
+                    "Year": 0,
+                    "Make": "string",
+                    "StartDate": "string",
+                    "RetireDate": "string",
+                    "ExpirationDate": "string",
+                    "PhotoReceivedDate": "string",
+                    "PhotoAcceptedDate": "string",
+                    "LeaseReceivedDate": "string",
+                    "PaintSpec": "string",
+                    "OosOwner": 0,
+                    "OosOther": 0,
+                    "OosInspection": 0,
+                    "OosAccident": 0,
+                    "NoCurrentInspection": 0,
+                    "NoCurrentDotInspection": 0,
+                    "EstablishedPaintDate": "string",
+                    "DateAcquired": "string",
+                    "CreateDate": "string",
+                    "UpdateOn": "string",
+                    "UpdatedBy": "string",
+                    "Misc3": "string",
+                    "TrailerLength": 0,
+                    "Hidden": true,
+                    "IsOutOfService": true
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trailerprofile/AddTrailers": {
+      "post": {
+        "tags": ["TrailerProfile"],
+        "summary": "/api/trailerprofile/AddTrailers - POST",
+        "operationId": "post-api-trailerprofile-addtrailers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "example": ["string"]
+            },
+            "text/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "example": ["string"]
+            },
+            "application/*+json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "example": ["string"]
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "boolean"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                },
+                "example": "True"
+              },
+              "text/json": {
+                "schema": {
+                  "type": "boolean"
+                },
+                "example": "True"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trailerprofile/ToggleHiddenTrailers": {
+      "post": {
+        "tags": ["TrailerProfile"],
+        "summary": "/api/trailerprofile/ToggleHiddenTrailers - POST",
+        "operationId": "post-api-trailerprofile-togglehiddentrailers",
+        "parameters": [
+          {
+            "name": "hide",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "example": ["string"]
+            },
+            "text/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "example": ["string"]
+            },
+            "application/*+json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "example": ["string"]
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "boolean"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                },
+                "example": "True"
+              },
+              "text/json": {
+                "schema": {
+                  "type": "boolean"
+                },
+                "example": "True"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/search-profiles": {
+      "get": {
+        "tags": ["SearchProfileApi"],
+        "summary": "/api/search-profiles - GET",
+        "operationId": "get-api-search-profiles",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SearchProfile"
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SearchProfile"
+                  }
+                },
+                "example": [
+                  {
+                    "UserName": "string",
+                    "ProfileName": "string",
+                    "Data": "string"
+                  }
+                ]
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SearchProfile"
+                  }
+                },
+                "example": [
+                  {
+                    "UserName": "string",
+                    "ProfileName": "string",
+                    "Data": "string"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["SearchProfileApi"],
+        "summary": "/api/search-profiles - POST",
+        "operationId": "post-api-search-profiles",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/SearchProfile"
+                  }
+                ]
+              },
+              "example": {
+                "UserName": "string",
+                "ProfileName": "string",
+                "Data": "string"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/SearchProfile"
+                  }
+                ]
+              },
+              "example": {
+                "UserName": "string",
+                "ProfileName": "string",
+                "Data": "string"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/SearchProfile"
+                  }
+                ]
+              },
+              "example": {
+                "UserName": "string",
+                "ProfileName": "string",
+                "Data": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["SearchProfileApi"],
+        "summary": "/api/search-profiles - DELETE",
+        "operationId": "delete-api-search-profiles",
+        "parameters": [
+          {
+            "name": "profileName",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Agent": {
+        "type": "object",
+        "properties": {
+          "AgencyCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "AgencyName": {
+            "type": "string",
+            "nullable": true
+          },
+          "Address": {
+            "type": "string",
+            "nullable": true
+          },
+          "City": {
+            "type": "string",
+            "nullable": true
+          },
+          "State": {
+            "type": "string",
+            "nullable": true
+          },
+          "Zip": {
+            "type": "string",
+            "nullable": true
+          },
+          "County": {
+            "type": "string",
+            "nullable": true
+          },
+          "Country": {
+            "type": "string",
+            "nullable": true
+          },
+          "AgencyStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "ShiptAuth": {
+            "type": "string",
+            "nullable": true
+          },
+          "Latitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "Longitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "ParentAgencyCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "ParentAgencyName": {
+            "type": "string",
+            "nullable": true
+          },
+          "ParentCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "ParentState": {
+            "type": "string",
+            "nullable": true
+          },
+          "ParentZip": {
+            "type": "string",
+            "nullable": true
+          },
+          "DisplayName": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "DisplayNameAlt": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "ParentName": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "ParentNameAlt": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AllMetadata": {
+        "type": "object",
+        "properties": {
+          "ContainerTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContainerType"
+            },
+            "nullable": true
+          },
+          "ContainerStatuses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "TrailerStatuses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "ContainerConditions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "ContainerUsageStatuses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "Countries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Country"
+            },
+            "nullable": true
+          },
+          "Geofences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Attachment": {
+        "type": "object",
+        "properties": {
+          "Id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "Category": {
+            "type": "string",
+            "nullable": true
+          },
+          "ContainerId": {
+            "type": "string",
+            "nullable": true
+          },
+          "RelatedId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "Data": {
+            "type": "string",
+            "format": "byte",
+            "nullable": true
+          },
+          "Name": {
+            "type": "string",
+            "nullable": true
+          },
+          "Type": {
+            "type": "string",
+            "nullable": true
+          },
+          "Size": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "CreatedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "CreatedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "CreatedDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "UpdatedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "UpdatedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "UpdatedDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "Deleted": {
+            "type": "boolean"
+          },
+          "CreatedDateDisplay": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Container": {
+        "type": "object",
+        "properties": {
+          "UsageObj": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ContainerUsage"
+              }
+            ],
+            "nullable": true
+          },
+          "PK": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ContainerID": {
+            "type": "string",
+            "nullable": true
+          },
+          "Type": {
+            "type": "string",
+            "nullable": true
+          },
+          "TypeDisplay": {
+            "type": "string",
+            "nullable": true
+          },
+          "TrailerSubType": {
+            "type": "string",
+            "nullable": true
+          },
+          "Status": {
+            "type": "string",
+            "nullable": true
+          },
+          "Condition": {
+            "type": "string",
+            "nullable": true
+          },
+          "ContributorAgentCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "ContributorAgentName": {
+            "type": "string",
+            "nullable": true
+          },
+          "ContributorFamilyCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "ContributorFamilyName": {
+            "type": "string",
+            "nullable": true
+          },
+          "ContributionDateStart": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "ContributionDateEnd": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "Cost": {
+            "type": "number",
+            "format": "decimal",
+            "nullable": true
+          },
+          "Builder": {
+            "type": "string",
+            "nullable": true
+          },
+          "TrackerNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "Void": {
+            "type": "boolean"
+          },
+          "PwfVehicleId": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfGroupId": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfLat": {
+            "type": "number",
+            "format": "double"
+          },
+          "PwfLng": {
+            "type": "number",
+            "format": "double"
+          },
+          "PwfBatteryChargeLevel": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "PwfFleetNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfReportTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "PwfRowReferenceTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "PwfGpsDateTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "PwfDeviceType": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfGeofence": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfSerialNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfAddress": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfState": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfContainerUpdated": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "CreatedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "CreatedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "CreatedDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "UpdatedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "UpdatedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "UpdatedDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "BatchID": {
+            "type": "string",
+            "nullable": true
+          },
+          "TimesUsed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "Country": {
+            "type": "string",
+            "nullable": true
+          },
+          "AcquiredDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "LockCombo": {
+            "type": "string",
+            "nullable": true
+          },
+          "TrailerLength": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "SideDoor": {
+            "type": "boolean"
+          },
+          "GateType": {
+            "type": "string",
+            "nullable": true
+          },
+          "AgentVisible": {
+            "type": "boolean"
+          },
+          "OpenForUse": {
+            "type": "boolean"
+          },
+          "ParametersForUse": {
+            "type": "string",
+            "nullable": true
+          },
+          "TrailerAccessories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrailerAccessory"
+            },
+            "nullable": true
+          },
+          "Selected": {
+            "type": "boolean"
+          },
+          "ContributorAgentDisplay": {
+            "type": "string",
+            "nullable": true
+          },
+          "ContributorFamilyDisplay": {
+            "type": "string",
+            "nullable": true
+          },
+          "CountryDisplay": {
+            "type": "string",
+            "nullable": true
+          },
+          "ContributionDateStartDisplay": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "ContributionDateStartPicker": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "ContributionDateEndDisplay": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "ContributionDateEndPicker": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "CostValue": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "CostFormatted": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "GPSLocation": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "PwfBatteryChargeLevelDisplay": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "HasCoordinates": {
+            "type": "boolean",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ContainerSummary": {
+        "type": "object",
+        "properties": {
+          "PK": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ContainerID": {
+            "type": "string",
+            "nullable": true
+          },
+          "Type": {
+            "type": "string",
+            "nullable": true
+          },
+          "TypeDisplay": {
+            "type": "string",
+            "nullable": true
+          },
+          "TrailerSubType": {
+            "type": "string",
+            "nullable": true
+          },
+          "Status": {
+            "type": "string",
+            "nullable": true
+          },
+          "UsageStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfLat": {
+            "type": "number",
+            "format": "double"
+          },
+          "PwfLng": {
+            "type": "number",
+            "format": "double"
+          },
+          "PwfCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfState": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfReportTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "PwfGeofence": {
+            "type": "string",
+            "nullable": true
+          },
+          "AgentInPossession": {
+            "type": "string",
+            "nullable": true
+          },
+          "AgentInPossessionCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "AgentInPossessionState": {
+            "type": "string",
+            "nullable": true
+          },
+          "DestinationAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "DestinationAgentCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "DestinationAgentState": {
+            "type": "string",
+            "nullable": true
+          },
+          "RepositionEndAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "RepositionEndAgentCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "RepositionEndAgentState": {
+            "type": "string",
+            "nullable": true
+          },
+          "DeliverySpreadFinalDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "EstimatedTripEndDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "RepositionEndDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "Condition": {
+            "type": "string",
+            "nullable": true
+          },
+          "TimesUsed": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "Country": {
+            "type": "string",
+            "nullable": true
+          },
+          "AgentVisible": {
+            "type": "boolean"
+          },
+          "OpenForUse": {
+            "type": "boolean"
+          },
+          "ParametersForUse": {
+            "type": "string",
+            "nullable": true
+          },
+          "ContributorAgentCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "ContributorFamilyCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "TrailerLength": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "UsageEventType": {
+            "type": "string",
+            "nullable": true
+          },
+          "HasCoordinates": {
+            "type": "boolean",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ContainerType": {
+        "type": "object",
+        "properties": {
+          "PK": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "Type": {
+            "type": "string",
+            "nullable": true
+          },
+          "Display": {
+            "type": "string",
+            "nullable": true
+          },
+          "Suffix": {
+            "type": "string",
+            "nullable": true
+          },
+          "Enabled": {
+            "type": "boolean"
+          },
+          "Format": {
+            "type": "string",
+            "nullable": true
+          },
+          "Placard": {
+            "type": "string",
+            "nullable": true
+          },
+          "Remaining": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ContainerUsage": {
+        "type": "object",
+        "properties": {
+          "ContainerObj": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Container"
+              }
+            ],
+            "nullable": true
+          },
+          "AgentInPossessionObj": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Agent"
+              }
+            ],
+            "nullable": true
+          },
+          "OriginAgentObj": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Agent"
+              }
+            ],
+            "nullable": true
+          },
+          "DestinationAgentObj": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Agent"
+              }
+            ],
+            "nullable": true
+          },
+          "SITAgentObj": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Agent"
+              }
+            ],
+            "nullable": true
+          },
+          "RepositionStartAgentObj": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Agent"
+              }
+            ],
+            "nullable": true
+          },
+          "RepositionEndAgentObj": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Agent"
+              }
+            ],
+            "nullable": true
+          },
+          "PK": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "EventType": {
+            "type": "string",
+            "nullable": true
+          },
+          "ContainerID": {
+            "type": "string",
+            "nullable": true
+          },
+          "Type": {
+            "type": "string",
+            "nullable": true
+          },
+          "TypeDisplay": {
+            "type": "string",
+            "nullable": true
+          },
+          "UsageStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "AgentInPossession": {
+            "type": "string",
+            "nullable": true
+          },
+          "RegistrationNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "OrderStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "LinehaulLegLegNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "LinehaulLegTripNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "LiveLoadDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "TripArrivalDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "AgreedLiveLoadDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "DeliverySpreadFinalDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "ActualDeliveryDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "OriginAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "DestinationAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "SITAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "SITNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "DateIntoSIT": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "RepositionStartDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "RepositionEndDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "RepositionStartAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "RepositionEndAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "ContainerRemovedReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "SealNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "UpdatedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "UpdatedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "UpdatedDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "TrailerSubType": {
+            "type": "string",
+            "nullable": true
+          },
+          "TripStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "LegNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "TripNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "PickupAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "DeliveryAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "ActualTripStartDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "ActualTripEndDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "EstimatedTripStartDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "EstimatedTripEndDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Country": {
+        "type": "object",
+        "properties": {
+          "Code": {
+            "type": "string",
+            "nullable": true
+          },
+          "Display": {
+            "type": "string",
+            "nullable": true
+          },
+          "Sort": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EndRepositionRequest": {
+        "required": ["ContainerID", "ContainerType", "RepositionEndAgent", "RepositionEndDate"],
+        "type": "object",
+        "properties": {
+          "ContainerID": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "ContainerType": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "RepositionEndDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "RepositionEndAgent": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ImportContainerShipmentDataRequest": {
+        "required": ["ContainerID", "ContainerType", "RegistrationNumber"],
+        "type": "object",
+        "properties": {
+          "ContainerID": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "ContainerType": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "RegistrationNumber": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "OrderStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "AgentInPossession": {
+            "type": "string",
+            "nullable": true
+          },
+          "OriginAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "DestinationAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "SITAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "LinehaulLegLegNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "LinehaulLegTripNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "TripArrivalDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "DateIntoSIT": {
+            "type": "string",
+            "nullable": true
+          },
+          "AgreedLiveLoadDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "DeliverySpreadFinalDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "ActualDeliveryDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "LiveLoadDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "SITNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "ContainerRemovedReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "SealNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "UpdatedByUserID": {
+            "type": "string",
+            "nullable": true
+          },
+          "UpdatedDateTime": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ImportTrailerTripDataRequest": {
+        "required": ["LegNumber", "TrailerID", "TripNumber"],
+        "type": "object",
+        "properties": {
+          "TrailerID": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "TrailerSubType": {
+            "type": "string",
+            "nullable": true
+          },
+          "TripStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "LegNumber": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "TripNumber": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "DestinationAgentOnTheLastShipmentOnThisTrip": {
+            "type": "string",
+            "nullable": true
+          },
+          "PickupAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "DeliveryAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "ActualTripStartDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "ActualTripEndDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "EstimatedTripStartDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "EstimatedTripEndDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "TrailerRemovedReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "UpdatedByUserID": {
+            "type": "string",
+            "nullable": true
+          },
+          "UpdatedDateTime": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LocationCorrectionRequest": {
+        "required": ["ContainerID", "ContainerType", "CorrectionAgent"],
+        "type": "object",
+        "properties": {
+          "ContainerID": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "ContainerType": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "CorrectionAgent": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MassAddContainersRequest": {
+        "required": ["ContributorAgentCode", "Country", "Quantity", "Type"],
+        "type": "object",
+        "properties": {
+          "Type": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "Country": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "Quantity": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ContributorAgentCode": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "Cost": {
+            "type": "number",
+            "format": "decimal",
+            "nullable": true
+          },
+          "Builder": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MassAddContainersResponse": {
+        "type": "object",
+        "properties": {
+          "Message": {
+            "type": "string",
+            "nullable": true
+          },
+          "AddedContainerIDs": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MassEditContainersRequest": {
+        "required": ["ContainerIDs"],
+        "type": "object",
+        "properties": {
+          "ContainerIDs": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "ContributorAgentCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "ContributionDateStart": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "Status": {
+            "type": "string",
+            "nullable": true
+          },
+          "Condition": {
+            "type": "string",
+            "nullable": true
+          },
+          "Cost": {
+            "type": "number",
+            "format": "decimal",
+            "nullable": true
+          },
+          "Builder": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MassEditContainersResponse": {
+        "type": "object",
+        "properties": {
+          "Message": {
+            "type": "string",
+            "nullable": true
+          },
+          "EditedContainerIDs": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Note": {
+        "type": "object",
+        "properties": {
+          "NoteID": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ContainerID": {
+            "type": "string",
+            "nullable": true
+          },
+          "Description": {
+            "type": "string",
+            "nullable": true
+          },
+          "NoteText": {
+            "type": "string",
+            "nullable": true
+          },
+          "CreatedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "CreatedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "CreatedDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "UpdatedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "UpdatedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "UpdatedDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "AttachmentCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "CreatedDateDisplay": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "Attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": {}
+      },
+      "RequestTrailerRequest": {
+        "required": ["Comments", "ContactEmails", "TrailerID"],
+        "type": "object",
+        "properties": {
+          "TrailerID": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "ContactEmails": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "Comments": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SearchProfile": {
+        "type": "object",
+        "properties": {
+          "UserName": {
+            "type": "string",
+            "nullable": true
+          },
+          "ProfileName": {
+            "type": "string",
+            "nullable": true
+          },
+          "Data": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "StartRepositionRequest": {
+        "required": [
+          "ContainerID",
+          "ContainerType",
+          "RepositionEndAgent",
+          "RepositionEndDate",
+          "RepositionStartAgent",
+          "RepositionStartDate"
+        ],
+        "type": "object",
+        "properties": {
+          "ContainerID": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "ContainerType": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "RepositionStartDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "RepositionStartAgent": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "RepositionEndDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "RepositionEndAgent": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TrailerAccessory": {
+        "type": "object",
+        "properties": {
+          "PK": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "TrailerID": {
+            "type": "string",
+            "nullable": true
+          },
+          "Type": {
+            "type": "string",
+            "nullable": true
+          },
+          "TypeName": {
+            "type": "string",
+            "nullable": true
+          },
+          "Quantity": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TrailerControlSheet": {
+        "type": "object",
+        "properties": {
+          "Id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ContainerId": {
+            "type": "string",
+            "nullable": true
+          },
+          "Data": {
+            "type": "string",
+            "format": "byte",
+            "nullable": true
+          },
+          "Name": {
+            "type": "string",
+            "nullable": true
+          },
+          "Type": {
+            "type": "string",
+            "nullable": true
+          },
+          "Size": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "CreatedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "CreatedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "CreatedDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "UpdatedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "UpdatedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "UpdatedDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "Deleted": {
+            "type": "boolean"
+          },
+          "CreatedDateDisplay": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "TrailerProfile": {
+        "type": "object",
+        "properties": {
+          "TrailerNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "TrailerCompany": {
+            "type": "string",
+            "nullable": true
+          },
+          "TrailerOwner": {
+            "type": "string",
+            "nullable": true
+          },
+          "OwnerIsValidAgent": {
+            "type": "boolean"
+          },
+          "OwnerAgentCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "OwnerAgentName": {
+            "type": "string",
+            "nullable": true
+          },
+          "OwnerFamilyCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "OwnerFamilyName": {
+            "type": "string",
+            "nullable": true
+          },
+          "Division": {
+            "type": "string",
+            "nullable": true
+          },
+          "UnitType": {
+            "type": "string",
+            "nullable": true
+          },
+          "GateType": {
+            "type": "string",
+            "nullable": true
+          },
+          "Year": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "Make": {
+            "type": "string",
+            "nullable": true
+          },
+          "StartDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "RetireDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "ExpirationDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "PhotoReceivedDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "PhotoAcceptedDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "LeaseReceivedDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "PaintSpec": {
+            "type": "string",
+            "nullable": true
+          },
+          "OosOwner": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "OosOther": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "OosInspection": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "OosAccident": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "NoCurrentInspection": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "NoCurrentDotInspection": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "EstablishedPaintDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "DateAcquired": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "CreateDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "UpdateOn": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "UpdatedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "Misc3": {
+            "type": "string",
+            "nullable": true
+          },
+          "TrailerLength": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "Hidden": {
+            "type": "boolean"
+          },
+          "IsOutOfService": {
+            "type": "boolean",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateGpsRequest": {
+        "type": "object",
+        "properties": {
+          "PwfVehicleId": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfGroupId": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfLat": {
+            "type": "number",
+            "format": "double"
+          },
+          "PwfLng": {
+            "type": "number",
+            "format": "double"
+          },
+          "PwfBatteryChargeLevel": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "PwfFleetNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfReportTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "PwfRowReferenceTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "PwfGpsDateTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "PwfDeviceType": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfGeofence": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfSerialNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfAddress": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "PwfState": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpsertContainerRequest": {
+        "required": ["ContributorAgentCode", "Status", "Type"],
+        "type": "object",
+        "properties": {
+          "ContainerID": {
+            "type": "string",
+            "nullable": true
+          },
+          "Type": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "Country": {
+            "type": "string",
+            "nullable": true
+          },
+          "Status": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "Condition": {
+            "type": "string",
+            "nullable": true
+          },
+          "ContributorAgentCode": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "ContributionDateStart": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "Cost": {
+            "type": "number",
+            "format": "decimal",
+            "nullable": true
+          },
+          "Builder": {
+            "type": "string",
+            "nullable": true
+          },
+          "TrackerNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "Void": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpsertTrailerRequest": {
+        "required": ["ContainerID"],
+        "type": "object",
+        "properties": {
+          "ContainerID": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "AgentVisible": {
+            "type": "boolean"
+          },
+          "OpenForUse": {
+            "type": "boolean"
+          },
+          "ParametersForUse": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ValidateMassEditContainersResponse": {
+        "type": "object",
+        "properties": {
+          "Valid": {
+            "type": "boolean"
+          },
+          "Messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidateMassEditMessage"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ValidateMassEditMessage": {
+        "type": "object",
+        "properties": {
+          "Type": {
+            "type": "string",
+            "nullable": true
+          },
+          "Text": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Containers"
+    },
+    {
+      "name": "Mass Containers"
+    },
+    {
+      "name": "Metadata"
+    },
+    {
+      "name": "Container Usages"
+    },
+    {
+      "name": "TrailerControlSheetsApi"
+    },
+    {
+      "name": "DownloadableDocuments"
+    },
+    {
+      "name": "Notes"
+    },
+    {
+      "name": "TripsApi"
+    },
+    {
+      "name": "TrailerProfile"
+    },
+    {
+      "name": "SearchProfileApi"
+    }
+  ]
+}

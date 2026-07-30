@@ -13,12 +13,24 @@
 // place deliver-to-external reads SEND_URL/SEND_API_KEY, and where a workflow
 // already reads e.g. its ADE queue name), keyed by config/secret name + group:
 //   CONFIG  BASE_URL   — required; the outbound base URL
-//   CONFIG  AUTH_MODE  — oauth2_client_credentials (default) | bearer | none
+//   CONFIG  AUTH_MODE  — oauth2_client_credentials (default) | bearer | apikey | none
 //   CONFIG  TOKEN_URL  — required for oauth2_client_credentials
 //   SECRET  CLIENT_ID / CLIENT_SECRET — required for oauth2_client_credentials
-//   SECRET  API_KEY    — required for bearer
+//   SECRET  API_KEY    — required for bearer AND apikey
+//   CONFIG  API_KEY_HEADER — apikey only; header name, default
+//                            `Ocp-Apim-Subscription-Key`
+//   CONFIG  REQUEST_TIMEOUT_MS / MAX_RETRIES — optional resilience tuning
 // The default key names are overridable per call so one tenant can host several
 // integrations in the same group.
+//
+// ── Azure API Management partners (docs/atlas-world-group-api) ──────────────
+// APIM gateways authenticate with a NAMED HEADER, not a bearer, and commonly
+// require a second per-request identity header. Atlas World Group is the
+// motivating case: all 24 of its APIs accept only `Ocp-Apim-Subscription-Key`,
+// and 142 of its 255 operations additionally declare `On-Behalf-Of`. Both are
+// now expressible — `AUTH_MODE=apikey` for the credential, and the `headers` /
+// `secretHeaders` request fields for everything else. See lib/outbound-headers
+// for why those are two separate maps and which names are refused.
 //
 // Dry-run split (client-side, sdk-feedback/0015): a GET is a read and runs LIVE
 // under `run --dry-run` (it reaches this endpoint); a POST/PUT/… is a mutation
@@ -31,15 +43,18 @@
 // full SSRF hardening (no DNS-rebinding defense).
 //
 // Failure modes:
-//   400 VALIDATION_ERROR — bad body, or a disallowed resolved URL
-//   403 Forbidden        — Cedar denies (no CallExternal permission)
-//   404 NOT_FOUND        — unknown integration, or a required config/secret unset
-//   502 UPSTREAM_ERROR   — token mint or outbound call could not be completed
+//   400 VALIDATION_ERROR  — bad body, a disallowed resolved URL, or a rejected
+//                           custom header (reserved name / illegal value)
+//   403 Forbidden         — Cedar denies (no CallExternal permission)
+//   404 NOT_FOUND         — unknown integration, or a required config/secret unset
+//   502 UPSTREAM_ERROR    — token mint or outbound call could not be completed
+//   504 UPSTREAM_TIMEOUT  — the partner did not respond within the timeout
 // ---------------------------------------------------------------------------
 
 import { Hono } from 'hono'
 import { validator } from 'hono/validator'
 import { z } from 'zod'
+import { logger } from '../lib/logger'
 import { requirePermission } from '../middleware/rbac'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { Actions } from '../authz/actions'
@@ -58,6 +73,20 @@ import {
   type SharedTokenTier,
 } from '../services/outbound-oauth'
 import { buildBlobS3Key, newBlobId, getObjectBuffer, putObjectBuffer } from '../lib/documents-s3'
+import {
+  validateHeaderMaps,
+  resolveOutboundHeaders,
+  collectResponseHeaders,
+  MissingHeaderSecretError,
+  MAX_HEADER_VALUE,
+} from '../lib/outbound-headers'
+import {
+  isRetryableStatus,
+  isIdempotent,
+  retryDelayMs,
+  clampMaxRetries,
+  clampTimeoutMs,
+} from '../lib/outbound-retry'
 
 // Small-file ceiling for the blob<->Lambda paths (sdk-feedback/0025, phased):
 // resolving a `{"$blob": id}` upload inline as base64, or landing a partner GET
@@ -143,6 +172,19 @@ const CallBody = z.object({
    * `{blobId, ...}`; the response bytes never sit in the workflow. Small-file cut.
    */
   responseToBlob: z.boolean().optional(),
+  /**
+   * Extra request headers with LITERAL values — non-secret by construction,
+   * since they come from workflow code (e.g. `{"On-Behalf-Of": "jdoe"}`).
+   * Reserved names (Authorization/Host/Content-Length/Content-Type) are refused.
+   */
+  headers: z.record(z.string(), z.string().max(MAX_HEADER_VALUE)).optional(),
+  /**
+   * Extra request headers whose values are SECRET KEY NAMES, resolved server-side
+   * from the tenant's encrypted store (e.g.
+   * `{"Ocp-Apim-Subscription-Key": "ATLAS_SUB_KEY"}`). This is how a partner
+   * credential reaches the wire without ever entering workflow code.
+   */
+  secretHeaders: z.record(z.string(), z.string().max(128)).optional(),
   /** WorkflowSecretConfig group the config/secret entries live in. */
   group: z.string().min(1).max(128).default('global'),
   /** Config/secret key-name overrides (defaults suit a single-integration group). */
@@ -152,7 +194,15 @@ const CallBody = z.object({
   clientIdSecret: z.string().min(1).max(128).default('CLIENT_ID'),
   clientSecretSecret: z.string().min(1).max(128).default('CLIENT_SECRET'),
   bearerSecret: z.string().min(1).max(128).default('API_KEY'),
+  /** apikey mode: config holding the header name. */
+  apiKeyHeaderConfig: z.string().min(1).max(128).default('API_KEY_HEADER'),
+  /** Config keys holding the per-integration timeout / retry budget. */
+  timeoutConfig: z.string().min(1).max(128).default('REQUEST_TIMEOUT_MS'),
+  maxRetriesConfig: z.string().min(1).max(128).default('MAX_RETRIES'),
 })
+
+/** Default header name for `AUTH_MODE=apikey` — the Azure APIM convention. */
+const DEFAULT_API_KEY_HEADER = 'Ocp-Apim-Subscription-Key'
 
 type CallInput = z.infer<typeof CallBody>
 
@@ -206,6 +256,11 @@ integrationCallHandler.post(
     const input = c.req.valid('json') as CallInput
     const tenantId = c.get('tenantId')
     const repo = createWorkflowSecretConfigRepository(c.get('db'))
+
+    // Reject bad custom headers BEFORE any config/secret read — a reserved name
+    // or a CRLF-bearing value is a client error, not a lookup failure.
+    const headerError = validateHeaderMaps(input)
+    if (headerError) return c.json({ error: headerError, code: 'VALIDATION_ERROR' }, 400)
 
     // ── resolve config ──────────────────────────────────────────────────────
     const baseUrlRow = await repo.findByKey('CONFIG', input.group, input.baseUrlConfig)
@@ -282,8 +337,47 @@ integrationCallHandler.post(
         )
       }
       headers.Authorization = `Bearer ${await decryptSecretValue(keyRow.valueCiphertext, tenantId)}`
+    } else if (authMode === 'apikey') {
+      // Azure APIM and friends: the credential is a named header, not a bearer.
+      // The header NAME is config (non-secret); only the value is a secret.
+      const keyRow = await repo.findByKey('SECRET', input.group, input.bearerSecret)
+      if (!keyRow?.valueCiphertext) {
+        return c.json(
+          { error: `Secret '${input.bearerSecret}' (api key) is not set`, code: 'NOT_FOUND' },
+          404,
+        )
+      }
+      const nameRow = await repo.findByKey('CONFIG', input.group, input.apiKeyHeaderConfig)
+      const headerName = (nameRow?.value ?? DEFAULT_API_KEY_HEADER).trim()
+      // The name comes from tenant config, so it gets the same syntax + reserved
+      // check as a caller-supplied header — otherwise `AUTH_MODE=apikey` with
+      // `API_KEY_HEADER=Authorization` would quietly reintroduce the override
+      // the reserved list exists to prevent.
+      const nameError = validateHeaderMaps({ headers: { [headerName]: 'x' } })
+      if (nameError) {
+        return c.json(
+          { error: `Config '${input.apiKeyHeaderConfig}': ${nameError}`, code: 'VALIDATION_ERROR' },
+          400,
+        )
+      }
+      headers[headerName] = await decryptSecretValue(keyRow.valueCiphertext, tenantId)
     } else if (authMode !== 'none') {
       return c.json({ error: `Unsupported AUTH_MODE '${authMode}'`, code: 'VALIDATION_ERROR' }, 400)
+    }
+
+    // ── overlay the caller's custom headers ─────────────────────────────────
+    let finalHeaders: Record<string, string>
+    try {
+      finalHeaders = await resolveOutboundHeaders(headers, input, async (secretKey) => {
+        const row = await repo.findByKey('SECRET', input.group, secretKey)
+        if (!row?.valueCiphertext) return null
+        return decryptSecretValue(row.valueCiphertext, tenantId)
+      })
+    } catch (err) {
+      if (err instanceof MissingHeaderSecretError) {
+        return c.json({ error: err.message, code: 'NOT_FOUND' }, 404)
+      }
+      throw err
     }
 
     // ── resolve any {"$blob": id} refs in the body to inline base64 ──────────
@@ -299,34 +393,87 @@ integrationCallHandler.post(
       }
     }
 
-    // ── perform the call (with one OAuth re-mint on 401) ─────────────────────
+    // ── perform the call (timeout + 429/503 retry + one OAuth re-mint on 401) ─
     const hasBody = outboundBody !== undefined && input.method !== 'GET'
-    if (hasBody) headers['Content-Type'] = 'application/json'
+    if (hasBody) finalHeaders['Content-Type'] = 'application/json'
+
+    const timeoutRow = await repo.findByKey('CONFIG', input.group, input.timeoutConfig)
+    const retriesRow = await repo.findByKey('CONFIG', input.group, input.maxRetriesConfig)
+    const timeoutMs = clampTimeoutMs(timeoutRow?.value)
+    const maxRetries = clampMaxRetries(retriesRow?.value)
+    // A partner that throttles us is only safe to re-send when the request is
+    // idempotent; otherwise we would risk a duplicate write at the partner.
+    const mayRetry = isIdempotent(input.method, input.mutating)
 
     const doRequest = (): Promise<Response> =>
       fetch(url, {
         method: input.method,
-        headers,
+        headers: finalHeaders,
+        // Before this, a partner that accepted the connection and went quiet
+        // burned the whole Lambda budget.
+        signal: AbortSignal.timeout(timeoutMs),
         ...(hasBody ? { body: JSON.stringify(outboundBody) } : {}),
       })
 
-    let response: Response
-    try {
-      response = await doRequest()
-      if (response.status === 401 && cacheKey && remint) {
-        // Clear BOTH tiers: a 401 means the partner killed the token early, so
-        // leaving it in the shared row would let other containers keep presenting
-        // it until its nominal expiry.
-        await invalidateOutboundTokenEverywhere(cacheKey, sharedTier)
-        headers.Authorization = `Bearer ${await remint()}`
-        response = await doRequest()
+    /** Run the request, re-minting once on 401 and retrying 429/503 per policy. */
+    const performWithRetries = async (): Promise<{ response: Response; attempts: number }> => {
+      let attempts = 0
+      let retries = 0
+      for (;;) {
+        attempts += 1
+        let response = await doRequest()
+
+        if (response.status === 401 && cacheKey && remint) {
+          // Clear BOTH tiers: a 401 means the partner killed the token early, so
+          // leaving it in the shared row would let other containers keep
+          // presenting it until its nominal expiry. The re-mint is deliberately
+          // NOT charged against the retry budget — it is a different failure.
+          await invalidateOutboundTokenEverywhere(cacheKey, sharedTier)
+          finalHeaders.Authorization = `Bearer ${await remint()}`
+          attempts += 1
+          response = await doRequest()
+        }
+
+        if (!mayRetry || retries >= maxRetries || !isRetryableStatus(response.status)) {
+          return { response, attempts }
+        }
+
+        const delay = retryDelayMs(response.headers.get('retry-after'), retries, Date.now())
+        logger.info('outbound call throttled — retrying', {
+          integrationId,
+          status: response.status,
+          attempt: attempts,
+          delayMs: delay,
+        })
+        retries += 1
+        await new Promise((resolve) => setTimeout(resolve, delay))
       }
+    }
+
+    let response: Response
+    let attempts: number
+    try {
+      ;({ response, attempts } = await performWithRetries())
     } catch (err) {
+      // AbortSignal.timeout rejects with a TimeoutError; a caller-side abort
+      // surfaces as AbortError. Both mean "no answer", which is a distinct
+      // operational condition from "the call could not be made".
+      const name = err instanceof Error ? err.name : ''
+      if (name === 'TimeoutError' || name === 'AbortError') {
+        return c.json(
+          {
+            error: `partner did not respond within ${timeoutMs}ms`,
+            code: 'UPSTREAM_TIMEOUT',
+          },
+          504,
+        )
+      }
       const message = err instanceof Error ? err.message : 'outbound call failed'
       return c.json({ error: message, code: 'UPSTREAM_ERROR' }, 502)
     }
 
     const contentType = response.headers.get('content-type') ?? undefined
+    const responseHeaders = collectResponseHeaders(response.headers)
 
     // ── response_to_blob: land the body into a blob instead of returning it ──
     if (input.responseToBlob) {
@@ -352,7 +499,8 @@ integrationCallHandler.post(
           ok: response.ok,
           blobId,
           size: buf.length,
-          headers: { 'content-type': contentType },
+          headers: responseHeaders,
+          attempts,
           dryRun: false,
         },
       })
@@ -364,7 +512,8 @@ integrationCallHandler.post(
         status: response.status,
         ok: response.ok,
         response: parseResponseBody(text),
-        headers: { 'content-type': contentType },
+        headers: responseHeaders,
+        attempts,
         dryRun: false,
       },
     })

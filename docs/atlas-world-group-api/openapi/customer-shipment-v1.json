@@ -1,0 +1,1633 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "CustomerShipment",
+    "description": "Service to expose shipment endpoints for customers",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/customer-shipment/v1"
+    }
+  ],
+  "paths": {
+    "/shipments": {
+      "post": {
+        "tags": ["Shipments"],
+        "summary": "Post Shipment",
+        "description": "Post flat shipment.",
+        "operationId": "post-shipment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Shipment"
+              },
+              "example": {
+                "clientName": "string",
+                "clientNumber": "string",
+                "customerOE": "string",
+                "emails": [
+                  {
+                    "emailAddress": "string",
+                    "emailAddressKind": "string"
+                  }
+                ],
+                "extraStops": [
+                  {
+                    "stopSequence": 0,
+                    "stopType": "string",
+                    "stopAddress": {
+                      "primaryContactName": "string",
+                      "secondaryContactName": "string",
+                      "cityName": "string",
+                      "name": "string",
+                      "postalCode": "string",
+                      "stateCode": "string",
+                      "countryCode": "string",
+                      "addressLine1": "string",
+                      "addressLine2": "string"
+                    },
+                    "comments": "string",
+                    "agreedDateFrom": "string",
+                    "agreedDateTo": "string",
+                    "packUnPackDateFrom": "string",
+                    "packUnPackDateTo": "string",
+                    "packUnPackSupplierId": "string",
+                    "packUnPackOption": "string"
+                  }
+                ],
+                "fileNumber": "string",
+                "fromAddress": {
+                  "primaryContactName": "string",
+                  "secondaryContactName": "string",
+                  "cityName": "string",
+                  "name": "string",
+                  "postalCode": "string",
+                  "stateCode": "string",
+                  "countryCode": "string",
+                  "addressLine1": "string",
+                  "addressLine2": "string"
+                },
+                "pickupComments": "string",
+                "toAddress": {
+                  "primaryContactName": "string",
+                  "secondaryContactName": "string",
+                  "cityName": "string",
+                  "name": "string",
+                  "postalCode": "string",
+                  "stateCode": "string",
+                  "countryCode": "string",
+                  "addressLine1": "string",
+                  "addressLine2": "string"
+                },
+                "deliveryComments": "string",
+                "orderKind": "string",
+                "agreedDeliveryFrom": "string",
+                "agreedDeliveryTo": "string",
+                "destinationSupplierId": "string",
+                "agreedPickupFrom": "string",
+                "agreedPickupTo": "string",
+                "originSupplierId": "string",
+                "packFrom": "string",
+                "packTo": "string",
+                "packSupplierId": "string",
+                "packOption": "string",
+                "unPackSupplierId": "string",
+                "unPackOption": "string",
+                "unPackFrom": "string",
+                "unPackTo": "string",
+                "moveInitiation": "string",
+                "phones": [
+                  {
+                    "phoneNumber": "string",
+                    "phoneType": "string",
+                    "phoneNumberKind": "string"
+                  }
+                ],
+                "serviceCustomerName": "string",
+                "shipmentType": "string",
+                "spouseName": "string",
+                "supplierId": "string",
+                "workOrderId": "string",
+                "salespersonId": 0,
+                "logisticsMode": "string",
+                "moveType": "string",
+                "customerFirstName": "string",
+                "customerLastName": "string",
+                "homeFurnishingLevelNumber": 0,
+                "remark": "string",
+                "rateQuote": 0,
+                "consultant": "string",
+                "consultantPhone": "string",
+                "consultantEmail": {
+                  "emailAddress": "string",
+                  "emailAddressKind": "string"
+                },
+                "contactInfo": "string",
+                "contactPhone": "string",
+                "contactName": "string",
+                "insuranceProvider": "string",
+                "customerServiceRepresentative": "string",
+                "cancelDate": "string",
+                "cancelReason": "string",
+                "cancelType": "string",
+                "quoteNumber": "string",
+                "commodity": 0,
+                "pieceCount": 0,
+                "trailerTypeRequired": "string",
+                "notifyEmails": [
+                  {
+                    "emailAddress": "string",
+                    "emailAddressKind": "string"
+                  }
+                ],
+                "authorizedWeight": 0,
+                "authorizedWeightUnit": "string",
+                "specialInstructions": "string",
+                "estimatedWeight": 0,
+                "projectId": "string",
+                "vendorCost": 0,
+                "spaceRequired": 0,
+                "accountEstimateId": "string",
+                "lastServiceDate": "string",
+                "householdGoodsType": "string",
+                "departmentId": "string",
+                "linehaulCost": 0,
+                "fuelCost": 0,
+                "notes": [
+                  {
+                    "noteId": "string",
+                    "subject": "string",
+                    "text": "string",
+                    "createdDate": "string",
+                    "createdBy": "string",
+                    "updatedDate": "string",
+                    "updatedBy": "string"
+                  }
+                ],
+                "documents": [
+                  {
+                    "name": "string",
+                    "type": "string",
+                    "contentType": "string",
+                    "content": "string"
+                  }
+                ]
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Shipment"
+              },
+              "example": {
+                "clientName": "string",
+                "clientNumber": "string",
+                "customerOE": "string",
+                "emails": [
+                  {
+                    "emailAddress": "string",
+                    "emailAddressKind": "string"
+                  }
+                ],
+                "extraStops": [
+                  {
+                    "stopSequence": 0,
+                    "stopType": "string",
+                    "stopAddress": {
+                      "primaryContactName": "string",
+                      "secondaryContactName": "string",
+                      "cityName": "string",
+                      "name": "string",
+                      "postalCode": "string",
+                      "stateCode": "string",
+                      "countryCode": "string",
+                      "addressLine1": "string",
+                      "addressLine2": "string"
+                    },
+                    "comments": "string",
+                    "agreedDateFrom": "string",
+                    "agreedDateTo": "string",
+                    "packUnPackDateFrom": "string",
+                    "packUnPackDateTo": "string",
+                    "packUnPackSupplierId": "string",
+                    "packUnPackOption": "string"
+                  }
+                ],
+                "fileNumber": "string",
+                "fromAddress": {
+                  "primaryContactName": "string",
+                  "secondaryContactName": "string",
+                  "cityName": "string",
+                  "name": "string",
+                  "postalCode": "string",
+                  "stateCode": "string",
+                  "countryCode": "string",
+                  "addressLine1": "string",
+                  "addressLine2": "string"
+                },
+                "pickupComments": "string",
+                "toAddress": {
+                  "primaryContactName": "string",
+                  "secondaryContactName": "string",
+                  "cityName": "string",
+                  "name": "string",
+                  "postalCode": "string",
+                  "stateCode": "string",
+                  "countryCode": "string",
+                  "addressLine1": "string",
+                  "addressLine2": "string"
+                },
+                "deliveryComments": "string",
+                "orderKind": "string",
+                "agreedDeliveryFrom": "string",
+                "agreedDeliveryTo": "string",
+                "destinationSupplierId": "string",
+                "agreedPickupFrom": "string",
+                "agreedPickupTo": "string",
+                "originSupplierId": "string",
+                "packFrom": "string",
+                "packTo": "string",
+                "packSupplierId": "string",
+                "packOption": "string",
+                "unPackSupplierId": "string",
+                "unPackOption": "string",
+                "unPackFrom": "string",
+                "unPackTo": "string",
+                "moveInitiation": "string",
+                "phones": [
+                  {
+                    "phoneNumber": "string",
+                    "phoneType": "string",
+                    "phoneNumberKind": "string"
+                  }
+                ],
+                "serviceCustomerName": "string",
+                "shipmentType": "string",
+                "spouseName": "string",
+                "supplierId": "string",
+                "workOrderId": "string",
+                "salespersonId": 0,
+                "logisticsMode": "string",
+                "moveType": "string",
+                "customerFirstName": "string",
+                "customerLastName": "string",
+                "homeFurnishingLevelNumber": 0,
+                "remark": "string",
+                "rateQuote": 0,
+                "consultant": "string",
+                "consultantPhone": "string",
+                "consultantEmail": {
+                  "emailAddress": "string",
+                  "emailAddressKind": "string"
+                },
+                "contactInfo": "string",
+                "contactPhone": "string",
+                "contactName": "string",
+                "insuranceProvider": "string",
+                "customerServiceRepresentative": "string",
+                "cancelDate": "string",
+                "cancelReason": "string",
+                "cancelType": "string",
+                "quoteNumber": "string",
+                "commodity": 0,
+                "pieceCount": 0,
+                "trailerTypeRequired": "string",
+                "notifyEmails": [
+                  {
+                    "emailAddress": "string",
+                    "emailAddressKind": "string"
+                  }
+                ],
+                "authorizedWeight": 0,
+                "authorizedWeightUnit": "string",
+                "specialInstructions": "string",
+                "estimatedWeight": 0,
+                "projectId": "string",
+                "vendorCost": 0,
+                "spaceRequired": 0,
+                "accountEstimateId": "string",
+                "lastServiceDate": "string",
+                "householdGoodsType": "string",
+                "departmentId": "string",
+                "linehaulCost": 0,
+                "fuelCost": 0,
+                "notes": [
+                  {
+                    "noteId": "string",
+                    "subject": "string",
+                    "text": "string",
+                    "createdDate": "string",
+                    "createdBy": "string",
+                    "updatedDate": "string",
+                    "updatedBy": "string"
+                  }
+                ],
+                "documents": [
+                  {
+                    "name": "string",
+                    "type": "string",
+                    "contentType": "string",
+                    "content": "string"
+                  }
+                ]
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/Shipment"
+              },
+              "example": {
+                "clientName": "string",
+                "clientNumber": "string",
+                "customerOE": "string",
+                "emails": [
+                  {
+                    "emailAddress": "string",
+                    "emailAddressKind": "string"
+                  }
+                ],
+                "extraStops": [
+                  {
+                    "stopSequence": 0,
+                    "stopType": "string",
+                    "stopAddress": {
+                      "primaryContactName": "string",
+                      "secondaryContactName": "string",
+                      "cityName": "string",
+                      "name": "string",
+                      "postalCode": "string",
+                      "stateCode": "string",
+                      "countryCode": "string",
+                      "addressLine1": "string",
+                      "addressLine2": "string"
+                    },
+                    "comments": "string",
+                    "agreedDateFrom": "string",
+                    "agreedDateTo": "string",
+                    "packUnPackDateFrom": "string",
+                    "packUnPackDateTo": "string",
+                    "packUnPackSupplierId": "string",
+                    "packUnPackOption": "string"
+                  }
+                ],
+                "fileNumber": "string",
+                "fromAddress": {
+                  "primaryContactName": "string",
+                  "secondaryContactName": "string",
+                  "cityName": "string",
+                  "name": "string",
+                  "postalCode": "string",
+                  "stateCode": "string",
+                  "countryCode": "string",
+                  "addressLine1": "string",
+                  "addressLine2": "string"
+                },
+                "pickupComments": "string",
+                "toAddress": {
+                  "primaryContactName": "string",
+                  "secondaryContactName": "string",
+                  "cityName": "string",
+                  "name": "string",
+                  "postalCode": "string",
+                  "stateCode": "string",
+                  "countryCode": "string",
+                  "addressLine1": "string",
+                  "addressLine2": "string"
+                },
+                "deliveryComments": "string",
+                "orderKind": "string",
+                "agreedDeliveryFrom": "string",
+                "agreedDeliveryTo": "string",
+                "destinationSupplierId": "string",
+                "agreedPickupFrom": "string",
+                "agreedPickupTo": "string",
+                "originSupplierId": "string",
+                "packFrom": "string",
+                "packTo": "string",
+                "packSupplierId": "string",
+                "packOption": "string",
+                "unPackSupplierId": "string",
+                "unPackOption": "string",
+                "unPackFrom": "string",
+                "unPackTo": "string",
+                "moveInitiation": "string",
+                "phones": [
+                  {
+                    "phoneNumber": "string",
+                    "phoneType": "string",
+                    "phoneNumberKind": "string"
+                  }
+                ],
+                "serviceCustomerName": "string",
+                "shipmentType": "string",
+                "spouseName": "string",
+                "supplierId": "string",
+                "workOrderId": "string",
+                "salespersonId": 0,
+                "logisticsMode": "string",
+                "moveType": "string",
+                "customerFirstName": "string",
+                "customerLastName": "string",
+                "homeFurnishingLevelNumber": 0,
+                "remark": "string",
+                "rateQuote": 0,
+                "consultant": "string",
+                "consultantPhone": "string",
+                "consultantEmail": {
+                  "emailAddress": "string",
+                  "emailAddressKind": "string"
+                },
+                "contactInfo": "string",
+                "contactPhone": "string",
+                "contactName": "string",
+                "insuranceProvider": "string",
+                "customerServiceRepresentative": "string",
+                "cancelDate": "string",
+                "cancelReason": "string",
+                "cancelType": "string",
+                "quoteNumber": "string",
+                "commodity": 0,
+                "pieceCount": 0,
+                "trailerTypeRequired": "string",
+                "notifyEmails": [
+                  {
+                    "emailAddress": "string",
+                    "emailAddressKind": "string"
+                  }
+                ],
+                "authorizedWeight": 0,
+                "authorizedWeightUnit": "string",
+                "specialInstructions": "string",
+                "estimatedWeight": 0,
+                "projectId": "string",
+                "vendorCost": 0,
+                "spaceRequired": 0,
+                "accountEstimateId": "string",
+                "lastServiceDate": "string",
+                "householdGoodsType": "string",
+                "departmentId": "string",
+                "linehaulCost": 0,
+                "fuelCost": 0,
+                "notes": [
+                  {
+                    "noteId": "string",
+                    "subject": "string",
+                    "text": "string",
+                    "createdDate": "string",
+                    "createdBy": "string",
+                    "updatedDate": "string",
+                    "updatedBy": "string"
+                  }
+                ],
+                "documents": [
+                  {
+                    "name": "string",
+                    "type": "string",
+                    "contentType": "string",
+                    "content": "string"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "422": {
+            "description": "Request contains bad data."
+          }
+        }
+      }
+    },
+    "/shipments/{orderNumber}": {
+      "put": {
+        "tags": ["Shipments"],
+        "summary": "Put Shipment",
+        "description": "Updates the shipment. To cancel a shipment OrderKind must be set to \"Cancelled\". To update a shipment OrderKind must be set to \"Updated\"",
+        "operationId": "put-shipment",
+        "parameters": [
+          {
+            "name": "orderNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Shipment"
+              },
+              "example": {
+                "clientName": "string",
+                "clientNumber": "string",
+                "customerOE": "string",
+                "emails": [
+                  {
+                    "emailAddress": "string",
+                    "emailAddressKind": "string"
+                  }
+                ],
+                "extraStops": [
+                  {
+                    "stopSequence": 0,
+                    "stopType": "string",
+                    "stopAddress": {
+                      "primaryContactName": "string",
+                      "secondaryContactName": "string",
+                      "cityName": "string",
+                      "name": "string",
+                      "postalCode": "string",
+                      "stateCode": "string",
+                      "countryCode": "string",
+                      "addressLine1": "string",
+                      "addressLine2": "string"
+                    },
+                    "comments": "string",
+                    "agreedDateFrom": "string",
+                    "agreedDateTo": "string",
+                    "packUnPackDateFrom": "string",
+                    "packUnPackDateTo": "string",
+                    "packUnPackSupplierId": "string",
+                    "packUnPackOption": "string"
+                  }
+                ],
+                "fileNumber": "string",
+                "fromAddress": {
+                  "primaryContactName": "string",
+                  "secondaryContactName": "string",
+                  "cityName": "string",
+                  "name": "string",
+                  "postalCode": "string",
+                  "stateCode": "string",
+                  "countryCode": "string",
+                  "addressLine1": "string",
+                  "addressLine2": "string"
+                },
+                "pickupComments": "string",
+                "toAddress": {
+                  "primaryContactName": "string",
+                  "secondaryContactName": "string",
+                  "cityName": "string",
+                  "name": "string",
+                  "postalCode": "string",
+                  "stateCode": "string",
+                  "countryCode": "string",
+                  "addressLine1": "string",
+                  "addressLine2": "string"
+                },
+                "deliveryComments": "string",
+                "orderKind": "string",
+                "agreedDeliveryFrom": "string",
+                "agreedDeliveryTo": "string",
+                "destinationSupplierId": "string",
+                "agreedPickupFrom": "string",
+                "agreedPickupTo": "string",
+                "originSupplierId": "string",
+                "packFrom": "string",
+                "packTo": "string",
+                "packSupplierId": "string",
+                "packOption": "string",
+                "unPackSupplierId": "string",
+                "unPackOption": "string",
+                "unPackFrom": "string",
+                "unPackTo": "string",
+                "moveInitiation": "string",
+                "phones": [
+                  {
+                    "phoneNumber": "string",
+                    "phoneType": "string",
+                    "phoneNumberKind": "string"
+                  }
+                ],
+                "serviceCustomerName": "string",
+                "shipmentType": "string",
+                "spouseName": "string",
+                "supplierId": "string",
+                "workOrderId": "string",
+                "salespersonId": 0,
+                "logisticsMode": "string",
+                "moveType": "string",
+                "customerFirstName": "string",
+                "customerLastName": "string",
+                "homeFurnishingLevelNumber": 0,
+                "remark": "string",
+                "rateQuote": 0,
+                "consultant": "string",
+                "consultantPhone": "string",
+                "consultantEmail": {
+                  "emailAddress": "string",
+                  "emailAddressKind": "string"
+                },
+                "contactInfo": "string",
+                "contactPhone": "string",
+                "contactName": "string",
+                "insuranceProvider": "string",
+                "customerServiceRepresentative": "string",
+                "cancelDate": "string",
+                "cancelReason": "string",
+                "cancelType": "string",
+                "quoteNumber": "string",
+                "commodity": 0,
+                "pieceCount": 0,
+                "trailerTypeRequired": "string",
+                "notifyEmails": [
+                  {
+                    "emailAddress": "string",
+                    "emailAddressKind": "string"
+                  }
+                ],
+                "authorizedWeight": 0,
+                "authorizedWeightUnit": "string",
+                "specialInstructions": "string",
+                "estimatedWeight": 0,
+                "projectId": "string",
+                "vendorCost": 0,
+                "spaceRequired": 0,
+                "accountEstimateId": "string",
+                "lastServiceDate": "string",
+                "householdGoodsType": "string",
+                "departmentId": "string",
+                "linehaulCost": 0,
+                "fuelCost": 0,
+                "notes": [
+                  {
+                    "noteId": "string",
+                    "subject": "string",
+                    "text": "string",
+                    "createdDate": "string",
+                    "createdBy": "string",
+                    "updatedDate": "string",
+                    "updatedBy": "string"
+                  }
+                ],
+                "documents": [
+                  {
+                    "name": "string",
+                    "type": "string",
+                    "contentType": "string",
+                    "content": "string"
+                  }
+                ]
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Shipment"
+              },
+              "example": {
+                "clientName": "string",
+                "clientNumber": "string",
+                "customerOE": "string",
+                "emails": [
+                  {
+                    "emailAddress": "string",
+                    "emailAddressKind": "string"
+                  }
+                ],
+                "extraStops": [
+                  {
+                    "stopSequence": 0,
+                    "stopType": "string",
+                    "stopAddress": {
+                      "primaryContactName": "string",
+                      "secondaryContactName": "string",
+                      "cityName": "string",
+                      "name": "string",
+                      "postalCode": "string",
+                      "stateCode": "string",
+                      "countryCode": "string",
+                      "addressLine1": "string",
+                      "addressLine2": "string"
+                    },
+                    "comments": "string",
+                    "agreedDateFrom": "string",
+                    "agreedDateTo": "string",
+                    "packUnPackDateFrom": "string",
+                    "packUnPackDateTo": "string",
+                    "packUnPackSupplierId": "string",
+                    "packUnPackOption": "string"
+                  }
+                ],
+                "fileNumber": "string",
+                "fromAddress": {
+                  "primaryContactName": "string",
+                  "secondaryContactName": "string",
+                  "cityName": "string",
+                  "name": "string",
+                  "postalCode": "string",
+                  "stateCode": "string",
+                  "countryCode": "string",
+                  "addressLine1": "string",
+                  "addressLine2": "string"
+                },
+                "pickupComments": "string",
+                "toAddress": {
+                  "primaryContactName": "string",
+                  "secondaryContactName": "string",
+                  "cityName": "string",
+                  "name": "string",
+                  "postalCode": "string",
+                  "stateCode": "string",
+                  "countryCode": "string",
+                  "addressLine1": "string",
+                  "addressLine2": "string"
+                },
+                "deliveryComments": "string",
+                "orderKind": "string",
+                "agreedDeliveryFrom": "string",
+                "agreedDeliveryTo": "string",
+                "destinationSupplierId": "string",
+                "agreedPickupFrom": "string",
+                "agreedPickupTo": "string",
+                "originSupplierId": "string",
+                "packFrom": "string",
+                "packTo": "string",
+                "packSupplierId": "string",
+                "packOption": "string",
+                "unPackSupplierId": "string",
+                "unPackOption": "string",
+                "unPackFrom": "string",
+                "unPackTo": "string",
+                "moveInitiation": "string",
+                "phones": [
+                  {
+                    "phoneNumber": "string",
+                    "phoneType": "string",
+                    "phoneNumberKind": "string"
+                  }
+                ],
+                "serviceCustomerName": "string",
+                "shipmentType": "string",
+                "spouseName": "string",
+                "supplierId": "string",
+                "workOrderId": "string",
+                "salespersonId": 0,
+                "logisticsMode": "string",
+                "moveType": "string",
+                "customerFirstName": "string",
+                "customerLastName": "string",
+                "homeFurnishingLevelNumber": 0,
+                "remark": "string",
+                "rateQuote": 0,
+                "consultant": "string",
+                "consultantPhone": "string",
+                "consultantEmail": {
+                  "emailAddress": "string",
+                  "emailAddressKind": "string"
+                },
+                "contactInfo": "string",
+                "contactPhone": "string",
+                "contactName": "string",
+                "insuranceProvider": "string",
+                "customerServiceRepresentative": "string",
+                "cancelDate": "string",
+                "cancelReason": "string",
+                "cancelType": "string",
+                "quoteNumber": "string",
+                "commodity": 0,
+                "pieceCount": 0,
+                "trailerTypeRequired": "string",
+                "notifyEmails": [
+                  {
+                    "emailAddress": "string",
+                    "emailAddressKind": "string"
+                  }
+                ],
+                "authorizedWeight": 0,
+                "authorizedWeightUnit": "string",
+                "specialInstructions": "string",
+                "estimatedWeight": 0,
+                "projectId": "string",
+                "vendorCost": 0,
+                "spaceRequired": 0,
+                "accountEstimateId": "string",
+                "lastServiceDate": "string",
+                "householdGoodsType": "string",
+                "departmentId": "string",
+                "linehaulCost": 0,
+                "fuelCost": 0,
+                "notes": [
+                  {
+                    "noteId": "string",
+                    "subject": "string",
+                    "text": "string",
+                    "createdDate": "string",
+                    "createdBy": "string",
+                    "updatedDate": "string",
+                    "updatedBy": "string"
+                  }
+                ],
+                "documents": [
+                  {
+                    "name": "string",
+                    "type": "string",
+                    "contentType": "string",
+                    "content": "string"
+                  }
+                ]
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/Shipment"
+              },
+              "example": {
+                "clientName": "string",
+                "clientNumber": "string",
+                "customerOE": "string",
+                "emails": [
+                  {
+                    "emailAddress": "string",
+                    "emailAddressKind": "string"
+                  }
+                ],
+                "extraStops": [
+                  {
+                    "stopSequence": 0,
+                    "stopType": "string",
+                    "stopAddress": {
+                      "primaryContactName": "string",
+                      "secondaryContactName": "string",
+                      "cityName": "string",
+                      "name": "string",
+                      "postalCode": "string",
+                      "stateCode": "string",
+                      "countryCode": "string",
+                      "addressLine1": "string",
+                      "addressLine2": "string"
+                    },
+                    "comments": "string",
+                    "agreedDateFrom": "string",
+                    "agreedDateTo": "string",
+                    "packUnPackDateFrom": "string",
+                    "packUnPackDateTo": "string",
+                    "packUnPackSupplierId": "string",
+                    "packUnPackOption": "string"
+                  }
+                ],
+                "fileNumber": "string",
+                "fromAddress": {
+                  "primaryContactName": "string",
+                  "secondaryContactName": "string",
+                  "cityName": "string",
+                  "name": "string",
+                  "postalCode": "string",
+                  "stateCode": "string",
+                  "countryCode": "string",
+                  "addressLine1": "string",
+                  "addressLine2": "string"
+                },
+                "pickupComments": "string",
+                "toAddress": {
+                  "primaryContactName": "string",
+                  "secondaryContactName": "string",
+                  "cityName": "string",
+                  "name": "string",
+                  "postalCode": "string",
+                  "stateCode": "string",
+                  "countryCode": "string",
+                  "addressLine1": "string",
+                  "addressLine2": "string"
+                },
+                "deliveryComments": "string",
+                "orderKind": "string",
+                "agreedDeliveryFrom": "string",
+                "agreedDeliveryTo": "string",
+                "destinationSupplierId": "string",
+                "agreedPickupFrom": "string",
+                "agreedPickupTo": "string",
+                "originSupplierId": "string",
+                "packFrom": "string",
+                "packTo": "string",
+                "packSupplierId": "string",
+                "packOption": "string",
+                "unPackSupplierId": "string",
+                "unPackOption": "string",
+                "unPackFrom": "string",
+                "unPackTo": "string",
+                "moveInitiation": "string",
+                "phones": [
+                  {
+                    "phoneNumber": "string",
+                    "phoneType": "string",
+                    "phoneNumberKind": "string"
+                  }
+                ],
+                "serviceCustomerName": "string",
+                "shipmentType": "string",
+                "spouseName": "string",
+                "supplierId": "string",
+                "workOrderId": "string",
+                "salespersonId": 0,
+                "logisticsMode": "string",
+                "moveType": "string",
+                "customerFirstName": "string",
+                "customerLastName": "string",
+                "homeFurnishingLevelNumber": 0,
+                "remark": "string",
+                "rateQuote": 0,
+                "consultant": "string",
+                "consultantPhone": "string",
+                "consultantEmail": {
+                  "emailAddress": "string",
+                  "emailAddressKind": "string"
+                },
+                "contactInfo": "string",
+                "contactPhone": "string",
+                "contactName": "string",
+                "insuranceProvider": "string",
+                "customerServiceRepresentative": "string",
+                "cancelDate": "string",
+                "cancelReason": "string",
+                "cancelType": "string",
+                "quoteNumber": "string",
+                "commodity": 0,
+                "pieceCount": 0,
+                "trailerTypeRequired": "string",
+                "notifyEmails": [
+                  {
+                    "emailAddress": "string",
+                    "emailAddressKind": "string"
+                  }
+                ],
+                "authorizedWeight": 0,
+                "authorizedWeightUnit": "string",
+                "specialInstructions": "string",
+                "estimatedWeight": 0,
+                "projectId": "string",
+                "vendorCost": 0,
+                "spaceRequired": 0,
+                "accountEstimateId": "string",
+                "lastServiceDate": "string",
+                "householdGoodsType": "string",
+                "departmentId": "string",
+                "linehaulCost": 0,
+                "fuelCost": 0,
+                "notes": [
+                  {
+                    "noteId": "string",
+                    "subject": "string",
+                    "text": "string",
+                    "createdDate": "string",
+                    "createdBy": "string",
+                    "updatedDate": "string",
+                    "updatedBy": "string"
+                  }
+                ],
+                "documents": [
+                  {
+                    "name": "string",
+                    "type": "string",
+                    "contentType": "string",
+                    "content": "string"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "401": {
+            "description": "Not Authorized to retrieve this Order"
+          },
+          "404": {
+            "description": "The order was not found."
+          },
+          "422": {
+            "description": "Request contains bad data."
+          }
+        }
+      },
+      "get": {
+        "tags": ["Shipments"],
+        "summary": "Get Shipment",
+        "description": "Returns the current values for the shipment requested.",
+        "operationId": "get-shipment",
+        "parameters": [
+          {
+            "name": "orderNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "401": {
+            "description": "Not Authorized to retrieve this Order"
+          },
+          "404": {
+            "description": "The order was not found."
+          }
+        }
+      }
+    },
+    "/orders": {
+      "post": {
+        "tags": ["Orders"],
+        "summary": "Post Order",
+        "description": "Post flat order shipment.",
+        "operationId": "post-order",
+        "requestBody": {
+          "content": {
+            "text/plain": {
+              "schema": {
+                "type": "string"
+              },
+              "examples": {
+                "default": {
+                  "value": null
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "string"
+              },
+              "example": "string"
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "422": {
+            "description": "Request contains bad data."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Address": {
+        "type": "object",
+        "properties": {
+          "primaryContactName": {
+            "type": "string",
+            "nullable": true
+          },
+          "secondaryContactName": {
+            "type": "string",
+            "nullable": true
+          },
+          "cityName": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "postalCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "stateCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "countryCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "addressLine1": {
+            "type": "string",
+            "nullable": true
+          },
+          "addressLine2": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Document": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "contentType": {
+            "type": "string",
+            "nullable": true
+          },
+          "content": {
+            "type": "string",
+            "format": "byte",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Email": {
+        "type": "object",
+        "properties": {
+          "emailAddress": {
+            "type": "string",
+            "nullable": true
+          },
+          "emailAddressKind": {
+            "type": "string",
+            "description": "the kind of Email Address being entered (Primary, Secondary, Spouse, Work, etc.)",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExtraStop": {
+        "required": ["stopType"],
+        "type": "object",
+        "properties": {
+          "stopSequence": {
+            "type": "integer",
+            "description": "The order of the completion of the extra stop.",
+            "format": "int32"
+          },
+          "stopType": {
+            "type": "string",
+            "description": "The reason for the extra stop (Pickup or Delivery).",
+            "nullable": true
+          },
+          "stopAddress": {
+            "$ref": "#/components/schemas/Address"
+          },
+          "comments": {
+            "type": "string",
+            "description": "Any special instructions associated with this stop.",
+            "nullable": true
+          },
+          "agreedDateFrom": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "agreedDateTo": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "packUnPackDateFrom": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "packUnPackDateTo": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "packUnPackSupplierId": {
+            "type": "string",
+            "description": "Your identifier for the Atlas Agent Assigned to pack/unpack at this stop.",
+            "nullable": true
+          },
+          "packUnPackOption": {
+            "type": "string",
+            "description": "The type of packing or unpacking to be performed at this stop. For Pickup stops, it will be assumed to be packing. For Delivery stops, it will be assumed to be unpacking. (Full = Full Packing/UnPacking, Custom = Custom Packing/UnPacking, None = No Packing/UnPacking)",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Note": {
+        "required": ["text"],
+        "type": "object",
+        "properties": {
+          "noteId": {
+            "type": "string",
+            "description": "internal note id from your system",
+            "nullable": true
+          },
+          "subject": {
+            "type": "string",
+            "nullable": true
+          },
+          "text": {
+            "type": "string",
+            "description": "note",
+            "nullable": true
+          },
+          "createdDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "updatedDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedBy": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Phone": {
+        "type": "object",
+        "properties": {
+          "phoneNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "phoneType": {
+            "type": "string",
+            "description": "the type of Phone Number being entered (Primary, Secondary, Spouse, Work, Home, etc.)",
+            "nullable": true
+          },
+          "phoneNumberKind": {
+            "type": "string",
+            "description": "the kind of Phone Number being entered (cell, fax, other)",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Shipment": {
+        "required": ["customerFirstName", "customerLastName", "orderKind", "serviceCustomerName"],
+        "type": "object",
+        "properties": {
+          "clientName": {
+            "type": "string",
+            "nullable": true
+          },
+          "clientNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerOE": {
+            "type": "string",
+            "nullable": true
+          },
+          "emails": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Email"
+            },
+            "nullable": true
+          },
+          "extraStops": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExtraStop"
+            },
+            "nullable": true
+          },
+          "fileNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "fromAddress": {
+            "$ref": "#/components/schemas/Address"
+          },
+          "pickupComments": {
+            "type": "string",
+            "description": "Any special instructions associated with the 'From' address.",
+            "nullable": true
+          },
+          "toAddress": {
+            "$ref": "#/components/schemas/Address"
+          },
+          "deliveryComments": {
+            "type": "string",
+            "description": "Any special instructions associated with the 'To' address.",
+            "nullable": true
+          },
+          "orderKind": {
+            "type": "string",
+            "nullable": true
+          },
+          "agreedDeliveryFrom": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "agreedDeliveryTo": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "destinationSupplierId": {
+            "type": "string",
+            "description": "Your identifier for the Atlas Agent Assigned as the Destination Agent for this shipment.",
+            "nullable": true
+          },
+          "agreedPickupFrom": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "agreedPickupTo": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "originSupplierId": {
+            "type": "string",
+            "description": "Your identifier for the Atlas Agent Assigned as the Origin Agent for this shipment.",
+            "nullable": true
+          },
+          "packFrom": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "packTo": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "packSupplierId": {
+            "type": "string",
+            "description": "Your identifier for the Atlas Agent Assigned as the Packing Agent for this shipment.",
+            "nullable": true
+          },
+          "packOption": {
+            "type": "string",
+            "description": "the type of Packing/Upacking to be performed at initial pickup. (Full = Full Packing, Custom = Custom Packing, None = No Packing)",
+            "nullable": true
+          },
+          "unPackSupplierId": {
+            "type": "string",
+            "description": "Your identifier for the Atlas Agent Assigned as the UnPacking Agent for this shipment.",
+            "nullable": true
+          },
+          "unPackOption": {
+            "type": "string",
+            "description": "the type of Upacking to be performed at final delivery. (Full = Full UnPacking, Custom = Custom UnPacking, None = No UnPacking)",
+            "nullable": true
+          },
+          "unPackFrom": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "unPackTo": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "moveInitiation": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "phones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Phone"
+            },
+            "nullable": true
+          },
+          "serviceCustomerName": {
+            "type": "string",
+            "description": "Atlas Assigned Code for your Company",
+            "nullable": true
+          },
+          "shipmentType": {
+            "type": "string",
+            "nullable": true
+          },
+          "spouseName": {
+            "type": "string",
+            "nullable": true
+          },
+          "supplierId": {
+            "type": "string",
+            "description": "Your identifier for the Atlas Agent Assigned as the Booking Agent for this shipment.",
+            "nullable": true
+          },
+          "workOrderId": {
+            "type": "string",
+            "nullable": true
+          },
+          "salespersonId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "logisticsMode": {
+            "type": "string",
+            "nullable": true
+          },
+          "moveType": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerFirstName": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerLastName": {
+            "type": "string",
+            "nullable": true
+          },
+          "homeFurnishingLevelNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "remark": {
+            "type": "string",
+            "nullable": true
+          },
+          "rateQuote": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "consultant": {
+            "type": "string",
+            "nullable": true
+          },
+          "consultantPhone": {
+            "type": "string",
+            "nullable": true
+          },
+          "consultantEmail": {
+            "$ref": "#/components/schemas/Email"
+          },
+          "contactInfo": {
+            "type": "string",
+            "nullable": true
+          },
+          "contactPhone": {
+            "type": "string",
+            "nullable": true
+          },
+          "contactName": {
+            "type": "string",
+            "nullable": true
+          },
+          "insuranceProvider": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerServiceRepresentative": {
+            "type": "string",
+            "nullable": true
+          },
+          "cancelDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "cancelReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "cancelType": {
+            "type": "string",
+            "nullable": true
+          },
+          "quoteNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "commodity": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "pieceCount": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "trailerTypeRequired": {
+            "type": "string",
+            "nullable": true
+          },
+          "notifyEmails": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Email"
+            },
+            "nullable": true
+          },
+          "authorizedWeight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "authorizedWeightUnit": {
+            "type": "string",
+            "description": "Unit of measure for the authorized weight value (AWUCF = Cubic Feet or AWULB = Pounds).",
+            "nullable": true
+          },
+          "specialInstructions": {
+            "type": "string",
+            "nullable": true
+          },
+          "estimatedWeight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "projectId": {
+            "type": "string",
+            "nullable": true
+          },
+          "vendorCost": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "spaceRequired": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "accountEstimateId": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastServiceDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "householdGoodsType": {
+            "type": "string",
+            "nullable": true
+          },
+          "departmentId": {
+            "type": "string",
+            "nullable": true
+          },
+          "linehaulCost": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "fuelCost": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Note"
+            },
+            "nullable": true
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Document"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ]
+}

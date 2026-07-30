@@ -336,15 +336,68 @@ async def fetch_shipment(reg: str, year: int) -> dict:
 ```
 
 Config + credentials live in the tenant's config/secret store, read by name +
-`group`: `BASE_URL` / `AUTH_MODE` / `TOKEN_URL` configs, and `CLIENT_ID` /
-`CLIENT_SECRET` (OAuth) or `API_KEY` (`AUTH_MODE=bearer`) secrets. Declare
-`required_actions = ["CallExternal"]`. Returns `{status, ok, response, headers,
-dryRun}`.
+`group`. Declare `required_actions = ["CallExternal"]`. Returns
+`{status, ok, response, headers, attempts, dryRun}`, where `headers` is **every**
+partner response header (lowercase keys, `set-cookie` removed) — so `retry-after`,
+`etag`, and vendor diagnostics like `x-ms-request-id` are all readable.
+
+| `AUTH_MODE`                           | Credential                                                | Sent as                                                                          |
+| ------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `oauth2_client_credentials` (default) | `CLIENT_ID` + `CLIENT_SECRET` secrets, `TOKEN_URL` config | minted bearer, cached, re-minted on `401`                                        |
+| `bearer`                              | `API_KEY` secret                                          | `Authorization: Bearer …`                                                        |
+| `apikey`                              | `API_KEY` secret                                          | the header named by config `API_KEY_HEADER`, default `Ocp-Apim-Subscription-Key` |
+| `none`                                | —                                                         | —                                                                                |
 
 **Dry-run split:** a `GET` is a read and runs **live** under
 `pegasus-workflows run --dry-run` (returns real data); a `POST`/`PUT`/… is a
 mutation and is **captured, not performed**. Pass `mutating=True`/`False` to
 override the method-based default when a partner overloads a verb.
+
+#### Custom request headers
+
+Two maps, split by **trust level** — this split is the point, so pick the right one:
+
+- `headers` — literal values, **non-secret by construction** (they come from your
+  workflow code): `{"On-Behalf-Of": "jdoe"}`.
+- `secret_headers` — header name → **secret key name**. The platform resolves the
+  value from the encrypted store, so the credential never appears in workflow
+  source, logs, or a captured dry-run payload:
+  `{"X-Partner-Token": "PARTNER_TOKEN"}`.
+
+`Authorization`, `Host`, `Content-Length` and `Content-Type` are owned by the
+platform and rejected with a `400` — allowing an override would let a workflow
+bypass `AUTH_MODE` entirely. Header names must be RFC 7230 tokens and values may
+not contain CR/LF.
+
+An Azure API Management partner (subscription key + a per-request identity
+header) looks like this — with tenant config `AUTH_MODE=apikey` and secret
+`API_KEY` holding the subscription key:
+
+```python
+res = client.call_external(
+    "atlas_estimating",
+    method="GET",
+    path="/Estimating/Order/12345",
+    headers={"On-Behalf-Of": "jdoe"},   # identity, not a credential
+)
+```
+
+#### Timeouts and throttling
+
+Each attempt is bounded by config `REQUEST_TIMEOUT_MS` (default 30s, clamped to
+[1000, 60000]); exceeding it raises a `504`. A `429`/`503` is retried up to config
+`MAX_RETRIES` times (default 2, clamped to [0, 5]), honoring the partner's
+`Retry-After` (capped at 10s) and otherwise backing off exponentially.
+
+**Only idempotent requests are retried** — `GET`/`HEAD`/`OPTIONS`, or any call
+with `mutating=False`. A `POST` is never auto-retried, because a repeat could
+double-write at the partner. Read `attempts` in the result to see how many HTTP
+requests were actually made.
+
+`deliver_to_external` takes the same `headers` / `secret_headers` /
+`timeout_config` arguments. Its older `headers_config` (a config key holding a
+JSON object) still works but is **non-secret only** — config values are stored in
+plaintext, so a credential belongs in `secret_headers`.
 
 ### Transferring documents (blobs)
 

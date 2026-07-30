@@ -1185,6 +1185,9 @@ class PegasusClient:
         url_config: str = "SEND_URL",
         api_key_secret: str = "SEND_API_KEY",
         headers_config: str | None = None,
+        headers: dict[str, str] | None = None,
+        secret_headers: dict[str, str] | None = None,
+        timeout_config: str = "REQUEST_TIMEOUT_MS",
         group: str = "global",
     ) -> dict[str, Any]:
         """POST a mapped external body to a partner endpoint, server-side.
@@ -1210,30 +1213,54 @@ class PegasusClient:
             api_key_secret: Secret key holding the bearer API key (default
                 ``SEND_API_KEY``).
             headers_config: Optional config key holding extra headers as a JSON
-                object string (e.g. ``SEND_HEADERS``).
+                object string (e.g. ``SEND_HEADERS``). **Non-secret only** — a
+                config value is stored in plaintext. Use ``secret_headers`` for
+                anything that is a credential.
+            headers: Extra request headers with literal, **non-secret** values
+                (e.g. ``{"On-Behalf-Of": "jdoe"}``).
+            secret_headers: Extra request headers whose values are **secret key
+                names**, resolved server-side from the encrypted store — e.g.
+                ``{"Ocp-Apim-Subscription-Key": "ATLAS_SUB_KEY"}``. The credential
+                never appears in workflow code.
+            timeout_config: Config key holding the per-request timeout in ms
+                (default ``REQUEST_TIMEOUT_MS``; 30s default, clamped to
+                [1000, 60000]).
             group: The config/secret group the entries live in (default
                 ``"global"``).
 
         Returns:
-            ``{delivered, status, response, dryRun}``. On a real run ``delivered``
-            reflects the partner's 2xx-ness and ``status``/``response`` carry the
-            partner reply. On a dry run: ``{delivered: False, dryRun: True}`` and
-            nothing is sent.
+            ``{delivered, status, response, headers, dryRun}``. On a real run
+            ``delivered`` reflects the partner's 2xx-ness, ``status``/``response``
+            carry the partner reply, and ``headers`` is every response header
+            (lowercase keys, ``set-cookie`` removed). On a dry run:
+            ``{delivered: False, dryRun: True}`` and nothing is sent.
 
         Raises:
             PegasusApiError: On 403 (manifest lacks ``DeliverToExternal``), 404
-                (unknown integration, or the URL config / API-key secret is not
-                set), 400 (disallowed delivery URL), 502 (delivery failed), or any
-                other non-2xx.
+                (unknown integration, or the URL config / API-key secret / a
+                ``secret_headers`` secret is not set), 400 (disallowed delivery
+                URL, or a reserved/malformed custom header), 502 (delivery
+                failed), 504 (partner did not respond in time), or any other
+                non-2xx.
+
+        Note:
+            ``Authorization``, ``Host``, ``Content-Length`` and ``Content-Type``
+            are set by the platform and cannot be overridden through either
+            header map — a 400 is returned if you try.
         """
         payload: dict[str, Any] = {
             "external": body,
             "urlConfig": url_config,
             "apiKeySecret": api_key_secret,
+            "timeoutConfig": timeout_config,
             "group": group,
         }
         if headers_config is not None:
             payload["headersConfig"] = headers_config
+        if headers:
+            payload["headers"] = headers
+        if secret_headers:
+            payload["secretHeaders"] = secret_headers
         captured = self._capture_mutation(
             "DeliverToExternal",
             "deliver_to_external",
@@ -1259,6 +1286,10 @@ class PegasusClient:
         body: Any = None,
         mutating: bool | None = None,
         response_to_blob: bool = False,
+        headers: dict[str, str] | None = None,
+        secret_headers: dict[str, str] | None = None,
+        timeout_config: str = "REQUEST_TIMEOUT_MS",
+        max_retries_config: str = "MAX_RETRIES",
         group: str = "global",
     ) -> dict[str, Any]:
         """Call a partner API server-side with the integration's configured auth.
@@ -1273,6 +1304,40 @@ class PegasusClient:
         workflow config/secret store (``BASE_URL``/``AUTH_MODE``/``TOKEN_URL``
         configs, ``CLIENT_ID``/``CLIENT_SECRET`` or ``API_KEY`` secrets), read by
         name + ``group``.
+
+        **AUTH_MODE values:**
+
+        - ``oauth2_client_credentials`` (default) — mint + cache a token.
+        - ``bearer`` — send secret ``API_KEY`` as ``Authorization: Bearer …``.
+        - ``apikey`` — send secret ``API_KEY`` as the header named by config
+          ``API_KEY_HEADER``, defaulting to ``Ocp-Apim-Subscription-Key``. This is
+          the Azure API Management convention, and the mode to use for a partner
+          whose whole catalog is subscription-key authenticated.
+        - ``none`` — no credential.
+
+        **Azure APIM partners.** An APIM gateway needs a named-header credential
+        (``apikey`` mode) and frequently a second per-request identity header. For
+        example, against Atlas World Group::
+
+            client.call_external(
+                "atlas_estimating",
+                method="GET",
+                path="/Estimating/Order/12345",
+                headers={"On-Behalf-Of": "jdoe"},
+            )
+
+        with tenant config ``AUTH_MODE=apikey`` and secret ``API_KEY`` holding the
+        subscription key. Put credentials in ``secret_headers``, never ``headers``.
+
+        **Timeout + throttling.** Each attempt is bounded by config
+        ``REQUEST_TIMEOUT_MS`` (default 30s, clamped to [1000, 60000]); exceeding
+        it raises a ``504``. A ``429``/``503`` is retried up to config
+        ``MAX_RETRIES`` times (default 2, clamped to [0, 5]), honoring the
+        partner's ``Retry-After`` header capped at 10s, else exponential backoff.
+        **Only idempotent requests are retried** — ``GET``/``HEAD``/``OPTIONS``, or
+        any call with ``mutating=False``. A ``POST`` is never auto-retried, because
+        a repeat could double-write at the partner. The returned ``attempts``
+        tells you how many HTTP requests were actually made.
 
         **Token caching is best-effort, not a guarantee** (sdk-feedback 0027).
         A minted token is reused until 60s before its ``expires_in``, but the
@@ -1309,26 +1374,54 @@ class PegasusClient:
                 memory. Small-file cut (bytes still round-trip the API Lambda);
                 pairs with ``FileData: {"$blob": blob_id}`` in a request ``body``,
                 which the platform resolves to the blob's bytes server-side.
+            headers: Extra request headers with literal, **non-secret** values
+                (e.g. ``{"On-Behalf-Of": "jdoe"}``). These come from workflow
+                code, so never put a credential here.
+            secret_headers: Extra request headers whose values are **secret key
+                names**, resolved server-side from the tenant's encrypted store —
+                e.g. ``{"X-Partner-Token": "PARTNER_TOKEN"}``. This is how a
+                credential reaches the wire without entering workflow code.
+            timeout_config: Config key holding the per-attempt timeout in ms
+                (default ``REQUEST_TIMEOUT_MS``).
+            max_retries_config: Config key holding the retry budget (default
+                ``MAX_RETRIES``).
             group: Config/secret group the entries live in (default ``"global"``).
 
         Returns:
-            ``{status, ok, response, headers, dryRun}`` — or, with
+            ``{status, ok, response, headers, attempts, dryRun}`` — or, with
             ``response_to_blob=True``, ``{status, ok, blobId, size, headers,
-            dryRun}``. ``response`` is the parsed JSON body, or the raw text for a
-            non-JSON (e.g. XML) partner reply. On a captured mutation under
+            attempts, dryRun}``. ``response`` is the parsed JSON body, or the raw
+            text for a non-JSON (e.g. XML) partner reply. ``headers`` is **every**
+            partner response header, lowercase-keyed, with ``set-cookie`` removed
+            — so ``retry-after``, ``etag`` and vendor diagnostics like
+            ``x-ms-request-id`` are all readable. On a captured mutation under
             dry-run: ``{status: None, response: None, ok: False, dryRun: True}``.
 
         Raises:
             PegasusApiError: On 403 (manifest lacks ``CallExternal``), 404 (unknown
-                integration or an unset ``BASE_URL``/``TOKEN_URL``/credential),
-                400 (disallowed resolved URL or unsupported ``AUTH_MODE``), 502
-                (token mint or outbound call failed), or any other non-2xx.
+                integration, or an unset ``BASE_URL``/``TOKEN_URL``/credential/
+                ``secret_headers`` secret), 400 (disallowed resolved URL,
+                unsupported ``AUTH_MODE``, or a reserved/malformed custom header),
+                502 (token mint or outbound call failed), 504 (partner did not
+                respond within the timeout), or any other non-2xx.
+
+        Note:
+            ``Authorization``, ``Host``, ``Content-Length`` and ``Content-Type``
+            are owned by the platform and cannot be set through either header map
+            — allowing that would let a workflow bypass ``AUTH_MODE``. Header
+            names must be RFC 7230 tokens and values may not contain CR/LF.
         """
         method_upper = method.upper()
         is_mutation = (
             mutating if mutating is not None else method_upper not in ("GET", "HEAD", "OPTIONS")
         )
-        payload: dict[str, Any] = {"method": method_upper, "path": path, "group": group}
+        payload: dict[str, Any] = {
+            "method": method_upper,
+            "path": path,
+            "group": group,
+            "timeoutConfig": timeout_config,
+            "maxRetriesConfig": max_retries_config,
+        }
         if query is not None:
             payload["query"] = query
         if body is not None:
@@ -1337,6 +1430,10 @@ class PegasusClient:
             payload["mutating"] = mutating
         if response_to_blob:
             payload["responseToBlob"] = True
+        if headers:
+            payload["headers"] = headers
+        if secret_headers:
+            payload["secretHeaders"] = secret_headers
 
         if is_mutation:
             captured = self._capture_mutation(

@@ -1,0 +1,1260 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Tonnages",
+    "description": "Service to expose tonnages",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/tonnages/v1"
+    }
+  ],
+  "paths": {
+    "/Tonnages": {
+      "get": {
+        "tags": ["Tonnages"],
+        "summary": "Get Tonnages",
+        "description": "Gets tonnages by profile id or filter parameters",
+        "operationId": "get-tonnages",
+        "parameters": [
+          {
+            "name": "divisions",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "moveTypes",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "boards",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "originStates",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "destinationStates",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "originRegions",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "destinationRegions",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "originZones",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "destinationZones",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "daysBack",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "daysOut",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "minWeight",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "maxWeight",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "showAssigned",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "showRSGUndecided",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "paymentTypes",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The move for the customer.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tonnage"
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tonnage"
+                  }
+                },
+                "example": [
+                  {
+                    "orderHeaderNumber": 0,
+                    "orderNumber": "string",
+                    "moveNumber": 0,
+                    "division": "string",
+                    "haulMode": "string",
+                    "startDate": "string",
+                    "originCity": "string",
+                    "originCityState": "string",
+                    "originLatitude": 0,
+                    "originLongitude": 0,
+                    "originRegion": "string",
+                    "originZone": "string",
+                    "destinationCityState": "string",
+                    "destinationCity": "string",
+                    "destinationLatitude": 0,
+                    "destinationLongitude": 0,
+                    "destinationRegion": "string",
+                    "destinationZone": "string",
+                    "autoCount": 0,
+                    "boatCount": 0,
+                    "booker": "string",
+                    "originAgent": "string",
+                    "destinationAgent": "string",
+                    "payType": "string",
+                    "estimatedLinehaul": 0,
+                    "originEarliest": "string",
+                    "originLatest": "string",
+                    "destinationEarliest": "string",
+                    "destinationLatest": "string",
+                    "flagPlanned": "string",
+                    "planned": true,
+                    "actualElseEstimatedWeight": 0,
+                    "board": "string",
+                    "discount": "string",
+                    "loadBoardAcceptable": "string",
+                    "loadBoardNotAcceptableReason": "string",
+                    "notAcceptableText": "string",
+                    "includeLOG": "string",
+                    "includeSTG": "string",
+                    "includeShortHaul": "string",
+                    "loadBoardComment": "string",
+                    "orderCount": 0,
+                    "segmentNumber": "string",
+                    "dispatchRemarks": "string",
+                    "onDockAt": "string",
+                    "hotLoad": "string",
+                    "xduDone": "string",
+                    "isAcceptableByUser": true,
+                    "moveType": "string",
+                    "needAssistance": true,
+                    "tariff": "string",
+                    "containerized": "string",
+                    "carrier": "string",
+                    "legHauler": "string",
+                    "dockPickupDate": "string",
+                    "actualDate": "string",
+                    "originAgreedFrom": "string",
+                    "originAgreedTo": "string",
+                    "destinAgreedFrom": "string",
+                    "destinAgreedTo": "string"
+                  }
+                ]
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tonnage"
+                  }
+                },
+                "example": [
+                  {
+                    "orderHeaderNumber": 0,
+                    "orderNumber": "string",
+                    "moveNumber": 0,
+                    "division": "string",
+                    "haulMode": "string",
+                    "startDate": "string",
+                    "originCity": "string",
+                    "originCityState": "string",
+                    "originLatitude": 0,
+                    "originLongitude": 0,
+                    "originRegion": "string",
+                    "originZone": "string",
+                    "destinationCityState": "string",
+                    "destinationCity": "string",
+                    "destinationLatitude": 0,
+                    "destinationLongitude": 0,
+                    "destinationRegion": "string",
+                    "destinationZone": "string",
+                    "autoCount": 0,
+                    "boatCount": 0,
+                    "booker": "string",
+                    "originAgent": "string",
+                    "destinationAgent": "string",
+                    "payType": "string",
+                    "estimatedLinehaul": 0,
+                    "originEarliest": "string",
+                    "originLatest": "string",
+                    "destinationEarliest": "string",
+                    "destinationLatest": "string",
+                    "flagPlanned": "string",
+                    "planned": true,
+                    "actualElseEstimatedWeight": 0,
+                    "board": "string",
+                    "discount": "string",
+                    "loadBoardAcceptable": "string",
+                    "loadBoardNotAcceptableReason": "string",
+                    "notAcceptableText": "string",
+                    "includeLOG": "string",
+                    "includeSTG": "string",
+                    "includeShortHaul": "string",
+                    "loadBoardComment": "string",
+                    "orderCount": 0,
+                    "segmentNumber": "string",
+                    "dispatchRemarks": "string",
+                    "onDockAt": "string",
+                    "hotLoad": "string",
+                    "xduDone": "string",
+                    "isAcceptableByUser": true,
+                    "moveType": "string",
+                    "needAssistance": true,
+                    "tariff": "string",
+                    "containerized": "string",
+                    "carrier": "string",
+                    "legHauler": "string",
+                    "dockPickupDate": "string",
+                    "actualDate": "string",
+                    "originAgreedFrom": "string",
+                    "originAgreedTo": "string",
+                    "destinAgreedFrom": "string",
+                    "destinAgreedTo": "string"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/Tonnages/accept": {
+      "put": {
+        "tags": ["Tonnages"],
+        "summary": "Accept Tonnages",
+        "description": "Accept tonnages",
+        "operationId": "accept-tonnage",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptanceOptions"
+              },
+              "example": {
+                "tonnage": {
+                  "orderHeaderNumber": 0,
+                  "orderNumber": "string",
+                  "moveNumber": 0,
+                  "division": "string",
+                  "haulMode": "string",
+                  "startDate": "string",
+                  "originCity": "string",
+                  "originCityState": "string",
+                  "originLatitude": 0,
+                  "originLongitude": 0,
+                  "originRegion": "string",
+                  "originZone": "string",
+                  "destinationCityState": "string",
+                  "destinationCity": "string",
+                  "destinationLatitude": 0,
+                  "destinationLongitude": 0,
+                  "destinationRegion": "string",
+                  "destinationZone": "string",
+                  "autoCount": 0,
+                  "boatCount": 0,
+                  "booker": "string",
+                  "originAgent": "string",
+                  "destinationAgent": "string",
+                  "payType": "string",
+                  "estimatedLinehaul": 0,
+                  "originEarliest": "string",
+                  "originLatest": "string",
+                  "destinationEarliest": "string",
+                  "destinationLatest": "string",
+                  "flagPlanned": "string",
+                  "planned": true,
+                  "actualElseEstimatedWeight": 0,
+                  "board": "string",
+                  "discount": "string",
+                  "loadBoardAcceptable": "string",
+                  "loadBoardNotAcceptableReason": "string",
+                  "notAcceptableText": "string",
+                  "includeLOG": "string",
+                  "includeSTG": "string",
+                  "includeShortHaul": "string",
+                  "loadBoardComment": "string",
+                  "orderCount": 0,
+                  "segmentNumber": "string",
+                  "dispatchRemarks": "string",
+                  "onDockAt": "string",
+                  "hotLoad": "string",
+                  "xduDone": "string",
+                  "isAcceptableByUser": true,
+                  "moveType": "string",
+                  "needAssistance": true,
+                  "tariff": "string",
+                  "containerized": "string",
+                  "carrier": "string",
+                  "legHauler": "string",
+                  "dockPickupDate": "string",
+                  "actualDate": "string",
+                  "originAgreedFrom": "string",
+                  "originAgreedTo": "string",
+                  "destinAgreedFrom": "string",
+                  "destinAgreedTo": "string"
+                },
+                "legHauler": "string",
+                "pvo": "string",
+                "tractor": "string",
+                "trailer": "string",
+                "acceptingUser": "string"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptanceOptions"
+              },
+              "example": {
+                "tonnage": {
+                  "orderHeaderNumber": 0,
+                  "orderNumber": "string",
+                  "moveNumber": 0,
+                  "division": "string",
+                  "haulMode": "string",
+                  "startDate": "string",
+                  "originCity": "string",
+                  "originCityState": "string",
+                  "originLatitude": 0,
+                  "originLongitude": 0,
+                  "originRegion": "string",
+                  "originZone": "string",
+                  "destinationCityState": "string",
+                  "destinationCity": "string",
+                  "destinationLatitude": 0,
+                  "destinationLongitude": 0,
+                  "destinationRegion": "string",
+                  "destinationZone": "string",
+                  "autoCount": 0,
+                  "boatCount": 0,
+                  "booker": "string",
+                  "originAgent": "string",
+                  "destinationAgent": "string",
+                  "payType": "string",
+                  "estimatedLinehaul": 0,
+                  "originEarliest": "string",
+                  "originLatest": "string",
+                  "destinationEarliest": "string",
+                  "destinationLatest": "string",
+                  "flagPlanned": "string",
+                  "planned": true,
+                  "actualElseEstimatedWeight": 0,
+                  "board": "string",
+                  "discount": "string",
+                  "loadBoardAcceptable": "string",
+                  "loadBoardNotAcceptableReason": "string",
+                  "notAcceptableText": "string",
+                  "includeLOG": "string",
+                  "includeSTG": "string",
+                  "includeShortHaul": "string",
+                  "loadBoardComment": "string",
+                  "orderCount": 0,
+                  "segmentNumber": "string",
+                  "dispatchRemarks": "string",
+                  "onDockAt": "string",
+                  "hotLoad": "string",
+                  "xduDone": "string",
+                  "isAcceptableByUser": true,
+                  "moveType": "string",
+                  "needAssistance": true,
+                  "tariff": "string",
+                  "containerized": "string",
+                  "carrier": "string",
+                  "legHauler": "string",
+                  "dockPickupDate": "string",
+                  "actualDate": "string",
+                  "originAgreedFrom": "string",
+                  "originAgreedTo": "string",
+                  "destinAgreedFrom": "string",
+                  "destinAgreedTo": "string"
+                },
+                "legHauler": "string",
+                "pvo": "string",
+                "tractor": "string",
+                "trailer": "string",
+                "acceptingUser": "string"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptanceOptions"
+              },
+              "example": {
+                "tonnage": {
+                  "orderHeaderNumber": 0,
+                  "orderNumber": "string",
+                  "moveNumber": 0,
+                  "division": "string",
+                  "haulMode": "string",
+                  "startDate": "string",
+                  "originCity": "string",
+                  "originCityState": "string",
+                  "originLatitude": 0,
+                  "originLongitude": 0,
+                  "originRegion": "string",
+                  "originZone": "string",
+                  "destinationCityState": "string",
+                  "destinationCity": "string",
+                  "destinationLatitude": 0,
+                  "destinationLongitude": 0,
+                  "destinationRegion": "string",
+                  "destinationZone": "string",
+                  "autoCount": 0,
+                  "boatCount": 0,
+                  "booker": "string",
+                  "originAgent": "string",
+                  "destinationAgent": "string",
+                  "payType": "string",
+                  "estimatedLinehaul": 0,
+                  "originEarliest": "string",
+                  "originLatest": "string",
+                  "destinationEarliest": "string",
+                  "destinationLatest": "string",
+                  "flagPlanned": "string",
+                  "planned": true,
+                  "actualElseEstimatedWeight": 0,
+                  "board": "string",
+                  "discount": "string",
+                  "loadBoardAcceptable": "string",
+                  "loadBoardNotAcceptableReason": "string",
+                  "notAcceptableText": "string",
+                  "includeLOG": "string",
+                  "includeSTG": "string",
+                  "includeShortHaul": "string",
+                  "loadBoardComment": "string",
+                  "orderCount": 0,
+                  "segmentNumber": "string",
+                  "dispatchRemarks": "string",
+                  "onDockAt": "string",
+                  "hotLoad": "string",
+                  "xduDone": "string",
+                  "isAcceptableByUser": true,
+                  "moveType": "string",
+                  "needAssistance": true,
+                  "tariff": "string",
+                  "containerized": "string",
+                  "carrier": "string",
+                  "legHauler": "string",
+                  "dockPickupDate": "string",
+                  "actualDate": "string",
+                  "originAgreedFrom": "string",
+                  "originAgreedTo": "string",
+                  "destinAgreedFrom": "string",
+                  "destinAgreedTo": "string"
+                },
+                "legHauler": "string",
+                "pvo": "string",
+                "tractor": "string",
+                "trailer": "string",
+                "acceptingUser": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "422": {
+            "description": "The request could not be processed.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Tonnage was accepted."
+          }
+        }
+      }
+    },
+    "/Tonnages/request": {
+      "put": {
+        "tags": ["Tonnages"],
+        "summary": "Request Tonnages",
+        "description": "Request tonnages",
+        "operationId": "request-tonnage",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestOptions"
+              },
+              "example": {
+                "tonnage": {
+                  "orderHeaderNumber": 0,
+                  "orderNumber": "string",
+                  "moveNumber": 0,
+                  "division": "string",
+                  "haulMode": "string",
+                  "startDate": "string",
+                  "originCity": "string",
+                  "originCityState": "string",
+                  "originLatitude": 0,
+                  "originLongitude": 0,
+                  "originRegion": "string",
+                  "originZone": "string",
+                  "destinationCityState": "string",
+                  "destinationCity": "string",
+                  "destinationLatitude": 0,
+                  "destinationLongitude": 0,
+                  "destinationRegion": "string",
+                  "destinationZone": "string",
+                  "autoCount": 0,
+                  "boatCount": 0,
+                  "booker": "string",
+                  "originAgent": "string",
+                  "destinationAgent": "string",
+                  "payType": "string",
+                  "estimatedLinehaul": 0,
+                  "originEarliest": "string",
+                  "originLatest": "string",
+                  "destinationEarliest": "string",
+                  "destinationLatest": "string",
+                  "flagPlanned": "string",
+                  "planned": true,
+                  "actualElseEstimatedWeight": 0,
+                  "board": "string",
+                  "discount": "string",
+                  "loadBoardAcceptable": "string",
+                  "loadBoardNotAcceptableReason": "string",
+                  "notAcceptableText": "string",
+                  "includeLOG": "string",
+                  "includeSTG": "string",
+                  "includeShortHaul": "string",
+                  "loadBoardComment": "string",
+                  "orderCount": 0,
+                  "segmentNumber": "string",
+                  "dispatchRemarks": "string",
+                  "onDockAt": "string",
+                  "hotLoad": "string",
+                  "xduDone": "string",
+                  "isAcceptableByUser": true,
+                  "moveType": "string",
+                  "needAssistance": true,
+                  "tariff": "string",
+                  "containerized": "string",
+                  "carrier": "string",
+                  "legHauler": "string",
+                  "dockPickupDate": "string",
+                  "actualDate": "string",
+                  "originAgreedFrom": "string",
+                  "originAgreedTo": "string",
+                  "destinAgreedFrom": "string",
+                  "destinAgreedTo": "string"
+                },
+                "pvo": "string",
+                "tractor": "string",
+                "trailer": "string",
+                "acceptingUser": "string",
+                "comments": "string",
+                "loadDirect": "string",
+                "orderHeaderNumber": 0,
+                "board": "string",
+                "agentId": "string"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestOptions"
+              },
+              "example": {
+                "tonnage": {
+                  "orderHeaderNumber": 0,
+                  "orderNumber": "string",
+                  "moveNumber": 0,
+                  "division": "string",
+                  "haulMode": "string",
+                  "startDate": "string",
+                  "originCity": "string",
+                  "originCityState": "string",
+                  "originLatitude": 0,
+                  "originLongitude": 0,
+                  "originRegion": "string",
+                  "originZone": "string",
+                  "destinationCityState": "string",
+                  "destinationCity": "string",
+                  "destinationLatitude": 0,
+                  "destinationLongitude": 0,
+                  "destinationRegion": "string",
+                  "destinationZone": "string",
+                  "autoCount": 0,
+                  "boatCount": 0,
+                  "booker": "string",
+                  "originAgent": "string",
+                  "destinationAgent": "string",
+                  "payType": "string",
+                  "estimatedLinehaul": 0,
+                  "originEarliest": "string",
+                  "originLatest": "string",
+                  "destinationEarliest": "string",
+                  "destinationLatest": "string",
+                  "flagPlanned": "string",
+                  "planned": true,
+                  "actualElseEstimatedWeight": 0,
+                  "board": "string",
+                  "discount": "string",
+                  "loadBoardAcceptable": "string",
+                  "loadBoardNotAcceptableReason": "string",
+                  "notAcceptableText": "string",
+                  "includeLOG": "string",
+                  "includeSTG": "string",
+                  "includeShortHaul": "string",
+                  "loadBoardComment": "string",
+                  "orderCount": 0,
+                  "segmentNumber": "string",
+                  "dispatchRemarks": "string",
+                  "onDockAt": "string",
+                  "hotLoad": "string",
+                  "xduDone": "string",
+                  "isAcceptableByUser": true,
+                  "moveType": "string",
+                  "needAssistance": true,
+                  "tariff": "string",
+                  "containerized": "string",
+                  "carrier": "string",
+                  "legHauler": "string",
+                  "dockPickupDate": "string",
+                  "actualDate": "string",
+                  "originAgreedFrom": "string",
+                  "originAgreedTo": "string",
+                  "destinAgreedFrom": "string",
+                  "destinAgreedTo": "string"
+                },
+                "pvo": "string",
+                "tractor": "string",
+                "trailer": "string",
+                "acceptingUser": "string",
+                "comments": "string",
+                "loadDirect": "string",
+                "orderHeaderNumber": 0,
+                "board": "string",
+                "agentId": "string"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestOptions"
+              },
+              "example": {
+                "tonnage": {
+                  "orderHeaderNumber": 0,
+                  "orderNumber": "string",
+                  "moveNumber": 0,
+                  "division": "string",
+                  "haulMode": "string",
+                  "startDate": "string",
+                  "originCity": "string",
+                  "originCityState": "string",
+                  "originLatitude": 0,
+                  "originLongitude": 0,
+                  "originRegion": "string",
+                  "originZone": "string",
+                  "destinationCityState": "string",
+                  "destinationCity": "string",
+                  "destinationLatitude": 0,
+                  "destinationLongitude": 0,
+                  "destinationRegion": "string",
+                  "destinationZone": "string",
+                  "autoCount": 0,
+                  "boatCount": 0,
+                  "booker": "string",
+                  "originAgent": "string",
+                  "destinationAgent": "string",
+                  "payType": "string",
+                  "estimatedLinehaul": 0,
+                  "originEarliest": "string",
+                  "originLatest": "string",
+                  "destinationEarliest": "string",
+                  "destinationLatest": "string",
+                  "flagPlanned": "string",
+                  "planned": true,
+                  "actualElseEstimatedWeight": 0,
+                  "board": "string",
+                  "discount": "string",
+                  "loadBoardAcceptable": "string",
+                  "loadBoardNotAcceptableReason": "string",
+                  "notAcceptableText": "string",
+                  "includeLOG": "string",
+                  "includeSTG": "string",
+                  "includeShortHaul": "string",
+                  "loadBoardComment": "string",
+                  "orderCount": 0,
+                  "segmentNumber": "string",
+                  "dispatchRemarks": "string",
+                  "onDockAt": "string",
+                  "hotLoad": "string",
+                  "xduDone": "string",
+                  "isAcceptableByUser": true,
+                  "moveType": "string",
+                  "needAssistance": true,
+                  "tariff": "string",
+                  "containerized": "string",
+                  "carrier": "string",
+                  "legHauler": "string",
+                  "dockPickupDate": "string",
+                  "actualDate": "string",
+                  "originAgreedFrom": "string",
+                  "originAgreedTo": "string",
+                  "destinAgreedFrom": "string",
+                  "destinAgreedTo": "string"
+                },
+                "pvo": "string",
+                "tractor": "string",
+                "trailer": "string",
+                "acceptingUser": "string",
+                "comments": "string",
+                "loadDirect": "string",
+                "orderHeaderNumber": 0,
+                "board": "string",
+                "agentId": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "422": {
+            "description": "The request could not be processed.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Tonnage was requested."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AcceptanceOptions": {
+        "type": "object",
+        "properties": {
+          "tonnage": {
+            "$ref": "#/components/schemas/Tonnage"
+          },
+          "legHauler": {
+            "type": "string",
+            "nullable": true
+          },
+          "pvo": {
+            "type": "string",
+            "nullable": true
+          },
+          "tractor": {
+            "type": "string",
+            "nullable": true
+          },
+          "trailer": {
+            "type": "string",
+            "nullable": true
+          },
+          "acceptingUser": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": {}
+      },
+      "RequestOptions": {
+        "type": "object",
+        "properties": {
+          "tonnage": {
+            "$ref": "#/components/schemas/Tonnage"
+          },
+          "pvo": {
+            "type": "string",
+            "nullable": true
+          },
+          "tractor": {
+            "type": "string",
+            "nullable": true
+          },
+          "trailer": {
+            "type": "string",
+            "nullable": true
+          },
+          "acceptingUser": {
+            "type": "string",
+            "nullable": true
+          },
+          "comments": {
+            "type": "string",
+            "nullable": true
+          },
+          "loadDirect": {
+            "type": "string",
+            "nullable": true
+          },
+          "orderHeaderNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "board": {
+            "type": "string",
+            "nullable": true
+          },
+          "agentId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Tonnage": {
+        "type": "object",
+        "properties": {
+          "orderHeaderNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "orderNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "moveNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "division": {
+            "type": "string",
+            "nullable": true
+          },
+          "haulMode": {
+            "type": "string",
+            "nullable": true
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "originCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "originCityState": {
+            "type": "string",
+            "nullable": true
+          },
+          "originLatitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "originLongitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "originRegion": {
+            "type": "string",
+            "nullable": true
+          },
+          "originZone": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationCityState": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationLatitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "destinationLongitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "destinationRegion": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationZone": {
+            "type": "string",
+            "nullable": true
+          },
+          "autoCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "boatCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "booker": {
+            "type": "string",
+            "nullable": true
+          },
+          "originAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "payType": {
+            "type": "string",
+            "nullable": true
+          },
+          "estimatedLinehaul": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "originEarliest": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "originLatest": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "destinationEarliest": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "destinationLatest": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "flagPlanned": {
+            "type": "string",
+            "nullable": true
+          },
+          "planned": {
+            "type": "boolean"
+          },
+          "actualElseEstimatedWeight": {
+            "type": "number",
+            "format": "double"
+          },
+          "board": {
+            "type": "string",
+            "nullable": true
+          },
+          "discount": {
+            "type": "string",
+            "nullable": true
+          },
+          "loadBoardAcceptable": {
+            "type": "string",
+            "nullable": true
+          },
+          "loadBoardNotAcceptableReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "notAcceptableText": {
+            "type": "string",
+            "nullable": true
+          },
+          "includeLOG": {
+            "type": "string",
+            "nullable": true
+          },
+          "includeSTG": {
+            "type": "string",
+            "nullable": true
+          },
+          "includeShortHaul": {
+            "type": "string",
+            "nullable": true
+          },
+          "loadBoardComment": {
+            "type": "string",
+            "nullable": true
+          },
+          "orderCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "segmentNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "dispatchRemarks": {
+            "type": "string",
+            "nullable": true
+          },
+          "onDockAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "hotLoad": {
+            "type": "string",
+            "nullable": true
+          },
+          "xduDone": {
+            "type": "string",
+            "nullable": true
+          },
+          "isAcceptableByUser": {
+            "type": "boolean"
+          },
+          "moveType": {
+            "type": "string",
+            "nullable": true
+          },
+          "needAssistance": {
+            "type": "boolean"
+          },
+          "tariff": {
+            "type": "string",
+            "nullable": true
+          },
+          "containerized": {
+            "type": "string",
+            "nullable": true
+          },
+          "carrier": {
+            "type": "string",
+            "nullable": true
+          },
+          "legHauler": {
+            "type": "string",
+            "nullable": true
+          },
+          "dockPickupDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "actualDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "originAgreedFrom": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "originAgreedTo": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "destinAgreedFrom": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "destinAgreedTo": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ]
+}

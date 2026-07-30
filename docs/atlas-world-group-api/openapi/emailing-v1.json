@@ -1,0 +1,259 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Emailing",
+    "description": "Service to expose an endpoint to send out emails",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/emailing/v1"
+    }
+  ],
+  "paths": {
+    "/Emails": {
+      "post": {
+        "tags": ["Atlas.AzureApi.Emailing"],
+        "summary": "Creates email to be sent",
+        "description": "Creates email to be sent",
+        "operationId": "post-email",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageModel"
+              },
+              "example": {
+                "id": 0,
+                "subject": "string",
+                "body": "string",
+                "to": ["string"],
+                "from": "string",
+                "carbonCopy": ["string"],
+                "blindCarbonCopy": ["string"],
+                "attachments": [
+                  {
+                    "data": "string",
+                    "name": "string"
+                  }
+                ],
+                "mailType": 0,
+                "replyTo": "string",
+                "isHtml": true,
+                "fromApp": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageModel"
+                },
+                "example": {
+                  "id": 0,
+                  "subject": "string",
+                  "body": "string",
+                  "to": ["string"],
+                  "from": "string",
+                  "carbonCopy": ["string"],
+                  "blindCarbonCopy": ["string"],
+                  "attachments": [
+                    {
+                      "data": "string",
+                      "name": "string"
+                    }
+                  ],
+                  "mailType": 0,
+                  "replyTo": "string",
+                  "isHtml": true,
+                  "fromApp": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AggregateErrorsDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string",
+                  "errors": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AggregateErrorsDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "additionalProperties": {}
+      },
+      "AttachmentModel": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MessageModel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "subject": {
+            "type": "string",
+            "description": "The subject of the email.",
+            "nullable": true
+          },
+          "body": {
+            "type": "string",
+            "description": "The contents of the email.",
+            "nullable": true
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of recipients of the email.",
+            "nullable": true
+          },
+          "from": {
+            "type": "string",
+            "description": "The sender of the email.",
+            "nullable": true
+          },
+          "carbonCopy": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of carbon copied recipients of the email.",
+            "nullable": true
+          },
+          "blindCarbonCopy": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of blind carbon copied recipients of the email.",
+            "nullable": true
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttachmentModel"
+            },
+            "description": "The attachments within the email.",
+            "nullable": true
+          },
+          "mailType": {
+            "type": "integer",
+            "description": "The type of the email.",
+            "format": "int32"
+          },
+          "replyTo": {
+            "type": "string",
+            "description": "The address to which the recipient(s) should reply.",
+            "nullable": true
+          },
+          "isHtml": {
+            "type": "boolean",
+            "description": "Whether the email should be HTML based."
+          },
+          "fromApp": {
+            "type": "string",
+            "description": "Description of the app where the email was sent.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Atlas.AzureApi.Emailing"
+    }
+  ]
+}

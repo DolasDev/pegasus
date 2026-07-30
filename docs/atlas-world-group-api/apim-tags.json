@@ -1,0 +1,453 @@
+{
+  "value": [
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/AccountsPayableDocuments",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "AccountsPayableDocuments",
+      "properties": {
+        "displayName": "AccountsPayableDocuments"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Agent",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Agent",
+      "properties": {
+        "displayName": "Agent"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/AmsaMileage",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "AmsaMileage",
+      "properties": {
+        "displayName": "AmsaMileage"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Atlas",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Atlas",
+      "properties": {
+        "displayName": "Atlas"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Atlas-AzureApi-Cubesheets",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Atlas-AzureApi-Cubesheets",
+      "properties": {
+        "displayName": "Atlas.AzureApi.Cubesheets"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Atlas-AzureApi-Emailing",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Atlas-AzureApi-Emailing",
+      "properties": {
+        "displayName": "Atlas.AzureApi.Emailing"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Atlas-AzureApi-Holidays",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Atlas-AzureApi-Holidays",
+      "properties": {
+        "displayName": "Atlas.AzureApi.Holidays"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/AtlasOrder",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "AtlasOrder",
+      "properties": {
+        "displayName": "AtlasOrder"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Businesses",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Businesses",
+      "properties": {
+        "displayName": "Businesses"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Callbacks",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Callbacks",
+      "properties": {
+        "displayName": "Callbacks"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/CanadaDocuments",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "CanadaDocuments",
+      "properties": {
+        "displayName": "CanadaDocuments"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Claims",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Claims",
+      "properties": {
+        "displayName": "Claims"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Companies",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Companies",
+      "properties": {
+        "displayName": "Companies"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Container-Usages",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Container-Usages",
+      "properties": {
+        "displayName": "Container Usages"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Containers",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Containers",
+      "properties": {
+        "displayName": "Containers"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Customers",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Customers",
+      "properties": {
+        "displayName": "Customers"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Distribution",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Distribution",
+      "properties": {
+        "displayName": "Distribution"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/DownloadableDocuments",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "DownloadableDocuments",
+      "properties": {
+        "displayName": "DownloadableDocuments"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Estimating",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Estimating",
+      "properties": {
+        "displayName": "Estimating"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Generic",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Generic",
+      "properties": {
+        "displayName": "Generic"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/HubSpot",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "HubSpot",
+      "properties": {
+        "displayName": "HubSpot"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Images",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Images",
+      "properties": {
+        "displayName": "Images"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/InvoiceDelivery",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "InvoiceDelivery",
+      "properties": {
+        "displayName": "InvoiceDelivery"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Item",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Item",
+      "properties": {
+        "displayName": "Item"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Items",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Items",
+      "properties": {
+        "displayName": "Items"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Locations",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Locations",
+      "properties": {
+        "displayName": "Locations"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Locks",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Locks",
+      "properties": {
+        "displayName": "Locks"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Mass-Containers",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Mass-Containers",
+      "properties": {
+        "displayName": "Mass Containers"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Metadata",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Metadata",
+      "properties": {
+        "displayName": "Metadata"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Mileage",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Mileage",
+      "properties": {
+        "displayName": "Mileage"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Moves",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Moves",
+      "properties": {
+        "displayName": "Moves"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Notes",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Notes",
+      "properties": {
+        "displayName": "Notes"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Order",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Order",
+      "properties": {
+        "displayName": "Order"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/OrderAuthorizations",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "OrderAuthorizations",
+      "properties": {
+        "displayName": "OrderAuthorizations"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Orders",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Orders",
+      "properties": {
+        "displayName": "Orders"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/PCMiler",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "PCMiler",
+      "properties": {
+        "displayName": "PCMiler"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Phones",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Phones",
+      "properties": {
+        "displayName": "Phones"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Pricing",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Pricing",
+      "properties": {
+        "displayName": "Pricing"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Questionnaire",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Questionnaire",
+      "properties": {
+        "displayName": "Questionnaire"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Rand19",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Rand19",
+      "properties": {
+        "displayName": "Rand19"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Rates-Tariff",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Rates-Tariff",
+      "properties": {
+        "displayName": "Rates-Tariff"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Rating",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Rating",
+      "properties": {
+        "displayName": "Rating"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Reporting",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Reporting",
+      "properties": {
+        "displayName": "Reporting"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/RiskMgtDocuments",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "RiskMgtDocuments",
+      "properties": {
+        "displayName": "RiskMgtDocuments"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/SearchProfileApi",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "SearchProfileApi",
+      "properties": {
+        "displayName": "SearchProfileApi"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/ShipmentDocuments",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "ShipmentDocuments",
+      "properties": {
+        "displayName": "ShipmentDocuments"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Shipments",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Shipments",
+      "properties": {
+        "displayName": "Shipments"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Survey",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Survey",
+      "properties": {
+        "displayName": "Survey"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Tariff",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Tariff",
+      "properties": {
+        "displayName": "Tariff"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Tonnages",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Tonnages",
+      "properties": {
+        "displayName": "Tonnages"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/TrailerControlSheetsApi",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "TrailerControlSheetsApi",
+      "properties": {
+        "displayName": "TrailerControlSheetsApi"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/TrailerProfile",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "TrailerProfile",
+      "properties": {
+        "displayName": "TrailerProfile"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/TransitGuide",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "TransitGuide",
+      "properties": {
+        "displayName": "TransitGuide"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/TripsApi",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "TripsApi",
+      "properties": {
+        "displayName": "TripsApi"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/Validation",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "Validation",
+      "properties": {
+        "displayName": "Validation"
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/tags/WebHook",
+      "type": "Microsoft.ApiManagement/service/tags",
+      "name": "WebHook",
+      "properties": {
+        "displayName": "WebHook"
+      }
+    }
+  ],
+  "count": 56
+}

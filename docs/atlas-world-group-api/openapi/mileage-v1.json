@@ -1,0 +1,269 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Mileage",
+    "description": "Service to expose mileage info",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/mileage/v1"
+    }
+  ],
+  "paths": {
+    "/AmsaMileage": {
+      "get": {
+        "tags": ["AmsaMileage"],
+        "summary": "/AmsaMileage - GET",
+        "operationId": "get-amsamileage",
+        "parameters": [
+          {
+            "name": "originZip",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "destinationZip",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Always in miles",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              },
+              "text/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              }
+            }
+          },
+          "422": {
+            "description": "Bad Data, Cannot Process"
+          }
+        }
+      }
+    },
+    "/PCMiler": {
+      "get": {
+        "tags": ["PCMiler"],
+        "summary": "/PCMiler - GET",
+        "operationId": "get-pcmiler",
+        "parameters": [
+          {
+            "name": "originZip",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "destinationZip",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Always in miles",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              },
+              "text/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              }
+            }
+          },
+          "422": {
+            "description": "Bad Data, Cannot Process"
+          }
+        }
+      }
+    },
+    "/Rand19": {
+      "get": {
+        "tags": ["Rand19"],
+        "summary": "/Rand19 - GET",
+        "operationId": "get-rand19",
+        "parameters": [
+          {
+            "name": "originZip",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "destinationZip",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Always in miles",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              },
+              "text/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              }
+            }
+          },
+          "422": {
+            "description": "Bad Data, Cannot Process"
+          }
+        }
+      }
+    },
+    "/Mileage": {
+      "get": {
+        "tags": ["Mileage"],
+        "summary": "/Mileage - GET",
+        "operationId": "get-mileage",
+        "parameters": [
+          {
+            "name": "originZip",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "destinationZip",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Always in miles",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              },
+              "text/json": {
+                "schema": {
+                  "type": "integer",
+                  "format": "int32"
+                },
+                "example": 0
+              }
+            }
+          },
+          "422": {
+            "description": "Bad Data, Cannot Process"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ]
+}

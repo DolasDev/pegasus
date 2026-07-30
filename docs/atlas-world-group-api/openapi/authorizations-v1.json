@@ -1,0 +1,1204 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Authorizations",
+    "description": "Service to expose authorizations",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/authorizations/v1"
+    }
+  ],
+  "paths": {
+    "/OrderAuthorizations/actions": {
+      "get": {
+        "tags": ["OrderAuthorizations"],
+        "summary": "Gets Actions",
+        "description": "Gets a list of actions",
+        "operationId": "get-actions",
+        "responses": {
+          "200": {
+            "description": "List of Actions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuthorizationActionModel"
+                  }
+                },
+                "example": [
+                  {
+                    "id": 0,
+                    "text": "string"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/OrderAuthorizations/amountTypes": {
+      "get": {
+        "tags": ["OrderAuthorizations"],
+        "summary": "Gets Amount Types",
+        "description": "Gets a list of Amount Types",
+        "operationId": "get-amount-types",
+        "responses": {
+          "200": {
+            "description": "List of Amount Types.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AmountTypeModel"
+                  }
+                },
+                "example": [
+                  {
+                    "id": 0,
+                    "text": "string"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/OrderAuthorizations/frequentAuthorizations": {
+      "get": {
+        "tags": ["OrderAuthorizations"],
+        "summary": "Gets Frequent Authorizations",
+        "description": "Gets a list of Frequent Authorizations.",
+        "operationId": "get-frequent-authorizations",
+        "responses": {
+          "200": {
+            "description": "List of Frequent Authorizations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FrequentAuthorizationModel"
+                  }
+                },
+                "example": [
+                  {
+                    "id": 0,
+                    "text": "string",
+                    "enteredBy": "string",
+                    "enteredDate": "string",
+                    "updatedBy": "string",
+                    "updatedDate": "string",
+                    "expiredBy": "string",
+                    "expiredDate": "string",
+                    "isLocked": true,
+                    "allowedActions": [
+                      {
+                        "id": 0,
+                        "text": "string"
+                      }
+                    ],
+                    "allowedDivisions": ["string"],
+                    "disallowedAgents": ["string"]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/OrderAuthorizations/{authorizationId}": {
+      "get": {
+        "tags": ["OrderAuthorizations"],
+        "summary": "Gets Authorization",
+        "description": "Gets Authorization",
+        "operationId": "get-authorization",
+        "parameters": [
+          {
+            "name": "authorizationId",
+            "in": "path",
+            "description": "Format - int32.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The Authorization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderAuthorizationModel"
+                },
+                "example": {
+                  "id": 0,
+                  "orderNumber": "string",
+                  "text": "string",
+                  "currentAction": {
+                    "id": 0,
+                    "text": "string"
+                  },
+                  "remarks": "string",
+                  "notes": [
+                    {
+                      "id": 0,
+                      "type": "string",
+                      "text": "string",
+                      "priority": "string",
+                      "createdBy": "string",
+                      "createdDate": "string"
+                    }
+                  ],
+                  "enteredBy": "string",
+                  "enteredDate": "string",
+                  "actionUpdatedDate": "string",
+                  "actionUpdatedBy": "string",
+                  "requestedBy": "string",
+                  "requestedDate": "string",
+                  "respondedBy": "string",
+                  "respondedDate": "string",
+                  "updatedBy": "string",
+                  "updatedDate": "string",
+                  "serviceProvider": "string",
+                  "servicePayer": "string",
+                  "frequentAuthorization": {
+                    "id": 0,
+                    "text": "string",
+                    "enteredBy": "string",
+                    "enteredDate": "string",
+                    "updatedBy": "string",
+                    "updatedDate": "string",
+                    "expiredBy": "string",
+                    "expiredDate": "string",
+                    "isLocked": true,
+                    "allowedActions": [
+                      {
+                        "id": 0,
+                        "text": "string"
+                      }
+                    ],
+                    "allowedDivisions": ["string"],
+                    "disallowedAgents": ["string"]
+                  },
+                  "invoiceAmountType": {
+                    "id": 0,
+                    "text": "string"
+                  },
+                  "invoiceAmount": 0,
+                  "invoiceNumber": "string",
+                  "miles": 0
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The authorization was not found"
+          }
+        }
+      },
+      "put": {
+        "tags": ["OrderAuthorizations"],
+        "summary": "Puts Authorization",
+        "description": "Puts Authorization",
+        "operationId": "put-authorization",
+        "parameters": [
+          {
+            "name": "authorizationId",
+            "in": "path",
+            "description": "Format - int32.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "On-Behalf-Of-Agent",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderAuthorizationModel"
+              },
+              "example": {
+                "id": 0,
+                "orderNumber": "string",
+                "text": "string",
+                "currentAction": {
+                  "id": 0,
+                  "text": "string"
+                },
+                "remarks": "string",
+                "notes": [
+                  {
+                    "id": 0,
+                    "type": "string",
+                    "text": "string",
+                    "priority": "string",
+                    "createdBy": "string",
+                    "createdDate": "string"
+                  }
+                ],
+                "enteredBy": "string",
+                "enteredDate": "string",
+                "actionUpdatedDate": "string",
+                "actionUpdatedBy": "string",
+                "requestedBy": "string",
+                "requestedDate": "string",
+                "respondedBy": "string",
+                "respondedDate": "string",
+                "updatedBy": "string",
+                "updatedDate": "string",
+                "serviceProvider": "string",
+                "servicePayer": "string",
+                "frequentAuthorization": {
+                  "id": 0,
+                  "text": "string",
+                  "enteredBy": "string",
+                  "enteredDate": "string",
+                  "updatedBy": "string",
+                  "updatedDate": "string",
+                  "expiredBy": "string",
+                  "expiredDate": "string",
+                  "isLocked": true,
+                  "allowedActions": [
+                    {
+                      "id": 0,
+                      "text": "string"
+                    }
+                  ],
+                  "allowedDivisions": ["string"],
+                  "disallowedAgents": ["string"]
+                },
+                "invoiceAmountType": {
+                  "id": 0,
+                  "text": "string"
+                },
+                "invoiceAmount": 0,
+                "invoiceNumber": "string",
+                "miles": 0
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderAuthorizationModel"
+              },
+              "example": {
+                "id": 0,
+                "orderNumber": "string",
+                "text": "string",
+                "currentAction": {
+                  "id": 0,
+                  "text": "string"
+                },
+                "remarks": "string",
+                "notes": [
+                  {
+                    "id": 0,
+                    "type": "string",
+                    "text": "string",
+                    "priority": "string",
+                    "createdBy": "string",
+                    "createdDate": "string"
+                  }
+                ],
+                "enteredBy": "string",
+                "enteredDate": "string",
+                "actionUpdatedDate": "string",
+                "actionUpdatedBy": "string",
+                "requestedBy": "string",
+                "requestedDate": "string",
+                "respondedBy": "string",
+                "respondedDate": "string",
+                "updatedBy": "string",
+                "updatedDate": "string",
+                "serviceProvider": "string",
+                "servicePayer": "string",
+                "frequentAuthorization": {
+                  "id": 0,
+                  "text": "string",
+                  "enteredBy": "string",
+                  "enteredDate": "string",
+                  "updatedBy": "string",
+                  "updatedDate": "string",
+                  "expiredBy": "string",
+                  "expiredDate": "string",
+                  "isLocked": true,
+                  "allowedActions": [
+                    {
+                      "id": 0,
+                      "text": "string"
+                    }
+                  ],
+                  "allowedDivisions": ["string"],
+                  "disallowedAgents": ["string"]
+                },
+                "invoiceAmountType": {
+                  "id": 0,
+                  "text": "string"
+                },
+                "invoiceAmount": 0,
+                "invoiceNumber": "string",
+                "miles": 0
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderAuthorizationModel"
+              },
+              "example": {
+                "id": 0,
+                "orderNumber": "string",
+                "text": "string",
+                "currentAction": {
+                  "id": 0,
+                  "text": "string"
+                },
+                "remarks": "string",
+                "notes": [
+                  {
+                    "id": 0,
+                    "type": "string",
+                    "text": "string",
+                    "priority": "string",
+                    "createdBy": "string",
+                    "createdDate": "string"
+                  }
+                ],
+                "enteredBy": "string",
+                "enteredDate": "string",
+                "actionUpdatedDate": "string",
+                "actionUpdatedBy": "string",
+                "requestedBy": "string",
+                "requestedDate": "string",
+                "respondedBy": "string",
+                "respondedDate": "string",
+                "updatedBy": "string",
+                "updatedDate": "string",
+                "serviceProvider": "string",
+                "servicePayer": "string",
+                "frequentAuthorization": {
+                  "id": 0,
+                  "text": "string",
+                  "enteredBy": "string",
+                  "enteredDate": "string",
+                  "updatedBy": "string",
+                  "updatedDate": "string",
+                  "expiredBy": "string",
+                  "expiredDate": "string",
+                  "isLocked": true,
+                  "allowedActions": [
+                    {
+                      "id": 0,
+                      "text": "string"
+                    }
+                  ],
+                  "allowedDivisions": ["string"],
+                  "disallowedAgents": ["string"]
+                },
+                "invoiceAmountType": {
+                  "id": 0,
+                  "text": "string"
+                },
+                "invoiceAmount": 0,
+                "invoiceNumber": "string",
+                "miles": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderAuthorizationModel"
+                },
+                "example": {
+                  "id": 0,
+                  "orderNumber": "string",
+                  "text": "string",
+                  "currentAction": {
+                    "id": 0,
+                    "text": "string"
+                  },
+                  "remarks": "string",
+                  "notes": [
+                    {
+                      "id": 0,
+                      "type": "string",
+                      "text": "string",
+                      "priority": "string",
+                      "createdBy": "string",
+                      "createdDate": "string"
+                    }
+                  ],
+                  "enteredBy": "string",
+                  "enteredDate": "string",
+                  "actionUpdatedDate": "string",
+                  "actionUpdatedBy": "string",
+                  "requestedBy": "string",
+                  "requestedDate": "string",
+                  "respondedBy": "string",
+                  "respondedDate": "string",
+                  "updatedBy": "string",
+                  "updatedDate": "string",
+                  "serviceProvider": "string",
+                  "servicePayer": "string",
+                  "frequentAuthorization": {
+                    "id": 0,
+                    "text": "string",
+                    "enteredBy": "string",
+                    "enteredDate": "string",
+                    "updatedBy": "string",
+                    "updatedDate": "string",
+                    "expiredBy": "string",
+                    "expiredDate": "string",
+                    "isLocked": true,
+                    "allowedActions": [
+                      {
+                        "id": 0,
+                        "text": "string"
+                      }
+                    ],
+                    "allowedDivisions": ["string"],
+                    "disallowedAgents": ["string"]
+                  },
+                  "invoiceAmountType": {
+                    "id": 0,
+                    "text": "string"
+                  },
+                  "invoiceAmount": 0,
+                  "invoiceNumber": "string",
+                  "miles": 0
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The authorization was not found"
+          },
+          "422": {
+            "description": "Client Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string",
+                  "errors": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/OrderAuthorizations": {
+      "get": {
+        "tags": ["OrderAuthorizations"],
+        "summary": "Gets Authorizations",
+        "description": "Gets Authorizations",
+        "operationId": "get-authorizations",
+        "parameters": [
+          {
+            "name": "orderNumber",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching Authorizations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrderAuthorizationModel"
+                  }
+                },
+                "example": [
+                  {
+                    "id": 0,
+                    "orderNumber": "string",
+                    "text": "string",
+                    "currentAction": {
+                      "id": 0,
+                      "text": "string"
+                    },
+                    "remarks": "string",
+                    "notes": [
+                      {
+                        "id": 0,
+                        "type": "string",
+                        "text": "string",
+                        "priority": "string",
+                        "createdBy": "string",
+                        "createdDate": "string"
+                      }
+                    ],
+                    "enteredBy": "string",
+                    "enteredDate": "string",
+                    "actionUpdatedDate": "string",
+                    "actionUpdatedBy": "string",
+                    "requestedBy": "string",
+                    "requestedDate": "string",
+                    "respondedBy": "string",
+                    "respondedDate": "string",
+                    "updatedBy": "string",
+                    "updatedDate": "string",
+                    "serviceProvider": "string",
+                    "servicePayer": "string",
+                    "frequentAuthorization": {
+                      "id": 0,
+                      "text": "string",
+                      "enteredBy": "string",
+                      "enteredDate": "string",
+                      "updatedBy": "string",
+                      "updatedDate": "string",
+                      "expiredBy": "string",
+                      "expiredDate": "string",
+                      "isLocked": true,
+                      "allowedActions": [
+                        {
+                          "id": 0,
+                          "text": "string"
+                        }
+                      ],
+                      "allowedDivisions": ["string"],
+                      "disallowedAgents": ["string"]
+                    },
+                    "invoiceAmountType": {
+                      "id": 0,
+                      "text": "string"
+                    },
+                    "invoiceAmount": 0,
+                    "invoiceNumber": "string",
+                    "miles": 0
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["OrderAuthorizations"],
+        "summary": "Posts Authorization",
+        "description": "Posts Authorization",
+        "operationId": "post-authorization",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of-Agent",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderAuthorizationModel"
+              },
+              "example": {
+                "id": 0,
+                "orderNumber": "string",
+                "text": "string",
+                "currentAction": {
+                  "id": 0,
+                  "text": "string"
+                },
+                "remarks": "string",
+                "notes": [
+                  {
+                    "id": 0,
+                    "type": "string",
+                    "text": "string",
+                    "priority": "string",
+                    "createdBy": "string",
+                    "createdDate": "string"
+                  }
+                ],
+                "enteredBy": "string",
+                "enteredDate": "string",
+                "actionUpdatedDate": "string",
+                "actionUpdatedBy": "string",
+                "requestedBy": "string",
+                "requestedDate": "string",
+                "respondedBy": "string",
+                "respondedDate": "string",
+                "updatedBy": "string",
+                "updatedDate": "string",
+                "serviceProvider": "string",
+                "servicePayer": "string",
+                "frequentAuthorization": {
+                  "id": 0,
+                  "text": "string",
+                  "enteredBy": "string",
+                  "enteredDate": "string",
+                  "updatedBy": "string",
+                  "updatedDate": "string",
+                  "expiredBy": "string",
+                  "expiredDate": "string",
+                  "isLocked": true,
+                  "allowedActions": [
+                    {
+                      "id": 0,
+                      "text": "string"
+                    }
+                  ],
+                  "allowedDivisions": ["string"],
+                  "disallowedAgents": ["string"]
+                },
+                "invoiceAmountType": {
+                  "id": 0,
+                  "text": "string"
+                },
+                "invoiceAmount": 0,
+                "invoiceNumber": "string",
+                "miles": 0
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderAuthorizationModel"
+              },
+              "example": {
+                "id": 0,
+                "orderNumber": "string",
+                "text": "string",
+                "currentAction": {
+                  "id": 0,
+                  "text": "string"
+                },
+                "remarks": "string",
+                "notes": [
+                  {
+                    "id": 0,
+                    "type": "string",
+                    "text": "string",
+                    "priority": "string",
+                    "createdBy": "string",
+                    "createdDate": "string"
+                  }
+                ],
+                "enteredBy": "string",
+                "enteredDate": "string",
+                "actionUpdatedDate": "string",
+                "actionUpdatedBy": "string",
+                "requestedBy": "string",
+                "requestedDate": "string",
+                "respondedBy": "string",
+                "respondedDate": "string",
+                "updatedBy": "string",
+                "updatedDate": "string",
+                "serviceProvider": "string",
+                "servicePayer": "string",
+                "frequentAuthorization": {
+                  "id": 0,
+                  "text": "string",
+                  "enteredBy": "string",
+                  "enteredDate": "string",
+                  "updatedBy": "string",
+                  "updatedDate": "string",
+                  "expiredBy": "string",
+                  "expiredDate": "string",
+                  "isLocked": true,
+                  "allowedActions": [
+                    {
+                      "id": 0,
+                      "text": "string"
+                    }
+                  ],
+                  "allowedDivisions": ["string"],
+                  "disallowedAgents": ["string"]
+                },
+                "invoiceAmountType": {
+                  "id": 0,
+                  "text": "string"
+                },
+                "invoiceAmount": 0,
+                "invoiceNumber": "string",
+                "miles": 0
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderAuthorizationModel"
+              },
+              "example": {
+                "id": 0,
+                "orderNumber": "string",
+                "text": "string",
+                "currentAction": {
+                  "id": 0,
+                  "text": "string"
+                },
+                "remarks": "string",
+                "notes": [
+                  {
+                    "id": 0,
+                    "type": "string",
+                    "text": "string",
+                    "priority": "string",
+                    "createdBy": "string",
+                    "createdDate": "string"
+                  }
+                ],
+                "enteredBy": "string",
+                "enteredDate": "string",
+                "actionUpdatedDate": "string",
+                "actionUpdatedBy": "string",
+                "requestedBy": "string",
+                "requestedDate": "string",
+                "respondedBy": "string",
+                "respondedDate": "string",
+                "updatedBy": "string",
+                "updatedDate": "string",
+                "serviceProvider": "string",
+                "servicePayer": "string",
+                "frequentAuthorization": {
+                  "id": 0,
+                  "text": "string",
+                  "enteredBy": "string",
+                  "enteredDate": "string",
+                  "updatedBy": "string",
+                  "updatedDate": "string",
+                  "expiredBy": "string",
+                  "expiredDate": "string",
+                  "isLocked": true,
+                  "allowedActions": [
+                    {
+                      "id": 0,
+                      "text": "string"
+                    }
+                  ],
+                  "allowedDivisions": ["string"],
+                  "disallowedAgents": ["string"]
+                },
+                "invoiceAmountType": {
+                  "id": 0,
+                  "text": "string"
+                },
+                "invoiceAmount": 0,
+                "invoiceNumber": "string",
+                "miles": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created Authorization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderAuthorizationModel"
+                },
+                "example": {
+                  "id": 0,
+                  "orderNumber": "string",
+                  "text": "string",
+                  "currentAction": {
+                    "id": 0,
+                    "text": "string"
+                  },
+                  "remarks": "string",
+                  "notes": [
+                    {
+                      "id": 0,
+                      "type": "string",
+                      "text": "string",
+                      "priority": "string",
+                      "createdBy": "string",
+                      "createdDate": "string"
+                    }
+                  ],
+                  "enteredBy": "string",
+                  "enteredDate": "string",
+                  "actionUpdatedDate": "string",
+                  "actionUpdatedBy": "string",
+                  "requestedBy": "string",
+                  "requestedDate": "string",
+                  "respondedBy": "string",
+                  "respondedDate": "string",
+                  "updatedBy": "string",
+                  "updatedDate": "string",
+                  "serviceProvider": "string",
+                  "servicePayer": "string",
+                  "frequentAuthorization": {
+                    "id": 0,
+                    "text": "string",
+                    "enteredBy": "string",
+                    "enteredDate": "string",
+                    "updatedBy": "string",
+                    "updatedDate": "string",
+                    "expiredBy": "string",
+                    "expiredDate": "string",
+                    "isLocked": true,
+                    "allowedActions": [
+                      {
+                        "id": 0,
+                        "text": "string"
+                      }
+                    ],
+                    "allowedDivisions": ["string"],
+                    "disallowedAgents": ["string"]
+                  },
+                  "invoiceAmountType": {
+                    "id": 0,
+                    "text": "string"
+                  },
+                  "invoiceAmount": 0,
+                  "invoiceNumber": "string",
+                  "miles": 0
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Client Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string",
+                  "errors": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AmountTypeModel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "text": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AuthorizationActionModel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "text": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "FrequentAuthorizationModel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "text": {
+            "type": "string",
+            "nullable": true
+          },
+          "enteredBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "enteredDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "updatedDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "expiredBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "expiredDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "isLocked": {
+            "type": "boolean",
+            "description": "Is the FrequentAuthorization allowed to be updated.",
+            "nullable": true
+          },
+          "allowedActions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthorizationActionModel"
+            },
+            "nullable": true
+          },
+          "allowedDivisions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "disallowedAgents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "NoteModel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "text": {
+            "type": "string",
+            "nullable": true
+          },
+          "priority": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "OrderAuthorizationModel": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "orderNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "text": {
+            "type": "string",
+            "nullable": true
+          },
+          "currentAction": {
+            "$ref": "#/components/schemas/AuthorizationActionModel"
+          },
+          "remarks": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NoteModel"
+            },
+            "nullable": true
+          },
+          "enteredBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "enteredDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "actionUpdatedDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "actionUpdatedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "requestedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "requestedDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "respondedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "respondedDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "updatedDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "serviceProvider": {
+            "type": "string",
+            "nullable": true
+          },
+          "servicePayer": {
+            "type": "string",
+            "nullable": true
+          },
+          "frequentAuthorization": {
+            "$ref": "#/components/schemas/FrequentAuthorizationModel"
+          },
+          "invoiceAmountType": {
+            "$ref": "#/components/schemas/AmountTypeModel"
+          },
+          "invoiceAmount": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "invoiceNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "miles": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ValidationProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ]
+}

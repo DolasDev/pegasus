@@ -1,0 +1,3270 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Shipment Management",
+    "description": "Service to expose shipment management methods",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/shipment-management/v1"
+    }
+  ],
+  "paths": {
+    "/shipments/{orderNumber}": {
+      "get": {
+        "tags": ["Shipments"],
+        "summary": "Get Shipment",
+        "description": "Gets shipment that match the given parameters.",
+        "operationId": "get-shipment",
+        "parameters": [
+          {
+            "name": "orderNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Shipment"
+                },
+                "example": {
+                  "orderHeaderNumber": 0,
+                  "company": "string",
+                  "orderNumber": "string",
+                  "shipmentType": "string",
+                  "bookDate": "string",
+                  "bookedBy": "string",
+                  "status": "string",
+                  "invoiceStatus": "string",
+                  "billTo": "string",
+                  "ordRevtype1": "string",
+                  "ordRevtype2": "string",
+                  "ordRevtype3": "string",
+                  "ordRevtype4": "string",
+                  "estimatedWeight": 0,
+                  "totalPieces": 0,
+                  "totalMiles": 0,
+                  "totalCharge": 0,
+                  "totalVolume": 0,
+                  "ordRemark": "string",
+                  "priority": "string",
+                  "tripNumber": "string",
+                  "cmdCode": "string",
+                  "description": "string",
+                  "terms": "string",
+                  "chtItemcode": "string",
+                  "ordOdmetermiles": "string",
+                  "ordMiscqty": "string",
+                  "ordThirdpartytype2Salesperson": "string",
+                  "ordThirdpartytype2SalespersonName": "string",
+                  "ordCodAmount": "string",
+                  "actualWeight": 0,
+                  "estimatedLinehaul": 0,
+                  "estimatedAccessorial": 0,
+                  "estimatedTotalCharges": 0,
+                  "estimatedCharges": 0,
+                  "maxCharges": 0,
+                  "moveManagement": "string",
+                  "nationalAccount": "string",
+                  "lastUpdated": "string",
+                  "lastUpdatdeBy": "string",
+                  "fromOrder": "string",
+                  "takenBy": "string",
+                  "shipperName": "string",
+                  "agreedPickupFromDate": "string",
+                  "agreedPickupToDate": "string",
+                  "agreedDeliveryFromDate": "string",
+                  "agreedDeliveryToDate": "string",
+                  "autoWeight": 0,
+                  "boatWeight": 0,
+                  "tariff": "string",
+                  "tariffSection": "string",
+                  "enteredBy": "string",
+                  "enteredMode": "string",
+                  "salesperson": "string",
+                  "estimatorName": "string",
+                  "payTypeDescription": "string",
+                  "awgOrdGetWeightTickets": "string",
+                  "packingType": "string",
+                  "originAgentPerformingFlag": "string",
+                  "originAgentToSurvey": true,
+                  "originAgentToDoEstimate": true,
+                  "originAgentToCoverPickup": true,
+                  "unpackingType": "string",
+                  "notifyBeforePickup": true,
+                  "notifyBeforeDelivery": true,
+                  "reweighRequest": true,
+                  "awgOrdSInvcOpt": "string",
+                  "isWillAdviseWeight": true,
+                  "csr": "string",
+                  "awgOrdMoveManagement": "string",
+                  "moveMonitor": "string",
+                  "privateCsr": "string",
+                  "moveAllocation": "string",
+                  "booker": "string",
+                  "originAgent": "string",
+                  "destinationAgent": "string",
+                  "resourcesAreComplete": "string",
+                  "originName": "string",
+                  "originAddress1": "string",
+                  "originAddress2": "string",
+                  "originAddress3": "string",
+                  "originCity": "string",
+                  "originState": "string",
+                  "originZip": "string",
+                  "originCounty": "string",
+                  "originCountry": "string",
+                  "destinationName": "string",
+                  "destinationAddress1": "string",
+                  "destinationAddress2": "string",
+                  "destinationAddress3": "string",
+                  "destinationCity": "string",
+                  "destinationState": "string",
+                  "destinationZip": "string",
+                  "destinationCounty": "string",
+                  "destinationCountry": "string",
+                  "isAccepted": true,
+                  "hasBeenAccepted": true,
+                  "agentRegNumber": "string",
+                  "surveyDate": "string",
+                  "originRegion1": "string",
+                  "originRegion2": "string",
+                  "originRegion3": "string",
+                  "originRegion4": "string",
+                  "destinationRegion1": "string",
+                  "destinationRegion2": "string",
+                  "destinationRegion3": "string",
+                  "destinationRegion4": "string",
+                  "charge": 0,
+                  "startDate": "string",
+                  "completionDate": "string",
+                  "consignee": "string",
+                  "currency": "string",
+                  "imageOnly": "string",
+                  "assignmentType": "string",
+                  "transportationMode": "string",
+                  "easyDpsOrder": true,
+                  "flatAutoOnlyOrder": "string",
+                  "courierService": "string",
+                  "isLoadBoardAcceptable": true,
+                  "moveType": "string",
+                  "isLoadBoardVisible": true,
+                  "loadBoardNotAcceptableReason": "string",
+                  "freightClass": "string",
+                  "customerId": 0,
+                  "businessId": 0,
+                  "billtoIsConfirmed": true,
+                  "cmpAltid": "string",
+                  "planToFastTrac": "string",
+                  "fastTrackReady": "string",
+                  "needHaulingAssistance": "string",
+                  "caLanguagePref": "string",
+                  "longRemarks": "string",
+                  "anticipatedMoveScore": "string",
+                  "criticalToQuality": "string",
+                  "packLoadFeedBack": "string",
+                  "deliveryFeedBack": "string",
+                  "ordLength": "string",
+                  "showPvoProfile": true,
+                  "excludePvoProfile": true,
+                  "authorizations": [
+                    {
+                      "colrow": "string",
+                      "type": "string",
+                      "subId": "string",
+                      "number": "string",
+                      "authorizedBy": "string"
+                    }
+                  ],
+                  "notes": [
+                    {
+                      "notType": "string",
+                      "notUrgent": true,
+                      "notTextLarge": "string",
+                      "notViewLevel": "string",
+                      "lastUpdatedBy": "string",
+                      "lastUpdated": "string",
+                      "notExpires": "string",
+                      "notNumber": "string",
+                      "ntbTable": "string",
+                      "notSequence": "string"
+                    }
+                  ],
+                  "trips": [
+                    {
+                      "tripNumber": 0,
+                      "segments": [
+                        {
+                          "tripNumber": 0,
+                          "segmentNumber": 0,
+                          "orderHeaderNumber": 0,
+                          "outStatus": "string",
+                          "driver1": "string",
+                          "driver2": "string",
+                          "tractor": "string",
+                          "type1": "string",
+                          "type2": "string",
+                          "type3": "string",
+                          "type4": "string",
+                          "carrier": "string",
+                          "createdBy": "string",
+                          "createdOn": "string",
+                          "createdByApp": "string",
+                          "lastUpdatedBy": "string",
+                          "lastUpdated": "string",
+                          "updatedByApp": "string",
+                          "trailer1": "string",
+                          "trailer2": "string",
+                          "legHeaderActive": "string",
+                          "startDate": "string",
+                          "inStatus": "string",
+                          "stops": [
+                            {
+                              "stopNumber": 0,
+                              "legNumber": 0,
+                              "orderHeaderNumber": 0,
+                              "companyId": "string",
+                              "region1": "string",
+                              "region2": "string",
+                              "region3": "string",
+                              "region4": "string",
+                              "address1": "string",
+                              "address2": "string",
+                              "cityId": 0,
+                              "state": "string",
+                              "ctyNmstct": "string",
+                              "cityName": "string",
+                              "cityState": "string",
+                              "cityCounty": "string",
+                              "countyName": "string",
+                              "zipCode": "string",
+                              "country": "string",
+                              "reasonLate": "string",
+                              "mfhNumber": "string",
+                              "sequence": "string",
+                              "stpMfhSequence": "string",
+                              "tripNumber": "string",
+                              "referenceType": "string",
+                              "reasonLateDepart": "string",
+                              "primaryPhoneNumber": "string",
+                              "secondaryPhoneNumber": "string",
+                              "eventCode": "string",
+                              "scheduledFromDate": "string",
+                              "scheduledToDate": "string",
+                              "eventStatus": "string",
+                              "agreedFromDate": "string",
+                              "agreedToDate": "string",
+                              "etaDateFrom": "string",
+                              "etaDateTo": "string",
+                              "fgtQuantity": "string",
+                              "stopType": "string",
+                              "transferType": "string",
+                              "companyName": "string",
+                              "comment": "string",
+                              "contact": "string",
+                              "podName": "string",
+                              "transferStop": "string",
+                              "awgStpTriptype": "string",
+                              "awgStpEmail1": "string",
+                              "address3": "string",
+                              "contact2": "string",
+                              "weight": "string",
+                              "awgWeight": "string",
+                              "eventNumber": "string",
+                              "primaryPhoneType": "string",
+                              "secondaryPhoneType": "string",
+                              "primaryPhoneLong": "string",
+                              "secondaryPhoneLong": "string",
+                              "awgAutoOnly": "string",
+                              "stpDelayhours": "string",
+                              "eventType": "string",
+                              "awgIncludeInRadsRoute": "string",
+                              "awgStpPrimaryphoneCellCarrier": "string",
+                              "awgStpSecondaryphoneCellCarrier": "string",
+                              "awgStpPrimaryphoneReceiveTexts": "string",
+                              "awgStpSecondaryphoneReceiveTexts": "string",
+                              "actualStopDate": "string",
+                              "advancedCharges": [
+                                {
+                                  "advancedChargesId": 0,
+                                  "orderHeaderNumber": 0,
+                                  "orderNumber": "string",
+                                  "stopNumber": 0,
+                                  "advchrgsCmpid": "string",
+                                  "advchrgsVendorid": {},
+                                  "advchrgsPayvend": "string",
+                                  "advchrgsCmpidStatus": "string",
+                                  "advchrgsVendoridStatus": "string",
+                                  "serviceStatus": "string",
+                                  "advancedChargeDetails": [
+                                    {
+                                      "advchrgsDetailId": "string",
+                                      "advchrgsId": "string",
+                                      "advchrgsType": "string",
+                                      "advchrgsDesc": "string",
+                                      "advchrgsCharge": "string",
+                                      "advchrgsInvNumber": {},
+                                      "advchrgsBoundPrice": 0,
+                                      "advchrgsThirdpartyService": "string",
+                                      "advchrgsRate": "string"
+                                    }
+                                  ]
+                                }
+                              ],
+                              "packUnpacks": [
+                                {
+                                  "packUnpackId": 0,
+                                  "orderHeaderNumber": 0,
+                                  "orderNumber": "string",
+                                  "stopNumber": "string",
+                                  "packUnpackCompanyId": "string",
+                                  "packUnpackType": "string",
+                                  "packUnpackWeight": 0,
+                                  "packUnpackBoundWeight": 0,
+                                  "fromDate": "string",
+                                  "toDate": "string",
+                                  "isPrimary": true,
+                                  "isOvertime": true,
+                                  "boundOption": "string",
+                                  "boundPrice": 0,
+                                  "boundDiscountPercentage": 0,
+                                  "isExactPack": true,
+                                  "packUnpackCmpidStatus": "string",
+                                  "actualFromDate": "string",
+                                  "actualToDate": "string",
+                                  "serviceStatus": "string",
+                                  "isBillable": true,
+                                  "pvoToDo": "string",
+                                  "isAirPrep": true,
+                                  "packingSchedule": {},
+                                  "isDoubleTime": true,
+                                  "packUnpackDetails": [
+                                    {
+                                      "packUnpackDetailId": 0,
+                                      "packUnpackId": 0,
+                                      "cartonType": 0,
+                                      "cartonCount": 0,
+                                      "supplied": true
+                                    }
+                                  ]
+                                }
+                              ],
+                              "stpOrdMileage": "string",
+                              "stpLghMileage": "string",
+                              "stpMfhMileage": "string",
+                              "stpTripMileage": "string"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "agents": [
+                    {
+                      "colrow": "string",
+                      "subId": "string",
+                      "name": "string",
+                      "code": "string",
+                      "typeName": "string",
+                      "type": "string",
+                      "companyId": "string",
+                      "authority": "string",
+                      "personnel": "string",
+                      "assignedDate": "string",
+                      "assignedBy": "string",
+                      "address1": "string",
+                      "address2": "string",
+                      "address3": "string",
+                      "state": "string",
+                      "zipCode": "string",
+                      "country": "string",
+                      "primaryPhoneNumber": "string",
+                      "secondaryPhoneNumber": "string",
+                      "faxNumber": "string",
+                      "status": "string",
+                      "cityName": "string",
+                      "countyName": "string",
+                      "primaryPhoneLong": "string",
+                      "secondaryPhoneLong": "string",
+                      "speedDial": "string"
+                    }
+                  ],
+                  "invoices": {},
+                  "relatedData": {
+                    "companyRecords": [
+                      {
+                        "cmpId": "string",
+                        "cmpAltid": "string",
+                        "cmpName": "string",
+                        "cmpAddress1": "string",
+                        "cmpAddress2": "string",
+                        "cmpCity": "string",
+                        "cmpState": "string",
+                        "cmpZip": "string",
+                        "cmpCityname": "string",
+                        "cmpCountry": "string",
+                        "cmpCountyname": "string",
+                        "cmpAddress3": "string",
+                        "cmpPrimaryphone": "string",
+                        "cmpSecondaryphone": "string",
+                        "cmpPrimaryphoneLong": "string",
+                        "cmpSecondaryphoneLong": "string"
+                      }
+                    ],
+                    "driverRecords": [
+                      {
+                        "id": "string",
+                        "type": "string",
+                        "alternateId": "string",
+                        "firstName": "string",
+                        "middleName": "string",
+                        "lastName": "string",
+                        "payTo": "string",
+                        "fleet": "string",
+                        "division": "string",
+                        "company": "string"
+                      }
+                    ],
+                    "tractorRecords": {},
+                    "trailerRecords": {}
+                  },
+                  "surveys": [
+                    {
+                      "surveyId": "string",
+                      "surveyAgent": "string",
+                      "surveyorCode": "string",
+                      "surveyDate": "string",
+                      "surveyStatus": "string",
+                      "createdBy": "string",
+                      "createdOn": "string",
+                      "updatedBy": "string",
+                      "updatedDateTime": "string",
+                      "updateApplication": "string",
+                      "surveyAppointmentId": "string",
+                      "surveyMethod": "string"
+                    }
+                  ],
+                  "auditorInformation": {
+                    "valuation": "string",
+                    "valuationType": "string",
+                    "valuationTypeDescription": "string",
+                    "estimateCode": 0,
+                    "estimateType": "string",
+                    "estimatedLinehaul": "string",
+                    "pricingId": "string",
+                    "maxCharges": "string",
+                    "typeDiscount": "string",
+                    "notifyOfCharges": "string",
+                    "pbldPercent": "string",
+                    "estNeDistLnhl": "string",
+                    "rate100lbs": "string",
+                    "rateMile": "string",
+                    "actualWeight": "string",
+                    "estimatedCharges": "string",
+                    "actualCharges": "string",
+                    "grossBilledLinehaul": "string",
+                    "sharedDiscount": "string",
+                    "billedDiscount": "string",
+                    "gstExempt": "string",
+                    "valuationUnit": "string",
+                    "calculatedEstimatedLinehaul": "string",
+                    "authorizedWeight": "string",
+                    "authorizedWeightUnit": "string",
+                    "budgetCostEst": "string",
+                    "budgetCostEstBy": "string",
+                    "physicalCostEst": "string",
+                    "physicalCostEstBy": "string",
+                    "actualChargesBy": "string",
+                    "actualTareWeight": "string",
+                    "actualProgearWeight": "string",
+                    "containerCubeVolume": "string",
+                    "actualGrossWeight": "string",
+                    "valuationUnsigned": "string",
+                    "estimatedTransportationLinehaul": "string",
+                    "valuationFree": "string",
+                    "paymentTiming": "string",
+                    "estimatedSITCharge": "string",
+                    "estimatedThirdPartyCharge": "string",
+                    "estimatedNationalAccountAccessorials": "string",
+                    "estimatedNationalAccountTransportationCharge": "string",
+                    "valuationDeductible": "string",
+                    "authorizedDollarCap": "string",
+                    "estimatedCubicFeet": "string",
+                    "valuationRate": "string",
+                    "maximumDiscount": "string"
+                  },
+                  "orderDates": {
+                    "orderDatesId": 0,
+                    "orderHeaderNumber": 0,
+                    "orderNumber": "string",
+                    "datesConfirmed": true,
+                    "storageAnticipated": true
+                  },
+                  "documents": {
+                    "paperwork": [
+                      {
+                        "abbr": "string",
+                        "received": "string",
+                        "orderHeaderNumber": "string",
+                        "pwDt": "string",
+                        "legNumber": "string",
+                        "imaged": "string",
+                        "lastUpdatedBy": "string",
+                        "lastUpdated": "string",
+                        "identity": "string",
+                        "inDocid": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      },
+      "put": {
+        "tags": ["Shipments"],
+        "summary": "Put Shipment",
+        "description": "Updates the given shipment.",
+        "operationId": "put-shipment",
+        "parameters": [
+          {
+            "name": "orderNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Shipment"
+              },
+              "example": {
+                "orderHeaderNumber": 0,
+                "company": "string",
+                "orderNumber": "string",
+                "shipmentType": "string",
+                "bookDate": "string",
+                "bookedBy": "string",
+                "status": "string",
+                "invoiceStatus": "string",
+                "billTo": "string",
+                "ordRevtype1": "string",
+                "ordRevtype2": "string",
+                "ordRevtype3": "string",
+                "ordRevtype4": "string",
+                "estimatedWeight": 0,
+                "totalPieces": 0,
+                "totalMiles": 0,
+                "totalCharge": 0,
+                "totalVolume": 0,
+                "ordRemark": "string",
+                "priority": "string",
+                "tripNumber": "string",
+                "cmdCode": "string",
+                "description": "string",
+                "terms": "string",
+                "chtItemcode": "string",
+                "ordOdmetermiles": "string",
+                "ordMiscqty": "string",
+                "ordThirdpartytype2Salesperson": "string",
+                "ordThirdpartytype2SalespersonName": "string",
+                "ordCodAmount": "string",
+                "actualWeight": 0,
+                "estimatedLinehaul": 0,
+                "estimatedAccessorial": 0,
+                "estimatedTotalCharges": 0,
+                "estimatedCharges": 0,
+                "maxCharges": 0,
+                "moveManagement": "string",
+                "nationalAccount": "string",
+                "lastUpdated": "string",
+                "lastUpdatdeBy": "string",
+                "fromOrder": "string",
+                "takenBy": "string",
+                "shipperName": "string",
+                "agreedPickupFromDate": "string",
+                "agreedPickupToDate": "string",
+                "agreedDeliveryFromDate": "string",
+                "agreedDeliveryToDate": "string",
+                "autoWeight": 0,
+                "boatWeight": 0,
+                "tariff": "string",
+                "tariffSection": "string",
+                "enteredBy": "string",
+                "enteredMode": "string",
+                "salesperson": "string",
+                "estimatorName": "string",
+                "payTypeDescription": "string",
+                "awgOrdGetWeightTickets": "string",
+                "packingType": "string",
+                "originAgentPerformingFlag": "string",
+                "originAgentToSurvey": true,
+                "originAgentToDoEstimate": true,
+                "originAgentToCoverPickup": true,
+                "unpackingType": "string",
+                "notifyBeforePickup": true,
+                "notifyBeforeDelivery": true,
+                "reweighRequest": true,
+                "awgOrdSInvcOpt": "string",
+                "isWillAdviseWeight": true,
+                "csr": "string",
+                "awgOrdMoveManagement": "string",
+                "moveMonitor": "string",
+                "privateCsr": "string",
+                "moveAllocation": "string",
+                "booker": "string",
+                "originAgent": "string",
+                "destinationAgent": "string",
+                "resourcesAreComplete": "string",
+                "originName": "string",
+                "originAddress1": "string",
+                "originAddress2": "string",
+                "originAddress3": "string",
+                "originCity": "string",
+                "originState": "string",
+                "originZip": "string",
+                "originCounty": "string",
+                "originCountry": "string",
+                "destinationName": "string",
+                "destinationAddress1": "string",
+                "destinationAddress2": "string",
+                "destinationAddress3": "string",
+                "destinationCity": "string",
+                "destinationState": "string",
+                "destinationZip": "string",
+                "destinationCounty": "string",
+                "destinationCountry": "string",
+                "isAccepted": true,
+                "hasBeenAccepted": true,
+                "agentRegNumber": "string",
+                "surveyDate": "string",
+                "originRegion1": "string",
+                "originRegion2": "string",
+                "originRegion3": "string",
+                "originRegion4": "string",
+                "destinationRegion1": "string",
+                "destinationRegion2": "string",
+                "destinationRegion3": "string",
+                "destinationRegion4": "string",
+                "charge": 0,
+                "startDate": "string",
+                "completionDate": "string",
+                "consignee": "string",
+                "currency": "string",
+                "imageOnly": "string",
+                "assignmentType": "string",
+                "transportationMode": "string",
+                "easyDpsOrder": true,
+                "flatAutoOnlyOrder": "string",
+                "courierService": "string",
+                "isLoadBoardAcceptable": true,
+                "moveType": "string",
+                "isLoadBoardVisible": true,
+                "loadBoardNotAcceptableReason": "string",
+                "freightClass": "string",
+                "customerId": 0,
+                "businessId": 0,
+                "billtoIsConfirmed": true,
+                "cmpAltid": "string",
+                "planToFastTrac": "string",
+                "fastTrackReady": "string",
+                "needHaulingAssistance": "string",
+                "caLanguagePref": "string",
+                "longRemarks": "string",
+                "anticipatedMoveScore": "string",
+                "criticalToQuality": "string",
+                "packLoadFeedBack": "string",
+                "deliveryFeedBack": "string",
+                "ordLength": "string",
+                "showPvoProfile": true,
+                "excludePvoProfile": true,
+                "authorizations": [
+                  {
+                    "colrow": "string",
+                    "type": "string",
+                    "subId": "string",
+                    "number": "string",
+                    "authorizedBy": "string"
+                  }
+                ],
+                "notes": [
+                  {
+                    "notType": "string",
+                    "notUrgent": true,
+                    "notTextLarge": "string",
+                    "notViewLevel": "string",
+                    "lastUpdatedBy": "string",
+                    "lastUpdated": "string",
+                    "notExpires": "string",
+                    "notNumber": "string",
+                    "ntbTable": "string",
+                    "notSequence": "string"
+                  }
+                ],
+                "trips": [
+                  {
+                    "tripNumber": 0,
+                    "segments": [
+                      {
+                        "tripNumber": 0,
+                        "segmentNumber": 0,
+                        "orderHeaderNumber": 0,
+                        "outStatus": "string",
+                        "driver1": "string",
+                        "driver2": "string",
+                        "tractor": "string",
+                        "type1": "string",
+                        "type2": "string",
+                        "type3": "string",
+                        "type4": "string",
+                        "carrier": "string",
+                        "createdBy": "string",
+                        "createdOn": "string",
+                        "createdByApp": "string",
+                        "lastUpdatedBy": "string",
+                        "lastUpdated": "string",
+                        "updatedByApp": "string",
+                        "trailer1": "string",
+                        "trailer2": "string",
+                        "legHeaderActive": "string",
+                        "startDate": "string",
+                        "inStatus": "string",
+                        "stops": [
+                          {
+                            "stopNumber": 0,
+                            "legNumber": 0,
+                            "orderHeaderNumber": 0,
+                            "companyId": "string",
+                            "region1": "string",
+                            "region2": "string",
+                            "region3": "string",
+                            "region4": "string",
+                            "address1": "string",
+                            "address2": "string",
+                            "cityId": 0,
+                            "state": "string",
+                            "ctyNmstct": "string",
+                            "cityName": "string",
+                            "cityState": "string",
+                            "cityCounty": "string",
+                            "countyName": "string",
+                            "zipCode": "string",
+                            "country": "string",
+                            "reasonLate": "string",
+                            "mfhNumber": "string",
+                            "sequence": "string",
+                            "stpMfhSequence": "string",
+                            "tripNumber": "string",
+                            "referenceType": "string",
+                            "reasonLateDepart": "string",
+                            "primaryPhoneNumber": "string",
+                            "secondaryPhoneNumber": "string",
+                            "eventCode": "string",
+                            "scheduledFromDate": "string",
+                            "scheduledToDate": "string",
+                            "eventStatus": "string",
+                            "agreedFromDate": "string",
+                            "agreedToDate": "string",
+                            "etaDateFrom": "string",
+                            "etaDateTo": "string",
+                            "fgtQuantity": "string",
+                            "stopType": "string",
+                            "transferType": "string",
+                            "companyName": "string",
+                            "comment": "string",
+                            "contact": "string",
+                            "podName": "string",
+                            "transferStop": "string",
+                            "awgStpTriptype": "string",
+                            "awgStpEmail1": "string",
+                            "address3": "string",
+                            "contact2": "string",
+                            "weight": "string",
+                            "awgWeight": "string",
+                            "eventNumber": "string",
+                            "primaryPhoneType": "string",
+                            "secondaryPhoneType": "string",
+                            "primaryPhoneLong": "string",
+                            "secondaryPhoneLong": "string",
+                            "awgAutoOnly": "string",
+                            "stpDelayhours": "string",
+                            "eventType": "string",
+                            "awgIncludeInRadsRoute": "string",
+                            "awgStpPrimaryphoneCellCarrier": "string",
+                            "awgStpSecondaryphoneCellCarrier": "string",
+                            "awgStpPrimaryphoneReceiveTexts": "string",
+                            "awgStpSecondaryphoneReceiveTexts": "string",
+                            "actualStopDate": "string",
+                            "advancedCharges": [
+                              {
+                                "advancedChargesId": 0,
+                                "orderHeaderNumber": 0,
+                                "orderNumber": "string",
+                                "stopNumber": 0,
+                                "advchrgsCmpid": "string",
+                                "advchrgsVendorid": {},
+                                "advchrgsPayvend": "string",
+                                "advchrgsCmpidStatus": "string",
+                                "advchrgsVendoridStatus": "string",
+                                "serviceStatus": "string",
+                                "advancedChargeDetails": [
+                                  {
+                                    "advchrgsDetailId": "string",
+                                    "advchrgsId": "string",
+                                    "advchrgsType": "string",
+                                    "advchrgsDesc": "string",
+                                    "advchrgsCharge": "string",
+                                    "advchrgsInvNumber": {},
+                                    "advchrgsBoundPrice": 0,
+                                    "advchrgsThirdpartyService": "string",
+                                    "advchrgsRate": "string"
+                                  }
+                                ]
+                              }
+                            ],
+                            "packUnpacks": [
+                              {
+                                "packUnpackId": 0,
+                                "orderHeaderNumber": 0,
+                                "orderNumber": "string",
+                                "stopNumber": "string",
+                                "packUnpackCompanyId": "string",
+                                "packUnpackType": "string",
+                                "packUnpackWeight": 0,
+                                "packUnpackBoundWeight": 0,
+                                "fromDate": "string",
+                                "toDate": "string",
+                                "isPrimary": true,
+                                "isOvertime": true,
+                                "boundOption": "string",
+                                "boundPrice": 0,
+                                "boundDiscountPercentage": 0,
+                                "isExactPack": true,
+                                "packUnpackCmpidStatus": "string",
+                                "actualFromDate": "string",
+                                "actualToDate": "string",
+                                "serviceStatus": "string",
+                                "isBillable": true,
+                                "pvoToDo": "string",
+                                "isAirPrep": true,
+                                "packingSchedule": {},
+                                "isDoubleTime": true,
+                                "packUnpackDetails": [
+                                  {
+                                    "packUnpackDetailId": 0,
+                                    "packUnpackId": 0,
+                                    "cartonType": 0,
+                                    "cartonCount": 0,
+                                    "supplied": true
+                                  }
+                                ]
+                              }
+                            ],
+                            "stpOrdMileage": "string",
+                            "stpLghMileage": "string",
+                            "stpMfhMileage": "string",
+                            "stpTripMileage": "string"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "agents": [
+                  {
+                    "colrow": "string",
+                    "subId": "string",
+                    "name": "string",
+                    "code": "string",
+                    "typeName": "string",
+                    "type": "string",
+                    "companyId": "string",
+                    "authority": "string",
+                    "personnel": "string",
+                    "assignedDate": "string",
+                    "assignedBy": "string",
+                    "address1": "string",
+                    "address2": "string",
+                    "address3": "string",
+                    "state": "string",
+                    "zipCode": "string",
+                    "country": "string",
+                    "primaryPhoneNumber": "string",
+                    "secondaryPhoneNumber": "string",
+                    "faxNumber": "string",
+                    "status": "string",
+                    "cityName": "string",
+                    "countyName": "string",
+                    "primaryPhoneLong": "string",
+                    "secondaryPhoneLong": "string",
+                    "speedDial": "string"
+                  }
+                ],
+                "invoices": {},
+                "relatedData": {
+                  "companyRecords": [
+                    {
+                      "cmpId": "string",
+                      "cmpAltid": "string",
+                      "cmpName": "string",
+                      "cmpAddress1": "string",
+                      "cmpAddress2": "string",
+                      "cmpCity": "string",
+                      "cmpState": "string",
+                      "cmpZip": "string",
+                      "cmpCityname": "string",
+                      "cmpCountry": "string",
+                      "cmpCountyname": "string",
+                      "cmpAddress3": "string",
+                      "cmpPrimaryphone": "string",
+                      "cmpSecondaryphone": "string",
+                      "cmpPrimaryphoneLong": "string",
+                      "cmpSecondaryphoneLong": "string"
+                    }
+                  ],
+                  "driverRecords": [
+                    {
+                      "id": "string",
+                      "type": "string",
+                      "alternateId": "string",
+                      "firstName": "string",
+                      "middleName": "string",
+                      "lastName": "string",
+                      "payTo": "string",
+                      "fleet": "string",
+                      "division": "string",
+                      "company": "string"
+                    }
+                  ],
+                  "tractorRecords": {},
+                  "trailerRecords": {}
+                },
+                "surveys": [
+                  {
+                    "surveyId": "string",
+                    "surveyAgent": "string",
+                    "surveyorCode": "string",
+                    "surveyDate": "string",
+                    "surveyStatus": "string",
+                    "createdBy": "string",
+                    "createdOn": "string",
+                    "updatedBy": "string",
+                    "updatedDateTime": "string",
+                    "updateApplication": "string",
+                    "surveyAppointmentId": "string",
+                    "surveyMethod": "string"
+                  }
+                ],
+                "auditorInformation": {
+                  "valuation": "string",
+                  "valuationType": "string",
+                  "valuationTypeDescription": "string",
+                  "estimateCode": 0,
+                  "estimateType": "string",
+                  "estimatedLinehaul": "string",
+                  "pricingId": "string",
+                  "maxCharges": "string",
+                  "typeDiscount": "string",
+                  "notifyOfCharges": "string",
+                  "pbldPercent": "string",
+                  "estNeDistLnhl": "string",
+                  "rate100lbs": "string",
+                  "rateMile": "string",
+                  "actualWeight": "string",
+                  "estimatedCharges": "string",
+                  "actualCharges": "string",
+                  "grossBilledLinehaul": "string",
+                  "sharedDiscount": "string",
+                  "billedDiscount": "string",
+                  "gstExempt": "string",
+                  "valuationUnit": "string",
+                  "calculatedEstimatedLinehaul": "string",
+                  "authorizedWeight": "string",
+                  "authorizedWeightUnit": "string",
+                  "budgetCostEst": "string",
+                  "budgetCostEstBy": "string",
+                  "physicalCostEst": "string",
+                  "physicalCostEstBy": "string",
+                  "actualChargesBy": "string",
+                  "actualTareWeight": "string",
+                  "actualProgearWeight": "string",
+                  "containerCubeVolume": "string",
+                  "actualGrossWeight": "string",
+                  "valuationUnsigned": "string",
+                  "estimatedTransportationLinehaul": "string",
+                  "valuationFree": "string",
+                  "paymentTiming": "string",
+                  "estimatedSITCharge": "string",
+                  "estimatedThirdPartyCharge": "string",
+                  "estimatedNationalAccountAccessorials": "string",
+                  "estimatedNationalAccountTransportationCharge": "string",
+                  "valuationDeductible": "string",
+                  "authorizedDollarCap": "string",
+                  "estimatedCubicFeet": "string",
+                  "valuationRate": "string",
+                  "maximumDiscount": "string"
+                },
+                "orderDates": {
+                  "orderDatesId": 0,
+                  "orderHeaderNumber": 0,
+                  "orderNumber": "string",
+                  "datesConfirmed": true,
+                  "storageAnticipated": true
+                },
+                "documents": {
+                  "paperwork": [
+                    {
+                      "abbr": "string",
+                      "received": "string",
+                      "orderHeaderNumber": "string",
+                      "pwDt": "string",
+                      "legNumber": "string",
+                      "imaged": "string",
+                      "lastUpdatedBy": "string",
+                      "lastUpdated": "string",
+                      "identity": "string",
+                      "inDocid": "string"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/shipments/{orderNumber}/Notes": {
+      "post": {
+        "tags": ["Shipments"],
+        "summary": "Post Shipment Note",
+        "description": "Adds a note to the given shipment.",
+        "operationId": "post-shipment-note",
+        "parameters": [
+          {
+            "name": "orderNumber",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShipmentNoteModel"
+              },
+              "example": {
+                "noteText": "string",
+                "noteType": "string",
+                "tableName": "string",
+                "tableKey": "string",
+                "isUrgent": true,
+                "viewLevel": "string",
+                "dateUpdated": "string",
+                "updatedBy": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                },
+                "example": {
+                  "type": "string",
+                  "title": "string",
+                  "status": 0,
+                  "detail": "string",
+                  "instance": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/Shipments/Notes/Types": {
+      "get": {
+        "tags": ["Shipments"],
+        "summary": "Get Shipment Note Types",
+        "description": "Get a list of all Note types.",
+        "operationId": "get-shipment-note-types",
+        "parameters": [
+          {
+            "name": "On-Behalf-Of",
+            "in": "header",
+            "description": "Specifies the user on whose behalf the request is made.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AdvancedCharge": {
+        "type": "object",
+        "properties": {
+          "advancedChargesId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "orderHeaderNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "orderNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "stopNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "advchrgsCmpid": {
+            "type": "string",
+            "nullable": true
+          },
+          "advchrgsVendorid": {
+            "nullable": true
+          },
+          "advchrgsPayvend": {
+            "type": "string",
+            "nullable": true
+          },
+          "advchrgsCmpidStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "advchrgsVendoridStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "serviceStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "advancedChargeDetails": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdvancedChargeDetail"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdvancedChargeDetail": {
+        "type": "object",
+        "properties": {
+          "advchrgsDetailId": {
+            "type": "string",
+            "nullable": true
+          },
+          "advchrgsId": {
+            "type": "string",
+            "nullable": true
+          },
+          "advchrgsType": {
+            "type": "string",
+            "nullable": true
+          },
+          "advchrgsDesc": {
+            "type": "string",
+            "nullable": true
+          },
+          "advchrgsCharge": {
+            "type": "string",
+            "nullable": true
+          },
+          "advchrgsInvNumber": {
+            "nullable": true
+          },
+          "advchrgsBoundPrice": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "advchrgsThirdpartyService": {
+            "type": "string",
+            "nullable": true
+          },
+          "advchrgsRate": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Agent": {
+        "type": "object",
+        "properties": {
+          "colrow": {
+            "type": "string",
+            "nullable": true
+          },
+          "subId": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "code": {
+            "type": "string",
+            "nullable": true
+          },
+          "typeName": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "companyId": {
+            "type": "string",
+            "nullable": true
+          },
+          "authority": {
+            "type": "string",
+            "nullable": true
+          },
+          "personnel": {
+            "type": "string",
+            "nullable": true
+          },
+          "assignedDate": {
+            "type": "string",
+            "nullable": true
+          },
+          "assignedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "address1": {
+            "type": "string",
+            "nullable": true
+          },
+          "address2": {
+            "type": "string",
+            "nullable": true
+          },
+          "address3": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "nullable": true
+          },
+          "zipCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "country": {
+            "type": "string",
+            "nullable": true
+          },
+          "primaryPhoneNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "secondaryPhoneNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "faxNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "cityName": {
+            "type": "string",
+            "nullable": true
+          },
+          "countyName": {
+            "type": "string",
+            "nullable": true
+          },
+          "primaryPhoneLong": {
+            "type": "string",
+            "nullable": true
+          },
+          "secondaryPhoneLong": {
+            "type": "string",
+            "nullable": true
+          },
+          "speedDial": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AuditorInformation": {
+        "type": "object",
+        "properties": {
+          "valuation": {
+            "type": "string",
+            "nullable": true
+          },
+          "valuationType": {
+            "type": "string",
+            "nullable": true
+          },
+          "valuationTypeDescription": {
+            "type": "string",
+            "nullable": true
+          },
+          "estimateCode": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "estimateType": {
+            "type": "string",
+            "nullable": true
+          },
+          "estimatedLinehaul": {
+            "type": "string",
+            "nullable": true
+          },
+          "pricingId": {
+            "type": "string",
+            "nullable": true
+          },
+          "maxCharges": {
+            "type": "string",
+            "nullable": true
+          },
+          "typeDiscount": {
+            "type": "string",
+            "nullable": true
+          },
+          "notifyOfCharges": {
+            "type": "string",
+            "nullable": true
+          },
+          "pbldPercent": {
+            "type": "string",
+            "nullable": true
+          },
+          "estNeDistLnhl": {
+            "type": "string",
+            "nullable": true
+          },
+          "rate100lbs": {
+            "type": "string",
+            "nullable": true
+          },
+          "rateMile": {
+            "type": "string",
+            "nullable": true
+          },
+          "actualWeight": {
+            "type": "string",
+            "nullable": true
+          },
+          "estimatedCharges": {
+            "type": "string",
+            "nullable": true
+          },
+          "actualCharges": {
+            "type": "string",
+            "nullable": true
+          },
+          "grossBilledLinehaul": {
+            "type": "string",
+            "nullable": true
+          },
+          "sharedDiscount": {
+            "type": "string",
+            "nullable": true
+          },
+          "billedDiscount": {
+            "type": "string",
+            "nullable": true
+          },
+          "gstExempt": {
+            "type": "string",
+            "nullable": true
+          },
+          "valuationUnit": {
+            "type": "string",
+            "nullable": true
+          },
+          "calculatedEstimatedLinehaul": {
+            "type": "string",
+            "nullable": true
+          },
+          "authorizedWeight": {
+            "type": "string",
+            "nullable": true
+          },
+          "authorizedWeightUnit": {
+            "type": "string",
+            "nullable": true
+          },
+          "budgetCostEst": {
+            "type": "string",
+            "nullable": true
+          },
+          "budgetCostEstBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "physicalCostEst": {
+            "type": "string",
+            "nullable": true
+          },
+          "physicalCostEstBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "actualChargesBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "actualTareWeight": {
+            "type": "string",
+            "nullable": true
+          },
+          "actualProgearWeight": {
+            "type": "string",
+            "nullable": true
+          },
+          "containerCubeVolume": {
+            "type": "string",
+            "nullable": true
+          },
+          "actualGrossWeight": {
+            "type": "string",
+            "nullable": true
+          },
+          "valuationUnsigned": {
+            "type": "string",
+            "nullable": true
+          },
+          "estimatedTransportationLinehaul": {
+            "type": "string",
+            "nullable": true
+          },
+          "valuationFree": {
+            "type": "string",
+            "nullable": true
+          },
+          "paymentTiming": {
+            "type": "string",
+            "nullable": true
+          },
+          "estimatedSITCharge": {
+            "type": "string",
+            "nullable": true
+          },
+          "estimatedThirdPartyCharge": {
+            "type": "string",
+            "nullable": true
+          },
+          "estimatedNationalAccountAccessorials": {
+            "type": "string",
+            "nullable": true
+          },
+          "estimatedNationalAccountTransportationCharge": {
+            "type": "string",
+            "nullable": true
+          },
+          "valuationDeductible": {
+            "type": "string",
+            "nullable": true
+          },
+          "authorizedDollarCap": {
+            "type": "string",
+            "nullable": true
+          },
+          "estimatedCubicFeet": {
+            "type": "string",
+            "nullable": true
+          },
+          "valuationRate": {
+            "type": "string",
+            "nullable": true
+          },
+          "maximumDiscount": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Authorization": {
+        "type": "object",
+        "properties": {
+          "colrow": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "subId": {
+            "type": "string",
+            "nullable": true
+          },
+          "number": {
+            "type": "string",
+            "nullable": true
+          },
+          "authorizedBy": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CompanyRecord": {
+        "type": "object",
+        "properties": {
+          "cmpId": {
+            "type": "string",
+            "nullable": true
+          },
+          "cmpAltid": {
+            "type": "string",
+            "nullable": true
+          },
+          "cmpName": {
+            "type": "string",
+            "nullable": true
+          },
+          "cmpAddress1": {
+            "type": "string",
+            "nullable": true
+          },
+          "cmpAddress2": {
+            "type": "string",
+            "nullable": true
+          },
+          "cmpCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "cmpState": {
+            "type": "string",
+            "nullable": true
+          },
+          "cmpZip": {
+            "type": "string",
+            "nullable": true
+          },
+          "cmpCityname": {
+            "type": "string",
+            "nullable": true
+          },
+          "cmpCountry": {
+            "type": "string",
+            "nullable": true
+          },
+          "cmpCountyname": {
+            "type": "string",
+            "nullable": true
+          },
+          "cmpAddress3": {
+            "type": "string",
+            "nullable": true
+          },
+          "cmpPrimaryphone": {
+            "type": "string",
+            "nullable": true
+          },
+          "cmpSecondaryphone": {
+            "type": "string",
+            "nullable": true
+          },
+          "cmpPrimaryphoneLong": {
+            "type": "string",
+            "nullable": true
+          },
+          "cmpSecondaryphoneLong": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Documents": {
+        "type": "object",
+        "properties": {
+          "paperwork": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Paperwork"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "DriverRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "alternateId": {
+            "type": "string",
+            "nullable": true
+          },
+          "firstName": {
+            "type": "string",
+            "nullable": true
+          },
+          "middleName": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastName": {
+            "type": "string",
+            "nullable": true
+          },
+          "payTo": {
+            "type": "string",
+            "nullable": true
+          },
+          "fleet": {
+            "type": "string",
+            "nullable": true
+          },
+          "division": {
+            "type": "string",
+            "nullable": true
+          },
+          "company": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Note": {
+        "type": "object",
+        "properties": {
+          "notType": {
+            "type": "string",
+            "nullable": true
+          },
+          "notUrgent": {
+            "type": "boolean"
+          },
+          "notTextLarge": {
+            "type": "string",
+            "nullable": true
+          },
+          "notViewLevel": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastUpdatedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastUpdated": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "notExpires": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "notNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "ntbTable": {
+            "type": "string",
+            "nullable": true
+          },
+          "notSequence": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "OrderDates": {
+        "type": "object",
+        "properties": {
+          "orderDatesId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "orderHeaderNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "orderNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "datesConfirmed": {
+            "type": "boolean"
+          },
+          "storageAnticipated": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PackUnpack": {
+        "type": "object",
+        "properties": {
+          "packUnpackId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "orderHeaderNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "orderNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "stopNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "packUnpackCompanyId": {
+            "type": "string",
+            "nullable": true
+          },
+          "packUnpackType": {
+            "type": "string",
+            "nullable": true
+          },
+          "packUnpackWeight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "packUnpackBoundWeight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "fromDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "toDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "isPrimary": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "isOvertime": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "boundOption": {
+            "type": "string",
+            "nullable": true
+          },
+          "boundPrice": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "boundDiscountPercentage": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "isExactPack": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "packUnpackCmpidStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "actualFromDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "actualToDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "serviceStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "isBillable": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "pvoToDo": {
+            "type": "string",
+            "nullable": true
+          },
+          "isAirPrep": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "packingSchedule": {
+            "$ref": "#/components/schemas/PackingSchedule"
+          },
+          "isDoubleTime": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "packUnpackDetails": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackUnpackDetail"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PackUnpackDetail": {
+        "type": "object",
+        "properties": {
+          "packUnpackDetailId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "packUnpackId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "cartonType": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "cartonCount": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "supplied": {
+            "type": "boolean",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PackingSchedule": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "Paperwork": {
+        "type": "object",
+        "properties": {
+          "abbr": {
+            "type": "string",
+            "nullable": true
+          },
+          "received": {
+            "type": "string",
+            "nullable": true
+          },
+          "orderHeaderNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "pwDt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "legNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "imaged": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastUpdatedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastUpdated": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "identity": {
+            "type": "string",
+            "nullable": true
+          },
+          "inDocid": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": {}
+      },
+      "RelatedData": {
+        "type": "object",
+        "properties": {
+          "companyRecords": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompanyRecord"
+            },
+            "nullable": true
+          },
+          "driverRecords": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DriverRecord"
+            },
+            "nullable": true
+          },
+          "tractorRecords": {
+            "nullable": true
+          },
+          "trailerRecords": {
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Segment": {
+        "type": "object",
+        "properties": {
+          "tripNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "segmentNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "orderHeaderNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "outStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "driver1": {
+            "type": "string",
+            "nullable": true
+          },
+          "driver2": {
+            "type": "string",
+            "nullable": true
+          },
+          "tractor": {
+            "type": "string",
+            "nullable": true
+          },
+          "type1": {
+            "type": "string",
+            "nullable": true
+          },
+          "type2": {
+            "type": "string",
+            "nullable": true
+          },
+          "type3": {
+            "type": "string",
+            "nullable": true
+          },
+          "type4": {
+            "type": "string",
+            "nullable": true
+          },
+          "carrier": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdOn": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdByApp": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastUpdatedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastUpdated": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedByApp": {
+            "type": "string",
+            "nullable": true
+          },
+          "trailer1": {
+            "type": "string",
+            "nullable": true
+          },
+          "trailer2": {
+            "type": "string",
+            "nullable": true
+          },
+          "legHeaderActive": {
+            "type": "string",
+            "nullable": true
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "inStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "stops": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Stop"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Shipment": {
+        "type": "object",
+        "properties": {
+          "orderHeaderNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "company": {
+            "type": "string",
+            "nullable": true
+          },
+          "orderNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "shipmentType": {
+            "type": "string",
+            "nullable": true
+          },
+          "bookDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "bookedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "invoiceStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "billTo": {
+            "type": "string",
+            "nullable": true
+          },
+          "ordRevtype1": {
+            "type": "string",
+            "nullable": true
+          },
+          "ordRevtype2": {
+            "type": "string",
+            "nullable": true
+          },
+          "ordRevtype3": {
+            "type": "string",
+            "nullable": true
+          },
+          "ordRevtype4": {
+            "type": "string",
+            "nullable": true
+          },
+          "estimatedWeight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "totalPieces": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "totalMiles": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "totalCharge": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "totalVolume": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "ordRemark": {
+            "type": "string",
+            "nullable": true
+          },
+          "priority": {
+            "type": "string",
+            "nullable": true
+          },
+          "tripNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "cmdCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "terms": {
+            "type": "string",
+            "nullable": true
+          },
+          "chtItemcode": {
+            "type": "string",
+            "nullable": true
+          },
+          "ordOdmetermiles": {
+            "type": "string",
+            "nullable": true
+          },
+          "ordMiscqty": {
+            "type": "string",
+            "nullable": true
+          },
+          "ordThirdpartytype2Salesperson": {
+            "type": "string",
+            "nullable": true
+          },
+          "ordThirdpartytype2SalespersonName": {
+            "type": "string",
+            "nullable": true
+          },
+          "ordCodAmount": {
+            "type": "string",
+            "nullable": true
+          },
+          "actualWeight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "estimatedLinehaul": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "estimatedAccessorial": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "estimatedTotalCharges": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "estimatedCharges": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "maxCharges": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "moveManagement": {
+            "type": "string",
+            "nullable": true
+          },
+          "nationalAccount": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastUpdated": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "lastUpdatdeBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "fromOrder": {
+            "type": "string",
+            "nullable": true
+          },
+          "takenBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "shipperName": {
+            "type": "string",
+            "nullable": true
+          },
+          "agreedPickupFromDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "agreedPickupToDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "agreedDeliveryFromDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "agreedDeliveryToDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "autoWeight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "boatWeight": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "tariff": {
+            "type": "string",
+            "nullable": true
+          },
+          "tariffSection": {
+            "type": "string",
+            "nullable": true
+          },
+          "enteredBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "enteredMode": {
+            "type": "string",
+            "nullable": true
+          },
+          "salesperson": {
+            "type": "string",
+            "nullable": true
+          },
+          "estimatorName": {
+            "type": "string",
+            "nullable": true
+          },
+          "payTypeDescription": {
+            "type": "string",
+            "nullable": true
+          },
+          "awgOrdGetWeightTickets": {
+            "type": "string",
+            "nullable": true
+          },
+          "packingType": {
+            "type": "string",
+            "nullable": true
+          },
+          "originAgentPerformingFlag": {
+            "type": "string",
+            "nullable": true
+          },
+          "originAgentToSurvey": {
+            "type": "boolean"
+          },
+          "originAgentToDoEstimate": {
+            "type": "boolean"
+          },
+          "originAgentToCoverPickup": {
+            "type": "boolean"
+          },
+          "unpackingType": {
+            "type": "string",
+            "nullable": true
+          },
+          "notifyBeforePickup": {
+            "type": "boolean"
+          },
+          "notifyBeforeDelivery": {
+            "type": "boolean"
+          },
+          "reweighRequest": {
+            "type": "boolean"
+          },
+          "awgOrdSInvcOpt": {
+            "type": "string",
+            "nullable": true
+          },
+          "isWillAdviseWeight": {
+            "type": "boolean"
+          },
+          "csr": {
+            "type": "string",
+            "nullable": true
+          },
+          "awgOrdMoveManagement": {
+            "type": "string",
+            "nullable": true
+          },
+          "moveMonitor": {
+            "type": "string",
+            "nullable": true
+          },
+          "privateCsr": {
+            "type": "string",
+            "nullable": true
+          },
+          "moveAllocation": {
+            "type": "string",
+            "nullable": true
+          },
+          "booker": {
+            "type": "string",
+            "nullable": true
+          },
+          "originAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "resourcesAreComplete": {
+            "type": "string",
+            "nullable": true
+          },
+          "originName": {
+            "type": "string",
+            "nullable": true
+          },
+          "originAddress1": {
+            "type": "string",
+            "nullable": true
+          },
+          "originAddress2": {
+            "type": "string",
+            "nullable": true
+          },
+          "originAddress3": {
+            "type": "string",
+            "nullable": true
+          },
+          "originCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "originState": {
+            "type": "string",
+            "nullable": true
+          },
+          "originZip": {
+            "type": "string",
+            "nullable": true
+          },
+          "originCounty": {
+            "type": "string",
+            "nullable": true
+          },
+          "originCountry": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationName": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationAddress1": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationAddress2": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationAddress3": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationState": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationZip": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationCounty": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationCountry": {
+            "type": "string",
+            "nullable": true
+          },
+          "isAccepted": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "hasBeenAccepted": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "agentRegNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "surveyDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "originRegion1": {
+            "type": "string",
+            "nullable": true
+          },
+          "originRegion2": {
+            "type": "string",
+            "nullable": true
+          },
+          "originRegion3": {
+            "type": "string",
+            "nullable": true
+          },
+          "originRegion4": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationRegion1": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationRegion2": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationRegion3": {
+            "type": "string",
+            "nullable": true
+          },
+          "destinationRegion4": {
+            "type": "string",
+            "nullable": true
+          },
+          "charge": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "completionDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "consignee": {
+            "type": "string",
+            "nullable": true
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true
+          },
+          "imageOnly": {
+            "type": "string",
+            "nullable": true
+          },
+          "assignmentType": {
+            "type": "string",
+            "nullable": true
+          },
+          "transportationMode": {
+            "type": "string",
+            "nullable": true
+          },
+          "easyDpsOrder": {
+            "type": "boolean"
+          },
+          "flatAutoOnlyOrder": {
+            "type": "string",
+            "nullable": true
+          },
+          "courierService": {
+            "type": "string",
+            "nullable": true
+          },
+          "isLoadBoardAcceptable": {
+            "type": "boolean"
+          },
+          "moveType": {
+            "type": "string",
+            "nullable": true
+          },
+          "isLoadBoardVisible": {
+            "type": "boolean"
+          },
+          "loadBoardNotAcceptableReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "freightClass": {
+            "type": "string",
+            "nullable": true
+          },
+          "customerId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "businessId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "billtoIsConfirmed": {
+            "type": "boolean"
+          },
+          "cmpAltid": {
+            "type": "string",
+            "nullable": true
+          },
+          "planToFastTrac": {
+            "type": "string",
+            "nullable": true
+          },
+          "fastTrackReady": {
+            "type": "string",
+            "nullable": true
+          },
+          "needHaulingAssistance": {
+            "type": "string",
+            "nullable": true
+          },
+          "caLanguagePref": {
+            "type": "string",
+            "nullable": true
+          },
+          "longRemarks": {
+            "type": "string",
+            "nullable": true
+          },
+          "anticipatedMoveScore": {
+            "type": "string",
+            "nullable": true
+          },
+          "criticalToQuality": {
+            "type": "string",
+            "nullable": true
+          },
+          "packLoadFeedBack": {
+            "type": "string",
+            "nullable": true
+          },
+          "deliveryFeedBack": {
+            "type": "string",
+            "nullable": true
+          },
+          "ordLength": {
+            "type": "string",
+            "nullable": true
+          },
+          "showPvoProfile": {
+            "type": "boolean"
+          },
+          "excludePvoProfile": {
+            "type": "boolean"
+          },
+          "authorizations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Authorization"
+            },
+            "nullable": true
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Note"
+            },
+            "nullable": true
+          },
+          "trips": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Trip"
+            },
+            "nullable": true
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Agent"
+            },
+            "nullable": true
+          },
+          "invoices": {
+            "nullable": true
+          },
+          "relatedData": {
+            "$ref": "#/components/schemas/RelatedData"
+          },
+          "surveys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Survey"
+            },
+            "nullable": true
+          },
+          "auditorInformation": {
+            "$ref": "#/components/schemas/AuditorInformation"
+          },
+          "orderDates": {
+            "$ref": "#/components/schemas/OrderDates"
+          },
+          "documents": {
+            "$ref": "#/components/schemas/Documents"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ShipmentNoteModel": {
+        "required": ["noteText"],
+        "type": "object",
+        "properties": {
+          "noteText": {
+            "minLength": 1,
+            "type": "string",
+            "description": "Contains the text of the note."
+          },
+          "noteType": {
+            "type": "string",
+            "description": "Indicates the type/kind of note is in the request.Refer to Shipments/Notes/Types for valid values.",
+            "nullable": true
+          },
+          "tableName": {
+            "type": "string",
+            "description": "Indicates which table in the PS database contains the table key.",
+            "nullable": true
+          },
+          "tableKey": {
+            "type": "string",
+            "description": "Contains the key associated with the note request.",
+            "nullable": true
+          },
+          "isUrgent": {
+            "type": "boolean",
+            "description": "Indicates whether the note is high priority.",
+            "nullable": true
+          },
+          "viewLevel": {
+            "type": "string",
+            "description": "Indicates the view level of the note.",
+            "nullable": true
+          },
+          "dateUpdated": {
+            "type": "string",
+            "description": "Indicates the date that the note was added.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedBy": {
+            "type": "string",
+            "description": "Indicates the user or service that added the note.,",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Stop": {
+        "type": "object",
+        "properties": {
+          "stopNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "legNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "orderHeaderNumber": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "companyId": {
+            "type": "string",
+            "nullable": true
+          },
+          "region1": {
+            "type": "string",
+            "nullable": true
+          },
+          "region2": {
+            "type": "string",
+            "nullable": true
+          },
+          "region3": {
+            "type": "string",
+            "nullable": true
+          },
+          "region4": {
+            "type": "string",
+            "nullable": true
+          },
+          "address1": {
+            "type": "string",
+            "nullable": true
+          },
+          "address2": {
+            "type": "string",
+            "nullable": true
+          },
+          "cityId": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "nullable": true
+          },
+          "ctyNmstct": {
+            "type": "string",
+            "nullable": true
+          },
+          "cityName": {
+            "type": "string",
+            "nullable": true
+          },
+          "cityState": {
+            "type": "string",
+            "nullable": true
+          },
+          "cityCounty": {
+            "type": "string",
+            "nullable": true
+          },
+          "countyName": {
+            "type": "string",
+            "nullable": true
+          },
+          "zipCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "country": {
+            "type": "string",
+            "nullable": true
+          },
+          "reasonLate": {
+            "type": "string",
+            "nullable": true
+          },
+          "mfhNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "sequence": {
+            "type": "string",
+            "nullable": true
+          },
+          "stpMfhSequence": {
+            "type": "string",
+            "nullable": true
+          },
+          "tripNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "referenceType": {
+            "type": "string",
+            "nullable": true
+          },
+          "reasonLateDepart": {
+            "type": "string",
+            "nullable": true
+          },
+          "primaryPhoneNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "secondaryPhoneNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "eventCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "scheduledFromDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "scheduledToDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "eventStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "agreedFromDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "agreedToDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "etaDateFrom": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "etaDateTo": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "fgtQuantity": {
+            "type": "string",
+            "nullable": true
+          },
+          "stopType": {
+            "type": "string",
+            "nullable": true
+          },
+          "transferType": {
+            "type": "string",
+            "nullable": true
+          },
+          "companyName": {
+            "type": "string",
+            "nullable": true
+          },
+          "comment": {
+            "type": "string",
+            "nullable": true
+          },
+          "contact": {
+            "type": "string",
+            "nullable": true
+          },
+          "podName": {
+            "type": "string",
+            "nullable": true
+          },
+          "transferStop": {
+            "type": "string",
+            "nullable": true
+          },
+          "awgStpTriptype": {
+            "type": "string",
+            "nullable": true
+          },
+          "awgStpEmail1": {
+            "type": "string",
+            "nullable": true
+          },
+          "address3": {
+            "type": "string",
+            "nullable": true
+          },
+          "contact2": {
+            "type": "string",
+            "nullable": true
+          },
+          "weight": {
+            "type": "string",
+            "nullable": true
+          },
+          "awgWeight": {
+            "type": "string",
+            "nullable": true
+          },
+          "eventNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "primaryPhoneType": {
+            "type": "string",
+            "nullable": true
+          },
+          "secondaryPhoneType": {
+            "type": "string",
+            "nullable": true
+          },
+          "primaryPhoneLong": {
+            "type": "string",
+            "nullable": true
+          },
+          "secondaryPhoneLong": {
+            "type": "string",
+            "nullable": true
+          },
+          "awgAutoOnly": {
+            "type": "string",
+            "nullable": true
+          },
+          "stpDelayhours": {
+            "type": "string",
+            "nullable": true
+          },
+          "eventType": {
+            "type": "string",
+            "nullable": true
+          },
+          "awgIncludeInRadsRoute": {
+            "type": "string",
+            "nullable": true
+          },
+          "awgStpPrimaryphoneCellCarrier": {
+            "type": "string",
+            "nullable": true
+          },
+          "awgStpSecondaryphoneCellCarrier": {
+            "type": "string",
+            "nullable": true
+          },
+          "awgStpPrimaryphoneReceiveTexts": {
+            "type": "string",
+            "nullable": true
+          },
+          "awgStpSecondaryphoneReceiveTexts": {
+            "type": "string",
+            "nullable": true
+          },
+          "actualStopDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "advancedCharges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdvancedCharge"
+            },
+            "nullable": true
+          },
+          "packUnpacks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackUnpack"
+            },
+            "nullable": true
+          },
+          "stpOrdMileage": {
+            "type": "string",
+            "nullable": true
+          },
+          "stpLghMileage": {
+            "type": "string",
+            "nullable": true
+          },
+          "stpMfhMileage": {
+            "type": "string",
+            "nullable": true
+          },
+          "stpTripMileage": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Survey": {
+        "type": "object",
+        "properties": {
+          "surveyId": {
+            "type": "string",
+            "nullable": true
+          },
+          "surveyAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "surveyorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "surveyDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "surveyStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdOn": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "updatedDateTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updateApplication": {
+            "type": "string",
+            "nullable": true
+          },
+          "surveyAppointmentId": {
+            "type": "string",
+            "nullable": true
+          },
+          "surveyMethod": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "Trip": {
+        "type": "object",
+        "properties": {
+          "tripNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Segment"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Shipments"
+    }
+  ]
+}

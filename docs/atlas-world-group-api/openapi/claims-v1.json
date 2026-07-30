@@ -1,0 +1,1421 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Claims",
+    "description": "Service to expose claims",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "https://qa-azapi.atlasworldgroup.com/claims/v1"
+    }
+  ],
+  "paths": {
+    "/Claims/{claimId}": {
+      "get": {
+        "tags": ["Claims"],
+        "summary": "Get Claim",
+        "description": "Gets a claim for the given claimId.",
+        "operationId": "get-claim",
+        "parameters": [
+          {
+            "name": "claimId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The claim.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimModel"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimModel"
+                },
+                "example": {
+                  "claimId": "string",
+                  "claimNumber": "string",
+                  "claimant": {
+                    "firstName": "string",
+                    "lastName": "string",
+                    "address1": "string",
+                    "address2": "string",
+                    "city": "string",
+                    "state": "string",
+                    "zipCode": "string",
+                    "country": "string",
+                    "contactMethod": "string",
+                    "phones": [
+                      {
+                        "type": "string",
+                        "number": "string"
+                      }
+                    ],
+                    "emailAddress": "string"
+                  },
+                  "receivedDate": "string",
+                  "closedDate": "string",
+                  "thirdParty": "string",
+                  "thirdPartyClaimNumber": "string",
+                  "temporarilyDetained": "string",
+                  "comments": "string",
+                  "orderNumber": "string",
+                  "items": [
+                    {
+                      "itemId": "string",
+                      "type": {
+                        "itemTypeId": "string",
+                        "category": "string",
+                        "description": "string"
+                      },
+                      "isMissing": true,
+                      "damageType": "string",
+                      "category": "string",
+                      "amountClaimed": 0,
+                      "number": "string",
+                      "isCartonDamaged": true,
+                      "comments": "string",
+                      "weight": 0,
+                      "age": 0,
+                      "originalCost": 0,
+                      "replacementCost": 0,
+                      "lotNumber": "string",
+                      "tagColor": "string",
+                      "labelName": "string",
+                      "damages": [
+                        {
+                          "itemDamageId": "string",
+                          "location": "string",
+                          "nature": "string",
+                          "direction": "string"
+                        }
+                      ],
+                      "images": ["string"]
+                    }
+                  ],
+                  "images": ["string"]
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimModel"
+                },
+                "example": {
+                  "claimId": "string",
+                  "claimNumber": "string",
+                  "claimant": {
+                    "firstName": "string",
+                    "lastName": "string",
+                    "address1": "string",
+                    "address2": "string",
+                    "city": "string",
+                    "state": "string",
+                    "zipCode": "string",
+                    "country": "string",
+                    "contactMethod": "string",
+                    "phones": [
+                      {
+                        "type": "string",
+                        "number": "string"
+                      }
+                    ],
+                    "emailAddress": "string"
+                  },
+                  "receivedDate": "string",
+                  "closedDate": "string",
+                  "thirdParty": "string",
+                  "thirdPartyClaimNumber": "string",
+                  "temporarilyDetained": "string",
+                  "comments": "string",
+                  "orderNumber": "string",
+                  "items": [
+                    {
+                      "itemId": "string",
+                      "type": {
+                        "itemTypeId": "string",
+                        "category": "string",
+                        "description": "string"
+                      },
+                      "isMissing": true,
+                      "damageType": "string",
+                      "category": "string",
+                      "amountClaimed": 0,
+                      "number": "string",
+                      "isCartonDamaged": true,
+                      "comments": "string",
+                      "weight": 0,
+                      "age": 0,
+                      "originalCost": 0,
+                      "replacementCost": 0,
+                      "lotNumber": "string",
+                      "tagColor": "string",
+                      "labelName": "string",
+                      "damages": [
+                        {
+                          "itemDamageId": "string",
+                          "location": "string",
+                          "nature": "string",
+                          "direction": "string"
+                        }
+                      ],
+                      "images": ["string"]
+                    }
+                  ],
+                  "images": ["string"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The claim was not found."
+          }
+        }
+      }
+    },
+    "/Claims": {
+      "post": {
+        "tags": ["Claims"],
+        "summary": "Post Claim",
+        "description": "Post a claim for the given claimId.",
+        "operationId": "post-claim",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimModel"
+              },
+              "example": {
+                "claimId": "string",
+                "claimNumber": "string",
+                "claimant": {
+                  "firstName": "string",
+                  "lastName": "string",
+                  "address1": "string",
+                  "address2": "string",
+                  "city": "string",
+                  "state": "string",
+                  "zipCode": "string",
+                  "country": "string",
+                  "contactMethod": "string",
+                  "phones": [
+                    {
+                      "type": "string",
+                      "number": "string"
+                    }
+                  ],
+                  "emailAddress": "string"
+                },
+                "receivedDate": "string",
+                "closedDate": "string",
+                "thirdParty": "string",
+                "thirdPartyClaimNumber": "string",
+                "temporarilyDetained": "string",
+                "comments": "string",
+                "orderNumber": "string",
+                "items": [
+                  {
+                    "itemId": "string",
+                    "type": {
+                      "itemTypeId": "string",
+                      "category": "string",
+                      "description": "string"
+                    },
+                    "isMissing": true,
+                    "damageType": "string",
+                    "category": "string",
+                    "amountClaimed": 0,
+                    "number": "string",
+                    "isCartonDamaged": true,
+                    "comments": "string",
+                    "weight": 0,
+                    "age": 0,
+                    "originalCost": 0,
+                    "replacementCost": 0,
+                    "lotNumber": "string",
+                    "tagColor": "string",
+                    "labelName": "string",
+                    "damages": [
+                      {
+                        "itemDamageId": "string",
+                        "location": "string",
+                        "nature": "string",
+                        "direction": "string"
+                      }
+                    ],
+                    "images": ["string"]
+                  }
+                ],
+                "images": ["string"]
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimModel"
+              },
+              "example": {
+                "claimId": "string",
+                "claimNumber": "string",
+                "claimant": {
+                  "firstName": "string",
+                  "lastName": "string",
+                  "address1": "string",
+                  "address2": "string",
+                  "city": "string",
+                  "state": "string",
+                  "zipCode": "string",
+                  "country": "string",
+                  "contactMethod": "string",
+                  "phones": [
+                    {
+                      "type": "string",
+                      "number": "string"
+                    }
+                  ],
+                  "emailAddress": "string"
+                },
+                "receivedDate": "string",
+                "closedDate": "string",
+                "thirdParty": "string",
+                "thirdPartyClaimNumber": "string",
+                "temporarilyDetained": "string",
+                "comments": "string",
+                "orderNumber": "string",
+                "items": [
+                  {
+                    "itemId": "string",
+                    "type": {
+                      "itemTypeId": "string",
+                      "category": "string",
+                      "description": "string"
+                    },
+                    "isMissing": true,
+                    "damageType": "string",
+                    "category": "string",
+                    "amountClaimed": 0,
+                    "number": "string",
+                    "isCartonDamaged": true,
+                    "comments": "string",
+                    "weight": 0,
+                    "age": 0,
+                    "originalCost": 0,
+                    "replacementCost": 0,
+                    "lotNumber": "string",
+                    "tagColor": "string",
+                    "labelName": "string",
+                    "damages": [
+                      {
+                        "itemDamageId": "string",
+                        "location": "string",
+                        "nature": "string",
+                        "direction": "string"
+                      }
+                    ],
+                    "images": ["string"]
+                  }
+                ],
+                "images": ["string"]
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimModel"
+              },
+              "example": {
+                "claimId": "string",
+                "claimNumber": "string",
+                "claimant": {
+                  "firstName": "string",
+                  "lastName": "string",
+                  "address1": "string",
+                  "address2": "string",
+                  "city": "string",
+                  "state": "string",
+                  "zipCode": "string",
+                  "country": "string",
+                  "contactMethod": "string",
+                  "phones": [
+                    {
+                      "type": "string",
+                      "number": "string"
+                    }
+                  ],
+                  "emailAddress": "string"
+                },
+                "receivedDate": "string",
+                "closedDate": "string",
+                "thirdParty": "string",
+                "thirdPartyClaimNumber": "string",
+                "temporarilyDetained": "string",
+                "comments": "string",
+                "orderNumber": "string",
+                "items": [
+                  {
+                    "itemId": "string",
+                    "type": {
+                      "itemTypeId": "string",
+                      "category": "string",
+                      "description": "string"
+                    },
+                    "isMissing": true,
+                    "damageType": "string",
+                    "category": "string",
+                    "amountClaimed": 0,
+                    "number": "string",
+                    "isCartonDamaged": true,
+                    "comments": "string",
+                    "weight": 0,
+                    "age": 0,
+                    "originalCost": 0,
+                    "replacementCost": 0,
+                    "lotNumber": "string",
+                    "tagColor": "string",
+                    "labelName": "string",
+                    "damages": [
+                      {
+                        "itemDamageId": "string",
+                        "location": "string",
+                        "nature": "string",
+                        "direction": "string"
+                      }
+                    ],
+                    "images": ["string"]
+                  }
+                ],
+                "images": ["string"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimModel"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimModel"
+                },
+                "example": {
+                  "claimId": "string",
+                  "claimNumber": "string",
+                  "claimant": {
+                    "firstName": "string",
+                    "lastName": "string",
+                    "address1": "string",
+                    "address2": "string",
+                    "city": "string",
+                    "state": "string",
+                    "zipCode": "string",
+                    "country": "string",
+                    "contactMethod": "string",
+                    "phones": [
+                      {
+                        "type": "string",
+                        "number": "string"
+                      }
+                    ],
+                    "emailAddress": "string"
+                  },
+                  "receivedDate": "string",
+                  "closedDate": "string",
+                  "thirdParty": "string",
+                  "thirdPartyClaimNumber": "string",
+                  "temporarilyDetained": "string",
+                  "comments": "string",
+                  "orderNumber": "string",
+                  "items": [
+                    {
+                      "itemId": "string",
+                      "type": {
+                        "itemTypeId": "string",
+                        "category": "string",
+                        "description": "string"
+                      },
+                      "isMissing": true,
+                      "damageType": "string",
+                      "category": "string",
+                      "amountClaimed": 0,
+                      "number": "string",
+                      "isCartonDamaged": true,
+                      "comments": "string",
+                      "weight": 0,
+                      "age": 0,
+                      "originalCost": 0,
+                      "replacementCost": 0,
+                      "lotNumber": "string",
+                      "tagColor": "string",
+                      "labelName": "string",
+                      "damages": [
+                        {
+                          "itemDamageId": "string",
+                          "location": "string",
+                          "nature": "string",
+                          "direction": "string"
+                        }
+                      ],
+                      "images": ["string"]
+                    }
+                  ],
+                  "images": ["string"]
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimModel"
+                },
+                "example": {
+                  "claimId": "string",
+                  "claimNumber": "string",
+                  "claimant": {
+                    "firstName": "string",
+                    "lastName": "string",
+                    "address1": "string",
+                    "address2": "string",
+                    "city": "string",
+                    "state": "string",
+                    "zipCode": "string",
+                    "country": "string",
+                    "contactMethod": "string",
+                    "phones": [
+                      {
+                        "type": "string",
+                        "number": "string"
+                      }
+                    ],
+                    "emailAddress": "string"
+                  },
+                  "receivedDate": "string",
+                  "closedDate": "string",
+                  "thirdParty": "string",
+                  "thirdPartyClaimNumber": "string",
+                  "temporarilyDetained": "string",
+                  "comments": "string",
+                  "orderNumber": "string",
+                  "items": [
+                    {
+                      "itemId": "string",
+                      "type": {
+                        "itemTypeId": "string",
+                        "category": "string",
+                        "description": "string"
+                      },
+                      "isMissing": true,
+                      "damageType": "string",
+                      "category": "string",
+                      "amountClaimed": 0,
+                      "number": "string",
+                      "isCartonDamaged": true,
+                      "comments": "string",
+                      "weight": 0,
+                      "age": 0,
+                      "originalCost": 0,
+                      "replacementCost": 0,
+                      "lotNumber": "string",
+                      "tagColor": "string",
+                      "labelName": "string",
+                      "damages": [
+                        {
+                          "itemDamageId": "string",
+                          "location": "string",
+                          "nature": "string",
+                          "direction": "string"
+                        }
+                      ],
+                      "images": ["string"]
+                    }
+                  ],
+                  "images": ["string"]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The claim contains incorrect values."
+          }
+        }
+      }
+    },
+    "/Claims/ContactMethods": {
+      "get": {
+        "tags": ["Claims"],
+        "summary": "Get Claim Contact Methods",
+        "description": "Gets all Claim Contact Methods.",
+        "operationId": "get-claim-contact-methods",
+        "responses": {
+          "200": {
+            "description": "Collection of claim contact methods",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Images": {
+      "get": {
+        "tags": ["Images"],
+        "summary": "Get Image",
+        "description": "Gets an image for the given imageId.",
+        "operationId": "get-image",
+        "parameters": [
+          {
+            "name": "imageId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The image.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageModel"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageModel"
+                },
+                "example": {
+                  "imageId": "string",
+                  "claimId": "string",
+                  "itemId": "string",
+                  "name": "string",
+                  "description": "string",
+                  "data": "string"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageModel"
+                },
+                "example": {
+                  "imageId": "string",
+                  "claimId": "string",
+                  "itemId": "string",
+                  "name": "string",
+                  "description": "string",
+                  "data": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The image was not found."
+          }
+        }
+      },
+      "post": {
+        "tags": ["Images"],
+        "summary": "Post Image",
+        "description": "Post an image for the given claimId.",
+        "operationId": "post-image",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageModel"
+              },
+              "example": {
+                "imageId": "string",
+                "claimId": "string",
+                "itemId": "string",
+                "name": "string",
+                "description": "string",
+                "data": "string"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageModel"
+              },
+              "example": {
+                "imageId": "string",
+                "claimId": "string",
+                "itemId": "string",
+                "name": "string",
+                "description": "string",
+                "data": "string"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageModel"
+              },
+              "example": {
+                "imageId": "string",
+                "claimId": "string",
+                "itemId": "string",
+                "name": "string",
+                "description": "string",
+                "data": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageModel"
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageModel"
+                },
+                "example": {
+                  "imageId": "string",
+                  "claimId": "string",
+                  "itemId": "string",
+                  "name": "string",
+                  "description": "string",
+                  "data": "string"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageModel"
+                },
+                "example": {
+                  "imageId": "string",
+                  "claimId": "string",
+                  "itemId": "string",
+                  "name": "string",
+                  "description": "string",
+                  "data": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The image contains incorrect values."
+          }
+        }
+      }
+    },
+    "/Item/Types": {
+      "get": {
+        "tags": ["Item"],
+        "summary": "Get Item Types",
+        "description": "Gets all Item Types.",
+        "operationId": "get-item-types",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Collection of item types",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ItemTypeModel"
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ItemTypeModel"
+                  }
+                },
+                "example": [
+                  {
+                    "itemTypeId": "string",
+                    "category": "string",
+                    "description": "string"
+                  }
+                ]
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ItemTypeModel"
+                  }
+                },
+                "example": [
+                  {
+                    "itemTypeId": "string",
+                    "category": "string",
+                    "description": "string"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/Item/Categories": {
+      "get": {
+        "tags": ["Item"],
+        "summary": "Get Item Categories",
+        "description": "Gets all Item Categories.",
+        "operationId": "get-item-categories",
+        "responses": {
+          "200": {
+            "description": "Collection of item categories",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/Item/TagColor": {
+      "get": {
+        "tags": ["Item"],
+        "summary": "Get Item Tag Colors",
+        "description": "Gets all Item Tag Colors.",
+        "operationId": "get-item-tag-colors",
+        "responses": {
+          "200": {
+            "description": "Collection of item tag colors",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/Item/DamageTypes": {
+      "get": {
+        "tags": ["Item"],
+        "summary": "Get Item Damage Types",
+        "description": "Gets all Item Damage Types.",
+        "operationId": "get-item-damage-types",
+        "responses": {
+          "200": {
+            "description": "Collection of item damage types",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/Item/Damage/Locations": {
+      "get": {
+        "tags": ["Item"],
+        "summary": "Get Item Damage Locations",
+        "description": "Gets all Item Damage Locations.",
+        "operationId": "get-item-damage-locations",
+        "responses": {
+          "200": {
+            "description": "Collection of item damage locations",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/Item/Damage/Natures": {
+      "get": {
+        "tags": ["Item"],
+        "summary": "Get Item Damage Natures",
+        "description": "Gets all Item Damage Natures.",
+        "operationId": "get-item-damage-nature",
+        "responses": {
+          "200": {
+            "description": "Collection of item damage natures",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/Item/Damage/Directions": {
+      "get": {
+        "tags": ["Item"],
+        "summary": "Get Item Damage Directions",
+        "description": "Gets all Item Damage Directions.",
+        "operationId": "get-item-damage-directions",
+        "responses": {
+          "200": {
+            "description": "Collection of item damage directions",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "examples": {
+                  "default": {
+                    "value": null
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": ["string"]
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ClaimModel": {
+        "type": "object",
+        "properties": {
+          "claimId": {
+            "type": "string",
+            "nullable": true
+          },
+          "claimNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "claimant": {
+            "$ref": "#/components/schemas/ClaimantModel"
+          },
+          "receivedDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "closedDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "thirdParty": {
+            "type": "string",
+            "nullable": true
+          },
+          "thirdPartyClaimNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "temporarilyDetained": {
+            "type": "string",
+            "nullable": true
+          },
+          "comments": {
+            "type": "string",
+            "nullable": true
+          },
+          "orderNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ItemModel"
+            },
+            "nullable": true
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ClaimantModel": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastName": {
+            "type": "string",
+            "nullable": true
+          },
+          "address1": {
+            "type": "string",
+            "nullable": true
+          },
+          "address2": {
+            "type": "string",
+            "nullable": true
+          },
+          "city": {
+            "type": "string",
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "nullable": true
+          },
+          "zipCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "country": {
+            "type": "string",
+            "nullable": true
+          },
+          "contactMethod": {
+            "type": "string",
+            "nullable": true
+          },
+          "phones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhoneModel"
+            },
+            "nullable": true
+          },
+          "emailAddress": {
+            "type": "string",
+            "format": "^[^@ \\t\\r\\n]+@[^@ \\t\\r\\n]+\\.[^@ \\t\\r\\n]+$",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ImageModel": {
+        "type": "object",
+        "properties": {
+          "imageId": {
+            "type": "string",
+            "nullable": true
+          },
+          "claimId": {
+            "type": "string",
+            "nullable": true
+          },
+          "itemId": {
+            "type": "string",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "data": {
+            "type": "string",
+            "format": "byte",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ItemDamageModel": {
+        "type": "object",
+        "properties": {
+          "itemDamageId": {
+            "type": "string",
+            "nullable": true
+          },
+          "location": {
+            "type": "string",
+            "nullable": true
+          },
+          "nature": {
+            "type": "string",
+            "nullable": true
+          },
+          "direction": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ItemModel": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "$ref": "#/components/schemas/ItemTypeModel"
+          },
+          "isMissing": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "damageType": {
+            "type": "string",
+            "nullable": true
+          },
+          "category": {
+            "type": "string",
+            "nullable": true
+          },
+          "amountClaimed": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "number": {
+            "type": "string",
+            "nullable": true
+          },
+          "isCartonDamaged": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "comments": {
+            "type": "string",
+            "nullable": true
+          },
+          "weight": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "age": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "originalCost": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "replacementCost": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "lotNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "tagColor": {
+            "type": "string",
+            "nullable": true
+          },
+          "labelName": {
+            "type": "string",
+            "nullable": true
+          },
+          "damages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ItemDamageModel"
+            },
+            "nullable": true
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ItemTypeModel": {
+        "type": "object",
+        "properties": {
+          "itemTypeId": {
+            "type": "string",
+            "nullable": true
+          },
+          "category": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PhoneModel": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "number": {
+            "type": "string",
+            "format": "^\\+[1-9]\\d{1,14}$",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "securitySchemes": {
+      "apiKeyHeader": {
+        "type": "apiKey",
+        "name": "Ocp-Apim-Subscription-Key",
+        "in": "header"
+      },
+      "apiKeyQuery": {
+        "type": "apiKey",
+        "name": "subscription-key",
+        "in": "query"
+      }
+    }
+  },
+  "security": [
+    {
+      "apiKeyHeader": []
+    },
+    {
+      "apiKeyQuery": []
+    }
+  ]
+}

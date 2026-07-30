@@ -1338,6 +1338,7 @@ def test_deliver_to_external_posts_body_and_returns_data() -> None:
         "external": {"serviceOrderNumber": "O-1"},
         "urlConfig": "SEND_URL",
         "apiKeySecret": "SEND_API_KEY",
+        "timeoutConfig": "REQUEST_TIMEOUT_MS",
         "group": "global",
     }
 
@@ -1363,6 +1364,7 @@ def test_deliver_to_external_threads_overrides() -> None:
         "external": {"x": 1},
         "urlConfig": "ORDER_URL",
         "apiKeySecret": "ORDER_KEY",
+        "timeoutConfig": "REQUEST_TIMEOUT_MS",
         "group": "billing",
         "headersConfig": "ORDER_HEADERS",
     }
@@ -1694,3 +1696,106 @@ def test_api_get_raises_on_non_2xx() -> None:
 
     with pytest.raises(PegasusApiError):
         _client_with(handler).api_get("/api/v1/integrations/configs")
+
+
+# ---------------------------------------------------------------------------
+# Azure API Management partners (docs/atlas-world-group-api).
+#
+# An APIM gateway authenticates with a named header, not a bearer, and Atlas
+# declares `On-Behalf-Of` on 142 of its 255 operations. The two header maps are
+# split by trust level: `headers` carries literal non-secret values from
+# workflow code, `secret_headers` names secrets the platform resolves.
+# ---------------------------------------------------------------------------
+
+
+def _capture_call_external(**kwargs: object) -> dict:
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.read())
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "status": 200,
+                    "ok": True,
+                    "response": {},
+                    "headers": {"content-type": "application/json"},
+                    "attempts": 1,
+                    "dryRun": False,
+                }
+            },
+        )
+
+    _client_with(handler).call_external("atlas_estimating", **kwargs)  # type: ignore[arg-type]
+    return seen["body"]
+
+
+def test_call_external_sends_literal_headers() -> None:
+    body = _capture_call_external(
+        method="GET", path="/Estimating/1", headers={"On-Behalf-Of": "jdoe"}
+    )
+    assert body["headers"] == {"On-Behalf-Of": "jdoe"}
+
+
+def test_call_external_sends_secret_headers_by_key_name() -> None:
+    # The VALUE here is a secret KEY NAME, never the credential itself — that
+    # indirection is the point.
+    body = _capture_call_external(
+        method="GET",
+        path="/Estimating/1",
+        secret_headers={"Ocp-Apim-Subscription-Key": "ATLAS_SUB_KEY"},
+    )
+    assert body["secretHeaders"] == {"Ocp-Apim-Subscription-Key": "ATLAS_SUB_KEY"}
+
+
+def test_call_external_omits_empty_header_maps() -> None:
+    body = _capture_call_external(method="GET", path="/x")
+    assert "headers" not in body
+    assert "secretHeaders" not in body
+
+
+def test_call_external_threads_timeout_and_retry_config_keys() -> None:
+    body = _capture_call_external(
+        method="GET", path="/x", timeout_config="ATLAS_TIMEOUT", max_retries_config="ATLAS_RETRIES"
+    )
+    assert body["timeoutConfig"] == "ATLAS_TIMEOUT"
+    assert body["maxRetriesConfig"] == "ATLAS_RETRIES"
+
+
+def test_call_external_returns_attempts_and_full_headers() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "status": 200,
+                    "ok": True,
+                    "response": {},
+                    "headers": {"retry-after": "1", "x-ms-request-id": "req-7"},
+                    "attempts": 2,
+                    "dryRun": False,
+                }
+            },
+        )
+
+    res = _client_with(handler).call_external("atlas_estimating", method="GET", path="/x")
+    assert res["attempts"] == 2
+    assert res["headers"]["x-ms-request-id"] == "req-7"
+
+
+def test_deliver_to_external_sends_both_header_maps() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"data": {"delivered": True}})
+
+    _client_with(handler).deliver_to_external(
+        "demo_partner",
+        {"x": 1},
+        headers={"On-Behalf-Of": "jdoe"},
+        secret_headers={"Ocp-Apim-Subscription-Key": "ATLAS_SUB_KEY"},
+    )
+    assert captured["body"]["headers"] == {"On-Behalf-Of": "jdoe"}
+    assert captured["body"]["secretHeaders"] == {"Ocp-Apim-Subscription-Key": "ATLAS_SUB_KEY"}

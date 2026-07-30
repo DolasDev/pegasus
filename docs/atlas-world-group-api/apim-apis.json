@@ -1,0 +1,843 @@
+{
+  "value": [
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/agents-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "agents-v1",
+      "properties": {
+        "displayName": "Agents",
+        "apiRevision": "1",
+        "description": "Service to expose agents",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-agents-app.azurewebsites.net",
+        "backendId": null,
+        "path": "agents",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/agents-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/assetmanagement-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "assetmanagement-v1",
+      "properties": {
+        "displayName": "Asset Management",
+        "apiRevision": "1",
+        "description": "Capacity Management API",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-web-assetmanagement-app.azurewebsites.net",
+        "backendId": null,
+        "path": "assetmanagement",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/assetmanagement-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/atlasorder-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "atlasorder-v1",
+      "properties": {
+        "displayName": "AtlasOrder",
+        "apiRevision": "1",
+        "description": "Service to expose Retrieval of Atlas Order data",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-atlasorder-app.azurewebsites.net",
+        "backendId": null,
+        "path": "atlasorder",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/atlasorder-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/authorizations-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "authorizations-v1",
+      "properties": {
+        "displayName": "Authorizations",
+        "apiRevision": "1",
+        "description": "Service to expose authorizations",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-authorizations-app.azurewebsites.net",
+        "backendId": null,
+        "path": "authorizations",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/authorizations-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/claims-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "claims-v1",
+      "properties": {
+        "displayName": "Claims",
+        "apiRevision": "1",
+        "description": "Service to expose claims",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-claims-app.azurewebsites.net",
+        "backendId": null,
+        "path": "claims",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/claims-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/cubesheets-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "cubesheets-v1",
+      "properties": {
+        "displayName": "Cubesheets",
+        "apiRevision": "1",
+        "description": "Service to expose cubesheets",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-cubesheets-app.azurewebsites.net",
+        "backendId": null,
+        "path": "cubesheets",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/cubesheets-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/customers-v2",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "customers-v2",
+      "properties": {
+        "displayName": "Customers",
+        "apiRevision": "1",
+        "description": "Service to expose customers",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-customers-v2-app.azurewebsites.net",
+        "backendId": null,
+        "path": "customers",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v2",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/customers-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/customer-shipment-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "customer-shipment-v1",
+      "properties": {
+        "displayName": "CustomerShipment",
+        "apiRevision": "1",
+        "description": "Service to expose shipment endpoints for customers",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-customer-shipment-app.azurewebsites.net",
+        "backendId": null,
+        "path": "customer-shipment",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/customer-shipment-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/documents-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "documents-v1",
+      "properties": {
+        "displayName": "Documents",
+        "apiRevision": "1",
+        "description": "Service to expose documents.",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-documents-app.azurewebsites.net",
+        "backendId": null,
+        "path": "documents",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/documents-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/echo-api",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "echo-api",
+      "properties": {
+        "displayName": "Echo API",
+        "apiRevision": "1",
+        "description": null,
+        "subscriptionRequired": true,
+        "serviceUrl": "https://echo.playground.azure-api.net/api",
+        "backendId": null,
+        "path": "echo",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/emailing-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "emailing-v1",
+      "properties": {
+        "displayName": "Emailing",
+        "apiRevision": "1",
+        "description": "Service to expose an endpoint to send out emails",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-emailing-app.azurewebsites.net",
+        "backendId": null,
+        "path": "emailing",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/emailing-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/estimating-v2",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "estimating-v2",
+      "properties": {
+        "displayName": "Estimating",
+        "apiRevision": "1",
+        "description": "Service to expose estimating",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-estimating-v2-app.azurewebsites.net",
+        "backendId": null,
+        "path": "estimating",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v2",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/estimating-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/finance-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "finance-v1",
+      "properties": {
+        "displayName": "Finance",
+        "apiRevision": "1",
+        "description": "Service to expose finance info",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-finance-app.azurewebsites.net",
+        "backendId": null,
+        "path": "finance",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/finance-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/holidays-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "holidays-v1",
+      "properties": {
+        "displayName": "Holidays",
+        "apiRevision": "1",
+        "description": "Service to expose holidays",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-holidays-app.azurewebsites.net",
+        "backendId": null,
+        "path": "holidays",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/holidays-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/mileage-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "mileage-v1",
+      "properties": {
+        "displayName": "Mileage",
+        "apiRevision": "1",
+        "description": "Service to expose mileage info",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-mileage-app.azurewebsites.net",
+        "backendId": null,
+        "path": "mileage",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/mileage-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/move4u-integration-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "move4u-integration-v1",
+      "properties": {
+        "displayName": "Move4UIntegration",
+        "apiRevision": "1",
+        "description": "Service to expose Move4U",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-move4u-integration-app.azurewebsites.net",
+        "backendId": null,
+        "path": "move4u-integration",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/move4u-integration-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/questionnaire-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "questionnaire-v1",
+      "properties": {
+        "displayName": "Questionnaire",
+        "apiRevision": "1",
+        "description": "Service to expose questionnaire",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-questionnaire-app.azurewebsites.net",
+        "backendId": null,
+        "path": "questionnaire",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/questionnaire-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/RadsSupport-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "RadsSupport-v1",
+      "properties": {
+        "displayName": "Rads Support",
+        "apiRevision": "1",
+        "description": "Service to expose Rads Support",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-radssupport-app.azurewebsites.net",
+        "backendId": null,
+        "path": "RadsSupport",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/RadsSupport-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/RadsSupport-v2",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "RadsSupport-v2",
+      "properties": {
+        "displayName": "Rads Support",
+        "apiRevision": "1",
+        "description": "Service to expose Rads Support",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-radssupport-v2-app.azurewebsites.net",
+        "backendId": null,
+        "path": "RadsSupport",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v2",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/RadsSupport-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/RatingSystem-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "RatingSystem-v1",
+      "properties": {
+        "displayName": "Rating System",
+        "apiRevision": "1",
+        "description": "Service to expose Rads Rating System",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-ratingsystem-app.azurewebsites.net",
+        "backendId": null,
+        "path": "RatingSystem",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/RatingSystem-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/shipment-management-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "shipment-management-v1",
+      "properties": {
+        "displayName": "Shipment Management",
+        "apiRevision": "1",
+        "description": "Service to expose shipment management methods",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-shipment-management-app.azurewebsites.net",
+        "backendId": null,
+        "path": "shipment-management",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/shipment-management-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/tonnages-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "tonnages-v1",
+      "properties": {
+        "displayName": "Tonnages",
+        "apiRevision": "1",
+        "description": "Service to expose tonnages",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-tonnages-app.azurewebsites.net",
+        "backendId": null,
+        "path": "tonnages",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/tonnages-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/transitguide-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "transitguide-v1",
+      "properties": {
+        "displayName": "Transit Guide",
+        "apiRevision": "1",
+        "description": "Service to expose Transit Guide",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-api-transitguide-app.azurewebsites.net",
+        "backendId": null,
+        "path": "transitguide",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/transitguide-api-version-set",
+        "effectivePath": null
+      }
+    },
+    {
+      "id": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apis/yembo-v1",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "name": "yembo-v1",
+      "properties": {
+        "displayName": "Yembo",
+        "apiRevision": "1",
+        "description": "Service to expose Atlas.Yembo methods",
+        "subscriptionRequired": true,
+        "serviceUrl": "https://atlas-qa-yembo-api-app.azurewebsites.net",
+        "backendId": null,
+        "path": "Yembo",
+        "protocols": ["https"],
+        "mcpProperties": null,
+        "a2aProperties": null,
+        "isAgent": false,
+        "agent": null,
+        "jsonRpcProperties": null,
+        "authenticationSettings": {
+          "oAuth2": null,
+          "openid": null,
+          "oAuth2AuthenticationSettings": [],
+          "openidAuthenticationSettings": []
+        },
+        "subscriptionKeyParameterNames": {
+          "header": "Ocp-Apim-Subscription-Key",
+          "query": "subscription-key",
+          "bearer": null
+        },
+        "isCurrent": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "/subscriptions/000/resourceGroups/000/providers/Microsoft.ApiManagement/service/atlas-qa-api-apim/apiVersionSets/yembo-api-version-set",
+        "effectivePath": null
+      }
+    }
+  ],
+  "count": 24
+}
