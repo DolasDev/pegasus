@@ -249,7 +249,16 @@ export function ShipmentDetail({
       label: 'Destination Address',
     },
     {
-      accessor: (shipment: any) => createStreetString(shipment.del_address1, shipment.del_address2),
+      // The destination street lives in consignee_name1/consignee_name2 on
+      // v_longhaul_shipments_v2 — the columns the legacy entity aliased as
+      // destination_address1/2 (shipment.abstract.ts). NOT del_address1/2:
+      // `del_address2` is not a column on the view at all, and `del_address1`
+      // is the EXTRA-delivery address, which the view only reads to derive the
+      // `extradel` "EXTRA DELIVERY" flag. Reading it here left the street blank
+      // on every order without an extra delivery and showed the wrong address
+      // on the orders that had one.
+      accessor: (shipment: any) =>
+        createStreetString(shipment.consignee_name1, shipment.consignee_name2),
       label: '',
     },
     {
