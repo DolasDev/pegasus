@@ -31,6 +31,7 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       tenant_runner: ${{ steps.filter.outputs.tenant_runner }}
       workflows_stdlib: ${{ steps.filter.outputs.workflows_stdlib }}
+      temporal_worker: ${{ steps.filter.outputs.temporal_worker }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
@@ -58,6 +59,17 @@ jobs:
             workflows_stdlib:
               - 'packages/workflows-stdlib/**'
               - 'packages/workflows-sdk-python/**'
+              - '.github/workflows/ci.yml'
+            # Temporal-worker tests — the SDK and stdlib are included because
+            # tests/conftest.py puts both on sys.path (the worker imports
+            # pegasus_workflows and send_quote_followup). Mirrors the trigger
+            # paths of temporal-worker.yml so what gates the PR is what gates
+            # the image build; ci.yml itself is included so this job
+            # self-validates.
+            temporal_worker:
+              - 'apps/temporal-worker/**'
+              - 'packages/workflows-sdk-python/**'
+              - 'packages/workflows-stdlib/**'
               - '.github/workflows/ci.yml'
 
   # ---------------------------------------------------------------------------
@@ -189,6 +201,47 @@ jobs:
 
       - name: Pytest
         working-directory: apps/tenant-runner
+        run: python -m pytest -q
+
+  # ---------------------------------------------------------------------------
+  # Temporal-worker Python tests — ruff + pytest for apps/temporal-worker, which
+  # is invisible to Turbo (no package.json) and, until this job existed, ran in
+  # NO workflow at all: its ~560 lines of tests were dead weight while
+  # temporal-worker.yml built and pushed the image straight to staging AND prod
+  # ECR with no test or lint gate (audit-python-toolchain.md Phase 1.1).
+  #
+  # No Temporal server needed despite the e2e spec: temporalio's sdk-core bridge
+  # embeds the dev server in its compiled extension, so
+  # WorkflowEnvironment.start_local() is in-process and offline (~0.3s). The
+  # worker's own `.[dev]` extra is the whole install — the SDK and stdlib are
+  # imported off sys.path by tests/conftest.py, and neither pulls a dependency
+  # the worker doesn't already have.
+  # ---------------------------------------------------------------------------
+  temporal-worker-python:
+    name: Temporal Worker (Python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: changes
+    if: needs.changes.outputs.temporal_worker == 'true'
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install temporal-worker (+ dev extras)
+        working-directory: apps/temporal-worker
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Ruff
+        working-directory: apps/temporal-worker
+        run: python -m ruff check .
+
+      - name: Pytest
+        working-directory: apps/temporal-worker
         run: python -m pytest -q
 
   # ---------------------------------------------------------------------------

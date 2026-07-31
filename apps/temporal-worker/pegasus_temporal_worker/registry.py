@@ -18,8 +18,9 @@ Why a registry instead of a discovery scan:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 # stdlib is bundled into the image at /opt/stdlib (PYTHONPATH).
 # Locally (pytest, docker-compose) it's importable via the editable

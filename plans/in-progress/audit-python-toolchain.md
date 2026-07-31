@@ -2,14 +2,28 @@
 
 > **Status: SCOPED** — 2026-06-10
 
-> **Cleanup audit 2026-07-30 — PARTIAL, headline risk still live.** Only a
-> slice of Phase 1 landed opportunistically via #349 (ruff + pytest on the SDK,
-> pytest on the stdlib, both path-filtered). **The risk this plan was written
-> for is untouched:** `apps/temporal-worker` is referenced nowhere in `ci.yml`,
-> so its ~480 lines of tests run in no workflow while its image builds and
-> pushes straight to staging and prod ECR with no test or lint gate. Phases
-> 2-5 are essentially unstarted. **Rescope on resumption:** the plan predates
-> `apps/tenant-runner`, so Phase 1 now spans four Python trees, not three.
+> **Cleanup audit 2026-07-30 — PARTIAL.** Only a slice of Phase 1 had landed,
+> opportunistically via #349 (ruff + pytest on the SDK, pytest on the stdlib,
+> both path-filtered). The headline risk — `apps/temporal-worker` referenced
+> nowhere in `ci.yml`, ~560 lines of tests running in no workflow while the
+> image shipped to staging and prod ECR ungated — was still live. Phases 2-5
+> are essentially unstarted.
+>
+> **Update 2026-07-31 — Phase 1.1 and 1.2 are now DONE.** The worker has a
+> `temporal-worker-python` job in `ci.yml` (ruff + pytest, path-filtered on the
+> worker + SDK + stdlib) and a `test` gate in `temporal-worker.yml` that both
+> `staging` and `prod` depend on, so the image can no longer be built or pushed
+> without a green ruff+pytest. Wiring it up surfaced that **ruff had never run
+> against this tree**: two `UP035` violations were failing and are fixed. Both
+> `prod` and `staging` re-check the test result independently — `staging` is
+> _skipped_ (not failed) when `test` fails, and `prod` treats a skipped
+> `staging` as passable, so gating only `staging` would have left prod open.
+> Rollback dispatches deliberately bypass the gate.
+>
+> **Still open in Phase 1:** `pip-audit` in PR CI, and ruff over
+> `packages/workflows-stdlib` (only pytest runs there today).
+> **Rescope on resumption:** the plan predates `apps/tenant-runner`, so Phase 1
+> now spans four Python trees, not three.
 
 Unit 11 of the CI/CD + devops audit batch. Scope: make Python a first-class
 citizen in the dev/CI flow. Covers `packages/workflows-sdk-python`,

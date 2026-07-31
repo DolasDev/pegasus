@@ -55,9 +55,54 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Pre-build gate. Until this existed the image built and pushed to staging AND
+  # prod ECR with no test or lint step — apps/temporal-worker appeared in no
+  # workflow at all (audit-python-toolchain.md Phase 1.2). ci.yml runs the same
+  # ruff+pytest on PRs; this re-runs it on the push so a build triggered by a
+  # path CI didn't gate (or a manual dispatch) still can't ship untested code.
+  #
+  # Cheap and hermetic: ~30 tests in well under a second, no Temporal server
+  # (temporalio's sdk-core bridge embeds the dev server), no Docker, no network.
+  #
+  # Deliberately NOT run for rollbacks: a rollback retags an already-pushed,
+  # previously-tested image, and you are often rolling back *because* main is
+  # broken — gating that on a green test suite would block the recovery path.
+  test:
+    name: Test (ruff + pytest)
+    # Explicit push branch rather than relying on `inputs` being null outside a
+    # workflow_dispatch: a push must always be tested, and only a dispatched
+    # rollback opts out.
+    if: ${{ github.event_name == 'push' || !inputs.rollback-to-sha }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install temporal-worker (+ dev extras)
+        working-directory: apps/temporal-worker
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Ruff
+        working-directory: apps/temporal-worker
+        run: python -m ruff check .
+
+      - name: Pytest
+        working-directory: apps/temporal-worker
+        run: python -m pytest -q
+
   staging:
     name: staging
-    if: github.event_name == 'push' || inputs.env-name == 'both' || inputs.env-name == 'staging'
+    needs: [test]
+    # always() so a rollback run (where `test` is skipped by its own if:) still
+    # reaches this job; the explicit success-or-skipped check is what actually
+    # gates it, so a FAILED test blocks the push.
+    if: always() && (needs.test.result == 'success' || needs.test.result == 'skipped') && (github.event_name == 'push' || inputs.env-name == 'both' || inputs.env-name == 'staging')
     uses: ./.github/workflows/_temporal-worker.yml
     with:
       env-name: staging
@@ -72,8 +117,13 @@ jobs:
     # always() is required so the if: condition is evaluated even when staging was skipped
     # (which happens on a workflow_dispatch with env-name=prod — staging's if: is false →
     # staging is SKIPPED → without always(), GitHub would cascade-skip prod too).
-    if: always() && (github.event_name == 'push' || inputs.env-name == 'both' || inputs.env-name == 'prod') && (needs.staging.result == 'success' || needs.staging.result == 'skipped')
-    needs: [staging]
+    #
+    # prod MUST re-check `test` itself, not lean on staging. staging is skipped
+    # (not failed) when the test job fails, and this job treats a skipped
+    # staging as passable — so gating only staging would leave prod wide open on
+    # exactly the failure this gate exists to catch.
+    if: always() && (needs.test.result == 'success' || needs.test.result == 'skipped') && (github.event_name == 'push' || inputs.env-name == 'both' || inputs.env-name == 'prod') && (needs.staging.result == 'success' || needs.staging.result == 'skipped')
+    needs: [test, staging]
     uses: ./.github/workflows/_temporal-worker.yml
     with:
       env-name: prod
