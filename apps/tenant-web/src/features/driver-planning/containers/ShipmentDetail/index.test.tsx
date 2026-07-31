@@ -49,8 +49,12 @@ const happyShipment = {
   shipper_city: 'Austin',
   shipper_state: 'TX',
   shipper_zip: '78701',
-  del_address1: '123 Main',
-  del_address2: 'Suite 4',
+  // Destination street: the view's consignee_name1/2 (aliased
+  // destination_address1/2 by the legacy entity). `del_address1` is the
+  // unrelated extra-delivery address and must never reach the street line.
+  consignee_name1: '123 Main',
+  consignee_name2: 'Suite 4',
+  del_address1: '900 Extra Stop Rd',
   consignee_city: 'Denver',
   consignee_state: 'CO',
   consignee_zip: '80202',
@@ -112,6 +116,10 @@ describe('ShipmentDetail container', () => {
     expect(screen.getByText('Destination Address')).toBeInTheDocument()
     expect(screen.getByText('123 Main, Suite 4')).toBeInTheDocument()
     expect(screen.getByText('Denver, CO 80202')).toBeInTheDocument()
+    // Regression: the street line read del_address1/2 — the extra-delivery
+    // address — so it was blank on every order without an extra delivery and
+    // showed the extra stop on the orders that had one.
+    expect(screen.queryByText(/900 Extra Stop Rd/)).not.toBeInTheDocument()
   })
 
   it('never renders the literal "undefined" when address parts are missing', () => {
@@ -123,8 +131,9 @@ describe('ShipmentDetail container', () => {
       'shipper_add1',
       'shipper_add2',
       'shipper_zip',
+      'consignee_name1',
+      'consignee_name2',
       'del_address1',
-      'del_address2',
       'consignee_zip',
     ]) {
       delete (noAddr as any)[k]
