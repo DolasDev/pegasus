@@ -40,6 +40,9 @@ const joinPresent = (parts: any[], sep: string) =>
 
 const createStreetString = (address1: any, address2: any) => joinPresent([address1, address2], ', ')
 
+/** First part that is actually present — for fields with a fallback source. */
+const firstPresent = (parts: any[]) => parts.find((p) => p != null && String(p).trim() !== '') ?? ''
+
 const createCityStateZipString = (city: any, state: any, zip: any) =>
   joinPresent([joinPresent([city, state], ', '), zip], ' ')
 
@@ -127,7 +130,18 @@ export function ShipmentDetail({
     },
 
     {
-      accessor: 'OpsLastName',
+      // `OpsLastName` is a legacy *entity property*, not a column: the NestJS
+      // entity aliased it onto `salesman.last_name` (shipment.abstract.ts),
+      // which the view projects under its own name via
+      // `LEFT JOIN salesman ON salesman.code = sales.operations_id`. Our rows
+      // come straight off the view (`SELECT s.*`), so `OpsLastName` was never
+      // there and the row rendered blank on every order.
+      //
+      // Falls back to the shadow `operations_name` — the same `sales` row's own
+      // operations column, which the list query already surfaces — so an order
+      // whose operations_id matches no `salesman` row still shows a name.
+      accessor: (shipment: any) =>
+        firstPresent([shipment.last_name, shipment.pegasus_shadow?.operations_name]),
       label: 'Operations',
     },
 

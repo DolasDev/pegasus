@@ -64,12 +64,18 @@ const happyShipment = {
   avl_reg: 'REG-001',
   move_desc: 'COD',
   coordinator: 'Coord Name',
-  OpsLastName: 'Operations',
+  // The operations person: `salesman.last_name`, projected by the view under
+  // its own name. `OpsLastName` was a legacy entity alias, never a column.
+  last_name: 'Opsington',
   oa_id: 'OA1',
   oa_name: 'Origin Agent',
   da_id: 'DA1',
   da_name: 'Dest Agent',
-  pegasus_shadow: { weight: 50, lng_dis_comments: 'hello @Sam there' },
+  pegasus_shadow: {
+    weight: 50,
+    lng_dis_comments: 'hello @Sam there',
+    operations_name: null as string | null,
+  },
 }
 
 const sampleUser = { code: 'U1', first_name: 'Sam' }
@@ -103,6 +109,29 @@ describe('ShipmentDetail container', () => {
     expect(screen.getByText('Order Number')).toBeInTheDocument()
     expect(screen.getByText('Account Name')).toBeInTheDocument()
     expect(screen.getByText('Long Distance Instructions')).toBeInTheDocument()
+  })
+
+  it('renders the operations person from last_name, falling back to the shadow name', () => {
+    // Regression: the accessor read `OpsLastName` — a legacy entity property
+    // aliased onto salesman.last_name, not a column on the view — so the row
+    // was blank on every order.
+    const { unmount } = renderWithStore(<ShipmentDetail />, {
+      shipments: { selectedShipment: happyShipment } as any,
+      user: { user: sampleUser } as any,
+    })
+    expect(screen.getByText('Operations')).toBeInTheDocument()
+    expect(screen.getByText('Opsington')).toBeInTheDocument()
+    unmount()
+
+    // No salesman row matched operations_id → fall back to the shadow's own
+    // operations_name rather than rendering blank.
+    const noSalesman = { ...happyShipment, last_name: null }
+    noSalesman.pegasus_shadow = { ...happyShipment.pegasus_shadow, operations_name: 'Shadow Ops' }
+    renderWithStore(<ShipmentDetail />, {
+      shipments: { selectedShipment: noSalesman } as any,
+      user: { user: sampleUser } as any,
+    })
+    expect(screen.getByText('Shadow Ops')).toBeInTheDocument()
   })
 
   it('renders origin/destination street + city-state-zip from the real shipment keys', () => {
