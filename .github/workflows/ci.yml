@@ -203,6 +203,27 @@ jobs:
         working-directory: apps/tenant-runner
         run: python -m pytest -q
 
+      # pip-audit is Python's counterpart to the Node `audit-ci` gate above.
+      # Until this step landed, no Python tree had ANY vulnerability scanning —
+      # in CI or at release — while two of them ship to prod (this runner and
+      # the temporal worker) and one is published to PyPI for tenants
+      # (audit-python-toolchain.md Phase 1, Finding 5).
+      #
+      # `--skip-editable` skips the first-party package installed with `-e .`
+      # (nothing on PyPI to match it against) and audits the resolved dependency
+      # closure — the same set the Dockerfile resolves at image-build time.
+      #
+      # Like audit-ci, this reads a LIVE advisory feed: a newly-published CVE can
+      # turn CI red with no diff of ours. Before suspecting the PR, re-run
+      # against origin/main. Escape hatch for a transitive CVE with no fix
+      # available: `--ignore-vuln <GHSA/PYSEC id>` with a dated comment,
+      # mirroring the audit-ci.jsonc allowlist convention.
+      - name: pip-audit
+        working-directory: apps/tenant-runner
+        run: |
+          python -m pip install pip-audit
+          python -m pip_audit --skip-editable
+
   # ---------------------------------------------------------------------------
   # Temporal-worker Python tests — ruff + pytest for apps/temporal-worker, which
   # is invisible to Turbo (no package.json) and, until this job existed, ran in
@@ -244,9 +265,20 @@ jobs:
         working-directory: apps/temporal-worker
         run: python -m pytest -q
 
+      # See the tenant-runner-python job above for why pip-audit runs per-tree
+      # and what to do when the live advisory feed turns it red.
+      - name: pip-audit
+        working-directory: apps/temporal-worker
+        run: |
+          python -m pip install pip-audit
+          python -m pip_audit --skip-editable
+
   # ---------------------------------------------------------------------------
-  # SDK + stdlib workflow tests — ruff + pytest for packages/workflows-sdk-python
-  # and pytest for packages/workflows-stdlib (which imports the SDK).
+  # SDK + stdlib workflow tests — ruff + pytest for both
+  # packages/workflows-sdk-python and packages/workflows-stdlib (which imports
+  # the SDK). Ruff over the stdlib was the last un-linted Python tree in the
+  # repo; pointing it there surfaced three real violations (E501/I001/F401),
+  # the same way #568 surfaced UP035 the first time ruff saw the worker.
   #
   # The SDK steps mirror release-sdk-python.yml's lint+test gate so a ruff/test
   # failure surfaces on the PR, not at tag time — previously the SDK was only
@@ -282,9 +314,21 @@ jobs:
         working-directory: packages/workflows-sdk-python
         run: python -m pytest -q
 
+      - name: Ruff (stdlib)
+        working-directory: packages/workflows-stdlib
+        run: python -m ruff check .
+
       - name: Pytest (stdlib)
         working-directory: packages/workflows-stdlib
         run: python -m pytest -q
+
+      # Covers both trees in this job: the stdlib declares no dependencies of
+      # its own (packages/workflows-stdlib/pyproject.toml), so the SDK's closure
+      # audited here IS the stdlib's closure. See tenant-runner-python above.
+      - name: pip-audit
+        run: |
+          python -m pip install pip-audit
+          python -m pip_audit --skip-editable
 
   # ---------------------------------------------------------------------------
   # Migration safety — enforce the expand-contract policy (PATTERNS.md):
