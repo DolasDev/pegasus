@@ -17,6 +17,7 @@ import { ShipmentDetail } from '../ShipmentDetail'
 
 import { selectShipment as selectShipmentAction } from '../../redux/shipments'
 import { lastCommaFirst, startCase } from '@/features/driver-planning/utils/string'
+import { isSuperVip } from '@/features/driver-planning/utils/super-vip'
 import { parseActivities } from './utils/parse-activities'
 
 import { HoverToolTip } from '@/features/driver-planning/containers/ToolTips'
@@ -243,18 +244,17 @@ function TripInternal() {
               <div className={styles.dateContainer}>
                 <div className={styles.activityContainerFixed}>
                   {sortedActivities.map((activity: any, index: number) => {
-                    const vipIndicator =
-                      activity.shipment.supervip === 'Y' ? (
-                        <HoverToolTip key={index} content="Super-VIP Shipper" direction="right">
-                          <i style={{ color: 'green' }} className="far fa-id-badge"></i>
-                        </HoverToolTip>
-                      ) : activity.shipment.vip === 'Y' ? (
-                        <HoverToolTip key={index} content="VIP Shipper" direction="right">
-                          <i style={{ color: 'purple' }} className="far fa-id-badge"></i>
-                        </HoverToolTip>
-                      ) : (
-                        ''
-                      )
+                    const vipIndicator = isSuperVip(activity.shipment) ? (
+                      <HoverToolTip key={index} content="Super-VIP Shipper" direction="right">
+                        <i style={{ color: 'green' }} className="far fa-id-badge"></i>
+                      </HoverToolTip>
+                    ) : activity.shipment.vip === 'Y' ? (
+                      <HoverToolTip key={index} content="VIP Shipper" direction="right">
+                        <i style={{ color: 'purple' }} className="far fa-id-badge"></i>
+                      </HoverToolTip>
+                    ) : (
+                      ''
+                    )
                     // WGS (White Glove Service) is driven purely by type_packing,
                     // mirroring ShipmentCard's getShipmentIndicator(). It renders
                     // alongside the VIP badge so combined cases (S-WGS/V-WGS) show

@@ -10,6 +10,7 @@ import { formatDate, formatDateShort } from '../../../../utils/format-date'
 import { sHaulMapping, haulModeMapping } from '../../../../utils/haul-mode-mapping'
 import { HoverToolTip } from '../../../ToolTips'
 import { startCase } from '@/features/driver-planning/utils/string'
+import { isSuperVip } from '@/features/driver-planning/utils/super-vip'
 import { useAppDispatch } from '../../../../redux/hooks'
 import type { RootState } from '../../../../redux/store'
 
@@ -250,13 +251,13 @@ export function ShipmentCard({
   const getShipmentIndicator = (): string | null => {
     // TODO: not sure what this logic is.
     const indicator =
-      shipment.type_packing === 'Y' && shipment.supervip === 'Y'
+      shipment.type_packing === 'Y' && isSuperVip(shipment)
         ? 'S-WGS'
         : shipment.type_packing === 'Y' && shipment.vip === 'Y'
           ? 'V-WGS'
           : shipment.type_packing === 'Y'
             ? 'WGS'
-            : shipment.supervip === 'Y'
+            : isSuperVip(shipment)
               ? 'S-VIP'
               : shipment.vip === 'Y'
                 ? 'VIP'
