@@ -7,10 +7,7 @@ it can be imported and called in plain pytest without spinning up a worker.
 
 from __future__ import annotations
 
-import pytest
-
 from send_quote_followup.workflow import _resolve_quote_id
-
 
 # ---------------------------------------------------------------------------
 # EVENT envelope (trigger-fired) — highest priority

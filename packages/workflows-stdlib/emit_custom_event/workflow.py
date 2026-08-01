@@ -46,7 +46,9 @@ def _resolve_ids(payload: dict[str, Any] | str) -> dict[str, str]:
 
 
 @activity.defn
-async def emit_quote_won(ids: dict[str, str], client: PegasusClient | None = None) -> dict[str, Any]:
+async def emit_quote_won(
+    ids: dict[str, str], client: PegasusClient | None = None
+) -> dict[str, Any]:
     """Emit the custom ``crm.quote_won`` event for *ids*.
 
     When *client* is None (CLI test / unit test) this returns the event payload

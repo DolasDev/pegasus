@@ -20,10 +20,22 @@
 > `staging` as passable, so gating only `staging` would have left prod open.
 > Rollback dispatches deliberately bypass the gate.
 >
-> **Still open in Phase 1:** `pip-audit` in PR CI, and ruff over
-> `packages/workflows-stdlib` (only pytest runs there today).
-> **Rescope on resumption:** the plan predates `apps/tenant-runner`, so Phase 1
-> now spans four Python trees, not three.
+> **Update 2026-08-01 — PHASE 1 IS COMPLETE.** The two remaining items landed:
+> `pip-audit --skip-editable` now runs in all three Python CI jobs
+> (`tenant-runner-python`, `temporal-worker-python`, `workflows-stdlib-python`),
+> and ruff now covers `packages/workflows-stdlib` — the last un-linted Python
+> tree, which needed a `[tool.ruff]` block in its `pyproject.toml` and three
+> real fixes (`E501`, `I001`, `F401`), the same pattern as the `UP035` pair the
+> worker's first-ever ruff run surfaced. pip-audit was clean on all three
+> installable trees at merge time, so the gate landed green rather than
+> importing a backlog. **Rescope applied:** the plan predated
+> `apps/tenant-runner`, so Phase 1 spans four Python trees, not three — the CI
+> shape is three jobs (the stdlib rides in the SDK's job, since it declares no
+> dependencies of its own and imports `pegasus_workflows`).
+>
+> **Phases 2-5 remain** (dep upper bounds on the worker + runner, Dependabot pip
+> for those trees + docker, release-workflow dedup, stdlib manifest/registry
+> drift harness, uv lockfile, Turbo wrappers), so this plan stays in-progress.
 
 Unit 11 of the CI/CD + devops audit batch. Scope: make Python a first-class
 citizen in the dev/CI flow. Covers `packages/workflows-sdk-python`,
@@ -149,9 +161,15 @@ documented in `CLAUDE.md` package map):
 
 ## Plan
 
-### Phase 1 — Python CI job on every PR/push (quick win, highest value)
+### Phase 1 — Python CI job on every PR/push (quick win, highest value) — DONE
 
-- [ ] **1.1 Add a `python` job to `.github/workflows/ci.yml`** (~1h).
+- [x] **1.1 Add a `python` job to `.github/workflows/ci.yml`** (~1h).
+      _Shipped as three path-filtered jobs rather than one always-run job:
+      `tenant-runner-python`, `temporal-worker-python`,
+      `workflows-stdlib-python`. Each filter includes `.github/workflows/ci.yml`
+      itself so a change to the job self-validates, which is what closes the
+      required-check-vs-skipped trap the sketch below was avoiding. `pip-audit`
+      (2026-08-01) and `Ruff (stdlib)` (2026-08-01) completed the step list._
       Always-run (no path filter): total runtime is ~2-3 min with pip
       caching, well under the existing `e2e` job's wall-clock, so it adds
       zero latency and avoids the required-check-vs-skipped-workflow trap
@@ -200,7 +218,12 @@ documented in `CLAUDE.md` package map):
       if it complains about missing config, run it with
       `--config packages/workflows-sdk-python/pyproject.toml`.
 
-- [ ] **1.2 Gate the worker image build on the same tests** (~20min). Because
+- [x] **1.2 Gate the worker image build on the same tests** (~20min). _Shipped
+      #568 as a standalone `test` job in `temporal-worker.yml` that BOTH
+      `staging` and `prod` depend on — gating only `staging` would have left
+      prod open, because a failed `test` leaves `staging` skipped and `prod`
+      treats a skipped `staging` as passable. Rollback dispatches deliberately
+      bypass the gate._ Because
       batch merges land on main without PRs, add a fast test step to the
       `staging` job of `.github/workflows/temporal-worker.yml` _before_ the
       Docker build (after the checkout at `temporal-worker.yml:74`):

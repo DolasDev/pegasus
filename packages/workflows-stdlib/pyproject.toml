@@ -4,6 +4,17 @@ version = "0.1.0"
 description = "Curated Pegasus workflow library — dogfoods the SDK and is published under the platform tenant."
 requires-python = ">=3.11"
 
+# Identical to the SDK / temporal-worker / tenant-runner ruff settings so the
+# four Python trees lint under one rule set. This tree was the last one ruff had
+# never been pointed at (audit-python-toolchain.md Phase 1); the CI step lives in
+# the `workflows-stdlib-python` job in .github/workflows/ci.yml.
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
