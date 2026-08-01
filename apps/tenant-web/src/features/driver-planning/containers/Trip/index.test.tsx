@@ -80,7 +80,7 @@ const activity = (over: Record<string, any> = {}) => ({
     shipper_name: 'SMITH, JOHN',
     order_num: 'O1',
     vip: 'N',
-    supervip: 'N',
+    idc_break: 'N',
     total_est_wt: 5000,
     pegasus_shadow: null,
   },
@@ -97,7 +97,7 @@ const tripWithActivitiesFixture = {
         shipper_name: 'SMITH, JOHN',
         order_num: 'O1',
         vip: 'Y',
-        supervip: 'N',
+        idc_break: 'N',
         // Also WGS — the combined V-WGS case renders both indicators.
         type_packing: 'Y',
         total_est_wt: 5000,
@@ -115,7 +115,7 @@ const tripWithActivitiesFixture = {
         shipper_name: 'DOE, JANE',
         order_num: 'O2',
         vip: 'N',
-        supervip: 'N',
+        idc_break: 'N',
         type_packing: 'N',
         total_est_wt: 3000,
         pegasus_shadow: null,
@@ -248,6 +248,29 @@ describe('Trip dateContainer (Trip Itinerary)', () => {
     const { container } = renderWithStore(<Trip />)
     await waitFor(() => expect(screen.getByText('Trip Itinerary')).toBeInTheDocument())
     expect(container.querySelectorAll('[data-target="trip-shipment-activity"]')).toHaveLength(1)
+  })
+
+  // Regression: the badge tested `activity.shipment.supervip`, a legacy TypeORM
+  // entity property aliased onto `idc_break`. Raw view rows carry idc_break, so
+  // the green Super-VIP badge could never render — every super-VIP fell through
+  // to the plain purple VIP branch or to nothing at all.
+  it('renders the green Super-VIP badge from idc_break', async () => {
+    fetchTripMock.mockResolvedValue({
+      ...tripFixture,
+      activities: [
+        activity({
+          activityId: 1,
+          order_num: 'O1',
+          shipment: { shipper_name: 'SMITH, JOHN', order_num: 'O1', vip: 'N', idc_break: 'Y' },
+        }),
+      ],
+    })
+    const { container } = renderWithStore(<Trip />)
+    await waitFor(() => expect(screen.getByText('Trip Itinerary')).toBeInTheDocument())
+    const badge = container.querySelector('i.fa-id-badge') as HTMLElement | null
+    expect(badge).not.toBeNull()
+    // Green is the Super-VIP branch; purple is the plain-VIP one.
+    expect(badge?.style.color).toBe('green')
   })
 
   it('renders the WGS indicator for type_packing shipments, alongside the VIP badge', async () => {

@@ -69,7 +69,7 @@ const tripFixture = {
         shipper_name: 'SMITH, JOHN',
         order_num: 'O1',
         vip: 'Y',
-        supervip: 'N',
+        idc_break: 'N',
         total_est_wt: 5000,
         pegasus_shadow: null,
       },
