@@ -91,10 +91,18 @@ The cause of tangled work on this repo is multiplexing several features through 
 
 ### Landing work — canonical path
 
-1. Open a PR for the branch: `gh pr create`.
-2. Enable auto-merge: `gh pr merge --auto --squash` (or `--merge`/`--rebase` per project convention). This enqueues the PR.
-3. GitHub's native **merge queue** rebases each PR against the current tip of `main`, runs the required-check matrix, and merges serially. Multiple enqueued PRs are processed in order — no manual cross-session coordination needed. Note: rapid queue merges can still trigger the deploy-cancellation race described in project memory (`feedback_rapid_main_pushes_cancel_deploy.md`); if several PRs merge in quick succession, check `gh run list --workflow deploy.yml` and re-dispatch if a run was cancelled.
-4. "Merged" means the queue finished, not the instant `--auto` was set. The PR page shows queue position.
+1. **Review the diff first.** `/workstream-finish` step 4 runs `/code-review` on
+   the branch diff (plus `/security-review` when it touches authz, middleware,
+   migrations, infra, workflows, the tenant runner, or a `.cedar` policy), and
+   every finding is either fixed on the branch or written down under a
+   `## Review` section in the PR body. Skipped only for a docs/plans-only diff
+   or a pure revert — and the skip is stated in the PR body. On a solo repo the
+   required checks are all deterministic, so this is the only thing that reads
+   the diff for intent; it is a self-review, not an independent one, and says so.
+2. Open a PR for the branch: `gh pr create`.
+3. Enable auto-merge: `gh pr merge --auto --squash` (or `--merge`/`--rebase` per project convention). This enqueues the PR.
+4. GitHub's native **merge queue** rebases each PR against the current tip of `main`, runs the required-check matrix, and merges serially. Multiple enqueued PRs are processed in order — no manual cross-session coordination needed. Note: rapid queue merges can still trigger the deploy-cancellation race described in project memory (`feedback_rapid_main_pushes_cancel_deploy.md`); if several PRs merge in quick succession, check `gh run list --workflow deploy.yml` and re-dispatch if a run was cancelled.
+5. "Merged" means the queue finished, not the instant `--auto` was set. The PR page shows queue position.
 
 **Agents do not run `git merge`, `git rebase`, or `git push origin main` themselves.** Those operations are forbidden by Branch Discipline. Drive the merge exclusively through `gh pr merge --auto` — this is a GitHub API call via the `gh` CLI, not a git push, and is explicitly permitted within these rules.
 
