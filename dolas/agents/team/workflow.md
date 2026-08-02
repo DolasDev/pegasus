@@ -91,10 +91,12 @@ The cause of tangled work on this repo is multiplexing several features through 
 
 ### Landing work — canonical path
 
-1. **Review the diff first.** `/workstream-finish` step 4 runs `/code-review` on
-   the branch diff (plus `/security-review` when it touches authz, middleware,
-   migrations, infra, workflows, the tenant runner, or a `.cedar` policy), and
-   every finding is either fixed on the branch or written down under a
+1. **Review the diff first.** `/workstream-finish` step 4 reviews the branch diff
+   against the repo's documented rules, and runs `/security-review` when it
+   touches authz, middleware, migrations, infra, workflows, the tenant runner,
+   or a `.cedar` policy. (`/code-review` is **user**-invocable only — the step
+   asks you to run it when a diff warrants a heavier pass; it cannot run it
+   itself.) Every finding is then either fixed on the branch or written down under a
    `## Review` section in the PR body. Skipped only for a docs/plans-only diff
    or a pure revert — and the skip is stated in the PR body. On a solo repo the
    required checks are all deterministic, so this is the only thing that reads

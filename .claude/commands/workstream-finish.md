@@ -62,11 +62,30 @@ plans/completed/<short-hash>-<slug>.md` (short-hash = `git rev-parse
      definition `ci.yml`'s paths-filter uses), when it is a pure revert, or when
      the developer explicitly says to skip. **A skip is recorded in the PR body,
      never silent.**
-   - **Always (when not skipped):** `/code-review` on the branch diff.
-   - **Additionally `/security-review`** when that same file list touches
+   - **Always (when not skipped): review the branch diff directly** —
+     `git diff origin/main...HEAD` — against this repo's documented rules
+     (CLAUDE.md and the `dolas/agents/**` files it links: branded IDs, tenant
+     scoping, no `as any`, expand-contract migrations, the PATTERNS.md
+     conventions). Report findings in the shape `file:line — claim — concrete
+failure scenario`; a finding without a failure scenario is a style opinion,
+     not a finding.
+
+     **Do not try to invoke `/code-review` here.** It is marked
+     `disable-model-invocation` and the `Skill` tool refuses it — the step would
+     silently do nothing (verified 2026-08-02 while building this step, which is
+     how the defect was caught). It is **user**-invocable only: when a diff
+     warrants a heavier or genuinely independent pass, say so and let the
+     developer run `/code-review` — or `/code-review ultra` for the multi-agent
+     cloud review, which is separately billed — before the PR is opened.
+
+   - **Additionally `/security-review`** (this one IS model-invocable via the
+     `Skill` tool — verified 2026-08-02) when that same file list touches
      security-sensitive paths: `apps/api/src/authz/**`, `**/middleware/**`,
      `apps/api/prisma/migrations/**`, `packages/infra/**`,
      `.github/workflows/**`, `apps/tenant-runner/**`, `**/*.cedar`.
+     Note its own scope rules: it reports only high-confidence exploitable
+     findings and explicitly excludes documentation-only diffs, so on a
+     markdown-only change it will correctly return nothing.
    - **Disposition every finding.** Each one is either fixed on the branch — as
      its own commit, so the fix is reviewable separately from the work — or
      written down with a one-line reason under a `## Review` section in the PR

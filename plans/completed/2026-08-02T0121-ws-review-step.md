@@ -1,6 +1,19 @@
 # Pre-PR review step in `/workstream-finish` (local, subscription-covered)
 
-> **Status: COMPLETE** — 2026-08-02. Branch `chore/ws-review-step`. No deviation from the plan as written.
+> **Status: COMPLETE** — 2026-08-02. Branch `chore/ws-review-step`.
+>
+> **Deviation — the dogfood (criterion 4) caught a real defect in the step
+> itself.** The plan assumed the step could invoke `/code-review` via the
+> `Skill` tool. It cannot: `/code-review` is marked `disable-model-invocation`
+> and the tool refuses it outright, so the step as first written would have
+> **silently done nothing** on every PR — a review gate that never runs is worse
+> than none, because it reads as covered. Fixed in the same PR: the step now
+> reviews the branch diff directly against the repo's documented rules and
+> _asks_ the developer to run `/code-review` when a diff warrants the heavier or
+> independent pass. `/security-review` was empirically confirmed to be
+> model-invocable, so the sensitive-path branch works as designed. This is
+> exactly the class of defect the step exists to catch, caught by the step, on
+> the step.
 > Decision context: `plans/in-progress/audit-ai-process-automation.md` is
 > user-deferred, and the deferral is _cost_-driven (~$25-60/mo of
 > `ANTHROPIC_API_KEY` spend across five AI jobs). This closes the
@@ -34,8 +47,8 @@ thing missing is that nothing _invokes_ them, so it runs on discipline alone
 
 **Verified 2026-08-02 (auth, for the record):** the official
 `anthropics/claude-code-action` does expose a `claude_code_oauth_token` input
-("alternative to anthropic_api_key") in its `action.yml`, so the CI-side
-reviewer _could_ also run on the subscription via `claude setup-token`. **User
+("alternative to anthropic*api_key") in its `action.yml`, so the CI-side
+reviewer \_could* also run on the subscription via `claude setup-token`. **User
 decision 2026-08-02: hold that; keep it local for now.** Recorded here so the
 next session doesn't re-research it. The honest trade being accepted: a review
 running in the same session that wrote the code is a **self**-review and
