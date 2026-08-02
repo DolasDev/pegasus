@@ -265,10 +265,18 @@ function buildBaseSql(query: ShipmentQuery, bag: ParamBag, importExportTypes: st
   const whereSql = where.length ? `\nWHERE ${where.join('\n  AND ')}` : ''
   // TOP enforces the base-query row cap (mssql has no LIMIT).
   return (
+    // NOTE: every shadow column must be aliased to a name the view does NOT
+    // already project. `s.*` is 91 columns wide; when an OUTER APPLY column
+    // repeats one of those names the row arrives with that key bound to an
+    // ARRAY of both values (`operations_id: [1196, 1196]`), not a scalar —
+    // the mssql driver's duplicate-column behavior. `operations_id` did
+    // exactly that until it was dropped here: the view already projects
+    // `sales.operations_id`, the very column the OUTER APPLY re-read, so the
+    // second copy was redundant as well as corrupting. `operations_name` has
+    // no counterpart on the view, so it still has to come from the apply.
     `SELECT TOP (${BASE_QUERY_ROW_CAP}) ${S}.*,` +
     `\n  ps.weight AS shadow_weight,` +
     `\n  ps.lng_dis_comments AS shadow_comments,` +
-    `\n  ps.operations_id AS operations_id,` +
     `\n  ps.operations_name AS operations_name` +
     `\nFROM ${S}` +
     // OUTER APPLY, not LEFT JOIN: `sales` is 1:1 with a shipment by contract

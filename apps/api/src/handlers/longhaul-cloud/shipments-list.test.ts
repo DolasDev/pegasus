@@ -26,6 +26,112 @@ import { executeSql } from '../../lib/mssql-executor-client'
 const findUnique = db.tenant.findUnique as unknown as Mock
 const executeSqlMock = executeSql as unknown as Mock
 
+/**
+ * Every column `SELECT s.*` pulls off v_longhaul_shipments_v2 — the actual
+ * payload contract of this endpoint, which `s.*` otherwise leaves invisible.
+ *
+ * Captured from INFORMATION_SCHEMA.COLUMNS on the prod NWI view (2026-08-01);
+ * it matches the ViewEntity expression the legacy repo provisions
+ * (longhaul/server/modules/shipments/model/migrate/shipment_v2.view.ts), so a
+ * tenant on the current view definition returns exactly these 91 names.
+ *
+ * Used here only to prove no OUTER APPLY alias collides with one of them. If
+ * you add a shadow column, alias it to a name that is NOT in this list.
+ */
+const VIEW_COLUMNS = [
+  'order_num',
+  'shipment_status',
+  'shipper_name',
+  'vip',
+  'idc_break',
+  'avl_reg',
+  'line_haul',
+  'coordinator_id',
+  'coordinator',
+  'booker_name',
+  'ba_name',
+  'driver2_id',
+  'driver2_name',
+  'survey_date',
+  'import_export',
+  'move_desc',
+  'shaul',
+  'haul_mode',
+  'branch',
+  'shipper_city',
+  'shipper_state',
+  'origin_zone',
+  'consignee_city',
+  'consignee_state',
+  'dest_zone',
+  'pack_date',
+  'pack_date2',
+  'plan_pack',
+  'pack_actual',
+  'load_date',
+  'load_date2',
+  'plan_load',
+  'load_actual',
+  'del_date',
+  'del_date2',
+  'plan_del',
+  'del_actual',
+  'extra_date',
+  'extra_date2',
+  'type_packing',
+  'lng_dis_ld_early',
+  'lng_dis_ld_late',
+  'lng_dis_del_early',
+  'lng_dis_del_late',
+  'total_est_wt',
+  'weight',
+  'mileage',
+  'haul_id',
+  'haul_name',
+  'driver_id',
+  'driver_name',
+  'special4',
+  'whse_date',
+  'sit_date',
+  'ship_load_date',
+  'rule19_out_date',
+  'rule19_id',
+  'load_driver',
+  'pickup_num',
+  'disp_instructions',
+  'oa_id',
+  'da_id',
+  'oa_name',
+  'da_name',
+  'survey_remarks',
+  'stg_id',
+  'pick_address1',
+  'del_address1',
+  'lng_dis_comments',
+  'shipper_add1',
+  'shipper_add2',
+  'consignee_name1',
+  'consignee_name2',
+  'sale_date',
+  'arrival_date',
+  'consignee_zip',
+  'shipper_zip',
+  'operations_id',
+  'oshuttle',
+  'dshuttle',
+  'stgindicator',
+  'extrapu',
+  'extradel',
+  'company',
+  'registration_notes',
+  'packing_coverage_id',
+  'last_name',
+  'TripStatus_id',
+  'latest_activity_date',
+  'latest_activity_abbr',
+  'TripMaster_id',
+] as const
+
 function buildApp() {
   const app = new Hono<AppEnv>()
   registerTestErrorHandler(app)
@@ -357,11 +463,29 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
       expect(sql).toContain(
         'FROM sales AS sal WHERE sal.order_num = v_longhaul_shipments_v2.order_num',
       )
-      // The four aliased shadow columns the reshape layer depends on survive.
+      // The aliased shadow columns the reshape layer depends on survive.
       expect(sql).toContain('ps.weight AS shadow_weight')
       expect(sql).toContain('ps.lng_dis_comments AS shadow_comments')
-      expect(sql).toContain('ps.operations_id AS operations_id')
       expect(sql).toContain('ps.operations_name AS operations_name')
+    })
+
+    it('never re-projects a column `s.*` already carries', async () => {
+      // Regression: the apply also selected `ps.operations_id AS operations_id`,
+      // but the view already projects `sales.operations_id` — the very column
+      // being re-read. Two output columns of the same name make the mssql
+      // driver hand back an ARRAY for that key (prod order 489808 arrived as
+      // `operations_id: [1196, 1196]`) instead of a scalar. Any shadow column
+      // must be aliased to a name the view does not project.
+      const sql = await baseSqlFor()
+
+      expect(sql).not.toContain('ps.operations_id')
+      // The shadow aliases that remain are all names the view has no column
+      // for, so none of them can collide with `s.*`.
+      const aliases = [...sql.matchAll(/ps\.\w+ AS (\w+)/g)].map((m) => m[1])
+      expect(aliases).toEqual(['shadow_weight', 'shadow_comments', 'operations_name'])
+      for (const alias of aliases) {
+        expect(VIEW_COLUMNS).not.toContain(alias)
+      }
     })
 
     it('collapses rows the view returns twice for one order_num', async () => {
