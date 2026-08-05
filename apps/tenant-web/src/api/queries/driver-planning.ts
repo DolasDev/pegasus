@@ -5,7 +5,12 @@ import { apiFetch } from '@/api/client'
 // Types
 // ---------------------------------------------------------------------------
 
-/** A single RDEL (delivery) activity on the driver's current trip. */
+/**
+ * A single RDEL (delivery) activity on the driver's current trip — the latest
+ * trip at status Accepted or beyond that is not cancelled. Trips the driver
+ * hasn't taken on (Unplanned/Pending/Offered) are not sent by the API and so
+ * never feed the Ready Date / State / City triple.
+ */
 export interface Delivery {
   activityId: number
   plannedStart: string | null

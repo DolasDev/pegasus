@@ -9,7 +9,8 @@
 //
 // The on-prem repository (repositories/longhaul/driver-planning.repository.ts)
 // made ~5 MSSQL round trips: (1) all drivers from v_longhaul_drivers; (2) the
-// latest non-cancelled trip per driver via a correlated TOP 1 subquery; (3) the
+// latest committed (Accepted-or-greater, non-cancelled) trip per driver via a
+// correlated TOP 1 subquery — see TRIP_STATUS_ACCEPTED below; (3) the
 // last activity per trip via a correlated TOP 1 subquery; (4) a hasTable check
 // for DriverConfirmedAvailability; (5) the confirmed-availability batch.
 //
@@ -33,7 +34,21 @@ import { logger } from '../../lib/logger'
 import { availabilityDriverFilter } from './driver-filter'
 import { ENSURE_CONFIRMED_TABLE_SQL } from './driver-confirmed-availability-schema'
 
-// One round trip: every driver and its latest non-cancelled trip.
+// The Availability screen's Ready Date / Ready State / Ready City are all read
+// off the trip this query picks — from its activities (round trip 2), or from
+// the trip's own last-day + destination as the fallback. A trip the driver has
+// not taken on yet — Unplanned (0) / Pending (1) / Offered (2) — is not a
+// commitment, so it must not move the driver's ready position; only a trip at
+// Accepted (3) or beyond counts. `MasterTripStatus.status_id` is an ORDERED
+// enum (0 Unplanned, 1 Pending, 2 Offered, 3 Accepted, 4 In-Progress,
+// 5 Completed/Finalized) joined off `TripMaster.TripStatus_id` (see
+// trips-list.ts), so "Accepted or greater" is a `>=`. Cancellation is tracked
+// separately on `internal_status` (trips-write.ts POST /trips/:id/cancel sets
+// it without touching TripStatus_id), so it is excluded on its own.
+const TRIP_STATUS_ACCEPTED = 3
+
+// One round trip: every driver and its latest Accepted-or-greater,
+// non-cancelled trip.
 // v_longhaul_drivers exposes UPPERCASE columns on the Dolios SQL Server — alias
 // them to lowercase exactly as the on-prem `lowercaseRowKeys` normalization
 // does, so downstream code sees `driver_id` etc.
@@ -63,6 +78,7 @@ OUTER APPLY (
   LEFT JOIN v_longhaul_states ds ON tm.destination_state_id = ds.id
   WHERE tm.driver_id = d.DRIVER_ID
     AND ISNULL(tm.internal_status, '') <> 'canceled'
+    AND ISNULL(tm.TripStatus_id, 0) >= ${TRIP_STATUS_ACCEPTED}
   ORDER BY COALESCE(tm.planned_last_day, tm.created_date) DESC
 ) t
 WHERE ${availabilityDriverFilter('d')}
