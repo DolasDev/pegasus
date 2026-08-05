@@ -17,6 +17,7 @@ import { ShipmentWeight } from './components/Weight'
 import { DispatchNote } from './components/DispatchNote'
 import { useAppDispatch } from '../../redux/hooks'
 import type { RootState } from '../../redux/store'
+import type { LonghaulShipmentRow } from '@pegasus/longhaul-contracts'
 
 // Atlas web dispatch opens a shipment by its registration number:
 // https://atlasnet.atlasworldgroup.com/webdispatch/editshipment/RC086240
@@ -25,7 +26,7 @@ const ATLAS_WEBDISPATCH_BASE = 'https://atlasnet.atlasworldgroup.com/webdispatch
 const createFromToDateString = (startDate: any, endDate?: any) =>
   `${formatDate(startDate)} - ${formatDate(endDate)}`
 
-const createTripString = (shipment: any) =>
+const createTripString = (shipment: LonghaulShipmentRow) =>
   `${shipment.shipper_city}, ${shipment.shipper_state} - ${shipment.consignee_city}, ${shipment.consignee_state}`
 
 // Join only the parts that are actually present so a missing field never
@@ -67,7 +68,7 @@ export function ShipmentDetail({
       label: 'Shipper Name',
     },
     {
-      accessor: (shipment: any) =>
+      accessor: (shipment: LonghaulShipmentRow) =>
         jumpEnabled ? (
           <Clickable
             value={`${shipment.order_num}`}
@@ -79,7 +80,7 @@ export function ShipmentDetail({
       label: 'Order Number',
     },
     {
-      accessor: (shipment: any) => {
+      accessor: (shipment: LonghaulShipmentRow) => {
         const reg = shipment.avl_reg == null ? '' : String(shipment.avl_reg).trim()
         if (!reg) return ''
         return (
@@ -140,7 +141,7 @@ export function ShipmentDetail({
       // Falls back to the shadow `operations_name` — the same `sales` row's own
       // operations column, which the list query already surfaces — so an order
       // whose operations_id matches no `salesman` row still shows a name.
-      accessor: (shipment: any) =>
+      accessor: (shipment: LonghaulShipmentRow) =>
         firstPresent([shipment.last_name, shipment.pegasus_shadow?.operations_name]),
       label: 'Operations',
     },
@@ -148,7 +149,7 @@ export function ShipmentDetail({
     { accessor: '', label: '' },
 
     {
-      accessor: (shipment: any) => (
+      accessor: (shipment: LonghaulShipmentRow) => (
         <Link to={`/trip/${shipment.TripMaster_id}`}>{shipment.TripMaster_id}</Link>
       ),
       label: 'Trip Id',
@@ -160,7 +161,7 @@ export function ShipmentDetail({
     },
 
     {
-      accessor: (shipment: any) => (
+      accessor: (shipment: LonghaulShipmentRow) => (
         <span>
           {joinPresent([shipment.oa_id, shipment.oa_name], ' - ')}
           <ShipmentCoverage onUpdate={ifUpdateShadow} />
@@ -170,7 +171,8 @@ export function ShipmentDetail({
     },
 
     {
-      accessor: (shipment: any) => joinPresent([shipment.da_id, shipment.da_name], ' - '),
+      accessor: (shipment: LonghaulShipmentRow) =>
+        joinPresent([shipment.da_id, shipment.da_name], ' - '),
       label: 'D/A',
     },
 
@@ -182,7 +184,7 @@ export function ShipmentDetail({
     { accessor: 'stgindicator', lable: '' },
 
     {
-      accessor: (shipment: any) => formatDate(shipment.survey_date),
+      accessor: (shipment: LonghaulShipmentRow) => formatDate(shipment.survey_date),
       label: 'Survey Date',
     },
     {
@@ -190,7 +192,7 @@ export function ShipmentDetail({
       label: 'Est Weight',
     },
     {
-      accessor: (shipment: any) => (
+      accessor: (shipment: LonghaulShipmentRow) => (
         <span>
           {`${weight || shipment.pegasus_shadow?.weight || ''}`}
           <ShipmentWeight onUpdate={onUpdateWeight} />
@@ -205,31 +207,34 @@ export function ShipmentDetail({
     },
 
     {
-      accessor: (shipment: any) => createFromToDateString(shipment.pack_date2, shipment.plan_pack),
+      accessor: (shipment: LonghaulShipmentRow) =>
+        createFromToDateString(shipment.pack_date2, shipment.plan_pack),
       label: 'Pack Date Spread',
     },
     {
-      accessor: (shipment: any) => formatDate(shipment.pack_actual),
+      accessor: (shipment: LonghaulShipmentRow) => formatDate(shipment.pack_actual),
       label: 'Actual Pack Date',
     },
     {
-      accessor: (shipment: any) => createFromToDateString(shipment.load_date2, shipment.plan_load),
+      accessor: (shipment: LonghaulShipmentRow) =>
+        createFromToDateString(shipment.load_date2, shipment.plan_load),
       label: 'Load Date Spread',
     },
     {
-      accessor: (shipment: any) => formatDate(shipment.load_actual),
+      accessor: (shipment: LonghaulShipmentRow) => formatDate(shipment.load_actual),
       label: 'Actual Load Date',
     },
     {
-      accessor: (shipment: any) => formatDate(shipment.sit_date),
+      accessor: (shipment: LonghaulShipmentRow) => formatDate(shipment.sit_date),
       label: 'SIT Date',
     },
     {
-      accessor: (shipment: any) => createFromToDateString(shipment.del_date2, shipment.plan_del),
+      accessor: (shipment: LonghaulShipmentRow) =>
+        createFromToDateString(shipment.del_date2, shipment.plan_del),
       label: 'Del Date Spread',
     },
     {
-      accessor: (shipment: any) => formatDate(shipment.del_actual),
+      accessor: (shipment: LonghaulShipmentRow) => formatDate(shipment.del_actual),
       label: 'Actual Del Date',
     },
 
@@ -245,11 +250,12 @@ export function ShipmentDetail({
       label: 'Origin Address',
     },
     {
-      accessor: (shipment: any) => createStreetString(shipment.shipper_add1, shipment.shipper_add2),
+      accessor: (shipment: LonghaulShipmentRow) =>
+        createStreetString(shipment.shipper_add1, shipment.shipper_add2),
       label: '',
     },
     {
-      accessor: (shipment: any) =>
+      accessor: (shipment: LonghaulShipmentRow) =>
         createCityStateZipString(
           shipment.shipper_city,
           shipment.shipper_state,
@@ -271,12 +277,12 @@ export function ShipmentDetail({
       // `extradel` "EXTRA DELIVERY" flag. Reading it here left the street blank
       // on every order without an extra delivery and showed the wrong address
       // on the orders that had one.
-      accessor: (shipment: any) =>
+      accessor: (shipment: LonghaulShipmentRow) =>
         createStreetString(shipment.consignee_name1, shipment.consignee_name2),
       label: '',
     },
     {
-      accessor: (shipment: any) =>
+      accessor: (shipment: LonghaulShipmentRow) =>
         createCityStateZipString(
           shipment.consignee_city,
           shipment.consignee_state,
@@ -287,7 +293,8 @@ export function ShipmentDetail({
     },
 
     {
-      accessor: (shipment: any) => joinPresent([shipment.extrapu, shipment.extradel], '  '),
+      accessor: (shipment: LonghaulShipmentRow) =>
+        joinPresent([shipment.extrapu, shipment.extradel], '  '),
       label: '',
     },
 
@@ -313,7 +320,7 @@ export function ShipmentDetail({
     { accessor: '', label: '' },
 
     {
-      accessor: (shipment: any) => {
+      accessor: (shipment: LonghaulShipmentRow) => {
         const lngDisComments = shipment.pegasus_shadow?.lng_dis_comments ?? ''
         const firstName = (user?.first_name ?? '').toLowerCase()
         return (
@@ -353,12 +360,12 @@ export function ShipmentDetail({
     { accessor: '', label: '' },
 
     {
-      accessor: (shipment: any) => createFromToDateString(shipment.ship_load_date),
+      accessor: (shipment: LonghaulShipmentRow) => createFromToDateString(shipment.ship_load_date),
       label: 'APU In',
     },
 
     {
-      accessor: (shipment: any) => createFromToDateString(shipment.rule19_out_date),
+      accessor: (shipment: LonghaulShipmentRow) => createFromToDateString(shipment.rule19_out_date),
       label: 'APU Out',
     },
 
@@ -382,8 +389,10 @@ export function ShipmentDetail({
 
   const dispatch = useAppDispatch()
 
+  // `null` deselects — the thunk short-circuits to fetchShipmentSuccess(null),
+  // which is how the pane closes.
   const selectShipment = useCallback(
-    (shipment: any) => dispatch(selectShipmentAction(shipment) as any),
+    (shipment: LonghaulShipmentRow | null) => dispatch(selectShipmentAction(shipment) as any),
     [dispatch],
   )
 

@@ -104,16 +104,46 @@ workspace package — unavoidable).
 `last_name` makes `tsc` fail with "Unused '@ts-expect-error' directive", so the test genuinely
 proves an unknown key is rejected.
 
-### Phase 2 — type the detail pane (where the payoff lands)
+### Phase 2 — type the detail pane (where the payoff lands) — DONE
 
-- [ ] Type the redux slice: `shipments.selectedShipment: LonghaulShipmentRow | null`
-- [ ] Replace `(shipment: any)` with `(shipment: LonghaulShipmentRow)` across ShipmentDetail's
-      25 accessors
-- [ ] Resolve every error `tsc` surfaces — each is either a drifted name (bug) or a genuinely
-      missing enrichment key (extend the type). Record which in the plan as you go.
+- [x] `@pegasus/longhaul-contracts` added to `apps/tenant-web` deps
+- [x] Redux slice: `selectedShipment: LonghaulShipmentRow | null`, and
+      `fetchShipmentSuccess` takes `PayloadAction<LonghaulShipmentRow | null>`
+- [x] All 25 ShipmentDetail accessors take `LonghaulShipmentRow`
+- [x] The `happyShipment` test fixture is `satisfies LonghaulShipmentRow`, so a fixture cannot
+      drift onto a non-column either
 
-**Files:** `containers/ShipmentDetail/index.tsx`, `redux/shipments/index.ts`, their tests.
-**Risk:** ShipmentDetail is a merge magnet — we touched it three times this week. Land fast, rebase.
+**`tsc` surfaced 4 errors. NONE was a drifted name** — #569/#570/#571 had already cleared the
+pane, which is itself the useful result: the type confirms the detail pane is clean. All four
+were plumbing:
+
+1. `API.jumpToOrder({ order_num })` — the wrapper declared `order_num: number` while its own
+   implementation (`jump-to-order.ts`) takes `unknown` and only interpolates it into a URI.
+   Coercing at the call site (`Number(...)`) **changed behavior** — it broke a test that
+   asserts the string `'12345'` is passed through — so the fix is to drop the wrapper's
+   gratuitous narrowing to `unknown`, matching the impl. A typing phase must not change what
+   we send.
+2. - 3. `selectShipment(null)` ×2 — the blanket `(shipment: any)` → `(shipment:
+LonghaulShipmentRow)` replace also caught the local deselect callback, which legitimately
+        takes null. Typed `LonghaulShipmentRow | null`. Self-inflicted by the sweep, not a bug.
+3. `ShipmentCard`'s `active={selectedShipment && …}` became `null | boolean` against a
+   `boolean | undefined` prop once the slice was typed. Now `!!selectedShipment && …`, and its
+   `(selectedShipment as any)` cast is gone. Strictly a Phase 3 file, but the slice typing
+   forces it, so it lands here to keep the build green.
+
+**Verified the protection is real, not decorative:** re-introducing `OpsLastName` and
+`del_address2` in the pane makes `tsc` fail with _"Property 'OpsLastName' does not exist on
+type 'LonghaulShipmentRow'. Did you mean 'last_name'?"_ — it even names the right column. Same
+for the fixture (`OpsLastName` → _"Did you mean to write 'last_name'?"_).
+
+**Known limitation, worth stating:** the type catches names that are not columns. It does NOT
+catch a real column used for the wrong purpose — re-introducing `del_address1` as the
+destination street (the #569 bug) still compiles, because `del_address1` IS a column (the
+extra-delivery address). Only `del_address2` errored. Semantic misuse stays a review concern.
+
+**Files:** `apps/tenant-web/package.json` (+dep), `redux/shipments/index.ts`,
+`containers/ShipmentDetail/index.tsx` + test, `containers/Shipments/components/ShipmentCard/index.tsx`,
+`utils/api/index.ts`, `package-lock.json`.
 
 ### Phase 3 — the remaining consumers
 

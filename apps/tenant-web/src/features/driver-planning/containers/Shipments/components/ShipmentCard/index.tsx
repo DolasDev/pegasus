@@ -277,7 +277,10 @@ export function ShipmentCard({
 
   return (
     <Card
-      active={selectedShipment && (selectedShipment as any).order_num === shipment.order_num}
+      // `!!` because `active` is `boolean | undefined` and a null
+      // selectedShipment would otherwise make this `null`. The `as any` that
+      // used to be here is gone — the slice types selectedShipment now.
+      active={!!selectedShipment && selectedShipment.order_num === shipment.order_num}
       onClick={(e: any) => {
         e.stopPropagation()
         selectShipment(shipment)

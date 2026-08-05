@@ -40,7 +40,11 @@ vi.mock('./components/DispatchNote', () => ({
 
 import { ShipmentDetail } from './index'
 import { API } from '../../utils/api'
+import type { LonghaulShipmentRow } from '@pegasus/longhaul-contracts'
 
+// Typed, so a fixture cannot drift onto a field the view does not project —
+// the same protection the component now has. `satisfies` keeps the literal's
+// narrow types for the assertions below.
 const happyShipment = {
   order_num: '12345',
   shipper_name: 'ACME Shipper',
@@ -76,7 +80,7 @@ const happyShipment = {
     lng_dis_comments: 'hello @Sam there',
     operations_name: null as string | null,
   },
-}
+} satisfies LonghaulShipmentRow
 
 const sampleUser = { code: 'U1', first_name: 'Sam' }
 
