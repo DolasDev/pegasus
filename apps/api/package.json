@@ -35,6 +35,7 @@
     "@noble/curves": "^1.6.0",
     "@peculiar/x509": "^2.0.0",
     "@pegasus/domain": "*",
+    "@pegasus/longhaul-contracts": "*",
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.0",
     "@temporalio/client": "1.18.1",
