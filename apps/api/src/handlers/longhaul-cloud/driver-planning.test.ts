@@ -158,6 +158,27 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
     ])
   })
 
+  // Ready Date / State / City are read off whichever trip the planning query
+  // picks, so an Unplanned/Pending/Offered trip must not be picked at all — the
+  // driver hasn't committed to it. MasterTripStatus.status_id is ordered
+  // (0 Unplanned … 3 Accepted, 4 In-Progress, 5 Completed), so the predicate is
+  // `>= 3`, on top of (not instead of) the internal_status cancellation check.
+  it('picks the latest trip at Accepted or greater, still excluding cancelled', async () => {
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    executeSqlMock
+      .mockResolvedValueOnce({ recordset: [planningRow()], rowsAffected: [] })
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // deliveries
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // ensure
+      .mockResolvedValueOnce({ recordset: [], rowsAffected: [] }) // confirmed
+
+    await buildApp().request('/onprem/longhaul/driver-planning')
+
+    const planningSql = executeSqlMock.mock.calls[0]![1] as string
+    // NULL TripStatus_id (never planned) coerces to 0 → excluded.
+    expect(planningSql).toContain('ISNULL(tm.TripStatus_id, 0) >= 3')
+    expect(planningSql).toContain("ISNULL(tm.internal_status, '') <> 'canceled'")
+  })
+
   it('returns one row per shipment from the batch recordset[1], with orderNum', async () => {
     findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
     executeSqlMock
