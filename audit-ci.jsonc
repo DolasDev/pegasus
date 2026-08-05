@@ -16,19 +16,22 @@
   // Advisories listed here are explicitly accepted. Each entry MUST have a tracking note
   // explaining why it's safe and when it can be removed.
   "allowlist": [
-    // GHSA-3jxr-9vmj-r5cp / GHSA-mh99-v99m-4gvg — two brace-expansion ReDoS advisories
-    // (both high). The only vulnerable copy left is bundled INSIDE aws-cdk-lib
+    // GHSA-3jxr-9vmj-r5cp / GHSA-mh99-v99m-4gvg / GHSA-rgw5-rvv9-x895 — three
+    // brace-expansion DoS advisories (all high), each published above the previous
+    // one's patch floor (<5.0.7, <5.0.8, <5.0.9 respectively). The only vulnerable
+    // copy left is bundled INSIDE aws-cdk-lib
     // (node_modules/aws-cdk-lib/node_modules/brace-expansion@5.0.6 via its vendored
     // minimatch@10), which an npm `overrides` floor cannot reach — overrides do not
     // apply to a published package's bundledDependencies. aws-cdk-lib 2.261.0 still
-    // bundles the vulnerable version (verified 2026-07-24). The reachable, non-bundled
-    // copies are patched: the 1.x line at brace-expansion@1.1.16, and the 5.x line
-    // forced to >=5.0.8 by the `brace-expansion@5` override in package.json (added
-    // 2026-07-24 when GHSA-mh99-v99m-4gvg, range <=5.0.7, flipped the gate). Exposure
-    // is synth/CDK-time only over trusted inputs — not a runtime path. Remove each
-    // entry once aws-cdk-lib bundles brace-expansion >=5.0.8 (then audit-ci's
-    // "unused allowlist entry" report flags it).
+    // bundles the vulnerable version (verified 2026-08-05). The reachable, non-bundled
+    // copies are patched: the 1.x line at brace-expansion@1.1.16 (below every
+    // advisory's >=4.0.0 floor anyway), and the 5.x line forced to >=5.0.9 by the
+    // `brace-expansion@5` override in package.json (raised 2026-08-05 when
+    // GHSA-rgw5-rvv9-x895 flipped the gate). Exposure is synth/CDK-time only over
+    // trusted inputs — not a runtime path. Remove each entry once aws-cdk-lib bundles
+    // brace-expansion >=5.0.9 (then audit-ci's "unused allowlist entry" report flags it).
     "GHSA-3jxr-9vmj-r5cp",
-    "GHSA-mh99-v99m-4gvg"
+    "GHSA-mh99-v99m-4gvg",
+    "GHSA-rgw5-rvv9-x895"
   ]
 }
