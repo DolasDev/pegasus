@@ -139,8 +139,11 @@ interface ReadyGuess {
 }
 
 function getReadyGuess(driver: DriverPlanningRow): ReadyGuess {
-  // Use the chronologically FINAL activity on the driver's latest trip — any
-  // activity type — by reading the last `shipments` entry. Each shipment row
+  // Use the chronologically FINAL activity on the driver's latest COMMITTED
+  // trip — any activity type — by reading the last `shipments` entry. (The API
+  // only sends activities for a trip at Accepted or beyond and not cancelled;
+  // an Offered/Pending trip the driver hasn't taken on never moves the ready
+  // position — see the api handler's TRIP_STATUS_ACCEPTED.) Each shipment row
   // already represents its own final activity; the array is sorted ascending
   // by effective date so the trailing element wins. Falls back to the last
   // delivery (legacy RDEL list) when no shipments are present.
