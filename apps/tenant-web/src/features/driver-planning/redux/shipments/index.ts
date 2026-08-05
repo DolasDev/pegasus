@@ -1,6 +1,7 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit'
 import { API } from '../../utils/api'
 import type { AppDispatch } from '../store'
+import type { LonghaulShipmentRow } from '@pegasus/longhaul-contracts'
 import { coerceListPayload } from '../lib/coerce-list-payload'
 import { notifyError } from '../../components/Snackbar/notify'
 
@@ -27,7 +28,13 @@ const DEFAULT_QUERY: any = {
 export interface ShipmentsState {
   loading: boolean
   loadingSelectedShipment: boolean
-  selectedShipment: any
+  /**
+   * The row the detail pane renders. Typed against the view's column manifest
+   * (see @pegasus/longhaul-contracts) so an accessor naming a field the view
+   * does not project is a compile error rather than a blank cell — the failure
+   * mode behind #569, #570 and #571.
+   */
+  selectedShipment: LonghaulShipmentRow | null
   shipmentList: any[]
   query: any
   haulModes: any[]
@@ -116,7 +123,7 @@ const shipmentsSlice = createSlice({
     fetchShipmentStart(state, _action: PayloadAction<void>) {
       state.loadingSelectedShipment = true
     },
-    fetchShipmentSuccess(state, action: PayloadAction<any>) {
+    fetchShipmentSuccess(state, action: PayloadAction<LonghaulShipmentRow | null>) {
       state.selectedShipment = action.payload
       state.loadingSelectedShipment = false
     },

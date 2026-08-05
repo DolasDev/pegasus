@@ -100,7 +100,11 @@ export const API = {
     fetchHelper('patchShipmentShadow', shipmentShadowDto),
   // Opens the order in the locally-installed Pegasus desktop app via a custom
   // URI scheme (see utils/jump-to-order.ts). Fire-and-forget; config-gated.
-  jumpToOrder: (args: { order_num: number }) => jumpToOrderImpl(args),
+  // `unknown` matches jumpToOrderImpl's own signature — it only interpolates the
+  // value into a URI. The old `number` was a gratuitous narrowing that a typed
+  // shipment row (order_num is `string | number | null`) then failed to satisfy;
+  // coercing at the call site would have silently changed what we send.
+  jumpToOrder: (args: { order_num: unknown }) => jumpToOrderImpl(args),
   fetchFilterOptions: () => fetchHelper('fetchFilterOptions'),
   // Batched bootstrap reference data — one cloud request collapses what used
   // to be seven (drivers, trip-statuses, states, zones, planners, dispatchers,
