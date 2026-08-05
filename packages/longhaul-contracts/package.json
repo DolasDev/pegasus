@@ -1,0 +1,16 @@
+{
+  "name": "@pegasus/longhaul-contracts",
+  "version": "0.1.0",
+  "description": "Contracts for the legacy longhaul MSSQL surface — the v_longhaul_shipments_v2 column manifest and the shipment row types the API and tenant-web both read.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "*",
+    "vitest": "^4.1.5"
+  },
+  "private": true
+}
