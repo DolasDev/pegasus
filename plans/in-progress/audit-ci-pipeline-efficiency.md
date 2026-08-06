@@ -267,6 +267,30 @@ Phase 2:
 - **Wall clock for a warm code-change run ≤ 2m45s** (baseline 3m20s); Test job ≤ 2m25s.
 - Billed minutes (sum of job durations in `gh run view --json jobs`) ≤ 5.5 min (baseline ~7.5).
 
+> **MEASURED 2026-08-06 — Phase 2's three targets are all still MISSED. One is a
+> real, unfinished optimization; the other two are explained by work added since.**
+>
+> - **`Run ./.github/actions/setup` costs 51–54 s in every job** (run
+>   31045211891, step-level). The ≤5 s cache-hit target above is not being met —
+>   `setup-node`'s npm cache skips the registry download but not extraction and
+>   linking, which is the bulk of the ~50 s (Finding 4 predicted exactly this and
+>   the composite action did not solve it). At 4 jobs/run that is **~3.4 billed
+>   min**, the single biggest recoverable chunk left, with ~50 s of it on the
+>   critical path. **This is the actionable item** — an `actions/cache` on
+>   `node_modules` keyed by `package-lock.json` hash, or an npm-ci-free warm
+>   path, is the obvious next move. Not attempted yet.
+> - Wall clock **211–272 s** (target ≤165 s) and billed **383–562 s** (target
+>   ≤330 s) on code PRs; docs/plans-only runs are **18–20 s wall / 13–17 s
+>   billed**, which clears the <1 min Phase-3 target with 3× headroom.
+> - The gap is not a regression: `Run tests` grew 109 s → **144 s** when the
+>   Wave-3 coverage ratchets added ~1,800 api tests (`test` has turbo caching
+>   disabled repo-wide by design, so no remote-cache win applies), and the
+>   pipeline gained `migration-safety`, three Python jobs, and e2e browser
+>   coverage after these targets were set against a 5-job pipeline. **The targets
+>   were never re-baselined when Waves 2–3 deliberately added work** — re-baseline
+>   them alongside the install fix rather than treating the numbers as a
+>   regression. Full record: `audit-00-master-plan.md` § Acceptance Criteria.
+
 Phase 3:
 
 - audit-ci: `gh run view <id> --json jobs --jq '.jobs[] | select(.name=="Lint") | .steps[].name'` includes "Audit dependencies"; Test job no longer does. Force-verify the gate still bites: add a fake high advisory id to a scratch branch's allowlist removal test or simply confirm `npx --no-install audit-ci --config ./audit-ci.jsonc` exits 0 locally.
