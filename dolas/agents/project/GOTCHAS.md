@@ -630,3 +630,51 @@ pair went 5/8 failing → 0/10, the whole directory 2/10 → 0/6.
 The general rule: **a GLOBAL row has no tenant scope**, so a test publishing one is
 publishing it for every concurrently-running file. Overlay an integration id whose
 runtime behavior no other DB-backed test asserts, and clean up in `afterAll`.
+
+## A summed field name that isn't a column silently writes 0 — and overwrites good data
+
+_Found 2026-08-06 from a user report that "Total Actual Weight" showed 0 on the Trip
+screen. Fifth instance of the drifted-field-name class (#569/#570/#571/#575), and the
+first where the wrong name caused a **write** rather than a blank cell._
+
+`computeTripSummary` (`apps/api/src/lib/longhaul-cloud-trip-summary.ts`) summed
+`total_actual_wt`, counted super-VIPs via `supervip`, and read the state ids off
+nested `origin_state`/`destination_state` objects. None of those is a column on
+`v_longhaul_shipments_v2`. Each resolved to `undefined`, and `Number(undefined) || 0`
+is a perfectly quiet `0`. The results are then **persisted** by `SUMMARY_UPDATE_SQL`,
+so every activity save, trip save, and `/trips/:id/summary` call wrote 0/0/null over
+correct legacy values. 337 NWI trips (4,289,839 lbs) were zeroed before it was caught.
+
+The real columns (verified against prod `INFORMATION_SCHEMA`):
+
+| read as                 | actually                                                      |
+| ----------------------- | ------------------------------------------------------------- |
+| `total_actual_wt`       | `weight` (int, ordinal 46 — the pair to `total_est_wt` at 45) |
+| `supervip`              | `idc_break` (same as #571)                                    |
+| `origin_state.state_id` | `shipper_state` → `v_longhaul_states.geo_code` → `.id`        |
+
+Three things made this survive review for months:
+
+1. **A confident comment asserting the opposite.** The file header claimed the on-prem
+   app also computed 0 here and that the port was "faithfully replicating a quirk". It
+   was not: prod trip 16575 stores `total_actual_lbs = 7900 = 2480 + 1540 + 3880`, the
+   `weight` of its three load shipments. A comment explaining why a value is wrong is
+   not evidence that it should be — check it against the database.
+2. **A test that pinned the bug.** `expect(s.total_actual_lbs).toBe(0) // absent on the
+view` locked in the broken behavior, so the fix looked like a regression.
+3. **`Record<string, unknown>` on the row type**, which makes every typo legal — the
+   exact reason `@pegasus/longhaul-contracts` exists. The summary path simply never
+   adopted it. It does now: `SummaryShipmentRow` extends `LonghaulShipmentViewRow` and
+   `sumShipmentField` takes a `LonghaulShipmentViewColumn`, so a bad name is a compile
+   error.
+
+Also worth knowing: **`TripMaster.total_actual_lbs` is `bigint`, which the `mssql`
+driver returns as a string.** `"0"` is truthy, so the UI's `trip.total_actual_lbs ||
+'N/A'` rendered a literal `0` rather than the `N/A` a numeric 0 would have produced.
+When a numeric column's fallback behaves oddly in the browser, check whether it is
+bigint before assuming the value is wrong.
+
+Repair for already-zeroed rows: `scripts/backfill-trip-summary-actuals.ts` (dry run by
+default, `--apply` to write). It only fills columns that are currently empty — a stored
+non-empty value always wins — so it is safe to re-run, but the code fix must be
+deployed first or the next save re-zeroes the repaired trips.
