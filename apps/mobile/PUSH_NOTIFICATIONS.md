@@ -43,12 +43,13 @@ app either. Map drivers in Settings → Users.
 
 ## Status
 
-|                                       | State                                                    |
-| ------------------------------------- | -------------------------------------------------------- |
-| Backend (outbox, forwarder, triggers) | ✅ Live                                                  |
-| Mobile registration + tap routing     | ✅ Live                                                  |
-| Android delivery                      | ❌ Blocked — needs Firebase (below)                      |
-| iOS delivery                          | ❌ Blocked — needs an Apple Developer Program membership |
+|                                       | State                                                      |
+| ------------------------------------- | ---------------------------------------------------------- |
+| Backend (outbox, forwarder, triggers) | ✅ Live                                                    |
+| Mobile registration + tap routing     | ✅ Live                                                    |
+| Android delivery                      | ❌ Blocked — needs Firebase (Step 1)                       |
+| iOS delivery                          | ⏳ Apple enrollment done; needs `eas credentials` (Step 2) |
+| iOS signed device build in CI         | ✅ `ios_build=device` on `mobile-release.yml`              |
 
 Until the credentials exist, the failure is silent by design: `registerForPush`
 catches and logs, so no token is ever registered and outbox rows simply find no
@@ -106,26 +107,66 @@ is needed after the upload.
 
 ## Step 2 — iOS (APNs)
 
-**No Firebase.** APNs is Apple's own transport and EAS manages the key.
+**No Firebase.** APNs is Apple's own transport and EAS manages the key. The
+Apple Developer Program membership (the long pole) is **done** — enrolled
+2026-08.
 
-1. **Enroll in the Apple Developer Program** ($99/yr,
-   <https://developer.apple.com/programs/>). This is the long pole — allow days,
-   and organization enrollment needs a D-U-N-S number. Everything below is
-   blocked on it.
-2. Fill in the real values in `eas.json` → `submit.production.ios`
-   (`appleId`, `ascAppId`, `appleTeamId` are `PLACEHOLDER` today).
-3. **Generate the APNs key** — from `apps/mobile`:
+Nothing is linked to EAS yet: `iosAppCredentials` is still `[]`. Enrolling at
+Apple and wiring EAS are separate acts, and both steps below need an
+interactive Apple login, so they can't be scripted in CI.
+
+1. **Set up signing + the APNs key** — from `apps/mobile`, one interactive run
+   creates the distribution certificate, the provisioning profile, and the push
+   key, and stores all three on EAS:
 
    ```
    eas credentials --platform ios
    ```
 
-   Choose `production` → **Push Notifications: Manage your Apple Push
-   Notifications Key** → **Set up a new key** (EAS creates and stores the .p8).
+   Choose the `production` profile → **Push Notifications: Manage your Apple
+   Push Notifications Key** → **Set up a new key**. Also let it create the
+   distribution certificate + provisioning profile when prompted.
 
-4. **Build a signed device build** — the current iOS CI build is an _unsigned
-   simulator_ build, and simulators cannot receive remote push (no APNs device
-   token). Testing needs a real device build, which needs step 1.
+2. **Register the test device** — an ad-hoc build only installs on devices in
+   its provisioning profile:
+
+   ```
+   eas device:create
+   ```
+
+   Pick "Website" and open the link on the iPhone (or scan the QR), then install
+   the profile Apple serves. Skipping this makes the `device` build fail in CI:
+   `--non-interactive` can't stop to ask which device to provision.
+
+3. **Build it through CI** — never `eas build` locally (#541); the workflow
+   bakes the environment config:
+
+   ```
+   gh workflow run mobile-release.yml --ref main -f env=prod -f platform=ios -f ios_build=device
+   ```
+
+   `ios_build=device` uses the `ios-device` eas.json profile: signed, ad-hoc,
+   internally distributed, and built against the **production** EAS environment
+   (the env-var set verified correct in #541 — `preview` is still suspect, and
+   EAS's stored env vars override the `.env` CI writes). Install from the build
+   page: <https://expo.dev/accounts/dolas.dev/projects/moving-storage-driver/builds>
+
+4. **Verify** exactly as in the Android step — log in as a mapped driver, accept
+   the prompt, confirm `GET /api/v1/device-tokens` returns a row, reassign a
+   trip, expect a push within ~1 min.
+
+> A **simulator** build can never receive push — it has no APNs device token —
+> so `ios_build=simulator` (the default) stays a pure CI signal.
+
+### Still open for iOS: App Store submission
+
+`ios_build=store` builds a TestFlight/App Store `.ipa`, but there is **no iOS
+auto-submit** — `eas.json` → `submit.production.ios` still holds `PLACEHOLDER`
+for `ascAppId`/`appleTeamId`. Wiring it needs an App Store Connect **API key**
+(issuer id + key id + `.p8`) uploaded via `eas credentials`, mirroring the
+EAS-hosted Google service-account key on the Android side — that avoids putting
+an Apple ID and app-specific password in the repo. Do this when you actually
+want TestFlight distribution; push testing does not need it.
 
 ## Optional hardening
 
