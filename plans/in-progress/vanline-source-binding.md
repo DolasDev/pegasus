@@ -1,7 +1,14 @@
 # Pluggable data sources — correlation, declarative fetch, and entity→source binding
 
-> **Status: DESIGN — not approved for implementation.** Branch: `docs/vanline-source-binding`
-> (plan-only PR; the implementing work will branch separately per phase).
+> **Status: DESIGN — review questions resolved 2026-08-06; still not approved for
+> implementation.** Plan-only; the implementing work branches separately per phase.
+
+> **Decisions taken 2026-08-06** (see "Decisions" at the foot for the reasoning):
+>
+> 1. **On-demand fetch stays.** Short-TTL read-through cache, **no single-flight** in v1.
+> 2. **Binding is a tenant-level document**, not a column on `IntegrationConfig`.
+> 3. **Capability names are not frozen.** The floor declares its capability list; only
+>    `settlements` is needed to ship the pilot.
 
 **Goal:** let a tenant fetch the same _kind_ of information — settlements first — from
 whichever external source it actually uses (Atlas, Allied, United, a billing bureau, a TMS),
@@ -92,7 +99,8 @@ partner that mints its own surrogate (Atlas's settlement `Id` is exactly that).
 ### C2. `fetch` — the pull counterpart to `inbound`
 
 A new nullable `fetch` Json column on `IntegrationConfig`, holding **named operations** whose
-names are fixed by the floor (so every settlement source answers to `settlements`):
+names come from the floor's declared capability list (so every settlement source answers to
+`settlements`):
 
 ```json
 "fetch": {
@@ -117,11 +125,38 @@ Secrets are **never** inlined: header credentials go through `secretHeaders` (#5
 resolves server-side. A `{{secret:…}}` substitution is deliberately NOT offered, so a
 credential can never be templated into a URL or query string.
 
+**Capability names are not frozen by this phase.** The **floor** declares its capability list
+(`capabilities: ['settlements']` on `financial_settlement`); the `fetch` block and the binding
+table both validate their operation/capability names against it at publish. So naming is a
+floor change, not a schema migration, and adding or renaming later costs one code edit plus a
+republish.
+
+Only **`settlements`** is needed to ship the pilot. Deliberately do not invent
+`documents`/`status`/`estimates` now: with one example there is nothing to check a naming
+scheme against, and a name guessed now is a name we would be stuck matching later. Name the
+second capability when a second domain is real — at that point there are two cases to
+generalize over, which is the first moment the decision is actually informed.
+
 ### C3. Binding — (entityType, capability) → integration
 
 Key on **(entity type, capability)**, not entity → integration: a tenant may take settlements
-from source A and documents from source B for the same shipment. Modeled as a decision table,
-matching the existing rules format:
+from source A and documents from source B for the same shipment.
+
+**Decision: binding is its own TENANT-LEVEL document**, not a column on `IntegrationConfig`.
+Three consequences that follow from that and shape the build:
+
+- **One place answers "where does this tenant get X?"** Spread across per-integration configs,
+  that question requires reading every config and mentally unioning them — and the failure mode
+  we most need to prevent (two sources claiming the same capability) is invisible until you do.
+  A single document makes overlap detection a property of one row set.
+- **Lifecycles decouple.** Re-pointing settlements from Atlas to Allied is a routing change, not
+  a mapping change; it should not bump an overlay version or re-run that overlay's corpus gate.
+  Conversely a mapping fix should not touch routing.
+- **Cost:** its own publish + validation path, its own RBAC action (`ManageIntegrationBinding`),
+  and its own versioning/rollback. Do not reuse `IntegrationConfig`'s publish machinery
+  wholesale — the shapes differ — but do reuse the _gate pattern_ (static checks + corpus).
+
+Modeled as a decision table, matching the existing rules format:
 
 ```json
 [
@@ -155,8 +190,9 @@ means "when we last wrote a row", not "when this was true at the partner". A gen
 asked.
 
 - Add `fetchedAt`, distinct from `updatedAt`.
-- Freshness is **explicit at the call site**: `max_age` / `refresh=True`. No implicit default
-  that silently serves stale state.
+- Freshness is **explicit at the call site**: `max_age` / `refresh=True`, over a short default
+  TTL (start at 60s, per-capability overridable). The default must be _short enough that
+  serving it is defensible_; anything longer belongs to an explicit `max_age`.
 - The response **always** states provenance: `source: "cached" | "fetched"` and `as_of`. Same
   discipline as `attempts` on `call_external` — if the platform did something non-obvious on
   your behalf, the payload says so.
@@ -168,11 +204,24 @@ the enforced policies are 403 at developer role). On-demand fetch against an unk
 how you discover the limit in production, and N users refreshing the same shipment is N partner
 calls.
 
-The outbound OAuth token cache is the direct precedent: a per-container Map was **not** enough
-in a horizontally-scaled Lambda (#521/#532/#535), which is why the shared L2 tier exists. Same
-conclusion here — either single-flight through a shared tier, or make the cache authoritative
-with a short TTL and treat force-refresh as the explicit, rate-limited path. **Design the
-freshness policy and the rate-limit policy as one thing**, not two.
+The outbound OAuth token cache is the near precedent: a per-container Map was **not** enough in
+a horizontally-scaled Lambda (#521/#532/#535), which is why the shared L2 tier exists.
+
+**Decision: short-TTL read-through, no single-flight in v1.** The OAuth case is _not_ the same
+problem. There, a duplicate mint burned a rate-limited credential and the duplicate was
+correctness-adjacent. Here the fetches are **idempotent GETs**, so a concurrent duplicate is
+_wasteful, not wrong_. A short TTL bounds the exposure: the first request populates the cache
+and everything inside the window hits it, so the worst case is a handful of redundant calls in
+the miss window rather than one per user.
+
+Building the coordination tier up front would be paying the expensive part of the design for a
+problem we have no evidence we have. The provenance fields from C4 (`source`, `as_of`) plus the
+existing `attempts` make the miss/duplicate rate **directly observable in production** — so the
+decision to add single-flight can be taken on data instead of on speculation. Revisit if
+observed duplicate-fetch rates matter against the (still unpublished) Agent-Limited quota.
+
+**Design the freshness policy and the rate-limit policy as one thing**, not two — that part
+stands; the TTL _is_ the rate control.
 
 ---
 
@@ -208,14 +257,20 @@ correlation key the cache lookup cannot happen.
 
 - `[ ]` `fetchedAt` on `IntegrationProjection` + migration
 - `[ ]` `max_age` / `refresh` on the fetch surface; `source` + `as_of` in every response
-- `[ ]` Single-flight or TTL policy per C5, with the decision recorded in the plan
+- `[ ]` Short default TTL (60s, per-capability overridable). **No single-flight** — decided in
+  C5; the provenance fields make the duplicate rate observable so this can be revisited on data
+- `[ ]` Emit a metric/log for cache hit vs miss vs duplicate-in-flight, so "do we need
+  single-flight?" is answerable later without a code change
 
 ### Phase 4 — Entity fact source + binding (Gap C) `[ ]`
 
 - `[ ]` Entity fact derivation (Pegasus entity → `Facts`) — **scope this down first**; start
   with the handful of shipment fields binding actually needs, not a general projection
-- `[ ]` `IntegrationBinding` decision table (config-published), reusing `PredicateSchema`
-- `[ ]` Deterministic resolver + publish-time overlap rejection via the existing gate
+- `[ ]` `IntegrationBinding` — **tenant-level model** + migration (not a column on
+  `IntegrationConfig`), reusing `PredicateSchema` for `when`
+- `[ ]` Its own publish/validate path, `ManageIntegrationBinding` Cedar action, and
+  versioning/rollback — reuse the gate _pattern_, not `IntegrationConfig`'s machinery
+- `[ ]` Deterministic resolver + publish-time rejection of two rules claiming one capability
 - `[ ]` `resolve_source(capability, local_entity_type, local_entity_id)` in the SDK
 - `[ ]` One generic settlements workflow in `workflows-stdlib` proving N sources, zero code
 
@@ -251,16 +306,49 @@ correlation key the cache lookup cannot happen.
   configured source on demand", just with the integration named explicitly) and defer binding.
 - **SSRF posture unchanged** — resolved URLs still go through `assertDeliverableUrl`. The fetch
   block adds a path/query template, not a new egress.
-- **Unknown rate budget** — see C5. Worth resolving with Atlas before Phase 3 lands.
+- **Unknown rate budget** — see C5. Worth resolving with Atlas before Phase 3 lands, since it is
+  the only input that would move the TTL default off judgement.
+- **Deferring single-flight is a bet, and it is instrumented as one.** If duplicate fetches turn
+  out to matter, the fix is additive (a shared lease tier, the L2 pattern from #521/#532/#535)
+  and does not invalidate anything built in Phases 1–3. The failure mode to avoid is shipping it
+  _without_ the hit/miss/duplicate metric — that is what would turn a reversible bet into a
+  guess, so treat that checklist item in Phase 3 as non-optional.
 
-## Open questions for review
+## Decisions (2026-08-06)
 
-1. Is on-demand fetch per user action the real requirement, or is a scheduled sync + read from
-   cache sufficient? That answer changes C5 substantially and may remove single-flight entirely.
-2. Should binding live on `IntegrationConfig` (per-integration, self-describing) or as its own
-   tenant-level document (one table, easier to reason about globally)? Leaning the latter.
-3. Which capability names are floor contract? `settlements` is obvious; `documents`, `status`
-   and `estimates` need naming before Phase 2 fixes them.
+**1. On-demand fetch stays; drop single-flight, not on-demand.**
+The question was posed as "on-demand vs. scheduled sync + read from cache", but that is not
+where the cost actually sits:
+
+- The **fetch descriptor** is required either way — a scheduled sync still has to know which
+  path to call.
+- **Correlation** is required _more_ by the cache-first route, not less: reading the cache by
+  our own entity id is exactly what needs it. Pure on-demand could have skipped Phase 1.
+- So cache-first trades single-flight for a sync pipeline (scheduling, backfill, partial
+  failure). Different shape, not less work.
+
+The expensive, subtle part is **coordination**, and that is what we drop. Fetches are
+idempotent GETs, so concurrent duplicates are wasteful rather than wrong, and a short TTL bounds
+the miss window. Ship without a coordination tier; make the duplicate rate observable; add
+single-flight only if the numbers justify it. This gives the preferred behavior (on-demand)
+_and_ the simplification.
+
+**2. Binding is a tenant-level document.** Confirmed — see C3 for the three consequences
+(global answerability of "where does this tenant get X", decoupled lifecycles, and the cost of
+its own publish path + RBAC action).
+
+**3. Capability names deliberately deferred.** The floor declares its capability list and both
+the `fetch` block and the binding table validate against it, so naming is a floor change rather
+than a migration. Only `settlements` is needed for the pilot. Naming `documents`/`status`/
+`estimates` now would be guessing with one example to generalize from; the second real domain
+is the first informed moment to decide.
+
+## Still open
+
+- **Agent-Limited's rate budget** — unpublished; blocks choosing the TTL default on anything
+  better than judgement. Outstanding with Atlas (see `docs/atlas-world-group-api/README.md`).
+- **Phase 4 scope.** The entity fact source is the largest piece and the most likely to be cut
+  down; it does not block Phases 1–3.
 
 ## Provenance
 
