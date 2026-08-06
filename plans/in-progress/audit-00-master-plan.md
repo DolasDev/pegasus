@@ -159,7 +159,19 @@ The loop improvements are measurable; capture a baseline now and re-measure afte
       `audit-ci-pipeline-efficiency.md:266` promised "Install dependencies
       ≤5 s (cache hit)". At 4 jobs/run that is ~3.4 billed min — the single
       biggest recoverable chunk — and ~50 s of it sits on the critical path.
-      **This is the one actionable item;** logged against that plan. 2. `Run tests` is now **144 s** (baseline: turbo test 109 s) because the
+      **This is the one actionable item;** logged against that plan.
+      **FIXED 2026-08-06.** Root cause was not a missing cache — one existed and
+      was correct — but **Actions cache-storage exhaustion: 10.77 GB against
+      GitHub's 10 GB limit**, so entries were evicted before they could ever be
+      reused and every job paid a cold 44.3 s `npm ci`. `setup-node`'s
+      `cache: 'npm'` alone held **5.47 GB** for a `~/.npm` dir that is only read
+      on the very path the node_modules cache exists to skip, and each of
+      `refs/pull/N/merge`, `refs/heads/gh-readonly-queue/…` and
+      `refs/heads/main` saved its own ~463 MB copy. Fix: drop the npm cache;
+      restore everywhere, save only on `main`, from a single job. Only 6 of the
+      last 40 commits touch `package-lock.json`, so ~85 % of runs should now
+      hit. **Re-measure the two numbers above once post-fix runs land — and
+      re-baseline the targets, which still describe a 5-job pipeline.** 2. `Run tests` is now **144 s** (baseline: turbo test 109 s) because the
       Wave-3 coverage ratchets added ~1,800 api tests. `test` has turbo
       caching disabled repo-wide (`turbo.json`) by design, so no remote-cache
       win is available to it. 3. The pipeline gained jobs the 2026-06-10 target predates:
