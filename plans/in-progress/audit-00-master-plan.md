@@ -2,6 +2,12 @@
 
 > **Status: WAVES 1–2 COMPLETE & DEPLOYED — Wave 3 in progress** — updated 2026-06-13
 
+> **2026-08-06 — the 7 acceptance measurements are now recorded** (see the
+> Acceptance Criteria section at the bottom): 3 pass, 2 miss (both CI-side, one
+> shared root cause, logged against `audit-ci-pipeline-efficiency.md`), 2 held
+> pending approval because they are outward-facing. That closes this file's own
+> last self-owned gap; it stays open only as the index for the still-open plans.
+
 > **Cleanup audit 2026-07-30 — KEEP OPEN.** Waves 1-2 and most of Wave 3 are
 > verified on `main`. This file stays because it is the live index for the 11
 > still-open audit plans below (AI automation, ntfy deploy notifications, e2e
@@ -122,10 +128,73 @@ Execution in three waves. Each checked item = execute that phase of the named pl
 
 The loop improvements are measurable; capture a baseline now and re-measure after Waves 1–2:
 
-- [ ] **Pre-push latency:** time `git push` on a one-package change — target <30 s (baseline 2–5 min).
-- [ ] **CI wall clock:** `gh run list --workflow ci.yml --limit 10 --json durationMS` — target ≤2m45s warm (baseline ~3m05–3m33); docs/plans-only runs <1 min.
-- [ ] **Billed minutes:** per-run sum of job durations ≤5.5 min (baseline ~7.5).
-- [ ] **False-green holes closed:** expo-doctor guard fires on a seeded failure; CI fails if DB-backed suites skip; e2e job fails if executed-test count < threshold.
-- [ ] **Deploy trust:** a 3-commit rapid push to main results in every component deployed at HEAD (no silent cancellation), and a notification arrives on deploy completion/failure.
-- [ ] **Local loop restored:** `npm run db:seed` exits 0 on a fresh Docker DB; `npm run setup` ends with a running, seeded stack.
-- [ ] **Prod feedback bounded:** test alarm (`aws cloudwatch set-alarm-state`) produces an email within minutes.
+> **MEASURED 2026-08-06.** Five of seven recorded below with reproducible
+> commands. **3 pass, 2 miss, 2 held.** The two misses are both CI-side and share
+> one root cause (below); everything on the developer's own machine — the
+> highest-frequency loop, and the whole point of the ranking — passes with room
+> to spare. Baseline for comparison: `audit-ci-pipeline-efficiency.md:17-30`
+> (run 27243490124, the 5-job pipeline as of 2026-06-10).
+
+- [x] **Pre-push latency — PASS.** Target <30 s (baseline 2–5 min whole-repo).
+      Timing the exact hook body,
+      `time env TURBO_SCM_BASE=origin/main turbo run typecheck test --affected`:
+      **3.4 s** for a leaf-package change (`apps/admin-web/src/main.tsx` → 4
+      packages affected, 6 tasks, 2 cached), plus ~0.8 s for the hook's
+      `git fetch origin main`. **Upper bound, recorded honestly:** a
+      `packages/domain` change is not a one-package change — domain is the
+      dependency root, so `--affected` correctly fans out to 9 packages / 13
+      tasks and takes **1m26s**. Still ~2–3× better than the 2–5 min whole-repo
+      baseline, but worth knowing before you touch domain late in the day.
+- [ ] **CI wall clock — MISS on code, PASS on docs.** Target ≤2m45s (165 s) warm;
+      docs/plans-only <1 min. Measured over 23 successful `ci.yml` runs
+      (`gh run list --workflow ci.yml --limit 40 --json databaseId,conclusion,event,startedAt,updatedAt`,
+      wall = `updatedAt − startedAt`): **code PR/push 211–272 s (median ~240 s ≈ 4m)**;
+      **docs/plans-only 18–20 s** (target <60 s — met with 3× headroom).
+- [ ] **Billed minutes — MISS on code, PASS on docs.** Target ≤5.5 min (330 s)
+      per run, summed across non-skipped jobs
+      (`gh run view <id> --json jobs`; the `/timing` API returns 0 — this repo is
+      public, so Actions minutes are not billed and the sum is the right proxy).
+      Measured: **code PRs 383–562 s (6m23s–9m22s)**; **docs/plans-only 13–17 s**. - **Root cause of both misses — composition change plus one unrealized
+      optimization, not a regression in anything shipped:** 1. `Run ./.github/actions/setup` costs **51–54 s in every job**, but
+      `audit-ci-pipeline-efficiency.md:266` promised "Install dependencies
+      ≤5 s (cache hit)". At 4 jobs/run that is ~3.4 billed min — the single
+      biggest recoverable chunk — and ~50 s of it sits on the critical path.
+      **This is the one actionable item;** logged against that plan. 2. `Run tests` is now **144 s** (baseline: turbo test 109 s) because the
+      Wave-3 coverage ratchets added ~1,800 api tests. `test` has turbo
+      caching disabled repo-wide (`turbo.json`) by design, so no remote-cache
+      win is available to it. 3. The pipeline gained jobs the 2026-06-10 target predates:
+      `migration-safety`, three Python jobs, and browser coverage in the e2e
+      job — the last being an explicit "latency-for-truth trade" this plan's
+      own rank-6 note called for. The targets were set against a 5-job
+      pipeline and were never re-baselined when Waves 2–3 deliberately added
+      work.
+- [x] **False-green holes closed — PASS (all three, seeded locally; nothing broken
+      was ever committed or pushed).** - expo-doctor guard (`ci.yml:412-424`): `printf '✖ fail\n✖ duplicate dependencies\n'`
+      through the live `grep '✖' | grep -v 'duplicate dependencies'` pipeline
+      yields a non-empty `failures` → **fires**; the tolerated
+      duplicate-dependency line alone stays silent → **no false positive**; and
+      the original buggy `grep -q` form still **never** fires, confirming the
+      fix is what made the guard reachable. - DB silent-skip fail-fast (`apps/api/vitest.global-setup.ts:73-77`):
+      `env -u DATABASE_URL CI=true npx vitest run` → throws
+      `[test:db] CI run without DATABASE_URL — integration tests would silently skip. Failing fast.`, exit 1. - e2e minimum-executed floor (`ci.yml:564-572`, `E2E_MIN_EXECUTED_TESTS=32`;
+      `deploy.yml:290` uses 8): seeded `results.json` at 5 and 31 → exit 1; at
+      32 and 40 → pass. Boundary is inclusive as intended.
+- [ ] **Deploy trust — HELD, needs approval.** Requires a deliberate 3-commit
+      rapid push to `main`. Outward-facing; not run unattended (user decision
+      2026-08-01, re-confirmed 2026-08-06). Note the notification half is
+      unbuildable anyway while deploy 2.2–2.4 (ntfy) stays user-deferred.
+- [x] **Local loop restored — PASS.** `npm run db:seed` exits 0 in **0.6 s**
+      against a fresh worktree Postgres, and is idempotent (ran twice; row counts
+      unchanged — `tenants=2 customers=2 moves=3 crew=1`, matching the seed's own
+      summary). `npm run setup` exits 0 in **6.3 s** and ends on `✔ Stack ready.`
+      with migrations applied and seed in place.
+      _Latent inconsistency spotted while measuring (not fixed here):
+      `scripts/setup.sh:89` probes `localhost:5432` to decide whether to start
+      Docker, but the migrate/seed steps use `DATABASE_URL` from
+      `apps/api/.env`. On a machine where 5432 is up but `.env` points elsewhere
+      (every worktree), the probe is answering about a different database than
+      the one that gets seeded. Harmless today — it made this measurement safe by
+      accident, since it left the primary dev DB untouched._
+- [ ] **Prod feedback bounded — HELD, needs approval.** Requires firing a real
+      prod CloudWatch alarm (`aws cloudwatch set-alarm-state`) to time the email
+      round-trip. Outward-facing; not run unattended.
