@@ -4,6 +4,22 @@
 > `chore/ci-setup-cache`. No deviation: the plan was written after the
 > diagnosis, and the diagnosis held.
 >
+> **DEVIATION — step 1 as first written was a NO-OP, caught by measuring the
+> branch's own CI run (31123971204) instead of waiting for post-merge.**
+> Dropping `cache: 'npm'` does not disable the npm cache on
+> `actions/setup-node@v6`: v6 added a `package-manager-cache` input, default
+> **true**, which auto-enables caching whenever `package.json` declares a
+> `packageManager` field — ours says `"npm@10.8.2"` (`package.json:132`). The
+> run still logged `Cache restored from key: node-cache-Linux-x64-npm-…` and
+> pulled 520 MB, i.e. the 5.47 GB consumer — the single biggest lever in this
+> plan — was untouched. Fixed by adding `package-manager-cache: false`.
+> **Lesson: on this action, `cache:` is not the off switch.**
+>
+> **Confirmed working in the same run:** `actions/cache/restore@v5` ran, the
+> `Run npm ci` group is **absent** (exact-key hit off `main`'s existing entry),
+> and `Run ./.github/actions/setup` fell **51 s → 20.4 s** — ~10 s of which was
+> the useless 520 MB npm-cache restore now being removed.
+>
 > **Acceptance criteria 1-4 are POST-MERGE measurements and are NOT yet taken.**
 > Cache behavior cannot be observed from a branch — the save path is gated on
 > `refs/heads/main`, so the first real hit can only happen on the second `main`

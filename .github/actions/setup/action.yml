@@ -18,6 +18,14 @@ runs:
     - uses: actions/setup-node@v6
       with:
         node-version-file: '.nvmrc'
+        # BOTH of these are required to actually disable the ~/.npm cache.
+        # Dropping `cache: 'npm'` alone is a NO-OP on setup-node v6: it added
+        # `package-manager-cache`, default **true**, which auto-enables npm
+        # caching whenever package.json declares a `packageManager` field — ours
+        # says "npm@10.8.2" (package.json:132). Verified the hard way: the first
+        # run of this action with `cache:` removed still logged
+        # `Cache restored from key: node-cache-Linux-x64-npm-…` and pulled 520 MB.
+        package-manager-cache: false
         # Deliberately NO `cache: 'npm'`. It cached ~/.npm at ~496 MB per
         # lockfile hash — 5.47 GB of the repo's 10 GB Actions cache budget
         # (measured 2026-08-06, when the total sat at 10.77 GB, i.e. permanently
