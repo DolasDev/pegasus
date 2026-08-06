@@ -68,8 +68,36 @@ adoption of Firebase: no SDK usage, no analytics, free Spark tier.
    `google-services.json`.
 3. **Enable the API** — in the Firebase console, Project settings → Cloud
    Messaging → make sure **Firebase Cloud Messaging API (V1)** is enabled.
-4. **Create the FCM V1 service-account key** — Project settings → Service
-   accounts → Generate new private key. This JSON is what Expo sends with.
+4. **Create the FCM V1 service-account key** — this JSON is what Expo actually
+   sends with, and it lives on Expo's servers, so give it the least privilege
+   that works.
+
+   **Do NOT use** Firebase Console → Project settings → Service accounts →
+   Generate new private key. That is the convenient path and it does work with
+   no role assignment — the auto-provisioned
+   `firebase-adminsdk-*@pegasus-cloud-mobile.iam.gserviceaccount.com` already
+   holds **Firebase Admin SDK Administrator Service Agent**
+   (`roles/firebase.sdkAdminServiceAgent`). But that identity also reaches
+   Firestore, Cloud Storage, and the rest of the project — far beyond "send a
+   notification" — and handing all of it to a third party for the life of the
+   key is a bad trade.
+
+   Instead, GCP Console → IAM & Admin → Service Accounts → Create, in project
+   `pegasus-cloud-mobile`. Name it e.g. `expo-push-fcm` and grant exactly one
+   role:
+
+   |                         |                                                      |
+   | ----------------------- | ---------------------------------------------------- |
+   | Role                    | **Firebase Cloud Messaging API Admin**               |
+   | Role ID                 | `roles/firebasecloudmessaging.admin`                 |
+   | Permission that matters | `cloudmessaging.messages.create`                     |
+   | Scope Expo requests     | `https://www.googleapis.com/auth/firebase.messaging` |
+
+   Then Keys → Add key → **JSON**. Use the role _ID_ to find it — Google
+   renames display names periodically. Step 3's API enablement is a hard
+   prerequisite: without `fcm.googleapis.com`, even a correctly-roled account
+   gets 403.
+
 5. **Publish the client config to EAS** — ✅ **done 2026-08-06** for Firebase
    project `pegasus-cloud-mobile` (sender id `464811936819`). Recorded here for
    when it needs rotating or repeating for another environment:
