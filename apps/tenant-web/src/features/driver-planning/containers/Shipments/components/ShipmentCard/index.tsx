@@ -13,6 +13,7 @@ import { startCase } from '@/features/driver-planning/utils/string'
 import { isSuperVip } from '@/features/driver-planning/utils/super-vip'
 import { useAppDispatch } from '../../../../redux/hooks'
 import type { RootState } from '../../../../redux/store'
+import type { LonghaulShipmentRow } from '@pegasus/longhaul-contracts'
 
 function getShortHaul(mode: any): string {
   return mode === 'yes' ? `${'S/H'}` : ''
@@ -54,7 +55,7 @@ function getTitleCaseWord(value: any): string {
   return titeCaseWord
 }
 
-function getPackDateStart(shipment: any) {
+function getPackDateStart(shipment: LonghaulShipmentRow) {
   const packDate = formatDateShort(shipment.pack_date2, { defaultVal: '' })
   return shipment.rule19_id ? (
     <>
@@ -87,12 +88,12 @@ function getPackDateStart(shipment: any) {
   )
 }
 
-function getPackDateEnd(shipment: any) {
+function getPackDateEnd(shipment: LonghaulShipmentRow) {
   const packDate = formatDateShort(shipment.plan_pack, { defaultVal: '' })
   return shipment.pack_date2 !== shipment.plan_pack ? <>{packDate}</> : <></>
 }
 
-function getLoadDateStart(shipment: any) {
+function getLoadDateStart(shipment: LonghaulShipmentRow) {
   const loadDate = formatDateShort(shipment.load_date2, { defaultVal: '' })
   return shipment.rule19_id && shipment.driver_id ? (
     <>
@@ -128,14 +129,22 @@ function getLoadDateStart(shipment: any) {
   )
 }
 
-function getLoadDateEnd(shipment: any) {
+function getLoadDateEnd(shipment: LonghaulShipmentRow) {
   const loadDate = formatDateShort(shipment.plan_load, { defaultVal: '' })
   return shipment.load_date2 !== shipment.plan_load ? <>{loadDate}</> : <></>
 }
 
-function getDeliveryDateStart(shipment: any) {
+function getDeliveryDateStart(shipment: LonghaulShipmentRow) {
   const deliveryDate = formatDate(shipment.del_date2, { defaultVal: '' })
-  return shipment.sit_date && shipment.storage_driver_id ? (
+  // BEHAVIOR CHANGE, approved: this read `shipment.storage_driver_id`, which is
+  // not a column on v_longhaul_shipments_v2 — the storage-delivery driver is
+  // `driver2_id` (the legacy entity aliased it `storage_delivery_driver_id`,
+  // and the legacy UI read the same non-existent `storage_driver_id`). The
+  // condition was therefore always falsy, so every SIT shipment took the orange
+  // "Not Scheduled" branch, in this app AND in the original system. Reading the
+  // real column makes the green "Scheduled" badge appear for the first time on
+  // SIT shipments that do have a storage driver assigned.
+  return shipment.sit_date && shipment.driver2_id ? (
     <>
       {deliveryDate} &nbsp;
       <span style={{ color: 'green' }}>
@@ -144,7 +153,7 @@ function getDeliveryDateStart(shipment: any) {
         </HoverToolTip>
       </span>
     </>
-  ) : shipment.sit_date && !shipment.storage_driver_id ? (
+  ) : shipment.sit_date && !shipment.driver2_id ? (
     <>
       {deliveryDate} &nbsp;
       <span style={{ color: 'orange' }}>
@@ -199,17 +208,17 @@ export function ShipmentCard({
   shipment,
   tripsForShipment,
 }: {
-  shipment: any
+  shipment: LonghaulShipmentRow
   tripsForShipment: any
 }) {
   const dispatch = useAppDispatch()
   const selectShipment = useCallback(
-    (shipment: any) => dispatch(selectShipmentAction(shipment) as any),
+    (shipment: LonghaulShipmentRow | null) => dispatch(selectShipmentAction(shipment) as any),
     [dispatch],
   )
 
   const addShipmentToTrip = useCallback(
-    (shipment: any) => dispatch(addShipmentToTripAction(shipment) as any),
+    (shipment: LonghaulShipmentRow) => dispatch(addShipmentToTripAction(shipment) as any),
     [dispatch],
   )
 
@@ -227,7 +236,7 @@ export function ShipmentCard({
     getPackDateStart(shipment),
     <b>{getLoadDateStart(shipment)}</b>,
     getDeliveryDateStart(shipment),
-    `${getHaulMode(haulModeMapping[shipment.shaul])}`,
+    `${getHaulMode(haulModeMapping[String(shipment.shaul ?? '')])}`,
     getAccount(shipment.company || shipment.ba_name || ''),
     <span>
       <b>{`${getDriverName(shipment.driver_name)}`}</b>
@@ -239,7 +248,7 @@ export function ShipmentCard({
     getPackDateEnd(shipment),
     getLoadDateEnd(shipment),
     `${formatDate(shipment.plan_del, { defaultVal: '' })}`,
-    `${getShortHaul(sHaulMapping[shipment.haul_mode])}`,
+    `${getShortHaul(sHaulMapping[String(shipment.haul_mode ?? '')])}`,
     `${getTrip(shipment.TripMaster_id)} ${statusCodeToText(shipment.TripStatus_id)}`,
     shipment.latest_activity_abbr
       ? `${shipment.latest_activity_abbr}: ${formatDate(shipment.latest_activity_date, { defaultVal: '' })}`

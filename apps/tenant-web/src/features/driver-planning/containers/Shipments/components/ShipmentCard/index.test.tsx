@@ -13,8 +13,10 @@ vi.mock('@/features/driver-planning/utils/router-compat', () => ({
 }))
 
 import { ShipmentCard } from './index'
+import type { LonghaulShipmentRow } from '@pegasus/longhaul-contracts'
 
-const shipment = (over: Record<string, any> = {}) => ({
+// Typed, so a fixture cannot drift onto a field the view does not project.
+const shipment = (over: Partial<LonghaulShipmentRow> = {}): LonghaulShipmentRow => ({
   order_num: 'O1',
   shipper_name: 'SMITH, JOHN',
   shipper_city: 'AUSTIN',
@@ -29,7 +31,17 @@ const shipment = (over: Record<string, any> = {}) => ({
   ...over,
 })
 
-const render = (over: Record<string, any> = {}) =>
+/**
+ * Colour of the SIT warehouse badge — green "Scheduled" vs orange "Not
+ * Scheduled". Walks up from the icon rather than assuming a parent depth,
+ * because HoverToolTip inserts its own wrapper between the two.
+ */
+const sitIndicatorColor = (container: HTMLElement): string | undefined =>
+  [...container.querySelectorAll('span')].find(
+    (el) => el.querySelector('i.fa-warehouse') && el.style.color,
+  )?.style.color
+
+const render = (over: Partial<LonghaulShipmentRow> = {}) =>
   renderWithStore(<ShipmentCard shipment={shipment(over)} tripsForShipment={[]} />, {
     shipments: { selectedShipment: null } as any,
   })
@@ -66,5 +78,25 @@ describe('ShipmentCard indicator', () => {
     render()
     expect(screen.queryByText('VIP')).not.toBeInTheDocument()
     expect(screen.queryByText('S-VIP')).not.toBeInTheDocument()
+  })
+
+  // BEHAVIOR CHANGE (approved): the SIT delivery indicator read
+  // `storage_driver_id`, which is not a column on the view — the storage driver
+  // is `driver2_id`. The condition was always falsy, so a SIT shipment ALWAYS
+  // took the orange "Not Scheduled" branch, in this app and in the original
+  // system. These pin the corrected behavior.
+  it('shows the SIT indicator as Scheduled when driver2_id is set', () => {
+    const { container } = render({ sit_date: '2026-03-01', driver2_id: 4242 })
+    expect(sitIndicatorColor(container)).toBe('green')
+  })
+
+  it('shows the SIT indicator as Not Scheduled when no storage driver is assigned', () => {
+    const { container } = render({ sit_date: '2026-03-01', driver2_id: null })
+    expect(sitIndicatorColor(container)).toBe('orange')
+  })
+
+  it('shows no SIT indicator without a sit_date', () => {
+    const { container } = render({ driver2_id: 4242 })
+    expect(container.querySelector('i.fa-warehouse')).toBeNull()
   })
 })

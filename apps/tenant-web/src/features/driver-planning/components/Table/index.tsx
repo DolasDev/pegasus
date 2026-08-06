@@ -1,7 +1,7 @@
 import React from 'react'
 import styles from './Table.module.css'
 
-interface TableColumn<T> {
+export interface TableColumn<T> {
   label: string
   property?: keyof T & string
   /** @deprecated Retained for backward-compat with existing call sites; not consumed by the component. */

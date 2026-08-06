@@ -145,13 +145,52 @@ extra-delivery address). Only `del_address2` errored. Semantic misuse stays a re
 `containers/ShipmentDetail/index.tsx` + test, `containers/Shipments/components/ShipmentCard/index.tsx`,
 `utils/api/index.ts`, `package-lock.json`.
 
-### Phase 3 — the remaining consumers
+### Phase 3 — the remaining consumers — DONE
 
-- [ ] ShipmentCard (8), PendingTrips (4), Trip, Shipments, ShipmentsTable (1 each)
-- [ ] `utils/api/reshape-shipment.ts` returns `LonghaulShipmentRow`
-- [ ] Decide `storage_driver_id` per Decision 2
+- [x] ShipmentCard (5 date helpers, props, 2 dispatch callbacks), Shipments, ShipmentsTable,
+      Trip, PendingTrips, AddActivity
+- [x] `utils/api/reshape-shipment.ts` returns `LonghaulShipmentRow`
+- [x] `redux/shipments`'s `selectShipment` thunk + its exact-match find
+- [x] `storage_driver_id` → `driver2_id` per Decision 2, with regression tests
+- [x] Plan archived to `plans/completed/`
 
-**Files:** the 17 files that touch a shipment row, plus their tests.
+**What `tsc` surfaced (16 errors), and the call made on each:**
+
+1. **`AddActivity`'s `PartialShipment`** declared `order_num`, `planned_start` and `planned_end`.
+   The latter two are ACTIVITY fields, not columns — and none of the three was ever read; the
+   component only touches `extraActivities`. Not a live bug (nothing read them), but a
+   misleading prop type that blocked passing a real row. Deleted; the prop is now
+   `LonghaulShipmentRow`.
+2. **`packing_coverage.is_covered`** — Phase 1 typed `packing_coverage` as `unknown`. This is
+   the documented "extend the type" outcome: modeled as
+   `{ order_num?, activity_code?, is_covered? } | null`, matching what the API attaches from
+   `longhaul_shipmentcoverage`.
+3. **`stateIdx` possibly undefined** (4 sites in PendingTrips) — it is client-only and optional
+   on the row, but the map that builds the list always injects it. Added a local
+   `type IndexedShipment = LonghaulShipmentRow & { stateIdx: number }`.
+4. **`shipment.activities` possibly undefined** — guarded with `?? []`.
+5. **Index-type errors** (ShipmentCard ×2, Shipments ×1) — `haulModeMapping[shipment.shaul]`
+   and friends, now that the key can be null. Coerced with `String(x ?? '')` /`?? ''`, which
+   resolves to the same lookup miss the old code got.
+6. **`ShipmentsTable`'s `tableConfig`** — annotating it `TableColumn<LonghaulShipmentRow>[]`
+   (and exporting `TableColumn`) means every column's `property` is now checked against the
+   view's columns. All six were already correct. `rowId` gained `?? undefined` because
+   `order_num` is nullable on the row type.
+7. **`isSuperVip`** could not take a typed row while still honoring the legacy `supervip`
+   alias, since `supervip` is not a column. The #571 fallback was defensive and nothing
+   produces such a payload, so it is gone and the parameter is typed. Its test now asserts the
+   alias is NOT honored.
+
+**The approved behavior change:** `getDeliveryDateStart` read `shipment.storage_driver_id`,
+which is on no payload, so every SIT shipment took the orange "Not Scheduled" branch — in this
+app and in the original system, which read the same non-existent key. It now reads `driver2_id`,
+so the green "Scheduled" badge appears for the first time on SIT shipments with a storage driver.
+Three tests pin it, and the Scheduled case was verified to fail against the old code.
+
+**Files:** `containers/{Shipments,Shipments/components/ShipmentCard,ShipmentsTable,Trip,PendingTrips,PendingTrips/components/AddActivity}`,
+`components/Table/index.tsx` (export `TableColumn`), `utils/super-vip.ts` + test,
+`utils/api/reshape-shipment.ts`, `redux/shipments/index.ts`,
+`packages/longhaul-contracts/src/shipment-view.ts` (packing_coverage), ShipmentCard tests.
 
 ### Phase 4 — narrow the projection (optional, probably skip)
 

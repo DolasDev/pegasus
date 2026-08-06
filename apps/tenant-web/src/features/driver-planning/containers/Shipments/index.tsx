@@ -12,16 +12,17 @@ import { ShipmentsTable } from '../ShipmentsTable'
 import { useAppDispatch } from '../../redux/hooks'
 import { getSortByValue } from '../../utils/sort'
 import type { RootState } from '../../redux/store'
+import type { LonghaulShipmentRow } from '@pegasus/longhaul-contracts'
 
-const MemoizedShipmentCards = React.memo(({ shipments }: { shipments: any[] }) => {
+const MemoizedShipmentCards = React.memo(({ shipments }: { shipments: LonghaulShipmentRow[] }) => {
   const shipmentToTrips = useSelector(
     (state: RootState) => (state as any).tripPlanning.shipmentToTrips,
   )
-  return shipments.map((shipment: any) => (
+  return shipments.map((shipment: LonghaulShipmentRow) => (
     <ShipmentCard
       key={shipment.order_num}
       shipment={shipment}
-      tripsForShipment={Object.values(shipmentToTrips[shipment.order_num] || {})}
+      tripsForShipment={Object.values(shipmentToTrips[shipment.order_num ?? ''] || {})}
     />
   ))
 })

@@ -8,10 +8,12 @@ describe('isSuperVip', () => {
     expect(isSuperVip({ idc_break: 'N' })).toBe(false)
   })
 
-  it('still honors an already-aliased supervip payload', () => {
-    // The legacy entity aliased idc_break -> supervip; anything handing us a
-    // hydrated row (or a fixture written against the old shape) keeps working.
-    expect(isSuperVip({ supervip: 'Y' })).toBe(true)
+  it('does not resurrect the legacy `supervip` alias', () => {
+    // #571 accepted a literal `supervip` defensively. Nothing produces one —
+    // the view has no such column — and keeping it forced the parameter to stay
+    // `any`. A row carrying only the alias is (correctly) not a super-VIP.
+    // @ts-expect-error - `supervip` is not a column on the view
+    expect(isSuperVip({ supervip: 'Y' })).toBe(false)
   })
 
   it('is false for a row carrying neither field, and for no row at all', () => {

@@ -193,8 +193,16 @@ export interface LonghaulShipmentRow extends LonghaulShipmentViewRow {
   extraActivities?: unknown[]
   /** Rows from `pegasus_extra_location`; `[]` when the table is absent. */
   extra_locations?: unknown[]
-  /** The PACK coverage row, or null. */
-  packing_coverage?: unknown
+  /**
+   * The PACK row from `longhaul_shipmentcoverage`, or null when the order has
+   * none. Only the fields the UI reads are modeled — the coverage table is not
+   * contracted here, so widen this deliberately if a consumer needs more.
+   */
+  packing_coverage?: {
+    order_num?: number | null
+    activity_code?: string | null
+    is_covered?: boolean | null
+  } | null
   /** `sales.weight`, aliased to avoid colliding with the view's `weight`. */
   shadow_weight?: number | null
   /** `sales.lng_dis_comments`, aliased to avoid colliding with the view's copy. */

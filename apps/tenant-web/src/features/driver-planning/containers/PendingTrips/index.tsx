@@ -33,6 +33,7 @@ import { useFloating, offset } from '@floating-ui/react'
 import { PopoverShell } from '@/features/driver-planning/components/PopoverShell'
 import type { RootState } from '../../redux/store'
 import { useAppDispatch } from '../../redux/hooks'
+import type { LonghaulShipmentRow } from '@pegasus/longhaul-contracts'
 
 const createFromToDateString = (startDate: any, endDate: any): string =>
   `${formatDate(startDate)} - ${formatDate(endDate)}`
@@ -40,7 +41,15 @@ const createFromToDateString = (startDate: any, endDate: any): string =>
 const createTripString = (trip: any): string =>
   `${trip.shipper_city}, ${trip.shipper_state} - ${trip.consignee_city}, ${trip.consignee_state}`
 
-const getTotalWeight = (shipments: any[]): string =>
+/**
+ * A trip shipment with its index into `currentTrip.shipments` attached — the
+ * handle the activity editors use to address the right entry. `stateIdx` is
+ * optional on the row type (it is client-side only, never from the database),
+ * but the map below always injects it, so this narrows it to required.
+ */
+type IndexedShipment = LonghaulShipmentRow & { stateIdx: number }
+
+const getTotalWeight = (shipments: LonghaulShipmentRow[]): string =>
   shipments
     .reduce(
       (accumulator: number, current: any) => Number(current.total_est_wt || 0) + accumulator,
@@ -48,15 +57,15 @@ const getTotalWeight = (shipments: any[]): string =>
     )
     .toLocaleString()
 
-const getTotalPrice = (shipments: any[]): string =>
+const getTotalPrice = (shipments: LonghaulShipmentRow[]): string =>
   shipments
     .reduce((accumulator: number, current: any) => Number(current.line_haul || 0) + accumulator, 0)
     .toFixed(0)
     .toLocaleString()
 
 const dashboardSettings = {
-  title: (shipment: any) => createTripString(shipment),
-  children: (shipment: any) =>
+  title: (shipment: LonghaulShipmentRow) => createTripString(shipment),
+  children: (shipment: LonghaulShipmentRow) =>
     [
       `${shipment.shipper_name}, ${shipment.order_num}, ${shipment.avl_reg}`,
       `Weight: ${shipment.total_est_wt ? `${shipment.total_est_wt?.toLocaleString()}lbs` : 'N/A'} | Linehaul: $${shipment.line_haul?.toLocaleString()}`,
@@ -442,7 +451,7 @@ const PendingTripsInternal = (_props: any) => {
                 </div>
               )}
               {[
-                ...currentTrip.shipments.map((shipment: any, idx: number) => ({
+                ...currentTrip.shipments.map((shipment: LonghaulShipmentRow, idx: number) => ({
                   ...shipment,
                   stateIdx: idx,
                 })),
@@ -452,7 +461,7 @@ const PendingTripsInternal = (_props: any) => {
                   const bDate = b.load_date ?? ''
                   return aDate < bDate ? -1 : aDate > bDate ? 1 : 0
                 })
-                .map((shipment: any) => (
+                .map((shipment: IndexedShipment) => (
                   <Card
                     key={shipment.order_num}
                     title={dashboardSettings.title(shipment)}
@@ -464,7 +473,7 @@ const PendingTripsInternal = (_props: any) => {
                       <h3>Activities</h3>
                       <AddActivity shipment={shipment} shipmentIndex={shipment.stateIdx} />
                     </div>
-                    {shipment.activities.map((activity: any, activityIndex: number) => (
+                    {(shipment.activities ?? []).map((activity: any, activityIndex: number) => (
                       <Activity
                         key={activityIndex}
                         activity={activity}
