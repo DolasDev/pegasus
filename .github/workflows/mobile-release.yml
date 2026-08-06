@@ -20,8 +20,14 @@ name: Mobile release
 # and the build runs on Node 24 (eas.json build profiles pin `node`, matching
 # the repo's engines requirement — EAS's default Node 20 fails `npm ci`).
 #
-# iOS — an unsigned simulator build, on-demand signal only (deferred platform:
-# no Apple Developer credentials → no device build, no App Store submit).
+# iOS — pick the artifact with `ios_build`: `simulator` (unsigned, CI signal,
+# needs no Apple credentials), `device` (signed ad-hoc .ipa for a REGISTERED
+# device — the only iOS artifact that can receive push), or `store` (signed
+# .ipa for TestFlight/App Store). `device`/`store` need Apple signing set up on
+# EAS once via `eas credentials --platform ios`; `device` also needs a device
+# registered via `eas device:create`. iOS auto-submit is still not wired —
+# eas.json `submit.production.ios` holds PLACEHOLDERs pending an App Store
+# Connect API key. See apps/mobile/PUSH_NOTIFICATIONS.md.
 
 on:
   workflow_dispatch:
@@ -48,6 +54,22 @@ on:
         type: boolean
         required: false
         default: true
+      ios_build:
+        # What kind of iOS artifact to produce. Defaults to `simulator` — the
+        # historical behavior, and the only one that needs no Apple credentials.
+        #   simulator — unsigned .app, CI signal only. Cannot receive push (a
+        #               simulator has no APNs device token).
+        #   device    — signed ad-hoc .ipa installable on a REGISTERED device.
+        #               This is the one that can test push. Requires at least one
+        #               device registered (`eas device:create`) or the build fails.
+        #   store     — signed .ipa for TestFlight / App Store. Build only; there
+        #               is no iOS auto-submit yet (submit.production.ios still
+        #               holds PLACEHOLDERs — needs an App Store Connect API key).
+        description: 'iOS: which artifact to build'
+        type: choice
+        required: false
+        default: simulator
+        options: [simulator, device, store]
 
 concurrency:
   group: mobile-release-${{ github.ref }}
@@ -66,6 +88,7 @@ jobs:
       do_android: ${{ steps.d.outputs.do_android }}
       do_ios: ${{ steps.d.outputs.do_ios }}
       do_submit: ${{ steps.d.outputs.do_submit }}
+      ios_profile: ${{ steps.d.outputs.ios_profile }}
     steps:
       - name: Decide
         id: d
@@ -80,12 +103,20 @@ jobs:
           if [[ "$do_android" == "true" && "${{ inputs.submit }}" == "true" ]]; then
             do_submit=true
           fi
+          # iOS artifact kind -> eas.json build profile. `device` and `store`
+          # both need Apple signing credentials on EAS; `simulator` needs none.
+          case "${{ inputs.ios_build }}" in
+            device) ios_profile=ios-device ;;
+            store)  ios_profile=production ;;
+            *)      ios_profile=ios-simulator-ci ;;
+          esac
           {
             echo "do_android=$do_android"
             echo "do_ios=$do_ios"
             echo "do_submit=$do_submit"
+            echo "ios_profile=$ios_profile"
           } >> "$GITHUB_OUTPUT"
-          echo "android=$do_android ios=$do_ios submit=$do_submit env=${{ inputs.env }}"
+          echo "android=$do_android ios=$do_ios submit=$do_submit env=${{ inputs.env }} ios_profile=$ios_profile"
 
   # ---------------------------------------------------------------------------
   # Android — trigger a production AAB build on EAS and (optionally) auto-submit
@@ -118,10 +149,18 @@ jobs:
           echo "Build queued on EAS. Track progress: https://expo.dev/accounts/dolas.dev/projects/moving-storage-driver/builds"
 
   # ---------------------------------------------------------------------------
-  # iOS simulator (unsigned) build — on-demand CI signal only. --no-wait.
+  # iOS build — profile chosen by the `ios_build` input (see its comment above).
+  # --no-wait, like Android: EAS builds server-side and CI confirms acceptance.
+  #
+  # `device` and `store` build against the `production` EAS environment (both
+  # profiles extend `production`), NOT `preview` — the production env vars are
+  # the ones verified correct in #541; the preview set is still suspect. That
+  # matters more than it looks: EAS's stored env vars OVERRIDE the .env the
+  # mobile-eas-config composite writes, so the profile is what decides which API
+  # a build actually talks to.
   # ---------------------------------------------------------------------------
-  build-ios-simulator:
-    name: Build iOS (simulator, unsigned) → EAS
+  build-ios:
+    name: Build iOS (${{ inputs.ios_build }}) → EAS
     needs: resolve
     if: needs.resolve.outputs.do_ios == 'true'
     runs-on: ubuntu-latest
@@ -132,11 +171,13 @@ jobs:
       - uses: ./.github/actions/mobile-eas-config
         with:
           aws-role: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-      - name: EAS build (iOS simulator, no-wait)
+      - name: EAS build (iOS, no-wait)
         working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          IOS_PROFILE: ${{ needs.resolve.outputs.ios_profile }}
         run: |
           set -euo pipefail
-          eas build --non-interactive --no-wait --profile ios-simulator-ci --platform ios
+          echo "iOS artifact: ${{ inputs.ios_build }} (eas profile: $IOS_PROFILE)"
+          eas build --non-interactive --no-wait --profile "$IOS_PROFILE" --platform ios
           echo "Build queued on EAS. Track progress: https://expo.dev/accounts/dolas.dev/projects/moving-storage-driver/builds"
