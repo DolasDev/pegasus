@@ -22,6 +22,7 @@ import { parseActivities } from './utils/parse-activities'
 
 import { HoverToolTip } from '@/features/driver-planning/containers/ToolTips'
 import { useAppDispatch } from '../../redux/hooks'
+import type { LonghaulShipmentRow } from '@pegasus/longhaul-contracts'
 
 function getColor(index: number): string {
   return styles[`color${index + 1}00`]
@@ -40,7 +41,7 @@ function TripInternal() {
   const dispatch = useAppDispatch()
 
   const selectShipment = useCallback(
-    (shipment: any) => dispatch(selectShipmentAction(shipment) as any),
+    (shipment: LonghaulShipmentRow | null) => dispatch(selectShipmentAction(shipment) as any),
     [dispatch],
   )
 

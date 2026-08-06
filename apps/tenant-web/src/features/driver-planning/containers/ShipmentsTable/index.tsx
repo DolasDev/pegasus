@@ -1,8 +1,9 @@
 import React from 'react'
 
-import { Table } from '../../components/Table'
+import { Table, type TableColumn } from '../../components/Table'
 import { formatDate } from '../../utils/format-date'
 import type { SortBy } from '../../utils/sort'
+import type { LonghaulShipmentRow } from '@pegasus/longhaul-contracts'
 
 function dateFormatter(date: any): string {
   return date ? formatDate(date) || '' : ''
@@ -25,7 +26,9 @@ function dateRange(date1: any, date2: any): string {
 //
 // `sortKey` is the server-side sort field; for the date-range columns it is the
 // range start (`*_date2`), matching the Shipments card-view sort headers.
-const tableConfig = [
+// Annotated, so a `property` naming something that is not a column on the
+// view is a compile error rather than a blank column.
+const tableConfig: TableColumn<LonghaulShipmentRow>[] = [
   { label: 'Shipper', property: 'shipper_name' },
   { label: 'Origin City', property: 'shipper_city' },
   { label: 'O St', property: 'shipper_state' },
@@ -50,9 +53,9 @@ const tableConfig = [
 ]
 
 interface ShipmentsTableProps {
-  shipments: any[]
+  shipments: LonghaulShipmentRow[]
   /** When provided, clicking a row calls this with the shipment. */
-  onRowClick?: (shipment: any) => void
+  onRowClick?: (shipment: LonghaulShipmentRow) => void
   /** Current sort state, used to render the active-column indicator. */
   sortBy?: SortBy | null
   /** When provided, column headers become clickable and call this with the sort field. */
@@ -71,7 +74,7 @@ export const ShipmentsTable: React.FC<ShipmentsTableProps> = ({
       tableConfig={tableConfig}
       rowTarget="shipment-table-row"
       onRowClick={onRowClick}
-      rowId={(row) => row.order_num}
+      rowId={(row) => row.order_num ?? undefined}
       sortBy={sortBy}
       onSort={onSort}
     />

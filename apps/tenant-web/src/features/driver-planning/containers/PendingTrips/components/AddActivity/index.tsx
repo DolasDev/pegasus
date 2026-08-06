@@ -7,19 +7,19 @@ import { PopoverShell as PopoverShellTyped } from '../../../../components/Popove
 import { ActivityType } from '../../../../utils/constants/activity-type'
 import { addActivity as addActivityAction } from '../../../../redux/trip-planning'
 import styles from './AddActivity.module.css'
+import type { LonghaulShipmentRow } from '@pegasus/longhaul-contracts'
 
 const PopoverShell = PopoverShellTyped as any
 const CircularButton = CircularButtonTyped as any
 
-interface PartialShipment {
-  order_num: number
-  planned_start: Date
-  planned_end: Date
-  extraActivities: any
-}
-
 interface AddActivityProps {
-  shipment: PartialShipment
+  /**
+   * Was a local `PartialShipment` declaring `order_num`, `planned_start` and
+   * `planned_end` — the last two are ACTIVITY fields, not columns on
+   * v_longhaul_shipments_v2, and none of the three was ever read here. Only
+   * `extraActivities` is.
+   */
+  shipment: LonghaulShipmentRow
   shipmentIndex: number
 }
 
@@ -45,7 +45,7 @@ export const AddActivity: React.FC<AddActivityProps> = ({ shipment, shipmentInde
     )
   }
 
-  const extraActivities: any[] = shipment.extraActivities
+  const extraActivities: any[] = shipment.extraActivities ?? []
 
   return (
     <div className={styles.addActivityContainer}>

@@ -18,11 +18,14 @@
 // `fetchShipments` response.
 // ---------------------------------------------------------------------------
 
+import type { LonghaulShipmentRow } from '@pegasus/longhaul-contracts'
+
 type AnyRec = Record<string, any>
 
-export function reshapeShipment(raw: any): any {
-  if (!raw || typeof raw !== 'object') return raw
-  if (raw.pegasus_shadow != null && typeof raw.pegasus_shadow === 'object') return raw
+export function reshapeShipment(raw: any): LonghaulShipmentRow {
+  if (!raw || typeof raw !== 'object') return raw as LonghaulShipmentRow
+  if (raw.pegasus_shadow != null && typeof raw.pegasus_shadow === 'object')
+    return raw as LonghaulShipmentRow
   const s: AnyRec = { ...raw }
   s.pegasus_shadow = {
     order_num: s.order_num,
@@ -31,7 +34,7 @@ export function reshapeShipment(raw: any): any {
     operations_id: s.operations_id ?? null,
     operations_name: s.operations_name ?? null,
   }
-  return s
+  return s as LonghaulShipmentRow
 }
 
 export function reshapeShipmentList(raw: any): any {
