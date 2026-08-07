@@ -32,6 +32,26 @@
     // brace-expansion >=5.0.9 (then audit-ci's "unused allowlist entry" report flags it).
     "GHSA-3jxr-9vmj-r5cp",
     "GHSA-mh99-v99m-4gvg",
-    "GHSA-rgw5-rvv9-x895"
+    "GHSA-rgw5-rvv9-x895",
+
+    // GHSA-w3rx-r6r6-pgpr / GHSA-5p2g-fcmc-qvqq — two image-size DoS advisories
+    // (both high): infinite loops in the ICNS parser and in the JXL/HEIF parsers.
+    // Allowlisted rather than overridden because NO PATCHED VERSION EXISTS: both
+    // advisories are `<=2.0.2` and 2.0.2 is the latest published release (checked
+    // 2026-08-07), so there is no floor an override could point at. npm's
+    // `fixAvailable` suggests expo@46.0.21 — a major DOWNGRADE from the installed
+    // expo@55 — which is not a fix.
+    //
+    // Single path, build-time only:
+    //   apps/mobile > expo@55.0.28 > @expo/metro > metro@0.83.7 > image-size@1.2.1
+    // That is Metro, the React Native bundler, sizing the app's own committed image
+    // assets during a build. The inputs are repo-controlled, not user-supplied, and
+    // no runtime request path reaches image-size — nothing in apps/api or the web
+    // apps depends on it. A DoS on our own build inputs is not a live exposure.
+    //
+    // Remove once metro ships an image-size that carries the fix (or image-size
+    // publishes >2.0.2 with it) — audit-ci reports unused allowlist entries.
+    "GHSA-w3rx-r6r6-pgpr",
+    "GHSA-5p2g-fcmc-qvqq"
   ]
 }
