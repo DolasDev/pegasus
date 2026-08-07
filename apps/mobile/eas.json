@@ -41,6 +41,17 @@
       "env": {
         "EXPO_PUBLIC_ENV": "production"
       }
+    },
+    "ios-device": {
+      "extends": "production",
+      "distribution": "internal",
+      "ios": {
+        "simulator": false,
+        "resourceClass": "m-medium"
+      },
+      "env": {
+        "EXPO_PUBLIC_ENV": "production"
+      }
     }
   },
   "submit": {
