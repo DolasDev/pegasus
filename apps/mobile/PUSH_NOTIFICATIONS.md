@@ -43,13 +43,13 @@ app either. Map drivers in Settings → Users.
 
 ## Status
 
-|                                       | State                                                      |
-| ------------------------------------- | ---------------------------------------------------------- |
-| Backend (outbox, forwarder, triggers) | ✅ Live                                                    |
-| Mobile registration + tap routing     | ✅ Live                                                    |
-| Android delivery                      | ❌ Blocked — needs Firebase (Step 1)                       |
-| iOS delivery                          | ⏳ Apple enrollment done; needs `eas credentials` (Step 2) |
-| iOS signed device build in CI         | ✅ `ios_build=device` on `mobile-release.yml`              |
+|                                       | State                                                                            |
+| ------------------------------------- | -------------------------------------------------------------------------------- |
+| Backend (outbox, forwarder, triggers) | ✅ Live                                                                          |
+| Mobile registration + tap routing     | ✅ Live                                                                          |
+| Android delivery                      | ⏳ Firebase project + client config done; needs the FCM V1 server key (Step 1.6) |
+| iOS delivery                          | ⏳ Apple enrollment done; needs `eas credentials` (Step 2)                       |
+| iOS signed device build in CI         | ✅ `ios_build=device` on `mobile-release.yml`                                    |
 
 Until the credentials exist, the failure is silent by design: `registerForPush`
 catches and logs, so no token is ever registered and outbox rows simply find no
@@ -68,10 +68,55 @@ adoption of Firebase: no SDK usage, no analytics, free Spark tier.
    `google-services.json`.
 3. **Enable the API** — in the Firebase console, Project settings → Cloud
    Messaging → make sure **Firebase Cloud Messaging API (V1)** is enabled.
-4. **Create the FCM V1 service-account key** — Project settings → Service
-   accounts → Generate new private key. This JSON is what Expo sends with.
-5. **Upload both to EAS** (from `apps/mobile`, with `google-services.json` in
-   this directory — it is gitignored):
+4. **Create the FCM V1 service-account key** — this JSON is what Expo actually
+   sends with, and it lives on Expo's servers, so give it the least privilege
+   that works.
+
+   **Do NOT use** Firebase Console → Project settings → Service accounts →
+   Generate new private key. That is the convenient path and it does work with
+   no role assignment — the auto-provisioned
+   `firebase-adminsdk-*@pegasus-cloud-mobile.iam.gserviceaccount.com` already
+   holds **Firebase Admin SDK Administrator Service Agent**
+   (`roles/firebase.sdkAdminServiceAgent`). But that identity also reaches
+   Firestore, Cloud Storage, and the rest of the project — far beyond "send a
+   notification" — and handing all of it to a third party for the life of the
+   key is a bad trade.
+
+   Instead, GCP Console → IAM & Admin → Service Accounts → Create, in project
+   `pegasus-cloud-mobile`. Name it e.g. `expo-push-fcm` and grant exactly one
+   role:
+
+   |                         |                                                      |
+   | ----------------------- | ---------------------------------------------------- |
+   | Role                    | **Firebase Cloud Messaging API Admin**               |
+   | Role ID                 | `roles/firebasecloudmessaging.admin`                 |
+   | Permission that matters | `cloudmessaging.messages.create`                     |
+   | Scope Expo requests     | `https://www.googleapis.com/auth/firebase.messaging` |
+
+   Then Keys → Add key → **JSON**. Use the role _ID_ to find it — Google
+   renames display names periodically. Step 3's API enablement is a hard
+   prerequisite: without `fcm.googleapis.com`, even a correctly-roled account
+   gets 403.
+
+5. **Publish the client config to EAS** — ✅ **done 2026-08-06** for Firebase
+   project `pegasus-cloud-mobile` (sender id `464811936819`). Recorded here for
+   when it needs rotating or repeating for another environment:
+
+   ```
+   eas env:set --name GOOGLE_SERVICES_JSON --type file --value ./google-services.json --visibility sensitive --scope project --environment production --non-interactive
+   ```
+
+   `env:set`, not the deprecated `env:create`. Visibility is **sensitive**, not
+   `secret`, deliberately: `google-services.json` ships inside every APK, so it
+   is not a secret in any meaningful sense, and `secret` can never be read back
+   or downgraded (#541) — which would make it unverifiable and unrotatable for
+   no security gain. Confirm with
+   `eas env:get production --variable-name GOOGLE_SERVICES_JSON --format long`.
+
+   Repeat with `--environment preview` only if you want push in preview builds.
+
+6. **Upload the FCM V1 server key** — ⬅️ **the remaining Android blocker.**
+   Interactive (no non-interactive equivalent), from `apps/mobile`:
 
    ```
    eas credentials --platform android
@@ -79,20 +124,18 @@ adoption of Firebase: no SDK usage, no analytics, free Spark tier.
 
    Choose the `production` build profile → **Google Service Account** → **Manage
    your Google Service Account Key for Push Notifications (FCM V1)** → upload the
-   key from step 4.
-
-   Then publish the client config as a build-time file secret:
+   key from step 4. This is the credential Expo actually sends with; the client
+   config from step 5 only lets the app mint a token. Verify it landed —
+   `androidFcm` / `googleServiceAccountKeyForFcmV1` must stop being `null`:
 
    ```
-   eas env:create --name GOOGLE_SERVICES_JSON --type file --scope project --visibility secret --value ./google-services.json --environment production
+   SECRET=$(python3 -c "import json;print(json.load(open('$HOME/.expo/state.json'))['auth']['sessionSecret'])"); curl -s https://api.expo.dev/graphql -H "Content-Type: application/json" -H "expo-session: $SECRET" -d '{"query":"query { app { byId(appId: \"a2e694fd-15da-47ba-8ef0-8a3e1cd7c4be\") { androidAppCredentials { androidFcm { id } googleServiceAccountKeyForFcmV1 { id } } } } }"}'
    ```
 
-   (Repeat with `--environment preview` if you want push in preview builds.)
-
-6. **Rebuild** — push credentials are baked in at build time, so the current APK
+7. **Rebuild** — push credentials are baked in at build time, so the current APK
    /AAB cannot receive push no matter what is configured server-side. Run the
    **Mobile release** workflow (Actions → Mobile release → `platform: android`).
-7. **Verify** — install the new build, log in as a mapped driver, accept the
+8. **Verify** — install the new build, log in as a mapped driver, accept the
    notification prompt, then confirm a row appears:
 
    ```

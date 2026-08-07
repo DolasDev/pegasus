@@ -1516,7 +1516,27 @@ export class ApiStack extends cdk.Stack {
         DATABASE_URL: dbSecret.secretValue.unsafeUnwrap(),
         LOG_LEVEL: 'INFO',
       },
-      bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        externalModules: ['@aws-sdk/*'],
+        // ESM, unlike every other function here — `expo-server-sdk` is pure ESM
+        // ("type": "module") and its ExpoClient.js does
+        // `createRequire(import.meta.url)` at module scope. Bundled to CJS
+        // (NodejsFunction's default) `import.meta.url` is undefined, so that
+        // call throws ERR_INVALID_ARG_VALUE during INIT — before the handler
+        // runs, which is why the outbox showed attempts=0 with no error rather
+        // than a delivery failure. Synth and deploy both stay green; only
+        // loading the bundle reveals it.
+        format: nodejs.OutputFormat.ESM,
+        // ESM output has no `require`/`__dirname`, which the CJS deps sharing
+        // this bundle (Prisma) still reference. Re-create them from
+        // import.meta.url, which IS defined here.
+        banner:
+          "import{createRequire as __cr}from'node:module';const require=__cr(import.meta.url);" +
+          "import{fileURLToPath as __f2p}from'node:url';import{dirname as __dn}from'node:path';" +
+          'const __filename=__f2p(import.meta.url);const __dirname=__dn(__filename);',
+      },
       memorySize: 512,
       timeout: cdk.Duration.minutes(5),
       logGroup: pushForwardLogGroup,
