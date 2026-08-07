@@ -59,13 +59,27 @@ export async function transcodePdfFirstPage(
   input: Buffer,
   variant: DocumentVariantKind,
 ): Promise<TranscodeResult> {
+  // pdfjs 6 builds fill/stroke geometry as `Path2D` and hands it to the 2D
+  // context. Node has no global Path2D, and the one @napi-rs/canvas exports is
+  // only reachable via its module — so without this the native `fill()` rejects
+  // the argument ("Value is none of these types `String`, `Path`") and every
+  // PDF render throws. pdfjs 5 built paths inline and never needed them.
+  const canvasLib = await import('@napi-rs/canvas')
+  for (const name of ['Path2D', 'DOMMatrix', 'ImageData'] as const) {
+    const g = globalThis as unknown as Record<string, unknown>
+    if (g[name] === undefined && canvasLib[name] !== undefined) g[name] = canvasLib[name]
+  }
+
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
-  const doc = await pdfjs.getDocument({ data: new Uint8Array(input) }).promise
+  // Hold the loading task: pdfjs 6 dropped `PDFDocumentProxy.destroy()`, so
+  // teardown (which frees the worker) now goes through the task itself.
+  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(input) })
+  const doc = await loadingTask.promise
 
   const page = await doc.getPage(1)
   const viewport = page.getViewport({ scale: 2.0 })
 
-  const { createCanvas } = await import('@napi-rs/canvas')
+  const { createCanvas } = canvasLib
   const canvas = createCanvas(viewport.width, viewport.height)
   const ctx = canvas.getContext('2d')
 
@@ -78,7 +92,7 @@ export async function transcodePdfFirstPage(
   }).promise
 
   const pngBuffer = Buffer.from(canvas.toBuffer('image/png'))
-  await doc.destroy()
+  await loadingTask.destroy()
 
   return transcodeImage(pngBuffer, variant)
 }
