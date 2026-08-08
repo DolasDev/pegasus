@@ -16,7 +16,8 @@ jest.mock('../utils/storage', () => ({
 
 /** Push tokens are cached per ACCOUNT, so every call needs one. */
 const ACCOUNT = 'driver@example.com'
-const KEY = `pegasus_push_token:${ACCOUNT}`
+/** Derived, not literal — SecureStore rejects '@' and ':' in keys. */
+const KEY_RE = /^pegasus_push_token\.[0-9a-f]+$/
 
 const mockFetch = jest.fn()
 const mockedStorage = storage as jest.Mocked<typeof storage>
@@ -58,7 +59,10 @@ describe('registerForPush', () => {
     )
     const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string)
     expect(body).toEqual({ platform: expect.any(String), expoPushToken: 'ExponentPushToken[abc]' })
-    expect(mockedStorage.setItem).toHaveBeenCalledWith(KEY, 'ExponentPushToken[abc]')
+    expect(mockedStorage.setItem).toHaveBeenCalledWith(
+      expect.stringMatching(KEY_RE),
+      'ExponentPushToken[abc]',
+    )
   })
 
   it('skips the network call when the token is unchanged', async () => {
@@ -77,7 +81,7 @@ describe('registerForPush', () => {
     // The Expo token identifies the device, not the user — so the previous
     // account's cached token must not suppress registration for a new one.
     mockedStorage.getItem.mockImplementation(async (k: string) =>
-      k === 'pegasus_push_token:previous@example.com' ? 'ExponentPushToken[abc]' : null,
+      k.startsWith('pegasus_push_token.') ? null : 'ExponentPushToken[abc]',
     )
     mockFetch.mockResolvedValue({ id: 'dt-2' })
 
@@ -87,6 +91,24 @@ describe('registerForPush', () => {
       '/api/v1/device-tokens',
       expect.objectContaining({ method: 'POST' }),
     )
+  })
+
+  it('only ever passes SecureStore-legal keys (no @ or : from the email)', async () => {
+    // SecureStore accepts [A-Za-z0-9._-] and THROWS otherwise. Interpolating an
+    // email produced "Invalid key provided to secure store" on a real device,
+    // after the token had already been minted — so registration died at the
+    // cache read with a message that looked like an FCM problem.
+    mockedStorage.getItem.mockResolvedValue(null)
+    mockFetch.mockResolvedValue({ id: 'dt-9' })
+
+    await registerForPush('steve@dolas.dev')
+
+    const keys = [
+      ...mockedStorage.getItem.mock.calls.map((c) => c[0]),
+      ...mockedStorage.setItem.mock.calls.map((c) => c[0]),
+    ]
+    expect(keys.length).toBeGreaterThan(0)
+    for (const k of keys) expect(k).toMatch(/^[A-Za-z0-9._-]+$/)
   })
 
   it('reports a token-mint failure without contacting the API', async () => {
@@ -124,7 +146,7 @@ describe('unregisterForPush', () => {
       '/api/v1/device-tokens',
       expect.objectContaining({ method: 'DELETE' }),
     )
-    expect(mockedStorage.deleteItem).toHaveBeenCalledWith(KEY)
+    expect(mockedStorage.deleteItem).toHaveBeenCalledWith(expect.stringMatching(KEY_RE))
   })
 
   it('no-ops when there is no cached token', async () => {
@@ -141,7 +163,7 @@ describe('unregisterForPush', () => {
 
     await expect(unregisterForPush(ACCOUNT)).resolves.toBeUndefined()
 
-    expect(mockedStorage.deleteItem).toHaveBeenCalledWith(KEY)
+    expect(mockedStorage.deleteItem).toHaveBeenCalledWith(expect.stringMatching(KEY_RE))
   })
 })
 
