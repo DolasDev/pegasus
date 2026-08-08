@@ -51,9 +51,18 @@ describe('generateCodeChallenge', () => {
 })
 
 describe('authorize', () => {
-  /** Sets up mocks for a full successful OAuth flow. */
+  /**
+   * Sets up mocks for a full successful OAuth flow.
+   *
+   * `browserResult` is typed as the shape the MOCK produces, not as
+   * WebBrowser's own result union. expo-web-browser is fully jest-mocked (see
+   * jest.setup.js, which resolves a bare `{ type: 'cancel' }`), and its
+   * `WebBrowserResultType` is a string enum whose members a plain string
+   * literal cannot satisfy — while the code under test only ever does
+   * `result.type !== 'success'`. Strings are the real contract at this seam.
+   */
   function setupMocks(overrides?: {
-    browserResult?: Partial<WebBrowser.WebBrowserAuthSessionResult>
+    browserResult?: { type: string; url?: string }
     fetchResponse?: Response
   }) {
     const fakeBytes32 = new Uint8Array(32).fill(65) // verifier bytes
@@ -128,7 +137,7 @@ describe('authorize', () => {
   })
 
   it('throws AuthError(UserCancelled) when user dismisses the browser', async () => {
-    setupMocks({ browserResult: { type: 'cancel' as const } })
+    setupMocks({ browserResult: { type: 'cancel' } })
 
     try {
       await authorize(mockConfig, 'GoogleSSO')

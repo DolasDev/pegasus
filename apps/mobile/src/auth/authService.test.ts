@@ -16,6 +16,8 @@ const mockConfig: MobileConfig = {
 const mockApiSession: Omit<Session, 'token'> = {
   sub: 'sub-1',
   tenantId: 'tenant-1',
+  tenantName: 'Tenant One',
+  roleNames: ['driver'],
   role: 'driver',
   email: 'a@b.com',
   expiresAt: 9999999999,

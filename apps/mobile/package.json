@@ -8,6 +8,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "test": "jest --forceExit",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src app",
     "expo:check": "expo install --check",
     "expo:doctor": "npx expo-doctor",
     "test:watch": "jest --watch",

@@ -24,7 +24,12 @@ describe('Logger', () => {
   })
 
   function getLogger() {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // A real require(), not a static import: each caller re-runs this AFTER
+    // jest.resetModules() to get a logger bound to a freshly-mocked
+    // EXPO_PUBLIC_ENV. A static import is hoisted and evaluated once, so it
+    // would always carry the first environment. (Rule was renamed from
+    // no-var-requires; the old directive silently stopped applying.)
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     return require('@/utils/logger').logger
   }
 
