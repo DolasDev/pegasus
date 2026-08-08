@@ -69,14 +69,21 @@ beforeEach(() => {
   pushMock.mockResolvedValue(true)
 })
 
-/** RT1 (existing header + activities + shipments) for an update. */
+/** The states reference recordset every summary read now trails. */
+const STATE_ROWS = [
+  { id: 7, geo_code: 'CA' },
+  { id: 47, geo_code: 'PA' },
+]
+
+/** RT1 (existing header + activities + shipments + states) for an update. */
 function mockUpdateReads(existingDriverId: number | null) {
   executeSqlMock.mockResolvedValueOnce({
     recordset: [],
     recordsets: [
       [{ driver_id: existingDriverId, dispatcher_id: 5 }],
       [],
-      [{ order_num: 100, vip: 'N', total_est_wt: 0, line_haul: 0 }],
+      [{ order_num: 100, vip: 'N', total_est_wt: 0, weight: 0, line_haul: 0 }],
+      STATE_ROWS,
     ],
     rowsAffected: [],
   })
@@ -95,8 +102,21 @@ describe('POST /trips (cloud-direct create)', () => {
   it('reads shipments then runs one atomic insert batch, returns the trip 201', async () => {
     executeSqlMock
       .mockResolvedValueOnce({
-        recordset: [{ order_num: 100, vip: 'N', total_est_wt: 100, line_haul: 500 }],
-        recordsets: [[]],
+        recordset: [],
+        recordsets: [
+          [
+            {
+              order_num: 100,
+              vip: 'N',
+              total_est_wt: 100,
+              weight: 140,
+              line_haul: 500,
+              shipper_state: 'CA',
+              consignee_state: 'PA',
+            },
+          ],
+          STATE_ROWS,
+        ],
         rowsAffected: [1],
       })
       .mockResolvedValueOnce({
@@ -117,6 +137,57 @@ describe('POST /trips (cloud-direct create)', () => {
     expect(batchSql).toContain('INSERT INTO LongDistanceDispatchActivity')
     expect(batchSql).toContain('UPDATE TripMaster SET') // summary persist
     expect(batchSql).toContain('SELECT * FROM TripMaster WHERE id = @tripId')
+  })
+
+  // Regression: the summary roll-up wrote 0/null for actual weight, super-VIP
+  // count and both state ids because it read field names the shipment view does
+  // not project. These values must survive the read into the persisted batch.
+  it('persists the roll-up computed from the real view columns', async () => {
+    executeSqlMock
+      .mockResolvedValueOnce({
+        recordset: [],
+        recordsets: [
+          [
+            {
+              order_num: 100,
+              vip: 'Y',
+              idc_break: 'Y', // super VIP
+              total_est_wt: 100,
+              weight: 140, // the actual weight
+              line_haul: 500,
+              shipper_state: 'CA',
+              consignee_state: 'PA',
+            },
+          ],
+          STATE_ROWS,
+        ],
+        rowsAffected: [1],
+      })
+      .mockResolvedValueOnce({
+        recordset: [{ id: 77, trip_title: 'T' }],
+        recordsets: [[]],
+        rowsAffected: [1],
+      })
+
+    // `load_date2` is what makes buildShipmentActivities emit the LOAD that the
+    // weight roll-up sums over; the default fixture only generates a delivery.
+    const res = await req(
+      '/onprem/longhaul/trips',
+      'POST',
+      tripBody({
+        shipments: [{ ...shipment, load_date2: '2026-06-01', plan_load: '2026-06-01' }],
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    // buildSaveBatch prefixes the summary params `s_`.
+    const [, , batchOpts] = executeSqlMock.mock.calls[1]!
+    expect(batchOpts.params).toContainEqual({ name: 's_total_estimated_lbs', value: 100 })
+    expect(batchOpts.params).toContainEqual({ name: 's_total_actual_lbs', value: 140 })
+    expect(batchOpts.params).toContainEqual({ name: 's_origin_state_id', value: 7 })
+    expect(batchOpts.params).toContainEqual({ name: 's_destination_state_id', value: 47 })
+    expect(batchOpts.params).toContainEqual({ name: 's_supervip_count', value: 1 })
+    expect(batchOpts.params).toContainEqual({ name: 's_vip_count', value: 0 }) // super VIP excluded
   })
 
   it('rejects a trip with no shipments (403)', async () => {
@@ -154,7 +225,8 @@ describe('PUT /trips/:id (cloud-direct update)', () => {
               TripMaster_id: 55,
             },
           ], // activities
-          [{ order_num: 100, vip: 'N', total_est_wt: 0, line_haul: 0 }], // shipments
+          [{ order_num: 100, vip: 'N', total_est_wt: 0, weight: 0, line_haul: 0 }], // shipments
+          STATE_ROWS, // states
         ],
         rowsAffected: [],
       })
@@ -213,8 +285,11 @@ describe('PUT /trips/:id (cloud-direct update)', () => {
 describe('driver-assignment push', () => {
   it('enqueues for the assigned driver on create, keyed to the new trip id', async () => {
     executeSqlMock.mockResolvedValueOnce({
-      recordset: [{ order_num: 100, vip: 'N', total_est_wt: 100, line_haul: 500 }],
-      recordsets: [[]],
+      recordset: [],
+      recordsets: [
+        [{ order_num: 100, vip: 'N', total_est_wt: 100, weight: 140, line_haul: 500 }],
+        STATE_ROWS,
+      ],
       rowsAffected: [1],
     })
     mockSaveBatch(77)

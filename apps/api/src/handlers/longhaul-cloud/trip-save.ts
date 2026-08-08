@@ -31,7 +31,11 @@ import {
   type TripSavePlan,
 } from '../../lib/longhaul-trip-save'
 import {
+  buildStateIdByGeoCode,
   computeTripSummary,
+  STATES_SQL,
+  SUMMARY_SHIPMENT_COLUMNS,
+  type StateIdByGeoCode,
   type SummaryActivityRow,
   type SummaryShipmentRow,
   type TripSummary,
@@ -46,10 +50,10 @@ const TripBody = z
   })
   .passthrough()
 
-// saveTripLogic's summary counts super-VIPs via `idc_break` (not `supervip`),
-// and both `vip` and `idc_break` exist on the view — so select both.
+// The summary roll-up's columns (see SUMMARY_SHIPMENT_COLUMNS — typed against
+// the view manifest), plus the state reference table in the same round trip.
 const SHIPMENT_SUMMARY_SQL = (inList: string) =>
-  `SELECT order_num, vip, idc_break, total_est_wt, line_haul FROM v_longhaul_shipments_v2 WHERE order_num IN (${inList})`
+  `SELECT ${SUMMARY_SHIPMENT_COLUMNS.join(', ')} FROM v_longhaul_shipments_v2 WHERE order_num IN (${inList});\n${STATES_SQL}`
 
 // Existing trip header + activities (update only); aliases ActivityType_code to
 // the joined-alias name the sameSlot diff compares against.
@@ -99,8 +103,11 @@ async function handleSave(c: Parameters<Handler<AppEnv>>[0], tripId: number | un
     let existingTrip: Record<string, unknown> | null = null
     let existingActivities: ExistingActivity[] = []
     let summaryShipments: SummaryShipmentRow[] = []
+    let stateIdByGeoCode: StateIdByGeoCode = {}
 
     if (isUpdate) {
+      // EXISTING_READ_SQL is 2 statements, SHIPMENT_SUMMARY_SQL another 2:
+      // [0] trip header, [1] existing activities, [2] shipments, [3] states.
       const { recordsets } = await executeSql(
         connectionString,
         `${EXISTING_READ_SQL}\n${SHIPMENT_SUMMARY_SQL(inList)}`,
@@ -112,11 +119,13 @@ async function handleSave(c: Parameters<Handler<AppEnv>>[0], tripId: number | un
       }
       existingActivities = (recordsets[1] ?? []) as ExistingActivity[]
       summaryShipments = (recordsets[2] ?? []) as SummaryShipmentRow[]
+      stateIdByGeoCode = buildStateIdByGeoCode(recordsets[3] ?? [])
     } else {
-      const { recordset } = await executeSql(connectionString, SHIPMENT_SUMMARY_SQL(inList), {
+      const { recordsets } = await executeSql(connectionString, SHIPMENT_SUMMARY_SQL(inList), {
         params: shipParams,
       })
-      summaryShipments = recordset as SummaryShipmentRow[]
+      summaryShipments = (recordsets[0] ?? []) as SummaryShipmentRow[]
+      stateIdByGeoCode = buildStateIdByGeoCode(recordsets[1] ?? [])
     }
 
     // --- JS: diff + guards.
@@ -134,10 +143,11 @@ async function handleSave(c: Parameters<Handler<AppEnv>>[0], tripId: number | un
       planned_end: (a['planned_end'] as string | null) ?? null,
       ActivityType_code: (a['ActivityType_code'] as string | null) ?? null,
     }))
-    // saveTripLogic keys VIP counts off `idc_break`, unlike the supervip-based
-    // updateTripSummaryInfo used by activity-save / the /summary endpoint.
+    // `idc_break` is now the default too (the `supervip` the other path named is
+    // not a column at all), but keep it explicit — saveTripLogic names it.
     const summary = computeTripSummary(summaryActivities, summaryShipments, {
       superVipField: 'idc_break',
+      stateIdByGeoCode,
     })
 
     // --- RT2: one atomic batch.
