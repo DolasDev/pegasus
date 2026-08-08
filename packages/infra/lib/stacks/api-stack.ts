@@ -1529,6 +1529,14 @@ export class ApiStack extends cdk.Stack {
         // than a delivery failure. Synth and deploy both stay green; only
         // loading the bundle reveals it.
         format: nodejs.OutputFormat.ESM,
+        // Ship expo-server-sdk as a real installed module instead of inlining
+        // it. ExpoClient.js:165 does `require('../package.json').version` at
+        // SEND time to build its User-Agent; inlined, that resolves relative to
+        // /var/task/index.mjs and blows up with "Cannot find module
+        // '../package.json'" — past init, so it surfaced only once a
+        // notification was actually delivered. Installed under node_modules the
+        // package keeps its own layout and the relative require resolves.
+        nodeModules: ['expo-server-sdk'],
         // ESM output has no `require`/`__dirname`, which the CJS deps sharing
         // this bundle (Prisma) still reference. Re-create them from
         // import.meta.url, which IS defined here.
