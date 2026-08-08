@@ -1,7 +1,7 @@
 import React from 'react'
 import { render, act } from '@testing-library/react-native'
 import * as SecureStore from 'expo-secure-store'
-import { AppState } from 'react-native'
+import { AppState, type AppStateEvent, type AppStateStatus } from 'react-native'
 import { AuthProvider, useAuth } from './AuthContext'
 import { setTokenProvider } from '../api/client'
 import { logger } from '../utils/logger'
@@ -37,6 +37,8 @@ function TestConsumer({
 const mockSession: Session = {
   sub: 'user-123',
   tenantId: 'tenant-abc',
+  tenantName: 'Acme Moving Co',
+  roleNames: ['driver'],
   role: 'driver',
   email: 'driver@example.com',
   expiresAt: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now in seconds
@@ -161,6 +163,8 @@ describe('checkSession — SESSION-02', () => {
     const stored: Session = {
       sub: 'user-456',
       tenantId: 'tenant-xyz',
+      tenantName: 'Acme Moving Co',
+      roleNames: ['driver'],
       role: 'driver',
       email: 'restored@example.com',
       expiresAt: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now in seconds
@@ -191,13 +195,13 @@ describe('checkSession — SESSION-02', () => {
 })
 
 describe('AppState expiry detection — SESSION-04', () => {
-  let mockAppStateListeners: Array<(state: string) => void>
+  let mockAppStateListeners: Array<(state: AppStateStatus) => void>
 
   beforeEach(() => {
     mockAppStateListeners = []
     jest
       .spyOn(AppState, 'addEventListener')
-      .mockImplementation((_event: string, handler: (state: string) => void) => {
+      .mockImplementation((_event: AppStateEvent, handler: (state: AppStateStatus) => void) => {
         mockAppStateListeners.push(handler)
         return { remove: jest.fn() }
       })
@@ -207,6 +211,8 @@ describe('AppState expiry detection — SESSION-04', () => {
     const expiredSession: Session = {
       sub: 'user-789',
       tenantId: 'tenant-abc',
+      tenantName: 'Acme Moving Co',
+      roleNames: ['driver'],
       role: 'driver',
       email: 'expired@example.com',
       expiresAt: Math.floor(Date.now() / 1000) - 1, // 1 second ago in seconds
@@ -234,6 +240,8 @@ describe('AppState expiry detection — SESSION-04', () => {
     const validSession: Session = {
       sub: 'user-789',
       tenantId: 'tenant-abc',
+      tenantName: 'Acme Moving Co',
+      roleNames: ['driver'],
       role: 'driver',
       email: 'valid@example.com',
       expiresAt: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now in seconds
@@ -257,6 +265,8 @@ describe('AppState expiry detection — SESSION-04', () => {
     const expiredSession: Session = {
       sub: 'user-789',
       tenantId: 'tenant-abc',
+      tenantName: 'Acme Moving Co',
+      roleNames: ['driver'],
       role: 'driver',
       email: 'expired@example.com',
       expiresAt: Math.floor(Date.now() / 1000) - 1, // 1 second ago in seconds
