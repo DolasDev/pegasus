@@ -91,7 +91,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ authService, childre
       const email = session?.email ?? ''
       // Deactivate this device's push token BEFORE the session is cleared, so the
       // authenticated DELETE still carries a valid bearer. Best-effort.
-      await unregisterForPush()
+      await unregisterForPush(email)
       await storage.deleteItem(SESSION_KEY)
       setSession(null)
       logger.logAuth('logout', email)

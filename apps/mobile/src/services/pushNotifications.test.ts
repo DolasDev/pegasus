@@ -14,6 +14,10 @@ jest.mock('../utils/storage', () => ({
   storage: { getItem: jest.fn(), setItem: jest.fn(), deleteItem: jest.fn() },
 }))
 
+/** Push tokens are cached per ACCOUNT, so every call needs one. */
+const ACCOUNT = 'driver@example.com'
+const KEY = `pegasus_push_token:${ACCOUNT}`
+
 const mockFetch = jest.fn()
 const mockedStorage = storage as jest.Mocked<typeof storage>
 
@@ -31,14 +35,14 @@ beforeEach(() => {
 describe('registerForPush', () => {
   it('no-ops on a non-physical device', async () => {
     ;(Device as { isDevice: boolean }).isDevice = false
-    await registerForPush()
+    await registerForPush(ACCOUNT)
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
   it('no-ops when permission is denied', async () => {
     ;(Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'denied' })
     ;(Notifications.requestPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'denied' })
-    await registerForPush()
+    await registerForPush(ACCOUNT)
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
@@ -46,7 +50,7 @@ describe('registerForPush', () => {
     mockedStorage.getItem.mockResolvedValue(null)
     mockFetch.mockResolvedValue({ id: 'dt-1' })
 
-    await registerForPush()
+    await registerForPush(ACCOUNT)
 
     expect(mockFetch).toHaveBeenCalledWith(
       '/api/v1/device-tokens',
@@ -54,22 +58,58 @@ describe('registerForPush', () => {
     )
     const body = JSON.parse((mockFetch.mock.calls[0][1] as RequestInit).body as string)
     expect(body).toEqual({ platform: expect.any(String), expoPushToken: 'ExponentPushToken[abc]' })
-    expect(mockedStorage.setItem).toHaveBeenCalledWith(
-      'pegasus_push_token',
-      'ExponentPushToken[abc]',
-    )
+    expect(mockedStorage.setItem).toHaveBeenCalledWith(KEY, 'ExponentPushToken[abc]')
   })
 
   it('skips the network call when the token is unchanged', async () => {
     mockedStorage.getItem.mockResolvedValue('ExponentPushToken[abc]')
-    await registerForPush()
+    await registerForPush(ACCOUNT)
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
   it('never throws when the API call fails', async () => {
     mockedStorage.getItem.mockResolvedValue(null)
     mockFetch.mockRejectedValue(new Error('500'))
-    await expect(registerForPush()).resolves.toBeUndefined()
+    await expect(registerForPush(ACCOUNT)).resolves.toBeDefined()
+  })
+
+  it('re-registers when a DIFFERENT account signs in on the same device', async () => {
+    // The Expo token identifies the device, not the user — so the previous
+    // account's cached token must not suppress registration for a new one.
+    mockedStorage.getItem.mockImplementation(async (k: string) =>
+      k === 'pegasus_push_token:previous@example.com' ? 'ExponentPushToken[abc]' : null,
+    )
+    mockFetch.mockResolvedValue({ id: 'dt-2' })
+
+    await registerForPush(ACCOUNT)
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/v1/device-tokens',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  it('reports a token-mint failure without contacting the API', async () => {
+    mockedStorage.getItem.mockResolvedValue(null)
+    ;(Notifications.getExpoPushTokenAsync as jest.Mock).mockRejectedValue(
+      new Error('FirebaseApp is not initialized'),
+    )
+
+    const state = await registerForPush(ACCOUNT)
+
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(state.status).toBe('failed')
+    expect((state as { reason: string }).reason).toContain('token mint')
+  })
+
+  it('reports denied permission as a skip, with the reason', async () => {
+    ;(Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'denied' })
+    ;(Notifications.requestPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'denied' })
+
+    const state = await registerForPush(ACCOUNT)
+
+    expect(state.status).toBe('skipped')
+    expect((state as { reason: string }).reason).toContain('denied')
   })
 })
 
@@ -78,19 +118,30 @@ describe('unregisterForPush', () => {
     mockedStorage.getItem.mockResolvedValue('ExponentPushToken[abc]')
     mockFetch.mockResolvedValue({ deactivated: true })
 
-    await unregisterForPush()
+    await unregisterForPush(ACCOUNT)
 
     expect(mockFetch).toHaveBeenCalledWith(
       '/api/v1/device-tokens',
       expect.objectContaining({ method: 'DELETE' }),
     )
-    expect(mockedStorage.deleteItem).toHaveBeenCalledWith('pegasus_push_token')
+    expect(mockedStorage.deleteItem).toHaveBeenCalledWith(KEY)
   })
 
   it('no-ops when there is no cached token', async () => {
     mockedStorage.getItem.mockResolvedValue(null)
-    await unregisterForPush()
+    await unregisterForPush(ACCOUNT)
     expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('clears the cached token even when the API DELETE fails', async () => {
+    // Clearing only on success poisoned the cache: the marker survived, so
+    // every later login short-circuited and the device could never re-register.
+    mockedStorage.getItem.mockResolvedValue('ExponentPushToken[abc]')
+    mockFetch.mockRejectedValue(new Error('network down'))
+
+    await expect(unregisterForPush(ACCOUNT)).resolves.toBeUndefined()
+
+    expect(mockedStorage.deleteItem).toHaveBeenCalledWith(KEY)
   })
 })
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from 'react'
-import { View, Text, StyleSheet } from 'react-native'
+import { View, Text, StyleSheet, AppState } from 'react-native'
 import { Stack, SplashScreen, useRouter } from 'expo-router'
 import { AuthProvider, useAuth } from '../src/context/AuthContext'
 import { isConfigValid } from '../src/config'
@@ -36,12 +36,26 @@ function RootLayoutNav() {
     return () => sub.remove()
   }, [router])
 
-  // Register this device for push once the driver is authenticated (and again on
-  // any later auth transition). Logout-side deactivation lives in AuthContext so
-  // it runs while the session token is still valid.
+  // Register this device for push once the driver is authenticated, and RETRY
+  // whenever the app returns to the foreground.
+  //
+  // The retry is not belt-and-braces. Registration can fail for reasons that
+  // are transient and entirely outside the app — most commonly the Expo token
+  // mint right after an app-data clear, while Play Services re-establishes FCM.
+  // Firing only on the auth transition meant one such failure disabled push for
+  // the whole session: the effect never re-ran, because a restored session
+  // leaves `isAuthenticated` already true, so even force-quitting and
+  // reopening the app changed nothing. Re-registering is cheap and idempotent —
+  // it short-circuits on the per-account cache once it has succeeded.
+  const accountKey = session?.email ?? ''
   useEffect(() => {
-    if (isAuthenticated) registerForPush()
-  }, [isAuthenticated])
+    if (!isAuthenticated) return
+    registerForPush(accountKey)
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') registerForPush(accountKey)
+    })
+    return () => sub.remove()
+  }, [isAuthenticated, accountKey])
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

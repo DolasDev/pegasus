@@ -1,11 +1,44 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native'
 import { useAuth } from '../../src/context/AuthContext'
 import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
 import Constants from 'expo-constants'
+import {
+  loadPushRegistrationState,
+  type PushRegistrationState,
+} from '../../src/services/pushNotifications'
+
+/** One-line, human-readable rendering of the last push-registration outcome. */
+function describePushState(s: PushRegistrationState): string {
+  switch (s.status) {
+    case 'registered':
+      return 'Registered'
+    case 'skipped':
+      return `Not registered — ${s.reason}`
+    case 'failed':
+      return `Failed — ${s.reason}`
+    default:
+      return 'Not registered yet'
+  }
+}
 
 export default function SettingsScreen() {
   const { session, logout } = useAuth()
+
+  // Push registration fails silently by design (it must never break startup),
+  // which previously left no way to tell a working device from a broken one
+  // without pulling logs off the handset. Surfacing the last outcome here makes
+  // it self-diagnosable.
+  const [pushState, setPushState] = useState<PushRegistrationState>({ status: 'unknown' })
+  useEffect(() => {
+    let active = true
+    loadPushRegistrationState().then((s) => {
+      if (active) setPushState(s)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
 
   const handleLogout = () => {
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
@@ -54,6 +87,11 @@ export default function SettingsScreen() {
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Build</Text>
             <Text style={styles.infoValue}>Preview</Text>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Notifications</Text>
+            <Text style={styles.infoValue}>{describePushState(pushState)}</Text>
           </View>
         </View>
       </View>

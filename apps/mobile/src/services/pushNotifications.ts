@@ -23,8 +23,64 @@ import { getApiClient } from '../api/client'
 import { storage } from '../utils/storage'
 import { logger } from '../utils/logger'
 
-/** Secure-store key holding the Expo push token we last successfully registered. */
+/**
+ * Secure-store key holding the Expo push token we last successfully registered,
+ * scoped to the account it was registered FOR.
+ *
+ * The scoping is the whole point. An Expo push token identifies the *device*,
+ * not the user, so a single unscoped key made "have we registered this token?"
+ * indistinguishable from "have we registered it for THIS user?" — switching
+ * accounts on one phone short-circuited registration and left the server row
+ * pointing at the previous user, who then received the new user's
+ * notifications. Keyed per account, a user switch always re-registers, and
+ * upsertDeviceToken re-points the row.
+ */
 const REGISTERED_TOKEN_KEY = 'pegasus_push_token'
+const registeredTokenKey = (accountKey: string): string =>
+  accountKey ? `${REGISTERED_TOKEN_KEY}:${accountKey}` : REGISTERED_TOKEN_KEY
+
+/** Secure-store key holding the last registration outcome (see PushRegistrationState). */
+const REGISTRATION_STATE_KEY = 'pegasus_push_state'
+
+/**
+ * Outcome of the last registration attempt. Every failure path in this module
+ * is caught so it can't break app startup, which historically meant a device
+ * that silently never registered looked identical to one that had — with no
+ * signal anywhere off the phone. Recording the outcome makes it inspectable
+ * (Settings surfaces it) instead of requiring a log capture.
+ */
+export type PushRegistrationState =
+  | { status: 'unknown' }
+  | { status: 'registered'; account: string; at: string }
+  | { status: 'skipped'; reason: string; at: string }
+  | { status: 'failed'; reason: string; at: string }
+
+let lastState: PushRegistrationState = { status: 'unknown' }
+
+/** The last registration outcome for this app session. */
+export function getPushRegistrationState(): PushRegistrationState {
+  return lastState
+}
+
+/** Re-reads the persisted outcome, so it survives an app relaunch. */
+export async function loadPushRegistrationState(): Promise<PushRegistrationState> {
+  try {
+    const raw = await storage.getItem(REGISTRATION_STATE_KEY)
+    if (raw) lastState = JSON.parse(raw) as PushRegistrationState
+  } catch {
+    // A corrupt/absent record is not worth surfacing — 'unknown' is honest.
+  }
+  return lastState
+}
+
+async function recordState(state: PushRegistrationState): Promise<void> {
+  lastState = state
+  try {
+    await storage.setItem(REGISTRATION_STATE_KEY, JSON.stringify(state))
+  } catch {
+    // Persistence is best-effort; the in-memory value still serves this session.
+  }
+}
 
 const ANDROID_CHANNEL_ID = 'default'
 
@@ -75,12 +131,14 @@ export async function initNotifications(): Promise<void> {
  * unchanged since the last successful registration. Never throws — failures are
  * logged so they can't break app startup.
  */
-export async function registerForPush(): Promise<void> {
+export async function registerForPush(accountKey: string): Promise<PushRegistrationState> {
+  const at = new Date().toISOString()
   try {
     const platform = apiPlatform()
     if (!platform || !Device.isDevice) {
       logger.info('Push registration skipped (unsupported platform or simulator)')
-      return
+      await recordState({ status: 'skipped', reason: 'not a physical device', at })
+      return lastState
     }
 
     const existing = await Notifications.getPermissionsAsync()
@@ -91,26 +149,46 @@ export async function registerForPush(): Promise<void> {
     }
     if (status !== 'granted') {
       logger.info('Push permission not granted', { status })
-      return
+      await recordState({ status: 'skipped', reason: `permission ${status}`, at })
+      return lastState
     }
 
     const pid = projectId()
-    const { data: expoPushToken } = await Notifications.getExpoPushTokenAsync(
-      pid ? { projectId: pid } : undefined,
-    )
+    // Isolated so a token-mint failure is reported as its own cause. This is
+    // the step that fails when FCM/Play Services isn't ready (common right
+    // after an app-data clear), and it used to be indistinguishable from a
+    // network error against our own API.
+    let expoPushToken: string
+    try {
+      const res = await Notifications.getExpoPushTokenAsync(pid ? { projectId: pid } : undefined)
+      expoPushToken = res.data
+    } catch (error) {
+      logger.error('Could not obtain an Expo push token', error)
+      await recordState({ status: 'failed', reason: `token mint: ${String(error)}`, at })
+      return lastState
+    }
 
-    // Skip the network round-trip if we already registered this exact token.
-    const cached = await storage.getItem(REGISTERED_TOKEN_KEY)
-    if (cached === expoPushToken) return
+    // Skip the round-trip only when this token is already registered for THIS
+    // account — see registeredTokenKey.
+    const key = registeredTokenKey(accountKey)
+    const cached = await storage.getItem(key)
+    if (cached === expoPushToken) {
+      await recordState({ status: 'registered', account: accountKey, at })
+      return lastState
+    }
 
     await getApiClient().fetch<{ id: string }>('/api/v1/device-tokens', {
       method: 'POST',
       body: JSON.stringify({ platform, expoPushToken }),
     })
-    await storage.setItem(REGISTERED_TOKEN_KEY, expoPushToken)
+    await storage.setItem(key, expoPushToken)
     logger.info('Registered device for push notifications', { platform })
+    await recordState({ status: 'registered', account: accountKey, at })
+    return lastState
   } catch (error) {
     logger.error('Push registration failed', error)
+    await recordState({ status: 'failed', reason: String(error), at })
+    return lastState
   }
 }
 
@@ -118,18 +196,34 @@ export async function registerForPush(): Promise<void> {
  * Deactivates the current device token on the server (logout) and clears the
  * local cache. Best-effort and never throws — logout must always proceed.
  */
-export async function unregisterForPush(): Promise<void> {
+export async function unregisterForPush(accountKey: string): Promise<void> {
+  const key = registeredTokenKey(accountKey)
+  let cached: string | null = null
   try {
-    const cached = await storage.getItem(REGISTERED_TOKEN_KEY)
+    cached = await storage.getItem(key)
     if (!cached) return
     await getApiClient().fetch('/api/v1/device-tokens', {
       method: 'DELETE',
       body: JSON.stringify({ expoPushToken: cached }),
     })
-    await storage.deleteItem(REGISTERED_TOKEN_KEY)
     logger.info('Deactivated device push token')
   } catch (error) {
     logger.error('Push deactivation failed', error)
+  } finally {
+    // ALWAYS drop the local marker, even when the DELETE failed. Clearing it
+    // only on success meant one failed deactivation left a token cached that
+    // no longer matched any server row, and every later login short-circuited
+    // on it — the device could never re-register, and no in-app action fixed
+    // it. A stale server row is self-healing (Expo reports DeviceNotRegistered
+    // and the forwarder deactivates it); a poisoned local cache was not.
+    if (cached) {
+      try {
+        await storage.deleteItem(key)
+      } catch {
+        // Nothing further we can do; the next successful register overwrites it.
+      }
+    }
+    await recordState({ status: 'unknown' })
   }
 }
 
