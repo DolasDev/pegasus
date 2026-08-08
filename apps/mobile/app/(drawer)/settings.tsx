@@ -8,6 +8,24 @@ import {
   type PushRegistrationState,
 } from '../../src/services/pushNotifications'
 
+/**
+ * "1.0.0 (13)" — the marketing version plus the build number that actually
+ * distinguishes two installs.
+ *
+ * `expoConfig.version` is static (1.0.0 on every release), and the row used to
+ * sit next to a hard-coded "Preview", so there was no way to tell which build
+ * was on a device — the question that matters every time a fix ships to closed
+ * testing. `nativeBuildVersion` is the EAS-incremented Android versionCode.
+ * It's deprecated on expo-constants in favour of expo-application; kept here
+ * deliberately to avoid adding a native module, and it still resolves on
+ * SDK 55. Migrate if it ever returns null.
+ */
+function versionLabel(): string {
+  const version = Constants.expoConfig?.version ?? '1.0.0'
+  const build = Constants.nativeBuildVersion
+  return build ? `${version} (${build})` : version
+}
+
 /** One-line, human-readable rendering of the last push-registration outcome. */
 function describePushState(s: PushRegistrationState): string {
   switch (s.status) {
@@ -81,12 +99,12 @@ export default function SettingsScreen() {
         <View style={styles.infoCard}>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Version</Text>
-            <Text style={styles.infoValue}>{Constants.expoConfig?.version || '1.0.0'}</Text>
+            <Text style={styles.infoValue}>{versionLabel()}</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Build</Text>
-            <Text style={styles.infoValue}>Preview</Text>
+            <Text style={styles.infoLabel}>Environment</Text>
+            <Text style={styles.infoValue}>{process.env.EXPO_PUBLIC_ENV ?? 'development'}</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.infoRow}>

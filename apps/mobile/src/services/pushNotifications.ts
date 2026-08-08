@@ -36,8 +36,28 @@ import { logger } from '../utils/logger'
  * upsertDeviceToken re-points the row.
  */
 const REGISTERED_TOKEN_KEY = 'pegasus_push_token'
+
+/**
+ * Hashes the account into a SecureStore-safe slug (FNV-1a, hex).
+ *
+ * SecureStore accepts only [A-Za-z0-9._-] and THROWS on anything else, so an
+ * email address cannot be interpolated into a key — `@` and `:` both blow up
+ * with "Invalid key provided to secure store". Hashing sidesteps the whole
+ * character-class question for any future key material, and keeps the user's
+ * address out of the device keystore. Collisions are irrelevant here: the
+ * value is a cache marker, and a miss only costs one redundant re-register.
+ */
+function accountSlug(accountKey: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < accountKey.length; i++) {
+    h ^= accountKey.charCodeAt(i)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return h.toString(16)
+}
+
 const registeredTokenKey = (accountKey: string): string =>
-  accountKey ? `${REGISTERED_TOKEN_KEY}:${accountKey}` : REGISTERED_TOKEN_KEY
+  accountKey ? `${REGISTERED_TOKEN_KEY}.${accountSlug(accountKey)}` : REGISTERED_TOKEN_KEY
 
 /** Secure-store key holding the last registration outcome (see PushRegistrationState). */
 const REGISTRATION_STATE_KEY = 'pegasus_push_state'
