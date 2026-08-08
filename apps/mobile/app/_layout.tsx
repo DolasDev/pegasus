@@ -4,7 +4,6 @@ import { Stack, SplashScreen, useRouter } from 'expo-router'
 import { AuthProvider, useAuth } from '../src/context/AuthContext'
 import { isConfigValid } from '../src/config'
 import { getAuthService } from '../src/auth/authServiceInstance'
-import { setTokenProvider } from '../src/api/client'
 import {
   initNotifications,
   registerForPush,
@@ -22,11 +21,11 @@ function RootLayoutNav() {
     if (!isLoading) SplashScreen.hideAsync()
   }, [isLoading])
 
-  // Bind the API client's bearer token to the current session. Without this no
-  // authenticated request (including push registration) can attach a token.
-  useEffect(() => {
-    setTokenProvider(() => session?.token ?? null)
-  }, [session])
+  // The API client's bearer token is bound by AuthProvider, synchronously with
+  // every session transition — NOT by an effect here. An effect on this layout
+  // runs after its own descendants' mount effects, so the first authenticated
+  // request of a cold start (TripsProvider's /me/driver) beat it and went out
+  // unauthenticated. See the applySession comment in AuthContext.
 
   // One-time notification setup: foreground handler + Android channel, and route
   // notification taps to their deep-link target.

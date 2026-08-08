@@ -45,11 +45,21 @@ export default function TripsScreen() {
     [trips],
   )
 
+  // Pull-to-refresh: the list is already on screen, so suppress the full-screen
+  // spinner and let RefreshControl show the progress instead.
   const handleRefresh = async () => {
     setIsRefreshing(true)
     await refresh()
     setIsRefreshing(false)
   }
+
+  // The Retry / Refresh buttons on the two full-screen states take the opposite
+  // path: they call refresh() directly so `loading` renders the spinner. Routing
+  // them through handleRefresh set isRefreshing, which skipped the spinner and
+  // left the screen rendering whichever empty state matched the *stale* data —
+  // refresh() clears `error` but not `driverId`, so retrying an error briefly
+  // showed the "No driver linked" onboarding copy instead of a loading state.
+  const handleRetry = () => void refresh()
 
   if (loading && !isRefreshing) {
     return (
@@ -68,7 +78,7 @@ export default function TripsScreen() {
       <SafeAreaView style={styles.centered} edges={['bottom', 'left', 'right']}>
         <Text style={styles.emptyTitle}>Couldn’t load your driver</Text>
         <Text style={styles.emptySubtext}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={() => void handleRefresh()}>
+        <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
           <Text style={styles.retryText}>Retry</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -84,7 +94,7 @@ export default function TripsScreen() {
           Your account isn’t linked to a driver yet. Ask your dispatcher to map your login to a
           driver, then pull to refresh.
         </Text>
-        <TouchableOpacity style={styles.retryButton} onPress={() => void handleRefresh()}>
+        <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
           <Text style={styles.retryText}>Refresh</Text>
         </TouchableOpacity>
       </SafeAreaView>

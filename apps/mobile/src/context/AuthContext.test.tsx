@@ -3,9 +3,26 @@ import { render, act } from '@testing-library/react-native'
 import * as SecureStore from 'expo-secure-store'
 import { AppState } from 'react-native'
 import { AuthProvider, useAuth } from './AuthContext'
+import { setTokenProvider } from '../api/client'
 import { logger } from '../utils/logger'
 import type { Session } from '../auth/types'
 import { AuthError } from '../auth/types'
+
+// The API client's token provider is the thing AuthProvider must publish to.
+// Spying on it lets a test read back the token the client WOULD send, without
+// standing up a real fetch.
+jest.mock('../api/client', () => ({
+  ...jest.requireActual('../api/client'),
+  setTokenProvider: jest.fn(),
+}))
+const mockSetTokenProvider = setTokenProvider as jest.MockedFunction<typeof setTokenProvider>
+
+/** The token the API client would attach right now, per the latest binding. */
+function currentBearer(): string | null {
+  const calls = mockSetTokenProvider.mock.calls
+  if (calls.length === 0) return null
+  return calls[calls.length - 1]![0]()
+}
 
 // Updates ctxRef.current on every render so tests always see latest state.
 function TestConsumer({
@@ -312,6 +329,82 @@ describe('loginWithSso — SSO authentication', () => {
     expect(ctxRef.current!.session).toBeNull()
     expect(ctxRef.current!.isAuthenticated).toBe(false)
     expect(SecureStore.setItemAsync).not.toHaveBeenCalled()
+  })
+})
+
+describe('API bearer-token binding', () => {
+  // Regression: the token used to be bound by a useEffect in the root layout,
+  // which is a PARENT of the authenticated screens. React flushes child effects
+  // before parent effects, so the first authenticated request of a cold start —
+  // TripsProvider's GET /me/driver, fired from its own mount effect — went out
+  // with no Authorization header and the driver saw "Couldn't load your driver"
+  // until they hit Retry. These tests pin the invariant that makes that
+  // impossible: a descendant mounted on the commit where the session appears
+  // already sees the token.
+
+  /** Stands in for TripsProvider: reads the bearer from its mount effect. */
+  function ProtectedProbe({ onMount }: { onMount: (token: string | null) => void }) {
+    React.useEffect(() => {
+      onMount(currentBearer())
+    }, [onMount])
+    return null
+  }
+
+  /** Mounts the probe only once authenticated, exactly like Stack.Protected. */
+  function ProtectedTree({ onMount }: { onMount: (token: string | null) => void }) {
+    const { isAuthenticated } = useAuth()
+    return isAuthenticated ? <ProtectedProbe onMount={onMount} /> : null
+  }
+
+  it('a screen mounted by a restored session sees the token in its own mount effect', async () => {
+    const stored: Session = { ...mockSession, token: 'restored-token' }
+    ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(stored))
+    const onMount = jest.fn()
+
+    render(
+      <AuthProvider authService={mockAuthService}>
+        <ProtectedTree onMount={onMount} />
+      </AuthProvider>,
+    )
+    await act(async () => {})
+
+    expect(onMount).toHaveBeenCalledTimes(1)
+    expect(onMount).toHaveBeenCalledWith('restored-token')
+  })
+
+  it('a screen mounted by a fresh login sees the token in its own mount effect', async () => {
+    ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(null)
+    mockAuthService.authenticate.mockResolvedValueOnce({ ...mockSession, token: 'login-token' })
+    const onMount = jest.fn()
+    const ctxRef: React.MutableRefObject<ReturnType<typeof useAuth> | null> = { current: null }
+
+    render(
+      <AuthProvider authService={mockAuthService}>
+        <TestConsumer ctxRef={ctxRef} />
+        <ProtectedTree onMount={onMount} />
+      </AuthProvider>,
+    )
+    await act(async () => {})
+    expect(onMount).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await ctxRef.current!.login('driver@example.com', 'pass123', 'tenant-abc')
+    })
+
+    expect(onMount).toHaveBeenCalledWith('login-token')
+  })
+
+  it('stops sending the token after logout', async () => {
+    ;(SecureStore.getItemAsync as jest.Mock).mockResolvedValueOnce(JSON.stringify(mockSession))
+    const ctxRef = renderWithProvider()
+    await act(async () => {})
+    expect(currentBearer()).toBe(mockSession.token)
+
+    await act(async () => {
+      await ctxRef.current!.logout()
+    })
+
+    expect(currentBearer()).toBeNull()
   })
 })
 
