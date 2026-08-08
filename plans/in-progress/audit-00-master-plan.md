@@ -8,6 +8,16 @@
 > pending approval because they are outward-facing. That closes this file's own
 > last self-owned gap; it stays open only as the index for the still-open plans.
 
+> **2026-08-08 — both CI misses are now FIXED and the targets re-baselined.**
+> #592 (`c80c2a21`) cut `Run ./.github/actions/setup` from **51-54 s to
+> 13.9-15.5 s** in every job (root cause was Actions cache-storage exhaustion at
+> 10.77 GB vs a 10 GB limit, not a missing cache). The two numeric criteria were
+> re-baselined against the current **7-10-job** pipeline — the old figures
+> described a 5-job pipeline retired by Waves 2-3 — and now read **PASS with
+> headroom**. Scorecard: **5 measured (all pass), 2 held** for approval.
+> `audit-ci-pipeline-efficiency.md` is archive-ready pending one call on folding
+> its Phase 4 into `audit-ai-process-automation.md`.
+
 > **Cleanup audit 2026-07-30 — KEEP OPEN.** Waves 1-2 and most of Wave 3 are
 > verified on `main`. This file stays because it is the live index for the 11
 > still-open audit plans below (AI automation, ntfy deploy notifications, e2e
@@ -145,12 +155,33 @@ The loop improvements are measurable; capture a baseline now and re-measure afte
       dependency root, so `--affected` correctly fans out to 9 packages / 13
       tasks and takes **1m26s**. Still ~2–3× better than the 2–5 min whole-repo
       baseline, but worth knowing before you touch domain late in the day.
-- [ ] **CI wall clock — MISS on code, PASS on docs.** Target ≤2m45s (165 s) warm;
+- [x] **CI wall clock — PASS (re-baselined 2026-08-08).** Post-#592, measured over
+      11 runs after `c80c2a21`: **warm code run 215–226 s** against a
+      re-baselined **≤4m00s (240 s)**; **docs/plans-only 18–20 s** against
+      **<45 s**. The original ≤2m45s (165 s) target was retired as _unreachable_,
+      not merely missed: the critical path is now always the `Test` job
+      (195–212 s), of which setup is ~14 s and the rest is `turbo run test`
+      itself — wall clock cannot fall below the suite's own runtime, and `test`
+      has turbo caching disabled repo-wide by design. **Further wall-clock wins
+      must come from test runtime, not CI plumbing.** Full target table +
+      bounds: `audit-ci-pipeline-efficiency.md` § Phase 2.
+      _Superseded pre-fix measurement (2026-08-06), kept for the record:_
+      Target ≤2m45s (165 s) warm;
       docs/plans-only <1 min. Measured over 23 successful `ci.yml` runs
       (`gh run list --workflow ci.yml --limit 40 --json databaseId,conclusion,event,startedAt,updatedAt`,
       wall = `updatedAt − startedAt`): **code PR/push 211–272 s (median ~240 s ≈ 4m)**;
       **docs/plans-only 18–20 s** (target <60 s — met with 3× headroom).
-- [ ] **Billed minutes — MISS on code, PASS on docs.** Target ≤5.5 min (330 s)
+- [x] **Billed minutes — PASS (re-baselined 2026-08-08).** Post-#592:
+      **335–377 s for a 7-job code run** (target **≤6m30s / 390 s**),
+      **443–492 s when the three Python jobs also run** (target **≤8m30s /
+      510 s**), **13–17 s docs/plans-only** (target **<30 s**). The headline:
+      **377 s across 7 jobs today vs ~450 s across 5 jobs at the 2026-06-10
+      baseline — more than double the jobs for less total compute.** The old
+      ≤5.5 min figure was a 5-job number and was retired, not moved to flatter
+      the result; each new target names its bound in
+      `audit-ci-pipeline-efficiency.md` § Phase 2.
+      _Superseded pre-fix measurement (2026-08-06), kept for the record:_
+      Target ≤5.5 min (330 s)
       per run, summed across non-skipped jobs
       (`gh run view <id> --json jobs`; the `/timing` API returns 0 — this repo is
       public, so Actions minutes are not billed and the sum is the right proxy).

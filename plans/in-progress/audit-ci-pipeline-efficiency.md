@@ -9,6 +9,14 @@
 > **Remaining:** Phase 4 only — the optional, user-deferred `ci-triage.yml` AI
 > failure triage. Archive this once Phase 4 is dropped or folded into
 > `audit-ai-process-automation.md`, which already owns the deferral.
+>
+> **2026-08-08 — ARCHIVE-READY, pending one call from the user.** Phases 1-3 are
+> shipped and verified; Phase 2's targets were re-baselined against the current
+> 7-10-job pipeline (see below) and are now **met with headroom**. The single
+> thing keeping this file open is Phase 4, which is AI-deferred and already owned
+> by `audit-ai-process-automation.md`. **Fold Phase 4 into that plan and archive
+> this one** — not done unilaterally, because moving a phase between plans is a
+> scope decision.
 
 ## Context
 
@@ -263,9 +271,55 @@ Phase 1:
 
 Phase 2:
 
-- Second consecutive run (warm cache): `gh run view <id> --json jobs` shows "Install dependencies" ≤ 5s (cache hit) in all 4 jobs and "Install Playwright browsers" skipped.
-- **Wall clock for a warm code-change run ≤ 2m45s** (baseline 3m20s); Test job ≤ 2m25s.
-- Billed minutes (sum of job durations in `gh run view --json jobs`) ≤ 5.5 min (baseline ~7.5).
+> **⚠️ RE-BASELINED 2026-08-08 — the three targets below are SUPERSEDED.** They
+> were set on 2026-06-10 against a **5-job** pipeline (run 27243490124). Waves
+> 2-3 then deliberately added `migration-safety`, three Python jobs, e2e browser
+> coverage, and coverage ratchets worth ~1,800 extra api tests. Measuring a
+> 7-10-job pipeline against 5-job targets made CI read as permanently failing its
+> own goals, which is why it was never actionable. Kept here, struck through, so
+> the reason for the change survives. **Live targets: see "Re-baselined targets"
+> below.**
+>
+> - ~~Second consecutive run (warm cache): "Install dependencies" ≤ 5s (cache hit) in all 4 jobs.~~
+> - ~~**Wall clock for a warm code-change run ≤ 2m45s** (baseline 3m20s); Test job ≤ 2m25s.~~
+> - ~~Billed minutes ≤ 5.5 min (baseline ~7.5).~~
+
+**Re-baselined targets (2026-08-08).** Measured across 11 `ci.yml` runs after
+`c80c2a21`. Each names the thing that bounds it, so a future miss points at a
+cause instead of just a number:
+
+| Target                                         | Value               | Measured        | What bounds it                                      |
+| ---------------------------------------------- | ------------------- | --------------- | --------------------------------------------------- |
+| Warm code run, wall clock                      | **≤ 4m00s** (240 s) | 215-226 s       | **The `Test` job** (195-212 s). See the note below. |
+| Billed, 7-job code run                         | **≤ 6m30s** (390 s) | 335-377 s       | Job count × per-job floor (~14 s setup + work)      |
+| Billed, 10-job run (Python trees touched)      | **≤ 8m30s** (510 s) | 443-492 s       | The three path-filtered Python jobs (~25 s each)    |
+| Docs/plans-only run, wall / billed             | **< 45 s / < 30 s** | 18-20 / 13-17 s | `dorny/paths-filter` — only 2 jobs run              |
+| `Run ./.github/actions/setup`, cache hit       | **≤ 20 s**          | 13.9-15.5 s     | ~475 MB `node_modules` restore (not free, see #592) |
+| Actions cache storage, **zero** `node-cache-*` | **< 7 GB**          | ~5.2 GB         | GitHub's hard 10 GB limit; eviction above it        |
+
+**The load-bearing constraint: wall clock is now `Test`-bound, not CI-bound.**
+The `Test` job is 195-212 s, of which setup is only ~14 s; the remaining ~180 s
+is `turbo run test` itself. Wall clock therefore **cannot** fall below the
+suite's own runtime — the old 165 s target was not merely missed, it was
+unreachable, and `test` has turbo caching disabled repo-wide by design. **Any
+further wall-clock win must come from test runtime, not CI plumbing.** Do not
+re-open this as a caching problem.
+
+The billed picture is the one that improved and is worth stating plainly:
+**377 s across 7 jobs today vs ~450 s across 5 jobs at baseline** — more than
+double the jobs for less total compute.
+
+Two expected exceptions, so neither reads as a regression:
+
+- **Lockfile-changing PRs pay a cold `npm ci`** (258-291 s wall observed, e.g.
+  #599). By design — see #592: the exact-hash key means a new lockfile is a
+  guaranteed miss, and only ~6 of 40 commits touch `package-lock.json`.
+- **The cache-storage line is the one that silently regresses.** Re-enabling
+  `cache: 'npm'` anywhere, or a future `setup-node` major flipping
+  `package-manager-cache` back on, puts the repo straight back into eviction and
+  every job back to a 44 s `npm ci`. `.github/workflows/e2e-qa-longhaul.yml`
+  still uses `cache: 'npm'` directly; it is on-demand only, so it is tolerated —
+  convert it if it ever moves to a schedule.
 
 > **MEASURED 2026-08-06 — Phase 2's three targets are all still MISSED. One is a
 > real, unfinished optimization; the other two are explained by work added since.**
@@ -293,6 +347,21 @@ Phase 2:
 >   hash, two on refs deleted minutes later. Fix: drop `cache: 'npm'`, and
 >   restore-everywhere / save-only-on-`main` from a single job. Only **6 of the
 >   last 40 commits** touch `package-lock.json`, so ~85 % of runs should now hit.
+>
+>   **SHIPPED 2026-08-08 as #592 (`c80c2a21`), and the first attempt inside it
+>   was itself a no-op worth remembering: dropping `cache: 'npm'` does NOT
+>   disable the npm cache on `actions/setup-node@v6`** — v6 added
+>   `package-manager-cache`, default **true**, which auto-enables caching
+>   whenever `package.json` declares a `packageManager` field (ours:
+>   `"npm@10.8.2"`). The first run with `cache:` removed still pulled 520 MB and
+>   logged `Cache restored from key: node-cache-Linux-x64-npm-…`.
+>   **`package-manager-cache: false` is the actual off switch.** Verified on
+>   `main` (run 31229206929): npm-cache restores **0**, `Run npm ci` **absent**,
+>   `Cache restored from key: Linux-modules-…`, setup **51-54 s → 13.9-15.5 s**,
+>   billed 562 s → 377-443 s. The 9 stale `node-cache-*` entries (4.66 GB) had to
+>   be **deleted by hand** — the code fix only stops new ones — taking storage
+>   from 10.77 GB to ~5.2 GB. (`…/actions/cache/usage` lags the real listing;
+>   trust `…/actions/caches`.)
 >
 > - Wall clock **211–272 s** (target ≤165 s) and billed **383–562 s** (target
 >   ≤330 s) on code PRs; docs/plans-only runs are **18–20 s wall / 13–17 s
