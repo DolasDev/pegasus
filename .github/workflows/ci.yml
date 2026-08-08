@@ -120,7 +120,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # The single node_modules-cache writer for this workflow (the action
+      # additionally gates writing on refs/heads/main). Typecheck is the choice
+      # because it is the fastest job that runs on every code change, so the
+      # ~463 MB upload lands off the critical path. If this job is ever removed
+      # or renamed, move `cache-save: 'true'` to another always-run job or CI
+      # silently goes back to a cold `npm ci` everywhere.
       - uses: ./.github/actions/setup
+        with:
+          cache-save: 'true'
 
       - name: Generate Prisma client
         working-directory: apps/api

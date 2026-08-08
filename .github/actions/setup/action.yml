@@ -1,22 +1,57 @@
 name: 'Setup Node + dependencies'
 description: 'setup-node, cached node_modules, npm ci on miss, binary perms fix'
 
+inputs:
+  cache-save:
+    description: >-
+      Whether this job is the one that writes the node_modules cache. Exactly one
+      job per workflow should pass 'true' (Typecheck does) — otherwise all four
+      jobs upload the same ~463 MB on every main push, burning minutes and
+      producing "cache already exists" warnings for the losers. Writing is
+      additionally gated on refs/heads/main; see the save step below.
+    required: false
+    default: 'false'
+
 runs:
   using: 'composite'
   steps:
     - uses: actions/setup-node@v6
       with:
         node-version-file: '.nvmrc'
-        cache: 'npm'
+        # BOTH of these are required to actually disable the ~/.npm cache.
+        # Dropping `cache: 'npm'` alone is a NO-OP on setup-node v6: it added
+        # `package-manager-cache`, default **true**, which auto-enables npm
+        # caching whenever package.json declares a `packageManager` field — ours
+        # says "npm@10.8.2" (package.json:132). Verified the hard way: the first
+        # run of this action with `cache:` removed still logged
+        # `Cache restored from key: node-cache-Linux-x64-npm-…` and pulled 520 MB.
+        package-manager-cache: false
+        # Deliberately NO `cache: 'npm'`. It cached ~/.npm at ~496 MB per
+        # lockfile hash — 5.47 GB of the repo's 10 GB Actions cache budget
+        # (measured 2026-08-06, when the total sat at 10.77 GB, i.e. permanently
+        # evicting). It also only pays off on the `npm ci` path, which is the
+        # exact path the node_modules cache below exists to skip: on a hit,
+        # ~/.npm is never read. Keeping both guaranteed neither survived
+        # eviction, so every job paid a cold 44 s `npm ci`.
+        #
+        # Cost of dropping it, stated plainly: on a genuine miss (a
+        # lockfile-changing PR — 6 of the last 40 commits on main) `npm ci` now
+        # goes to the registry and is slower than 44 s. That is the trade: rare
+        # cold installs in exchange for the common case going to ~0.
 
     # Workspace node_modules are mostly hoisted to root, but several
     # apps/packages keep nested node_modules (version-conflicted deps),
     # so cache those too. Jobs that need the Prisma client run an explicit
     # `prisma generate` step after this action — the cache-hit path
     # (skipped `npm ci`, hence skipped apps/api postinstall) relies on that.
-    - name: Cache node_modules
+    #
+    # NO `restore-keys`, on purpose: `npm ci` deletes node_modules before
+    # installing, so a partial restore is pure download cost for zero benefit.
+    # The exact-hash key is also what makes skipping `npm ci` safe — a cache
+    # built for a different package-lock.json can never be served.
+    - name: Restore node_modules
       id: modules-cache
-      uses: actions/cache@v5
+      uses: actions/cache/restore@v5
       with:
         path: |
           node_modules
@@ -28,6 +63,25 @@ runs:
       if: steps.modules-cache.outputs.cache-hit != 'true'
       run: npm ci
       shell: bash
+
+    # Write only from main. Caches saved on the default branch are readable from
+    # every branch and from refs/pull/*/merge, so PRs still hit — what this drops
+    # is the two throwaway copies the old always-save config wrote to
+    # refs/pull/N/merge and refs/heads/gh-readonly-queue/... on every PR, refs
+    # that are deleted minutes later. That was ~3 copies per lockfile hash and
+    # the main driver of the eviction churn described above.
+    - name: Save node_modules
+      if: >-
+        steps.modules-cache.outputs.cache-hit != 'true' &&
+        inputs.cache-save == 'true' &&
+        github.ref == 'refs/heads/main'
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          node_modules
+          apps/*/node_modules
+          packages/*/node_modules
+        key: ${{ runner.os }}-modules-${{ hashFiles('package-lock.json', '.nvmrc') }}
 
     - name: Fix binary permissions
       run: find node_modules/.bin -type f | xargs chmod +x 2>/dev/null || true

@@ -278,7 +278,22 @@ Phase 2:
 >   min**, the single biggest recoverable chunk left, with ~50 s of it on the
 >   critical path. **This is the actionable item** — an `actions/cache` on
 >   `node_modules` keyed by `package-lock.json` hash, or an npm-ci-free warm
->   path, is the obvious next move. Not attempted yet.
+>   path, is the obvious next move.
+>
+>   **FIXED 2026-08-06 — and the obvious next move above was wrong.** That cache
+>   already existed and was correct; the raw log shows a cache _miss_
+>   (`Cache not found for input keys: Linux-modules-31b3ec42…`) followed by a
+>   44.3 s `npm ci`. The real fault was **storage exhaustion**:
+>   `gh api …/actions/cache/usage` → **10.77 GB against GitHub's 10 GB limit**,
+>   so entries were evicted before they could ever be reused. Two causes:
+>   (a) `setup-node`'s `cache: 'npm'` held **5.47 GB** (~496 MB/lockfile hash)
+>   for a `~/.npm` dir that is only read on the `npm ci` path the node_modules
+>   cache exists to skip; (b) every ref saved its own copy — `refs/pull/N/merge`,
+>   `refs/heads/gh-readonly-queue/…` **and** `refs/heads/main`, ~3 copies per
+>   hash, two on refs deleted minutes later. Fix: drop `cache: 'npm'`, and
+>   restore-everywhere / save-only-on-`main` from a single job. Only **6 of the
+>   last 40 commits** touch `package-lock.json`, so ~85 % of runs should now hit.
+>
 > - Wall clock **211–272 s** (target ≤165 s) and billed **383–562 s** (target
 >   ≤330 s) on code PRs; docs/plans-only runs are **18–20 s wall / 13–17 s
 >   billed**, which clears the <1 min Phase-3 target with 3× headroom.
