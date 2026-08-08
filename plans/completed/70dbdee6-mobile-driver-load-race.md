@@ -73,7 +73,7 @@ the list is already on screen.
 - [x] **4. Tests.** - `src/context/AuthContext.test.tsx` — the token provider returns the session
       token immediately after restore and after `login`, with **no effect flush in
       between**. This is the regression test for defect 1. - `__tests__/app/(drawer)/trips.test.tsx` — `loading: true, error: null,
-    driverId: null` renders the spinner, **not** "No driver linked". - `src/context/TripsContext.test.tsx` (new, small) — `refresh()` clears a prior
+  driverId: null` renders the spinner, **not** "No driver linked". - `src/context/TripsContext.test.tsx` (new, small) — `refresh()` clears a prior
       error and a failed `getDriverId()` leaves `driverId` null with `error` set.
 - [x] **5. Gates.** `npm run typecheck`, `npm run lint`, `npm test` (mobile at minimum).
 
