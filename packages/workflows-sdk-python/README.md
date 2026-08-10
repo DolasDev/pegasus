@@ -270,6 +270,21 @@ manifest. Returns `{delivered, status, response, dryRun}`; raises `PegasusApiErr
 on 403 (missing action), 404 (unknown integration, or the URL config / API-key
 secret is not set), or 400 (a delivery URL pointing at a private/loopback host).
 
+**It is one fixed request, on purpose.** A single JSON `POST` to the whole URL in
+`SEND_URL`, always sent with `Authorization: Bearer <SEND_API_KEY>` — no
+per-request path, and the bearer isn't optional (no `SEND_API_KEY`, no delivery).
+That narrowness is what makes it two config entries and one line of workflow code.
+Use [`call_external`](#calling-a-partner-api-authenticated-reads--writes) instead
+as soon as you need a per-request path, a non-bearer credential (a named header /
+`AUTH_MODE=apikey`, OAuth2, or `none`), or more than one credential header —
+`call_external(..., method="POST", path=..., body=...)` is the same server-side,
+dry-run-capturable boundary with those knobs exposed, so the guarantees are
+identical. Not a drop-in swap of the call alone, though: it wants
+`required_actions = ["CallExternal"]`, and it builds the endpoint from `BASE_URL`
+
+- `path` with the credential picked by `AUTH_MODE` rather than from `SEND_URL` +
+  `SEND_API_KEY`. Delivery for the common case, `call_external` for anything past it.
+
 So the tenant can see which keys to provision, **declare them on the integration
 config** via `required_secrets` / `required_configs` (each `{key, group?,
 description?}`) — e.g. `required_secrets=[{"key": "SEND_API_KEY", "group": "sirva"}]`,
@@ -399,6 +414,29 @@ requests were actually made.
 `timeout_config` arguments. Its older `headers_config` (a config key holding a
 JSON object) still works but is **non-secret only** — config values are stored in
 plaintext, so a credential belongs in `secret_headers`.
+
+**A partner needing two credential headers** — a subscription key plus a client
+id, say — is `secret_headers` with two entries, not a new `AUTH_MODE`. Auth modes
+name _one_ platform-managed credential scheme; a second header is caller-specific,
+so it belongs to the caller:
+
+```python
+client.call_external(
+    "some_partner",
+    method="POST",
+    path="/orders",
+    body=payload,
+    secret_headers={
+        "Ocp-Apim-Subscription-Key": "PARTNER_SUB_KEY",
+        "X-Client-Id": "PARTNER_CLIENT_ID",
+    },
+)
+```
+
+with `AUTH_MODE=none` if neither header is the integration's configured auth, or
+`AUTH_MODE=apikey` if one of them is (then name only the _other_ here). The values
+are secret **key names**, resolved server-side from the encrypted store — the
+credential itself never enters workflow code, a dry-run capture, or a log.
 
 ### Transferring documents (blobs)
 
