@@ -157,14 +157,18 @@ Claude Code **≥ v2.1.170** (`claude update` if you're behind).
 `packages/workflows-sdk-python` (the `pegasus-workflows` SDK/CLI) is how external
 integration/workflow authors — and their AI coding agents — use the platform.
 They must be able to discover and use its **full** functionality **without access
-to this repo's source**, through four surfaces: the SDK **docs** (its README), the
-**MCP** server resources/tools (`pegasus://reference/*`), **CLI `--help`**, and the
-API's **OpenAPI** spec (`GET /openapi.json`, Swagger UI `/docs`).
+to this repo's source**, through four surfaces: the SDK **docs** (its README **plus
+the authoring repo's `CLAUDE.md`** — that file lives in the workflow-authoring
+consumer repo `~/repos/pegasus-workflows/CLAUDE.md`, **not** anywhere in this repo,
+so a `find` here will never turn it up), the **MCP** server resources/tools
+(`pegasus://reference/*`), **CLI `--help`**, and the API's **OpenAPI** spec
+(`GET /openapi.json`, Swagger UI `/docs`).
 
 So whenever an **integrations or workflows** feature is added or changed — a new
 route, floor, rule operator, config field (e.g. the ingress `inbound` block), or
 capability — update the SDK to expose it **and** update its discovery surfaces in
-turn (README, MCP resources, CLI `--help`, OpenAPI), preferring **live introspection**
+turn (README, the authoring repo's `CLAUDE.md`, MCP resources, CLI `--help`,
+OpenAPI), preferring **live introspection**
 (e.g. `GET /integrations/floors/:id` → the floor's canonical fields + fact catalog)
 over static docs where the contract is code. A capability in the API that isn't
 reachable + discoverable through the SDK is a gap, not a feature.
