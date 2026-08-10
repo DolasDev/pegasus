@@ -719,6 +719,10 @@ describe('integration-config handler', () => {
       const res = await buildApp().request(FORK, post())
       expect(res.status).toBe(201)
       const published = mockRepo.publish.mock.calls[0]?.[0]
+      // `not.toHaveProperty` is also satisfied by `undefined`, so pin the arg down
+      // before asserting about it — otherwise a publish that never happened reads
+      // as three passing absence checks.
+      expect(published).toBeDefined()
       expect(published).not.toHaveProperty('inbound')
       expect(published).not.toHaveProperty('requiredSecrets')
       expect(published).not.toHaveProperty('requiredConfigs')
