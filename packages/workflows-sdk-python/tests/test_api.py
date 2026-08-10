@@ -1799,3 +1799,65 @@ def test_deliver_to_external_sends_both_header_maps() -> None:
     )
     assert captured["body"]["headers"] == {"On-Behalf-Of": "jdoe"}
     assert captured["body"]["secretHeaders"] == {"Ocp-Apim-Subscription-Key": "ATLAS_SUB_KEY"}
+
+
+# -- declared requirements: present/missing --------------------------------
+
+
+def test_requirements_summary_reads_the_workflow_plane() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/workflows/requirements-summary"
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "workflows": [
+                        {
+                            "workflowId": "wf1",
+                            "name": "nightly-sync",
+                            "version": "1.0.0",
+                            "visibility": "TENANT",
+                            "requirements": [
+                                {
+                                    "kind": "SECRET",
+                                    "key": "STRIPE_API_KEY",
+                                    "group": "billing",
+                                    "description": None,
+                                    "present": False,
+                                }
+                            ],
+                            "missingCount": 1,
+                        }
+                    ],
+                    "totalMissing": 1,
+                }
+            },
+        )
+
+    client = _client_with(handler)
+    summary = client.requirements_summary()
+    # Unwrapped from the {data} envelope.
+    assert summary["totalMissing"] == 1
+    assert summary["workflows"][0]["requirements"][0]["present"] is False
+
+
+def test_integration_requirements_summary_reads_the_integration_plane() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/integrations/requirements-summary"
+        return httpx.Response(200, json={"data": {"integrations": [], "totalMissing": 0}})
+
+    client = _client_with(handler)
+    assert client.integration_requirements_summary() == {
+        "integrations": [],
+        "totalMissing": 0,
+    }
+
+
+def test_requirements_summary_raises_on_403() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"error": "forbidden", "code": "FORBIDDEN"})
+
+    client = _client_with(handler)
+    with pytest.raises(PegasusApiError) as exc_info:
+        client.requirements_summary()
+    assert exc_info.value.status_code == 403

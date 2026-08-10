@@ -2384,6 +2384,45 @@ class PegasusClient:
             )
         _raise_for_status(response)
 
+    # -- declared requirements: which keys are still missing ----------------
+    #
+    # The other half of `required_secrets` / `required_configs`. Declaring them
+    # (in a workflow manifest, or on an integration config) says WHICH keys are
+    # read at runtime; these two reads say which of those the tenant has actually
+    # provisioned. Presence only — a value is never returned, so any caller who
+    # may read the workflow/integration may read this.
+
+    def requirements_summary(self) -> dict[str, Any]:
+        """Which declared secret/config keys each visible workflow still needs.
+
+        Resolves every workflow's manifest-declared ``required_secrets`` /
+        ``required_configs`` against this tenant's store. Requires
+        ``ReadWorkflow``.
+
+        Returns:
+            ``{"workflows": [{workflowId, name, version, visibility,
+            requirements: [{kind, key, group, description, present}],
+            missingCount}], "totalMissing": int}``. ``kind`` is ``"SECRET"`` or
+            ``"CONFIG"``; ``present`` says whether the tenant has set it.
+
+        Note:
+            **Presence only — values are never returned.** Provision what is
+            missing with :meth:`set_secret` / :meth:`set_config`.
+        """
+        return self._get_json("/api/v1/workflows/requirements-summary")["data"]
+
+    def integration_requirements_summary(self) -> dict[str, Any]:
+        """Which declared secret/config keys each visible integration still needs.
+
+        The integration twin of :meth:`requirements_summary` — same resolved
+        shape, keyed by integration. Requires ``ReadIntegrationConfig``.
+
+        Returns:
+            ``{"integrations": [{integrationId, displayName, requirements: [...],
+            missingCount}], "totalMissing": int}``.
+        """
+        return self._get_json("/api/v1/integrations/requirements-summary")["data"]
+
     # -- integration projections (runtime use) -----------------------------
     #
     # A per-record cache of an external system's last-known state, keyed by

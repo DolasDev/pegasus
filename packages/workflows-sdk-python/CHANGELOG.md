@@ -3,6 +3,46 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.36.0
+
+### Added — read back which declared secret/config keys are actually set
+
+Since 0.32.0 a workflow manifest could declare `required_secrets` /
+`required_configs`, and since 0.33.0 an integration config could too. But that was
+only the **write** half: the platform resolves those declarations against the
+tenant's store and answers which keys are still missing, and the SDK had no way to
+ask. The resolved state was reachable only through the generic `api_get()` escape
+hatch, and the docs printed a raw endpoint URL — a capability in the API that was
+not reachable through the SDK is a gap, not a feature.
+
+- `PegasusClient.requirements_summary()` — every visible workflow's declared keys,
+  each tagged present/missing.
+- `PegasusClient.integration_requirements_summary()` — the integration twin.
+- `pegasus-workflows requirements [--missing-only] [--json]` — merges both planes
+  into one listing. When your token can read only one of them the command **says
+  so** instead of reporting a partial answer as complete; when it can read neither
+  it exits non-zero rather than printing a reassuring empty result.
+
+Presence only — a value is never returned by either endpoint. Provision what is
+missing with `pegasus-workflows secrets set` / `config set`.
+
+### Fixed — forking or rolling back an integration config dropped fields
+
+`POST /integrations/:id/config/fork` and `.../config/rollback/:version` both
+re-publish a source row as a new version, but neither carried `inbound`,
+`requiredSecrets`, or `requiredConfigs` — each was added to the direct publish path
+without updating the two copy-forward paths. Consequences:
+
+- a forked overlay declared **no** required keys, so the tenant's present/missing
+  view went blank for the integration they had just adopted;
+- worse, a forked or rolled-back overlay lost its `inbound` block, and since a
+  tenant overlay wins over GLOBAL at resolve time, that **downgraded the partner's
+  ingress ack** to the generic `{status:'accepted'}`.
+
+Both paths now carry every stored field. No backfill is needed: re-fork with
+`--force` (`fork_integration_config(force=True)`) to re-sync an overlay that was
+created while the fields were being dropped.
+
 ## 0.35.0
 
 ### Added — custom request headers, `AUTH_MODE=apikey`, timeouts and 429 retry

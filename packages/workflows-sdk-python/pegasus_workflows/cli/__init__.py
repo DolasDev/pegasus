@@ -14,6 +14,8 @@ A Typer application wiring together the workflow developer flow:
   rules) for an integration (publish / pull / versions / rollback).
 * ``secrets`` / ``config`` — publish per-tenant workflow secrets & configuration
   (set / list / delete) that workflows read at runtime.
+* ``requirements`` — show which declared secret/config keys are set and which are
+  still missing, across workflows AND integrations.
 * ``setup`` — one guided first-run bootstrap: seed a credential profile + wire
   the MCP server into your agent host (the ``--setup``/``--configure`` front door).
 * ``configure`` / ``profile`` — store & list named credential profiles
@@ -35,6 +37,7 @@ from .mcp_server import mcp_command
 from .package import package_command
 from .profile_config import configure_command, profile_app
 from .push import push_command
+from .requirements import requirements_command
 from .run import run_command
 from .schedule import schedule_app
 from .secrets_config import config_app, secrets_app
@@ -83,6 +86,7 @@ app.command("run")(run_command)
 app.command("test")(test_command)
 app.command("configure")(configure_command)
 app.command("mcp")(mcp_command)
+app.command("requirements")(requirements_command)
 app.add_typer(integration_config_app)
 app.add_typer(executions_app)
 app.add_typer(schedule_app)

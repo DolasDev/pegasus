@@ -176,6 +176,13 @@ _IGNORED: frozenset[str] = frozenset(
         # it has no method-name→fixture mapping, so it is not part of the offline
         # in-activity surface. Callers use a typed read helper under the harness.
         "api_get",
+        # The requirement summaries answer a provisioning question ("which
+        # declared keys has this tenant not set yet?") for an operator or the
+        # `requirements` CLI command. Activity code reads the VALUES via
+        # get_secret/get_config, never this, so they are not part of the offline
+        # in-activity surface either.
+        "requirements_summary",
+        "integration_requirements_summary",
     }
 )
 
