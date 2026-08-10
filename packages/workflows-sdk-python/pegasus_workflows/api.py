@@ -1200,6 +1200,36 @@ class PegasusClient:
         of a raw ``httpx.post`` the runtime can neither see nor stop. Prefer this
         over calling the partner directly from an activity.
 
+        **Deliberately one fixed request** (sdk-feedback 0037). It is a single
+        JSON ``POST`` to the whole URL in config ``url_config``, always
+        authenticated with ``Authorization: Bearer <api_key_secret>`` — there is
+        no per-request ``path`` argument, and the bearer is not optional (a
+        missing ``api_key_secret`` returns ``404``, it does not send unauthed).
+        That is the trade for how little it takes to configure: two entries and
+        one line of workflow code.
+
+        Reach for :meth:`call_external` instead when you need any of:
+
+        - **a per-request path** — a resource id or sub-route in the URL, rather
+          than every send going to one endpoint;
+        - **a non-bearer credential** — a named header (``AUTH_MODE=apikey``,
+          e.g. an Azure APIM ``Ocp-Apim-Subscription-Key``), OAuth2 client
+          credentials, or no credential at all (``AUTH_MODE=none``);
+        - **more than one credential header** — a subscription key plus a client
+          id, say, which is ``secret_headers`` on a call whose own auth mode you
+          control.
+
+        ``call_external(integration_id, method="POST", path=..., body=...)`` is
+        the same server-side, dry-run-capturable boundary with those knobs
+        exposed — the guarantees are identical, so nothing is lost by switching.
+        It is **not** a drop-in swap of the call alone, though: declare
+        ``required_actions = ["CallExternal"]`` instead, and the endpoint comes
+        from config ``BASE_URL`` + ``path`` with the credential chosen by config
+        ``AUTH_MODE``, rather than from ``SEND_URL`` + ``SEND_API_KEY``.
+
+        Use this method for the common case — one partner endpoint, one bearer —
+        and ``call_external`` for anything beyond it.
+
         Requires the workflow's manifest to declare
         ``required_actions = ["DeliverToExternal"]``.
 

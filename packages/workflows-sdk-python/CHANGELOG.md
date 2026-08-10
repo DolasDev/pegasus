@@ -3,6 +3,49 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.36.1
+
+Documentation only — no API, CLI, or behavioral change.
+
+### Documented — when delivery stops being the right tool, and reaching for `call_external`
+
+Resolves sdk-feedback 0037, which asked for a per-request `path` on
+`deliver_to_external` so a partner needing a sub-route could be reached. Adding it
+would not have unblocked the case that prompted it: delivery always sends
+`Authorization: Bearer <SEND_API_KEY>` and fails outright when that secret is
+unset, so a partner authenticated by two credential headers and no bearer stays
+unreachable with or without `path`. The coherent version — path _plus_ optional
+auth — is `call_external` with `method="POST"`, which already exists and already
+satisfies every criterion the item lists.
+
+So the answer is a documented boundary rather than a second way to spell the same
+call. `deliver_to_external` is now explicit that it is **deliberately** one fixed
+`POST` to one URL with one bearer, that this narrowness is what buys its two-entry
+setup, and that `call_external` is the move the moment you need a per-request path,
+a non-bearer credential, or more than one credential header. Stated in the method
+docstring (which is also what `pegasus://reference/api` serves, by introspection)
+and in the README's delivery section.
+
+The item's open question — whether two credential headers should become an
+`AUTH_MODE=client_id_secret_headers` — is answered in the README: no. Auth modes
+name one platform-managed credential scheme; a second header is caller-specific
+and belongs in `secret_headers`, which has taken caller-supplied credential headers
+since 0.35.0. There is a worked two-header example there now.
+
+The header half of 0037 needed no change: `headers` / `secret_headers` shipped on
+both `call_external` and `deliver_to_external` in 0.35.0, after the item was filed
+against 0.34.0. Its remaining criteria hold and are covered by platform tests — a
+missing secret key 404s naming the key, `AUTH_MODE=none` sends no `Authorization`,
+and dry-run capture cannot leak a value because `secret_headers` carries key
+_names_ resolved server-side, so the credential never reaches the SDK at all.
+
+### Documented — the authoring repo's `CLAUDE.md` is a discovery surface again
+
+0.36.0 dropped it from the README's four-surface list, on the mistaken belief that
+no such file existed — it does, in the workflow-authoring consumer repo, which a
+search of platform source cannot see. Restored, and now worded to say where it
+lives so the lookup isn't repeated.
+
 ## 0.36.0
 
 ### Added — read back which declared secret/config keys are actually set
