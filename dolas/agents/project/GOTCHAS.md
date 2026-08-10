@@ -678,3 +678,58 @@ Repair for already-zeroed rows: `scripts/backfill-trip-summary-actuals.ts` (dry 
 default, `--apply` to write). It only fills columns that are currently empty — a stored
 non-empty value always wins — so it is safe to re-run, but the code fix must be
 deployed first or the next save re-zeroes the repaired trips.
+
+## The same cold registry overlay bit a second time — outbound `call_external` 404'd 2 runs in 3
+
+_sdk-feedback 0038, filed 2026-08-10 against a **blocking** Weichert delivery failure._
+Read "A sync read of a lazily-warmed module cache reports 'no data' as 'no such thing'"
+above first — this is that same `registry.ts` overlay, on a different read path, found
+eleven weeks later. Fixing the _list_ plane did not fix the _outbound_ plane, and
+nothing made that obvious.
+
+The symptom was the confusing part. The same workflow, same input, seconds apart:
+
+```
+run 1: 404 Unknown integration 'weichert'
+run 2: 404 Unknown integration 'weichert'
+run 3: OK http=200
+```
+
+…while `get_integration_config('weichert')`, `validate`, and `map_to_external` all
+resolved that id perfectly, every time, from both tenants. A 404 that says _the
+integration does not exist_ alongside three planes that clearly know it does sends you
+to check the config, the publish, the tenant overlay, the id spelling. None of that is
+where it lives.
+
+Both outbound handlers gated on the **synchronous** `getIntegrationDefinition`, whose
+overlay is warmed only by the four config-mutation handlers (publish / fork / rollback
+/ delete). On horizontally-scaled Lambda a publish warms **one** container. Every other
+container falls through to the built-in `REGISTRY` — which by definition has no entry
+for a config-only integration, since being authorable without a code entry is the whole
+point of sdk-feedback 0020. Which container the load balancer picked decided whether
+the call worked.
+
+What generalizes:
+
+- **A cache-hit rate that depends on the load balancer looks like flakiness, not like a
+  bug.** A retry "fixes" it by landing on a warm container; a dry run exercises the
+  capture path and passes; more instances make it worse; every deploy resets it. Every
+  one of those signals reads as transient.
+- **`loadRegistryOverlayIfStale` existed for exactly this, and its docstring said so —
+  and nothing called it.** A TTL mechanism nobody invokes is not a mechanism. If the
+  correct use of an accessor is "call this other thing first," the split itself is the
+  defect: `getIntegrationDefinition` _looks_ total.
+- **Two planes answering the same question differently is the bug, before any symptom
+  appears.** validate/map resolved per request against the DB; outbound read process
+  memory. Both outbound handlers now use `resolveIntegrationDefinition` too, so the
+  planes agree by construction — and the outbound plane picked up TENANT-scoped
+  configs, which it had silently ignored all along.
+
+Cost: up to two extra `findFirst`s per outbound call, the same ones `/validate` and
+`/map-to-external` have always paid.
+
+Regression guard: `apps/api/src/handlers/integration-outbound-config-only.test.ts`. It
+deliberately does **not** mock the registry — the sibling suites do, which is precisely
+why they could never have caught this. It asserts `getIntegrationDefinition(id)` is
+still `undefined` while the handler resolves the id anyway; that assertion is the exact
+expression the old gate used, so it is the proof rather than a proxy for it.

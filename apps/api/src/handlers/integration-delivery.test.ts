@@ -16,10 +16,10 @@ import { registerTestErrorHandler } from '../test-helpers'
 import { seedPrincipal } from '../__tests__/_principal'
 import { _clearAuthzCache } from '../lib/authz'
 
-const { mockFindByKey, mockDecrypt, mockGetDef, mockFetch } = vi.hoisted(() => ({
+const { mockFindByKey, mockDecrypt, mockResolveDef, mockFetch } = vi.hoisted(() => ({
   mockFindByKey: vi.fn(),
   mockDecrypt: vi.fn(),
-  mockGetDef: vi.fn(),
+  mockResolveDef: vi.fn(),
   mockFetch: vi.fn(),
 }))
 
@@ -32,7 +32,7 @@ vi.mock('../lib/secret-value-crypto', () => ({
 }))
 
 vi.mock('../integration-validation/registry', () => ({
-  getIntegrationDefinition: mockGetDef,
+  resolveIntegrationDefinition: mockResolveDef,
 }))
 
 // Mounted on m2mV1 (no wildcard auth), so the handler applies dualAuthMiddleware
@@ -77,7 +77,7 @@ beforeEach(() => {
   process.env['AUTHZ_OFFLINE'] = 'true'
   _clearAuthzCache()
   vi.stubGlobal('fetch', mockFetch)
-  mockGetDef.mockReturnValue({ id: 'demo_partner' })
+  mockResolveDef.mockResolvedValue({ id: 'demo_partner' })
   mockDecrypt.mockResolvedValue('super-secret-key')
   mockFindByKey.mockImplementation(async (kind: string, _group: string, key: string) => {
     if (kind === 'CONFIG' && key === 'SEND_URL') return URL_ROW
@@ -131,7 +131,7 @@ describe('POST /integrations/:id/deliver-to-external', () => {
   })
 
   it('404 — unknown integration id', async () => {
-    mockGetDef.mockReturnValue(undefined)
+    mockResolveDef.mockResolvedValue(undefined)
     const res = await buildApp().request(ROUTE, post({ external: {} }))
     expect(res.status).toBe(404)
     expect((await json(res))['code']).toBe('NOT_FOUND')

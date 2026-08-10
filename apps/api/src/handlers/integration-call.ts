@@ -59,7 +59,8 @@ import { requirePermission } from '../middleware/rbac'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { Actions } from '../authz/actions'
 import type { AppEnv } from '../types'
-import { getIntegrationDefinition } from '../integration-validation/registry'
+import { resolveIntegrationDefinition } from '../integration-validation/registry'
+import { db as basePrisma } from '../db'
 import { createWorkflowSecretConfigRepository } from '../repositories/workflow-secret-config.repository'
 import { createOutboundOAuthTokenRepository } from '../repositories/outbound-oauth-token.repository'
 import { decryptSecretValue, encryptSecretValue } from '../lib/secret-value-crypto'
@@ -249,12 +250,21 @@ integrationCallHandler.post(
   }),
   async (c) => {
     const integrationId = c.req.param('integrationId') ?? ''
-    if (!getIntegrationDefinition(integrationId)) {
+    const tenantId = c.get('tenantId')
+
+    // Resolve PER REQUEST against the DB (own → GLOBAL → built-in), the same way
+    // the validate/map plane does (sdk-feedback 0038). The synchronous
+    // `getIntegrationDefinition` reads a module-level overlay that only the four
+    // config-mutation handlers ever warm, so on horizontally-scaled Lambda a
+    // config-only integration (no built-in entry) resolved on whichever container
+    // served the publish and 404'd on every other. Reads through `basePrisma`:
+    // GLOBAL rows carry no tenantId, so the request-scoped client can filter them
+    // out. Fails open to the built-in baseline on a DB error.
+    if (!(await resolveIntegrationDefinition(basePrisma, integrationId, tenantId))) {
       return c.json({ error: `Unknown integration '${integrationId}'`, code: 'NOT_FOUND' }, 404)
     }
 
     const input = c.req.valid('json') as CallInput
-    const tenantId = c.get('tenantId')
     const repo = createWorkflowSecretConfigRepository(c.get('db'))
 
     // Reject bad custom headers BEFORE any config/secret read — a reserved name

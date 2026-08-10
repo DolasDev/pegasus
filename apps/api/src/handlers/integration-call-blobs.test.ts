@@ -16,7 +16,7 @@ import { __resetOutboundTokenCacheForTests } from '../services/outbound-oauth'
 
 const {
   mockFindByKey,
-  mockGetDef,
+  mockResolveDef,
   mockFetch,
   mockGetBuf,
   mockPutBuf,
@@ -24,7 +24,7 @@ const {
   mockBuildKey,
 } = vi.hoisted(() => ({
   mockFindByKey: vi.fn(),
-  mockGetDef: vi.fn(),
+  mockResolveDef: vi.fn(),
   mockFetch: vi.fn(),
   mockGetBuf: vi.fn(),
   mockPutBuf: vi.fn(),
@@ -36,7 +36,9 @@ vi.mock('../repositories/workflow-secret-config.repository', () => ({
   createWorkflowSecretConfigRepository: () => ({ findByKey: mockFindByKey }),
 }))
 vi.mock('../lib/secret-value-crypto', () => ({ decryptSecretValue: vi.fn() }))
-vi.mock('../integration-validation/registry', () => ({ getIntegrationDefinition: mockGetDef }))
+vi.mock('../integration-validation/registry', () => ({
+  resolveIntegrationDefinition: mockResolveDef,
+}))
 vi.mock('../middleware/dual-auth', () => ({
   dualAuthMiddleware: vi.fn(async (_c, next) => {
     await next()
@@ -81,7 +83,7 @@ beforeEach(() => {
   process.env['AUTHZ_OFFLINE'] = 'true'
   _clearAuthzCache()
   vi.stubGlobal('fetch', mockFetch)
-  mockGetDef.mockReturnValue({ id: 'sirva_ade_document' })
+  mockResolveDef.mockResolvedValue({ id: 'sirva_ade_document' })
   mockBuildKey.mockImplementation((t: string, id: string) => `blobs/${t}/${id}`)
   mockNewBlobId.mockReturnValue('blob-out-1')
   // A 'none'-auth integration keeps the auth path out of these tests.

@@ -43,7 +43,8 @@ import { requirePermission } from '../middleware/rbac'
 import { dualAuthMiddleware } from '../middleware/dual-auth'
 import { Actions } from '../authz/actions'
 import type { AppEnv } from '../types'
-import { getIntegrationDefinition } from '../integration-validation/registry'
+import { resolveIntegrationDefinition } from '../integration-validation/registry'
+import { db as basePrisma } from '../db'
 import { createWorkflowSecretConfigRepository } from '../repositories/workflow-secret-config.repository'
 import { decryptSecretValue } from '../lib/secret-value-crypto'
 import {
@@ -141,13 +142,19 @@ integrationDeliveryHandler.post(
   }),
   async (c) => {
     const integrationId = c.req.param('integrationId') ?? ''
-    if (!getIntegrationDefinition(integrationId)) {
+    const tenantId = c.get('tenantId')
+
+    // Per-request DB resolution (own → GLOBAL → built-in) rather than the
+    // module-level overlay — see the identical note in integration-call.ts
+    // (sdk-feedback 0038). Both outbound handlers share this lookup, so both
+    // 404'd on config-only integrations from any container that had not itself
+    // served a config publish.
+    if (!(await resolveIntegrationDefinition(basePrisma, integrationId, tenantId))) {
       return c.json({ error: `Unknown integration '${integrationId}'`, code: 'NOT_FOUND' }, 404)
     }
 
     const input = c.req.valid('json')
     const { external, urlConfig, apiKeySecret, headersConfig, group } = input
-    const tenantId = c.get('tenantId')
     const repo = createWorkflowSecretConfigRepository(c.get('db'))
 
     // Reject bad custom headers before any config/secret read.
