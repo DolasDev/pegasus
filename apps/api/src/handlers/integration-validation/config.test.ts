@@ -697,6 +697,37 @@ describe('integration-config handler', () => {
       expect(mockRepo.publish).toHaveBeenCalledWith(expect.objectContaining(fullyPopulated))
     })
 
+    it('omits the optional carry-forward fields when the source has none, rather than writing null', async () => {
+      // The mirror of the case above: a source that never declared `inbound` or
+      // any requirements must publish a copy that does not mention them either.
+      // The failure this guards is quiet — carrying `null` (or a normalized `[]`)
+      // through would make a fork of an undeclared config LOOK like a config that
+      // declares nothing required, which reads identically in the present/missing
+      // view but is a different stored row, and would churn every existing row on
+      // the next fork.
+      //
+      // Asserted with `not.toHaveProperty`, deliberately: `expect.objectContaining`
+      // cannot express absence, so the obvious spelling of this test
+      // (`objectContaining({ inbound: undefined })`) passes whatever the handler
+      // does and would have proven nothing.
+      mockRepo.findActiveGlobal.mockResolvedValue({
+        ...globalRow,
+        inbound: null,
+        requiredSecrets: null,
+        requiredConfigs: null,
+      })
+      const res = await buildApp().request(FORK, post())
+      expect(res.status).toBe(201)
+      const published = mockRepo.publish.mock.calls[0]?.[0]
+      // `not.toHaveProperty` is also satisfied by `undefined`, so pin the arg down
+      // before asserting about it — otherwise a publish that never happened reads
+      // as three passing absence checks.
+      expect(published).toBeDefined()
+      expect(published).not.toHaveProperty('inbound')
+      expect(published).not.toHaveProperty('requiredSecrets')
+      expect(published).not.toHaveProperty('requiredConfigs')
+    })
+
     // ── ?force=true — refresh an existing overlay (sdk-feedback 0030 part B) ──
 
     describe('?force=true', () => {
@@ -737,6 +768,27 @@ describe('integration-config handler', () => {
         expect(mockRefreshRegistryOverlay).toHaveBeenCalledTimes(1)
         // Never a destructive path — the lineage survives (contrast DELETE).
         expect(mockRepo.deleteScope).not.toHaveBeenCalled()
+      })
+
+      it('carries every stored field forward on a forced refresh, not just a first fork', async () => {
+        // Force is the path a tenant takes precisely to PULL the platform's newer
+        // `inbound` block and requirement declarations, so it is the one where
+        // stripping them hurts most: the request issued to re-sync the overlay
+        // would instead re-create the bug it was meant to fix. It is also the
+        // documented remedy for overlays forked while the fields were being
+        // dropped (#608 shipped no backfill — "re-fork with ?force=true" IS the
+        // migration), so this asserts the remedy actually restores them.
+        //
+        // Today force and the first-fork seed reach the same `repo.publish` call,
+        // so this does not cover an untested line — it pins the behavior against
+        // a refactor that special-cases the refresh branch, which is exactly the
+        // shape of change that dropped these fields from fork and rollback in the
+        // first place.
+        mockRepo.findActiveOwn.mockResolvedValue(configRow)
+        mockRepo.findActiveGlobal.mockResolvedValue({ ...globalRow, ...fullyPopulated })
+        const res = await buildApp().request(FORK_FORCE, post())
+        expect(res.status).toBe(201)
+        expect(mockRepo.publish).toHaveBeenCalledWith(expect.objectContaining(fullyPopulated))
       })
 
       it('behaves like a plain fork when the tenant has no overlay yet', async () => {
