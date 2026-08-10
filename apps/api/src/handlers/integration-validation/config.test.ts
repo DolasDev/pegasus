@@ -203,6 +203,22 @@ const globalRow = {
   visibility: 'GLOBAL' as const,
 }
 
+/**
+ * A source row with EVERY carry-forward field populated. Fork and rollback both
+ * re-publish a source row as a new version, so each of these has to survive the
+ * trip — `inbound`, `requiredSecrets`, and `requiredConfigs` did not, which is
+ * what {@link carriedPublishFields} exists to prevent recurring.
+ */
+const fullyPopulated = {
+  floor: 'shipment_status_update',
+  displayName: 'Demo Partner',
+  externalShape: { type: 'object' },
+  externalMapping: { ref: '$.id' },
+  inbound: { eventType: 'shipment.status', dedupKeyPath: '$.id' },
+  requiredSecrets: [{ key: 'SEND_API_KEY', group: 'demo' }],
+  requiredConfigs: [{ key: 'SEND_URL', group: 'demo' }],
+}
+
 const PATH = '/integrations/demo_partner/config'
 
 // ---------------------------------------------------------------------------
@@ -561,6 +577,13 @@ describe('integration-config handler', () => {
       )
       expect(mockRefreshRegistryOverlay).toHaveBeenCalledTimes(1)
     })
+
+    it('carries every stored field forward — a rollback must restore the version as it was', async () => {
+      mockRepo.findVersion.mockResolvedValue({ ...configRow, ...fullyPopulated })
+      const res = await buildApp().request(`${PATH}/rollback/2`, post())
+      expect(res.status).toBe(201)
+      expect(mockRepo.publish).toHaveBeenCalledWith(expect.objectContaining(fullyPopulated))
+    })
   })
 
   describe('POST /config/fork', () => {
@@ -660,6 +683,18 @@ describe('integration-config handler', () => {
         }),
       )
       expect(mockRefreshRegistryOverlay).toHaveBeenCalledTimes(1)
+    })
+
+    it('carries every stored field forward, including the declared secret/config keys', async () => {
+      // The overlay a tenant forks must BE the platform config, not a stripped
+      // copy of it: losing `inbound` downgrades the partner's ingress ack (a
+      // tenant overlay wins over GLOBAL at resolve time), and losing the
+      // requirement declarations blanks the present/missing view for the
+      // integration the tenant just adopted.
+      mockRepo.findActiveGlobal.mockResolvedValue({ ...globalRow, ...fullyPopulated })
+      const res = await buildApp().request(FORK, post())
+      expect(res.status).toBe(201)
+      expect(mockRepo.publish).toHaveBeenCalledWith(expect.objectContaining(fullyPopulated))
     })
 
     // ── ?force=true — refresh an existing overlay (sdk-feedback 0030 part B) ──

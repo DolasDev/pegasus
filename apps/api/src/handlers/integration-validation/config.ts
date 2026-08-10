@@ -33,6 +33,7 @@ import { db as basePrisma } from '../../db'
 import {
   createIntegrationConfigRepository,
   type IntegrationConfigRow,
+  type PublishConfigInput,
 } from '../../repositories/integration-config.repository'
 import {
   getGateBase,
@@ -135,6 +136,40 @@ function toSummary(row: IntegrationConfigRow) {
 
 function featureDisabled(): boolean {
   return !isIntegrationConfigPublishEnabled()
+}
+
+/**
+ * The stored fields a copy-forward publish — **fork** and **rollback** — must
+ * carry from its source row.
+ *
+ * Both paths re-publish an existing row as a new version, so anything the direct
+ * publish path persists has to be spread here or it silently vanishes. That is
+ * exactly how `inbound`, `requiredSecrets`, and `requiredConfigs` went missing:
+ * each was added to the publish path and to `PublishConfigInput`, but neither
+ * copy-forward path was updated. The damage differs by field —
+ *
+ * - `inbound` is behavioral, not cosmetic: a tenant overlay wins over GLOBAL at
+ *   resolve time, so an overlay that lost it downgrades the partner's ingress ack
+ *   to the generic `{status:'accepted'}`;
+ * - `requiredSecrets`/`requiredConfigs` are informational, but losing them blanks
+ *   the present/missing view for exactly the integration the tenant just adopted.
+ *
+ * Keeping the list in ONE place is the point: the next field added to
+ * `PublishConfigInput` gets carried by both paths or by neither, never by one.
+ * `mapping`/`rules`/`corpus` stay at the call sites — they are re-gated there, so
+ * the caller owns them.
+ */
+function carriedPublishFields(source: IntegrationConfigRow): Partial<PublishConfigInput> {
+  const json = (value: unknown): Prisma.InputJsonValue => value as Prisma.InputJsonValue
+  return {
+    ...(source.floor ? { floor: source.floor } : {}),
+    ...(source.displayName ? { displayName: source.displayName } : {}),
+    ...(source.externalShape != null ? { externalShape: json(source.externalShape) } : {}),
+    ...(source.externalMapping != null ? { externalMapping: json(source.externalMapping) } : {}),
+    ...(source.inbound != null ? { inbound: json(source.inbound) } : {}),
+    ...(source.requiredSecrets != null ? { requiredSecrets: json(source.requiredSecrets) } : {}),
+    ...(source.requiredConfigs != null ? { requiredConfigs: json(source.requiredConfigs) } : {}),
+  }
 }
 
 // POST /integrations/:id/config/validate — dry-run gate, no write.
@@ -431,14 +466,7 @@ integrationConfigHandler.post(
       corpus: source.corpus as Prisma.InputJsonValue,
       gateReport: report as unknown as Prisma.InputJsonValue,
       publishedBy: userId,
-      ...(source.floor ? { floor: source.floor } : {}),
-      ...(source.displayName ? { displayName: source.displayName } : {}),
-      ...(source.externalShape != null
-        ? { externalShape: source.externalShape as Prisma.InputJsonValue }
-        : {}),
-      ...(source.externalMapping != null
-        ? { externalMapping: source.externalMapping as Prisma.InputJsonValue }
-        : {}),
+      ...carriedPublishFields(source),
     })
 
     await refreshRegistryOverlay(basePrisma)
@@ -563,14 +591,7 @@ integrationConfigHandler.post(
       publishedBy: userId,
       forkedFromConfigId: source.id,
       forkedFromVersion: source.version,
-      ...(source.floor ? { floor: source.floor } : {}),
-      ...(source.displayName ? { displayName: source.displayName } : {}),
-      ...(source.externalShape != null
-        ? { externalShape: source.externalShape as Prisma.InputJsonValue }
-        : {}),
-      ...(source.externalMapping != null
-        ? { externalMapping: source.externalMapping as Prisma.InputJsonValue }
-        : {}),
+      ...carriedPublishFields(source),
     })
 
     await refreshRegistryOverlay(basePrisma)

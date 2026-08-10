@@ -301,9 +301,14 @@ with a required ``key``, optional ``group`` default "global", optional
     required_secrets = [{ key = "STRIPE_API_KEY", group = "billing" }]
     required_configs = [{ key = "DEFAULT_REGION" }]
 
-The tenant's present/missing view (Settings -> Developer -> Configs and the
-workflow detail page) reads ``GET /api/v1/workflows/requirements-summary``
-(presence only, never values).
+To see which of those declared keys the tenant has actually set, read them back
+(presence only, never values):
+
+    pegasus-workflows requirements --missing-only --token vnd_... --base-url https://api...
+
+or from code, ``PegasusClient.requirements_summary()``. The same resolution backs
+the tenant's own view (Settings -> Developer -> Configs and the workflow detail
+page), which additionally shows which workflows/integrations use each key.
 
 ## 2. Publish values (one-time, by a developer/admin)
 
@@ -463,8 +468,9 @@ def resource_reference_integration_config() -> str:
         "``{key, group?, description?}``) declare the secret/config keys this integration "
         "reads at runtime (e.g. deliver-to-external's ``SEND_API_KEY`` + ``SEND_URL``) so the "
         "tenant sees a present/missing view (Settings → Developer → Configs and the "
-        "integration detail page) and can provision them; informational, not gating. Resolved "
-        "status: ``GET /api/v1/integrations/requirements-summary``.\n"
+        "integration detail page) and can provision them; informational, not gating. Read the "
+        "resolved status back with ``pegasus-workflows requirements --missing-only`` or "
+        "``PegasusClient.integration_requirements_summary()`` (presence only, never values).\n"
         "- ``inbound.json`` (optional) — the ingress ack/validation block: "
         "``{eventType, dedupKeyPath, validation, ackTemplate}``. This is what makes an "
         "ingress return the partner's ack envelope (e.g. ADE "
