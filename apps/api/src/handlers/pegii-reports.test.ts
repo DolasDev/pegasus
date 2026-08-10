@@ -19,7 +19,7 @@ vi.mock('../gateways/report-gateway.factory', () => ({
   resolveReportGateway: vi.fn(async () => ({ fetchReport })),
 }))
 
-import { pegiiReportsHandler, sanitizeFileName } from './pegii-reports'
+import { pegiiReportsHandler, safeContentType, sanitizeFileName } from './pegii-reports'
 import { resolveReportGateway } from '../gateways/report-gateway.factory'
 import { PegiiApiError } from '../lib/pegii-api-client'
 import type { ReportRecord } from '../gateways/report.gateway'
@@ -146,12 +146,52 @@ describe('GET /pegii-reports/:reportType/:id?format=pdf', () => {
     )
   })
 
-  it('honors the content type pegII reported', async () => {
+  it('honors the content type pegII reported when it is one we serve', async () => {
     fetchReport.mockResolvedValue(report({ contentType: 'application/octet-stream' }))
 
     const res = await buildApp().request('/pegii-reports/order-profile/12345?format=pdf')
 
     expect(res.headers.get('content-type')).toBe('application/octet-stream')
+  })
+
+  it('downgrades an origin-executable content type from a compromised pegII host', async () => {
+    // A blob: URL inherits the creating page's origin, so text/html reaching
+    // the browser client would run as script inside tenant-web with the session
+    // token in reach. octet-stream downloads; it never executes.
+    fetchReport.mockResolvedValue(report({ contentType: 'text/html' }))
+
+    const res = await buildApp().request('/pegii-reports/order-profile/12345?format=pdf')
+
+    expect(res.headers.get('content-type')).toBe('application/octet-stream')
+  })
+})
+
+describe('content-type filtering', () => {
+  it('filters the content type in the base64 envelope too, not just the header', async () => {
+    // The browser client builds its Blob from THIS field, not from the response
+    // header — filtering only the header would leave the real sink open.
+    fetchReport.mockResolvedValue(report({ contentType: 'text/html' }))
+
+    const res = await buildApp().request('/pegii-reports/order-profile/12345')
+
+    expect(await json(res)).toMatchObject({ data: { contentType: 'application/octet-stream' } })
+  })
+
+  it('passes application/pdf through unchanged', async () => {
+    const res = await buildApp().request('/pegii-reports/order-profile/12345')
+
+    expect(await json(res)).toMatchObject({ data: { contentType: 'application/pdf' } })
+  })
+
+  it('normalizes case so a cased variant is not treated as unknown', () => {
+    expect(safeContentType('Application/PDF')).toBe('application/pdf')
+    expect(safeContentType('  application/pdf  ')).toBe('application/pdf')
+  })
+
+  it('downgrades every other type, including svg and javascript', () => {
+    expect(safeContentType('image/svg+xml')).toBe('application/octet-stream')
+    expect(safeContentType('text/javascript')).toBe('application/octet-stream')
+    expect(safeContentType('')).toBe('application/octet-stream')
   })
 })
 

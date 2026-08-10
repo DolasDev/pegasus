@@ -82,6 +82,28 @@ const IDENT_RE = /^[A-Za-z0-9._:-]{1,128}$/
 const MAX_REPORT_BASE64_BYTES = 4.5 * 1024 * 1024
 
 /**
+ * Content types we will echo back verbatim. Anything else is downgraded to
+ * `application/octet-stream`, which browsers download and never execute.
+ *
+ * This matters more than it looks. The upstream payload — including its
+ * `contentType` — comes from the tenant's on-prem pegII host, and the browser
+ * client turns it into `new Blob([bytes], { type: contentType })` +
+ * `URL.createObjectURL`. A blob: URL INHERITS THE CREATING PAGE'S ORIGIN, so a
+ * pegII host that answered with `text/html` and a scripted body would get that
+ * script executed inside tenant-web's origin, with access to the session token
+ * — an on-prem compromise escalating into the cloud SPA. Every report this
+ * route serves is a PDF, so pinning the executable types out is free.
+ */
+const ECHOED_CONTENT_TYPES = new Set(['application/pdf', 'application/octet-stream'])
+
+/** The content type to serve for a report, never an origin-executable one. */
+export function safeContentType(contentType: string): string {
+  return ECHOED_CONTENT_TYPES.has(contentType.trim().toLowerCase())
+    ? contentType.trim().toLowerCase()
+    : 'application/octet-stream'
+}
+
+/**
  * Reduce a pegII-supplied filename to something safe to interpolate into a
  * quoted Content-Disposition parameter: no quotes, no backslashes, no CR/LF
  * (header injection), no path separators, no control characters. Falls back to
@@ -199,6 +221,12 @@ pegiiReportsHandler.get('/:reportType/:id', async (c) => {
     correlationId,
   })
 
+  // The upstream content type never reaches a client unfiltered — see
+  // safeContentType. Both response modes carry the filtered value, because the
+  // browser client builds its Blob from the JSON envelope's field, not from the
+  // response header.
+  const contentType = safeContentType(report.contentType)
+
   if (format === 'pdf') {
     const buf = Buffer.from(report.contentBase64, 'base64')
     const fileName = sanitizeFileName(report.fileName, `${reportType}-${id}.pdf`)
@@ -206,11 +234,11 @@ pegiiReportsHandler.get('/:reportType/:id', async (c) => {
     // share a larger pool allocation, so handing `buf.buffer` straight to Hono
     // would emit unrelated neighbouring bytes.
     return c.body(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), 200, {
-      'Content-Type': report.contentType,
+      'Content-Type': contentType,
       'Content-Disposition': `inline; filename="${fileName}"`,
       'Content-Length': String(buf.byteLength),
     })
   }
 
-  return c.json({ data: report })
+  return c.json({ data: { ...report, contentType } })
 })

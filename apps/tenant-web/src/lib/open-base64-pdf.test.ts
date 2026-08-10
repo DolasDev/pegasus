@@ -59,6 +59,16 @@ describe('openBase64Document', () => {
     expect(await blob.text()).toBe(PDF_TEXT)
   })
 
+  it('refuses to type the blob as anything executable in this origin', async () => {
+    // A blob: URL inherits this page's origin. Typing it text/html would run a
+    // compromised pegII host's payload as script here, with the session token
+    // in reach; octet-stream downloads instead.
+    openBase64Document({ contentBase64: PDF_B64, contentType: 'text/html' })
+
+    const blob = createObjectURL.mock.calls[0]?.[0] as unknown as Blob
+    expect(blob.type).toBe('application/octet-stream')
+  })
+
   it('does not revoke the object URL before the new tab can load it', () => {
     openBase64Document({ contentBase64: PDF_B64, contentType: 'application/pdf' })
 

@@ -29,6 +29,15 @@ export function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
   return bytes
 }
 
+/**
+ * Types safe to hand a Blob that we then navigate to. A blob: URL INHERITS THE
+ * CREATING PAGE'S ORIGIN, so opening one typed `text/html` would execute its
+ * body as script inside this app's origin, with access to the session token.
+ * The API already filters the type it serves; this is the second lock on the
+ * same door, at the sink where it actually matters.
+ */
+const OPENABLE_CONTENT_TYPES = ['application/pdf'] as const
+
 export interface OpenBase64DocumentOptions {
   contentBase64: string
   /** MIME type of the decoded document, e.g. "application/pdf". */
@@ -44,7 +53,12 @@ export function openBase64Document({
   contentBase64,
   contentType,
 }: OpenBase64DocumentOptions): boolean {
-  const blob = new Blob([base64ToBytes(contentBase64)], { type: contentType })
+  // Never open a blob typed as anything that could execute in this origin;
+  // octet-stream downloads instead of rendering.
+  const type = (OPENABLE_CONTENT_TYPES as readonly string[]).includes(contentType.toLowerCase())
+    ? contentType.toLowerCase()
+    : 'application/octet-stream'
+  const blob = new Blob([base64ToBytes(contentBase64)], { type })
   const url = URL.createObjectURL(blob)
 
   try {
