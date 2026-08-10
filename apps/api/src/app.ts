@@ -30,6 +30,7 @@ import { pegiiRuntimeHandler } from './handlers/pegii-runtime'
 import { runtimeReadsHandler } from './handlers/runtime-reads'
 import { vpnAgentHandler } from './handlers/vpn-agent'
 import { dashboardPegiiHandler } from './handlers/dashboard-pegii'
+import { pegiiReportsHandler } from './handlers/pegii-reports'
 import { longhaulVersionHandler } from './handlers/longhaul-cloud/version'
 import { longhaulStatesHandler } from './handlers/longhaul-cloud/states'
 import { longhaulDriversHandler } from './handlers/longhaul-cloud/drivers'
@@ -429,6 +430,15 @@ v1.route('/documents', documentsHandler)
 // longhaul-cloud reference handlers; powers the tenant dashboard's "Use PegII
 // Data" toggle. See handlers/dashboard-pegii.ts.
 v1.get('/dashboard/pegii', dashboardPegiiHandler)
+// PegII-rendered report documents (order profile / "trip sheet"), fetched from
+// the pegII team's on-prem report endpoint over the WireGuard tunnel and
+// relayed as base64 — or as a raw PDF with `?format=pdf`. Session surface: the
+// callers are tenant-web's Operations pane and the mobile app, both of which
+// the m2m `/pegii` router below would authorize away. Deliberately mounted at
+// `/pegii-reports` rather than `/pegii/reports`, so it does not fall inside the
+// `m2mV1.route('/pegii', …)` mount's dualAuthMiddleware. See
+// handlers/pegii-reports.ts for the full rationale.
+v1.route('/pegii-reports', pegiiReportsHandler)
 // Note: /workflows is mounted on the m2mV1 router above (dual-auth: Cognito
 // sessions + vnd_ vendor keys) — it must be matched before tenantMiddleware.
 // Longhaul strangler-fig migration (Phase 1): /version is served cloud-direct

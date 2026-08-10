@@ -733,3 +733,35 @@ deliberately does **not** mock the registry — the sibling suites do, which is 
 why they could never have caught this. It asserts `getIntegrationDefinition(id)` is
 still `undefined` while the handler resolves the id anyway; that assertion is the exact
 expression the old gate used, so it is the proof rather than a proxy for it.
+
+---
+
+## `app.route('/api/v1', …)` twice: a sub-app mount claims the whole prefix's middleware
+
+`app.ts` mounts two routers on the same `/api/v1` prefix — `m2mV1` (dual-auth:
+Cognito sessions **plus** `vnd_` vendor keys) first, then `v1` (session-only,
+`tenantMiddleware`). Inside `m2mV1`, `pegiiRuntimeHandler` is mounted at `/pegii`
+and does `pegiiRuntimeHandler.use('*', dualAuthMiddleware)`.
+
+Hono's `.route()` **merges** the sub-app's routes into the parent router. That `use('*')`
+therefore registers as a middleware matching `/api/v1/pegii/*` on the parent — for
+every path under the prefix, including ones the sub-app has no handler for. So a new
+**session** route added at `/api/v1/pegii/reports/...` would still run the m2m
+`dualAuthMiddleware` on its way to the `v1` handler, even though `pegiiRuntimeHandler`
+itself never matches it. The route would work, sometimes, with auth semantics nobody
+wrote down.
+
+Nothing warns you. There is no shadowing error, no duplicate-route diagnostic; the
+request simply picks up a middleware from a router you were not editing.
+
+What generalizes:
+
+- **A path prefix is owned by whichever sub-app mounted it first, middleware included.**
+  Before adding a route under an existing prefix, check whether some other router
+  already `use('*')`s it — `grep "route('/<prefix>'" apps/api/src/app.ts`.
+- **Mirroring an upstream path is not worth inheriting the wrong auth.** The pegII
+  reports bridge (`handlers/pegii-reports.ts`) is served at `/api/v1/pegii-reports/...`
+  while calling upstream's `/api/v1/pegii/reports/...` verbatim from inside the gateway.
+  The one-character difference in the prefix is the whole isolation.
+- The same trap applies to `/onprem`, `/settings` and `/integrations`, all of which
+  already have more than one router contributing routes.

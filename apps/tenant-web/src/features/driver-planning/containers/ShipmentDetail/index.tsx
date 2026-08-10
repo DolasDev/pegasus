@@ -11,7 +11,10 @@ import { Clickable } from '../../components/Clickable'
 // Atlas anchor and the Order Number link right above it can't drift apart.
 import clickableStyles from '../../components/Clickable/Clickable.module.css'
 import { API } from '../../utils/api'
+import { notifyError } from '../../components/Snackbar/notify'
 import { isJumpToOrderEnabled } from '../../utils/jump-to-order'
+import { fetchPegiiReport } from '@/api/queries/pegii-reports'
+import { openBase64Document } from '@/lib/open-base64-pdf'
 import { ShipmentCoverage } from './components/Coverage'
 import { ShipmentWeight } from './components/Weight'
 import { DispatchNote } from './components/DispatchNote'
@@ -62,6 +65,35 @@ export function ShipmentDetail({
 
   const jumpEnabled = isJumpToOrderEnabled()
 
+  // The trip sheet is pegII's "order profile" report, rendered on-prem and
+  // relayed by the API as base64. It is fetched on click, never on render: it
+  // is a several-hundred-KB PDF crossing the WireGuard tunnel, and most people
+  // who open this pane never ask for it.
+  const [tripSheetLoading, setTripSheetLoading] = useState(false)
+
+  const openTripSheet = useCallback(async (orderNum: string) => {
+    setTripSheetLoading(true)
+    try {
+      const report = await fetchPegiiReport('order-profile', orderNum)
+      const opened = openBase64Document({
+        contentBase64: report.contentBase64,
+        contentType: report.contentType,
+      })
+      if (!opened) {
+        notifyError('Your browser blocked the trip sheet window. Allow pop-ups and try again.')
+      }
+    } catch (err) {
+      // The API names the dependency on failure (pegII source unavailable /
+      // unreachable / no such report), so the message is worth surfacing
+      // verbatim rather than replacing with a generic one.
+      notifyError(
+        err instanceof Error ? err.message : 'Could not load the trip sheet for this order.',
+      )
+    } finally {
+      setTripSheetLoading(false)
+    }
+  }, [])
+
   const fields = [
     {
       accessor: 'shipper_name',
@@ -78,6 +110,26 @@ export function ShipmentDetail({
           <span>{shipment.order_num}</span>
         ),
       label: 'Order Number',
+    },
+    {
+      accessor: (shipment: LonghaulShipmentRow) => {
+        const orderNum = shipment.order_num == null ? '' : String(shipment.order_num).trim()
+        // No order number, nothing to render a report for.
+        if (!orderNum) return ''
+        return (
+          <button
+            type="button"
+            className={`${clickableStyles.clickable} ${styles['link-button']}`}
+            onClick={() => void openTripSheet(orderNum)}
+            disabled={tripSheetLoading}
+            title="open the pegII order profile as a PDF"
+            data-target="trip-sheet-link"
+          >
+            {tripSheetLoading ? 'Loading…' : 'View Trip Sheet'}
+          </button>
+        )
+      },
+      label: 'Trip Sheet',
     },
     {
       accessor: (shipment: LonghaulShipmentRow) => {

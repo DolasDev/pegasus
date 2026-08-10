@@ -28,6 +28,23 @@ vi.mock('../../utils/jump-to-order', () => ({
   isJumpToOrderEnabled: isJumpToOrderEnabledMock,
 }))
 
+// Trip sheet: the pegII order-profile report. The fetch and the blob/window
+// plumbing are unit-tested in their own modules; here we only care that the
+// pane wires them together and degrades legibly.
+const { fetchPegiiReportMock, openBase64DocumentMock, notifyErrorMock } = vi.hoisted(() => ({
+  fetchPegiiReportMock: vi.fn(),
+  openBase64DocumentMock: vi.fn(() => true),
+  notifyErrorMock: vi.fn(),
+}))
+vi.mock('@/api/queries/pegii-reports', () => ({ fetchPegiiReport: fetchPegiiReportMock }))
+vi.mock('@/lib/open-base64-pdf', () => ({ openBase64Document: openBase64DocumentMock }))
+// Partial mock: the real module also exports registerSnackbarPush, which the
+// <SnackbarProvider> inside renderWithStore calls on mount.
+vi.mock('../../components/Snackbar/notify', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  notifyError: notifyErrorMock,
+}))
+
 vi.mock('./components/Coverage', () => ({
   ShipmentCoverage: () => <div data-testid="coverage-mock" />,
 }))
@@ -339,5 +356,106 @@ describe('ShipmentDetail container', () => {
     await waitFor(() => {
       expect(dispatched.length).toBeGreaterThan(dispatchedBefore)
     })
+  })
+})
+
+describe('ShipmentDetail — View Trip Sheet', () => {
+  const REPORT = {
+    reportType: 'order-profile',
+    id: '12345',
+    fileName: 'OrderProfile_12345.pdf',
+    contentType: 'application/pdf',
+    contentBase64: 'JVBERi0=',
+  }
+
+  const renderPane = (shipment: unknown = happyShipment) =>
+    renderWithStore(<ShipmentDetail />, {
+      shipments: { selectedShipment: shipment } as any,
+      user: { user: sampleUser } as any,
+    })
+
+  const link = () => document.querySelector('[data-target="trip-sheet-link"]') as HTMLButtonElement
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    fetchPegiiReportMock.mockResolvedValue(REPORT)
+    openBase64DocumentMock.mockReturnValue(true)
+  })
+
+  it('renders the link for a shipment with an order number', () => {
+    renderPane()
+    expect(screen.getByText('Trip Sheet')).toBeInTheDocument()
+    expect(link()).not.toBeNull()
+    expect(link().textContent).toBe('View Trip Sheet')
+  })
+
+  it('fetches the order-profile report for the row and opens it', async () => {
+    renderPane()
+    fireEvent.click(link())
+
+    await waitFor(() => expect(openBase64DocumentMock).toHaveBeenCalled())
+    expect(fetchPegiiReportMock).toHaveBeenCalledWith('order-profile', '12345')
+    expect(openBase64DocumentMock).toHaveBeenCalledWith({
+      contentBase64: REPORT.contentBase64,
+      contentType: REPORT.contentType,
+    })
+    expect(notifyErrorMock).not.toHaveBeenCalled()
+  })
+
+  it('does not fetch on render — only on click', () => {
+    renderPane()
+    expect(fetchPegiiReportMock).not.toHaveBeenCalled()
+  })
+
+  it('disables the link while the report is in flight', async () => {
+    let release: (value: unknown) => void = () => {}
+    fetchPegiiReportMock.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve
+      }),
+    )
+
+    renderPane()
+    fireEvent.click(link())
+
+    await waitFor(() => expect(link().disabled).toBe(true))
+    expect(link().textContent).toBe('Loading…')
+
+    release(REPORT)
+    await waitFor(() => expect(link().disabled).toBe(false))
+  })
+
+  it('surfaces the API error message rather than error-boundarying the pane', async () => {
+    fetchPegiiReportMock.mockRejectedValue(new Error('pegII order source is not configured'))
+
+    renderPane()
+    fireEvent.click(link())
+
+    await waitFor(() =>
+      expect(notifyErrorMock).toHaveBeenCalledWith('pegII order source is not configured'),
+    )
+    // The pane survives and the link is usable again.
+    expect(link().disabled).toBe(false)
+    expect(screen.getByText('Shipper Name')).toBeInTheDocument()
+  })
+
+  it('tells the user when the browser blocked the popup', async () => {
+    openBase64DocumentMock.mockReturnValue(false)
+
+    renderPane()
+    fireEvent.click(link())
+
+    await waitFor(() =>
+      expect(notifyErrorMock).toHaveBeenCalledWith(expect.stringMatching(/pop-ups/)),
+    )
+  })
+
+  it('renders no link when the row has no order number', () => {
+    const noOrder = { ...happyShipment, order_num: null }
+    renderPane(noOrder)
+
+    expect(link()).toBeNull()
+    // The row keeps its label, like the Reg Number row does when avl_reg is absent.
+    expect(screen.getByText('Trip Sheet')).toBeInTheDocument()
   })
 })
