@@ -21,7 +21,7 @@ const {
   mockFindByKey,
   mockDecrypt,
   mockEncrypt,
-  mockGetDef,
+  mockResolveDef,
   mockFetch,
   mockTokenFindFresh,
   mockTokenUpsert,
@@ -30,7 +30,7 @@ const {
   mockFindByKey: vi.fn(),
   mockDecrypt: vi.fn(),
   mockEncrypt: vi.fn(),
-  mockGetDef: vi.fn(),
+  mockResolveDef: vi.fn(),
   mockFetch: vi.fn(),
   mockTokenFindFresh: vi.fn(),
   mockTokenUpsert: vi.fn(),
@@ -51,7 +51,9 @@ vi.mock('../repositories/outbound-oauth-token.repository', () => ({
     deleteKey: mockTokenDelete,
   }),
 }))
-vi.mock('../integration-validation/registry', () => ({ getIntegrationDefinition: mockGetDef }))
+vi.mock('../integration-validation/registry', () => ({
+  resolveIntegrationDefinition: mockResolveDef,
+}))
 vi.mock('../middleware/dual-auth', () => ({
   dualAuthMiddleware: vi.fn(async (_c, next) => {
     await next()
@@ -121,7 +123,7 @@ beforeEach(() => {
   process.env['AUTHZ_OFFLINE'] = 'true'
   _clearAuthzCache()
   vi.stubGlobal('fetch', mockFetch)
-  mockGetDef.mockReturnValue({ id: 'sirva_ade_shipment' })
+  mockResolveDef.mockResolvedValue({ id: 'sirva_ade_shipment' })
   mockDecrypt.mockImplementation(async (cipher: string) =>
     cipher === 'cid-cipher' ? 'the-client-id' : 'the-client-secret',
   )
@@ -325,7 +327,7 @@ describe('POST /integrations/:id/call-external', () => {
   })
 
   it('404 — unknown integration id', async () => {
-    mockGetDef.mockReturnValue(undefined)
+    mockResolveDef.mockResolvedValue(undefined)
     const res = await buildApp().request(ROUTE, post({ method: 'GET', path: '/x' }))
     expect(res.status).toBe(404)
     expect((await json(res))['code']).toBe('NOT_FOUND')

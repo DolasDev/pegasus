@@ -157,6 +157,14 @@ const ALLOWED_BASE_CLIENT_HANDLERS: ReadonlySet<string> = new Set([
   'admin/tariffs.ts',
   'auth.ts',
   'dashboard-pegii.ts',
+  // Outbound plane (sdk-feedback 0038): both gate on
+  // resolveIntegrationDefinition, which reads the integration's published
+  // config. A GLOBAL config row carries NO tenantId, so the tenant-scoped
+  // client cannot see it — the same reason integration-validation/validate.ts
+  // is here. Every tenant read in these handlers (secrets, configs, tokens)
+  // still goes through c.get('db').
+  'integration-call.ts',
+  'integration-delivery.ts',
   // Integration-validator config: both read the base client only for the
   // cross-tenant registry overlay (GLOBAL configs span tenants) — tenant data
   // still flows through c.get('db'). See integration-validation/registry.ts.

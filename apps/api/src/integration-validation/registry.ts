@@ -310,6 +310,16 @@ export async function loadRegistryOverlayIfStale(
   }
 }
 
+/**
+ * NOT a total lookup — it only sees whatever the in-process overlay happens to
+ * hold, which is nothing at all in a container that has never served a config
+ * publish or a warming call. A REQUEST-SERVING caller must therefore go through
+ * `resolveIntegrationDefinition` (per-request, DB-backed, tenant-aware), or a
+ * config-only integration — one with no built-in entry, the very thing
+ * sdk-feedback 0020 enabled — resolves on some containers and 404s on others
+ * (sdk-feedback 0038). This synchronous form is for callers that have already
+ * warmed the overlay, or that only need the built-in baseline.
+ */
 export function getIntegrationDefinition(id: string): IntegrationDefinition | undefined {
   // A GLOBAL overlay wins (it may also be a NEW partner with no built-in), else
   // the built-in baseline.
