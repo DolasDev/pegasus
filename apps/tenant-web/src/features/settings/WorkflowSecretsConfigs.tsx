@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import {
@@ -26,14 +26,21 @@ import {
   useUpsertConfig,
   useDeleteConfig,
 } from '@/api/queries/workflow-secrets-configs'
-import { workflowRequirementsSummaryQueryOptions } from '@/api/queries/workflows'
-import { integrationRequirementsSummaryQueryOptions } from '@/api/queries/integrations'
 import {
   DEFAULT_GROUP,
   type WorkflowSecretMeta,
   type WorkflowConfigEntry,
 } from '@/api/workflow-secrets-configs'
 import { usePermissions } from '@/auth/permissions'
+import {
+  consumersOf,
+  missingVariables,
+  usageKey,
+  useVariableUsage,
+  type VariableConsumer,
+  type VariableUsage,
+  type VariableUsageIndex,
+} from './variable-usage'
 
 // Cedar permissions (underscore, not hyphen — the /me/permissions contract only
 // allows [a-z_]+:[a-z_]+ strings).
@@ -102,6 +109,82 @@ function GroupHeading({ group, count }: { group: string; count: number }) {
   )
 }
 
+// ---------------------------------------------------------------------------
+// Cross-reference rendering
+// ---------------------------------------------------------------------------
+
+/**
+ * A create-form prefill handed down from the missing-variables panel, so filling
+ * a declared-but-unset key means typing only its value. `nonce` guarantees a
+ * fresh object identity even when two different clicks carry identical fields —
+ * the sections apply this via an identity-keyed effect.
+ */
+interface AddPrefill {
+  kind: 'SECRET' | 'CONFIG'
+  key: string
+  group: string
+  description: string | null
+  nonce: number
+}
+
+/** Deep-link one consumer to the page where it is managed. */
+function ConsumerLink({ consumer }: { consumer: VariableConsumer }) {
+  return consumer.type === 'workflow' ? (
+    <Link
+      to="/settings/workflows/$workflowId"
+      params={{ workflowId: consumer.id }}
+      className="text-primary hover:underline"
+    >
+      {consumer.name}
+    </Link>
+  ) : (
+    <Link
+      to="/integrations/$integrationId"
+      params={{ integrationId: consumer.id }}
+      className="text-primary hover:underline"
+    >
+      {consumer.name}
+    </Link>
+  )
+}
+
+/** How many consumer names to spell out before collapsing into "+N more". */
+const CONSUMERS_SHOWN = 3
+
+/**
+ * "Used by X, Y" for one stored entry. Renders nothing when nothing declares the
+ * key — which also covers the fail-open case where the caller cannot read the
+ * requirements summaries at all.
+ */
+function UsedBy({
+  consumers,
+  label = 'Used by',
+  className,
+}: {
+  consumers: VariableConsumer[]
+  label?: string
+  className?: string
+}) {
+  if (consumers.length === 0) return null
+  const shown = consumers.slice(0, CONSUMERS_SHOWN)
+  const overflow = consumers.slice(CONSUMERS_SHOWN)
+
+  return (
+    <span className={`text-xs text-muted-foreground ${className ?? ''}`}>
+      {label}{' '}
+      {shown.map((c, i) => (
+        <span key={`${c.type}:${c.id}`}>
+          <ConsumerLink consumer={c} />
+          {i < shown.length - 1 ? ', ' : ''}
+        </span>
+      ))}
+      {overflow.length > 0 && (
+        <span title={overflow.map((c) => c.name).join(', ')}> +{overflow.length} more</span>
+      )}
+    </span>
+  )
+}
+
 function apiErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) return error.message
   if (error instanceof Error) return error.message
@@ -111,12 +194,15 @@ function apiErrorMessage(error: unknown, fallback: string): string {
 function ConfirmDeleteDialog({
   what,
   name,
+  consumers,
   onConfirm,
   onClose,
   pending,
 }: {
   what: string
   name: string
+  /** Everything that declared it reads this key — named so the blast radius is explicit. */
+  consumers: VariableConsumer[]
   onConfirm: () => void
   onClose: () => void
   pending: boolean
@@ -135,9 +221,22 @@ function ConfirmDeleteDialog({
       >
         <h2 className="text-base font-semibold text-destructive">Delete {what}?</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          <span className="font-mono">{name}</span> will be permanently removed. Workflows that read
+          <span className="font-mono">{name}</span> will be permanently removed. Anything that reads
           it will fail until it is recreated. This cannot be undone.
         </p>
+        {consumers.length > 0 && (
+          <div className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
+            <p className="flex items-start gap-2 text-sm text-foreground">
+              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <span>
+                {consumers.length}{' '}
+                {consumers.length === 1 ? 'consumer declares' : 'consumers declare'} this key and
+                will fail at runtime:{' '}
+                <span className="font-medium">{consumers.map((c) => c.name).join(', ')}</span>
+              </span>
+            </p>
+          </div>
+        )}
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose} disabled={pending}>
             Cancel
@@ -152,7 +251,13 @@ function ConfirmDeleteDialog({
   )
 }
 
-function SecretsSection() {
+function SecretsSection({
+  usage,
+  prefill,
+}: {
+  usage: VariableUsageIndex
+  prefill: AddPrefill | null
+}) {
   const perms = usePermissions()
   const canManage = perms.has(MANAGE_SECRETS_PERMISSION)
   const { data, isPending, isError, error } = useQuery({
@@ -169,6 +274,30 @@ function SecretsSection() {
   const [description, setDescription] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<WorkflowSecretMeta | null>(null)
+  const valueRef = useRef<HTMLInputElement | null>(null)
+  const [focusTick, setFocusTick] = useState(0)
+
+  // Adopt a prefill from the missing-variables panel: open the form with the
+  // declared key/group/description filled so only the value is left to type.
+  // Keyed on the prefill's identity (its nonce keeps that fresh), so clicking
+  // Add on a second key re-applies even when the fields happen to match.
+  useEffect(() => {
+    if (!prefill || prefill.kind !== 'SECRET') return
+    setKey(prefill.key)
+    setGroup(prefill.group === DEFAULT_GROUP ? '' : prefill.group)
+    setDescription(prefill.description ?? '')
+    setValue('')
+    setFormError(null)
+    setAddOpen(true)
+    setFocusTick((t) => t + 1)
+  }, [prefill])
+
+  // Runs on the commit AFTER the form is opened, so the input exists by now.
+  useEffect(() => {
+    if (focusTick === 0) return
+    valueRef.current?.focus()
+    valueRef.current?.scrollIntoView?.({ block: 'center' })
+  }, [focusTick])
 
   if (!canManage) return null
 
@@ -272,6 +401,7 @@ function SecretsSection() {
             </label>
             <Input
               id="secret-value"
+              ref={valueRef}
               type="password"
               className="mt-1 font-mono"
               placeholder="sk_live_…"
@@ -339,18 +469,23 @@ function SecretsSection() {
                   key={s.id}
                   className="flex items-center gap-3 border-t border-border px-4 py-3"
                 >
-                  <code className="font-mono text-sm text-foreground">{s.key}</code>
+                  <code className="shrink-0 font-mono text-sm text-foreground">{s.key}</code>
                   {s.description && (
-                    <span className="truncate text-xs text-muted-foreground">{s.description}</span>
+                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                      {s.description}
+                    </span>
                   )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto text-destructive hover:text-destructive"
-                    onClick={() => setDeleteTarget(s)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="ml-auto flex shrink-0 items-center gap-2">
+                    <UsedBy consumers={consumersOf(usage, 'SECRET', s.group, s.key)} />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setDeleteTarget(s)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -362,6 +497,7 @@ function SecretsSection() {
         <ConfirmDeleteDialog
           what="secret"
           name={`${deleteTarget.key} (${deleteTarget.group})`}
+          consumers={consumersOf(usage, 'SECRET', deleteTarget.group, deleteTarget.key)}
           pending={deleteMutation.isPending}
           onClose={() => setDeleteTarget(null)}
           onConfirm={() =>
@@ -376,7 +512,13 @@ function SecretsSection() {
   )
 }
 
-function ConfigsSection() {
+function ConfigsSection({
+  usage,
+  prefill,
+}: {
+  usage: VariableUsageIndex
+  prefill: AddPrefill | null
+}) {
   const perms = usePermissions()
   const canManage = perms.has(MANAGE_CONFIGS_PERMISSION)
   const { data, isPending, isError, error } = useQuery({
@@ -395,6 +537,28 @@ function ConfigsSection() {
   const [editId, setEditId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<WorkflowConfigEntry | null>(null)
+  const valueRef = useRef<HTMLInputElement | null>(null)
+  const [focusTick, setFocusTick] = useState(0)
+
+  // Adopt a prefill from the missing-variables panel — see the twin effect in
+  // SecretsSection. The config form carries no description field, so a declared
+  // description stays where the user can see it (the missing-variables row)
+  // rather than being sent along invisibly.
+  useEffect(() => {
+    if (!prefill || prefill.kind !== 'CONFIG') return
+    setKey(prefill.key)
+    setGroup(prefill.group === DEFAULT_GROUP ? '' : prefill.group)
+    setValue('')
+    setFormError(null)
+    setAddOpen(true)
+    setFocusTick((t) => t + 1)
+  }, [prefill])
+
+  useEffect(() => {
+    if (focusTick === 0) return
+    valueRef.current?.focus()
+    valueRef.current?.scrollIntoView?.({ block: 'center' })
+  }, [focusTick])
 
   if (!canManage) return null
 
@@ -496,6 +660,7 @@ function ConfigsSection() {
             </label>
             <Input
               id="config-value"
+              ref={valueRef}
               className="mt-1 font-mono"
               placeholder="us-east-1"
               value={value}
@@ -571,28 +736,30 @@ function ConfigsSection() {
                     </>
                   ) : (
                     <>
-                      <span className="truncate font-mono text-sm text-muted-foreground">
+                      <span className="min-w-0 flex-1 truncate font-mono text-sm text-muted-foreground">
                         {cfg.value}
                       </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="ml-auto"
-                        onClick={() => {
-                          setEditId(cfg.id)
-                          setEditValue(cfg.value)
-                        }}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => setDeleteTarget(cfg)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="ml-auto flex shrink-0 items-center gap-2">
+                        <UsedBy consumers={consumersOf(usage, 'CONFIG', cfg.group, cfg.key)} />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditId(cfg.id)
+                            setEditValue(cfg.value)
+                          }}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setDeleteTarget(cfg)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </>
                   )}
                 </div>
@@ -606,6 +773,7 @@ function ConfigsSection() {
         <ConfirmDeleteDialog
           what="config entry"
           name={`${deleteTarget.key} (${deleteTarget.group})`}
+          consumers={consumersOf(usage, 'CONFIG', deleteTarget.group, deleteTarget.key)}
           pending={deleteMutation.isPending}
           onClose={() => setDeleteTarget(null)}
           onConfirm={() =>
@@ -621,50 +789,63 @@ function ConfigsSection() {
 }
 
 /**
- * Banner summarizing which workflows AND integrations declare secret/config keys
- * the tenant has not set yet. Silent when nothing is missing (or a summary can't
- * be read — each query fails open independently).
+ * The keys workflows and integrations declared but this tenant has not set,
+ * listed KEY-first (one row per key, however many things want it) with who needs
+ * each one. "Add" prefills that key's create form so only the value is left to
+ * type. Silent when nothing is missing — or when neither summary can be read,
+ * since the index is then empty.
  */
-function MissingRequirementsBanner() {
-  const { data: wf } = useQuery({ ...workflowRequirementsSummaryQueryOptions, retry: false })
-  const { data: intg } = useQuery({ ...integrationRequirementsSummaryQueryOptions, retry: false })
+function MissingVariablesPanel({
+  usage,
+  onAdd,
+}: {
+  usage: VariableUsageIndex
+  onAdd: (variable: VariableUsage) => void
+}) {
+  const perms = usePermissions()
+  const missing = missingVariables(usage)
+  if (missing.length === 0) return null
 
-  const needyWorkflows = (wf?.workflows ?? []).filter((w) => w.missingCount > 0)
-  const needyIntegrations = (intg?.integrations ?? []).filter((i) => i.missingCount > 0)
-  const needyCount = needyWorkflows.length + needyIntegrations.length
-  if (needyCount === 0) return null
+  // Mirror how the sections self-hide: only offer Add for the kind this user can
+  // actually manage.
+  function canAdd(kind: 'SECRET' | 'CONFIG'): boolean {
+    return perms.has(kind === 'SECRET' ? MANAGE_SECRETS_PERMISSION : MANAGE_CONFIGS_PERMISSION)
+  }
 
-  const total = (wf?.totalMissing ?? 0) + (intg?.totalMissing ?? 0)
   return (
     <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-4">
       <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
         <TriangleAlert className="h-4 w-4 text-amber-600" />
-        {total} key{total === 1 ? '' : 's'} still needed by {needyCount} workflow/integration
-        {needyCount === 1 ? '' : 's'}
+        {missing.length} key{missing.length === 1 ? '' : 's'} declared but not set
       </h3>
-      <ul className="mt-2 space-y-1">
-        {needyWorkflows.map((w) => (
-          <li key={`wf:${w.workflowId}`} className="text-sm">
-            <Link
-              to="/settings/workflows/$workflowId"
-              params={{ workflowId: w.workflowId }}
-              className="text-primary hover:underline"
-            >
-              {w.name}
-            </Link>{' '}
-            <span className="text-muted-foreground">— workflow, {w.missingCount} missing</span>
-          </li>
-        ))}
-        {needyIntegrations.map((i) => (
-          <li key={`intg:${i.integrationId}`} className="text-sm">
-            <Link
-              to="/integrations/$integrationId"
-              params={{ integrationId: i.integrationId }}
-              className="text-primary hover:underline"
-            >
-              {i.displayName}
-            </Link>{' '}
-            <span className="text-muted-foreground">— integration, {i.missingCount} missing</span>
+      <ul className="mt-3 space-y-2">
+        {missing.map((variable) => (
+          <li
+            key={usageKey(variable.kind, variable.group, variable.key)}
+            className="flex flex-wrap items-center gap-2 text-sm"
+          >
+            <code className="font-mono text-xs text-foreground">{variable.key}</code>
+            <Badge variant="outline" className="text-[10px]">
+              {variable.kind === 'SECRET' ? 'secret' : 'config'}
+            </Badge>
+            {variable.group !== DEFAULT_GROUP && (
+              <span className="font-mono text-xs text-muted-foreground">{variable.group}</span>
+            )}
+            {variable.description && (
+              <span className="text-xs text-muted-foreground">{variable.description}</span>
+            )}
+            <UsedBy consumers={variable.consumers} label="Needed by" />
+            {canAdd(variable.kind) && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="ml-auto"
+                onClick={() => onAdd(variable)}
+              >
+                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                Add
+              </Button>
+            )}
           </li>
         ))}
       </ul>
@@ -676,10 +857,16 @@ function MissingRequirementsBanner() {
  * Per-tenant secrets & configuration the workflows read at runtime. Each section
  * self-hides if the user lacks its manage permission; if the user can manage
  * neither, the whole panel shows a no-access note.
+ *
+ * The cross-reference index is built once here and threaded down, so both
+ * sections and the missing-variables panel read one pair of summary queries.
  */
 export function WorkflowSecretsConfigsPanel() {
   const perms = usePermissions()
   const canAny = perms.has(MANAGE_SECRETS_PERMISSION) || perms.has(MANAGE_CONFIGS_PERMISSION)
+  const usage = useVariableUsage()
+  const [prefill, setPrefill] = useState<AddPrefill | null>(null)
+  const nonce = useRef(0)
 
   if (!canAny) {
     return (
@@ -692,9 +879,20 @@ export function WorkflowSecretsConfigsPanel() {
 
   return (
     <div className="space-y-8">
-      <MissingRequirementsBanner />
-      <SecretsSection />
-      <ConfigsSection />
+      <MissingVariablesPanel
+        usage={usage}
+        onAdd={(variable) =>
+          setPrefill({
+            kind: variable.kind,
+            key: variable.key,
+            group: variable.group,
+            description: variable.description,
+            nonce: ++nonce.current,
+          })
+        }
+      />
+      <SecretsSection usage={usage} prefill={prefill} />
+      <ConfigsSection usage={usage} prefill={prefill} />
     </div>
   )
 }
