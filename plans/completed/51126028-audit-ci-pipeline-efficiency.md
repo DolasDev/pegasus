@@ -10,13 +10,18 @@
 > failure triage. Archive this once Phase 4 is dropped or folded into
 > `audit-ai-process-automation.md`, which already owns the deferral.
 >
-> **2026-08-08 — ARCHIVE-READY, pending one call from the user.** Phases 1-3 are
-> shipped and verified; Phase 2's targets were re-baselined against the current
-> 7-10-job pipeline (see below) and are now **met with headroom**. The single
-> thing keeping this file open is Phase 4, which is AI-deferred and already owned
-> by `audit-ai-process-automation.md`. **Fold Phase 4 into that plan and archive
-> this one** — not done unilaterally, because moving a phase between plans is a
-> scope decision.
+> **2026-08-11 — ARCHIVED. This plan is COMPLETE.** Phases 1-3 shipped and
+> verified; Phase 2's targets were re-baselined against the current 7-10-job
+> pipeline and are met with headroom (#602); Phase 4 was **folded into
+> `audit-ai-process-automation.md` § Phase 3** (see that phase heading below —
+> it was a duplicate of a superset, so nothing was lost). AI work remains
+> user-deferred under that plan.
+>
+> This file is a permanent record — do not edit it further. Its final measured
+> state, for anyone tracing CI numbers back: warm code run 215-226 s wall,
+> 335-377 s billed across 7 jobs, `setup` step 13.9-15.5 s on a cache hit, and
+> the wall clock is now **`Test`-bound, not CI-bound** — further wins must come
+> from test runtime.
 
 ## Context
 
@@ -200,7 +205,19 @@ Audit of `.github/workflows/ci.yml` (246 lines, 5 jobs) and `audit-ci.jsonc`, wi
 
   **Deliberately conservative:** the filter treats _anything_ outside `plans/`, `dolas/`, and `*.md` as code — a `.md` inside `apps/` or `packages/` also skips, which is acceptable; if in doubt, narrow the negation to `!(plans/**|dolas/**)` only. **Keep secret-scan unconditional** (docs can leak secrets too). Pin `dorny/paths-filter` to a commit SHA (it's a third-party action): `dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2`.
 
-### Phase 4 — Optional AI integration (~1–2 h, only if desired)
+### Phase 4 — Optional AI integration (~1–2 h, only if desired) — MOVED, NOT DROPPED
+
+> **FOLDED into `audit-ai-process-automation.md` § Phase 3 on 2026-08-11**, which
+> already specified the same `.github/workflows/ci-triage.yml` and is a strict
+> superset of the sketch below (it also triggers on `Deploy`, adds a per-branch
+> concurrency group, matches against `GOTCHAS.md` known-failure classes, pins
+> `--model claude-sonnet-4-6 --max-turns 12`, and documents the
+> cancelled-vs-failure distinction). **This was deduplication, not a transplant
+> — nothing was lost.** The "explicit non-recommendation" below was carried over
+> verbatim as a scope guard for that plan. AI work remains **user-deferred**;
+> folding it changed ownership, not status.
+>
+> This phase moving out is what made the rest of this plan archivable.
 
 - [ ] **CI-failure auto-triage comment** via `anthropics/claude-code-action`. Effort: 1–2 h + ~cents per failure. The one place AI genuinely earns its keep here: on a failed CI run, an action job pulls `gh run view <id> --log-failed`, asks Claude for a root-cause hypothesis + suggested fix, and posts it as a PR comment / commit comment — replacing the manual log-spelunking loop. Sketch (new file `.github/workflows/ci-triage.yml`):
 
