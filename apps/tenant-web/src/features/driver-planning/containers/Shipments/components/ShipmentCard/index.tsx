@@ -20,7 +20,13 @@ function getShortHaul(mode: any): string {
 }
 
 function getMoveType(moveType: any): string {
-  const visible = ['A', 'M', 'HA', 'SS']
+  // 'H' (Interstate) is the common case and is deliberately absent — an
+  // unbadged card means Interstate. 'Z' (INTERNATIONAL) was absent for a
+  // different reason: such shipments could not reach the planning list, because
+  // the API's Is_Trip_Planning eligibility whitelist excluded the code. Now that
+  // they can — including in the default, unfiltered list — they need a badge to
+  // be distinguishable from an Interstate move.
+  const visible = ['A', 'M', 'HA', 'SS', 'Z']
   return visible.includes(moveType) ? `${moveType}` : ''
 }
 

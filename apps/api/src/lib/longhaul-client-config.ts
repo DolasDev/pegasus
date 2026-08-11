@@ -58,7 +58,18 @@ export interface LonghaulClientConfig {
 //   /home/steve/repos/longhaul/config/clients/qmm.js
 const CONFIGS: Record<LonghaulClient, LonghaulClientConfig> = {
   nwi: {
-    importExportTypes: ['H', 'HA', 'M', 'A', 'SS'],
+    // 'Z' (INTERNATIONAL) is a deliberate addition, not a legacy transcription:
+    // the legacy list was H/HA/M/A/SS. This whitelist is AND'd onto
+    // `import_export` by the Is_Trip_Planning predicate — the same column the
+    // user-facing `move_type` filter targets — so a code absent here doesn't
+    // just fall out of the default planning list, it makes filtering BY that
+    // code return zero rows for every date range (an unsatisfiable conjunction).
+    // NWI's MoveType lookup offers INTERNATIONAL (moveTypesWhere '1=1'), so the
+    // dropdown advertised a filter that could never match. Accepted tradeoff:
+    // active, undelivered 'Z' shipments now also appear in the UNfiltered
+    // planning list. QMM is not given 'Z' — its moveTypesWhere excludes it from
+    // the dropdown, so nothing there can reach it.
+    importExportTypes: ['H', 'HA', 'M', 'A', 'SS', 'Z'],
     moveTypesWhere: '1=1',
     // Central-planning (long-haul) dispatchers are identified by managed_by_id;
     // short-haul / local-dispatch staff carry the 'LO' role tag instead. We OR
