@@ -471,9 +471,11 @@ describe('DriverPlanningPage', () => {
     })
   })
 
-  describe('move-type filters (Local / Long Distance / Shorthaul)', () => {
-    // Four drivers spanning every combination; all carry the default confirmed
-    // date so they sit inside the default ready-date range window.
+  describe('move-type filter (single multi-select, OR semantics)', () => {
+    // Five drivers spanning every combination, including one in NO group —
+    // that one is what separates "nothing selected" (show all) from "all three
+    // selected" (show only drivers in some group). All carry the default
+    // confirmed date so they sit inside the default ready-date range window.
     function seedMoveTypeDrivers() {
       driverPlanningReturn = {
         data: [
@@ -505,6 +507,13 @@ describe('DriverPlanningPage', () => {
             isLongDistance: false,
             isShorthaul: true,
           }),
+          makeDriver({
+            driverId: 5,
+            driverName: 'NoTypes',
+            isLocal: false,
+            isLongDistance: false,
+            isShorthaul: false,
+          }),
         ],
         isLoading: false,
         isError: false,
@@ -513,61 +522,71 @@ describe('DriverPlanningPage', () => {
     const visibleIds = () =>
       screen.getAllByTestId('driver-row').map((r) => r.getAttribute('data-driver-id'))
 
-    it('shows every driver when all filters are on "Any" (the default)', () => {
-      seedMoveTypeDrivers()
-      renderPage()
-      expect(visibleIds()).toEqual(['1', '2', '3', '4'])
-    })
+    const moveTypeControl = () => screen.getByTestId('move-type-filter')
 
-    it('Local = Yes keeps only drivers who handle local moves', () => {
-      seedMoveTypeDrivers()
-      renderPage()
-      fireEvent.change(screen.getByTestId('local-filter'), { target: { value: 'yes' } })
-      expect(visibleIds()).toEqual(['1', '3'])
-    })
+    // react-select ignores `fireEvent.change`; the menu has to be opened and the
+    // option clicked. Scope to `.rs__option` (the `classNamePrefix` on our Select
+    // wrapper exists for exactly this) rather than `getByText` — a selected
+    // value's label is also rendered as a chip, so a bare text query is ambiguous.
+    function pickMoveType(label: string) {
+      const control = moveTypeControl()
+      const combobox = within(control).getByRole('combobox')
+      fireEvent.mouseDown(combobox)
+      fireEvent.focus(combobox)
+      const option = Array.from(control.querySelectorAll('.rs__option')).find(
+        (o) => o.textContent === label,
+      )
+      if (!option) throw new Error(`no "${label}" option in the move-type menu`)
+      fireEvent.click(option)
+    }
 
-    it('Local = No keeps only drivers who do not handle local moves', () => {
-      seedMoveTypeDrivers()
-      renderPage()
-      fireEvent.change(screen.getByTestId('local-filter'), { target: { value: 'no' } })
-      expect(visibleIds()).toEqual(['2', '4'])
-    })
+    function removeMoveType(label: string) {
+      const chip = Array.from(moveTypeControl().querySelectorAll('.rs__multi-value')).find((c) =>
+        c.textContent?.includes(label),
+      )
+      if (!chip) throw new Error(`no "${label}" chip to remove`)
+      const remove = chip.querySelector('.rs__multi-value__remove')
+      if (!remove) throw new Error(`"${label}" chip has no remove control`)
+      fireEvent.mouseDown(remove)
+      fireEvent.click(remove)
+    }
 
-    it('Long Distance = Yes keeps only long-distance drivers', () => {
+    it('defaults to Long Dist., so only long-distance drivers show on load', () => {
       seedMoveTypeDrivers()
       renderPage()
-      fireEvent.change(screen.getByTestId('long-dist-filter'), { target: { value: 'yes' } })
       expect(visibleIds()).toEqual(['2', '3'])
     })
 
-    it('combines both filters — Local=Yes AND Long Distance=Yes keeps only the driver who does both', () => {
+    it('selecting a second type shows the UNION of both groups, not the intersection', () => {
       seedMoveTypeDrivers()
       renderPage()
-      fireEvent.change(screen.getByTestId('local-filter'), { target: { value: 'yes' } })
-      fireEvent.change(screen.getByTestId('long-dist-filter'), { target: { value: 'yes' } })
-      expect(visibleIds()).toEqual(['3'])
+      pickMoveType('Local')
+      // Long Dist. (2, 3) OR Local (1, 3) — driver 1 appears even though they
+      // are not long-distance. Under the old AND filters this was [3] alone.
+      expect(visibleIds()).toEqual(['1', '2', '3'])
     })
 
-    it('Shorthaul = Yes keeps only shorthaul drivers', () => {
+    it('a single non-default type filters to just that group', () => {
       seedMoveTypeDrivers()
       renderPage()
-      fireEvent.change(screen.getByTestId('shorthaul-filter'), { target: { value: 'yes' } })
+      pickMoveType('Shorthaul')
+      removeMoveType('Long Dist.')
       expect(visibleIds()).toEqual(['3', '4'])
     })
 
-    it('Shorthaul = No keeps only drivers who do not handle shorthaul moves', () => {
+    it('clearing every type shows all drivers, including one in no group', () => {
       seedMoveTypeDrivers()
       renderPage()
-      fireEvent.change(screen.getByTestId('shorthaul-filter'), { target: { value: 'no' } })
-      expect(visibleIds()).toEqual(['1', '2'])
+      removeMoveType('Long Dist.')
+      expect(visibleIds()).toEqual(['1', '2', '3', '4', '5'])
     })
 
-    it('combines Shorthaul with the other two — Local=Yes AND Shorthaul=Yes keeps only the driver who does both', () => {
+    it('selecting all three is NOT the same as selecting none — it excludes the no-group driver', () => {
       seedMoveTypeDrivers()
       renderPage()
-      fireEvent.change(screen.getByTestId('local-filter'), { target: { value: 'yes' } })
-      fireEvent.change(screen.getByTestId('shorthaul-filter'), { target: { value: 'yes' } })
-      expect(visibleIds()).toEqual(['3'])
+      pickMoveType('Local')
+      pickMoveType('Shorthaul')
+      expect(visibleIds()).toEqual(['1', '2', '3', '4'])
     })
   })
 
