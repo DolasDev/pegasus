@@ -35,6 +35,43 @@ export function toUtcDayKey(value: Date | string | number | null | undefined): s
 }
 
 /**
+ * The calendar day a user picked, as `YYYY-MM-DD`, read from LOCAL components.
+ *
+ * This is what the date pickers must send. `date.toISOString()` — what they sent
+ * before — serializes a local-midnight Date as an instant, so a day picked in
+ * US-Eastern was persisted as `05:00:00` on that day, and a day picked east of
+ * UTC lands on the PREVIOUS day entirely. Sending the calendar day removes the
+ * timezone from the wire: there is nothing left for the server to guess.
+ *
+ * The activity date columns are days, not instants — see the API's
+ * `lib/longhaul-date-only.ts` for the other half of the contract.
+ */
+export function toLocalDateOnly(value: Date | string | number | null | undefined): string | null {
+  if (value === null || value === undefined || value === '') return null
+  const d = new Date(value)
+  if (isNaN(d.getTime())) return null
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+/**
+ * Parse a stored date-only value into a Date at LOCAL midnight of that calendar
+ * day, for the date pickers to display and edit.
+ *
+ * Stored values are naive UTC midnight (`2026-08-20T00:00:00.000Z`). Feeding
+ * that to `new Date()` and handing it to a picker renders the PREVIOUS day for
+ * anyone west of UTC — a US-Eastern planner opening a 08/20 activity saw 08/19.
+ * The Gantt never had this problem because it formats and keys with
+ * `timeZone: 'UTC'` throughout; only the pickers construct local Dates.
+ */
+export function parseDateOnly(value: Date | string | number | null | undefined): Date | null {
+  const key = toUtcDayKey(value)
+  if (key === null) return null
+  const d = new Date(key)
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+}
+
+/**
  * Two dates fall on the same calendar day in local time. Times of day are
  * ignored (only year/month/day are compared). Invalid Date inputs (NaN
  * timestamp, e.g. `new Date(undefined)`) compare as NOT same-day.

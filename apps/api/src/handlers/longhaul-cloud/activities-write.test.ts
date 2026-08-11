@@ -116,4 +116,63 @@ describe('POST /activities/:id (cloud-direct save)', () => {
     expect(res.status).toBe(403)
     expect(executeSqlMock).not.toHaveBeenCalled()
   })
+
+  // The date columns are calendar days. tenant-web used to persist
+  // `date.toISOString()` off a local-time Date, so a day picked in US-Eastern
+  // was stored at 05:00 — the same day, five hours off. Before #534 the Gantt
+  // keyed columns by the full timestamp, so that 05:00 value and the day-walk's
+  // 00:00 value rendered as two columns both labeled "08/16". Trip 16426 showed
+  // exactly this. Normalizing here covers tenant-web, trip-save and SDK callers.
+  describe('date-only columns', () => {
+    const paramFor = (name: string) =>
+      (executeSqlMock.mock.calls[1]![2].params as Array<{ name: string; value: unknown }>).find(
+        (p) => p.name === name,
+      )
+
+    it('stores a picked-in-Eastern ETA at midnight, not 05:00', async () => {
+      const res = await save('5', { estimated_date: '2026-08-16T05:00:00.000Z' })
+      expect(res.status).toBe(200)
+      expect(paramFor('estimated_date')).toEqual({
+        name: 'estimated_date',
+        value: '2026-08-16 00:00:00',
+      })
+    })
+
+    it('passes an unambiguous YYYY-MM-DD straight through', async () => {
+      await save('5', { actual_date: '2026-08-10' })
+      expect(paramFor('actual_date')).toEqual({ name: 'actual_date', value: '2026-08-10 00:00:00' })
+    })
+
+    it('normalizes planned_start/planned_end too (the PendingTrips editor)', async () => {
+      await save('5', {
+        planned_start: '2026-08-20T05:00:00.000Z',
+        planned_end: '2026-08-25T05:00:00.000Z',
+      })
+      expect(paramFor('planned_start')!.value).toBe('2026-08-20 00:00:00')
+      expect(paramFor('planned_end')!.value).toBe('2026-08-25 00:00:00')
+    })
+
+    it('keeps an explicit null null rather than coercing it to a date', async () => {
+      await save('5', { actual_date: null })
+      expect(paramFor('actual_date')).toEqual({ name: 'actual_date', value: null })
+    })
+
+    it('leaves non-date columns untouched', async () => {
+      await save('5', { city: 'Reno' })
+      expect(paramFor('city')).toEqual({ name: 'city', value: 'Reno' })
+    })
+
+    it('rejects an inverted span with 400 and writes nothing', async () => {
+      // The wrong-year shape: same MM/DD, previous year (prod id 9911).
+      const res = await save('5', {
+        planned_start: '2021-08-19T00:00:00.000Z',
+        planned_end: '2020-08-19T00:00:00.000Z',
+      })
+      expect(res.status).toBe(400)
+      expect(await res.json()).toMatchObject({ code: 'VALIDATION_ERROR' })
+      // Only the pre-read ran; no UPDATE.
+      expect(executeSqlMock.mock.calls.length).toBeLessThan(2)
+      expect(recomputeMock).not.toHaveBeenCalled()
+    })
+  })
 })

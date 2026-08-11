@@ -26,6 +26,7 @@ import { executeSql, MssqlExecError } from '../../lib/mssql-executor-client'
 import { resolveLonghaulUser } from '../../lib/longhaul-cloud-user'
 import { recomputeTripSummaryCloud } from '../../lib/longhaul-cloud-trip-summary'
 import { pickColumns, assignments } from '../../lib/longhaul-cloud-write'
+import { normalizeDateOnlyColumns, isInvertedSpan } from '../../lib/longhaul-date-only'
 import { logger } from '../../lib/logger'
 
 const PatchActivityBody = z.object({
@@ -84,6 +85,13 @@ export const longhaulSaveActivityHandler: Handler<AppEnv> = async (c) => {
     return c.json({ error: parsed.error.message, code: 'VALIDATION_ERROR', correlationId }, 400)
   }
 
+  // The four date columns are CALENDAR DAYS — collapse any time-of-day the
+  // client sent before it reaches MSSQL. See lib/longhaul-date-only.
+  const patch = normalizeDateOnlyColumns(parsed.data as Record<string, unknown>, {
+    activityId,
+    correlationId,
+  })
+
   const resolved = await resolveLonghaulUser({
     tenantId: c.get('tenantId'),
     userId: c.get('userId'),
@@ -97,22 +105,41 @@ export const longhaulSaveActivityHandler: Handler<AppEnv> = async (c) => {
   try {
     // RT1: capture the pre-update TripMaster_id so we can detect a cascade
     // (activity moved between trips) and recompute both summaries.
+    // planned_start/planned_end come back too so the span guard below can check
+    // the EFFECTIVE span — a patch that moves only one bound is still checked
+    // against the stored other one, at no extra round trip.
     const { recordset: existingRows } = await executeSql(
       connectionString,
-      'SELECT TripMaster_id FROM LongDistanceDispatchActivity WHERE id = @id',
+      'SELECT TripMaster_id, planned_start, planned_end FROM LongDistanceDispatchActivity WHERE id = @id',
       { params: [{ name: 'id', value: activityId }] },
     )
-    const existing = existingRows[0] as { TripMaster_id: number | null } | undefined
+    const existing = existingRows[0] as
+      | { TripMaster_id: number | null; planned_start: unknown; planned_end: unknown }
+      | undefined
     if (!existing) {
       return c.json({ error: 'Activity not found', code: 'NOT_FOUND', correlationId }, 404)
     }
     const previousTripId = existing.TripMaster_id ?? null
 
+    // A planned span that runs backwards is always bad data — in prod every
+    // such row is the same MM/DD with the wrong year, which renders two
+    // identically labeled Gantt columns because the header carries no year.
+    const effectiveStart =
+      patch.planned_start !== undefined ? patch.planned_start : existing.planned_start
+    const effectiveEnd = patch.planned_end !== undefined ? patch.planned_end : existing.planned_end
+    if (isInvertedSpan(effectiveStart, effectiveEnd)) {
+      return c.json(
+        {
+          error: 'planned_end must not precede planned_start',
+          code: 'VALIDATION_ERROR',
+          correlationId,
+        },
+        400,
+      )
+    }
+
     // RT2: UPDATE only the provided columns + audit/timestamp.
-    const { columns, params } = pickColumns(
-      parsed.data as Record<string, unknown>,
-      ACTIVITY_PATCH_COLUMNS,
-    )
+    const { columns, params } = pickColumns(patch, ACTIVITY_PATCH_COLUMNS)
     const setClause = [
       assignments([...columns]),
       'modified_by = @modified_by',

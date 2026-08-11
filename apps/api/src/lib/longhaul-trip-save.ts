@@ -16,6 +16,7 @@
 // ---------------------------------------------------------------------------
 
 import { buildShipmentActivities } from './longhaul-build-activities'
+import { mapDateOnlyColumns, isInvertedSpan } from './longhaul-date-only'
 
 type Activity = Record<string, unknown>
 
@@ -115,6 +116,17 @@ function pickReal(obj: Activity, allowed: readonly string[]): Activity {
   return out
 }
 
+/**
+ * `pickReal` for activity rows, with the four calendar-day columns collapsed to
+ * naive midnight. Without this a save re-persists whatever timestamp the client
+ * sent — which is how `estimated_date` ended up at 05:00 across prod and why the
+ * legacy Gantt rendered two columns for one day. `mapDateOnlyColumns` is the
+ * non-logging variant, so this module stays pure.
+ */
+function pickActivity(obj: Activity): Activity {
+  return mapDateOnlyColumns(pickReal(obj, ACTIVITY_COLUMNS))
+}
+
 /** Compute the save plan, or a guard error. Pure — mirrors saveTripLogic's diff. */
 export function computeTripSavePlan(
   tripDto: Record<string, unknown>,
@@ -212,7 +224,7 @@ export function computeTripSavePlan(
     .filter((dbo) => dtoActivities.some((dto) => sameSlot(dto, dbo)))
     .map((dbo) => {
       const matching = dtoActivities.find((dto) => sameSlot(dto, dbo))!
-      return { id: dbo.id, fields: pickReal({ ...matching, ...overrides }, ACTIVITY_COLUMNS) }
+      return { id: dbo.id, fields: pickActivity({ ...matching, ...overrides }) }
     })
 
   const activitiesToAdd = dtoActivities
@@ -221,11 +233,22 @@ export function computeTripSavePlan(
       const activityTypeCode =
         (dto['activityType'] as Record<string, unknown> | null)?.['code'] ??
         dto['ActivityType_code']
-      return pickReal(
-        { ...dto, ...overrides, ActivityType_code: activityTypeCode },
-        ACTIVITY_COLUMNS,
-      )
+      return pickActivity({ ...dto, ...overrides, ActivityType_code: activityTypeCode })
     })
+
+  // A planned span that runs backwards is always bad data. Every such row in
+  // prod is the same MM/DD with the wrong year, which the Gantt renders as two
+  // identically labeled columns because the header carries no year.
+  const inverted = [...activitiesToUpdate.map((u) => u.fields), ...activitiesToAdd].find((a) =>
+    isInvertedSpan(a['planned_start'], a['planned_end']),
+  )
+  if (inverted) {
+    return {
+      kind: 'error',
+      error: `planned_end must not precede planned_start (${String(inverted['ActivityType_code'] ?? 'activity')} on order ${String(inverted['order_num'] ?? '?')})`,
+      code: 'VALIDATION_ERROR',
+    }
+  }
 
   const removeIds = activitiesToRemoveRows.map((a) => a.id).filter(Boolean)
 
