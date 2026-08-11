@@ -81,6 +81,7 @@ describe('driverPlanningQueryOptions', () => {
         wgs: null,
         isLocal: false,
         isLongDistance: true,
+        isShorthaul: true,
         deliveries: [
           {
             activityId: 999,
@@ -129,6 +130,7 @@ describe('driverPlanningQueryOptions', () => {
         wgs: true,
         isLocal: true,
         isLongDistance: false,
+        isShorthaul: false,
         deliveries: [],
         shipments: [],
       },

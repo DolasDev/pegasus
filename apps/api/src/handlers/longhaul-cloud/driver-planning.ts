@@ -62,8 +62,9 @@ SELECT
   d.DRIVER_ID   AS driver_id,
   d.DRIVER_NAME AS driver_name,
   d.AGENT_CODE  AS agent_code,
-  d.is_local_drv     AS is_local_drv,
-  d.is_long_dist_drv AS is_long_dist_drv,
+  d.is_local_drv        AS is_local_drv,
+  d.is_long_dist_drv    AS is_long_dist_drv,
+  d.is_shorthaul_driver AS is_shorthaul_driver,
   t.id            AS trip_id,
   t.trip_title    AS trip_title,
   t.planned_last_day AS planned_last_day,
@@ -161,6 +162,7 @@ interface PlanningRow {
   // v_longhaul_drivers move-type flags, stored as 'Y' / 'N' (uppercase).
   is_local_drv: string | null
   is_long_dist_drv: string | null
+  is_shorthaul_driver: string | null
   trip_id: number | null
   trip_title: string | null
   planned_last_day: string | null
@@ -240,6 +242,8 @@ interface DriverPlanningRow {
   isLocal: boolean
   /** Handles long-distance moves (v_longhaul_drivers.is_long_dist_drv = 'Y'). */
   isLongDistance: boolean
+  /** Handles shorthaul moves (v_longhaul_drivers.is_shorthaul_driver = 'Y'). */
+  isShorthaul: boolean
   deliveries: Delivery[]
   shipments: Shipment[]
 }
@@ -440,6 +444,7 @@ export const longhaulDriverPlanningHandler: Handler<AppEnv> = async (c) => {
         wgs: toTriBool(conf?.wgs),
         isLocal: toYnBool(row.is_local_drv),
         isLongDistance: toYnBool(row.is_long_dist_drv),
+        isShorthaul: toYnBool(row.is_shorthaul_driver),
         deliveries,
         shipments,
       }

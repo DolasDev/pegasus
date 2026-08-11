@@ -132,6 +132,7 @@ function makeDriver(overrides?: Partial<DriverPlanningRow>): DriverPlanningRow {
     wgs: null,
     isLocal: false,
     isLongDistance: true,
+    isShorthaul: false,
     deliveries: [],
     shipments: [],
     ...overrides,
@@ -470,8 +471,8 @@ describe('DriverPlanningPage', () => {
     })
   })
 
-  describe('move-type filters (Local / Long Distance)', () => {
-    // Three drivers spanning every combination; all carry the default confirmed
+  describe('move-type filters (Local / Long Distance / Shorthaul)', () => {
+    // Four drivers spanning every combination; all carry the default confirmed
     // date so they sit inside the default ready-date range window.
     function seedMoveTypeDrivers() {
       driverPlanningReturn = {
@@ -481,9 +482,29 @@ describe('DriverPlanningPage', () => {
             driverName: 'LocalOnly',
             isLocal: true,
             isLongDistance: false,
+            isShorthaul: false,
           }),
-          makeDriver({ driverId: 2, driverName: 'LongOnly', isLocal: false, isLongDistance: true }),
-          makeDriver({ driverId: 3, driverName: 'Both', isLocal: true, isLongDistance: true }),
+          makeDriver({
+            driverId: 2,
+            driverName: 'LongOnly',
+            isLocal: false,
+            isLongDistance: true,
+            isShorthaul: false,
+          }),
+          makeDriver({
+            driverId: 3,
+            driverName: 'All',
+            isLocal: true,
+            isLongDistance: true,
+            isShorthaul: true,
+          }),
+          makeDriver({
+            driverId: 4,
+            driverName: 'ShorthaulOnly',
+            isLocal: false,
+            isLongDistance: false,
+            isShorthaul: true,
+          }),
         ],
         isLoading: false,
         isError: false,
@@ -492,10 +513,10 @@ describe('DriverPlanningPage', () => {
     const visibleIds = () =>
       screen.getAllByTestId('driver-row').map((r) => r.getAttribute('data-driver-id'))
 
-    it('shows every driver when both filters are on "Any" (the default)', () => {
+    it('shows every driver when all filters are on "Any" (the default)', () => {
       seedMoveTypeDrivers()
       renderPage()
-      expect(visibleIds()).toEqual(['1', '2', '3'])
+      expect(visibleIds()).toEqual(['1', '2', '3', '4'])
     })
 
     it('Local = Yes keeps only drivers who handle local moves', () => {
@@ -509,7 +530,7 @@ describe('DriverPlanningPage', () => {
       seedMoveTypeDrivers()
       renderPage()
       fireEvent.change(screen.getByTestId('local-filter'), { target: { value: 'no' } })
-      expect(visibleIds()).toEqual(['2'])
+      expect(visibleIds()).toEqual(['2', '4'])
     })
 
     it('Long Distance = Yes keeps only long-distance drivers', () => {
@@ -524,6 +545,28 @@ describe('DriverPlanningPage', () => {
       renderPage()
       fireEvent.change(screen.getByTestId('local-filter'), { target: { value: 'yes' } })
       fireEvent.change(screen.getByTestId('long-dist-filter'), { target: { value: 'yes' } })
+      expect(visibleIds()).toEqual(['3'])
+    })
+
+    it('Shorthaul = Yes keeps only shorthaul drivers', () => {
+      seedMoveTypeDrivers()
+      renderPage()
+      fireEvent.change(screen.getByTestId('shorthaul-filter'), { target: { value: 'yes' } })
+      expect(visibleIds()).toEqual(['3', '4'])
+    })
+
+    it('Shorthaul = No keeps only drivers who do not handle shorthaul moves', () => {
+      seedMoveTypeDrivers()
+      renderPage()
+      fireEvent.change(screen.getByTestId('shorthaul-filter'), { target: { value: 'no' } })
+      expect(visibleIds()).toEqual(['1', '2'])
+    })
+
+    it('combines Shorthaul with the other two — Local=Yes AND Shorthaul=Yes keeps only the driver who does both', () => {
+      seedMoveTypeDrivers()
+      renderPage()
+      fireEvent.change(screen.getByTestId('local-filter'), { target: { value: 'yes' } })
+      fireEvent.change(screen.getByTestId('shorthaul-filter'), { target: { value: 'yes' } })
       expect(visibleIds()).toEqual(['3'])
     })
   })

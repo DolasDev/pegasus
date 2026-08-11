@@ -52,6 +52,7 @@ function planningRow(overrides: Record<string, unknown> = {}) {
     agent_code: 'AG1',
     is_local_drv: 'Y',
     is_long_dist_drv: 'Y',
+    is_shorthaul_driver: 'Y',
     trip_id: 10,
     trip_title: 'Trip Ten',
     planned_last_day: '2026-06-10',
@@ -386,10 +387,23 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
       .mockResolvedValueOnce({
         recordset: [
           // 'Y' -> true, 'N' -> false.
-          planningRow({ driver_id: 1, is_local_drv: 'Y', is_long_dist_drv: 'N' }),
+          planningRow({
+            driver_id: 1,
+            is_local_drv: 'Y',
+            is_long_dist_drv: 'N',
+            is_shorthaul_driver: 'N',
+          }),
           // Lowercase 'y' still true; NULL treated as false. No trip so the
           // deliveries round trip is still driven by driver 1's trip_id.
-          planningRow({ driver_id: 2, trip_id: null, is_local_drv: null, is_long_dist_drv: 'y' }),
+          planningRow({
+            driver_id: 2,
+            trip_id: null,
+            is_local_drv: null,
+            is_long_dist_drv: 'y',
+            is_shorthaul_driver: 'y',
+          }),
+          // NULL shorthaul flag -> false, same as the other two flags.
+          planningRow({ driver_id: 3, trip_id: null, is_shorthaul_driver: null }),
         ],
         rowsAffected: [],
       })
@@ -399,18 +413,26 @@ describe('GET longhaul/driver-planning (cloud-direct)', () => {
 
     const res = await buildApp().request('/onprem/longhaul/driver-planning')
     const body = (await res.json()) as {
-      data: Array<{ driverId: number; isLocal: boolean; isLongDistance: boolean }>
+      data: Array<{
+        driverId: number
+        isLocal: boolean
+        isLongDistance: boolean
+        isShorthaul: boolean
+      }>
     }
 
     // The flags are pulled straight off v_longhaul_drivers in the planning SQL.
     const planningSql = executeSqlMock.mock.calls[0]![1] as string
     expect(planningSql).toContain('d.is_local_drv')
     expect(planningSql).toContain('d.is_long_dist_drv')
+    expect(planningSql).toContain('d.is_shorthaul_driver')
 
     const d1 = body.data.find((d) => d.driverId === 1)!
-    expect(d1).toMatchObject({ isLocal: true, isLongDistance: false })
+    expect(d1).toMatchObject({ isLocal: true, isLongDistance: false, isShorthaul: false })
     const d2 = body.data.find((d) => d.driverId === 2)!
-    expect(d2).toMatchObject({ isLocal: false, isLongDistance: true })
+    expect(d2).toMatchObject({ isLocal: false, isLongDistance: true, isShorthaul: true })
+    const d3 = body.data.find((d) => d.driverId === 3)!
+    expect(d3).toMatchObject({ isShorthaul: false })
   })
 
   it('applies confirmed-availability overrides from the third round trip', async () => {
