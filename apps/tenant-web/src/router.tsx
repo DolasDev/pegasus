@@ -18,6 +18,7 @@ import { CustomersPage } from '@/routes/customers.index'
 import { CustomerDetailPage } from '@/routes/customers.$customerId'
 import { DispatchPage } from '@/routes/dispatch.index'
 import { InvoicesPage } from '@/routes/invoices.index'
+import { ReportingPage } from '@/routes/reporting'
 import { IntegrationsIndexPage } from '@/routes/integrations.index'
 import { IntegrationDetailPage } from '@/routes/integrations.$integrationId'
 import { SsoConfigPage } from '@/routes/sso-config'
@@ -172,6 +173,19 @@ const invoicesRoute = createRoute({
   getParentRoute: () => authLayout,
   path: '/invoices',
   component: InvoicesPage,
+})
+
+// Reporting deliberately carries NO requireRole guard. The action is granted to
+// the viewer baseline and every human persona, so a role list here would be
+// vacuous. The meaningful gates are server-side: the Cedar action, each
+// dataset's own permission, and the REPORTING_ENABLED flag. The nav entry is
+// hidden via `report:read` + the `reporting` capability (AppShell), and the page
+// itself degrades to an "not available" message when the catalog endpoint 404s,
+// so reaching this route directly with the feature off is handled.
+const reportingRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/reporting',
+  component: ReportingPage,
 })
 
 // Integrations — read-only mapping/ruleset visualization. Hangs off authLayout
@@ -406,6 +420,7 @@ const routeTree = rootRoute.addChildren([
     customersDetailRoute,
     dispatchRoute,
     invoicesRoute,
+    reportingRoute,
     integrationsIndexRoute,
     integrationDetailRoute,
     driverPlanningRoute.addChildren([

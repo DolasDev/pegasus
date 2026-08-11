@@ -25,6 +25,14 @@
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
 
+  /* Chart series color. Every reporting widget is single-series, so one hue is
+     the whole categorical need -- the widget title names the series, and no
+     legend is required. Light and dark are SELECTED steps (not an automatic
+     flip): each was validated against its own surface for the lightness band,
+     chroma floor and >= 3:1 contrast. Adding a second series means re-running
+     that validation for the adjacent pair, not appending a hue by eye. */
+  --color-chart-1: hsl(var(--chart-1));
+
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
@@ -52,6 +60,8 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
     --radius: 0.5rem;
+    /* #0a5adb on the white card surface — validated. */
+    --chart-1: 217 91% 45%;
   }
 
   .dark {
@@ -74,6 +84,9 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
+    /* #4795f5 on the dark card surface — separately validated, not a flip of
+       the light step (which fails the dark lightness band). */
+    --chart-1: 213 90% 62%;
   }
 }
 

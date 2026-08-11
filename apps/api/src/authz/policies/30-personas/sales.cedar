@@ -10,7 +10,8 @@ permit (
     Pegasus::Action::"CreateCustomer",
     Pegasus::Action::"UpdateCustomer",
     Pegasus::Action::"ListMoves",
-    Pegasus::Action::"ReadMove"
+    Pegasus::Action::"ReadMove",
+    Pegasus::Action::"ReadReportingDataset"
   ],
   resource
 );

@@ -25,7 +25,8 @@ permit (
     Pegasus::Action::"ManageWorkflowSecrets",
     Pegasus::Action::"ManageWorkflowConfigs",
     Pegasus::Action::"ManageIngress",
-    Pegasus::Action::"ManageFeedbackForms"
+    Pegasus::Action::"ManageFeedbackForms",
+    Pegasus::Action::"ReadReportingDataset"
   ],
   resource
 );

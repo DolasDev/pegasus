@@ -41,6 +41,7 @@ export type ResourceType =
   | 'Blob'
   | 'Document'
   | 'Feedback'
+  | 'Report'
 
 export interface ActionDef {
   /** Cedar action identifier (without namespace prefix). */
@@ -389,6 +390,32 @@ export const Actions = {
     id: 'CreateFeedbackRequest',
     resourceType: 'Feedback',
     permission: 'feedback:create_request',
+  },
+
+  // ── Reporting (dashboards) ────────────────────────────────────────────────
+  // Gates the reporting surface as a whole: the dataset catalog and the batched
+  // query endpoint. It is deliberately NOT sufficient on its own — every
+  // dataset also declares an existing action (ListMoves, ReadInvoice, ...) that
+  // the caller must independently hold, so reporting can never widen what a
+  // role can already read.
+  //
+  // Granted on the `viewer` baseline (which is what actually makes the surface
+  // reachable for business users) plus every persona that has real permit
+  // clauses today: accountant, sales, driver, billing_manager,
+  // workflow_developer. tenant_admin gets it via its permit-everything policy.
+  // The 8 comment-only stub personas are NOT edited: a stub granted only
+  // report:read still fails every dataset's own gate, so it would be inert, and
+  // adding a clause would break the "placeholder persona grants nothing"
+  // invariant in lib/authz.test.ts. Withheld from the machine personas
+  // (reporting, integrations, integration_publisher, workflow_runtime), which
+  // have no UI and no m2m mount for these routes.
+  //
+  // NOTE the name collision: the `reporting` PERSONA is a service-account role
+  // for mirroring data to downstream warehouses, unrelated to this action.
+  ReadReportingDataset: {
+    id: 'ReadReportingDataset',
+    resourceType: 'Report',
+    permission: 'report:read',
   },
 } as const satisfies Record<string, ActionDef>
 

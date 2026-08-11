@@ -10,6 +10,6 @@
 // filename 1:1 to a persona name, so the second grant cannot live here.
 permit (
   principal in Pegasus::Group::"driver",
-  action in [Pegasus::Action::"ListMoves"],
+  action in [Pegasus::Action::"ListMoves", Pegasus::Action::"ReadReportingDataset"],
   resource
 );

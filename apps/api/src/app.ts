@@ -30,6 +30,7 @@ import { pegiiRuntimeHandler } from './handlers/pegii-runtime'
 import { runtimeReadsHandler } from './handlers/runtime-reads'
 import { vpnAgentHandler } from './handlers/vpn-agent'
 import { dashboardPegiiHandler } from './handlers/dashboard-pegii'
+import { reportingHandler } from './handlers/reporting'
 import { pegiiReportsHandler } from './handlers/pegii-reports'
 import { longhaulVersionHandler } from './handlers/longhaul-cloud/version'
 import { longhaulStatesHandler } from './handlers/longhaul-cloud/states'
@@ -430,6 +431,12 @@ v1.route('/documents', documentsHandler)
 // longhaul-cloud reference handlers; powers the tenant dashboard's "Use PegII
 // Data" toggle. See handlers/dashboard-pegii.ts.
 v1.get('/dashboard/pegii', dashboardPegiiHandler)
+// Reporting: the server-defined dataset catalog + the batched query runner that
+// backs customizable dashboards. Standalone surface — it does not touch the
+// PegII dashboard route above. Env-gated (REPORTING_ENABLED), gated again by
+// the ReadReportingDataset Cedar action, and gated per-dataset by each
+// dataset's own pre-existing action. See handlers/reporting.ts.
+v1.route('/reporting', reportingHandler)
 // PegII-rendered report documents (order profile / "trip sheet"), fetched from
 // the pegII team's on-prem report endpoint over the WireGuard tunnel and
 // relayed as base64 — or as a raw PDF with `?format=pdf`. Session surface: the

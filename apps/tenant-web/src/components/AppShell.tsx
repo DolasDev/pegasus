@@ -6,6 +6,7 @@ import {
   FileText,
   Users,
   Calendar,
+  BarChart3,
   Receipt,
   MapPinned,
   LogOut,
@@ -117,6 +118,22 @@ const NAV_ITEMS = [
     icon: Receipt,
     exact: false,
     roles: ADMIN_ONLY,
+    children: null,
+  },
+  {
+    to: '/reporting' as const,
+    label: 'Reporting',
+    icon: BarChart3,
+    exact: false,
+    // Gated by PERMISSION rather than a role list: `report:read` is granted to
+    // the viewer baseline and every human persona, so enumerating roles here
+    // would be both vacuous and a second place to keep in sync.
+    roles: null,
+    permission: 'report:read' as const,
+    // ...and by the deployment flag, since Cedar grants the permission whether
+    // or not the surface is deployed. During a rolled deploy an older API sends
+    // neither the permission nor the capability, so the pair fails safe.
+    capability: 'reporting' as const,
     children: null,
   },
   {
@@ -384,7 +401,10 @@ export function AppShell({ children }: AppShellProps) {
         // (only Operations today) is hidden when the tenant lacks it, even for
         // an admin. `hasCapability` fails open, so untagged items are unaffected.
         const capOk = !('capability' in item) || perms.hasCapability(item.capability)
-        return roleOk && capOk
+        // Permission gate, for items whose audience is a permission rather than
+        // a role list (Reporting). Untagged items are unaffected.
+        const permOk = !('permission' in item) || perms.has(item.permission)
+        return roleOk && capOk && permOk
       })
   const visibleSettingsItems = perms.isLoading
     ? []

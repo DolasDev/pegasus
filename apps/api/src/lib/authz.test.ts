@@ -105,6 +105,9 @@ describe('authorize — offline (cedar-wasm)', () => {
         Actions.UpdateCustomer.id,
         Actions.ListMoves.id,
         Actions.ReadMove.id,
+        // Reporting routes are open to every human persona; the datasets a
+        // sales user actually sees are still gated by the actions above.
+        Actions.ReadReportingDataset.id,
         ...DOC_BASELINE,
       ]),
     )
@@ -124,6 +127,7 @@ describe('authorize — offline (cedar-wasm)', () => {
         Actions.ReadCustomer.id,
         // billing/accounting role: may also delete/archive documents.
         Actions.DeleteDocument.id,
+        Actions.ReadReportingDataset.id,
         ...DOC_BASELINE,
       ]),
     )
@@ -141,7 +145,9 @@ describe('authorize — offline (cedar-wasm)', () => {
 
   it('billing_manager may delete documents (billing/accounting role)', async () => {
     const ids = new Set(await allowedActionIds(principal(['billing_manager'])))
-    expect(ids).toEqual(new Set([Actions.DeleteDocument.id, ...DOC_BASELINE]))
+    expect(ids).toEqual(
+      new Set([Actions.DeleteDocument.id, Actions.ReadReportingDataset.id, ...DOC_BASELINE]),
+    )
   })
 
   it('empty-roles principal gets only the shared document baseline (invariant d)', async () => {
@@ -237,6 +243,7 @@ describe('listAllowedPermissions — offline', () => {
         Actions.ReadFeedbackForms.permission,
         Actions.RateShipment.permission,
         Actions.ReadTariff.permission,
+        Actions.ReadReportingDataset.permission,
         // Universal document baseline (upload is a write, but granted to all).
         Actions.ReadDocument.permission,
         Actions.UploadDocument.permission,
