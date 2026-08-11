@@ -255,6 +255,24 @@ Guardrails baked into every YAML below: `--max-turns` cap, `timeout-minutes`, `c
 
   Sonnet is sufficient here — log classification, not deep reasoning. This also covers the repo rule "fix the pipeline first": the triage comment lands while context is fresh, and a deploy-run failure on `main` gets surfaced without watching the Actions tab. (Pairs with the existing memory gotcha about canceled Deploy runs after rapid pushes — the triage fires on `failure`, not `cancelled`; if cancelled-run detection is wanted later, add `types: [completed]` filtering on `conclusion == 'cancelled'` in a follow-up.)
 
+> **This phase now solely owns CI-failure triage (folded 2026-08-11).**
+> `audit-ci-pipeline-efficiency.md` Phase 4 specified the same
+> `.github/workflows/ci-triage.yml` and has been retired into this phase, which
+> was already a strict superset of it: that version triggered on `CI` only (this
+> one adds `Deploy`), and lacked the concurrency group, the GOTCHAS.md
+> known-failure matching, the model/turn caps, and the cancelled-vs-failure
+> note. Nothing was lost in the merge; that plan is archived as of #602's
+> follow-up.
+>
+> **Decision record carried over from it — a scope guard for _this_ plan, which
+> is the one most at risk of scope creep:** CI-failure triage is "the one place
+> AI genuinely earns its keep" in the pipeline. Everything in that plan's
+> Phases 1-3 was deterministic YAML where an LLM adds nothing. Explicitly
+> rejected there and still rejected here: **AI-generated PR summaries and AI
+> lint** — the solo author already knows the diff, and turbo/eslint are
+> deterministic and faster. Do not reintroduce either as "while we're in here"
+> additions.
+
 ### Phase 4 — Plans-lifecycle hygiene (no AI; effort: ~30 min)
 
 - [ ] **Add `scripts/plans-hygiene.sh`** — pure bash, reports (a) stale `plans/in-progress/` entries older than 14 days, (b) in-progress plans whose checklists are fully `[x]` (done-but-unarchived):
