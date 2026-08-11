@@ -765,3 +765,50 @@ What generalizes:
   The one-character difference in the prefix is the whole isolation.
 - The same trap applies to `/onprem`, `/settings` and `/integrations`, all of which
   already have more than one router contributing routes.
+
+## Planning's `move_type` filter and the `Is_Trip_Planning` whitelist constrain the SAME column
+
+Filtering Operations → Planning by move type **INTERNATIONAL** returned zero shipments —
+for every date range, zone and tenant. `move_type` has no column of its own: it filters
+`import_export` (`shipments-list.ts:223`), which is also the column the `Is_Trip_Planning`
+predicate ANDs its per-client eligibility whitelist onto (`:250`). Selecting a code outside
+that whitelist produces an unsatisfiable conjunction:
+
+```sql
+import_export IN ('Z') AND import_export IN ('H','HA','M','A','SS')
+```
+
+#615 added `'Z'` to NWI's `importExportTypes`. **The general case is still live**: any other
+non-whitelisted move type filters to nothing by the same mechanism. The alternative fix —
+letting an explicit `move_type` filter override the whitelist — was considered and declined
+(it would change the default planning list's meaning); see `plans/completed/intl-move-type.md`.
+
+Three things make it invisible:
+
+- `Is_Trip_Planning: true` is hardcoded in tenant-web's `DEFAULT_QUERY` and is **not** a
+  FilterTab, so a user cannot turn it off to work around the contradiction.
+- NWI's Move Types dropdown is built from the `MoveType` lookup with `moveTypesWhere = '1=1'`,
+  so it offers **every** code — including ones the whitelist forbids. The dropdown advertises
+  filters that cannot match. (QMM's `moveTypesWhere` is restrictive, which is why it needs no
+  `'Z'`: the code never reaches a filter.)
+- An empty list is indistinguishable from "no matching shipments". Nothing surfaces the clash.
+
+Not a port regression — legacy `shipment.repository.v2.ts:171`/`:214` AND'd the same two
+predicates onto the same column, so INTERNATIONAL returned nothing there too.
+
+What generalizes:
+
+- **`importExportTypes` is not merely "default eligibility."** A code missing from it makes
+  _filtering by that code_ impossible, not just excluded-by-default. Conversely, adding one
+  widens the **default unfiltered** planning list — mind the 1000-row `RESULT_LIMIT_EXCEEDED`
+  cap.
+- **Test satisfiability, not spelling.** The regression test extracts every
+  `import_export IN (...)` clause from the generated SQL, resolves the placeholders back
+  through the bound params, and asserts the sets intersect. Asserting that a letter appears
+  in a list would not have caught this.
+- **A new code usually needs the UI badge too.** `getMoveType`'s `visible` list in
+  `ShipmentCard/index.tsx` deliberately omits `'H'` (Interstate = the unbadged common case),
+  so any code missing there renders a blank badge indistinguishable from Interstate.
+- `apps/tenant-web/src/features/driver-planning/utils/movetype-list.ts` (`MOVETYPE_LIST`) is
+  **dead code** — its only consumer is its own test; the real dropdown comes from the API's
+  `filter-options.ts`. Don't extend it.
