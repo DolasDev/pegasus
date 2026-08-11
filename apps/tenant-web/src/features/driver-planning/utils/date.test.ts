@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { datediff, addDays, sameDayCheck, toUtcDayKey } from './date'
+import {
+  datediff,
+  addDays,
+  sameDayCheck,
+  toUtcDayKey,
+  toLocalDateOnly,
+  parseDateOnly,
+} from './date'
 
 describe('toUtcDayKey', () => {
   it('collapses any time-of-day on a UTC day to that day at midnight', () => {
@@ -110,5 +117,48 @@ describe('sameDayCheck', () => {
 
   it('compares Date instances and strings interchangeably', () => {
     expect(sameDayCheck(new Date('2024-06-15T10:00:00'), '2024-06-15')).toBe(true)
+  })
+})
+
+describe('toLocalDateOnly', () => {
+  it('returns the LOCAL calendar day the user picked', () => {
+    // A picker hands back local midnight of the clicked day. Serializing that
+    // with toISOString() is what stored ETAs at 05:00 for US-Eastern planners.
+    expect(toLocalDateOnly(new Date(2026, 7, 16))).toBe('2026-08-16')
+  })
+
+  it('pads single-digit months and days', () => {
+    expect(toLocalDateOnly(new Date(2026, 0, 5))).toBe('2026-01-05')
+  })
+
+  it('keeps the local day even late at night, when the UTC day has rolled over', () => {
+    expect(toLocalDateOnly(new Date(2026, 7, 16, 23, 30))).toBe('2026-08-16')
+  })
+
+  it.each([null, undefined, '', 'nope'])('maps %p to null', (v) => {
+    expect(toLocalDateOnly(v as never)).toBeNull()
+  })
+})
+
+describe('parseDateOnly', () => {
+  it('reads a stored naive-UTC-midnight value as that same calendar day locally', () => {
+    // The regression this guards: `new Date('2026-08-20T00:00:00.000Z')` is
+    // Aug 19 anywhere west of UTC, so the picker opened on the wrong day.
+    const d = parseDateOnly('2026-08-20T00:00:00.000Z')!
+    expect([d.getFullYear(), d.getMonth(), d.getDate()]).toEqual([2026, 7, 20])
+    expect(d.getHours()).toBe(0)
+  })
+
+  it('reads a legacy 05:00Z value as its own day too', () => {
+    const d = parseDateOnly('2026-08-16T05:00:00.000Z')!
+    expect([d.getMonth(), d.getDate()]).toEqual([7, 16])
+  })
+
+  it('round-trips through toLocalDateOnly', () => {
+    expect(toLocalDateOnly(parseDateOnly('2026-08-20T00:00:00.000Z'))).toBe('2026-08-20')
+  })
+
+  it.each([null, undefined, 'nope'])('maps %p to null', (v) => {
+    expect(parseDateOnly(v as never)).toBeNull()
   })
 })

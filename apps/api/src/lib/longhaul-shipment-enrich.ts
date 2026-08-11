@@ -547,3 +547,42 @@ export function buildExtraShipmentActivities(
 
   return extras
 }
+
+/**
+ * Collapse rows sharing an `order_num` down to the first one, preserving the
+ * base query's ORDER BY.
+ *
+ * Neither reader's query can fan out any more, but `v_longhaul_shipments_v2` is
+ * a per-tenant legacy view this code does not own, and it DOES duplicate: 617
+ * rows for 307 order_nums in NWI prod, three of them returning three rows.
+ * Everything downstream assumes one row per order — the enrichment maps are
+ * keyed by order_num, the planning list keys its React rows by
+ * `shipment.order_num`, the trip screen renders one card per shipment, and
+ * duplicates burn rows against both the 1001-row base cap and the 1000-row
+ * RESULT_LIMIT_EXCEEDED guard.
+ *
+ * Shared by the planning list and the trip fetch; callers log `dropped` so a
+ * residual view-level duplicate stays observable rather than silently swallowed.
+ *
+ * Rows with no usable order_num can't collide and are passed through untouched
+ * — dropping them would hide data rather than deduplicate it.
+ */
+export function dedupeByOrderNum(rows: ShipmentRow[]): { rows: ShipmentRow[]; dropped: number } {
+  const seen = new Set<unknown>()
+  const out: ShipmentRow[] = []
+  let dropped = 0
+  for (const row of rows) {
+    const on = row.order_num
+    if (on == null) {
+      out.push(row)
+      continue
+    }
+    if (seen.has(on)) {
+      dropped += 1
+      continue
+    }
+    seen.add(on)
+    out.push(row)
+  }
+  return { rows: out, dropped }
+}

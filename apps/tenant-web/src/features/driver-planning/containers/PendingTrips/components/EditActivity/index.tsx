@@ -4,6 +4,7 @@ import { PopoverShell } from '../../../../components/PopoverShell'
 import styles from './EditActivity.module.css'
 import { DatePicker } from '../../../../components/DatePicker'
 import { useOutsideClick } from '@/features/driver-planning/utils/hooks/use-outside-click'
+import { toLocalDateOnly, parseDateOnly } from '@/features/driver-planning/utils/date'
 import { Button, IconButton } from '@/features/driver-planning/components/Button'
 
 interface EditActivityProps {
@@ -30,18 +31,19 @@ export const EditActivity: React.FC<EditActivityProps> = ({
     const [start, end] = dates
     setStartDate(start)
     setEndDate(end)
+    // planned_start / planned_end are calendar days — send the day the planner
+    // picked, not an instant. toISOString() here is what stored 9 prod rows at
+    // 05:00 and would land a day early for a client east of UTC.
     editDateSpread({
-      start_date: start?.toISOString(),
-      end_date: end?.toISOString() || start?.toISOString(),
+      start_date: toLocalDateOnly(start) ?? undefined,
+      end_date: (toLocalDateOnly(end) || toLocalDateOnly(start)) ?? undefined,
     })
     if (end) {
       closeEditActivity()
     }
   }
 
-  const openDate = selectedActivity?.estimated_date
-    ? new Date(selectedActivity.estimated_date)
-    : new Date()
+  const openDate = parseDateOnly(selectedActivity?.estimated_date) ?? new Date()
 
   const wrapperRef = useRef<HTMLDivElement>(null)
   useOutsideClick([wrapperRef], () => {

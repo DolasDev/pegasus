@@ -364,5 +364,45 @@ describe('ActivityGantt', () => {
 
       expect(headerText(container)).toEqual(['01/01', '01/02'])
     })
+
+    // The visible label stays MM/DD by product decision, so two columns a year
+    // apart are indistinguishable on screen. The full day rides along in the DOM
+    // so a wrong-year row (prod has 1969/2000/2001 sentinels) is diagnosable.
+    describe('the year is carried in the DOM, not the label', () => {
+      const renderDays = (parsedDays: (string | null)[], activities: any[]) =>
+        renderWithStore(
+          <ActivityGantt
+            days={parsedDays}
+            activities={activities}
+            orderIdToColor={{ O1: 'c1' }}
+            reloadTrip={() => {}}
+          />,
+        ).container
+
+      it('exposes data-day and title with the year while the label shows only MM/DD', () => {
+        const container = renderDays(['2024-01-01T00:00:00.000Z'], [])
+        const h5 = container.querySelector('h5')!
+        expect(h5.textContent).toBe('01/01')
+        expect(h5.textContent).not.toContain('2024')
+        expect(h5.getAttribute('data-day')).toBe('2024-01-01')
+        expect(container.querySelector('[title="2024-01-01"]')).not.toBeNull()
+      })
+
+      it('distinguishes two columns that render the same label a year apart', () => {
+        // Exactly the prod shape: trip 14878 shows "01/07" twice, from
+        // 2025-01-07 and 2026-01-07.
+        const container = renderDays(['2025-01-07T00:00:00.000Z', '2026-01-07T00:00:00.000Z'], [])
+        const h5s = Array.from(container.querySelectorAll('h5'))
+        expect(h5s.map((h) => h.textContent)).toEqual(['01/07', '01/07'])
+        expect(h5s.map((h) => h.getAttribute('data-day'))).toEqual(['2025-01-07', '2026-01-07'])
+      })
+
+      it('marks the Unknown column without inventing a day', () => {
+        const container = renderDays([null], [])
+        const h5 = container.querySelector('h5')!
+        expect(h5.textContent).toBe('Unknown')
+        expect(h5.getAttribute('data-day')).toBe('unknown')
+      })
+    })
   })
 })

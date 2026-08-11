@@ -44,6 +44,7 @@ import { getLonghaulClientConfigFor } from '../../lib/longhaul-client-config'
 import {
   enrichShipmentWithTripInfo,
   buildExtraShipmentActivities,
+  dedupeByOrderNum,
   type ShipmentRow,
   type ActivityRow,
   type ActivityType,
@@ -293,40 +294,6 @@ function buildBaseSql(query: ShipmentQuery, bag: ParamBag, importExportTypes: st
     whereSql +
     `\nORDER BY ${orderBy}`
   )
-}
-
-/**
- * Collapse rows sharing an `order_num` down to the first one, preserving the
- * base query's ORDER BY.
- *
- * The query above can no longer fan out, but `v_longhaul_shipments_v2` is a
- * per-tenant legacy view this code does not own, so a duplicate order can still
- * reach us from the view itself. Everything downstream assumes one row per
- * order: the enrichment maps are keyed by order_num, the planning list keys its
- * React rows by `shipment.order_num`, and duplicates burn rows against both the
- * 1001-row base cap and the 1000-row RESULT_LIMIT_EXCEEDED guard.
- *
- * Rows with no usable order_num can't collide and are passed through untouched
- * — dropping them would hide data rather than deduplicate it.
- */
-function dedupeByOrderNum(rows: ShipmentRow[]): { rows: ShipmentRow[]; dropped: number } {
-  const seen = new Set<unknown>()
-  const out: ShipmentRow[] = []
-  let dropped = 0
-  for (const row of rows) {
-    const on = row.order_num
-    if (on == null) {
-      out.push(row)
-      continue
-    }
-    if (seen.has(on)) {
-      dropped += 1
-      continue
-    }
-    seen.add(on)
-    out.push(row)
-  }
-  return { rows: out, dropped }
 }
 
 // ---------------------------------------------------------------------------

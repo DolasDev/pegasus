@@ -120,6 +120,36 @@ describe('GET longhaul/trips/:id (cloud-direct)', () => {
     expect(shipmentBundleSql).not.toMatch(/JOIN\s+sales/)
   })
 
+  it('collapses a duplicated order_num from the view to one shipment', async () => {
+    // v_longhaul_shipments_v2 returns 617 rows for 307 order_nums in NWI prod
+    // (three orders return three rows), and assembleShipments maps 1:1 over
+    // whatever the view hands back — so the trip screen rendered the same
+    // shipment twice. #534 added this backstop to shipments-list but not here.
+    // Affected orders sit on live trips: 16646, 16498, 16442, 16385, 16317, …
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    executeSqlMock.mockResolvedValueOnce({
+      recordset: [tripRow],
+      recordsets: [[tripRow], [activityRow], [noteRow]],
+      rowsAffected: [],
+    })
+    const first = { order_num: 1001, shipper_name: 'Acme' }
+    const duplicate = { order_num: 1001, shipper_name: 'Acme' }
+    executeSqlMock.mockResolvedValueOnce({
+      recordset: [first],
+      recordsets: [[first, duplicate], [], [], []],
+      rowsAffected: [],
+    })
+    executeSqlMock.mockResolvedValueOnce({ recordset: [], recordsets: [[]], rowsAffected: [] })
+
+    const res = await buildApp().request('/onprem/longhaul/trips/42')
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: Record<string, unknown> }
+    const shipments = body.data.shipments as Array<Record<string, unknown>>
+    expect(shipments).toHaveLength(1)
+    expect(shipments[0]!['order_num']).toBe(1001)
+  })
+
   it('soft-fails when pegasus_extra_location is absent — extra_locations is [] and the trip still returns 200', async () => {
     // Regression (Phase 3.1 re-mount): pegasus_extra_location does not exist on
     // every tenant's DB. It is queried SEPARATELY from the mandatory

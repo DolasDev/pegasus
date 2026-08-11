@@ -210,4 +210,72 @@ describe('parseActivities', () => {
       expect(r.days).toEqual(['2024-06-02T00:00:00.000Z', null])
     })
   })
+
+  // Trip 16426 (NWI prod) — the reported duplicate. Its ETAs were stored at
+  // 05:00Z by the old `toISOString()` write path, so the pre-#534 Gantt keyed
+  // 2026-08-16T00:00:00Z and 2026-08-16T05:00:00Z as two columns both labeled
+  // "08/16" (and the same for 08/21). The day-key collapses them; these are the
+  // real rows, so the pinning survives a refactor of either half.
+  describe('trip 16426 (real prod rows)', () => {
+    const peg = (o: Record<string, string>) => ({ total_est_wt: 1, pegasus_shadow: null, ...o })
+    const rows = [
+      ['490202', 'PACK', '2026-08-17', '2026-08-17', null, null, 'pack_date2', 'plan_pack'],
+      ['490202', 'LOAD', '2026-08-18', '2026-08-18', null, null, 'load_date2', 'plan_load'],
+      ['490202', 'RDEL', '2026-08-20', '2026-08-25', null, null, 'del_date2', 'plan_del'],
+      ['490356', 'PACK', '2026-08-06', '2026-08-06', null, '2026-08-06', 'pack_date2', 'plan_pack'],
+      ['490356', 'LOAD', '2026-08-07', '2026-08-07', null, '2026-08-07', 'load_date2', 'plan_load'],
+      // The 05:00Z ETA that produced the duplicate "08/16" column.
+      [
+        '490356',
+        'RDEL',
+        '2026-08-10',
+        '2026-08-20',
+        '2026-08-16T05:00:00.000Z',
+        null,
+        'del_date2',
+        'plan_del',
+      ],
+      ['490701', 'PACK', '2026-08-10', '2026-08-10', null, '2026-08-10', 'pack_date2', 'plan_pack'],
+      ['490701', 'LOAD', '2026-08-11', '2026-08-11', null, null, 'load_date2', 'plan_load'],
+      // ...and the duplicate "08/21".
+      [
+        '490701',
+        'RDEL',
+        '2026-08-13',
+        '2026-08-21',
+        '2026-08-21T05:00:00.000Z',
+        null,
+        'del_date2',
+        'plan_del',
+      ],
+    ] as const
+
+    const activities = rows.map(([order, code, start, end, eta, actual, startKey, endKey]) => ({
+      order_num: order,
+      activityType: { code },
+      planned_start: `${start}T00:00:00.000Z`,
+      planned_end: `${end}T00:00:00.000Z`,
+      estimated_date: eta,
+      actual_date: actual ? `${actual}T00:00:00.000Z` : null,
+      // The shipment's pegged dates match the activity's — hasDateChange is false.
+      shipment: peg({ [startKey]: `${start}T00:00:00.000Z`, [endKey]: `${end}T00:00:00.000Z` }),
+    }))
+
+    it('yields 18 distinct columns with no repeated calendar day', () => {
+      const r = parseActivities(activities as any, stubColor)
+
+      expect(r.hasDateChange).toBe(false)
+      expect(r.days).toHaveLength(18)
+      expect(new Set(r.days).size).toBe(18)
+      expect(r.days[0]).toBe('2026-08-06T00:00:00.000Z')
+      expect(r.days[r.days.length - 1]).toBe('2026-08-25T00:00:00.000Z')
+    })
+
+    it('gives the 05:00Z ETAs the same column as their calendar day', () => {
+      const r = parseActivities(activities as any, stubColor)
+
+      expect(r.days.filter((d) => d === '2026-08-16T00:00:00.000Z')).toHaveLength(1)
+      expect(r.days.filter((d) => d === '2026-08-21T00:00:00.000Z')).toHaveLength(1)
+    })
+  })
 })

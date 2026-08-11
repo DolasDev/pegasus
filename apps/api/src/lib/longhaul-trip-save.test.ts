@@ -301,8 +301,9 @@ describe('computeTripSavePlan', () => {
       const plan = computeTripSavePlan(dto, { driver_id: 9, dispatcher_id: 5 }, existing)
       if (plan.kind !== 'plan') throw new Error(`expected plan, got: ${plan.error}`)
       // shipment.load_date2 is 2026-06-02; the planner moved the activity to 06-09.
-      expect(plan.activitiesToUpdate[0]!.fields['planned_start']).toBe('2026-06-09')
-      expect(plan.activitiesToUpdate[0]!.fields['planned_end']).toBe('2026-06-10')
+      // Same calendar day, now written as explicit naive midnight (date-only contract).
+      expect(plan.activitiesToUpdate[0]!.fields['planned_start']).toBe('2026-06-09 00:00:00')
+      expect(plan.activitiesToUpdate[0]!.fields['planned_end']).toBe('2026-06-10 00:00:00')
     })
 
     it('carries actual dates into the summary set the trip header is rolled up from', () => {
@@ -342,6 +343,77 @@ describe('computeTripSavePlan', () => {
       )
       if (plan.kind !== 'plan') throw new Error('expected plan')
       expect(plan.activitiesToAdd).toHaveLength(3)
+    })
+  })
+
+  // Trip save writes the same four calendar-day columns as the activity PATCH,
+  // so it needs the same contract — otherwise a save re-persists the 05:00
+  // timestamps the pickers produced. See lib/longhaul-date-only.
+  describe('date-only columns', () => {
+    const withActivity = (fields: Record<string, unknown>) =>
+      baseDto({
+        id: 55,
+        shipments: [
+          {
+            ...shipment(100),
+            activities: [
+              {
+                order_num: 100,
+                TripMaster_id: 55,
+                ActivityType_code: 'SITIN',
+                activityType: { code: 'SITIN' },
+                ...fields,
+              },
+            ],
+          },
+        ],
+      })
+
+    it('normalizes dates on an ADDED activity', () => {
+      const plan = computeTripSavePlan(
+        withActivity({ estimated_date: '2026-08-16T05:00:00.000Z', planned_start: '2026-08-16' }),
+        { driver_id: 9, dispatcher_id: 5 },
+        [],
+      )
+      if (plan.kind !== 'plan') throw new Error(`expected plan, got ${plan.error}`)
+      const added = plan.activitiesToAdd.find((a) => a['ActivityType_code'] === 'SITIN')!
+      expect(added['estimated_date']).toBe('2026-08-16 00:00:00')
+      expect(added['planned_start']).toBe('2026-08-16 00:00:00')
+    })
+
+    it('normalizes dates on an UPDATED activity', () => {
+      const existing: ExistingActivity[] = [
+        { id: 8, order_num: 100, activityType_code: 'SITIN', actual_date: null, TripMaster_id: 55 },
+      ]
+      const plan = computeTripSavePlan(
+        withActivity({ id: 8, actual_date: '2026-08-10T05:00:00.000Z' }),
+        { driver_id: 9, dispatcher_id: 5 },
+        existing,
+      )
+      if (plan.kind !== 'plan') throw new Error(`expected plan, got ${plan.error}`)
+      const upd = plan.activitiesToUpdate.find((u) => u.id === 8)!
+      expect(upd.fields['actual_date']).toBe('2026-08-10 00:00:00')
+    })
+
+    it('rejects an inverted planned span rather than persisting it', () => {
+      const plan = computeTripSavePlan(
+        withActivity({
+          planned_start: '2021-08-19T00:00:00.000Z',
+          planned_end: '2020-08-19T00:00:00.000Z',
+        }),
+        { driver_id: 9, dispatcher_id: 5 },
+        [],
+      )
+      expect(plan).toMatchObject({ kind: 'error', code: 'VALIDATION_ERROR' })
+    })
+
+    it('leaves a normal forward span alone', () => {
+      const plan = computeTripSavePlan(
+        withActivity({ planned_start: '2026-08-20', planned_end: '2026-08-25' }),
+        { driver_id: 9, dispatcher_id: 5 },
+        [],
+      )
+      expect(plan.kind).toBe('plan')
     })
   })
 })

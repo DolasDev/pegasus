@@ -31,6 +31,7 @@ import { executeSql, type SqlParam } from './mssql-executor-client'
 import { logger } from './logger'
 import {
   buildExtraShipmentActivities,
+  dedupeByOrderNum,
   type ActivityType,
   type ShipmentRow,
 } from './longhaul-shipment-enrich'
@@ -175,8 +176,21 @@ export async function fetchTripDetail(
       const code = t['code']
       if (typeof code === 'string') activityTypesMap[code] = t as ActivityType
     }
+    // The view itself can return an order more than once (617 rows for 307
+    // order_nums in NWI prod), and assembleShipments maps 1:1 — so without this
+    // the trip screen renders the same shipment twice. Same backstop the
+    // planning list has had since #534.
+    const { rows: uniqueShipments, dropped: duplicateRows } = dedupeByOrderNum(
+      (shipBundle.recordsets[0] ?? []) as ShipmentRow[],
+    )
+    if (duplicateRows > 0) {
+      logger.warn('longhaul trip-fetch dropped duplicate shipment rows from the view', {
+        tripId,
+        duplicateRows,
+      })
+    }
     shipments = assembleShipments(
-      (shipBundle.recordsets[0] ?? []) as Row[],
+      uniqueShipments as Row[],
       (shipBundle.recordsets[1] ?? []) as Row[],
       (shipBundle.recordsets[2] ?? []) as Row[],
       extraLocations,

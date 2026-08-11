@@ -3,7 +3,7 @@ import { useFloating, offset } from '@floating-ui/react'
 
 import styles from './ActivityGantt.module.css'
 import { formatDateShort } from '../../../../utils/format-date'
-import { toUtcDayKey } from '../../../../utils/date'
+import { toUtcDayKey, parseDateOnly, toLocalDateOnly } from '../../../../utils/date'
 import { PopoverShell } from '../../../../components/PopoverShell'
 import { DatePicker } from '../../../../components/DatePicker'
 import { updateActivityForTrip } from '../../../../redux/trips'
@@ -11,10 +11,20 @@ import { Button } from '../../../../components/Button'
 import { HoverToolTip } from '../../../ToolTips'
 import { useAppDispatch } from '../../../../redux/hooks'
 
-function ActivityHeader({ date }: { date: string }) {
+/**
+ * A Gantt date column header.
+ *
+ * The visible label is deliberately `MM/DD` — no year, by product decision. That
+ * makes two columns an exact number of years apart look identical, which is how
+ * a wrong-year activity (prod has 1969 / 2000 / 2001 sentinels, plus
+ * off-by-one-year rows) hides in plain sight. So the full day is carried in the
+ * DOM instead: `title` for hover, `data-day` for tests and DevTools. Costs
+ * nothing visually and makes a bad row diagnosable without a DB query.
+ */
+function ActivityHeader({ date, dayKey }: { date: string; dayKey: string | null }) {
   return (
-    <div className={styles.dateHeader}>
-      <h5>{date}</h5>
+    <div className={styles.dateHeader} title={dayKey ? dayKey.slice(0, 10) : 'Unknown'}>
+      <h5 data-day={dayKey ? dayKey.slice(0, 10) : 'unknown'}>{date}</h5>
     </div>
   )
 }
@@ -94,10 +104,11 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip, re
     reloadTrip()
   }
 
-  const etaDate = selectedActivity?.estimated_date
-    ? new Date(selectedActivity.estimated_date)
-    : null
-  const actualDate = selectedActivity?.actual_date ? new Date(selectedActivity.actual_date) : null
+  // Stored values are naive UTC midnight; `new Date()` on them is the PREVIOUS
+  // day anywhere west of UTC, which opened the pickers a day early. parseDateOnly
+  // reads them as the local calendar day they represent.
+  const etaDate = parseDateOnly(selectedActivity?.estimated_date)
+  const actualDate = parseDateOnly(selectedActivity?.actual_date)
   const tomorrow = new Date()
   tomorrow.setDate(tomorrow.getDate() + 1)
   // `openToDate` is the calendar's initial focus month/day. When it's an
@@ -106,19 +117,16 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip, re
   // for the Actual-Date picker is `tomorrow` — so every fresh popover was
   // landing the user on tomorrow's cell instead of the activity's window.
   // Fall back to today when planned_start can't be parsed.
-  const safeStartDate = (() => {
-    if (!selectedActivity?.planned_start) return new Date()
-    const d = new Date(selectedActivity.planned_start)
-    return Number.isNaN(d.getTime()) ? new Date() : d
-  })()
+  const safeStartDate = parseDateOnly(selectedActivity?.planned_start) ?? new Date()
 
   return (
     <>
       <div className={styles.activityGantt} data-target="activity-gantt">
         <div className={styles.header}>
-          {days.map((day: any, i: any) => (
+          {days.map((day: any) => (
             <ActivityHeader
               key={day}
+              dayKey={day}
               date={day === null ? 'Unknown' : formatDateShort(day) || ''}
             />
           ))}
@@ -215,7 +223,8 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip, re
                       name="estimated_date"
                       selected={etaDate}
                       onChange={(date: any) => {
-                        updateActivity({ estimated_date: date ? date.toISOString() : null })
+                        // Send the calendar day, not an instant — see toLocalDateOnly.
+                        updateActivity({ estimated_date: toLocalDateOnly(date) })
                       }}
                       openToDate={etaDate ? etaDate : safeStartDate}
                       isClearable={true}
@@ -280,7 +289,7 @@ export function ActivityGantt({ days, activities, orderIdToColor, reloadTrip, re
                         name="actual_date"
                         selected={actualDate}
                         onChange={(date: any) => {
-                          updateActivity({ actual_date: date ? date.toISOString() : null })
+                          updateActivity({ actual_date: toLocalDateOnly(date) })
                         }}
                         openToDate={actualDate ? actualDate : safeStartDate}
                       />
