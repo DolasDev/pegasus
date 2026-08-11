@@ -400,9 +400,13 @@ export const Actions = {
   // role can already read.
   //
   // Granted on the `viewer` baseline (which is what actually makes the surface
-  // reachable for business users) plus every persona that has real permit
-  // clauses today: accountant, sales, driver, billing_manager,
+  // reachable for business users) plus accountant, sales, billing_manager and
   // workflow_developer. tenant_admin gets it via its permit-everything policy.
+  //
+  // NOT granted to `driver`: its ListMoves is a coarse feature gate whose real
+  // scoping is a handler DB filter, so report:read would expose tenant-wide
+  // move aggregates to a persona meant to see only its own trips. Only grant
+  // this to personas whose Cedar action fully describes their data scope.
   // The 8 comment-only stub personas are NOT edited: a stub granted only
   // report:read still fails every dataset's own gate, so it would be inert, and
   // adding a clause would break the "placeholder persona grants nothing"

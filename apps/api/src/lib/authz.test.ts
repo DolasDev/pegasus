@@ -212,6 +212,16 @@ describe('authorize — driver crew-scoped ABAC', () => {
     expect(await isAllowed(driver(), Actions.UpdateMove)).toBe(false)
   })
 
+  it('denies ReadReportingDataset — a driver must not read tenant-wide aggregates', async () => {
+    // driver's ListMoves is a COARSE feature gate; the real scoping is a
+    // handler DB filter (handlers/moves.ts limits a driver to their own crew
+    // assignments). Reporting datasets authorize on the Cedar action alone, so
+    // granting report:read here would hand a driver tenant-wide move counts via
+    // moves-by-status and the longhaul views. Keep this denied unless a dataset
+    // ever carries per-principal row scoping of its own.
+    expect(await isAllowed(driver(), Actions.ReadReportingDataset)).toBe(false)
+  })
+
   it('still allows tenant_admin to read a move regardless of crew assignment', async () => {
     const d = await authorize({
       principal: principal(['tenant_admin']),
