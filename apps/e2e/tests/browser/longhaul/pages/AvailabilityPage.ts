@@ -61,6 +61,25 @@ export class AvailabilityPage {
     await this.filterInput.fill(text)
   }
 
+  /**
+   * Clear the Move Type multi-select so the roster is unfiltered.
+   *
+   * View A defaults that control to "Long Dist.", so a freshly-loaded page shows
+   * only long-distance drivers. Specs that assert on "the drivers" (row counts,
+   * inline edits) mean the whole roster, and would otherwise silently run
+   * against that subset — or find an empty table if the QA data has no
+   * long-distance drivers. No-op when the control is absent (View B).
+   */
+  async clearMoveTypeFilter(): Promise<void> {
+    const control = this.page.getByTestId('move-type-filter')
+    if (!(await control.isVisible().catch(() => false))) return
+    // react-select's clear indicator only renders while something is selected.
+    const clear = control.locator('.rs__clear-indicator')
+    if ((await clear.count()) === 0) return
+    await clear.click()
+    await expect(control.locator('.rs__multi-value')).toHaveCount(0)
+  }
+
   async rowCount(): Promise<number> {
     return this.rows.count()
   }

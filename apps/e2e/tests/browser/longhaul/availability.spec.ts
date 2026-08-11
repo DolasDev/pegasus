@@ -24,6 +24,9 @@ test.describe('Availability tab', () => {
       .or(page.getByText('No drivers found'))
       .waitFor({ state: 'visible', timeout: 30_000 })
       .catch(() => {})
+    // View A's Move Type filter defaults to "Long Dist."; these specs assert on
+    // the full roster, so clear it before anything counts rows.
+    await av.clearMoveTypeFilter()
   })
 
   test('the Availability tab renders (driver table or empty state) @smoke', async ({ page }) => {
@@ -47,6 +50,8 @@ test.describe('Availability tab', () => {
         .or(page.getByText('No drivers found'))
         .waitFor({ state: 'visible', timeout: 30_000 })
         .catch(() => {})
+      // The reload reset the Move Type filter to its "Long Dist." default.
+      await av.clearMoveTypeFilter()
     }
     await expect(av.table, 'QA planning DB should have ≥1 driver row').toBeVisible({
       timeout: 15_000,
@@ -130,9 +135,12 @@ test.describe('Availability tab', () => {
     await expect(row).toContainText(city)
     await expect(row).toContainText(notes)
 
-    // …and persisted: reload (re-assert View A) and re-read.
+    // …and persisted: reload (re-assert View A) and re-read. The reload also
+    // resets Move Type to its "Long Dist." default, which would hide the edited
+    // driver unless they happen to be long-distance — clear it before re-reading.
     await page.reload({ waitUntil: 'domcontentloaded' })
     await av.pinVariant('A')
+    await av.clearMoveTypeFilter()
     const reloaded = av.rowByDriverId(driverId)
     await expect(reloaded).toBeVisible()
     await expect(reloaded).toContainText(state)
