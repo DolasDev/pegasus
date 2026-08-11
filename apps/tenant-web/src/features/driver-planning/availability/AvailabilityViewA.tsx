@@ -351,7 +351,7 @@ function dateInRange(dateStr: string | null, from: string, to: string): boolean 
 }
 
 // Move-type filter: 'any' passes every driver; 'yes'/'no' require the driver's
-// boolean flag to match. Used for both the Local and Long-Distance columns.
+// boolean flag to match. Used for the Local, Long-Distance and Shorthaul columns.
 type MoveTypeFilter = 'any' | 'yes' | 'no'
 
 function moveTypeMatches(flag: boolean, selection: MoveTypeFilter): boolean {
@@ -837,6 +837,7 @@ export function AvailabilityViewA() {
   // 'any' shows every driver; 'yes'/'no' require the flag to be set/unset.
   const [localFilter, setLocalFilter] = useState<MoveTypeFilter>('any')
   const [longDistFilter, setLongDistFilter] = useState<MoveTypeFilter>('any')
+  const [shorthaulFilter, setShorthaulFilter] = useState<MoveTypeFilter>('any')
   // Default sort: earliest calculated availability first.
   const [sortOrder, setSortOrder] = useState<SortOrder | null>('asc')
   // Default date range: today ±3 months, around the calculated availability.
@@ -868,6 +869,7 @@ export function AvailabilityViewA() {
       }
       if (!moveTypeMatches(d.isLocal, localFilter)) return false
       if (!moveTypeMatches(d.isLongDistance, longDistFilter)) return false
+      if (!moveTypeMatches(d.isShorthaul, shorthaulFilter)) return false
       return true
     })
     if (!sortOrder) return filtered
@@ -890,6 +892,7 @@ export function AvailabilityViewA() {
     dateTo,
     localFilter,
     longDistFilter,
+    shorthaulFilter,
   ])
 
   if (isLoading) {
@@ -947,6 +950,19 @@ export function AvailabilityViewA() {
                 data-testid="long-dist-filter"
                 value={longDistFilter}
                 onChange={(e) => setLongDistFilter(e.target.value as MoveTypeFilter)}
+                className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
+              >
+                <option value="any">Any</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+            <label className={`flex items-center gap-2 text-sm ${CARD_TEXT_CLASS}`}>
+              <span>Shorthaul</span>
+              <select
+                data-testid="shorthaul-filter"
+                value={shorthaulFilter}
+                onChange={(e) => setShorthaulFilter(e.target.value as MoveTypeFilter)}
                 className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
               >
                 <option value="any">Any</option>

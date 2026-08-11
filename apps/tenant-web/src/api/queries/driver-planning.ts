@@ -57,6 +57,8 @@ export interface DriverPlanningRow {
   isLocal: boolean
   /** Driver handles long-distance moves (v_longhaul_drivers.is_long_dist_drv = 'Y'). */
   isLongDistance: boolean
+  /** Driver handles shorthaul moves (v_longhaul_drivers.is_shorthaul_driver = 'Y'). */
+  isShorthaul: boolean
   /** Every RDEL activity on the driver's current trip, sorted by effective date. */
   deliveries: Delivery[]
   /** One row per shipment, dates from the final activity on each. */
