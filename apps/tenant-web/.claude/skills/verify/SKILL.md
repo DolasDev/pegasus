@@ -25,7 +25,26 @@ The seam is build-time only and dead-code-eliminated from prod bundles.
 The SPA reads its API base URL from `/config.json` at runtime (`apiUrl`), then
 calls `<apiUrl>/api/v1/...`. Intercept both with Playwright `page.route`:
 
-- `**/config.json` → `{ apiUrl: 'http://localhost:3000', cognito: {...}, features: {...} }`
+- `**/config.json` → the **complete** object below. `loadConfig()`
+  (`src/config.ts`) hard-requires `apiUrl` plus **all five** `cognito` strings and
+  throws if any is missing, so the app renders a bare **"Configuration error"**
+  page and nothing else. An elided `cognito: { ... }` stub fails this way even
+  though the e2e auth seam means none of the values are ever used — any
+  placeholder string will do. (`features` is optional and parsed defensively.)
+
+  ```js
+  {
+    apiUrl: 'http://localhost:3000',
+    cognito: {
+      region: 'us-east-1',
+      userPoolId: 'us-east-1_test',
+      clientId: 'testclientid',
+      domain: 'https://test.auth.us-east-1.amazoncognito.com',
+      redirectUri: 'http://localhost:5199/auth/callback',
+    },
+  }
+  ```
+
 - `**/api/v1/**` → your stubs
 
 **Envelope: handlers return `{ data: ... }` and `apiFetch` unwraps `.data`.**
