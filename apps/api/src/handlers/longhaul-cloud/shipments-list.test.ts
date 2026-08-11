@@ -323,6 +323,77 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
     })
   })
 
+  // `move_type` has no column of its own — it filters `import_export`, the same
+  // column Is_Trip_Planning ANDs its per-client eligibility whitelist onto. So
+  // the two predicates can contradict each other, and when they do the list is
+  // empty for every date range, zone and tenant with nothing to indicate why.
+  // The planning screen hardcodes `Is_Trip_Planning: true` and never exposes it,
+  // so a user cannot work around it. Assert satisfiability, not spelling: pull
+  // both `import_export IN (...)` lists out of the generated SQL, resolve their
+  // placeholders back through the bound params, and require the intersection to
+  // be non-empty.
+  describe('move_type filter vs the Is_Trip_Planning whitelist', () => {
+    async function importExportSetsFor(filters: Record<string, unknown>) {
+      findUnique.mockResolvedValue({
+        mssqlConnectionString: 'Server=a,1433',
+        longhaulClient: 'nwi',
+      })
+      stubExecutor({ shipments: [] })
+      const encoded = encodeURIComponent(JSON.stringify({ filters }))
+      await buildApp().request(`/onprem/longhaul/shipments?filters=${encoded}`)
+      const [, sql, opts] = executeSqlMock.mock.calls[0] as [
+        string,
+        string,
+        { params: Array<{ name: string; value: unknown }> },
+      ]
+      const byName = new Map(opts.params.map((p) => [p.name, p.value]))
+      // Each `import_export IN (@p3, @p4)` clause → the set of values it admits.
+      return [...sql.matchAll(/import_export IN \(([^)]*)\)/g)].map(
+        (m) =>
+          new Set(
+            m[1]!
+              .split(',')
+              .map((ph) => byName.get(ph.trim().replace(/^@/, '')))
+              .map(String),
+          ),
+      )
+    }
+
+    it('leaves INTERNATIONAL satisfiable against the trip-planning whitelist', async () => {
+      const sets = await importExportSetsFor({
+        Is_Trip_Planning: true,
+        move_type: [{ value: 'Z', label: 'INTERNATIONAL' }],
+      })
+
+      // Both predicates present — the filter and the whitelist.
+      expect(sets).toHaveLength(2)
+      const [first, second] = sets as [Set<string>, Set<string>]
+      expect(first).toContain('Z')
+      // ...and the whitelist admits it too, so the AND can match rows.
+      expect([...first].some((v) => second.has(v))).toBe(true)
+    })
+
+    it('still narrows to the selected move type rather than ignoring it', async () => {
+      // The fix must not turn the filter into a no-op: picking INTERNATIONAL
+      // must still exclude every other code.
+      const sets = await importExportSetsFor({
+        Is_Trip_Planning: true,
+        move_type: [{ value: 'Z' }],
+      })
+
+      expect(sets[0]).toEqual(new Set(['Z']))
+    })
+
+    it('keeps the whitelist alone when no move type is selected', async () => {
+      const sets = await importExportSetsFor({ Is_Trip_Planning: true })
+
+      expect(sets).toHaveLength(1)
+      // Regression guard on the accepted tradeoff: 'Z' is now eligible by
+      // default, so unfiltered planning lists include INTERNATIONAL shipments.
+      expect(sets[0]).toContain('Z')
+    })
+  })
+
   // One shipment must produce exactly one row. The planning list keys its
   // React rows by `shipment.order_num`, so a duplicate renders the same
   // shipment twice (and warns on the duplicate key). Two independent guards:

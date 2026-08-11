@@ -80,6 +80,23 @@ describe('ShipmentCard indicator', () => {
     expect(screen.queryByText('S-VIP')).not.toBeInTheDocument()
   })
 
+  // The move-type badge renders beside the order number, and only for codes
+  // worth calling out — 'H' (Interstate) is the common case and is deliberately
+  // left blank. INTERNATIONAL was omitted because a 'Z' shipment could never
+  // reach the planning list at all: the Is_Trip_Planning whitelist excluded it.
+  // Now that it can (and appears in the DEFAULT, unfiltered list), a blank badge
+  // would make it indistinguishable from an Interstate move.
+  it('badges an INTERNATIONAL move beside the order number', () => {
+    render({ order_num: 'O1', import_export: 'Z' })
+    expect(screen.getByText('O1 Z')).toBeInTheDocument()
+  })
+
+  it('leaves the Interstate common case unbadged', () => {
+    render({ order_num: 'O1', import_export: 'H' })
+    expect(screen.getByText('O1')).toBeInTheDocument()
+    expect(screen.queryByText('O1 H')).not.toBeInTheDocument()
+  })
+
   // BEHAVIOR CHANGE (approved): the SIT delivery indicator read
   // `storage_driver_id`, which is not a column on the view — the storage driver
   // is `driver2_id`. The condition was always falsy, so a SIT shipment ALWAYS
