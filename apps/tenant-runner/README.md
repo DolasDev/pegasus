@@ -49,17 +49,28 @@ ECS task / image hardening layer.
 
 1. `GET /api/v1/internal/tenant-workflows` (broker, `wbk_` auth) → the
    tenant's `executable: true` workflows with entry points, sha256 digests,
-   and presigned download URLs. One row per name (latest upload wins).
+   and presigned download URLs. **Warm-up only**: the latest row per name is
+   installed up front purely for first-run latency (see step 4 for the
+   resolution that actually decides which bytes run).
 2. Download → sha256 verify → safe-extract (path/symlink/zip-bomb guards,
-   `RUNNER_MAX_UNPACKED_BYTES` install-size cap) → venv. A failing artifact
-   is skipped and logged (`runner.artifact_sha_mismatch_SECURITY` for
-   integrity failures); it never takes the runner down.
-3. Register one proxy workflow per name + the single
-   `run_tenant_entry_point` activity; poll `pegasus-tenant-<tenantId>-<env>`.
-4. Each activity invocation: broker-proxied `vnd_` token fetch → subprocess
-   run (wall-clock capped at `RUNNER_EXECUTION_TIMEOUT_SECONDS`, SIGKILL on
-   overrun) → terminal `PATCH /internal/workflow-executions/:id`
-   (COMPLETED / FAILED / TIMED_OUT).
+   `RUNNER_MAX_UNPACKED_BYTES` install-size cap) → venv, into
+   `<work>/<name>/<workflowId>` so several versions of one name coexist. A
+   failing artifact is skipped and logged
+   (`runner.artifact_sha_mismatch_SECURITY` for integrity failures); it never
+   takes the runner down, and it stays installable on demand.
+3. Register ONE dynamic proxy workflow (`@workflow.defn(dynamic=True)`) + the
+   single `run_tenant_entry_point` activity; poll
+   `pegasus-tenant-<tenantId>-<env>`. Dynamic registration is what lets a
+   workflow name published _after_ this task started reach the executor at all.
+4. Each activity invocation: broker-proxied `vnd_` token fetch — whose response
+   also names the published row this execution is bound to — → install that row
+   if it isn't already (`preparer.py`) → subprocess run (wall-clock capped at
+   `RUNNER_EXECUTION_TIMEOUT_SECONDS`, SIGKILL on overrun) → terminal
+   `PATCH /internal/workflow-executions/:id` (COMPLETED / FAILED / TIMED_OUT).
+   A row that cannot be installed **fails the execution**; the runner never
+   substitutes another version's bytes (sdk-feedback 0034 — resolving per name
+   at startup meant a warm task served whatever was latest when it launched,
+   for its whole life).
 5. **Idle-exit** (scale-to-zero, Resolved #1): after
    `RUNNER_IDLE_TIMEOUT_SECONDS` (default 600) with no activity, the runner
    drains the Temporal worker and exits 0. SIGTERM does the same.

@@ -3,6 +3,39 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.36.3
+
+Documentation only — no API, CLI, or behavioral change in the SDK itself. The
+behavior it documents is a platform fix shipping alongside (sdk-feedback 0034).
+
+### Documented — publish→run is deterministic, and `@version` is honored
+
+A tenant runner used to prepare workflows **once, at task startup** — the latest
+version per workflow _name_ — and serve every execution from that memo for the
+task's whole life. Since the dispatcher reuses one runner task per tenant, that
+meant a version published while a task was warm could not run at all, an explicit
+`@version` was quietly ignored, a brand-new workflow name failed outright, and the
+only remedy was to end the task (wait out its idle window, during which every
+check you made renewed the lease, or have an operator stop it). Every signal —
+`push`, `get_workflow`, the downloaded artifact, a `COMPLETED` execution — said
+the new code was live while old bytes ran.
+
+The runner now resolves the published row **per execution** and installs that
+artifact on demand, so:
+
+- a version published seconds ago runs on the next execution, with no waiting;
+- `pegasus-workflows run name@version` executes that version even when a newer
+  one exists;
+- a workflow name first published after the runner started is runnable;
+- and a row that cannot be installed **fails the run** rather than silently
+  executing whatever else is on disk.
+
+Execution rows now also carry `workflowName` / `workflowVersion` alongside
+`workflowId`, so the build that ran is readable straight off
+`client.get_execution(...)` / `pegasus-workflows executions show` instead of
+requiring a second `get_workflow` call — or, as it took in the field, diffing
+runtime behavior against a downloaded zip.
+
 ## 0.36.2
 
 Documentation only — no API, CLI, or behavioral change. Discovery surfaces for two

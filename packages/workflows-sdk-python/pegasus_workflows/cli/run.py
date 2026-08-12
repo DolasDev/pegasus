@@ -2,9 +2,15 @@
 
 Looks up a workflow by ``name@version`` (or ``name`` if there is only one
 version visible), POSTs ``/api/v1/workflows/{id}/run``, and prints the
-returned execution row. Phase 2 scope-lock means only curated stdlib
-workflows are accepted — the server returns 400 ``WORKFLOW_NOT_EXECUTABLE``
-for anything else.
+returned execution row. A workflow that is not executable is refused by the
+server with 400 ``WORKFLOW_NOT_EXECUTABLE``.
+
+The resolved row is the one that RUNS: the runner installs that published
+artifact specifically and fails rather than falling back to another version.
+So ``@version`` means what it says even when a newer version exists, and a
+version published seconds ago runs on the very next execution — no waiting for
+a runner to cycle. The returned execution row echoes ``workflowName`` /
+``workflowVersion`` so the executed build is visible without a second lookup.
 
 Examples::
 

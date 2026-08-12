@@ -209,7 +209,10 @@ def test_prepare_workflow_happy_path(tmp_path: Path) -> None:
     # The venv has no pip — there is no dependency-install path at all.
     assert not (prepared.python_bin.parent / "pip").exists()
     # The archive is gone once extracted.
-    assert not (tmp_path / "my_workflow" / "artifact.zip").exists()
+    assert not (tmp_path / "my_workflow" / wf.id / "artifact.zip").exists()
+    # Installed under the published ROW id, not just the name (0034).
+    assert prepared.workflow_id == wf.id
+    assert prepared.src_dir == tmp_path / "my_workflow" / wf.id / "src"
 
 
 def test_prepare_workflow_sha_mismatch_refuses_to_install(tmp_path: Path) -> None:
@@ -225,8 +228,11 @@ def test_prepare_workflow_sha_mismatch_refuses_to_install(tmp_path: Path) -> Non
             max_unpacked_bytes=1024 * 1024,
             transport=_transport_serving(tampered),
         )
-    # Cleanup happened: no partial install, no extracted files, no venv.
-    assert not (tmp_path / "my_workflow").exists()
+    # Cleanup happened: no partial install, no extracted files, no venv. The
+    # install dir is keyed by the published row id under the name (0034), so
+    # the row dir is what must be gone — an empty name dir may remain.
+    assert not (tmp_path / "my_workflow" / wf.id).exists()
+    assert list((tmp_path / "my_workflow").glob("*")) == []
 
 
 def test_prepare_workflow_cleans_up_on_install_failure(tmp_path: Path) -> None:
@@ -239,7 +245,34 @@ def test_prepare_workflow_cleans_up_on_install_failure(tmp_path: Path) -> None:
             max_unpacked_bytes=1024 * 1024,
             transport=_transport_serving(b"garbage"),
         )
-    assert not (tmp_path / "my_workflow").exists()
+    assert not (tmp_path / "my_workflow" / wf.id).exists()
+
+
+def test_two_versions_of_one_name_install_side_by_side(tmp_path: Path) -> None:
+    """The install dir is keyed by row id, so preparing a second version does
+    NOT delete the first (sdk-feedback 0034: it used to `rmtree` the name dir,
+    which could pull the tree out from under a running execution)."""
+    v1 = _workflow(sha256=VALID_SHA, version="1.0.0")
+    v2 = ExecutableWorkflow(
+        id="00000000-0000-4000-8000-000000000002",
+        name=v1.name,
+        version="2.0.0",
+        entry_points=v1.entry_points,
+        artifact_sha256=VALID_SHA,
+        artifact_size_bytes=None,
+        download_url=v1.download_url,
+        created_at="2026-06-12T00:00:00.000Z",
+    )
+    first = prepare_workflow(
+        tmp_path, v1, max_unpacked_bytes=1024 * 1024, transport=_transport_serving(VALID_ZIP)
+    )
+    second = prepare_workflow(
+        tmp_path, v2, max_unpacked_bytes=1024 * 1024, transport=_transport_serving(VALID_ZIP)
+    )
+
+    assert first.src_dir != second.src_dir
+    assert first.python_bin.is_file()  # untouched by the second install
+    assert second.python_bin.is_file()
 
 
 # ---------------------------------------------------------------------------

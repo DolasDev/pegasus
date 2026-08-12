@@ -787,6 +787,16 @@ pegasus-workflows executions show <workflow-id> <execution-id> --token=vnd_…
 data is available programmatically via `client.list_executions`,
 `client.get_execution`, and `client.get_execution_history`.
 
+**Which build ran.** Every execution row carries `workflowId` plus
+`workflowName` / `workflowVersion` — the published row whose code executed. The
+runner installs the artifact for exactly that row and **fails the run** rather
+than substituting another version, so publish→run is deterministic: a version
+published seconds ago runs on the next execution, and `run name@version` executes
+that version even when a newer one exists. (Before that fix a runner served
+whatever was newest when its task started, for the task's whole life — so a fresh
+publish silently ran old code, and only waiting out an idle window or restarting
+the runner cleared it.)
+
 Drive an execution from the SDK too (also in the tenant web UI):
 
 ```python

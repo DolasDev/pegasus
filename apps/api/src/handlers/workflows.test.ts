@@ -1188,6 +1188,7 @@ describe('workflows handler', () => {
       id: 'exec-1',
       tenantId: 'test-tenant-id',
       workflowId: 'wf-1',
+      workflow: { name: 'send_quote_followup', version: '0.1.0' },
       status: 'COMPLETED' as const,
       input: {},
       result: { message: 'ok' },
@@ -1218,6 +1219,19 @@ describe('workflows handler', () => {
       const body = await json(res)
       expect((body['data'] as unknown[]).length).toBe(1)
       expect((body['meta'] as JsonBody)['count']).toBe(1)
+    })
+
+    it('reports the name + version of the build the execution runs', async () => {
+      // sdk-feedback 0034: the tenant runner installs the artifact for THIS
+      // execution's workflowId and fails rather than substituting another, so
+      // the joined version is the executed one — readable without a second
+      // GET /workflows/:id.
+      mockRepo.findByIdForTenant.mockResolvedValue(provisionedRow)
+      mockExecutionRepo.listByWorkflow.mockResolvedValue([execRow])
+      const res = await buildApp().request('/wf-1/executions')
+      const row = ((await json(res))['data'] as JsonBody[])[0]!
+      expect(row['workflowName']).toBe('send_quote_followup')
+      expect(row['workflowVersion']).toBe('0.1.0')
     })
 
     it('returns 400 on a negative limit', async () => {

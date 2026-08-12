@@ -57,6 +57,15 @@ export type WorkflowExecutionRow = {
   triggeredByTriggerId: string | null
   /** True when started in dry-run mode (reads live, mutations captured). */
   dryRun: boolean
+  /**
+   * The published workflow row this execution is bound to — JOINED, never
+   * stored on the execution. `workflowId` has always identified the build; the
+   * tenant runner now refuses to execute anything else (sdk-feedback 0034), so
+   * carrying the name/version here lets a caller read WHICH build ran without a
+   * second `GET /workflows/:id`. Optional so a hand-built row in a test (or a
+   * future select that omits the relation) still type-checks.
+   */
+  workflow?: { name: string; version: string } | null
   queuedAt: Date
   startedAt: Date | null
   finishedAt: Date | null
@@ -78,6 +87,7 @@ const EXECUTION_SELECT = {
   triggerSource: true,
   triggeredByTriggerId: true,
   dryRun: true,
+  workflow: { select: { name: true, version: true } },
   queuedAt: true,
   startedAt: true,
   finishedAt: true,
