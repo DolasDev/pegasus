@@ -38,13 +38,37 @@ import {
 import { DashboardGrid } from '@/features/reporting/DashboardGrid'
 import { WidgetSettings } from '@/features/reporting/WidgetSettings'
 
-/** A slug the user can edit into, derived from the title for a brand-new one. */
-function slugify(title: string): string {
+/** A slug derived from the title, for a brand-new dashboard. */
+export function slugify(title: string): string {
   return title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 128)
+}
+
+/**
+ * Disambiguate a NEW dashboard's slug against the ones already visible.
+ *
+ * Publishing to an existing slug is a new VERSION of that lineage — correct when
+ * editing, catastrophic when creating: titling a new dashboard "Operations
+ * overview" would otherwise supersede the team's existing one, and everybody
+ * whose default points at that slug would silently start seeing different
+ * content. (The old version survives as SUPERSEDED, so it is a visibility
+ * accident rather than data loss — but nobody would know to go looking.)
+ *
+ * Only applies on create. Editing an existing slug must keep publishing into
+ * that lineage, which is the whole point of versioning.
+ */
+export function uniqueSlug(base: string, taken: readonly string[]): string {
+  if (!base) return base
+  const used = new Set(taken)
+  if (!used.has(base)) return base
+  for (let n = 2; n < 1000; n++) {
+    const candidate = `${base}-${n}`.slice(0, 128)
+    if (!used.has(candidate)) return candidate
+  }
+  return base
 }
 
 export function ReportingEditPage() {
@@ -143,7 +167,15 @@ export function ReportingEditPage() {
 
   function onPublish() {
     setError(null)
-    const slug = params.slug || slugify(title)
+    // Editing keeps the existing slug (publish = a new version of that lineage).
+    // Creating disambiguates, so a colliding title cannot supersede someone
+    // else's dashboard — see uniqueSlug.
+    const slug = params.slug
+      ? params.slug
+      : uniqueSlug(
+          slugify(title),
+          (dashboards.data?.dashboards ?? []).map((d) => d.slug),
+        )
     if (!slug) {
       setError('Give the dashboard a title first.')
       return
