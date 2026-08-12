@@ -446,6 +446,8 @@ describe('workflow-internal handler', () => {
       })
       mockWorkflowFindUnique.mockResolvedValue({
         runtimeTokenCiphertext: 'BASE64-CIPHERTEXT',
+        name: 'my-workflow',
+        version: '0.6.2',
       })
       mockDecryptRuntimeToken.mockResolvedValue('vnd_THE_PLAINTEXT_TOKEN')
       const res = await buildApp().request(
@@ -456,6 +458,33 @@ describe('workflow-internal handler', () => {
       expect(res.headers.get('cache-control')).toBe('no-store')
       const body = await json(res)
       expect(body['token']).toBe('vnd_THE_PLAINTEXT_TOKEN')
+    })
+
+    it('names the published row the execution is bound to (sdk-feedback 0034)', async () => {
+      // This is the tenant runner's ONLY source for WHICH build to install:
+      // the Temporal envelope carries just {executionId, input, dryRun}. Without
+      // it the runner falls back to "latest for this name", which is how a warm
+      // task came to serve stale bytes for its whole life.
+      mockExecutionFindUnique.mockResolvedValue({
+        id: VALID_EXECUTION_ID,
+        tenantId: 't1',
+        workflowId: 'wf-1',
+        status: 'QUEUED',
+      })
+      mockWorkflowFindUnique.mockResolvedValue({
+        runtimeTokenCiphertext: 'BASE64-CIPHERTEXT',
+        name: 'my-workflow',
+        version: '0.6.2',
+      })
+      mockDecryptRuntimeToken.mockResolvedValue('vnd_THE_PLAINTEXT_TOKEN')
+      const res = await buildApp().request(
+        '/workflow-runtime-token',
+        withSecret(BROKER_SECRET, { executionId: VALID_EXECUTION_ID }),
+      )
+      const body = await json(res)
+      expect(body['workflowId']).toBe('wf-1')
+      expect(body['workflowName']).toBe('my-workflow')
+      expect(body['workflowVersion']).toBe('0.6.2')
     })
 
     it('does not log the plaintext token', async () => {

@@ -350,6 +350,16 @@ type WorkflowExecutionResponse = {
   id: string
   tenantId: string
   workflowId: string
+  /**
+   * Name + version of the workflow row this execution is bound to — i.e. the
+   * build whose bytes run. The tenant runner prepares the artifact for
+   * `workflowId` specifically and fails rather than substituting another
+   * (sdk-feedback 0034), so this is the executed version, not merely the
+   * requested one. Null only if the workflow row was deleted under the
+   * execution.
+   */
+  workflowName: string | null
+  workflowVersion: string | null
   status: WorkflowExecutionRow['status']
   input: WorkflowExecutionRow['input']
   result: WorkflowExecutionRow['result']
@@ -375,6 +385,8 @@ function toExecutionResponse(row: WorkflowExecutionRow): WorkflowExecutionRespon
     id: row.id,
     tenantId: row.tenantId,
     workflowId: row.workflowId,
+    workflowName: row.workflow?.name ?? null,
+    workflowVersion: row.workflow?.version ?? null,
     status: row.status,
     input: row.input,
     result: row.result,

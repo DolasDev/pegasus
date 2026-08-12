@@ -19,6 +19,7 @@ def prepared(tmp_path: Path) -> PreparedWorkflow:
     (tmp_path / "src").mkdir()
     (tmp_path / "venv" / "bin").mkdir(parents=True)
     return PreparedWorkflow(
+        workflow_id="00000000-0000-4000-8000-000000000001",
         name="my_workflow",
         version="1.0.0",
         entry_point="my_workflow.workflow:MyWorkflow",

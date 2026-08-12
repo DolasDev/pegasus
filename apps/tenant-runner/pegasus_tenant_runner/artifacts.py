@@ -75,8 +75,14 @@ class ArtifactInstallError(RuntimeError):
 
 @dataclass(frozen=True)
 class PreparedWorkflow:
-    """One workflow ready for subprocess execution."""
+    """One published workflow ROW ready for subprocess execution.
 
+    Identified by ``workflow_id`` — the published row's id — not by name.
+    Several versions of one name can be prepared side by side on a live runner
+    (sdk-feedback 0034), so the name alone no longer identifies these bytes.
+    """
+
+    workflow_id: str
     name: str
     version: str
     entry_point: str
@@ -253,8 +259,14 @@ def prepare_workflow(
     Raises :class:`ArtifactIntegrityError` on a sha mismatch (the TOCTOU
     case — logged by the caller at ERROR) and :class:`ArtifactInstallError`
     for everything else. Any failure cleans up the partial directory.
+
+    The install directory is ``<work>/<name>/<workflow_id>``: keyed by the
+    published row, so two versions of one name coexist, with the name kept in
+    the path because it is what makes a tenant traceback readable. Keying on
+    the name alone (as this did before sdk-feedback 0034) meant preparing a new
+    version ``rmtree``d the directory a DIFFERENT version was executing out of.
     """
-    wf_dir = work_root / wf.name
+    wf_dir = work_root / wf.name / wf.id
     if wf_dir.exists():
         shutil.rmtree(wf_dir)
     wf_dir.mkdir(parents=True)
@@ -293,6 +305,7 @@ def prepare_workflow(
             )
 
         return PreparedWorkflow(
+            workflow_id=wf.id,
             name=wf.name,
             version=wf.version,
             entry_point=wf.entry_points[0],

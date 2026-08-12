@@ -38,6 +38,7 @@ from .executor import TenantCodeExecutor
 from .hardening import set_non_dumpable
 from .idle import IdleTracker, run_idle_watchdog
 from .logging_setup import configure_logging
+from .preparer import WorkflowPreparer
 from .proxy import build_registrations
 
 log = logging.getLogger("pegasus_tenant_runner")
@@ -71,12 +72,21 @@ async def build_temporal_client(config: RunnerConfig) -> Client:
 
 def prepare_all(
     config: RunnerConfig, broker: TenantBrokerClient
-) -> list[PreparedWorkflow]:
-    """Discover + prepare every executable workflow for this tenant.
+) -> tuple[list[PreparedWorkflow], int]:
+    """Warm up: prepare the latest version of each of this tenant's workflows.
+
+    This is a LATENCY optimization, not the resolution path. Since
+    sdk-feedback 0034 the executor resolves and installs the exact published
+    row per execution, so anything missed here is prepared on demand — which is
+    why a failure below is no longer terminal for that workflow, and why the
+    caller decides "is there anything to run" from the LISTING rather than from
+    what happened to prepare.
 
     Per-workflow failure isolation: a sha mismatch (possible TOCTOU
     overwrite — the loudest log line this app has) or any install failure
     skips THAT workflow only.
+
+    Returns the prepared rows plus the number of executable workflows listed.
     """
     base = {"tenant_id": config.tenant_id, "env": config.env_name}
     listed = broker.list_executable_workflows()
@@ -109,7 +119,7 @@ def prepare_all(
                 "runner.artifact_prepare_failed",
                 extra={**base, "workflow_name": wf.name, "version": wf.version},
             )
-    return prepared
+    return prepared, len(listed)
 
 
 async def run_runner(config: RunnerConfig) -> None:
@@ -124,24 +134,35 @@ async def run_runner(config: RunnerConfig) -> None:
         broker_token=config.workflow_broker_token,
     )
 
-    prepared = await asyncio.to_thread(prepare_all, config, broker)
-    if not prepared:
+    prepared, listed_count = await asyncio.to_thread(prepare_all, config, broker)
+    if listed_count == 0:
         # Nothing runnable — exit 0 so ECS doesn't flap the task; the
-        # dispatcher shouldn't have launched us, and the log says so.
+        # dispatcher shouldn't have launched us, and the log says so. The
+        # decision follows the LISTING, not the warm-up results: a workflow
+        # whose eager prepare failed is still installable on demand, so
+        # exiting on that would strand a tenant behind one bad artifact.
         log.warning("runner.no_executable_workflows", extra=base)
         return
+
+    preparer = WorkflowPreparer(
+        broker=broker,
+        work_root=Path(config.work_dir),
+        max_unpacked_bytes=config.max_unpacked_bytes,
+    )
+    preparer.seed(prepared)
 
     idle_tracker = IdleTracker(config.idle_timeout_seconds)
     executor = TenantCodeExecutor(
         broker=broker,
-        prepared={p.name: p for p in prepared},
+        preparer=preparer,
         api_base_url=config.pegasus_api_base_url,
         execution_timeout_seconds=config.execution_timeout_seconds,
         max_output_bytes=config.max_output_bytes,
         max_result_bytes=config.max_result_bytes,
     )
+    # One dynamic proxy handles every workflow type on this tenant's queue,
+    # including names published after this task started (sdk-feedback 0034).
     registrations = build_registrations(
-        prepared,
         executor=executor,
         idle_tracker=idle_tracker,
         execution_timeout_seconds=config.execution_timeout_seconds,
@@ -150,7 +171,11 @@ async def run_runner(config: RunnerConfig) -> None:
     client = await build_temporal_client(config)
     log.info(
         "runner.connected",
-        extra={**base, "workflows": [p.name for p in prepared]},
+        extra={
+            **base,
+            "warmed": [f"{p.name}@{p.version}" for p in prepared],
+            "executable_count": listed_count,
+        },
     )
 
     worker = Worker(

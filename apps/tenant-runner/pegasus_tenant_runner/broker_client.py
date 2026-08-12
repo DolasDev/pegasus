@@ -16,7 +16,9 @@ the token header and retry posture:
   with entry points, the finalize-recorded ``artifactSha256`` and a
   short-lived presigned GET URL per artifact.
 * :meth:`fetch_runtime_token` — POST ``/internal/workflow-runtime-token``:
-  the per-workflow ``vnd_`` runtime token for one QUEUED/RUNNING execution.
+  the per-workflow ``vnd_`` runtime token for one QUEUED/RUNNING execution,
+  plus the identity of the published row that execution is bound to (the
+  runner's only source for it — see :class:`RuntimeGrant`).
 * :meth:`patch_execution` — PATCH ``/internal/workflow-executions/:id``:
   terminal status write-back, with the same retry/backoff semantics as
   ``status_sync.py`` (5xx/network retry with exponential backoff, 401/403
@@ -27,7 +29,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -38,6 +40,7 @@ __all__ = [
     "BrokerAuthError",
     "BrokerError",
     "ExecutableWorkflow",
+    "RuntimeGrant",
     "TenantBrokerClient",
 ]
 
@@ -56,6 +59,25 @@ class BrokerError(RuntimeError):
 
 class BrokerAuthError(BrokerError):
     """401/403 from the broker — the wbk_ token is wrong, rotated, or revoked."""
+
+
+@dataclass(frozen=True)
+class RuntimeGrant:
+    """What the broker hands back for one execution: the token + WHICH row it is.
+
+    ``token`` is deliberately excluded from ``repr`` — this object crosses log
+    boundaries and the plaintext credential must never ride along.
+
+    The three identity fields are None when the API predates sdk-feedback 0034
+    and doesn't return them; the runner then falls back to resolving the latest
+    row for the workflow name, freshly listed. Everything else about that path
+    is identical.
+    """
+
+    token: str = field(repr=False)
+    workflow_id: str | None = None
+    workflow_name: str | None = None
+    workflow_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -168,13 +190,21 @@ class TenantBrokerClient:
             raise BrokerError("workflow list response missing 'data' array")
         return [_parse_workflow(item) for item in items]
 
-    def fetch_runtime_token(self, execution_id: str) -> str:
-        """Fetch the plaintext ``vnd_`` runtime token for ``execution_id``.
+    def fetch_runtime_token(self, execution_id: str) -> RuntimeGrant:
+        """Fetch the runtime token AND the workflow identity for ``execution_id``.
 
         The token is the TENANT'S OWN credential (scoped to the static
         ``workflow_runtime`` role) — handing it to the tenant subprocess is
         by design. It must still never be logged or written to disk by the
-        shim.
+        shim (hence ``repr=False`` on the field).
+
+        The identity fields say WHICH published row this execution is bound to.
+        They are the runner's only way to know that — the Temporal envelope
+        carries just ``executionId``/``input`` — so without them the runner can
+        do no better than "latest for this name", which is how a warm task came
+        to serve stale bytes (sdk-feedback 0034). They are optional on the wire
+        so a runner deployed ahead of the API still works, degraded: see
+        :attr:`RuntimeGrant.workflow_id` being None.
         """
         if not execution_id:
             raise ValueError("execution_id is required")
@@ -190,7 +220,17 @@ class TenantBrokerClient:
         token = body.get("token") if isinstance(body, dict) else None
         if not isinstance(token, str) or not token:
             raise BrokerError("runtime token response missing 'token' string field")
-        return token
+
+        def _optional_str(key: str) -> str | None:
+            value = body.get(key)
+            return value if isinstance(value, str) and value else None
+
+        return RuntimeGrant(
+            token=token,
+            workflow_id=_optional_str("workflowId"),
+            workflow_name=_optional_str("workflowName"),
+            workflow_version=_optional_str("workflowVersion"),
+        )
 
     def patch_execution(
         self,

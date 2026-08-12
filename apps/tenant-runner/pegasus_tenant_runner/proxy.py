@@ -1,24 +1,31 @@
-"""Dynamic Temporal registrations — proxy workflows + the one activity.
+"""Dynamic Temporal registrations — one catch-all proxy workflow + one activity.
 
-The shim must register the tenant's workflow NAMES with Temporal without
-ever importing tenant code (a Python import executes arbitrary module-level
-code in the process that holds the ``wbk_`` token). So for each prepared
-workflow it manufactures a tiny PROXY workflow class:
+The shim must accept the tenant's workflow NAMES from Temporal without ever
+importing tenant code (a Python import executes arbitrary module-level code in
+the process that holds the ``wbk_`` token). It does that with a single
+**dynamic** proxy workflow:
 
-* registered under the tenant workflow's name — the exact string the API's
-  run path starts (``client.workflow.start(workflow.name, ...)``),
-* whose entire body is one ``execute_activity("run_tenant_entry_point")``
-  call with ``maximum_attempts=1`` (the executor PATCHes a terminal status
-  after the first attempt; an automatic Temporal retry would collide with
-  the row's state machine),
+* ``@workflow.defn(dynamic=True)`` — Temporal routes EVERY workflow type that
+  has no explicit registration to it, so the runner does not need to know the
+  tenant's workflow names in advance,
+* whose entire body is one ``execute_activity("run_tenant_entry_point")`` call
+  with ``maximum_attempts=1`` (the executor PATCHes a terminal status after the
+  first attempt; an automatic Temporal retry would collide with the row's state
+  machine),
 * unsandboxed (``sandboxed=False``): the proxy is trusted shim code with a
-  deterministic one-call body, and Temporal's import-reload sandbox can't
-  re-import dynamically manufactured classes.
+  deterministic one-call body.
 
-Class manufacturing detail: ``@workflow.run`` refuses local classes and
-``workflow.defn`` requires the run method's ``__qualname__`` to live on the
-class, so the factory copies a module-level template function per proxy and
-rewrites its ``__qualname__`` before decorating. Pinned by tests.
+**Why dynamic** (sdk-feedback 0034): this used to manufacture one proxy class
+per workflow name, from the list prepared at task startup. Because the
+dispatcher reuses one runner task per tenant, a workflow name published after
+that task started had no registration at all — the Temporal task went
+unanswered until the execution timed out, or (once the name reached the
+executor) failed with "not prepared on this runner". With a dynamic proxy the
+name reaches the executor, which installs the published artifact on demand.
+
+The runner's queue is per-tenant, so accepting any workflow type does not widen
+the trust boundary: the executor still resolves the name/id against the
+tenant's own executable workflows via the broker and refuses anything else.
 
 The single activity wraps the executor and feeds the idle tracker — every
 start/finish bumps the tracker so the idle-exit watchdog only fires when the
@@ -27,19 +34,18 @@ runner is genuinely quiet.
 
 from __future__ import annotations
 
-import types
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 
 from temporalio import activity, workflow
+from temporalio.common import RawValue
 
-from .artifacts import PreparedWorkflow
 from .executor import TenantCodeExecutor
 from .idle import IdleTracker
 
-__all__ = ["ACTIVITY_NAME", "Registrations", "build_registrations", "make_proxy_workflow"]
+__all__ = ["ACTIVITY_NAME", "Registrations", "TenantProxyWorkflow", "build_registrations"]
 
 ACTIVITY_NAME = "run_tenant_entry_point"
 
@@ -48,50 +54,48 @@ ACTIVITY_NAME = "run_tenant_entry_point"
 #: the TIMED_OUT status PATCH happens before Temporal times the activity out.
 _ACTIVITY_TIMEOUT_BUFFER_SECONDS = 30
 
-#: Set by :func:`build_registrations`; read by proxy bodies at run time.
-#: Module-level (not closure) because the template function is copied per
-#: proxy — globals survive the copy, closures complicate it. Proxies run
-#: unsandboxed so the read is permitted; the value is constant for the
-#: process lifetime (the runner is ephemeral), keeping replays deterministic
+#: Set by :func:`build_registrations`; read by the proxy body at run time.
+#: Module-level (not closure) so the workflow class stays a plain definition.
+#: Proxies run unsandboxed so the read is permitted; the value is constant for
+#: the process lifetime (the runner is ephemeral), keeping replays deterministic
 #: within a runner incarnation.
 _activity_timeout: timedelta = timedelta(seconds=900 + _ACTIVITY_TIMEOUT_BUFFER_SECONDS)
 
 
-async def _proxy_run_template(self: Any, payload: Any = None) -> Any:
-    """Body shared by every proxy workflow (copied per class).
+def decode_dynamic_payload(args: Sequence[RawValue]) -> Any:
+    """Decode the single envelope argument handed to a dynamic workflow.
 
-    ``workflow.info().workflow_type`` is the registered name == the tenant
-    workflow's name, so one template serves all proxies without baking
-    per-workflow state into the class.
+    A dynamic workflow receives its arguments **undeserialized**, as
+    ``RawValue``s — so the envelope the API starts the workflow with
+    (``{executionId, input, dryRun}``) has to be converted explicitly. Returns
+    ``None`` for a no-argument start rather than raising: the executor already
+    treats a non-dict payload as "no execution id", which fails the run with a
+    clear message instead of an IndexError inside workflow code.
     """
-    from temporalio.common import RetryPolicy
-
-    return await workflow.execute_activity(
-        ACTIVITY_NAME,
-        {"workflow_name": workflow.info().workflow_type, "payload": payload},
-        start_to_close_timeout=_activity_timeout,
-        retry_policy=RetryPolicy(maximum_attempts=1),
-    )
+    if not args:
+        return None
+    return workflow.payload_converter().from_payload(args[0].payload)
 
 
-def _safe_class_name(workflow_name: str) -> str:
-    return "TenantProxy_" + "".join(ch if ch.isalnum() else "_" for ch in workflow_name)
+@workflow.defn(dynamic=True, sandboxed=False)
+class TenantProxyWorkflow:
+    """Catch-all proxy: forwards any workflow type to the executor activity."""
 
+    @workflow.run
+    async def run(self, args: Sequence[RawValue]) -> Any:
+        from temporalio.common import RetryPolicy
 
-def make_proxy_workflow(workflow_name: str) -> type:
-    """Manufacture one proxy workflow class registered as ``workflow_name``."""
-    class_name = _safe_class_name(workflow_name)
-    run_copy = types.FunctionType(
-        _proxy_run_template.__code__,
-        _proxy_run_template.__globals__,
-        name="run",
-        argdefs=_proxy_run_template.__defaults__,
-        closure=_proxy_run_template.__closure__,
-    )
-    run_copy.__qualname__ = f"{class_name}.run"
-    decorated_run = workflow.run(run_copy)
-    cls = type(class_name, (), {"run": decorated_run, "__module__": __name__})
-    return workflow.defn(name=workflow_name, sandboxed=False)(cls)
+        return await workflow.execute_activity(
+            ACTIVITY_NAME,
+            {
+                # The registered type IS the tenant workflow's name — the exact
+                # string the API's run path starts.
+                "workflow_name": workflow.info().workflow_type,
+                "payload": decode_dynamic_payload(args),
+            },
+            start_to_close_timeout=_activity_timeout,
+            retry_policy=RetryPolicy(maximum_attempts=1),
+        )
 
 
 @dataclass(frozen=True)
@@ -103,13 +107,12 @@ class Registrations:
 
 
 def build_registrations(
-    prepared: list[PreparedWorkflow],
     *,
     executor: TenantCodeExecutor,
     idle_tracker: IdleTracker,
     execution_timeout_seconds: int,
 ) -> Registrations:
-    """Build proxy classes + the activity for every prepared workflow."""
+    """Build the dynamic proxy + the activity that runs tenant code."""
     global _activity_timeout
     _activity_timeout = timedelta(
         seconds=execution_timeout_seconds + _ACTIVITY_TIMEOUT_BUFFER_SECONDS
@@ -125,8 +128,7 @@ def build_registrations(
         finally:
             idle_tracker.task_finished()
 
-    workflow_classes = [make_proxy_workflow(p.name) for p in prepared]
     return Registrations(
-        workflow_classes=workflow_classes,
+        workflow_classes=[TenantProxyWorkflow],
         activities=[run_tenant_entry_point],
     )

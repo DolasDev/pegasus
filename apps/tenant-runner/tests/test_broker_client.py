@@ -98,10 +98,51 @@ def test_fetch_runtime_token_posts_execution_id() -> None:
         seen.append(request)
         return httpx.Response(200, json={"token": "vnd_abc123"})
 
-    token = _client(handler).fetch_runtime_token("exec-1")
-    assert token == "vnd_abc123"
+    grant = _client(handler).fetch_runtime_token("exec-1")
+    assert grant.token == "vnd_abc123"
     assert json.loads(seen[0].content) == {"executionId": "exec-1"}
     assert seen[0].headers["X-Workflow-Broker-Token"] == TOKEN
+
+
+def test_fetch_runtime_token_carries_the_workflow_identity() -> None:
+    """The runner's ONLY source for which published row an execution is bound
+    to — without it, it can do no better than latest-per-name (0034)."""
+    client = _client(
+        lambda _r: httpx.Response(
+            200,
+            json={
+                "token": "vnd_abc123",
+                "workflowId": "wf-1",
+                "workflowName": "my-workflow",
+                "workflowVersion": "0.6.2",
+            },
+        )
+    )
+    grant = client.fetch_runtime_token("exec-1")
+    assert (grant.workflow_id, grant.workflow_name, grant.workflow_version) == (
+        "wf-1",
+        "my-workflow",
+        "0.6.2",
+    )
+
+
+def test_fetch_runtime_token_tolerates_an_api_without_the_identity() -> None:
+    """An API older than 0034 returns the token alone; the runner then falls
+    back to a freshly-listed latest-by-name instead of failing the run."""
+    client = _client(lambda _r: httpx.Response(200, json={"token": "vnd_abc123"}))
+    grant = client.fetch_runtime_token("exec-1")
+    assert grant.token == "vnd_abc123"
+    assert grant.workflow_id is None
+
+
+def test_runtime_grant_repr_never_leaks_the_token() -> None:
+    """This object crosses log boundaries; the plaintext credential must not."""
+    client = _client(
+        lambda _r: httpx.Response(200, json={"token": "vnd_secret", "workflowId": "wf-1"})
+    )
+    grant = client.fetch_runtime_token("exec-1")
+    assert "vnd_secret" not in repr(grant)
+    assert "wf-1" in repr(grant)
 
 
 def test_fetch_runtime_token_404_raises() -> None:

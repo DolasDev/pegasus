@@ -4,7 +4,14 @@ One :class:`TenantCodeExecutor` per runner process. For each Temporal
 activity invocation it:
 
 1. fetches the execution's ``vnd_`` runtime token from the broker (the shim
-   proxies this call so the subprocess never needs broker credentials),
+   proxies this call so the subprocess never needs broker credentials) —
+   the same response says WHICH published workflow row this execution is
+   bound to,
+1b. resolves that row through the :class:`~.preparer.WorkflowPreparer`,
+   installing the artifact on demand if this runner hasn't already, and pins
+   it for the duration of the run. A row that cannot be prepared fails the
+   execution; it is never silently served from another version's bytes
+   (sdk-feedback 0034),
 2. spawns the workflow's venv interpreter on the trusted driver script with
    the allowlist environment (see sandbox_env.py) and pipes one JSON request
    over stdin (the only channel that carries the runtime token),
@@ -29,10 +36,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
 from temporalio.exceptions import ApplicationError
 
-from .artifacts import PreparedWorkflow
+from .artifacts import (
+    ArtifactInstallError,
+    ArtifactIntegrityError,
+    PreparedWorkflow,
+)
 from .broker_client import BrokerError, TenantBrokerClient
+from .preparer import WorkflowNotAvailableError, WorkflowPreparer
 from .sandbox_env import build_subprocess_env
 
 log = logging.getLogger(__name__)
@@ -71,14 +84,14 @@ class TenantCodeExecutor:
         self,
         *,
         broker: TenantBrokerClient,
-        prepared: dict[str, PreparedWorkflow],
+        preparer: WorkflowPreparer,
         api_base_url: str,
         execution_timeout_seconds: int,
         max_output_bytes: int,
         max_result_bytes: int,
     ) -> None:
         self._broker = broker
-        self._prepared = prepared
+        self._preparer = preparer
         self._api_base_url = api_base_url
         self._execution_timeout = execution_timeout_seconds
         self._max_output_bytes = max_output_bytes
@@ -118,14 +131,15 @@ class TenantCodeExecutor:
     async def run_entry_point(self, workflow_name: str, payload: Any) -> Any:
         """Execute one tenant workflow invocation. Called from the proxy
         activity; raises :class:`ApplicationError` (non-retryable) on any
-        tenant-side failure so Temporal records exactly one attempt."""
-        prepared = self._prepared.get(workflow_name)
-        if prepared is None:
-            raise ApplicationError(
-                f"workflow {workflow_name!r} is not prepared on this runner",
-                non_retryable=True,
-            )
+        tenant-side failure so Temporal records exactly one attempt.
 
+        The published row is resolved HERE, per execution — not from a memo
+        built at task startup (sdk-feedback 0034). The broker's token response
+        says which row this execution is bound to; the preparer downloads and
+        installs exactly that artifact if it isn't installed already, and the
+        run fails rather than falling back to whatever bytes happen to be on
+        disk.
+        """
         execution_id = ""
         dry_run = False
         if isinstance(payload, dict):
@@ -133,16 +147,86 @@ class TenantCodeExecutor:
             dry_run = bool(payload.get("dryRun"))
 
         # 1. Broker-proxied runtime-token fetch (sync httpx → worker thread).
+        # This is also where the runner learns WHICH published row to run, so
+        # it has to happen before preparation — an execution we then can't
+        # prepare has minted a short-lived, tenant-scoped token it never uses.
         try:
-            runtime_token = await asyncio.to_thread(
-                self._broker.fetch_runtime_token, execution_id
-            )
+            grant = await asyncio.to_thread(self._broker.fetch_runtime_token, execution_id)
         except (BrokerError, ValueError) as exc:
             message = f"runtime token fetch failed: {exc}"
             await asyncio.to_thread(
                 self._patch_status, execution_id, "FAILED", error_message=message
             )
             raise ApplicationError(message, non_retryable=True) from exc
+
+        # 2. Resolve + pin the exact artifact for this execution's workflow row,
+        # installing it on demand. Pinned for the whole run so cache eviction
+        # can never delete a directory the subprocess is executing out of.
+        try:
+            async with self._preparer.use(
+                workflow_id=grant.workflow_id, workflow_name=workflow_name
+            ) as (prepared, resolved_by):
+                log.info(
+                    "runner.execution_resolved",
+                    extra={
+                        "execution_id": execution_id,
+                        "workflow_name": prepared.name,
+                        "workflow_id": prepared.workflow_id,
+                        "version": prepared.version,
+                        # `id` = the row the execution points at (the guarantee).
+                        # `name` = the pre-0034 API fallback: latest for this
+                        # name, freshly listed — correct against the registry,
+                        # but NOT necessarily the row the execution row names.
+                        "resolved_by": resolved_by,
+                    },
+                )
+                return await self._run_prepared(
+                    prepared,
+                    payload=payload,
+                    execution_id=execution_id,
+                    dry_run=dry_run,
+                    runtime_token=grant.token,
+                )
+        except (
+            WorkflowNotAvailableError,
+            ArtifactIntegrityError,
+            ArtifactInstallError,
+            # The resolve path makes NETWORK calls inside the execution now (a
+            # broker listing, and the artifact download on a miss), so their
+            # failures have to land here too. Escaping uncaught would fail the
+            # Temporal activity without ever PATCHing the row, leaving it
+            # RUNNING until the reconcile poller catches up.
+            BrokerError,
+            httpx.HTTPError,
+            OSError,
+        ) as exc:
+            requested = grant.workflow_id or f"{workflow_name} (latest)"
+            message = f"could not prepare workflow {requested} for execution: {exc}"
+            log.exception(
+                "runner.prepare_on_demand_failed",
+                extra={
+                    "execution_id": execution_id,
+                    "workflow_name": workflow_name,
+                    "workflow_id": grant.workflow_id,
+                    "version": grant.workflow_version,
+                },
+            )
+            await asyncio.to_thread(
+                self._patch_status, execution_id, "FAILED", error_message=message
+            )
+            raise ApplicationError(message, non_retryable=True) from exc
+
+    async def _run_prepared(
+        self,
+        prepared: PreparedWorkflow,
+        *,
+        payload: Any,
+        execution_id: str,
+        dry_run: bool,
+        runtime_token: str,
+    ) -> Any:
+        """Spawn the subprocess for an already-installed workflow row."""
+        workflow_name = prepared.name
 
         # 2. Per-run scratch dir + result file (under the workflow's scratch
         # root, so HOME/TMPDIR confinement covers it).

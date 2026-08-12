@@ -176,7 +176,8 @@ workflowInternalHandler.use('*', requireBrokerAuth())
 // and never stored at rest by the worker.
 //
 // Request:  { executionId }
-// Response: { token: "vnd_..." } | 401 | 404
+// Response: { token: "vnd_...", workflowId, workflowName, workflowVersion }
+//           | 401 | 404
 // ---------------------------------------------------------------------------
 workflowInternalHandler.post(
   '/workflow-runtime-token',
@@ -219,7 +220,7 @@ workflowInternalHandler.post(
     }
     const workflow = await basePrisma.workflow.findUnique({
       where: { id: execution.workflowId },
-      select: { runtimeTokenCiphertext: true },
+      select: { runtimeTokenCiphertext: true, name: true, version: true },
     })
     if (!workflow?.runtimeTokenCiphertext) {
       return c.json({ error: 'runtime token not provisioned', code: 'NOT_FOUND' }, 404)
@@ -237,7 +238,19 @@ workflowInternalHandler.post(
     // the body. There SHOULDN'T be a cache in the path (Lambda → ALB →
     // worker), but defense-in-depth costs nothing.
     c.header('Cache-Control', 'no-store')
-    return c.json({ token })
+    // The workflow identity rides along (sdk-feedback 0034): this call is the
+    // runner's ONE per-execution round-trip, so it is where the runner learns
+    // WHICH published row it was asked to run. Without it the runner only knows
+    // a workflow NAME (the Temporal workflow type) and can do no better than
+    // "latest per name as of task startup" — which is exactly how a warm task
+    // came to serve stale bytes. Non-sensitive and additive; the shared-secret
+    // stdlib worker ignores it.
+    return c.json({
+      token,
+      workflowId: execution.workflowId,
+      workflowName: workflow.name,
+      workflowVersion: workflow.version,
+    })
   },
 )
 
