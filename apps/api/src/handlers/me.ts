@@ -31,6 +31,11 @@ import type { Context } from 'hono'
 import type { AppEnv } from '../types'
 import { listAllowedPermissions } from '../lib/authz'
 import { isReportingEnabled } from '../lib/reporting-feature'
+import {
+  getUserPreferences,
+  updateUserPreferences,
+  UserPreferencesPatch,
+} from '../lib/user-preferences'
 
 export const meHandler = new Hono<AppEnv>()
 
@@ -102,4 +107,52 @@ meHandler.get('/driver', async (c) => {
   })
 
   return c.json({ data: { longhaulDriverId: user?.longhaulDriverId ?? null } })
+})
+
+// ---------------------------------------------------------------------------
+// Per-user preferences.
+//
+// No requirePermission gate, for the same reason as /driver: these are the
+// caller's OWN settings, scoped to c.get('userId'), so cross-user disclosure is
+// structurally impossible and there is no role that should be denied its own
+// profile. A principal with no TenantUser row (service account / M2M) reads
+// defaults and cannot write.
+// ---------------------------------------------------------------------------
+
+meHandler.get('/preferences', async (c) => {
+  const userId = c.get('userId')
+  if (!userId) {
+    // Hydrated defaults, so an M2M caller gets the same shape as a human.
+    return c.json({ data: { reporting: {} } })
+  }
+  return c.json({ data: await getUserPreferences(c.get('db'), userId) })
+})
+
+meHandler.patch('/preferences', async (c) => {
+  const userId = c.get('userId')
+  if (!userId) {
+    return c.json({ error: 'This principal has no user profile', code: 'NO_USER_PROFILE' }, 403)
+  }
+
+  let body: unknown
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Request body must be valid JSON', code: 'INVALID_BODY' }, 400)
+  }
+
+  const parsed = UserPreferencesPatch.safeParse(body)
+  if (!parsed.success) {
+    return c.json(
+      { error: 'Invalid preferences patch', code: 'INVALID_BODY', details: parsed.error.issues },
+      400,
+    )
+  }
+
+  // NOTE: `defaultDashboardSlug` is deliberately NOT checked against the
+  // dashboard table here. A slug that does not resolve falls back to the
+  // built-in at render time, and validating on write would (a) fail a user who
+  // sets a default for a dashboard published moments later, and (b) turn a
+  // harmless dangling preference into a hard error.
+  return c.json({ data: await updateUserPreferences(c.get('db'), userId, parsed.data) })
 })

@@ -23,6 +23,7 @@ import { z } from 'zod'
 import type { AppEnv } from '../types'
 import { Actions } from '../authz/actions'
 import { requirePermission } from '../middleware/rbac'
+import { reportingDashboardsHandler } from './reporting-dashboards'
 import { listAllowedPermissions } from '../lib/authz'
 import { isReportingEnabled } from '../lib/reporting-feature'
 import { executeSql } from '../lib/mssql-executor-client'
@@ -79,7 +80,18 @@ reportingHandler.use('*', async (c, next) => {
   await next()
 })
 
-reportingHandler.use('*', requirePermission(Actions.ReadReportingDataset))
+// Dashboard CRUD lives under this same sub-app rather than being mounted
+// alongside it in app.ts. Hono MERGES a sub-app's routes into its parent, so a
+// second router at /reporting/dashboards would silently inherit this file's
+// `use('*')` middleware (GOTCHAS.md: "a sub-app mount claims the whole prefix's
+// middleware") — which would put a READ gate in front of the write routes.
+// Keeping one owner of the prefix makes each route's gate explicit instead.
+reportingHandler.route('/dashboards', reportingDashboardsHandler)
+
+// NOTE: ReadReportingDataset is applied PER ROUTE below, not as a `use('*')`.
+// A blanket mount here would also cover /dashboards (see above), gating the
+// authoring endpoints on a read action — auth semantics nobody wrote down.
+const requireRead = requirePermission(Actions.ReadReportingDataset)
 
 /** Permission strings the caller holds, as a set, in one batched AVP call. */
 async function permissionSet(c: Context<AppEnv>): Promise<Set<string>> {
@@ -95,7 +107,7 @@ async function permissionSet(c: Context<AppEnv>): Promise<Set<string>> {
 // An empty catalog is a correct 200, not a 403: the caller holds the reporting
 // permission, they simply have no dataset-level grants yet.
 // ---------------------------------------------------------------------------
-reportingHandler.get('/datasets', async (c) => {
+reportingHandler.get('/datasets', requireRead, async (c) => {
   const permissions = await permissionSet(c)
   return c.json({ data: { datasets: catalogFor(permissions) } })
 })
@@ -103,7 +115,7 @@ reportingHandler.get('/datasets', async (c) => {
 // ---------------------------------------------------------------------------
 // POST /query
 // ---------------------------------------------------------------------------
-reportingHandler.post('/query', async (c) => {
+reportingHandler.post('/query', requireRead, async (c) => {
   let body: unknown
   try {
     body = await c.req.json()

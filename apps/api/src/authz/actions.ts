@@ -421,6 +421,21 @@ export const Actions = {
     resourceType: 'Report',
     permission: 'report:read',
   },
+  // Authoring a dashboard: publish a new version, fork a GLOBAL one to this
+  // tenant, archive a lineage. Reading stays on ReadReportingDataset.
+  //
+  // Granted ONLY through tenant_admin's permit-everything policy in this phase —
+  // no 30-personas/*.cedar file is edited. That is deliberate: those persona
+  // permission sets are ALSO pinned in apps/e2e/tests/api/authz-smoke.spec.ts,
+  // which is skipped in branch CI and only runs in the post-merge staging gate,
+  // so a persona edit is the one change that can go green through the merge
+  // queue and still red the deploy (it did, in #620). Widening authorship later
+  // is one persona line PLUS that spec, in the same commit.
+  ManageDashboards: {
+    id: 'ManageDashboards',
+    resourceType: 'Report',
+    permission: 'dashboard:manage',
+  },
 } as const satisfies Record<string, ActionDef>
 
 export type ActionKey = keyof typeof Actions
