@@ -16,7 +16,7 @@
 // ---------------------------------------------------------------------------
 
 import { buildShipmentActivities } from './longhaul-build-activities'
-import { mapDateOnlyColumns, isInvertedSpan } from './longhaul-date-only'
+import { mapDateOnlyColumns, findImplausibleDateColumn } from './longhaul-date-only'
 
 type Activity = Record<string, unknown>
 
@@ -236,17 +236,17 @@ export function computeTripSavePlan(
       return pickActivity({ ...dto, ...overrides, ActivityType_code: activityTypeCode })
     })
 
-  // A planned span that runs backwards is always bad data. Every such row in
-  // prod is the same MM/DD with the wrong year, which the Gantt renders as two
-  // identically labeled columns because the header carries no year.
-  const inverted = [...activitiesToUpdate.map((u) => u.fields), ...activitiesToAdd].find((a) =>
-    isInvertedSpan(a['planned_start'], a['planned_end']),
-  )
-  if (inverted) {
-    return {
-      kind: 'error',
-      error: `planned_end must not precede planned_start (${String(inverted['ActivityType_code'] ?? 'activity')} on order ${String(inverted['order_num'] ?? '?')})`,
-      code: 'VALIDATION_ERROR',
+  // Sentinel / mistyped years only. An inverted planned span is NOT rejected —
+  // a plan date may legitimately fall outside the date spread, and 8 prod
+  // activities carry that shape; vetoing it blocked their trips from saving.
+  for (const a of [...activitiesToUpdate.map((u) => u.fields), ...activitiesToAdd]) {
+    const col = findImplausibleDateColumn(a)
+    if (col) {
+      return {
+        kind: 'error',
+        error: `${col} year is out of range (${String(a['ActivityType_code'] ?? 'activity')} on order ${String(a['order_num'] ?? '?')})`,
+        code: 'VALIDATION_ERROR',
+      }
     }
   }
 

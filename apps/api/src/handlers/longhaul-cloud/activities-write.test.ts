@@ -162,17 +162,56 @@ describe('POST /activities/:id (cloud-direct save)', () => {
       expect(paramFor('city')).toEqual({ name: 'city', value: 'Reno' })
     })
 
-    it('rejects an inverted span with 400 and writes nothing', async () => {
-      // The wrong-year shape: same MM/DD, previous year (prod id 9911).
+    // A plan date may legitimately fall outside the date spread, so for an RDEL
+    // `plannedEnd` (= shipment.plan_del) can legitimately precede `plannedStart`
+    // (= shipment.del_date2) — see peg-dates.ts. #619 rejected that shape, which
+    // 400'd edits on the 8 prod activities that carry it and blocked their trips
+    // from saving at all.
+    it('accepts a legitimately inverted planned span', async () => {
       const res = await save('5', {
-        planned_start: '2021-08-19T00:00:00.000Z',
-        planned_end: '2020-08-19T00:00:00.000Z',
+        planned_start: '2021-03-19T00:00:00.000Z',
+        planned_end: '2021-03-01T00:00:00.000Z',
       })
-      expect(res.status).toBe(400)
-      expect(await res.json()).toMatchObject({ code: 'VALIDATION_ERROR' })
-      // Only the pre-read ran; no UPDATE.
-      expect(executeSqlMock.mock.calls.length).toBeLessThan(2)
-      expect(recomputeMock).not.toHaveBeenCalled()
+      expect(res.status).toBe(200)
+      expect(paramFor('planned_start')!.value).toBe('2021-03-19 00:00:00')
+      expect(paramFor('planned_end')!.value).toBe('2021-03-01 00:00:00')
+    })
+
+    it('accepts an ETA edit on an activity whose stored span is inverted', async () => {
+      // The PATCH touches only estimated_date; the stored bounds must not veto it.
+      executeSqlMock.mockReset()
+      executeSqlMock
+        .mockResolvedValueOnce({
+          recordset: [
+            {
+              TripMaster_id: 100,
+              planned_start: '2021-03-19T00:00:00.000Z',
+              planned_end: '2021-03-01T00:00:00.000Z',
+            },
+          ],
+          recordsets: [[]],
+          rowsAffected: [],
+        })
+        .mockResolvedValueOnce({ recordset: [], recordsets: [[]], rowsAffected: [1] })
+      const res = await save('5', { estimated_date: '2021-02-26' })
+      expect(res.status).toBe(200)
+    })
+
+    // The real defect class was never "inverted" — it was sentinel/typo years.
+    it.each(['1969-12-17', '1952-01-01', '2000-03-08', '2012-01-01'])(
+      'rejects the implausible year %s with 400 and writes nothing',
+      async (bad) => {
+        const res = await save('5', { actual_date: bad })
+        expect(res.status).toBe(400)
+        expect(await res.json()).toMatchObject({ code: 'VALIDATION_ERROR' })
+        expect(executeSqlMock.mock.calls.length).toBeLessThan(2)
+        expect(recomputeMock).not.toHaveBeenCalled()
+      },
+    )
+
+    it('accepts a current-era date', async () => {
+      const res = await save('5', { actual_date: '2026-08-12' })
+      expect(res.status).toBe(200)
     })
   })
 })

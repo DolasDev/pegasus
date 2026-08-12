@@ -143,17 +143,46 @@ export function normalizeDateOnlyColumns<T extends Record<string, unknown>>(
 }
 
 /**
- * True when both bounds are present and the end precedes the start. Compared on
- * the normalized calendar day, so a same-day pair is never inverted.
- *
- * 7 rows in NWI prod carry spans of exactly -364/-365/-728 days — the same
- * MM/DD with the wrong year (e.g. `2021-08-19 -> 2020-08-19`). Those are the
- * rows that render two identically-labeled Gantt columns, since the header
- * shows no year.
+ * Earliest year a longhaul activity date may plausibly carry. Every real row in
+ * the tenant's history is 2020 or later; anything earlier has been a sentinel or
+ * a typo (1952, 1960, 1961, 1969, 1971, 2000, 2001, 2012 all appeared in prod).
  */
-export function isInvertedSpan(start: unknown, end: unknown): boolean {
-  const s = toDateOnly(start).value
-  const e = toDateOnly(end).value
-  if (s === null || e === null) return false
-  return e < s
+const MIN_PLAUSIBLE_YEAR = 2015
+/** Years ahead of today a planner may legitimately schedule into. */
+const MAX_YEARS_AHEAD = 5
+
+/**
+ * True when a date-only value's year is outside the plausible window — i.e. a
+ * sentinel (unix epoch, `1952-01-01`) or a mistyped year.
+ *
+ * This deliberately does NOT check whether `planned_end` precedes
+ * `planned_start`. An earlier guard did, on the theory that every inverted span
+ * in prod was a wrong-year typo. That theory was wrong: **a plan date may
+ * legitimately fall outside the date spread**, and `peg-dates.ts` maps an RDEL's
+ * `plannedEnd` to `shipment.plan_del` and `plannedStart` to
+ * `shipment.del_date2` — so `plan_del` earlier than `del_date2` is both
+ * legitimate and inverted. Rejecting it 400'd edits on the 8 prod activities
+ * that carry that shape and blocked their trips from saving at all. An actual
+ * date preceding its planned date is likewise legitimate.
+ *
+ * The year window catches the defect class that was actually real, and nothing
+ * else.
+ */
+export function isImplausibleDateOnly(value: unknown, now: Date = new Date()): boolean {
+  const v = toDateOnly(value).value
+  if (v === null) return false
+  const year = Number(v.slice(0, 4))
+  return year < MIN_PLAUSIBLE_YEAR || year > now.getUTCFullYear() + MAX_YEARS_AHEAD
+}
+
+/**
+ * The first date-only column on `data` whose year is implausible, or null when
+ * they all pass. Only columns actually present are checked.
+ */
+export function findImplausibleDateColumn(data: Record<string, unknown>): string | null {
+  for (const col of DATE_ONLY_COLUMNS) {
+    if (data[col] === undefined) continue
+    if (isImplausibleDateOnly(data[col])) return col
+  }
+  return null
 }

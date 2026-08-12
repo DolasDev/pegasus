@@ -7,7 +7,12 @@ import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('./logger', () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() } }))
 
-import { toDateOnly, normalizeDateOnlyColumns, isInvertedSpan } from './longhaul-date-only'
+import {
+  toDateOnly,
+  normalizeDateOnlyColumns,
+  isImplausibleDateOnly,
+  findImplausibleDateColumn,
+} from './longhaul-date-only'
 import { logger } from './logger'
 
 describe('toDateOnly', () => {
@@ -107,25 +112,66 @@ describe('normalizeDateOnlyColumns', () => {
   })
 })
 
-describe('isInvertedSpan', () => {
-  it('flags the real wrong-year prod rows', () => {
-    // id 9911, id 55057, id 91212 — same MM/DD, previous year.
-    expect(isInvertedSpan('2021-08-19T00:00:00.000Z', '2020-08-19T00:00:00.000Z')).toBe(true)
-    expect(isInvertedSpan('2024-01-24T00:00:00.000Z', '2023-01-24T00:00:00.000Z')).toBe(true)
-    expect(isInvertedSpan('2026-01-05T00:00:00.000Z', '2025-01-06T00:00:00.000Z')).toBe(true)
+describe('isImplausibleDateOnly', () => {
+  const NOW = new Date('2026-08-12T00:00:00Z')
+
+  it.each([
+    '1969-12-17',
+    '1952-01-01',
+    '1960-01-01',
+    '1971-01-01',
+    '2000-03-08',
+    '2001-06-18',
+    '2012-01-01',
+  ])('flags the sentinel/typo year %s', (bad) => {
+    expect(isImplausibleDateOnly(bad, NOW)).toBe(true)
   })
 
-  it('accepts a normal forward span and a same-day span', () => {
-    expect(isInvertedSpan('2026-08-20T00:00:00.000Z', '2026-08-25T00:00:00.000Z')).toBe(false)
-    expect(isInvertedSpan('2026-08-18T00:00:00.000Z', '2026-08-18T00:00:00.000Z')).toBe(false)
+  it.each(['2020-06-09', '2021-11-22', '2026-08-12', '2031-01-01'])(
+    'accepts the plausible date %s',
+    (ok) => {
+      expect(isImplausibleDateOnly(ok, NOW)).toBe(false)
+    },
+  )
+
+  it('rejects a year too far in the future', () => {
+    expect(isImplausibleDateOnly('2032-01-01', NOW)).toBe(true)
   })
 
-  it('does not flag a same-day pair that differs only in time-of-day', () => {
-    expect(isInvertedSpan('2026-08-16T05:00:00.000Z', '2026-08-16T00:00:00.000Z')).toBe(false)
+  it('treats a missing value as fine — absence is not a bad year', () => {
+    expect(isImplausibleDateOnly(null, NOW)).toBe(false)
+    expect(isImplausibleDateOnly(undefined, NOW)).toBe(false)
+    expect(isImplausibleDateOnly('', NOW)).toBe(false)
   })
 
-  it('never flags when either bound is missing', () => {
-    expect(isInvertedSpan(null, '2026-08-25')).toBe(false)
-    expect(isInvertedSpan('2026-08-25', undefined)).toBe(false)
+  it('normalizes before judging, so a 05:00Z value is read on its own day', () => {
+    expect(isImplausibleDateOnly('1969-12-17T05:00:00.000Z', NOW)).toBe(true)
+    expect(isImplausibleDateOnly('2026-08-16T05:00:00.000Z', NOW)).toBe(false)
+  })
+
+  // The rule this replaced. A plan date may legitimately fall outside the date
+  // spread, so plan_del (-> planned_end) can precede del_date2 (-> planned_start);
+  // an actual date may likewise precede its planned date. Neither is an error.
+  it('does NOT flag a legitimately inverted span', () => {
+    expect(isImplausibleDateOnly('2021-03-19', NOW)).toBe(false)
+    expect(isImplausibleDateOnly('2021-03-01', NOW)).toBe(false)
+  })
+})
+
+describe('findImplausibleDateColumn', () => {
+  it('names the first offending column', () => {
+    expect(
+      findImplausibleDateColumn({ planned_start: '2026-01-01', actual_date: '1969-12-17' }),
+    ).toBe('actual_date')
+  })
+
+  it('returns null when every present column is plausible', () => {
+    expect(
+      findImplausibleDateColumn({ planned_start: '2021-03-19', planned_end: '2021-03-01' }),
+    ).toBeNull()
+  })
+
+  it('ignores absent columns', () => {
+    expect(findImplausibleDateColumn({ city: 'Reno' })).toBeNull()
   })
 })

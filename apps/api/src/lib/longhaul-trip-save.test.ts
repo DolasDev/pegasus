@@ -395,12 +395,26 @@ describe('computeTripSavePlan', () => {
       expect(upd.fields['actual_date']).toBe('2026-08-10 00:00:00')
     })
 
-    it('rejects an inverted planned span rather than persisting it', () => {
+    // A plan date may legitimately fall outside the date spread, so an inverted
+    // planned span must save. Rejecting it blocked 8 prod trips entirely.
+    it('saves a legitimately inverted planned span', () => {
       const plan = computeTripSavePlan(
         withActivity({
-          planned_start: '2021-08-19T00:00:00.000Z',
-          planned_end: '2020-08-19T00:00:00.000Z',
+          planned_start: '2021-03-19T00:00:00.000Z',
+          planned_end: '2021-03-01T00:00:00.000Z',
         }),
+        { driver_id: 9, dispatcher_id: 5 },
+        [],
+      )
+      if (plan.kind !== 'plan') throw new Error(`expected plan, got ${plan.error}`)
+      const added = plan.activitiesToAdd.find((a) => a['ActivityType_code'] === 'SITIN')!
+      expect(added['planned_start']).toBe('2021-03-19 00:00:00')
+      expect(added['planned_end']).toBe('2021-03-01 00:00:00')
+    })
+
+    it('rejects a sentinel year rather than persisting it', () => {
+      const plan = computeTripSavePlan(
+        withActivity({ planned_start: '1969-12-17T00:00:00.000Z' }),
         { driver_id: 9, dispatcher_id: 5 },
         [],
       )
