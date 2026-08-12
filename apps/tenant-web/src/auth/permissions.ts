@@ -32,6 +32,8 @@ import { getSession } from '@/auth/session'
 export type Capabilities = {
   /** Tenant has a legacy MSSQL configured — longhaul/Operations is available. */
   longhaul?: boolean
+  /** The reporting surface is enabled on this deployment. */
+  reporting?: boolean
 }
 
 export type MePermissions = {

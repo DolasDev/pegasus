@@ -30,6 +30,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { AppEnv } from '../types'
 import { listAllowedPermissions } from '../lib/authz'
+import { isReportingEnabled } from '../lib/reporting-feature'
 
 export const meHandler = new Hono<AppEnv>()
 
@@ -37,6 +38,14 @@ export const meHandler = new Hono<AppEnv>()
 export interface Capabilities {
   /** Tenant has a legacy MSSQL configured (`Tenant.mssqlConnectionString`). */
   longhaul: boolean
+  /**
+   * The reporting (dashboards) surface is deployed and enabled. Unlike
+   * `longhaul` this is a deployment fact rather than a per-tenant one, but it
+   * belongs here for the same reason: the SPA must not mount a feature whose
+   * endpoints 404. `report:read` is granted by Cedar regardless of the flag, so
+   * the permission alone is not enough to decide whether to show the nav entry.
+   */
+  reporting: boolean
 }
 
 // Resolve tenant capability flags. Defensive: an M2M / service-account
@@ -46,13 +55,14 @@ export interface Capabilities {
 async function resolveCapabilities(c: Context<AppEnv>): Promise<Capabilities> {
   const db = c.get('db')
   const tenantId = c.get('tenantId')
-  if (!db || !tenantId) return { longhaul: false }
+  const reporting = isReportingEnabled()
+  if (!db || !tenantId) return { longhaul: false, reporting }
 
   const tenant = await db.tenant.findUnique({
     where: { id: tenantId },
     select: { mssqlConnectionString: true },
   })
-  return { longhaul: tenant?.mssqlConnectionString != null }
+  return { longhaul: tenant?.mssqlConnectionString != null, reporting }
 }
 
 // No requirePermission gate — every authenticated principal may read their

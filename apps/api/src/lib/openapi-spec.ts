@@ -469,6 +469,117 @@ export function getOpenApiSpec() {
           },
         },
       },
+      '/api/v1/reporting/datasets': {
+        get: {
+          operationId: 'listReportingDatasets',
+          summary: 'List the reporting dataset catalog',
+          description:
+            'Returns the datasets this caller may run, filtered by their existing grants. ' +
+            'Each entry carries its column list and a JSON Schema for its params, so a client ' +
+            'can build a valid /reporting/query request without out-of-band documentation. ' +
+            'An empty list is a valid 200 — it means the caller holds the reporting permission ' +
+            'but no dataset-level grants. Requires the ReadReportingDataset action, and the ' +
+            'REPORTING_ENABLED feature flag (404 when off).',
+          responses: {
+            '200': {
+              description: 'Dataset catalog',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: {
+                      data: {
+                        type: 'object',
+                        required: ['datasets'],
+                        properties: {
+                          datasets: {
+                            type: 'array',
+                            items: { $ref: '#/components/schemas/ReportingDataset' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '404': { description: 'Reporting is not enabled for this deployment' },
+          },
+        },
+      },
+      '/api/v1/reporting/query': {
+        post: {
+          operationId: 'runReportingQuery',
+          summary: 'Run up to 12 reporting datasets in one request',
+          description:
+            'Batched by design: a dashboard render is ONE request, and all legacy-sourced ' +
+            'datasets in it collapse into a single on-prem round trip. Results are returned ' +
+            'in request order. A dataset that fails individually returns an `error` in its own ' +
+            'slot rather than failing the batch, so one unavailable source cannot blank a ' +
+            'dashboard. Authorization is two-layer: the caller needs ReadReportingDataset AND ' +
+            'each requested dataset’s own action — if any dataset is not permitted the whole ' +
+            'request is refused with 403.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['requests'],
+                  properties: {
+                    requests: {
+                      type: 'array',
+                      minItems: 1,
+                      maxItems: 12,
+                      items: {
+                        type: 'object',
+                        required: ['datasetId'],
+                        properties: {
+                          datasetId: { type: 'string' },
+                          params: {
+                            type: 'object',
+                            description:
+                              'Validated against that dataset’s paramsSchema from GET /reporting/datasets.',
+                            additionalProperties: true,
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Results, in request order',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: {
+                      data: {
+                        type: 'object',
+                        required: ['results'],
+                        properties: {
+                          results: {
+                            type: 'array',
+                            items: { $ref: '#/components/schemas/ReportingResult' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '400': { $ref: '#/components/responses/ValidationError' },
+            '404': { description: 'Reporting is not enabled for this deployment' },
+          },
+        },
+      },
       '/api/v1/documents/upload-url': {
         post: {
           operationId: 'createDocumentUploadUrl',
@@ -1308,6 +1419,75 @@ export function getOpenApiSpec() {
         },
       },
       schemas: {
+        ReportingDataset: {
+          type: 'object',
+          description:
+            'A dataset contract. `id` is a permanent public identifier and `version` bumps on ' +
+            'any breaking column change — a stored dashboard records both so it can detect drift.',
+          required: ['id', 'version', 'title', 'source', 'permission', 'columns'],
+          properties: {
+            id: { type: 'string', example: 'moves-by-status' },
+            version: { type: 'integer' },
+            title: { type: 'string' },
+            description: { type: 'string' },
+            source: {
+              type: 'string',
+              enum: ['postgres', 'legacy-mssql'],
+              description:
+                'Where the data physically lives. `legacy-mssql` datasets are unavailable for a ' +
+                'tenant with no on-prem database configured and will return MSSQL_NOT_CONFIGURED ' +
+                'in their result slot.',
+            },
+            permission: {
+              type: 'string',
+              description: 'The pre-existing permission the caller must also hold.',
+              example: 'move:list',
+            },
+            columns: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['key', 'label', 'type'],
+                properties: {
+                  key: { type: 'string' },
+                  label: { type: 'string' },
+                  type: {
+                    type: 'string',
+                    enum: ['string', 'number', 'currency', 'date', 'boolean'],
+                  },
+                },
+              },
+            },
+            paramsSchema: {
+              type: 'object',
+              description: 'JSON Schema for this dataset’s params.',
+              additionalProperties: true,
+            },
+          },
+        },
+        ReportingResult: {
+          type: 'object',
+          description: 'One result slot. Carries either `rows` or `error`, never both.',
+          required: ['datasetId'],
+          properties: {
+            datasetId: { type: 'string' },
+            rows: {
+              type: 'array',
+              items: { type: 'object', additionalProperties: true },
+            },
+            error: {
+              type: 'object',
+              required: ['message', 'code'],
+              properties: {
+                message: { type: 'string' },
+                code: {
+                  type: 'string',
+                  enum: ['DATASET_ERROR', 'MSSQL_NOT_CONFIGURED'],
+                },
+              },
+            },
+          },
+        },
         Customer: {
           type: 'object',
           required: ['id', 'tenantId', 'firstName', 'lastName', 'email'],

@@ -5,6 +5,6 @@
 // 50-documents-shared.cedar.
 permit (
   principal in Pegasus::Group::"billing_manager",
-  action in [Pegasus::Action::"DeleteDocument"],
+  action in [Pegasus::Action::"DeleteDocument", Pegasus::Action::"ReadReportingDataset"],
   resource
 );

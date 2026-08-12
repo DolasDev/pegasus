@@ -12,7 +12,8 @@ permit (
     Pegasus::Action::"ListMoves",
     Pegasus::Action::"ReadMove",
     Pegasus::Action::"ReadCustomer",
-    Pegasus::Action::"DeleteDocument"
+    Pegasus::Action::"DeleteDocument",
+    Pegasus::Action::"ReadReportingDataset"
   ],
   resource
 );

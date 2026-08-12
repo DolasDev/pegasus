@@ -105,6 +105,9 @@ describe('authorize — offline (cedar-wasm)', () => {
         Actions.UpdateCustomer.id,
         Actions.ListMoves.id,
         Actions.ReadMove.id,
+        // Reporting routes are open to every human persona; the datasets a
+        // sales user actually sees are still gated by the actions above.
+        Actions.ReadReportingDataset.id,
         ...DOC_BASELINE,
       ]),
     )
@@ -124,6 +127,7 @@ describe('authorize — offline (cedar-wasm)', () => {
         Actions.ReadCustomer.id,
         // billing/accounting role: may also delete/archive documents.
         Actions.DeleteDocument.id,
+        Actions.ReadReportingDataset.id,
         ...DOC_BASELINE,
       ]),
     )
@@ -141,7 +145,9 @@ describe('authorize — offline (cedar-wasm)', () => {
 
   it('billing_manager may delete documents (billing/accounting role)', async () => {
     const ids = new Set(await allowedActionIds(principal(['billing_manager'])))
-    expect(ids).toEqual(new Set([Actions.DeleteDocument.id, ...DOC_BASELINE]))
+    expect(ids).toEqual(
+      new Set([Actions.DeleteDocument.id, Actions.ReadReportingDataset.id, ...DOC_BASELINE]),
+    )
   })
 
   it('empty-roles principal gets only the shared document baseline (invariant d)', async () => {
@@ -206,6 +212,16 @@ describe('authorize — driver crew-scoped ABAC', () => {
     expect(await isAllowed(driver(), Actions.UpdateMove)).toBe(false)
   })
 
+  it('denies ReadReportingDataset — a driver must not read tenant-wide aggregates', async () => {
+    // driver's ListMoves is a COARSE feature gate; the real scoping is a
+    // handler DB filter (handlers/moves.ts limits a driver to their own crew
+    // assignments). Reporting datasets authorize on the Cedar action alone, so
+    // granting report:read here would hand a driver tenant-wide move counts via
+    // moves-by-status and the longhaul views. Keep this denied unless a dataset
+    // ever carries per-principal row scoping of its own.
+    expect(await isAllowed(driver(), Actions.ReadReportingDataset)).toBe(false)
+  })
+
   it('still allows tenant_admin to read a move regardless of crew assignment', async () => {
     const d = await authorize({
       principal: principal(['tenant_admin']),
@@ -237,6 +253,7 @@ describe('listAllowedPermissions — offline', () => {
         Actions.ReadFeedbackForms.permission,
         Actions.RateShipment.permission,
         Actions.ReadTariff.permission,
+        Actions.ReadReportingDataset.permission,
         // Universal document baseline (upload is a write, but granted to all).
         Actions.ReadDocument.permission,
         Actions.UploadDocument.permission,
