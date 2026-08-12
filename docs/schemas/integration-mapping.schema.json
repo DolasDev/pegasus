@@ -1,6 +1,6 @@
 {
-  "$id": "https://pegasus.dolas.dev/schemas/integration-mapping/v2.json",
-  "title": "Pegasus Integration Mapping (output-shaped) v2",
+  "$id": "https://pegasus.dolas.dev/schemas/integration-mapping/v3.json",
+  "title": "Pegasus Integration Mapping (output-shaped) v3",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "propertyNames": {
@@ -57,7 +57,15 @@
           },
           "coerce": {
             "type": "string",
-            "enum": ["toNumber", "toNumberOrNull", "toString", "identity"]
+            "enum": [
+              "toNumber",
+              "toNumberOrNull",
+              "toString",
+              "identity",
+              "toDateOnly",
+              "toIsoDateTime"
+            ],
+            "description": "Coercion applied to the resolved (or default) value, AFTER any $map — so {\"$map\": {\"0001-01-01T00:00:00\": null}, \"coerce\": \"toDateOnly\"} nulls a sentinel and formats every real date in one leaf. Date coercions truncate wall-clock calendar fields and never convert timezones (a trailing Z/offset is dropped, not applied, so the day cannot shift): \"toDateOnly\" yields YYYY-MM-DD, \"toIsoDateTime\" yields YYYY-MM-DDTHH:mm:ss (a date-only input is padded to midnight; fractional seconds are dropped). Both are null-safe: a null, absent, empty, or unparseable value yields null."
           },
           "$each": {
             "$ref": "#"

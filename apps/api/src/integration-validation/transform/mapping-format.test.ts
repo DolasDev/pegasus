@@ -48,6 +48,30 @@ describe('mapping format — parsing', () => {
       MappingTemplateSchema.safeParse({ a: { $from: 's', $map: { X: { nested: 1 } } } }).success,
     ).toBe(false)
   })
+
+  it('accepts the date coercions, alone and composed with $map (sdk-feedback 0039)', () => {
+    expect(
+      MappingTemplateSchema.safeParse({ d: { $from: 'x', coerce: 'toDateOnly' } }).success,
+    ).toBe(true)
+    expect(
+      MappingTemplateSchema.safeParse({ d: { $from: 'x', coerce: 'toIsoDateTime' } }).success,
+    ).toBe(true)
+    expect(
+      MappingTemplateSchema.safeParse({
+        surveyDate: {
+          $from: 'KeyMoveDates.Survey.Planned',
+          $map: { '0001-01-01T00:00:00': null },
+          coerce: 'toDateOnly',
+        },
+      }).success,
+    ).toBe(true)
+  })
+
+  it('still rejects an unknown coercion (the enum stays closed)', () => {
+    expect(
+      MappingTemplateSchema.safeParse({ d: { $from: 'x', coerce: 'toDateOnlyPlease' } }).success,
+    ).toBe(false)
+  })
 })
 
 describe('mapping format — compile', () => {
@@ -114,9 +138,31 @@ describe('mapping format — path collection', () => {
 })
 
 describe('mapping format — published JSON Schema', () => {
+  /** The `coerce` sub-schema inside the directive branch of the leaf union. */
+  function coerceSchema(): Record<string, unknown> {
+    const js = mappingFormatJsonSchema() as Record<string, unknown>
+    const leaf = js['additionalProperties'] as { anyOf: Record<string, unknown>[] }
+    const directive = leaf.anyOf.find(
+      (b) => (b['properties'] as Record<string, unknown> | undefined)?.['$from'] !== undefined,
+    )!
+    return (directive['properties'] as Record<string, Record<string, unknown>>)['coerce']!
+  }
+
   it('exports a draft-2020-12 object schema', () => {
     const js = mappingFormatJsonSchema() as Record<string, unknown>
     expect(js['$schema']).toContain('2020-12')
     expect(js['type']).toBe('object')
+  })
+
+  it('advertises the date coercions and what they mean (self-serve discovery)', () => {
+    // An authoring agent reads this schema, not the platform source — so the
+    // wall-clock/null-safety contract has to travel with the enum.
+    const coerce = coerceSchema()
+    expect(coerce['enum']).toContain('toDateOnly')
+    expect(coerce['enum']).toContain('toIsoDateTime')
+    const description = String(coerce['description'])
+    expect(description).toContain('YYYY-MM-DD')
+    expect(description).toMatch(/never convert timezones/i)
+    expect(description).toMatch(/null-safe/i)
   })
 })

@@ -87,6 +87,61 @@ describe('runGatePipeline', () => {
     expect(report.corpus.failures.some((f) => f.reason === 'behavioral')).toBe(true)
   })
 
+  // sdk-feedback 0039 + 0040 together: this is the exact shape of config a partner
+  // needs (`estimated` from KeyMoveDates.*.Planned, every date reformatted to
+  // YYYY-MM-DD, the .NET sentinel nulled) and the exact command an author runs
+  // against it — `integration-config validate`, which is this pipeline.
+  it('passes a candidate mapping the estimated halves with date coercions', () => {
+    const shipments = base.mapping['shipments'] as {
+      $from: string
+      $each: Record<string, unknown>
+    }
+    const dateOnly = (path: string): unknown => ({
+      $from: path,
+      // The sentinel half is `$map`'s job; the format half is `coerce`'s. Both in
+      // one leaf, which is only possible because coerce runs after $map.
+      $map: { '0001-01-01T00:00:00': null },
+      coerce: 'toDateOnly',
+    })
+    const report = runGatePipeline(base, {
+      mapping: {
+        ...base.mapping,
+        contactMadeDate: dateOnly('DocumentationDates[0]'),
+        surveyDate: dateOnly('KeyMoveDates.Survey.Planned'),
+        shipments: {
+          ...shipments,
+          $each: {
+            ...shipments.$each,
+            surveyDate: {
+              estimated: dateOnly('KeyMoveDates.Survey.Planned'),
+              actual: dateOnly('KeyMoveDates.Survey.Actual'),
+            },
+            packDate1: {
+              estimated: dateOnly('KeyMoveDates.Pack.Planned'),
+              actual: dateOnly('KeyMoveDates.Pack.Actual'),
+            },
+            loadDate1: {
+              estimated: dateOnly('KeyMoveDates.Load.Planned'),
+              actual: dateOnly('KeyMoveDates.Load.Actual'),
+            },
+            deliveryDate1: {
+              estimated: dateOnly('KeyMoveDates.Delivery.Planned'),
+              actual: dateOnly('KeyMoveDates.Delivery.Actual'),
+            },
+          },
+        },
+      },
+      rules: base.rules,
+      corpus,
+    })
+    expect(report.problems).toEqual([])
+    // Every corpus verdict is unchanged: the new fields are fact-neutral and the
+    // coercion is a no-op on the already-date-only fixtures.
+    expect(report.corpus.failures).toEqual([])
+    expect(report.corpus.passed).toBe(corpus.length)
+    expect(report.ok).toBe(true)
+  })
+
   it('stops before the corpus when the mapping is malformed', () => {
     const report = runGatePipeline(base, {
       mapping: { a: { $from: '' } },

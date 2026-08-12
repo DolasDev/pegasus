@@ -943,6 +943,28 @@ rules** (the DB-backed authoring surface). The working directory (`-C`, default
 | `inbound.json`                                  | –        | ingress ack/validation block (`GET /api/v1/integrations/inbound-schema`) — makes the ingress return the partner's `Result{…}` envelope |
 | `external-shape.json` / `external-mapping.json` | –        | partner **outbound** body shape + projection                                                                                           |
 
+**Reformatting a date is a `coerce`, not a workaround.** Partners document their own
+date format while the native payload carries .NET datetimes
+(`2026-07-16T00:00:00`), so `mapping.json` has two date coercions —
+`toDateOnly` → `YYYY-MM-DD` and `toIsoDateTime` → `YYYY-MM-DDTHH:mm:ss`. Both are
+wall-clock truncations (a trailing `Z`/offset is dropped, never applied, so the day
+cannot shift) and both are null-safe: `null`, an absent path, `""`, or an
+unparseable date yields `null`. `coerce` runs **after** `$map`, so one leaf handles
+the .NET min-date sentinel and the format together:
+
+```jsonc
+"surveyDate": {
+  "$from": "KeyMoveDates.Survey.Planned",
+  "$map": {"0001-01-01T00:00:00": null},  // sentinel → null …
+  "coerce": "toDateOnly"                  // … every real date → YYYY-MM-DD
+}
+```
+
+Nothing in the gate compares your output against the _partner's_ documented format
+— the canonical contract types these fields as generic dates — so the format is
+yours to get right. `client.get_mapping_schema()` is the live vocabulary (each
+directive carries a `description`).
+
 **Discover the floor first.** A floor is the contract your config builds on — it
 declares the only legal mapping _targets_ and rule _facts_. Author against it:
 
