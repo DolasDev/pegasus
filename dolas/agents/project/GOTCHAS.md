@@ -812,3 +812,33 @@ What generalizes:
 - `apps/tenant-web/src/features/driver-planning/utils/movetype-list.ts` (`MOVETYPE_LIST`) is
   **dead code** — its only consumer is its own test; the real dropdown comes from the API's
   `filter-options.ts`. Don't extend it.
+
+## Adding a permission to a persona passes every branch check, then fails the staging E2E gate
+
+Granting an action in a `.cedar` policy means updating **two** pinned permission lists, and
+only one of them is enforced before merge:
+
+- `apps/api/src/lib/authz.test.ts` — unit-level, pins each persona's exact allowed set against
+  the cedar-wasm backend. **Runs in branch CI.**
+- `apps/e2e/tests/api/authz-smoke.spec.ts` — `SALES_PERMISSIONS` / `VIEWER_PERMISSIONS`, pinned
+  against **live AVP**. Its `test.skip` guard needs `E2E_COGNITO_USER_POOL_ID` and a real API,
+  so it is **skipped locally and in branch CI** and only executes in the deploy pipeline's
+  "E2E gate against staging" job — i.e. _after_ the PR has already merged to `main`.
+
+So a PR can be green through the merge queue and still red the deploy. That is what happened
+in #620 (`report:read` added to the viewer baseline and to sales); staging deployed, the gate
+failed, and prod was correctly blocked — fixed forward in #623.
+
+**When you touch a `30-personas/*.cedar` or `20-viewer.cedar` action list, grep
+`apps/e2e/tests/api/authz-smoke.spec.ts` for the persona in the same change.** The spec's own
+header says as much ("update both this constant and the matching `.cedar` policy file"); the
+trap is that nothing local fails if you forget.
+
+Two adjacent notes:
+
+- The **test titles carry hand-maintained counts** ("viewer has exactly its N read-only
+  permissions"). The viewer title had already drifted (said 10, the list held 11) before this
+  change, so don't trust the number in the name — count the constant.
+- The deploy pipeline's ordering is doing its job here: staging deploy → E2E gate → prod. A
+  failure at the gate leaves **staging ahead of prod**, which is a normal, recoverable state,
+  but it does mean prod stays on the previous SHA until the forward-fix lands.
