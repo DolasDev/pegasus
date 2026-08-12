@@ -55,6 +55,10 @@ const SALES_PERMISSIONS = [
   'customer:update',
   'move:list',
   'move:read',
+  // sales may open the reporting surface (30-personas/sales.cedar). Route-level
+  // only — the datasets it can actually run are still bounded by the actions
+  // above.
+  'report:read',
   // Document read/upload is granted to every authenticated user
   // (50-documents-shared.cedar), so it appears in every persona's set.
   'document:read',
@@ -81,6 +85,10 @@ const VIEWER_PERMISSIONS = [
   // (POST /api/admin/tariffs) — there is no tenant-facing tariff:import action.
   'tariff:rate',
   'tariff:read',
+  // viewer may open the reporting surface (20-viewer.cedar). This grants the
+  // catalog + query ROUTES only; each dataset independently requires the action
+  // it reads (move:list, invoice:read, ...), so it widens nothing on its own.
+  'report:read',
   // Document read/upload baseline granted to all roles (50-documents-shared.cedar).
   'document:read',
   'document:upload',
@@ -252,7 +260,7 @@ test.describe('authenticated AVP smoke', () => {
       for (const s of all) if (s) await disablePersona(s.username)
     })
 
-    test('sales has exactly its 8 expected permissions', async () => {
+    test('sales has exactly its 9 expected permissions', async () => {
       expect(salesSession, 'sales persona did not provision').not.toBeNull()
       const fetch_ = fetchWithToken(salesSession!.token)
       const res = await fetch_('/api/v1/me/permissions')
@@ -264,7 +272,7 @@ test.describe('authenticated AVP smoke', () => {
       expect([...body.permissions].sort()).toEqual([...SALES_PERMISSIONS].sort())
     })
 
-    test('viewer has exactly its 10 read-only permissions and is denied on invite', async () => {
+    test('viewer has exactly its 12 read-only permissions and is denied on invite', async () => {
       expect(viewerSession, 'viewer persona did not provision').not.toBeNull()
       const fetch_ = fetchWithToken(viewerSession!.token)
 
