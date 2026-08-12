@@ -21,15 +21,21 @@ interface Actuals {
   pack?: string
   load?: string
   delivery?: string
+  /**
+   * The `estimated` (planned) halves, added to the floor by sdk-feedback 0040.
+   * Facts derive from the actuals ONLY, so setting these must never move a count.
+   */
+  planned?: { pack?: string; load?: string; delivery?: string; survey?: string }
 }
 
-const shipment = (id: string, { pack, load, delivery }: Actuals): DemoPartnerShipment => ({
+const shipment = (id: string, { pack, load, delivery, planned }: Actuals): DemoPartnerShipment => ({
   supplierShipmentId: id,
   shipmentStatus: 'In Process',
   netWeight: { estimated: null, actual: null },
-  packDate1: { actual: pack ?? null },
-  loadDate1: { actual: load ?? null },
-  deliveryDate1: { actual: delivery ?? null },
+  ...(planned?.survey ? { surveyDate: { estimated: planned.survey, actual: null } } : {}),
+  packDate1: { estimated: planned?.pack ?? null, actual: pack ?? null },
+  loadDate1: { estimated: planned?.load ?? null, actual: load ?? null },
+  deliveryDate1: { estimated: planned?.delivery ?? null, actual: delivery ?? null },
   surveyedStorageCostFirstDay: null,
   surveyedStorageCostAdditionalDays: null,
   surveyedStorageCostDeliveryOut: null,
@@ -122,6 +128,48 @@ describe('deriveDemoPartnerFacts — per-date actuals counts', () => {
     expect(f['shipmentsWithPackLoadDeliveryActual']).toBe(1)
   })
 
+  // sdk-feedback 0040 — the estimated halves are new OUTPUT fields, deliberately
+  // fact-neutral: a planned date is not a milestone reached, so the counts (which
+  // gate real production writes) must not budge.
+  it('counts a planned-but-not-actual shipment as having NO actuals', () => {
+    const f = facts([
+      shipment('S1', {
+        planned: {
+          pack: '2026-07-16',
+          load: '2026-07-17',
+          delivery: '2026-07-18',
+          survey: '2026-07-09',
+        },
+      }),
+    ])
+
+    expect(f['shipmentsWithPackActual']).toBe(0)
+    expect(f['shipmentsWithLoadActual']).toBe(0)
+    expect(f['shipmentsWithDeliveryActual']).toBe(0)
+    expect(f['shipmentsWithLoadDeliveryActual']).toBe(0)
+    expect(f['shipmentsWithPackLoadActual']).toBe(0)
+    expect(f['shipmentsWithPackLoadDeliveryActual']).toBe(0)
+  })
+
+  it('derives identical facts with and without the estimated halves populated', () => {
+    const actuals = { pack: '2026-01-30', load: '2026-02-01', delivery: '2026-02-05' }
+    const withoutPlanned = facts([shipment('S1', actuals)])
+    const withPlanned = facts([
+      shipment('S1', {
+        ...actuals,
+        planned: { pack: '2026-01-29', load: '2026-01-31', delivery: '2026-02-04' },
+      }),
+    ])
+
+    expect(withPlanned).toEqual(withoutPlanned)
+  })
+
+  it('adds no new facts to the catalog for the estimated halves', () => {
+    // If an estimated-bearing fact is ever wanted it must be a separate, additive
+    // catalog entry — not a redefinition of these.
+    expect(Object.keys(demoPartnerFactCatalog)).not.toContain('shipmentsWithPackEstimated')
+  })
+
   it('declares every derived fact in the catalog with a matching type', () => {
     // A fact derived but undeclared is invisible to rule authors; a fact
     // declared but underived resolves undefined at evaluation time. The gate
@@ -181,5 +229,24 @@ describe('load-only milestone rules an overlay can now author (sdk-feedback 0035
   it('accepts Delivered with load + delivery actuals and no pack actual', () => {
     const f = facts([shipment('S1', { load: '2026-02-01', delivery: '2026-02-05' })], 'Delivered')
     expect(evaluateRules(loadOnlyRules, f)).toEqual([])
+  })
+
+  // sdk-feedback 0040: these are the two live Weichert rules. A shipment whose
+  // dates are all PLANNED must still be blocked — otherwise mapping the estimated
+  // halves would silently widen what the partner accepts as "delivered".
+  it('still blocks In Progress / Delivered when only the estimated dates are set', () => {
+    const planned = { pack: '2026-07-16', load: '2026-07-17', delivery: '2026-07-18' }
+
+    expect(
+      evaluateRules(loadOnlyRules, facts([shipment('S1', { planned })], 'In Progress')).map(
+        (i) => i.ruleId,
+      ),
+    ).toEqual(['in-progress-requires-load-actual'])
+
+    expect(
+      evaluateRules(loadOnlyRules, facts([shipment('S1', { planned })], 'Delivered')).map(
+        (i) => i.ruleId,
+      ),
+    ).toEqual(['delivered-requires-load-delivery-actuals'])
   })
 })

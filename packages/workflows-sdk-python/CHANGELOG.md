@@ -3,6 +3,47 @@
 All notable changes to `pegasus-workflows-sdk` are documented here. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 0.36.2
+
+Documentation only — no API, CLI, or behavioral change. Discovery surfaces for two
+platform changes shipping alongside this release (sdk-feedback 0039 + 0040).
+
+### Documented — dates are expressible in `mapping.json`
+
+`coerce` gained `toDateOnly` (→ `YYYY-MM-DD`) and `toIsoDateTime`
+(→ `YYYY-MM-DDTHH:mm:ss`), which closes sdk-feedback 0039: a partner documenting its
+own date format was previously unreachable from a published config, because `$map`
+is a finite lookup and "truncate any datetime to its date part" would need one entry
+per representable date. Both coercions are wall-clock truncations — a trailing
+`Z`/offset is dropped rather than applied, so the day can never shift — and both are
+null-safe (`null`, an absent path, `""`, or an unparseable date yields `null`).
+`coerce` runs after `$map`, so one leaf nulls the .NET min-date sentinel and formats
+every real date.
+
+The vocabulary itself is fetched live: `client.get_mapping_schema()` /
+`GET /api/v1/integrations/mapping-schema` now carries a `description` on the
+`coerce` directive spelling out those semantics, and the schema `$id` is bumped to
+`…/integration-mapping/v3.json` so a validator pinned to v2 rejects (rather than
+ignores) a document it cannot reproduce. The README's authoring section and the
+`pegasus://reference/integration-config` MCP resource enumerate the leaf directives
+and the date rules.
+
+### Documented — milestone `estimated` halves are mappable
+
+The `shipment_status_update` floor modeled `packDate1`/`loadDate1`/`deliveryDate1`
+as `{actual}` only, so the estimated half a partner documents (and the native
+`KeyMoveDates.<milestone>.Planned` supplies) had no canonical home; a per-shipment
+`surveyDate` had none either. Both are now declared (sdk-feedback 0040), so
+`client.get_floor("shipment_status_update")` lists
+`shipments[].{surveyDate,packDate1,loadDate1,deliveryDate1}.estimated` among
+`canonicalFields`. No SDK change was needed — `canonicalFields` is served from the
+floor's live contract.
+
+**Facts are unchanged.** Every `shipmentsWith…Actual` count still derives from
+`.actual` alone, so a planned-but-not-actual date still counts as absent and a
+milestone rule keeps its exact meaning. An `estimated`-bearing fact, if ever wanted,
+would be a separate additive catalog entry.
+
 ## 0.36.1
 
 Documentation only — no API, CLI, or behavioral change.

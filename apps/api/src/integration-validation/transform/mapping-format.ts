@@ -15,7 +15,8 @@
 // Rules of the form:
 //   - a plain STRING leaf is a source path (shorthand for { "$from": <path> }).
 //   - a DIRECTIVE object carries "$from" (string | string[] fallback chain) plus
-//     optional "default", "coerce", and "$each" (per-element sub-template for arrays).
+//     optional "default", "$map" (finite value-translation table), "coerce" (incl.
+//     the date reformatters), and "$each" (per-element sub-template for arrays).
 //   - any other OBJECT is a nested canonical object (its keys are output fields).
 //
 // This is intentionally NOT an expression language (no conditionals/functions):
@@ -48,7 +49,11 @@ export interface MappingDirective {
    * target field's enum when the canonical contract declares one.
    */
   $map?: Record<string, MapScalar> | undefined
-  /** Coercion applied to the resolved (or default) value. */
+  /**
+   * Coercion applied to the resolved (or default) value, AFTER `$map`. Includes
+   * the date reformatters `toDateOnly` / `toIsoDateTime`, which truncate
+   * wall-clock calendar fields without any timezone conversion (see `engine.ts`).
+   */
   coerce?: CoerceName | undefined
   /** For an array target: map each source element through this sub-template. */
   $each?: MappingObject | undefined
@@ -63,7 +68,22 @@ export type MappingTemplate = MappingObject
 
 // --- Schema (runtime validation) -------------------------------------------
 
-const CoerceSchema = z.enum(['toNumber', 'toNumberOrNull', 'toString', 'identity'])
+// The coercion vocabulary. Closed by design — but it carries its own semantics in
+// the PUBLISHED schema (`.describe()` → `description`), because "toDateOnly" alone
+// doesn't say whether it shifts timezones or what it does with junk input, and an
+// authoring agent reads the schema endpoint, not this file.
+const CoerceSchema = z
+  .enum(['toNumber', 'toNumberOrNull', 'toString', 'identity', 'toDateOnly', 'toIsoDateTime'])
+  .describe(
+    'Coercion applied to the resolved (or default) value, AFTER any $map — so ' +
+      '{"$map": {"0001-01-01T00:00:00": null}, "coerce": "toDateOnly"} nulls a ' +
+      'sentinel and formats every real date in one leaf. Date coercions truncate ' +
+      'wall-clock calendar fields and never convert timezones (a trailing Z/offset ' +
+      'is dropped, not applied, so the day cannot shift): "toDateOnly" yields ' +
+      'YYYY-MM-DD, "toIsoDateTime" yields YYYY-MM-DDTHH:mm:ss (a date-only input ' +
+      'is padded to midnight; fractional seconds are dropped). Both are null-safe: ' +
+      'a null, absent, empty, or unparseable value yields null.',
+  )
 
 const MapScalarSchema = z.union([z.string(), z.number(), z.boolean(), z.null()])
 
@@ -96,10 +116,14 @@ const MappingObjectSchema: z.ZodType<MappingObject> = z.lazy(() =>
 export const MappingTemplateSchema: z.ZodType<MappingTemplate> = MappingObjectSchema
 
 // Stable identifier for the published mapping-format schema. Bumped on a format
-// change consumers must notice — v2 adds the `$map` value-translation directive
-// (a directive `.strict()` means v1 validators reject a `$map`-using document).
+// change consumers must notice — v2 added the `$map` value-translation directive
+// (a directive `.strict()` means v1 validators reject a `$map`-using document);
+// v3 adds the `toDateOnly` / `toIsoDateTime` coercions (sdk-feedback 0039), which
+// a v2 validator's closed `coerce` enum rejects. Rejecting is the desired failure
+// mode: a stale validator must not silently pass a document whose date format it
+// cannot reproduce.
 export const MAPPING_FORMAT_SCHEMA_ID =
-  'https://pegasus.dolas.dev/schemas/integration-mapping/v2.json'
+  'https://pegasus.dolas.dev/schemas/integration-mapping/v3.json'
 
 /** The published JSON Schema for the mapping format (the documented standard). */
 export function mappingFormatJsonSchema(): Record<string, unknown> {
@@ -109,7 +133,7 @@ export function mappingFormatJsonSchema(): Record<string, unknown> {
   >
   return {
     $id: MAPPING_FORMAT_SCHEMA_ID,
-    title: 'Pegasus Integration Mapping (output-shaped) v2',
+    title: 'Pegasus Integration Mapping (output-shaped) v3',
     ...schema,
   }
 }

@@ -12,7 +12,13 @@
 // coerce. Anything richer is a deliberate escalation, not a silent capability.
 // ---------------------------------------------------------------------------
 
-export type CoerceName = 'toNumber' | 'toNumberOrNull' | 'toString' | 'identity'
+export type CoerceName =
+  | 'toNumber'
+  | 'toNumberOrNull'
+  | 'toString'
+  | 'identity'
+  | 'toDateOnly'
+  | 'toIsoDateTime'
 
 export interface FieldMapping {
   /** Dot-path to write in the canonical output (e.g. 'status.id'). */
@@ -37,11 +43,90 @@ export interface FieldMapping {
 
 export type TransformSpec = FieldMapping[]
 
+// --- Date coercions (sdk-feedback 0039) ------------------------------------
+//
+// Partners document date fields in their OWN format (`YYYY-MM-DD` is the common
+// one); the legacy source emits .NET-serialized datetimes (`2026-07-16T00:00:00`).
+// Reformatting is close to the most common mapping need there is and was
+// previously unreachable from a published config — `$map` is a finite lookup, so
+// "truncate any datetime to its date part" would need one entry per representable
+// date. These two coercions close that gap while keeping `coerce` a bounded
+// vocabulary rather than an expression language.
+//
+// WALL-CLOCK TRUNCATION, NOT TIMEZONE CONVERSION. These values are calendar
+// dates carrying a `T00:00:00` suffix, not instants, so the calendar fields are
+// re-emitted exactly as serialized: a trailing `Z`/offset is DROPPED, never
+// applied, and the day can never shift. (Parsing via `new Date(str)` would
+// reintroduce exactly the local-timezone day shift the date-only trip contract
+// exists to prevent.)
+//
+// Both are null-safe by construction: anything that is not a parseable date —
+// `null`, `undefined`, `''`, a number, a non-date string — yields `null`, never
+// `"Invalid Date"`, never `"1970-01-01"`, never a throw.
+
+interface DateParts {
+  year: number
+  month: number
+  day: number
+  hour: number
+  minute: number
+  second: number
+}
+
+// `YYYY-MM-DD`, optionally followed by a `T`/space time, optional fractional
+// seconds, and an optional `Z`/±HH:MM offset. Fully anchored, so trailing garbage
+// is a parse failure rather than a silent truncation.
+const ISO_DATE_RE =
+  /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/
+
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+
+/** Proleptic-Gregorian leap year (the calendar ISO 8601 and .NET both use). */
+const isLeapYear = (y: number): boolean => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0
+
+/**
+ * Parse the calendar fields of an ISO-ish datetime; null when not a real date.
+ *
+ * Validity is computed arithmetically rather than round-tripped through `Date`
+ * on purpose: `Date.UTC(1, 0, 1)` silently means 1901, so a round-trip check
+ * would reject the .NET min-date sentinel `0001-01-01T00:00:00` — the one value a
+ * mapping most needs to see intact so `$map` can null it explicitly.
+ */
+function parseDateParts(value: unknown): DateParts | null {
+  if (typeof value !== 'string') return null
+  const m = ISO_DATE_RE.exec(value.trim())
+  if (!m) return null
+  const [year, month, day] = [Number(m[1]), Number(m[2]), Number(m[3])]
+  const [hour, minute, second] = [Number(m[4] ?? 0), Number(m[5] ?? 0), Number(m[6] ?? 0)]
+  if (month < 1 || month > 12 || day < 1 || hour > 23 || minute > 59 || second > 59) return null
+  const maxDay = month === 2 && isLeapYear(year) ? 29 : DAYS_IN_MONTH[month - 1]!
+  if (day > maxDay) return null
+  return { year, month, day, hour, minute, second }
+}
+
+const pad = (n: number, width = 2): string => String(n).padStart(width, '0')
+
 const COERCIONS: Record<CoerceName, (v: unknown) => unknown> = {
   identity: (v) => v,
   toString: (v) => (v == null ? v : String(v)),
   toNumber: (v) => Number(v),
   toNumberOrNull: (v) => (v == null ? null : Number(v)),
+  /** ISO datetime → `YYYY-MM-DD` (the calendar day as serialized). */
+  toDateOnly: (v) => {
+    const p = parseDateParts(v)
+    return p ? `${pad(p.year, 4)}-${pad(p.month)}-${pad(p.day)}` : null
+  },
+  /**
+   * The inverse normalizer, for a partner wanting full ISO: `YYYY-MM-DDTHH:mm:ss`.
+   * A date-only input is padded to midnight; fractional seconds and any trailing
+   * `Z`/offset are dropped (truncation, not conversion — see the note above).
+   */
+  toIsoDateTime: (v) => {
+    const p = parseDateParts(v)
+    if (!p) return null
+    const date = `${pad(p.year, 4)}-${pad(p.month)}-${pad(p.day)}`
+    return `${date}T${pad(p.hour)}:${pad(p.minute)}:${pad(p.second)}`
+  },
 }
 
 // Dotted access with two extensions used by real integration mappings:

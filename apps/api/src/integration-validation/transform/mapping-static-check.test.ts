@@ -94,6 +94,53 @@ describe('analyzeMapping', () => {
     })
   })
 
+  // sdk-feedback 0040 — the floor modeled milestone dates as `{ actual }` only, so
+  // a config could not map the estimated half the partner documents and the source
+  // supplies (`KeyMoveDates.<milestone>.Planned`).
+  describe('milestone estimated + per-shipment survey dates (0040)', () => {
+    const mapping = {
+      shipments: {
+        $from: '.',
+        $each: {
+          surveyDate: {
+            estimated: { $from: 'KeyMoveDates.Survey.Planned', coerce: 'toDateOnly' },
+            actual: {
+              $from: 'KeyMoveDates.Survey.Actual',
+              $map: { '0001-01-01T00:00:00': null },
+              coerce: 'toDateOnly',
+            },
+          },
+          packDate1: { estimated: { $from: 'KeyMoveDates.Pack.Planned', coerce: 'toDateOnly' } },
+          loadDate1: { estimated: { $from: 'KeyMoveDates.Load.Planned', coerce: 'toDateOnly' } },
+          deliveryDate1: {
+            estimated: { $from: 'KeyMoveDates.Delivery.Planned', coerce: 'toDateOnly' },
+          },
+        },
+      },
+    }
+
+    it('accepts a mapping to the estimated halves and the per-shipment surveyDate', () => {
+      const problems = analyzeMapping(mapping, {
+        canonicalJsonSchema: demoPartnerJsonSchema,
+        inputFieldRoots: demoPartnerInputFieldRoots,
+      })
+      expect(problems).toEqual([])
+    })
+
+    it('still rejects a Date2/Date3 slot (deliberately not declared yet)', () => {
+      // pegII exposes one slot per milestone, so these stay out of the contract
+      // until a second slot is real rather than being added speculatively.
+      const problems = analyzeMapping(
+        { shipments: { $from: '.', $each: { packDate2: { actual: 'KeyMoveDates.Pack.Actual' } } } },
+        { canonicalJsonSchema: demoPartnerJsonSchema },
+      )
+      expect(problems).toContainEqual({
+        where: 'shipments[].packDate2.actual',
+        problem: 'maps to unknown canonical field "shipments[].packDate2.actual"',
+      })
+    })
+  })
+
   it('flags an ill-formed mapping document', () => {
     const problems = analyzeMapping(
       { a: { $from: '' } },

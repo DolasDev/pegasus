@@ -52,17 +52,31 @@ export const SHIPMENT_STATUSES = [
 const moneyOrNull = z.number().nullable()
 const optDate = z.string().nullish()
 const optStr = z.string().nullish()
-// Pack/load/delivery dates are modeled as objects with estimated + actual; we
-// validate only the actual, so we model `{ actual }` (mirrors the source path).
-const actualDate = z.object({ actual: optDate })
+// Milestone dates are objects carrying both halves of the plan/reality pair —
+// `estimated` (the planned date, `KeyMoveDates.<milestone>.Planned` on the legacy
+// side) and `actual`. Both nullish, so an overlay mapping only `.actual` — which
+// is every overlay that predates sdk-feedback 0040 — produces a canonical object
+// identical to the one it produced before `estimated` existed.
+//
+// Facts derive exclusively from `.actual` (facts/demo-partner-facts.ts), so a
+// planned-but-not-actual date still counts as an absent actual; adding `estimated`
+// is deliberately fact-neutral.
+const milestoneDate = z.object({ estimated: optDate, actual: optDate })
 
 export const DemoPartnerShipmentSchema = z.object({
   supplierShipmentId: z.string(),
   shipmentStatus: z.enum(SHIPMENT_STATUSES).nullish(),
   netWeight: z.object({ estimated: moneyOrNull, actual: moneyOrNull }),
-  packDate1: actualDate,
-  loadDate1: actualDate,
-  deliveryDate1: actualDate,
+  // Per-shipment survey date, distinct from the order-level `surveyDate` below:
+  // partners model the survey as a shipment milestone with its own plan/actual
+  // pair, and the legacy `KeyMoveDates.Survey` object supplies both. Nullish —
+  // unlike the pack/load/delivery objects, which every existing overlay already
+  // emits, this one is new, so it must be omittable or those overlays would stop
+  // satisfying the contract.
+  surveyDate: milestoneDate.nullish(),
+  packDate1: milestoneDate,
+  loadDate1: milestoneDate,
+  deliveryDate1: milestoneDate,
   surveyedStorageCostFirstDay: moneyOrNull,
   surveyedStorageCostAdditionalDays: moneyOrNull,
   surveyedStorageCostDeliveryOut: moneyOrNull,
