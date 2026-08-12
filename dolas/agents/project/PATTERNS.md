@@ -103,7 +103,17 @@ Because fragments are concatenated, **caller-supplied values must never be inter
 
 Results are returned in **request order**, and a failing dataset degrades **its own slot** (`{ datasetId, error }`) rather than failing the batch — a tenant with no `mssqlConnectionString` still renders every Postgres widget on the same dashboard. The only whole-request failures are validation and authorization, and authorization fails closed on the entire request so a partial response cannot leak which datasets exist.
 
-On the frontend, a dashboard is a **`DashboardDefinition`** (`apps/tenant-web/src/features/reporting/dashboard-definition.ts`) — a portable document parsed through Zod whether it comes from a code constant (today) or a Postgres JSON column (when publishing/forking lands). Keep the render path reading only the parsed definition; that substitution is pinned by a round-trip test.
+On the frontend, a dashboard is a **`DashboardDefinition`** (`apps/tenant-web/src/features/reporting/dashboard-definition.ts`) — a portable document parsed through Zod whether it comes from a code constant or a Postgres JSON column. Keep the render path reading only the parsed definition.
+
+### Publishable dashboards (phase 2)
+
+A stored dashboard is a `DashboardDefinition` row whose lifecycle **mirrors `IntegrationConfig`** on purpose: monotonic immutable `version` per `(tenantId, slug)`, `visibility` GLOBAL/TENANT **derived server-side** from the publishing tenant's `isPlatformTenant` (a client can never request GLOBAL), supersede-on-publish in one transaction, `publishedBy`, and `forkedFrom*`. Copy that lifecycle rather than inventing a second one — the fork/shadow/re-sync semantics are already worked out there.
+
+- **`slug` is the identity, `id` is not.** A user's `defaultDashboardSlug` preference and every URL point at a slug, so the pointer follows the latest published version instead of freezing at one immutable row. It also lets a tenant's fork transparently shadow the GLOBAL original.
+- **Resolution is own-then-GLOBAL, and every fallback is silent.** `?dashboard=` → the user's default → the first visible dashboard → the built-in. A dangling preference (archived dashboard, withdrawn fork) must never surface as an error; the user did nothing wrong.
+- **Like `IntegrationConfig`, this model is deliberately OUTSIDE `TENANT_SCOPED_MODELS`** — the GLOBAL fallback read crosses the tenant boundary on purpose, so the Prisma extension cannot help and every predicate is hand-written in the repository. `prisma-tenant-isolation.test.ts` enforces that any new `tenantId` model is either auto-scoped or explicitly acknowledged with a reason; a new exclusion needs a cross-tenant isolation test to go with it.
+- **A submitted document is never trusted.** Publishing re-validates it against the dataset registry: unknown dataset ids 400, params re-check against each dataset's own schema, and the author must hold each referenced dataset's action (403 otherwise). Dataset **version drift is a warning, not an error** — blocking on it would make a dataset version bump instantly un-publishable for every dashboard referencing it.
+- **`schemaVersion` upgrades, it does not reject.** v1 (phase-1, span-based) documents parse into v2 (grid layout) by flowing spans across the 12-column grid. The built-in dashboard is still authored as v1 on purpose, so the upgrade path always has real-document coverage; "modernizing" that literal would silently delete the only such test.
 
 ## Test Coverage Policy
 

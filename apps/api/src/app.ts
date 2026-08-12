@@ -436,6 +436,11 @@ v1.get('/dashboard/pegii', dashboardPegiiHandler)
 // PegII dashboard route above. Env-gated (REPORTING_ENABLED), gated again by
 // the ReadReportingDataset Cedar action, and gated per-dataset by each
 // dataset's own pre-existing action. See handlers/reporting.ts.
+// ONE sub-app owns the whole /reporting prefix, including /reporting/dashboards
+// (phase 2's CRUD), which it mounts internally. Mounting a second router at
+// /reporting/dashboards here would work but would silently inherit this one's
+// `use('*')` middleware — see GOTCHAS.md, "a sub-app mount claims the whole
+// prefix's middleware".
 v1.route('/reporting', reportingHandler)
 // PegII-rendered report documents (order profile / "trip sheet"), fetched from
 // the pegII team's on-prem report endpoint over the WireGuard tunnel and

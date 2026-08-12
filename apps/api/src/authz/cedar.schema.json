@@ -394,6 +394,9 @@
       },
       "ReadReportingDataset": {
         "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Report"] }
+      },
+      "ManageDashboards": {
+        "appliesTo": { "principalTypes": ["User"], "resourceTypes": ["Report"] }
       }
     }
   }

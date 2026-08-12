@@ -580,6 +580,214 @@ export function getOpenApiSpec() {
           },
         },
       },
+      '/api/v1/reporting/dashboards': {
+        get: {
+          operationId: 'listDashboards',
+          summary: 'List dashboards visible to this tenant',
+          description:
+            'The tenant’s own published dashboards plus any the platform published GLOBAL. ' +
+            'A tenant’s own dashboard SHADOWS a GLOBAL one of the same slug (it forked and ' +
+            'customized it), so at most one entry per slug is returned. Requires ' +
+            'ReadReportingDataset.',
+          responses: {
+            '200': {
+              description: 'Visible dashboards',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: {
+                      data: {
+                        type: 'object',
+                        required: ['dashboards'],
+                        properties: {
+                          dashboards: {
+                            type: 'array',
+                            items: { $ref: '#/components/schemas/Dashboard' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '404': { description: 'Reporting is not enabled for this deployment' },
+          },
+        },
+        post: {
+          operationId: 'publishDashboard',
+          summary: 'Publish a new immutable dashboard version',
+          description:
+            'Writes version max+1 for (tenant, slug) and supersedes the prior published ' +
+            'version in one transaction. `visibility` is derived SERVER-side from the ' +
+            'publishing tenant’s platform flag — a client cannot request GLOBAL. The ' +
+            'definition is re-validated against the dataset registry: unknown dataset ids and ' +
+            'bad widget params are rejected, and the caller must hold each referenced ' +
+            'dataset’s own action. A dataset VERSION mismatch is returned as a `warnings` ' +
+            'entry, not an error. Requires ManageDashboards.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['slug', 'title', 'definition'],
+                  properties: {
+                    slug: {
+                      type: 'string',
+                      description: 'Lowercase kebab-case. Stable identity across versions.',
+                      example: 'operations-overview',
+                    },
+                    title: { type: 'string' },
+                    description: { type: 'string' },
+                    definition: { $ref: '#/components/schemas/DashboardDocument' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': {
+              description: 'Published',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: { data: { $ref: '#/components/schemas/Dashboard' } },
+                  },
+                },
+              },
+            },
+            '400': { $ref: '#/components/responses/ValidationError' },
+            '404': { description: 'Reporting is not enabled for this deployment' },
+          },
+        },
+      },
+      '/api/v1/reporting/dashboards/{slug}': {
+        get: {
+          operationId: 'getDashboard',
+          summary: 'Resolve one dashboard by slug',
+          description:
+            'The tenant’s own published version wins; otherwise the GLOBAL one. Requires ' +
+            'ReadReportingDataset.',
+          parameters: [{ name: 'slug', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '200': {
+              description: 'The resolved dashboard',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: { data: { $ref: '#/components/schemas/Dashboard' } },
+                  },
+                },
+              },
+            },
+            '404': { $ref: '#/components/responses/NotFound' },
+          },
+        },
+        delete: {
+          operationId: 'archiveDashboard',
+          summary: 'Archive this tenant’s lineage for a slug',
+          description:
+            'Scoped to the caller’s tenant, so it can never withdraw a GLOBAL dashboard or ' +
+            'another tenant’s. Archiving a fork means the GLOBAL original resolves again. ' +
+            'Requires ManageDashboards.',
+          parameters: [{ name: 'slug', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '200': { description: 'Archived' },
+            '404': { $ref: '#/components/responses/NotFound' },
+          },
+        },
+      },
+      '/api/v1/reporting/dashboards/{slug}/fork': {
+        post: {
+          operationId: 'forkDashboard',
+          summary: 'Fork a GLOBAL dashboard to this tenant',
+          description:
+            'Copies the platform’s published document into a TENANT-owned version 1 of the ' +
+            'same slug, recording provenance. The fork then shadows the original everywhere ' +
+            'that slug resolves. 409 when the tenant already owns this slug. Requires ' +
+            'ManageDashboards.',
+          parameters: [{ name: 'slug', in: 'path', required: true, schema: { type: 'string' } }],
+          responses: {
+            '201': {
+              description: 'Forked',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: { data: { $ref: '#/components/schemas/Dashboard' } },
+                  },
+                },
+              },
+            },
+            '404': { $ref: '#/components/responses/NotFound' },
+            '409': { description: 'This tenant already has a dashboard with that slug' },
+          },
+        },
+      },
+      '/api/v1/me/preferences': {
+        get: {
+          operationId: 'getMyPreferences',
+          summary: 'Read the calling user’s preferences',
+          description:
+            'Scoped to the caller, so no permission beyond authentication is required. ' +
+            'Always returns a fully-hydrated object, even for a user who has never set one.',
+          responses: {
+            '200': {
+              description: 'Preferences',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: { data: { $ref: '#/components/schemas/UserPreferences' } },
+                  },
+                },
+              },
+            },
+          },
+        },
+        patch: {
+          operationId: 'updateMyPreferences',
+          summary: 'Update the calling user’s preferences',
+          description:
+            'Shallow-merges per section, so a client that does not know about a section added ' +
+            'later cannot wipe it. `defaultDashboardSlug` is deliberately NOT validated ' +
+            'against existing dashboards: a slug that stops resolving falls back to the ' +
+            'built-in at render time rather than erroring.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UserPreferences' },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Updated preferences',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['data'],
+                    properties: { data: { $ref: '#/components/schemas/UserPreferences' } },
+                  },
+                },
+              },
+            },
+            '400': { $ref: '#/components/responses/ValidationError' },
+            '403': { description: 'This principal has no user profile (service account)' },
+          },
+        },
+      },
       '/api/v1/documents/upload-url': {
         post: {
           operationId: 'createDocumentUploadUrl',
@@ -1462,6 +1670,112 @@ export function getOpenApiSpec() {
               type: 'object',
               description: 'JSON Schema for this dataset’s params.',
               additionalProperties: true,
+            },
+          },
+        },
+        DashboardDocument: {
+          type: 'object',
+          description:
+            'The portable dashboard document. schemaVersion 1 (span-based, phase 1) is ' +
+            'accepted and upgraded server-side to 2 (grid layout); both are stored as 2.',
+          required: ['schemaVersion', 'widgets'],
+          properties: {
+            schemaVersion: { type: 'integer', enum: [1, 2] },
+            widgets: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 12,
+              description: 'Capped at 12 to match the query endpoint’s batch limit.',
+              items: {
+                type: 'object',
+                required: ['datasetId', 'datasetVersion', 'widget', 'title'],
+                properties: {
+                  datasetId: { type: 'string' },
+                  datasetVersion: {
+                    type: 'integer',
+                    description:
+                      'The dataset version this widget was authored against. A mismatch ' +
+                      'against the live registry is reported as a drift warning, never an error.',
+                  },
+                  params: { type: 'object', additionalProperties: true },
+                  widget: { type: 'string', enum: ['scalar', 'bar', 'line', 'table'] },
+                  title: { type: 'string' },
+                  span: {
+                    type: 'integer',
+                    enum: [1, 2, 3, 4],
+                    description: 'v1 geometry, retained for rollback safety.',
+                  },
+                  layout: {
+                    type: 'object',
+                    description: 'v2 grid geometry on a 12-column grid.',
+                    required: ['x', 'y', 'w', 'h'],
+                    properties: {
+                      x: { type: 'integer' },
+                      y: { type: 'integer' },
+                      w: { type: 'integer' },
+                      h: { type: 'integer' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        Dashboard: {
+          type: 'object',
+          required: ['slug', 'version', 'title', 'visibility', 'definition', 'owned'],
+          properties: {
+            slug: { type: 'string' },
+            version: { type: 'integer' },
+            title: { type: 'string' },
+            description: { type: 'string', nullable: true },
+            visibility: { type: 'string', enum: ['GLOBAL', 'TENANT'] },
+            definition: { $ref: '#/components/schemas/DashboardDocument' },
+            updatedAt: { type: 'string', format: 'date-time' },
+            owned: {
+              type: 'boolean',
+              description: 'Belongs to the calling tenant, rather than being a GLOBAL one.',
+            },
+            forkable: {
+              type: 'boolean',
+              description: 'A GLOBAL dashboard this tenant has not forked yet.',
+            },
+            forkedFrom: {
+              type: 'object',
+              nullable: true,
+              properties: {
+                definitionId: { type: 'string' },
+                version: { type: 'integer', nullable: true },
+              },
+            },
+            warnings: {
+              type: 'array',
+              description: 'Dataset-version drift detected at publish. Informational.',
+              items: {
+                type: 'object',
+                properties: {
+                  datasetId: { type: 'string' },
+                  authoredAgainst: { type: 'integer' },
+                  current: { type: 'integer' },
+                },
+              },
+            },
+          },
+        },
+        UserPreferences: {
+          type: 'object',
+          properties: {
+            reporting: {
+              type: 'object',
+              properties: {
+                defaultDashboardSlug: {
+                  type: 'string',
+                  nullable: true,
+                  description:
+                    'A SLUG, never a dashboard id: an id would pin the user to one immutable ' +
+                    'version. Null clears the default.',
+                },
+              },
             },
           },
         },

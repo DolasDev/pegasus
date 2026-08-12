@@ -61,20 +61,20 @@ interface ChartCardProps {
   isLoading: boolean
 }
 
-const SPAN_CLASS: Record<DashboardWidget['span'], string> = {
-  1: 'md:col-span-1',
-  2: 'md:col-span-2',
-  3: 'md:col-span-3',
-  4: 'md:col-span-4',
-}
-
+// Geometry is the GRID's job now (phase 2) — the card fills whatever cell it is
+// placed in. `widget.span` is still carried on the document for rollback safety
+// but is deliberately not read here; honoring both would give two competing
+// sources of truth for width.
 export function ChartCard({ widget, result, columns, isLoading }: ChartCardProps) {
   return (
-    <Card className={SPAN_CLASS[widget.span]} data-testid={`widget-${widget.datasetId}`}>
+    <Card
+      className="flex h-full flex-col overflow-hidden"
+      data-testid={`widget-${widget.datasetId}`}
+    >
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">{widget.title}</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="min-h-0 flex-1">
         <Body widget={widget} result={result} columns={columns} isLoading={isLoading} />
       </CardContent>
     </Card>
@@ -203,7 +203,7 @@ function Series({
   )
 
   return (
-    <div className="h-48">
+    <div className="h-full min-h-[8rem]">
       <ResponsiveContainer width="100%" height="100%">
         {kind === 'line' ? (
           <LineChart data={rows} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>

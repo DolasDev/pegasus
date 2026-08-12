@@ -966,6 +966,7 @@ describe('Schema-sync: TENANT_SCOPED_MODELS matches schema.prisma', () => {
       'VpnPeer', // admin/platform-only — accessed by platform_admin routes and the hub reconcile agent (scope vpn:sync), never by tenant handlers
       'Workflow', // visibility=GLOBAL requires reading rows owned by another tenant; the repo scopes manually via OR [{tenantId}, {visibility: 'GLOBAL'}]
       'IntegrationConfig', // same as Workflow — visibility=GLOBAL (platform tenant) is read cross-tenant; the repo hand-scopes via OR [{tenantId}, {visibility: 'GLOBAL'}]
+      'DashboardDefinition', // same as IntegrationConfig — a GLOBAL dashboard published by the platform tenant is readable (and forkable) by every tenant, so the fallback read crosses the boundary deliberately; repositories/dashboard-definition.repository.ts hand-scopes every query and has its own cross-tenant isolation tests
       // Messaging — background capture/forward path. The webhook (pre-tenant),
       // capture worker, sync/renewal/token-refresh/purge crons all use the
       // base client and resolve tenant from the subscriptionId / connection /

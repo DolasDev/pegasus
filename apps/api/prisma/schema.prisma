@@ -479,6 +479,16 @@ model TenantUser {
   /// Cedar/AVP authorization runs through the same code path as human users.
   isServiceAccount Boolean @default(false) @map("is_service_account")
 
+  /// Per-user UI preferences, read/written via /api/v1/me/preferences. Parsed
+  /// with zod defaults on every read (see lib/user-preferences.ts), exactly like
+  /// Tenant.appSettings — so adding a new preference is a code change, NOT a
+  /// migration. First field: `defaultDashboardSlug` (reporting).
+  ///
+  /// Deliberately a SLUG, not a DashboardDefinition id: an id pins one immutable
+  /// version, so a user's default would silently freeze at whatever version was
+  /// current when they set it.
+  preferences Json?
+
   tenant            Tenant      @relation(fields: [tenantId], references: [id])
   createdApiClients ApiClient[] @relation("ApiClientCreatedBy")
   apiClientsActedAs ApiClient[] @relation("ApiClientActsAs")
@@ -1521,6 +1531,84 @@ enum IntegrationConfigVisibility {
   /// Owned by a single tenant; readable only by that tenant.
   TENANT
 
+  @@schema("public")
+}
+
+/// Same GLOBAL/TENANT split as IntegrationConfigVisibility, kept as its own enum
+/// so the two lifecycles can diverge without a coupled migration.
+enum DashboardVisibility {
+  /// Owned by the platform tenant; readable by every tenant, forkable by any.
+  GLOBAL
+  /// Owned by a single tenant; readable only by that tenant.
+  TENANT
+
+  @@schema("public")
+}
+
+enum DashboardStatus {
+  /// The active version of its (tenantId, slug) lineage.
+  PUBLISHED
+  /// Replaced by a later publish of the same lineage. Kept for history.
+  SUPERSEDED
+  /// Withdrawn by a tenant admin. Never resolved, never listed.
+  ARCHIVED
+
+  @@schema("public")
+}
+
+/// A publishable, forkable dashboard document.
+///
+/// Mirrors IntegrationConfig's lifecycle deliberately (monotonic immutable
+/// versions, GLOBAL/TENANT visibility derived from the publishing tenant's
+/// isPlatformTenant, supersede-on-publish, publishedBy, forkedFrom*) rather than
+/// inventing a parallel one — see repositories/dashboard-definition.repository.ts.
+///
+/// Like IntegrationConfig it is intentionally NOT in TENANT_SCOPED_MODELS: the
+/// GLOBAL fallback read has to cross the tenant boundary on purpose, so every
+/// query carries its own explicit tenantId/visibility predicate.
+model DashboardDefinition {
+  id       String @id @default(uuid())
+  /// Owning tenant. The platform tenant owns GLOBAL rows.
+  tenantId String @map("tenant_id")
+
+  /// Stable identity across versions and across a fork. What a user's
+  /// `defaultDashboardSlug` preference points at.
+  slug String
+
+  /// Monotonic per (tenantId, slug). Publishes are immutable.
+  version Int
+
+  /// Derived server-side from the publishing tenant's isPlatformTenant flag.
+  visibility DashboardVisibility @default(TENANT)
+
+  status DashboardStatus @default(PUBLISHED)
+
+  title       String
+  description String?
+
+  /// The portable document: `{ schemaVersion, widgets: [...] }`. Validated
+  /// against the dataset registry at publish (unknown dataset ids and bad params
+  /// are rejected); dataset VERSION drift is recorded as a warning, not an error.
+  definition Json
+
+  /// TenantUser.id of the publisher. Denormalized; not an FK.
+  publishedBy String @map("published_by")
+
+  /// Set when this row was created by forking a GLOBAL dashboard to a tenant.
+  /// Holds the source DashboardDefinition.id. Not an FK so the row survives
+  /// deletion of the source.
+  forkedFromDefinitionId String? @map("forked_from_definition_id")
+
+  /// The source's version at fork time. Null for direct publishes.
+  forkedFromVersion Int? @map("forked_from_version")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, slug, version])
+  @@index([tenantId, status])
+  @@index([slug, visibility, status])
+  @@map("dashboard_definitions")
   @@schema("public")
 }
 

@@ -19,6 +19,7 @@ import { CustomerDetailPage } from '@/routes/customers.$customerId'
 import { DispatchPage } from '@/routes/dispatch.index'
 import { InvoicesPage } from '@/routes/invoices.index'
 import { ReportingPage } from '@/routes/reporting'
+import { ReportingEditPage } from '@/routes/reporting.edit'
 import { IntegrationsIndexPage } from '@/routes/integrations.index'
 import { IntegrationDetailPage } from '@/routes/integrations.$integrationId'
 import { SsoConfigPage } from '@/routes/sso-config'
@@ -186,6 +187,28 @@ const reportingRoute = createRoute({
   getParentRoute: () => authLayout,
   path: '/reporting',
   component: ReportingPage,
+  // ?dashboard=<slug> makes a particular dashboard linkable. Unvalidated on
+  // purpose: an unknown slug falls through to the user's default and then the
+  // built-in, so a stale link degrades instead of erroring.
+  validateSearch: (search: Record<string, unknown>) => ({
+    ...(typeof search['dashboard'] === 'string' ? { dashboard: search['dashboard'] } : {}),
+  }),
+})
+
+// Authoring routes. Both render the same editor; /new starts from an empty
+// canvas, /edit/$slug seeds from the stored (or built-in) document. Server-side
+// ManageDashboards is the real gate — these are reachable but publish will 403
+// for a user without it.
+const reportingNewRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/reporting/new',
+  component: ReportingEditPage,
+})
+
+const reportingEditRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/reporting/edit/$slug',
+  component: ReportingEditPage,
 })
 
 // Integrations — read-only mapping/ruleset visualization. Hangs off authLayout
@@ -421,6 +444,8 @@ const routeTree = rootRoute.addChildren([
     dispatchRoute,
     invoicesRoute,
     reportingRoute,
+    reportingNewRoute,
+    reportingEditRoute,
     integrationsIndexRoute,
     integrationDetailRoute,
     driverPlanningRoute.addChildren([
