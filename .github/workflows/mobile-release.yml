@@ -7,13 +7,15 @@ name: Mobile release
 # backend merges, and EAS free-tier build queues routinely outlive a synchronous
 # CI job. Dispatching the workflow IS the release gate.
 #
-# Model — `eas build --no-wait` (plus `--auto-submit` for a real Android
-# release) hands the build, and the Google Play submit, to EAS's servers and
-# returns immediately. So CI confirms the build was *accepted*, not that it
-# finished — watch progress and outcome at
+# Model — `eas build --no-wait` (plus `--auto-submit` for a real release) hands
+# the build, and the store submit, to EAS's servers and returns immediately. So
+# CI confirms the build was *accepted*, not that it finished — watch progress
+# and outcome at
 #   https://expo.dev/accounts/dolas.dev/projects/moving-storage-driver/builds
-# Android `--auto-submit` uses eas.json `submit.production.android`
-# (Closed testing / `alpha` track; the Google service-account key is EAS-hosted).
+# `--auto-submit` reads eas.json `submit.production.*`: Android → Play Closed
+# testing (`alpha` track), iOS → TestFlight. Both store credentials (the Google
+# service-account key, the App Store Connect API key) are EAS-hosted, so neither
+# lives in this repo.
 #
 # Config — API URL + Cognito for the chosen environment are resolved from SSM
 # into apps/mobile/.env by the ./.github/actions/mobile-eas-config composite,
@@ -22,12 +24,14 @@ name: Mobile release
 #
 # iOS — pick the artifact with `ios_build`: `simulator` (unsigned, CI signal,
 # needs no Apple credentials), `device` (signed ad-hoc .ipa for a REGISTERED
-# device — the only iOS artifact that can receive push), or `store` (signed
-# .ipa for TestFlight/App Store). `device`/`store` need Apple signing set up on
-# EAS once via `eas credentials --platform ios`; `device` also needs a device
-# registered via `eas device:create`. iOS auto-submit is still not wired —
-# eas.json `submit.production.ios` holds PLACEHOLDERs pending an App Store
-# Connect API key. See apps/mobile/PUSH_NOTIFICATIONS.md.
+# device, registered via `eas device:create`), or `store` (signed .ipa for
+# TestFlight/App Store). Both signed kinds draw on the Apple credentials held by
+# EAS (distribution cert, provisioning profile, APNs key, App Store Connect API
+# key) — set up once via `eas credentials --platform ios`.
+# Only `store` can submit: `--auto-submit` resolves the submit profile by BUILD
+# PROFILE NAME, and `store` maps to `production`, which pairs with eas.json
+# `submit.production.ios`. A simulator or ad-hoc artifact is not submittable, so
+# the `submit` toggle is ignored for them. See apps/mobile/PUSH_NOTIFICATIONS.md.
 
 on:
   workflow_dispatch:
@@ -45,12 +49,17 @@ on:
         default: android
         options: [android, ios, all]
       submit:
-        # Defaults ON: Google production access is granted and the first AAB is
-        # uploaded, so the Play Developer API accepts submits. Auto-submit targets
-        # the Closed testing (`alpha`) track (eas.json submit.production.android);
-        # a validated build is promoted to Production manually in the Play Console
-        # (staged rollout recommended). Untick for a build-only release.
-        description: 'Android: auto-submit to Google Play (Closed testing) after the build'
+        # Defaults ON, and applies per platform:
+        #   Android — Google production access is granted and the first AAB is
+        #     uploaded, so the Play Developer API accepts submits. Auto-submit
+        #     targets the Closed testing (`alpha`) track (eas.json
+        #     submit.production.android); a validated build is promoted to
+        #     Production manually in the Play Console (staged rollout recommended).
+        #   iOS — only when `ios_build=store`; lands the build in TestFlight via
+        #     eas.json submit.production.ios. Release to the App Store is a
+        #     deliberate act in App Store Connect, never automatic from here.
+        # Untick for a build-only release.
+        description: 'Auto-submit after the build (Android: Play Closed testing; iOS: TestFlight, store artifact only)'
         type: boolean
         required: false
         default: true
@@ -87,7 +96,8 @@ jobs:
     outputs:
       do_android: ${{ steps.d.outputs.do_android }}
       do_ios: ${{ steps.d.outputs.do_ios }}
-      do_submit: ${{ steps.d.outputs.do_submit }}
+      do_android_submit: ${{ steps.d.outputs.do_android_submit }}
+      do_ios_submit: ${{ steps.d.outputs.do_ios_submit }}
       ios_profile: ${{ steps.d.outputs.ios_profile }}
     steps:
       - name: Decide
@@ -98,10 +108,10 @@ jobs:
           do_android=false; do_ios=false
           [[ "$platform" == "all" || "$platform" == "android" ]] && do_android=true
           [[ "$platform" == "all" || "$platform" == "ios" ]] && do_ios=true
-          # Only an Android build submits, and only when the toggle is on.
-          do_submit=false
+          # An Android build submits whenever the toggle is on.
+          do_android_submit=false
           if [[ "$do_android" == "true" && "${{ inputs.submit }}" == "true" ]]; then
-            do_submit=true
+            do_android_submit=true
           fi
           # iOS artifact kind -> eas.json build profile. `device` and `store`
           # both need Apple signing credentials on EAS; `simulator` needs none.
@@ -110,13 +120,22 @@ jobs:
             store)  ios_profile=production ;;
             *)      ios_profile=ios-simulator-ci ;;
           esac
+          # iOS submits ONLY from the store artifact: a simulator .app has no
+          # signature and an ad-hoc .ipa is provisioned for registered devices,
+          # so neither is accepted by App Store Connect. Gate on the profile
+          # rather than the input so this stays true if the mapping above moves.
+          do_ios_submit=false
+          if [[ "$do_ios" == "true" && "$ios_profile" == "production" && "${{ inputs.submit }}" == "true" ]]; then
+            do_ios_submit=true
+          fi
           {
             echo "do_android=$do_android"
             echo "do_ios=$do_ios"
-            echo "do_submit=$do_submit"
+            echo "do_android_submit=$do_android_submit"
+            echo "do_ios_submit=$do_ios_submit"
             echo "ios_profile=$ios_profile"
           } >> "$GITHUB_OUTPUT"
-          echo "android=$do_android ios=$do_ios submit=$do_submit env=${{ inputs.env }} ios_profile=$ios_profile"
+          echo "android=$do_android (submit=$do_android_submit) ios=$do_ios (profile=$ios_profile submit=$do_ios_submit) env=${{ inputs.env }}"
 
   # ---------------------------------------------------------------------------
   # Android — trigger a production AAB build on EAS and (optionally) auto-submit
@@ -142,7 +161,7 @@ jobs:
         run: |
           set -euo pipefail
           submit_flag=""
-          if [[ "${{ needs.resolve.outputs.do_submit }}" == "true" ]]; then
+          if [[ "${{ needs.resolve.outputs.do_android_submit }}" == "true" ]]; then
             submit_flag="--auto-submit"
           fi
           eas build --non-interactive --no-wait --profile production --platform android $submit_flag
@@ -158,6 +177,10 @@ jobs:
   # matters more than it looks: EAS's stored env vars OVERRIDE the .env the
   # mobile-eas-config composite writes, so the profile is what decides which API
   # a build actually talks to.
+  #
+  # `--auto-submit` is added only for the `store` artifact (see the resolve job).
+  # It lands the build in TestFlight; releasing to the App Store from there stays
+  # a manual act in App Store Connect.
   # ---------------------------------------------------------------------------
   build-ios:
     name: Build iOS (${{ inputs.ios_build }}) → EAS
@@ -178,6 +201,10 @@ jobs:
           IOS_PROFILE: ${{ needs.resolve.outputs.ios_profile }}
         run: |
           set -euo pipefail
-          echo "iOS artifact: ${{ inputs.ios_build }} (eas profile: $IOS_PROFILE)"
-          eas build --non-interactive --no-wait --profile "$IOS_PROFILE" --platform ios
+          submit_flag=""
+          if [[ "${{ needs.resolve.outputs.do_ios_submit }}" == "true" ]]; then
+            submit_flag="--auto-submit"
+          fi
+          echo "iOS artifact: ${{ inputs.ios_build }} (eas profile: $IOS_PROFILE, submit: ${{ needs.resolve.outputs.do_ios_submit }})"
+          eas build --non-interactive --no-wait --profile "$IOS_PROFILE" --platform ios $submit_flag
           echo "Build queued on EAS. Track progress: https://expo.dev/accounts/dolas.dev/projects/moving-storage-driver/builds"

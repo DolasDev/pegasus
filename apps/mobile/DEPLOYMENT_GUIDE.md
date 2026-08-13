@@ -17,7 +17,8 @@ commands below are the fallback / first-time bootstrap.
 
 - **Trigger** — `workflow_dispatch` only (Actions tab → "Mobile release" → Run
   workflow): choose `env` (which backend config to bake in), `platform`
-  (android / ios / all), and `submit` (Android: auto-submit after build).
+  (android / ios / all), `ios_build` (simulator / device / store), and `submit`
+  (auto-submit after the build).
   Dispatching **is** the release gate — there is no auto-on-push, deliberately:
   the app bundles shared packages, so pushes would fire on unrelated backend
   merges, and EAS free-tier queues outlive a synchronous CI job.
@@ -29,8 +30,17 @@ commands below are the fallback / first-time bootstrap.
   submit lands on the **Closed testing** (`alpha`) track (interim until Google
   grants production access; then flip `submit.production.android.track` to
   `production`).
-- **iOS** — an unsigned **simulator** build, on-demand signal only (device
-  builds need Apple Developer credentials we don't have yet).
+- **iOS** — `ios_build` picks the artifact: `simulator` (unsigned, CI signal,
+  the default), `device` (signed ad-hoc `.ipa` for a device registered via
+  `eas device:create`), or `store` (signed `.ipa` for TestFlight/App Store).
+  Only `store` submits, and it lands in **TestFlight** — release to the App
+  Store is a manual act in App Store Connect. Apple signing credentials live on
+  EAS (team `9NJ2BGU4TR`); see `PUSH_NOTIFICATIONS.md` §Step 2 to regenerate.
+
+  ```
+  gh workflow run mobile-release.yml --ref main -f env=prod -f platform=ios -f ios_build=store -f submit=true
+  ```
+
 - **Config** — API URL + Cognito are resolved from SSM into `apps/mobile/.env`
   at build time (`.github/actions/mobile-eas-config`), and the EAS build runs on
   **Node 24** (`eas.json` build profiles pin `node` — EAS's default Node 20
@@ -233,43 +243,46 @@ This creates optimized builds for store submission:
 
 ---
 
-## Apple Developer Account Requirements
+## Apple Developer Account
 
-### Account Setup
+✅ **Done** (2026-08). Enrolled as **Individual**, team `9NJ2BGU4TR`, $99/year.
+App Store Connect app record created for `com.movingstorage.driverapp` —
+ASC App ID `6800979383`, wired into `eas.json` → `submit.production.ios`.
+Signing credentials (distribution certificate, App Store provisioning profile,
+APNs key, App Store Connect API key) are hosted by EAS; the setup and
+regeneration procedure lives in `PUSH_NOTIFICATIONS.md` §Step 2.
 
-1. **Enroll at:** https://developer.apple.com
-2. **Cost:** $99/year
-3. **Entity Type:** Choose Individual or Organization
-   - Individual: Your personal Apple ID
-   - Organization: Requires DUNS number
+### Still required before public App Store release
 
-### Required Information
+TestFlight needs none of this; a public listing needs all of it.
 
-- Apple ID with 2FA enabled
-- Payment method (credit card)
-- Company name (if Organization)
-- Contact information
-
-### App Store Connect
-
-1. Login to https://appstoreconnect.apple.com
-2. Go to "My Apps" → "+"
-3. Create new app:
-   - **Platform:** iOS
-   - **Name:** Moving & Storage Driver
-   - **Primary Language:** English
-   - **Bundle ID:** com.movingstorage.driverapp (must match app.json)
-   - **SKU:** Any unique identifier (e.g., "moving-driver-001")
-
-### Required Assets (iOS)
-
-- App icon: 1024x1024 PNG (no transparency)
-- Screenshots: 6.7" iPhone (required), others optional
-- Privacy Policy URL
-- App description (4000 characters max)
-- Keywords (100 characters max)
-- Support URL
-- Marketing URL (optional)
+- **Reviewer demo account** — the app is login-walled behind Cognito, so a
+  reviewer who can't get in files a Guideline 2.1 rejection. Supply a working
+  tenant + driver login under **App Review Information**, with notes covering
+  tenant selection and the Hosted-UI SSO flow, and make sure that account has
+  seeded shipments — an empty dashboard reads as an incomplete app (4.2).
+  Every future update is re-reviewed, so make this a permanent demo tenant.
+- **Privacy policy URL** — mandatory, must be live and public.
+- **App Privacy questionnaire** — declare what is actually collected (contact
+  info, identifiers, camera/photos). Note `NSLocationWhenInUseUsageDescription`
+  claims route optimization but nothing in `src/` uses `expo-location`; don't
+  declare location collection that doesn't happen.
+- **Screenshots** — 6.9" iPhone at 1320×2868. `app.json` sets
+  `ios.supportsTablet: true`, which also obliges a 13" iPad set (2064×2752) and
+  means reviewers test on iPad; setting it `false` removes both burdens if the
+  driver UI isn't genuinely iPad-designed.
+- **App icon** — 1024×1024 PNG, no alpha. `assets/icon.png` has an alpha
+  channel, but prebuild flattens it for iOS, so this is already satisfied.
+- Age rating questionnaire, category (Business), support URL, description
+  (4000 char max), keywords (100 char max).
+- **Export compliance** — satisfied in config: `app.json` declares
+  `ITSAppUsesNonExemptEncryption: false` (HTTPS/TLS and Keychain only, all
+  exempt), which is what stops App Store Connect gating every build behind the
+  encryption questionnaire.
+- **Build toolchain** — Apple requires uploads built with Xcode 26 / iOS 26 SDK
+  since 2026-04-28. The `eas.json` iOS profiles pin no `image`, so builds
+  inherit the EAS default; if an upload is rejected on SDK version, pin
+  `"image": "latest"` on the profile.
 
 ---
 
@@ -314,17 +327,24 @@ This creates optimized builds for store submission:
 
 ### iOS (App Store)
 
-#### Using EAS Submit (Recommended)
+#### Through CI (canonical)
+
+```
+gh workflow run mobile-release.yml --ref main -f env=prod -f platform=ios -f ios_build=store -f submit=true
+```
+
+Builds the signed `.ipa` and auto-submits it to **TestFlight**. Never
+`eas build` locally (#541) — CI bakes the environment config. Releasing from
+TestFlight to the App Store is manual, in App Store Connect.
+
+#### Submitting an already-built IPA (fallback)
 
 ```bash
 eas submit --platform ios
 ```
 
-EAS will:
-
-1. Upload the IPA to App Store Connect
-2. Handle provisioning automatically
-3. Show submission status
+Uses the same `submit.production.ios` config and the EAS-hosted App Store
+Connect API key, so it needs no interactive Apple login.
 
 #### Manual Upload
 
