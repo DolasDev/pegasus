@@ -19,15 +19,25 @@ function getShortHaul(mode: any): string {
   return mode === 'yes' ? `${'S/H'}` : ''
 }
 
+// 'H' (Interstate) is the common case and is deliberately unbadged — a card
+// with no move-type badge means Interstate.
+const UNBADGED_MOVE_TYPE = 'H'
+
 function getMoveType(moveType: any): string {
-  // 'H' (Interstate) is the common case and is deliberately absent — an
-  // unbadged card means Interstate. 'Z' (INTERNATIONAL) was absent for a
-  // different reason: such shipments could not reach the planning list, because
-  // the API's Is_Trip_Planning eligibility whitelist excluded the code. Now that
-  // they can — including in the default, unfiltered list — they need a badge to
-  // be distinguishable from an Interstate move.
-  const visible = ['A', 'M', 'HA', 'SS', 'Z']
-  return visible.includes(moveType) ? `${moveType}` : ''
+  // `import_export` is nvarchar in the legacy DB and holds the SAME logical code
+  // both padded and unpadded ('M' and 'M ' both occur, in the thousands).
+  // MSSQL's `=`/`IN` ignore trailing spaces so filtering never saw this, but
+  // nothing trims the value on the way out — and an untrimmed JS comparison
+  // dropped the badge on whichever rows happened to be padded, inconsistently
+  // within a single code. Trim before comparing, and badge on the way out.
+  const code = typeof moveType === 'string' ? moveType.trim() : ''
+  // Allow-listing the badged codes meant any code missing from that list
+  // rendered blank — indistinguishable from Interstate. Now that an explicit
+  // move-type filter overrides the trip-planning whitelist, all 16 of NWI's
+  // lookup codes can reach this card, so invert it: everything except the
+  // deliberately-unbadged common case gets a badge, and a code added to the
+  // lookup later is badged automatically rather than silently blank.
+  return code === UNBADGED_MOVE_TYPE ? '' : code
 }
 
 function getHaulMode(haulMode: any): string {

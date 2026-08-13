@@ -333,6 +333,19 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
   // placeholders back through the bound params, and require the intersection to
   // be non-empty.
   describe('move_type filter vs the Is_Trip_Planning whitelist', () => {
+    /** Run the handler with `filters` and hand back the generated base SQL. */
+    async function sqlFor(filters: Record<string, unknown>): Promise<string> {
+      findUnique.mockResolvedValue({
+        mssqlConnectionString: 'Server=a,1433',
+        longhaulClient: 'nwi',
+      })
+      stubExecutor({ shipments: [] })
+      const encoded = encodeURIComponent(JSON.stringify({ filters }))
+      await buildApp().request(`/onprem/longhaul/shipments?filters=${encoded}`)
+      const [, sql] = executeSqlMock.mock.calls[0] as [string, string, unknown]
+      return sql
+    }
+
     async function importExportSetsFor(filters: Record<string, unknown>) {
       findUnique.mockResolvedValue({
         mssqlConnectionString: 'Server=a,1433',
@@ -359,38 +372,95 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
       )
     }
 
-    it('leaves INTERNATIONAL satisfiable against the trip-planning whitelist', async () => {
-      const sets = await importExportSetsFor({
-        Is_Trip_Planning: true,
-        move_type: [{ value: 'Z', label: 'INTERNATIONAL' }],
-      })
+    /**
+     * Intersect every `import_export IN (...)` clause the query emits. The
+     * conjunction can match a row iff this is non-empty — which is the property
+     * that actually matters, and is independent of HOW the handler avoids the
+     * clash (suppressing the whitelist, widening it, or anything else).
+     */
+    function admissible(sets: Array<Set<string>>): Set<string> {
+      return sets.reduce((acc, s) => new Set([...acc].filter((v) => s.has(v))))
+    }
 
-      // Both predicates present — the filter and the whitelist.
-      expect(sets).toHaveLength(2)
-      const [first, second] = sets as [Set<string>, Set<string>]
-      expect(first).toContain('Z')
-      // ...and the whitelist admits it too, so the AND can match rows.
-      expect([...first].some((v) => second.has(v))).toBe(true)
-    })
+    // Every code NWI's Move Types dropdown offers. NWI's `moveTypesWhere` is
+    // '1=1', so the dropdown is the MoveType lookup in full — transcribed from
+    // prod (tenant 9d869236-518f-4fe4-90d3-274a1b957c38). Only 6 of these were
+    // in the eligibility whitelist; the other 10 were unsatisfiable and
+    // returned zero rows for every date range, zone and tenant.
+    const NWI_MOVE_TYPES = [
+      ['A', 'AUTO ONLY'],
+      ['C', 'COMM TRUCKLOAD'],
+      ['DA', 'DEST SERVICE ONLY'],
+      ['HA', 'HAULER ONLY'],
+      ['H', 'HHG INTERSTATE'],
+      ['I', 'HHG INTRASTATE'],
+      ['Z', 'INTERNATIONAL'],
+      ['LC', "LOCAL COMM'L"],
+      ['L', 'LOCAL MOVES'],
+      ['M', 'MILITARY'],
+      ['OA', 'ORIGIN SERVICE ONLY'],
+      ['OF', 'OVERFLOW'],
+      ['P', 'PERM STORAGE'],
+      ['SS', 'SMALL SHIPMENT'],
+      ['SP', 'SPECIAL PRODUCTS'],
+      ['TC', 'TIME CRITICAL'],
+    ] as const
+
+    it.each(NWI_MOVE_TYPES)(
+      'leaves move type %s (%s) satisfiable against the trip-planning whitelist',
+      async (value) => {
+        const sets = await importExportSetsFor({
+          Is_Trip_Planning: true,
+          move_type: [{ value }],
+        })
+
+        // The selection must survive the conjunction — this is the assertion
+        // that fails for all 10 non-whitelisted codes without the override.
+        expect(admissible(sets)).toEqual(new Set([value]))
+      },
+    )
 
     it('still narrows to the selected move type rather than ignoring it', async () => {
-      // The fix must not turn the filter into a no-op: picking INTERNATIONAL
-      // must still exclude every other code.
+      // The fix must not turn the filter into a no-op: picking one code must
+      // still exclude every other, including whitelisted ones.
       const sets = await importExportSetsFor({
         Is_Trip_Planning: true,
         move_type: [{ value: 'Z' }],
       })
 
-      expect(sets[0]).toEqual(new Set(['Z']))
+      expect(admissible(sets)).toEqual(new Set(['Z']))
+    })
+
+    it('returns every selected code when broken and working ones are mixed', async () => {
+      // The quiet variant of the bug: multi-selecting a non-whitelisted code
+      // alongside a whitelisted one did not return zero rows, it silently
+      // dropped the former and returned an incomplete list.
+      const sets = await importExportSetsFor({
+        Is_Trip_Planning: true,
+        move_type: [{ value: 'OA' }, { value: 'H' }],
+      })
+
+      expect(admissible(sets)).toEqual(new Set(['OA', 'H']))
     })
 
     it('keeps the whitelist alone when no move type is selected', async () => {
       const sets = await importExportSetsFor({ Is_Trip_Planning: true })
 
+      // The default list is whitelist-gated exactly as before — the override
+      // must not leak into the unfiltered case, which is what keeps the default
+      // planning list at ~15.9k rather than ~43.6k eligible rows.
       expect(sets).toHaveLength(1)
-      // Regression guard on the accepted tradeoff: 'Z' is now eligible by
-      // default, so unfiltered planning lists include INTERNATIONAL shipments.
-      expect(sets[0]).toContain('Z')
+      expect(sets[0]).toEqual(new Set(['H', 'HA', 'M', 'A', 'SS', 'Z']))
+    })
+
+    it('keeps the other eligibility predicates when a move type is selected', async () => {
+      // Overriding the whitelist must not disarm the rest of Is_Trip_Planning:
+      // asking for a move type says nothing about wanting inactive or
+      // already-delivered shipments.
+      const sql = await sqlFor({ Is_Trip_Planning: true, move_type: [{ value: 'OA' }] })
+
+      expect(sql).toContain('shipment_status =')
+      expect(sql).toContain('del_actual IS NULL')
     })
   })
 

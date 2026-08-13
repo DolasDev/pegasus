@@ -778,10 +778,18 @@ that whitelist produces an unsatisfiable conjunction:
 import_export IN ('Z') AND import_export IN ('H','HA','M','A','SS')
 ```
 
-#615 added `'Z'` to NWI's `importExportTypes`. **The general case is still live**: any other
-non-whitelisted move type filters to nothing by the same mechanism. The alternative fix —
-letting an explicit `move_type` filter override the whitelist — was considered and declined
-(it would change the default planning list's meaning); see `plans/completed/intl-move-type.md`.
+#615 added `'Z'` to NWI's `importExportTypes` and declined the general fix. **RESOLVED in
+#628**: measuring the blast radius settled it. NWI's lookup holds **16** codes and the
+whitelist covered **6** — the other **10 were unsatisfiable**, and they carry 27,718 of the
+43,614 planning-eligible rows in prod (64%), the largest single bucket being ORIGIN SERVICE
+ONLY at 16,507. Widening the whitelist to cover them was therefore off the table: the same
+predicate gates the **default unfiltered** list, which would have gone ~15.9k → ~43.6k rows.
+
+So an explicit `move_type` selection now **suppresses** the whitelist clause instead of
+intersecting with it (`shipments-list.ts`, `moveTypeFiltered`). The whitelist keeps its role
+as the _default_ eligibility set; `shipment_status = 'A'` and `del_actual IS NULL` stay
+unconditional. Default list unchanged, all 16 options return rows. Which of the 10 also
+belong in the DEFAULT set remains an open per-code operations decision.
 
 Three things make it invisible:
 
@@ -798,17 +806,27 @@ predicates onto the same column, so INTERNATIONAL returned nothing there too.
 
 What generalizes:
 
-- **`importExportTypes` is not merely "default eligibility."** A code missing from it makes
-  _filtering by that code_ impossible, not just excluded-by-default. Conversely, adding one
-  widens the **default unfiltered** planning list — mind the 1000-row `RESULT_LIMIT_EXCEEDED`
-  cap.
+- **When two predicates share a column, decide which one is authoritative.** The bug was
+  treating a user's explicit choice and a system default as peers to be AND'd. A default is
+  what applies _absent_ a preference; an explicit selection _is_ the preference. Intersecting
+  them makes the default silently unoverridable.
+- **Measure the blast radius before picking the cheap fix.** Per-code whitelisting looked
+  reasonable at n=1 and was indefensible at n=10 — but nobody had counted. One `GROUP BY
+import_export` against prod turned a judgment call into an obvious one.
 - **Test satisfiability, not spelling.** The regression test extracts every
   `import_export IN (...)` clause from the generated SQL, resolves the placeholders back
-  through the bound params, and asserts the sets intersect. Asserting that a letter appears
-  in a list would not have caught this.
-- **A new code usually needs the UI badge too.** `getMoveType`'s `visible` list in
-  `ShipmentCard/index.tsx` deliberately omits `'H'` (Interstate = the unbadged common case),
-  so any code missing there renders a blank badge indistinguishable from Interstate.
+  through the bound params, and asserts the intersection is non-empty — parameterized over
+  all 16 real lookup codes, so it fails for exactly the codes that are broken and is
+  indifferent to _how_ the handler avoids the clash. Asserting that a letter appears in a
+  list would not have caught this.
+- **`import_export` values are inconsistently space-padded.** It is `nvarchar`, and prod holds
+  the same logical code both ways — `'M'` on 470 rows and `'M '` on 1,404. MSSQL's `=`/`IN`
+  ignore trailing spaces so SQL-side comparisons are unaffected, and nothing trims the value
+  on the way out — so any **JS** comparison against it must `.trim()` first. `getMoveType` in
+  `ShipmentCard/index.tsx` did not, which silently dropped the badge on the padded majority of
+  MILITARY and INTERNATIONAL cards (fixed in #628, which also inverted the check to badge
+  everything except the deliberately-unbadged `'H'`, so a code added to the lookup is badged
+  automatically rather than rendering blank and reading as Interstate).
 - `apps/tenant-web/src/features/driver-planning/utils/movetype-list.ts` (`MOVETYPE_LIST`) is
   **dead code** — its only consumer is its own test; the real dropdown comes from the API's
   `filter-options.ts`. Don't extend it.

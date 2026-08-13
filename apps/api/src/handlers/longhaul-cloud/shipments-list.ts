@@ -105,6 +105,9 @@ class ParamBag {
 function buildBaseSql(query: ShipmentQuery, bag: ParamBag, importExportTypes: string[]): string {
   const S = SHIPMENTS_TABLE
   const where: string[] = []
+  // Set by the move_type filter; read by the Is_Trip_Planning block, which runs
+  // after it. Both constrain `import_export`, and an explicit selection wins.
+  let moveTypeFiltered = false
 
   if (query.searchTerm && query.searchTerm.length >= 3) {
     const term = query.searchTerm.toLowerCase()
@@ -221,9 +224,16 @@ function buildBaseSql(query: ShipmentQuery, bag: ParamBag, importExportTypes: st
       }
     }
 
+    // `move_type` has no column of its own — it filters `import_export`, the
+    // very column the Is_Trip_Planning whitelist below also constrains. When the
+    // user picks a code the whitelist omits, ANDing the two yields an
+    // unsatisfiable conjunction and an empty list with nothing to say why. So an
+    // explicit selection SUPERSEDES the whitelist rather than intersecting with
+    // it (see the Is_Trip_Planning block).
     if (f.move_type?.length) {
       const vals = f.move_type.map((m) => m.value).filter(Boolean)
       if (vals.length) {
+        moveTypeFiltered = true
         where.push(`${S}.import_export IN (${vals.map((v) => bag.bind(v)).join(', ')})`)
       }
     }
@@ -248,7 +258,28 @@ function buildBaseSql(query: ShipmentQuery, bag: ParamBag, importExportTypes: st
 
     if (f.Is_Trip_Planning) {
       where.push(`${S}.shipment_status = ${bag.bind('A')}`)
-      where.push(`${S}.import_export IN (${importExportTypes.map((t) => bag.bind(t)).join(', ')})`)
+      // The whitelist is the DEFAULT eligibility set, not an absolute bound: it
+      // decides which codes appear when the user has expressed no preference.
+      // An explicit move_type selection IS that preference, so it wins — the
+      // user asked for those codes by name, and the dropdown (built from the
+      // MoveType lookup, `1=1` for NWI) offers all 16 of them. Suppressing the
+      // whitelist here is what makes the other 10 reachable; intersecting
+      // instead is what made them silently return zero rows.
+      //
+      // Deliberately NOT widened to include those codes by default: this same
+      // predicate gates the unfiltered planning list, and admitting them there
+      // would take it from ~15.9k to ~43.6k eligible rows (prod NWI), burying
+      // central dispatchers in LOCAL MOVES / PERM STORAGE and blowing the
+      // RESULT_LIMIT cap. Which codes also belong in the DEFAULT set is a
+      // separate, per-code operations decision.
+      //
+      // The other two predicates are unconditional — an explicit move-type
+      // filter says nothing about wanting cancelled or already-delivered work.
+      if (!moveTypeFiltered) {
+        where.push(
+          `${S}.import_export IN (${importExportTypes.map((t) => bag.bind(t)).join(', ')})`,
+        )
+      }
       where.push(`${S}.del_actual IS NULL`)
     }
   }
