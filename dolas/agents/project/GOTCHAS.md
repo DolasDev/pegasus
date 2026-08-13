@@ -827,9 +827,13 @@ import_export` against prod turned a judgment call into an obvious one.
   MILITARY and INTERNATIONAL cards (fixed in #628, which also inverted the check to badge
   everything except the deliberately-unbadged `'H'`, so a code added to the lookup is badged
   automatically rather than rendering blank and reading as Interstate).
-- `apps/tenant-web/src/features/driver-planning/utils/movetype-list.ts` (`MOVETYPE_LIST`) is
-  **dead code** — its only consumer is its own test; the real dropdown comes from the API's
-  `filter-options.ts`. Don't extend it.
+- **The move-type option list lives in ONE place: the API.** `filter-options.ts` /
+  `reference-data.ts` query the legacy `MoveType` lookup (filtered by the per-client
+  `moveTypesWhere`) and `FilterTabs` renders `filterOptions.moveType`. A second, hardcoded
+  `MOVETYPE_LIST` in tenant-web was deleted in #630: nothing imported it but its own test, and
+  it had drifted into a stale, partial mirror — 5 of the 16 codes, with labels that did not
+  match the lookup (`Interstate` vs `HHG INTERSTATE`). Don't reintroduce a client-side copy;
+  it cannot stay in sync with a per-tenant lookup table.
 
 ## Adding a permission to a persona passes every branch check, then fails the staging E2E gate
 
