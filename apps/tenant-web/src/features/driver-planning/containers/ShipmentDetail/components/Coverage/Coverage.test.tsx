@@ -121,6 +121,53 @@ describe('ShipmentCoverage', () => {
     expect(payload.is_covered).toBeNull()
   })
 
+  // The API's FOR JSON serialization used to omit NULL columns, so an unset
+  // "OA Committed?" arrived as a MISSING key rather than an explicit null.
+  // `undefined` fails every `=== null` tri-state check, which rendered the unset
+  // state as "No" and made the save look like it had not persisted.
+  it('treats a coverage row with no is_covered key as unset, not as No', () => {
+    const onUpdate = vi.fn()
+    const ship = {
+      ...sampleShipment,
+      packing_coverage: { id: 'cov-1', note: 'n', created_by_id: 'creator' },
+    }
+    const { container } = renderWithStore(<ShipmentCoverage onUpdate={onUpdate} />, {
+      preloadedState: {
+        shipments: { selectedShipment: ship } as any,
+        user: { user: sampleUser } as any,
+      },
+    })
+
+    // The shield button carries the tri-state color: orange = unset.
+    expect(container.querySelectorAll('button')[0]).toHaveStyle({ color: 'rgb(255, 165, 0)' })
+
+    fireEvent.click(container.querySelectorAll('button')[0])
+    fireEvent.click(screen.getByText('save'))
+
+    const payload = (API.saveShipmentCoverage as any).mock.calls[0][0]
+    expect(payload.is_covered).toBeNull()
+  })
+
+  it('writes an explicit null when the user selects the unset "?" toggle', () => {
+    const onUpdate = vi.fn()
+    const { container } = renderWithStore(<ShipmentCoverage onUpdate={onUpdate} />, {
+      preloadedState: {
+        shipments: { selectedShipment: sampleShipment } as any,
+        user: { user: sampleUser } as any,
+      },
+    })
+
+    fireEvent.click(container.querySelectorAll('button')[0])
+    fireEvent.click(screen.getByText('?'))
+    fireEvent.click(screen.getByText('save'))
+
+    const payload = (API.saveShipmentCoverage as any).mock.calls[0][0]
+    // Explicitly null — NOT undefined, which JSON.stringify would drop and the
+    // API's pickColumns would then skip, leaving the stored value untouched.
+    expect(payload.is_covered).toBeNull()
+    expect('is_covered' in payload).toBe(true)
+  })
+
   it('closes edit mode when the close icon is clicked', () => {
     const onUpdate = vi.fn()
     const { container } = renderWithStore(<ShipmentCoverage onUpdate={onUpdate} />, {

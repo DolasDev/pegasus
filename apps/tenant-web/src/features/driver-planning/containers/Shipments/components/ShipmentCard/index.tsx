@@ -72,7 +72,10 @@ function getPackDateStart(shipment: LonghaulShipmentRow) {
         </HoverToolTip>
       </span>
     </>
-  ) : shipment.packing_coverage !== null && shipment.packing_coverage?.is_covered !== null ? (
+  ) : // `!= null` (loose) so a missing `is_covered` key is treated as unset like an
+  // explicit null — otherwise an undecided shipment renders the "cannot cover"
+  // shield. See the Coverage panel for the same tri-state normalization.
+  shipment.packing_coverage != null && shipment.packing_coverage?.is_covered != null ? (
     <>
       {packDate} &nbsp;
       {shipment.packing_coverage?.is_covered ? (

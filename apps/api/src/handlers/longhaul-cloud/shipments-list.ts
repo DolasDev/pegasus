@@ -324,7 +324,13 @@ function buildEnrichmentSql(orderNums: number[], bag: ParamBag): string {
     `\nUNION ALL\n` +
     `SELECT 'coverage' AS __src,` +
     ` cov.order_num AS __order_num,` +
-    ` (SELECT cov.* FOR JSON PATH, WITHOUT_ARRAY_WRAPPER) AS __payload` +
+    // INCLUDE_NULL_VALUES is REQUIRED here: FOR JSON omits NULL-valued keys by
+    // default, so a coverage row with `is_covered IS NULL` (the "OA Committed?"
+    // unset state — 2.3k rows on NWI alone) arrived with no `is_covered` key at
+    // all. The client then read `undefined`, failed its `=== null` check, and
+    // rendered the unset state as "No". The trip-detail route never hit this
+    // because it reads the same table with a plain SELECT (longhaul-trip-fetch).
+    ` (SELECT cov.* FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES) AS __payload` +
     ` FROM longhaul_shipmentcoverage AS cov` +
     ` WHERE cov.order_num IN (${placeholders})` +
     `\nUNION ALL\n` +

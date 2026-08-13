@@ -41,6 +41,12 @@ const sitIndicatorColor = (container: HTMLElement): string | undefined =>
     (el) => el.querySelector('i.fa-warehouse') && el.style.color,
   )?.style.color
 
+/** Colour of the OA coverage shield, or undefined when no shield renders. */
+const coverageShieldColor = (container: HTMLElement): string | undefined =>
+  [...container.querySelectorAll('span')].find(
+    (el) => el.querySelector('i.fa-shield-halved') && el.style.color,
+  )?.style.color
+
 const render = (over: Partial<LonghaulShipmentRow> = {}) =>
   renderWithStore(<ShipmentCard shipment={shipment(over)} tripsForShipment={[]} />, {
     shipments: { selectedShipment: null } as any,
@@ -115,5 +121,41 @@ describe('ShipmentCard indicator', () => {
   it('shows no SIT indicator without a sit_date', () => {
     const { container } = render({ driver2_id: 4242 })
     expect(container.querySelector('i.fa-warehouse')).toBeNull()
+  })
+
+  // The OA coverage shield is tri-state: green/orange = decided, absent =
+  // undecided. The API used to omit `is_covered` from the coverage payload when
+  // it was NULL, so an undecided shipment fell through the `!== null` guard and
+  // rendered the brown "cannot cover" shield.
+  it('shows the OA shield as confirmed when is_covered is true', () => {
+    const { container } = render({
+      pack_date2: '2026-03-01',
+      packing_coverage: { order_num: 1, is_covered: true },
+    })
+    expect(coverageShieldColor(container)).toBe('orange')
+  })
+
+  it('shows the OA shield as cannot-cover when is_covered is false', () => {
+    const { container } = render({
+      pack_date2: '2026-03-01',
+      packing_coverage: { order_num: 1, is_covered: false },
+    })
+    expect(coverageShieldColor(container)).toBe('brown')
+  })
+
+  it('shows no OA shield when is_covered is an explicit null', () => {
+    const { container } = render({
+      pack_date2: '2026-03-01',
+      packing_coverage: { order_num: 1, is_covered: null },
+    })
+    expect(container.querySelector('i.fa-shield-halved')).toBeNull()
+  })
+
+  it('shows no OA shield when the is_covered key is absent entirely', () => {
+    const { container } = render({
+      pack_date2: '2026-03-01',
+      packing_coverage: { order_num: 1 },
+    })
+    expect(container.querySelector('i.fa-shield-halved')).toBeNull()
   })
 })
