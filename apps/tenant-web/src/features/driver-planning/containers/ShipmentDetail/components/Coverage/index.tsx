@@ -24,10 +24,14 @@ export const ShipmentCoverage = ({ onUpdate }: { onUpdate: any }) => {
   })
 
   const [coverageNote, setCoverageNote] = useState(selectedShipment.packing_coverage?.note)
+  // `?? null` collapses "no coverage row" and "coverage row with no is_covered
+  // key" into the same tri-state null. The API used to drop the key entirely for
+  // an unset value, and `undefined` fails every `=== null` check below — which
+  // rendered the unset state as "No".
   const [isCovered, setIsCovered] = useState(
     selectedShipment.packing_coverage === null
       ? null
-      : selectedShipment.packing_coverage?.is_covered,
+      : (selectedShipment.packing_coverage?.is_covered ?? null),
   )
 
   const onButtonClick = () => {
@@ -101,7 +105,11 @@ export const ShipmentCoverage = ({ onUpdate }: { onUpdate: any }) => {
                         note: coverageElement?.innerHTML
                           .replace(/\s?(<br\s?\/?>)\s?/g, '\r\n')
                           .replace(/&nbsp;/g, ' '),
-                        is_covered: isCovered === null ? null : isCovered,
+                        // Must be an explicit null, never undefined: JSON.stringify
+                        // drops undefined keys, and the API's pickColumns skips any
+                        // absent column — so an unset would leave the stored value
+                        // untouched instead of clearing it.
+                        is_covered: isCovered ?? null,
                         coverage_agent_id: selectedShipment.oa_id,
                       }
                       setCoverageNote(coverageData.note)

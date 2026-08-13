@@ -110,6 +110,28 @@ describe('POST /shipments/:id/coverage (cloud-direct)', () => {
     expect(opts.params).toContainEqual({ name: 'note', value: 'covered' })
   })
 
+  it('writes an explicitly null is_covered rather than skipping the column', async () => {
+    // "OA Committed?" is tri-state; null is a real value meaning "undecided", not
+    // "no change". pickColumns only skips UNDEFINED, so an explicit null must
+    // reach the UPDATE — otherwise clearing a yes/no back to unset is impossible.
+    executeSqlMock.mockResolvedValue({
+      recordset: [{ id: 9, order_num: 100, is_covered: null }],
+      recordsets: [[{ id: 9 }]],
+      rowsAffected: [1, 1],
+    })
+    const res = await req('/onprem/longhaul/shipments/100/coverage', 'POST', {
+      order_num: 100,
+      activity_code: 'PACK',
+      coverage_agent_id: 'A1',
+      is_covered: null,
+      note: 'undecided',
+    })
+    expect(res.status).toBe(201)
+    const [, sql, opts] = executeSqlMock.mock.calls[0]!
+    expect(opts.params).toContainEqual({ name: 'is_covered', value: null })
+    expect(sql).toContain('is_covered = @is_covered')
+  })
+
   it('returns 400 when a key field is missing', async () => {
     const res = await req('/onprem/longhaul/shipments/100/coverage', 'POST', {
       order_num: 100,

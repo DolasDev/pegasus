@@ -187,6 +187,49 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
     expect(sql).toContain('at.isHasETA AS activityType_isHasETA')
   })
 
+  it('serializes coverage with INCLUDE_NULL_VALUES so an unset is_covered survives', async () => {
+    // Regression: FOR JSON omits NULL-valued keys by default, so a coverage row
+    // whose `is_covered` is NULL (the "OA Committed?" unset state) reached the
+    // client with the key MISSING entirely. `undefined` fails the UI's `=== null`
+    // tri-state check, so the unset rendered as "No" and the save looked lost.
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
+    stubExecutor({ shipments: [{ order_num: 100 }], enrichment: [], extraLocations: [] })
+
+    await buildApp().request('/onprem/longhaul/shipments')
+
+    const enrichmentCall = executeSqlMock.mock.calls.find((call) =>
+      String(call[1]).includes("'coverage' AS __src"),
+    )
+    expect(enrichmentCall).toBeDefined()
+    const sql = String(enrichmentCall![1])
+    expect(sql).toContain(
+      '(SELECT cov.* FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES) AS __payload',
+    )
+  })
+
+  it('carries an explicitly null is_covered through to packing_coverage', async () => {
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
+    stubExecutor({
+      shipments: [{ order_num: 100 }],
+      enrichment: [
+        {
+          __src: 'coverage',
+          __order_num: 100,
+          __payload: payload({ order_num: 100, activity_code: 'PACK', is_covered: null }),
+        },
+      ],
+      extraLocations: [],
+    })
+
+    const res = await buildApp().request('/onprem/longhaul/shipments')
+    const body = (await res.json()) as { data: Array<Record<string, unknown>> }
+    const coverage = body.data[0]!['packing_coverage'] as Record<string, unknown>
+
+    // The key must be PRESENT and null — not absent. The client distinguishes
+    // "unset" from "no" purely by `is_covered === null`.
+    expect(coverage).toHaveProperty('is_covered', null)
+  })
+
   it('skips the enrichment round trips when the base query returns no rows', async () => {
     findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
     stubExecutor({ shipments: [] })
