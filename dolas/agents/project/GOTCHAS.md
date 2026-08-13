@@ -830,7 +830,7 @@ import_export` against prod turned a judgment call into an obvious one.
 - **The move-type option list lives in ONE place: the API.** `filter-options.ts` /
   `reference-data.ts` query the legacy `MoveType` lookup (filtered by the per-client
   `moveTypesWhere`) and `FilterTabs` renders `filterOptions.moveType`. A second, hardcoded
-  `MOVETYPE_LIST` in tenant-web was deleted in #630: nothing imported it but its own test, and
+  `MOVETYPE_LIST` in tenant-web was deleted in #631: nothing imported it but its own test, and
   it had drifted into a stale, partial mirror — 5 of the 16 codes, with labels that did not
   match the lookup (`Interstate` vs `HHG INTERSTATE`). Don't reintroduce a client-side copy;
   it cannot stay in sync with a per-tenant lookup table.
