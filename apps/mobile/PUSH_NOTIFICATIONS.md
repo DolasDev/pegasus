@@ -176,14 +176,13 @@ have to be regenerated the same way.
    `EXPO_ASC_ISSUER_ID` / `EXPO_APPLE_TEAM_ID` / `EXPO_APPLE_TEAM_TYPE` first and
    EAS authenticates with the API key instead of prompting for a password + 2FA.
 
-   > **Gotcha:** capability sync fails with `Failed to patch capabilities:
-PUSH_NOTIFICATIONS` / `Apple API error: The request entity is not a valid
-request document object`. Enable **Push Notifications** by hand on the App
-   > ID in the Apple developer console, then re-run with
-   > `EXPO_NO_CAPABILITY_SYNC=1`. Enable it _before_ the provisioning profile is
-   > generated — the profile only carries the `aps-environment` entitlement if
-   > the capability was already on. If push tokens fail on a real device, suspect
-   > the profile, not the key.
+   > **Gotcha:** capability sync fails — "Failed to patch capabilities" plus an
+   > Apple API error about an invalid request document object. Enable **Push
+   > Notifications** by hand on the App ID in the Apple developer console, then
+   > re-run with `EXPO_NO_CAPABILITY_SYNC=1`. Enable it _before_ the
+   > provisioning profile is generated: the profile only carries the
+   > `aps-environment` entitlement if the capability was already on. If push
+   > tokens fail on a real device, suspect the profile, not the key.
 
 2. **Register the test device** — an ad-hoc build only installs on devices in
    its provisioning profile:
