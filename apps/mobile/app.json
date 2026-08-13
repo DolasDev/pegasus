@@ -16,6 +16,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.movingstorage.driverapp",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "This app uses the camera to scan shipment documents.",
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to attach shipment documents.",
         "NSLocationWhenInUseUsageDescription": "This app uses your location to optimize delivery routes and track order progress."

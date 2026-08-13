@@ -48,12 +48,13 @@ app either. Map drivers in Settings → Users.
 | Backend (outbox, forwarder, triggers) | ✅ Live                                                                          |
 | Mobile registration + tap routing     | ✅ Live                                                                          |
 | Android delivery                      | ⏳ Firebase project + client config done; needs the FCM V1 server key (Step 1.6) |
-| iOS delivery                          | ⏳ Apple enrollment done; needs `eas credentials` (Step 2)                       |
+| iOS delivery                          | ✅ APNs key on EAS (Step 2); unverified end-to-end until a device build runs     |
 | iOS signed device build in CI         | ✅ `ios_build=device` on `mobile-release.yml`                                    |
+| iOS TestFlight auto-submit            | ✅ `ios_build=store` + `submit=true`                                             |
 
-Until the credentials exist, the failure is silent by design: `registerForPush`
-catches and logs, so no token is ever registered and outbox rows simply find no
-device to deliver to. Nothing errors, nothing is lost.
+Where credentials are still missing, the failure is silent by design:
+`registerForPush` catches and logs, so no token is ever registered and outbox
+rows simply find no device to deliver to. Nothing errors, nothing is lost.
 
 ## Step 1 — Android (Firebase / FCM)
 
@@ -154,21 +155,34 @@ is needed after the upload.
 Apple Developer Program membership (the long pole) is **done** — enrolled
 2026-08.
 
-Nothing is linked to EAS yet: `iosAppCredentials` is still `[]`. Enrolling at
-Apple and wiring EAS are separate acts, and both steps below need an
-interactive Apple login, so they can't be scripted in CI.
+**Credentials are linked** (2026-08, team `9NJ2BGU4TR`): distribution
+certificate, App Store provisioning profile `54TZ7K8T77`, APNs key, and an App
+Store Connect API key all live on EAS. Step 1 below is done; it is kept as the
+recovery procedure, since certificates and profiles expire (both 2027-08-13) and
+have to be regenerated the same way.
 
-1. **Set up signing + the APNs key** — from `apps/mobile`, one interactive run
-   creates the distribution certificate, the provisioning profile, and the push
-   key, and stores all three on EAS:
+1. **Set up signing + the APNs key** — ✅ done. From `apps/mobile`, one
+   interactive run creates the distribution certificate, the provisioning
+   profile, and the push key, and stores all three on EAS:
 
    ```
    eas credentials --platform ios
    ```
 
-   Choose the `production` profile → **Push Notifications: Manage your Apple
-   Push Notifications Key** → **Set up a new key**. Also let it create the
-   distribution certificate + provisioning profile when prompted.
+   Choose the `production` profile → **All: Set up all the required
+   credentials**, then **Push Notifications: Manage your Apple Push
+   Notifications Key** → **Set up a new key**, then upload the App Store Connect
+   API key. Export `EXPO_ASC_API_KEY_PATH` / `EXPO_ASC_KEY_ID` /
+   `EXPO_ASC_ISSUER_ID` / `EXPO_APPLE_TEAM_ID` / `EXPO_APPLE_TEAM_TYPE` first and
+   EAS authenticates with the API key instead of prompting for a password + 2FA.
+
+   > **Gotcha:** capability sync fails — "Failed to patch capabilities" plus an
+   > Apple API error about an invalid request document object. Enable **Push
+   > Notifications** by hand on the App ID in the Apple developer console, then
+   > re-run with `EXPO_NO_CAPABILITY_SYNC=1`. Enable it _before_ the
+   > provisioning profile is generated: the profile only carries the
+   > `aps-environment` entitlement if the capability was already on. If push
+   > tokens fail on a real device, suspect the profile, not the key.
 
 2. **Register the test device** — an ad-hoc build only installs on devices in
    its provisioning profile:
@@ -201,15 +215,24 @@ interactive Apple login, so they can't be scripted in CI.
 > A **simulator** build can never receive push — it has no APNs device token —
 > so `ios_build=simulator` (the default) stays a pure CI signal.
 
-### Still open for iOS: App Store submission
+### iOS App Store submission
 
-`ios_build=store` builds a TestFlight/App Store `.ipa`, but there is **no iOS
-auto-submit** — `eas.json` → `submit.production.ios` still holds `PLACEHOLDER`
-for `ascAppId`/`appleTeamId`. Wiring it needs an App Store Connect **API key**
-(issuer id + key id + `.p8`) uploaded via `eas credentials`, mirroring the
-EAS-hosted Google service-account key on the Android side — that avoids putting
-an Apple ID and app-specific password in the repo. Do this when you actually
-want TestFlight distribution; push testing does not need it.
+Wired. `eas.json` → `submit.production.ios` carries the real `ascAppId`
+(`6800979383`) and `appleTeamId`, and the App Store Connect API key is hosted by
+EAS — mirroring the Google service-account key on the Android side, so no Apple
+ID or app-specific password lives in the repo. `submit.production.ios` has no
+`appleId` field on purpose: the API key authenticates, and an Apple ID there
+would be dead config.
+
+```
+gh workflow run mobile-release.yml --ref main -f env=prod -f platform=ios -f ios_build=store -f submit=true
+```
+
+That builds a signed `.ipa` and lands it in **TestFlight**. Releasing from
+TestFlight to the App Store stays a manual act in App Store Connect, and needs
+the listing work — screenshots, privacy policy, App Privacy answers, and a
+reviewer demo account (this app is login-walled, so a reviewer without working
+credentials is a guaranteed Guideline 2.1 rejection).
 
 ## Optional hardening
 
