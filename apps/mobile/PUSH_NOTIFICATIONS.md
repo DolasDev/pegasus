@@ -52,9 +52,9 @@ app either. Map drivers in Settings → Users.
 | iOS signed device build in CI         | ✅ `ios_build=device` on `mobile-release.yml`                                    |
 | iOS TestFlight auto-submit            | ✅ `ios_build=store` + `submit=true`                                             |
 
-Until the credentials exist, the failure is silent by design: `registerForPush`
-catches and logs, so no token is ever registered and outbox rows simply find no
-device to deliver to. Nothing errors, nothing is lost.
+Where credentials are still missing, the failure is silent by design:
+`registerForPush` catches and logs, so no token is ever registered and outbox
+rows simply find no device to deliver to. Nothing errors, nothing is lost.
 
 ## Step 1 — Android (Firebase / FCM)
 
