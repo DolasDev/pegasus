@@ -97,6 +97,43 @@ describe('ShipmentCard indicator', () => {
     expect(screen.queryByText('O1 H')).not.toBeInTheDocument()
   })
 
+  // `import_export` is nvarchar in the legacy DB and prod holds the same
+  // logical code BOTH padded and unpadded — 'M' on 470 rows and 'M ' on 1,404.
+  // MSSQL comparisons ignore trailing spaces so the filter never saw it, but
+  // the untrimmed JS check dropped the badge on the padded majority: MILITARY
+  // and INTERNATIONAL cards rendered blank, i.e. looked like Interstate, and
+  // inconsistently so row-to-row within one code.
+  it.each([
+    ['M', 'M'],
+    ['M ', 'M'],
+    ['Z ', 'Z'],
+    [' OA ', 'OA'],
+  ])('badges %o as %o regardless of padding', (raw, badge) => {
+    render({ order_num: 'O1', import_export: raw })
+    expect(screen.getByText(`O1 ${badge}`)).toBeInTheDocument()
+  })
+
+  it('leaves a padded Interstate code unbadged too', () => {
+    render({ order_num: 'O1', import_export: 'H ' })
+    expect(screen.getByText('O1')).toBeInTheDocument()
+  })
+
+  // Codes outside the old allow-list are reachable now that an explicit
+  // move-type filter overrides the trip-planning whitelist. A blank badge would
+  // make each of them read as an Interstate move.
+  it.each(['OA', 'DA', 'LC', 'I', 'L', 'P', 'SP', 'C', 'TC', 'OF'])(
+    'badges newly reachable move type %s',
+    (code) => {
+      render({ order_num: 'O1', import_export: code })
+      expect(screen.getByText(`O1 ${code}`)).toBeInTheDocument()
+    },
+  )
+
+  it('renders no badge when the move type is absent', () => {
+    render({ order_num: 'O1', import_export: null })
+    expect(screen.getByText('O1')).toBeInTheDocument()
+  })
+
   // BEHAVIOR CHANGE (approved): the SIT delivery indicator read
   // `storage_driver_id`, which is not a column on the view — the storage driver
   // is `driver2_id`. The condition was always falsy, so a SIT shipment ALWAYS
