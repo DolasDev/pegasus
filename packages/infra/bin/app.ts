@@ -141,6 +141,30 @@ const FEEDBACK_PUBLIC_WEB_URL: Record<Exclude<EnvName, 'dev'>, string> = {
 const feedbackEnabled = envName === 'staging' || envName === 'prod'
 const feedbackPublicWebUrl = envName === 'dev' ? undefined : FEEDBACK_PUBLIC_WEB_URL[envName]
 
+// ── Reporting / customizable dashboards master switch (QA first) ─────────────
+// Ungates the whole /api/v1/reporting/* prefix behind REPORTING_ENABLED on the
+// api Lambda: the dataset catalog + query endpoints and the dashboard-definition
+// CRUD nested under them (every one 404s when off). The tenant SPA probes the
+// catalog endpoint rather than carrying its own flag, so this single switch also
+// controls whether the nav entry and page appear.
+//
+// The feature shipped to prod in #620/#623/#626 but had no env wiring at all,
+// so it has been unreachable in every environment since — this is the lever.
+// Env-gated (not a one-shot `-c` context flag) so it survives routine main-push
+// deploys: `deploy:ci` runs a fixed cdk command that passes no extra context, so
+// a context flag would silently switch the feature back off on the next deploy.
+//
+// staging ONLY for now. Two prerequisites, recorded as deliberate deferrals in
+// both reporting PR bodies, block prod:
+//   1. the three legacy datasets copy their SQL verbatim from the shipping
+//      handlers/dashboard-pegii.ts (v_dashboard1/2/3) and have never been
+//      re-checked against a live view, and
+//   2. there is no e2e spec for the surface.
+// Staging is where both get done; prod then becomes a one-word change here.
+// Note the legacy cards need the QA tunnel up to return rows — per-slot errors
+// degrade them individually while it is down.
+const reportingEnabled = envName === 'staging'
+
 // ── CORS allowlist (staging/prod) ────────────────────────────────────────────
 // Browser origins allowed to call the API cross-origin. Tenant + admin SPA
 // hostnames per env (the same dolas-managed domains the frontend stacks attach
@@ -352,6 +376,7 @@ const apiStack = new ApiStack(app, `${stackIdPrefix}-ApiStack`, {
   outboundOAuthSharedCacheEnabled,
   feedbackEnabled,
   feedbackPublicWebUrl,
+  reportingEnabled,
   corsAllowedOrigins,
 })
 apiStack.addDependency(cognitoStack)
