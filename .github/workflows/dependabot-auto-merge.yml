@@ -1,15 +1,56 @@
 name: Dependabot Auto-Merge
 
-on: pull_request
+# Two halves, deliberately split:
+#
+#   auto-merge  (on: pull_request)      — the POLICY gate. Decides, via Dependabot
+#                                         metadata, whether a PR is a semver
+#                                         minor/patch bump we are willing to merge
+#                                         unattended, and records that decision by
+#                                         enabling auto-merge.
+#   enqueue     (on: workflow_run [CI])  — makes that decision EFFECTIVE.
+#
+# Why the second half exists: `main` is governed by the `merge-queue-main` ruleset.
+# Once a merge queue governs a branch, an auto-merge request created while the PR
+# is still red is never re-evaluated when the PR later goes green — so the PR sits
+# CLEAN forever and never enters the queue. The policy job always runs seconds
+# after the PR opens (i.e. always while red), so under the queue it was a no-op:
+# no Dependabot PR auto-merged between 2026-06-15 (ruleset created) and 2026-08-13.
+#
+# Re-issuing `gh pr merge --auto` on an already-enabled PR does NOT refresh the
+# stale request. Only --disable-auto followed by --auto creates a fresh one, which
+# is then evaluated immediately and enters the queue. That pair is what `enqueue`
+# runs, once CI is actually green.
+#
+# NOTE: `autoMergeRequest.mergeMethod` reads `MERGE` here even though the queue
+# requires SQUASH. That is cosmetic — the queue's method wins — and is NOT a bug
+# worth chasing.
+
+on:
+  pull_request:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'PR number to re-assert auto-merge on (manual unstick lever)'
+        required: true
+        type: string
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Policy gate. Unchanged in behavior: enabling auto-merge here is what marks a
+  # PR as "approved to merge unattended". `enqueue` below reads that mark rather
+  # than re-deriving the metadata.
+  # ---------------------------------------------------------------------------
   auto-merge:
+    name: auto-merge
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]'
+    if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
     steps:
       - name: Fetch Dependabot metadata
         id: metadata
@@ -19,7 +60,140 @@ jobs:
 
       - name: Enable auto-merge for minor and patch updates
         if: steps.metadata.outputs.update-type == 'version-update:semver-minor' || steps.metadata.outputs.update-type == 'version-update:semver-patch'
+        # --squash is kept even though the queue overrides it (gh warns and exits
+        # 0). It is the correct fallback if the merge queue is ever removed.
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  # Re-assert the (now stale) auto-merge request once CI has actually passed, so
+  # the PR enters the merge queue.
+  #
+  # The workflow_run guard below filters to CI runs that came from a pull_request
+  # event and succeeded. That excludes merge_group and push-to-main CI runs, and
+  # is what stops this job from re-triggering off its own downstream activity.
+  #
+  # SECURITY: this job runs in default-branch context with write permissions. It
+  # must NEVER check out PR head code — it only reads PR metadata and toggles
+  # auto-merge.
+  # ---------------------------------------------------------------------------
+  enqueue:
+    name: enqueue
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'pull_request')
+    steps:
+      - name: Re-assert auto-merge so the PR enters the merge queue
+        env:
+          # Swapping to a PAT is a secrets change, not a code change. Needed if
+          # bot-initiated enqueues turn out not to trigger merge_group checks
+          # (GITHUB_TOKEN actions do not trigger workflows) — see the plan.
+          GH_TOKEN: ${{ secrets.DEPENDABOT_AUTOMERGE_PAT || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          DISPATCH_PR: ${{ inputs.pr }}
+        run: |
+          set -euo pipefail
+
+          # --- Resolve the PR -------------------------------------------------
+          # For workflow_run, resolve from the head SHA rather than
+          # workflow_run.pull_requests — the latter is empty often enough that it
+          # cannot be relied on.
+          if [[ -n "${DISPATCH_PR:-}" ]]; then
+            PR="$DISPATCH_PR"
+            echo "Manual dispatch for PR #$PR"
+          else
+            PR="$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" \
+                    --jq '[.[] | select(.state == "open")] | first | .number // empty')"
+            if [[ -z "$PR" ]]; then
+              echo "No open PR for $HEAD_SHA — nothing to do."
+              exit 0
+            fi
+            echo "Resolved $HEAD_SHA -> PR #$PR"
+          fi
+
+          # --- Guards ---------------------------------------------------------
+          # GraphQL, not `gh pr view --json`: isInMergeQueue is not exposed by the
+          # REST-backed field set.
+          PR_QUERY='query($owner:String!,$repo:String!,$pr:Int!){
+            repository(owner:$owner,name:$repo){
+              pullRequest(number:$pr){
+                state author{login} autoMergeRequest{mergeMethod}
+                isInMergeQueue mergeStateStatus
+              }
+            }
+          }'
+
+          read -r STATE AUTHOR HAS_AUTO IN_QUEUE _MERGE_STATE <<<"$(
+            gh api graphql -f query="$PR_QUERY" \
+              -F owner="${REPO%/*}" -F repo="${REPO#*/}" -F pr="$PR" \
+              --jq '.data.repository.pullRequest
+                    | [.state, .author.login, (.autoMergeRequest != null),
+                       .isInMergeQueue, .mergeStateStatus] | @tsv'
+          )"
+
+          if [[ -z "${STATE:-}" ]]; then
+            echo "Could not read PR #$PR metadata — refusing to act."; exit 1
+          fi
+          if [[ "$STATE" != "OPEN" ]]; then
+            echo "PR #$PR is $STATE — nothing to do."; exit 0
+          fi
+          # Enforced on the dispatch path too, or this becomes a generic
+          # "merge anything" lever. GraphQL reports the bot as "dependabot";
+          # the other spellings are accepted defensively.
+          case "$AUTHOR" in
+            dependabot|dependabot'[bot]'|app/dependabot) ;;
+            *) echo "PR #$PR author is '$AUTHOR', not Dependabot — refusing."; exit 0 ;;
+          esac
+          # No auto-merge request == the policy job did not approve this PR
+          # (or it is not a minor/patch bump). Do not merge it.
+          if [[ "$HAS_AUTO" != "true" ]]; then
+            echo "PR #$PR has no auto-merge request — policy did not approve it."; exit 0
+          fi
+          if [[ "$IN_QUEUE" == "true" ]]; then
+            echo "PR #$PR is already in the merge queue — leaving it alone."; exit 0
+          fi
+
+          # --- Wait for mergeability to settle --------------------------------
+          # workflow_run fires the instant CI completes; GitHub recomputes
+          # mergeStateStatus asynchronously, so a brief BLOCKED/UNKNOWN read here
+          # is expected and not an error.
+          MERGE_STATE=""
+          for attempt in 1 2 3; do
+            MERGE_STATE="$(gh pr view "$PR" --repo "$REPO" \
+                             --json mergeStateStatus --jq .mergeStateStatus)"
+            if [[ "$MERGE_STATE" == "CLEAN" ]]; then break; fi
+            echo "Attempt $attempt: mergeStateStatus=$MERGE_STATE — waiting..."
+            sleep 15
+          done
+
+          if [[ "$MERGE_STATE" != "CLEAN" ]]; then
+            echo "PR #$PR is $MERGE_STATE, not CLEAN — exiting without action."
+            echo "Another CI completion will re-run this job."
+            exit 0
+          fi
+
+          # --- Re-assert ------------------------------------------------------
+          # Re-issuing --auto alone is a no-op on an already-enabled PR; the
+          # disable/enable pair is what creates a fresh, evaluated request.
+          echo "PR #$PR is CLEAN but not queued — re-asserting auto-merge."
+          gh pr merge "$PR" --repo "$REPO" --disable-auto
+          sleep 3
+          gh pr merge "$PR" --repo "$REPO" --auto
+          sleep 10
+
+          # GraphQL again here — `gh pr view --json isInMergeQueue` does not exist
+          # and would fail the job under `set -e` *after* a successful enqueue.
+          QUEUED="$(
+            gh api graphql -f query="$PR_QUERY" \
+              -F owner="${REPO%/*}" -F repo="${REPO#*/}" -F pr="$PR" \
+              --jq '.data.repository.pullRequest.isInMergeQueue'
+          )"
+          echo "PR #$PR isInMergeQueue=$QUEUED"
+          if [[ "$QUEUED" != "true" ]]; then
+            echo "::warning::PR #$PR was CLEAN but did not enter the merge queue."
+          fi
