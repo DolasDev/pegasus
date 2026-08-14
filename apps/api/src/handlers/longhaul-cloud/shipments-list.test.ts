@@ -207,6 +207,79 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
     )
   })
 
+  it('serializes the activity and type payloads with INCLUDE_NULL_VALUES too', async () => {
+    // Same class as the coverage bug above. No consumer distinguishes null from
+    // undefined TODAY, so this is a landmine rather than a live defect — but the
+    // same rows read via trip-detail (a plain SELECT) DO carry explicit nulls, so
+    // one activity object had different key presence per route. 29,619 prod rows
+    // drop `estimated_date` and 14,484 drop `driver_name` without this.
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
+    stubExecutor({ shipments: [{ order_num: 100 }], enrichment: [], extraLocations: [] })
+
+    await buildApp().request('/onprem/longhaul/shipments')
+
+    const enrichmentCall = executeSqlMock.mock.calls.find((call) =>
+      String(call[1]).includes("'activity' AS __src"),
+    )
+    expect(enrichmentCall).toBeDefined()
+    const sql = String(enrichmentCall![1])
+    // activity payload
+    expect(sql).toContain('FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES) AS __payload')
+    // activity-type catalog payload
+    expect(sql).toContain(
+      '(SELECT t.* FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES) AS __payload',
+    )
+    // every FOR JSON in the enrichment union must include nulls — none left behind
+    const forJsonCount = (sql.match(/FOR JSON PATH/g) ?? []).length
+    const includeNullCount = (sql.match(/INCLUDE_NULL_VALUES/g) ?? []).length
+    expect(includeNullCount).toBe(forJsonCount)
+  })
+
+  it('keeps an explicitly null TripMaster_id and actual_date classified as untripped', async () => {
+    // Pin: buildShipmentActivities filters untripped rows with loose `== null`, so
+    // an explicit null must behave exactly like the previously-absent key.
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
+    stubExecutor({
+      shipments: [{ order_num: 100, pack_date2: '2026-01-01' }],
+      enrichment: [
+        {
+          __src: 'activity',
+          __order_num: 100,
+          __payload: payload({
+            id: 1,
+            order_num: 100,
+            ActivityType_code: 'PACK',
+            activityType_code: 'PACK',
+            TripMaster_id: null,
+            actual_date: null,
+            estimated_date: null,
+            driver_name: null,
+          }),
+        },
+        { __src: 'type', __order_num: null, __payload: payload({ code: 'PACK', name: 'Pack' }) },
+      ],
+      extraLocations: [],
+    })
+
+    const res = await buildApp().request('/onprem/longhaul/shipments')
+    const body = (await res.json()) as { data: Array<Record<string, unknown>> }
+    const activities = body.data[0]!['activities'] as Array<Record<string, unknown>>
+
+    // The untripped PACK row survived rather than being dropped, and no template
+    // was generated to duplicate it. Pre-existing rows carry ActivityType_code;
+    // only generated ones get the nested activityType from the catalog.
+    const packs = activities.filter(
+      (a) =>
+        ((a['activityType'] as { code?: string } | undefined)?.code ?? a['ActivityType_code']) ===
+        'PACK',
+    )
+    expect(packs).toHaveLength(1)
+    expect(packs[0]).toHaveProperty('id', 1)
+    // The explicit nulls round-tripped as null rather than being stripped.
+    expect(packs[0]).toHaveProperty('TripMaster_id', null)
+    expect(packs[0]).toHaveProperty('actual_date', null)
+  })
+
   it('carries an explicitly null is_covered through to packing_coverage', async () => {
     findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
     stubExecutor({

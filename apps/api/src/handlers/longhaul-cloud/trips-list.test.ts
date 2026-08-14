@@ -91,6 +91,39 @@ describe('GET longhaul/trips (cloud-direct LIST)', () => {
     expect(sql).toContain('FOR JSON PATH')
   })
 
+  it('serializes the notes subquery with INCLUDE_NULL_VALUES', async () => {
+    // Third instance of the #629 class: FOR JSON drops NULL-valued keys, so a
+    // note's null columns vanished instead of arriving as null. trip-fetch reads
+    // the same table with a plain SELECT and does return them.
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    executeSqlMock.mockResolvedValue({ recordset: [], rowsAffected: [] })
+
+    await buildApp().request('/onprem/longhaul/trips')
+
+    const [, sql] = executeSqlMock.mock.calls[0] as [string, string, unknown]
+    expect(sql).toContain('FOR JSON PATH, INCLUDE_NULL_VALUES')
+    // No bare FOR JSON PATH left behind in this query.
+    const forJsonCount = (sql.match(/FOR JSON PATH/g) ?? []).length
+    const includeNullCount = (sql.match(/INCLUDE_NULL_VALUES/g) ?? []).length
+    expect(includeNullCount).toBe(forJsonCount)
+  })
+
+  it('parses notes carrying explicitly null columns', async () => {
+    findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
+    executeSqlMock.mockResolvedValue({
+      recordset: [{ id: 7, trip_title: 'Trip 7', notes: '[{"id":1,"note":null,"type":null}]' }],
+      rowsAffected: [],
+    })
+
+    const res = await buildApp().request('/onprem/longhaul/trips')
+    const body = (await res.json()) as { data: Array<Record<string, unknown>> }
+    const notes = body.data[0]!['notes'] as Array<Record<string, unknown>>
+
+    expect(notes).toHaveLength(1)
+    expect(notes[0]).toHaveProperty('note', null)
+    expect(notes[0]).toHaveProperty('type', null)
+  })
+
   it('binds filter values as @name parameters — no string interpolation', async () => {
     findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433' })
     executeSqlMock.mockResolvedValue({ recordset: [], rowsAffected: [] })

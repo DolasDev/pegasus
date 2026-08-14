@@ -98,9 +98,14 @@ export const ShipmentCoverage = ({ onUpdate }: { onUpdate: any }) => {
                         order_num: selectedShipment.order_num,
                         created_by_id:
                           selectedShipment.packing_coverage?.created_by_id || user.code,
-                        updated_by_id: selectedShipment.packing_coverage
-                          ? user.updated_by_id
-                          : null,
+                        // `user.code`, NOT `user.updated_by_id` — the /users/me
+                        // payload spreads a v_longhaul_salesman row, which has no
+                        // `updated_by_id` column. That read was always undefined,
+                        // so JSON.stringify dropped it and pickColumns skipped the
+                        // column: all 13,806 prod coverage rows have a null
+                        // updated_by_id, including 3,851 updated after creation.
+                        // Null on first write is intentional — nothing was updated.
+                        updated_by_id: selectedShipment.packing_coverage ? user.code : null,
                         activity_code: 'PACK',
                         note: coverageElement?.innerHTML
                           .replace(/\s?(<br\s?\/?>)\s?/g, '\r\n')

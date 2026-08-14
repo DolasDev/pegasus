@@ -347,7 +347,15 @@ function buildEnrichmentSql(orderNums: number[], bag: ParamBag): string {
     `   at.isCanEditDates AS activityType_isCanEditDates,` +
     `   at.isHasETA AS activityType_isHasETA,` +
     `   drv.driver_name AS driver_name` +
-    `  FOR JSON PATH, WITHOUT_ARRAY_WRAPPER) AS __payload` +
+    // INCLUDE_NULL_VALUES on all three payloads below: FOR JSON omits
+    // NULL-valued keys by default, which is what made an unset "OA Committed?"
+    // read back as `undefined` (#629). Today's activity consumers all happen to
+    // be null/undefined-agnostic, so this is a landmine rather than a live bug —
+    // but the SAME table read via trip-detail (longhaul-trip-fetch, a plain
+    // SELECT) already returns explicit nulls, so one activity object had
+    // different key presence depending on which route loaded it. This converges
+    // the two; it is not a new input shape for any consumer.
+    `  FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES) AS __payload` +
     ` FROM LongDistanceDispatchActivity AS lda` +
     ` LEFT JOIN Longhaul_ActivityType AS at ON lda.ActivityType_code = at.code` +
     ` LEFT JOIN v_longhaul_drivers AS drv ON lda.assigned_driver_id = drv.driver_id` +
@@ -367,7 +375,7 @@ function buildEnrichmentSql(orderNums: number[], bag: ParamBag): string {
     `\nUNION ALL\n` +
     `SELECT 'type' AS __src,` +
     ` NULL AS __order_num,` +
-    ` (SELECT t.* FOR JSON PATH, WITHOUT_ARRAY_WRAPPER) AS __payload` +
+    ` (SELECT t.* FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES) AS __payload` +
     ` FROM Longhaul_ActivityType AS t`
   )
 }
