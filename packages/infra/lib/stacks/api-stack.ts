@@ -224,6 +224,27 @@ export interface ApiStackProps extends cdk.StackProps {
   readonly feedbackPublicWebUrl?: string
 
   /**
+   * Master switch for the reporting / customizable-dashboards surface. When true,
+   * `REPORTING_ENABLED=true` is set on the api Lambda, ungating the whole
+   * `/api/v1/reporting/*` prefix — the dataset catalog + query endpoints and the
+   * dashboard-definition CRUD nested under them (every one 404s when off, pinned
+   * by `handlers/reporting-gate.test.ts`). The tenant SPA probes the catalog
+   * endpoint, so with this off the nav entry stays hidden and the page renders its
+   * "not available" state; no separate frontend flag exists.
+   *
+   * Inert-safe: reads only. Authorization is unchanged by the switch —
+   * `ReadReportingDataset` opens the routes and each dataset independently
+   * requires the action it reports on (`ListMoves`, `ReadInvoice`, …), so
+   * reporting can never widen what a role already reads.
+   *
+   * Default off; enabled for staging (QA) in bin/app.ts. Prod is a separate flip,
+   * blocked on verifying the three legacy datasets' column names against a live
+   * `v_dashboard1/2/3` and on an e2e spec — see
+   * plans/completed/4cd2defb-reporting-dashboards-phase2.md.
+   */
+  readonly reportingEnabled?: boolean
+
+  /**
    * Browser origins allowed to call the API cross-origin. Threaded from
    * bin/app.ts per environment (tenant + admin SPA hostnames in staging/prod).
    * Applied at BOTH layers from this single source of truth:
@@ -496,6 +517,19 @@ export class ApiStack extends cdk.Stack {
       if (props.feedbackPublicWebUrl) {
         apiFunction.addEnvironment('FEEDBACK_PUBLIC_WEB_URL', props.feedbackPublicWebUrl)
       }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Reporting / customizable-dashboards master switch. Like the flags above,
+    // only the env var is set: both stores are the shared Neon DB (dashboard
+    // definitions, per-user preferences) and the legacy datasets reach on-prem
+    // MSSQL through the mssql-executor invoke this Lambda already holds — so
+    // there is no new IAM. Set on the api Lambda ONLY; no cron or executor reads
+    // this flag. Absent is the off state (the handler tests `=== 'true'`), so
+    // there is deliberately no 'false' entry in the environment block above.
+    // ---------------------------------------------------------------------------
+    if (props.reportingEnabled) {
+      apiFunction.addEnvironment('REPORTING_ENABLED', 'true')
     }
 
     // ---------------------------------------------------------------------------
