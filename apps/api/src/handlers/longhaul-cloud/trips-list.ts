@@ -94,6 +94,12 @@ const SORTABLE_COLUMNS: Record<string, string> = {
 // Base SELECT — mirrors findTripsWithQuery's 6 LEFT JOINs plus a correlated
 // FOR JSON PATH subquery that inlines each trip's TripNotes rows. `notes` comes
 // back as a JSON string per row; we parse it after the single round trip.
+//
+// The notes subquery carries INCLUDE_NULL_VALUES because FOR JSON drops
+// NULL-valued keys by default, so a note's null columns would vanish rather than
+// arrive as null. trip-fetch reads the same table with a plain SELECT and does
+// return them; this keeps both routes' note shape identical. Same class as the
+// "OA Committed?" coverage bug in #629.
 const SELECT_AND_JOINS = `
   SELECT TOP (100)
     TripMaster.*,
@@ -114,7 +120,7 @@ const SELECT_AND_JOINS = `
     (
       SELECT n.* FROM TripNotes n
       WHERE n.tripId = TripMaster.id
-      FOR JSON PATH
+      FOR JSON PATH, INCLUDE_NULL_VALUES
     ) AS notes
   FROM TripMaster
   LEFT JOIN MasterTripStatus AS ts ON TripMaster.TripStatus_id = ts.status_id

@@ -28,9 +28,12 @@ const sampleShipment = {
   pegasus_shadow: { weight: 0, lng_dis_comments: '' },
 }
 
+// Mirrors the real GET /users/me payload, which spreads a v_longhaul_salesman
+// row: id, code, first_name, last_name, title, email_address, win_username,
+// roles, active, managed_by_id. There is NO `updated_by_id` — this fixture used
+// to invent one, which is exactly what hid the audit-column bug.
 const sampleUser = {
   code: 'U1',
-  updated_by_id: 'U1',
   first_name: 'Sam',
 }
 
@@ -166,6 +169,44 @@ describe('ShipmentCoverage', () => {
     // API's pickColumns would then skip, leaving the stored value untouched.
     expect(payload.is_covered).toBeNull()
     expect('is_covered' in payload).toBe(true)
+  })
+
+  // Regression: this read `user.updated_by_id`, a field the /users/me payload has
+  // never carried, so it was always undefined → dropped by JSON.stringify →
+  // skipped by the API's pickColumns. The column was never once written.
+  it('stamps updated_by_id with the acting user code when coverage already exists', () => {
+    const onUpdate = vi.fn()
+    const { container } = renderWithStore(<ShipmentCoverage onUpdate={onUpdate} />, {
+      preloadedState: {
+        shipments: { selectedShipment: sampleShipment } as any,
+        user: { user: sampleUser } as any,
+      },
+    })
+
+    fireEvent.click(container.querySelectorAll('button')[0])
+    fireEvent.click(screen.getByText('save'))
+
+    const payload = (API.saveShipmentCoverage as any).mock.calls[0][0]
+    expect(payload.updated_by_id).toBe('U1')
+  })
+
+  it('leaves updated_by_id null on the first write, when there is no prior coverage', () => {
+    const onUpdate = vi.fn()
+    const ship = { ...sampleShipment, packing_coverage: null }
+    const { container } = renderWithStore(<ShipmentCoverage onUpdate={onUpdate} />, {
+      preloadedState: {
+        shipments: { selectedShipment: ship } as any,
+        user: { user: sampleUser } as any,
+      },
+    })
+
+    fireEvent.click(container.querySelectorAll('button')[0])
+    fireEvent.click(screen.getByText('save'))
+
+    // Nothing was updated yet — created_by_id carries the authorship instead.
+    const payload = (API.saveShipmentCoverage as any).mock.calls[0][0]
+    expect(payload.updated_by_id).toBeNull()
+    expect(payload.created_by_id).toBe('U1')
   })
 
   it('closes edit mode when the close icon is clicked', () => {
