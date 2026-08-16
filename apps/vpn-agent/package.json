@@ -16,13 +16,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-cloudwatch": "^3.1068.0",
-    "@aws-sdk/client-ec2": "^3.1068.0"
+    "@aws-sdk/client-cloudwatch": "^3.1109.0",
+    "@aws-sdk/client-ec2": "^3.1109.0"
   },
   "devDependencies": {
-    "@types/node": "^22.19.21",
-    "tsx": "^4.21.0",
+    "@types/node": "^22.20.1",
+    "tsx": "^4.23.12",
     "typescript": "*",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.10"
   }
 }
