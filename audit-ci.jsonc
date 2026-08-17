@@ -43,7 +43,7 @@
     // expo@55 — which is not a fix.
     //
     // Single path, build-time only:
-    //   apps/mobile > expo@55.0.28 > @expo/metro > metro@0.83.7 > image-size@1.2.1
+    //   apps/mobile > expo@55.0.29 > @expo/metro > metro@0.83.7 > image-size@1.2.1
     // That is Metro, the React Native bundler, sizing the app's own committed image
     // assets during a build. The inputs are repo-controlled, not user-supplied, and
     // no runtime request path reaches image-size — nothing in apps/api or the web
@@ -52,6 +52,29 @@
     // Remove once metro ships an image-size that carries the fix (or image-size
     // publishes >2.0.2 with it) — audit-ci reports unused allowlist entries.
     "GHSA-w3rx-r6r6-pgpr",
-    "GHSA-5p2g-fcmc-qvqq"
+    "GHSA-5p2g-fcmc-qvqq",
+
+    // GHSA-ggr8-5vv4-36mx — deepmerge-ts stack exhaustion (high, CWE-674) when
+    // merging recursive object graphs. Vulnerable range is `<8.0.0`; the fix is
+    // the 8.x major.
+    //
+    // Allowlisted rather than overridden because @prisma/config depends on
+    // deepmerge-ts by EXACT pin ("deepmerge-ts": "7.1.5", verified in
+    // node_modules/@prisma/config/package.json at prisma 7.8.0). Forcing an
+    // override across a major the vendor pinned exactly is not a fix — it swaps
+    // a build-time DoS for an unsupported prisma CLI. There is no in-range patch
+    // to point a floor at.
+    //
+    // Single path, build-time only, and dev-only at that:
+    //   apps/api > (devDependency) prisma@7.8.0 > @prisma/config@7.8.0 > deepmerge-ts@7.1.5
+    // That is the Prisma CLI merging our own committed prisma config during
+    // `prisma generate` / `prisma migrate`. `prisma` is a devDependency — it is
+    // not bundled into the API Lambda and no request path reaches it. The only
+    // object graph it merges is repo-controlled, so "recursive input causes
+    // stack exhaustion" has no untrusted source to come from.
+    //
+    // Remove once prisma ships a @prisma/config on deepmerge-ts >=8.0.0
+    // (audit-ci reports unused allowlist entries once it does).
+    "GHSA-ggr8-5vv4-36mx"
   ]
 }
