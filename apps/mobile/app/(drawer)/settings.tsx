@@ -3,10 +3,21 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'rea
 import { useAuth } from '../../src/context/AuthContext'
 import { colors, fontSize, spacing, borderRadius, touchTarget } from '../../src/theme/colors'
 import Constants from 'expo-constants'
+import * as WebBrowser from 'expo-web-browser'
 import {
   loadPushRegistrationState,
   type PushRegistrationState,
 } from '../../src/services/pushNotifications'
+
+/**
+ * The published privacy policy — the same URL registered with the App Store and
+ * Google Play, served as a static page by the tenant web app.
+ *
+ * Hard-coded to production on purpose: the store listings point at exactly one
+ * address, and a staging build opening a staging copy would let the two drift.
+ * One canonical document, one URL.
+ */
+const PRIVACY_POLICY_URL = 'https://pegasus.dolas.dev/privacy.html'
 
 /**
  * "1.0.0 (13)" — the marketing version plus the build number that actually
@@ -118,9 +129,9 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>LEGAL</Text>
         <TouchableOpacity
           style={styles.linkButton}
-          onPress={() =>
-            Alert.alert('Privacy Policy', 'Privacy policy content would be displayed here.')
-          }
+          onPress={() => {
+            void WebBrowser.openBrowserAsync(PRIVACY_POLICY_URL)
+          }}
         >
           <Text style={styles.linkText}>Privacy Policy</Text>
           <Text style={styles.arrow}>→</Text>
