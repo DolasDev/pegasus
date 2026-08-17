@@ -70,7 +70,7 @@
     "esbuild": "GHSA-67mh-4wv8-2f99 moderate CVE; raised to >=0.28.1 for GHSA-gv7w-rqvm-qjhr (high, binary-integrity RCE, fixed 0.28.1)",
     "react": "Expo SDK 55 pins to 19.2.0. React must be one version tree-wide (singleton peer), so every workspace + transitive gets this version.",
     "react-dom": "Matches react override.",
-    "react-native": "Expo SDK 55 (expo@55.0.28 bundledNativeModules) expects 0.83.10; transitive bumps via @react-navigation would otherwise pull 0.85.x.",
+    "react-native": "Expo SDK 55 (expo@55.0.29 bundledNativeModules) expects 0.83.10; transitive bumps via @react-navigation would otherwise pull 0.85.x.",
     "react-test-renderer": "Pinned to match react exactly (the package requires react ^<its own>).",
     "react-native-worklets": "Reanimated 4.2.1 (the version Expo SDK 55 blesses) asserts at Android build time that worklets is 0.7.x; npm's normal resolution lands 0.8.3 (expo-modules-core's peer range allows both). Forcing 0.7.4 tree-wide makes the assert pass without churning reanimated/expo versions.",
     "@babel/plugin-transform-modules-systemjs": "GHSA-fv7c-fp4j-7gwp arbitrary code on malicious input",
