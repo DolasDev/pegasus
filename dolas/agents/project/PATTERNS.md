@@ -80,6 +80,36 @@ The marker is a deliberate "yes, the old code is already gone" sign-off — only
 - **PKCE and Cognito REST primitives** belong in `@pegasus/auth` (when extracted). App-specific flows (sign-in orchestration, token storage, redirect handling) stay in each app.
 - **The legacy longhaul MSSQL surface is contracted in `@pegasus/longhaul-contracts`.** `LONGHAUL_SHIPMENT_VIEW_COLUMNS` is the checked-in manifest of every column `v_longhaul_shipments_v2` projects, and `LonghaulShipmentRow` types a shipment row (view columns + API enrichment + client augmentation) with **no index signature** — an unknown key must fail to compile. Both read paths select the view with a wildcard (`SELECT s.*`) and pass the row through as JSON, so nothing else knows the column set; four production bugs (#569 destination street, #570 Operations, #571 Super-VIP, plus the SIT indicator) were ported accessors naming legacy TypeORM _entity properties_ that were never columns. Two rules follow: (1) resolve any ported field name against this manifest — never against the legacy entity's property names, which are aliases; (2) any joined or OUTER APPLY column selected alongside `s.*` must be aliased to a name NOT in the manifest, because duplicate output names make the `mssql` driver return an array for that key (#575 shipped `operations_id: [1196, 1196]`). The types are compile-time only — never filter or validate a payload with them, since a tenant on an older view definition legitimately returns fewer columns. Verify a tenant with `npx tsx scripts/verify-longhaul-view-columns.ts <tenant-id>`.
 
+## Derived-field filters on the longhaul planning list
+
+Some values the planning shipment card renders do **not** exist as columns on
+`v_longhaul_shipments_v2` — they are computed per row in the API after the base
+query. `latest_activity_abbr` and `TripStatus_id` both come from
+`enrichShipmentWithTripInfo` → `getTripInfo(activities)`, which picks the
+earliest unfinished activity (else the most recently completed one) out of the
+enrichment round trip.
+
+A filter on such a field therefore **cannot be a `WHERE` clause**. It belongs in
+the post-enrichment loop in `apps/api/src/handlers/longhaul-cloud/shipments-list.ts`,
+as a `continue` placed after `enrichShipmentWithTripInfo` and before
+`buildShipmentActivities` — where `TripStatus_id` and `latest_activity` already
+sit. Filtering server-side there (rather than client-side) keeps `meta.count`
+honest. Two inherited quirks come with that position and are deliberate, not
+bugs to fix in passing: the post-filter also applies when `searchTerm` is set
+(the SQL builder ignores filters in that branch), and the 1001-row base cap is
+applied _before_ it.
+
+Compare these values **trimmed on both sides**. They originate in legacy
+`nvarchar` columns with inconsistent padding; MSSQL's own `=` ignores trailing
+spaces, so the legacy app never saw it, but a JS `Set.has` does — the same
+failure mode that silently dropped padded `import_export` move-type codes (#628).
+
+Reference data for such a filter's dropdown rides the batched
+`GET /reference-data` bootstrap (`AppGuard` deliberately collapsed seven fetches
+into one request — do not add an eighth). Statements are read back **by index**,
+so appending one to the common block shifts every per-client index after it;
+update the index map comment and both unpacking branches together.
+
 ## Password Fields (`PasswordInput`)
 
 Every password field should be a `PasswordInput`, never a bare `type="password"` input — it carries the show/hide eye toggle, the right-padding that keeps text clear of the icon, and the `aria-label`/`aria-pressed` wiring. The toggle is `type="button"` so it never submits the surrounding form, and each instance owns its own visibility so a "new / confirm" pair reveals independently.

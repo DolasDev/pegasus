@@ -835,6 +835,25 @@ import_export` against prod turned a judgment call into an obvious one.
   match the lookup (`Interstate` vs `HHG INTERSTATE`). Don't reintroduce a client-side copy;
   it cannot stay in sync with a per-tenant lookup table.
 
+## A fixed-run chunker pins column HEIGHT and lets column COUNT drift
+
+The planning filter panel (`FilterTabs`) laid its fields out by slicing `FIELDS`
+into fixed runs of `Math.ceil(FIELDS.length / COLUMNS)`. That looks like it
+produces `COLUMNS` columns, and it did — at 15 fields, `ceil(15/5) = 3` gives
+five chunks of 3. But the run length is what's fixed, not the chunk count: at 16
+fields it becomes 4, and `slice`-ing 16 items in runs of 4 yields **four**
+chunks. Adding one filter would have silently collapsed the panel from 5 columns
+to 4, a layout change nothing in the diff mentions and no test caught.
+
+The fix is to distribute the remainder over the leading columns
+(16 → 4/3/3/3/3) so the count is `COLUMNS` by construction. The regression test
+asserts the **column count**, not per-column length — the counts are the
+invariant, the heights are free to reflow.
+
+Generalize: any `for (i += n) push(slice(i, i + n))` layout helper has this
+shape. If the intent is "N columns", compute the chunk count directly; if it is
+"N per column", say so and accept that the count varies.
+
 ## Adding a permission to a persona passes every branch check, then fails the staging E2E gate
 
 Granting an action in a `.cedar` policy means updating **two** pinned permission lists, and
