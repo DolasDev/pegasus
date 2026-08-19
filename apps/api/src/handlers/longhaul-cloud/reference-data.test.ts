@@ -54,6 +54,17 @@ const moveTypes = [
   { move_type_desc: 'Local', move_type: 'L' },
   { move_type_desc: 'National', move_type: 'N' },
 ]
+// The Longhaul_ActivityType catalog backing the Last Activity filter. It is
+// client-independent, so it rides the COMMON batch and is present even when the
+// tenant has no longhaulClient.
+const activityTypes = [
+  { code: 'SITIN', name: 'Storage In Transit — In', abbreviation: 'SIT' },
+  { code: 'PACK', name: 'Packing', abbreviation: 'PK' },
+]
+const activityTypeOptions = [
+  { value: 'PK', label: 'PK' },
+  { value: 'SIT', label: 'SIT' },
+]
 
 describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
   beforeEach(() => {
@@ -67,7 +78,16 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
     })
     executeSqlMock.mockResolvedValue({
       recordset: drivers,
-      recordsets: [drivers, tripStatuses, states, zones, planners, dispatchers, moveTypes],
+      recordsets: [
+        drivers,
+        tripStatuses,
+        states,
+        zones,
+        planners,
+        activityTypes,
+        dispatchers,
+        moveTypes,
+      ],
       rowsAffected: [],
     })
 
@@ -87,6 +107,7 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
           { value: 'L', label: 'Local' },
           { value: 'N', label: 'National' },
         ],
+        activityType: activityTypeOptions,
       },
     })
     expect(executeSqlMock).toHaveBeenCalledTimes(1)
@@ -104,6 +125,7 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
     expect(sql).toContain("(managed_by_id = 2021 OR roles like '%LO%')")
     expect(sql).toContain('MoveType')
     expect(sql).toContain('1=1')
+    expect(sql).toContain('Longhaul_ActivityType')
     // Both v_longhaul_salesman statements (planners + dispatchers) must be
     // restricted to active staff, and the per-client fragment must stay
     // parenthesised so its OR can't escape the AND. Lowercase `active` is
@@ -123,7 +145,7 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
     })
     executeSqlMock.mockResolvedValue({
       recordset: drivers,
-      recordsets: [drivers, tripStatuses, states, zones, planners],
+      recordsets: [drivers, tripStatuses, states, zones, planners, activityTypes],
       rowsAffected: [],
     })
 
@@ -131,6 +153,9 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
 
     expect(res.status).toBe(200)
     const body = (await res.json()) as { data: Record<string, unknown> }
+    // The activity-type catalog is NOT per-client, so the Last Activity filter
+    // still populates on a tenant with no longhaulClient — only the two
+    // genuinely client-scoped lookups degrade to empty.
     expect(body.data).toEqual({
       drivers,
       tripStatuses,
@@ -138,7 +163,7 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
       zones,
       planners,
       dispatchers: [],
-      filterOptions: { moveType: [] },
+      filterOptions: { moveType: [], activityType: activityTypeOptions },
     })
     expect(executeSqlMock).toHaveBeenCalledTimes(1)
     const sql = executeSqlMock.mock.calls[0]![1] as string
@@ -149,6 +174,7 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
     // Planners is client-independent, so its active filter survives the
     // degraded (no longhaulClient) batch.
     expect(sql).toContain("[v_longhaul_salesman].active = 'Y'")
+    expect(sql).toContain('Longhaul_ActivityType')
   })
 
   it('uses qmm per-client fragments when the tenant is a qmm client', async () => {
@@ -158,7 +184,16 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
     })
     executeSqlMock.mockResolvedValue({
       recordset: drivers,
-      recordsets: [drivers, tripStatuses, states, zones, planners, dispatchers, moveTypes],
+      recordsets: [
+        drivers,
+        tripStatuses,
+        states,
+        zones,
+        planners,
+        activityTypes,
+        dispatchers,
+        moveTypes,
+      ],
       rowsAffected: [],
     })
 
@@ -169,6 +204,52 @@ describe('GET longhaul/reference-data (cloud-direct, batched)', () => {
     const sql = executeSqlMock.mock.calls[0]![1] as string
     expect(sql).toContain("active = 'Y' AND (roles like ('%cpd%'))")
     expect(sql).toContain("move_type in ('C','S','N','M','U')")
+  })
+
+  it('shapes activityType options as abbreviation-only, deduped, sorted, nulls dropped', async () => {
+    // The label is the bare abbreviation on purpose: it is exactly the token the
+    // shipment card prints in its Last Activity column, so a planner can read a
+    // card and pick the matching filter value without a translation step.
+    findUnique.mockResolvedValue({
+      mssqlConnectionString: 'Server=a,1433',
+      longhaulClient: 'nwi',
+    })
+    executeSqlMock.mockResolvedValue({
+      recordset: drivers,
+      recordsets: [
+        drivers,
+        tripStatuses,
+        states,
+        zones,
+        planners,
+        [
+          { code: 'SITIN', name: 'SIT In', abbreviation: 'SIT' },
+          // Two codes sharing one abbreviation collapse to a single option —
+          // the card cannot tell them apart either.
+          { code: 'SITOUT', name: 'SIT Out', abbreviation: 'SIT' },
+          { code: 'PACK', name: 'Packing', abbreviation: 'PK' },
+          // Padded exactly as the legacy nvarchar column stores it.
+          { code: 'LOAD', name: 'Load', abbreviation: 'LD ' },
+          // No abbreviation → nothing the card could ever display → no option.
+          { code: 'MYST', name: 'Mystery', abbreviation: null },
+          { code: 'BLANK', name: 'Blank', abbreviation: '   ' },
+        ],
+        dispatchers,
+        moveTypes,
+      ],
+      rowsAffected: [],
+    })
+
+    const res = await buildApp().request('/onprem/longhaul/reference-data')
+
+    const body = (await res.json()) as {
+      data: { filterOptions: { activityType: Array<{ value: string; label: string }> } }
+    }
+    expect(body.data.filterOptions.activityType).toEqual([
+      { value: 'LD', label: 'LD' },
+      { value: 'PK', label: 'PK' },
+      { value: 'SIT', label: 'SIT' },
+    ])
   })
 
   it('returns 422 MSSQL_NOT_CONFIGURED when the tenant has no connection string', async () => {

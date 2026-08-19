@@ -77,6 +77,10 @@ interface ShipmentFilters {
   assigned?: Array<{ value: string }>
   shaul?: Array<{ value: string }>
   TripStatus_id?: Array<{ value: string | number }>
+  // Activity-type ABBREVIATIONS — the exact token the shipment card prints in
+  // its Last Activity column. Applied post-enrichment, not in SQL; see the
+  // filter block in the handler for why.
+  latest_activity?: Array<{ value: string }>
   Is_Trip_Planning?: boolean
 }
 
@@ -529,6 +533,26 @@ export const longhaulShipmentsListHandler: Handler<AppEnv> = async (c) => {
         ? new Set(tripStatusIds.map((v) => String(v.value)))
         : null
 
+    // `latest_activity` filters on the activity-type ABBREVIATION the shipment
+    // card renders in its last column. That value has no column to put in a
+    // WHERE clause: `latest_activity_abbr` is derived per row by
+    // enrichShipmentWithTripInfo from getTripInfo(activities) — the earliest
+    // unfinished activity, else the most recently completed one — so it does not
+    // exist until after round trip 2. Hence a post-enrichment pass, exactly
+    // where TripStatus_id (same derivation, same constraint) already runs.
+    //
+    // Trimmed on both sides: these come out of legacy nvarchar columns that
+    // carry inconsistent padding. MSSQL's own `=` ignores trailing spaces so the
+    // legacy app never saw it, but a JS comparison does — the failure mode that
+    // silently dropped padded `import_export` codes (#628).
+    const latestActivity = filters['latest_activity'] as Array<{ value: string }> | undefined
+    const wantedActivityAbbrs =
+      latestActivity && latestActivity.length > 0
+        ? new Set(
+            latestActivity.map((v) => String(v.value ?? '').trim()).filter((v) => v.length > 0),
+          )
+        : null
+
     const enriched: ShipmentRow[] = []
     for (const raw of rawShipments) {
       const on = raw.order_num as number
@@ -540,6 +564,14 @@ export const longhaulShipmentsListHandler: Handler<AppEnv> = async (c) => {
       // replaces `activities` with the untripped subset + generated templates.
       enrichShipmentWithTripInfo(raw)
       if (wantedTripStatusIds && !wantedTripStatusIds.has(String(raw['TripStatus_id'] ?? ''))) {
+        continue
+      }
+      // A shipment with no activities enriches to a null abbr and its card shows
+      // no activity token, so it cannot match any selection — drop it.
+      if (
+        wantedActivityAbbrs &&
+        !wantedActivityAbbrs.has(String(raw['latest_activity_abbr'] ?? '').trim())
+      ) {
         continue
       }
       raw.activities = buildShipmentActivities(raw, activityTypesMap) as ActivityRow[]

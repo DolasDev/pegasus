@@ -380,7 +380,11 @@ describe('common slice — thunks', () => {
     expect(s.stateList).toEqual([])
     expect(s.zoneList).toEqual([])
     expect(s.plannersList).toEqual([])
-    expect(s.filterOptions).toEqual({ moveType: [] })
+    // Every option list the filter panel reads must be cleared, not just
+    // moveType — a tenant with no legacy MSSQL has no activity-type catalog
+    // either, and a stale one would leave the Last Activity filter offering
+    // values nothing can match.
+    expect(s.filterOptions).toEqual({ moveType: [], activityType: [] })
     expect(s.loading).toBe(false)
     expect(errSpy).not.toHaveBeenCalled()
   })

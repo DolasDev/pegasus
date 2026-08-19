@@ -732,6 +732,143 @@ describe('GET longhaul/shipments (cloud-direct)', () => {
     expect(body.data.map((s) => s.order_num)).toEqual([1])
   })
 
+  describe('the post-fetch latest_activity filter', () => {
+    // `latest_activity_abbr` is derived in JS by enrichShipmentWithTripInfo, so
+    // it has no column to put in a WHERE clause — the filter runs in the same
+    // post-enrichment pass as TripStatus_id. These tests pin that placement:
+    // every case drives the filter through the real enrichment, never by
+    // pre-setting the field on the base row.
+    function activity(orderNum: number, abbr: string | null, extra: Record<string, unknown> = {}) {
+      return {
+        __src: 'activity',
+        __order_num: orderNum,
+        __payload: payload({
+          order_num: orderNum,
+          actual_date: null,
+          planned_start: '2026-01-01',
+          activityType_abbreviation: abbr,
+          ...extra,
+        }),
+      }
+    }
+
+    async function requestWithFilters(filters: Record<string, unknown>) {
+      const encoded = encodeURIComponent(JSON.stringify({ filters }))
+      const res = await buildApp().request(`/onprem/longhaul/shipments?filters=${encoded}`)
+      return (await res.json()) as {
+        data: Array<{ order_num: number }>
+        meta: { count: number }
+      }
+    }
+
+    beforeEach(() => {
+      findUnique.mockResolvedValue({
+        mssqlConnectionString: 'Server=a,1433',
+        longhaulClient: 'nwi',
+      })
+    })
+
+    it('keeps only shipments whose enriched latest_activity_abbr matches', async () => {
+      stubExecutor({
+        shipments: [{ order_num: 1 }, { order_num: 2 }, { order_num: 3 }],
+        enrichment: [activity(1, 'SIT'), activity(2, 'PK'), activity(3, 'SIT')],
+        extraLocations: [],
+      })
+
+      const body = await requestWithFilters({ latest_activity: [{ value: 'SIT' }] })
+
+      expect(body.data.map((s) => s.order_num)).toEqual([1, 3])
+      expect(body.meta.count).toBe(2)
+    })
+
+    it('ORs multiple selected activities together', async () => {
+      stubExecutor({
+        shipments: [{ order_num: 1 }, { order_num: 2 }, { order_num: 3 }],
+        enrichment: [activity(1, 'SIT'), activity(2, 'PK'), activity(3, 'DEL')],
+        extraLocations: [],
+      })
+
+      const body = await requestWithFilters({
+        latest_activity: [{ value: 'SIT' }, { value: 'DEL' }],
+      })
+
+      expect(body.data.map((s) => s.order_num)).toEqual([1, 3])
+    })
+
+    it('leaves the list untouched when the filter is absent or empty', async () => {
+      stubExecutor({
+        shipments: [{ order_num: 1 }, { order_num: 2 }],
+        enrichment: [activity(1, 'SIT'), activity(2, 'PK')],
+        extraLocations: [],
+      })
+
+      expect((await requestWithFilters({})).data.map((s) => s.order_num)).toEqual([1, 2])
+      expect(
+        (await requestWithFilters({ latest_activity: [] })).data.map((s) => s.order_num),
+      ).toEqual([1, 2])
+    })
+
+    // The legacy DB stores these as nvarchar and pads them inconsistently — the
+    // same class of bug as the `import_export` move-type collision (#628), where
+    // MSSQL's own `=` ignores trailing spaces but a JS comparison does not.
+    it('matches a padded abbreviation against an unpadded selection', async () => {
+      stubExecutor({
+        shipments: [{ order_num: 1 }, { order_num: 2 }],
+        enrichment: [activity(1, 'SIT '), activity(2, ' PK')],
+        extraLocations: [],
+      })
+
+      const body = await requestWithFilters({
+        latest_activity: [{ value: 'SIT' }, { value: 'PK ' }],
+      })
+
+      expect(body.data.map((s) => s.order_num)).toEqual([1, 2])
+    })
+
+    it('excludes shipments with no activity at all once the filter is set', async () => {
+      stubExecutor({
+        // order 2 gets no activity row, so getTripInfo yields {} and the
+        // enriched abbr is null.
+        shipments: [{ order_num: 1 }, { order_num: 2 }],
+        enrichment: [activity(1, 'SIT')],
+        extraLocations: [],
+      })
+
+      const body = await requestWithFilters({ latest_activity: [{ value: 'SIT' }] })
+
+      expect(body.data.map((s) => s.order_num)).toEqual([1])
+    })
+
+    it('ANDs with the TripStatus_id filter', async () => {
+      stubExecutor({
+        shipments: [{ order_num: 1 }, { order_num: 2 }, { order_num: 3 }],
+        enrichment: [
+          activity(1, 'SIT', { trip_status_id: 3 }),
+          activity(2, 'SIT', { trip_status_id: 9 }),
+          activity(3, 'PK', { trip_status_id: 3 }),
+        ],
+        extraLocations: [],
+      })
+
+      const body = await requestWithFilters({
+        latest_activity: [{ value: 'SIT' }],
+        TripStatus_id: [{ value: 3 }],
+      })
+
+      expect(body.data.map((s) => s.order_num)).toEqual([1])
+      expect(body.meta.count).toBe(1)
+    })
+
+    it('adds no predicate to the base SQL', async () => {
+      stubExecutor({ shipments: [], enrichment: [], extraLocations: [] })
+
+      await requestWithFilters({ latest_activity: [{ value: 'SIT' }] })
+
+      const baseSql = executeSqlMock.mock.calls[0]![1] as string
+      expect(baseSql).not.toContain('latest_activity')
+    })
+  })
+
   it('soft-fails when the extra_locations table does not exist', async () => {
     findUnique.mockResolvedValue({ mssqlConnectionString: 'Server=a,1433', longhaulClient: 'nwi' })
     stubExecutor({

@@ -164,9 +164,10 @@ export const fetchDispatchers = () => async (dispatch: AppDispatch) => {
 // reducers so no component changes are needed.
 //
 // Graceful degradation: when the tenant has no `longhaulClient` configured
-// the server returns `dispatchers: []` and `filterOptions: { moveType: [] }`
-// (the other five lookups still populate). That is by design — see the
-// handler in apps/api/src/handlers/longhaul-cloud/reference-data.ts.
+// the server returns `dispatchers: []` and `filterOptions.moveType: []` (the
+// other five lookups still populate, and `filterOptions.activityType` populates
+// too — the activity-type catalog is not client-scoped). That is by design —
+// see the handler in apps/api/src/handlers/longhaul-cloud/reference-data.ts.
 export const fetchReferenceData = () => async (dispatch: AppDispatch) => {
   try {
     const data = await API.fetchReferenceData()
@@ -191,7 +192,7 @@ export const fetchReferenceData = () => async (dispatch: AppDispatch) => {
       dispatch(fetchZoneSuccess([]))
       dispatch(fetchPlannersSuccess([]))
       dispatch(fetchDispatcherSuccess([]))
-      dispatch(fetchFilterOptionsSuccess({ moveType: [] }))
+      dispatch(fetchFilterOptionsSuccess({ moveType: [], activityType: [] }))
       return
     }
     console.error(e)
