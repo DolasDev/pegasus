@@ -31,6 +31,7 @@ const FIELDS = [
   { label: 'Assigned', property: 'assigned', type: 'assigned' },
   { label: 'Dispatcher', property: 'operations_id', type: 'dispatcher' },
   { label: 'Trip Status', property: 'TripStatus_id', type: 'trip-status' },
+  { label: 'Last Activity', property: 'latest_activity', type: 'last-activity' },
 ]
 
 const createInputStyles = (minWidth: any) => ({
@@ -154,6 +155,20 @@ function renderFilterComponentByType(type: any, args: any, common_state: any) {
           value={args.value || []}
         />
       )
+    // Matches on the activity-type abbreviation the shipment card prints in its
+    // last column, so what a planner reads off a card is what they pick here.
+    case 'last-activity':
+      return (
+        <Select
+          isMulti
+          placeholder="Last Activity"
+          options={filterOptions?.activityType || []}
+          styles={createInputStyles(100)}
+          isClearable={false}
+          {...args}
+          value={args.value || []}
+        />
+      )
     case 'haul-mode':
       return (
         <Select
@@ -243,14 +258,33 @@ function renderFilterComponentByType(type: any, args: any, common_state: any) {
 }
 
 const COLUMNS = 5
-const FIELDS_PER_COLUMN = Math.ceil(FIELDS.length / COLUMNS)
+
+/**
+ * Split the fields into exactly COLUMNS columns, as evenly as possible.
+ *
+ * This used to slice fixed runs of `ceil(FIELDS.length / COLUMNS)`, which keeps
+ * the column HEIGHT fixed and lets the column COUNT drift: at 16 fields that
+ * run length is 4, so the panel silently rendered 4 columns of 4 instead of 5.
+ * Distributing the remainder over the leading columns instead (16 → 4/3/3/3/3)
+ * pins the count at COLUMNS, so adding a field reflows within the existing
+ * layout rather than changing its shape.
+ */
+function chunkIntoColumns<T>(fields: readonly T[], columns: number): T[][] {
+  const base = Math.floor(fields.length / columns)
+  const remainder = fields.length % columns
+  const chunks: T[][] = []
+  let i = 0
+  for (let col = 0; col < columns; col += 1) {
+    const size = base + (col < remainder ? 1 : 0)
+    chunks.push(fields.slice(i, i + size) as T[])
+    i += size
+  }
+  return chunks
+}
 
 export function FilterTabs() {
   const [isOpen, setOpen] = useState(false)
-  const chunkedFields = []
-  for (let i = 0; i < FIELDS.length; i += FIELDS_PER_COLUMN) {
-    chunkedFields.push(FIELDS.slice(i, i + FIELDS_PER_COLUMN))
-  }
+  const chunkedFields = chunkIntoColumns(FIELDS, COLUMNS)
   const dispatch = useDispatch()
   const query = useSelector((state: RootState) => state.shipments.query)
   const common_state = useSelector((state: RootState) => state.common)
