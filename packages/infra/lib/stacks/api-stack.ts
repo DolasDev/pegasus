@@ -237,10 +237,12 @@ export interface ApiStackProps extends cdk.StackProps {
    * requires the action it reports on (`ListMoves`, `ReadInvoice`, …), so
    * reporting can never widen what a role already reads.
    *
-   * Default off; enabled for staging (QA) in bin/app.ts. Prod is a separate flip,
-   * blocked on verifying the three legacy datasets' column names against a live
-   * `v_dashboard1/2/3` and on an e2e spec — see
-   * plans/completed/4cd2defb-reporting-dashboards-phase2.md.
+   * Inert-safe for a tenant with no legacy MSSQL: `handlers/reporting.ts` treats
+   * that as a normal state and degrades each legacy slot to MSSQL_NOT_CONFIGURED
+   * while the Postgres widgets on the same dashboard still render.
+   *
+   * Default off; enabled for staging (QA) in #632 and for prod in the flip that
+   * followed — both set in bin/app.ts, which carries the rationale.
    */
   readonly reportingEnabled?: boolean
 
