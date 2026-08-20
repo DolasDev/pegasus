@@ -204,8 +204,9 @@ One PR, three commits, plan file committed alongside (`git mv` to
 
 ## As built
 
-Landed as three commits on `feat/sit-filter`. Five deviations from the plan
-above, all discovered during implementation:
+Landed as PR #639 on `feat/sit-filter` — one commit per numbered item above,
+plus a docs commit and a follow-up refactor. Five deviations from the plan, all
+discovered during implementation:
 
 1. **The role list became one shared const, not two widened literals.** The plan
    said to collapse AppShell's `OPERATIONS_MANAGER_ROLES` into
