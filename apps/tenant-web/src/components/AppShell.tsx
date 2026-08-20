@@ -42,13 +42,12 @@ const MOVES_VIEW_ROLES = ['tenant_admin', 'driver'] as const
 // Roles that may read published integration configs — mirrors the Cedar grant
 // (viewer baseline + integration_publisher; tenant_admin via permit-all).
 const INTEGRATION_VIEW_ROLES = ['tenant_admin', 'viewer', 'integration_publisher'] as const
-// Shared with the route `beforeLoad` guards on these same paths in router.tsx —
-// see OPERATIONS_ROLES in auth/role-guard.ts. Every role in it reaches all four
-// screens, so the children below carry no `roles` of their own and inherit this
-// gate. (Planning and Trips were once narrowed to tenant_admin +
-// operations_admin, leaving the dispatch roles only Availability/Shipments.)
-const OPERATIONS_PLANNING_ROLES = OPERATIONS_ROLES
-
+// The section is gated on OPERATIONS_ROLES (auth/role-guard.ts), shared with the
+// route `beforeLoad` guards on these same paths in router.tsx. Every role in it
+// reaches all four screens, so these children carry no `roles` of their own and
+// inherit the group's gate. (Planning and Trips were once narrowed to
+// tenant_admin + operations_admin, leaving the dispatch roles only
+// Availability/Shipments.)
 const OPERATIONS_CHILDREN = [
   { to: '/driver-planning' as const, label: 'Availability', exact: true },
   { to: '/driver-planning/planning' as const, label: 'Planning', exact: false },
@@ -126,7 +125,7 @@ const NAV_ITEMS = [
     label: 'Operations',
     icon: MapPinned,
     exact: false,
-    roles: OPERATIONS_PLANNING_ROLES,
+    roles: OPERATIONS_ROLES,
     children: OPERATIONS_CHILDREN,
     // Operations (longhaul driver planning) hits legacy-MSSQL endpoints that
     // 422 without a `mssqlConnectionString`. Hide the whole section on tenants
